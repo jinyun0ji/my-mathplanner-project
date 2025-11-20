@@ -54,11 +54,20 @@
 .sticky {
   position: sticky;
 }
+.top-\[70px\] {
+  top: 70px;
+}
 .isolate {
   isolation: isolate;
 }
 .isolation-auto {
   isolation: auto;
+}
+.z-1 {
+  z-index: 1;
+}
+.z-5 {
+  z-index: 5;
 }
 .z-10 {
   z-index: 10;
@@ -575,6 +584,9 @@
 }
 .grid-cols-1 {
   grid-template-columns: repeat(1, minmax(0, 1fr));
+}
+.grid-cols-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 .grid-cols-5 {
   grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -1637,6 +1649,9 @@
 .scheme-only-light {
   color-scheme: only light;
 }
+.opacity-0 {
+  opacity: 0%;
+}
 .opacity-50 {
   opacity: 50%;
 }
@@ -1936,6 +1951,13 @@
 .transform-view {
   transform-box: view-box;
 }
+.group-hover\:opacity-100 {
+  &:is(:where(.group):hover *) {
+    @media (hover: hover) {
+      opacity: 100%;
+    }
+  }
+}
 .group-data-\[disabled\=true\]\:pointer-events-none {
   &:is(:where(.group)[data-disabled="true"] *) {
     pointer-events: none;
@@ -1970,6 +1992,12 @@
 .file\:bg-transparent {
   &::file-selector-button {
     background-color: transparent;
+  }
+}
+.last\:border-b-0 {
+  &:last-child {
+    border-bottom-style: var(--tw-border-style);
+    border-bottom-width: 0px;
   }
 }
 .focus-within\:border-\[\#f3d5a3\] {
