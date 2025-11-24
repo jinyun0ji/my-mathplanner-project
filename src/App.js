@@ -960,11 +960,18 @@ const StudentManagement = ({ students, classes, getClassesNames, handleSaveStude
     );
 };
 
+// --- LessonManagement 컴포넌트 (수정된 부분) ---
 const LessonManagement = ({ students, classes, lessonLogs, handleSaveLessonLog, handleDeleteLessonLog }) => {
-    const [selectedClassId, setSelectedClassId] = useState(initialClasses[0].id);
+    // 안정화: classes 배열이 비어있지 않다면 첫 번째 클래스의 id를 기본값으로, 그렇지 않으면 null
+    const initialClassId = classes.length > 0 ? classes[0].id : null;
+    const [selectedClassId, setSelectedClassId] = useState(initialClassId);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingLog, setEditingLog] = useState(null);
+    
+    // 클래스 추가 모달을 위한 상태 (기능은 추후 구현 예정)
+    const [isAddClassModalOpen, setIsAddClassModalOpen] = useState(false);
 
+    // 선택된 클래스 정보 및 로그 필터링
     const selectedClass = classes.find(c => c.id === selectedClassId);
     const classLogs = lessonLogs.filter(log => log.classId === selectedClassId).sort((a, b) => new Date(b.date) - new Date(a.date));
     const classStudents = students.filter(s => selectedClass?.students.includes(s.id));
@@ -980,42 +987,89 @@ const LessonManagement = ({ students, classes, lessonLogs, handleSaveLessonLog, 
     };
 
     return (
-        <div className="bg-white p-6 rounded-xl shadow-lg space-y-6">
-            <h3 className="text-xl font-bold">수업 일지 관리 (날짜, 진도, 영상)</h3>
-            <div className="flex justify-between items-center">
-                <div>
-                    <label htmlFor="class-select" className="mr-2 font-semibold">반 선택:</label>
-                    <select id="class-select" value={selectedClassId} onChange={e => setSelectedClassId(Number(e.target.value))} className="p-2 border rounded-lg">
-                        {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                    </select>
-                    <span className="ml-4 text-gray-600">({classStudents.length}명)</span>
+        // 전체를 flex 컨테이너로 설정
+        <div className="flex h-full min-h-[85vh] space-x-6">
+            
+            {/* 1. 좌측 구역: 수업 리스트 및 클래스 추가 버튼 */}
+            <div className="w-80 bg-white p-4 rounded-xl shadow-lg flex flex-col">
+                <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-xl font-bold text-gray-800">수업 목록 ({classes.length}개)</h3>
+                    
+                    {/* 클래스 추가 버튼 (더하기 아이콘) */}
+                    <button 
+                        onClick={() => setIsAddClassModalOpen(true)}
+                        className="p-2 bg-blue-500 text-white rounded-full hover:bg-blue-600 transition duration-150 shadow-md"
+                        title="새 클래스 추가"
+                    >
+                        <Icon name="plus" className="w-6 h-6" />
+                    </button>
                 </div>
-                <button onClick={() => { setEditingLog(null); setIsModalOpen(true); }} className="flex items-center bg-blue-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-600">
-                    <Icon name="plus" className="w-5 h-5 mr-2" /> 새 수업일지 등록
-                </button>
-            </div>
-            <div className="space-y-4">
-                {classLogs.length === 0 ? (
-                    <div className="p-4 text-center text-gray-500 border rounded-lg">등록된 수업 일지가 없습니다.</div>
-                ) : (
-                    classLogs.map(log => (
-                        <div key={log.id} className="p-4 border rounded-lg shadow-sm bg-gray-50 hover:shadow-md transition duration-150">
-                            <div className="flex justify-between items-start mb-2">
-                                <h4 className="font-bold text-lg text-blue-700">{log.date}</h4>
-                                <div className="flex space-x-2">
-                                    <button onClick={() => handleEdit(log)} className="text-gray-500 hover:text-blue-500" title="수정"><Icon name="edit" className="w-5 h-5" /></button>
-                                    <button onClick={() => handleDeleteLessonLog(log.id)} className="text-gray-500 hover:text-red-500" title="삭제"><Icon name="trash" className="w-5 h-5" /></button>
-                                </div>
+
+                {/* 수업 리스트 */}
+                <div className="flex-1 space-y-2 overflow-y-auto pr-2">
+                    {classes.length === 0 ? (
+                        <p className="text-gray-500 text-sm">등록된 클래스가 없습니다.</p>
+                    ) : (
+                        classes.map(c => (
+                            <div 
+                                key={c.id}
+                                onClick={() => setSelectedClassId(c.id)}
+                                className={`p-3 border rounded-lg cursor-pointer transition duration-150 
+                                    ${c.id === selectedClassId 
+                                        ? 'bg-blue-100 border-blue-500 font-semibold' 
+                                        : 'bg-white hover:bg-gray-50'}`
+                                }
+                            >
+                                <p className="text-sm font-bold">{c.name}</p>
+                                <p className="text-xs text-gray-600">선생님: {c.teacher} | 학생 수: {c.students.length}명</p>
                             </div>
-                            <p><span className="font-semibold">수업 진도:</span> {log.progress}</p>
-                            {log.videoUrl && (
-                                <div className="mt-2">
-                                    <p className="font-semibold">수업 영상:</p>
-                                    <a href={log.videoUrl} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline text-sm truncate block">{log.videoUrl}</a>
-                                </div>
+                        ))
+                    )}
+                </div>
+            </div>
+            
+            {/* 2. 우측 구역: 선택된 수업의 일지 관리 (기존 LessonManagement 내용) */}
+            <div className="flex-1 bg-white p-6 rounded-xl shadow-lg">
+                <h3 className="text-2xl font-bold mb-6 text-gray-800">{selectedClass?.name || '수업'} 일지 관리</h3>
+                
+                {!selectedClassId ? (
+                    <div className="flex items-center justify-center h-48 text-gray-500">
+                        좌측 목록에서 관리할 수업을 선택해 주세요.
+                    </div>
+                ) : (
+                    <>
+                        <div className="flex justify-between items-center mb-4">
+                            <h4 className="text-xl font-semibold">수업 기록 ({classStudents.length}명)</h4>
+                            <button onClick={() => { setEditingLog(null); setIsModalOpen(true); }} className="flex items-center bg-blue-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-600">
+                                <Icon name="plus" className="w-5 h-5 mr-2" /> 새 수업일지 등록
+                            </button>
+                        </div>
+                        
+                        <div className="space-y-4 max-h-[calc(85vh-150px)] overflow-y-auto pr-2">
+                            {classLogs.length === 0 ? (
+                                <div className="p-4 text-center text-gray-500 border rounded-lg">등록된 수업 일지가 없습니다.</div>
+                            ) : (
+                                classLogs.map(log => (
+                                    <div key={log.id} className="p-4 border rounded-lg shadow-sm bg-gray-50 hover:shadow-md transition duration-150">
+                                        <div className="flex justify-between items-start mb-2">
+                                            <h4 className="font-bold text-lg text-blue-700">{log.date}</h4>
+                                            <div className="flex space-x-2">
+                                                <button onClick={() => handleEdit(log)} className="text-gray-500 hover:text-blue-500" title="수정"><Icon name="edit" className="w-5 h-5" /></button>
+                                                <button onClick={() => handleDeleteLessonLog(log.id)} className="text-gray-500 hover:text-red-500" title="삭제"><Icon name="trash" className="w-5 h-5" /></button>
+                                            </div>
+                                        </div>
+                                        <p><span className="font-semibold">수업 진도:</span> {log.progress}</p>
+                                        {log.videoUrl && (
+                                            <div className="mt-2">
+                                                <p className="font-semibold">수업 영상:</p>
+                                                <a href={log.videoUrl} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline text-sm truncate block">{log.videoUrl}</a>
+                                            </div>
+                                        )}
+                                    </div>
+                                ))
                             )}
                         </div>
-                    ))
+                    </>
                 )}
             </div>
 
@@ -1026,6 +1080,17 @@ const LessonManagement = ({ students, classes, lessonLogs, handleSaveLessonLog, 
                 classId={selectedClassId} 
                 log={editingLog}
             />
+            
+            {/* 클래스 추가 모달 (기능은 다음 요청 시 구현 예정) */}
+            <Modal isOpen={isAddClassModalOpen} onClose={() => setIsAddClassModalOpen(false)} title="새 클래스 추가">
+                <p>클래스 추가 기능은 다음 단계에서 구현됩니다.</p>
+                <button 
+                    onClick={() => setIsAddClassModalOpen(false)}
+                    className="mt-4 w-full bg-blue-500 text-white py-2 rounded"
+                >
+                    닫기
+                </button>
+            </Modal>
         </div>
     );
 };
