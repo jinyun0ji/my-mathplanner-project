@@ -72,6 +72,9 @@
 .z-10 {
   z-index: 10;
 }
+.z-20 {
+  z-index: 20;
+}
 .z-50 {
   z-index: 50;
 }
@@ -253,9 +256,6 @@
 .h-auto {
   height: auto;
 }
-.h-full {
-  height: 100%;
-}
 .h-lh {
   height: 1lh;
 }
@@ -291,6 +291,9 @@
 }
 .w-1\/3 {
   width: calc(1/3 * 100%);
+}
+.w-1\/4 {
+  width: calc(1/4 * 100%);
 }
 .w-2\/3 {
   width: calc(2/3 * 100%);
@@ -587,9 +590,6 @@
 }
 .grid-cols-2 {
   grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-.grid-cols-5 {
-  grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 .grid-cols-none {
   grid-template-columns: none;
@@ -1798,6 +1798,10 @@
   --tw-duration: 300ms;
   transition-duration: 300ms;
 }
+.duration-500 {
+  --tw-duration: 500ms;
+  transition-duration: 500ms;
+}
 .ease-linear {
   --tw-ease: linear;
   transition-timing-function: linear;
@@ -1950,6 +1954,20 @@
 }
 .transform-view {
   transform-box: view-box;
+}
+.group-hover\:relative {
+  &:is(:where(.group):hover *) {
+    @media (hover: hover) {
+      position: relative;
+    }
+  }
+}
+.group-hover\:block {
+  &:is(:where(.group):hover *) {
+    @media (hover: hover) {
+      display: block;
+    }
+  }
 }
 .group-hover\:opacity-100 {
   &:is(:where(.group):hover *) {

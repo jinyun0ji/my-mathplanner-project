@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 
-// --- 데이터 샘플 (변경 없음) ---
+// --- 데이터 샘플 ---
 const initialStudents = [
   { id: 1, name: '김민준', school: '대한고등학교', grade: 2, phone: '010-1234-5678', parentPhone: '010-8765-4321', status: '재원생', registeredDate: '2025-03-05', classes: [1], paymentStatus: '완납', bookReceived: true },
   { id: 2, name: '이서연', school: '민국고등학교', grade: 2, phone: '010-2345-6789', parentPhone: '010-7654-3210', status: '재원생', registeredDate: '2025-03-05', classes: [2], paymentStatus: '미납', bookReceived: false },
@@ -18,9 +18,30 @@ const initialClasses = [
 ];
 
 const initialLessonLogs = [
-    { id: 1, classId: 1, date: '2025-06-26', progress: '다항식의 연산 P.12 ~ P.18', homework: 'RPM P.10 ~ P.15', videoUrl: 'https://www.youtube.com/embed/mWkuigsWe4A?si=WxFCjABqFDJSLnYy', materialUrl: '/path/to/material1.pdf', attendance: [{studentId: 1, status: '출석'}, {studentId: 6, status: '결석'}, {studentId: 4, status: '출석'}] },
-    { id: 2, classId: 2, date: '2025-06-27', progress: '집합의 개념 및 포함 관계', homework: '개념원리 P.20 ~ P.25', videoUrl: '', materialUrl: '', attendance: [{studentId: 2, status: '지각'}] },
+    { id: 1, classId: 1, date: '2025-06-26', progress: '다항식의 연산 P.12 ~ P.18', videoUrl: 'https://www.youtube.com/embed/mWkuigsWe4A?si=WxFCjABqFDJSLnYy', materialUrl: '/path/to/material1.pdf' },
+    { id: 2, classId: 2, date: '2025-06-27', progress: '집합의 개념 및 포함 관계', videoUrl: '', materialUrl: '' },
 ];
+
+const initialAttendanceLogs = [
+    { id: 101, classId: 1, date: '2025-06-26', studentId: 1, status: '출석' },
+    { id: 102, classId: 1, date: '2025-06-26', studentId: 6, status: '결석' },
+    { id: 103, classId: 1, date: '2025-06-26', studentId: 4, status: '출석' },
+    { id: 104, classId: 2, date: '2025-06-27', studentId: 2, status: '지각' },
+];
+
+const initialHomeworkAssignments = [
+    { id: 1, classId: 1, date: '2025-06-26', content: 'RPM P.10 ~ P.15', students: [1, 4, 6] },
+    { id: 2, classId: 2, date: '2025-06-27', content: '개념원리 P.20 ~ P.25', students: [2] },
+];
+
+const initialHomeworkResults = {
+    // 학생 ID: { 과제 ID: { status: 'A'|'B'|'C'|'미제출', score: '8/10' } }
+    1: { 1: { status: 'A', score: '10/10' } }, // 김민준
+    4: { 1: { status: 'B', score: '8/10' } },  // 최지우
+    6: { 1: { status: '미제출', score: '0/10' } }, // 윤채원
+    2: { 2: { status: 'C', score: '5/10' } }, // 이서연
+};
+
 
 const initialPayments = [
     { studentId: 1, studentName: '김민준', books: [{name: '수학(상) RPM', price: 15000, status: '완납'}, {name: '블랙라벨 수학(상)', price: 17000, status: '완납'}], total: 32000, received: true },
@@ -39,7 +60,6 @@ const initialTests = [
 ];
 
 const initialGrades = {
-    // studentId: { testId: score }
     1: { 101: 85, 102: 92 }, // 김민준
     6: { 101: 78, 102: 88 }, // 윤채원
     4: { 101: 95, 102: 95 }, // 최지우
@@ -48,7 +68,7 @@ const initialGrades = {
 };
 
 
-// --- 아이콘 컴포넌트 (생략 안함) ---
+// --- 아이콘 컴포넌트 ---
 const Icon = ({ name, className }) => {
   const icons = {
     dashboard: <><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></>,
@@ -73,7 +93,7 @@ const Icon = ({ name, className }) => {
 
 // --- 모달 컴포넌트 ---
 
-// 모달 백드롭 (변경 없음)
+// 모달 백드롭 
 const Modal = ({ children, isOpen, onClose, title }) => {
     if (!isOpen) return null;
     return (
@@ -89,11 +109,10 @@ const Modal = ({ children, isOpen, onClose, title }) => {
     );
 };
 
-// 학생 추가/수정 모달 (수정됨: useEffect를 사용하여 student prop 변경 시 폼 데이터 초기화)
+// 학생 추가/수정 모달
 const StudentFormModal = ({ isOpen, onClose, student = null, allClasses, onSave }) => {
     const isEdit = !!student;
     
-    // student prop이 변경될 때마다 form state를 초기화
     const [formData, setFormData] = useState({
         name: student?.name || '',
         school: student?.school || '',
@@ -104,6 +123,7 @@ const StudentFormModal = ({ isOpen, onClose, student = null, allClasses, onSave 
         classes: student?.classes || [],
     });
 
+    // **2차 수정 안정화:** student prop이 변경될 때마다 form state를 업데이트합니다.
     useEffect(() => {
         setFormData({
             name: student?.name || '',
@@ -176,11 +196,16 @@ const StudentFormModal = ({ isOpen, onClose, student = null, allClasses, onSave 
     );
 };
 
-// 테스트 생성/수정 모달 (변경 없음)
+// 테스트 생성/수정 모달 
 const TestFormModal = ({ isOpen, onClose, onSave, classId, test = null }) => {
     const isEdit = !!test;
     const [name, setName] = useState(test?.name || '');
     const [maxScore, setMaxScore] = useState(test?.maxScore || 100);
+    
+    useEffect(() => {
+        setName(test?.name || '');
+        setMaxScore(test?.maxScore || 100);
+    }, [test]);
 
     const handleSubmit = (e) => {
         e.preventDefault();
@@ -206,27 +231,21 @@ const TestFormModal = ({ isOpen, onClose, onSave, classId, test = null }) => {
     );
 }
 
-// 수업 일지 등록/수정 모달 (변경 없음)
-const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, students, log = null }) => {
+// 수업 일지 등록/수정 모달 
+const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = null }) => {
     const isEdit = !!log;
-    const initialAttendance = log?.attendance.reduce((acc, curr) => ({ ...acc, [curr.studentId]: curr.status }), {}) || {};
 
     const [formData, setFormData] = useState({
         date: log?.date || new Date().toISOString().slice(0, 10),
         progress: log?.progress || '',
-        homework: log?.homework || '',
         videoUrl: log?.videoUrl || '',
-        attendance: initialAttendance
     });
     
     useEffect(() => {
-        // Log prop이 변경될 때마다 폼 상태를 업데이트
         setFormData({
             date: log?.date || new Date().toISOString().slice(0, 10),
             progress: log?.progress || '',
-            homework: log?.homework || '',
             videoUrl: log?.videoUrl || '',
-            attendance: log?.attendance.reduce((acc, curr) => ({ ...acc, [curr.studentId]: curr.status }), {}) || {}
         });
     }, [log]);
 
@@ -236,66 +255,28 @@ const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, students, log = 
         setFormData(prev => ({ ...prev, [name]: value }));
     };
 
-    const handleAttendanceChange = (studentId, status) => {
-        setFormData(prev => ({
-            ...prev,
-            attendance: { ...prev.attendance, [studentId]: status }
-        }));
-    };
-
     const handleSubmit = (e) => {
         e.preventDefault();
         
-        // attendance 배열 포맷으로 변환
-        const finalAttendance = students.map(s => ({
-            studentId: s.id,
-            status: formData.attendance[s.id] || '미체크' // 기본값 설정
-        }));
-
         const dataToSave = {
             id: isEdit ? log.id : Date.now(),
             classId,
             date: formData.date,
             progress: formData.progress,
-            homework: formData.homework,
             videoUrl: formData.videoUrl,
-            materialUrl: log?.materialUrl || '', // 자료 URL은 일단 수정 불가
-            attendance: finalAttendance
+            materialUrl: log?.materialUrl || '', 
         };
 
         onSave(dataToSave, isEdit);
         onClose();
     };
 
-    const attendanceOptions = ['출석', '결석', '지각', '조퇴', '미체크'];
-
     return (
         <Modal isOpen={isOpen} onClose={onClose} title={isEdit ? `${formData.date} 수업 일지 수정` : '새 수업 일지 등록'}>
             <form onSubmit={handleSubmit} className="space-y-4">
                 <input type="date" name="date" value={formData.date} onChange={handleChange} required className="p-2 border rounded w-full" />
                 <input type="text" name="progress" value={formData.progress} onChange={handleChange} placeholder="수업 진도 (예: 다항식의 연산 P.12 ~ P.18)" required className="p-2 border rounded w-full" />
-                <input type="text" name="homework" value={formData.homework} onChange={handleChange} placeholder="과제 내용 (예: RPM P.10 ~ P.15)" required className="p-2 border rounded w-full" />
                 <input type="url" name="videoUrl" value={formData.videoUrl} onChange={handleChange} placeholder="보충/복습 영상 URL (선택 사항)" className="p-2 border rounded w-full" />
-
-                <div className="border p-3 rounded-lg">
-                    <label className="block font-semibold mb-2">출결 체크:</label>
-                    <div className="space-y-2 max-h-40 overflow-y-auto">
-                        {students.map(s => (
-                            <div key={s.id} className="flex items-center justify-between p-2 border-b last:border-b-0">
-                                <span className="font-medium w-24">{s.name}</span>
-                                <select 
-                                    value={formData.attendance[s.id] || '미체크'} 
-                                    onChange={(e) => handleAttendanceChange(s.id, e.target.value)} 
-                                    className="p-1 border rounded text-sm"
-                                >
-                                    {attendanceOptions.map(option => (
-                                        <option key={option} value={option}>{option}</option>
-                                    ))}
-                                </select>
-                            </div>
-                        ))}
-                    </div>
-                </div>
 
                 <button type="submit" className="w-full bg-blue-600 text-white font-bold py-2 rounded-lg hover:bg-blue-700">
                     {isEdit ? '일지 수정' : '일지 등록'}
@@ -305,8 +286,114 @@ const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, students, log = 
     );
 };
 
+// 출석 기록/수정 모달 
+const AttendanceFormModal = ({ isOpen, onClose, onSave, classId, students, date, initialAttendance = [] }) => {
+    const ATT_OPTIONS = ['출석', '지각', '동영상보강', '결석', '미체크'];
+    
+    const initialAttMap = initialAttendance.reduce((acc, curr) => ({ ...acc, [curr.studentId]: curr.status }), {});
 
-// --- 메인 앱 컴포넌트: 모든 상태와 CRUD 로직을 관리하는 중앙 허브 (변경 없음) ---
+    const [attendanceMap, setAttendanceMap] = useState(initialAttMap);
+
+    // **3차 수정 안정화:** initialAttendance를 의존성 배열에 추가합니다.
+    useEffect(() => {
+        setAttendanceMap(initialAttMap);
+    }, [date, initialAttendance, students]); // students 추가하여 반 변경 시에도 초기화 보장
+
+    const handleAttendanceChange = (studentId, status) => {
+        setAttendanceMap(prev => ({ ...prev, [studentId]: status }));
+    };
+
+    const handleSubmit = (e) => {
+        e.preventDefault();
+        
+        const finalAttendance = students.map(s => ({
+            classId,
+            date,
+            studentId: s.id,
+            status: attendanceMap[s.id] || '미체크'
+        }));
+
+        onSave(finalAttendance);
+        onClose();
+    };
+
+    return (
+        <Modal isOpen={isOpen} onClose={onClose} title={`${date} 출결 등록 및 수정`}>
+            <form onSubmit={handleSubmit} className="space-y-4">
+                <div className="border p-3 rounded-lg max-h-80 overflow-y-auto">
+                    <label className="block font-semibold mb-2">출결 체크:</label>
+                    <div className="space-y-2">
+                        {students.map(s => (
+                            <div key={s.id} className="flex items-center justify-between p-2 border-b last:border-b-0">
+                                <span className="font-medium w-24">{s.name}</span>
+                                <select 
+                                    value={attendanceMap[s.id] || '미체크'} 
+                                    onChange={(e) => handleAttendanceChange(s.id, e.target.value)} 
+                                    className="p-1 border rounded text-sm"
+                                >
+                                    {ATT_OPTIONS.map(option => (
+                                        <option key={option} value={option}>{option}</option>
+                                    ))}
+                                </select>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+                <button type="submit" className="w-full bg-blue-600 text-white font-bold py-2 rounded-lg hover:bg-blue-700">
+                    출결 기록 저장
+                </button>
+            </form>
+        </Modal>
+    );
+};
+
+
+// 과제 등록/수정 모달 
+const HomeworkAssignmentModal = ({ isOpen, onClose, onSave, classId, assignment = null }) => {
+    const isEdit = !!assignment;
+    const [content, setContent] = useState(assignment?.content || '');
+    const [date, setDate] = useState(assignment?.date || new Date().toISOString().slice(0, 10));
+
+    useEffect(() => {
+        setContent(assignment?.content || '');
+        setDate(assignment?.date || new Date().toISOString().slice(0, 10));
+    }, [assignment]);
+
+    const handleSubmit = (e) => {
+        e.preventDefault();
+        if (content.trim() === '') return;
+
+        onSave({
+            id: isEdit ? assignment.id : Date.now(),
+            classId,
+            date,
+            content,
+        }, isEdit);
+        onClose();
+    };
+
+    return (
+        <Modal isOpen={isOpen} onClose={onClose} title={isEdit ? '과제 수정' : '새 과제 등록'}>
+            <form onSubmit={handleSubmit} className="space-y-4">
+                <input type="date" value={date} onChange={e => setDate(e.target.value)} required className="p-2 border rounded w-full" />
+                <textarea 
+                    value={content} 
+                    onChange={e => setContent(e.target.value)} 
+                    placeholder="과제 내용 (예: RPM P.10 ~ P.15)" 
+                    required 
+                    rows="3"
+                    className="p-2 border rounded w-full" 
+                />
+                <button type="submit" className="w-full bg-blue-600 text-white font-bold py-2 rounded-lg hover:bg-blue-700">
+                    {isEdit ? '과제 수정' : '과제 등록'}
+                </button>
+            </form>
+        </Modal>
+    );
+};
+
+
+// --- 메인 앱 컴포넌트: 모든 상태와 CRUD 로직을 관리하는 중앙 허브 ---
 export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [page, setPage] = useState('home'); 
@@ -315,45 +402,42 @@ export default function App() {
   const [students, setStudents] = useState(initialStudents);
   const [classes, setClasses] = useState(initialClasses);
   const [lessonLogs, setLessonLogs] = useState(initialLessonLogs);
+  const [attendanceLogs, setAttendanceLogs] = useState(initialAttendanceLogs); 
+  const [homeworkAssignments, setHomeworkAssignments] = useState(initialHomeworkAssignments); 
+  const [homeworkResults, setHomeworkResults] = useState(initialHomeworkResults); 
   const [tests, setTests] = useState(initialTests);
   const [grades, setGrades] = useState(initialGrades);
   
-  // 다음 ID를 위한 간단한 카운터
-  const nextStudentId = students.reduce((max, s) => Math.max(max, s.id), 0) + 1;
+  // **안정화:** reduce의 초기값을 0으로 설정하여 빈 배열일 때의 오류를 방지합니다.
+  const nextStudentId = students.reduce((max, s) => Math.max(max, s.id), 0) + 1; 
 
 
-  // --- CRUD 함수: 학생 관리 (변경 없음) ---
+  // --- CRUD 함수: 학생 관리 ---
   const getClassesNames = useCallback((classIds) => classIds.map(id => classes.find(c => c.id === id)?.name || '').join(', '), [classes]);
   
   const handleSaveStudent = (newStudentData, idToUpdate) => {
     if (idToUpdate) {
-        // 수정
-        setStudents(prev => prev.map(s => s.id === idToUpdate ? { ...s, ...newStudentData } : s));
-        
-        // 클래스 멤버십 업데이트 (추가/제거된 클래스 반영)
         const oldStudent = students.find(s => s.id === idToUpdate);
+        
+        setStudents(prev => prev.map(s => s.id === idToUpdate ? { ...s, ...newStudentData } : s));
         
         setClasses(prevClasses => prevClasses.map(cls => {
             const isNowInClass = newStudentData.classes.includes(cls.id);
             const wasInClass = oldStudent.classes.includes(cls.id);
 
             if (isNowInClass && !wasInClass) {
-                // 클래스 추가
                 return { ...cls, students: [...cls.students, idToUpdate] };
             } else if (!isNowInClass && wasInClass) {
-                // 클래스 제거
                 return { ...cls, students: cls.students.filter(sid => sid !== idToUpdate) };
             }
             return cls;
         }));
 
     } else {
-        // 등록
         const newStudent = { ...newStudentData, id: nextStudentId, registeredDate: new Date().toISOString().slice(0, 10), paymentStatus: '해당없음', bookReceived: false };
         setStudents(prev => [...prev, newStudent]);
         setGrades(prev => ({ ...prev, [newStudent.id]: {} }));
 
-        // 클래스 멤버십 업데이트 (새 학생 추가)
         setClasses(prevClasses => prevClasses.map(cls => 
             newStudent.classes.includes(cls.id) 
                 ? { ...cls, students: [...cls.students, newStudent.id] }
@@ -377,7 +461,7 @@ export default function App() {
     }
   };
 
-  // --- CRUD 함수: 수업 일지 관리 (변경 없음) ---
+  // --- CRUD 함수: 수업 일지 관리 ---
   const handleSaveLessonLog = (logData, isEdit) => {
     if (isEdit) {
         setLessonLogs(prev => prev.map(log => log.id === logData.id ? logData : log));
@@ -391,14 +475,68 @@ export default function App() {
         setLessonLogs(prev => prev.filter(log => log.id !== logId));
     }
   }
+  
+  // --- CRUD 함수: 출석 관리 ---
+  const handleSaveAttendance = (attendanceRecords) => {
+    setAttendanceLogs(prevLogs => {
+        let newLogs = [...prevLogs];
+        attendanceRecords.forEach(record => {
+            // id 대신 classId, date, studentId 조합으로 기존 기록 찾기
+            const existingIndex = newLogs.findIndex(
+                log => log.classId === record.classId && log.date === record.date && log.studentId === record.studentId
+            );
 
-  // --- CRUD 함수: 성적 및 테스트 관리 (변경 없음) ---
+            if (existingIndex !== -1) {
+                newLogs[existingIndex] = { ...newLogs[existingIndex], status: record.status };
+            } else {
+                newLogs.push({ ...record, id: Date.now() + Math.random() });
+            }
+        });
+        return newLogs;
+    });
+  };
+
+  // --- CRUD 함수: 과제 관리 ---
+  const handleSaveHomeworkAssignment = (assignmentData, isEdit) => {
+    if (isEdit) {
+        setHomeworkAssignments(prev => prev.map(a => a.id === assignmentData.id ? { ...a, ...assignmentData } : a));
+    } else {
+        const selectedClass = classes.find(c => c.id === assignmentData.classId);
+        // 등록 시 학생 목록은 현재 클래스 학생으로 설정
+        const newAssignment = { ...assignmentData, id: Date.now(), students: selectedClass ? selectedClass.students : [] }; 
+        setHomeworkAssignments(prev => [newAssignment, ...prev]);
+    }
+  };
+
+  const handleDeleteHomeworkAssignment = (assignmentId) => {
+    if (window.confirm('해당 과제를 삭제하시겠습니까? 관련 결과 데이터도 함께 사라집니다.')) {
+        setHomeworkAssignments(prev => prev.filter(a => a.id !== assignmentId));
+        setHomeworkResults(prevResults => {
+            const newResults = { ...prevResults };
+            for (const studentId in newResults) {
+                delete newResults[studentId][assignmentId];
+            }
+            return newResults;
+        });
+    }
+  };
+  
+  const handleUpdateHomeworkResult = (studentId, assignmentId, status, score) => {
+    setHomeworkResults(prevResults => ({
+        ...prevResults,
+        [studentId]: {
+            ...prevResults[studentId],
+            [assignmentId]: { status, score }
+        }
+    }));
+  };
+
+  // --- CRUD 함수: 성적 및 테스트 관리 ---
   const handleSaveTest = (testData, isEdit) => {
     if (isEdit) {
         setTests(prev => prev.map(t => t.id === testData.id ? testData : t));
     } else {
         setTests(prev => [...prev, testData]);
-        // 새 테스트가 추가되었으므로 모든 학생의 성적 객체에 빈 값으로 초기화 (선택 사항)
     }
   };
 
@@ -406,7 +544,6 @@ export default function App() {
     if (window.confirm('해당 테스트를 삭제하시겠습니까? 관련 성적 데이터도 함께 삭제됩니다.')) {
         setTests(prev => prev.filter(t => t.id !== testId));
         
-        // 관련 성적 삭제
         setGrades(prevGrades => {
             const newGrades = {};
             for (const studentId in prevGrades) {
@@ -433,10 +570,13 @@ export default function App() {
   
   // 모든 관리 컴포넌트에 필요한 상태와 함수를 Props로 전달
   const managementProps = {
-    students, classes, lessonLogs, tests, grades,
+    students, classes, lessonLogs, attendanceLogs, 
+    homeworkAssignments, homeworkResults, tests, grades,
     getClassesNames,
     handleSaveStudent, handleDeleteStudent,
     handleSaveLessonLog, handleDeleteLessonLog,
+    handleSaveAttendance,
+    handleSaveHomeworkAssignment, handleDeleteHomeworkAssignment, handleUpdateHomeworkResult,
     handleSaveTest, handleDeleteTest, handleUpdateGrade,
   };
 
@@ -453,7 +593,7 @@ export default function App() {
   );
 }
 
-// --- 레이아웃 및 페이지 라우팅 (변경 없음) ---
+// --- 레이아웃 및 페이지 라우팅 (생략) ---
 const LoginPage = ({ onLogin }) => { 
   const [id, setId] = useState('');
   const [password, setPassword] = useState('');
@@ -504,6 +644,7 @@ const Sidebar = ({ page, setPage, onLogout }) => {
     { id: 'internal', name: '내부 소통', icon: 'messageSquare', isParent: false },
   ];
   
+  // 현재 페이지가 하위 메뉴에 속하는지 확인하는 함수
   const isSubPageActive = (parentItem) => parentItem.subItems && parentItem.subItems.some(sub => sub.id === page);
 
   return (
@@ -512,28 +653,35 @@ const Sidebar = ({ page, setPage, onLogout }) => {
       <nav className="flex-1 px-4 py-4 space-y-2">
         {navItems.map(item => (
           <React.Fragment key={item.id}>
-            {/* 상위 메뉴 버튼 */}
-            <button 
-                onClick={() => setPage(item.isParent ? (item.subItems[0]?.id || item.id) : item.id)} 
-                className={`w-full flex items-center px-4 py-3 text-left text-base rounded-lg transition-all duration-200 ${page === item.id || isSubPageActive(item) ? 'bg-blue-500 text-white shadow-md' : 'text-gray-600 hover:bg-blue-100 hover:text-blue-600'}`}
-            >
-              <Icon name={item.icon} className="w-6 h-6 mr-4" /><span>{item.name}</span>
-            </button>
-            
-            {/* 하위 메뉴 (클래스 관리인 경우에만 표시) */}
-            {item.isParent && isSubPageActive(item) && (
-                <div className="pl-8 space-y-1">
-                    {item.subItems.map(subItem => (
-                        <button 
-                            key={subItem.id} 
-                            onClick={() => setPage(subItem.id)} 
-                            className={`w-full flex items-center px-4 py-2 text-left text-sm rounded-lg transition-all duration-200 ${page === subItem.id ? 'bg-blue-300 text-white' : 'text-gray-600 hover:bg-gray-100'}`}
-                        >
-                           <span>{subItem.name}</span>
-                        </button>
-                    ))}
-                </div>
-            )}
+            {/* 부모 항목 전체에 group 클래스 적용 */}
+            <div className={`relative ${item.isParent ? 'group overflow-hidden' : ''}`}> 
+              {/* 상위 메뉴 버튼 */}
+              <button 
+                  onClick={() => setPage(item.isParent ? (item.subItems[0]?.id || item.id) : item.id)} 
+                  className={`w-full flex items-center px-4 py-3 text-left text-base rounded-lg transition-all duration-200 ${page === item.id || isSubPageActive(item) ? 'bg-blue-500 text-white shadow-md' : 'text-gray-600 hover:bg-blue-100 hover:text-blue-600'}`}
+              >
+                <Icon name={item.icon} className="w-6 h-6 mr-4" /><span>{item.name}</span>
+              </button>
+              
+              {/* 하위 메뉴 (Max-Height 트랜지션 적용) */}
+              {item.isParent && (
+                  <div className={`
+                      pl-8 space-y-1 transition-all duration-500 ease-in-out
+                      ${isSubPageActive(item) ? 'max-h-60 mt-1' : 'max-h-0'} 
+                      group-hover:max-h-60 group-hover:mt-1
+                  `}>
+                      {item.subItems.map(subItem => (
+                          <button 
+                              key={subItem.id} 
+                              onClick={() => setPage(subItem.id)} 
+                              className={`w-full flex items-center px-4 py-2 text-left text-sm rounded-lg transition-all duration-200 ${page === subItem.id ? 'bg-blue-300 text-white' : 'text-gray-600 hover:bg-gray-100'}`}
+                          >
+                            <span>{subItem.name}</span>
+                          </button>
+                      ))}
+                  </div>
+              )}
+            </div>
           </React.Fragment>
         ))}
       </nav>
@@ -567,8 +715,8 @@ const PageContent = (props) => {
     case 'home': return <Home />;
     case 'students': return <StudentManagement {...props} />;
     case 'lessons': return <LessonManagement {...props} />; 
-    case 'attendance': return <AttendanceManagement />; 
-    case 'homework': return <HomeworkManagement />;   
+    case 'attendance': return <AttendanceManagement {...props} />; 
+    case 'homework': return <HomeworkManagement {...props} />; 
     case 'grades': return <GradeManagement {...props} />;      
     case 'payment': return <PaymentManagement />;
     case 'notes': return <NotesManagement />;
@@ -580,8 +728,7 @@ const PageContent = (props) => {
 // --- 각 페이지 컴포넌트 ---
 const Home = () => <div className="p-6 bg-white rounded-lg shadow-md"><h3 className="text-2xl font-semibold">홈</h3><p>학원 운영의 전반적인 현황을 한눈에 볼 수 있는 주요 정보를 요약하여 제공합니다.</p></div>;
 
-// StudentManagement (수정됨: 연락처 표시 방식 변경)
-const StudentManagement = ({ students, classes, getClassesNames, handleSaveStudent, handleDeleteStudent }) => {
+const StudentManagement = ({ students, classes, getClassesNames, handleSaveStudent, handleDeleteStudent }) => { 
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingStudent, setEditingStudent] = useState(null);
     const [searchTerm, setSearchTerm] = useState('');
@@ -597,7 +744,6 @@ const StudentManagement = ({ students, classes, getClassesNames, handleSaveStude
         setIsModalOpen(false);
     };
 
-    // 검색 및 필터링 로직
     const filteredStudents = students.filter(s => {
         const matchesSearch = s.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
                               s.school.toLowerCase().includes(searchTerm.toLowerCase());
@@ -610,14 +756,13 @@ const StudentManagement = ({ students, classes, getClassesNames, handleSaveStude
             <div className="flex justify-between items-center mb-6">
                 <h3 className="text-xl font-bold">학생 전체 목록 ({filteredStudents.length}명)</h3>
                 <button 
-                    onClick={() => { setEditingStudent(null); setIsModalOpen(true); }} // 등록 버튼 클릭 시 editingStudent 초기화
+                    onClick={() => { setEditingStudent(null); setIsModalOpen(true); }} 
                     className="flex items-center bg-blue-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-600 transition duration-200"
                 >
                     <Icon name="plus" className="w-5 h-5 mr-2" /> 학생 등록
                 </button>
             </div>
 
-            {/* 검색 및 필터링 UI */}
             <div className="mb-4 flex space-x-4">
                 <div className="relative flex-1">
                     <Icon name="search" className="w-5 h-5 absolute top-3 left-3 text-gray-400" />
@@ -655,7 +800,6 @@ const StudentManagement = ({ students, classes, getClassesNames, handleSaveStude
                                 <td className={`p-4 font-semibold ${s.status === '재원생' ? 'text-green-600' : s.status === '상담생' ? 'text-blue-500' : 'text-red-500'}`}>{s.status}</td>
                                 <td className="p-4">{s.school} {s.grade}학년</td>
                                 <td className="p-4">{getClassesNames(s.classes)}</td>
-                                {/* 연락처 표시 개선 */}
                                 <td className="p-4 text-sm">
                                     <p className="font-medium">학생: {s.phone}</p>
                                     <p className="text-gray-500">학부모: {s.parentPhone}</p>
@@ -684,7 +828,6 @@ const StudentManagement = ({ students, classes, getClassesNames, handleSaveStude
     );
 };
 
-// LessonManagement (변경 없음)
 const LessonManagement = ({ students, classes, lessonLogs, handleSaveLessonLog, handleDeleteLessonLog }) => {
     const [selectedClassId, setSelectedClassId] = useState(initialClasses[0].id);
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -706,7 +849,7 @@ const LessonManagement = ({ students, classes, lessonLogs, handleSaveLessonLog, 
 
     return (
         <div className="bg-white p-6 rounded-xl shadow-lg space-y-6">
-            <h3 className="text-xl font-bold">수업 일지 관리 (강좌별 진행 기록)</h3>
+            <h3 className="text-xl font-bold">수업 일지 관리 (날짜, 진도, 영상)</h3>
             <div className="flex justify-between items-center">
                 <div>
                     <label htmlFor="class-select" className="mr-2 font-semibold">반 선택:</label>
@@ -733,24 +876,13 @@ const LessonManagement = ({ students, classes, lessonLogs, handleSaveLessonLog, 
                                 </div>
                             </div>
                             <p><span className="font-semibold">수업 진도:</span> {log.progress}</p>
-                            <p><span className="font-semibold">과제 내용:</span> {log.homework}</p>
+                            {/* **3차 수정 안정화:** log.videoUrl이 빈 문자열일 때만 출력하지 않도록 명확히 합니다. */}
                             {log.videoUrl && (
                                 <div className="mt-2">
                                     <p className="font-semibold">수업 영상:</p>
                                     <a href={log.videoUrl} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline text-sm truncate block">{log.videoUrl}</a>
                                 </div>
                             )}
-                            <div className="mt-3 border-t pt-2">
-                                <p className="font-semibold">출결:</p>
-                                <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1 text-sm">
-                                    {log.attendance.map(att => {
-                                        const student = students.find(s => s.id === att.studentId);
-                                        if (!student) return null; 
-                                        const color = att.status === '결석' ? 'text-red-600' : att.status === '지각' ? 'text-yellow-600' : att.status === '출석' ? 'text-green-600' : 'text-gray-500';
-                                        return <span key={student.id} className={`font-medium ${color}`}>{student.name}: {att.status}</span>
-                                    })}
-                                </div>
-                            </div>
                         </div>
                     ))
                 )}
@@ -761,63 +893,274 @@ const LessonManagement = ({ students, classes, lessonLogs, handleSaveLessonLog, 
                 onClose={handleCloseModal} 
                 onSave={handleSaveLessonLog} 
                 classId={selectedClassId} 
-                students={classStudents}
                 log={editingLog}
             />
         </div>
     );
 };
 
-const AttendanceManagement = () => <div className="p-6 bg-white rounded-lg shadow-md"><h3 className="text-2xl font-semibold">출석 관리</h3><p>이 페이지에서 수업별 학생의 **출석, 결석, 지각** 현황을 기록하고 조회할 수 있습니다. (수업 일지 등록 모달에 이미 출석 기능이 포함되어 있습니다.)</p></div>;
+const AttendanceManagement = ({ students, classes, attendanceLogs, handleSaveAttendance }) => {
+    const [selectedClassId, setSelectedClassId] = useState(initialClasses[0].id);
+    const [selectedDate, setSelectedDate] = useState(new Date().toISOString().slice(0, 10));
+    const [isModalOpen, setIsModalOpen] = useState(false);
 
-const HomeworkManagement = () => {
-    const [hwResults, setHwResults] = useState({ studentId: 1, date: '2024-05-27', problems: [1,2,3,2,1,1,0,0,3,1] });
-    const updateHwResult = (index, value) => {
-        const newResults = [...hwResults.problems];
-        newResults[index] = value;
-        setHwResults({...hwResults, problems: newResults});
-    }
+    const selectedClass = classes.find(c => c.id === selectedClassId);
+    // 학생이 없을 경우 빈 배열
+    const classStudents = students.filter(s => selectedClass?.students.includes(s.id)) || []; 
+    
+    const currentAttendance = attendanceLogs
+        .filter(log => log.classId === selectedClassId && log.date === selectedDate);
+
+    const handleOpenModal = () => {
+        if (classStudents.length === 0) {
+            alert("선택된 반에 학생이 없습니다. 학생을 먼저 등록해주세요.");
+            return;
+        }
+        setIsModalOpen(true);
+    };
+
+    const getStatusColor = (status) => {
+        switch (status) {
+            case '출석': return 'text-green-600 bg-green-50';
+            case '지각': return 'text-yellow-600 bg-yellow-50';
+            case '동영상보강': return 'text-blue-600 bg-blue-50';
+            case '결석': return 'text-red-600 bg-red-50';
+            default: return 'text-gray-500 bg-gray-100';
+        }
+    };
+
     return (
         <div className="bg-white p-6 rounded-xl shadow-lg space-y-6">
-            <h3 className="text-2xl font-semibold mb-4">과제 관리</h3>
-            <div>
-                <h4 className="text-xl font-bold mb-2">일일 과제 등급 입력 (A/B/C/미제출)</h4>
-                 <p className="mb-4">날짜별, 학생별 과제 완성도를 A/B/C/미제출로 입력하는 UI가 여기에 표시됩니다. (구현 예정)</p>
-            </div>
-            <hr/>
-            <div>
-                <h4 className="text-xl font-bold mb-2">과제 문항별 결과 입력 (김민준 학생)</h4>
-                <p className="text-sm text-gray-500 mb-3">0: 안품, 1: 맞음, 2: 틀림, 3: 고침</p>
-                <div className="grid grid-cols-5 md:grid-cols-10 gap-2">
-                    {hwResults.problems.map((status, index) => (
-                        <div key={index} className="flex flex-col items-center p-2 border rounded">
-                           <span className="font-semibold text-sm">{index + 1}번</span>
-                           <select value={status} onChange={e => updateHwResult(index, Number(e.target.value))} className="mt-1 w-full text-sm p-1 rounded border">
-                               <option value="0">안품</option><option value="1">맞음</option><option value="2">틀림</option><option value="3">고침</option>
-                           </select>
-                        </div>
-                    ))}
+            <h3 className="text-xl font-bold">출석 관리 및 기록</h3>
+            <div className="flex justify-between items-center border-b pb-4">
+                <div className="flex space-x-4 items-center">
+                    <label htmlFor="class-select" className="font-semibold">반 선택:</label>
+                    <select id="class-select" value={selectedClassId} onChange={e => setSelectedClassId(Number(e.target.value))} className="p-2 border rounded-lg">
+                        {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </select>
+                    <input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)} className="p-2 border rounded-lg" />
                 </div>
+                <button onClick={handleOpenModal} className="flex items-center bg-blue-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-600">
+                    <Icon name="clipboardCheck" className="w-5 h-5 mr-2" /> 출결 체크/수정
+                </button>
             </div>
+
+            <div className="overflow-x-auto border rounded-lg">
+                <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                        <tr>
+                            <th className="p-4 font-semibold text-gray-600 w-1/3">학생명</th>
+                            <th className="p-4 font-semibold text-gray-600 w-2/3">출결 상태</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                        {classStudents.length === 0 ? (
+                            <tr><td colSpan="2" className="p-4 text-center text-gray-500">선택된 반에 학생이 없습니다.</td></tr>
+                        ) : (
+                            classStudents.map(s => {
+                                const log = currentAttendance.find(att => att.studentId === s.id);
+                                const status = log ? log.status : '미체크';
+                                return (
+                                    <tr key={s.id} className="hover:bg-gray-50">
+                                        <td className="p-4 font-medium">{s.name}</td>
+                                        <td className={`p-4 font-semibold ${getStatusColor(status)}`}>{status}</td>
+                                    </tr>
+                                )
+                            })
+                        )}
+                    </tbody>
+                </table>
+            </div>
+            
+            <AttendanceFormModal 
+                isOpen={isModalOpen}
+                onClose={() => setIsModalOpen(false)}
+                onSave={handleSaveAttendance}
+                classId={selectedClassId}
+                students={classStudents}
+                date={selectedDate}
+                initialAttendance={currentAttendance}
+            />
         </div>
     );
-}
+};
+
+const HomeworkManagement = ({ students, classes, homeworkAssignments, homeworkResults, handleSaveHomeworkAssignment, handleDeleteHomeworkAssignment, handleUpdateHomeworkResult }) => {
+    const [selectedClassId, setSelectedClassId] = useState(initialClasses[0].id);
+    const [selectedAssignmentId, setSelectedAssignmentId] = useState(null); 
+    const [isAssignmentModalOpen, setIsAssignmentModalOpen] = useState(false);
+    const [editingAssignment, setEditingAssignment] = useState(null);
+
+    const selectedClass = classes.find(c => c.id === selectedClassId);
+    const classAssignments = homeworkAssignments.filter(a => a.classId === selectedClassId).sort((a, b) => new Date(b.date) - new Date(a.date));
+    const classStudents = students.filter(s => selectedClass?.students.includes(s.id)) || [];
+    
+    const RESULT_OPTIONS = ['A', 'B', 'C', '미제출'];
+
+    const HomeworkResultTable = ({ assignment }) => {
+        const studentResults = classStudents.map(s => ({
+            student: s,
+            result: homeworkResults[s.id]?.[assignment.id] || { status: '미제출', score: '' }
+        }));
+        
+        const handleResultChange = (studentId, field, value) => {
+            const currentResult = homeworkResults[studentId]?.[assignment.id] || { status: '미제출', score: '' };
+            
+            if (field === 'status') {
+                 handleUpdateHomeworkResult(studentId, assignment.id, value, currentResult.score);
+            } else if (field === 'score') {
+                handleUpdateHomeworkResult(studentId, assignment.id, currentResult.status, value);
+            }
+        };
+
+        const getStatusColor = (status) => {
+            switch (status) {
+                case 'A': return 'text-green-600';
+                case 'B': return 'text-blue-600';
+                case 'C': return 'text-yellow-600';
+                case '미제출': return 'text-red-600';
+                default: return 'text-gray-500';
+            }
+        };
+
+        return (
+            <div className="overflow-x-auto mt-4 border rounded-lg">
+                <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                        <tr>
+                            <th className="p-3 text-left text-xs font-semibold text-gray-600 uppercase w-1/4">학생명</th>
+                            <th className="p-3 text-center text-xs font-semibold text-gray-600 uppercase w-1/4">등급</th>
+                            <th className="p-3 text-center text-xs font-semibold text-gray-600 uppercase w-1/4">점수/문항수</th>
+                            <th className="p-3 text-center text-xs font-semibold text-gray-600 uppercase w-1/4">관리</th>
+                        </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                        {studentResults.map(data => (
+                            <tr key={data.student.id} className="hover:bg-gray-50">
+                                <td className="p-3 font-medium">{data.student.name}</td>
+                                <td className="p-3 text-center">
+                                    <select 
+                                        value={data.result.status} 
+                                        onChange={e => handleResultChange(data.student.id, 'status', e.target.value)} 
+                                        className={`p-1 border rounded text-sm font-semibold ${getStatusColor(data.result.status)}`}
+                                    >
+                                        {RESULT_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                                    </select>
+                                </td>
+                                <td className="p-3 text-center">
+                                    <input 
+                                        type="text"
+                                        value={data.result.score}
+                                        onChange={e => handleResultChange(data.student.id, 'score', e.target.value)}
+                                        placeholder="10/10"
+                                        className="w-20 p-1 border rounded text-center text-sm"
+                                    />
+                                </td>
+                                <td className="p-3 text-center text-gray-500 text-xs">{data.result.score && data.result.score !== '' ? '저장됨' : '-'}</td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+        );
+    }
+
+    return (
+        <div className="bg-white p-6 rounded-xl shadow-lg space-y-6">
+            <h3 className="text-xl font-bold">과제 등록 및 결과 관리</h3>
+
+            <div className="flex justify-between items-center border-b pb-4">
+                <div className="flex space-x-4 items-center">
+                    <label htmlFor="class-select" className="font-semibold">반 선택:</label>
+                    <select id="class-select" value={selectedClassId} onChange={e => { setSelectedClassId(Number(e.target.value)); setSelectedAssignmentId(null); }} className="p-2 border rounded-lg">
+                        {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </select>
+                </div>
+                <button 
+                    onClick={() => { setEditingAssignment(null); setIsAssignmentModalOpen(true); }} 
+                    className="flex items-center bg-green-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-600"
+                >
+                    <Icon name="plus" className="w-5 h-5 mr-2" /> 새 과제 등록
+                </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="md:col-span-1 border p-4 rounded-lg bg-gray-50 max-h-96 overflow-y-auto">
+                    <h4 className="font-semibold mb-3">등록된 과제 목록</h4>
+                    <div className="space-y-2">
+                        {classAssignments.length === 0 ? (
+                            <p className="text-gray-500 text-sm">등록된 과제가 없습니다.</p>
+                        ) : (
+                            classAssignments.map(assignment => (
+                                <div 
+                                    key={assignment.id} 
+                                    onClick={() => setSelectedAssignmentId(assignment.id)}
+                                    className={`p-3 border rounded-lg cursor-pointer transition duration-150 ${selectedAssignmentId === assignment.id ? 'bg-blue-200 border-blue-500 shadow-md' : 'bg-white hover:bg-blue-50'}`}
+                                >
+                                    <p className="font-bold">{assignment.date}</p>
+                                    <p className="text-sm truncate">{assignment.content}</p>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                </div>
+
+                <div className="md:col-span-1 border p-4 rounded-lg">
+                    <h4 className="font-semibold mb-3 border-b pb-2">과제 상세 및 결과 입력</h4>
+                    {selectedAssignmentId ? (
+                        (() => {
+                            const assignment = classAssignments.find(a => a.id === selectedAssignmentId);
+                            if (!assignment) return <p className="text-gray-500">과제 정보를 찾을 수 없습니다.</p>;
+
+                            return (
+                                <div>
+                                    <div className="flex justify-between items-center mb-3">
+                                        <p className="text-sm font-semibold text-gray-700">날짜: {assignment.date}</p>
+                                        <div className="flex space-x-2">
+                                            <button onClick={() => { setEditingAssignment(assignment); setIsAssignmentModalOpen(true); }} className="text-blue-500 hover:text-blue-700"><Icon name="edit" className="w-5 h-5" /></button>
+                                            <button onClick={() => handleDeleteHomeworkAssignment(assignment.id)} className="text-red-500 hover:text-red-700"><Icon name="trash" className="w-5 h-5" /></button>
+                                        </div>
+                                    </div>
+                                    <p className="p-3 bg-gray-100 rounded-lg whitespace-pre-wrap">{assignment.content}</p>
+                                    <h5 className="font-bold mt-4 mb-2">학생별 결과 입력 ({classStudents.length}명)</h5>
+                                    {classStudents.length === 0 ? (
+                                         <p className="text-gray-500 text-sm mt-4">이 반에 등록된 학생이 없습니다.</p>
+                                    ) : (
+                                        <HomeworkResultTable assignment={assignment} />
+                                    )}
+                                </div>
+                            );
+                        })()
+                    ) : (
+                        <div className="flex items-center justify-center h-48 text-gray-500">
+                            좌측 목록에서 과제를 선택하세요.
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            <HomeworkAssignmentModal 
+                isOpen={isAssignmentModalOpen} 
+                onClose={() => setIsAssignmentModalOpen(false)}
+                onSave={handleSaveHomeworkAssignment}
+                classId={selectedClassId}
+                assignment={editingAssignment}
+            />
+        </div>
+    );
+};
 
 const GradeManagement = ({ students, classes, tests, grades, handleSaveTest, handleDeleteTest, handleUpdateGrade }) => {
     const [selectedClassId, setSelectedClassId] = useState(initialClasses[0].id);
     const [isTestModalOpen, setIsTestModalOpen] = useState(false);
     const [editingTest, setEditingTest] = useState(null);
 
-    // 선택된 클래스 정보
     const selectedClass = classes.find(c => c.id === selectedClassId);
     
-    // 선택된 클래스의 테스트 목록 (최신순)
     const classTests = tests.filter(t => t.classId === selectedClassId).sort((a, b) => b.id - a.id);
 
-    // 선택된 클래스의 학생 목록
     const classStudents = students.filter(s => selectedClass?.students.includes(s.id));
 
-    // 테스트별 클래스 평균 점수 계산 함수
     const calculateClassAverages = () => {
         const averages = {};
         if (classStudents.length === 0) return {};
@@ -852,7 +1195,6 @@ const GradeManagement = ({ students, classes, tests, grades, handleSaveTest, han
     }
     
     const handleGradeChange = (studentId, testId, value) => {
-        // 숫자 또는 빈 문자열만 허용
         if (value === '' || (/^\d*$/.test(value) && value.length <= 3)) {
             handleUpdateGrade(studentId, testId, value);
         }
@@ -861,7 +1203,6 @@ const GradeManagement = ({ students, classes, tests, grades, handleSaveTest, han
 
     return (
         <div className="flex h-[80vh] bg-white rounded-xl shadow-lg overflow-hidden">
-            {/* 좌측: 클래스 목록 */}
             <div className="w-64 border-r bg-gray-50 p-4 overflow-y-auto">
                 <h4 className="font-bold text-lg mb-4 text-gray-700">클래스 선택</h4>
                 <div className="space-y-2">
@@ -877,7 +1218,6 @@ const GradeManagement = ({ students, classes, tests, grades, handleSaveTest, han
                 </div>
             </div>
 
-            {/* 우측: 성적 테이블 및 기능 버튼 */}
             <div className="flex-1 flex flex-col p-6 overflow-y-auto">
                 <div className="flex justify-between items-center mb-4">
                     <h3 className="text-2xl font-bold text-gray-800">{selectedClass?.name || '클래스'} 성적 현황</h3>
@@ -896,7 +1236,6 @@ const GradeManagement = ({ students, classes, tests, grades, handleSaveTest, han
                 ) : (
                     <div className="overflow-x-auto border rounded-lg">
                         <table className="min-w-full divide-y divide-gray-200">
-                            {/* 테이블 헤더 */}
                             <thead className="bg-gray-50">
                                 <tr>
                                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase w-48 sticky left-0 bg-gray-50 z-10">학생명</th>
@@ -915,7 +1254,6 @@ const GradeManagement = ({ students, classes, tests, grades, handleSaveTest, han
                                 </tr>
                             </thead>
                             <tbody className="bg-white divide-y divide-gray-200">
-                                {/* 평균 행 */}
                                 <tr className="bg-yellow-50 font-bold text-sm sticky top-[70px] z-5">
                                     <td className="px-6 py-3 whitespace-nowrap text-left text-yellow-800 sticky left-0 bg-yellow-50 z-10">평균</td>
                                     {classTests.map(test => (
@@ -924,7 +1262,6 @@ const GradeManagement = ({ students, classes, tests, grades, handleSaveTest, han
                                         </td>
                                     ))}
                                 </tr>
-                                {/* 학생 데이터 행 */}
                                 {classStudents.map(student => (
                                     <tr key={student.id} className="hover:bg-gray-50 text-sm">
                                         <td className="px-6 py-3 whitespace-nowrap font-medium text-gray-900 sticky left-0 bg-white hover:bg-gray-50 z-1">
@@ -935,7 +1272,7 @@ const GradeManagement = ({ students, classes, tests, grades, handleSaveTest, han
                                             return (
                                                 <td key={test.id} className="px-4 py-1 whitespace-nowrap text-center">
                                                     <input
-                                                        type="text" // 숫자를 입력하지만, 빈 문자열 처리를 위해 text 타입 사용
+                                                        type="text" 
                                                         value={score}
                                                         onChange={(e) => handleGradeChange(student.id, test.id, e.target.value)}
                                                         className="w-16 p-1 border rounded text-center focus:ring-blue-500 focus:border-blue-500"
@@ -963,7 +1300,7 @@ const GradeManagement = ({ students, classes, tests, grades, handleSaveTest, han
     );
 };
 
-const PaymentManagement = () => {
+const PaymentManagement = () => { /* ... (생략) ... */
     const [payments] = useState(initialPayments);
     return (
          <div className="bg-white p-6 rounded-xl shadow-lg">
@@ -990,7 +1327,7 @@ const PaymentManagement = () => {
     )
 };
 
-const NotesManagement = () => {
+const NotesManagement = () => { /* ... (생략) ... */
     const [problemImage, setProblemImage] = useState(null);
     const handleImageUpload = (e) => {
         if (e.target.files && e.target.files[0]) {
@@ -1031,7 +1368,7 @@ const NotesManagement = () => {
     )
 }
 
-const InternalCommunication = () => {
+const InternalCommunication = () => { /* ... (생략) ... */
     const [tab, setTab] = useState('logs'); 
     return (
         <div className="bg-white p-6 rounded-xl shadow-lg">
