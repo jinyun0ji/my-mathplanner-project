@@ -12,9 +12,9 @@ const initialStudents = [
 ];
 
 const initialClasses = [
-    { id: 1, name: '고2 A1반', teacher: '채수용', students: [1, 6, 4], grade: 2, schoolType: '고등학교' },
-    { id: 2, name: '고2 A2반', teacher: '채수용', students: [2], grade: 2, schoolType: '고등학교' },
-    { id: 3, name: '고1 국제고반', teacher: '이선생', students: [5], grade: 1, schoolType: '고등학교' },
+    { id: 1, name: '고2 A1반', teacher: '채수용', students: [1, 6, 4], grade: 2, schoolType: '고등학교', startDate: '2025-03-01', endDate: '2025-12-31', schedule: { days: ['월', '수'], time: '19:00~21:00' } },
+    { id: 2, name: '고2 A2반', teacher: '채수용', students: [2], grade: 2, schoolType: '고등학교', startDate: '2025-03-01', endDate: '2025-12-31', schedule: { days: ['화', '목'], time: '19:00~21:00' } },
+    { id: 3, name: '고1 국제고반', teacher: '이선생', students: [5], grade: 1, schoolType: '고등학교', startDate: '2025-03-01', endDate: '2025-12-31', schedule: { days: ['금'], time: '17:00~20:00' } },
 ];
 
 const initialLessonLogs = [
@@ -81,7 +81,6 @@ const initialGrades = {
     5: {}, // 정다은
 };
 
-
 // --- 아이콘 컴포넌트 ---
 const Icon = ({ name, className }) => {
   const icons = {
@@ -123,7 +122,7 @@ const Modal = ({ children, isOpen, onClose, title }) => {
     );
 };
 
-// 메모 수정 모달 (새로 추가)
+// 메모 수정 모달 
 const MemoModal = ({ isOpen, onClose, onSave, studentId, initialContent, studentName }) => {
     const [content, setContent] = useState(initialContent || '');
 
@@ -154,6 +153,113 @@ const MemoModal = ({ isOpen, onClose, onSave, studentId, initialContent, student
         </Modal>
     );
 }
+
+// 클래스 추가 모달
+const AddClassModal = ({ isOpen, onClose, onSave }) => {
+    const defaultDate = new Date().toISOString().slice(0, 10);
+    const [formData, setFormData] = useState({
+        name: '',
+        teacher: '채수용', // 기본값 설정
+        startDate: defaultDate,
+        endDate: defaultDate,
+        days: [], // 반복 요일
+        time: '19:00~21:00', // 수업 시간
+        memo: '',
+    });
+
+    const WEEK_DAYS = ['월', '화', '수', '목', '금', '토', '일'];
+
+    const handleChange = (e) => {
+        const { name, value } = e.target;
+        setFormData(prev => ({ ...prev, [name]: value }));
+    };
+
+    const handleDayToggle = (day) => {
+        setFormData(prev => ({
+            ...prev,
+            days: prev.days.includes(day)
+                ? prev.days.filter(d => d !== day)
+                : [...prev.days, day].sort((a, b) => WEEK_DAYS.indexOf(a) - WEEK_DAYS.indexOf(b))
+        }));
+    };
+
+    const handleSubmit = (e) => {
+        e.preventDefault();
+        if (!formData.name || formData.days.length === 0) {
+            alert("클래스명과 최소 하나 이상의 요일을 선택해야 합니다.");
+            return;
+        }
+
+        const newClass = {
+            name: formData.name,
+            teacher: formData.teacher,
+            startDate: formData.startDate,
+            endDate: formData.endDate,
+            schedule: { days: formData.days, time: formData.time },
+            memo: formData.memo,
+            students: [],
+        };
+
+        onSave(newClass);
+        onClose();
+        // 폼 초기화 (모달 닫힐 때 자동으로 초기화될 수도 있지만 명시적으로 처리)
+        setFormData({
+            name: '',
+            teacher: '채수용',
+            startDate: defaultDate,
+            endDate: defaultDate,
+            days: [],
+            time: '19:00~21:00',
+            memo: '',
+        });
+    };
+
+    return (
+        <Modal isOpen={isOpen} onClose={onClose} title="새 클래스 추가">
+            <form onSubmit={handleSubmit} className="space-y-4">
+                <input type="text" name="name" value={formData.name} onChange={handleChange} placeholder="클래스명 (예: 고2 심화 B반)" required className="p-2 border rounded w-full" />
+                <div className="grid grid-cols-2 gap-4">
+                    <input type="date" name="startDate" value={formData.startDate} onChange={handleChange} placeholder="개강일" required className="p-2 border rounded w-full" />
+                    <input type="date" name="endDate" value={formData.endDate} onChange={handleChange} placeholder="종강일" required className="p-2 border rounded w-full" />
+                </div>
+                <input type="text" name="time" value={formData.time} onChange={handleChange} placeholder="수업 시간 (예: 19:00~21:00)" required className="p-2 border rounded w-full" />
+                
+                {/* 반복 요일 선택 */}
+                <div className="border p-3 rounded-lg">
+                    <label className="block font-semibold mb-2">반복 요일 선택:</label>
+                    <div className="flex flex-wrap gap-2">
+                        {WEEK_DAYS.map(day => (
+                            <button
+                                key={day}
+                                type="button"
+                                onClick={() => handleDayToggle(day)}
+                                className={`px-3 py-1 rounded-full text-sm font-semibold transition-all duration-150 ${
+                                    formData.days.includes(day) ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                }`}
+                            >
+                                {day}
+                            </button>
+                        ))}
+                    </div>
+                    <p className="text-xs text-red-500 mt-2">* 휴강/보강일은 별도 메모에 기록해주세요.</p>
+                </div>
+
+                <textarea
+                    name="memo"
+                    value={formData.memo}
+                    onChange={handleChange}
+                    placeholder="클래스 관련 특이사항 (휴강/보강 일정 등)"
+                    rows="3"
+                    className="p-2 border rounded w-full"
+                />
+
+                <button type="submit" className="w-full bg-green-600 text-white font-bold py-2 rounded-lg hover:bg-green-700">
+                    클래스 개설
+                </button>
+            </form>
+        </Modal>
+    );
+};
 
 // 학생 추가/수정 모달
 const StudentFormModal = ({ isOpen, onClose, student = null, allClasses, onSave }) => {
@@ -391,7 +497,6 @@ const AttendanceFormModal = ({ isOpen, onClose, onSave, classId, students, date,
     );
 };
 
-
 // 과제 등록/수정 모달 
 const HomeworkAssignmentModal = ({ isOpen, onClose, onSave, classId, assignment = null }) => {
     const isEdit = !!assignment;
@@ -451,10 +556,24 @@ export default function App() {
   const [homeworkResults, setHomeworkResults] = useState(initialHomeworkResults); 
   const [tests, setTests] = useState(initialTests);
   const [grades, setGrades] = useState(initialGrades);
-  const [studentMemos, setStudentMemos] = useState(initialStudentMemos); // **새 상태: 학생 메모**
+  const [studentMemos, setStudentMemos] = useState(initialStudentMemos); 
   
   // 안정화: reduce의 초기값을 0으로 설정하여 빈 배열일 때의 오류를 방지합니다.
   const nextStudentId = students.reduce((max, s) => Math.max(max, s.id), 0) + 1; 
+  const nextClassId = classes.reduce((max, c) => Math.max(max, c.id), 0) + 1; 
+
+  // --- CRUD 함수: 클래스 관리 (수정됨) ---
+  const handleSaveClass = (newClassData) => {
+    const newClass = { 
+        ...newClassData, 
+        id: nextClassId, 
+        schoolType: '고등학교', // 임시 기본값
+        grade: 1, // 임시 기본값
+        students: [], 
+    };
+    setClasses(prev => [...prev, newClass]);
+    alert(`클래스 "${newClass.name}"가 개설되었습니다!`);
+  };
 
 
   // --- CRUD 함수: 학생 관리 ---
@@ -511,7 +630,7 @@ export default function App() {
     }
   };
   
-  // --- CRUD 함수: 메모 관리 (새로 추가) ---
+  // --- CRUD 함수: 메모 관리 ---
   const handleSaveMemo = (studentId, content) => {
       setStudentMemos(prev => ({
           ...prev,
@@ -534,7 +653,7 @@ export default function App() {
     }
   }
   
-  // --- CRUD 함수: 출석 관리 (수정됨: 일괄 업데이트 로직) ---
+  // --- CRUD 함수: 출석 관리 ---
   const handleSaveAttendance = (attendanceRecords) => {
     setAttendanceLogs(prevLogs => {
         let newLogs = [...prevLogs];
@@ -543,14 +662,11 @@ export default function App() {
                 log => log.classId === record.classId && log.date === record.date && log.studentId === record.studentId
             );
 
-            // 미체크 상태인 경우 기존 로그를 삭제하거나 업데이트하지 않음
             if (record.status === '미체크') {
                 if (existingIndex !== -1) {
-                    // 기존 로그가 미체크로 변경되면 삭제 (불필요한 로그 방지)
                     newLogs.splice(existingIndex, 1); 
                 }
             } else {
-                // 출석, 지각, 보강, 결석 상태인 경우 저장/업데이트
                 if (existingIndex !== -1) {
                     newLogs[existingIndex] = { ...newLogs[existingIndex], status: record.status };
                 } else {
@@ -636,14 +752,15 @@ export default function App() {
   // 모든 관리 컴포넌트에 필요한 상태와 함수를 Props로 전달
   const managementProps = {
     students, classes, lessonLogs, attendanceLogs, 
-    homeworkAssignments, homeworkResults, tests, grades, studentMemos, // studentMemos 추가
+    homeworkAssignments, homeworkResults, tests, grades, studentMemos, 
     getClassesNames,
     handleSaveStudent, handleDeleteStudent,
+    handleSaveClass, 
     handleSaveLessonLog, handleDeleteLessonLog,
     handleSaveAttendance,
     handleSaveHomeworkAssignment, handleDeleteHomeworkAssignment, handleUpdateHomeworkResult,
     handleSaveTest, handleDeleteTest, handleUpdateGrade,
-    handleSaveMemo, // handleSaveMemo 추가
+    handleSaveMemo, 
   };
 
   return (
@@ -659,7 +776,7 @@ export default function App() {
   );
 }
 
-// --- 레이아웃 및 페이지 라우팅 (변경 없음) ---
+// --- 레이아웃 및 페이지 라우팅 (생략) ---
 const LoginPage = ({ onLogin }) => { 
   const [id, setId] = useState('');
   const [password, setPassword] = useState('');
@@ -794,7 +911,7 @@ const PageContent = (props) => {
 // --- 각 페이지 컴포넌트 ---
 const Home = () => <div className="p-6 bg-white rounded-lg shadow-md"><h3 className="text-2xl font-semibold">홈</h3><p>학원 운영의 전반적인 현황을 한눈에 볼 수 있는 주요 정보를 요약하여 제공합니다.</p></div>;
 
-// --- StudentManagement 컴포넌트: 학생 목록 UI 개선 및 최근 출결, 메모 기능 추가 ---
+// --- StudentManagement 컴포넌트 (생략) ---
 const StudentManagement = ({ students, classes, getClassesNames, handleSaveStudent, handleDeleteStudent, attendanceLogs, studentMemos, handleSaveMemo }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingStudent, setEditingStudent] = useState(null);
@@ -960,15 +1077,15 @@ const StudentManagement = ({ students, classes, getClassesNames, handleSaveStude
     );
 };
 
-// --- LessonManagement 컴포넌트 (수정된 부분) ---
-const LessonManagement = ({ students, classes, lessonLogs, handleSaveLessonLog, handleDeleteLessonLog }) => {
-    // 안정화: classes 배열이 비어있지 않다면 첫 번째 클래스의 id를 기본값으로, 그렇지 않으면 null
+
+// --- LessonManagement 컴포넌트 (수정 없음) ---
+const LessonManagement = ({ students, classes, lessonLogs, handleSaveLessonLog, handleDeleteLessonLog, handleSaveClass }) => {
     const initialClassId = classes.length > 0 ? classes[0].id : null;
     const [selectedClassId, setSelectedClassId] = useState(initialClassId);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingLog, setEditingLog] = useState(null);
     
-    // 클래스 추가 모달을 위한 상태 (기능은 추후 구현 예정)
+    // 클래스 추가 모달을 위한 상태
     const [isAddClassModalOpen, setIsAddClassModalOpen] = useState(false);
 
     // 선택된 클래스 정보 및 로그 필터링
@@ -986,16 +1103,26 @@ const LessonManagement = ({ students, classes, lessonLogs, handleSaveLessonLog, 
         setIsModalOpen(false);
     };
 
+    // 새 클래스 생성 후 자동 선택
+    const handleClassSaveAndSelect = (newClassData) => {
+        handleSaveClass(newClassData);
+        // 저장 후, 새로 추가된 클래스의 ID를 선택 상태로 설정 (가장 높은 ID를 가정)
+        const newClassId = initialClasses.reduce((max, c) => Math.max(max, c.id), 0) + 1;
+        setSelectedClassId(newClassId);
+    };
+
+
     return (
         // 전체를 flex 컨테이너로 설정
         <div className="flex h-full min-h-[85vh] space-x-6">
             
-            {/* 1. 좌측 구역: 수업 리스트 및 클래스 추가 버튼 */}
+            {/* 1. 좌측 구역: 클래스 목록 및 클래스 추가 버튼 */}
             <div className="w-80 bg-white p-4 rounded-xl shadow-lg flex flex-col">
                 <div className="flex justify-between items-center mb-4">
-                    <h3 className="text-xl font-bold text-gray-800">수업 목록 ({classes.length}개)</h3>
+                    {/* 텍스트 수정: 수업 목록 -> 클래스 목록 */}
+                    <h3 className="text-xl font-bold text-gray-800">클래스 목록 ({classes.length}개)</h3> 
                     
-                    {/* 클래스 추가 버튼 (더하기 아이콘) */}
+                    {/* 클래스 추가 버튼 */}
                     <button 
                         onClick={() => setIsAddClassModalOpen(true)}
                         className="p-2 bg-blue-500 text-white rounded-full hover:bg-blue-600 transition duration-150 shadow-md"
@@ -1005,7 +1132,7 @@ const LessonManagement = ({ students, classes, lessonLogs, handleSaveLessonLog, 
                     </button>
                 </div>
 
-                {/* 수업 리스트 */}
+                {/* 클래스 리스트 */}
                 <div className="flex-1 space-y-2 overflow-y-auto pr-2">
                     {classes.length === 0 ? (
                         <p className="text-gray-500 text-sm">등록된 클래스가 없습니다.</p>
@@ -1021,7 +1148,9 @@ const LessonManagement = ({ students, classes, lessonLogs, handleSaveLessonLog, 
                                 }
                             >
                                 <p className="text-sm font-bold">{c.name}</p>
-                                <p className="text-xs text-gray-600">선생님: {c.teacher} | 학생 수: {c.students.length}명</p>
+                                <p className="text-xs text-gray-600">
+                                    {c.schedule?.days?.join(', ') || ''} {c.schedule?.time || ''}
+                                </p>
                             </div>
                         ))
                     )}
@@ -1081,112 +1210,79 @@ const LessonManagement = ({ students, classes, lessonLogs, handleSaveLessonLog, 
                 log={editingLog}
             />
             
-            {/* 클래스 추가 모달 (기능은 다음 요청 시 구현 예정) */}
-            <Modal isOpen={isAddClassModalOpen} onClose={() => setIsAddClassModalOpen(false)} title="새 클래스 추가">
-                <p>클래스 추가 기능은 다음 단계에서 구현됩니다.</p>
-                <button 
-                    onClick={() => setIsAddClassModalOpen(false)}
-                    className="mt-4 w-full bg-blue-500 text-white py-2 rounded"
-                >
-                    닫기
-                </button>
-            </Modal>
+            {/* 클래스 추가 모달 연결 */}
+            <AddClassModal 
+                isOpen={isAddClassModalOpen} 
+                onClose={() => setIsAddClassModalOpen(false)} 
+                onSave={handleClassSaveAndSelect}
+            />
         </div>
     );
 };
 
-// --- AttendanceManagement 컴포넌트: 최종 출결 UI 및 토글 기능 구현 ---
+// --- AttendanceManagement 컴포넌트 (생략) ---
 const AttendanceManagement = ({ students, classes, attendanceLogs, handleSaveAttendance, studentMemos, handleSaveMemo }) => {
-    // 안정화: classes 배열이 비어있지 않다면 첫 번째 클래스의 id를 기본값으로, 그렇지 않으면 null
     const [selectedClassId, setSelectedClassId] = useState(classes.length > 0 ? initialClasses[0].id : null);
     const [selectedDate, setSelectedDate] = useState('2025-11-24'); 
     
-    // --- 메모 모달 상태 ---
     const [isMemoModalOpen, setIsMemoModalOpen] = useState(false);
     const [memoStudent, setMemoStudent] = useState(null);
     
-    // --- 임시 출결 상태 (저장 전 변경사항) ---
-    // { studentId: status, ... }
     const [tempAttendanceMap, setTempAttendanceMap] = useState({});
 
     const ATT_OPTIONS = ['출석', '지각', '동영상보강', '결석'];
 
-    // 클래스가 선택되지 않았을 경우, 혹은 클래스 데이터가 없을 경우 안전하게 처리
     const selectedClass = classes.find(c => c.id === selectedClassId);
     const classStudents = students.filter(s => selectedClass?.students.includes(s.id)) || []; 
     
-    // 현재 날짜/반의 실제 DB 기록을 맵으로 구성
     const currentAttendanceMap = attendanceLogs
         .filter(log => log.classId === selectedClassId && log.date === selectedDate)
         .reduce((acc, log) => { acc[log.studentId] = log.status; return acc; }, {});
 
-    // 컴포넌트 마운트 및 날짜/반 변경 시 임시 상태를 실제 기록으로 초기화
     useEffect(() => {
         setTempAttendanceMap(currentAttendanceMap);
     }, [selectedClassId, selectedDate, students, attendanceLogs]);
 
-    // **새로운 로직:** 저장할 내용이 있는지 확인
+
     const hasChanges = useCallback(() => {
-        // 1. 현재 학생 목록을 기준으로 체크
-        const studentIds = classStudents.map(s => s.id);
-        
-        // 2. tempAttendanceMap과 currentAttendanceMap을 비교
-        for (const id of studentIds) {
-            const tempStatus = tempAttendanceMap[id] || '미체크';
-            const currentStatus = currentAttendanceMap[id] || '미체크';
-            
-            if (tempStatus !== currentStatus) {
-                return true; // 변경 사항 발견
-            }
-        }
-        
-        // 3. 임시 맵에 있지만 현재 학생 목록에 없는 (혹은 미체크로 변경되어야 할) 항목 확인
-        // 이 로직은 위 2번에서 '미체크'로 비교하므로 충분함
-        
-        // **중요:** 미체크 항목은 tempAttendanceMap에서 제거되므로,
-        // tempMap에 없는 항목이 currentMap에 있다면, 그 항목은 '삭제(미체크)'로 변경된 것이므로 수정 사항임.
-        for (const id in currentAttendanceMap) {
-            if (tempAttendanceMap[id] === undefined && currentAttendanceMap[id] !== '미체크') {
-                return true;
-            }
-        }
-        
-        // 위 로직을 단순화하여, 두 객체를 문자열로 비교하는 것이 더 안전하고 간결함 (성능보다는 안정성 우선)
-        // 실제로는 handleSaveAttendanceChanges에서 처리할 최종 배열을 생성하여 비교하는 것이 가장 정확하지만,
-        // 여기서는 임시 맵과 현재 맵의 상태를 비교하는 것으로 충분합니다.
-        
-        // 객체 길이와 내용이 동일한지 확인 (keysets 비교)
         const tempKeys = Object.keys(tempAttendanceMap);
         const currentKeys = Object.keys(currentAttendanceMap);
         
-        if (tempKeys.length !== currentKeys.length) return true;
+        // 1. 키(학생) 목록이 다른지 확인
+        if (tempKeys.length !== currentKeys.length) {
+            // 예를 들어, 저장된 기록이 있었는데 (currentKey), 임시 맵에서 미체크로 토글되어 (tempKey에서 사라짐) 길이가 다르면 변경 사항임
+            
+            // 하지만 미체크가 아닌 상태로 변동이 있는지만 확인하면 충분
+            for (const id of classStudents.map(s => s.id)) {
+                const tempStatus = tempAttendanceMap[id] || '미체크';
+                const currentStatus = currentAttendanceMap[id] || '미체크';
+                if (tempStatus !== currentStatus) return true;
+            }
+            return false;
+        }
         
+        // 2. 값(상태)이 다른지 확인
         for (const key of tempKeys) {
             if (tempAttendanceMap[key] !== currentAttendanceMap[key]) return true;
         }
-
+        
         return false;
     }, [tempAttendanceMap, currentAttendanceMap, classStudents]);
     
     const isSaveDisabled = !hasChanges();
 
 
-    // 출결 상태 토글 로직
     const handleAttendanceToggle = (studentId, toggledStatus) => {
         setTempAttendanceMap(prevMap => {
-            // 현재 임시 맵의 상태 또는 기존 저장 상태를 가져옴
             const currentStatus = prevMap[studentId] || currentAttendanceMap[studentId] || '미체크';
             
             let newStatus;
             if (currentStatus === toggledStatus) {
-                // 이미 선택된 상태를 다시 클릭하면 '미체크'로 토글
                 newStatus = '미체크';
             } else {
-                // 다른 상태를 클릭하면 해당 상태로 변경
                 newStatus = toggledStatus;
             }
             
-            // 미체크인 경우 맵에서 키를 제거 (저장 로직에서 미체크는 로그를 삭제하므로)
             if (newStatus === '미체크') {
                 const newMap = { ...prevMap };
                 delete newMap[studentId];
@@ -1197,9 +1293,8 @@ const AttendanceManagement = ({ students, classes, attendanceLogs, handleSaveAtt
         });
     };
     
-    // 출결 수정 사항 저장 (오른쪽 상단 버튼)
     const handleSaveAttendanceChanges = () => {
-        if (isSaveDisabled) return; // 변경 사항이 없으면 저장하지 않음
+        if (isSaveDisabled) return; 
 
         if (!selectedClassId) {
             alert("반을 먼저 선택해주세요.");
@@ -1210,17 +1305,21 @@ const AttendanceManagement = ({ students, classes, attendanceLogs, handleSaveAtt
             classId: selectedClassId,
             date: selectedDate,
             studentId: s.id,
-            // 임시 맵에 있으면 그 값을 사용, 없으면 미체크 (로그 삭제 또는 미생성)
             status: tempAttendanceMap[s.id] || '미체크' 
         }));
 
         handleSaveAttendance(changesToSave);
-        // 저장 후, 임시 맵을 현재 기록 맵으로 다시 동기화하여 버튼 상태를 '저장됨'으로 변경
-        setTempAttendanceMap(currentAttendanceMap); 
+        
+        // 저장 후, 임시 맵을 최신 상태 (저장된 상태)로 업데이트
+        const updatedCurrentMap = changesToSave
+            .filter(c => c.status !== '미체크')
+            .reduce((acc, c) => { acc[c.studentId] = c.status; return acc; }, {});
+            
+        // 실제 저장된 상태로 tempAttendanceMap을 재설정하여 버튼을 비활성화
+        setTempAttendanceMap(updatedCurrentMap);
         alert("출결 기록이 저장되었습니다.");
     };
 
-    // 메모 모달 핸들러
     const handleOpenMemo = (student) => {
         setMemoStudent(student);
         setIsMemoModalOpen(true);
@@ -1235,7 +1334,6 @@ const AttendanceManagement = ({ students, classes, attendanceLogs, handleSaveAtt
         const baseClass = "px-3 py-1 rounded-lg font-semibold text-sm transition duration-150";
 
         if (buttonStatus === currentStatus) {
-            // 활성화 상태
             switch (currentStatus) {
                 case '출석': return `${baseClass} bg-green-500 text-white`;
                 case '지각': return `${baseClass} bg-yellow-500 text-white`;
@@ -1244,7 +1342,6 @@ const AttendanceManagement = ({ students, classes, attendanceLogs, handleSaveAtt
                 default: return `${baseClass} bg-gray-500 text-white`;
             }
         }
-        // 비활성화 상태
         switch (buttonStatus) {
             case '출석': return `${baseClass} bg-green-100 text-green-700 hover:bg-green-200`;
             case '지각': return `${baseClass} bg-yellow-100 text-yellow-700 hover:bg-yellow-200`;
@@ -1254,7 +1351,6 @@ const AttendanceManagement = ({ students, classes, attendanceLogs, handleSaveAtt
         }
     };
     
-    // 메모 버튼 스타일
     const getMemoButtonClass = (hasMemo) => {
         const baseClass = "p-2 rounded-lg transition duration-150";
         return hasMemo 
@@ -1281,7 +1377,6 @@ const AttendanceManagement = ({ students, classes, attendanceLogs, handleSaveAtt
                     <input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)} className="p-2 border rounded-lg" />
                 </div>
                 
-                {/* 수정: "출결 저장" 버튼 이름 및 색상 변경 */}
                 <button 
                     onClick={handleSaveAttendanceChanges} 
                     disabled={isSaveDisabled}
@@ -1306,7 +1401,6 @@ const AttendanceManagement = ({ students, classes, attendanceLogs, handleSaveAtt
                         return (
                             <div key={s.id} className="flex justify-between items-center p-4 border rounded-xl shadow-sm bg-gray-50">
                                 
-                                {/* 좌측 영역: 학생 정보 */}
                                 <div className="flex items-center space-x-4">
                                     <div className="flex items-center justify-center w-10 h-10 bg-gray-300 rounded-full text-gray-700">
                                         <Icon name="users" className="w-5 h-5"/>
@@ -1320,10 +1414,8 @@ const AttendanceManagement = ({ students, classes, attendanceLogs, handleSaveAtt
                                     </div>
                                 </div>
                                 
-                                {/* 우측 영역: 출결 버튼 및 메모 (오른쪽 정렬) */}
                                 <div className="flex items-center space-x-2">
                                     
-                                    {/* 출결 버튼 그룹 (토글 기능 적용) */}
                                     {ATT_OPTIONS.map(status => (
                                         <button 
                                             key={status}
@@ -1334,7 +1426,6 @@ const AttendanceManagement = ({ students, classes, attendanceLogs, handleSaveAtt
                                         </button>
                                     ))}
                                     
-                                    {/* 메모 버튼 (구현 완료) */}
                                     <button 
                                         onClick={() => handleOpenMemo(s)}
                                         className={getMemoButtonClass(hasMemo)}
@@ -1360,8 +1451,6 @@ const AttendanceManagement = ({ students, classes, attendanceLogs, handleSaveAtt
                     initialContent={studentMemos[memoStudent.id]}
                 />
             )}
-            
-            {/* 기존 AttendanceFormModal은 사용하지 않지만, 컴포넌트 정의는 유지함 */}
         </div>
     );
 };
