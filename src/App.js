@@ -12,29 +12,29 @@ const initialStudents = [
 ];
 
 const initialClasses = [
-    { id: 1, name: '고2 A1반', teacher: '채수용', students: [1, 6, 4], grade: 2, schoolType: '고등학교', startDate: '2025-03-01', endDate: '2025-12-31', schedule: { days: ['월', '수'], time: '19:00~21:00' } },
-    { id: 2, name: '고2 A2반', teacher: '채수용', students: [2], grade: 2, schoolType: '고등학교', startDate: '2025-03-01', endDate: '2025-12-31', schedule: { days: ['화', '목'], time: '19:00~21:00' } },
-    { id: 3, name: '고1 국제고반', teacher: '이선생', students: [5], grade: 1, schoolType: '고등학교', startDate: '2025-03-01', endDate: '2025-12-31', schedule: { days: ['금'], time: '17:00~20:00' } },
+    { id: 1, name: '고2 A1반', teacher: '채수용', students: [1, 6, 4], grade: 2, schoolType: '고등학교', startDate: '2025-11-01', endDate: '2025-12-31', schedule: { days: ['월', '수'], time: '19:00~21:00' } },
+    { id: 2, name: '고2 A2반', teacher: '채수용', students: [2], grade: 2, schoolType: '고등학교', startDate: '2025-11-05', endDate: '2025-12-31', schedule: { days: ['화', '목'], time: '19:00~21:00' } },
+    { id: 3, name: '고1 국제고반', teacher: '이선생', students: [5], grade: 1, schoolType: '고등학교', startDate: '2025-10-01', endDate: '2025-12-31', schedule: { days: ['금'], time: '17:00~20:00' } },
 ];
 
 const initialLessonLogs = [
-    { id: 1, classId: 1, date: '2025-06-26', progress: '다항식의 연산 P.12 ~ P.18', videoUrl: 'https://www.youtube.com/embed/mWkuigsWe4A?si=WxFCjABqFDJSLnYy', materialUrl: '/path/to/material1.pdf' },
-    { id: 2, classId: 2, date: '2025-06-27', progress: '집합의 개념 및 포함 관계', videoUrl: '', materialUrl: '' },
+    { id: 1, classId: 1, date: '2025-11-04', progress: '다항식의 연산 P.12 ~ P.18', videoUrl: 'https://www.youtube.com/embed/mWkuigsWe4A?si=WxFCjABqFDJSLnYy', materialUrl: '/path/to/material1.pdf' },
+    { id: 2, classId: 2, date: '2025-11-05', progress: '집합의 개념 및 포함 관계', videoUrl: '', materialUrl: '' },
+    { id: 3, classId: 1, date: '2025-11-06', progress: '나머지 정리', videoUrl: '', materialUrl: '' },
+    { id: 4, classId: 1, date: '2025-11-11', progress: '인수분해', videoUrl: '', materialUrl: '' },
+    { id: 5, classId: 1, date: '2025-11-13', progress: '복소수', videoUrl: '', materialUrl: '' },
 ];
 
 const initialAttendanceLogs = [
-    // 2025-06-26 출결 기록
-    { id: 101, classId: 1, date: '2025-06-26', studentId: 1, status: '출석' },
-    { id: 102, classId: 1, date: '2025-06-26', studentId: 6, status: '결석' },
-    { id: 103, classId: 1, date: '2025-06-26', studentId: 4, status: '출석' },
+    // 2025-11-04 고2 A1반 출결 기록
+    { id: 101, classId: 1, date: '2025-11-04', studentId: 1, status: '출석' },
+    { id: 102, classId: 1, date: '2025-11-04', studentId: 6, status: '결석' },
+    { id: 103, classId: 1, date: '2025-11-04', studentId: 4, status: '출석' },
     
-    // 2025-06-27 출결 기록
-    { id: 104, classId: 2, date: '2025-06-27', studentId: 2, status: '지각' },
+    // 2025-11-05 고2 A2반 출결 기록
+    { id: 104, classId: 2, date: '2025-11-05', studentId: 2, status: '지각' },
     
-    // 2025-11-24 출결 기록 (초기값)
-    { id: 201, classId: 1, date: '2025-11-24', studentId: 1, status: '출석' },
-    { id: 202, classId: 1, date: '2025-11-24', studentId: 6, status: '지각' },
-    { id: 203, classId: 1, date: '2025-11-24', studentId: 4, status: '동영상보강' },
+    // 2025-11-25 (현재 날짜) 고2 A1반 출결 기록 (미리 저장된 기록은 없음)
 ];
 
 const initialStudentMemos = {
@@ -81,6 +81,7 @@ const initialGrades = {
     5: {}, // 정다은
 };
 
+
 // --- 아이콘 컴포넌트 ---
 const Icon = ({ name, className }) => {
   const icons = {
@@ -99,9 +100,50 @@ const Icon = ({ name, className }) => {
     wallet: <><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5h-2.43a2 2 0 0 1-1.94-1.51L15 9H5a2 2 0 0 0-2 2Z"/></>,
     barChart: <path d="M12 20V10M18 20V4M6 20v-6"/>,
     clipboardCheck: <><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M10 12L12 14L18 8"/></>,
-    bookOpen: <><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></> 
+    bookOpen: <><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></>,
+    calendar: <><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></>, 
   };
   return <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>{icons[name]}</svg>;
+};
+
+// --- 유틸리티 함수 ---
+
+/**
+ * 클래스 스케줄과 개강일을 기반으로 수업 회차 목록을 계산합니다.
+ */
+const calculateClassSessions = (cls) => {
+    if (!cls || !cls.startDate || !cls.schedule || cls.schedule.days.length === 0) return [];
+
+    // 개강일을 'YYYY-MM-DD' 형식에서 UTC 기준으로 시작하여 Timezone 오류 방지
+    const parts = cls.startDate.split('-');
+    const start = new Date(Date.UTC(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2])));
+    
+    // 현재 날짜도 UTC 기준으로 설정
+    const today = new Date();
+    const end = new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate())); 
+    
+    const sessions = [];
+    let sessionCount = 1;
+
+    // 요일 문자열을 Date.getDay() 인덱스로 변환 (일=0, 월=1, ..., 토=6)
+    const dayMap = { '일': 0, '월': 1, '화': 2, '수': 3, '목': 4, '금': 5, '토': 6 };
+    const scheduledDays = cls.schedule.days.map(day => dayMap[day]).filter(d => d !== undefined);
+    
+    let currentDate = new Date(start);
+
+    while (currentDate <= end) {
+        if (scheduledDays.includes(currentDate.getUTCDay())) { // UTC 요일 사용
+            sessions.push({
+                session: sessionCount++,
+                // 날짜 포맷은 YYYY-MM-DD (UTC 기준)
+                date: currentDate.toISOString().slice(0, 10)
+            });
+        }
+        // 다음 날로 이동 (UTC 기준)
+        currentDate.setUTCDate(currentDate.getUTCDate() + 1);
+    }
+
+    return sessions;
 };
 
 // --- 모달 컴포넌트 ---
@@ -217,7 +259,17 @@ const AddClassModal = ({ isOpen, onClose, onSave }) => {
     return (
         <Modal isOpen={isOpen} onClose={onClose} title="새 클래스 추가">
             <form onSubmit={handleSubmit} className="space-y-4">
-                <input type="text" name="name" value={formData.name} onChange={handleChange} placeholder="클래스명 (예: 고2 심화 B반)" required className="p-2 border rounded w-full" />
+                <input 
+                    type="text" 
+                    name="name" 
+                    value={formData.name} 
+                    onChange={handleChange} 
+                    placeholder="클래스명 (예: 고2 심화 B반)" 
+                    required 
+                    className="p-2 border rounded w-full" 
+                    autocomplete="off" 
+                />
+                
                 <div className="grid grid-cols-2 gap-4">
                     <input type="date" name="startDate" value={formData.startDate} onChange={handleChange} placeholder="개강일" required className="p-2 border rounded w-full" />
                     <input type="date" name="endDate" value={formData.endDate} onChange={handleChange} placeholder="종강일" required className="p-2 border rounded w-full" />
@@ -437,7 +489,7 @@ const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = null }) =>
     );
 };
 
-// 출석 기록/수정 모달 (기존 모달 유지 - AttendanceManagement에서 사용은 안함)
+// 출석 기록/수정 모달 (AttendanceManagement에서 사용하지 않음)
 const AttendanceFormModal = ({ isOpen, onClose, onSave, classId, students, date, initialAttendance = [] }) => {
     const ATT_OPTIONS = ['출석', '지각', '동영상보강', '결석', '미체크'];
     
@@ -562,7 +614,7 @@ export default function App() {
   const nextStudentId = students.reduce((max, s) => Math.max(max, s.id), 0) + 1; 
   const nextClassId = classes.reduce((max, c) => Math.max(max, c.id), 0) + 1; 
 
-  // --- CRUD 함수: 클래스 관리 (수정됨) ---
+  // --- CRUD 함수: 클래스 관리 ---
   const handleSaveClass = (newClassData) => {
     const newClass = { 
         ...newClassData, 
@@ -776,7 +828,7 @@ export default function App() {
   );
 }
 
-// --- 레이아웃 및 페이지 라우팅 (생략) ---
+// --- 레이아웃 및 페이지 컴포넌트 (생략) ---
 const LoginPage = ({ onLogin }) => { 
   const [id, setId] = useState('');
   const [password, setPassword] = useState('');
@@ -1220,14 +1272,19 @@ const LessonManagement = ({ students, classes, lessonLogs, handleSaveLessonLog, 
     );
 };
 
-// --- AttendanceManagement 컴포넌트 (생략) ---
+// --- AttendanceManagement 컴포넌트 (수정 없음) ---
 const AttendanceManagement = ({ students, classes, attendanceLogs, handleSaveAttendance, studentMemos, handleSaveMemo }) => {
-    const [selectedClassId, setSelectedClassId] = useState(classes.length > 0 ? initialClasses[0].id : null);
-    const [selectedDate, setSelectedDate] = useState('2025-11-24'); 
+    const initialClassId = classes.length > 0 ? initialClasses[0].id : null;
+    const [selectedClassId, setSelectedClassId] = useState(initialClassId);
     
+    // 선택된 날짜 (회차 리스트에서 선택 시)
+    const [selectedDate, setSelectedDate] = useState(null); 
+    
+    // --- 메모 모달 상태 ---
     const [isMemoModalOpen, setIsMemoModalOpen] = useState(false);
     const [memoStudent, setMemoStudent] = useState(null);
     
+    // --- 임시 출결 상태 (저장 전 변경사항) ---
     const [tempAttendanceMap, setTempAttendanceMap] = useState({});
 
     const ATT_OPTIONS = ['출석', '지각', '동영상보강', '결석'];
@@ -1235,44 +1292,37 @@ const AttendanceManagement = ({ students, classes, attendanceLogs, handleSaveAtt
     const selectedClass = classes.find(c => c.id === selectedClassId);
     const classStudents = students.filter(s => selectedClass?.students.includes(s.id)) || []; 
     
+    // 현재 날짜/반의 실제 DB 기록을 맵으로 구성
     const currentAttendanceMap = attendanceLogs
         .filter(log => log.classId === selectedClassId && log.date === selectedDate)
         .reduce((acc, log) => { acc[log.studentId] = log.status; return acc; }, {});
+        
+    // 전체 클래스에 대한 출결 기록 맵 (테이블 뷰 용)
+    const allAttendanceMap = attendanceLogs
+        .filter(log => log.classId === selectedClassId)
+        .reduce((acc, log) => {
+            if (!acc[log.date]) acc[log.date] = {};
+            acc[log.date][log.studentId] = log.status;
+            return acc;
+        }, {});
 
+    // 컴포넌트 마운트 및 날짜/반 변경 시 임시 상태를 실제 기록으로 초기화
     useEffect(() => {
         setTempAttendanceMap(currentAttendanceMap);
+        // 클래스 변경 시 날짜 선택 초기화
+        if (selectedDate && !selectedDate) {
+            setSelectedDate(null);
+        }
     }, [selectedClassId, selectedDate, students, attendanceLogs]);
 
 
-    const hasChanges = useCallback(() => {
-        const tempKeys = Object.keys(tempAttendanceMap);
-        const currentKeys = Object.keys(currentAttendanceMap);
-        
-        // 1. 키(학생) 목록이 다른지 확인
-        if (tempKeys.length !== currentKeys.length) {
-            // 예를 들어, 저장된 기록이 있었는데 (currentKey), 임시 맵에서 미체크로 토글되어 (tempKey에서 사라짐) 길이가 다르면 변경 사항임
-            
-            // 하지만 미체크가 아닌 상태로 변동이 있는지만 확인하면 충분
-            for (const id of classStudents.map(s => s.id)) {
-                const tempStatus = tempAttendanceMap[id] || '미체크';
-                const currentStatus = currentAttendanceMap[id] || '미체크';
-                if (tempStatus !== currentStatus) return true;
-            }
-            return false;
-        }
-        
-        // 2. 값(상태)이 다른지 확인
-        for (const key of tempKeys) {
-            if (tempAttendanceMap[key] !== currentAttendanceMap[key]) return true;
-        }
-        
-        return false;
-    }, [tempAttendanceMap, currentAttendanceMap, classStudents]);
-    
-    const isSaveDisabled = !hasChanges();
-
-
+    // 출결 상태 토글 로직
     const handleAttendanceToggle = (studentId, toggledStatus) => {
+        if (!selectedDate) {
+            alert("좌측에서 수업 회차를 먼저 선택해 주세요.");
+            return;
+        }
+        
         setTempAttendanceMap(prevMap => {
             const currentStatus = prevMap[studentId] || currentAttendanceMap[studentId] || '미체크';
             
@@ -1293,13 +1343,17 @@ const AttendanceManagement = ({ students, classes, attendanceLogs, handleSaveAtt
         });
     };
     
+    // 출결 수정 사항 저장 (오른쪽 상단 버튼)
     const handleSaveAttendanceChanges = () => {
-        if (isSaveDisabled) return; 
-
         if (!selectedClassId) {
             alert("반을 먼저 선택해주세요.");
             return;
         }
+        if (!selectedDate) {
+             alert("수업 날짜를 선택해야 출결을 저장할 수 있습니다.");
+             return;
+        }
+        if (isSaveDisabled) return; 
 
         const changesToSave = classStudents.map(s => ({
             classId: selectedClassId,
@@ -1315,11 +1369,11 @@ const AttendanceManagement = ({ students, classes, attendanceLogs, handleSaveAtt
             .filter(c => c.status !== '미체크')
             .reduce((acc, c) => { acc[c.studentId] = c.status; return acc; }, {});
             
-        // 실제 저장된 상태로 tempAttendanceMap을 재설정하여 버튼을 비활성화
         setTempAttendanceMap(updatedCurrentMap);
-        alert("출결 기록이 저장되었습니다.");
+        alert(`[${selectedDate}] 출결 기록이 저장되었습니다.`);
     };
 
+    // 메모 모달 핸들러
     const handleOpenMemo = (student) => {
         setMemoStudent(student);
         setIsMemoModalOpen(true);
@@ -1328,8 +1382,45 @@ const AttendanceManagement = ({ students, classes, attendanceLogs, handleSaveAtt
         setMemoStudent(null);
         setIsMemoModalOpen(false);
     }
+    
+    // 저장 필요 여부 체크
+    const hasChanges = useCallback(() => {
+        if (!selectedDate) return false; // 날짜를 선택하지 않은 테이블 뷰에서는 저장 버튼을 비활성화 (테이블 직접 수정 불가)
+        
+        const tempKeys = Object.keys(tempAttendanceMap);
+        const currentKeys = Object.keys(currentAttendanceMap);
+        
+        if (tempKeys.length !== currentKeys.length) return true;
+        
+        for (const key of tempKeys) {
+            if (tempAttendanceMap[key] !== currentAttendanceMap[key]) return true;
+        }
 
-    const getButtonClass = (buttonStatus, studentId) => {
+        for (const id in currentAttendanceMap) {
+            if (tempAttendanceMap[id] === undefined && currentAttendanceMap[id] !== '미체크') {
+                return true;
+            }
+        }
+        
+        return false;
+    }, [tempAttendanceMap, currentAttendanceMap, selectedDate]);
+    
+    const isSaveDisabled = !hasChanges();
+
+    // 수업 회차 리스트 계산
+    const sessions = calculateClassSessions(selectedClass);
+    
+    // --- 렌더링 유틸리티 ---
+    const getStatusColor = (status) => {
+        switch (status) {
+            case '출석': return 'bg-green-100 text-green-700';
+            case '지각': return 'bg-yellow-100 text-yellow-700';
+            case '동영상보강': return 'bg-blue-100 text-blue-700';
+            case '결석': return 'bg-red-100 text-red-700';
+            default: return 'bg-gray-100 text-gray-500';
+        }
+    };
+    const getButtonClass = (buttonStatus, studentId) => { /* ... (기존 로직 유지) ... */
         const currentStatus = tempAttendanceMap[studentId] || currentAttendanceMap[studentId] || '미체크';
         const baseClass = "px-3 py-1 rounded-lg font-semibold text-sm transition duration-150";
 
@@ -1350,93 +1441,230 @@ const AttendanceManagement = ({ students, classes, attendanceLogs, handleSaveAtt
             default: return `${baseClass} bg-gray-100 text-gray-700 hover:bg-gray-200`;
         }
     };
-    
-    const getMemoButtonClass = (hasMemo) => {
+    const getMemoButtonClass = (hasMemo) => { /* ... (기존 로직 유지) ... */
         const baseClass = "p-2 rounded-lg transition duration-150";
         return hasMemo 
             ? `${baseClass} bg-blue-500 text-white hover:bg-blue-600`
             : `${baseClass} bg-gray-200 text-gray-600 hover:bg-gray-300`;
     };
+    
+    // --- 서브 컴포넌트: 전체 출결 테이블 뷰 ---
+    const AllAttendanceTable = () => {
+        const sortedDates = Object.keys(allAttendanceMap).sort((a, b) => new Date(a) - new Date(b));
+        const ATT_OPTIONS_ALL = [...ATT_OPTIONS, '미체크'];
+        
+        const handleTableChange = (studentId, date, newStatus) => {
+             // 테이블 셀 클릭 시 바로 저장 함수 호출 (테이블은 임시 맵을 사용하지 않음)
+             handleSaveAttendance([{ 
+                classId: selectedClassId, 
+                date: date, 
+                studentId: studentId, 
+                status: newStatus 
+            }]);
+        };
 
+        return (
+            <div className="overflow-x-auto overflow-y-hidden">
+                <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                        <tr>
+                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 sticky left-0 bg-gray-50 z-10 w-40">수강생 이름</th>
+                            {sortedDates.map(date => (
+                                <th key={date} className="px-4 py-3 text-center text-xs font-semibold text-gray-600 min-w-[100px]">{date.slice(5)}</th>
+                            ))}
+                        </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                        {classStudents.map(student => (
+                            <tr key={student.id} className="hover:bg-gray-50">
+                                <td className="px-4 py-2 font-medium sticky left-0 bg-white hover:bg-gray-50 z-1 w-40">{student.name}</td>
+                                {sortedDates.map(date => {
+                                    const status = allAttendanceMap[date][student.id] || '미체크';
+                                    return (
+                                        <td key={date} className="px-4 py-1 text-center relative group">
+                                            <select
+                                                value={status}
+                                                onChange={(e) => handleTableChange(student.id, date, e.target.value)}
+                                                className={`w-full p-1 border rounded text-sm ${getStatusColor(status)} appearance-none`}
+                                            >
+                                                {ATT_OPTIONS_ALL.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                                            </select>
+                                        </td>
+                                    );
+                                })}
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+        );
+    };
 
+    // --- 서브 컴포넌트: 회차별 카드 뷰 ---
+    const SessionAttendanceCards = () => (
+        <div className="space-y-3">
+            {classStudents.map(s => {
+                const hasMemo = !!studentMemos[s.id];
+
+                return (
+                    <div key={s.id} className="flex justify-between items-center p-4 border rounded-xl shadow-sm bg-gray-50">
+                        
+                        <div className="flex items-center space-x-4">
+                            <div className="flex items-center justify-center w-10 h-10 bg-gray-300 rounded-full text-gray-700">
+                                <Icon name="users" className="w-5 h-5"/>
+                            </div>
+                            
+                            <div>
+                                <p className="font-bold text-gray-900">{s.name}</p>
+                                <p className="text-xs text-gray-500 mt-1">
+                                    학생: {s.phone} / 학부모: {s.parentPhone}
+                                </p>
+                            </div>
+                        </div>
+                        
+                        <div className="flex items-center space-x-2">
+                            
+                            {ATT_OPTIONS.map(status => (
+                                <button 
+                                    key={status}
+                                    onClick={() => handleAttendanceToggle(s.id, status)}
+                                    className={getButtonClass(status, s.id)}
+                                >
+                                    {status}
+                                </button>
+                            ))}
+                            
+                            <button 
+                                onClick={() => handleOpenMemo(s)}
+                                className={getMemoButtonClass(hasMemo)}
+                                title={hasMemo ? "메모 작성됨" : "메모 작성"}
+                            >
+                                <Icon name="fileText" className="w-5 h-5" />
+                            </button>
+                        </div>
+                    </div>
+                );
+            })}
+        </div>
+    );
+    
+    // --- 메인 렌더링 ---
     return (
-        <div className="bg-white p-6 rounded-xl shadow-lg space-y-6">
-            <h3 className="text-xl font-bold">출석 관리 및 기록</h3>
-            <div className="flex justify-between items-center border-b pb-4">
-                <div className="flex space-x-4 items-center">
-                    <label htmlFor="class-select" className="font-semibold">반 선택:</label>
+        // 3단 레이아웃 (280px / 280px / Flex-1)
+        <div className="flex h-full min-h-[85vh] space-x-6">
+            
+            {/* 좌측 패널 (280px) */}
+            <div className="w-72 flex flex-col space-y-4">
+                
+                {/* 1. 좌측 상단: 클래스 선택 */}
+                <div className="bg-white p-4 rounded-xl shadow-lg">
+                    <h4 className="font-bold mb-2">클래스 선택</h4>
                     <select 
-                        id="class-select" 
                         value={selectedClassId || ''} 
-                        onChange={e => setSelectedClassId(Number(e.target.value))} 
-                        className="p-2 border rounded-lg"
+                        onChange={e => {
+                            setSelectedClassId(Number(e.target.value));
+                            setSelectedDate(null); // 클래스 변경 시 날짜 선택 초기화
+                        }} 
+                        className="p-2 border rounded-lg w-full"
                     >
-                        {!selectedClassId && <option value="" disabled>반을 선택해주세요</option>}
+                        {!selectedClassId && <option value="" disabled>클래스를 선택해주세요</option>}
                         {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                     </select>
-                    <input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)} className="p-2 border rounded-lg" />
                 </div>
                 
-                <button 
-                    onClick={handleSaveAttendanceChanges} 
-                    disabled={isSaveDisabled}
-                    className={`flex items-center font-bold py-2 px-4 rounded-lg transition duration-200 
-                        ${isSaveDisabled 
-                            ? 'bg-gray-300 text-gray-600 cursor-not-allowed'
-                            : 'bg-blue-600 text-white hover:bg-blue-700 shadow-md'
-                        }`
-                    }
-                >
-                    <Icon name="edit" className="w-5 h-5 mr-2" /> 출결 저장
-                </button>
+                {/* 2. 좌측 하단: 캘린더 및 수업 회차 리스트 */}
+                <div className="bg-white p-4 rounded-xl shadow-lg flex-1 overflow-y-auto">
+                    <h4 className="font-bold mb-3">수업 회차</h4>
+                    
+                    {!selectedClassId ? (
+                         <p className="text-gray-500 text-sm">클래스를 선택해 주세요.</p>
+                    ) : (
+                        <div className="space-y-2">
+                             {/* 캘린더 더미 */}
+                            <div className="p-2 bg-gray-100 rounded-lg text-center text-sm mb-3">
+                                📅 **캘린더 영역 (구현 예정)**
+                                <p className="text-xs text-gray-500">수업 날짜 {sessions.length}일 표시</p>
+                            </div>
+
+                            {/* 회차 리스트 */}
+                            <div className="space-y-2">
+                                {sessions.map(session => {
+                                    const sessionAttendance = allAttendanceMap[session.date] || {};
+                                    const summary = ATT_OPTIONS.reduce((acc, status) => {
+                                        const count = Object.values(sessionAttendance).filter(s => s === status).length;
+                                        if (count > 0) acc.push(`${status} ${count}명`);
+                                        return acc;
+                                    }, []);
+                                    
+                                    const summaryText = summary.length > 0 ? summary.join(', ') : '미체크';
+
+                                    return (
+                                        <div
+                                            key={session.date}
+                                            onClick={() => setSelectedDate(session.date)}
+                                            className={`p-3 border rounded-lg cursor-pointer transition duration-150 
+                                                ${session.date === selectedDate 
+                                                    ? 'bg-blue-500 text-white font-semibold shadow-md' 
+                                                    : 'bg-white hover:bg-gray-100'}`
+                                            }
+                                        >
+                                            <p className="text-sm font-bold">
+                                                {session.session}회차 수업
+                                                <span className={`${session.date === selectedDate ? 'text-blue-200' : 'text-gray-400'} ml-2 font-normal`}>
+                                                    {session.date.slice(5)}
+                                                </span>
+                                            </p>
+                                            <p className={`text-xs ${session.date === selectedDate ? 'text-blue-200' : 'text-gray-500'}`}>
+                                                {summaryText}
+                                            </p>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
+                </div>
             </div>
 
-            <div className="space-y-3">
-                {classStudents.length === 0 ? (
-                    <div className="p-4 text-center text-gray-500 border rounded-lg">선택된 반에 학생이 없거나, 반이 선택되지 않았습니다.</div>
-                ) : (
-                    classStudents.map(s => {
-                        const hasMemo = !!studentMemos[s.id];
+            {/* 우측 메인 구역 (Flex-1) */}
+            <div className="flex-1 bg-white p-6 rounded-xl shadow-lg">
+                <div className="flex justify-between items-center mb-4 border-b pb-4">
+                    <h3 className="text-2xl font-bold text-gray-800">
+                        {selectedClass ? `${selectedClass.name} 출결 기록` : '출석 기록 조회'}
+                    </h3>
+                    
+                    {/* 저장 버튼 */}
+                    {selectedDate && (
+                        <button 
+                            onClick={handleSaveAttendanceChanges} 
+                            disabled={isSaveDisabled}
+                            className={`flex items-center font-bold py-2 px-4 rounded-lg transition duration-200 
+                                ${isSaveDisabled 
+                                    ? 'bg-gray-300 text-gray-600 cursor-not-allowed'
+                                    : 'bg-blue-600 text-white hover:bg-blue-700 shadow-md'
+                                }`
+                            }
+                        >
+                            <Icon name="edit" className="w-5 h-5 mr-2" /> 출결 저장
+                        </button>
+                    )}
+                </div>
 
-                        return (
-                            <div key={s.id} className="flex justify-between items-center p-4 border rounded-xl shadow-sm bg-gray-50">
-                                
-                                <div className="flex items-center space-x-4">
-                                    <div className="flex items-center justify-center w-10 h-10 bg-gray-300 rounded-full text-gray-700">
-                                        <Icon name="users" className="w-5 h-5"/>
-                                    </div>
-                                    
-                                    <div>
-                                        <p className="font-bold text-gray-900">{s.name}</p>
-                                        <p className="text-xs text-gray-500 mt-1">
-                                            학생: {s.phone} / 학부모: {s.parentPhone}
-                                        </p>
-                                    </div>
-                                </div>
-                                
-                                <div className="flex items-center space-x-2">
-                                    
-                                    {ATT_OPTIONS.map(status => (
-                                        <button 
-                                            key={status}
-                                            onClick={() => handleAttendanceToggle(s.id, status)}
-                                            className={getButtonClass(status, s.id)}
-                                        >
-                                            {status}
-                                        </button>
-                                    ))}
-                                    
-                                    <button 
-                                        onClick={() => handleOpenMemo(s)}
-                                        className={getMemoButtonClass(hasMemo)}
-                                        title={hasMemo ? "메모 작성됨" : "메모 작성"}
-                                    >
-                                        <Icon name="fileText" className="w-5 h-5" />
-                                    </button>
-                                </div>
-                            </div>
-                        );
-                    })
+                {!selectedClassId ? (
+                    <div className="flex items-center justify-center h-48 text-gray-500 text-xl">
+                        좌측 상단에서 관리할 **클래스**를 선택해 주세요.
+                    </div>
+                ) : (
+                    selectedDate ? (
+                        /* 회차(날짜) 선택 시: 카드 뷰 (개별 수정 모드) */
+                         <SessionAttendanceCards />
+                    ) : (
+                        /* 날짜 미선택 시: 전체 출결 테이블 뷰 (일괄 조회 모드) */
+                        <div className="space-y-4">
+                            <p className="text-gray-600 text-sm">좌측 회차 목록에서 날짜를 선택하면 개별 수정이 가능합니다.</p>
+                            <AllAttendanceTable />
+                        </div>
+                    )
                 )}
             </div>
             
@@ -1455,6 +1683,7 @@ const AttendanceManagement = ({ students, classes, attendanceLogs, handleSaveAtt
     );
 };
 
+// --- HomeworkManagement 컴포넌트 ---
 const HomeworkManagement = ({ students, classes, homeworkAssignments, homeworkResults, handleSaveHomeworkAssignment, handleDeleteHomeworkAssignment, handleUpdateHomeworkResult }) => {
     const [selectedClassId, setSelectedClassId] = useState(initialClasses[0].id);
     const [selectedAssignmentId, setSelectedAssignmentId] = useState(null); 
@@ -1620,6 +1849,7 @@ const HomeworkManagement = ({ students, classes, homeworkAssignments, homeworkRe
     );
 };
 
+// --- GradeManagement 컴포넌트 ---
 const GradeManagement = ({ students, classes, tests, grades, handleSaveTest, handleDeleteTest, handleUpdateGrade }) => {
     const [selectedClassId, setSelectedClassId] = useState(initialClasses[0].id);
     const [isTestModalOpen, setIsTestModalOpen] = useState(false);
@@ -1770,6 +2000,7 @@ const GradeManagement = ({ students, classes, tests, grades, handleSaveTest, han
     );
 };
 
+// --- PaymentManagement 컴포넌트 ---
 const PaymentManagement = () => { 
     const [payments] = useState(initialPayments);
     return (
@@ -1797,6 +2028,7 @@ const PaymentManagement = () => {
     )
 };
 
+// --- NotesManagement 컴포넌트 ---
 const NotesManagement = () => { 
     const [problemImage, setProblemImage] = useState(null);
     const handleImageUpload = (e) => {
@@ -1838,6 +2070,7 @@ const NotesManagement = () => {
     )
 }
 
+// --- InternalCommunication 컴포넌트 ---
 const InternalCommunication = () => { 
     const [tab, setTab] = useState('logs'); 
     return (
@@ -1851,6 +2084,7 @@ const InternalCommunication = () => {
     )
 };
 
+// --- WorkLogs 컴포넌트 ---
 const WorkLogs = () => { 
     const [logs, setLogs] = useState(initialWorkLogs);
     const [newLog, setNewLog] = useState('');
@@ -1876,6 +2110,7 @@ const WorkLogs = () => {
     )
 }
 
+// --- Messenger 컴포넌트 ---
 const Messenger = () => {
     return (
         <div className="flex h-[60vh]">

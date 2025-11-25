@@ -334,6 +334,9 @@
 .min-w-\[8rem\] {
   min-width: 8rem;
 }
+.min-w-\[100px\] {
+  min-width: 100px;
+}
 .min-w-\[120px\] {
   min-width: 120px;
 }
@@ -915,6 +918,9 @@
 }
 .overflow-y-auto {
   overflow-y: auto;
+}
+.overflow-y-hidden {
+  overflow-y: hidden;
 }
 .scroll-auto {
   scroll-behavior: auto;
