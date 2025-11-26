@@ -340,6 +340,9 @@
 .min-w-\[120px\] {
   min-width: 120px;
 }
+.min-w-\[150px\] {
+  min-width: 150px;
+}
 .min-w-\[320px\] {
   min-width: 320px;
 }
@@ -369,6 +372,9 @@
 }
 .flex-shrink {
   flex-shrink: 1;
+}
+.flex-shrink-0 {
+  flex-shrink: 0;
 }
 .shrink {
   flex-shrink: 1;
