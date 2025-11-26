@@ -17,12 +17,13 @@ const initialClasses = [
     { id: 3, name: '고1 국제고반', teacher: '이선생', students: [5], grade: 1, schoolType: '고등학교', startDate: '2025-10-01', endDate: '2025-12-31', schedule: { days: ['금'], time: '17:00~20:00' } },
 ];
 
+// videoUrl -> iframeCode로 변경
 const initialLessonLogs = [
-    { id: 1, classId: 1, date: '2025-11-04', progress: '다항식의 연산 P.12 ~ P.18', videoUrl: 'https://www.youtube.com/embed/mWkuigsWe4A?si=WxFCjABqFDJSLnYy', materialUrl: '/path/to/material1.pdf' },
-    { id: 2, classId: 2, date: '2025-11-05', progress: '집합의 개념 및 포함 관계', videoUrl: '', materialUrl: '' },
-    { id: 3, classId: 1, date: '2025-11-06', progress: '나머지 정리', videoUrl: '', materialUrl: '' },
-    { id: 4, classId: 1, date: '2025-11-11', progress: '인수분해', videoUrl: '', materialUrl: '' },
-    { id: 5, classId: 1, date: '2025-11-13', progress: '복소수', videoUrl: '', materialUrl: '' },
+    { id: 1, classId: 1, date: '2025-11-04', progress: '다항식의 연산 P.12 ~ P.18', iframeCode: '<iframe width="560" height="315" src="https://www.youtube.com/embed/mWkuigsWe4A" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>', materialUrl: '/path/to/material1.pdf' },
+    { id: 2, classId: 2, date: '2025-11-05', progress: '집합의 개념 및 포함 관계', iframeCode: '', materialUrl: '' },
+    { id: 3, classId: 1, date: '2025-11-06', progress: '나머지 정리', iframeCode: '', materialUrl: '' },
+    { id: 4, classId: 1, date: '2025-11-11', progress: '인수분해', iframeCode: '', materialUrl: '' },
+    { id: 5, classId: 1, date: '2025-11-13', progress: '복소수', iframeCode: '', materialUrl: '' },
 ];
 
 const initialAttendanceLogs = [
@@ -33,6 +34,8 @@ const initialAttendanceLogs = [
     
     // 2025-11-05 고2 A2반 출결 기록
     { id: 104, classId: 2, date: '2025-11-05', studentId: 2, status: '지각' },
+    // 2025-11-06 고2 A1반 출결 기록 (동영상보강 예시 추가)
+    { id: 105, classId: 1, date: '2025-11-06', studentId: 6, status: '동영상보강' }, 
 ];
 
 const initialStudentMemos = {
@@ -79,6 +82,13 @@ const initialGrades = {
     5: {}, // 정다은
 };
 
+const initialVideoProgress = {
+    // studentId: { lessonLogId: progressPercentage (0-100) }
+    1: { 1: 85 }, // 김민준 학생, 일지 1번 85% 시청
+    4: { 1: 100 }, // 최지우 학생, 일지 1번 100% 시청
+    6: { 3: 50 } // 윤채원 학생, 일지 3번 (2025-11-06) 50% 시청
+};
+
 
 // --- 아이콘 컴포넌트 ---
 const Icon = ({ name, className }) => {
@@ -100,6 +110,8 @@ const Icon = ({ name, className }) => {
     clipboardCheck: <><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M10 12L12 14L18 8"/></>,
     bookOpen: <><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></>,
     calendar: <><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></>, 
+    chevronDown: <path d="m6 9 6 6 6-6"/>,
+    chevronUp: <path d="m18 15-6-6-6 6"/>,
   };
   return <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>{icons[name]}</svg>;
 };
@@ -439,14 +451,14 @@ const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = null }) =>
     const [formData, setFormData] = useState({
         date: log?.date || new Date().toISOString().slice(0, 10),
         progress: log?.progress || '',
-        videoUrl: log?.videoUrl || '',
+        iframeCode: log?.iframeCode || '', // videoUrl -> iframeCode로 변경
     });
     
     useEffect(() => {
         setFormData({
             date: log?.date || new Date().toISOString().slice(0, 10),
             progress: log?.progress || '',
-            videoUrl: log?.videoUrl || '',
+            iframeCode: log?.iframeCode || '', // videoUrl -> iframeCode로 변경
         });
     }, [log]);
 
@@ -464,7 +476,7 @@ const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = null }) =>
             classId,
             date: formData.date,
             progress: formData.progress,
-            videoUrl: formData.videoUrl,
+            iframeCode: formData.iframeCode, // 필드명 변경
             materialUrl: log?.materialUrl || '', 
         };
 
@@ -477,7 +489,16 @@ const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = null }) =>
             <form onSubmit={handleSubmit} className="space-y-4">
                 <input type="date" name="date" value={formData.date} onChange={handleChange} required className="p-2 border rounded w-full" />
                 <input type="text" name="progress" value={formData.progress} onChange={handleChange} placeholder="수업 진도 (예: 다항식의 연산 P.12 ~ P.18)" required className="p-2 border rounded w-full" />
-                <input type="url" name="videoUrl" value={formData.videoUrl} onChange={handleChange} placeholder="보충/복습 영상 URL (선택 사항)" className="p-2 border rounded w-full" />
+                
+                {/* URL 대신 iframe 코드 입력용 textarea로 변경 */}
+                <textarea 
+                    name="iframeCode" 
+                    value={formData.iframeCode} 
+                    onChange={handleChange} 
+                    placeholder="YouTube 공유 임베드 <iframe> 코드를 붙여넣으세요. (선택 사항)" 
+                    rows="3"
+                    className="p-2 border rounded w-full" 
+                />
 
                 <button type="submit" className="w-full bg-blue-600 text-white font-bold py-2 rounded-lg hover:bg-blue-700">
                     {isEdit ? '일지 수정' : '일지 등록'}
@@ -536,6 +557,7 @@ const HomeworkAssignmentModal = ({ isOpen, onClose, onSave, classId, assignment 
 export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [page, setPage] = useState('home'); 
+  // 모의 학생 ID 제거
 
   // --- 중앙 상태 관리 ---
   const [students, setStudents] = useState(initialStudents);
@@ -547,6 +569,7 @@ export default function App() {
   const [tests, setTests] = useState(initialTests);
   const [grades, setGrades] = useState(initialGrades);
   const [studentMemos, setStudentMemos] = useState(initialStudentMemos); 
+  const [videoProgress, setVideoProgress] = useState(initialVideoProgress); 
   
   // 안정화: reduce의 초기값을 0으로 설정하여 빈 배열일 때의 오류를 방지합니다.
   const nextStudentId = students.reduce((max, s) => Math.max(max, s.id), 0) + 1; 
@@ -575,12 +598,11 @@ export default function App() {
         
         setStudents(prev => prev.map(s => s.id === idToUpdate ? { ...s, ...newStudentData } : s));
         
-        // --- 클래스 상태 업데이트 로직 (개선) ---
+        // --- 클래스 상태 업데이트 로직 ---
         setClasses(prevClasses => prevClasses.map(cls => {
             const isNowInClass = newStudentData.classes.includes(cls.id);
             const wasInClass = oldStudent.classes.includes(cls.id);
             const isNowActive = newStudentData.status === '재원생';
-            const wasActive = oldStudent.status === '재원생';
             
             let currentStudents = cls.students.filter(sid => sid !== idToUpdate); // 일단 학생을 제거
 
@@ -590,8 +612,6 @@ export default function App() {
                      currentStudents.push(idToUpdate);
                  }
             }
-            
-            // 학생 상태가 '퇴원생' 또는 '상담생'으로 바뀌거나, 수강 클래스에서 제외된 경우: 이미 위에서 제거됨.
             
             // 기존과 달라진 경우에만 새로운 배열 반환
             if (currentStudents.length === cls.students.length && currentStudents.every((sid, i) => sid === cls.students[i])) {
@@ -654,9 +674,9 @@ export default function App() {
   // --- CRUD 함수: 수업 일지 관리 ---
   const handleSaveLessonLog = (logData, isEdit) => {
     if (isEdit) {
-        setLessonLogs(prev => prev.map(log => log.id === logData.id ? logData : log));
+        setLessonLogs(prev => prev.map(log => log.id === logData.id ? { ...log, iframeCode: logData.iframeCode } : log));
     } else {
-        setLessonLogs(prev => [logData, ...prev]);
+        setLessonLogs(prev => [{ ...logData, iframeCode: logData.iframeCode }, ...prev]);
     }
   };
 
@@ -665,6 +685,17 @@ export default function App() {
         setLessonLogs(prev => prev.filter(log => log.id !== logId));
     }
   }
+  
+  // --- CRUD 함수: 영상 진행률 관리 (모의 기능은 제거) ---
+  const handleUpdateVideoProgress = (studentId, logId, progress) => {
+      setVideoProgress(prev => ({
+          ...prev,
+          [studentId]: {
+              ...prev[studentId],
+              [logId]: progress
+          }
+      }));
+  };
   
   // --- CRUD 함수: 출석 관리 ---
   const handleSaveAttendance = (attendanceRecords) => {
@@ -764,8 +795,8 @@ export default function App() {
   
   // 모든 관리 컴포넌트에 필요한 상태와 함수를 Props로 전달
   const managementProps = {
-    students, classes, lessonLogs, attendanceLogs, 
-    homeworkAssignments, homeworkResults, tests, grades, studentMemos, 
+    students, classes, lessonLogs, attendanceLogs, // attendanceLogs를 LessonManagement에 전달
+    homeworkAssignments, homeworkResults, tests, grades, studentMemos, videoProgress, 
     getClassesNames,
     handleSaveStudent, handleDeleteStudent,
     handleSaveClass, 
@@ -934,6 +965,7 @@ const PageContent = (props) => {
 // --- 각 페이지 컴포넌트 ---
 const Home = () => <div className="p-6 bg-white rounded-lg shadow-md"><h3 className="text-2xl font-semibold">홈</h3><p>학원 운영의 전반적인 현황을 한눈에 볼 수 있는 주요 정보를 요약하여 제공합니다.</p></div>;
 
+
 // --- StudentManagement 컴포넌트 ---
 const StudentManagement = ({ students, classes, getClassesNames, handleSaveStudent, handleDeleteStudent, attendanceLogs, studentMemos, handleSaveMemo }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -1100,9 +1132,70 @@ const StudentManagement = ({ students, classes, getClassesNames, handleSaveStude
     );
 };
 
+// --- VideoProgressViewer 컴포넌트 (토글 및 출결 표시 추가) ---
+const VideoProgressViewer = ({ log, students, videoProgress, attendanceLogs }) => {
+    const logId = log.id;
+    const [isExpanded, setIsExpanded] = useState(false); // 기본 닫힘
+
+    // 해당 수업(log)의 출결 기록 맵
+    const logAttendanceMap = attendanceLogs
+        .filter(att => att.classId === log.classId && att.date === log.date)
+        .reduce((acc, curr) => ({ ...acc, [curr.studentId]: curr.status }), {});
+    
+    return (
+        <div className="mt-4 border rounded-lg bg-white">
+            <button 
+                onClick={() => setIsExpanded(!isExpanded)} 
+                className="flex justify-between items-center w-full p-3 font-bold text-md text-gray-700 hover:bg-gray-50 transition duration-150"
+            >
+                <span>학생별 영상 수강 현황 ({students.length}명)</span>
+                <Icon name={isExpanded ? "chevronUp" : "chevronDown"} className="w-5 h-5" />
+            </button>
+            
+            {isExpanded && (
+                <div className="p-3 border-t">
+                    <div className="space-y-2 max-h-60 overflow-y-auto">
+                        {students.length === 0 ? (
+                             <p className="text-gray-500 text-sm p-2">등록된 재원생이 없습니다.</p>
+                        ) : (
+                            students.map(s => {
+                                const progress = videoProgress[s.id]?.[logId] || 0;
+                                const status = progress === 100 ? '완료' : `${progress}% 시청`;
+                                const isVideoRequired = logAttendanceMap[s.id] === '동영상보강'; // 동영상보강 학생 체크
+                                
+                                return (
+                                    <div key={s.id} className="flex justify-between items-center text-sm p-2 border-b last:border-b-0">
+                                        
+                                        <span className="font-medium w-24 flex items-center">
+                                            {s.name}
+                                            {isVideoRequired && (
+                                                <Icon name="clipboardCheck" className="w-4 h-4 ml-2 text-blue-500" title="동영상 보강 필수"/>
+                                            )}
+                                        </span>
+                                        
+                                        <div className="flex-1 mx-4">
+                                            <div className="w-full bg-gray-200 rounded-full h-2.5">
+                                                <div 
+                                                    className={`h-2.5 rounded-full ${progress === 100 ? 'bg-green-500' : 'bg-blue-500'}`} 
+                                                    style={{ width: `${progress}%` }}
+                                                ></div>
+                                            </div>
+                                        </div>
+                                        <span className={`w-16 text-right font-semibold ${progress === 100 ? 'text-green-600' : 'text-blue-500'}`}>{status}</span>
+                                    </div>
+                                );
+                            })
+                        )}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
 
 // --- LessonManagement 컴포넌트 ---
-const LessonManagement = ({ students, classes, lessonLogs, handleSaveLessonLog, handleDeleteLessonLog, handleSaveClass }) => {
+const LessonManagement = ({ students, classes, lessonLogs, handleSaveLessonLog, handleDeleteLessonLog, handleSaveClass, videoProgress, attendanceLogs }) => {
     const initialClassId = classes.length > 0 ? classes[0].id : null;
     const [selectedClassId, setSelectedClassId] = useState(initialClassId);
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -1114,8 +1207,9 @@ const LessonManagement = ({ students, classes, lessonLogs, handleSaveLessonLog, 
     // 선택된 클래스 정보 및 로그 필터링
     const selectedClass = classes.find(c => c.id === selectedClassId);
     const classLogs = lessonLogs.filter(log => log.classId === selectedClassId).sort((a, b) => new Date(b.date) - new Date(a.date));
-    const classStudents = students.filter(s => selectedClass?.students.includes(s.id));
-
+    // 재원생만 필터링
+    const classStudents = students.filter(s => s.status === '재원생' && selectedClass?.students.includes(s.id));
+    
     const handleEdit = (log) => {
         setEditingLog(log);
         setIsModalOpen(true);
@@ -1130,7 +1224,6 @@ const LessonManagement = ({ students, classes, lessonLogs, handleSaveLessonLog, 
     const handleClassSaveAndSelect = (newClassData) => {
         handleSaveClass(newClassData);
         // 저장 후, 새로 추가된 클래스의 ID를 선택 상태로 설정 (가장 높은 ID를 가정)
-        // nextClassId는 저장 후 App에서 업데이트되므로, 여기서 직접 계산합니다.
         const newClassId = classes.reduce((max, c) => Math.max(max, c.id), 0) + 1;
         setSelectedClassId(newClassId);
     };
@@ -1140,7 +1233,7 @@ const LessonManagement = ({ students, classes, lessonLogs, handleSaveLessonLog, 
         // 전체를 flex 컨테이너로 설정
         <div className="flex h-full min-h-[85vh] space-x-6">
             
-            {/* 1. 좌측 구역: 클래스 목록 및 클래스 추가 버튼 */}
+            {/* 1. 좌측 구역: 클래스 목록 및 클래스 추가 버튼 (w-72로 통일) */}
             <div className="w-72 bg-white p-4 rounded-xl shadow-lg flex flex-col">
                 <div className="flex justify-between items-center mb-4">
                     {/* 텍스트 수정: 수업 목록 -> 클래스 목록 */}
@@ -1181,7 +1274,7 @@ const LessonManagement = ({ students, classes, lessonLogs, handleSaveLessonLog, 
                 </div>
             </div>
             
-            {/* 2. 우측 구역: 선택된 수업의 일지 관리 (기존 LessonManagement 내용) */}
+            {/* 2. 우측 구역: 선택된 수업의 일지 관리 */}
             <div className="flex-1 bg-white p-6 rounded-xl shadow-lg">
                 <h3 className="text-2xl font-bold mb-6 text-gray-800">{selectedClass?.name || '수업'} 일지 관리</h3>
                 
@@ -1212,12 +1305,21 @@ const LessonManagement = ({ students, classes, lessonLogs, handleSaveLessonLog, 
                                             </div>
                                         </div>
                                         <p><span className="font-semibold">수업 진도:</span> {log.progress}</p>
-                                        {log.videoUrl && (
-                                            <div className="mt-2">
-                                                <p className="font-semibold">수업 영상:</p>
-                                                <a href={log.videoUrl} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline text-sm truncate block">{log.videoUrl}</a>
+                                        
+                                        {/* iframeCode 표시 (직원용에서는 iframe 코드를 그대로 표시) */}
+                                        {log.iframeCode && (
+                                            <div className="mt-2 p-3 bg-gray-100 rounded-lg text-sm text-gray-700 overflow-x-auto">
+                                                {/* 오류 수정: <iframe> 태그 이름을 인용 부호로 감싸 JSX 파싱 오류를 방지 */}
+                                                <p className="font-semibold mb-1">YouTube "iframe" 코드:</p>
+                                                <code className="block whitespace-pre-wrap break-all text-xs border p-1 bg-white rounded">
+                                                    {log.iframeCode}
+                                                </code>
                                             </div>
                                         )}
+                                        
+                                        {/* 수강 기록 확인 컴포넌트 연결 */}
+                                        {/* attendanceLogs를 prop으로 전달 */}
+                                        {log.iframeCode && <VideoProgressViewer log={log} students={classStudents} videoProgress={videoProgress} attendanceLogs={attendanceLogs} />}
                                     </div>
                                 ))
                             )}
@@ -1392,7 +1494,7 @@ const AttendanceManagement = ({ students, classes, attendanceLogs, handleSaveAtt
         // allAttendanceMap에만 있고 tempTableAttendanceMap에는 없는 경우 (미체크로 돌아간 경우) 처리
         for (const date in allAttendanceMap) {
             classStudents.forEach(student => {
-                const currentStatus = allAttendanceMap[date][student.id] || '미체크';
+                const currentStatus = allAttendanceMap[date] ? (allAttendanceMap[date][student.id] || '미체크') : '미체크';
                 const tempStatus = tempTableAttendanceMap[date] ? (tempTableAttendanceMap[date][student.id] || '미체크') : '미체크';
                 
                 if (currentStatus !== '미체크' && tempStatus === '미체크') {
