@@ -4,9 +4,9 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 // 2025년 11월 달력 확인: 11/1(금), 11/3(월), 11/4(화), 11/5(수), 11/6(목), 11/7(금), 11/10(월), 11/11(화)...
 const initialStudents = [
   // books: 학생별 보유 교재 목록 추가 
-  { id: 1, name: '김민준', school: '대한고등학교', grade: 2, phone: '010-1234-5678', parentPhone: '010-8765-4321', status: '재원생', registeredDate: '2025-03-05', classes: [1], paymentStatus: '완납', bookReceived: true, books: ['수학(상) RPM', '블랙라벨 수학(상)'] },
-  { id: 2, name: '이서연', school: '민국고등학교', grade: 2, phone: '010-2345-6789', parentPhone: '010-7654-3210', status: '재원생', registeredDate: '2025-03-05', classes: [2], paymentStatus: '미납', bookReceived: false, books: ['개념원리 수학I'] },
-  { id: 3, name: '박하준', school: '사랑고등학교', grade: 2, phone: '010-3456-7890', parentPhone: '010-6543-2109', status: '상담생', registeredDate: '2025-02-15', classes: [], paymentStatus: '해당없음', bookReceived: false, books: [] },
+  { id: 1, name: '김민준', school: '대한고등학교', grade: 2, phone: '010-1234-5678', parentPhone: '010-8765-4321', status: '재원생', registeredDate: '2025-03-05', classes: [1], paymentStatus: '완납', bookReceived: true, books: ['수학(상) RPM', '블랙라벨 수학(상)'], clinicTime: '14:00' },
+  { id: 2, name: '이서연', school: '민국고등학교', grade: 2, phone: '010-2345-6789', parentPhone: '010-7654-3210', status: '재원생', registeredDate: '2025-03-05', classes: [2], paymentStatus: '미납', bookReceived: false, books: ['개념원리 수학I'], clinicTime: '15:30' },
+  { id: 3, name: '박하준', school: '사랑고등학교', grade: 2, phone: '010-3456-7890', parentPhone: '010-6543-2109', status: '상담생', registeredDate: '2025-02-15', classes: [], paymentStatus: '해당없음', bookReceived: false, books: [], clinicTime: null },
   { id: 4, name: '최지우', school: '대한고등학교', grade: 2, phone: '010-4567-8901', parentPhone: '010-5432-1098', status: '재원생', registeredDate: '2025-03-20', classes: [1], paymentStatus: '완납', bookReceived: true, books: ['수학(상) RPM'] },
   { id: 5, name: '정다은', school: '대한국제고', grade: 1, phone: '010-5678-9012', parentPhone: '010-4321-0987', status: '재원생', registeredDate: '2025-09-01', classes: [3], paymentStatus: '완납', bookReceived: true, books: ['고1 정석'] },
   { id: 6, name: '윤채원', school: '대한고등학교', grade: 2, phone: '010-6789-0123', parentPhone: '010-3210-9876', status: '재원생', registeredDate: '2025-08-01', classes: [1], paymentStatus: '완납', bookReceived: false, books: ['수학(상) RPM'] },
@@ -951,6 +951,15 @@ const AnnouncementModal = ({ isOpen, onClose, onSave, announcementToEdit = null,
         onClose();
     };
     
+    // 대상 학생 필터링 및 검색 기능 추가
+    const [studentSearchTerm, setStudentSearchTerm] = useState('');
+    const [studentFilterClassId, setStudentFilterClassId] = useState('');
+
+    const filteredStudents = allStudents.filter(s => s.status === '재원생')
+        .filter(s => s.name.toLowerCase().includes(studentSearchTerm.toLowerCase()))
+        .filter(s => !studentFilterClassId || s.classes.includes(Number(studentFilterClassId)));
+
+    
     return (
         <Modal isOpen={isOpen} onClose={onClose} title={isEdit ? '공지사항 수정' : "새 공지사항 작성"} maxWidth="max-w-xl">
             <form onSubmit={handleSubmit} className="space-y-4 text-sm">
@@ -1028,14 +1037,36 @@ const AnnouncementModal = ({ isOpen, onClose, onSave, announcementToEdit = null,
                         </div>
                     </div>
                      <div>
-                        <label className='block font-semibold mb-2'>대상 학생:</label>
-                        <div className='space-y-1 max-h-28 overflow-y-auto pr-1 text-xs'>
-                            {allStudents.filter(s => s.status === '재원생').map(s => (
-                                <label key={s.id} className="flex items-center space-x-2">
-                                    <input type="checkbox" value={s.id} checked={formData.targetStudents.includes(s.id)} onChange={(e) => handleTargetChange('targetStudents', e.target.value)} className="form-checkbox text-blue-500" />
-                                    <span>{s.name}</span>
-                                </label>
-                            ))}
+                        <label className='block font-semibold mb-2'>대상 학생 (필터링 가능):</label>
+                        <div className='flex space-x-2 mb-2'>
+                            <input
+                                type="text"
+                                placeholder="학생 이름 검색"
+                                value={studentSearchTerm}
+                                onChange={(e) => setStudentSearchTerm(e.target.value)}
+                                className='p-1 border rounded text-xs w-1/2'
+                            />
+                            <select
+                                value={studentFilterClassId}
+                                onChange={(e) => setStudentFilterClassId(e.target.value)}
+                                className='p-1 border rounded text-xs w-1/2'
+                            >
+                                <option value="">클래스 필터</option>
+                                {allClasses.map(cls => <option key={cls.id} value={cls.id}>{cls.name}</option>)}
+                            </select>
+                        </div>
+                        
+                        <div className='space-y-1 max-h-28 overflow-y-auto pr-1 text-xs border p-1 rounded'>
+                            {filteredStudents.length === 0 ? (
+                                <p className='text-gray-500'>검색 결과 없음</p>
+                            ) : (
+                                filteredStudents.map(s => (
+                                    <label key={s.id} className="flex items-center space-x-2">
+                                        <input type="checkbox" value={s.id} checked={formData.targetStudents.includes(s.id)} onChange={(e) => handleTargetChange('targetStudents', e.target.value)} className="form-checkbox text-blue-500" />
+                                        <span>{s.name} ({s.school})</span>
+                                    </label>
+                                ))
+                            )}
                         </div>
                         <p className='text-xs text-gray-500 mt-2'>* 특정 클래스를 지정하지 않으면, 지정된 학생에게만 노출됩니다.</p>
                     </div>
@@ -1050,7 +1081,6 @@ const AnnouncementModal = ({ isOpen, onClose, onSave, announcementToEdit = null,
         </Modal>
     )
 }
-
 
 // --- 메인 앱 컴포넌트: 모든 상태와 CRUD 로직을 관리하는 중앙 허브 ---
 export default function App() { // export default로 수정
@@ -1355,7 +1385,9 @@ export default function App() { // export default로 수정
       }
   };
   const handleDeleteWorkLog = (id) => {
-      setWorkLogs(prev => prev.filter(log => log.id !== id));
+      if (window.confirm('근무 일지를 정말 삭제하시겠습니까?')) {
+          setWorkLogs(prev => prev.filter(log => log.id !== id));
+      }
   }
 
 
@@ -1376,7 +1408,9 @@ export default function App() { // export default로 수정
     }
   };
   const handleDeleteClinicLog = (id) => {
-      setClinicLogs(prev => prev.filter(log => log.id !== id));
+      if (window.confirm('클리닉 기록을 정말 삭제하시겠습니까?')) { // 확인 팝업 추가
+          setClinicLogs(prev => prev.filter(log => log.id !== id));
+      }
   }
   
 
@@ -1403,9 +1437,9 @@ export default function App() { // export default로 수정
   return (
     <div className="flex h-screen bg-gray-100 font-sans text-base"> 
       <Sidebar page={page} setPage={setPage} onLogout={() => setIsLoggedIn(false)} />
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 flex flex-col overflow-hidden min-w-0">
         <Header page={page} />
-        <main id="main-content" className="flex-1 overflow-x-hidden overflow-y-auto bg-gray-100 p-6">
+        <main id="main-content" className="overflow-x-hidden overflow-y-auto bg-gray-100 p-6 min-w-0">
           <PageContent page={page} {...managementProps} />
         </main>
       </div>
@@ -1461,7 +1495,7 @@ const Sidebar = ({ page, setPage, onLogout }) => {
         },
         { id: 'clinics', name: '클리닉 관리', icon: 'clock', isParent: false}, // 클리닉 관리 추가
         { id: 'payment', name: '수납 관리', icon: 'wallet', isParent: false },
-        { id: 'notes', name: '오답노트 & 자료', icon: 'fileText', isParent: false },
+        { id: 'notes', name: '오답노트 & 교재', icon: 'fileText', isParent: false }, // 카테고리 명 변경
         { id: 'internal', name: '내부 소통', icon: 'messageSquare', isParent: false },
     ];
       
@@ -1522,7 +1556,7 @@ const Sidebar = ({ page, setPage, onLogout }) => {
 const Header = ({ page }) => {
     const pageTitles = {
         home: '홈', students: '학생 관리', lessons: '수업 관리', attendance: '출석 관리', homework: '과제 관리', grades: '성적 관리', clinics: '클리닉 관리',
-        notes: '오답노트 & 자료 관리', internal: '내부 소통', payment: '수납 관리',
+        notes: '오답노트 & 교재', payment: '수납 관리',
       };
       const title = pageTitles[page] || '클래스 관리';
       return (
@@ -1545,7 +1579,7 @@ const PageContent = (props) => {
         case 'grades': return <GradeManagement {...props} />;      
         case 'clinics': return <ClinicManagement {...props} />; // 클리닉 관리 추가
         case 'payment': return <PaymentManagement />;
-        case 'notes': return <NotesManagement />;
+        case 'notes': return <BookManagement {...props} />; // 교재 관리 페이지로 변경
         case 'internal': return <InternalCommunication {...props} />;
         default: return <Home />; 
       }
@@ -1972,7 +2006,7 @@ const LessonManagement = ({ students, classes, lessonLogs, handleSaveLessonLog, 
             />
             
             {/* 2. 우측 구역: 선택된 수업의 일지 관리 */}
-            <div className="flex-1 bg-white p-6 rounded-xl shadow-lg">
+            <div className="flex-1 bg-white p-6 rounded-xl shadow-lg min-w-0">
                 <h3 className="text-xl font-bold mb-6 text-gray-800">
                     {selectedClass?.name || '수업'} 일지 관리
                     {selectedDate && <span className='text-base font-normal text-gray-500 ml-3'> ({selectedDate.slice(5)} 수업)</span>}
@@ -2304,12 +2338,12 @@ const AttendanceManagement = ({ students, classes, attendanceLogs, handleSaveAtt
 
         return (
             <div className="overflow-x-auto border rounded-lg max-w-full"> 
-                <table className="divide-y divide-gray-200 text-sm" style={{minWidth: `${150 + allSessionDates.length * 100}px`}}> 
+                <table className="divide-y divide-gray-200 text-sm"> 
                     <thead className="bg-gray-50">
                         <tr>
-                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 sticky left-0 bg-gray-50 z-20 min-w-[150px] border-r">수강생 이름</th> 
+                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 sticky left-0 top-0 bg-gray-50 z-30 min-w-[150px] border-r">수강생 이름</th> 
                             {allSessionDates.map((date, index) => (
-                                <th key={date} className="px-3 py-2 text-center text-xs font-semibold text-gray-600 min-w-[90px]">
+                                <th key={date} className="px-3 py-2 text-center text-xs font-semibold text-gray-600 min-w-[90px] sticky top-0 bg-gray-50 z-10">
                                     {index + 1}회차<br/>
                                     <span className='font-normal text-gray-400'>{date.slice(5)}</span>
                                 </th>
@@ -2319,12 +2353,12 @@ const AttendanceManagement = ({ students, classes, attendanceLogs, handleSaveAtt
                     <tbody className="bg-white divide-y divide-gray-200">
                         {classStudents.map(student => (
                             <tr key={student.id} className="hover:bg-gray-50">
-                                <td className="px-4 py-2 font-medium sticky left-0 bg-white hover:bg-gray-50 z-10 min-w-[150px] text-left border-r">{student.name}</td> 
+                                <td className="px-4 py-2 font-medium sticky left-0 bg-white hover:bg-gray-50 z-20 min-w-[150px] text-left border-r">{student.name}</td> 
                                 {allSessionDates.map(date => {
                                     const status = tempTableAttendanceMap[date] ? (tempTableAttendanceMap[date][student.id] || '미체크') : (allAttendanceMap[date] ? (allAttendanceMap[date][student.id] || '미체크') : '미체크');
                                     
                                     return (
-                                        <td key={date} className="px-1 py-1 text-center relative group">
+                                        <td key={date} className="px-1 py-1 text-center relative group z-10">
                                             <select
                                                 value={status}
                                                 onChange={(e) => handleTableChange(student.id, date, e.target.value)}
@@ -2411,7 +2445,7 @@ const AttendanceManagement = ({ students, classes, attendanceLogs, handleSaveAtt
                 />
             </div>
 
-            <div className="flex-1 bg-white p-6 rounded-xl shadow-lg">
+            <div className="flex-1 bg-white p-6 rounded-xl shadow-lg min-w-0 overflow-hidden">
                 <div className="flex justify-between items-center mb-4 border-b pb-4">
                     <h3 className="text-xl font-bold text-gray-800">
                         {selectedClass ? `${selectedClass.name} 출결 기록` : '출석 기록 조회'}
@@ -2455,7 +2489,7 @@ const AttendanceManagement = ({ students, classes, attendanceLogs, handleSaveAtt
                     selectedDate ? (
                          <SessionAttendanceCards />
                     ) : (
-                        <div ref={tableRef} className="space-y-4"> 
+                        <div ref={tableRef} className="space-y-4 max-h-[calc(85vh-150px)] overflow-y-auto pr-2"> 
                             <p className="text-gray-600 text-sm">좌측 회차 목록에서 날짜를 선택하면 개별 수정이 가능합니다.</p>
                             <AllAttendanceTable />
                         </div>
@@ -3160,47 +3194,94 @@ const PaymentManagement = () => {
     )
 };
 
-// --- NotesManagement 컴포넌트 (유지) ---
-const NotesManagement = () => { 
-    const [problemImage, setProblemImage] = useState(null);
-    const handleImageUpload = (e) => {
-        if (e.target.files && e.target.files[0]) {
-            setProblemImage(URL.createObjectURL(e.target.files[0]));
-        }
-    }
+// --- BookManagement 컴포넌트 (교재 정보 입력 페이지) ---
+const BookManagement = ({ students, handleSaveStudent }) => {
+    const [searchTerm, setSearchTerm] = useState('');
+    const [editingStudent, setEditingStudent] = useState(null);
+    const [isModalOpen, setIsModalOpen] = useState(false);
+
+    const filteredStudents = students.filter(s => {
+        const matchesSearch = s.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                              s.school.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                              s.books.some(book => book.toLowerCase().includes(searchTerm.toLowerCase()));
+        return matchesSearch;
+    });
+
+    const handleEdit = (student) => {
+        setEditingStudent(student);
+        setIsModalOpen(true);
+    };
+
+    const handleCloseModal = () => {
+        setEditingStudent(null);
+        setIsModalOpen(false);
+    };
+    
+
     return (
-        <div className="space-y-6">
-            <div className="bg-white p-6 rounded-xl shadow-lg">
-                <h3 className="text-xl font-bold mb-4">문제 은행 등록</h3>
-                <div className="p-4 border rounded-lg grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                    <div className="space-y-2">
-                        <input type="text" placeholder="교재" className="p-2 border rounded w-full" />
-                        <input type="text" placeholder="단원" className="p-2 border rounded w-full" />
-                        <input type="text" placeholder="문제 번호" className="p-2 border rounded w-full" />
-                        <input type="file" accept="image/*" onChange={handleImageUpload} className="w-full text-xs" />
-                        <button className="w-full bg-blue-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-600">등록하기</button>
-                    </div>
-                    <div>
-                        <p className="text-sm text-gray-500 mb-2">이미지 미리보기:</p>
-                        <div className="w-full h-48 border-2 border-dashed rounded-lg flex items-center justify-center bg-gray-50">
-                            {problemImage ? <img src={problemImage} alt="Problem Preview" className="max-h-full max-w-full object-contain" /> : <span className="text-gray-400 text-sm">이미지를 업로드하세요</span>}
-                        </div>
-                    </div>
+        <div className="bg-white p-6 rounded-xl shadow-lg min-h-[85vh]">
+            <h3 className="text-xl font-bold mb-6 border-b pb-2">교재 정보 관리</h3>
+            
+            <div className="mb-4 flex space-x-4">
+                <div className="relative flex-1">
+                    <Icon name="search" className="w-4 h-4 absolute top-3 left-3 text-gray-400" />
+                    <input 
+                        type="text" 
+                        placeholder="학생 이름, 교재명 검색" 
+                        value={searchTerm} 
+                        onChange={e => setSearchTerm(e.target.value)}
+                        className="w-full p-2 pl-8 border-2 text-sm border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
                 </div>
             </div>
-            <div className="bg-white p-6 rounded-xl shadow-lg">
-                <h3 className="text-xl font-bold mb-4">오답노트 자동 생성</h3>
-                <div className="flex items-center space-x-4 text-sm">
-                     <select className="p-2 border rounded-lg">
-                        <option>학생 선택</option>
-                        {initialStudents.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                    </select>
-                    <button className="bg-green-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-600">PDF 생성</button>
-                </div>
+
+            <div className="overflow-x-auto border rounded-lg text-sm">
+                <table className="min-w-full text-left divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                        <tr>
+                            <th className="p-3 font-semibold text-gray-600">학생명</th>
+                            <th className="p-3 font-semibold text-gray-600">학교/학년</th>
+                            <th className="p-3 font-semibold text-gray-600">보유 교재 목록</th>
+                            <th className="p-3 font-semibold text-gray-600">관리</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                        {filteredStudents.map(s => (
+                            <tr key={s.id} className="hover:bg-gray-50">
+                                <td className="p-3 font-bold">{s.name}</td>
+                                <td className="p-3">{s.school} {s.grade}학년</td>
+                                <td className="p-3">
+                                    <div className='flex flex-wrap gap-1'>
+                                        {s.books.map((book, index) => (
+                                            <span key={index} className='px-2 py-0.5 bg-gray-200 text-xs rounded-full'>{book}</span>
+                                        ))}
+                                    </div>
+                                </td>
+                                <td className="p-3">
+                                    <button onClick={() => handleEdit(s)} className="text-blue-500 hover:text-blue-700 p-1" title="교재 수정">
+                                        <Icon name="edit" className="w-4 h-4" />
+                                    </button>
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
             </div>
+            
+            {/* StudentFormModal 재사용 (교재 정보 입력 포함) */}
+            {editingStudent && (
+                <StudentFormModal 
+                    isOpen={isModalOpen} 
+                    onClose={handleCloseModal} 
+                    student={editingStudent} 
+                    // 이 모달에서는 클래스 목록은 필요 없지만, 컴포넌트 구조상 필요
+                    allClasses={[]} 
+                    onSave={handleSaveStudent}
+                />
+            )}
         </div>
-    )
-};
+    );
+}
 
 // --- ClinicManagement 컴포넌트 (추가된 클리닉 관리 페이지) ---
 const ClinicManagement = ({ students, clinicLogs, handleSaveClinicLog, handleDeleteClinicLog }) => {
@@ -3213,6 +3294,11 @@ const ClinicManagement = ({ students, clinicLogs, handleSaveClinicLog, handleDel
     const filteredLogs = clinicLogs
         .filter(log => log.date === filterDate)
         .sort((a, b) => a.checkIn.localeCompare(b.checkIn));
+        
+    // 클리닉 신청 학생 명단 (등원 예정 시간이 있는 재원생)
+    const scheduledStudents = students
+        .filter(s => s.status === '재원생' && s.clinicTime)
+        .sort((a, b) => a.clinicTime.localeCompare(b.clinicTime));
 
     const handleEdit = (log) => {
         setEditingLog(log);
@@ -3230,62 +3316,88 @@ const ClinicManagement = ({ students, clinicLogs, handleSaveClinicLog, handleDel
     };
 
     return (
-        <div className="bg-white p-6 rounded-xl shadow-lg min-h-[85vh]">
-            <div className="flex justify-between items-center mb-6 border-b pb-4">
-                <h3 className="text-xl font-bold">클리닉 기록 관리</h3>
-                <div className='flex space-x-3 items-center'>
-                    <input 
-                        type='date' 
-                        value={filterDate} 
-                        onChange={e => setFilterDate(e.target.value)} 
-                        className='p-2 border rounded-lg text-sm'
-                    />
-                    <button 
-                        onClick={() => { setEditingLog(null); setIsModalOpen(true); }} 
-                        className="flex items-center bg-blue-500 text-white text-sm font-bold py-2 px-4 rounded-lg hover:bg-blue-600 transition duration-200"
-                    >
-                        <Icon name="plus" className="w-4 h-4 mr-2" /> 기록 추가
-                    </button>
-                </div>
+        <div className="flex h-full min-h-[85vh] space-x-6">
+            
+            {/* 1. 좌측: 클리닉 신청 학생 명단 (2025-11-29 기준) */}
+            <div className="w-72 bg-white p-4 rounded-xl shadow-lg flex flex-col space-y-4 flex-shrink-0">
+                 <h4 className="font-bold text-base border-b pb-2">클리닉 신청 명단</h4>
+                 <div className='flex items-center text-sm text-gray-600'><Icon name='calendar' className='w-4 h-4 mr-1'/> {filterDate} 기준</div>
+                 
+                 <div className='flex-1 overflow-y-auto pr-2 space-y-2 text-sm'>
+                      {scheduledStudents.length === 0 ? (
+                           <p className='text-gray-500 text-sm'>신청 학생이 없습니다.</p>
+                      ) : (
+                           scheduledStudents.map(s => {
+                               const isInLog = filteredLogs.some(log => log.studentId === s.id);
+                                return (
+                                     <div key={s.id} className={`p-2 border rounded-lg ${isInLog ? 'bg-green-100' : 'bg-gray-100'}`}>
+                                          <p className='font-bold'>{s.name}</p>
+                                          <p className='text-xs text-gray-600'>예정: {s.clinicTime} | 상태: {isInLog ? '기록 완료' : '대기'}</p>
+                                     </div>
+                                );
+                           })
+                      )}
+                 </div>
             </div>
 
-            <div className="overflow-x-auto border rounded-lg text-sm">
-                <table className="min-w-full text-left divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                        <tr>
-                            {['학생명', '등원 시간', '하원 시간', '담당 조교', '코멘트', '관리'].map(h => <th key={h} className="p-3 font-semibold text-gray-600">{h}</th>)}
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-200">
-                        {filteredLogs.length === 0 ? (
-                            <tr><td colSpan="6" className="p-4 text-center text-gray-500">{filterDate}에 등록된 클리닉 기록이 없습니다.</td></tr>
-                        ) : (
-                            filteredLogs.map(log => (
-                                <tr key={log.id} className="hover:bg-gray-50">
-                                    <td className="p-3 font-bold">{log.studentName}</td>
-                                    <td className="p-3">{log.checkIn}</td>
-                                    <td className="p-3">{log.checkOut}</td>
-                                    <td className="p-3">{log.tutor}</td>
-                                    <td className="p-3 max-w-xs truncate">{log.comment}</td>
-                                    <td className="p-3 flex space-x-2">
-                                        <button onClick={() => handleEdit(log)} className="text-blue-500 hover:text-blue-700 p-1" title="수정"><Icon name="edit" className="w-4 h-4" /></button>
-                                        <button onClick={() => handleDeleteClinicLog(log.id)} className="text-red-500 hover:text-red-700 p-1" title="삭제"><Icon name="trash" className="w-4 h-4" /></button>
-                                    </td>
-                                </tr>
-                            ))
-                        )}
-                    </tbody>
-                </table>
+            {/* 2. 우측: 클리닉 기록 입력/조회 */}
+            <div className="flex-1 bg-white p-6 rounded-xl shadow-lg">
+                <div className="flex justify-between items-center mb-6 border-b pb-4">
+                    <h3 className="text-xl font-bold">클리닉 기록 입력 ({filterDate})</h3>
+                    <div className='flex space-x-3 items-center'>
+                        <input 
+                            type='date' 
+                            value={filterDate} 
+                            onChange={e => setFilterDate(e.target.value)} 
+                            className='p-2 border rounded-lg text-sm'
+                        />
+                        <button 
+                            onClick={() => { setEditingLog(null); setIsModalOpen(true); }} 
+                            className="flex items-center bg-blue-500 text-white text-sm font-bold py-2 px-4 rounded-lg hover:bg-blue-600 transition duration-200"
+                        >
+                            <Icon name="plus" className="w-4 h-4 mr-2" /> 기록 추가
+                        </button>
+                    </div>
+                </div>
+
+                <div className="overflow-x-auto border rounded-lg text-sm">
+                    <table className="min-w-full text-left divide-y divide-gray-200">
+                        <thead className="bg-gray-50">
+                            <tr>
+                                {['학생명', '등원 시간', '하원 시간', '담당 조교', '코멘트', '관리'].map(h => <th key={h} className="p-3 font-semibold text-gray-600">{h}</th>)}
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-200">
+                            {filteredLogs.length === 0 ? (
+                                <tr><td colSpan="6" className="p-4 text-center text-gray-500">{filterDate}에 등록된 클리닉 기록이 없습니다.</td></tr>
+                            ) : (
+                                filteredLogs.map(log => (
+                                    <tr key={log.id} className="hover:bg-gray-50">
+                                        <td className="p-3 font-bold">{log.studentName}</td>
+                                        <td className="p-3">{log.checkIn}</td>
+                                        <td className="p-3">{log.checkOut}</td>
+                                        <td className="p-3">{log.tutor}</td>
+                                        <td className="p-3 max-w-xs truncate">{log.comment}</td>
+                                        <td className="p-3 flex space-x-2">
+                                            <button onClick={() => handleEdit(log)} className="text-blue-500 hover:text-blue-700 p-1" title="수정"><Icon name="edit" className="w-4 h-4" /></button>
+                                            <button onClick={() => handleDeleteClinicLog(log.id)} className="text-red-500 hover:text-red-700 p-1" title="삭제"><Icon name="trash" className="w-4 h-4" /></button>
+                                        </td>
+                                    </tr>
+                                ))
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+                
+                <ClinicLogModal 
+                    isOpen={isModalOpen} 
+                    onClose={handleCloseModal} 
+                    onSave={handleLogSave}
+                    logToEdit={editingLog}
+                    students={students}
+                    defaultDate={filterDate}
+                />
             </div>
-            
-            <ClinicLogModal 
-                isOpen={isModalOpen} 
-                onClose={handleCloseModal} 
-                onSave={handleLogSave}
-                logToEdit={editingLog}
-                students={students}
-                defaultDate={filterDate}
-            />
         </div>
     );
 };
