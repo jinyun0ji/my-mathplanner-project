@@ -46,8 +46,8 @@ const initialStudentMemos = {
 
 
 const initialHomeworkAssignments = [
-    { id: 1, classId: 1, date: '2025-11-03', content: 'RPM P.10 ~ P.15', students: [1, 4, 6], totalQuestions: 30, isAssignmentDate: true, book: '수학(상) RPM' },
-    { id: 2, classId: 2, date: '2025-11-04', content: '개념원리 P.20 ~ P.25', students: [2], totalQuestions: 20, isAssignmentDate: true, book: '개념원리 수학I' },
+    { id: 1, classId: 1, date: '2025-11-03', content: 'RPM P.10 ~ P.15', students: [1, 4, 6], startQuestion: 1, endQuestion: 30, totalQuestions: 30, isAssignmentDate: true, book: '수학(상) RPM' },
+    { id: 2, classId: 2, date: '2025-11-04', content: '개념원리 P.20 ~ P.25', students: [2], startQuestion: 5, endQuestion: 24, totalQuestions: 20, isAssignmentDate: true, book: '개념원리 수학I' },
 ];
 
 const initialHomeworkResults = {
@@ -63,7 +63,7 @@ const initialHomeworkResults = {
         } 
     },  
     6: { 1: {} }, 
-    2: { 2: { "1": "맞음", "2": "틀림", "3": "맞음", "4": "고침", "5": "맞음" } }, 
+    2: { 2: { "5": "맞음", "6": "틀림", "7": "맞음", "8": "고침", "9": "맞음" } }, 
 };
 
 
@@ -609,7 +609,10 @@ const HomeworkAssignmentModal = ({ isOpen, onClose, onSave, classId, assignment 
     
     const [content, setContent] = useState(assignment?.content || '');
     const [date, setDate] = useState(assignment?.date || new Date().toISOString().slice(0, 10));
-    const [totalQuestions, setTotalQuestions] = useState(assignment?.totalQuestions || 20); 
+    // 문항 범위 필드로 변경
+    const [startQuestion, setStartQuestion] = useState(assignment?.startQuestion || 1); 
+    const [endQuestion, setEndQuestion] = useState(assignment?.endQuestion || 20); 
+    
     const [selectedStudents, setSelectedStudents] = useState(initialStudentIds); 
     const [selectedBook, setSelectedBook] = useState(assignment?.book || ''); // 요청 3: 교재 선택 필드
 
@@ -621,11 +624,16 @@ const HomeworkAssignmentModal = ({ isOpen, onClose, onSave, classId, assignment 
         classStudents.flatMap(s => s.books)
     )).sort();
 
+    // 총 문항 수 계산
+    const totalQuestions = (Number(endQuestion) >= Number(startQuestion)) ? 
+                           (Number(endQuestion) - Number(startQuestion) + 1) : 0;
+
 
     useEffect(() => {
         setContent(assignment?.content || '');
         setDate(assignment?.date || new Date().toISOString().slice(0, 10));
-        setTotalQuestions(assignment?.totalQuestions || 20);
+        setStartQuestion(assignment?.startQuestion || 1);
+        setEndQuestion(assignment?.endQuestion || 20);
         setSelectedStudents(initialStudentIds);
         setSelectedBook(assignment?.book || (availableBooks.length > 0 ? availableBooks[0] : '')); // 기본값 설정
     }, [assignment, selectedClass, students]);
@@ -642,8 +650,8 @@ const HomeworkAssignmentModal = ({ isOpen, onClose, onSave, classId, assignment 
     const handleSubmit = (e) => {
         e.preventDefault();
         if (content.trim() === '') return;
-        if (Number(totalQuestions) <= 0) {
-            alert("총 문항 수는 1 이상이어야 합니다.");
+        if (totalQuestions <= 0) {
+            alert("끝 문항 번호는 시작 문항 번호보다 크거나 같아야 합니다.");
             return;
         }
         if (selectedStudents.length === 0) {
@@ -660,7 +668,9 @@ const HomeworkAssignmentModal = ({ isOpen, onClose, onSave, classId, assignment 
             classId,
             date,
             content,
-            totalQuestions: Number(totalQuestions),
+            startQuestion: Number(startQuestion), // 저장
+            endQuestion: Number(endQuestion),     // 저장
+            totalQuestions: totalQuestions,
             students: selectedStudents, 
             isAssignmentDate: true,
             book: selectedBook, // 교재 정보 저장
@@ -688,15 +698,30 @@ const HomeworkAssignmentModal = ({ isOpen, onClose, onSave, classId, assignment 
                             ))}
                         </select>
                         
-                        <input 
-                            type="number"
-                            value={totalQuestions}
-                            onChange={e => setTotalQuestions(e.target.value)}
-                            placeholder="총 문항 수"
-                            required
-                            min="1"
-                            className="p-2 border rounded w-full mt-2" 
-                        />
+                        {/* 문항 범위 입력 */}
+                        <div className='grid grid-cols-2 gap-2 mt-2'>
+                            <input 
+                                type="number"
+                                value={startQuestion}
+                                onChange={e => setStartQuestion(e.target.value)}
+                                placeholder="시작 문항 번호"
+                                required
+                                min="1"
+                                className="p-2 border rounded w-full" 
+                            />
+                            <input 
+                                type="number"
+                                value={endQuestion}
+                                onChange={e => setEndQuestion(e.target.value)}
+                                placeholder="끝 문항 번호"
+                                required
+                                min={startQuestion}
+                                className="p-2 border rounded w-full" 
+                            />
+                        </div>
+                        <p className={`text-xs mt-1 ${totalQuestions <= 0 ? 'text-red-500' : 'text-gray-500'}`}>
+                            총 문항 수: {totalQuestions}개
+                        </p>
                          <textarea 
                             value={content} 
                             onChange={e => setContent(e.target.value)} 
@@ -1119,13 +1144,18 @@ export default function App() { // export default로 수정
     if (isEdit) {
         setHomeworkAssignments(prev => prev.map(a => a.id === assignmentData.id ? { ...a, ...assignmentData } : a));
     } else {
+        // totalQuestions은 startQuestion과 endQuestion으로 계산
+        const calculatedTotalQuestions = Number(assignmentData.endQuestion) - Number(assignmentData.startQuestion) + 1;
+
         const newAssignment = { 
             ...assignmentData, 
             id: Date.now(), 
             students: assignmentData.students, 
-            totalQuestions: assignmentData.totalQuestions || 20, 
+            totalQuestions: calculatedTotalQuestions,
             isAssignmentDate: true,
             book: assignmentData.book || '교재 정보 없음', // 교재 정보 저장
+            startQuestion: Number(assignmentData.startQuestion),
+            endQuestion: Number(assignmentData.endQuestion),
         }; 
         setHomeworkAssignments(prev => [newAssignment, ...prev]);
     }
@@ -1244,6 +1274,7 @@ export default function App() { // export default로 수정
   const managementProps = {
     students, classes, lessonLogs, attendanceLogs, 
     homeworkAssignments, homeworkResults, tests, grades, studentMemos, videoProgress, announcements, 
+    setAnnouncements, // Announcements 상태 업데이트 함수 전달 (요청 6 오류 해결)
     getClassesNames,
     handleSaveStudent, handleDeleteStudent,
     handleSaveClass, 
@@ -2410,7 +2441,11 @@ const HomeworkManagement = ({ students, classes, homeworkAssignments, homeworkRe
         const tableRef = useRef(null);
         const totalQuestions = assignment.totalQuestions;
         const assignmentId = assignment.id;
-        const questionIds = Array.from({ length: totalQuestions }, (_, i) => String(i + 1)); 
+        // 문항 ID 목록 (startQuestion, startQuestion+1, ..., endQuestion)
+        const questionIds = Array.from({ length: assignment.endQuestion - assignment.startQuestion + 1 }, (_, i) => 
+            String(assignment.startQuestion + i)
+        ); 
+        
         const RESULT_OPTIONS = ['맞음', '틀림', '고침', '미체크'];
         
         // **getSummaryCounts 함수 정의:** (오류 해결)
@@ -2538,6 +2573,13 @@ const HomeworkManagement = ({ students, classes, homeworkAssignments, homeworkRe
             alert("과제 검사 결과가 저장되었습니다.");
         };
 
+        // 완성율 계산
+        const calculateCompletion = (results) => {
+            const summary = getSummaryCounts(results);
+            const checkedCount = totalQuestions - summary['미체크'];
+            return Math.round((checkedCount / totalQuestions) * 100);
+        }
+
 
         return (
             <div className="overflow-x-auto">
@@ -2556,9 +2598,9 @@ const HomeworkManagement = ({ students, classes, homeworkAssignments, homeworkRe
                     <table className="min-w-full divide-y divide-gray-200 text-xs">
                         <thead className="bg-gray-50">
                             <tr>
-                                <th className="p-2 text-left text-xs font-semibold text-gray-600 uppercase w-32 sticky left-0 bg-gray-50 z-20 border-r">학생명 (결과)</th>
+                                <th className="p-2 text-left text-xs font-semibold text-gray-600 uppercase w-32 sticky left-0 bg-gray-50 z-20 border-r">학생명 (완성율)</th>
                                 {questionIds.map(id => (
-                                    <th key={id} className="p-1 text-center text-xs font-semibold text-gray-600 min-w-[50px]">{id}번</th>
+                                    <th key={id} className="p-1 text-center text-xs font-semibold text-gray-600 min-w-[50px]">{id}</th>
                                 ))}
                             </tr>
                         </thead>
@@ -2567,13 +2609,15 @@ const HomeworkManagement = ({ students, classes, homeworkAssignments, homeworkRe
                                 // 과제가 할당된 학생만 표시 (요청 5 반영)
                                 if (!assignment.students.includes(student.id)) return null; 
                                 
-                                const summary = getSummaryCounts(tempResults[student.id]);
+                                const completionRate = calculateCompletion(tempResults[student.id]);
                                 
                                 return (
                                     <tr key={student.id} className="hover:bg-gray-50">
                                         <td className="p-2 font-medium sticky left-0 bg-white hover:bg-gray-50 z-1 text-left border-r min-w-[120px]">
                                             {student.name}
-                                            <p className='text-xs font-normal text-gray-500 mt-0.5'>맞: {summary['맞음']}, 틀: {summary['틀림']}, 고: {summary['고침']}</p>
+                                            <span className={`ml-2 text-xs font-bold ${completionRate === 100 ? 'text-green-600' : completionRate > 50 ? 'text-blue-600' : 'text-red-500'}`}>
+                                                ({completionRate}%)
+                                            </span>
                                         </td>
                                         
                                         {questionIds.map(qId => {
@@ -2661,7 +2705,7 @@ const HomeworkManagement = ({ students, classes, homeworkAssignments, homeworkRe
                                                 className={`p-3 border rounded-lg cursor-pointer transition duration-150 ${selectedAssignment?.id === assignment.id ? 'bg-blue-200 border-blue-500 shadow-md' : 'bg-white hover:bg-blue-50'}`}
                                             >
                                                 <p className="font-bold">{assignment.date} 등록 (검사일: {checkDate ? checkDate.slice(5) : '미정'})</p>
-                                                <p className="text-xs truncate">교재: {assignment.book} / 할당 학생: {assignment.students.length}명 / {assignment.content}</p>
+                                                <p className="text-xs truncate">교재: {assignment.book} / 문항: {assignment.startQuestion}~{assignment.endQuestion} ({assignment.totalQuestions}개)</p>
                                             </div>
                                         )
                                     })
@@ -2680,7 +2724,7 @@ const HomeworkManagement = ({ students, classes, homeworkAssignments, homeworkRe
                                             <button onClick={() => handleDeleteHomeworkAssignment(selectedAssignment.id)} className="text-red-500 hover:text-red-700" title="삭제"><Icon name="trash" className="w-4 h-4" /></button>
                                         </div>
                                     </div>
-                                    <p className="text-xs font-bold text-gray-600 mb-4">총 문항 수: {selectedAssignment.totalQuestions}개</p>
+                                    <p className="text-xs font-bold text-gray-600 mb-4">문항 범위: {selectedAssignment.startQuestion}~{selectedAssignment.endQuestion} (총 {selectedAssignment.totalQuestions}개)</p>
                                     
                                     <h5 className="font-bold mt-4 mb-2 text-sm">문항별 결과 입력 ({selectedAssignment.students.length}명)</h5>
                                     
@@ -3060,7 +3104,7 @@ const InternalCommunication = ({ announcements, handleSaveAnnouncement }) => {
 };
 
 // --- Announcement 컴포넌트 (요청 6) ---
-const Announcement = ({ announcements, handleSaveAnnouncement }) => {
+const Announcement = ({ announcements, handleSaveAnnouncement, setAnnouncements }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [allAnnouncements, setAllAnnouncements] = useState(announcements);
 
@@ -3080,17 +3124,11 @@ const Announcement = ({ announcements, handleSaveAnnouncement }) => {
     }, [announcements]);
     
     const handleTogglePin = (id) => {
-        setAllAnnouncements(prev => {
+        // App.js의 setAnnouncements를 호출하여 전역 상태 업데이트
+        setAnnouncements(prev => {
             const updated = prev.map(ann => 
                 ann.id === id ? { ...ann, isPinned: !ann.isPinned } : ann
             );
-            // 상태 업데이트 후 재정렬 로직 호출
-            const now = new Date();
-            updated.sort((a, b) => {
-                if (a.isPinned && !b.isPinned) return -1;
-                if (!a.isPinned && b.isPinned) return 1;
-                return new Date(b.date) - new Date(a.date); // 최신순
-            });
             return updated;
         });
     }
