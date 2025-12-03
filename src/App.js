@@ -2337,7 +2337,7 @@ const AttendanceManagement = ({ students, classes, attendanceLogs, handleSaveAtt
         };
 
         return (
-            <div className="overflow-x-auto border rounded-lg max-w-full"> 
+            <div className="overflow-x-visible border rounded-lg max-w-full"> 
                 <table className="divide-y divide-gray-200 text-sm"> 
                     <thead className="bg-gray-50">
                         <tr>

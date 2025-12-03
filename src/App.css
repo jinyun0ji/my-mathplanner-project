@@ -36,3 +36,31 @@
     transform: rotate(360deg);
   }
 }
+
+/* Custom Scrollbar for Webkit Browsers (Chrome, Safari) */
+.overflow-x-scroll, 
+.overflow-x-auto {
+    /* 1. 스크롤바 자체의 너비/높이 정의 */
+    scrollbar-width: thin; /* Firefox */
+    scrollbar-color: #a0aec0 #edf2f7; /* Firefox (thumb track) */
+}
+
+.overflow-x-scroll::-webkit-scrollbar, 
+.overflow-x-auto::-webkit-scrollbar {
+    height: 10px; /* 가로 스크롤바의 높이 */
+}
+
+/* 2. 스크롤바 트랙(배경) 색상 정의 */
+.overflow-x-scroll::-webkit-scrollbar-track,
+.overflow-x-auto::-webkit-scrollbar-track {
+    background: #edf2f7; /* Tailwind gray-200 느낌 */
+    border-radius: 10px;
+}
+
+/* 3. 스크롤바 썸(바) 색상 정의 */
+.overflow-x-scroll::-webkit-scrollbar-thumb,
+.overflow-x-auto::-webkit-scrollbar-thumb {
+    background-color: #a0aec0; /* Tailwind gray-400 느낌 */
+    border-radius: 10px;
+    border: 3px solid #edf2f7; /* 트랙과 썸 사이에 여백 추가 */
+}

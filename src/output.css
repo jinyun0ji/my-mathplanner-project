@@ -988,6 +988,12 @@
 .overflow-x-hidden {
   overflow-x: hidden;
 }
+.overflow-x-scroll {
+  overflow-x: scroll;
+}
+.overflow-x-visible {
+  overflow-x: visible;
+}
 .overflow-y-auto {
   overflow-y: auto;
 }
