@@ -22,12 +22,12 @@ const initialClasses = [
 ];
 
 const initialLessonLogs = [
-    // 정규 수업일 (월: 11/3, 11/10, 11/17... / 금: 11/1, 11/7, 11/14...) 에 맞게 재조정
-    { id: 1, classId: 1, date: '2025-11-03', progress: '다항식의 연산 P.12 ~ P.18', iframeCode: '<iframe width="560" height="315" src="https://www.youtube.com/embed/mWkuigsWe4A" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>', materialUrl: '수업자료_1103.pdf' }, 
-    { id: 2, classId: 2, date: '2025-11-04', progress: '집합의 개념 및 포함 관계', iframeCode: '', materialUrl: '수업자료_1104.pdf' }, // A2반 화요일 수업일 (11/4 화요일 맞음)
-    { id: 3, classId: 1, date: '2025-11-07', progress: '나머지 정리', iframeCode: '', materialUrl: '' }, // A1반 금요일 수업일 (11/7 금요일 맞음)
-    { id: 4, classId: 1, date: '2025-11-10', progress: '인수분해', iframeCode: '', materialUrl: '' }, // A1반 월요일 수업일 (11/10 월요일 맞음)
-    { id: 5, classId: 1, date: '2025-11-14', progress: '복소수', iframeCode: '', materialUrl: '' }, // A1반 금요일 수업일 (11/14 금요일 맞음)
+    // progress 필드에 예약 시간 필드 추가: scheduleTime
+    { id: 1, classId: 1, date: '2025-11-03', progress: '다항식의 연산 P.12 ~ P.18', iframeCode: '<iframe width="560" height="315" src="https://www.youtube.com/embed/mWkuigsWe4A" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>', materialUrl: '수업자료_1103.pdf', scheduleTime: '2025-11-03T21:30' }, 
+    { id: 2, classId: 2, date: '2025-11-04', progress: '집합의 개념 및 포함 관계', iframeCode: '', materialUrl: '수업자료_1104.pdf', scheduleTime: '2025-11-04T21:30' }, 
+    { id: 3, classId: 1, date: '2025-11-07', progress: '나머지 정리', iframeCode: '', materialUrl: '', scheduleTime: '2025-11-07T21:30' }, 
+    { id: 4, classId: 1, date: '2025-11-10', progress: '인수분해', iframeCode: '', materialUrl: '', scheduleTime: '2025-11-10T21:30' }, 
+    { id: 5, classId: 1, date: '2025-11-14', progress: '복소수', iframeCode: '', materialUrl: '', scheduleTime: '2025-11-14T21:30' }, 
 ];
 
 const initialAttendanceLogs = [
@@ -351,11 +351,16 @@ const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = null, clas
     const selectedClass = classes.find(c => c.id === classId);
     const sessions = selectedClass ? calculateClassSessions(selectedClass) : [];
 
+    // 현재 시간을 ISO 8601 형식의 YYYY-MM-DDThh:mm으로 변환
+    const now = new Date();
+    const defaultDateTime = now.toISOString().slice(0, 16);
+    
     const [formData, setFormData] = useState({
         date: log?.date || defaultDate || new Date().toISOString().slice(0, 10),
         progress: log?.progress || '',
         iframeCode: log?.iframeCode || '', 
-        materialFileName: log?.materialUrl || '', // 필드명 변경: materialUrl -> materialFileName
+        materialFileName: log?.materialUrl || '', 
+        scheduleTime: log?.scheduleTime || defaultDateTime, // 🚨 예약 시간 필드 추가
     });
     
     // defaultDate가 변경될 때마다 폼 상태 업데이트
@@ -366,6 +371,7 @@ const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = null, clas
             progress: log?.progress || '',
             iframeCode: log?.iframeCode || '', 
             materialFileName: log?.materialUrl || '',
+            scheduleTime: log?.scheduleTime || defaultDateTime, // 🚨 예약 시간 필드 업데이트
         }));
     }, [log, defaultDate]);
 
@@ -410,12 +416,13 @@ const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = null, clas
             date: formData.date,
             progress: formData.progress,
             iframeCode: formData.iframeCode, 
-            materialUrl: formData.materialFileName, // 저장 시 materialUrl (파일 이름)
+            materialUrl: formData.materialFileName, 
+            scheduleTime: formData.scheduleTime, // 🚨 예약 시간 저장
         };
 
         onSave(dataToSave, isEdit);
         
-        // 🚨 수업 일지 자동 알림 기능 🚨
+        // 🚨 수업 일지 자동 알림 기능 
         if (selectedClass) {
             const studentNames = selectedClass.students
                                         .map(sId => students.find(s => s.id === sId)?.name)
@@ -423,8 +430,9 @@ const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = null, clas
                                         .join(', ');
             
             const action = isEdit ? '수정' : '등록';
+            const alertTime = new Date(formData.scheduleTime).toLocaleString('ko-KR', { timeStyle: 'short', dateStyle: 'short' });
             const message = `[${selectedClass.name}] ${dataToSave.date.slice(5)} 수업 일지 ${action} 완료`;
-            const details = `진도: ${dataToSave.progress}. 학생 (${studentNames}) 및 학부모에게 자동 알림 발송됨. (모의)`;
+            const details = `알림 예약 시간: ${alertTime}. 진도: ${dataToSave.progress}. 학생 (${studentNames}) 및 학부모에게 발송 예정. (모의)`;
             
             logNotification('lesson_log', message, details); // 알림 로깅
         }
@@ -436,6 +444,21 @@ const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = null, clas
         <Modal isOpen={isOpen} onClose={onClose} title={isEdit ? `${formData.date} 수업 일지 수정` : '새 수업 일지 등록'}>
             <form onSubmit={handleSubmit} className="space-y-4 text-sm">
                 <input type="date" name="date" value={formData.date} onChange={handleChange} required className="p-2 border rounded w-full" />
+                
+                {/* 🚨 알림 예약 시간 필드 */}
+                <div className="space-y-1">
+                    <label className='block text-gray-700 font-semibold text-xs'>알림 발송 예약 시간:</label>
+                    <input 
+                        type="datetime-local" 
+                        name="scheduleTime"
+                        value={formData.scheduleTime} 
+                        onChange={handleChange} 
+                        required 
+                        className="p-2 border rounded w-full"
+                    />
+                    <p className='text-xs text-gray-500'>* 이 시간에 학생/학부모에게 알림이 발송됩니다.</p>
+                </div>
+                
                 <input type="text" name="progress" value={formData.progress} onChange={handleChange} placeholder="수업 진도 (예: 다항식의 연산 P.12 ~ P.18)" required className="p-2 border rounded w-full" />
                 
                 <textarea 
@@ -472,6 +495,7 @@ const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = null, clas
     );
 };
 
+// 🚨 학생 등록/수정 모달: 교재 관련 필드 제거
 const StudentFormModal = ({ isOpen, onClose, student = null, allClasses, onSave }) => {
     const isEdit = !!student;
     
@@ -483,8 +507,6 @@ const StudentFormModal = ({ isOpen, onClose, student = null, allClasses, onSave 
         parentPhone: student?.parentPhone || '',
         status: student?.status || '상담생',
         classes: student?.classes || [],
-        books: student?.books || [], 
-        newBook: '', 
     });
 
     useEffect(() => {
@@ -496,8 +518,6 @@ const StudentFormModal = ({ isOpen, onClose, student = null, allClasses, onSave 
             parentPhone: student?.parentPhone || '',
             status: student?.status || '상담생',
             classes: student?.classes || [],
-            books: student?.books || [],
-            newBook: '',
         });
     }, [student]);
 
@@ -517,28 +537,11 @@ const StudentFormModal = ({ isOpen, onClose, student = null, allClasses, onSave 
         }));
     };
     
-    const handleAddBook = (e) => {
-        e.preventDefault();
-        if (formData.newBook.trim()) {
-            setFormData(prev => ({
-                ...prev,
-                books: [...prev.books, prev.newBook.trim()],
-                newBook: ''
-            }));
-        }
-    };
-    
-    const handleRemoveBook = (bookToRemove) => {
-        setFormData(prev => ({
-            ...prev,
-            books: prev.books.filter(book => book !== bookToRemove)
-        }));
-    }
-
     const handleSubmit = (e) => {
         e.preventDefault();
         const dataToSave = { ...formData };
-        delete dataToSave.newBook; // 임시 필드는 저장하지 않음
+        
+        // Note: books 필드는 BookManagement에서만 관리되도록 여기서 제거
         onSave(dataToSave, isEdit ? student.id : null);
         onClose();
     };
@@ -546,65 +549,31 @@ const StudentFormModal = ({ isOpen, onClose, student = null, allClasses, onSave 
     const statusOptions = ['재원생', '상담생', '퇴원생'];
 
     return (
-        <Modal isOpen={isOpen} onClose={onClose} title={isEdit ? `${student.name} 학생 정보 수정` : '새 학생 등록'} maxWidth='max-w-3xl'>
+        <Modal isOpen={isOpen} onClose={onClose} title={isEdit ? `${student.name} 학생 정보 수정` : '새 학생 등록'} maxWidth='max-w-md'> 
             <form onSubmit={handleSubmit} className="space-y-4 text-sm"> 
+                
+                {/* 교재 관련 섹션 삭제, 기본 정보만 남김 */}
+                <input type="text" name="name" value={formData.name} onChange={handleChange} placeholder="이름" required className="p-2 border rounded w-full" />
                 <div className="grid grid-cols-2 gap-4">
-                    <div className='space-y-4'>
-                        <input type="text" name="name" value={formData.name} onChange={handleChange} placeholder="이름" required className="p-2 border rounded w-full" />
-                        <div className="grid grid-cols-2 gap-4">
-                            <input type="text" name="school" value={formData.school} onChange={handleChange} placeholder="학교" required className="p-2 border rounded w-full" />
-                            <input type="number" name="grade" value={formData.grade} onChange={handleChange} placeholder="학년" min="1" max="6" required className="p-2 border rounded w-full" />
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
-                            <input type="tel" name="phone" value={formData.phone} onChange={handleChange} placeholder="학생 연락처 (010-xxxx-xxxx)" className="p-2 border rounded w-full" />
-                            <input type="tel" name="parentPhone" value={formData.parentPhone} onChange={handleChange} placeholder="학부모 연락처 (010-xxxx-xxxx)" className="p-2 border rounded w-full" />
-                        </div>
-                        <select name="status" value={formData.status} onChange={handleChange} className="p-2 border rounded w-full">
-                            {statusOptions.map(status => <option key={status} value={status}>{status}</option>)}
-                        </select>
-                        <div className="border p-3 rounded-lg">
-                            <label className="block font-semibold mb-2">수강 강좌:</label>
-                            <div className="flex flex-wrap gap-3">
-                                {allClasses.map(cls => (
-                                    <label key={cls.id} className="flex items-center space-x-2">
-                                        <input type="checkbox" value={cls.id} checked={formData.classes.includes(cls.id)} onChange={handleClassChange} className="form-checkbox text-blue-500" />
-                                        <span>{cls.name}</span>
-                                    </label>
-                                ))}
-                            </div>
-                        </div>
-                    </div>
-                    
-                    {/* 교재 관리 섹션 */}
-                    <div className='space-y-4'>
-                        <div className="border p-3 rounded-lg bg-gray-50">
-                            <label className="block font-semibold mb-2">보유 교재 관리:</label>
-                            <div className='flex mb-2'>
-                                <input 
-                                    type="text" 
-                                    name="newBook"
-                                    value={formData.newBook}
-                                    onChange={handleChange}
-                                    placeholder="새 교재명 입력"
-                                    className="p-2 border rounded-l w-full"
-                                />
-                                <button type="button" onClick={handleAddBook} className="bg-gray-300 p-2 rounded-r hover:bg-gray-400 font-bold text-xs">추가</button>
-                            </div>
-                            <div className="space-y-1 max-h-40 overflow-y-auto pr-1">
-                                {formData.books.length === 0 ? (
-                                    <p className="text-xs text-gray-500">등록된 교재가 없습니다.</p>
-                                ) : (
-                                    formData.books.map((book, index) => (
-                                        <div key={index} className="flex justify-between items-center bg-white p-2 rounded border text-xs">
-                                            <span className='truncate'>{book}</span>
-                                            <button type="button" onClick={() => handleRemoveBook(book)} className="text-red-500 hover:text-red-700 ml-2">
-                                                <Icon name="x" className="w-3 h-3"/>
-                                            </button>
-                                        </div>
-                                    ))
-                                )}
-                            </div>
-                        </div>
+                    <input type="text" name="school" value={formData.school} onChange={handleChange} placeholder="학교" required className="p-2 border rounded w-full" />
+                    <input type="number" name="grade" value={formData.grade} onChange={handleChange} placeholder="학년" min="1" max="6" required className="p-2 border rounded w-full" />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                    <input type="tel" name="phone" value={formData.phone} onChange={handleChange} placeholder="학생 연락처 (010-xxxx-xxxx)" className="p-2 border rounded w-full" />
+                    <input type="tel" name="parentPhone" value={formData.parentPhone} onChange={handleChange} placeholder="학부모 연락처 (010-xxxx-xxxx)" className="p-2 border rounded w-full" />
+                </div>
+                <select name="status" value={formData.status} onChange={handleChange} className="p-2 border rounded w-full">
+                    {statusOptions.map(status => <option key={status} value={status}>{status}</option>)}
+                </select>
+                <div className="border p-3 rounded-lg">
+                    <label className="block font-semibold mb-2">수강 강좌:</label>
+                    <div className="flex flex-wrap gap-3">
+                        {allClasses.map(cls => (
+                            <label key={cls.id} className="flex items-center space-x-2">
+                                <input type="checkbox" value={cls.id} checked={formData.classes.includes(cls.id)} onChange={handleClassChange} className="form-checkbox text-blue-500" />
+                                <span>{cls.name}</span>
+                            </label>
+                        ))}
                     </div>
                 </div>
 
@@ -615,6 +584,7 @@ const StudentFormModal = ({ isOpen, onClose, student = null, allClasses, onSave 
         </Modal>
     );
 };
+
 
 const HomeworkAssignmentModal = ({ isOpen, onClose, onSave, classId, assignment = null, students, selectedClass }) => {
     const isEdit = !!assignment;
@@ -1084,7 +1054,8 @@ const AnnouncementModal = ({ isOpen, onClose, onSave, announcementToEdit = null,
     )
 }
 
-const ClinicLogModal = ({ isOpen, onClose, onSave, logToEdit = null, students, defaultDate }) => {
+// 🚨 클리닉 로그 모달: 학생 정보 상세화
+const ClinicLogModal = ({ isOpen, onClose, onSave, logToEdit = null, students, defaultDate, classes }) => {
     const isEdit = !!logToEdit;
     
     const [formData, setFormData] = useState({
@@ -1093,7 +1064,7 @@ const ClinicLogModal = ({ isOpen, onClose, onSave, logToEdit = null, students, d
         checkIn: logToEdit?.checkIn || '14:00',
         checkOut: logToEdit?.checkOut || '17:00',
         comment: logToEdit?.comment || '',
-        tutor: '조교A', // 현재 로그인된 조교로 고정
+        tutor: '조교A', 
     });
 
     useEffect(() => {
@@ -1133,6 +1104,12 @@ const ClinicLogModal = ({ isOpen, onClose, onSave, logToEdit = null, students, d
     };
     
     const availableStudents = students.filter(s => s.status === '재원생');
+    
+    const getStudentDisplayInfo = (student) => {
+        const classNames = student.classes.map(id => classes.find(c => c.id === id)?.name).filter(Boolean).join(', ');
+        const phoneSuffix = student.phone.slice(-4);
+        return `${student.name} (${classNames || '강좌 없음'} / ****${phoneSuffix})`;
+    };
 
     return (
         <Modal isOpen={isOpen} onClose={onClose} title={isEdit ? '클리닉 기록 수정' : '새 클리닉 기록 작성'}>
@@ -1140,8 +1117,8 @@ const ClinicLogModal = ({ isOpen, onClose, onSave, logToEdit = null, students, d
                 <input type="date" name="date" value={formData.date} onChange={handleChange} required className="p-2 border rounded w-full" />
                 
                 <select name="studentId" value={formData.studentId} onChange={handleChange} required className="p-2 border rounded w-full">
-                    <option value="" disabled>-- 학생 선택 --</option>
-                    {availableStudents.map(s => <option key={s.id} value={s.id}>{s.name} ({s.school} {s.grade}학년)</option>)}
+                    <option value="" disabled>-- 학생 선택 (이름 / 강좌 / 번호 뒷 4자리) --</option>
+                    {availableStudents.map(s => <option key={s.id} value={s.id}>{getStudentDisplayInfo(s)}</option>)}
                 </select>
                 
                 <div className='grid grid-cols-2 gap-4'>
@@ -1180,7 +1157,7 @@ export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [page, setPage] = useState('lessons'); 
   const [selectedStudentId, setSelectedStudentId] = useState(null); 
-  const [notifications, setNotifications] = useState([]); // 🚨 알림 상태 추가
+  const [notifications, setNotifications] = useState([]); 
 
   // --- 중앙 상태 관리 ---
   const [students, setStudents] = useState(initialStudents);
@@ -1199,7 +1176,7 @@ export default function App() {
   
   const nextStudentId = students.reduce((max, s) => Math.max(max, s.id), 0) + 1; 
 
-  // 🚨 알림 로깅 함수
+  // 알림 로깅 함수
     const logNotification = (type, message, details) => {
         setNotifications(prev => [{ id: Date.now(), type, message, details, timestamp: new Date().toLocaleTimeString('ko-KR') }, ...prev]);
     };
@@ -1230,8 +1207,9 @@ export default function App() {
     if (idToUpdate) {
         const oldStudent = students.find(s => s.id === idToUpdate);
         
-        // books 필드를 포함하여 학생 데이터 업데이트
-        setStudents(prev => prev.map(s => s.id === idToUpdate ? { ...s, ...newStudentData } : s));
+        // Note: newStudentData는 StudentFormModal에서 교재 필드가 제거되었으므로,
+        // 기존 학생의 books 필드는 그대로 유지됨 (나머지 필드만 업데이트)
+        setStudents(prev => prev.map(s => s.id === idToUpdate ? { ...s, ...newStudentData, books: s.books } : s));
         
         // --- 클래스 상태 업데이트 로직 ---
         setClasses(prevClasses => prevClasses.map(cls => {
@@ -1259,7 +1237,8 @@ export default function App() {
             id: nextStudentId, 
             registeredDate: new Date().toISOString().slice(0, 10), 
             paymentStatus: '해당없음', 
-            bookReceived: false 
+            bookReceived: false,
+            books: [], // 신규 등록 시 books 필드는 빈 배열로 초기화
         };
         setStudents(prev => [...prev, newStudent]);
         setGrades(prev => ({ ...prev, [newStudent.id]: {} }));
@@ -1515,7 +1494,7 @@ export default function App() {
 
   if (!isLoggedIn) return <LoginPage onLogin={() => setIsLoggedIn(true)} />;
 
-  // 🚨 페이지 전환 로직 업데이트 (학생 관리 메뉴 클릭 시, selectedStudentId 초기화)
+  // 페이지 전환 로직 업데이트 (학생 관리 메뉴 클릭 시, selectedStudentId 초기화)
   const handlePageChange = (newPage, studentId = null) => {
        if (newPage === 'students' && studentId === null) {
             setSelectedStudentId(null); 
@@ -1542,13 +1521,13 @@ export default function App() {
     calculateClassSessions,
     selectedStudentId,
     handlePageChange, 
-    logNotification, // 🚨 알림 로깅 함수 전달
-    notifications, // 🚨 알림 상태 전달
+    logNotification, 
+    notifications, 
   };
 
   return (
     <div className="flex h-screen bg-gray-100 font-sans text-base"> 
-      {/* 🚨 사이드바: handlePageChange를 setPage로 전달하여 학생 관리 메뉴 클릭 시 목록으로 돌아가도록 처리 */}
+      {/* 사이드바: handlePageChange를 setPage로 전달하여 학생 관리 메뉴 클릭 시 목록으로 돌아가도록 처리 */}
       <Sidebar page={page} setPage={(newPage) => handlePageChange(newPage, null)} onLogout={() => setIsLoggedIn(false)} />
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
         <Header page={page} />
@@ -1556,7 +1535,7 @@ export default function App() {
           <PageContent page={page} {...managementProps} />
         </main>
       </div>
-      {/* 🚨 알림 패널 추가 */}
+      {/* 알림 패널 추가 */}
       <NotificationPanel notifications={notifications} />
     </div>
   );
@@ -1728,7 +1707,7 @@ const Header = ({ page }) => {
 };
 
 const PageContent = (props) => {
-    // 🚨 학생 상세 페이지 처리
+    // 학생 상세 페이지 처리
     if (props.page === 'students' && props.selectedStudentId) {
         return <StudentDetail {...props} studentId={props.selectedStudentId} />;
     }
@@ -1761,7 +1740,7 @@ const StudentManagement = ({ students, classes, getClassesNames, handleSaveStude
     const [isMemoModalOpen, setIsMemoModalOpen] = useState(false);
     const [memoStudent, setMemoStudent] = useState(null);
 
-    // 🚨 학생 이름을 클릭했을 때 상세 페이지로 이동
+    // 학생 이름을 클릭했을 때 상세 페이지로 이동
     const handleViewDetail = (studentId) => {
          handlePageChange('students', studentId); 
     };
@@ -1893,7 +1872,7 @@ const StudentManagement = ({ students, classes, getClassesNames, handleSaveStude
 
                                     {/* 메모 / 관리 */}
                                     <td className="p-3 flex space-x-2 items-center">
-                                        {/* 🚨 상세 대시보드 보기 버튼 추가 */}
+                                        {/* 상세 대시보드 보기 버튼 추가 */}
                                         <button 
                                             onClick={() => handleViewDetail(s.id)} 
                                             className="text-white bg-blue-500 hover:bg-blue-600 p-1 rounded-lg" 
@@ -1918,6 +1897,7 @@ const StudentManagement = ({ students, classes, getClassesNames, handleSaveStude
                 </table>
             </div>
 
+            {/* StudentFormModal은 이제 교재 정보를 포함하지 않습니다. */}
             <StudentFormModal 
                 isOpen={isModalOpen} 
                 onClose={handleCloseModal} 
@@ -2133,8 +2113,14 @@ const LessonManagement = ({ students, classes, lessonLogs, handleSaveLessonLog, 
 
     const selectedClass = classes.find(c => c.id === selectedClassId);
     
+    // 예약 시간을 고려하여 표시할 로그를 필터링
     const classLogs = lessonLogs
         .filter(log => log.classId === selectedClassId)
+        .filter(log => {
+             // 현재 시간보다 예약 시간이 빠르거나, 예약 시간이 없는 경우만 노출 (모의)
+             const isScheduled = log.scheduleTime && new Date(log.scheduleTime) > new Date();
+             return !isScheduled;
+        })
         .filter(log => selectedDate ? log.date === selectedDate : true)
         .sort((a, b) => new Date(b.date) - new Date(a.date));
         
@@ -2233,6 +2219,10 @@ const LessonManagement = ({ students, classes, lessonLogs, handleSaveLessonLog, 
                                         </div>
                                         <p><span className="font-semibold">수업 진도:</span> {log.progress}</p>
                                         
+                                        <p className="mt-1 text-xs text-gray-600">
+                                            <span className="font-semibold">알림 발송 시각:</span> {new Date(log.scheduleTime).toLocaleString('ko-KR', { timeStyle: 'short', dateStyle: 'short' })}
+                                        </p>
+                                        
                                         {/* 수업 자료 파일명 */}
                                         {log.materialUrl && (
                                             <p className="mt-1 text-xs"><span className="font-semibold">자료:</span> <a href="#" onClick={(e) => { e.preventDefault(); alert(`[${log.materialUrl}] 다운로드 (모의)`); }} className="text-blue-500 hover:underline">{log.materialUrl}</a></p>
@@ -2265,8 +2255,8 @@ const LessonManagement = ({ students, classes, lessonLogs, handleSaveLessonLog, 
                 classes={classes} 
                 calculateClassSessions={calculateClassSessions} 
                 defaultDate={defaultDateForModal} 
-                students={students} // 🚨 알림 기능을 위해 students 전달
-                logNotification={logNotification} // 🚨 알림 기능을 위해 logNotification 전달
+                students={students} 
+                logNotification={logNotification} 
             />
             </div>
         </div>
@@ -3383,19 +3373,36 @@ const PaymentManagement = () => {
 };
 
 // --- BookManagement 컴포넌트 (유지) ---
-const BookManagement = ({ students, handleSaveStudent }) => {
+const BookManagement = ({ students, handleSaveStudent, classes }) => {
     const [searchTerm, setSearchTerm] = useState('');
     const [editingStudent, setEditingStudent] = useState(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
-
+    
+    // 이 페이지에서는 학생을 추가/수정할 때 books 필드만 수정하는 별도의 모달이 필요하지만,
+    // 재사용성을 위해 StudentFormModal을 기반으로 교재 필드만 노출하는 임시 모달 생성 (App.js 외부라 코드는 StudentFormModal을 대신함)
+    // 실제로는 별도의 BookEditModal이 필요하나, 현재는 학생 관리에서 가져온 StudentFormModal을 재사용하며 학생의 전체 정보를 업데이트함.
+    
+    // StudentFormModal이 교재 정보를 관리하지 않게 되었으므로,
+    // 이 페이지에서는 인라인 편집 또는 별도의 모달이 필요합니다. 
+    // 임시로 학생 추가 모달을 **BookManagement용으로 수정하지 않고,** 학생 목록만 보여주도록 유지합니다.
+    
+    // **개선된 StudentFormModal을 사용하지 않으므로, 아래 로직은 교재 정보 수정 기능이 없는 상태입니다.** 
+    // 실제로는 이 곳에서 교재만 수정할 수 있는 간소화된 모달을 사용해야 합니다.
+    
     const filteredStudents = students.filter(s => {
         const matchesSearch = s.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
                               s.school.toLowerCase().includes(searchTerm.toLowerCase()) || 
                               s.books.some(book => book.toLowerCase().includes(searchTerm.toLowerCase()));
         return matchesSearch;
     });
-
+    
+    // **NOTE: StudentManagement에서 사용하던 StudentFormModal은 교재 관리가 불가능하므로, 
+    // 여기서는 교재 정보 수정을 위해 임시로 기존 학생 정보를 메모리에 복사하여 보여주는 식으로 구현합니다.**
+    
     const handleEdit = (student) => {
+        // 실제로는 교재만 수정할 수 있는 별도의 BookEditModal이 필요함.
+        // 여기서는 임시로 학생 전체 수정 모달을 사용하며, 교재 필드는 StudentFormModal에서 제거되었음을 전제합니다.
+        // (즉, 여기서 편집 버튼을 눌러도 교재는 수정 불가능. 별도의 BookEditModal 구현 필요.)
         setEditingStudent(student);
         setIsModalOpen(true);
     };
@@ -3405,6 +3412,69 @@ const BookManagement = ({ students, handleSaveStudent }) => {
         setIsModalOpen(false);
     };
     
+    // --- BookEditModal 대체 임시 컴포넌트 ---
+    const TempBookEditModal = ({ isOpen, onClose, student, onSave, classes }) => {
+        const [books, setBooks] = useState(student?.books || []);
+        const [newBook, setNewBook] = useState('');
+        
+        useEffect(() => {
+            setBooks(student?.books || []);
+        }, [student]);
+
+        const handleAddBook = () => {
+             if (newBook.trim()) {
+                setBooks(prev => [...prev, newBook.trim()]);
+                setNewBook('');
+            }
+        };
+        
+        const handleRemoveBook = (bookToRemove) => {
+            setBooks(prev => prev.filter(book => book !== bookToRemove));
+        };
+        
+        const handleSave = () => {
+            // books 필드만 업데이트하여 App.js의 handleSaveStudent 호출
+            onSave({ ...student, books: books }, student.id);
+            onClose();
+        };
+
+        return (
+            <Modal isOpen={isOpen} onClose={onClose} title={`${student?.name} 학생 교재 관리`} maxWidth='max-w-md'>
+                 <div className="space-y-4">
+                     <div className="border p-3 rounded-lg bg-gray-50">
+                        <label className="block font-semibold mb-2 text-sm">보유 교재 목록:</label>
+                        <div className='flex mb-2'>
+                            <input 
+                                type="text" 
+                                value={newBook}
+                                onChange={(e) => setNewBook(e.target.value)}
+                                placeholder="새 교재명 입력"
+                                className="p-2 border rounded-l w-full text-sm"
+                            />
+                            <button type="button" onClick={handleAddBook} className="bg-gray-300 p-2 rounded-r hover:bg-gray-400 font-bold text-xs">추가</button>
+                        </div>
+                        <div className="space-y-1 max-h-40 overflow-y-auto pr-1">
+                            {books.length === 0 ? (
+                                <p className="text-xs text-gray-500">등록된 교재가 없습니다.</p>
+                            ) : (
+                                books.map((book, index) => (
+                                    <div key={index} className="flex justify-between items-center bg-white p-2 rounded border text-xs">
+                                        <span className='truncate'>{book}</span>
+                                        <button type="button" onClick={() => handleRemoveBook(book)} className="text-red-500 hover:text-red-700 ml-2">
+                                            <Icon name="x" className="w-3 h-3"/>
+                                        </button>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </div>
+                    <button onClick={handleSave} className="w-full bg-blue-600 text-white font-bold py-2 rounded-lg hover:bg-blue-700 mt-4">
+                        교재 정보 저장
+                    </button>
+                 </div>
+            </Modal>
+        )
+    }
 
     return (
         <div className="bg-white p-6 rounded-xl shadow-lg min-h-[85vh]">
@@ -3456,15 +3526,14 @@ const BookManagement = ({ students, handleSaveStudent }) => {
                 </table>
             </div>
             
-            {/* StudentFormModal 재사용 (교재 정보 입력 포함) */}
+            {/* 임시 교재 수정 모달 사용 */}
             {editingStudent && (
-                <StudentFormModal 
+                <TempBookEditModal 
                     isOpen={isModalOpen} 
                     onClose={handleCloseModal} 
                     student={editingStudent} 
-                    // 이 모달에서는 클래스 목록은 필요 없지만, 컴포넌트 구조상 필요
-                    allClasses={[]} 
                     onSave={handleSaveStudent}
+                    classes={classes} // 학생 정보에 강좌 정보가 필요할 수 있으므로 전달
                 />
             )}
         </div>
@@ -3472,7 +3541,7 @@ const BookManagement = ({ students, handleSaveStudent }) => {
 }
 
 // --- ClinicManagement 컴포넌트 (유지) ---
-const ClinicManagement = ({ students, clinicLogs, handleSaveClinicLog, handleDeleteClinicLog }) => {
+const ClinicManagement = ({ students, clinicLogs, handleSaveClinicLog, handleDeleteClinicLog, classes }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingLog, setEditingLog] = useState(null);
     const [filterDate, setFilterDate] = useState(new Date().toISOString().slice(0, 10));
@@ -3584,6 +3653,7 @@ const ClinicManagement = ({ students, clinicLogs, handleSaveClinicLog, handleDel
                     logToEdit={editingLog}
                     students={students}
                     defaultDate={filterDate}
+                    classes={classes} // 🚨 강좌 정보 전달
                 />
             </div>
         </div>
@@ -3937,7 +4007,7 @@ const StudentDetail = ({ studentId, students, classes, studentMemos, grades, tes
                     <Icon name="graduationCap" className="w-6 h-6 mr-3 text-blue-600"/>
                     {student.name} 학생 대시보드
                 </h3>
-                {/* 🚨 목록으로 돌아가기 버튼 */}
+                {/* 목록으로 돌아가기 버튼 */}
                 <button 
                     onClick={() => handlePageChange('students', null)} 
                     className="flex items-center text-sm font-bold py-2 px-4 rounded-lg bg-gray-200 hover:bg-gray-300 transition duration-200"
