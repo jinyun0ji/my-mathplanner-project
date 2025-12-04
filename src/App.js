@@ -1086,6 +1086,7 @@ const AnnouncementModal = ({ isOpen, onClose, onSave, announcementToEdit = null,
 export default function App() { // export default로 수정
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [page, setPage] = useState('lessons'); 
+  const [selectedStudentId, setSelectedStudentId] = useState(null); // 학생 상세 페이지 상태 추가
 
   // --- 중앙 상태 관리 ---
   const [students, setStudents] = useState(initialStudents);
@@ -1415,6 +1416,12 @@ export default function App() { // export default로 수정
   
 
   if (!isLoggedIn) return <LoginPage onLogin={() => setIsLoggedIn(true)} />;
+
+  // 페이지 전환 로직 업데이트
+  const handlePageChange = (newPage, studentId = null) => {
+      setSelectedStudentId(studentId);
+      setPage(newPage);
+  }
   
   // 모든 관리 컴포넌트에 필요한 상태와 함수를 Props로 전달
   const managementProps = {
@@ -1431,7 +1438,9 @@ export default function App() { // export default로 수정
     handleSaveMemo, 
     handleSaveAnnouncement, handleSaveWorkLog, handleDeleteWorkLog, // 근무 일지 CRUD 추가
     handleSaveClinicLog, handleDeleteClinicLog, // 클리닉 로그 CRUD 추가
-    calculateClassSessions, 
+    calculateClassSessions,
+    selectedStudentId,
+    handlePageChange, 
   };
 
   return (
@@ -1570,6 +1579,11 @@ const Header = ({ page }) => {
 };
 
 const PageContent = (props) => {
+    // 학생 상세 페이지 처리
+    if (props.page === 'students' && props.selectedStudentId) {
+        return <StudentDetail {...props} studentId={props.selectedStudentId} />;
+    }
+
     switch (props.page) {
         case 'home': return <Home />;
         case 'students': return <StudentManagement {...props} />;
@@ -1588,7 +1602,7 @@ const PageContent = (props) => {
 // --- 각 페이지 컴포넌트 ---
 const Home = () => <div className="p-6 bg-white rounded-lg shadow-md text-sm"><h3 className="text-xl font-semibold">홈</h3><p>학원 운영의 전반적인 현황을 한눈에 볼 수 있는 주요 정보를 요약하여 제공합니다.</p></div>; 
 
-const StudentManagement = ({ students, classes, getClassesNames, handleSaveStudent, handleDeleteStudent, attendanceLogs, studentMemos, handleSaveMemo }) => {
+const StudentManagement = ({ students, classes, getClassesNames, handleSaveStudent, handleDeleteStudent, attendanceLogs, studentMemos, handleSaveMemo, handlePageChange }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingStudent, setEditingStudent] = useState(null);
     const [searchTerm, setSearchTerm] = useState('');
@@ -1596,6 +1610,12 @@ const StudentManagement = ({ students, classes, getClassesNames, handleSaveStude
     
     const [isMemoModalOpen, setIsMemoModalOpen] = useState(false);
     const [memoStudent, setMemoStudent] = useState(null);
+
+    // 학생 이름을 클릭했을 때 상세 페이지로 이동
+    const handleViewDetail = (studentId) => {
+         // App 컴포넌트의 handlePageChange 호출
+         handlePageChange('students', studentId); 
+    };
 
     const handleEdit = (student) => {
         setEditingStudent(student);
@@ -1693,12 +1713,22 @@ const StudentManagement = ({ students, classes, getClassesNames, handleSaveStude
 
                             return (
                                 <tr key={s.id} className="hover:bg-gray-50">
-                                    {/* 학생명 / 연락처 */}
+                                    {/* 학생명 / 연락처: 클릭 가능하도록 수정 */}
                                     <td className="p-3">
-                                        <p className="font-bold text-gray-900">{s.name}</p>
+                                        <button 
+                                            onClick={() => handleViewDetail(s.id)} 
+                                            className="font-bold text-gray-900 hover:text-blue-600 hover:underline cursor-pointer"
+                                            title="상세 대시보드 보기"
+                                        >
+                                            {s.name}
+                                        </button>
                                         <p className="text-xs text-gray-600 mt-1">
                                             {s.phone} (학생) / {s.parentPhone} (학부모)
                                         </p>
+                                    </td>
+                                    {/* 학교/학년 추가 */}
+                                    <td className="p-3 text-gray-700">
+                                        {s.school} {s.grade}학년
                                     </td>
                                     {/* 수강 강좌 */}
                                     <td className="p-3 text-gray-700">
@@ -3716,4 +3746,263 @@ const Messenger = () => {
             </div>
         </div>
     )
+};
+
+
+// 파일 하단에 StudentDetail 컴포넌트 추가
+
+// --- Helper Functions for StudentDetail ---
+
+/**
+ * 학생의 클래스별 성적 평균을 계산하고 클래스 평균과 비교합니다.
+ * @param {number} studentId - 학생 ID
+ * @param {Array} classes - 전체 클래스 목록
+ * @param {Array} tests - 전체 테스트 목록
+ * @param {Object} grades - 전체 성적 데이터
+ * @returns {Array<Object>} 성적 비교 데이터
+ */
+const calculateGradeComparison = (studentId, classes, tests, grades) => {
+    const comparison = [];
+
+    classes.forEach(cls => {
+        if (!cls.students.includes(studentId)) return; // 학생이 속한 클래스만
+
+        const classTests = tests.filter(t => t.classId === cls.id);
+        if (classTests.length === 0) return;
+
+        classTests.forEach(test => {
+            const studentScore = grades[studentId]?.[test.id]?.score;
+            if (studentScore === undefined) return;
+
+            // 클래스 평균 계산
+            let totalClassScore = 0;
+            let classStudentCount = 0;
+            cls.students.forEach(sId => {
+                const score = grades[sId]?.[test.id]?.score;
+                if (score !== undefined) {
+                    totalClassScore += Number(score);
+                    classStudentCount++;
+                }
+            });
+            const classAverage = classStudentCount > 0 ? (totalClassScore / classStudentCount).toFixed(1) : 0;
+            
+            comparison.push({
+                className: cls.name,
+                testName: test.name,
+                maxScore: test.maxScore,
+                studentScore: Number(studentScore),
+                classAverage: Number(classAverage),
+                isAboveAverage: Number(studentScore) > Number(classAverage),
+                scoreDifference: (Number(studentScore) - Number(classAverage)).toFixed(1)
+            });
+        });
+    });
+
+    return comparison;
+};
+
+/**
+ * 학생의 과제 완성율을 계산합니다.
+ * @param {number} studentId - 학생 ID
+ * @param {Array} homeworkAssignments - 전체 과제 목록
+ * @param {Object} homeworkResults - 전체 과제 결과
+ * @returns {Array<Object>} 과제 통계
+ */
+const calculateHomeworkStats = (studentId, homeworkAssignments, homeworkResults) => {
+    const studentAssignments = homeworkAssignments.filter(a => a.students.includes(studentId));
+    
+    return studentAssignments.map(a => {
+        const results = homeworkResults[studentId]?.[a.id] || {};
+        const totalQuestions = a.totalQuestions;
+        
+        let completedCount = 0; // 맞음 + 고침
+        let incorrectCount = 0; // 틀림
+        let uncheckedCount = totalQuestions;
+        
+        // homeworkResults는 문항 ID를 키로 가지고 '맞음', '틀림', '고침' 값을 가짐
+        if (Object.keys(results).length > 0) {
+            uncheckedCount = 0; 
+            Object.values(results).forEach(status => {
+                if (status === '맞음' || status === '고침') {
+                    completedCount++;
+                }
+                if (status === '틀림') {
+                    incorrectCount++;
+                }
+            });
+            uncheckedCount = totalQuestions - completedCount - incorrectCount;
+            if (uncheckedCount < 0) uncheckedCount = 0;
+        }
+
+
+        const completionRate = Math.round(((completedCount + incorrectCount) / totalQuestions) * 100);
+
+        return {
+            id: a.id,
+            date: a.date,
+            content: a.content,
+            book: a.book,
+            totalQuestions,
+            completedCount,
+            incorrectCount,
+            uncheckedCount,
+            completionRate,
+            status: completionRate === 100 ? '완료' : (completionRate > 0 ? '진행 중' : '미시작')
+        };
+    }).sort((a, b) => new Date(b.date) - new Date(a.date));
+};
+
+
+// --- StudentDetail Component ---
+const StudentDetail = ({ studentId, students, classes, studentMemos, grades, tests, homeworkAssignments, homeworkResults, handlePageChange }) => {
+    const student = students.find(s => s.id === studentId);
+    if (!student) return <div className="p-6 text-red-500">학생 정보를 찾을 수 없습니다.</div>;
+
+    const studentMemo = studentMemos[studentId] || '등록된 메모가 없습니다.';
+    const classInfo = student.classes.map(id => classes.find(c => c.id === id));
+    
+    const gradeComparison = calculateGradeComparison(studentId, classes, tests, grades);
+    const homeworkStats = calculateHomeworkStats(studentId, homeworkAssignments, homeworkResults);
+
+    const getStatusColor = (status) => {
+        switch (status) {
+            case '재원생': return 'bg-green-100 text-green-700';
+            case '상담생': return 'bg-yellow-100 text-yellow-700';
+            case '퇴원생': return 'bg-red-100 text-red-700';
+            default: return 'bg-gray-100 text-gray-500';
+        }
+    };
+    
+    // 종합 통계 계산
+    const totalAssignments = homeworkStats.length;
+    const completedAssignments = homeworkStats.filter(s => s.completionRate === 100).length;
+    
+    // 평균 과제 완성율
+    const avgCompletionRate = totalAssignments > 0 
+        ? (homeworkStats.reduce((sum, s) => sum + s.completionRate, 0) / totalAssignments).toFixed(0)
+        : 0;
+
+    return (
+        <div className="bg-white p-6 rounded-xl shadow-lg">
+            <div className="flex justify-between items-center mb-6 border-b pb-4">
+                <h3 className="text-2xl font-bold flex items-center">
+                    <Icon name="graduationCap" className="w-6 h-6 mr-3 text-blue-600"/>
+                    {student.name} 학생 대시보드
+                </h3>
+                <button 
+                    onClick={() => handlePageChange('students', null)} 
+                    className="flex items-center text-sm font-bold py-2 px-4 rounded-lg bg-gray-200 hover:bg-gray-300 transition duration-200"
+                >
+                    <Icon name="x" className="w-4 h-4 mr-2" /> 목록으로 돌아가기
+                </button>
+            </div>
+
+            {/* 1. 학생 기본 정보 및 요약 */}
+            <div className="grid grid-cols-3 gap-6 mb-8 text-sm">
+                {/* 정보 요약 카드 */}
+                <div className="col-span-1 space-y-3 p-4 border rounded-lg bg-gray-50">
+                    <p className="font-bold text-lg text-blue-600">{student.name}</p>
+                    <p>상태: <span className={`px-2 py-0.5 text-xs font-semibold rounded-full ${getStatusColor(student.status)}`}>{student.status}</span></p>
+                    <p>학교: {student.school} {student.grade}학년</p>
+                    <p>연락처: {student.phone} / {student.parentPhone} (학부모)</p>
+                    <p>등록일: {student.registeredDate}</p>
+                </div>
+                
+                {/* 수강 강좌 카드 */}
+                <div className="col-span-2 p-4 border rounded-lg bg-white shadow-sm">
+                    <h4 className="font-bold mb-2 border-b pb-1 text-gray-700">수강 강좌 정보</h4>
+                    <div className='space-y-1 text-xs'>
+                        {classInfo.map(cls => cls ? (
+                            <p key={cls.id} className='p-1 bg-gray-100 rounded'>
+                                <span className='font-semibold'>{cls.name}</span> ({cls.teacher} 선생님) | 
+                                시간: {cls.schedule.days.join(', ')} {cls.schedule.time}
+                            </p>
+                        ) : null)}
+                    </div>
+                    
+                    <h4 className="font-bold mt-4 mb-2 border-b pb-1 text-gray-700">보유 교재</h4>
+                    <div className='flex flex-wrap gap-1'>
+                        {student.books.length > 0 ? student.books.map((book, index) => (
+                            <span key={index} className='px-2 py-0.5 bg-blue-100 text-xs text-blue-800 rounded-full font-medium'>{book}</span>
+                        )) : <span className='text-gray-500 text-xs'>등록된 교재가 없습니다.</span>}
+                    </div>
+                </div>
+            </div>
+
+            {/* 2. 교사 메모 */}
+            <div className="mb-8 p-4 border rounded-lg shadow-md bg-white">
+                <h4 className="font-bold mb-2 text-lg text-gray-800 flex items-center"><Icon name="fileText" className="w-5 h-5 mr-2"/> 교사 메모</h4>
+                <div className="p-3 bg-gray-50 border rounded-lg whitespace-pre-wrap text-sm text-gray-700">
+                    {studentMemo}
+                </div>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-6">
+                 {/* 3. 성적 현황 (클래스 평균 대비) */}
+                <div className="p-4 border rounded-lg shadow-md bg-white">
+                    <h4 className="font-bold mb-4 text-lg text-gray-800 flex items-center"><Icon name="barChart" className="w-5 h-5 mr-2"/> 최근 성적 현황</h4>
+                    
+                    <div className="space-y-3 text-sm max-h-80 overflow-y-auto">
+                        {gradeComparison.length === 0 ? (
+                            <p className="text-gray-500">등록된 테스트 결과가 없습니다.</p>
+                        ) : (
+                            gradeComparison.map((g, index) => (
+                                <div key={index} className="p-3 border rounded-lg shadow-sm">
+                                    <p className="font-bold text-gray-800">[{g.className}] {g.testName} ({g.maxScore}점 만점)</p>
+                                    <div className='flex justify-between items-center mt-1 text-xs'>
+                                        <span className={`font-bold ${g.isAboveAverage ? 'text-green-600' : 'text-red-500'}`}>
+                                            학생 점수: {g.studentScore}점
+                                        </span>
+                                        <span className='text-gray-600'>반 평균: {g.classAverage}점</span>
+                                        <span className={`font-bold ${g.isAboveAverage ? 'text-green-500' : 'text-red-500'}`}>
+                                            ({g.scoreDifference}점 차)
+                                        </span>
+                                    </div>
+                                    <div className="w-full bg-gray-200 rounded-full h-2 mt-1">
+                                        {/* 학생 점수 바 (만점 대비) */}
+                                        <div 
+                                            className={`h-2 rounded-full ${g.studentScore >= g.maxScore * 0.9 ? 'bg-blue-600' : g.studentScore >= g.maxScore * 0.7 ? 'bg-blue-400' : 'bg-red-400'}`}
+                                            style={{ width: `${(g.studentScore / g.maxScore) * 100}%` }}
+                                        ></div>
+                                    </div>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                </div>
+
+                {/* 4. 과제 완성도 현황 */}
+                 <div className="p-4 border rounded-lg shadow-md bg-white">
+                    <h4 className="font-bold mb-4 text-lg text-gray-800 flex items-center"><Icon name="clipboardCheck" className="w-5 h-5 mr-2"/> 과제 완성도</h4>
+                    <p className={`mb-3 text-sm font-bold ${avgCompletionRate > 80 ? 'text-green-600' : 'text-red-500'}`}>
+                        총 과제 {totalAssignments}개 중 완료 {completedAssignments}개 | 평균 완성율: {avgCompletionRate}%
+                    </p>
+
+                    <div className="space-y-3 text-xs max-h-80 overflow-y-auto">
+                         {homeworkStats.length === 0 ? (
+                            <p className="text-gray-500">할당된 과제가 없습니다.</p>
+                        ) : (
+                            homeworkStats.map(h => (
+                                <div key={h.id} className="p-3 border rounded-lg bg-gray-50">
+                                    <p className='font-bold'>{h.date} | {h.book}</p>
+                                    <p className='text-gray-700 mt-1 truncate'>{h.content}</p>
+                                    <div className='flex justify-between items-center mt-1'>
+                                        <span className={`font-bold ${h.completionRate === 100 ? 'text-green-600' : 'text-blue-500'}`}>{h.completionRate}%</span>
+                                        <span className='text-gray-600'>맞음/고침: {h.completedCount}, 틀림: {h.incorrectCount}</span>
+                                    </div>
+                                    <div className="w-full bg-gray-200 rounded-full h-2 mt-1">
+                                         {/* 완성율 바 */}
+                                        <div 
+                                            className={`h-2 rounded-full ${h.completionRate === 100 ? 'bg-green-500' : 'bg-blue-500'}`}
+                                            style={{ width: `${h.completionRate}%` }}
+                                        ></div>
+                                    </div>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
 };
