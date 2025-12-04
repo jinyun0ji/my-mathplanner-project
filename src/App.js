@@ -2846,26 +2846,24 @@ const HomeworkManagement = ({ students, classes, homeworkAssignments, homeworkRe
             if (statusToSet) {
                 e.preventDefault(); 
                 updateTempResult(studentId, qId, statusToSet);
-                
-                // 다음 셀로 포커스 이동 (가로)
-                if (qIndex < totalQuestions - 1) {
-                    const nextQId = questionIds[qIndex + 1];
-                    const nextCell = document.getElementById(`cell-${studentId}-${nextQId}`);
-                    nextCell?.focus();
-                } else if (sIndex < studentsInTable.length - 1) {
-                    // 줄 끝이면 다음 학생의 첫 번째 문항으로 이동
-                    const nextStudentId = studentIds[sIndex + 1];
-                    const nextCell = document.getElementById(`cell-${nextStudentId}-${questionIds[0]}`);
-                    nextCell?.focus();
-                }
-
             } else if (e.key === '0' || e.key === 'Delete' || e.key === 'Backspace') {
                 e.preventDefault();
                 updateTempResult(studentId, qId, '미체크');
             } else if (e.key === 'ArrowRight' || e.key === 'Tab') {
                 // Tab 또는 오른쪽 화살표: 다음 문항으로 이동 (브라우저 기본 동작 사용)
+            // 🚨 [수정된 부분] 왼쪽 방향키를 눌렀을 때 왼쪽 문항으로 이동
             } else if (e.key === 'ArrowLeft' || (e.shiftKey && e.key === 'Tab')) {
-                // Shift+Tab 또는 왼쪽 화살표: 이전 문항으로 이동 (브라우저 기본 동작 사용)
+                e.preventDefault();
+                if (qIndex > 0) {
+                    const prevQId = questionIds[qIndex - 1];
+                    const prevCell = document.getElementById(`cell-${studentId}-${prevQId}`);
+                    prevCell?.focus();
+                } else if (sIndex > 0) {
+                    // 줄 시작이면 이전 학생의 마지막 문항으로 이동
+                    const prevStudentId = studentIds[sIndex - 1];
+                    const prevCell = document.getElementById(`cell-${prevStudentId}-${questionIds[totalQuestions - 1]}`);
+                    prevCell?.focus();
+                }
             } else if (e.key === 'ArrowDown' && sIndex < studentsInTable.length - 1) {
                  // 아래 화살표: 다음 학생의 같은 문항으로 이동
                 e.preventDefault();
