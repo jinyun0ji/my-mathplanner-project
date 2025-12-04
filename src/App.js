@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 
 // --- 데이터 샘플 ---
 // 2025년 11월 달력 확인: 11/1(금), 11/3(월), 11/4(화), 11/5(수), 11/6(목), 11/7(금), 11/10(월), 11/11(화)...
@@ -84,16 +84,18 @@ const initialAnnouncements = [
 ];
 
 const initialTests = [
-    { id: 101, name: 'Test 1 (11/15)', maxScore: 100, classId: 1, totalQuestions: 20, questionScore: 5, date: '2025-11-15' }, 
-    { id: 102, name: 'Test 2 (12/01)', maxScore: 100, classId: 1, totalQuestions: 25, questionScore: 4, date: '2025-12-01' },
-    { id: 201, name: 'Test A (11/20)', maxScore: 100, classId: 2, totalQuestions: 10, questionScore: 10, date: '2025-11-20' },
+    // 🚨 초기 데이터에 questionScores 필드 추가 (배점 설정 기능을 위해)
+    { id: 101, name: 'Test 1 (11/15)', maxScore: 100, classId: 1, totalQuestions: 20, date: '2025-11-15', questionScores: Array(20).fill(5) }, 
+    { id: 102, name: 'Test 2 (12/01)', maxScore: 100, classId: 1, totalQuestions: 25, date: '2025-12-01', questionScores: Array(25).fill(4) },
+    { id: 201, name: 'Test A (11/20)', maxScore: 100, classId: 2, totalQuestions: 10, date: '2025-11-20', questionScores: Array(10).fill(10) },
 ];
 
+// grades: { studentId: { testId: { score: number | null, correctCount: resultMapping | undefined } } }
 const initialGrades = {
-    1: { 101: { score: 85, correctCount: 17 }, 102: { score: 92, correctCount: 23 } }, 
-    6: { 101: { score: 78, correctCount: 15.6 }, 102: { score: 88, correctCount: 22 } }, 
-    4: { 101: { score: 95, correctCount: 19 }, 102: { score: 95, correctCount: 23.75 } }, 
-    2: { 201: { score: 75, correctCount: 7.5 } }, 
+    1: { 101: { score: 85, correctCount: {} }, 102: { score: 92, correctCount: {} } }, 
+    6: { 101: { score: 78, correctCount: {} }, 102: { score: 88, correctCount: {} } }, 
+    4: { 101: { score: 95, correctCount: {} }, 102: { score: 95, correctCount: {} } }, 
+    2: { 201: { score: 75, correctCount: {} } }, 
     5: {}, 
 };
 
@@ -134,9 +136,13 @@ const Icon = ({ name, className }) => {
     send: <path d="m22 2-7 20-4-9-9-4 20-7Z"/>,
     pin: <path d="M12 17v-4h4l-4-9V2h-4v2l4 9h-4v4h-2v2h12v-2z"/>,
     clock: <><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></>,
-    // 🚨 알림 아이콘 추가
     bell: <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}><path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 005.424-3.535A12 12 0 0012 3c-4.707 0-9.155 1.34-12 3.861M12 3c-4.707 0-9.155 1.34-12 3.861m12 10.221v3.375c0 .375-.375.75-.75.75H12c-.375 0-.75-.375-.75-.75v-3.375m-4.5 0h9m-9 0h9" /></svg>,
     monitor: <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 14.25v-2.75a3 3 0 00-3-3h-2.25M15.75 14.25l-2.75 2.75m2.75-2.75l-2.75-2.75m1.5-12.25H7.5A2.25 2.25 0 005.25 4.5v15a2.25 2.25 0 002.25 2.25h9a2.25 2.25 0 002.25-2.25V9M12 11.25h.008v.008H12V11.25zM12 14.25h.008v.008H12V14.25zM12 17.25h.008v.008H12V17.25z" /></svg>,
+    save: <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>,
+    check: <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-10.5" /></svg>,
+    info: <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.375c.83 6.148 6.536 7.21 10.976 7.21s10.146-1.062 10.976-7.21-1.062-10.146-7.21-10.976S4.707 5.757 3.877 11.895z" /><path strokeLinecap="round" strokeLinejoin="round" d="M12 15h.008v.008H12V15z" /></svg>,
+    alert: <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.375c-.83 6.148 4.707 9.143 10.146 9.143s10.976-2.995 10.146-9.143L12 3.375 2.877 11.895z" /><path strokeLinecap="round" strokeLinejoin="round" d="M12 15h.008v.008H12V15z" /></svg>,
+    "arrow-left": <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}><path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" /></svg>,
   };
   return <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>{icons[name]}</svg>;
 };
@@ -188,6 +194,149 @@ const Modal = ({ children, isOpen, onClose, title, maxWidth = 'max-w-2xl' }) => 
                 {children}
             </div>
         </div>
+    );
+};
+
+// --- AnnouncementModal 컴포넌트 (추가 필요) ---
+const AnnouncementModal = ({ isOpen, onClose, onSave, announcementToEdit = null, allClasses, allStudents }) => {
+    const isEdit = !!announcementToEdit;
+    
+    // YYYY-MM-DDThh:mm 형식
+    const defaultScheduleTime = new Date().toISOString().slice(0, 16);
+
+    const [formData, setFormData] = useState({
+        title: announcementToEdit?.title || '',
+        content: announcementToEdit?.content || '',
+        scheduleTime: announcementToEdit?.scheduleTime || defaultScheduleTime,
+        targetClasses: announcementToEdit?.targetClasses || [],
+        targetStudents: announcementToEdit?.targetStudents || [],
+    });
+    
+    // 컴포넌트 마운트 및 수정 대상 변경 시 상태 동기화
+    useEffect(() => {
+        setFormData({
+            title: announcementToEdit?.title || '',
+            content: announcementToEdit?.content || '',
+            scheduleTime: announcementToEdit?.scheduleTime || defaultScheduleTime,
+            targetClasses: announcementToEdit?.targetClasses || [],
+            targetStudents: announcementToEdit?.targetStudents || [],
+        });
+    }, [announcementToEdit]);
+
+    const handleChange = (e) => {
+        const { name, value } = e.target;
+        setFormData(prev => ({ ...prev, [name]: value }));
+    };
+
+    const handleClassToggle = (classId) => {
+        setFormData(prev => ({
+            ...prev,
+            targetClasses: prev.targetClasses.includes(classId)
+                ? prev.targetClasses.filter(id => id !== classId)
+                : [...prev.targetClasses, classId],
+        }));
+    };
+    
+    const handleStudentToggle = (studentId) => {
+        setFormData(prev => ({
+            ...prev,
+            targetStudents: prev.targetStudents.includes(studentId)
+                ? prev.targetStudents.filter(id => id !== studentId)
+                : [...prev.targetStudents, studentId],
+        }));
+    };
+
+    const handleSubmit = (e) => {
+        e.preventDefault();
+        if (!formData.title || !formData.content) {
+            alert("제목과 내용은 필수 입력 사항입니다.");
+            return;
+        }
+
+        const dataToSave = {
+            ...formData,
+            // HTML 편집기(모의)에서 오는 줄바꿈을 <br>로 처리 (Textarea 사용 가정)
+            content: formData.content.replace(/\n/g, '<br>'), 
+        };
+
+        onSave(dataToSave, isEdit);
+        onClose();
+    };
+
+    // 현재 재원생 목록만 필터링
+    const currentStudents = allStudents.filter(s => s.status === '재원생');
+
+    return (
+        <Modal isOpen={isOpen} onClose={onClose} title={isEdit ? '공지사항 수정' : '새 공지사항 작성'} maxWidth='max-w-4xl'>
+            <form onSubmit={handleSubmit} className="space-y-4 text-sm">
+                
+                {/* 제목 및 예약 시간 */}
+                <div className="grid grid-cols-3 gap-4">
+                    <div className='col-span-2'>
+                        <label className='block text-gray-700 font-semibold text-xs mb-1'>제목</label>
+                        <input type="text" name="title" value={formData.title} onChange={handleChange} placeholder="공지사항 제목" required className="p-2 border rounded w-full" />
+                    </div>
+                    <div className='col-span-1'>
+                        <label className='block text-gray-700 font-semibold text-xs mb-1'>알림 발송 예약 시간</label>
+                        <input 
+                            type="datetime-local" 
+                            name="scheduleTime"
+                            value={formData.scheduleTime} 
+                            onChange={handleChange} 
+                            required 
+                            className="p-2 border rounded w-full"
+                        />
+                    </div>
+                </div>
+
+                {/* 내용 입력 (Textarea를 모의 HTML 에디터로 사용) */}
+                <label className='block text-gray-700 font-semibold text-xs'>내용 (HTML 태그 사용 가능)</label>
+                <textarea
+                    name="content"
+                    value={formData.content.replace(/<br>/g, '\n')} // 저장된 <br>을 textarea에서는 \n으로 변환
+                    onChange={handleChange}
+                    placeholder="공지 내용을 입력하세요. (HTML 태그 사용 시 주의)"
+                    rows="8"
+                    required
+                    className="p-2 border rounded w-full whitespace-pre-wrap"
+                />
+
+                {/* 대상 설정 */}
+                <div className="grid grid-cols-2 gap-4 border p-3 rounded-lg bg-gray-50">
+                    <div>
+                        <label className="block font-semibold mb-2 text-sm">대상 클래스 선택:</label>
+                        <div className="flex flex-wrap gap-3 max-h-40 overflow-y-auto">
+                            <label className="flex items-center space-x-2 text-blue-600 font-bold">
+                                <input type="checkbox" checked={formData.targetClasses.length === 0 && formData.targetStudents.length === 0} readOnly disabled className="form-checkbox text-blue-500"/>
+                                <span>전체 대상</span>
+                            </label>
+                            {allClasses.map(cls => (
+                                <label key={cls.id} className="flex items-center space-x-2">
+                                    <input type="checkbox" value={cls.id} checked={formData.targetClasses.includes(cls.id)} onChange={() => handleClassToggle(cls.id)} className="form-checkbox text-blue-500" />
+                                    <span>{cls.name}</span>
+                                </label>
+                            ))}
+                        </div>
+                    </div>
+                    <div>
+                        <label className="block font-semibold mb-2 text-sm">대상 학생 개별 선택 (선택 시 클래스보다 우선):</label>
+                        <div className="flex flex-wrap gap-3 max-h-40 overflow-y-auto">
+                             {currentStudents.map(s => (
+                                <label key={s.id} className="flex items-center space-x-2 text-xs">
+                                    <input type="checkbox" value={s.id} checked={formData.targetStudents.includes(s.id)} onChange={() => handleStudentToggle(s.id)} className="form-checkbox text-blue-500" />
+                                    <span>{s.name}</span>
+                                </label>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+                <p className='text-xs text-gray-500'>* 대상이 설정되지 않으면 전체 공지사항으로 처리됩니다.</p>
+                
+                <button type="submit" className="w-full bg-blue-600 text-white font-bold py-2 rounded-lg hover:bg-blue-700">
+                    {isEdit ? '공지사항 수정' : '공지사항 등록 및 알림 예약'}
+                </button>
+            </form>
+        </Modal>
     );
 };
 
@@ -585,7 +734,161 @@ const StudentFormModal = ({ isOpen, onClose, student = null, allClasses, onSave 
     );
 };
 
+// 🚨 테스트 생성/수정 모달: 문항별 배점 설정 기능 추가
+const TestFormModal = ({ isOpen, onClose, onSave, classId, test = null, classes, calculateClassSessions }) => {
+    const isEdit = !!test;
+    const selectedClass = classes.find(c => c.id === classId);
+    const sessions = selectedClass ? calculateClassSessions(selectedClass) : [];
+    
+    const [name, setName] = useState(test?.name || '');
+    const [date, setDate] = useState(test?.date || new Date().toISOString().slice(0, 10)); 
+    // 🚨 1. questionScore, totalQuestions 대신 questionScores 상태 추가 (기본 5문항 5점)
+    const [questionScores, setQuestionScores] = useState(test?.questionScores || [5, 5, 5, 5, 5]); 
+    const [maxScore, setMaxScore] = useState(test?.maxScore || 25);
+    const [numQuestions, setNumQuestions] = useState(test?.totalQuestions || 5);
+    const [dateError, setDateError] = useState('');
 
+    useEffect(() => {
+        setName(test?.name || '');
+        setDate(test?.date || new Date().toISOString().slice(0, 10));
+        // 🚨 2. 기존 test 정보로 questionScores 초기화
+        setQuestionScores(test?.questionScores || [5, 5, 5, 5, 5]); 
+        setNumQuestions(test?.totalQuestions || 5);
+        setDateError('');
+    }, [test]);
+    
+    // 🚨 3. questionScores 배열의 합으로 maxScore 자동 계산
+    useEffect(() => {
+        const calculatedMaxScore = questionScores.reduce((sum, score) => sum + Number(score || 0), 0);
+        setMaxScore(calculatedMaxScore);
+        setNumQuestions(questionScores.length);
+    }, [questionScores]);
+
+    const handleDateChange = (e) => {
+        const newDate = e.target.value;
+        setDate(newDate);
+        
+        const isScheduledDay = sessions.some(s => s.date === newDate);
+        if (!isScheduledDay) {
+            setDateError('선택된 날짜는 이 클래스의 정규 수업일이 아닙니다.');
+        } else {
+            setDateError('');
+        }
+    };
+    
+    // 🚨 4. 문항 수 변경 핸들러 (배점 배열 크기 조절)
+    const handleNumQuestionsChange = (e) => {
+        const newNum = Number(e.target.value);
+        if (newNum < 1 || isNaN(newNum)) return;
+        
+        setNumQuestions(newNum);
+        
+        setQuestionScores(prevScores => {
+            const currentLength = prevScores.length;
+            if (newNum > currentLength) {
+                // 문항 수가 늘어나면, 마지막 배점 값으로 채움
+                const lastScore = prevScores[currentLength - 1] || 5;
+                const newScores = [...prevScores];
+                for (let i = currentLength; i < newNum; i++) {
+                    newScores.push(lastScore);
+                }
+                return newScores;
+            } else {
+                // 문항 수가 줄어들면, 배열 자르기
+                return prevScores.slice(0, newNum);
+            }
+        });
+    }
+    
+    // 🚨 5. 개별 문항 배점 변경 핸들러
+    const handleQuestionScoreChange = (index, value) => {
+        setQuestionScores(prevScores => 
+            prevScores.map((score, i) => (i === index ? (value === '' ? 0 : Number(value)) : score))
+        );
+    }
+
+
+    const handleSubmit = (e) => {
+        e.preventDefault();
+        
+        if (!name.trim()) { alert("테스트 이름을 입력해주세요."); return; }
+        // 🚨 6. 문항 수 및 배점 유효성 검사 수정
+        if (numQuestions <= 0 || questionScores.some(s => s <= 0 || isNaN(s))) {
+             alert("문항 수는 1 이상이어야 하며, 모든 문항의 배점은 1 이상이어야 합니다.");
+             return;
+        }
+        
+        if (dateError) {
+             const confirm = window.confirm(dateError + "\n정규 수업일이 아닌 날에 테스트를 등록하시겠습니까?");
+             if (!confirm) return;
+        }
+
+        // 🚨 7. 저장 객체 구조 변경: questionScores 배열 저장
+        onSave({
+            id: isEdit ? test.id : Date.now(),
+            name,
+            date, 
+            maxScore: Number(maxScore),
+            classId,
+            totalQuestions: numQuestions,
+            questionScores: questionScores.map(Number), // 배열 저장
+        }, isEdit);
+        onClose();
+    };
+
+    return (
+        <Modal isOpen={isOpen} onClose={onClose} title={isEdit ? '테스트 정보 수정' : '새 테스트 생성'}>
+            <form onSubmit={handleSubmit} className="space-y-4 text-sm">
+                <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="테스트 이름 (예: 7월 정기고사)" required className="p-2 border rounded w-full" />
+                
+                {/* 날짜 입력 필드 */}
+                <div className="space-y-1">
+                    <input type="date" value={date} onChange={handleDateChange} required className={`p-2 border rounded w-full ${dateError ? 'border-red-500' : 'border-gray-300'}`} />
+                    {dateError && <p className='text-xs text-red-500'>{dateError}</p>}
+                </div>
+                
+                <div className="grid grid-cols-2 gap-4">
+                    {/* 🚨 8. 문항 수 입력 (배열 크기 조절용) */}
+                    <div>
+                        <label className="block text-gray-700 mb-1">총 문항 수:</label>
+                        <input type="number" value={numQuestions} onChange={handleNumQuestionsChange} placeholder="문항 수" required min="1" className="p-2 border rounded w-full" />
+                    </div>
+                    
+                    <div>
+                        <label className="block text-gray-700 mb-1">만점 (합계):</label>
+                        <input type="number" value={maxScore} readOnly className="p-2 border rounded w-full bg-gray-100 font-bold" />
+                    </div>
+                </div>
+
+                {/* 🚨 10. 문항별 배점 입력 영역 */}
+                <div className='border p-3 rounded-lg bg-gray-50'>
+                    <label className="block text-gray-700 font-bold mb-2">문항별 배점 설정:</label>
+                    <div className='max-h-32 overflow-y-auto pr-1 flex flex-wrap gap-2'>
+                        {questionScores.map((score, index) => (
+                            <div key={index} className='flex flex-col items-center w-12 text-center'>
+                                <span className='text-xs text-gray-500 mb-1'>{index + 1}번</span>
+                                <input 
+                                    type='number' 
+                                    value={score} 
+                                    onChange={(e) => handleQuestionScoreChange(index, e.target.value)}
+                                    min='1'
+                                    required
+                                    className='w-12 p-1 border rounded text-xs text-center'
+                                />
+                            </div>
+                        ))}
+                    </div>
+                </div>
+
+                <button type="submit" className="w-full bg-green-600 text-white font-bold py-2 rounded-lg hover:bg-green-700">
+                    {isEdit ? '테스트 수정' : '테스트 생성'}
+                </button>
+            </form>
+        </Modal>
+    );
+}
+
+// 수업 일지 등록/수정 모달 
 const HomeworkAssignmentModal = ({ isOpen, onClose, onSave, classId, assignment = null, students, selectedClass }) => {
     const isEdit = !!assignment;
     const initialStudentIds = isEdit ? assignment.students : (selectedClass?.students || []);
@@ -746,314 +1049,6 @@ const HomeworkAssignmentModal = ({ isOpen, onClose, onSave, classId, assignment 
     );
 };
 
-const TestFormModal = ({ isOpen, onClose, onSave, classId, test = null, classes, calculateClassSessions }) => {
-    const isEdit = !!test;
-    const selectedClass = classes.find(c => c.id === classId);
-    const sessions = selectedClass ? calculateClassSessions(selectedClass) : [];
-    
-    const [name, setName] = useState(test?.name || '');
-    const [date, setDate] = useState(test?.date || new Date().toISOString().slice(0, 10)); 
-    const [maxScore, setMaxScore] = useState(test?.maxScore || 100);
-    const [totalQuestions, setTotalQuestions] = useState(test?.totalQuestions || 20); 
-    const [questionScore, setQuestionScore] = useState(test?.questionScore || 5); 
-    const [dateError, setDateError] = useState('');
-
-    useEffect(() => {
-        setName(test?.name || '');
-        setDate(test?.date || new Date().toISOString().slice(0, 10));
-        setMaxScore(test?.maxScore || 100);
-        setTotalQuestions(test?.totalQuestions || 20);
-        setQuestionScore(test?.questionScore || 5);
-        setDateError('');
-    }, [test]);
-    
-    useEffect(() => {
-        const calculatedScore = Number(totalQuestions) * Number(questionScore);
-        if (calculatedScore > 0) {
-            setMaxScore(calculatedScore);
-        }
-    }, [totalQuestions, questionScore]);
-
-    const handleDateChange = (e) => {
-        const newDate = e.target.value;
-        setDate(newDate);
-        
-        // 정규 수업일 유효성 검사
-        const isScheduledDay = sessions.some(s => s.date === newDate);
-        if (!isScheduledDay) {
-            setDateError('선택된 날짜는 이 클래스의 정규 수업일이 아닙니다.');
-        } else {
-            setDateError('');
-        }
-    };
-
-
-    const handleSubmit = (e) => {
-        e.preventDefault();
-        
-        if (!name.trim()) { alert("테스트 이름을 입력해주세요."); return; }
-        if (Number(totalQuestions) <= 0 || Number(questionScore) <= 0) {
-             alert("문항 수와 문항당 배점은 1 이상이어야 합니다.");
-             return;
-        }
-        
-        if (dateError) {
-             const confirm = window.confirm(dateError + "\n정규 수업일이 아닌 날에 테스트를 등록하시겠습니까?");
-             if (!confirm) return;
-        }
-
-        onSave({
-            id: isEdit ? test.id : Date.now(),
-            name,
-            date, 
-            maxScore: Number(maxScore),
-            classId,
-            totalQuestions: Number(totalQuestions),
-            questionScore: Number(questionScore),
-        }, isEdit);
-        onClose();
-    };
-
-    return (
-        <Modal isOpen={isOpen} onClose={onClose} title={isEdit ? '테스트 정보 수정' : '새 테스트 생성'}>
-            <form onSubmit={handleSubmit} className="space-y-4 text-sm">
-                <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="테스트 이름 (예: 7월 정기고사)" required className="p-2 border rounded w-full" />
-                
-                {/* 날짜 입력 필드 */}
-                <div className="space-y-1">
-                    <input type="date" value={date} onChange={handleDateChange} required className={`p-2 border rounded w-full ${dateError ? 'border-red-500' : 'border-gray-300'}`} />
-                    {dateError && <p className='text-xs text-red-500'>{dateError}</p>}
-                </div>
-                
-                <div className="grid grid-cols-3 gap-4">
-                    <div>
-                        <label className="block text-gray-700 mb-1">총 문항 수:</label>
-                        <input type="number" value={totalQuestions} onChange={e => setTotalQuestions(e.target.value)} placeholder="문항 수" required min="1" className="p-2 border rounded w-full" />
-                    </div>
-                    <div>
-                        <label className="block text-gray-700 mb-1">문항당 배점:</label>
-                        <input type="number" value={questionScore} onChange={e => setQuestionScore(e.target.value)} placeholder="배점" required min="1" className="p-2 border rounded w-full" />
-                    </div>
-                    <div>
-                        <label className="block text-gray-700 mb-1">만점 (자동 계산):</label>
-                        <input type="number" value={maxScore} readOnly className="p-2 border rounded w-full bg-gray-100 font-bold" />
-                    </div>
-                </div>
-
-                <button type="submit" className="w-full bg-green-600 text-white font-bold py-2 rounded-lg hover:bg-green-700">
-                    {isEdit ? '테스트 수정' : '테스트 생성'}
-                </button>
-            </form>
-        </Modal>
-    );
-}
-
-const AnnouncementModal = ({ isOpen, onClose, onSave, announcementToEdit = null, allStudents, allClasses }) => {
-    const isEdit = !!announcementToEdit;
-
-    const [formData, setFormData] = useState({
-        title: announcementToEdit?.title || '',
-        content: announcementToEdit?.content.replace(/<br>/g, '\n') || '',
-        scheduleTime: announcementToEdit?.scheduleTime || new Date().toISOString().slice(0, 16),
-        attachments: announcementToEdit?.attachments || [],
-        targetClasses: announcementToEdit?.targetClasses || [],
-        targetStudents: announcementToEdit?.targetStudents || [],
-        newAttachment: null,
-    });
-    
-    useEffect(() => {
-        if (announcementToEdit) {
-            setFormData({
-                title: announcementToEdit.title || '',
-                content: announcementToEdit.content.replace(/<br>/g, '\n') || '',
-                scheduleTime: announcementToEdit.scheduleTime || new Date().toISOString().slice(0, 16),
-                attachments: announcementToEdit.attachments || [],
-                targetClasses: announcementToEdit.targetClasses || [],
-                targetStudents: announcementToEdit.targetStudents || [],
-                newAttachment: null,
-            });
-        }
-    }, [announcementToEdit]);
-
-    
-    // 파일 첨부 핸들러
-    const handleFileChange = (e) => {
-        const files = Array.from(e.target.files).map(file => file.name);
-        setFormData(prev => ({
-            ...prev,
-            attachments: [...prev.attachments, ...files]
-        }));
-        e.target.value = null; // 파일 초기화
-    }
-    
-    const handleRemoveAttachment = (name) => {
-        setFormData(prev => ({
-            ...prev,
-            attachments: prev.attachments.filter(attName => attName !== name)
-        }));
-    }
-    
-    const handleTargetChange = (type, id) => {
-        const numId = Number(id);
-        setFormData(prev => ({
-            ...prev,
-            [type]: prev[type].includes(numId)
-                ? prev[type].filter(item => item !== numId)
-                : [...prev[type], numId],
-        }));
-    };
-    
-    const handleSubmit = (e) => {
-        e.preventDefault();
-        if (!formData.title.trim() || !formData.content.trim()) {
-            alert('제목과 내용을 모두 입력해주세요.');
-            return;
-        }
-        
-        onSave({ 
-            id: isEdit ? announcementToEdit.id : Date.now(),
-            title: formData.title, 
-            content: formData.content.replace(/\n/g, '<br>'), // HTML 줄바꿈으로 변환 (모의 에디터)
-            attachments: formData.attachments,
-            scheduleTime: formData.scheduleTime,
-            targetClasses: formData.targetClasses,
-            targetStudents: formData.targetStudents,
-            isPinned: announcementToEdit?.isPinned || false, // 수정 시 고정 상태 유지
-        }, isEdit);
-        onClose();
-    };
-    
-    // 대상 학생 필터링 및 검색 기능 추가
-    const [studentSearchTerm, setStudentSearchTerm] = useState('');
-    const [studentFilterClassId, setStudentFilterClassId] = useState('');
-
-    const filteredStudents = allStudents.filter(s => s.status === '재원생')
-        .filter(s => s.name.toLowerCase().includes(studentSearchTerm.toLowerCase()))
-        .filter(s => !studentFilterClassId || s.classes.includes(Number(studentFilterClassId)));
-
-    
-    return (
-        <Modal isOpen={isOpen} onClose={onClose} title={isEdit ? '공지사항 수정' : "새 공지사항 작성"} maxWidth="max-w-xl">
-            <form onSubmit={handleSubmit} className="space-y-4 text-sm">
-                <input 
-                    type="text" 
-                    name="title"
-                    value={formData.title} 
-                    onChange={(e) => setFormData(prev => ({ ...prev, title: e.target.value }))} 
-                    placeholder="제목 (예: 12월 정규 수업 일정 안내)"
-                    required
-                    className="p-2 border rounded w-full"
-                />
-                <textarea
-                    name="content"
-                    value={formData.content}
-                    onChange={(e) => setFormData(prev => ({ ...prev, content: e.target.value }))} 
-                    placeholder="공지 내용을 입력하세요. (HTML 태그 사용 가능: <br>, <b>, <img> 등)"
-                    rows="6"
-                    required
-                    className="p-2 border rounded w-full"
-                />
-                
-                {/* 예약 및 첨부 섹션 */}
-                <div className='border p-3 rounded-lg space-y-3 bg-gray-50'>
-                    <div className='flex items-center space-x-3'>
-                        <label className='font-semibold'>게시 예약 시간:</label>
-                        <input 
-                            type="datetime-local" 
-                            value={formData.scheduleTime}
-                            onChange={(e) => setFormData(prev => ({ ...prev, scheduleTime: e.target.value }))}
-                            required
-                            className='p-1 border rounded'
-                        />
-                    </div>
-                    
-                    {/* 첨부 파일 */}
-                    <div className='space-y-2'>
-                        <div className="flex items-center space-x-2">
-                            <label htmlFor="announcementFile" className="cursor-pointer flex items-center bg-gray-200 p-1.5 rounded-lg hover:bg-gray-300 text-xs font-semibold">
-                                <Icon name="upload" className="w-4 h-4 mr-1"/> 파일 첨부 ({formData.attachments.length}개)
-                            </label>
-                            <input 
-                                type="file" 
-                                id="announcementFile" 
-                                multiple
-                                onChange={handleFileChange} 
-                                className="hidden" 
-                                accept=".pdf, .hwp, .doc, .docx, .png, .jpg, .jpeg"
-                            />
-                        </div>
-                        <div className='max-h-16 overflow-y-auto'>
-                             {formData.attachments.map((att, index) => (
-                                 <div key={index} className='flex justify-between items-center text-xs text-gray-700 bg-white p-1 rounded border mb-1'>
-                                     <span className='truncate'>{att}</span>
-                                     <button type="button" onClick={() => handleRemoveAttachment(att)} className='text-red-500 ml-2'>
-                                         <Icon name="x" className='w-3 h-3'/>
-                                     </button>
-                                 </div>
-                             ))}
-                        </div>
-                    </div>
-                </div>
-                
-                {/* 대상 클래스/학생 선택 */}
-                <div className='grid grid-cols-2 gap-4 border p-3 rounded-lg'>
-                    <div>
-                        <label className='block font-semibold mb-2'>대상 클래스:</label>
-                        <div className='space-y-1 max-h-28 overflow-y-auto pr-1 text-xs'>
-                             {allClasses.map(cls => (
-                                <label key={cls.id} className="flex items-center space-x-2">
-                                    <input type="checkbox" value={cls.id} checked={formData.targetClasses.includes(cls.id)} onChange={(e) => handleTargetChange('targetClasses', e.target.value)} className="form-checkbox text-blue-500" />
-                                    <span>{cls.name}</span>
-                                </label>
-                            ))}
-                        </div>
-                    </div>
-                     <div>
-                        <label className='block font-semibold mb-2'>대상 학생 (필터링 가능):</label>
-                        <div className='flex space-x-2 mb-2'>
-                            <input
-                                type="text"
-                                placeholder="학생 이름 검색"
-                                value={studentSearchTerm}
-                                onChange={(e) => setStudentSearchTerm(e.target.value)}
-                                className='p-1 border rounded text-xs w-1/2'
-                            />
-                            <select
-                                value={studentFilterClassId}
-                                onChange={(e) => setStudentFilterClassId(e.target.value)}
-                                className='p-1 border rounded text-xs w-1/2'
-                            >
-                                <option value="">클래스 필터</option>
-                                {allClasses.map(cls => <option key={cls.id} value={cls.id}>{cls.name}</option>)}
-                            </select>
-                        </div>
-                        
-                        <div className='space-y-1 max-h-28 overflow-y-auto pr-1 text-xs border p-1 rounded'>
-                            {filteredStudents.length === 0 ? (
-                                <p className='text-gray-500'>검색 결과 없음</p>
-                            ) : (
-                                filteredStudents.map(s => (
-                                    <label key={s.id} className="flex items-center space-x-2">
-                                        <input type="checkbox" value={s.id} checked={formData.targetStudents.includes(s.id)} onChange={(e) => handleTargetChange('targetStudents', e.target.value)} className="form-checkbox text-blue-500" />
-                                        <span>{s.name} ({s.school})</span>
-                                    </label>
-                                ))
-                            )}
-                        </div>
-                        <p className='text-xs text-gray-500 mt-2'>* 특정 클래스를 지정하지 않으면, 지정된 학생에게만 노출됩니다.</p>
-                    </div>
-                </div>
-
-
-                <button type="submit" className="w-full bg-blue-600 text-white font-bold py-2 rounded-lg hover:bg-blue-700 flex items-center justify-center">
-                    {isEdit ? '공지사항 수정 및 업데이트' : '공지사항 등록 및 알림 발송'}
-                    <Icon name="send" className="w-4 h-4 ml-2"/>
-                </button>
-            </form>
-        </Modal>
-    )
-}
-
 // 🚨 클리닉 로그 모달: 학생 정보 상세화
 const ClinicLogModal = ({ isOpen, onClose, onSave, logToEdit = null, students, defaultDate, classes }) => {
     const isEdit = !!logToEdit;
@@ -1105,8 +1100,10 @@ const ClinicLogModal = ({ isOpen, onClose, onSave, logToEdit = null, students, d
     
     const availableStudents = students.filter(s => s.status === '재원생');
     
+    const getClassesNames = (classIds) => classIds.map(id => classes.find(c => c.id === id)?.name || '').join(', ');
+
     const getStudentDisplayInfo = (student) => {
-        const classNames = student.classes.map(id => classes.find(c => c.id === id)?.name).filter(Boolean).join(', ');
+        const classNames = getClassesNames(student.classes);
         const phoneSuffix = student.phone.slice(-4);
         return `${student.name} (${classNames || '강좌 없음'} / ****${phoneSuffix})`;
     };
@@ -1363,7 +1360,7 @@ export default function App() {
         const assignmentResults = studentResults[assignmentId] || {};
         
         let newAssignmentResults;
-        if (status === '미체크') {
+        if (status === '0' || status === '') { // 0 또는 빈 문자열을 미체크/삭제로 간주
             newAssignmentResults = { ...assignmentResults };
             delete newAssignmentResults[questionId];
         } else {
@@ -1405,33 +1402,54 @@ export default function App() {
     }
   };
 
-  // 맞은 문항수를 받아 점수를 계산하여 저장
-  const handleUpdateGrade = (studentId, testId, correctCount) => {
-    const testInfo = tests.find(t => t.id === testId);
-    let finalScore = '';
-    
-    if (testInfo && correctCount !== '') {
-        const scorePerQuestion = testInfo.questionScore;
-        // 최종 점수 계산
-        finalScore = (Number(correctCount) * scorePerQuestion); 
-        if (finalScore > testInfo.maxScore) {
-             finalScore = testInfo.maxScore;
-        }
-        finalScore = finalScore.toFixed(2); 
-    } else {
-        correctCount = '';
-    }
+  // 🚨 handleUpdateGrade 함수: 문항별 결과 맵을 받아서 총점 계산
+  const handleUpdateGrade = (studentId, testId, resultMapping) => { 
+      const testInfo = tests.find(t => t.id === testId);
+      let finalScore = 0;
+      let isNoShow = false; // 🚨 미응시 플래그 추가
+      
+      // 🚨 미응시 처리 로직
+      if (Object.values(resultMapping).includes('4')) {
+          isNoShow = true;
+      }
+      
+      if (testInfo && testInfo.questionScores) {
+          if (!isNoShow) {
+              testInfo.questionScores.forEach((score, index) => {
+                  const questionId = String(index + 1); 
+                  const status = resultMapping[questionId];
+                  
+                  // '1'(맞음) 또는 '3'(고침)일 때만 점수 합산
+                  if (status === '1' || status === '3') { 
+                      finalScore += Number(score);
+                  } 
+              });
+              
+              if (finalScore > testInfo.maxScore) {
+                   finalScore = testInfo.maxScore;
+              }
+              finalScore = finalScore.toFixed(2); 
+          } else {
+              // 미응시인 경우, 점수는 null로 처리
+              finalScore = null; 
+          }
+      } else {
+          resultMapping = {};
+          finalScore = null; 
+      }
 
-    setGrades(prevGrades => ({
-        ...prevGrades,
-        [studentId]: {
-            ...prevGrades[studentId],
-            [testId]: {
-                score: finalScore === '' ? undefined : Number(finalScore),
-                correctCount: correctCount === '' ? undefined : Number(correctCount),
-            }
-        }
-    }));
+      setGrades(prevGrades => ({
+          ...prevGrades,
+          [studentId]: {
+              ...prevGrades[studentId],
+              [testId]: {
+                  // 🚨 score: 점수 또는 null (미응시) 저장
+                  score: finalScore, 
+                  // 🚨 correctCount: 문항별 결과 맵 저장 (이름은 유지하되 데이터 타입 변경)
+                  correctCount: resultMapping, 
+              }
+          }
+      }));
   };
   
   // --- CRUD 함수: 공지사항 관리 (유지) ---
@@ -1541,7 +1559,7 @@ export default function App() {
   );
 }
 
-// --- Notification Panel Component (새로 추가) ---
+// --- Notification Panel Component (유지) ---
 const NotificationPanel = ({ notifications }) => {
     const [isOpen, setIsOpen] = useState(false);
 
@@ -1841,11 +1859,11 @@ const StudentManagement = ({ students, classes, getClassesNames, handleSaveStude
 
                             return (
                                 <tr key={s.id} className="hover:bg-gray-50">
-                                    {/* 학생명 / 연락처: 클릭 가능하도록 수정 */}
+                                    {/* 학생명 / 연락처: 글씨 크기 통일 */}
                                     <td className="p-3">
                                         <button 
                                             onClick={() => handleViewDetail(s.id)} 
-                                            className="font-bold text-gray-900 hover:text-blue-600 hover:underline cursor-pointer"
+                                            className="font-bold text-sm text-gray-900 hover:text-blue-600 hover:underline cursor-pointer"
                                             title="상세 대시보드 보기"
                                         >
                                             {s.name}
@@ -1855,11 +1873,11 @@ const StudentManagement = ({ students, classes, getClassesNames, handleSaveStude
                                         </p>
                                     </td>
                                     {/* 학교/학년 추가 */}
-                                    <td className="p-3 text-gray-700">
+                                    <td className="p-3 text-gray-700 text-sm">
                                         {s.school} {s.grade}학년
                                     </td>
                                     {/* 수강 강좌 */}
-                                    <td className="p-3 text-gray-700">
+                                    <td className="p-3 text-gray-700 text-sm">
                                         {getClassesNames(s.classes)}
                                     </td>
                                     
@@ -2531,7 +2549,8 @@ const AttendanceManagement = ({ students, classes, attendanceLogs, handleSaveAtt
                     <tbody className="bg-white divide-y divide-gray-200">
                         {classStudents.map(student => (
                             <tr key={student.id} className="hover:bg-gray-50">
-                                <td className="px-4 py-2 font-medium sticky left-0 bg-white hover:bg-gray-50 z-20 min-w-[150px] text-left border-r">{student.name}</td> 
+                                {/* 🚨 학생명 글씨 크기 통일: text-sm에서 text-xs로 변경 */}
+                                <td className="px-4 py-2 font-medium sticky left-0 bg-white hover:bg-gray-50 z-20 min-w-[150px] text-left border-r text-xs">{student.name}</td> 
                                 {allSessionDates.map(date => {
                                     const status = tempTableAttendanceMap[date] ? (tempTableAttendanceMap[date][student.id] || '미체크') : (allAttendanceMap[date] ? (allAttendanceMap[date][student.id] || '미체크') : '미체크');
                                     
@@ -2573,7 +2592,7 @@ const AttendanceManagement = ({ students, classes, attendanceLogs, handleSaveAtt
                             </div>
                             
                             <div>
-                                <p className="font-bold text-gray-900">{s.name}</p>
+                                <p className="font-bold text-gray-900 text-sm">{s.name}</p>
                                 <p className="text-xs text-gray-500 mt-1">
                                     학생: {s.phone} / 학부모: {s.parentPhone}
                                 </p>
@@ -2773,9 +2792,9 @@ const HomeworkManagement = ({ students, classes, homeworkAssignments, homeworkRe
             String(assignment.startQuestion + i)
         ); 
         
-        const RESULT_OPTIONS = ['맞음', '틀림', '고침', '미체크'];
+        const RESULT_OPTIONS_MAP_HW = { '맞음': '맞음', '틀림': '틀림', '고침': '고침', '미체크': '미체크' };
         
-        // **getSummaryCounts 함수 정의:** 
+        // **getSummaryCounts 함수 정의:**
         const getSummaryCounts = (results) => {
             const counts = { '맞음': 0, '틀림': 0, '고침': 0, '미체크': 0 };
             questionIds.forEach(id => {
@@ -2850,31 +2869,40 @@ const HomeworkManagement = ({ students, classes, homeworkAssignments, homeworkRe
                 e.preventDefault();
                 updateTempResult(studentId, qId, '미체크');
             } else if (e.key === 'ArrowRight' || e.key === 'Tab') {
-                // Tab 또는 오른쪽 화살표: 다음 문항으로 이동 (브라우저 기본 동작 사용)
-            // 🚨 [수정된 부분] 왼쪽 방향키를 눌렀을 때 왼쪽 문항으로 이동
+                // 오른쪽 이동 (방향키 사용 시에만)
+                e.preventDefault(); // Tab 기본 동작 방지
+                if (qIndex < totalQuestions - 1) {
+                    const nextQId = questionIds[qIndex + 1];
+                    const nextCell = document.getElementById(`cell-hw-${studentId}-${nextQId}`);
+                    nextCell?.focus();
+                } else if (sIndex < studentsInTable.length - 1) {
+                    const nextStudentId = studentIds[sIndex + 1];
+                    const nextCell = document.getElementById(`cell-hw-${nextStudentId}-${questionIds[0]}`);
+                    nextCell?.focus();
+                }
             } else if (e.key === 'ArrowLeft' || (e.shiftKey && e.key === 'Tab')) {
+                // 왼쪽 이동 (방향키 사용 시에만)
                 e.preventDefault();
                 if (qIndex > 0) {
                     const prevQId = questionIds[qIndex - 1];
-                    const prevCell = document.getElementById(`cell-${studentId}-${prevQId}`);
+                    const prevCell = document.getElementById(`cell-hw-${studentId}-${prevQId}`);
                     prevCell?.focus();
                 } else if (sIndex > 0) {
-                    // 줄 시작이면 이전 학생의 마지막 문항으로 이동
                     const prevStudentId = studentIds[sIndex - 1];
-                    const prevCell = document.getElementById(`cell-${prevStudentId}-${questionIds[totalQuestions - 1]}`);
+                    const prevCell = document.getElementById(`cell-hw-${prevStudentId}-${questionIds[totalQuestions - 1]}`);
                     prevCell?.focus();
                 }
             } else if (e.key === 'ArrowDown' && sIndex < studentsInTable.length - 1) {
-                 // 아래 화살표: 다음 학생의 같은 문항으로 이동
+                 // 아래 이동 (방향키 사용 시에만)
                 e.preventDefault();
                 const nextStudentId = studentIds[sIndex + 1];
-                const nextCell = document.getElementById(`cell-${nextStudentId}-${qId}`);
+                const nextCell = document.getElementById(`cell-hw-${nextStudentId}-${qId}`);
                 nextCell?.focus();
             } else if (e.key === 'ArrowUp' && sIndex > 0) {
-                 // 위 화살표: 이전 학생의 같은 문항으로 이동
+                 // 위 이동 (방향키 사용 시에만)
                 e.preventDefault();
                 const prevStudentId = studentIds[sIndex - 1];
-                const prevCell = document.getElementById(`cell-${prevStudentId}-${qId}`);
+                const prevCell = document.getElementById(`cell-hw-${prevStudentId}-${qId}`);
                 prevCell?.focus();
             }
         }, [updateTempResult, questionIds, totalQuestions, classStudents, assignment.students]);
@@ -2886,7 +2914,7 @@ const HomeworkManagement = ({ students, classes, homeworkAssignments, homeworkRe
             classStudents.forEach(s => {
                 questionIds.forEach(qId => {
                     const status = tempResults[s.id]?.[qId] || '미체크';
-                    const initialStatus = initialResultsMap[s.id]?.[qId] || '미체 체크';
+                    const initialStatus = initialResultsMap[s.id]?.[qId] || '미체크';
                     
                     if (status !== initialStatus) {
                          handleUpdateHomeworkResult(s.id, assignmentId, qId, status);
@@ -2950,14 +2978,14 @@ const HomeworkManagement = ({ students, classes, homeworkAssignments, homeworkRe
                                             return (
                                                 <td key={qId} className="p-1 text-center">
                                                     <div
-                                                        id={`cell-${student.id}-${qId}`}
-                                                        tabIndex="0" // 키보드 포커스 가능하게
+                                                        id={`cell-hw-${student.id}-${qId}`} // ID 변경
+                                                        tabIndex="0" 
                                                         className={`w-12 h-6 mx-auto border rounded text-xs flex items-center justify-center cursor-pointer font-bold outline-none ring-2 ring-transparent transition-all duration-100 ${getStatusColor(status)} ${activeCell?.studentId === student.id && activeCell?.qId === qId ? 'ring-blue-500' : ''}`}
                                                         onKeyDown={(e) => handleKeyDown(e, student.id, qId)}
                                                         onClick={() => setActiveCell({ studentId: student.id, qId })}
                                                         onFocus={() => setActiveCell({ studentId: student.id, qId })}
                                                         onBlur={() => setActiveCell(null)}
-                                                        title={`키보드: ${status === '맞음' ? '1' : status === '틀림' ? '2' : status === '고침' ? '3' : '0/1/2/3'}`}
+                                                        title={`키보드: 1(맞음), 2(틀림), 3(고침), 0/Del(미체크)`}
                                                     >
                                                         {status.slice(0, 1)}
                                                     </div>
@@ -2972,7 +3000,7 @@ const HomeworkManagement = ({ students, classes, homeworkAssignments, homeworkRe
                 </div>
             </div>
         );
-    }
+    };
 
     return (
         <div className="flex h-full min-h-[85vh] space-x-6">
@@ -3080,11 +3108,10 @@ const HomeworkManagement = ({ students, classes, homeworkAssignments, homeworkRe
 };
 
 
-// --- GradeManagement 컴포넌트 (유지) ---
+// --- GradeManagement 컴포넌트 (수정된 컴포넌트) ---
 const GradeManagement = ({ students, classes, tests, grades, handleSaveTest, handleDeleteTest, handleUpdateGrade, handleSaveClass, calculateClassSessions }) => {
     const initialClassId = classes.length > 0 ? classes[0].id : null;
     const [selectedClassId, setSelectedClassId] = useState(initialClassId);
-    const [selectedDate, setSelectedDate] = useState(null); 
     const [isTestModalOpen, setIsTestModalOpen] = useState(false);
     const [editingTest, setEditingTest] = useState(null);
     const [selectedTest, setSelectedTest] = useState(null); 
@@ -3092,20 +3119,23 @@ const GradeManagement = ({ students, classes, tests, grades, handleSaveTest, han
     const selectedClass = classes.find(c => c.id === selectedClassId);
     
     // 테스트 목록 (날짜 최신순)
-    const classTests = tests
-        .filter(t => t.classId === selectedClassId)
+    const classTests = useMemo(() =>
+        tests.filter(t => t.classId === selectedClassId)
         .sort((a, b) => {
-            // 날짜 필드를 사용하여 정렬
             const dateA = a.date;
             const dateB = b.date;
             if (dateA && dateB) {
                 return new Date(dateB) - new Date(dateA);
             }
             return b.id - a.id;
-        });
+        }), [tests, selectedClassId]);
+
 
     // '재원생' 상태인 학생만 성적 관리에 포함
-    const classStudents = students.filter(s => s.status === '재원생' && selectedClass?.students.includes(s.id));
+    const classStudents = useMemo(() =>
+        students.filter(s => s.status === '재원생' && selectedClass?.students.includes(s.id)),
+    [students, selectedClass]);
+
 
     const calculateClassAverages = () => {
         const averages = {};
@@ -3115,7 +3145,8 @@ const GradeManagement = ({ students, classes, tests, grades, handleSaveTest, han
             let studentCount = 0;
             classStudents.forEach(student => {
                 const score = grades[student.id]?.[test.id]?.score;
-                if (score !== undefined && score !== null && score !== '') {
+                // 🚨 null(미응시) 제외
+                if (score !== undefined && score !== null) {
                     totalScore += Number(score);
                     studentCount++;
                 }
@@ -3137,126 +3168,45 @@ const GradeManagement = ({ students, classes, tests, grades, handleSaveTest, han
         setIsTestModalOpen(false);
     }
     
-    const handleCorrectCountChange = (studentId, testId, value) => {
-        // 숫자, 소수점, 빈 문자열만 허용 (부분 점수 가능성을 위해)
-        if (value === '' || /^\d*\.?\d*$/.test(value)) {
-             handleUpdateGrade(studentId, testId, value);
-        }
-    }
-    
     // 테스트 클릭 핸들러
     const handleTestNavigate = (test) => {
         if (selectedTest?.id === test.id) {
-            setSelectedDate(null);
             setSelectedTest(null);
         } else {
-            setSelectedDate(test.date);
             setSelectedTest(test);
         }
     }
     
     
-    // --- 전체 성적표 (Full Grade Table) ---
-    const FullGradeTable = () => (
-        <div className="overflow-x-auto border rounded-lg max-h-[calc(85vh-200px)]">
-             <table className="min-w-full divide-y divide-gray-200 text-sm">
-                <thead className="bg-gray-50">
-                    <tr>
-                        <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase w-48 sticky left-0 bg-gray-50 z-20 border-r">학생명</th>
-                        {classTests.map(test => (
-                            <th key={test.id} className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase min-w-[120px] group relative">
-                                <div className="flex flex-col items-center">
-                                    <span>{test.name}</span>
-                                    <span className="font-normal text-gray-400">({test.maxScore}점, {test.totalQuestions}문항)</span>
-                                </div>
-                                <div className="absolute top-0 right-0 flex opacity-0 group-hover:opacity-100 transition duration-150">
-                                    <button onClick={() => handleEditTest(test)} className="p-1 text-blue-500 hover:text-blue-700 bg-gray-50 rounded-full" title="수정"><Icon name="edit" className="w-4 h-4" /></button>
-                                    <button onClick={() => handleDeleteTest(test.id)} className="p-1 text-red-500 hover:text-red-700 bg-gray-50 rounded-full" title="삭제"><Icon name="trash" className="w-4 h-4" /></button>
-                                </div>
-                            </th>
-                        ))}
-                    </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                    {/* 평균 행 고정 및 그림자 제거 */}
-                    <tr className="bg-yellow-50 font-bold text-xs sticky top-0 z-10"> 
-                        <td className="px-6 py-2 whitespace-nowrap text-left text-yellow-800 sticky left-0 bg-yellow-50 z-11 border-r">평균</td>
-                        {classTests.map(test => (
-                            <td key={test.id} className="px-4 py-2 whitespace-nowrap text-center text-yellow-800">
-                                {classAverages[test.id]}
-                            </td>
-                        ))}
-                    </tr>
-                    {classStudents.map(student => (
-                        <tr key={student.id} className="hover:bg-gray-50 text-xs">
-                            <td className="px-6 py-2 whitespace-nowrap font-medium text-gray-900 sticky left-0 bg-white hover:bg-gray-50 z-1 border-r">
-                                {student.name}
-                            </td>
-                            {classTests.map(test => {
-                                const scoreData = grades[student.id]?.[test.id] || {};
-                                const score = scoreData.score === undefined ? '' : scoreData.score;
-                                const correctCount = scoreData.correctCount === undefined ? '' : scoreData.correctCount;
-                                
-                                return (
-                                    <td key={test.id} className="px-2 py-1 whitespace-nowrap text-center">
-                                        <div className="flex flex-col items-center">
-                                            {/* 맞은 문항 입력 필드 */}
-                                            <input
-                                                type="text" 
-                                                value={correctCount}
-                                                onChange={(e) => handleCorrectCountChange(student.id, test.id, e.target.value)}
-                                                className="w-16 p-1 border rounded text-center focus:ring-blue-500 focus:border-blue-500 font-bold"
-                                                placeholder="-"
-                                                maxLength="3"
-                                            />
-                                            {/* 점수 표시 (자동 계산) */}
-                                            <span className="text-gray-500 mt-0.5">({score === '' ? '-' : score}점)</span>
-                                        </div>
-                                    </td>
-                                );
-                            })}
-                        </tr>
-                    ))}
-                </tbody>
-            </table>
-        </div>
+    // 🚨 FullGradeTable 호출 시 필요한 props 전달
+    const FullGradeTableComponent = () => (
+        <FullGradeTable 
+            classStudents={classStudents}
+            classTests={classTests}
+            grades={grades}
+            classAverages={classAverages}
+            handleEditTest={handleEditTest}
+            handleDeleteTest={handleDeleteTest}
+        />
     );
     
-    // --- 개별 성적 입력 (Individual Grade Input) ---
-    const IndividualGradeInput = ({ test }) => {
+    // 🚨 IndividualGradeInput을 TestResultInput으로 대체 (아래 정의된 컴포넌트 사용)
+    const TestResultInput = ({ test }) => {
          const studentsWithGrade = classStudents.map(student => ({
             student,
-            grade: grades[student.id]?.[test.id] || { score: '', correctCount: '' }
+            // 🚨 기존 grades[student.id]?.[test.id].correctCount는 이제 문항별 결과 맵입니다.
+            resultMap: grades[student.id]?.[test.id]?.correctCount || {}, 
+            score: grades[student.id]?.[test.id]?.score,
          }));
          
+         // 새로운 문항별 채점 테이블 컴포넌트 호출
          return (
-             <div className="space-y-4 max-h-[calc(85vh-150px)] overflow-y-auto pr-2">
-                 <div className="p-3 bg-gray-100 rounded-lg text-sm">
-                     <p className="font-bold">{test.name}</p>
-                     <p className="text-xs text-gray-700">만점: {test.maxScore}점 / 총 문항 수: {test.totalQuestions}개 / 문항당 배점: {test.questionScore}점</p>
-                 </div>
-                 
-                 <div className="grid grid-cols-2 gap-4 text-sm">
-                     {studentsWithGrade.map(({ student, grade }) => (
-                         <div key={student.id} className="flex items-center justify-between p-3 border rounded-lg bg-white">
-                             <span className="font-semibold w-24">{student.name}</span>
-                             <div className="flex items-center space-x-2">
-                                 <input
-                                    type="text" 
-                                    min="0"
-                                    max={test.totalQuestions}
-                                    value={grade.correctCount}
-                                    onChange={(e) => handleCorrectCountChange(student.id, test.id, e.target.value)}
-                                    className="w-16 p-1 border rounded text-center font-bold"
-                                    placeholder="0"
-                                />
-                                 <span className="text-gray-600">/ {test.totalQuestions} 문항</span>
-                                 <span className="font-bold text-blue-600">({grade.score === '' ? '-' : grade.score}점)</span>
-                             </div>
-                         </div>
-                     ))}
-                 </div>
-             </div>
+            <TestResultTable 
+                test={test} 
+                studentsData={studentsWithGrade} 
+                handleUpdateGrade={handleUpdateGrade}
+                grades={grades}
+            />
          );
     }
     
@@ -3307,23 +3257,31 @@ const GradeManagement = ({ students, classes, tests, grades, handleSaveTest, han
                     <h3 className="text-xl font-bold text-gray-800">
                         {selectedTest ? `${selectedTest.name} 성적 입력` : `${selectedClass?.name || '클래스'} 전체 성적표`}
                     </h3>
-                    <button 
-                        onClick={() => { setEditingTest(null); setIsTestModalOpen(true); }} 
-                        className="flex items-center bg-green-500 text-white text-sm font-bold py-2 px-4 rounded-lg hover:bg-green-600 transition duration-200 shadow-md"
-                    >
-                        <Icon name="plus" className="w-4 h-4 mr-2" /> 테스트 생성
-                    </button>
+                    
+                    {/* 🚨 버튼 일관성 확보: selectedClassId가 있을 때만 버튼 표시 */}
+                    {selectedClassId && (
+                        <button 
+                            onClick={() => { setEditingTest(null); setIsTestModalOpen(true); }} 
+                            className="flex items-center bg-green-500 text-white text-sm font-bold py-2 px-4 rounded-lg hover:bg-green-600 transition duration-200 shadow-md"
+                        >
+                            <Icon name="plus" className="w-4 h-4 mr-2" /> 테스트 생성
+                        </button>
+                    )}
                 </div>
                 
-                {selectedClassId === null || classStudents.length === 0 ? (
-                    <div className="flex-1 flex items-center justify-center text-gray-500 text-base">
-                        {selectedClassId === null ? '클래스를 선택해 주세요.' : `${selectedClass.name}에 등록된 재원생이 없습니다.`}
+                {selectedClassId === null ? (
+                     <div className="flex-1 flex items-center justify-center text-gray-500 text-base h-[70vh]">
+                        클래스를 선택해 주세요.
+                    </div>
+                ) : classStudents.length === 0 ? (
+                    <div className="flex-1 flex items-center justify-center text-gray-500 text-base h-[70vh]">
+                        {selectedClass.name}에 등록된 재원생이 없습니다.
                     </div>
                 ) : (
                     selectedTest ? (
-                        <IndividualGradeInput test={selectedTest} />
+                        <TestResultInput test={selectedTest} />
                     ) : (
-                        <FullGradeTable />
+                        <FullGradeTableComponent />
                     )
                 )}
             </div>
@@ -3375,18 +3333,7 @@ const BookManagement = ({ students, handleSaveStudent, classes }) => {
     const [searchTerm, setSearchTerm] = useState('');
     const [editingStudent, setEditingStudent] = useState(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
-    
-    // 이 페이지에서는 학생을 추가/수정할 때 books 필드만 수정하는 별도의 모달이 필요하지만,
-    // 재사용성을 위해 StudentFormModal을 기반으로 교재 필드만 노출하는 임시 모달 생성 (App.js 외부라 코드는 StudentFormModal을 대신함)
-    // 실제로는 별도의 BookEditModal이 필요하나, 현재는 학생 관리에서 가져온 StudentFormModal을 재사용하며 학생의 전체 정보를 업데이트함.
-    
-    // StudentFormModal이 교재 정보를 관리하지 않게 되었으므로,
-    // 이 페이지에서는 인라인 편집 또는 별도의 모달이 필요합니다. 
-    // 임시로 학생 추가 모달을 **BookManagement용으로 수정하지 않고,** 학생 목록만 보여주도록 유지합니다.
-    
-    // **개선된 StudentFormModal을 사용하지 않으므로, 아래 로직은 교재 정보 수정 기능이 없는 상태입니다.** 
-    // 실제로는 이 곳에서 교재만 수정할 수 있는 간소화된 모달을 사용해야 합니다.
-    
+
     const filteredStudents = students.filter(s => {
         const matchesSearch = s.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
                               s.school.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -3394,13 +3341,7 @@ const BookManagement = ({ students, handleSaveStudent, classes }) => {
         return matchesSearch;
     });
     
-    // **NOTE: StudentManagement에서 사용하던 StudentFormModal은 교재 관리가 불가능하므로, 
-    // 여기서는 교재 정보 수정을 위해 임시로 기존 학생 정보를 메모리에 복사하여 보여주는 식으로 구현합니다.**
-    
     const handleEdit = (student) => {
-        // 실제로는 교재만 수정할 수 있는 별도의 BookEditModal이 필요함.
-        // 여기서는 임시로 학생 전체 수정 모달을 사용하며, 교재 필드는 StudentFormModal에서 제거되었음을 전제합니다.
-        // (즉, 여기서 편집 버튼을 눌러도 교재는 수정 불가능. 별도의 BookEditModal 구현 필요.)
         setEditingStudent(student);
         setIsModalOpen(true);
     };
@@ -3531,7 +3472,7 @@ const BookManagement = ({ students, handleSaveStudent, classes }) => {
                     onClose={handleCloseModal} 
                     student={editingStudent} 
                     onSave={handleSaveStudent}
-                    classes={classes} // 학생 정보에 강좌 정보가 필요할 수 있으므로 전달
+                    classes={classes} 
                 />
             )}
         </div>
@@ -3651,7 +3592,7 @@ const ClinicManagement = ({ students, clinicLogs, handleSaveClinicLog, handleDel
                     logToEdit={editingLog}
                     students={students}
                     defaultDate={filterDate}
-                    classes={classes} // 🚨 강좌 정보 전달
+                    classes={classes} 
                 />
             </div>
         </div>
@@ -3895,15 +3836,19 @@ const calculateGradeComparison = (studentId, classes, tests, grades) => {
         if (classTests.length === 0) return;
 
         classTests.forEach(test => {
-            const studentScore = grades[studentId]?.[test.id]?.score;
-            if (studentScore === undefined) return;
+            const scoreData = grades[studentId]?.[test.id];
+            const studentScore = scoreData?.score;
+            
+            // 미응시(null) 또는 점수가 없는 경우 제외
+            if (studentScore === undefined || studentScore === null) return; 
 
             // 클래스 평균 계산
             let totalClassScore = 0;
             let classStudentCount = 0;
             cls.students.forEach(sId => {
                 const score = grades[sId]?.[test.id]?.score;
-                if (score !== undefined) {
+                 // 미응시(null) 제외
+                if (score !== undefined && score !== null) { 
                     totalClassScore += Number(score);
                     classStudentCount++;
                 }
@@ -3924,6 +3869,7 @@ const calculateGradeComparison = (studentId, classes, tests, grades) => {
 
     return comparison;
 };
+
 
 const calculateHomeworkStats = (studentId, homeworkAssignments, homeworkResults) => {
     const studentAssignments = homeworkAssignments.filter(a => a.students.includes(studentId));
@@ -4123,3 +4069,527 @@ const StudentDetail = ({ studentId, students, classes, studentMemos, grades, tes
         </div>
     );
 };
+
+// --- TestResultTable 컴포넌트 (수정됨) ---
+const RESULT_OPTIONS_MAP = { 
+    '1': 'O',       // 맞음
+    '2': 'X',       // 틀림
+    '3': '▲',       // 고침 (입력은 불가, 기존 데이터 표시용)
+    '4': 'NA',      // 미응시 (체크박스로 처리)
+    '0': '?'        // 미체크 (미입력)
+};
+
+const getStatusColor = (statusKey) => {
+    switch (statusKey) {
+        case '1': return 'bg-green-100 text-green-700';
+        case '2': return 'bg-red-100 text-red-700';
+        case '3': return 'bg-blue-100 text-blue-700';
+        case '4': return 'bg-yellow-100 text-yellow-700'; 
+        default: return 'bg-gray-100 text-gray-500';
+    }
+};
+
+const TestResultTable = ({ test, studentsData, handleUpdateGrade, grades }) => {
+
+    // TestResultTable 내 상태
+    const [isAttendanceModalOpen, setIsAttendanceModalOpen] = useState(false); // 모달 상태 추가
+    const [isSaving, setIsSaving] = useState(false);
+    
+    const testId = test?.id;
+    const questionScores = test?.questionScores || []; 
+    const totalQuestions = test?.totalQuestions || questionScores.length;
+    
+    const questionIds = useMemo(() => 
+        Array.from({ length: totalQuestions }, (_, i) => String(i + 1)), 
+    [totalQuestions]);
+
+    const initialStates = useMemo(() => {
+        const results = {};
+        const noShow = {};
+        studentsData.forEach(data => {
+            const studentId = data.student.id;
+            const savedGrade = grades[studentId]?.[testId];
+            results[studentId] = savedGrade?.correctCount || {};
+            // score가 null이면 미응시로 간주
+            noShow[studentId] = savedGrade?.score === null;
+        });
+        return { results, noShow };
+    }, [testId, studentsData.length, grades]);
+    
+    // 상태 매핑: { 학생ID: { 문항ID: '1'|'2'|'3'|'4'|'0', ... }, ... }
+    const [tempResults, setTempResults] = useState(initialStates.results);
+    const [tempNoShow, setTempNoShow] = useState(initialStates.noShow);
+    
+    const [isDirty, setIsDirty] = useState(false);
+    const [activeCell, setActiveCell] = useState(null); 
+
+    // 외부 변경 시 상태 초기화
+    useEffect(() => {
+        setTempResults(initialStates.results);
+        setTempNoShow(initialStates.noShow);
+        setIsDirty(false);
+        setActiveCell(null);
+    }, [initialStates]);
+
+    // 변경 사항 감지
+    useEffect(() => {
+        const isResultsDirty = JSON.stringify(tempResults) !== JSON.stringify(initialStates.results);
+        const isNoShowDirty = JSON.stringify(tempNoShow) !== JSON.stringify(initialStates.noShow);
+        setIsDirty(isResultsDirty || isNoShowDirty);
+    }, [tempResults, tempNoShow, initialStates]);
+
+    const updateTempResult = useCallback((studentId, qId, statusKey) => {
+        setTempResults(prev => {
+            const newStudentResults = { ...prev[studentId] };
+            if (statusKey === '0' || statusKey === '') {
+                delete newStudentResults[qId];
+            } else {
+                newStudentResults[qId] = statusKey;
+            }
+            return { ...prev, [studentId]: newStudentResults };
+        });
+    }, []);
+
+    // 미응시 체크박스 핸들러
+    const handleNoShowToggle = (studentId, isChecked) => {
+        setTempNoShow(prev => ({ ...prev, [studentId]: isChecked }));
+    };
+    
+    // 총 점수 계산 (미응시 처리 포함)
+    const calculateScore = useCallback((studentId, results) => {
+        if (tempNoShow[studentId]) {
+            return 'NA'; // 미응시 문자열 반환
+        }
+        
+        let score = 0;
+        questionIds.forEach((id, index) => {
+            const status = results[id];
+            const questionScore = questionScores[index] || 0;
+            
+            // '1'(맞음) 또는 '3'(고침)일 때만 점수 합산
+            if (status === '1' || status === '3') { 
+                score += Number(questionScore);
+            }
+        });
+        
+        if (score > test.maxScore) {
+             score = test.maxScore;
+        }
+        
+        // 소수점 첫째 자리까지 표시
+        return score.toFixed(1); 
+    }, [questionIds, questionScores, tempNoShow, test.maxScore]);
+    
+    // 맞은 문항 수 계산
+    const calculateCorrectCount = useCallback((results) => {
+        let count = 0;
+        questionIds.forEach(id => {
+            const status = results[id];
+            if (status === '1' || status === '3') { 
+                count++;
+            }
+        });
+        return count;
+    }, [questionIds]);
+
+    // 🚨 키보드 입력 및 포커스 이동 로직 (1, 2, 0만 허용)
+    const handleKeyDown = useCallback((e, studentId, qId) => {
+        const map = { '1': '1', '2': '2', '0': '0' }; // 1: 맞음, 2: 틀림, 0: 미체크
+        const statusToSet = map[e.key];
+
+        const studentsInTable = studentsData.map(data => data.student);
+        const studentIds = studentsInTable.map(s => s.id);
+        const qIndex = questionIds.indexOf(qId);
+        const sIndex = studentIds.indexOf(studentId);
+
+        if (statusToSet) {
+            e.preventDefault(); 
+            updateTempResult(studentId, qId, statusToSet);
+        } else if (e.key === 'Delete' || e.key === 'Backspace') {
+             e.preventDefault(); 
+             updateTempResult(studentId, qId, '0');
+        }
+        
+        // --- 포커스 이동 (방향키 사용 시) ---
+        if (e.key === 'ArrowRight' || e.key === 'Tab') {
+            e.preventDefault();
+            if (qIndex < totalQuestions - 1) {
+                const nextQId = questionIds[qIndex + 1];
+                const nextCell = document.getElementById(`cell-${studentId}-${nextQId}`);
+                nextCell?.focus();
+            } else if (sIndex < studentsInTable.length - 1) {
+                const nextStudentId = studentIds[sIndex + 1];
+                const nextCell = document.getElementById(`cell-${nextStudentId}-${questionIds[0]}`);
+                nextCell?.focus();
+            }
+
+        } else if (e.key === 'ArrowLeft' || (e.shiftKey && e.key === 'Tab')) {
+            e.preventDefault();
+            if (qIndex > 0) {
+                const prevQId = questionIds[qIndex - 1];
+                const prevCell = document.getElementById(`cell-${studentId}-${prevQId}`);
+                prevCell?.focus();
+            } else if (sIndex > 0) {
+                const prevStudentId = studentIds[sIndex - 1];
+                const prevCell = document.getElementById(`cell-${prevStudentId}-${questionIds[totalQuestions - 1]}`);
+                prevCell?.focus();
+            }
+        } else if (e.key === 'ArrowDown' && sIndex < studentsInTable.length - 1) {
+            e.preventDefault();
+            const nextStudentId = studentIds[sIndex + 1];
+            const nextCell = document.getElementById(`cell-${nextStudentId}-${qId}`);
+            nextCell?.focus();
+        } else if (e.key === 'ArrowUp' && sIndex > 0) {
+            e.preventDefault();
+            const prevStudentId = studentIds[sIndex - 1];
+            const prevCell = document.getElementById(`cell-${prevStudentId}-${qId}`);
+            prevCell?.focus();
+        }
+    }, [updateTempResult, questionIds, totalQuestions, studentsData]);
+
+    // 🚨 1. 모의 서버 통신 함수 정의
+    const saveResults = (resultsToSave) => {
+        return new Promise(resolve => {
+            console.log("Saving results to server (Mock API):", resultsToSave);
+            // 실제 데이터 업데이트는 handleUpdateGrade를 통해 이뤄짐.
+            // 여기서는 1초 지연 후 Promise 성공 처리
+            setTimeout(() => {
+                resolve({ success: true, message: "성적 데이터가 성공적으로 저장되었습니다." });
+            }, 1000); 
+        });
+    };
+
+    // 🚨 2. 저장할 데이터 형식으로 가공하는 모의 함수 정의
+    const formatResultsForSave = () => {
+        const studentsToUpdate = studentsData.map(({ student }) => {
+            const studentId = student.id;
+            // 문항별 결과 맵
+            const resultMap = tempResults[studentId] || {}; 
+            // 미응시 여부 (true/false)
+            const isNoShow = tempNoShow[studentId] || false; 
+            
+            // 미응시인 경우, 결과 맵에 '4' 미응시 상태 추가 (로직상 불필요할 수 있으나, 일관성을 위해 추가)
+            const finalResultMap = isNoShow 
+                ? questionIds.reduce((acc, qId) => ({ ...acc, [qId]: '4' }), {})
+                : resultMap;
+            
+            return {
+                studentId,
+                testId,
+                isNoShow,
+                resultMapping: finalResultMap,
+            };
+        });
+        
+        return studentsToUpdate;
+    };
+        
+    // 🚨 3. handleSaveAll 함수 수정 (모의 통신 함수 사용 및 상태 업데이트)
+    const handleSaveAll = async () => {
+        if (!isDirty || isSaving) return;
+        
+        setIsSaving(true); 
+        const dataToSave = formatResultsForSave();
+
+        try {
+            // 모의 저장 API 호출
+            const saveResponse = await saveResults(dataToSave); 
+            console.log(saveResponse.message);
+            
+            // 서버 통신 성공 후, props로 받은 handleUpdateGrade를 이용해 App 상태 업데이트
+            dataToSave.forEach(data => {
+                // handleUpdateGrade는 문항별 결과 맵(resultMapping)을 받습니다.
+                // 미응시(isNoShow)인 경우, 결과 맵에 미응시 코드를 포함하여 전달합니다.
+                const finalResultMapForUpdate = data.isNoShow 
+                    ? { '1': '4' } // 미응시를 나타내는 더미 맵 (handleUpdateGrade 내부에서 score=null로 변환됨)
+                    : data.resultMapping;
+                
+                handleUpdateGrade(data.studentId, data.testId, finalResultMapForUpdate);
+            });
+            
+            // 초기 상태와 임시 상태를 동기화하여 isDirty 상태 해제
+            setTempResults(prev => JSON.parse(JSON.stringify(prev))); // Deep copy로 강제 업데이트
+            setTempNoShow(prev => JSON.parse(JSON.stringify(prev))); 
+            setIsDirty(false); 
+            alert(`[${test.name}] 성적 결과가 성공적으로 저장되었습니다.`);
+
+        } catch (error) {
+            console.error("결과 저장 중 오류 발생:", error);
+            alert("성적 저장 중 오류가 발생했습니다. 콘솔을 확인해주세요.");
+        } finally {
+            setIsSaving(false); 
+        }
+    };
+
+
+    if (!test || questionIds.length === 0) {
+        return <div className="p-4 text-center text-gray-500">테스트 문항 정보가 불완전합니다.</div>;
+    }
+
+    return (
+        <div className="overflow-x-auto relative shadow-md sm:rounded-lg max-h-[80vh]">
+            
+            {/* 상단 컨트롤러 (일괄 저장 및 미응시 관리) */}
+            <div className='flex justify-between items-center sticky top-0 bg-white p-3 border-b z-20'>
+                <div className='flex items-center space-x-3'>
+                    {/* 🚨 미응시 관리 버튼 추가 */}
+                    <button
+                        onClick={() => setIsAttendanceModalOpen(true)}
+                        className="p-2 rounded-lg flex items-center transition duration-200 text-sm font-bold bg-gray-100 text-gray-700 hover:bg-gray-200 border"
+                    >
+                        <Icon name="users" className="w-4 h-4 mr-1" /> 응시생/미응시생 관리
+                    </button>
+                    <span className='text-xs text-gray-500'>* 미응시 학생은 점수 입력이 불가능합니다.</span>
+                </div>
+                {/* 🚨 전체 결과 저장 버튼 디자인 수정 (과제 관리와 통일) */}
+                <button
+                    onClick={handleSaveAll}
+                    className={`py-2 px-4 rounded-lg flex items-center transition duration-200 text-sm font-bold 
+                            ${isSaving ? 'bg-blue-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'} 
+                            text-white`}
+                    disabled={isSaving}
+                >
+                    <Icon name="save" className="w-4 h-4 mr-1" /> 
+                    {isSaving ? '저장 중...' : '전체 결과 저장'}
+                </button>
+            </div>
+            
+            <table className="w-full text-sm text-left text-gray-500">
+                <thead className="text-xs text-gray-700 uppercase bg-gray-50 sticky top-[60px] z-10">
+                    <tr>
+                        <th scope="col" className="px-3 py-2 border-r sticky left-0 bg-gray-50 z-20 w-36">학생명 / 점수</th>
+                        {/* 🚨 문항별 배점을 문항 번호 아래로 이동 */}
+                        {questionIds.map((qId, index) => (
+                            <th key={qId} scope="col" className="px-1 py-1 text-center border-r w-10">
+                                <span className='font-bold text-sm'>{qId}</span>
+                                <span className='block text-[10px] text-gray-500 font-normal'>({questionScores[index] || 0}점)</span>
+                            </th>
+                        ))}
+                        <th scope="col" className="px-3 py-2 text-center border-l w-20">
+                            총점 / {test.maxScore}
+                        </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {studentsData.map(({ student }) => {
+                        const studentId = student.id;
+                        const studentResults = tempResults[studentId] || {};
+                        const isNoShowChecked = tempNoShow[studentId];
+                        
+                        const currentScore = calculateScore(studentId, studentResults);
+                        const correctCount = isNoShowChecked ? 0 : calculateCorrectCount(studentResults);
+                        
+                        return (
+                            <tr key={studentId} className="bg-white border-b hover:bg-gray-50">
+                                {/* 🚨 미응시 체크박스 제거, 점수 상태 표시로 변경 */}
+                                <td className="px-3 py-2 border-r font-medium text-gray-900 sticky left-0 bg-white hover:bg-gray-50 z-20 text-xs flex items-center justify-between h-full">
+                                    <span className='font-bold'>{student.name}</span>
+                                    {tempNoShow[studentId] && (
+                                        <span className='text-[10px] font-semibold text-red-600 bg-red-100 px-1 py-0.5 rounded'>미응시</span>
+                                    )}
+                                </td>
+                                
+                                {/* 문항별 결과 입력 셀 */}
+                                {questionIds.map(qId => {
+                                    const statusKey = isNoShowChecked ? '4' : (studentResults[qId] || '0');
+                                    const statusText = RESULT_OPTIONS_MAP[statusKey];
+                                    
+                                    // 🚨 미응시 상태일 때 셀 비활성화
+                                    return (
+                                        <td key={qId} className="p-1 text-center border-r">
+                                            <div
+                                                id={`cell-${studentId}-${qId}`}
+                                                className={`cursor-pointer w-full h-full rounded text-xs font-bold transition duration-150 flex items-center justify-center p-1 ${getStatusColor(statusKey)} ${activeCell?.studentId === studentId && activeCell?.qId === qId ? 'ring-2 ring-blue-500' : ''} ${isNoShowChecked ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                                onClick={() => {
+                                                    if (isNoShowChecked) return;
+                                                    // 0 -> 1 -> 2 -> 0 순환 (3, 4 제외)
+                                                    const cycle = ['0', '1', '2']; 
+                                                    const currentIndex = cycle.indexOf(statusKey);
+                                                    const nextIndex = (currentIndex + 1) % cycle.length;
+                                                    updateTempResult(studentId, qId, cycle[nextIndex]);
+                                                }}
+                                                onKeyDown={(e) => { if (!isNoShowChecked) handleKeyDown(e, studentId, qId) }}
+                                                onFocus={() => { if (!isNoShowChecked) setActiveCell({ studentId: studentId, qId }) }}
+                                                onBlur={() => setActiveCell(null)}
+                                                tabIndex={isNoShowChecked ? -1 : 0}
+                                                title={`키보드: 1(정답), 2(오답), 0(미체크). 현재: ${RESULT_OPTIONS_MAP[statusKey]}`}
+                                            >
+                                                {statusText}
+                                            </div>
+                                        </td>
+                                    );
+                                })}
+                                
+                                {/* 총점 */}
+                                <td className="px-3 py-2 text-center font-bold border-l">
+                                    <div className='flex flex-col items-center'>
+                                        <span className={currentScore === 'NA' ? 'text-red-600 text-sm' : 'text-blue-600 text-base'}>
+                                            {currentScore === 'NA' ? '미응시' : currentScore}
+                                            {currentScore !== 'NA' && <span className='text-sm font-normal ml-0.5'>점</span>}
+                                        </span>
+                                        {currentScore !== 'NA' && <span className='text-xs text-gray-500 mt-0.5'>({correctCount}/{totalQuestions})</span>}
+                                    </div>
+                                </td>
+                            </tr>
+                        );
+                    })}
+                </tbody>
+            </table>
+            {/* 🚨 AttendanceModal 추가 */}
+            <AttendanceModal 
+                isOpen={isAttendanceModalOpen}
+                onClose={() => setIsAttendanceModalOpen(false)}
+                studentsData={studentsData.map(d => d.student)}
+                initialNoShow={tempNoShow}
+                onSave={(newNoShow) => {
+                    setTempNoShow(newNoShow);
+                    setIsAttendanceModalOpen(false);
+                }}
+            />
+        </div>
+    );
+};
+
+const AttendanceModal = ({ isOpen, onClose, studentsData, initialNoShow, onSave }) => {
+    // 모달 내부에서 관리할 임시 상태
+    const [currentNoShow, setCurrentNoShow] = useState(initialNoShow);
+    
+    // 모달이 열릴 때마다 초기 상태 동기화
+    useEffect(() => {
+        if (isOpen) {
+            setCurrentNoShow(initialNoShow);
+        }
+    }, [isOpen, initialNoShow]);
+
+    if (!isOpen) return null;
+
+    const handleToggle = (studentId) => {
+        setCurrentNoShow(prev => ({
+            ...prev,
+            [studentId]: !prev[studentId] // 상태 토글
+        }));
+    };
+    
+    // 전체 학생을 응시생으로 변경
+    const setAllPresent = () => {
+        const allPresent = studentsData.reduce((acc, student) => {
+            acc[student.id] = false;
+            return acc;
+        }, {});
+        setCurrentNoShow(allPresent);
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4">
+            <div className="bg-white rounded-lg shadow-2xl w-full max-w-lg max-h-[80vh] flex flex-col">
+                <div className="p-4 border-b flex justify-between items-center">
+                    <h4 className="text-lg font-bold">응시생 / 미응시생 관리</h4>
+                    <button onClick={onClose} className="text-gray-500 hover:text-gray-800">
+                        <Icon name="x" className="w-6 h-6" />
+                    </button>
+                </div>
+                
+                <div className="p-4 flex justify-between items-center bg-gray-50 border-b">
+                    <p className='text-sm text-gray-600'>미응시로 체크된 학생은 성적 입력 테이블에서 비활성화됩니다.</p>
+                    <button onClick={setAllPresent} className='text-xs text-blue-600 font-semibold hover:underline'>
+                        전체 응시생으로 설정
+                    </button>
+                </div>
+                
+                <div className="overflow-y-auto flex-1 p-4 space-y-2">
+                    {studentsData.map(student => (
+                        <div key={student.id} className="flex items-center justify-between p-2 border rounded-md bg-white hover:bg-gray-50 transition duration-100">
+                            <span className="font-semibold text-gray-800">{student.name}</span>
+                            <label className="flex items-center cursor-pointer space-x-2">
+                                <span className={`text-sm font-medium ${currentNoShow[student.id] ? 'text-red-600' : 'text-green-600'}`}>
+                                    {currentNoShow[student.id] ? '미응시' : '응시생'}
+                                </span>
+                                <input
+                                    type="checkbox"
+                                    checked={currentNoShow[student.id] || false}
+                                    onChange={() => handleToggle(student.id)}
+                                    className='form-checkbox h-4 w-4 text-red-500 rounded'
+                                />
+                            </label>
+                        </div>
+                    ))}
+                </div>
+
+                <div className="p-4 border-t flex justify-end">
+                    <button
+                        onClick={onClose}
+                        className="mr-2 py-2 px-4 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
+                    >
+                        취소
+                    </button>
+                    <button
+                        onClick={() => onSave(currentNoShow)}
+                        className="py-2 px-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold"
+                    >
+                        저장하고 닫기
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+
+// --- FullGradeTable 컴포넌트 (수정됨) ---
+const FullGradeTable = ({ classStudents, classTests, grades, classAverages, handleEditTest, handleDeleteTest }) => (
+    <div className="overflow-x-auto border rounded-lg max-h-[calc(85vh-200px)]">
+         <table className="min-w-full divide-y divide-gray-200 text-sm">
+            <thead className="bg-gray-50">
+                <tr>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase w-48 sticky left-0 bg-gray-50 z-20 border-r">학생명</th>
+                    {classTests.map(test => (
+                        <th key={test.id} className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase min-w-[120px] group relative">
+                            <div className="flex flex-col items-center">
+                                <span>{test.name}</span>
+                                <span className="font-normal text-gray-400">({test.maxScore}점 만점)</span>
+                            </div>
+                            <div className="absolute top-0 right-0 flex opacity-0 group-hover:opacity-100 transition duration-150">
+                                <button onClick={() => handleEditTest(test)} className="p-1 text-blue-500 hover:text-blue-700 bg-gray-50 rounded-full" title="수정"><Icon name="edit" className="w-4 h-4" /></button>
+                                <button onClick={() => handleDeleteTest(test.id)} className="p-1 text-red-500 hover:text-red-700 bg-gray-50 rounded-full" title="삭제"><Icon name="trash" className="w-4 h-4" /></button>
+                            </div>
+                        </th>
+                    ))}
+                </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+                {/* 평균 행 */}
+                <tr className="bg-yellow-50 font-bold text-xs sticky top-0 z-10"> 
+                    <td className="px-6 py-2 whitespace-nowrap text-left text-yellow-800 sticky left-0 bg-yellow-50 z-11 border-r">평균</td>
+                    {classTests.map(test => (
+                        <td key={test.id} className="px-4 py-2 whitespace-nowrap text-center text-yellow-800">
+                            {classAverages[test.id]}
+                        </td>
+                    ))}
+                </tr>
+                {classStudents.map(student => (
+                    <tr key={student.id} className="hover:bg-gray-50 text-xs">
+                        <td className="px-6 py-2 whitespace-nowrap font-medium text-gray-900 sticky left-0 bg-white hover:bg-gray-50 z-1 border-r text-sm">
+                            {student.name}
+                        </td>
+                        {classTests.map(test => {
+                            const scoreData = grades[student.id]?.[test.id] || {};
+                            // 소수점 첫째 자리까지 표시되도록 조정
+                            const score = scoreData.score === undefined ? '-' : 
+                                          scoreData.score === null ? '미응시' : Number(scoreData.score).toFixed(1);
+                            
+                            return (
+                                <td key={test.id} className="px-4 py-2 whitespace-nowrap text-center">
+                                    {/* 🚨 글자 크기 조정 및 "점" 텍스트 나란히 배치 */}
+                                    <span className={`font-bold text-sm ${score === '미응시' ? 'text-red-500' : 'text-gray-800'}`}>
+                                        {score === '-' ? '-' : score}
+                                        {score !== '-' && score !== '미응시' && <span className="text-xs font-normal ml-0.5">점</span>}
+                                    </span>
+                                </td>
+                            );
+                        })}
+                    </tr>
+                ))}
+            </tbody>
+        </table>
+    </div>
+);
