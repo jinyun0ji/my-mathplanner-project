@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import './output.css'; // Tailwind CSS 파일
 import { 
     getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, 
 } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
@@ -77,6 +78,21 @@ export default function App() {
   const [workLogs, setWorkLogs] = useState(initialWorkLogs); 
   
   const nextStudentId = students.reduce((max, s) => Math.max(max, s.id), 0) + 1; 
+
+  // 사이드바 열림/닫힘 상태 관리
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+   
+  // 새로운 알림 존재 여부 (임시로 true 설정)
+  // 실제로는 API 호출 결과에 따라 이 상태를 업데이트해야 합니다.
+  // 이 상태는 notifications.length > 0 로 대체할 수 있지만, 사용자가 알림을 확인했는지 여부를 별도로 관리하기 위해 유지합니다.
+  const [hasNewNotifications, setHasNewNotifications] = useState(true);
+
+  // 사이드바 열림/닫힘 토글 함수
+  const toggleSidebar = () => {
+    setIsSidebarOpen(prev => !prev);
+    // 사이드바를 열면 새로운 알림 표시를 해제할 수도 있습니다.
+    if (!isSidebarOpen) { setHasNewNotifications(false); }
+  };
 
   // --- Auth 및 데이터 로딩 ---
   useEffect(() => {
@@ -454,52 +470,124 @@ export default function App() {
     notifications, 
   };
 
+  // ----------------------------------------------------
+  // 메인 렌더링 (수정된 부분)
+  // ----------------------------------------------------
   return (
-    <div className="flex h-screen bg-gray-100 font-sans text-base"> 
-      {/* Sidebar, Header, NotificationPanel, PageContent 등은 App.jsx에 임시로 남겨둠 */}
-      <Sidebar page={page} setPage={(newPage) => handlePageChange(newPage, null)} onLogout={() => setIsLoggedIn(false)} />
-      <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-        <Header page={page} />
-        <main id="main-content" className="overflow-x-hidden overflow-y-auto bg-gray-100 p-6 min-w-0">
-          <PageContent page={page} {...managementProps} />
-        </main>
-      </div>
-      <NotificationPanel notifications={notifications} />
+  <div className="flex h-screen bg-gray-100 font-sans text-base relative"> 
+    
+    {/* Sidebar (왼쪽 메뉴) */}
+    <Sidebar page={page} setPage={(newPage) => handlePageChange(newPage, null)} onLogout={() => setIsLoggedIn(false)} />
+    
+    {/* 메인 컨텐츠 영역: 알림 패널 상태에 따라 오른쪽 마진(mr) 조정 */}
+    <div 
+      className={`flex-1 flex flex-col overflow-hidden min-w-0 transition-all duration-300 ease-in-out 
+                  ${isSidebarOpen ? 'mr-80' : 'mr-0'}`} 
+    >
+      <Header page={page} />
+      <main id="main-content" className="overflow-x-hidden overflow-y-auto bg-gray-100 p-6 min-w-0">
+        <PageContent page={page} {...managementProps} />
+      </main>
     </div>
+
+    {/* 오른쪽 알림 패널 (Notification Panel) */}
+    <NotificationPanel 
+      notifications={notifications} 
+      isSidebarOpen={isSidebarOpen} 
+      toggleSidebar={toggleSidebar} 
+      hasNewNotifications={hasNewNotifications} 
+      setHasNewNotifications={setHasNewNotifications} // 👈 이 부분을 추가했습니다. (문제 해결)
+    />
+    
+  </div>
   );
 }
 
-// --- Notification Panel Component (유지) ---
-const NotificationPanel = ({ notifications }) => {
-    // ... (기존 NotificationPanel 내용 유지)
-    return (
-        <div className="w-64 bg-white border-l shadow-lg overflow-y-auto flex-shrink-0">
-            <div className="p-4 border-b">
-                <h3 className="text-lg font-bold flex items-center text-gray-800">
-                    <Icon name="bell" className="w-5 h-5 mr-2 text-yellow-600"/>
-                    알림
-                </h3>
-            </div>
-            <div className="space-y-3 p-4">
-                {notifications.length === 0 ? (
-                    <p className="text-sm text-gray-500">새로운 알림이 없습니다.</p>
-                ) : (
-                    notifications.slice(0, 10).map((n, index) => (
-                        <div key={n.id} className={`p-3 rounded-lg border text-sm ${
-                            n.type === 'success' ? 'bg-green-50 border-green-200' :
-                            n.type === 'warning' ? 'bg-red-50 border-red-200' :
-                            n.type === 'scheduled' ? 'bg-yellow-50 border-yellow-200' :
-                            'bg-blue-50 border-blue-200'
-                        }`}>
-                            <p className="font-semibold">{n.message}</p>
-                            <p className="text-xs text-gray-600 mt-1 whitespace-pre-wrap">{n.details}</p>
-                            <p className="text-xs text-right text-gray-400 mt-1">{n.timestamp}</p>
-                        </div>
-                    ))
-                )}
-            </div>
+// --- Notification Panel Component 수정 ---
+const NotificationPanel = ({ notifications, isSidebarOpen, toggleSidebar, hasNewNotifications, setHasNewNotifications }) => {
+  
+  // 패널의 너비를 isSidebarOpen 상태에 따라 조정합니다.
+  const sidebarWidthClass = isSidebarOpen ? 'w-80 p-4' : 'w-0 p-0';
+
+  return (
+    <>
+      {/* 1. 알림 토글 버튼: 화면 오른쪽 하단에 고정 (fixed) */}
+      {!isSidebarOpen && (
+        <div 
+          onClick={toggleSidebar} 
+          className={`fixed bottom-6 right-6 cursor-pointer p-3 rounded-full text-white transition-all duration-300 ease-in-out bg-indigo-600 hover:bg-indigo-700 shadow-xl z-50`}
+          title="알림 패널 열기"
+        >
+          <div className="relative">
+            <Icon name="bell" className="w-6 h-6 text-white"/>
+            
+            {/* 새로운 알림 표시 (빨간색 점) */}
+            {hasNewNotifications && (
+              <>
+                <span className="absolute top-0 right-0 block h-3 w-3 rounded-full ring-2 ring-white bg-red-500 transform translate-x-1 -translate-y-1 animate-ping"></span>
+                <span className="absolute top-0 right-0 block h-3 w-3 rounded-full ring-2 ring-white bg-red-500 transform translate-x-1 -translate-y-1"></span>
+              </>
+            )}
+          </div>
         </div>
-    );
+      )}
+
+      {/* 2. 메인 알림 패널 (열렸을 때만 내용 표시) */}
+      <div 
+        // fixed로 설정하여 화면에 고정
+        className={`fixed right-0 top-0 h-full bg-white shadow-2xl transition-all duration-300 ease-in-out z-50 flex-shrink-0 
+                    ${sidebarWidthClass} ${isSidebarOpen ? 'opacity-100' : 'opacity-0'} overflow-hidden`} // opacity와 overflow-hidden을 추가
+      >
+        
+        {isSidebarOpen && (
+          <div className="flex flex-col h-full">
+            {/* 닫기 버튼 (패널 내부에 위치) */}
+            <div className="flex justify-between items-center border-b pb-3 mb-3">
+                <h3 className="text-xl font-bold flex items-center text-gray-800">
+                  <Icon name="bell" className="w-6 h-6 mr-2 text-yellow-600"/>
+                  알림
+                </h3>
+                <button
+                    onClick={toggleSidebar}
+                    className="p-1 rounded-full text-gray-500 hover:bg-gray-100"
+                    title="닫기"
+                >
+                    <Icon name="x" className="w-6 h-6"/>
+                </button>
+            </div>
+            
+            {/* 알림 목록 */}
+            <div className="space-y-3 flex-grow overflow-y-auto pr-2">
+              {notifications.length === 0 ? (
+                <p className="text-sm text-gray-500 mt-2">새로운 알림이 없습니다.</p>
+              ) : (
+                notifications.slice(0, 20).map((n) => (
+                  <div key={n.id} className={`p-3 rounded-lg border text-sm ${
+                    n.type === 'success' ? 'bg-green-50 border-green-200' :
+                    n.type === 'warning' ? 'bg-red-50 border-red-200' :
+                    n.type === 'scheduled' ? 'bg-yellow-50 border-yellow-200' :
+                    'bg-blue-50 border-blue-200'
+                  }`}>
+                    <p className="font-semibold">{n.message}</p>
+                    <p className="text-xs text-gray-600 mt-1 whitespace-pre-wrap">{n.details}</p>
+                    <p className="text-xs text-right text-gray-400 mt-1">{n.timestamp}</p>
+                  </div>
+                ))
+              )}
+            </div>
+            {/* 알림 확인 상태로 변경하는 버튼 */}
+            <button 
+                onClick={() => {setHasNewNotifications(false);}} 
+                className="mt-4 w-full py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors text-sm"
+            >
+                모든 알림 확인 처리
+            </button>
+          </div>
+        )}
+        
+      </div>
+    </>
+  );
 };
 // --- 레이아웃 및 페이지 컴포넌트 ---
 const LoginPage = ({ onLogin }) => { 

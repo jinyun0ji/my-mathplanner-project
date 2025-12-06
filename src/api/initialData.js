@@ -66,9 +66,35 @@ export const initialHomeworkResults = {
 };
 
 
+// 🚨 수납 내역 데이터 수정: 월별 상세 납부 내역 포함
 export const initialPayments = [
-    { studentId: 1, studentName: '김민준', books: [{name: '수학(상) RPM', price: 15000, status: '완납'}, {name: '블랙라벨 수학(상)', price: 17000, status: '완납'}], total: 32000, received: true },
-    { studentId: 2, studentName: '이서연', books: [{name: '개념원리 수학I', price: 18000, status: '미납'}], total: 18000, received: false },
+    { 
+        studentId: 1, 
+        studentName: '김민준', 
+        months: {
+            '2025-10': { status: '완납', amount: 300000, date: '2025-10-01' },
+            '2025-11': { status: '완납', amount: 300000, date: '2025-11-01' },
+            '2025-12': { status: '미납', amount: 300000, date: null }
+        },
+        books: [{name: '수학(상) RPM', price: 15000, status: '완납'}, {name: '블랙라벨 수학(상)', price: 17000, status: '완납'}], 
+    },
+    { 
+        studentId: 2, 
+        studentName: '이서연', 
+        months: {
+            '2025-11': { status: '미납', amount: 280000, date: null },
+            '2025-12': { status: '미납', amount: 280000, date: null }
+        },
+        books: [{name: '개념원리 수학I', price: 18000, status: '미납'}], 
+    },
+    { 
+        studentId: 4, 
+        studentName: '최지우', 
+        months: {
+            '2025-11': { status: '완납', amount: 300000, date: '2025-11-05' },
+        },
+        books: [{name: '수학(상) RPM', price: 15000, status: '완납'}], 
+    },
 ];
 
 export const initialWorkLogs = [
@@ -82,11 +108,39 @@ export const initialAnnouncements = [
     {id: 2, author: '관리자', date: '2025-11-25', title: '학부모 간담회 안내', content: '학부모님들의 많은 참석 부탁드립니다.', isPinned: false, scheduleTime: '2025-11-25T14:00', attachments: [], targetClasses: [1, 2], targetStudents: []},
 ];
 
+// 🚨 시험 데이터 수정: questionAnalysis 필드 추가
 export const initialTests = [
-    // 🚨 초기 데이터에 questionScores 필드 추가 (배점 설정 기능을 위해)
-    { id: 101, name: 'Test 1 (11/15)', maxScore: 100, classId: 1, totalQuestions: 20, date: '2025-11-15', questionScores: Array(20).fill(5) }, 
-    { id: 102, name: 'Test 2 (12/01)', maxScore: 100, classId: 1, totalQuestions: 25, date: '2025-12-01', questionScores: Array(25).fill(4) },
-    { id: 201, name: 'Test A (11/20)', maxScore: 100, classId: 2, totalQuestions: 10, date: '2025-11-20', questionScores: Array(10).fill(10) },
+    { 
+        id: 101, 
+        name: 'Test 1 (11/15)', 
+        maxScore: 100, 
+        classId: 1, 
+        totalQuestions: 20, 
+        date: '2025-11-15', 
+        questionScores: Array(20).fill(5),
+        // 🚨 난이도 및 유형 분석 데이터 추가 (총 20문항)
+        questionAnalysis: Array(20).fill({ difficulty: '중', type: '개념' })
+    }, 
+    { 
+        id: 102, 
+        name: 'Test 2 (12/01)', 
+        maxScore: 100, 
+        classId: 1, 
+        totalQuestions: 25, 
+        date: '2025-12-01', 
+        questionScores: Array(25).fill(4),
+        questionAnalysis: Array(25).fill({ difficulty: '중', type: '응용' })
+    },
+    { 
+        id: 201, 
+        name: 'Test A (11/20)', 
+        maxScore: 100, 
+        classId: 2, 
+        totalQuestions: 10, 
+        date: '2025-11-20', 
+        questionScores: Array(10).fill(10),
+        questionAnalysis: Array(10).fill({ difficulty: '하', type: '개념' })
+    },
 ];
 
 // grades: { studentId: { testId: { score: number | null, correctCount: resultMapping | undefined } } }
