@@ -105,6 +105,12 @@
 .col-span-2 {
   grid-column: span 2 / span 2;
 }
+.col-span-3 {
+  grid-column: span 3 / span 3;
+}
+.col-span-4 {
+  grid-column: span 4 / span 4;
+}
 .col-span-full {
   grid-column: 1 / -1;
 }
@@ -259,6 +265,9 @@
   width: auto;
   height: auto;
 }
+.h-\[55vh\] {
+  height: 55vh;
+}
 .h-\[60vh\] {
   height: 60vh;
 }
@@ -285,6 +294,9 @@
 }
 .max-h-\[60vh\] {
   max-height: 60vh;
+}
+.max-h-\[70vh\] {
+  max-height: 70vh;
 }
 .max-h-\[80vh\] {
   max-height: 80vh;
@@ -502,6 +514,9 @@
 .scale-none {
   scale: none;
 }
+.rotate-180 {
+  rotate: 180deg;
+}
 .rotate-none {
   rotate: none;
 }
@@ -653,8 +668,17 @@
 .grid-cols-3 {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
+.grid-cols-4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
 .grid-cols-5 {
   grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+.grid-cols-6 {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+.grid-cols-10 {
+  grid-template-columns: repeat(10, minmax(0, 1fr));
 }
 .grid-cols-none {
   grid-template-columns: none;
@@ -2106,6 +2130,13 @@
   &:hover {
     @media (hover: hover) {
       text-decoration-line: underline;
+    }
+  }
+}
+.hover\:opacity-80 {
+  &:hover {
+    @media (hover: hover) {
+      opacity: 80%;
     }
   }
 }
