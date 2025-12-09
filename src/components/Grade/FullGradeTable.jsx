@@ -1,7 +1,9 @@
-import React from 'react';
-import { Icon } from '../../utils/helpers'; // 경로 수정
+// src/components/Grade/FullGradeTable.jsx
 
-export default function FullGradeTable({ classStudents, classTests, grades, classAverages, handleEditTest, handleDeleteTest, handleOpenResultModal }) {
+import React from 'react';
+import { Icon } from '../../utils/helpers'; 
+
+export default function FullGradeTable({ classStudents, classTests, grades, classAverages }) {
     
     return (
         <div className="bg-white p-6 rounded-xl shadow-md overflow-x-auto">
@@ -11,15 +13,12 @@ export default function FullGradeTable({ classStudents, classTests, grades, clas
                     <thead className="bg-gray-50 sticky top-0">
                         <tr>
                             <th className="w-32 px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase sticky left-0 bg-gray-50 border-r z-10">학생명</th>
+                            {/* classTests는 이미 GradeManagement에서 오름차순 정렬된 상태입니다. */}
                             {classTests.map(test => (
                                 <th key={test.id} className="w-32 px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">
                                     <div className='flex flex-col'>
                                         <span className='font-bold text-gray-700'>{test.name}</span>
                                         <span className='font-normal text-xs text-red-500'>{test.maxScore}점 만점</span>
-                                        <div className='flex justify-center space-x-1 mt-1'>
-                                            <button onClick={(e) => {e.stopPropagation(); handleEditTest(test);}} className='text-blue-500 hover:text-blue-700' title="시험 정보 수정"><Icon name="edit" className="w-3 h-3"/></button>
-                                            <button onClick={(e) => {e.stopPropagation(); if(window.confirm('시험을 삭제하면 모든 성적도 삭제됩니다.')) handleDeleteTest(test.id);}} className='text-red-500 hover:text-red-700' title="시험 삭제"><Icon name="trash" className="w-3 h-3"/></button>
-                                        </div>
                                     </div>
                                 </th>
                             ))}
@@ -42,20 +41,18 @@ export default function FullGradeTable({ classStudents, classTests, grades, clas
                                 </td>
                                 {classTests.map(test => {
                                     const scoreData = grades[student.id]?.[test.id] || {};
-                                    // 소수점 첫째 자리까지 표시되도록 조정
                                     const score = scoreData.score === undefined ? '-' : 
                                                   scoreData.score === null ? '미응시' : Number(scoreData.score).toFixed(1);
                                     
                                     return (
-                                        <td key={test.id} className="px-4 py-2 whitespace-nowrap text-center cursor-pointer hover:bg-red-50/30" onClick={() => handleOpenResultModal(test)}>
-                                            {/* 🚨 글자 크기 조정 및 "점" 텍스트 나란히 배치 */}
+                                        <td 
+                                            key={test.id} 
+                                            className="px-4 py-2 whitespace-nowrap text-center" 
+                                        >
                                             <span className={`font-bold text-sm ${score === '미응시' ? 'text-red-500' : 'text-gray-800'}`}>
                                                 {score === '-' ? '-' : score}
                                                 {score !== '-' && score !== '미응시' && <span className="text-xs font-normal ml-0.5">점</span>}
                                             </span>
-                                            {score !== '-' && score !== '미응시' && (
-                                                <p className='text-xs text-blue-500 hover:underline'>채점</p>
-                                            )}
                                         </td>
                                     );
                                 })}

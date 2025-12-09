@@ -309,8 +309,8 @@ export default function App() {
     logNotification('warning', '시험 삭제', `시험(ID:${testId})이 삭제되고 관련 성적도 초기화되었습니다.`);
   };
 
-  // 🚨 handleUpdateGrade 함수: 문항별 결과 맵을 받아서 총점 계산
-  const handleUpdateGrade = (studentId, testId, resultMapping) => { 
+  // 🚨 FIX: 성적 반영 로직 확인 및 코멘트 저장
+  const handleUpdateGrade = (studentId, testId, resultMapping, comment = '') => { 
     const test = tests.find(t => t.id === testId);
     if (!test) return;
 
@@ -325,7 +325,8 @@ export default function App() {
             const qIndex = Number(qNum) - 1;
             const score = test.questionScores[qIndex] || 0; 
 
-            if (status === '맞음' || status === '고침') {
+            // '맞음' 또는 '고침' 상태는 점수 획득
+            if (status === '맞음' || status === '고침') { 
                 totalScore += score;
             }
         });
@@ -337,13 +338,15 @@ export default function App() {
             ...prev[studentId],
             [testId]: { 
                 score: totalScore, 
-                correctCount: resultMapping 
+                correctCount: resultMapping, // 문항별 결과 저장 (통계 반영에 사용)
+                comment: comment // 🚨 코멘트 저장
             }
         }
     }));
     
+    const student = students.find(s => s.id === studentId);
     const scoreText = totalScore === null ? '미응시 처리' : `${totalScore.toFixed(1)}점 저장`;
-    logNotification('info', '성적 저장', `${students.find(s => s.id === studentId)?.name} 학생의 성적(${test.name})이 ${scoreText}되었습니다.`);
+    logNotification('info', '성적 저장', `${student ? student.name : '학생'}의 성적(${test.name})이 ${scoreText}되었습니다.`);
   };
   
   // --- CRUD 함수: 공지사항 관리 ---
