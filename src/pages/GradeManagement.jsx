@@ -1,6 +1,6 @@
 // src/pages/GradeManagement.jsx
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { Icon } from '../utils/helpers';
 import ClassSelectionPanel from '../components/Shared/ClassSelectionPanel'; 
 import FullGradeTable from '../components/Grade/FullGradeTable'; 
@@ -80,7 +80,14 @@ export default function GradeManagement({
     const [selectedTestId, setSelectedTestId] = useState(null); 
     const [isGradeInputModalOpen, setIsGradeInputModalOpen] = useState(false);
     
+    const fileInputRef = useRef(null); // ✅ 엑셀 파일 입력 Ref 추가
+    
     const selectedClass = classes.find(c => c.id === selectedClassId);
+
+    // ✅ 1. 모달 닫기 함수를 useCallback으로 정의하여 안정적인 참조를 제공합니다.
+    const handleCloseGradeInput = useCallback(() => {
+        setIsGradeInputModalOpen(false);
+    }, []);
 
     // 클래스 학생 목록 및 시험 목록 (유지)
     const classStudents = useMemo(() => {
@@ -175,7 +182,72 @@ export default function GradeManagement({
         );
     }, [classTests, selectedTestId]);
     
-    // 시험 상세 정보/관리/채점 버튼 패널 (유지)
+    // ------------------------------------------
+    // ✅ 엑셀 기능 구현 로직 (GradeManagement.jsx로 이동)
+    // ------------------------------------------
+
+    // 엑셀 양식 다운로드 (CSV 포맷 사용)
+    const handleDownloadExcelForm = (e) => {
+        if (!selectedTest || !selectedClass) {
+            alert("클래스와 시험을 선택해주세요.");
+            return;
+        }
+        e.stopPropagation(); 
+        const test = selectedTest; 
+        const studentsInClass = students.filter(s => selectedClass.students.includes(s.id) && s.status === '재원생');
+        
+        const headers = ['학생명', ...Array.from({ length: test.totalQuestions }, (_, i) => `Q${i + 1} (${test.questionScores[i] || 0}점)`)];
+        const sampleData = ['김철수', ...Array(test.totalQuestions).fill('1 또는 2')]; 
+        
+        const csvContent = [
+            headers.join(','),
+            '// --- 입력 규칙: 1 (맞음), 2 (틀림) / 미응시 학생은 해당 칸을 비워두세요 ---',
+            sampleData.join(','),
+            ...studentsInClass.map(student => [student.name, ...Array(test.totalQuestions).fill('')].join(','))
+        ].join('\n');
+
+        const blob = new Blob(["\ufeff" + csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        if (link.download !== undefined) { 
+            const url = URL.createObjectURL(blob);
+            link.setAttribute('href', url);
+            link.setAttribute('download', `${test.name}_채점양식.csv`);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+    };
+
+    // 엑셀 업로드 버튼 클릭 시 파일 입력 트리거
+    const handleUploadExcel = (e) => {
+        if (!selectedTest) {
+            alert("시험을 선택해주세요.");
+            return;
+        }
+        e.stopPropagation(); 
+        fileInputRef.current?.click();
+    };
+
+    // 파일 선택 완료 시 처리 (시뮬레이션)
+    const handleFileChange = (event) => {
+        const file = event.target.files[0];
+        if (file) {
+            if (!file.name.endsWith('.csv') && !file.name.endsWith('.xlsx')) {
+                alert('CSV 또는 XLSX 파일만 업로드할 수 있습니다.');
+                event.target.value = ''; 
+                return;
+            }
+
+            console.log('File selected:', file.name);
+            alert(`[시뮬레이션] ${file.name} 파일을 읽고 있습니다. 실제 구현 시 handleUpdateGrade를 호출하여 일괄 저장해야 합니다.`);
+            
+            event.target.value = ''; 
+        }
+    };
+    // ------------------------------------------
+    
+    // 시험 상세 정보/관리/채점 버튼 패널 수정
     const TestActionPanel = ({ test }) => {
         if (!test) return null;
         
@@ -190,7 +262,22 @@ export default function GradeManagement({
                         <Icon name="fileText" className="w-5 h-5 mr-2 text-red-600"/>
                         선택 시험 정보: {test.name}
                     </h3>
-                    <div className="flex space-x-2">
+                    <div className="flex space-x-2 items-center">
+                        {/* ✅ 엑셀 양식 버튼 추가 */}
+                         <button 
+                            onClick={handleDownloadExcelForm}
+                            className="flex items-center text-sm px-3 py-1 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition"
+                        >
+                            <Icon name="file-text" className="w-4 h-4 mr-1" /> 엑셀 양식
+                        </button>
+                        {/* ✅ 엑셀 자료 입력 버튼 추가 */}
+                        <button 
+                            onClick={handleUploadExcel}
+                            className="flex items-center text-sm px-3 py-1 bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
+                        >
+                            <Icon name="upload" className="w-4 h-4 mr-1" /> 엑셀로 자료 입력
+                        </button>
+                         {/* 성적 입력/채점 버튼 유지 */}
                          <button 
                             onClick={handleOpenGradeInput}
                             className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg flex items-center shadow-md transition duration-150 text-sm"
@@ -284,7 +371,7 @@ export default function GradeManagement({
                                 />
                             </>
                         ) : (
-                            /* 선택된 시험이 없을 때 (전체 성적 테이블) 표시 */
+                            /* 선택된 시험이 없을 때 (전체 성적 테이블) 표시 - 유지 */
                             <div className="space-y-6">
                                 <div className="bg-white p-6 rounded-xl shadow-md border-l-4 border-gray-300">
                                     <h3 className="text-xl font-bold text-gray-800">{selectedClass.name} 성적 현황}</h3>
@@ -316,13 +403,22 @@ export default function GradeManagement({
             {selectedTest && (
                 <TestResultTable 
                     isOpen={isGradeInputModalOpen} 
-                    onClose={() => setIsGradeInputModalOpen(false)}
+                    onClose={handleCloseGradeInput} // 👈 2. 안정화된 함수 전달
                     test={selectedTest}
                     studentsData={classStudents}
                     handleUpdateGrade={handleUpdateGrade}
                     grades={grades}
                 />
             )}
+
+            {/* ✅ 엑셀 파일 업로드를 위한 Hidden Input 추가 */}
+            <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileChange}
+                accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel"
+                style={{ display: 'none' }}
+            />
         </div>
     );
 };

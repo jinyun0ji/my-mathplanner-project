@@ -54,12 +54,6 @@
 .sticky {
   position: sticky;
 }
-.top-\[48px\] {
-  top: 48px;
-}
-.top-\[60px\] {
-  top: 60px;
-}
 .isolate {
   isolation: isolate;
 }
@@ -71,15 +65,6 @@
 }
 .z-10 {
   z-index: 10;
-}
-.z-11 {
-  z-index: 11;
-}
-.z-20 {
-  z-index: 20;
-}
-.z-30 {
-  z-index: 30;
 }
 .z-50 {
   z-index: 50;
@@ -265,15 +250,6 @@
   width: auto;
   height: auto;
 }
-.h-\[50vh\] {
-  height: 50vh;
-}
-.h-\[55vh\] {
-  height: 55vh;
-}
-.h-\[60vh\] {
-  height: 60vh;
-}
 .h-\[70vh\] {
   height: 70vh;
 }
@@ -301,15 +277,6 @@
 .max-h-\[70vh\] {
   max-height: 70vh;
 }
-.max-h-\[80vh\] {
-  max-height: 80vh;
-}
-.max-h-\[calc\(85vh-150px\)\] {
-  max-height: calc(85vh - 150px);
-}
-.max-h-\[calc\(85vh-200px\)\] {
-  max-height: calc(85vh - 200px);
-}
 .max-h-lh {
   max-height: 1lh;
 }
@@ -318,9 +285,6 @@
 }
 .max-h-screen {
   max-height: 100vh;
-}
-.min-h-\[85vh\] {
-  min-height: 85vh;
 }
 .min-h-\[140px\] {
   min-height: 140px;
@@ -343,12 +307,6 @@
 .w-1\/4 {
   width: calc(1/4 * 100%);
 }
-.w-1\/6 {
-  width: calc(1/6 * 100%);
-}
-.w-2\/3 {
-  width: calc(2/3 * 100%);
-}
 .w-\[100px\] {
   width: 100px;
 }
@@ -361,9 +319,6 @@
 .w-screen {
   width: 100vw;
 }
-.max-w-full {
-  max-width: 100%;
-}
 .max-w-none {
   max-width: none;
 }
@@ -375,21 +330,6 @@
 }
 .min-w-\[8rem\] {
   min-width: 8rem;
-}
-.min-w-\[35px\] {
-  min-width: 35px;
-}
-.min-w-\[50px\] {
-  min-width: 50px;
-}
-.min-w-\[90px\] {
-  min-width: 90px;
-}
-.min-w-\[120px\] {
-  min-width: 120px;
-}
-.min-w-\[150px\] {
-  min-width: 150px;
 }
 .min-w-\[320px\] {
   min-width: 320px;
@@ -494,18 +434,6 @@
   --tw-translate-y: 100%;
   translate: var(--tw-translate-x) var(--tw-translate-y);
 }
-.-translate-x-full {
-  --tw-translate-x: -100%;
-  translate: var(--tw-translate-x) var(--tw-translate-y);
-}
-.translate-x-1\/2 {
-  --tw-translate-x: calc(1/2 * 100%);
-  translate: var(--tw-translate-x) var(--tw-translate-y);
-}
-.-translate-y-1\/2 {
-  --tw-translate-y: calc(calc(1/2 * 100%) * -1);
-  translate: var(--tw-translate-x) var(--tw-translate-y);
-}
 .translate-3d {
   translate: var(--tw-translate-x) var(--tw-translate-y) var(--tw-translate-z);
 }
@@ -523,9 +451,6 @@
 }
 .scale-none {
   scale: none;
-}
-.rotate-180 {
-  rotate: 180deg;
 }
 .rotate-none {
   rotate: none;
@@ -669,9 +594,6 @@
 .auto-rows-min {
   grid-auto-rows: min-content;
 }
-.grid-cols-1 {
-  grid-template-columns: repeat(1, minmax(0, 1fr));
-}
 .grid-cols-2 {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
@@ -680,12 +602,6 @@
 }
 .grid-cols-4 {
   grid-template-columns: repeat(4, minmax(0, 1fr));
-}
-.grid-cols-5 {
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-}
-.grid-cols-6 {
-  grid-template-columns: repeat(6, minmax(0, 1fr));
 }
 .grid-cols-10 {
   grid-template-columns: repeat(10, minmax(0, 1fr));
@@ -999,9 +915,6 @@
 }
 .overflow-x-hidden {
   overflow-x: hidden;
-}
-.overflow-x-visible {
-  overflow-x: visible;
 }
 .overflow-y-auto {
   overflow-y: auto;
@@ -1512,9 +1425,6 @@
 .align-top {
   vertical-align: top;
 }
-.text-\[10px\] {
-  font-size: 10px;
-}
 .leading-none {
   --tw-leading: 1;
   line-height: 1;
@@ -1788,15 +1698,8 @@
 .shadow-initial {
   --tw-shadow-color: initial;
 }
-.ring-transparent {
-  --tw-ring-color: transparent;
-}
 .inset-shadow-initial {
   --tw-inset-shadow-color: initial;
-}
-.ring-offset-1 {
-  --tw-ring-offset-width: 1px;
-  --tw-ring-offset-shadow: var(--tw-ring-inset,) 0 0 0 var(--tw-ring-offset-width) var(--tw-ring-offset-color);
 }
 .outline-hidden {
   --tw-outline-style: none;
@@ -1909,17 +1812,9 @@
   --tw-duration: 150ms;
   transition-duration: 150ms;
 }
-.duration-200 {
-  --tw-duration: 200ms;
-  transition-duration: 200ms;
-}
 .duration-300 {
   --tw-duration: 300ms;
   transition-duration: 300ms;
-}
-.duration-500 {
-  --tw-duration: 500ms;
-  transition-duration: 500ms;
 }
 .ease-linear {
   --tw-ease: linear;
@@ -2073,13 +1968,6 @@
 }
 .transform-view {
   transform-box: view-box;
-}
-.group-hover\:opacity-100 {
-  &:is(:where(.group):hover *) {
-    @media (hover: hover) {
-      opacity: 100%;
-    }
-  }
 }
 .group-data-\[disabled\=true\]\:pointer-events-none {
   &:is(:where(.group)[data-disabled="true"] *) {

@@ -46,10 +46,9 @@ export default function TestResultTable({ isOpen, onClose, test, studentsData, h
         if (forceStatus) {
             newStatus = forceStatus;
         } else {
-            // 상태 순환: 미채점 -> 맞음 -> 틀림 -> 고침 -> 미채점
+            // 상태 순환: 미채점 -> 맞음 -> 틀림 -> 미채점
             if (currentStatus === '맞음') newStatus = '틀림';
-            else if (currentStatus === '틀림') newStatus = '고침';
-            else if (currentStatus === '고침') newStatus = '미채점'; 
+            else if (currentStatus === '틀림') newStatus = '미채점'; 
             else newStatus = '맞음'; 
         }
 
@@ -116,7 +115,7 @@ export default function TestResultTable({ isOpen, onClose, test, studentsData, h
         return score.toFixed(1);
     }, [resultMapping, test.questionScores]);
     
-    // 🚨 FIX: 저장 후 모달 유지
+    // 저장 함수 (onClose 호출 없음 - 유지)
     const handleSubmit = (isNoShow = false) => {
         if (selectedStudentId === null) return;
         
@@ -127,8 +126,6 @@ export default function TestResultTable({ isOpen, onClose, test, studentsData, h
             
             // 코멘트와 함께 성적 업데이트
             handleUpdateGrade(selectedStudentId, test.id, finalResult, studentComment); 
-            
-            // 🚨 onClose() 호출 제거! (모달 유지)
         }
     };
 
@@ -168,17 +165,25 @@ export default function TestResultTable({ isOpen, onClose, test, studentsData, h
                                 <h5 className='text-lg font-bold text-red-800'>
                                     {selectedStudent.name} 학생 채점 중: 현재 점수 <span className='text-2xl ml-2'>{calculateCurrentScore}</span>점
                                 </h5>
-                                <div className='space-x-2'>
+                                <div className='flex space-x-2'>                                
+                                    {/* 기존 저장 버튼 그룹 */}
+                                    {/* 기존 저장 버튼 그룹 */}
                                     <button 
                                         type='button' 
-                                        onClick={() => handleSubmit(true)}
+                                        onClick={(e) => { 
+                                            e.stopPropagation(); 
+                                            handleSubmit(true);
+                                        }}
                                         className='px-4 py-2 text-sm font-medium rounded-lg text-white bg-red-600 hover:bg-red-700'
                                     >
                                         <Icon name="x" className='w-4 h-4 inline mr-1'/> 미응시 처리
                                     </button>
                                     <button 
                                         type='button' 
-                                        onClick={() => handleSubmit(false)}
+                                        onClick={(e) => { 
+                                            e.stopPropagation();
+                                            handleSubmit(false);
+                                        }}
                                         className='px-4 py-2 text-sm font-medium rounded-lg text-white bg-green-600 hover:bg-green-700'
                                     >
                                         <Icon name="save" className='w-4 h-4 inline mr-1'/> 점수 저장
@@ -186,7 +191,7 @@ export default function TestResultTable({ isOpen, onClose, test, studentsData, h
                                 </div>
                             </div>
                             
-                            {/* 문항별 셀 크기 축소 및 그림자 제거 */}
+                            {/* 문항별 셀 높이 축소 (p-1 -> p-0.5 상당으로 줄임) */}
                             <div className='grid grid-cols-10 gap-1 overflow-y-auto pr-2 flex-grow' style={{ maxHeight: 'calc(100% - 160px)' }}> 
                                 {Array.from({ length: test.totalQuestions }, (_, i) => i + 1).map(qNum => {
                                     const qIndex = qNum - 1;
@@ -205,8 +210,8 @@ export default function TestResultTable({ isOpen, onClose, test, studentsData, h
                                             ${status === '미채점' ? 'bg-gray-100 hover:bg-gray-200' : `bg-white hover:opacity-80 border-2 ${statusClass.replace('text', 'border')}`}
                                             focus:outline-none focus:border-blue-500`}
                                         >
-                                            <p>{qNum}. ({score}점)</p>
-                                            <p className={`text-sm font-bold mt-1 ${statusClass}`}>{status}</p>
+                                            <p className='leading-none mb-0.5'>{qNum}. ({score}점)</p> {/* mb-0.5로 마진 축소 */}
+                                            <p className={`text-xs font-bold ${statusClass}`}>{status}</p> {/* 폰트 크기 축소 */}
                                         </div>
                                     );
                                 })}

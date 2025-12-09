@@ -20,6 +20,7 @@ export default function TestResultPanel({
 
         let totalScore = 0;
         scores.forEach((status, index) => {
+            // status === 1: 맞음 (정답/고침)
             if (status === 1) {
                 totalScore += (test.questionScores[index] || 0);
             }
@@ -31,17 +32,22 @@ export default function TestResultPanel({
     // 초기 상태 계산 로직
     const initializeGrades = useCallback(() => {
         return studentsData.reduce((acc, student) => {
-            const studentGrade = grades[student.id]?.[test.id] || { correctCount: {}, score: null };
+            // App.jsx의 initialGrades 구조를 참고하여 데이터 로딩
+            const studentGrade = grades[student.id]?.[test.id] || { correctCount: {}, score: null, comment: '' };
             
             const initialScores = Array(test.totalQuestions).fill(null);
             
-            for (let i = 0; i < test.totalQuestions; i++) {
-                const qNum = (i + 1).toString();
-                const status = studentGrade.correctCount?.[qNum];
-                if (status === 1) {
-                    initialScores[i] = 1;
-                } else if (status === 0) {
-                    initialScores[i] = 0;
+            if (studentGrade.score === null) {
+                // 미응시 상태일 경우 scores 배열을 초기화하여 입력 필드를 비워둡니다.
+            } else {
+                for (let i = 0; i < test.totalQuestions; i++) {
+                    const qNum = (i + 1).toString();
+                    const status = studentGrade.correctCount?.[qNum];
+                    if (status === 1) {
+                        initialScores[i] = 1;
+                    } else if (status === 0) {
+                        initialScores[i] = 0;
+                    }
                 }
             }
             
@@ -69,6 +75,7 @@ export default function TestResultPanel({
         const newCalculatedScores = {};
         studentsData.forEach(student => {
             const scores = currentGrades[student.id]?.scores || [];
+            // 미응시 상태 (null)가 아닌 경우에만 점수 계산
             newCalculatedScores[student.id] = calculateTotalScore(scores);
         });
         setCalculatedScores(newCalculatedScores);
@@ -82,7 +89,7 @@ export default function TestResultPanel({
             
             let newStatus = null;
             if (value === '1') {
-                newStatus = 1; // 맞음
+                newStatus = 1; // 맞음 (점수 획득)
             } else if (value === '2') {
                 newStatus = 0; // 틀림
             } else if (value === '') {
@@ -97,13 +104,17 @@ export default function TestResultPanel({
             if (newStatus !== null) {
                 let nextIndex = questionIndex + 1;
                 let nextStudentId = studentId;
+                const currentStudentIndex = studentsData.findIndex(s => s.id === studentId);
 
                 if (nextIndex >= test.totalQuestions) {
-                    const currentStudentIndex = studentsData.findIndex(s => s.id === studentId);
                     if (currentStudentIndex < studentsData.length - 1) {
                         nextStudentId = studentsData[currentStudentIndex + 1].id;
                         nextIndex = 0;
                     } else {
+                        // 마지막 학생의 마지막 문항: 포커스 이동 없음
+                        // 포커스를 코멘트 입력창으로 이동시키는 것도 고려 가능
+                        // const commentRef = inputRefs.current[`${studentId}-comment`];
+                        // if (commentRef) { setTimeout(() => commentRef.focus(), 0); }
                         return { 
                             ...prev, 
                             [studentId]: { ...prev[studentId], scores: newScores } 
@@ -144,13 +155,14 @@ export default function TestResultPanel({
         }));
     };
 
-    // 저장 핸들러
+    // 점수 저장 핸들러 (모달 닫지 않음)
     const handleSave = () => {
         studentsData.forEach(student => {
             const finalGrades = currentGrades[student.id];
 
             const resultMapping = finalGrades.scores.reduce((acc, status, index) => {
                 if (status !== null) {
+                    // 1: 맞음 (정답/고침), 0: 틀림
                     acc[(index + 1).toString()] = status; 
                 }
                 return acc;
@@ -159,19 +171,40 @@ export default function TestResultPanel({
             handleUpdateGrade(
                 student.id, 
                 test.id, 
-                resultMapping 
+                resultMapping, 
+                finalGrades.comment // ✅ 코멘트 전달
             );
         });
         
-        if (onSave) {
-            onSave();
-        }
+        // if (onSave) { onSave(); }  // 🚨 요청에 따라 모달 닫기 로직 제거
+
+        // 저장 후 UI를 업데이트된 데이터로 리프레시
+        setCurrentGrades(initializeGrades());
     };
 
-    // 취소/초기화 핸들러
+    // 전체 미응시 처리 핸들러 (모달 닫지 않음)
+    const handleMarkAbsentAll = () => {
+        if (!window.confirm("경고: 현재 보이는 모든 학생의 성적을 [미응시]로 처리하고 저장하시겠습니까? (기존 점수 초기화)")) {
+            return;
+        }
+
+        studentsData.forEach(student => {
+            // App.jsx의 handleUpdateGrade 로직에 따라, '미응시' 스트링을 전달하여 처리
+            handleUpdateGrade(
+                student.id, 
+                test.id, 
+                '미응시', // resultMapping 대신 '미응시' 스트링 전달
+                currentGrades[student.id]?.comment || '' // ✅ 코멘트 전달
+            );
+        });
+
+        // 처리 후 UI를 미응시 상태로 업데이트하여 리프레시
+        setCurrentGrades(initializeGrades());
+    }
+
+    // 취소/초기화 핸들러 (저장되지 않은 변경 사항 초기화)
     const handleCancel = () => {
         setCurrentGrades(initializeGrades());
-        setCalculatedScores({}); 
     };
 
 
@@ -197,46 +230,60 @@ export default function TestResultPanel({
                         </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
-                        {studentsData.map(student => (
-                            <tr key={student.id} className="hover:bg-gray-50">
-                                <td className="px-3 py-2 font-medium text-gray-900 sticky left-0 bg-white hover:bg-gray-50 border-r text-sm">{student.name}</td>
-                                
-                                <td className="px-3 py-2 text-center font-bold text-base text-blue-600">
-                                    {calculatedScores[student.id] !== undefined ? calculatedScores[student.id].toFixed(1) : '-'}
-                                </td>
-                                
-                                {Array.from({ length: test.totalQuestions }).map((_, i) => {
-                                    const status = currentGrades[student.id]?.scores[i];
-                                    return (
-                                        <td key={i} className="px-1 py-2 text-center border-l">
-                                            <input
-                                                ref={el => inputRefs.current[`${student.id}-${i}`] = el}
-                                                type="text"
-                                                value={status !== null ? (status === 1 ? '1' : '2') : ''} 
-                                                onKeyDown={(e) => handleKeyDown(e, student.id, i)}
-                                                maxLength="1"
-                                                className={`w-8 h-6 text-center border rounded-md font-bold text-sm 
-                                                    focus:ring-2 focus:ring-blue-500 transition duration-100
-                                                    ${status === 1 ? 'bg-green-100 border-green-400 text-green-700' : 
-                                                      status === 0 ? 'bg-red-100 border-red-400 text-red-700' : 'border-gray-300 text-gray-700'}`
-                                                }
-                                                placeholder="-"
-                                            />
-                                        </td>
-                                    );
-                                })}
-                                
-                                <td className="px-3 py-2 border-l">
-                                    <input
-                                        type="text"
-                                        value={currentGrades[student.id]?.comment || ''}
-                                        onChange={(e) => handleCommentChange(student.id, e.target.value)}
-                                        className="w-full border rounded-md px-2 py-1 text-sm focus:ring-1 focus:ring-blue-500"
-                                        placeholder="특이사항 입력"
-                                    />
-                                </td>
-                            </tr>
-                        ))}
+                        {studentsData.map(student => {
+                            // 미응시 여부 확인
+                            const isAbsent = grades[student.id]?.[test.id]?.score === null;
+                            const totalScoreText = isAbsent 
+                                ? '미응시' 
+                                : (calculatedScores[student.id] !== undefined 
+                                    ? calculatedScores[student.id].toFixed(1) 
+                                    : '-');
+
+                            return (
+                                <tr key={student.id} className={`hover:bg-gray-50 ${isAbsent ? 'bg-red-50/50' : ''}`}>
+                                    <td className="px-3 py-2 font-medium text-gray-900 sticky left-0 bg-white hover:bg-gray-50 border-r text-sm">{student.name}</td>
+                                    
+                                    <td className="px-3 py-2 text-center font-bold text-base text-blue-600">
+                                        <span className={isAbsent ? 'text-red-500' : 'text-blue-600'}>
+                                            {totalScoreText}
+                                        </span>
+                                    </td>
+                                    
+                                    {Array.from({ length: test.totalQuestions }).map((_, i) => {
+                                        const status = currentGrades[student.id]?.scores[i];
+                                        return (
+                                            <td key={i} className="px-1 py-2 text-center border-l">
+                                                <input
+                                                    ref={el => inputRefs.current[`${student.id}-${i}`] = el}
+                                                    type="text"
+                                                    value={status !== null ? (status === 1 ? '1' : '2') : ''} 
+                                                    onKeyDown={(e) => handleKeyDown(e, student.id, i)}
+                                                    maxLength="1"
+                                                    className={`w-8 h-6 text-center border rounded-md font-bold text-sm 
+                                                        focus:ring-2 focus:ring-blue-500 transition duration-100
+                                                        ${isAbsent ? 'bg-gray-100 border-gray-300 text-gray-400 cursor-not-allowed' :
+                                                          status === 1 ? 'bg-green-100 border-green-400 text-green-700' : 
+                                                          status === 0 ? 'bg-red-100 border-red-400 text-red-700' : 'border-gray-300 text-gray-700'}`
+                                                    }
+                                                    placeholder="-"
+                                                    disabled={isAbsent} // 미응시 처리 시 입력 비활성화
+                                                />
+                                            </td>
+                                        );
+                                    })}
+                                    
+                                    <td className="px-3 py-2 border-l">
+                                        <input
+                                            type="text"
+                                            value={currentGrades[student.id]?.comment || ''}
+                                            onChange={(e) => handleCommentChange(student.id, e.target.value)}
+                                            className="w-full border rounded-md px-2 py-1 text-sm focus:ring-1 focus:ring-blue-500"
+                                            placeholder="특이사항 입력"
+                                        />
+                                    </td>
+                                </tr>
+                            );
+                        })}
                     </tbody>
                 </table>
             </div>
@@ -249,11 +296,25 @@ export default function TestResultPanel({
                     취소 (초기화)
                 </button>
                 <button
-                    onClick={handleSave}
+                    onClick={handleMarkAbsentAll} // ✅ 추가된 미응시 처리 버튼
+                    className="px-4 py-2 text-sm font-medium rounded-lg text-white bg-orange-500 hover:bg-orange-600 transition shadow-md"
+                >
+                    <Icon name="slash" className="w-4 h-4 mr-1 inline-block" />
+                    전체 미응시 처리
+                </button>
+                <button
+                    onClick={handleSave} // ✅ 모달 닫기 로직 제거
                     className="px-4 py-2 text-sm font-medium rounded-lg text-white bg-red-600 hover:bg-red-700 transition shadow-md"
                 >
                     <Icon name="save" className="w-4 h-4 mr-1 inline-block" />
-                    성적 저장 및 모달 닫기
+                    점수 저장
+                </button>
+                {/* 닫기 버튼: 모달을 닫고 싶을 때를 위해 onSave(부모의 닫기 함수)를 호출하는 버튼 추가 */}
+                <button
+                    onClick={onSave}
+                    className="px-4 py-2 text-sm font-medium rounded-lg text-gray-600 bg-white border border-gray-300 hover:bg-gray-100 transition"
+                >
+                    모달 닫기
                 </button>
             </div>
         </div>
