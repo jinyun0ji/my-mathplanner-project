@@ -1,9 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Icon } from '../utils/helpers';
 import { LessonLogFormModal } from '../utils/modals/LessonLogFormModal';
-import ClassSelectionPanel from '../components/Shared/ClassSelectionPanel'; // Import 경로 수정
-import VideoProgressViewer from '../components/Shared/VideoProgressViewer'; // Import 경로 수정
-
+import ClassSelectionPanel from '../components/Shared/ClassSelectionPanel'; 
+import VideoProgressViewer from '../components/Shared/VideoProgressViewer'; 
 
 export default function LessonManagement({ 
     students, classes, lessonLogs, handleSaveLessonLog, handleDeleteLessonLog, 
@@ -25,18 +24,23 @@ export default function LessonManagement({
     }, [lessonLogs, selectedClassId]);
 
     useEffect(() => {
-        if (classLogs.length > 0) {
-            setSelectedDate(classLogs[0].date);
-        } else {
-            setSelectedDate(null);
+        // 수정된 로직: 현재 선택된 날짜가 null이거나, 클래스가 변경되었을 때만
+        // 가장 최근 일지의 날짜로 설정합니다. (날짜 선택 유지)
+        if (selectedClassId) {
+            if (selectedDate === null && classLogs.length > 0) {
+                 setSelectedDate(classLogs[0].date);
+            } else if (classLogs.length === 0) {
+                 setSelectedDate(null);
+            }
         }
-    }, [selectedClassId, classLogs.length]);
+        // selectedDate를 dependency에서 제거하고, null 체크 로직을 강화하여 무한 루프/강제 리셋을 방지합니다.
+    }, [selectedClassId, classLogs.length]); 
 
     const currentLog = useMemo(() => {
         return classLogs.find(log => log.date === selectedDate);
     }, [classLogs, selectedDate]);
     
-    // 날짜 네비게이션
+    // (LessonManagement에서 사용하지 않지만, props로 전달하는 함수를 위해 남겨둡니다.)
     const handleDateNavigate = (direction) => {
         const sessions = calculateClassSessions(selectedClass);
         const currentIndex = sessions.findIndex(s => s.date === selectedDate);
@@ -52,7 +56,6 @@ export default function LessonManagement({
     
     // ClassSelectionPanel의 커스텀 회차 목록 (로그가 있는 날짜만 표시)
     const logSessionsContent = useMemo(() => {
-        // ... (기존 App.jsx의 logSessionsContent 로직 유지)
         const loggedDates = classLogs.map(log => log.date);
         const sessions = calculateClassSessions(selectedClass);
         
@@ -112,6 +115,7 @@ export default function LessonManagement({
                 showEditButton={true}
                 customPanelContent={logSessionsContent}
                 customPanelTitle="수업 일지 회차"
+                onDateSelect={setSelectedDate} 
             />
 
             <div className="flex-1 min-w-0">

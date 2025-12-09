@@ -1,14 +1,15 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Icon } from '../utils/helpers';
 import ClassSelectionPanel from '../components/Shared/ClassSelectionPanel'; 
-import { AttendanceModal } from '../components/common/AttendanceModal'; // ✅ Named Import 확인
-import { MemoModal } from '../utils/modals/MemoModal'; // ✅ Named Import 확인
+import { AttendanceModal } from '../components/common/AttendanceModal'; 
+import { MemoModal } from '../utils/modals/MemoModal'; 
 
 export default function AttendanceManagement({ 
     students, classes, attendanceLogs, handleSaveAttendance, 
     studentMemos, handleSaveMemo, handleSaveClass, calculateClassSessions 
 }) {
     const [selectedClassId, setSelectedClassId] = useState(classes[0]?.id || null);
+    // 초기값은 현재 날짜로 설정
     const [selectedDate, setSelectedDate] = useState(new Date().toISOString().slice(0, 10));
     const [isAttendanceModalOpen, setIsAttendanceModalOpen] = useState(false);
     const [memoModalState, setMemoModalState] = useState({ isOpen: false, studentId: null, content: '', studentName: '' });
@@ -27,7 +28,7 @@ export default function AttendanceManagement({
         return students.filter(s => selectedClass.students.includes(s.id) && s.status === '재원생').sort((a, b) => a.name.localeCompare(b.name));
     }, [students, selectedClass]);
 
-    // 모달에 전달할 초기 출석 데이터 구성
+    // 모달에 전달할 초기 출석 데이터 구성 (로직 유지)
     const initialAttendanceForModal = useMemo(() => {
         const initial = {};
         classStudents.forEach(s => {
@@ -36,24 +37,47 @@ export default function AttendanceManagement({
                 classId: selectedClassId, 
                 date: selectedDate, 
                 studentId: s.id, 
-                status: '출석' // 기본값은 출석으로 설정
+                status: '출석' 
             };
         });
         return initial;
     }, [classStudents, classAttendance, selectedClassId, selectedDate]);
     
-    // ClassSelectionPanel의 커스텀 회차 목록 (수업 날짜만 표시)
+    // ClassSelectionPanel의 회차 목록
     const sessionDates = useMemo(() => {
         if (!selectedClass) return [];
         return calculateClassSessions(selectedClass);
     }, [selectedClass, calculateClassSessions]);
 
-    // 날짜 네비게이션
-    const handleDateNavigate = (direction) => {
-        const currentDateIndex = sessionDates.findIndex(s => s.date === selectedDate);
-        if (currentDateIndex === -1) return;
+    // 🚨 수정: 페이지 로드/클래스 변경 시 날짜 초기화 로직
+    useEffect(() => {
+        if (selectedClassId) {
+            const today = new Date().toISOString().slice(0, 10);
+            
+            // 1. 유효한 수업일 중 오늘 날짜와 같거나 이전인 날짜들을 찾습니다.
+            const pastAndCurrentSessions = sessionDates.filter(s => s.date <= today);
+            
+            // 2. 현재 선택된 날짜가 유효한 수업일이 아니거나,
+            //    현재 선택된 날짜가 가장 최근 수업일보다 훨씬 오래된 경우 (클릭 시 문제가 발생한 경우)
+            const isSelectedDateValid = sessionDates.some(s => s.date === selectedDate);
+            
+            if (!isSelectedDateValid && pastAndCurrentSessions.length > 0) {
+                 // 선택된 날짜가 수업일이 아닌 경우, 가장 최근 수업일로 재설정 (페이지 복귀 문제 해결)
+                const mostRecentDate = pastAndCurrentSessions[pastAndCurrentSessions.length - 1].date;
+                setSelectedDate(mostRecentDate);
+            } else if (!isSelectedDateValid && sessionDates.length > 0) {
+                 // 수업이 아직 시작되지 않은 경우, 첫 수업일로 설정
+                 setSelectedDate(sessionDates[0].date);
+            }
+        }
+    }, [selectedClassId, sessionDates]);
 
-        const newIndex = currentDateIndex + direction;
+
+    const handleDateNavigate = (direction) => {
+        const currentIndex = sessionDates.findIndex(s => s.date === selectedDate);
+        if (currentIndex === -1) return;
+
+        const newIndex = currentIndex + direction;
         
         if (newIndex >= 0 && newIndex < sessionDates.length) {
             setSelectedDate(sessionDates[newIndex].date);
@@ -83,7 +107,7 @@ export default function AttendanceManagement({
                 calculateClassSessions={calculateClassSessions}
                 showSessions={true}
                 selectedDate={selectedDate}
-                handleDateNavigate={handleDateNavigate}
+                // handleDateNavigate는 ClassSelectionPanel에서 사용되지 않지만, props 맞춤을 위해 유지합니다.
                 showEditButton={true}
                 customPanelContent={null} 
                 customPanelTitle="수업 날짜 선택"
