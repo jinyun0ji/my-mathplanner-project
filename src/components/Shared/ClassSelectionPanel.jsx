@@ -5,7 +5,8 @@ import { ClassFormModal } from '../../utils/modals/ClassFormModal';
 export default function ClassSelectionPanel({ 
     classes, selectedClassId, setSelectedClassId, handleClassSave, calculateClassSessions, 
     showSessions = true, selectedDate, handleDateNavigate, showEditButton = false, 
-    customPanelContent = null, customPanelTitle = '수업 회차' 
+    customPanelContent = null, customPanelTitle = '수업 회차',
+    onDateSelect 
 }) {
     const [isClassModalOpen, setIsClassModalOpen] = useState(false);
     const selectedClass = classes.find(c => c.id === selectedClassId);
@@ -77,11 +78,15 @@ export default function ClassSelectionPanel({
                     {customPanelContent || (
                         <ul className="space-y-1 max-h-48 overflow-y-auto pr-2 text-sm">
                             {[...sessionsBeforeSelectedDate].reverse().map(session => (
-                                <li key={session.date} className={`p-2 rounded-lg transition ${
-                                    session.date === selectedDate 
-                                        ? 'bg-blue-100 font-bold text-blue-700' 
-                                        : 'text-gray-600 hover:bg-gray-50'
-                                }`}>
+                                <li 
+                                    key={session.date} 
+                                    onClick={() => onDateSelect && onDateSelect(session.date)}
+                                    className={`p-2 rounded-lg transition ${
+                                        session.date === selectedDate 
+                                            ? 'bg-blue-100 font-bold text-blue-700' 
+                                            : 'text-gray-600 hover:bg-gray-50'
+                                    } ${onDateSelect ? 'cursor-pointer' : ''}`}
+                                >
                                     <span className="font-mono text-xs mr-2">{session.date}</span>
                                     {session.session}회차
                                 </li>

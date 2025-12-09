@@ -1,8 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { Icon } from '../utils/helpers';
-import ClassSelectionPanel from '../components/Shared/ClassSelectionPanel'; // 경로 수정
-import { AttendanceModal } from '../components/common/AttendanceModal'; // 경로 수정
-import { MemoModal } from '../utils/modals/MemoModal'; // 경로 수정
+import ClassSelectionPanel from '../components/Shared/ClassSelectionPanel'; 
+import { AttendanceModal } from '../components/common/AttendanceModal'; // ✅ Named Import 확인
+import { MemoModal } from '../utils/modals/MemoModal'; // ✅ Named Import 확인
 
 export default function AttendanceManagement({ 
     students, classes, attendanceLogs, handleSaveAttendance, 
@@ -85,8 +85,9 @@ export default function AttendanceManagement({
                 selectedDate={selectedDate}
                 handleDateNavigate={handleDateNavigate}
                 showEditButton={true}
-                customPanelContent={null} // 기본 회차 목록 사용
+                customPanelContent={null} 
                 customPanelTitle="수업 날짜 선택"
+                onDateSelect={setSelectedDate} 
             />
             <div className="flex-1 min-w-0">
                 {selectedClassId === null ? (
