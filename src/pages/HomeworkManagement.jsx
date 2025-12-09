@@ -1,8 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { Icon } from '../utils/helpers';
-import ClassSelectionPanel from '../components/Shared/ClassSelectionPanel'; // 경로 수정
-import HomeworkGradingTable from '../components/Homework/HomeworkGradingTable'; // 경로 수정
-import { HomeworkAssignmentModal } from '../utils/modals/HomeworkAssignmentModal'; // 경로 수정
+import ClassSelectionPanel from '../components/Shared/ClassSelectionPanel'; 
+import HomeworkGradingTable from '../components/Homework/HomeworkGradingTable'; 
+import { HomeworkAssignmentModal } from '../utils/modals/HomeworkAssignmentModal'; 
 
 export default function HomeworkManagement({ 
     students, classes, homeworkAssignments, homeworkResults, 
@@ -27,7 +27,6 @@ export default function HomeworkManagement({
         return classAssignments.find(a => a.id === selectedAssignmentId);
     }, [classAssignments, selectedAssignmentId]);
 
-    // 클래스 학생 목록
     const classStudents = useMemo(() => {
         if (!selectedClass) return [];
         return students.filter(s => selectedClass.students.includes(s.id) && s.status === '재원생').sort((a, b) => a.name.localeCompare(b.name));
@@ -51,7 +50,7 @@ export default function HomeworkManagement({
                 if (status === '고침') corrected++;
             });
             
-            const completionCount = correct + corrected + incorrect; // 채점된 개수
+            const completionCount = correct + corrected + incorrect; 
             const unchecked = total - completionCount;
             const completionRate = Math.round((completionCount / total) * 100) || 0;
             
@@ -76,20 +75,27 @@ export default function HomeworkManagement({
         
         return (
             <div className="max-h-[70vh] overflow-y-auto pr-2">
-                {classAssignments.map(assignment => (
-                    <div 
-                        key={assignment.id} 
-                        onClick={() => setSelectedAssignmentId(assignment.id)}
-                        className={`p-3 mb-2 rounded-lg cursor-pointer border transition duration-150 ${
-                            assignment.id === selectedAssignmentId 
-                                ? 'bg-blue-100 border-blue-400 shadow-md' 
-                                : 'bg-white border-gray-200 hover:bg-gray-50'
-                        }`}
-                    >
-                        <p className="text-sm font-bold text-gray-800">{assignment.book} ({assignment.startQuestion}~{assignment.endQuestion})</p>
-                        <p className="text-xs text-gray-600 mt-1">{assignment.date}: {assignment.content}</p>
-                    </div>
-                ))}
+                {classAssignments.map(assignment => {
+                    // ✅ 범위 표시 로직 개선
+                    const rangeDisplay = assignment.rangeString 
+                        ? assignment.rangeString 
+                        : (assignment.startQuestion ? `${assignment.startQuestion}~${assignment.endQuestion}` : '범위 없음');
+
+                    return (
+                        <div 
+                            key={assignment.id} 
+                            onClick={() => setSelectedAssignmentId(assignment.id)}
+                            className={`p-3 mb-2 rounded-lg cursor-pointer border transition duration-150 ${
+                                assignment.id === selectedAssignmentId 
+                                    ? 'bg-blue-100 border-blue-400 shadow-md' 
+                                    : 'bg-white border-gray-200 hover:bg-gray-50'
+                            }`}
+                        >
+                            <p className="text-sm font-bold text-gray-800">{assignment.book} ({rangeDisplay})</p>
+                            <p className="text-xs text-gray-600 mt-1">{assignment.date}: {assignment.content}</p>
+                        </div>
+                    );
+                })}
                 {classAssignments.length === 0 && <p className="text-sm text-gray-500 mt-2">배정된 과제가 없습니다.</p>}
             </div>
         );
@@ -112,7 +118,7 @@ export default function HomeworkManagement({
 
     return (
         <div className="flex space-x-6 h-full">
-            {/* 왼쪽: 클래스 및 과제 목록 패널 */}
+            {/* 왼쪽 패널 */}
             <div className="w-80 flex-shrink-0 space-y-4">
                 <ClassSelectionPanel
                     classes={classes}
@@ -123,7 +129,6 @@ export default function HomeworkManagement({
                     showSessions={false}
                     showEditButton={true}
                 />
-                
                 <div className="bg-white p-4 rounded-xl shadow-md space-y-3">
                     <div className='flex justify-between items-center border-b pb-2'>
                         <h4 className="text-lg font-bold text-gray-800">과제 목록</h4>
@@ -140,7 +145,7 @@ export default function HomeworkManagement({
                 </div>
             </div>
 
-            {/* 오른쪽: 과제 상세 및 채점 테이블 */}
+            {/* 오른쪽 패널 */}
             <div className="flex-1 min-w-0">
                 {!selectedAssignment ? (
                     <div className="p-6 bg-white rounded-xl shadow-md"><p className="text-gray-500">클래스를 선택하고 왼쪽에서 과제를 선택하세요.</p></div>
@@ -150,7 +155,11 @@ export default function HomeworkManagement({
                             <div className="flex justify-between items-start">
                                 <div>
                                     <h3 className="text-xl font-bold text-gray-800">{selectedAssignment.book}</h3>
-                                    <p className="text-sm text-gray-600 mt-1">{selectedAssignment.date} | {selectedAssignment.content} ({selectedAssignment.totalQuestions}문항)</p>
+                                    {/* ✅ 상세 정보에도 범위 표시 */}
+                                    <p className="text-sm text-gray-600 mt-1">
+                                        {selectedAssignment.date} | {selectedAssignment.content} 
+                                        ({selectedAssignment.rangeString || `${selectedAssignment.startQuestion || '?'}~${selectedAssignment.endQuestion || '?'}`}, 총 {selectedAssignment.totalQuestions}문항)
+                                    </p>
                                 </div>
                                 <div className='flex space-x-2'>
                                     <button 
@@ -169,7 +178,6 @@ export default function HomeworkManagement({
                             </div>
                         </div>
 
-                        {/* 채점 테이블 */}
                         <HomeworkGradingTable 
                             summary={assignmentSummary} 
                             assignment={selectedAssignment} 

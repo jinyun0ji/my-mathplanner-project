@@ -2,11 +2,12 @@ import React from 'react';
 import { Icon } from '../utils/helpers';
 
 export default function Sidebar({ page, setPage, onLogout }) {
+    // ✅ 메뉴 순서 변경: 홈 -> 학생 관리 -> 수업 관리 -> 출결 관리 -> ...
     const menuItems = [
         { name: '홈', key: 'home', icon: 'dashboard' },
+        { name: '학생 관리', key: 'students', icon: 'users' }, // 2번째로 이동
         { name: '수업 관리', key: 'lessons', icon: 'fileText' },
         { name: '출결 관리', key: 'attendance', icon: 'calendar' },
-        { name: '학생 관리', key: 'students', icon: 'users' },
         { name: '성적 관리', key: 'grades', icon: 'barChart' },
         { name: '과제 관리', key: 'homework', icon: 'clipboardCheck' },
         { name: '클리닉 관리', key: 'clinic', icon: 'clock' },
@@ -20,7 +21,7 @@ export default function Sidebar({ page, setPage, onLogout }) {
                 <div className="p-5 border-b-2 border-indigo-500 bg-indigo-600 text-white rounded-tr-xl">
                     <h2 className="text-xl font-bold flex items-center">
                         <Icon name="school" className="w-6 h-6 mr-2" />
-                        <span className="text-yellow-300">A</span>cademy
+                        채수용 연구소
                     </h2>
                     <p className="text-xs mt-1 text-indigo-200">직원 시스템</p>
                 </div>

@@ -8,42 +8,68 @@ export const HomeworkAssignmentModal = ({ isOpen, onClose, onSave, classId, assi
   const [date, setDate] = useState('');
   const [content, setContent] = useState('');
   const [book, setBook] = useState('');
-  const [startQuestion, setStartQuestion] = useState(1);
-  const [endQuestion, setEndQuestion] = useState(10);
-  const [totalQuestions, setTotalQuestions] = useState(10);
+  
+  // ✅ 변경: 단순 시작/끝 번호 대신 범위 문자열(string) 사용
+  const [rangeString, setRangeString] = useState(''); 
+  const [totalQuestions, setTotalQuestions] = useState(0);
   const [isAssignmentDate, setIsAssignmentDate] = useState(true);
+
+  // 범위 문자열 파싱 함수 (예: "1-5, 8, 10-12" -> [1,2,3,4,5,8,10,11,12])
+  const parseRangeString = (str) => {
+    if (!str) return [];
+    try {
+        const parts = str.split(',').map(s => s.trim()).filter(s => s !== '');
+        const numbers = new Set();
+        
+        parts.forEach(part => {
+            if (part.includes('-') || part.includes('~')) {
+                const [start, end] = part.split(/-|~/).map(Number);
+                if (!isNaN(start) && !isNaN(end)) {
+                    for (let i = start; i <= end; i++) numbers.add(i);
+                }
+            } else {
+                const num = Number(part);
+                if (!isNaN(num)) numbers.add(num);
+            }
+        });
+        return Array.from(numbers).sort((a, b) => a - b);
+    } catch (e) {
+        return [];
+    }
+  };
 
   useEffect(() => {
     if (assignment) {
       setDate(assignment.date);
       setContent(assignment.content);
       setBook(assignment.book || '');
-      setStartQuestion(assignment.startQuestion || 1);
-      setEndQuestion(assignment.endQuestion || 10);
-      setTotalQuestions(assignment.totalQuestions || 10);
+      // 기존 데이터(startQuestion, endQuestion)가 있으면 문자열로 변환, 아니면 저장된 rangeString 사용
+      if (assignment.rangeString) {
+          setRangeString(assignment.rangeString);
+          setTotalQuestions(assignment.totalQuestions);
+      } else if (assignment.startQuestion && assignment.endQuestion) {
+          setRangeString(`${assignment.startQuestion}-${assignment.endQuestion}`);
+          setTotalQuestions(assignment.totalQuestions || (assignment.endQuestion - assignment.startQuestion + 1));
+      } else {
+          setRangeString('');
+          setTotalQuestions(0);
+      }
       setIsAssignmentDate(assignment.isAssignmentDate !== undefined ? assignment.isAssignmentDate : true);
     } else {
       setDate(new Date().toISOString().slice(0, 10));
       setContent('');
       setBook('');
-      setStartQuestion(1);
-      setEndQuestion(10);
-      setTotalQuestions(10);
+      setRangeString('');
+      setTotalQuestions(0);
       setIsAssignmentDate(true);
     }
   }, [assignment]);
 
+  // 범위 문자열이 변할 때마다 총 문제 수 자동 계산
   useEffect(() => {
-    // 문제 범위가 바뀌면 총 문제 수 자동 계산
-    const start = Number(startQuestion);
-    const end = Number(endQuestion);
-    if (start > 0 && end >= start) {
-      setTotalQuestions(end - start + 1);
-    } else if (end < start) {
-      setTotalQuestions(0);
-    }
-  }, [startQuestion, endQuestion]);
-
+    const questions = parseRangeString(rangeString);
+    setTotalQuestions(questions.length);
+  }, [rangeString]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -55,8 +81,7 @@ export const HomeworkAssignmentModal = ({ isOpen, onClose, onSave, classId, assi
       date,
       content,
       book,
-      startQuestion: Number(startQuestion),
-      endQuestion: Number(endQuestion),
+      rangeString, // ✅ 저장: 입력한 범위 문자열
       totalQuestions,
       students: classStudents.map(s => s.id),
       isAssignmentDate,
@@ -84,18 +109,25 @@ export const HomeworkAssignmentModal = ({ isOpen, onClose, onSave, classId, assi
           <textarea value={content} onChange={e => setContent(e.target.value)} rows="2" required className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border" placeholder="예: P.10 ~ P.15 오답노트 작성"></textarea>
         </div>
         
+        {/* ✅ 문제 범위 입력 UI 변경 */}
         <div className="border p-3 rounded-lg bg-blue-50">
-          <h4 className="text-sm font-semibold mb-2 text-gray-700">문제 범위 및 개수</h4>
-          <div className="grid grid-cols-3 gap-3">
+          <h4 className="text-sm font-semibold mb-2 text-gray-700">문제 범위 설정</h4>
+          <div className="space-y-2">
             <div>
-              <label className="block text-xs font-medium text-gray-700">시작 문제 번호*</label>
-              <input type="number" value={startQuestion} onChange={e => setStartQuestion(e.target.value)} required min="1" className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border text-sm" />
+              <label className="block text-xs font-medium text-gray-700 mb-1">문제 번호 입력 (쉼표와 하이픈 사용 가능)*</label>
+              <input 
+                type="text" 
+                value={rangeString} 
+                onChange={e => setRangeString(e.target.value)} 
+                required 
+                placeholder="예: 1-10, 15, 20-25" 
+                className="block w-full rounded-md border-gray-300 shadow-sm p-2 border text-sm" 
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                연속된 번호는 <span className="font-bold">1-10</span>, 떨어진 번호는 <span className="font-bold">쉼표(,)</span>로 구분하여 입력하세요.
+              </p>
             </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-700">끝 문제 번호*</label>
-              <input type="number" value={endQuestion} onChange={e => setEndQuestion(e.target.value)} required min={startQuestion} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border text-sm" />
-            </div>
-            <div className="flex flex-col justify-end">
+            <div className="text-right">
               <p className="text-sm font-bold text-blue-700">총 {totalQuestions} 문제</p>
             </div>
           </div>
