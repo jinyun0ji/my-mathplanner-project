@@ -2084,6 +2084,11 @@
     z-index: 10;
   }
 }
+.focus\:z-20 {
+  &:focus {
+    z-index: 20;
+  }
+}
 .focus\:border-\[\#f3d5a3\] {
   &:focus {
     border-color: #f3d5a3;

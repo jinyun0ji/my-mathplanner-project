@@ -7,7 +7,6 @@ import { Modal } from '../../components/common/Modal';
 const RESULT_OPTIONS_GRADE = { 
     '맞음': 'text-green-600 bg-green-50 border-green-200', 
     '틀림': 'text-red-600 bg-red-50 border-red-200', 
-    '고침': 'text-blue-600 bg-blue-50 border-blue-200', 
     '미채점': 'text-gray-400 bg-gray-50 border-gray-200' 
 };
 
@@ -46,7 +45,7 @@ export default function TestResultTable({ isOpen, onClose, test, studentsData, h
             const existingComment = grades[selectedStudentId]?.[test.id]?.comment || '';
             setStudentComment(existingComment);
             
-            // 첫 번째 문항으로 포커스 이동 (약간의 지연 필요)
+            // 첫 번째 문항으로 포커스 이동
             setTimeout(() => {
                 const firstInput = inputRefs.current[`${selectedStudentId}-0`];
                 if (firstInput) firstInput.focus();
@@ -54,7 +53,7 @@ export default function TestResultTable({ isOpen, onClose, test, studentsData, h
         }
     }, [selectedStudentId, test.id, grades]); 
 
-    // 채점 상태 변경
+    // ✅ 채점 상태 변경 (고침 제거: 맞음 -> 틀림 -> 미채점 순환)
     const handleResultChange = (qNum, forceStatus = null) => {
         const currentStatus = resultMapping[qNum] || '미채점';
         let newStatus;
@@ -62,9 +61,8 @@ export default function TestResultTable({ isOpen, onClose, test, studentsData, h
         if (forceStatus) newStatus = forceStatus;
         else {
             if (currentStatus === '맞음') newStatus = '틀림';
-            else if (currentStatus === '틀림') newStatus = '고침';
-            else if (currentStatus === '고침') newStatus = '미채점'; 
-            else newStatus = '맞음'; 
+            else if (currentStatus === '틀림') newStatus = '미채점'; // 틀림 다음은 미채점
+            else newStatus = '맞음'; // 미채점 다음은 맞음
         }
 
         setResultMapping(prev => {
@@ -78,27 +76,30 @@ export default function TestResultTable({ isOpen, onClose, test, studentsData, h
     // 키보드 조작
     const handleKeyDown = (e, qNum, qIndex) => {
         const totalQuestions = test.totalQuestions;
-        if (e.key === '1' || e.key === '2') {
+        if (e.key === '1') {
             e.preventDefault();
-            const status = e.key === '1' ? '맞음' : '틀림';
-            handleResultChange(qNum, status);
-            if (qIndex < totalQuestions - 1) {
-                setTimeout(() => {
-                    const nextInput = inputRefs.current[`${selectedStudentId}-${qIndex + 1}`];
-                    if (nextInput) nextInput.focus();
-                }, 0);
-            }
+            handleResultChange(qNum, '맞음');
+            moveFocus(qIndex + 1);
+        } else if (e.key === '2') {
+            e.preventDefault();
+            handleResultChange(qNum, '틀림');
+            moveFocus(qIndex + 1);
         } else if (e.key === 'Delete' || e.key === 'Backspace') {
             e.preventDefault();
             handleResultChange(qNum, '미채점');
-        } else if (e.key === 'ArrowRight' && qIndex < totalQuestions - 1) {
+        } else if (e.key === 'ArrowRight') {
             e.preventDefault();
-            const nextInput = inputRefs.current[`${selectedStudentId}-${qIndex + 1}`];
+            moveFocus(qIndex + 1);
+        } else if (e.key === 'ArrowLeft') {
+            e.preventDefault();
+            moveFocus(qIndex - 1);
+        }
+    };
+
+    const moveFocus = (targetIndex) => {
+        if (targetIndex >= 0 && targetIndex < test.totalQuestions) {
+            const nextInput = inputRefs.current[`${selectedStudentId}-${targetIndex}`];
             if (nextInput) nextInput.focus();
-        } else if (e.key === 'ArrowLeft' && qIndex > 0) {
-            e.preventDefault();
-            const prevInput = inputRefs.current[`${selectedStudentId}-${qIndex - 1}`];
-            if (prevInput) prevInput.focus();
         }
     };
 
@@ -106,21 +107,19 @@ export default function TestResultTable({ isOpen, onClose, test, studentsData, h
         let score = 0;
         Object.keys(resultMapping).forEach(qNum => {
             const status = resultMapping[qNum];
-            if (status === '맞음' || status === '고침') {
+            if (status === '맞음') { // 고침 점수 반영 제외 (데이터상 존재할 수 있으나 성적 관리에서는 맞음만 처리)
                 score += (test.questionScores[Number(qNum) - 1] || 0);
             }
         });
         return score.toFixed(1);
     }, [resultMapping, test.questionScores]);
     
-    // 저장 및 다음 학생 자동 이동
     const handleSubmit = (isNoShow = false) => {
         if (!selectedStudentId) return;
         
         const finalResult = isNoShow ? '미응시' : resultMapping;
         handleUpdateGrade(selectedStudentId, test.id, finalResult, studentComment);
         
-        // 다음 학생 자동 선택 로직
         const currentIndex = studentsInClass.findIndex(s => s.id === selectedStudentId);
         const nextStudent = studentsInClass[currentIndex + 1];
 
@@ -128,9 +127,6 @@ export default function TestResultTable({ isOpen, onClose, test, studentsData, h
             setTimeout(() => {
                 setSelectedStudentId(nextStudent.id);
             }, 100); 
-        } else {
-            // 마지막 학생일 경우 알림 (선택 사항)
-            // alert("마지막 학생입니다.");
         }
     };
 
@@ -167,7 +163,7 @@ export default function TestResultTable({ isOpen, onClose, test, studentsData, h
                         <div className="flex items-center justify-center h-full text-gray-400">학생을 선택해주세요.</div>
                     ) : (
                         <>
-                            {/* 헤더: 학생 이름 & 점수 & 액션 버튼 */}
+                            {/* 헤더 */}
                             <div className='flex justify-between items-center p-2 bg-gray-50 rounded-lg border border-gray-200'>
                                 <div className='flex items-baseline space-x-2'>
                                     <h5 className='text-lg font-bold text-gray-800'>{selectedStudent.name}</h5>
@@ -192,7 +188,7 @@ export default function TestResultTable({ isOpen, onClose, test, studentsData, h
                                 </div>
                             </div>
                             
-                            {/* 문항 그리드 (UI 수정됨: 셀 크기 축소, 배점 표시) */}
+                            {/* 문항 그리드 */}
                             <div className='flex-grow overflow-y-auto pr-1 custom-scrollbar'>
                                 <div className='grid grid-cols-10 gap-1'> 
                                     {Array.from({ length: test.totalQuestions }, (_, i) => i + 1).map(qNum => {
@@ -215,14 +211,11 @@ export default function TestResultTable({ isOpen, onClose, test, studentsData, h
                                                     focus:outline-none focus:ring-2 focus:ring-blue-400 focus:z-10
                                                 `}
                                             >
-                                                {/* 상단: 문항 번호와 배점 */}
                                                 <div className='text-[10px] text-gray-500 leading-none absolute top-1 left-1'>
                                                     {qNum}. <span className='text-gray-400'>({score}점)</span>
                                                 </div>
-                                                
-                                                {/* 중앙: 상태 텍스트 (작게) */}
                                                 <div className={`text-sm font-bold mt-2 ${status === '미채점' ? 'opacity-0' : 'opacity-100'}`}>
-                                                    {status === '맞음' ? 'O' : (status === '틀림' ? 'X' : (status === '고침' ? '△' : ''))}
+                                                    {status === '맞음' ? 'O' : (status === '틀림' ? 'X' : '')}
                                                 </div>
                                             </div>
                                         );
@@ -230,7 +223,7 @@ export default function TestResultTable({ isOpen, onClose, test, studentsData, h
                                 </div>
                             </div>
                             
-                            {/* 코멘트 입력 (엔터키 저장 기능 포함) */}
+                            {/* 코멘트 입력 */}
                             <div className='pt-2 border-t mt-auto'>
                                 <input 
                                     value={studentComment}
