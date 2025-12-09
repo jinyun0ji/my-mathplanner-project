@@ -55,6 +55,39 @@ try {
     console.error("Firebase initialization error. Using local mock data only:", error);
 }
 
+// ✅ [수정됨] PageContent 컴포넌트를 App 밖으로 이동
+const PageContent = (props) => {
+    const { page, selectedStudentId } = props;
+
+    // 학생 상세 페이지
+    if (page === 'students' && selectedStudentId !== null) {
+        return <StudentDetail {...props} studentId={selectedStudentId} />;
+    }
+
+    switch (page) {
+        case 'home':
+            return <Home />;
+        case 'lessons':
+            return <LessonManagement {...props} />;
+        case 'attendance':
+            return <AttendanceManagement {...props} />;
+        case 'students':
+            return <StudentManagement {...props} />;
+        case 'grades':
+            return <GradeManagement {...props} />;
+        case 'homework':
+            return <HomeworkManagement {...props} />;
+        case 'clinic':
+            return <ClinicManagement {...props} />;
+        case 'communication':
+            return <InternalCommunication {...props} />;
+        case 'payment':
+            return <PaymentManagement {...props} />;
+        default:
+            return <Home />;
+    }
+};
+
 // --- 메인 앱 컴포넌트: 모든 상태와 CRUD 로직을 관리하는 중앙 허브 ---
 export default function App() { 
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -82,7 +115,7 @@ export default function App() {
 
   // 사이드바 열림/닫힘 상태 관리
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-   
+  
   // 새로운 알림 존재 여부
   const [hasNewNotifications, setHasNewNotifications] = useState(true);
 
@@ -131,7 +164,7 @@ export default function App() {
         setNotifications(prev => [{ id: Date.now(), type, message, details, timestamp: new Date().toLocaleTimeString('ko-KR') }, ...prev]);
     }, []);
 
-  // --- CRUD 함수: 클래스 관리 ---
+  // --- CRUD 함수들 ---
   const handleSaveClass = (classData, isEdit) => {
     setClasses(prev => {
         if (isEdit) {
@@ -143,8 +176,6 @@ export default function App() {
     });
   };
 
-
-  // --- CRUD 함수: 학생 관리 ---
   const getClassesNames = useCallback((classIds) => classIds.map(id => classes.find(c => c.id === id)?.name || '').join(', '), [classes]);
   
   const handleSaveStudent = (newStudentData, isEdit) => {
@@ -158,16 +189,12 @@ export default function App() {
         return [...prev, newStudent];
     });
 
-    // 클래스 멤버십 업데이트 (추가/제거)
     setClasses(prev => prev.map(cls => {
         const isSelected = newStudentData.classes.includes(cls.id);
         const isMember = cls.students.includes(newStudentData.id);
-
         if (isSelected && !isMember) {
-            // 클래스에 추가
             return { ...cls, students: [...cls.students, newStudentData.id] };
         } else if (!isSelected && isMember) {
-            // 클래스에서 제거
             return { ...cls, students: cls.students.filter(id => id !== newStudentData.id) };
         }
         return cls;
@@ -178,24 +205,17 @@ export default function App() {
     const studentName = students.find(s => s.id === id)?.name;
     setStudents(prev => prev.filter(s => s.id !== id));
     logNotification('warning', '학생 삭제 처리', `${studentName} 학생 정보가 시스템에서 삭제되었습니다.`);
-
-    // 클래스에서 학생 제거
     setClasses(prev => prev.map(cls => ({
         ...cls,
         students: cls.students.filter(sId => sId !== id)
     })));
   };
   
-  // --- CRUD 함수: 메모 관리 ---
   const handleSaveMemo = (studentId, content) => {
-    setStudentMemos(prev => ({
-        ...prev,
-        [studentId]: content
-    }));
+    setStudentMemos(prev => ({ ...prev, [studentId]: content }));
     logNotification('info', '학생 메모 저장', `${students.find(s => s.id === studentId)?.name} 학생 메모가 저장되었습니다.`);
   };
 
-  // --- CRUD 함수: 수업 일지 관리 ---
   const handleSaveLessonLog = (logData, isEdit) => {
     setLessonLogs(prev => {
         if (isEdit) {
@@ -213,7 +233,6 @@ export default function App() {
     logNotification('warning', '수업 일지 삭제', `일지(ID:${logId})가 삭제되었습니다.`);
   }
   
-  // --- CRUD 함수: 출석 관리 (버그 수정 반영) ---
   const handleSaveAttendance = (attendanceRecords) => {
     setAttendanceLogs(prev => {
         const newLogs = [...prev];
@@ -221,13 +240,11 @@ export default function App() {
             const existingIndex = newLogs.findIndex(
                 log => log.classId === record.classId && log.date === record.date && log.studentId === record.studentId
             );
-
             if (existingIndex > -1) {
                 newLogs[existingIndex] = record;
             } else {
                 newLogs.push({ 
                     ...record, 
-                    // ✅ 버그 수정: ID가 없는 경우를 안전하게 처리하여 다음 ID를 생성합니다.
                     id: newLogs.reduce((max, l) => Math.max(max, l.id || 0), 0) + 1 
                 });
             }
@@ -237,7 +254,6 @@ export default function App() {
     logNotification('success', '출결 기록 저장', `총 ${attendanceRecords.length}건의 출결 기록이 업데이트되었습니다.`);
   };
 
-  // --- CRUD 함수: 과제 관리 ---
   const handleSaveHomeworkAssignment = (assignmentData, isEdit) => {
     setHomeworkAssignments(prev => {
         if (isEdit) {
@@ -256,31 +272,25 @@ export default function App() {
     logNotification('warning', '과제 삭제', `과제(ID:${assignmentId})가 삭제되었습니다.`);
   };
   
-  // 과제 결과 상세 기록 (문항별 상태 맵)
   const handleUpdateHomeworkResult = (studentId, assignmentId, questionId, status) => {
     setHomeworkResults(prev => {
         const newResults = { ...prev };
         const sId = studentId;
         const aId = assignmentId;
-
         if (!newResults[sId]) newResults[sId] = {};
         if (!newResults[sId][aId]) newResults[sId][aId] = {};
-
         if (status) {
             newResults[sId][aId][questionId] = status;
         } else {
             delete newResults[sId][aId][questionId];
         }
-
         if (Object.keys(newResults[sId][aId]).length === 0) {
             delete newResults[sId][aId];
         }
-        
         return newResults;
     });
   };
 
-  // --- CRUD 함수: 성적 및 테스트 관리 ---
   const handleSaveTest = (testData, isEdit) => {
     setTests(prev => {
         if (isEdit) {
@@ -295,8 +305,6 @@ export default function App() {
 
   const handleDeleteTest = (testId) => {
     setTests(prev => prev.filter(t => t.id !== testId));
-    
-    // 관련 성적 데이터 삭제 (grades)
     setGrades(prev => {
         const newGrades = {};
         for (const studentId in prev) {
@@ -309,23 +317,17 @@ export default function App() {
     logNotification('warning', '시험 삭제', `시험(ID:${testId})이 삭제되고 관련 성적도 초기화되었습니다.`);
   };
 
-  // 🚨 FIX: 성적 반영 로직 확인 및 코멘트 저장
   const handleUpdateGrade = (studentId, testId, resultMapping, comment = '') => { 
     const test = tests.find(t => t.id === testId);
     if (!test) return;
-
     let totalScore = 0;
-    
     if (resultMapping === '미응시') {
         totalScore = null; 
     } else if (resultMapping) {
-        // 문항별 점수 계산
         Object.keys(resultMapping).forEach(qNum => {
             const status = resultMapping[qNum];
             const qIndex = Number(qNum) - 1;
             const score = test.questionScores[qIndex] || 0; 
-
-            // '맞음' 또는 '고침' 상태는 점수 획득
             if (status === '맞음' || status === '고침') { 
                 totalScore += score;
             }
@@ -338,18 +340,16 @@ export default function App() {
             ...prev[studentId],
             [testId]: { 
                 score: totalScore, 
-                correctCount: resultMapping, // 문항별 결과 저장 (통계 반영에 사용)
-                comment: comment // 🚨 코멘트 저장
+                correctCount: resultMapping,
+                comment: comment
             }
         }
     }));
-    
     const student = students.find(s => s.id === studentId);
     const scoreText = totalScore === null ? '미응시 처리' : `${totalScore.toFixed(1)}점 저장`;
     logNotification('info', '성적 저장', `${student ? student.name : '학생'}의 성적(${test.name})이 ${scoreText}되었습니다.`);
   };
   
-  // --- CRUD 함수: 공지사항 관리 ---
   const handleSaveAnnouncement = (announcementData, isEdit) => {
     setAnnouncements(prev => {
         if (isEdit) {
@@ -367,7 +367,6 @@ export default function App() {
     });
   }
 
-  // --- CRUD 함수: 근무 일지 관리 ---
   const handleSaveWorkLog = (logData, isEdit) => {
     setWorkLogs(prev => {
         if (isEdit) {
@@ -389,8 +388,6 @@ export default function App() {
     logNotification('warning', '근무 일지 삭제', `일지(ID:${id})가 삭제되었습니다.`);
   };
 
-
-  // --- CRUD 함수: 클리닉 로그 관리 ---
   const handleSaveClinicLog = (logData, isEdit) => {
     setClinicLogs(prev => {
         if (isEdit) {
@@ -407,10 +404,8 @@ export default function App() {
     logNotification('warning', '클리닉 로그 삭제', `로그(ID:${id})가 삭제되었습니다.`);
   };
   
-
   if (!isLoggedIn) return <LoginPage onLogin={() => setIsLoggedIn(true)} />;
 
-  // 페이지 전환 로직 업데이트 (학생 관리 메뉴 클릭 시, selectedStudentId 초기화)
   const handlePageChange = (newPage, studentId = null) => {
        if (newPage === 'students' && studentId === null) {
             setSelectedStudentId(null); 
@@ -443,46 +438,13 @@ export default function App() {
     calculateHomeworkStats
   };
 
-  // --- PageContent 컴포넌트: 페이지 라우팅 로직만 포함 ---
-  const PageContent = (props) => {
-    const { page, selectedStudentId } = props;
-
-    // 학생 상세 페이지
-    if (page === 'students' && selectedStudentId !== null) {
-        return <StudentDetail {...props} studentId={selectedStudentId} />;
-    }
-
-    switch (page) {
-        case 'home':
-            return <Home />;
-        case 'lessons':
-            return <LessonManagement {...props} />;
-        case 'attendance':
-            return <AttendanceManagement {...props} />;
-        case 'students':
-            return <StudentManagement {...props} />;
-        case 'grades':
-            return <GradeManagement {...props} />;
-        case 'homework':
-            return <HomeworkManagement {...props} />;
-        case 'clinic':
-            return <ClinicManagement {...props} />;
-        case 'communication':
-            return <InternalCommunication {...props} />;
-        case 'payment':
-            return <PaymentManagement {...props} />;
-        default:
-            return <Home />;
-    }
-  };
-
   return (
   <div className="flex h-screen bg-gray-100 font-sans text-base relative"> 
     
     {/* Sidebar (왼쪽 메뉴) */}
     <Sidebar page={page} setPage={(newPage) => handlePageChange(newPage, null)} onLogout={() => setIsLoggedIn(false)} />
     
-    {/* 메인 컨텐츠 영역: 알림 패널 상태에 따라 오른쪽 마진(mr) 조정 */}
+    {/* 메인 컨텐츠 영역 */}
     <div 
       className={`flex-1 flex flex-col overflow-hidden min-w-0 transition-all duration-300 ease-in-out 
                   ${isSidebarOpen ? 'mr-80' : 'mr-0'}`} 
@@ -493,7 +455,7 @@ export default function App() {
       </main>
     </div>
 
-    {/* 오른쪽 알림 패널 (Notification Panel) */}
+    {/* 오른쪽 알림 패널 */}
     <NotificationPanel 
       notifications={notifications} 
       isSidebarOpen={isSidebarOpen} 

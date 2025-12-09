@@ -292,7 +292,7 @@ export default function GradeManagement({
                             onClick={handleUploadExcel}
                             className="flex items-center text-sm px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
                         >
-                            <Icon name="upload" className="w-4 h-4 mr-1" /> 엑셀로 자료 입력
+                            <Icon name="upload" className="w-4 h-4 mr-1" /> 엑셀로 결과 입력
                         </button>
 
                          {/* 성적 입력/채점 버튼 */}
