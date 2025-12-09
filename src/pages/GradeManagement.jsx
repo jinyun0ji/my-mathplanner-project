@@ -7,10 +7,12 @@ import FullGradeTable from '../components/Grade/FullGradeTable';
 import TestResultTable from '../components/Grade/TestResultTable'; 
 import TestStatisticsTable from '../components/Grade/TestStatisticsTable'; 
 import { TestFormModal } from '../utils/modals/TestFormModal'; 
-import { Modal } from '../components/common/Modal'; 
+// Modal 컴포넌트는 TestResultTable 내부에서 사용되므로 여기서는 직접 import하지 않아도 되지만, 
+// 만약 다른 모달을 쓴다면 유지하세요. 여기서는 TestFormModal과 TestResultTable이 주된 모달입니다.
 
-
-// 통계 계산 헬퍼 함수 (유지)
+// ----------------------------------------------------------------------
+// 통계 계산 헬퍼 함수
+// ----------------------------------------------------------------------
 const computeTestStatistics = (test, students, grades, classAverages) => {
     if (!test || !students.length) {
         return { average: 0, maxScore: 0, minScore: 0, stdDev: 0, correctRates: {}, rank: [] };
@@ -38,8 +40,7 @@ const computeTestStatistics = (test, students, grades, classAverages) => {
         name: s.name
     }));
 
-    const rankedScores = attemptedScores
-        .sort((a, b) => b.score - a.score);
+    const rankedScores = attemptedScores.sort((a, b) => b.score - a.score);
         
     let currentRank = 1;
     let rank = rankedScores.map((item, index) => {
@@ -65,11 +66,12 @@ const computeTestStatistics = (test, students, grades, classAverages) => {
         }
     }
 
-
     return { average, maxScore, minScore, stdDev, correctRates, rank };
 };
 
-
+// ----------------------------------------------------------------------
+// 메인 컴포넌트: GradeManagement
+// ----------------------------------------------------------------------
 export default function GradeManagement({ 
     students, classes, tests, grades, handleSaveTest, handleDeleteTest, 
     handleUpdateGrade, handleSaveClass, calculateClassSessions 
@@ -80,35 +82,42 @@ export default function GradeManagement({
     const [selectedTestId, setSelectedTestId] = useState(null); 
     const [isGradeInputModalOpen, setIsGradeInputModalOpen] = useState(false);
     
-    const fileInputRef = useRef(null); // ✅ 엑셀 파일 입력 Ref 추가
+    // 엑셀 파일 입력을 위한 Ref
+    const fileInputRef = useRef(null);
     
     const selectedClass = classes.find(c => c.id === selectedClassId);
 
-    // ✅ 1. 모달 닫기 함수를 useCallback으로 정의하여 안정적인 참조를 제공합니다.
+    // 모달 닫기 함수 (useCallback으로 안정화)
     const handleCloseGradeInput = useCallback(() => {
         setIsGradeInputModalOpen(false);
     }, []);
 
-    // 클래스 학생 목록 및 시험 목록 (유지)
+    // ------------------------------------------
+    // 데이터 가공 (useMemo)
+    // ------------------------------------------
+    
+    // 클래스 학생 목록
     const classStudents = useMemo(() => {
         if (!selectedClass) return [];
-        return students.filter(s => selectedClass.students.includes(s.id) && s.status === '재원생').sort((a, b) => a.name.localeCompare(b.name));
+        return students
+            .filter(s => selectedClass.students.includes(s.id) && s.status === '재원생')
+            .sort((a, b) => a.name.localeCompare(b.name));
     }, [students, selectedClass]);
     
+    // 클래스 시험 목록 (날짜 오름차순 정렬)
     const classTests = useMemo(() => {
         if (!selectedClassId) return [];
         return tests
             .filter(t => t.classId === selectedClassId)
-            // 🚨 FIX: 시험 날짜 오름차순 (빠른 순서) 정렬
             .sort((a, b) => new Date(a.date) - new Date(b.date)); 
     }, [tests, selectedClassId]);
 
-    // 선택된 시험 객체 (유지)
+    // 선택된 시험 객체
     const selectedTest = useMemo(() => {
         return tests.find(t => t.id === selectedTestId);
     }, [tests, selectedTestId]);
 
-    // 클래스 학생들의 시험별 평균 점수 계산 (유지)
+    // 클래스 학생들의 시험별 평균 점수 계산
     const classAverages = useMemo(() => {
         const averages = {};
         
@@ -128,7 +137,7 @@ export default function GradeManagement({
         return averages;
     }, [classTests, classStudents, grades]);
     
-    // 통계 계산 결과를 캐싱 (유지)
+    // 통계 계산 결과 캐싱
     const testStatistics = useMemo(() => {
         const stats = {};
         classTests.forEach(test => {
@@ -137,11 +146,14 @@ export default function GradeManagement({
         return stats;
     }, [classTests, classStudents, grades, classAverages]); 
 
-
-    // 페이지 로드 시 또는 클래스 변경 시, selectedTestId를 null로 유지합니다. (유지)
+    // 클래스 변경 시 선택된 시험 초기화
     useEffect(() => {
         setSelectedTestId(null); 
     }, [selectedClassId]);
+
+    // ------------------------------------------
+    // 핸들러 함수들
+    // ------------------------------------------
 
     const handleNewTest = () => {
         setTestToEdit(null);
@@ -158,50 +170,28 @@ export default function GradeManagement({
             setIsGradeInputModalOpen(true);
         }
     };
-    
-    // 시험 목록 패널 컨텐츠 (유지)
-    const testPanelContent = useMemo(() => {
-        return (
-            <div className="max-h-72 overflow-y-auto pr-2">
-                {classTests.map(test => (
-                    <div 
-                        key={test.id} 
-                        onClick={() => setSelectedTestId(test.id)}
-                        className={`p-3 mb-2 rounded-lg cursor-pointer border transition duration-150 ${
-                            test.id === selectedTestId 
-                                ? 'bg-red-100 border-red-400 shadow-md' 
-                                : 'bg-white border-gray-200 hover:bg-gray-50'
-                        }`}
-                    >
-                        <p className="text-sm font-bold text-gray-800">{test.name}</p>
-                        <p className="text-xs text-gray-600 mt-1">{test.date} | 총점 {test.maxScore}점</p>
-                    </div>
-                ))}
-                {classTests.length === 0 && <p className="text-sm text-gray-500 mt-2">등록된 시험이 없습니다.</p>}
-            </div>
-        );
-    }, [classTests, selectedTestId]);
-    
+
     // ------------------------------------------
-    // ✅ 엑셀 기능 구현 로직 (GradeManagement.jsx로 이동)
+    // ✅ 엑셀 기능 구현 (TestResultTable에서 이동됨)
     // ------------------------------------------
 
-    // 엑셀 양식 다운로드 (CSV 포맷 사용)
+    // 엑셀 양식 다운로드 (CSV 포맷)
     const handleDownloadExcelForm = (e) => {
         if (!selectedTest || !selectedClass) {
             alert("클래스와 시험을 선택해주세요.");
             return;
         }
-        e.stopPropagation(); 
+        e.stopPropagation(); // 이벤트 버블링 방지
+        
         const test = selectedTest; 
-        const studentsInClass = students.filter(s => selectedClass.students.includes(s.id) && s.status === '재원생');
+        const studentsInClass = classStudents; // 이미 필터링된 학생 목록 사용
         
         const headers = ['학생명', ...Array.from({ length: test.totalQuestions }, (_, i) => `Q${i + 1} (${test.questionScores[i] || 0}점)`)];
-        const sampleData = ['김철수', ...Array(test.totalQuestions).fill('1 또는 2')]; 
+        const sampleData = ['김철수 (예시)', ...Array(test.totalQuestions).fill('1')]; 
         
         const csvContent = [
             headers.join(','),
-            '// --- 입력 규칙: 1 (맞음), 2 (틀림) / 미응시 학생은 해당 칸을 비워두세요 ---',
+            '// --- 입력 규칙: 1 (맞음), 2 (틀림) / 미응시 학생은 점수 칸을 비워두세요 ---',
             sampleData.join(','),
             ...studentsInClass.map(student => [student.name, ...Array(test.totalQuestions).fill('')].join(','))
         ].join('\n');
@@ -240,14 +230,40 @@ export default function GradeManagement({
             }
 
             console.log('File selected:', file.name);
-            alert(`[시뮬레이션] ${file.name} 파일을 읽고 있습니다. 실제 구현 시 handleUpdateGrade를 호출하여 일괄 저장해야 합니다.`);
+            alert(`[시뮬레이션] '${file.name}' 파일을 읽었습니다.\n\n실제 구현 시:\n1. 파일을 파싱하여 학생별/문항별 점수 데이터를 추출합니다.\n2. handleUpdateGrade를 반복 호출하여 일괄 저장합니다.\n\n(현재는 시뮬레이션 메시지만 표시됩니다.)`);
             
-            event.target.value = ''; 
+            event.target.value = ''; // 같은 파일을 다시 선택할 수 있도록 초기화
         }
     };
-    // ------------------------------------------
     
-    // 시험 상세 정보/관리/채점 버튼 패널 수정
+    // ------------------------------------------
+    // UI 서브 컴포넌트
+    // ------------------------------------------
+
+    // 시험 목록 패널 컨텐츠
+    const testPanelContent = useMemo(() => {
+        return (
+            <div className="max-h-72 overflow-y-auto pr-2">
+                {classTests.map(test => (
+                    <div 
+                        key={test.id} 
+                        onClick={() => setSelectedTestId(test.id)}
+                        className={`p-3 mb-2 rounded-lg cursor-pointer border transition duration-150 ${
+                            test.id === selectedTestId 
+                                ? 'bg-red-100 border-red-400 shadow-md' 
+                                : 'bg-white border-gray-200 hover:bg-gray-50'
+                        }`}
+                    >
+                        <p className="text-sm font-bold text-gray-800">{test.name}</p>
+                        <p className="text-xs text-gray-600 mt-1">{test.date} | 총점 {test.maxScore}점</p>
+                    </div>
+                ))}
+                {classTests.length === 0 && <p className="text-sm text-gray-500 mt-2">등록된 시험이 없습니다.</p>}
+            </div>
+        );
+    }, [classTests, selectedTestId]);
+    
+    // 시험 상세 정보/관리/채점 버튼 패널
     const TestActionPanel = ({ test }) => {
         if (!test) return null;
         
@@ -263,24 +279,26 @@ export default function GradeManagement({
                         선택 시험 정보: {test.name}
                     </h3>
                     <div className="flex space-x-2 items-center">
-                        {/* ✅ 엑셀 양식 버튼 추가 */}
+                        {/* ✅ 엑셀 양식 다운로드 버튼 */}
                          <button 
                             onClick={handleDownloadExcelForm}
-                            className="flex items-center text-sm px-3 py-1 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition"
+                            className="flex items-center text-sm px-3 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition"
                         >
                             <Icon name="file-text" className="w-4 h-4 mr-1" /> 엑셀 양식
                         </button>
-                        {/* ✅ 엑셀 자료 입력 버튼 추가 */}
+                        
+                        {/* ✅ 엑셀 자료 입력 버튼 */}
                         <button 
                             onClick={handleUploadExcel}
-                            className="flex items-center text-sm px-3 py-1 bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
+                            className="flex items-center text-sm px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
                         >
                             <Icon name="upload" className="w-4 h-4 mr-1" /> 엑셀로 자료 입력
                         </button>
-                         {/* 성적 입력/채점 버튼 유지 */}
+
+                         {/* 성적 입력/채점 버튼 */}
                          <button 
                             onClick={handleOpenGradeInput}
-                            className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg flex items-center shadow-md transition duration-150 text-sm"
+                            className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg flex items-center shadow-md transition duration-150 text-sm ml-2"
                         >
                             <Icon name="edit" className="w-4 h-4 mr-1" />
                             성적 입력 / 채점
@@ -324,7 +342,7 @@ export default function GradeManagement({
 
     return (
         <div className="flex space-x-6 h-full">
-            {/* 왼쪽: 클래스 및 시험 목록 패널 (유지) */}
+            {/* 왼쪽: 클래스 및 시험 목록 패널 */}
             <div className="w-80 flex-shrink-0 space-y-4">
                 <ClassSelectionPanel
                     classes={classes}
@@ -360,7 +378,7 @@ export default function GradeManagement({
                         
                         {selectedTestId ? (
                             <>
-                                {/* 1. 선택 시험 정보 패널 */}
+                                {/* 1. 선택 시험 정보 패널 (엑셀 버튼 포함됨) */}
                                 <TestActionPanel test={selectedTest} />
                                 
                                 {/* 2. 시험 통계 테이블 */}
@@ -371,10 +389,10 @@ export default function GradeManagement({
                                 />
                             </>
                         ) : (
-                            /* 선택된 시험이 없을 때 (전체 성적 테이블) 표시 - 유지 */
+                            /* 선택된 시험이 없을 때 (전체 성적 테이블) 표시 */
                             <div className="space-y-6">
                                 <div className="bg-white p-6 rounded-xl shadow-md border-l-4 border-gray-300">
-                                    <h3 className="text-xl font-bold text-gray-800">{selectedClass.name} 성적 현황}</h3>
+                                    <h3 className="text-xl font-bold text-gray-800">{selectedClass.name} 성적 현황</h3>
                                     <p className="text-sm text-gray-600 mt-1">총 {classTests.length}개의 시험이 등록되어 있습니다. 성적 입력은 **시험 목록에서 시험을 선택**하여 진행하세요.</p>
                                 </div>
                                 <FullGradeTable 
@@ -389,6 +407,7 @@ export default function GradeManagement({
                 )}
             </div>
             
+            {/* 시험 등록/수정 모달 */}
             <TestFormModal
                 isOpen={isTestModalOpen}
                 onClose={() => setIsTestModalOpen(false)}
@@ -403,15 +422,15 @@ export default function GradeManagement({
             {selectedTest && (
                 <TestResultTable 
                     isOpen={isGradeInputModalOpen} 
-                    onClose={handleCloseGradeInput} // 👈 2. 안정화된 함수 전달
+                    onClose={handleCloseGradeInput} // 안정적인 useCallback 핸들러 전달
                     test={selectedTest}
                     studentsData={classStudents}
                     handleUpdateGrade={handleUpdateGrade}
                     grades={grades}
                 />
             )}
-
-            {/* ✅ 엑셀 파일 업로드를 위한 Hidden Input 추가 */}
+            
+            {/* ✅ 엑셀 파일 업로드를 위한 Hidden Input */}
             <input
                 type="file"
                 ref={fileInputRef}
