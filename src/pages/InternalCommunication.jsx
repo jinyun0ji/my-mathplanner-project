@@ -9,7 +9,6 @@ export default function InternalCommunication({ announcements, handleSaveAnnounc
     
     return (
         <div className="space-y-6">
-            <h3 className="text-2xl font-bold text-gray-800">내부 소통 및 공지 관리</h3>
             
             <div className="flex border-b">
                 {['announcements', 'worklogs', 'messenger'].map(tab => (

@@ -271,11 +271,20 @@
 .h-\[70vh\] {
   height: 70vh;
 }
+.h-\[400px\] {
+  height: 400px;
+}
+.h-\[500px\] {
+  height: 500px;
+}
 .h-\[var\(--radix-select-trigger-height\)\] {
   height: var(--radix-select-trigger-height);
 }
 .h-auto {
   height: auto;
+}
+.h-fit {
+  height: fit-content;
 }
 .h-full {
   height: 100%;
@@ -324,6 +333,12 @@
 }
 .min-h-\[300px\] {
   min-height: 300px;
+}
+.min-h-\[500px\] {
+  min-height: 500px;
+}
+.min-h-\[600px\] {
+  min-height: 600px;
 }
 .min-h-auto {
   min-height: auto;
@@ -1035,6 +1050,10 @@
   border-top-style: var(--tw-border-style);
   border-top-width: 0px;
 }
+.border-t-4 {
+  border-top-style: var(--tw-border-style);
+  border-top-width: 4px;
+}
 .border-r {
   border-right-style: var(--tw-border-style);
   border-right-width: 1px;
@@ -1081,6 +1100,9 @@
 }
 .border-\[\#fbf0df\] {
   border-color: #fbf0df;
+}
+.border-transparent {
+  border-color: transparent;
 }
 .bg-\[\#1a1a1a\] {
   background-color: #1a1a1a;
@@ -1745,8 +1767,14 @@
 .opacity-0 {
   opacity: 0%;
 }
+.opacity-30 {
+  opacity: 30%;
+}
 .opacity-50 {
   opacity: 50%;
+}
+.opacity-60 {
+  opacity: 60%;
 }
 .opacity-100 {
   opacity: 100%;
@@ -1756,6 +1784,10 @@
 }
 .mix-blend-plus-lighter {
   mix-blend-mode: plus-lighter;
+}
+.shadow-\[0_2px_0_0_white\] {
+  --tw-shadow: 0 2px 0 0 var(--tw-shadow-color, white);
+  box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);
 }
 .shadow-none {
   --tw-shadow: 0 0 #0000;
@@ -1893,6 +1925,10 @@
 .duration-150 {
   --tw-duration: 150ms;
   transition-duration: 150ms;
+}
+.duration-200 {
+  --tw-duration: 200ms;
+  transition-duration: 200ms;
 }
 .duration-300 {
   --tw-duration: 300ms;
@@ -2215,6 +2251,14 @@
   &:focus-visible {
     outline-style: var(--tw-outline-style);
     outline-width: 1px;
+  }
+}
+.active\:scale-95 {
+  &:active {
+    --tw-scale-x: 95%;
+    --tw-scale-y: 95%;
+    --tw-scale-z: 95%;
+    scale: var(--tw-scale-x) var(--tw-scale-y);
   }
 }
 .disabled\:pointer-events-none {
