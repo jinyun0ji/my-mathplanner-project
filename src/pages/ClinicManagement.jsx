@@ -1,4 +1,3 @@
-// src/pages/ClinicManagement.jsx
 import React, { useState, useMemo, useEffect } from 'react';
 import { Icon } from '../utils/helpers';
 import { ClinicScheduleModal } from '../utils/modals/ClinicScheduleModal';
@@ -113,7 +112,8 @@ export default function ClinicManagement({
         const status = log.status || (log.checkIn ? 'attended' : 'pending');
         switch(status) {
             case 'attended':
-                return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-700">참석 완료</span>;
+                // [색상 변경] 참석: bg-blue-100 -> bg-indigo-100, text-blue-700 -> text-indigo-800
+                return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-100 text-indigo-800">참석 완료</span>;
             case 'no-show':
                 return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-700">미참석</span>;
             case 'pending':
@@ -124,19 +124,21 @@ export default function ClinicManagement({
 
     return (
         <div className="space-y-6">
-            <div className="bg-white p-6 rounded-xl shadow-md min-h-[80vh] flex flex-col">
+            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 min-h-[80vh] flex flex-col">
                 
+                {/* 모드 전환 탭 */}
                 <div className="flex space-x-1 bg-gray-100 p-1 rounded-lg w-fit mb-6">
                     <button
                         onClick={() => setViewMode('staff')}
-                        className={`px-4 py-2 text-sm font-bold rounded-md transition ${viewMode === 'staff' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                        // [색상 변경] text-indigo-600 -> text-indigo-900
+                        className={`px-4 py-2 text-sm font-bold rounded-md transition ${viewMode === 'staff' ? 'bg-white text-indigo-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
                     >
                         <Icon name="briefcase" className="w-4 h-4 mr-2 inline-block"/>
                         관리자/직원 모드 (예약/발송)
                     </button>
                     <button
                         onClick={() => setViewMode('tutor')}
-                        className={`px-4 py-2 text-sm font-bold rounded-md transition ${viewMode === 'tutor' ? 'bg-white text-green-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                        className={`px-4 py-2 text-sm font-bold rounded-md transition ${viewMode === 'tutor' ? 'bg-white text-green-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
                     >
                         <Icon name="edit" className="w-4 h-4 mr-2 inline-block"/>
                         조교 모드 (기록/코멘트)
@@ -149,12 +151,13 @@ export default function ClinicManagement({
                             type="date"
                             value={filterDate}
                             onChange={(e) => setFilterDate(e.target.value)}
-                            className="p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm font-medium"
+                            // [색상 변경] focus:ring-indigo-500 -> focus:ring-indigo-900
+                            className="p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-900 focus:border-indigo-900 text-sm font-medium text-gray-700"
                         />
-                        <span className="text-gray-500 text-sm">{dailyLogs.length}건의 일정</span>
+                        <span className="text-gray-500 text-sm font-medium">{dailyLogs.length}건의 일정</span>
                     </div>
                     <div className='flex space-x-2'>
-                        {/* ✅ [수정] 조교 모드 버튼: 아이콘 삭제, 텍스트 변경 */}
+                        {/* 조교 모드 버튼 */}
                         {viewMode === 'tutor' && (
                             <button 
                                 onClick={openUnscheduledLogModal}
@@ -163,8 +166,9 @@ export default function ClinicManagement({
                                 미예약 학생 기록
                             </button>
                         )}
+                        {/* 관리자 모드 버튼: [색상 변경] bg-indigo-600 -> bg-indigo-900 */}
                         {viewMode === 'staff' && (
-                            <button onClick={openScheduleModal} className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold py-2 px-4 rounded-lg flex items-center shadow transition">
+                            <button onClick={openScheduleModal} className="bg-indigo-900 hover:bg-indigo-800 text-white text-sm font-bold py-2 px-4 rounded-lg flex items-center shadow transition">
                                 <Icon name="calendar" className="w-4 h-4 mr-2" /> 클리닉 예약
                             </button>
                         )}
@@ -173,7 +177,7 @@ export default function ClinicManagement({
 
                 {viewMode === 'staff' && selectedLogIds.length > 0 && (
                     <div className="bg-indigo-50 border border-indigo-100 p-3 rounded-lg mb-4 flex justify-between items-center animate-fade-in">
-                        <span className="text-sm font-bold text-indigo-800 ml-2">{selectedLogIds.length}명 선택됨</span>
+                        <span className="text-sm font-bold text-indigo-900 ml-2">{selectedLogIds.length}명 선택됨</span>
                         <div className="flex space-x-2">
                             <button onClick={() => { if(window.confirm(`선택한 ${selectedLogIds.length}건의 일정을 정말 삭제하시겠습니까?`)) { selectedLogIds.forEach(id => handleDeleteClinicLog(id)); setSelectedLogIds([]); } }} className="bg-white border border-gray-300 text-red-600 hover:bg-red-50 text-xs font-bold py-1.5 px-3 rounded-md flex items-center transition">
                                 <Icon name="trash" className="w-3 h-3 mr-1" /> 선택 삭제
@@ -192,7 +196,7 @@ export default function ClinicManagement({
                                 <tr>
                                     {viewMode === 'staff' && (
                                         <th className="px-4 py-3 text-center w-10">
-                                            <input type="checkbox" onChange={handleSelectAll} checked={dailyLogs.length > 0 && selectedLogIds.length === dailyLogs.length} className="rounded text-indigo-600 focus:ring-indigo-500 h-4 w-4" />
+                                            <input type="checkbox" onChange={handleSelectAll} checked={dailyLogs.length > 0 && selectedLogIds.length === dailyLogs.length} className="rounded text-indigo-900 focus:ring-indigo-900 h-4 w-4" />
                                         </th>
                                     )}
                                     <th className="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">학생명</th>
@@ -214,10 +218,11 @@ export default function ClinicManagement({
                                         const status = log.status || (log.checkIn ? 'attended' : 'pending');
                                         
                                         return (
-                                            <tr key={log.id} className={`hover:bg-gray-50 transition ${isSelected ? 'bg-indigo-50' : ''}`}>
+                                            // [색상 변경] hover:bg-gray-50 -> hover:bg-indigo-50/30
+                                            <tr key={log.id} className={`hover:bg-indigo-50/30 transition ${isSelected ? 'bg-indigo-50' : ''}`}>
                                                 {viewMode === 'staff' && (
                                                     <td className="px-4 py-4 text-center">
-                                                        <input type="checkbox" checked={isSelected} onChange={() => handleSelectLog(log.id)} className="rounded text-indigo-600 focus:ring-indigo-500 h-4 w-4" />
+                                                        <input type="checkbox" checked={isSelected} onChange={() => handleSelectLog(log.id)} className="rounded text-indigo-900 focus:ring-indigo-900 h-4 w-4" />
                                                     </td>
                                                 )}
                                                 <td className="px-4 py-4 whitespace-nowrap"><div className="text-sm font-bold text-gray-900">{log.studentName}</div></td>
@@ -226,7 +231,7 @@ export default function ClinicManagement({
                                                 </td>
                                                 <td className="px-4 py-4 whitespace-nowrap text-center">{renderStatusBadge(log)}</td>
                                                 <td className="px-4 py-4 whitespace-nowrap text-center text-sm">
-                                                    {log.checkIn ? <span className="font-mono font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded">{log.checkIn} ~ {log.checkOut || '...'}</span> : <span className="text-gray-300">-</span>}
+                                                    {log.checkIn ? <span className="font-mono font-bold text-indigo-700 bg-indigo-50 px-2 py-1 rounded">{log.checkIn} ~ {log.checkOut || '...'}</span> : <span className="text-gray-300">-</span>}
                                                 </td>
                                                 <td className="px-4 py-4 text-sm text-gray-700">
                                                     {log.comment ? <div className="line-clamp-2 text-gray-800" title={log.comment}>{log.comment}</div> : <span className="text-gray-400 text-xs italic">내용 없음</span>}
@@ -242,13 +247,13 @@ export default function ClinicManagement({
                                                 )}
                                                 <td className="px-4 py-4 whitespace-nowrap text-center text-sm font-medium">
                                                     <div className="flex justify-center space-x-1">
-                                                        <button onClick={() => openCommentModal(log)} className="text-gray-500 hover:text-indigo-600 p-1.5 rounded hover:bg-gray-100 transition" title="기록 수정"><Icon name="edit" className="w-4 h-4" /></button>
+                                                        <button onClick={() => openCommentModal(log)} className="text-gray-500 hover:text-indigo-900 p-1.5 rounded hover:bg-gray-100 transition" title="기록 수정"><Icon name="edit" className="w-4 h-4" /></button>
                                                         
                                                         {viewMode === 'staff' && (
                                                             <>
                                                                 <button 
                                                                     onClick={() => handleNotifyClick(log)}
-                                                                    className={`p-1.5 rounded hover:bg-gray-100 transition ${isSent ? 'text-green-500' : 'text-gray-500 hover:text-yellow-600'}`}
+                                                                    className={`p-1.5 rounded hover:bg-gray-100 transition ${isSent ? 'text-green-600' : 'text-gray-400 hover:text-indigo-900'}`}
                                                                     title="알림 발송"
                                                                 >
                                                                     <Icon name="bell" className="w-4 h-4" />

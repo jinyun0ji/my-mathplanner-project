@@ -24,8 +24,8 @@ export default function Sidebar({ page, setPage, onLogout }) {
                             <Icon name="school" className="w-5 h-5" />
                         </div>
                         <div>
-                            <h1 className="text-lg font-bold tracking-tight text-gray-900">채수용 연구소</h1>
-                            <p className="text-[10px] text-gray-400 font-medium -mt-1 tracking-wide">ACADEMY ADMIN</p>
+                            <h1 className="text-lg font-bold tracking-tight text-gray-900">채수용 수학</h1>
+                            <p className="text-[11px] text-gray-400 font-medium -mt-1 tracking-wide">직원용 페이지</p>
                         </div>
                     </div>
                 </div>

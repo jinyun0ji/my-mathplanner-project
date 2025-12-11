@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Icon } from '../utils/helpers'; // Icon은 helpers.js에서 Import
+import { Icon } from '../utils/helpers'; 
 
 export default function LoginPage({ onLogin }) { 
     const [id, setId] = useState('employee');
@@ -17,38 +17,79 @@ export default function LoginPage({ onLogin }) {
     };
 
     return (
-        <div className="flex items-center justify-center h-screen bg-gray-100">
-            <div className="w-full max-w-md">
-                <form onSubmit={handleLogin} className="bg-white shadow-2xl rounded-xl px-8 pt-6 pb-8 mb-4">
-                    <div className="text-center mb-6">
-                        <h1 className="text-3xl font-extrabold text-blue-600 flex items-center justify-center">
-                            <Icon name="graduationCap" className="w-8 h-8 mr-2" />
-                            학원 관리 시스템
-                        </h1>
-                        <p className="text-gray-500 text-sm mt-1">직원 로그인 페이지</p>
+        <div className="flex items-center justify-center min-h-screen bg-gray-100 p-4">
+            <div className="w-full max-w-md bg-white shadow-2xl rounded-2xl overflow-hidden border border-gray-200">
+                {/* 상단 헤더 영역 (Navy 배경) */}
+                <div className="bg-indigo-900 p-10 text-center">
+                    <div className="flex justify-center mb-4">
+                        <div className="bg-white/10 p-4 rounded-full backdrop-blur-sm border border-white/20">
+                            <Icon name="graduationCap" className="w-12 h-12 text-white" />
+                        </div>
                     </div>
-                    <div className="mb-4">
-                        <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="username">
-                            아이디 (employee)
+                    <h1 className="text-3xl font-bold text-white tracking-tight">학원 관리 시스템</h1>
+                    <p className="text-indigo-200 text-sm mt-2 font-medium">채수용 연구소 직원 전용</p>
+                </div>
+
+                {/* 로그인 폼 영역 */}
+                <form onSubmit={handleLogin} className="p-10 space-y-6">
+                    <div>
+                        <label className="block text-sm font-bold text-gray-700 mb-2" htmlFor="username">
+                            아이디
                         </label>
-                        <input className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline focus:ring-blue-500 focus:border-blue-500" 
-                                id="username" type="text" placeholder="아이디" value={id} onChange={(e) => setId(e.target.value)} />
+                        <div className="relative">
+                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                <Icon name="user" className="h-5 w-5 text-gray-400" />
+                            </div>
+                            <input 
+                                className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-900 focus:border-transparent transition-all" 
+                                id="username" 
+                                type="text" 
+                                placeholder="아이디를 입력하세요" 
+                                value={id} 
+                                onChange={(e) => setId(e.target.value)} 
+                            />
+                        </div>
                     </div>
-                    <div className="mb-6">
-                        <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="password">
-                            비밀번호 (academy)
+
+                    <div>
+                        <label className="block text-sm font-bold text-gray-700 mb-2" htmlFor="password">
+                            비밀번호
                         </label>
-                        <input className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 mb-3 leading-tight focus:outline-none focus:shadow-outline focus:ring-blue-500 focus:border-blue-500" 
-                                id="password" type="password" placeholder="******************" value={password} onChange={(e) => setPassword(e.target.value)} />
-                        {error && <p className="text-red-500 text-xs italic">{error}</p>}
+                        <div className="relative">
+                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                <Icon name="lock" className="h-5 w-5 text-gray-400" />
+                            </div>
+                            <input 
+                                className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-900 focus:border-transparent transition-all" 
+                                id="password" 
+                                type="password" 
+                                placeholder="비밀번호를 입력하세요" 
+                                value={password} 
+                                onChange={(e) => setPassword(e.target.value)} 
+                            />
+                        </div>
+                        {error && (
+                            <div className="flex items-center mt-2 text-red-600 text-xs font-medium animate-pulse">
+                                <Icon name="alertCircle" className="w-4 h-4 mr-1" />
+                                {error}
+                            </div>
+                        )}
                     </div>
-                    <div className="flex items-center justify-between">
-                        <button className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg focus:outline-none focus:shadow-outline transition duration-150 w-full shadow-md" type="submit">
-                            로그인
-                        </button>
+
+                    <button 
+                        className="w-full bg-indigo-900 hover:bg-indigo-800 text-white font-bold py-3.5 px-4 rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-900 shadow-lg transition-all duration-200 transform active:scale-[0.98]" 
+                        type="submit"
+                    >
+                        로그인
+                    </button>
+
+                    <div className="text-center mt-4">
+                        <p className="text-xs text-gray-400">
+                            문의사항은 관리자에게 연락바랍니다.
+                        </p>
                     </div>
                 </form>
             </div>
         </div>
     );
-};
+}

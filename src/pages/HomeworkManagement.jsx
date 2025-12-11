@@ -119,9 +119,10 @@ export default function HomeworkManagement({
                         <div 
                             key={assignment.id} 
                             onClick={() => handleAssignmentSelect(assignment.id)}
+                            // [색상 변경] 선택 시: bg-indigo-50 border-indigo-200
                             className={`p-3 mb-2 rounded-lg cursor-pointer border transition duration-150 ${
                                 assignment.id === selectedAssignmentId 
-                                    ? 'bg-blue-100 border-blue-400 shadow-md' 
+                                    ? 'bg-indigo-50 border-indigo-200 shadow-sm' 
                                     : 'bg-white border-gray-200 hover:bg-gray-50'
                             }`}
                         >
@@ -179,10 +180,11 @@ export default function HomeworkManagement({
                 <div className="bg-white p-4 rounded-xl shadow-md space-y-3">
                     <div className='flex justify-between items-center border-b pb-2'>
                         <h4 className="text-lg font-bold text-gray-800">과제 목록</h4>
+                        {/* [색상 변경] text-green-600 -> text-indigo-900 */}
                         <button 
                             onClick={handleNewAssignment}
                             disabled={!selectedClassId}
-                            className="text-green-600 hover:text-green-700 text-sm font-medium flex items-center disabled:text-gray-400"
+                            className="text-indigo-900 hover:text-indigo-700 text-sm font-bold flex items-center disabled:text-gray-400"
                         >
                             <Icon name="plus" className="w-4 h-4 mr-1" />
                             새 과제
@@ -198,7 +200,8 @@ export default function HomeworkManagement({
                 ) : (
                     <div className="space-y-6">
                         {/* 1. 과제 정보 및 액션 패널 */}
-                        <div className="bg-white p-6 rounded-xl shadow-md border-l-4 border-green-500">
+                        {/* [색상 변경] border-green-500 -> border-indigo-900 */}
+                        <div className="bg-white p-6 rounded-xl shadow-md border-l-4 border-indigo-900">
                             <div className="flex justify-between items-start">
                                 <div>
                                     <h3 className="text-xl font-bold text-gray-800 flex items-center">
@@ -211,12 +214,13 @@ export default function HomeworkManagement({
                                     </p>
                                 </div>
                                 <div className='flex space-x-2 items-center'>
+                                    {/* [색상 변경] bg-blue-600 -> bg-indigo-900 */}
                                     <button 
                                         onClick={handleSaveChanges}
                                         disabled={localChanges.length === 0}
                                         className={`flex items-center px-4 py-2 rounded-lg text-sm font-bold shadow-md transition ${
                                             localChanges.length > 0 
-                                            ? 'bg-blue-600 text-white hover:bg-blue-700' 
+                                            ? 'bg-indigo-900 text-white hover:bg-indigo-800' 
                                             : 'bg-gray-200 text-gray-400 cursor-not-allowed'
                                         }`}
                                     >
@@ -226,15 +230,17 @@ export default function HomeworkManagement({
                                     
                                     <div className="h-6 w-px bg-gray-300 mx-2"></div>
 
+                                    {/* [색상 변경] text-indigo-600 -> text-gray-500 hover:text-indigo-900 */}
                                     <button 
                                         onClick={() => handleEditAssignment(selectedAssignment)}
-                                        className="text-indigo-600 hover:text-indigo-800 p-1 rounded-full hover:bg-indigo-100"
+                                        className="text-gray-500 hover:text-indigo-900 p-1 rounded-full hover:bg-indigo-50 transition-colors"
                                     >
                                         <Icon name="edit" className="w-5 h-5" />
                                     </button>
+                                    {/* [색상 변경] text-red-600 -> text-gray-500 hover:text-red-600 */}
                                     <button 
                                         onClick={() => { if(window.confirm('정말 이 과제 기록을 삭제하시겠습니까?')) handleDeleteHomeworkAssignment(selectedAssignment.id); }}
-                                        className="text-red-600 hover:text-red-800 p-1 rounded-full hover:bg-red-100"
+                                        className="text-gray-500 hover:text-red-600 p-1 rounded-full hover:bg-red-50 transition-colors"
                                     >
                                         <Icon name="trash" className="w-5 h-5" />
                                     </button>
@@ -242,14 +248,14 @@ export default function HomeworkManagement({
                             </div>
                         </div>
 
-                        {/* ✅ 2. 채점 테이블 (위치 이동됨: 통계보다 위로) */}
+                        {/* ✅ 2. 채점 테이블 */}
                         <HomeworkGradingTable 
                             summary={assignmentSummary} 
                             assignment={selectedAssignment} 
                             handleUpdateResult={handleUpdateResultLocal} 
                         />
 
-                        {/* ✅ 3. 통계 패널 (위치 이동됨: 테이블보다 아래로) */}
+                        {/* ✅ 3. 통계 패널 */}
                         <HomeworkStatisticsPanel 
                             assignment={selectedAssignment} 
                             summary={assignmentSummary} 
@@ -269,4 +275,4 @@ export default function HomeworkManagement({
             />
         </div>
     );
-};
+}

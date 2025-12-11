@@ -1,5 +1,3 @@
-// src/pages/GradeManagement.jsx
-
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { Icon } from '../utils/helpers';
 import ClassSelectionPanel from '../components/Shared/ClassSelectionPanel'; 
@@ -7,11 +5,9 @@ import FullGradeTable from '../components/Grade/FullGradeTable';
 import TestResultTable from '../components/Grade/TestResultTable'; 
 import TestStatisticsTable from '../components/Grade/TestStatisticsTable'; 
 import { TestFormModal } from '../utils/modals/TestFormModal'; 
-// Modal 컴포넌트는 TestResultTable 내부에서 사용되므로 여기서는 직접 import하지 않아도 되지만, 
-// 만약 다른 모달을 쓴다면 유지하세요. 여기서는 TestFormModal과 TestResultTable이 주된 모달입니다.
 
 // ----------------------------------------------------------------------
-// 통계 계산 헬퍼 함수
+// 통계 계산 헬퍼 함수 (로직 유지)
 // ----------------------------------------------------------------------
 const computeTestStatistics = (test, students, grades, classAverages) => {
     if (!test || !students.length) {
@@ -87,7 +83,6 @@ export default function GradeManagement({
     
     const selectedClass = classes.find(c => c.id === selectedClassId);
 
-    // 모달 닫기 함수 (useCallback으로 안정화)
     const handleCloseGradeInput = useCallback(() => {
         setIsGradeInputModalOpen(false);
     }, []);
@@ -96,7 +91,6 @@ export default function GradeManagement({
     // 데이터 가공 (useMemo)
     // ------------------------------------------
     
-    // 클래스 학생 목록
     const classStudents = useMemo(() => {
         if (!selectedClass) return [];
         return students
@@ -104,7 +98,6 @@ export default function GradeManagement({
             .sort((a, b) => a.name.localeCompare(b.name));
     }, [students, selectedClass]);
     
-    // 클래스 시험 목록 (날짜 오름차순 정렬)
     const classTests = useMemo(() => {
         if (!selectedClassId) return [];
         return tests
@@ -112,19 +105,15 @@ export default function GradeManagement({
             .sort((a, b) => new Date(a.date) - new Date(b.date)); 
     }, [tests, selectedClassId]);
 
-    // 선택된 시험 객체
     const selectedTest = useMemo(() => {
         return tests.find(t => t.id === selectedTestId);
     }, [tests, selectedTestId]);
 
-    // 클래스 학생들의 시험별 평균 점수 계산
     const classAverages = useMemo(() => {
         const averages = {};
-        
         classTests.forEach(test => {
             let totalScore = 0;
             let count = 0;
-            
             classStudents.forEach(student => {
                 const score = grades[student.id]?.[test.id]?.score;
                 if (score !== undefined && score !== null) {
@@ -137,7 +126,6 @@ export default function GradeManagement({
         return averages;
     }, [classTests, classStudents, grades]);
     
-    // 통계 계산 결과 캐싱
     const testStatistics = useMemo(() => {
         const stats = {};
         classTests.forEach(test => {
@@ -146,7 +134,6 @@ export default function GradeManagement({
         return stats;
     }, [classTests, classStudents, grades, classAverages]); 
 
-    // 클래스 변경 시 선택된 시험 초기화
     useEffect(() => {
         setSelectedTestId(null); 
     }, [selectedClassId]);
@@ -171,20 +158,16 @@ export default function GradeManagement({
         }
     };
 
-    // ------------------------------------------
-    // ✅ 엑셀 기능 구현 (TestResultTable에서 이동됨)
-    // ------------------------------------------
-
-    // 엑셀 양식 다운로드 (CSV 포맷)
+    // 엑셀 양식 다운로드
     const handleDownloadExcelForm = (e) => {
         if (!selectedTest || !selectedClass) {
             alert("클래스와 시험을 선택해주세요.");
             return;
         }
-        e.stopPropagation(); // 이벤트 버블링 방지
+        e.stopPropagation(); 
         
         const test = selectedTest; 
-        const studentsInClass = classStudents; // 이미 필터링된 학생 목록 사용
+        const studentsInClass = classStudents; 
         
         const headers = ['학생명', ...Array.from({ length: test.totalQuestions }, (_, i) => `Q${i + 1} (${test.questionScores[i] || 0}점)`)];
         const sampleData = ['김철수 (예시)', ...Array(test.totalQuestions).fill('1')]; 
@@ -209,7 +192,6 @@ export default function GradeManagement({
         }
     };
 
-    // 엑셀 업로드 버튼 클릭 시 파일 입력 트리거
     const handleUploadExcel = (e) => {
         if (!selectedTest) {
             alert("시험을 선택해주세요.");
@@ -219,7 +201,6 @@ export default function GradeManagement({
         fileInputRef.current?.click();
     };
 
-    // 파일 선택 완료 시 처리 (시뮬레이션)
     const handleFileChange = (event) => {
         const file = event.target.files[0];
         if (file) {
@@ -228,11 +209,9 @@ export default function GradeManagement({
                 event.target.value = ''; 
                 return;
             }
-
             console.log('File selected:', file.name);
             alert(`[시뮬레이션] '${file.name}' 파일을 읽었습니다.\n\n실제 구현 시:\n1. 파일을 파싱하여 학생별/문항별 점수 데이터를 추출합니다.\n2. handleUpdateGrade를 반복 호출하여 일괄 저장합니다.\n\n(현재는 시뮬레이션 메시지만 표시됩니다.)`);
-            
-            event.target.value = ''; // 같은 파일을 다시 선택할 수 있도록 초기화
+            event.target.value = ''; 
         }
     };
     
@@ -240,7 +219,6 @@ export default function GradeManagement({
     // UI 서브 컴포넌트
     // ------------------------------------------
 
-    // 시험 목록 패널 컨텐츠
     const testPanelContent = useMemo(() => {
         return (
             <div className="max-h-72 overflow-y-auto pr-2">
@@ -248,13 +226,16 @@ export default function GradeManagement({
                     <div 
                         key={test.id} 
                         onClick={() => setSelectedTestId(test.id)}
+                        // [색상 변경] 선택 시: bg-indigo-50 border-indigo-200 (Navy Theme)
                         className={`p-3 mb-2 rounded-lg cursor-pointer border transition duration-150 ${
                             test.id === selectedTestId 
-                                ? 'bg-red-100 border-red-400 shadow-md' 
+                                ? 'bg-indigo-50 border-indigo-200 shadow-sm' 
                                 : 'bg-white border-gray-200 hover:bg-gray-50'
                         }`}
                     >
-                        <p className="text-sm font-bold text-gray-800">{test.name}</p>
+                        <p className={`text-sm font-bold ${test.id === selectedTestId ? 'text-indigo-900' : 'text-gray-800'}`}>
+                            {test.name}
+                        </p>
                         <p className="text-xs text-gray-600 mt-1">{test.date} | 총점 {test.maxScore}점</p>
                     </div>
                 ))}
@@ -263,7 +244,6 @@ export default function GradeManagement({
         );
     }, [classTests, selectedTestId]);
     
-    // 시험 상세 정보/관리/채점 버튼 패널
     const TestActionPanel = ({ test }) => {
         if (!test) return null;
         
@@ -272,33 +252,35 @@ export default function GradeManagement({
         );
 
         return (
-            <div className="bg-white p-6 rounded-xl shadow-md border-l-4 border-red-500 space-y-4">
+            // [색상 변경] border-l-4 border-indigo-900 (Navy Theme)
+            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 border-l-4 border-l-indigo-900 space-y-4">
                 <div className="flex justify-between items-start border-b pb-3">
                     <h3 className="text-xl font-bold text-gray-800 flex items-center">
-                        <Icon name="fileText" className="w-5 h-5 mr-2 text-red-600"/>
+                        {/* [색상 변경] 아이콘: text-indigo-900 */}
+                        <Icon name="fileText" className="w-5 h-5 mr-2 text-indigo-900"/>
                         선택 시험 정보: {test.name}
                     </h3>
                     <div className="flex space-x-2 items-center">
-                        {/* ✅ 엑셀 양식 다운로드 버튼 */}
+                        {/* [색상 변경] 엑셀 양식: 흰색 배경, 회색 테두리 */}
                          <button 
                             onClick={handleDownloadExcelForm}
-                            className="flex items-center text-sm px-3 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition"
+                            className="flex items-center text-sm px-3 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition shadow-sm"
                         >
                             <Icon name="file-text" className="w-4 h-4 mr-1" /> 엑셀 양식
                         </button>
                         
-                        {/* ✅ 엑셀 자료 입력 버튼 */}
+                        {/* [색상 변경] 엑셀 입력: 흰색 배경, 남색 테두리/글자 */}
                         <button 
                             onClick={handleUploadExcel}
-                            className="flex items-center text-sm px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
+                            className="flex items-center text-sm px-3 py-2 bg-white border border-indigo-900 text-indigo-900 rounded-lg hover:bg-indigo-50 transition shadow-sm"
                         >
                             <Icon name="upload" className="w-4 h-4 mr-1" /> 엑셀로 결과 입력
                         </button>
 
-                         {/* 성적 입력/채점 버튼 */}
+                         {/* [색상 변경] 성적 입력(메인): 남색 배경 */}
                          <button 
                             onClick={handleOpenGradeInput}
-                            className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg flex items-center shadow-md transition duration-150 text-sm ml-2"
+                            className="bg-indigo-900 hover:bg-indigo-800 text-white font-bold py-2 px-4 rounded-lg flex items-center shadow-md transition duration-150 text-sm ml-2"
                         >
                             <Icon name="edit" className="w-4 h-4 mr-1" />
                             성적 입력 / 채점
@@ -316,21 +298,22 @@ export default function GradeManagement({
                     <span className="font-medium text-gray-600 block mb-2">문항당 배점:</span>
                     <span className="flex flex-wrap gap-x-3 gap-y-1 text-xs">
                         {questionScoresString.map((item, index) => (
-                             <span key={index} className='bg-gray-50 px-1 rounded'>{item}</span>
+                             <span key={index} className='bg-gray-50 px-1 rounded text-gray-600 border border-gray-100'>{item}</span>
                         ))}
                     </span>
                 </p>
                 
                 <div className="flex space-x-4 border-t pt-3">
+                    {/* [색상 변경] 텍스트 버튼: 회색 -> 호버시 남색 */}
                      <button 
                         onClick={() => handleEditTest(test)}
-                        className="text-indigo-600 hover:underline flex items-center text-sm"
+                        className="text-gray-500 hover:text-indigo-900 flex items-center text-sm font-medium transition"
                     >
                         <Icon name="edit" className="w-4 h-4 mr-1" />시험 정보 수정
                     </button>
                      <button 
                         onClick={() => { if(window.confirm(`${test.name} 시험을 삭제하면 모든 학생의 성적 데이터도 삭제됩니다. 정말 삭제하시겠습니까?`)) handleDeleteTest(test.id); }}
-                        className="text-red-600 hover:underline flex items-center text-sm"
+                        className="text-gray-500 hover:text-red-600 flex items-center text-sm font-medium transition"
                     >
                         <Icon name="trash" className="w-4 h-4 mr-1" />시험 삭제
                     </button>
@@ -353,13 +336,14 @@ export default function GradeManagement({
                     showSessions={false}
                     showEditButton={true}
                 />
-                <div className="bg-white p-4 rounded-xl shadow-md space-y-3">
+                <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 space-y-3">
                     <div className='flex justify-between items-center border-b pb-2'>
                         <h4 className="text-lg font-bold text-gray-800">시험 목록 (클릭 시 채점)</h4>
+                        {/* [색상 변경] 새 시험 등록: 텍스트 남색 */}
                         <button 
                             onClick={handleNewTest}
                             disabled={!selectedClassId}
-                            className="text-red-600 hover:text-red-700 text-sm font-medium flex items-center disabled:text-gray-400"
+                            className="text-indigo-900 hover:text-indigo-700 text-sm font-bold flex items-center disabled:text-gray-400"
                         >
                             <Icon name="plus" className="w-4 h-4 mr-1" />
                             새 시험 등록
@@ -372,7 +356,9 @@ export default function GradeManagement({
             {/* 오른쪽: 성적 테이블 또는 시험 상세/채점 패널 */}
             <div className="flex-1 min-w-0">
                 {selectedClassId === null ? (
-                    <div className="p-6 bg-white rounded-xl shadow-md"><p className="text-gray-500">클래스를 선택하세요.</p></div>
+                    <div className="p-6 bg-white rounded-xl shadow-sm border border-gray-200">
+                        <p className="text-gray-500">클래스를 선택하세요.</p>
+                    </div>
                 ) : (
                     <div className="space-y-6">
                         
@@ -391,7 +377,8 @@ export default function GradeManagement({
                         ) : (
                             /* 선택된 시험이 없을 때 (전체 성적 테이블) 표시 */
                             <div className="space-y-6">
-                                <div className="bg-white p-6 rounded-xl shadow-md border-l-4 border-gray-300">
+                                {/* [색상 변경] border-indigo-900 */}
+                                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 border-l-4 border-l-indigo-900">
                                     <h3 className="text-xl font-bold text-gray-800">{selectedClass.name} 성적 현황</h3>
                                     <p className="text-sm text-gray-600 mt-1">총 {classTests.length}개의 시험이 등록되어 있습니다. 성적 입력은 **시험 목록에서 시험을 선택**하여 진행하세요.</p>
                                 </div>
@@ -418,11 +405,11 @@ export default function GradeManagement({
                 calculateClassSessions={calculateClassSessions}
             />
             
-            {/* 성적 입력 모달 (TestResultTable 사용) */}
+            {/* 성적 입력 모달 */}
             {selectedTest && (
                 <TestResultTable 
                     isOpen={isGradeInputModalOpen} 
-                    onClose={handleCloseGradeInput} // 안정적인 useCallback 핸들러 전달
+                    onClose={handleCloseGradeInput}
                     test={selectedTest}
                     studentsData={classStudents}
                     handleUpdateGrade={handleUpdateGrade}
@@ -430,7 +417,7 @@ export default function GradeManagement({
                 />
             )}
             
-            {/* ✅ 엑셀 파일 업로드를 위한 Hidden Input */}
+            {/* 엑셀 파일 업로드 Input */}
             <input
                 type="file"
                 ref={fileInputRef}
