@@ -3,21 +3,20 @@ import React, { useState, useEffect } from 'react';
 import { Modal } from '../../components/common/Modal';
 import { Icon } from '../../utils/helpers';
 
-export const ClinicScheduleModal = ({ isOpen, onClose, onSave, students, defaultDate }) => {
+// ✅ clinicLogs prop 추가
+export const ClinicScheduleModal = ({ isOpen, onClose, onSave, students, defaultDate, clinicLogs }) => {
     const [date, setDate] = useState(defaultDate);
-    // ✅ [변경] 단일 studentId 대신 배열로 여러 학생 ID 관리
     const [selectedStudentIds, setSelectedStudentIds] = useState([]); 
     const [plannedTime, setPlannedTime] = useState('14:00');
 
     useEffect(() => {
         if (isOpen) {
             setDate(defaultDate);
-            setSelectedStudentIds([]); // ✅ 초기화
+            setSelectedStudentIds([]); 
             setPlannedTime('14:00');
         }
     }, [isOpen, defaultDate]);
 
-    // ✅ 학생 선택/해제 핸들러
     const handleStudentToggle = (id) => {
         setSelectedStudentIds(prev => 
             prev.includes(id) 
@@ -33,10 +32,33 @@ export const ClinicScheduleModal = ({ isOpen, onClose, onSave, students, default
             return;
         }
 
-        const newLogs = selectedStudentIds.map(sId => {
+        // ✅ 중복 예약 확인 로직
+        const duplicates = [];
+        const uniqueStudentIds = [];
+
+        selectedStudentIds.forEach(sId => {
+            const isDuplicate = clinicLogs.some(log => log.date === date && log.studentId === sId);
+            if (isDuplicate) {
+                const student = students.find(s => s.id === sId);
+                duplicates.push(student ? student.name : 'Unknown');
+            } else {
+                uniqueStudentIds.push(sId);
+            }
+        });
+
+        if (duplicates.length > 0) {
+            alert(`다음 학생들은 이미 ${date}에 예약이 되어 있어 제외됩니다:\n${duplicates.join(', ')}`);
+        }
+
+        if (uniqueStudentIds.length === 0) {
+             if (duplicates.length === 0) alert("등록할 학생이 없습니다.");
+             return;
+        }
+
+        const newLogs = uniqueStudentIds.map(sId => {
             const student = students.find(s => s.id === sId);
             return {
-                id: null, // 신규 생성
+                id: null,
                 studentId: sId,
                 studentName: student ? student.name : 'Unknown',
                 date,
@@ -48,14 +70,14 @@ export const ClinicScheduleModal = ({ isOpen, onClose, onSave, students, default
             };
         });
 
-        // ✅ 여러 로그 저장 (onSave를 반복 호출하여 처리)
+        // ✅ 중복되지 않은 학생들만 저장
         newLogs.forEach(log => onSave(log, false)); 
         
         onClose();
     };
 
     return (
-        <Modal isOpen={isOpen} onClose={onClose} title="클리닉 일정 일괄 등록" maxWidth="max-w-xl">
+        <Modal isOpen={isOpen} onClose={onClose} title="클리닉 예약" maxWidth="max-w-xl">
             <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                     <div>
@@ -80,7 +102,6 @@ export const ClinicScheduleModal = ({ isOpen, onClose, onSave, students, default
                     </div>
                 </div>
                 
-                {/* ✅ 학생 목록 체크박스 */}
                 <div>
                     <label className="block text-sm font-bold text-gray-700 mb-2">클리닉 참석 학생 선택*</label>
                     <div className="border rounded-md p-3 max-h-60 overflow-y-auto bg-gray-50">
@@ -107,7 +128,7 @@ export const ClinicScheduleModal = ({ isOpen, onClose, onSave, students, default
 
                 <div className="pt-4 flex justify-end space-x-2">
                     <button type="button" onClick={onClose} className="px-4 py-2 bg-gray-200 rounded-lg text-sm">취소</button>
-                    <button type="submit" className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold hover:bg-indigo-700">총 {selectedStudentIds.length}명 일정 등록</button>
+                    <button type="submit" className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold hover:bg-indigo-700">총 {selectedStudentIds.length}명 예약</button>
                 </div>
             </form>
         </Modal>

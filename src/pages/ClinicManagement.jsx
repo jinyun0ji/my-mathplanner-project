@@ -12,7 +12,7 @@ export default function ClinicManagement({
 }) {
     const [filterDate, setFilterDate] = useState(new Date().toISOString().slice(0, 10));
     
-    // ✅ 화면 모드 상태 (staff: 관리자/직원, tutor: 조교/기록)
+    // 화면 모드 상태 (staff: 관리자/직원, tutor: 조교/기록)
     const [viewMode, setViewMode] = useState('staff');
 
     // 모달 상태 관리
@@ -123,10 +123,9 @@ export default function ClinicManagement({
                     </button>
                 </div>
 
-                {/* 2. 컨트롤 바 (모드에 따라 다름) */}
+                {/* 2. 컨트롤 바 */}
                 <div className="flex justify-between items-center mb-4 border-b pb-4">
                     <div className='flex items-center space-x-4'>
-                        {/* ✅ 텍스트 "클리닉 관리" 제거됨 */}
                         <input
                             type="date"
                             value={filterDate}
@@ -139,11 +138,10 @@ export default function ClinicManagement({
                     </div>
                     
                     <div className='flex space-x-2'>
-                        {/* 조교 모드일 때: 미예약 기록 버튼 강조 */}
+                        {/* 조교 모드: 미예약 기록 버튼 */}
                         {viewMode === 'tutor' && (
                             <button 
                                 onClick={openUnscheduledLogModal}
-                                // ✅ scale 효과 제거
                                 className="bg-green-600 hover:bg-green-700 text-white text-sm font-bold py-2 px-4 rounded-lg flex items-center shadow transition"
                             >
                                 <Icon name="userPlus" className="w-4 h-4 mr-2" />
@@ -151,21 +149,20 @@ export default function ClinicManagement({
                             </button>
                         )}
 
-                        {/* 직원 모드일 때: 일정 등록 버튼 */}
+                        {/* 직원 모드: 예약 버튼 */}
                         {viewMode === 'staff' && (
                             <button 
                                 onClick={openScheduleModal}
-                                // ✅ scale 효과 제거
                                 className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold py-2 px-4 rounded-lg flex items-center shadow transition"
                             >
                                 <Icon name="calendar" className="w-4 h-4 mr-2" />
-                                일정 일괄 등록
+                                클리닉 예약 {/* ✅ 명칭 변경 */}
                             </button>
                         )}
                     </div>
                 </div>
 
-                {/* 3. 일괄 작업 바 (직원 모드에서만 표시) */}
+                {/* 3. 일괄 작업 바 */}
                 {viewMode === 'staff' && selectedLogIds.length > 0 && (
                     <div className="bg-indigo-50 border border-indigo-100 p-3 rounded-lg mb-4 flex justify-between items-center animate-fade-in">
                         <span className="text-sm font-bold text-indigo-800 ml-2">
@@ -199,7 +196,6 @@ export default function ClinicManagement({
                         <table className="min-w-full divide-y divide-gray-200">
                             <thead className="bg-gray-100">
                                 <tr>
-                                    {/* 체크박스는 직원 모드에서만 */}
                                     {viewMode === 'staff' && (
                                         <th className="px-4 py-3 text-center w-10">
                                             <input 
@@ -213,11 +209,10 @@ export default function ClinicManagement({
                                     <th className="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">학생명</th>
                                     <th className="px-4 py-3 text-center text-xs font-bold text-gray-600 uppercase tracking-wider">예정</th>
                                     <th className="px-4 py-3 text-center text-xs font-bold text-gray-600 uppercase tracking-wider">실제 시간</th>
-                                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider w-1/4">코멘트</th>
-                                    {/* ✅ 담당 조교 컬럼 추가 */}
+                                    {/* ✅ 코멘트 열 너비 확대 (w-1/4 -> w-2/5) */}
+                                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider w-2/5">코멘트</th>
                                     <th className="px-4 py-3 text-center text-xs font-bold text-gray-600 uppercase tracking-wider">담당 조교</th>
                                     
-                                    {/* 알림 상태는 직원 모드에서만 */}
                                     {viewMode === 'staff' && (
                                         <th className="px-4 py-3 text-center text-xs font-bold text-gray-600 uppercase tracking-wider">알림 상태</th>
                                     )}
@@ -266,12 +261,11 @@ export default function ClinicManagement({
                                                 </td>
                                                 <td className="px-4 py-4 text-sm text-gray-700">
                                                     {log.comment ? (
-                                                        <div className="max-w-xs truncate text-gray-800" title={log.comment}>{log.comment}</div>
+                                                        <div className="line-clamp-2 text-gray-800" title={log.comment}>{log.comment}</div>
                                                     ) : (
                                                         <span className="text-gray-400 text-xs italic">내용 없음</span>
                                                     )}
                                                 </td>
-                                                {/* ✅ 담당 조교 표시 */}
                                                 <td className="px-4 py-4 text-center whitespace-nowrap text-sm text-gray-600">
                                                     {log.tutor || '-'}
                                                 </td>
@@ -293,7 +287,6 @@ export default function ClinicManagement({
                                                 )}
                                                 <td className="px-4 py-4 whitespace-nowrap text-center text-sm font-medium">
                                                     <div className="flex justify-center space-x-1">
-                                                        {/* 코멘트/결과 입력 (양쪽 모드 모두 가능) */}
                                                         <button 
                                                             onClick={() => openCommentModal(log)}
                                                             className="text-gray-500 hover:text-indigo-600 p-1.5 rounded hover:bg-gray-100 transition"
@@ -302,7 +295,6 @@ export default function ClinicManagement({
                                                             <Icon name="edit" className="w-4 h-4" />
                                                         </button>
                                                         
-                                                        {/* 알림 발송 (직원 모드만) */}
                                                         {viewMode === 'staff' && (
                                                             <button 
                                                                 onClick={() => openNotifyModal(log)}
@@ -313,7 +305,6 @@ export default function ClinicManagement({
                                                             </button>
                                                         )}
 
-                                                        {/* 삭제 (직원 모드만) */}
                                                         {viewMode === 'staff' && (
                                                             <button 
                                                                 onClick={() => {if(window.confirm('일정을 삭제하시겠습니까?')) handleDeleteClinicLog(log.id)}}
@@ -353,6 +344,7 @@ export default function ClinicManagement({
                 onSave={handleSaveClinicLog}
                 students={students}
                 defaultDate={filterDate}
+                clinicLogs={clinicLogs} // ✅ 추가됨
             />
 
             <ClinicCommentModal
