@@ -295,6 +295,9 @@
 .max-h-screen {
   max-height: 100vh;
 }
+.min-h-\[80vh\] {
+  min-height: 80vh;
+}
 .min-h-\[140px\] {
   min-height: 140px;
 }
@@ -2043,6 +2046,16 @@
     @media (hover: hover) {
       --tw-translate-y: -1px;
       translate: var(--tw-translate-x) var(--tw-translate-y);
+    }
+  }
+}
+.hover\:scale-105 {
+  &:hover {
+    @media (hover: hover) {
+      --tw-scale-x: 105%;
+      --tw-scale-y: 105%;
+      --tw-scale-z: 105%;
+      scale: var(--tw-scale-x) var(--tw-scale-y);
     }
   }
 }
