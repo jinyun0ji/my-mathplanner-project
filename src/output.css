@@ -54,6 +54,9 @@
 .sticky {
   position: sticky;
 }
+.top-1\/2 {
+  top: calc(1/2 * 100%);
+}
 .isolate {
   isolation: isolate;
 }
@@ -466,6 +469,10 @@
 }
 .translate-x-full {
   --tw-translate-x: 100%;
+  translate: var(--tw-translate-x) var(--tw-translate-y);
+}
+.-translate-y-1\/2 {
+  --tw-translate-y: calc(calc(1/2 * 100%) * -1);
   translate: var(--tw-translate-x) var(--tw-translate-y);
 }
 .translate-3d {
@@ -970,6 +977,12 @@
 }
 .rounded-tr-none {
   border-top-right-radius: 0;
+}
+.rounded-br-none {
+  border-bottom-right-radius: 0;
+}
+.rounded-bl-none {
+  border-bottom-left-radius: 0;
 }
 .border {
   border-style: var(--tw-border-style);

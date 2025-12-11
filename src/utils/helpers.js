@@ -1,6 +1,15 @@
 // src/utils/helpers.js
 import React from 'react';
 
+// 교직원 Mock 데이터 추가 (채팅 가능 대상)
+export const staffMembers = [
+    { id: 'staff-1', name: '김원장', role: '원장' },
+    { id: 'staff-2', name: '이실장', role: '행정 실장' },
+    { id: 'staff-3', name: '박선생', role: '강사' },
+    { id: 'staff-4', name: '최선생', role: '강사' },
+    { id: 'staff-5', name: '정조교', role: '조교' },
+];
+
 // --- 아이콘 컴포넌트 ---
 export const Icon = ({ name, className }) => {
     // ... (Icon 내용 유지)

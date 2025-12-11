@@ -23,7 +23,7 @@ import LoginPage from './pages/LoginPage';
 import Sidebar from './layout/Sidebar';
 import Header from './layout/Header';
 import NotificationPanel from './layout/NotificationPanel';
-import MessengerPanel from './layout/MessengerPanel'; // ✅ 메신저 패널 Import
+import MessengerPanel from './layout/MessengerPanel'; 
 import Home from './pages/Home';
 import StudentManagement from './pages/StudentManagement';
 import StudentDetail from './pages/StudentDetail';
@@ -103,8 +103,8 @@ export default function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [hasNewNotifications, setHasNewNotifications] = useState(true);
   
-  const [isMessengerOpen, setIsMessengerOpen] = useState(false); // 메신저 열림 상태
-  const [hasNewMessages, setHasNewMessages] = useState(true); // 새 메시지 여부 (데모용)
+  const [isMessengerOpen, setIsMessengerOpen] = useState(false); 
+  const [hasNewMessages, setHasNewMessages] = useState(true); 
 
   // 알림 토글 (메신저가 열려있으면 닫음)
   const toggleSidebar = () => {
@@ -170,7 +170,16 @@ export default function App() {
   const getClassesNames = useCallback((classIds) => classIds.map(id => classes.find(c => c.id === id)?.name || '').join(', '), [classes]);
   
   const handleSaveStudent = (newStudentData, isEdit) => {
-    setStudents(prev => isEdit ? prev.map(s => s.id === newStudentData.id ? { ...s, ...newStudentData } : s) : [...prev, { ...newStudentData, id: nextStudentId, registeredDate: new Date().toISOString().slice(0, 10), books: [] }]);
+    setStudents(prev => {
+        if (isEdit) {
+            logNotification('success', '학생 정보 수정 완료', `${newStudentData.name} 학생 정보가 업데이트되었습니다.`);
+            return prev.map(s => s.id === newStudentData.id ? { ...s, ...newStudentData } : s);
+        }
+        const newStudent = { ...newStudentData, id: nextStudentId, registeredDate: new Date().toISOString().slice(0, 10), books: [] };
+        logNotification('success', '학생 등록 완료', `${newStudent.name} 학생이 새로 등록되었습니다.`);
+        return [...prev, newStudent];
+    });
+
     setClasses(prev => prev.map(cls => {
         const isSelected = newStudentData.classes.includes(cls.id);
         const isMember = cls.students.includes(newStudentData.id);
@@ -314,7 +323,6 @@ export default function App() {
   return (
   <div className="flex h-screen bg-gray-100 font-sans text-base relative"> 
     <Sidebar page={page} setPage={handlePageChange} onLogout={() => setIsLoggedIn(false)} />
-    {/* ✅ 알림이나 메신저가 열리면 화면을 밀어냄 (선택적) - 사용자 요청은 "알림처럼 오른쪽에 화면이 나타나게" */}
     <div className={`flex-1 flex flex-col overflow-hidden min-w-0 transition-all duration-300 ease-in-out ${isSidebarOpen || isMessengerOpen ? 'mr-80' : 'mr-0'}`}>
       <Header page={page} />
       <main id="main-content" className="overflow-x-hidden overflow-y-auto bg-gray-100 p-6 min-w-0">
@@ -322,7 +330,6 @@ export default function App() {
       </main>
     </div>
     
-    {/* 오른쪽 알림 패널 */}
     <NotificationPanel 
       notifications={notifications} 
       isSidebarOpen={isSidebarOpen} 
@@ -331,12 +338,14 @@ export default function App() {
       setHasNewNotifications={setHasNewNotifications} 
     />
 
-    {/* ✅ 오른쪽 메신저 패널 */}
     <MessengerPanel 
       isMessengerOpen={isMessengerOpen}
       toggleMessenger={toggleMessenger}
       hasNewMessages={hasNewMessages}
       setHasNewMessages={setHasNewMessages}
+      isSidebarOpen={isSidebarOpen} 
+      students={students} 
+      classes={classes} // ✅ classes prop 추가
     />
   </div>
   );
