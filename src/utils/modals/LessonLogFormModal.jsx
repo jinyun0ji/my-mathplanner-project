@@ -14,7 +14,9 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
   const [iframeCode, setIframeCode] = useState('');
   const [materialUrl, setMaterialUrl] = useState('');
   const [scheduleTime, setScheduleTime] = useState(''); 
-  const [selectedStudents, setSelectedStudents] = useState([]); // 알림 대상 학생
+  
+  // ✅ 수정: 학생별 알림 설정을 담는 맵으로 변경
+  const [studentNotificationMap, setStudentNotificationMap] = useState({});
 
   useEffect(() => {
     if (log) {
@@ -30,20 +32,31 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
       setMaterialUrl('');
       setScheduleTime('');
     }
-    if (selectedClass) {
-      // 기본 알림 대상은 현재 클래스 학생
-      setSelectedStudents(selectedClass.students || []); 
-    } else {
-      setSelectedStudents([]);
+    
+    // 모달이 열릴 때 알림 설정 기본값 초기화 (학부모만 기본 체크)
+    if (selectedClass && isOpen) {
+        const initialMap = {};
+        selectedClass.students.forEach(sId => {
+            initialMap[sId] = {
+                notifyParent: true,
+                notifyStudent: false,
+            };
+        });
+        setStudentNotificationMap(initialMap); 
+    } else if (!selectedClass) {
+        setStudentNotificationMap({});
     }
-  }, [log, defaultDate, sessions, selectedClass]);
+  }, [log, defaultDate, sessions, selectedClass, isOpen]); 
 
-  const handleStudentToggle = (studentId) => {
-    setSelectedStudents(prev => 
-      prev.includes(studentId) 
-        ? prev.filter(id => id !== studentId)
-        : [...prev, studentId]
-    );
+  // ✅ 추가: 학생별 알림 설정 토글 핸들러
+  const handleNotificationToggle = (studentId, type) => {
+    setStudentNotificationMap(prevMap => ({
+        ...prevMap,
+        [studentId]: {
+            ...prevMap[studentId],
+            [type]: !prevMap[studentId][type]
+        }
+    }));
   };
 
   const handleSubmit = (e) => {
@@ -63,13 +76,35 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
     onSave(logData, !!log);
     
     if (scheduleTime) {
-        // 알림 예약 모의 로직 (실제 백엔드 알림 예약 기능 대신 프론트엔드 알림 패널에 표시)
-        const studentNames = students
-            .filter(s => selectedStudents.includes(s.id))
-            .map(s => s.name);
-        
-        logNotification('scheduled', '수업 일지 알림 예약', 
-            `[${selectedClass.name}] 수업 일지가 ${scheduleTime.replace('T', ' ')}에 ${studentNames.length}명의 학생/학부모에게 발송되도록 예약됨. (대상: ${studentNames.join(', ')})`);
+        // ✅ 수정: 알림 맵을 기준으로 수신자 목록 계산
+        const studentRecipients = students.filter(s => {
+            const prefs = studentNotificationMap[s.id];
+            // 학부모나 학생 중 한 명이라도 알림이 켜져 있는 학생만 대상
+            return prefs && (prefs.notifyParent || prefs.notifyStudent);
+        });
+
+        if (studentRecipients.length === 0) {
+             alert('알림을 받을 대상 학생을 최소 한 명 이상 선택하거나, 학부모/학생 알림 중 하나 이상을 체크해주세요.');
+             // 알림을 보낼 대상이 없으면 저장만 하고 알림 예약은 건너뜁니다.
+        } else {
+            let parentCount = 0;
+            let studentCount = 0;
+
+            studentRecipients.forEach(s => {
+                const prefs = studentNotificationMap[s.id];
+                if (prefs.notifyParent) parentCount++;
+                if (prefs.notifyStudent) studentCount++;
+            });
+
+            const recipients = [];
+            if (parentCount > 0) recipients.push('학부모');
+            if (studentCount > 0) recipients.push('학생');
+
+            const recipientString = recipients.length > 0 ? recipients.join(' 및 ') : '대상 없음';
+
+            logNotification('scheduled', '수업 일지 알림 예약', 
+                `[${selectedClass.name}] 수업 일지가 ${scheduleTime.replace('T', ' ')}에 ${recipientString}에게 발송되도록 예약됨. (총 ${studentRecipients.length}명 대상)`);
+        }
     }
 
     onClose();
@@ -94,7 +129,7 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
                 <div>
                     <label className="block text-sm font-medium text-gray-700">알림 예약 시간 (선택)</label>
                     <input type="datetime-local" value={scheduleTime || ''} onChange={e => setScheduleTime(e.target.value)} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border" />
-                    <p className="text-xs text-gray-500 mt-1">예약 시간을 설정하면 학생/학부모에게 자동으로 일지 알림이 전송됩니다.</p>
+                    <p className="text-xs text-gray-500 mt-1">예약 시간을 설정하면 알림이 자동으로 전송됩니다.</p>
                 </div>
             </div>
             
@@ -114,29 +149,51 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
             </div>
 
             {scheduleTime && (
-                <div className="border p-3 rounded-lg bg-yellow-50">
-                    <label className="block text-sm font-bold text-gray-700 mb-2">알림 대상 학생 선택</label>
-                    <div className="flex flex-wrap gap-2">
-                        {selectedClass.students.map(sId => {
-                            const student = students.find(s => s.id === sId);
-                            if (!student) return null;
-                            return (
-                                <button
-                                    key={sId}
-                                    type="button"
-                                    onClick={() => handleStudentToggle(sId)}
-                                    className={`px-3 py-1 text-xs rounded-full transition ${
-                                        selectedStudents.includes(sId)
-                                            ? 'bg-blue-600 text-white'
-                                            : 'bg-white border text-gray-700 hover:bg-blue-50'
-                                    }`}
-                                >
-                                    {student.name}
-                                </button>
-                            );
-                        })}
+                <div className="border p-3 rounded-lg bg-yellow-50 space-y-3">
+                    <h4 className="text-sm font-bold text-gray-700 mb-2 border-b pb-2">학생별 알림 설정</h4>
+                    <div className="overflow-y-auto max-h-60 border rounded-md">
+                        <table className="min-w-full divide-y divide-gray-200 text-sm">
+                            <thead className='bg-gray-100 sticky top-0'>
+                                <tr>
+                                    <th className="p-2 text-left font-medium text-gray-700">학생명</th>
+                                    <th className="p-2 text-center font-medium text-gray-700 w-24">학부모 알림</th>
+                                    <th className="p-2 text-center font-medium text-gray-700 w-24">학생 알림</th>
+                                </tr>
+                            </thead>
+                            <tbody className="bg-white divide-y divide-gray-200">
+                                {selectedClass.students.map(sId => {
+                                    const student = students.find(s => s.id === sId);
+                                    if (!student || !studentNotificationMap[sId]) return null;
+                                    const prefs = studentNotificationMap[sId];
+
+                                    return (
+                                        <tr key={sId} className="hover:bg-gray-50">
+                                            <td className="p-2 font-medium text-gray-900">{student.name}</td>
+                                            <td className="p-2 text-center">
+                                                <input 
+                                                    type="checkbox" 
+                                                    checked={prefs.notifyParent} 
+                                                    onChange={() => handleNotificationToggle(sId, 'notifyParent')}
+                                                    className="rounded text-blue-600 focus:ring-blue-500 h-4 w-4 cursor-pointer" 
+                                                />
+                                            </td>
+                                            <td className="p-2 text-center">
+                                                <input 
+                                                    type="checkbox" 
+                                                    checked={prefs.notifyStudent} 
+                                                    onChange={() => handleNotificationToggle(sId, 'notifyStudent')}
+                                                    className="rounded text-blue-600 focus:ring-blue-500 h-4 w-4 cursor-pointer" 
+                                                />
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
                     </div>
-                    <p className="text-xs text-gray-600 mt-2">선택된 학생의 학부모에게 예약된 시간에 알림이 발송됩니다.</p>
+                    <p className="text-xs text-gray-600 pt-2 border-t">
+                        체크된 대상에게 예약된 시간에 알림이 발송됩니다. (기본 설정: 학부모에게만 발송)
+                    </p>
                 </div>
             )}
 

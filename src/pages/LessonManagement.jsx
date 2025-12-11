@@ -1,3 +1,4 @@
+// src/pages/LessonManagement.jsx
 import React, { useState, useEffect, useMemo } from 'react';
 import { Icon } from '../utils/helpers';
 import { LessonLogFormModal } from '../utils/modals/LessonLogFormModal';
@@ -102,7 +103,8 @@ export default function LessonManagement({
     const isCurrentDateLogged = currentLog !== undefined;
     
     return (
-        <div className="flex space-x-6 h-full">
+        // ✅ 수정: items-start를 추가하여 좌측 패널이 우측 내용 길이에 맞춰 늘어나는 것을 방지
+        <div className="flex space-x-6 h-full items-start"> 
             <ClassSelectionPanel
                 classes={classes}
                 selectedClassId={selectedClassId}
