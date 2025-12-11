@@ -50,7 +50,6 @@ try {
     console.error("Firebase initialization error. Using local mock data only:", error);
 }
 
-// PageContent 컴포넌트
 const PageContent = (props) => {
     const { page, selectedStudentId } = props;
 
@@ -64,7 +63,7 @@ const PageContent = (props) => {
         case 'attendance': return <AttendanceManagement {...props} />;
         case 'students': return <StudentManagement {...props} />;
         case 'grades': return <GradeManagement {...props} />;
-        case 'homework': return <HomeworkManagement {...props} />; // setIsGlobalDirty가 props로 전달됨
+        case 'homework': return <HomeworkManagement {...props} />; 
         case 'clinic': return <ClinicManagement {...props} />;
         case 'communication': return <InternalCommunication {...props} />;
         case 'payment': return <PaymentManagement {...props} />;
@@ -79,10 +78,11 @@ export default function App() {
   const [notifications, setNotifications] = useState([]); 
   const [userId, setUserId] = useState(null); 
 
-  // ✅ [추가] 전역 '저장되지 않은 변경사항' 상태
   const [isGlobalDirty, setIsGlobalDirty] = useState(false);
+  
+  // ✅ [추가] 학생 관리 검색어 상태 (전역 관리)
+  const [studentSearchTerm, setStudentSearchTerm] = useState('');
 
-  // --- 중앙 상태 관리 (임시 데이터) ---
   const [students, setStudents] = useState(initialStudents);
   const [classes, setClasses] = useState(initialClasses);
   const [lessonLogs, setLessonLogs] = useState(initialLessonLogs);
@@ -128,12 +128,11 @@ export default function App() {
     }
   }, []); 
 
-  // ✅ [추가] 브라우저 닫기/새로고침 방지
   useEffect(() => {
     const handleBeforeUnload = (e) => {
         if (isGlobalDirty) {
             e.preventDefault();
-            e.returnValue = ''; // Chrome requires returnValue to be set
+            e.returnValue = ''; 
         }
     };
     window.addEventListener('beforeunload', handleBeforeUnload);
@@ -144,7 +143,6 @@ export default function App() {
         setNotifications(prev => [{ id: Date.now(), type, message, details, timestamp: new Date().toLocaleTimeString('ko-KR') }, ...prev]);
     }, []);
 
-  // --- CRUD 함수들 (기존 코드 유지) ---
   const handleSaveClass = (classData, isEdit) => {
     setClasses(prev => isEdit ? prev.map(c => c.id === classData.id ? { ...c, ...classData } : c) : [...prev, { ...classData, id: prev.reduce((max, c) => Math.max(max, c.id), 0) + 1, students: [] }]);
     if(!isEdit) logNotification('success', '클래스 등록 성공', `${classData.name} 클래스가 새로 등록되었습니다.`);
@@ -193,25 +191,15 @@ export default function App() {
   };
   const handleDeleteHomeworkAssignment = (assignmentId) => setHomeworkAssignments(prev => prev.filter(a => a.id !== assignmentId));
   
-  // ✅ [수정] 과제 결과를 한번에 여러 개 업데이트할 수 있도록 변경 (배치 처리)
   const handleUpdateHomeworkResult = (updates) => {
     setHomeworkResults(prev => {
         const newResults = { ...prev };
-        
         updates.forEach(({ studentId, assignmentId, questionId, status }) => {
             if (!newResults[studentId]) newResults[studentId] = {};
             if (!newResults[studentId][assignmentId]) newResults[studentId][assignmentId] = {};
-            
-            if (status) {
-                newResults[studentId][assignmentId][questionId] = status;
-            } else {
-                delete newResults[studentId][assignmentId][questionId];
-            }
-            
-            // cleanup empty objects
-            if (Object.keys(newResults[studentId][assignmentId]).length === 0) {
-                delete newResults[studentId][assignmentId];
-            }
+            if (status) newResults[studentId][assignmentId][questionId] = status;
+            else delete newResults[studentId][assignmentId][questionId];
+            if (Object.keys(newResults[studentId][assignmentId]).length === 0) delete newResults[studentId][assignmentId];
         });
         return newResults;
     });
@@ -271,17 +259,24 @@ export default function App() {
   
   if (!isLoggedIn) return <LoginPage onLogin={() => setIsLoggedIn(true)} />;
 
-  // ✅ [수정] 페이지 이동 시 변경사항 체크
-  const handlePageChange = (newPage, studentId = null) => {
+  // ✅ [수정] 페이지 이동 핸들러: resetSearch 옵션 추가 (기본값 false)
+  const handlePageChange = (newPage, studentId = null, resetSearch = false) => {
        if (isGlobalDirty) {
            if (!window.confirm('저장되지 않은 변경사항이 있습니다. 정말 이동하시겠습니까?\n(이동 시 변경사항은 사라집니다)')) {
-               return; // 이동 취소
+               return; 
            }
-           setIsGlobalDirty(false); // 이동 허용 시 dirty 해제
+           setIsGlobalDirty(false); 
        }
 
-       if (newPage === 'students' && studentId === null) setSelectedStudentId(null); 
-       else setSelectedStudentId(studentId);
+       if (newPage === 'students' && studentId === null) {
+           setSelectedStudentId(null);
+           // 사이드바에서 클릭해서 들어온 경우(resetSearch=true)에만 검색어 초기화
+           if (resetSearch) {
+               setStudentSearchTerm('');
+           }
+       } else {
+           setSelectedStudentId(studentId);
+       }
        setPage(newPage);
   }
   
@@ -295,13 +290,15 @@ export default function App() {
     handleSaveAnnouncement, handleSaveWorkLog, handleDeleteWorkLog, handleSaveClinicLog, handleDeleteClinicLog, 
     calculateClassSessions, selectedStudentId, handlePageChange, logNotification, notifications, 
     calculateGradeComparison, calculateHomeworkStats,
-    // ✅ 전달
-    setIsGlobalDirty, 
+    setIsGlobalDirty,
+    // ✅ 전달: 검색어 상태 및 함수
+    studentSearchTerm, setStudentSearchTerm 
   };
 
   return (
   <div className="flex h-screen bg-gray-100 font-sans text-base relative"> 
-    <Sidebar page={page} setPage={(newPage) => handlePageChange(newPage, null)} onLogout={() => setIsLoggedIn(false)} />
+    {/* ✅ 사이드바에 handlePageChange 전달 시 reset 옵션 처리 위함 */}
+    <Sidebar page={page} setPage={handlePageChange} onLogout={() => setIsLoggedIn(false)} />
     <div className={`flex-1 flex flex-col overflow-hidden min-w-0 transition-all duration-300 ease-in-out ${isSidebarOpen ? 'mr-80' : 'mr-0'}`}>
       <Header page={page} />
       <main id="main-content" className="overflow-x-hidden overflow-y-auto bg-gray-100 p-6 min-w-0">

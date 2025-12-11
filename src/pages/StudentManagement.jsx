@@ -1,29 +1,38 @@
 // src/pages/StudentManagement.jsx
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { Icon } from '../utils/helpers';
 import { StudentFormModal } from '../utils/modals/StudentFormModal';
 import { MemoModal } from '../utils/modals/MemoModal';
 
 export default function StudentManagement({ 
     students, classes, getClassesNames, handleSaveStudent, handleDeleteStudent, 
-    attendanceLogs, studentMemos, handleSaveMemo, handlePageChange 
+    attendanceLogs, studentMemos, handleSaveMemo, handlePageChange,
+    // ✅ props로 전달받음
+    studentSearchTerm, setStudentSearchTerm 
 }) {
     const [isStudentModalOpen, setIsStudentModalOpen] = useState(false);
     const [studentToEdit, setStudentToEdit] = useState(null);
-    const [search, setSearch] = useState('');
+    // 로컬 search state 제거됨 -> studentSearchTerm 사용
     const [memoModalState, setMemoModalState] = useState({ isOpen: false, studentId: null, content: '', studentName: '' });
 
     const filteredStudents = useMemo(() => {
-        return students.filter(student =>
-            student.name.includes(search) || 
-            student.school.includes(search) ||
-            student.phone.includes(search)
-        ).sort((a, b) => {
+        return students.filter(student => {
+            // ✅ [수정] 클래스 명 검색 추가
+            // 학생이 수강 중인 클래스들의 이름을 문자열로 변환하여 검색 대상에 포함
+            const studentClassNames = getClassesNames(student.classes);
+            
+            return (
+                student.name.includes(studentSearchTerm) || 
+                student.school.includes(studentSearchTerm) ||
+                student.phone.includes(studentSearchTerm) ||
+                studentClassNames.includes(studentSearchTerm) // 클래스명 검색
+            );
+        }).sort((a, b) => {
             if (a.status === '재원생' && b.status !== '재원생') return -1;
             if (a.status !== '재원생' && b.status === '재원생') return 1;
             return b.registeredDate.localeCompare(a.registeredDate);
         });
-    }, [students, search]);
+    }, [students, studentSearchTerm, getClassesNames]); // 의존성 배열 수정
 
     const handleEdit = (student) => {
         setStudentToEdit(student);
@@ -50,7 +59,6 @@ export default function StudentManagement({
 
     return (
         <div className="space-y-6">
-            {/* ✅ "학생 정보 관리" 헤더 삭제됨 (자리 차지 문제 해결) */}
             
             <div className="bg-white p-6 rounded-xl shadow-md">
                 <div className="flex justify-between items-center mb-4">
@@ -58,9 +66,9 @@ export default function StudentManagement({
                         <Icon name="search" className="w-5 h-5 text-gray-500"/>
                         <input
                             type="text"
-                            placeholder="이름, 학교, 연락처로 검색..."
-                            value={search}
-                            onChange={(e) => setSearch(e.target.value)}
+                            placeholder="이름, 학교, 연락처, 클래스명으로 검색..."
+                            value={studentSearchTerm} // ✅ 전역 상태 사용
+                            onChange={(e) => setStudentSearchTerm(e.target.value)} // ✅ 전역 상태 변경
                             className="p-2 border border-gray-300 rounded-lg w-full focus:ring-blue-500 focus:border-blue-500"
                         />
                     </div>
@@ -77,7 +85,6 @@ export default function StudentManagement({
                     <table className="min-w-full divide-y divide-gray-200">
                         <thead className="bg-gray-50">
                             <tr>
-                                {/* ✅ 테이블 헤더 변경: 최근 출결 -> 연락처 */}
                                 {['이름', '학교', '학년', '상태', '수강 클래스', '연락처 (학생/학부모)', '등록일', '관리'].map(header => (
                                     <th key={header} className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{header}</th>
                                 ))}
@@ -96,7 +103,6 @@ export default function StudentManagement({
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                                         {getClassesNames(student.classes)}
                                     </td>
-                                    {/* ✅ 연락처 표시 (학생 / 학부모) */}
                                     <td className="px-6 py-4 whitespace-nowrap text-sm">
                                         <div className="flex flex-col">
                                             <span className="text-gray-900 font-medium">{student.phone}</span>

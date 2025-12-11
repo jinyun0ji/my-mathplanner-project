@@ -2,10 +2,9 @@ import React from 'react';
 import { Icon } from '../utils/helpers';
 
 export default function Sidebar({ page, setPage, onLogout }) {
-    // ✅ 메뉴 순서 변경: 홈 -> 학생 관리 -> 수업 관리 -> 출결 관리 -> ...
     const menuItems = [
         { name: '홈', key: 'home', icon: 'dashboard' },
-        { name: '학생 관리', key: 'students', icon: 'users' }, // 2번째로 이동
+        { name: '학생 관리', key: 'students', icon: 'users' },
         { name: '수업 관리', key: 'lessons', icon: 'fileText' },
         { name: '출결 관리', key: 'attendance', icon: 'calendar' },
         { name: '성적 관리', key: 'grades', icon: 'barChart' },
@@ -29,7 +28,8 @@ export default function Sidebar({ page, setPage, onLogout }) {
                     {menuItems.map(item => (
                         <button
                             key={item.key}
-                            onClick={() => setPage(item.key)}
+                            // ✅ [수정] 사이드바 클릭 시 resetSearch = true 전달 (3번째 인자)
+                            onClick={() => setPage(item.key, null, true)}
                             className={`flex items-center w-full px-4 py-2.5 rounded-xl transition duration-150 text-sm font-medium ${
                                 page === item.key 
                                     ? 'bg-indigo-500 text-white shadow-md'
