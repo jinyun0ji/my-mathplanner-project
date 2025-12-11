@@ -43,58 +43,68 @@ export default function HomeworkGradingTable({ summary, assignment, handleUpdate
         }
     }, [assignment]);
 
-    // 상태 변경 핸들러 (토글 기능)
-    const handleStatusChange = (studentId, qNum, currentStatus) => {
+    // 클릭 시 상태를 토글하고 업데이트하는 함수
+    const handleCellClick = (studentId, qNum) => {
+        const studentSummary = summary.find(s => s.studentId === studentId);
+        if (!studentSummary) return;
+
+        const qNumStr = qNum.toString();
+        const currentStatus = studentSummary.resultMap[qNumStr];
+        
         let newStatus;
         if (currentStatus === '맞음') newStatus = '틀림';
         else if (currentStatus === '틀림') newStatus = '고침';
-        else if (currentStatus === '고침') newStatus = null; 
-        else newStatus = '맞음'; 
+        else if (currentStatus === '고침') newStatus = null; // 초기화
+        else newStatus = '맞음'; // 미기록 -> 맞음
         
-        handleUpdateResult(studentId, assignment.id, qNum.toString(), newStatus);
+        // ✅ [수정됨] 인자 순서 수정 (assignment.id 제거)
+        handleUpdateResult(studentId, qNumStr, newStatus);
     };
 
-    // 키보드 입력 핸들러
+    // 키보드 입력 및 이동 핸들러
     const handleKeyDown = (e, studentId, qNum, sIndex, qIndex) => {
-        // 1: 맞음, 2: 틀림, 3: 고침, Delete/Backspace: 삭제
+        const qNumStr = qNum.toString();
+        
+        // 1: 맞음, 2: 틀림, 3: 고침
         if (['1', '2', '3'].includes(e.key)) {
             e.preventDefault();
+            e.stopPropagation(); 
             const statusMap = { '1': '맞음', '2': '틀림', '3': '고침' };
-            handleUpdateResult(studentId, assignment.id, qNum.toString(), statusMap[e.key]);
+            
+            // ✅ [수정됨] 인자 순서 수정
+            handleUpdateResult(studentId, qNumStr, statusMap[e.key]);
             
             // 입력 후 오른쪽 칸으로 이동
             if (qIndex < questions.length - 1) {
                 const nextEl = cellRefs.current[`${studentId}-${questions[qIndex + 1]}`];
                 if (nextEl) nextEl.focus();
             }
-        } else if (e.key === 'Delete' || e.key === 'Backspace') {
+        } 
+        // Delete 또는 Backspace: 삭제
+        else if (e.key === 'Delete' || e.key === 'Backspace') {
             e.preventDefault();
-            handleUpdateResult(studentId, assignment.id, qNum.toString(), null);
+            e.stopPropagation();
+            
+            // ✅ [수정됨] 인자 순서 수정
+            handleUpdateResult(studentId, qNumStr, null);
         }
         
         // 방향키 이동 로직
-        else if (e.key === 'ArrowRight') {
+        else if (e.key.startsWith('Arrow')) {
             e.preventDefault();
-            if (qIndex < questions.length - 1) {
+            e.stopPropagation();
+            
+            if (e.key === 'ArrowRight' && qIndex < questions.length - 1) {
                 const nextEl = cellRefs.current[`${studentId}-${questions[qIndex + 1]}`];
                 if (nextEl) nextEl.focus();
-            }
-        } else if (e.key === 'ArrowLeft') {
-            e.preventDefault();
-            if (qIndex > 0) {
+            } else if (e.key === 'ArrowLeft' && qIndex > 0) {
                 const prevEl = cellRefs.current[`${studentId}-${questions[qIndex - 1]}`];
                 if (prevEl) prevEl.focus();
-            }
-        } else if (e.key === 'ArrowDown') {
-            e.preventDefault();
-            if (sIndex < summary.length - 1) {
+            } else if (e.key === 'ArrowDown' && sIndex < summary.length - 1) {
                 const nextStudentId = summary[sIndex + 1].studentId;
                 const nextEl = cellRefs.current[`${nextStudentId}-${qNum}`];
                 if (nextEl) nextEl.focus();
-            }
-        } else if (e.key === 'ArrowUp') {
-            e.preventDefault();
-            if (sIndex > 0) {
+            } else if (e.key === 'ArrowUp' && sIndex > 0) {
                 const prevStudentId = summary[sIndex - 1].studentId;
                 const prevEl = cellRefs.current[`${prevStudentId}-${qNum}`];
                 if (prevEl) prevEl.focus();
@@ -130,12 +140,12 @@ export default function HomeworkGradingTable({ summary, assignment, handleUpdate
                                     return (
                                         <td 
                                             key={q} 
-                                            // tabIndex 추가하여 포커스 가능하게 만듦
                                             tabIndex={0}
-                                            // ref 연결
                                             ref={el => cellRefs.current[`${s.studentId}-${q}`] = el}
-                                            onClick={() => handleStatusChange(s.studentId, q, status)}
-                                            // 키보드 핸들러 추가
+                                            onClick={(e) => {
+                                                handleCellClick(s.studentId, q); 
+                                                e.currentTarget.focus(); 
+                                            }}
                                             onKeyDown={(e) => handleKeyDown(e, s.studentId, q, sIndex, qIndex)}
                                             className={`w-8 p-1 text-center cursor-pointer transition duration-100 ${statusClass} border-l focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:z-20`}
                                         >
