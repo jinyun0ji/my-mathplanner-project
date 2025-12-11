@@ -1,5 +1,3 @@
-// src/components/Grade/TestResultTable.jsx
-
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Icon } from '../../utils/helpers';
 import { Modal } from '../../components/common/Modal'; 
@@ -17,15 +15,16 @@ export default function TestResultTable({ isOpen, onClose, test, studentsData, h
     const [selectedStudentId, setSelectedStudentId] = useState(null);
     const [resultMapping, setResultMapping] = useState({});
     const [studentComment, setStudentComment] = useState('');
+    
+    // ✅ 저장되지 않은 변경사항 확인용 상태
+    const [isDirty, setIsDirty] = useState(false);
 
     const inputRefs = useRef({});
 
-    // 재원생이거나 점수가 있는 학생만 필터링
     const studentsInClass = useMemo(() => 
         studentsData.filter(s => grades[s.id]?.[test.id] !== undefined || s.status === '재원생'),
     [studentsData, grades, test.id]);
 
-    // 모달 열릴 때 첫 번째 학생 자동 선택
     useEffect(() => {
         if (isOpen && !selectedStudentId && studentsInClass.length > 0) {
             setSelectedStudentId(studentsInClass[0].id);
@@ -36,16 +35,14 @@ export default function TestResultTable({ isOpen, onClose, test, studentsData, h
         studentsData.find(s => s.id === selectedStudentId), 
     [studentsData, selectedStudentId]);
 
-    // 학생 변경 시 데이터 로드 및 포커스 초기화
     useEffect(() => {
         if (selectedStudentId) {
             const existing = grades[selectedStudentId]?.[test.id]?.correctCount || {};
             setResultMapping(existing);
-            
             const existingComment = grades[selectedStudentId]?.[test.id]?.comment || '';
             setStudentComment(existingComment);
+            setIsDirty(false); // 학생 변경 시 초기화
             
-            // 첫 번째 문항으로 포커스 이동
             setTimeout(() => {
                 const firstInput = inputRefs.current[`${selectedStudentId}-0`];
                 if (firstInput) firstInput.focus();
@@ -53,16 +50,25 @@ export default function TestResultTable({ isOpen, onClose, test, studentsData, h
         }
     }, [selectedStudentId, test.id, grades]); 
 
-    // ✅ 채점 상태 변경 (고침 제거: 맞음 -> 틀림 -> 미채점 순환)
+    // ✅ 모달 닫기 시 보호 로직
+    const handleCloseWrapper = () => {
+        if (isDirty) {
+            if (!window.confirm("저장하지 않은 성적이 있습니다. 정말 닫으시겠습니까?")) {
+                return;
+            }
+        }
+        setIsDirty(false);
+        onClose();
+    };
+
     const handleResultChange = (qNum, forceStatus = null) => {
         const currentStatus = resultMapping[qNum] || '미채점';
         let newStatus;
-        
         if (forceStatus) newStatus = forceStatus;
         else {
             if (currentStatus === '맞음') newStatus = '틀림';
-            else if (currentStatus === '틀림') newStatus = '미채점'; // 틀림 다음은 미채점
-            else newStatus = '맞음'; // 미채점 다음은 맞음
+            else if (currentStatus === '틀림') newStatus = '미채점'; 
+            else newStatus = '맞음'; 
         }
 
         setResultMapping(prev => {
@@ -71,9 +77,9 @@ export default function TestResultTable({ isOpen, onClose, test, studentsData, h
             else newMap[qNum] = newStatus;
             return newMap;
         });
+        setIsDirty(true); // 변경 발생
     };
     
-    // 키보드 조작
     const handleKeyDown = (e, qNum, qIndex) => {
         const totalQuestions = test.totalQuestions;
         if (e.key === '1') {
@@ -107,9 +113,7 @@ export default function TestResultTable({ isOpen, onClose, test, studentsData, h
         let score = 0;
         Object.keys(resultMapping).forEach(qNum => {
             const status = resultMapping[qNum];
-            if (status === '맞음') { // 고침 점수 반영 제외 (데이터상 존재할 수 있으나 성적 관리에서는 맞음만 처리)
-                score += (test.questionScores[Number(qNum) - 1] || 0);
-            }
+            if (status === '맞음') score += (test.questionScores[Number(qNum) - 1] || 0);
         });
         return score.toFixed(1);
     }, [resultMapping, test.questionScores]);
@@ -120,6 +124,8 @@ export default function TestResultTable({ isOpen, onClose, test, studentsData, h
         const finalResult = isNoShow ? '미응시' : resultMapping;
         handleUpdateGrade(selectedStudentId, test.id, finalResult, studentComment);
         
+        setIsDirty(false); // 저장 완료 처리
+
         const currentIndex = studentsInClass.findIndex(s => s.id === selectedStudentId);
         const nextStudent = studentsInClass[currentIndex + 1];
 
@@ -131,9 +137,9 @@ export default function TestResultTable({ isOpen, onClose, test, studentsData, h
     };
 
     return (
-        <Modal isOpen={isOpen} onClose={onClose} title={`${test.name} 문항별 채점`} maxWidth="max-w-6xl">
+        // onClose를 handleCloseWrapper로 교체
+        <Modal isOpen={isOpen} onClose={handleCloseWrapper} title={`${test.name} 문항별 채점`} maxWidth="max-w-6xl">
             <div className='flex space-x-4 h-[70vh]'>
-                {/* 왼쪽: 학생 목록 */}
                 <div className='w-1/4 space-y-2 border-r pr-4 overflow-y-auto custom-scrollbar'>
                     <h4 className='text-xs font-bold text-gray-500 mb-2 uppercase tracking-wide'>학생 목록 ({studentsInClass.length})</h4>
                     {studentsInClass.map(student => {
@@ -144,7 +150,12 @@ export default function TestResultTable({ isOpen, onClose, test, studentsData, h
                         return (
                             <div 
                                 key={student.id} 
-                                onClick={() => setSelectedStudentId(student.id)}
+                                onClick={() => {
+                                    if(isDirty) {
+                                        if(!window.confirm("저장하지 않은 성적이 있습니다. 이동하시겠습니까?")) return;
+                                    }
+                                    setSelectedStudentId(student.id);
+                                }}
                                 className={`px-3 py-2 rounded-md cursor-pointer flex justify-between items-center transition text-sm
                                 ${isSelected ? 'bg-blue-600 text-white shadow-md' : 'hover:bg-gray-100 text-gray-700'}`}
                             >
@@ -157,18 +168,17 @@ export default function TestResultTable({ isOpen, onClose, test, studentsData, h
                     })}
                 </div>
                 
-                {/* 오른쪽: 채점 영역 */}
                 <div className='flex-1 space-y-3 min-w-0 flex flex-col'>
                     {selectedStudentId === null ? (
                         <div className="flex items-center justify-center h-full text-gray-400">학생을 선택해주세요.</div>
                     ) : (
                         <>
-                            {/* 헤더 */}
                             <div className='flex justify-between items-center p-2 bg-gray-50 rounded-lg border border-gray-200'>
                                 <div className='flex items-baseline space-x-2'>
                                     <h5 className='text-lg font-bold text-gray-800'>{selectedStudent.name}</h5>
                                     <span className='text-2xl font-bold text-blue-600'>{calculateCurrentScore}</span>
                                     <span className='text-xs text-gray-500'>/ {test.maxScore}점</span>
+                                    {isDirty && <span className='text-xs text-red-500 font-bold ml-2'>* 변경됨 (저장 필요)</span>}
                                 </div>
                                 <div className='space-x-2' onClick={e => e.stopPropagation()}> 
                                     <button 
@@ -188,7 +198,6 @@ export default function TestResultTable({ isOpen, onClose, test, studentsData, h
                                 </div>
                             </div>
                             
-                            {/* 문항 그리드 */}
                             <div className='flex-grow overflow-y-auto pr-1 custom-scrollbar'>
                                 <div className='grid grid-cols-10 gap-1'> 
                                     {Array.from({ length: test.totalQuestions }, (_, i) => i + 1).map(qNum => {
@@ -223,11 +232,10 @@ export default function TestResultTable({ isOpen, onClose, test, studentsData, h
                                 </div>
                             </div>
                             
-                            {/* 코멘트 입력 */}
                             <div className='pt-2 border-t mt-auto'>
                                 <input 
                                     value={studentComment}
-                                    onChange={(e) => setStudentComment(e.target.value)}
+                                    onChange={(e) => { setStudentComment(e.target.value); setIsDirty(true); }}
                                     className='w-full px-3 py-2 border rounded text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition'
                                     placeholder="특이사항 입력 (Enter 키를 누르면 저장하고 다음 학생으로 이동합니다)"
                                     onKeyDown={(e) => {
