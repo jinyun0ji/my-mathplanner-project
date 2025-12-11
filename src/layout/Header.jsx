@@ -8,7 +8,7 @@ export default function Header({ page }) {
         students: '학생/학부모 정보 관리',
         grades: '시험 및 성적 관리',
         homework: '과제 배정 및 결과 관리',
-        clinic: '클리닉 활동 로그',
+        clinic: '클리닉 기록',
         communication: '내부 소통 및 공지',
         payment: '교재 및 수납 현황',
     };
