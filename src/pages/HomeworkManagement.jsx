@@ -1,21 +1,22 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Icon } from '../utils/helpers';
 import ClassSelectionPanel from '../components/Shared/ClassSelectionPanel'; 
-import HomeworkGradingTable from '../components/Homework/HomeworkGradingTable'; 
+import HomeworkGradingTable from '../components/Homework/HomeworkGradingTable';
+import HomeworkStatisticsPanel from '../components/Homework/HomeworkStatisticsPanel'; 
 import { HomeworkAssignmentModal } from '../utils/modals/HomeworkAssignmentModal'; 
 
 export default function HomeworkManagement({ 
     students, classes, homeworkAssignments, homeworkResults, 
     handleSaveHomeworkAssignment, handleDeleteHomeworkAssignment, 
     handleUpdateHomeworkResult, handleSaveClass, calculateClassSessions,
-    setIsGlobalDirty // ✅ App.jsx에서 전달받음
+    setIsGlobalDirty 
 }) {
     const [selectedClassId, setSelectedClassId] = useState(classes[0]?.id || null);
     const [isAssignmentModalOpen, setIsAssignmentModalOpen] = useState(false);
     const [assignmentToEdit, setAssignmentToEdit] = useState(null);
     const [selectedAssignmentId, setSelectedAssignmentId] = useState(null);
     
-    // ✅ 로컬 변경 사항 관리 (자동 저장 방지)
+    // 로컬 변경 사항 관리
     const [localChanges, setLocalChanges] = useState([]); 
 
     const selectedClass = classes.find(c => c.id === selectedClassId);
@@ -36,15 +37,12 @@ export default function HomeworkManagement({
         return students.filter(s => selectedClass.students.includes(s.id) && s.status === '재원생').sort((a, b) => a.name.localeCompare(b.name));
     }, [students, selectedClass]);
     
-    // 요약 데이터 계산 (로컬 변경사항 + 기존 데이터 병합)
     const assignmentSummary = useMemo(() => {
         if (!selectedAssignment) return [];
         
         return classStudents.map(student => {
-            // 기존 결과 복사
             const savedResult = { ...(homeworkResults[student.id]?.[selectedAssignment.id] || {}) };
             
-            // 로컬 변경사항 적용
             localChanges.forEach(change => {
                 if (change.studentId === student.id && change.assignmentId === selectedAssignment.id) {
                     if (change.status === null) delete savedResult[change.questionId];
@@ -84,19 +82,17 @@ export default function HomeworkManagement({
         });
     }, [selectedAssignment, classStudents, homeworkResults, localChanges]);
 
-    // ✅ 과제 선택 변경 시 보호
     const handleAssignmentSelect = (id) => {
         if (localChanges.length > 0) {
             if (!window.confirm('저장하지 않은 채점 결과가 있습니다. 다른 과제로 이동하시겠습니까?\n(이동 시 변경사항은 사라집니다)')) {
                 return;
             }
-            setLocalChanges([]); // 이동 시 초기화
+            setLocalChanges([]); 
             setIsGlobalDirty(false);
         }
         setSelectedAssignmentId(id);
     };
 
-    // ✅ 클래스 변경 시 보호
     const handleClassSelectWrapper = (id) => {
         if (localChanges.length > 0) {
             if (!window.confirm('저장하지 않은 채점 결과가 있습니다. 다른 클래스로 이동하시겠습니까?')) {
@@ -109,7 +105,6 @@ export default function HomeworkManagement({
         setSelectedAssignmentId(null);
     }
     
-    // 과제 목록 패널
     const assignmentPanelContent = useMemo(() => {
         if (!selectedClass) return <p className="text-sm text-gray-500">클래스를 선택해주세요.</p>;
         
@@ -150,24 +145,20 @@ export default function HomeworkManagement({
         setIsAssignmentModalOpen(true);
     };
 
-    // ✅ 로컬 상태 업데이트 (실제 저장은 안 함)
     const handleUpdateResultLocal = (studentId, qNum, status) => {
         if (!selectedAssignmentId) return;
         
-        // 기존 변경사항 덮어쓰기
         setLocalChanges(prev => {
             const filtered = prev.filter(c => !(c.studentId === studentId && c.assignmentId === selectedAssignmentId && c.questionId === qNum));
             return [...filtered, { studentId, assignmentId: selectedAssignmentId, questionId: qNum, status }];
         });
         
-        setIsGlobalDirty(true); // 전역 dirty 상태 설정
+        setIsGlobalDirty(true);
     };
 
-    // ✅ 실제 저장 버튼 핸들러
     const handleSaveChanges = () => {
         if (localChanges.length === 0) return;
-        
-        handleUpdateHomeworkResult(localChanges); // App.jsx에 일괄 업데이트 요청
+        handleUpdateHomeworkResult(localChanges); 
         setLocalChanges([]);
         setIsGlobalDirty(false);
         alert('채점 결과가 저장되었습니다.');
@@ -206,12 +197,12 @@ export default function HomeworkManagement({
                     <div className="p-6 bg-white rounded-xl shadow-md"><p className="text-gray-500">클래스를 선택하고 왼쪽에서 과제를 선택하세요.</p></div>
                 ) : (
                     <div className="space-y-6">
+                        {/* 1. 과제 정보 및 액션 패널 */}
                         <div className="bg-white p-6 rounded-xl shadow-md border-l-4 border-green-500">
                             <div className="flex justify-between items-start">
                                 <div>
                                     <h3 className="text-xl font-bold text-gray-800 flex items-center">
                                         {selectedAssignment.book}
-                                        {/* 변경사항이 있으면 표시 */}
                                         {localChanges.length > 0 && <span className="ml-2 text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full">저장되지 않음</span>}
                                     </h3>
                                     <p className="text-sm text-gray-600 mt-1">
@@ -220,7 +211,6 @@ export default function HomeworkManagement({
                                     </p>
                                 </div>
                                 <div className='flex space-x-2 items-center'>
-                                    {/* ✅ 저장 버튼 추가 */}
                                     <button 
                                         onClick={handleSaveChanges}
                                         disabled={localChanges.length === 0}
@@ -252,10 +242,17 @@ export default function HomeworkManagement({
                             </div>
                         </div>
 
+                        {/* ✅ 2. 채점 테이블 (위치 이동됨: 통계보다 위로) */}
                         <HomeworkGradingTable 
                             summary={assignmentSummary} 
                             assignment={selectedAssignment} 
                             handleUpdateResult={handleUpdateResultLocal} 
+                        />
+
+                        {/* ✅ 3. 통계 패널 (위치 이동됨: 테이블보다 아래로) */}
+                        <HomeworkStatisticsPanel 
+                            assignment={selectedAssignment} 
+                            summary={assignmentSummary} 
                         />
                     </div>
                 )}
