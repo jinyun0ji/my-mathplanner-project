@@ -1,4 +1,5 @@
 /*! tailwindcss v4.1.11 | MIT License | https://tailwindcss.com */
+@import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css");
 @layer properties;
 .\@container {
   container-type: inline-size;
@@ -271,9 +272,6 @@
 .h-\[70vh\] {
   height: 70vh;
 }
-.h-\[400px\] {
-  height: 400px;
-}
 .h-\[500px\] {
   height: 500px;
 }
@@ -282,9 +280,6 @@
 }
 .h-auto {
   height: auto;
-}
-.h-fit {
-  height: fit-content;
 }
 .h-full {
   height: 100%;
@@ -307,11 +302,11 @@
 .max-h-\[90vh\] {
   max-height: 90vh;
 }
-.max-h-\[400px\] {
-  max-height: 400px;
-}
 .max-h-\[500px\] {
   max-height: 500px;
+}
+.max-h-\[calc\(100vh-140px\)\] {
+  max-height: calc(100vh - 140px);
 }
 .max-h-lh {
   max-height: 1lh;
@@ -328,17 +323,11 @@
 .min-h-\[140px\] {
   min-height: 140px;
 }
-.min-h-\[200px\] {
-  min-height: 200px;
-}
 .min-h-\[300px\] {
   min-height: 300px;
 }
 .min-h-\[500px\] {
   min-height: 500px;
-}
-.min-h-\[600px\] {
-  min-height: 600px;
 }
 .min-h-auto {
   min-height: auto;
@@ -393,6 +382,9 @@
 }
 .min-w-\[8rem\] {
   min-width: 8rem;
+}
+.min-w-\[80px\] {
+  min-width: 80px;
 }
 .min-w-\[320px\] {
   min-width: 320px;
@@ -1002,12 +994,6 @@
 .rounded-full {
   border-radius: calc(infinity * 1px);
 }
-.rounded-tl-none {
-  border-top-left-radius: 0;
-}
-.rounded-tr-none {
-  border-top-right-radius: 0;
-}
 .rounded-br-none {
   border-bottom-right-radius: 0;
 }
@@ -1049,10 +1035,6 @@
 .border-t-0 {
   border-top-style: var(--tw-border-style);
   border-top-width: 0px;
-}
-.border-t-4 {
-  border-top-style: var(--tw-border-style);
-  border-top-width: 4px;
 }
 .border-r {
   border-right-style: var(--tw-border-style);
@@ -1100,9 +1082,6 @@
 }
 .border-\[\#fbf0df\] {
   border-color: #fbf0df;
-}
-.border-transparent {
-  border-color: transparent;
 }
 .bg-\[\#1a1a1a\] {
   background-color: #1a1a1a;
@@ -1767,9 +1746,6 @@
 .opacity-0 {
   opacity: 0%;
 }
-.opacity-30 {
-  opacity: 30%;
-}
 .opacity-50 {
   opacity: 50%;
 }
@@ -2142,16 +2118,6 @@
     }
   }
 }
-.hover\:scale-105 {
-  &:hover {
-    @media (hover: hover) {
-      --tw-scale-x: 105%;
-      --tw-scale-y: 105%;
-      --tw-scale-z: 105%;
-      scale: var(--tw-scale-x) var(--tw-scale-y);
-    }
-  }
-}
 .hover\:bg-\[\#f3d5a3\] {
   &:hover {
     @media (hover: hover) {
@@ -2163,13 +2129,6 @@
   &:hover {
     @media (hover: hover) {
       text-decoration-line: underline;
-    }
-  }
-}
-.hover\:opacity-80 {
-  &:hover {
-    @media (hover: hover) {
-      opacity: 80%;
     }
   }
 }
@@ -2379,6 +2338,25 @@
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 1;
   }
+}
+body {
+  font-family: "Pretendard", -apple-system, BlinkMacSystemFont, system-ui, Roboto, "Helvetica Neue", "Segoe UI", "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", sans-serif;
+  background-color: #F9FAFB;
+  color: #111827;
+}
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94A3B8;
 }
 @property --tw-translate-x {
   syntax: "*";

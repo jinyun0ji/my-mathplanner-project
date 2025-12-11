@@ -3,54 +3,69 @@ import { Icon } from '../utils/helpers';
 
 export default function Sidebar({ page, setPage, onLogout }) {
     const menuItems = [
-        { name: '홈', key: 'home', icon: 'dashboard' },
-        { name: '학생 관리', key: 'students', icon: 'users' },
+        { name: '대시보드', key: 'home', icon: 'dashboard' },
         { name: '수업 관리', key: 'lessons', icon: 'fileText' },
+        { name: '학생 관리', key: 'students', icon: 'users' },
         { name: '출결 관리', key: 'attendance', icon: 'calendar' },
         { name: '성적 관리', key: 'grades', icon: 'barChart' },
         { name: '과제 관리', key: 'homework', icon: 'clipboardCheck' },
         { name: '클리닉 관리', key: 'clinic', icon: 'clock' },
-        { name: '내부 소통', key: 'communication', icon: 'messageSquare' },
         { name: '교재/수납', key: 'payment', icon: 'wallet' },
+        { name: '내부 소통', key: 'communication', icon: 'messageSquare' },
     ];
     
     return (
-        <div className="w-56 bg-white shadow-2xl flex flex-col justify-between flex-shrink-0">
+        <aside className="w-64 bg-white h-screen border-r border-gray-200 flex flex-col justify-between flex-shrink-0 z-20 sticky top-0">
             <div>
-                <div className="p-5 border-b-2 border-indigo-500 bg-indigo-600 text-white rounded-tr-xl">
-                    <h2 className="text-xl font-bold flex items-center">
-                        <Icon name="school" className="w-6 h-6 mr-2" />
-                        채수용 연구소
-                    </h2>
-                    <p className="text-xs mt-1 text-indigo-200">직원 시스템</p>
+                {/* 로고 영역 */}
+                <div className="h-16 flex items-center px-6 border-b border-gray-100">
+                    <div className="flex items-center text-indigo-600">
+                        <div className="bg-indigo-600 text-white p-1.5 rounded-lg mr-2.5">
+                            <Icon name="school" className="w-5 h-5" />
+                        </div>
+                        <div>
+                            <h1 className="text-lg font-bold tracking-tight text-gray-900">채수용 연구소</h1>
+                            <p className="text-[10px] text-gray-400 font-medium -mt-1 tracking-wide">ACADEMY ADMIN</p>
+                        </div>
+                    </div>
                 </div>
-                <nav className="mt-4 space-y-2 px-3">
-                    {menuItems.map(item => (
-                        <button
-                            key={item.key}
-                            // ✅ [수정] 사이드바 클릭 시 resetSearch = true 전달 (3번째 인자)
-                            onClick={() => setPage(item.key, null, true)}
-                            className={`flex items-center w-full px-4 py-2.5 rounded-xl transition duration-150 text-sm font-medium ${
-                                page === item.key 
-                                    ? 'bg-indigo-500 text-white shadow-md'
-                                    : 'text-gray-600 hover:bg-indigo-100 hover:text-indigo-600'
-                            }`}
-                        >
-                            <Icon name={item.icon} className="w-5 h-5 mr-3" />
-                            {item.name}
-                        </button>
-                    ))}
+
+                {/* 메뉴 영역 */}
+                <nav className="p-4 space-y-1 overflow-y-auto max-h-[calc(100vh-140px)]">
+                    <p className="px-4 text-xs font-semibold text-gray-400 mb-2 mt-2 uppercase tracking-wider">Menu</p>
+                    {menuItems.map(item => {
+                        const isActive = page === item.key;
+                        return (
+                            <button
+                                key={item.key}
+                                onClick={() => setPage(item.key, null, true)}
+                                className={`flex items-center w-full px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 group ${
+                                    isActive 
+                                        ? 'bg-indigo-50 text-indigo-700 shadow-sm ring-1 ring-indigo-200'
+                                        : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'
+                                }`}
+                            >
+                                <Icon 
+                                    name={item.icon} 
+                                    className={`w-5 h-5 mr-3 transition-colors ${isActive ? 'text-indigo-600' : 'text-gray-400 group-hover:text-gray-600'}`} 
+                                />
+                                {item.name}
+                            </button>
+                        );
+                    })}
                 </nav>
             </div>
-            <div className="p-4 border-t">
+
+            {/* 하단 영역 */}
+            <div className="p-4 border-t border-gray-100">
                 <button 
                     onClick={onLogout}
-                    className="flex items-center w-full px-4 py-2.5 rounded-xl text-sm font-medium text-red-600 bg-red-100 hover:bg-red-200 transition duration-150"
+                    className="flex items-center justify-center w-full px-4 py-2.5 rounded-xl text-sm font-medium text-gray-500 hover:bg-red-50 hover:text-red-600 transition-colors duration-200"
                 >
-                    <Icon name="logOut" className="w-5 h-5 mr-3" />
+                    <Icon name="logOut" className="w-4 h-4 mr-2" />
                     로그아웃
                 </button>
             </div>
-        </div>
+        </aside>
     );
 };
