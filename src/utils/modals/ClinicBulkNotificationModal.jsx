@@ -11,14 +11,16 @@ export const ClinicBulkNotificationModal = ({ isOpen, onClose, selectedLogs, stu
             // 기본값: 현재 시간 + 1분 후
             const now = new Date();
             now.setMinutes(now.getMinutes() + 1);
+            // 한국 시간대 고려 (간이)
             const defaultTime = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().slice(0, 16);
             setScheduleTime(defaultTime);
         }
     }, [isOpen]);
 
     const handleSend = () => {
-        // 코멘트 없는 로그 확인
-        const noCommentLogs = selectedLogs.filter(log => !log.comment);
+        // 코멘트 없는 로그 확인 (미참석이 아닌데 코멘트가 없는 경우만 체크)
+        const noCommentLogs = selectedLogs.filter(log => !log.comment && log.status !== 'no-show');
+        
         if (noCommentLogs.length > 0) {
             if (!window.confirm(`선택된 ${selectedLogs.length}명 중 ${noCommentLogs.length}명의 코멘트가 비어있습니다. 그대로 발송하시겠습니까?`)) {
                 return;
@@ -29,11 +31,21 @@ export const ClinicBulkNotificationModal = ({ isOpen, onClose, selectedLogs, stu
         const scheduleText = scheduleTime ? `${scheduleTime.replace('T', ' ')}에 예약됨` : '즉시 발송됨';
 
         selectedLogs.forEach(log => {
-            const message = `[클리닉 알림] ${log.date} ${log.studentName} 학생 클리닉 활동 리포트가 도착했습니다.\n내용: ${log.comment || '(코멘트 없음)'}`;
+            // ✅ 상태에 따라 메시지 내용 분기
+            let message = '';
+            let title = '';
+
+            if (log.status === 'no-show') {
+                 title = '클리닉 미참석 알림';
+                 message = `[클리닉 알림] ${log.date} ${log.studentName} 학생이 예정된 클리닉에 참석하지 않았습니다. 일정 확인 부탁드립니다.`;
+            } else {
+                 title = '클리닉 리포트 알림';
+                 message = `[클리닉 알림] ${log.date} ${log.studentName} 학생 클리닉 활동 리포트가 도착했습니다.\n내용: ${log.comment || '(코멘트 없음)'}`;
+            }
             
             // 실제 알림 발송 (가상 함수 호출)
-            logNotification(actionType, '클리닉 리포트 발송/예약', 
-                `[일괄] ${log.studentName} 학생 리포트가 ${scheduleText}.`);
+            logNotification(actionType, title, 
+                `[일괄] ${log.studentName} 학생 알림이 ${scheduleText}.`);
             
             // 상태 업데이트 호출
             if (onSent) onSent(log.id, scheduleTime);
@@ -56,8 +68,10 @@ export const ClinicBulkNotificationModal = ({ isOpen, onClose, selectedLogs, stu
                     <div className="text-sm text-gray-700 max-h-32 overflow-y-auto pr-2">
                         <ul className="list-disc pl-5 space-y-1">
                             {selectedLogs.map(log => (
-                                <li key={log.id} className={!log.comment ? "text-red-500 font-medium" : ""}>
-                                    {log.studentName} { !log.comment && "(코멘트 없음!)" }
+                                <li key={log.id} className={(!log.comment && log.status !== 'no-show') ? "text-red-500 font-medium" : ""}>
+                                    {log.studentName} 
+                                    {log.status === 'no-show' && <span className="text-red-600 text-xs ml-1 font-bold">(미참석)</span>}
+                                    {(!log.comment && log.status !== 'no-show') && " (코멘트 없음!)"}
                                 </li>
                             ))}
                         </ul>
