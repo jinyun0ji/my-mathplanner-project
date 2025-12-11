@@ -295,6 +295,15 @@
 .max-h-\[70vh\] {
   max-height: 70vh;
 }
+.max-h-\[90vh\] {
+  max-height: 90vh;
+}
+.max-h-\[400px\] {
+  max-height: 400px;
+}
+.max-h-\[500px\] {
+  max-height: 500px;
+}
 .max-h-lh {
   max-height: 1lh;
 }
@@ -309,6 +318,12 @@
 }
 .min-h-\[140px\] {
   min-height: 140px;
+}
+.min-h-\[200px\] {
+  min-height: 200px;
+}
+.min-h-\[300px\] {
+  min-height: 300px;
 }
 .min-h-auto {
   min-height: auto;
@@ -1015,6 +1030,10 @@
 .border-t {
   border-top-style: var(--tw-border-style);
   border-top-width: 1px;
+}
+.border-t-0 {
+  border-top-style: var(--tw-border-style);
+  border-top-width: 0px;
 }
 .border-r {
   border-right-style: var(--tw-border-style);
@@ -2269,6 +2288,16 @@
         box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);
       }
     }
+  }
+}
+.\[\&_img\]\:inline-block {
+  & img {
+    display: inline-block;
+  }
+}
+.\[\&_img\]\:align-middle {
+  & img {
+    vertical-align: middle;
   }
 }
 .\[\&_svg\]\:pointer-events-none {

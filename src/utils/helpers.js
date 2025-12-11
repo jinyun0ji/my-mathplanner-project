@@ -1,18 +1,10 @@
 // src/utils/helpers.js
 import React from 'react';
 
-// 교직원 Mock 데이터 추가 (채팅 가능 대상)
-export const staffMembers = [
-    { id: 'staff-1', name: '김원장', role: '원장' },
-    { id: 'staff-2', name: '이실장', role: '행정 실장' },
-    { id: 'staff-3', name: '박선생', role: '강사' },
-    { id: 'staff-4', name: '최선생', role: '강사' },
-    { id: 'staff-5', name: '정조교', role: '조교' },
-];
-
 // --- 아이콘 컴포넌트 ---
 export const Icon = ({ name, className }) => {
-    // ... (Icon 내용 유지)
+    // Feather Icons 기반의 SVG 경로 데이터
+    // 필요한 아이콘을 이곳에 추가하여 사용합니다.
     const icons = {
         dashboard: <><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></>,
         users: <><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></>,
@@ -44,6 +36,12 @@ export const Icon = ({ name, className }) => {
         info: <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.375c.83 6.148 6.536 7.21 10.976 7.21s10.146-1.062 10.976-7.21-1.062-10.146-7.21-10.976S4.707 5.757 3.877 11.895z" /><path strokeLinecap="round" strokeLinejoin="round" d="M12 15h.008v.008H12V15z" /></svg>,
         alert: <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.375c-.83 6.148 4.707 9.143 10.146 9.143s10.976-2.995 10.146-9.143L12 3.375 2.877 11.895z" /><path strokeLinecap="round" strokeLinejoin="round" d="M12 15h.008v.008H12V15z" /></svg>,
         "arrow-left": <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}><path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" /></svg>,
+        
+        // ✅ [추가] 서식 관련 아이콘
+        alignLeft: <><line x1="17" y1="10" x2="3" y2="10"/><line x1="21" y1="6" x2="3" y2="6"/><line x1="21" y1="14" x2="3" y2="14"/><line x1="17" y1="18" x2="3" y2="18"/></>,
+        alignCenter: <><line x1="21" y1="6" x2="3" y2="6"/><line x1="17" y1="10" x2="7" y2="10"/><line x1="21" y1="14" x2="3" y2="14"/><line x1="17" y1="18" x2="7" y2="18"/></>,
+        alignRight: <><line x1="21" y1="10" x2="7" y2="10"/><line x1="21" y1="6" x2="3" y2="6"/><line x1="21" y1="14" x2="3" y2="14"/><line x1="21" y1="18" x2="7" y2="18"/></>,
+        image: <><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></>,
     };
     return <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>{icons[name]}</svg>;
 };
@@ -52,7 +50,6 @@ export const Icon = ({ name, className }) => {
  * 클래스 스케줄과 개강일을 기반으로 수업 회차 목록을 계산합니다.
  */
 export const calculateClassSessions = (cls) => {
-    // ... (로직 유지)
     if (!cls || !cls.startDate || !cls.schedule || cls.schedule.days.length === 0) return [];
 
     const parts = cls.startDate.split('-');
@@ -85,7 +82,6 @@ export const calculateClassSessions = (cls) => {
 
 // --- StudentDetail Helper Functions ---
 export const calculateGradeComparison = (studentId, classes, tests, grades) => {
-    // ... (로직 유지)
     const comparison = [];
 
     classes.forEach(cls => {
@@ -131,7 +127,6 @@ export const calculateGradeComparison = (studentId, classes, tests, grades) => {
 
 
 export const calculateHomeworkStats = (studentId, homeworkAssignments, homeworkResults) => {
-    // ... (로직 유지)
     const studentAssignments = homeworkAssignments.filter(a => a.students.includes(studentId));
     
     return studentAssignments.map(a => {
@@ -173,3 +168,12 @@ export const calculateHomeworkStats = (studentId, homeworkAssignments, homeworkR
         };
     }).sort((a, b) => new Date(b.date) - new Date(a.date));
 };
+
+// 교직원 Mock 데이터 추가 (채팅 가능 대상)
+export const staffMembers = [
+    { id: 'staff-1', name: '김원장', role: '원장' },
+    { id: 'staff-2', name: '이실장', role: '행정 실장' },
+    { id: 'staff-3', name: '박선생', role: '강사' },
+    { id: 'staff-4', name: '최선생', role: '강사' },
+    { id: 'staff-5', name: '정조교', role: '조교' },
+];
