@@ -346,6 +346,9 @@
 .w-screen {
   width: 100vw;
 }
+.max-w-\[85\%\] {
+  max-width: 85%;
+}
 .max-w-none {
   max-width: none;
 }
@@ -459,6 +462,10 @@
 .translate-full {
   --tw-translate-x: 100%;
   --tw-translate-y: 100%;
+  translate: var(--tw-translate-x) var(--tw-translate-y);
+}
+.translate-x-full {
+  --tw-translate-x: 100%;
   translate: var(--tw-translate-x) var(--tw-translate-y);
 }
 .translate-3d {
@@ -957,6 +964,12 @@
 }
 .rounded-full {
   border-radius: calc(infinity * 1px);
+}
+.rounded-tl-none {
+  border-top-left-radius: 0;
+}
+.rounded-tr-none {
+  border-top-right-radius: 0;
 }
 .border {
   border-style: var(--tw-border-style);

@@ -23,6 +23,7 @@ import LoginPage from './pages/LoginPage';
 import Sidebar from './layout/Sidebar';
 import Header from './layout/Header';
 import NotificationPanel from './layout/NotificationPanel';
+import MessengerPanel from './layout/MessengerPanel'; // ✅ 메신저 패널 Import
 import Home from './pages/Home';
 import StudentManagement from './pages/StudentManagement';
 import StudentDetail from './pages/StudentDetail';
@@ -79,10 +80,9 @@ export default function App() {
   const [userId, setUserId] = useState(null); 
 
   const [isGlobalDirty, setIsGlobalDirty] = useState(false);
-  
-  // ✅ [추가] 학생 관리 검색어 상태 (전역 관리)
   const [studentSearchTerm, setStudentSearchTerm] = useState('');
 
+  // --- 중앙 상태 관리 (임시 데이터) ---
   const [students, setStudents] = useState(initialStudents);
   const [classes, setClasses] = useState(initialClasses);
   const [lessonLogs, setLessonLogs] = useState(initialLessonLogs);
@@ -98,12 +98,30 @@ export default function App() {
   const [workLogs, setWorkLogs] = useState(initialWorkLogs); 
   
   const nextStudentId = students.reduce((max, s) => Math.max(max, s.id), 0) + 1; 
+  
+  // ✅ 사이드바(알림) 및 메신저 상태 관리
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [hasNewNotifications, setHasNewNotifications] = useState(true);
+  
+  const [isMessengerOpen, setIsMessengerOpen] = useState(false); // 메신저 열림 상태
+  const [hasNewMessages, setHasNewMessages] = useState(true); // 새 메시지 여부 (데모용)
 
+  // 알림 토글 (메신저가 열려있으면 닫음)
   const toggleSidebar = () => {
     setIsSidebarOpen(prev => !prev);
-    if (!isSidebarOpen) { setHasNewNotifications(false); }
+    if (!isSidebarOpen) { 
+        setHasNewNotifications(false); 
+        setIsMessengerOpen(false); // 메신저 닫기
+    }
+  };
+
+  // 메신저 토글 (알림이 열려있으면 닫음)
+  const toggleMessenger = () => {
+    setIsMessengerOpen(prev => !prev);
+    if (!isMessengerOpen) {
+        setHasNewMessages(false);
+        setIsSidebarOpen(false); // 알림 닫기
+    }
   };
 
   useEffect(() => {
@@ -143,6 +161,7 @@ export default function App() {
         setNotifications(prev => [{ id: Date.now(), type, message, details, timestamp: new Date().toLocaleTimeString('ko-KR') }, ...prev]);
     }, []);
 
+  // ... (CRUD 함수들은 기존과 동일하므로 생략하지 않고 전체 코드 유지) ...
   const handleSaveClass = (classData, isEdit) => {
     setClasses(prev => isEdit ? prev.map(c => c.id === classData.id ? { ...c, ...classData } : c) : [...prev, { ...classData, id: prev.reduce((max, c) => Math.max(max, c.id), 0) + 1, students: [] }]);
     if(!isEdit) logNotification('success', '클래스 등록 성공', `${classData.name} 클래스가 새로 등록되었습니다.`);
@@ -259,7 +278,6 @@ export default function App() {
   
   if (!isLoggedIn) return <LoginPage onLogin={() => setIsLoggedIn(true)} />;
 
-  // ✅ [수정] 페이지 이동 핸들러: resetSearch 옵션 추가 (기본값 false)
   const handlePageChange = (newPage, studentId = null, resetSearch = false) => {
        if (isGlobalDirty) {
            if (!window.confirm('저장되지 않은 변경사항이 있습니다. 정말 이동하시겠습니까?\n(이동 시 변경사항은 사라집니다)')) {
@@ -270,7 +288,6 @@ export default function App() {
 
        if (newPage === 'students' && studentId === null) {
            setSelectedStudentId(null);
-           // 사이드바에서 클릭해서 들어온 경우(resetSearch=true)에만 검색어 초기화
            if (resetSearch) {
                setStudentSearchTerm('');
            }
@@ -291,21 +308,36 @@ export default function App() {
     calculateClassSessions, selectedStudentId, handlePageChange, logNotification, notifications, 
     calculateGradeComparison, calculateHomeworkStats,
     setIsGlobalDirty,
-    // ✅ 전달: 검색어 상태 및 함수
     studentSearchTerm, setStudentSearchTerm 
   };
 
   return (
   <div className="flex h-screen bg-gray-100 font-sans text-base relative"> 
-    {/* ✅ 사이드바에 handlePageChange 전달 시 reset 옵션 처리 위함 */}
     <Sidebar page={page} setPage={handlePageChange} onLogout={() => setIsLoggedIn(false)} />
-    <div className={`flex-1 flex flex-col overflow-hidden min-w-0 transition-all duration-300 ease-in-out ${isSidebarOpen ? 'mr-80' : 'mr-0'}`}>
+    {/* ✅ 알림이나 메신저가 열리면 화면을 밀어냄 (선택적) - 사용자 요청은 "알림처럼 오른쪽에 화면이 나타나게" */}
+    <div className={`flex-1 flex flex-col overflow-hidden min-w-0 transition-all duration-300 ease-in-out ${isSidebarOpen || isMessengerOpen ? 'mr-80' : 'mr-0'}`}>
       <Header page={page} />
       <main id="main-content" className="overflow-x-hidden overflow-y-auto bg-gray-100 p-6 min-w-0">
         <PageContent page={page} {...managementProps} />
       </main>
     </div>
-    <NotificationPanel notifications={notifications} isSidebarOpen={isSidebarOpen} toggleSidebar={toggleSidebar} hasNewNotifications={hasNewNotifications} setHasNewNotifications={setHasNewNotifications} />
+    
+    {/* 오른쪽 알림 패널 */}
+    <NotificationPanel 
+      notifications={notifications} 
+      isSidebarOpen={isSidebarOpen} 
+      toggleSidebar={toggleSidebar} 
+      hasNewNotifications={hasNewNotifications} 
+      setHasNewNotifications={setHasNewNotifications} 
+    />
+
+    {/* ✅ 오른쪽 메신저 패널 */}
+    <MessengerPanel 
+      isMessengerOpen={isMessengerOpen}
+      toggleMessenger={toggleMessenger}
+      hasNewMessages={hasNewMessages}
+      setHasNewMessages={setHasNewMessages}
+    />
   </div>
   );
 }
