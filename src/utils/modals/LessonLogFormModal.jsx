@@ -6,7 +6,6 @@ import { Icon, calculateClassSessions } from '../../utils/helpers';
 export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = null, classes, defaultDate = null, students, logNotification }) => {
   const selectedClass = classes.find(c => c.id === classId);
   
-  // 수업 회차 목록 계산
   const sessions = useMemo(() => selectedClass ? calculateClassSessions(selectedClass) : [], [selectedClass, calculateClassSessions]);
   
   const [date, setDate] = useState(defaultDate || '');
@@ -16,7 +15,6 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
   const [scheduleTime, setScheduleTime] = useState(''); 
   const [studentNotificationMap, setStudentNotificationMap] = useState({});
 
-  // ✅ [추가] 변경 사항 감지 상태
   const [isDirty, setIsDirty] = useState(false);
 
   useEffect(() => {
@@ -40,7 +38,7 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
         selectedClass.students.forEach(sId => {
             initialMap[sId] = {
                 notifyParent: true,
-                notifyStudent: true, // ✅ [수정] 기본값을 true로 변경 (학생도 발송)
+                notifyStudent: true, // ✅ 기본값: 학생에게도 발송
             };
         });
         setStudentNotificationMap(initialMap); 
@@ -54,7 +52,6 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
     }
   }, [log, defaultDate, sessions, selectedClass, isOpen]); 
 
-  // ✅ [추가] 닫기 핸들러 (저장되지 않은 변경사항 확인)
   const handleCloseWrapper = () => {
       if (isDirty) {
           if (!window.confirm("작성 중인 내용이 저장되지 않았습니다. 정말 닫으시겠습니까?")) {
@@ -72,11 +69,10 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
             [type]: !prevMap[studentId][type]
         }
     }));
-    // 알림 설정 변경도 dirty로 간주하고 싶다면 아래 주석 해제 (보통은 내용 수정만 dirty로 침)
-    // setIsDirty(true); 
+    // ✅ 알림 설정 변경 시에도 경고창이 뜨도록 dirty 상태 설정
+    setIsDirty(true); 
   };
 
-  // 입력 변경 시 dirty 상태 true로 설정
   const handleChange = (setter, value) => {
       setter(value);
       setIsDirty(true);
@@ -106,6 +102,7 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
 
         if (studentRecipients.length === 0) {
              alert('알림을 받을 대상 학생을 최소 한 명 이상 선택하거나, 학부모/학생 알림 중 하나 이상을 체크해주세요.');
+             // 저장만 진행하고 알림 예약은 스킵하거나, return으로 막을 수 있습니다. 여기서는 저장만 진행.
         } else {
             let parentCount = 0;
             let studentCount = 0;
@@ -127,14 +124,13 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
         }
     }
 
-    setIsDirty(false); // 저장 완료 후 dirty 해제
+    setIsDirty(false); 
     onClose();
   };
 
   if (!selectedClass) return null;
 
   return (
-    // ✅ [수정] onClose를 handleCloseWrapper로 변경
     <Modal isOpen={isOpen} onClose={handleCloseWrapper} title={log ? '수업 일지 수정' : `${selectedClass.name} 수업 일지 등록`} maxWidth="max-w-4xl">
         <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
@@ -200,12 +196,12 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
             </div>
 
             {scheduleTime && (
-                // ✅ [수정] 배경색 제거 (bg-white) 및 테두리 유지
+                // ✅ 흰색 배경으로 변경 (bg-white)
                 <div className="border border-gray-200 p-4 rounded-lg bg-white space-y-3">
                     <h4 className="text-sm font-bold text-gray-700 mb-2 border-b pb-2">학생별 알림 설정</h4>
                     <div className="overflow-y-auto max-h-60 border rounded-md">
                         <table className="min-w-full divide-y divide-gray-200 text-sm">
-                            <thead className='bg-gray-50 sticky top-0'>
+                            <thead className='bg-gray-100 sticky top-0'>
                                 <tr>
                                     <th className="p-2 text-left font-medium text-gray-700">학생명</th>
                                     <th className="p-2 text-center font-medium text-gray-700 w-24">학부모 알림</th>
@@ -248,7 +244,6 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
                     </p>
                 </div>
             )}
-
 
             <div className="pt-4 border-t flex justify-end space-x-3">
                 <button type="button" onClick={handleCloseWrapper} className="px-4 py-2 text-sm font-medium rounded-lg text-gray-700 bg-gray-200 hover:bg-gray-300 transition duration-150">

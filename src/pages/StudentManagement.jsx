@@ -1,4 +1,5 @@
-import React, { useState, useMemo, useCallback } from 'react';
+// src/pages/StudentManagement.jsx
+import React, { useState, useMemo } from 'react';
 import { Icon } from '../utils/helpers';
 import { StudentFormModal } from '../utils/modals/StudentFormModal';
 import { MemoModal } from '../utils/modals/MemoModal';
@@ -47,26 +48,9 @@ export default function StudentManagement({
         setMemoModalState({ isOpen: false, studentId: null, content: '', studentName: '' });
     };
 
-    // 출석 요약 (가장 최근 10회 수업 기준)
-    const getAttendanceSummary = useCallback((studentId) => {
-        const studentLogs = attendanceLogs.filter(log => log.studentId === studentId);
-        const lastTen = studentLogs.slice(-10); 
-        
-        const summary = {
-            '출석': 0, '지각': 0, '결석': 0, '동영상보강': 0, total: lastTen.length
-        };
-        lastTen.forEach(log => {
-            if (summary[log.status] !== undefined) {
-                summary[log.status]++;
-            }
-        });
-        return summary;
-    }, [attendanceLogs]);
-
-
     return (
         <div className="space-y-6">
-            <h3 className="text-2xl font-bold text-gray-800">학생 정보 관리</h3>
+            {/* ✅ "학생 정보 관리" 헤더 삭제됨 (자리 차지 문제 해결) */}
             
             <div className="bg-white p-6 rounded-xl shadow-md">
                 <div className="flex justify-between items-center mb-4">
@@ -93,14 +77,14 @@ export default function StudentManagement({
                     <table className="min-w-full divide-y divide-gray-200">
                         <thead className="bg-gray-50">
                             <tr>
-                                {['이름', '학교', '학년', '상태', '수강 클래스', '최근 출결(10회)', '등록일', '관리'].map(header => (
+                                {/* ✅ 테이블 헤더 변경: 최근 출결 -> 연락처 */}
+                                {['이름', '학교', '학년', '상태', '수강 클래스', '연락처 (학생/학부모)', '등록일', '관리'].map(header => (
                                     <th key={header} className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{header}</th>
                                 ))}
                             </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
                             {filteredStudents.map(student => {
-                                const summary = getAttendanceSummary(student.id);
                                 return (
                                 <tr key={student.id} className="hover:bg-blue-50/50 cursor-pointer transition duration-100" onClick={() => handlePageChange('students', student.id)}>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{student.name}</td>
@@ -112,10 +96,12 @@ export default function StudentManagement({
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                                         {getClassesNames(student.classes)}
                                     </td>
+                                    {/* ✅ 연락처 표시 (학생 / 학부모) */}
                                     <td className="px-6 py-4 whitespace-nowrap text-sm">
-                                        <span className="font-semibold text-green-600">출석 {summary['출석']}</span>
-                                        <span className="text-yellow-600 ml-2">지각 {summary['지각']}</span>
-                                        <span className="text-red-600 ml-2">결석 {summary['결석']}</span>
+                                        <div className="flex flex-col">
+                                            <span className="text-gray-900 font-medium">{student.phone}</span>
+                                            <span className="text-gray-500 text-xs">부모: {student.parentPhone}</span>
+                                        </div>
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{student.registeredDate}</td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
