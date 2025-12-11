@@ -72,8 +72,50 @@ const PageContent = (props) => {
     }
 };
 
+// ✅ [추가] 학생용 레이아웃 임시 컴포넌트 (나중에 별도 파일로 분리 예정)
+const StudentLayout = ({ studentId, onLogout, students }) => {
+    const student = students.find(s => s.id === studentId);
+    return (
+        <div className="flex flex-col h-screen bg-white">
+            <header className="bg-indigo-600 text-white p-4 flex justify-between items-center shadow-md">
+                <h1 className="text-lg font-bold">내 공부 플래너</h1>
+                <button onClick={onLogout} className="text-sm bg-indigo-800 px-3 py-1 rounded">로그아웃</button>
+            </header>
+            <main className="flex-1 p-6 overflow-y-auto">
+                <h2 className="text-2xl font-bold mb-4">안녕하세요, {student ? student.name : '학생'}님!</h2>
+                <div className="grid grid-cols-1 gap-4">
+                    <div className="p-6 bg-blue-50 rounded-xl border border-blue-100">
+                        <h3 className="font-bold text-blue-900 mb-2">오늘의 수업</h3>
+                        <p className="text-gray-600">등록된 수업 일정이 없습니다.</p>
+                    </div>
+                    <div className="p-6 bg-green-50 rounded-xl border border-green-100">
+                        <h3 className="font-bold text-green-900 mb-2">최근 성적</h3>
+                         <p className="text-gray-600">확인할 성적표가 있습니다.</p>
+                    </div>
+                </div>
+            </main>
+            {/* 하단 탭바 (앱 스타일) */}
+            <nav className="bg-white border-t border-gray-200 flex justify-around p-3 text-xs text-gray-500">
+                <button className="flex flex-col items-center text-indigo-600 font-bold">
+                    <span>🏠</span><span>홈</span>
+                </button>
+                <button className="flex flex-col items-center">
+                    <span>📅</span><span>출결</span>
+                </button>
+                <button className="flex flex-col items-center">
+                    <span>📝</span><span>과제</span>
+                </button>
+                <button className="flex flex-col items-center">
+                    <span>📊</span><span>성적</span>
+                </button>
+            </nav>
+        </div>
+    );
+};
+
 export default function App() { 
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [userRole, setUserRole] = useState(null);
   const [page, setPage] = useState('lessons'); 
   const [selectedStudentId, setSelectedStudentId] = useState(null); 
   const [notifications, setNotifications] = useState([]); 
@@ -320,10 +362,39 @@ export default function App() {
     studentSearchTerm, setStudentSearchTerm 
   };
 
+  // ✅ [수정] 로그인 핸들러 수정
+  const handleLoginSuccess = (role, id) => {
+      setIsLoggedIn(true);
+      setUserRole(role);
+      setUserId(id);
+      
+      // 학생으로 로그인 시, 선택된 학생 ID를 본인으로 설정
+      if (role === 'student') {
+          setSelectedStudentId(id);
+      }
+  };
+
+  // ✅ [수정] 조건부 렌더링
+  if (!isLoggedIn) {
+      return <LoginPage onLogin={handleLoginSuccess} />;
+  }
+
+  // 1. 학생인 경우 학생용 레이아웃 렌더링
+  if (userRole === 'student') {
+      return <StudentLayout studentId={userId} onLogout={() => setIsLoggedIn(false)} students={students} />;
+  }
+  
+  // 2. 학부모인 경우 (일단 학생용과 동일하게 처리하거나 추후 분리)
+  if (userRole === 'parent') {
+      return <div className="p-10 text-center">학부모용 페이지 준비중입니다. <button onClick={() => setIsLoggedIn(false)} className="text-blue-500 underline">로그아웃</button></div>;
+  }
+
+  // 3. 직원은 기존 레이아웃(Sidebar + Header + Main) 유지
   return (
   <div className="flex h-screen bg-gray-100 font-sans text-base relative"> 
     <Sidebar page={page} setPage={handlePageChange} onLogout={() => setIsLoggedIn(false)} />
-    <div className={`flex-1 flex flex-col overflow-hidden min-w-0 transition-all duration-300 ease-in-out ${isSidebarOpen || isMessengerOpen ? 'mr-80' : 'mr-0'}`}>
+    {/* ... (기존 직원용 JSX 그대로 유지) ... */}
+     <div className={`flex-1 flex flex-col overflow-hidden min-w-0 transition-all duration-300 ease-in-out ${isSidebarOpen || isMessengerOpen ? 'mr-80' : 'mr-0'}`}>
       <Header page={page} />
       <main id="main-content" className="overflow-x-hidden overflow-y-auto bg-gray-100 p-6 min-w-0">
         <PageContent page={page} {...managementProps} />
@@ -345,7 +416,7 @@ export default function App() {
       setHasNewMessages={setHasNewMessages}
       isSidebarOpen={isSidebarOpen} 
       students={students} 
-      classes={classes} // ✅ classes prop 추가
+      classes={classes} 
     />
   </div>
   );

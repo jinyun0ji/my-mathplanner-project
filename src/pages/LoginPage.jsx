@@ -1,17 +1,30 @@
+// src/pages/LoginPage.jsx
 import React, { useState } from 'react';
 import { Icon } from '../utils/helpers'; 
 
 export default function LoginPage({ onLogin }) { 
-    const [id, setId] = useState('employee');
-    const [password, setPassword] = useState('academy');
+    const [id, setId] = useState('');
+    const [password, setPassword] = useState('');
     const [error, setError] = useState('');
 
     const handleLogin = (e) => {
         e.preventDefault();
         setError('');
+
+        // 1. 직원 로그인 (기존)
         if (id === 'employee' && password === 'academy') {
-            onLogin();
-        } else {
+            onLogin('staff', 'employee-id'); // (role, userId)
+        } 
+        // 2. 학생 로그인 (테스트용: ID student / PW 1234)
+        else if (id === 'student' && password === '1234') {
+            // 실제 앱에서는 DB에서 학생 ID를 조회해야 함. 여기선 1번 학생(김철수)으로 가정
+            onLogin('student', 1); 
+        }
+        // 3. 학부모 로그인 (테스트용: ID parent / PW 1234)
+        else if (id === 'parent' && password === '1234') {
+            onLogin('parent', 'parent-id'); 
+        }
+        else {
             setError('아이디 또는 비밀번호가 올바르지 않습니다.');
         }
     };
@@ -19,7 +32,6 @@ export default function LoginPage({ onLogin }) {
     return (
         <div className="flex items-center justify-center min-h-screen bg-gray-100 p-4">
             <div className="w-full max-w-md bg-white shadow-2xl rounded-2xl overflow-hidden border border-gray-200">
-                {/* 상단 헤더 영역 (Navy 배경) */}
                 <div className="bg-indigo-900 p-10 text-center">
                     <div className="flex justify-center mb-4">
                         <div className="bg-white/10 p-4 rounded-full backdrop-blur-sm border border-white/20">
@@ -27,11 +39,12 @@ export default function LoginPage({ onLogin }) {
                         </div>
                     </div>
                     <h1 className="text-3xl font-bold text-white tracking-tight">학원 관리 시스템</h1>
-                    <p className="text-indigo-200 text-sm mt-2 font-medium">채수용 연구소 직원 전용</p>
+                    {/* 문구 변경: 직원 전용 -> 통합 로그인 */}
+                    <p className="text-indigo-200 text-sm mt-2 font-medium">학생 / 학부모 / 직원 통합 로그인</p>
                 </div>
 
-                {/* 로그인 폼 영역 */}
                 <form onSubmit={handleLogin} className="p-10 space-y-6">
+                    {/* ... (입력 필드 디자인은 기존 유지) ... */}
                     <div>
                         <label className="block text-sm font-bold text-gray-700 mb-2" htmlFor="username">
                             아이디
@@ -82,10 +95,10 @@ export default function LoginPage({ onLogin }) {
                     >
                         로그인
                     </button>
-
-                    <div className="text-center mt-4">
+                    
+                     <div className="text-center mt-4">
                         <p className="text-xs text-gray-400">
-                            문의사항은 관리자에게 연락바랍니다.
+                             학생/학부모 초기 비밀번호는 1234입니다.
                         </p>
                     </div>
                 </form>
