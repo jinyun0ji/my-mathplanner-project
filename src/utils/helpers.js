@@ -207,3 +207,20 @@ export const staffMembers = [
     { id: 'staff-4', name: '최선생', role: '강사' },
     { id: 'staff-5', name: '정조교', role: '조교' },
 ];
+
+// ✅ [추가] 유튜브 비디오 ID 추출
+export const getYouTubeId = (iframeCode) => {
+    if (!iframeCode) return null;
+    const srcMatch = iframeCode.match(/src="([^"]+)"/);
+    if (!srcMatch) return null;
+    const url = srcMatch[1];
+    const idMatch = url.match(/\/embed\/([^/?]+)/);
+    return idMatch ? idMatch[1] : null;
+};
+
+// ✅ [추가] 시간 포맷 (초 -> MM:SS)
+export const formatTime = (seconds) => {
+    const m = Math.floor(seconds / 60);
+    const s = Math.floor(seconds % 60);
+    return `${m}:${s < 10 ? '0' : ''}${s}`;
+};
