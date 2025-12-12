@@ -323,6 +323,7 @@ export default function App() {
     return <LoginPage onLogin={handleLoginSuccess} />;
   }
 
+  // ✅ [수정됨] StudentHome에 attendanceLogs 전달
   if (userRole === 'student') {
       return (
         <StudentHome 
@@ -330,13 +331,14 @@ export default function App() {
             students={students}
             classes={classes}
             homeworkAssignments={homeworkAssignments}
-            homeworkResults={homeworkResults} // ✅ [중요] 누락되었던 prop 추가!
+            homeworkResults={homeworkResults}
+            attendanceLogs={attendanceLogs} // ✅ 추가됨!
             notices={announcements}
             onLogout={() => setIsLoggedIn(false)}
         />
       );
   }
-
+  
   // userRole이 'staff' 이거나 null일 경우 관리자 화면 렌더링
   const managementProps = {
     students, classes, lessonLogs, attendanceLogs, workLogs, clinicLogs, 

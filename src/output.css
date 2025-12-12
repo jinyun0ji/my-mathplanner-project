@@ -518,6 +518,12 @@
 .translate-none {
   translate: none;
 }
+.scale-110 {
+  --tw-scale-x: 110%;
+  --tw-scale-y: 110%;
+  --tw-scale-z: 110%;
+  scale: var(--tw-scale-x) var(--tw-scale-y);
+}
 .scale-120 {
   --tw-scale-x: 120%;
   --tw-scale-y: 120%;
@@ -529,6 +535,9 @@
 }
 .scale-none {
   scale: none;
+}
+.rotate-180 {
+  rotate: 180deg;
 }
 .rotate-none {
   rotate: none;
@@ -683,6 +692,9 @@
 }
 .grid-cols-4 {
   grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.grid-cols-7 {
+  grid-template-columns: repeat(7, minmax(0, 1fr));
 }
 .grid-cols-10 {
   grid-template-columns: repeat(10, minmax(0, 1fr));

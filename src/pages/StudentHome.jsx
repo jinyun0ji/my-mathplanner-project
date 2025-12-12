@@ -1,9 +1,8 @@
 // src/pages/StudentHome.jsx
 import React, { useState, useMemo } from 'react';
-import { Icon } from '../utils/helpers'; 
-import { calculateHomeworkStats } from '../utils/helpers'; // 헬퍼 함수 활용
+import { Icon, calculateHomeworkStats } from '../utils/helpers'; 
 
-export default function StudentHome({ studentId, students, classes, homeworkAssignments, homeworkResults, onLogout }) {
+export default function StudentHome({ studentId, students, classes, homeworkAssignments, homeworkResults, attendanceLogs, onLogout }) {
     const [activeTab, setActiveTab] = useState('home');
 
     const student = students.find(s => s.id === studentId);
@@ -105,42 +104,159 @@ export default function StudentHome({ studentId, students, classes, homeworkAssi
         </div>
     );
 
-    // --- [2] 시간표 탭 (간단한 주간 뷰) ---
+    // --- [2] 시간표 탭 (캘린더 구현) ---
     const ScheduleTab = () => {
-        const weekDays = ['일', '월', '화', '수', '목', '금', '토'];
-        const today = new Date().getDay();
+        // 기본값을 '오늘'로 설정하되, 출석 데이터가 있는 11월로 이동하기 편하게 초기값 고정 가능
+        // 여기서는 현재 날짜로 유지 (테스트 시 달력을 11월로 이동해야 함)
+        const [currentDate, setCurrentDate] = useState(new Date()); 
+        const [selectedDate, setSelectedDate] = useState(new Date()); 
+
+        // 달력 생성 로직
+        const year = currentDate.getFullYear();
+        const month = currentDate.getMonth();
+        
+        const firstDayOfMonth = new Date(year, month, 1);
+        const lastDayOfMonth = new Date(year, month + 1, 0);
+        const startDayOfWeek = firstDayOfMonth.getDay(); 
+        const daysInMonth = lastDayOfMonth.getDate();
+
+        const calendarDays = [];
+        for (let i = 0; i < startDayOfWeek; i++) {
+            calendarDays.push(null);
+        }
+        for (let i = 1; i <= daysInMonth; i++) {
+            calendarDays.push(new Date(year, month, i));
+        }
+
+        const prevMonth = () => setCurrentDate(new Date(year, month - 1, 1));
+        const nextMonth = () => setCurrentDate(new Date(year, month + 1, 1));
+
+        // ✅ [중요 수정] 날짜 포맷팅 함수 수정 (UTC -> 로컬 시간)
+        // 기존 toISOString()은 한국 시간(KST)에서 하루 전 날짜로 변환되는 문제가 있었음
+        const formatDate = (date) => {
+            const y = date.getFullYear();
+            const m = String(date.getMonth() + 1).padStart(2, '0');
+            const d = String(date.getDate()).padStart(2, '0');
+            return `${y}-${m}-${d}`;
+        };
+
+        const getDayInfo = (date) => {
+            if (!date) return { hasClass: false, status: null };
+            const dateStr = formatDate(date);
+            const dayOfWeek = ['일', '월', '화', '수', '목', '금', '토'][date.getDay()];
+
+            // 1. 수업 있는지 확인
+            const dayClasses = myClasses.filter(cls => cls.schedule.days.includes(dayOfWeek));
+            
+            // 2. 출결 기록 확인
+            const logs = attendanceLogs ? attendanceLogs.filter(log => log.studentId === studentId && log.date === dateStr) : [];
+            
+            let status = null;
+            if (logs.length > 0) {
+                if (logs.some(l => l.status === '결석')) status = '결석';
+                else if (logs.some(l => l.status === '지각')) status = '지각';
+                else status = '출석';
+            }
+
+            return { hasClass: dayClasses.length > 0, status, classes: dayClasses };
+        };
+
+        const selectedDayInfo = getDayInfo(selectedDate);
 
         return (
-            <div className="space-y-6 animate-fade-in-up">
-                <h2 className="text-2xl font-bold text-gray-800">이번 주 시간표</h2>
-                
-                {/* 요일 헤더 */}
-                <div className="flex justify-between bg-white p-2 rounded-xl shadow-sm">
-                    {weekDays.map((day, index) => (
-                        <div key={day} className={`flex flex-col items-center p-2 rounded-lg flex-1 ${index === today ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-400'}`}>
-                            <span className="text-xs mb-1">{day}</span>
-                            <span className="font-bold">{new Date().getDate() + (index - today)}</span> 
-                        </div>
-                    ))}
+            <div className="space-y-6 animate-fade-in-up pb-20">
+                <div className="flex justify-between items-center mb-4">
+                    <h2 className="text-2xl font-bold text-gray-800">나의 일정</h2>
                 </div>
 
-                {/* 시간표 리스트 (단순화) */}
-                <div className="space-y-4">
-                    {myClasses.map((cls) => (
-                         <div key={cls.id} className="relative pl-6 border-l-2 border-indigo-200 py-2">
-                             <div className="absolute -left-[9px] top-3 w-4 h-4 rounded-full bg-indigo-500 ring-4 ring-indigo-100"></div>
-                             <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-                                 <div className="flex justify-between mb-1">
-                                     <span className="text-xs font-bold text-indigo-500 bg-indigo-50 px-2 py-1 rounded">수학</span>
-                                     <span className="text-xs text-gray-400">오후 4:00</span>
-                                 </div>
-                                 <h4 className="font-bold text-gray-800">{cls.name}</h4>
-                                 <p className="text-sm text-gray-500 mt-1">강의실: 301호</p>
-                             </div>
-                         </div>
-                    ))}
-                    {myClasses.length === 0 && (
-                        <div className="text-center py-10 text-gray-400">등록된 수업이 없습니다.</div>
+                <div className="bg-white rounded-3xl shadow-lg p-6 border border-gray-100">
+                    {/* 달력 헤더 */}
+                    <div className="flex justify-between items-center mb-6">
+                        <button onClick={prevMonth} className="p-2 hover:bg-gray-100 rounded-full text-gray-400">
+                            <Icon name="arrow-left" className="w-5 h-5" />
+                        </button>
+                        <h3 className="text-lg font-bold text-gray-800">
+                            {year}년 {month + 1}월
+                        </h3>
+                        <button onClick={nextMonth} className="p-2 hover:bg-gray-100 rounded-full text-gray-400 transform rotate-180">
+                            <Icon name="arrow-left" className="w-5 h-5" />
+                        </button>
+                    </div>
+
+                    <div className="grid grid-cols-7 mb-2 text-center">
+                        {['일', '월', '화', '수', '목', '금', '토'].map((day, i) => (
+                            <div key={day} className={`text-xs font-bold ${i === 0 ? 'text-red-400' : 'text-gray-400'}`}>
+                                {day}
+                            </div>
+                        ))}
+                    </div>
+
+                    <div className="grid grid-cols-7 gap-y-4 gap-x-1">
+                        {calendarDays.map((date, index) => {
+                            if (!date) return <div key={index}></div>;
+                            
+                            const { hasClass, status } = getDayInfo(date);
+                            const isSelected = selectedDate && formatDate(date) === formatDate(selectedDate);
+                            const isToday = formatDate(date) === formatDate(new Date());
+
+                            return (
+                                <div key={index} className="flex flex-col items-center cursor-pointer" onClick={() => setSelectedDate(date)}>
+                                    <div className={`
+                                        w-8 h-8 flex items-center justify-center rounded-full text-sm font-medium transition-all
+                                        ${isSelected ? 'bg-indigo-600 text-white shadow-md scale-110' : ''}
+                                        ${!isSelected && isToday ? 'text-indigo-600 font-bold bg-indigo-50' : ''}
+                                        ${!isSelected && !isToday ? 'text-gray-700 hover:bg-gray-50' : ''}
+                                    `}>
+                                        {date.getDate()}
+                                    </div>
+                                    <div className="h-1.5 mt-1 flex gap-0.5">
+                                        {status === '출석' && <div className="w-1.5 h-1.5 rounded-full bg-green-500"></div>}
+                                        {status === '지각' && <div className="w-1.5 h-1.5 rounded-full bg-yellow-400"></div>}
+                                        {status === '결석' && <div className="w-1.5 h-1.5 rounded-full bg-red-500"></div>}
+                                        {!status && hasClass && <div className="w-1.5 h-1.5 rounded-full bg-gray-300"></div>}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+
+                <div className="space-y-3">
+                    <h3 className="text-sm font-bold text-gray-500 ml-1">
+                        {selectedDate.getMonth() + 1}월 {selectedDate.getDate()}일 일정
+                    </h3>
+                    
+                    {selectedDayInfo.classes.length > 0 ? (
+                        selectedDayInfo.classes.map((cls) => {
+                            const log = attendanceLogs ? attendanceLogs.find(l => l.studentId === studentId && l.classId === cls.id && l.date === formatDate(selectedDate)) : null;
+                            
+                            return (
+                                <div key={cls.id} className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex justify-between items-center">
+                                    <div className="flex gap-4 items-center">
+                                        <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-lg font-bold
+                                            ${log?.status === '출석' ? 'bg-green-100 text-green-600' : 
+                                              log?.status === '지각' ? 'bg-yellow-100 text-yellow-600' : 
+                                              log?.status === '결석' ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-500'}
+                                        `}>
+                                            {log ? (log.status === '출석' ? 'O' : log.status === '지각' ? '△' : 'X') : '-'}
+                                        </div>
+                                        <div>
+                                            <h4 className="font-bold text-gray-800">{cls.name}</h4>
+                                            <p className="text-sm text-gray-400">
+                                                {log ? <span className={`font-medium ${
+                                                    log.status === '출석' ? 'text-green-500' : 
+                                                    log.status === '지각' ? 'text-yellow-500' : 'text-red-500'
+                                                }`}>{log.status}</span> : '출결 정보 없음'}
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })
+                    ) : (
+                         <div className="bg-gray-50 p-6 rounded-2xl text-center text-gray-400 border border-dashed border-gray-200">
+                            예정된 수업이 없습니다.
+                        </div>
                     )}
                 </div>
             </div>
@@ -173,7 +289,6 @@ export default function StudentHome({ studentId, students, classes, homeworkAssi
                         <h4 className="font-bold text-gray-800 mb-1">{hw.content}</h4>
                         <p className="text-sm text-gray-500 mb-4">{hw.book} (총 {hw.totalQuestions}문제)</p>
                         
-                        {/* 진행률 바 */}
                         <div className="w-full bg-gray-100 rounded-full h-2 mb-2">
                             <div className="bg-indigo-500 h-2 rounded-full transition-all duration-500" style={{ width: `${hw.completionRate}%` }}></div>
                         </div>
@@ -196,7 +311,6 @@ export default function StudentHome({ studentId, students, classes, homeworkAssi
     const MenuTab = () => (
         <div className="space-y-6 animate-fade-in-up">
             <h2 className="text-2xl font-bold text-gray-800">메뉴</h2>
-            
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
                 <button className="w-full p-4 flex items-center justify-between border-b border-gray-50 hover:bg-gray-50">
                     <div className="flex items-center gap-3">
@@ -213,7 +327,6 @@ export default function StudentHome({ studentId, students, classes, homeworkAssi
                     <Icon name="chevronRight" className="w-4 h-4 text-gray-400" />
                 </button>
             </div>
-
             <button 
                 onClick={onLogout} 
                 className="w-full bg-red-50 text-red-600 p-4 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-red-100 transition-colors"
@@ -227,7 +340,6 @@ export default function StudentHome({ studentId, students, classes, homeworkAssi
     // --- 메인 렌더링 ---
     return (
         <div className="flex flex-col h-screen bg-gray-50 max-w-md mx-auto shadow-2xl relative overflow-hidden">
-            {/* 상단 헤더 */}
             <header className="bg-white px-6 py-4 flex justify-between items-center sticky top-0 z-20 shadow-sm/50">
                 <h1 className="text-lg font-extrabold text-indigo-900 tracking-tight">MATH PLANNER</h1>
                 <button className="relative p-1">
@@ -236,7 +348,6 @@ export default function StudentHome({ studentId, students, classes, homeworkAssi
                 </button>
             </header>
 
-            {/* 메인 콘텐츠 */}
             <main className="flex-1 overflow-y-auto p-6 pb-28 scrollbar-hide bg-gray-50">
                 {activeTab === 'home' && <DashboardTab />}
                 {activeTab === 'schedule' && <ScheduleTab />}
@@ -244,18 +355,14 @@ export default function StudentHome({ studentId, students, classes, homeworkAssi
                 {activeTab === 'menu' && <MenuTab />}
             </main>
 
-            {/* 하단 탭 내비게이션 */}
             <nav className="bg-white border-t border-gray-100 absolute bottom-0 w-full px-6 py-2 pb-6 flex justify-between items-center rounded-t-3xl shadow-[0_-4px_20px_-5px_rgba(0,0,0,0.1)] z-30">
                 <NavButton icon="home" label="홈" isActive={activeTab === 'home'} onClick={() => setActiveTab('home')} />
                 <NavButton icon="calendar" label="시간표" isActive={activeTab === 'schedule'} onClick={() => setActiveTab('schedule')} />
-                
-                {/* 중앙 플로팅 버튼 (질문/상담 등) */}
                 <div className="relative -top-8">
                     <button className="bg-indigo-600 p-4 rounded-full shadow-lg shadow-indigo-300 text-white transform transition-transform active:scale-95 hover:bg-indigo-700 ring-4 ring-gray-50">
                         <Icon name="plus" className="w-7 h-7" />
                     </button>
                 </div>
-
                 <NavButton icon="fileText" label="과제" isActive={activeTab === 'homework'} onClick={() => setActiveTab('homework')} />
                 <NavButton icon="menu" label="메뉴" isActive={activeTab === 'menu'} onClick={() => setActiveTab('menu')} />
             </nav>
@@ -263,7 +370,6 @@ export default function StudentHome({ studentId, students, classes, homeworkAssi
     );
 }
 
-// 하단 탭 버튼 컴포넌트
 const NavButton = ({ icon, label, isActive, onClick }) => (
     <button 
         onClick={onClick}
