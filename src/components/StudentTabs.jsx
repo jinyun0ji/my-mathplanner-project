@@ -589,3 +589,138 @@ export const MenuTab = ({ onLogout }) => (
         <button onClick={onLogout} className="w-full bg-brand-red/10 text-brand-red p-4 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-brand-red/20 transition-colors"><Icon name="logOut" className="w-5 h-5" />로그아웃</button>
     </div>
 );
+
+// 6. 게시판 탭
+export const BoardTab = ({ notices }) => {
+    const [selectedNotice, setSelectedNotice] = useState(null);
+
+    const pinnedNotices = notices.filter(n => n.isPinned);
+    const allNotices = [...notices].sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    return (
+        <div className="space-y-6 animate-fade-in-up pb-20">
+            <div className="flex justify-between items-end px-1">
+                <h2 className="text-2xl font-bold text-brand-black">게시판</h2>
+                <span className="text-xs text-brand-gray mb-1">총 {allNotices.length}개의 글</span>
+            </div>
+
+            {/* 1. 상단 필독 게시글 */}
+            {pinnedNotices.length > 0 && (
+                <div className="space-y-3">
+                    <h3 className="text-sm font-bold text-brand-red flex items-center gap-1 px-1">
+                        <Icon name="pin" className="w-4 h-4" /> 중요 공지
+                    </h3>
+                    
+                    <div className="flex overflow-x-auto gap-4 pb-4 -mx-4 px-4 snap-x snap-mandatory scrollbar-hide">
+                        {pinnedNotices.map((notice) => (
+                            <div 
+                                key={notice.id}
+                                onClick={() => setSelectedNotice(notice)}
+                                // ✅ [수정] 연한 파란색 배경 (bg-brand-light/20) 및 테두리 조정
+                                className="snap-center shrink-0 w-[85%] md:w-[320px] bg-brand-light/20 border border-brand-light/50 p-5 rounded-2xl shadow-sm hover:shadow-md flex flex-col justify-between h-40 cursor-pointer transition-transform active:scale-[0.98]"
+                            >
+                                <div>
+                                    <div className="flex justify-between items-start mb-2">
+                                        <span className="bg-brand-red text-white text-xs px-2 py-0.5 rounded font-bold shadow-sm flex items-center gap-1">
+                                            <Icon name="alert" className="w-3 h-3" /> 필독
+                                        </span>
+                                        {/* 텍스트 색상을 브랜드 다크로 변경하여 가독성 확보 */}
+                                        <span className="text-xs text-brand-dark/70 font-medium">{notice.date}</span>
+                                    </div>
+                                    <h4 className="font-bold text-lg text-brand-dark leading-tight line-clamp-2 mt-2">{notice.title}</h4>
+                                </div>
+                                <div className="flex justify-between items-end">
+                                    <span className="text-xs text-brand-dark/70 font-bold bg-white/50 px-2 py-1 rounded">
+                                        작성자: {notice.author}
+                                    </span>
+                                    <div className="bg-white/50 p-1.5 rounded-full text-brand-main">
+                                        <Icon name="chevronRight" className="w-4 h-4" />
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {/* 2. 전체 게시글 (리스트) */}
+            <div className="space-y-3">
+                <h3 className="text-sm font-bold text-brand-black px-1">전체 글</h3>
+                <div className="space-y-3">
+                    {allNotices.length > 0 ? allNotices.map((notice) => (
+                        <div 
+                            key={notice.id} 
+                            onClick={() => setSelectedNotice(notice)}
+                            className="bg-white p-4 rounded-2xl border border-brand-gray/20 shadow-sm flex justify-between items-center cursor-pointer hover:bg-brand-bg transition-colors active:scale-[0.99]"
+                        >
+                            <div className="flex-1 min-w-0 pr-4">
+                                <div className="flex items-center gap-2 mb-1">
+                                    {notice.isPinned && <Icon name="pin" className="w-3 h-3 text-brand-red shrink-0" />}
+                                    <h4 className={`text-sm font-bold truncate ${notice.isPinned ? 'text-brand-black' : 'text-brand-black'}`}>
+                                        {notice.title}
+                                    </h4>
+                                </div>
+                                <div className="flex items-center gap-2 text-xs text-brand-gray">
+                                    <span>{notice.author}</span>
+                                    <span className="w-0.5 h-2 bg-brand-gray/30"></span>
+                                    <span>{notice.date}</span>
+                                </div>
+                            </div>
+                            <Icon name="chevronRight" className="w-4 h-4 text-brand-gray/50 shrink-0" />
+                        </div>
+                    )) : (
+                        <div className="text-center py-10 text-brand-gray bg-white rounded-2xl border border-dashed border-brand-gray/30">
+                            등록된 게시글이 없습니다.
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {/* 3. 게시글 상세 모달 */}
+            {selectedNotice && (
+                <div className="fixed inset-0 z-[70] bg-black/50 flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => setSelectedNotice(null)}>
+                    <div className="bg-white rounded-2xl w-full max-w-lg p-6 shadow-2xl animate-fade-in-up max-h-[80vh] overflow-y-auto custom-scrollbar relative" onClick={e => e.stopPropagation()}>
+                        <button 
+                            onClick={() => setSelectedNotice(null)}
+                            className="absolute top-4 right-4 p-2 text-brand-gray hover:text-brand-black rounded-full hover:bg-brand-bg"
+                        >
+                            <Icon name="x" className="w-6 h-6" />
+                        </button>
+
+                        <div className="mb-4 pr-8">
+                            <div className="flex items-center gap-2 mb-2">
+                                <span className="text-xs font-bold text-white bg-brand-main px-2 py-1 rounded-full">
+                                    {selectedNotice.author}
+                                </span>
+                                <span className="text-xs text-brand-gray">
+                                    {selectedNotice.date}
+                                </span>
+                            </div>
+                            <h3 className="text-xl font-bold text-brand-black leading-tight">
+                                {selectedNotice.title}
+                            </h3>
+                        </div>
+
+                        <div className="prose prose-sm max-w-none text-gray-800 leading-relaxed border-t border-brand-gray/20 pt-4 min-h-[100px]">
+                            <div dangerouslySetInnerHTML={{ __html: selectedNotice.content }} />
+                        </div>
+
+                        {selectedNotice.attachments && selectedNotice.attachments.length > 0 && (
+                            <div className="mt-6 pt-4 border-t border-brand-gray/20">
+                                <p className="text-xs font-bold text-brand-gray mb-2">첨부파일</p>
+                                <div className="flex flex-wrap gap-2">
+                                    {selectedNotice.attachments.map((file, idx) => (
+                                        <button key={idx} className="flex items-center gap-2 bg-brand-bg px-3 py-2 rounded-lg text-sm text-brand-main hover:bg-brand-main/10 transition-colors">
+                                            <Icon name="fileText" className="w-4 h-4" />
+                                            {file}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};

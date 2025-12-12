@@ -7,9 +7,11 @@ export default function StudentMessenger({
     teacherName = "채수용 선생님", 
     messages = [], 
     onSendMessage,
-    isHidden = false 
+    isHidden = false,
+    bottomPosition = "bottom-24" // ✅ 기본값은 유지하되 변경 가능하도록
 }) {
     const [isOpen, setIsOpen] = useState(false);
+    // ... (기존 state 및 useEffect 유지)
     const [inputText, setInputText] = useState('');
     const messagesEndRef = useRef(null);
 
@@ -31,8 +33,9 @@ export default function StudentMessenger({
 
     return (
         <>
-            {/* 플로팅 버튼 - 스케일 애니메이션 적용 */}
-            <div className={`fixed bottom-24 right-5 z-[60] transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${isHidden ? 'scale-0 opacity-0 pointer-events-none' : 'scale-100 opacity-100'}`}>
+            {/* 플로팅 버튼 */}
+            {/* ✅ bottomPosition 적용 */}
+            <div className={`fixed ${bottomPosition} right-5 z-[60] transition-all duration-700 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${isHidden ? 'scale-0 opacity-0 pointer-events-none' : 'scale-100 opacity-100'}`}>
                 {!isOpen && (
                     <button 
                         onClick={toggleMessenger}
@@ -43,21 +46,19 @@ export default function StudentMessenger({
                 )}
             </div>
 
-            {/* 메신저 패널 */}
+            {/* 메신저 패널 (기존과 동일) */}
             <div className={`fixed inset-0 z-[70] overflow-hidden pointer-events-none`}>
-                {/* 배경 오버레이 */}
                 <div 
-                    className={`absolute inset-0 bg-black/40 transition-opacity duration-500 ease-in-out pointer-events-auto ${isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} 
+                    className={`absolute inset-0 bg-black/40 transition-opacity duration-700 ease-in-out pointer-events-auto ${isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} 
                     onClick={toggleMessenger}
                 />
 
-                {/* 패널 - 쫀득한 슬라이드 애니메이션 */}
                 <div 
                     className={`absolute top-0 right-0 h-full w-full md:w-96 max-w-full bg-brand-bg shadow-2xl pointer-events-auto flex flex-col 
-                    transform transition-transform duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]
+                    transform transition-transform duration-700 ease-[cubic-bezier(0.32,0.72,0,1)]
                     ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}
                 >
-                    
+                    {/* ... (헤더, 메시지 리스트, 입력창 코드는 기존과 동일하게 유지) ... */}
                     <div className="bg-white px-4 py-3 flex justify-between items-center border-b border-brand-gray/30 shadow-sm shrink-0">
                         <div className="flex items-center gap-3">
                             <div className="w-10 h-10 rounded-full bg-brand-light/30 flex items-center justify-center text-brand-dark font-bold">
@@ -77,27 +78,25 @@ export default function StudentMessenger({
                     </div>
 
                     <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-brand-bg custom-scrollbar">
-                        {messages.length > 0 ? (
-                            messages.map((msg) => (
-                                <div key={msg.id} className={`flex ${msg.isMe ? 'justify-end' : 'justify-start'}`}>
-                                    {!msg.isMe && (
-                                        <div className="w-8 h-8 rounded-full bg-brand-light/30 flex items-center justify-center text-[10px] text-brand-dark font-bold mr-2 shrink-0 mt-1">
-                                            {msg.sender[0]}
-                                        </div>
-                                    )}
-                                    <div className={`max-w-[75%] px-4 py-2 rounded-2xl text-sm leading-relaxed shadow-sm ${
-                                        msg.isMe 
-                                        ? 'bg-brand-main text-white rounded-tr-none' 
-                                        : 'bg-white text-brand-black rounded-tl-none border border-brand-gray/30'
-                                    }`}>
-                                        {msg.text}
-                                        <p className={`text-[10px] mt-1 text-right ${msg.isMe ? 'text-white/70' : 'text-brand-gray'}`}>
-                                            {msg.time}
-                                        </p>
+                        {messages.length > 0 ? messages.map((msg) => (
+                            <div key={msg.id} className={`flex ${msg.isMe ? 'justify-end' : 'justify-start'}`}>
+                                {!msg.isMe && (
+                                    <div className="w-8 h-8 rounded-full bg-brand-light/30 flex items-center justify-center text-[10px] text-brand-dark font-bold mr-2 shrink-0 mt-1">
+                                        {msg.sender[0]}
                                     </div>
+                                )}
+                                <div className={`max-w-[75%] px-4 py-2 rounded-2xl text-sm leading-relaxed shadow-sm ${
+                                    msg.isMe 
+                                    ? 'bg-brand-main text-white rounded-tr-none' 
+                                    : 'bg-white text-brand-black rounded-tl-none border border-brand-gray/30'
+                                }`}>
+                                    {msg.text}
+                                    <p className={`text-[10px] mt-1 text-right ${msg.isMe ? 'text-white/70' : 'text-brand-gray'}`}>
+                                        {msg.time}
+                                    </p>
                                 </div>
-                            ))
-                        ) : (
+                            </div>
+                        )) : (
                             <div className="text-center py-10 text-brand-gray text-xs">
                                 <p>궁금한 점이 있다면<br/>언제든 선생님께 물어보세요! 👋</p>
                             </div>

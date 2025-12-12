@@ -9,19 +9,21 @@ export default function StudentHeader({ onLogout }) {
                 <div className="bg-brand-dark text-white p-1.5 rounded-lg">
                     <Icon name="school" className="w-5 h-5" />
                 </div>
-                {/* 브랜드 컬러(#0001AE)와 굵은 폰트로 로고 강조 */}
                 <h1 className="text-lg font-extrabold tracking-tight text-brand-dark">
                     채수용 수학
                 </h1>
             </div>
             
-            <button 
-                onClick={onLogout}
-                className="text-brand-gray hover:text-brand-red transition-colors p-2 rounded-full hover:bg-brand-bg"
-                title="로그아웃"
-            >
-                <Icon name="logOut" className="w-5 h-5" />
-            </button>
+            <div className="flex items-center gap-1">
+                {/* 알림 버튼 제거됨 (플로팅 버튼으로 이동) */}
+                <button 
+                    onClick={onLogout}
+                    className="text-brand-gray hover:text-brand-red transition-colors p-2 rounded-full hover:bg-brand-bg"
+                    title="로그아웃"
+                >
+                    <Icon name="logOut" className="w-6 h-6" />
+                </button>
+            </div>
         </header>
     );
 }

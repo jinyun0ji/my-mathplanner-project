@@ -1,15 +1,17 @@
 // src/pages/StudentHome.jsx
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
     DashboardTab, 
     ScheduleTab, 
     HomeworkTab, 
     GradesTab, 
-    MenuTab 
+    MenuTab,
+    BoardTab
 } from '../components/StudentTabs';
 import ClassroomView from './student/ClassroomView';
 import StudentMessenger from '../components/StudentMessenger';
 import StudentHeader from '../components/StudentHeader';
+import StudentNotifications from '../components/StudentNotifications';
 import { Icon, calculateHomeworkStats, calculateGradeComparison } from '../utils/helpers';
 
 export default function StudentHome({ 
@@ -21,10 +23,35 @@ export default function StudentHome({
 }) {
     const [activeTab, setActiveTab] = useState('home');
     const [selectedClassId, setSelectedClassId] = useState(null);
-
-    // ✅ [추가] 영상 모달이 열려있는지 확인하는 상태
     const [isVideoModalOpen, setIsVideoModalOpen] = useState(false);
+    
+    // 알림 관련 상태
+    const [isNotificationOpen, setIsNotificationOpen] = useState(false);
+    const [visibleNotices, setVisibleNotices] = useState(notices); 
+    const [hasNewNotifications, setHasNewNotifications] = useState(false);
 
+    useEffect(() => {
+        setVisibleNotices(notices);
+        if (notices.length > 0) setHasNewNotifications(true);
+    }, [notices]);
+
+    const handleOpenNotification = () => {
+        setIsNotificationOpen(true);
+        setHasNewNotifications(false);
+    };
+
+    // ✅ [추가] 알림 클릭 시 게시판으로 이동
+    const handleLinkToBoard = () => {
+        setActiveTab('board');      // 게시판 탭 활성화
+        setIsNotificationOpen(false); // 알림 패널 닫기
+    };
+
+    // 알림 삭제 (게시글은 유지되고, 내 알림함에서만 사라짐)
+    const handleDeleteNotice = (id) => {
+        setVisibleNotices(prev => prev.filter(n => n.id !== id));
+    };
+
+    // ... (데이터 가공 로직 기존 유지)
     const student = students.find(s => s.id === studentId);
     const myClasses = classes.filter(c => c.students.includes(studentId));
     
@@ -42,6 +69,7 @@ export default function StudentHome({
         { id: 'home', icon: 'home', label: '홈' },
         { id: 'schedule', icon: 'calendar', label: '일정' },
         { id: 'homework', icon: 'clipboardCheck', label: '과제' },
+        { id: 'board', icon: 'list', label: '게시판' },
         { id: 'grades', icon: 'barChart', label: '성적' },
         { id: 'menu', icon: 'menu', label: '메뉴' },
     ];
@@ -64,8 +92,6 @@ export default function StudentHome({
                         onSaveVideoProgress={onSaveVideoProgress}
                         videoBookmarks={videoBookmarks}
                         onSaveBookmark={onSaveBookmark}
-
-                        // ✅ [추가] 모달 상태 변경 함수 전달
                         onVideoModalChange={setIsVideoModalOpen}
                     />
                 ) : (
@@ -79,26 +105,25 @@ export default function StudentHome({
                                 setSelectedClassId={setSelectedClassId}
                             />
                         )}
-                        
                         {activeTab === 'schedule' && (
                             <ScheduleTab 
-                                myClasses={myClasses}
-                                externalSchedules={externalSchedules}
-                                attendanceLogs={attendanceLogs}
-                                studentId={studentId}
-                                onSaveExternalSchedule={onSaveExternalSchedule}
-                                onDeleteExternalSchedule={onDeleteExternalSchedule}
+                                myClasses={myClasses} 
+                                externalSchedules={externalSchedules} 
+                                attendanceLogs={attendanceLogs} 
+                                studentId={studentId} 
+                                onSaveExternalSchedule={onSaveExternalSchedule} 
+                                onDeleteExternalSchedule={onDeleteExternalSchedule} 
                             />
                         )}
-
                         {activeTab === 'homework' && (
                             <HomeworkTab myHomeworkStats={myHomeworkStats} />
                         )}
-
+                        {activeTab === 'board' && (
+                            <BoardTab notices={visibleNotices} />
+                        )}
                         {activeTab === 'grades' && (
                             <GradesTab myGradeComparison={myGradeComparison} />
                         )}
-
                         {activeTab === 'menu' && (
                             <MenuTab onLogout={onLogout} />
                         )}
@@ -108,12 +133,12 @@ export default function StudentHome({
 
             {!selectedClassId && (
                 <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-brand-gray/20 z-40 pb-safe shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
-                    <div className="max-w-md mx-auto flex justify-around items-center py-2 px-2">
+                    <div className="max-w-lg mx-auto flex justify-around items-center py-2 px-2">
                         {navItems.map(item => (
                             <button 
                                 key={item.id}
                                 onClick={() => setActiveTab(item.id)}
-                                className={`flex flex-col items-center p-2 rounded-xl transition-all duration-200 w-16 group ${
+                                className={`flex flex-col items-center p-2 rounded-xl transition-all duration-200 w-14 group ${
                                     activeTab === item.id 
                                     ? 'text-brand-main' 
                                     : 'text-brand-gray hover:text-brand-black'
@@ -135,13 +160,33 @@ export default function StudentHome({
                 </div>
             )}
 
-            {/* ✅ [수정] isHidden prop 전달 */}
+            <div className={`fixed bottom-24 right-5 z-[60] transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${isVideoModalOpen ? 'scale-0 opacity-0 pointer-events-none' : 'scale-100 opacity-100'}`}>
+                <button 
+                    onClick={handleOpenNotification}
+                    className="relative bg-white text-brand-main border border-brand-gray/20 p-3.5 rounded-full shadow-lg hover:bg-gray-50 transition-transform active:scale-90 flex items-center justify-center"
+                >
+                    <Icon name="bell" className="w-6 h-6" />
+                    {hasNewNotifications && (
+                        <span className="absolute top-0 right-0 w-3 h-3 bg-brand-red rounded-full ring-2 ring-white"></span>
+                    )}
+                </button>
+            </div>
+
             <StudentMessenger 
                 studentId={studentId}
                 teacherName="채수용 선생님"
                 messages={messages}
                 onSendMessage={onSendMessage}
-                isHidden={isVideoModalOpen} // 영상 볼 때는 숨김
+                isHidden={isVideoModalOpen}
+                bottomPosition="bottom-40" 
+            />
+
+            <StudentNotifications 
+                isOpen={isNotificationOpen}
+                onClose={() => setIsNotificationOpen(false)}
+                notices={visibleNotices}
+                onDelete={handleDeleteNotice}
+                onNoticeClick={handleLinkToBoard} // ✅ 함수 전달
             />
         </div>
     );

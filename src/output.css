@@ -202,6 +202,12 @@
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
 }
+.line-clamp-3 {
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
 .line-clamp-none {
   overflow: visible;
   display: block;
@@ -329,6 +335,9 @@
 .max-h-\[70vh\] {
   max-height: 70vh;
 }
+.max-h-\[80vh\] {
+  max-height: 80vh;
+}
 .max-h-\[90vh\] {
   max-height: 90vh;
 }
@@ -355,6 +364,9 @@
 }
 .min-h-\[80vh\] {
   min-height: 80vh;
+}
+.min-h-\[100px\] {
+  min-height: 100px;
 }
 .min-h-\[140px\] {
   min-height: 140px;
@@ -394,6 +406,9 @@
 }
 .w-\[2px\] {
   width: 2px;
+}
+.w-\[85\%\] {
+  width: 85%;
 }
 .w-\[100px\] {
   width: 100px;
@@ -669,6 +684,9 @@
 }
 .snap-none {
   scroll-snap-type: none;
+}
+.snap-x {
+  scroll-snap-type: x var(--tw-scroll-snap-strictness);
 }
 .snap-mandatory {
   --tw-scroll-snap-strictness: mandatory;
@@ -1908,6 +1926,9 @@
 .opacity-70 {
   opacity: 70%;
 }
+.opacity-80 {
+  opacity: 80%;
+}
 .opacity-100 {
   opacity: 100%;
 }
@@ -2085,6 +2106,14 @@
 .duration-500 {
   --tw-duration: 500ms;
   transition-duration: 500ms;
+}
+.duration-700 {
+  --tw-duration: 700ms;
+  transition-duration: 700ms;
+}
+.duration-1000 {
+  --tw-duration: 1000ms;
+  transition-duration: 1000ms;
 }
 .ease-\[cubic-bezier\(0\.02\,0\.72\,0\,1\)\] {
   --tw-ease: cubic-bezier(0.02,0.72,0,1);
@@ -2473,6 +2502,11 @@
 .active\:scale-\[0\.98\] {
   &:active {
     scale: 0.98;
+  }
+}
+.active\:scale-\[0\.99\] {
+  &:active {
+    scale: 0.99;
   }
 }
 .disabled\:pointer-events-none {
