@@ -21,7 +21,7 @@ import {
 } from './utils/helpers'; 
 
 import LoginPage from './pages/LoginPage';
-import StudentHome from './pages/StudentHome'; // 학생용 페이지
+import StudentHome from './pages/StudentHome'; 
 import Sidebar from './layout/Sidebar';
 import Header from './layout/Header';
 import NotificationPanel from './layout/NotificationPanel';
@@ -86,7 +86,7 @@ export default function App() {
   const [isGlobalDirty, setIsGlobalDirty] = useState(false);
   const [studentSearchTerm, setStudentSearchTerm] = useState('');
 
-  // --- 중앙 상태 관리 (임시 데이터) ---
+  // --- 중앙 상태 관리 ---
   const [students, setStudents] = useState(initialStudents);
   const [classes, setClasses] = useState(initialClasses);
   const [lessonLogs, setLessonLogs] = useState(initialLessonLogs);
@@ -103,28 +103,25 @@ export default function App() {
   
   const nextStudentId = students.reduce((max, s) => Math.max(max, s.id), 0) + 1; 
   
-  // ✅ 사이드바(알림) 및 메신저 상태 관리
+  // 사이드바(알림) 및 메신저 상태
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [hasNewNotifications, setHasNewNotifications] = useState(true);
-  
   const [isMessengerOpen, setIsMessengerOpen] = useState(false); 
   const [hasNewMessages, setHasNewMessages] = useState(true); 
 
-  // 알림 토글 (메신저가 열려있으면 닫음)
   const toggleSidebar = () => {
     setIsSidebarOpen(prev => !prev);
     if (!isSidebarOpen) { 
         setHasNewNotifications(false); 
-        setIsMessengerOpen(false); // 메신저 닫기
+        setIsMessengerOpen(false); 
     }
   };
 
-  // 메신저 토글 (알림이 열려있으면 닫음)
   const toggleMessenger = () => {
     setIsMessengerOpen(prev => !prev);
     if (!isMessengerOpen) {
         setHasNewMessages(false);
-        setIsSidebarOpen(false); // 알림 닫기
+        setIsSidebarOpen(false); 
     }
   };
 
@@ -140,9 +137,7 @@ export default function App() {
         };
         handleAuth();
         const unsubscribe = onAuthStateChanged(auth, (user) => {
-            if (user) { 
-                setUserId(user.uid); 
-            } 
+            if (user) { setUserId(user.uid); } 
         });
         return () => unsubscribe();
     } 
@@ -163,7 +158,7 @@ export default function App() {
         setNotifications(prev => [{ id: Date.now(), type, message, details, timestamp: new Date().toLocaleTimeString('ko-KR') }, ...prev]);
     }, []);
 
-  // ... (CRUD 함수들은 기존과 동일) ...
+  // ... (기존 CRUD 함수들) ...
   const handleSaveClass = (classData, isEdit) => {
     setClasses(prev => isEdit ? prev.map(c => c.id === classData.id ? { ...c, ...classData } : c) : [...prev, { ...classData, id: prev.reduce((max, c) => Math.max(max, c.id), 0) + 1, students: [] }]);
     if(!isEdit) logNotification('success', '클래스 등록 성공', `${classData.name} 클래스가 새로 등록되었습니다.`);
@@ -287,6 +282,17 @@ export default function App() {
   };
   const handleDeleteClinicLog = (id) => setClinicLogs(prev => prev.filter(log => log.id !== id));
   
+  // ✅ [추가] 수강률 저장 핸들러
+  const handleSaveVideoProgress = (studentId, lessonId, progress) => {
+      setVideoProgress(prev => ({
+          ...prev,
+          [studentId]: {
+              ...(prev[studentId] || {}),
+              [lessonId]: Math.max((prev[studentId]?.[lessonId] || 0), progress)
+          }
+      }));
+  };
+
   const handlePageChange = (newPage, studentId = null, resetSearch = false) => {
     if (isGlobalDirty) {
         if (!window.confirm('저장되지 않은 변경사항이 있습니다. 정말 이동하시겠습니까?\n(이동 시 변경사항은 사라집니다)')) {
@@ -306,24 +312,20 @@ export default function App() {
     setPage(newPage);
   }
 
-  // ✅ [중요] 함수 정의 위치 수정 (if문보다 위로)
   const handleLoginSuccess = (role, id) => {
     setIsLoggedIn(true);
     setUserRole(role);
     setUserId(id);
-    
-    // 학생으로 로그인 시 본인 ID 선택 상태로 설정
     if (role === 'student') {
         setSelectedStudentId(id);
     }
   };
 
-  // ✅ [수정] 조건부 렌더링
   if (!isLoggedIn) {
     return <LoginPage onLogin={handleLoginSuccess} />;
   }
 
-  // ✅ [수정] 학생용 컴포넌트에 tests, grades 데이터 전달 추가
+  // ✅ [수정] 학생용 컴포넌트에 props 전달 (videoProgress, onSaveVideoProgress 포함)
   if (userRole === 'student') {
       return (
         <StudentHome 
@@ -333,16 +335,17 @@ export default function App() {
             homeworkAssignments={homeworkAssignments}
             homeworkResults={homeworkResults}
             attendanceLogs={attendanceLogs}
+            lessonLogs={lessonLogs}
             notices={announcements}
-            // 👇 성적 관련 데이터 추가됨
             tests={tests}
             grades={grades}
+            videoProgress={videoProgress} // ✅ 전달
+            onSaveVideoProgress={handleSaveVideoProgress} // ✅ 전달
             onLogout={() => setIsLoggedIn(false)}
         />
       );
   }
 
-  // userRole이 'staff' 이거나 null일 경우 관리자 화면 렌더링
   const managementProps = {
     students, classes, lessonLogs, attendanceLogs, workLogs, clinicLogs, 
     homeworkAssignments, homeworkResults, tests, grades, studentMemos, videoProgress, announcements, 
