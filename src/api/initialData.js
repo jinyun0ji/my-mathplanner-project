@@ -153,9 +153,9 @@ export const initialGrades = {
 };
 
 export const initialVideoProgress = {
-    // 1: { 1: 85 }, 
-    4: { 1: 100 }, 
-    6: { 3: 50 } 
+    // 1: { 1: 85 },
+    4: { 1: { percent: 100, seconds: 0 } }, 
+    6: { 3: { percent: 50, seconds: 1800 } } // 예: 50% 진행, 1800초(30분) 지점
 };
 
 export const initialClinicLogs = [

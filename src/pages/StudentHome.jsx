@@ -13,7 +13,7 @@ const getYouTubeId = (iframeCode) => {
 };
 
 // 유튜브 플레이어 컴포넌트
-const YouTubePlayer = ({ videoId, initialProgress, onProgressUpdate }) => {
+const YouTubePlayer = ({ videoId, initialProgress, initialSeconds, onProgressUpdate }) => {
     const playerRef = useRef(null);
     const containerRef = useRef(null);
     const intervalRef = useRef(null);
@@ -46,14 +46,18 @@ const YouTubePlayer = ({ videoId, initialProgress, onProgressUpdate }) => {
                 events: {
                     onReady: (event) => {
                         const duration = event.target.getDuration();
+                        
+                        // 1. 기존 수강률(%) 복원
                         if (initialProgress > 0 && duration > 0) {
                             const watchedSeconds = Math.floor(duration * (initialProgress / 100));
                             for (let i = 0; i <= watchedSeconds; i++) {
                                 watchedSet.current.add(i);
                             }
-                            if (initialProgress < 100) {
-                                event.target.seekTo(watchedSeconds, true);
-                            }
+                        }
+
+                        // 2. 마지막 시청 위치(초)로 이동 (이어보기)
+                        if (initialSeconds > 0 && initialSeconds < duration - 5) {
+                            event.target.seekTo(initialSeconds, true);
                         }
                     },
                     onStateChange: (event) => {
@@ -89,7 +93,8 @@ const YouTubePlayer = ({ videoId, initialProgress, onProgressUpdate }) => {
                     watchedSet.current.add(current);
                     const watchedCount = watchedSet.current.size;
                     const percent = Math.min(100, Math.floor((watchedCount / total) * 100));
-                    onProgressUpdate(percent);
+                    
+                    onProgressUpdate(percent, current);
                 }
             }
         }, 1000); 
@@ -105,6 +110,13 @@ const YouTubePlayer = ({ videoId, initialProgress, onProgressUpdate }) => {
     return <div ref={containerRef} className="w-full h-full rounded-xl" />;
 };
 
+// 하단 탭 버튼 컴포넌트
+const NavButton = ({ icon, label, isActive, onClick }) => (
+    <button onClick={onClick} className={`flex flex-col items-center gap-1 w-14 transition-colors ${isActive ? 'text-indigo-600' : 'text-gray-400 hover:text-gray-600'}`}>
+        <div className={`transition-all duration-300 ${isActive ? '-translate-y-1' : ''}`}><Icon name={icon} className={`w-6 h-6 ${isActive ? 'fill-current opacity-20' : ''} stroke-2`} /></div>
+        <span className={`text-[10px] font-bold transition-opacity ${isActive ? 'opacity-100' : 'opacity-70'}`}>{label}</span>
+    </button>
+);
 
 export default function StudentHome({ studentId, students, classes, homeworkAssignments, homeworkResults, attendanceLogs, lessonLogs, videoProgress, onSaveVideoProgress, tests, grades, onLogout }) {
     const [activeTab, setActiveTab] = useState('home');
@@ -126,16 +138,23 @@ export default function StudentHome({ studentId, students, classes, homeworkAssi
         calculateGradeComparison(studentId, classes, tests, grades),
     [studentId, classes, tests, grades]);
 
-    const handleProgress = (percent) => {
+    const handleProgress = (percent, seconds) => {
         setCurrentSessionProgress(percent);
         if (playingLesson && onSaveVideoProgress) {
-            onSaveVideoProgress(studentId, playingLesson.id, percent);
+            onSaveVideoProgress(studentId, playingLesson.id, { percent, seconds });
         }
     };
 
-    const openPlayer = (lesson, videoId, currentProgress) => {
-        setPlayingLesson({ ...lesson, videoId });
-        setCurrentSessionProgress(currentProgress);
+    // 데이터가 숫자인지 객체인지 확인하여 안전하게 값 추출
+    const getProgressData = (lessonId) => {
+        const rawData = videoProgress?.[studentId]?.[lessonId];
+        if (typeof rawData === 'number') {
+            return { percent: rawData, seconds: 0 }; 
+        }
+        return { 
+            percent: rawData?.percent || 0, 
+            seconds: rawData?.seconds || 0 
+        };
     };
 
     // --- [2] 강의실 렌더링 함수 ---
@@ -158,7 +177,8 @@ export default function StudentHome({ studentId, students, classes, homeworkAssi
                         const status = attendRecord?.status;
                         const isAccessible = ['출석', '지각', '동영상보강'].includes(status);
                         
-                        const progress = videoProgress?.[studentId]?.[log.id] || 0;
+                        // ✅ 안전하게 데이터 추출 (객체 구조 분해)
+                        const { percent } = getProgressData(log.id);
                         const youtubeId = getYouTubeId(log.iframeCode);
 
                         return (
@@ -188,12 +208,13 @@ export default function StudentHome({ studentId, students, classes, homeworkAssi
                                     <div className="mb-4">
                                         <div className="flex justify-between text-xs text-gray-500 mb-1">
                                             <span>수강률</span>
-                                            <span className={`font-bold ${progress === 100 ? 'text-green-600' : 'text-indigo-600'}`}>{progress}%</span>
+                                            {/* ✅ percent 숫자만 렌더링 (객체 렌더링 에러 방지) */}
+                                            <span className={`font-bold ${percent === 100 ? 'text-green-600' : 'text-indigo-600'}`}>{percent}%</span>
                                         </div>
                                         <div className="w-full bg-gray-100 rounded-full h-2">
                                             <div 
-                                                className={`h-2 rounded-full transition-all duration-500 ${progress === 100 ? 'bg-green-500' : 'bg-indigo-500'}`} 
-                                                style={{ width: `${progress}%` }}
+                                                className={`h-2 rounded-full transition-all duration-500 ${percent === 100 ? 'bg-green-500' : 'bg-indigo-500'}`} 
+                                                style={{ width: `${percent}%` }}
                                             ></div>
                                         </div>
                                     </div>
@@ -204,11 +225,15 @@ export default function StudentHome({ studentId, students, classes, homeworkAssi
                                         <>
                                             {youtubeId ? (
                                                 <button 
-                                                    onClick={() => openPlayer(log, youtubeId, progress)}
+                                                    onClick={() => {
+                                                        const data = getProgressData(log.id); // 최신 데이터 조회
+                                                        setPlayingLesson({ id: log.id, videoId: youtubeId, ...data });
+                                                        setCurrentSessionProgress(data.percent);
+                                                    }}
                                                     className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-colors"
                                                 >
                                                     <Icon name="monitor" className="w-4 h-4" /> 
-                                                    {progress > 0 && progress < 100 ? '이어 보기' : (progress === 100 ? '다시 보기' : '강의 보기')}
+                                                    {percent > 0 && percent < 100 ? '이어 보기' : (percent === 100 ? '다시 보기' : '강의 보기')}
                                                 </button>
                                             ) : (
                                                 <button disabled className="flex-1 bg-gray-100 text-gray-400 py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 cursor-not-allowed">
@@ -654,13 +679,9 @@ export default function StudentHome({ studentId, students, classes, homeworkAssi
                 </nav>
             )}
 
-            {/* ✅ [수정] 비디오 재생 모달 (크기 확대) */}
             {playingLesson && (
                 <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => setPlayingLesson(null)}>
-                    {/* max-w-3xl -> max-w-6xl로 변경 */}
                     <div className="bg-white p-0 rounded-2xl w-full max-w-6xl shadow-2xl relative overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
-                        
-                        {/* 헤더 */}
                         <div className="bg-gray-900 px-4 py-3 flex justify-between items-center border-b border-gray-800">
                             <span className="text-white font-bold text-sm truncate flex-1 mr-4">
                                 {playingLesson.date} {playingLesson.progress}
@@ -672,17 +693,15 @@ export default function StudentHome({ studentId, students, classes, homeworkAssi
                                 <Icon name="x" className="w-6 h-6" />
                             </button>
                         </div>
-
-                        {/* 플레이어 */}
                         <div className="aspect-video w-full bg-black">
                             <YouTubePlayer 
                                 videoId={playingLesson.videoId}
-                                initialProgress={videoProgress?.[studentId]?.[playingLesson.id] || 0}
+                                // ✅ [중요] playingLesson 객체의 percent와 seconds를 전달
+                                initialProgress={playingLesson.percent || 0}
+                                initialSeconds={playingLesson.seconds || 0}
                                 onProgressUpdate={handleProgress}
                             />
                         </div>
-
-                        {/* 현황판 */}
                         <div className="bg-gray-900 p-4">
                             <div className="flex justify-between items-center mb-2">
                                 <span className="text-gray-400 text-xs font-medium">나의 수강률</span>
@@ -713,10 +732,3 @@ export default function StudentHome({ studentId, students, classes, homeworkAssi
         </div>
     );
 }
-
-const NavButton = ({ icon, label, isActive, onClick }) => (
-    <button onClick={onClick} className={`flex flex-col items-center gap-1 w-14 transition-colors ${isActive ? 'text-indigo-600' : 'text-gray-400 hover:text-gray-600'}`}>
-        <div className={`transition-all duration-300 ${isActive ? '-translate-y-1' : ''}`}><Icon name={icon} className={`w-6 h-6 ${isActive ? 'fill-current opacity-20' : ''} stroke-2`} /></div>
-        <span className={`text-[10px] font-bold transition-opacity ${isActive ? 'opacity-100' : 'opacity-70'}`}>{label}</span>
-    </button>
-);

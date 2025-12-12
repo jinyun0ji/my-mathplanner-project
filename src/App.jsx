@@ -103,7 +103,6 @@ export default function App() {
   
   const nextStudentId = students.reduce((max, s) => Math.max(max, s.id), 0) + 1; 
   
-  // 사이드바(알림) 및 메신저 상태
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [hasNewNotifications, setHasNewNotifications] = useState(true);
   const [isMessengerOpen, setIsMessengerOpen] = useState(false); 
@@ -158,7 +157,7 @@ export default function App() {
         setNotifications(prev => [{ id: Date.now(), type, message, details, timestamp: new Date().toLocaleTimeString('ko-KR') }, ...prev]);
     }, []);
 
-  // ... (기존 CRUD 함수들) ...
+  // ... (CRUD 함수들) ...
   const handleSaveClass = (classData, isEdit) => {
     setClasses(prev => isEdit ? prev.map(c => c.id === classData.id ? { ...c, ...classData } : c) : [...prev, { ...classData, id: prev.reduce((max, c) => Math.max(max, c.id), 0) + 1, students: [] }]);
     if(!isEdit) logNotification('success', '클래스 등록 성공', `${classData.name} 클래스가 새로 등록되었습니다.`);
@@ -282,15 +281,26 @@ export default function App() {
   };
   const handleDeleteClinicLog = (id) => setClinicLogs(prev => prev.filter(log => log.id !== id));
   
-  // ✅ [추가] 수강률 저장 핸들러
-  const handleSaveVideoProgress = (studentId, lessonId, progress) => {
-      setVideoProgress(prev => ({
-          ...prev,
-          [studentId]: {
-              ...(prev[studentId] || {}),
-              [lessonId]: Math.max((prev[studentId]?.[lessonId] || 0), progress)
-          }
-      }));
+  // ✅ [수정] 수강률 저장 핸들러 (percent와 seconds를 모두 처리)
+  const handleSaveVideoProgress = (studentId, lessonId, data) => {
+      // data: { percent: number, seconds: number }
+      setVideoProgress(prev => {
+          const studentData = prev[studentId] || {};
+          const prevLessonData = studentData[lessonId] || { percent: 0, seconds: 0 };
+          
+          return {
+              ...prev,
+              [studentId]: {
+                  ...studentData,
+                  [lessonId]: {
+                      // 진도율(%)은 최대값 유지 (완료된 후 다시 봐도 100% 유지)
+                      percent: Math.max(prevLessonData.percent || 0, data.percent),
+                      // 재생 위치(초)는 항상 최신값으로 업데이트 (이어보기)
+                      seconds: data.seconds 
+                  }
+              }
+          };
+      });
   };
 
   const handlePageChange = (newPage, studentId = null, resetSearch = false) => {
@@ -325,7 +335,6 @@ export default function App() {
     return <LoginPage onLogin={handleLoginSuccess} />;
   }
 
-  // ✅ [수정] 학생용 컴포넌트에 props 전달 (videoProgress, onSaveVideoProgress 포함)
   if (userRole === 'student') {
       return (
         <StudentHome 
@@ -339,8 +348,8 @@ export default function App() {
             notices={announcements}
             tests={tests}
             grades={grades}
-            videoProgress={videoProgress} // ✅ 전달
-            onSaveVideoProgress={handleSaveVideoProgress} // ✅ 전달
+            videoProgress={videoProgress}
+            onSaveVideoProgress={handleSaveVideoProgress}
             onLogout={() => setIsLoggedIn(false)}
         />
       );
