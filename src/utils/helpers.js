@@ -224,3 +224,19 @@ export const formatTime = (seconds) => {
     const s = Math.floor(seconds % 60);
     return `${m}:${s < 10 ? '0' : ''}${s}`;
 };
+
+// ✅ [추가] 시간 차이 계산 (HH:MM - HH:MM -> 분 단위)
+export const calculateDurationMinutes = (start, end) => {
+    if (!start || !end) return 0;
+    const [startH, startM] = start.split(':').map(Number);
+    const [endH, endM] = end.split(':').map(Number);
+    return (endH * 60 + endM) - (startH * 60 + startM);
+};
+
+// ✅ [추가] 분 -> 시간/분 포맷팅
+export const formatDuration = (minutes) => {
+    if (minutes <= 0) return '0분';
+    const h = Math.floor(minutes / 60);
+    const m = minutes % 60;
+    return h > 0 ? `${h}시간 ${m}분` : `${m}분`;
+};

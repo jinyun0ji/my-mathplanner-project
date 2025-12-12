@@ -1,6 +1,7 @@
 // src/components/StudentNotifications.jsx
 import React, { useEffect, useRef } from 'react';
 import { Icon } from '../utils/helpers';
+import NotificationsIcon from '@mui/icons-material/Notifications'; // ✅ Google Icon import
 
 export default function StudentNotifications({ isOpen, onClose, notices = [], onDelete, onNoticeClick }) {
     const panelRef = useRef(null);
@@ -40,8 +41,9 @@ export default function StudentNotifications({ isOpen, onClose, notices = [], on
                 {/* 헤더 */}
                 <div className="bg-white px-5 py-4 flex justify-between items-center border-b border-brand-gray/30 shadow-sm shrink-0">
                     <h3 className="font-bold text-brand-black text-lg flex items-center gap-2">
-                        <div className="bg-brand-red/10 text-brand-red p-1.5 rounded-lg">
-                            <Icon name="bell" className="w-5 h-5" />
+                        {/* ✅ [수정] Material Icon 적용 */}
+                        <div className="bg-brand-red/10 text-brand-red p-1.5 rounded-lg flex items-center justify-center">
+                            <NotificationsIcon className="w-5 h-5" style={{ fontSize: 20 }} />
                         </div>
                         알림 센터
                     </h3>
@@ -77,11 +79,11 @@ export default function StudentNotifications({ isOpen, onClose, notices = [], on
                                 dangerouslySetInnerHTML={{ __html: notice.content }}
                             />
                             
-                            {/* 삭제 버튼 - 경고창 없이 즉시 삭제 */}
+                            {/* 삭제 버튼 */}
                             <button 
                                 onClick={(e) => {
                                     e.stopPropagation(); 
-                                    onDelete(notice.id); // ✅ 경고창(window.confirm) 제거
+                                    onDelete(notice.id);
                                 }}
                                 className="absolute top-3 right-3 p-1.5 text-brand-gray hover:text-brand-red hover:bg-brand-red/10 rounded-full opacity-0 group-hover:opacity-100 transition-all"
                             >
@@ -91,7 +93,8 @@ export default function StudentNotifications({ isOpen, onClose, notices = [], on
                     )) : (
                         <div className="flex flex-col items-center justify-center h-64 text-brand-gray space-y-3">
                             <div className="bg-white p-4 rounded-full shadow-sm">
-                                <Icon name="bell" className="w-8 h-8 opacity-30" />
+                                {/* 여기도 아이콘 변경 */}
+                                <NotificationsIcon className="w-8 h-8 opacity-30" style={{ fontSize: 32 }} />
                             </div>
                             <p>새로운 알림이 없습니다.</p>
                         </div>

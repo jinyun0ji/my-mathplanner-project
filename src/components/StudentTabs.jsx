@@ -1,7 +1,7 @@
 // src/components/StudentTabs.jsx
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom'; // ✅ [추가] Portal 사용을 위해 import
-import { Icon, getWeekOfMonthISO } from '../utils/helpers';
+import { Icon, getWeekOfMonthISO, calculateDurationMinutes, formatDuration } from '../utils/helpers';
 
 // ----------------------------------------------------------------------
 // 1. 대시보드 탭 (기존 유지)
@@ -74,9 +74,17 @@ export const DashboardTab = ({ student, myClasses, setActiveTab, pendingHomework
 );
 
 // ----------------------------------------------------------------------
-// 2. 시간표 탭 (구조 개선 완료)
+// 2. 시간표 탭 (클리닉 연동 수정)
 // ----------------------------------------------------------------------
-export const ScheduleTab = ({ myClasses, externalSchedules, attendanceLogs, studentId, onSaveExternalSchedule, onDeleteExternalSchedule }) => {
+export const ScheduleTab = ({ 
+    myClasses, 
+    externalSchedules, 
+    attendanceLogs, 
+    clinicLogs, 
+    studentId, 
+    onSaveExternalSchedule, 
+    onDeleteExternalSchedule 
+}) => {
     const [viewType, setViewType] = useState('weekly'); 
     const [selectedDate, setSelectedDate] = useState(new Date());
     
@@ -200,12 +208,12 @@ export const ScheduleTab = ({ myClasses, externalSchedules, attendanceLogs, stud
         const dayOfWeek = weekDays[selectedDate.getDay()];
         const dateStr = formatDate(selectedDate);
 
-        // 수학 학원 일정 필터링
+        // 1. 수학 학원 일정
         const dailyClasses = myClasses.filter(cls => cls.schedule.days.includes(dayOfWeek)).map(cls => ({
             id: `math-${cls.id}`, type: 'math', name: cls.name, teacher: '채수용', time: cls.schedule.time, scheduleId: cls.id
         }));
 
-        // 타학원 일정 필터링
+        // 2. 타학원 일정
         const myExternal = externalSchedules ? externalSchedules.filter(s => {
             const isValidStudent = s.studentId === studentId;
             const isDayMatch = s.days && s.days.includes(dayOfWeek);
@@ -227,7 +235,20 @@ export const ScheduleTab = ({ myClasses, externalSchedules, attendanceLogs, stud
             ...s // 원본 데이터 포함
         }));
 
-        const allSchedules = [...dailyClasses, ...dailyExternal].sort((a, b) => (a.time.split('~')[0] || '00:00').localeCompare(b.time.split('~')[0] || '00:00'));
+        // 3. 클리닉 일정 (예약된 것만)
+        const myClinics = clinicLogs ? clinicLogs.filter(log => 
+            log.studentId === studentId && log.date === dateStr
+        ).map(log => ({
+            id: `clinic-${log.id}`,
+            type: 'clinic',
+            name: '학습 클리닉',
+            teacher: log.tutor || '담당 선생님',
+            time: log.checkIn ? `${log.checkIn}~${log.checkOut || ''}` : '시간 미정',
+            status: log.checkOut ? '완료' : '예약됨',
+            scheduleId: log.id
+        })) : [];
+
+        const allSchedules = [...dailyClasses, ...dailyExternal, ...myClinics].sort((a, b) => (a.time.split('~')[0] || '00:00').localeCompare(b.time.split('~')[0] || '00:00'));
 
         if (allSchedules.length === 0) {
             return (
@@ -242,14 +263,31 @@ export const ScheduleTab = ({ myClasses, externalSchedules, attendanceLogs, stud
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 {allSchedules.map((item) => {
                     let log = null;
+                    let borderColor = 'border-brand-main/30';
+                    let dotColor = 'bg-brand-main';
+                    let typeLabel = '수학 학원';
+                    let typeClass = 'text-brand-main bg-brand-light/30';
+
                     if (item.type === 'math') {
                         log = attendanceLogs ? attendanceLogs.find(l => l.studentId === studentId && l.classId === item.scheduleId && l.date === dateStr) : null;
+                        if(log?.status === '출석') dotColor = 'bg-green-500';
+                        else if(log?.status === '지각') dotColor = 'bg-yellow-400';
+                        else if(log?.status === '결석') dotColor = 'bg-brand-red';
+                    } else if (item.type === 'external') {
+                        borderColor = 'border-brand-light';
+                        dotColor = 'bg-brand-light';
+                        typeLabel = item.teacher;
+                        typeClass = 'text-brand-gray bg-brand-bg';
+                    } else if (item.type === 'clinic') {
+                        borderColor = 'border-teal-200';
+                        dotColor = item.status === '완료' ? 'bg-teal-500' : 'bg-teal-300';
+                        typeLabel = '클리닉';
+                        typeClass = 'text-teal-600 bg-teal-50';
                     }
                     
                     return (
-                        <div key={item.id} className={`relative pl-6 border-l-2 py-2 ml-2 ${item.type === 'math' ? 'border-brand-main/30' : 'border-brand-light'}`}>
-                            {/* 상태 표시 점 */}
-                            <div className={`absolute -left-[9px] top-3 w-4 h-4 rounded-full ring-4 ring-white ${item.type === 'math' ? (log?.status === '출석' ? 'bg-green-500' : log?.status === '지각' ? 'bg-yellow-400' : log?.status === '결석' ? 'bg-brand-red' : 'bg-brand-main') : 'bg-brand-light'}`}></div>
+                        <div key={item.id} className={`relative pl-6 border-l-2 py-2 ml-2 ${borderColor}`}>
+                            <div className={`absolute -left-[9px] top-3 w-4 h-4 rounded-full ring-4 ring-white ${dotColor}`}></div>
                             
                             <div 
                                 onClick={(e) => item.type === 'external' ? handleEditClick(e, item) : null}
@@ -257,7 +295,7 @@ export const ScheduleTab = ({ myClasses, externalSchedules, attendanceLogs, stud
                             >
                                 <div>
                                     <div className="flex justify-between mb-2">
-                                        <span className={`text-xs font-bold px-2 py-1 rounded ${item.type === 'math' ? 'text-brand-main bg-brand-light/30' : 'text-brand-gray bg-brand-bg'}`}>{item.type === 'math' ? '수학 학원' : item.teacher}</span>
+                                        <span className={`text-xs font-bold px-2 py-1 rounded ${typeClass}`}>{typeLabel}</span>
                                         <span className="text-xs text-brand-gray font-medium">{item.time}</span>
                                     </div>
                                     <h4 className="font-bold text-brand-black text-lg mb-2">{item.name}</h4>
@@ -266,7 +304,14 @@ export const ScheduleTab = ({ myClasses, externalSchedules, attendanceLogs, stud
                                     {item.type === 'math' ? (
                                         <>
                                             <p className="text-sm text-brand-gray flex items-center gap-1"><Icon name="users" className="w-4 h-4" /> 채수용 선생님</p>
-                                            {log && (<span className={`text-xs font-bold px-2 py-1 rounded ${log.status === '출석' ? 'bg-green-100 text-green-700' : log.status === '지각' ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'}`}>{log.status}</span>)}
+                                            {log && (<span className={`text-xs font-bold px-2 py-1 rounded ${log.status === '출석' ? 'bg-green-100 text-green-700' : log.status === '지각' ? 'bg-yellow-100 text-yellow-700' : 'bg-brand-red/10 text-brand-red'}`}>{log.status}</span>)}
+                                        </>
+                                    ) : item.type === 'clinic' ? (
+                                        <>
+                                            <p className="text-sm text-brand-gray flex items-center gap-1"><Icon name="user" className="w-4 h-4" /> {item.teacher}</p>
+                                            <span className={`text-xs font-bold px-2 py-1 rounded ${item.status === '완료' ? 'bg-teal-100 text-teal-700' : 'bg-teal-50 text-teal-600 border border-teal-200'}`}>
+                                                {item.status}
+                                            </span>
                                         </>
                                     ) : (
                                         <div className="w-full flex justify-end gap-3">
@@ -288,9 +333,9 @@ export const ScheduleTab = ({ myClasses, externalSchedules, attendanceLogs, stud
         );
     };
 
-    // --- 달력 렌더링용 헬퍼 ---
+    // --- 달력 헬퍼 (클리닉 포함) ---
     const getDayInfo = (date) => {
-        if (!date) return { hasClass: false, status: null, hasExternal: false };
+        if (!date) return { hasClass: false, status: null, hasExternal: false, hasClinic: false };
         const dateStr = formatDate(date);
         const dayOfWeek = weekDays[date.getDay()];
         
@@ -304,6 +349,8 @@ export const ScheduleTab = ({ myClasses, externalSchedules, attendanceLogs, stud
             return isValidStudent && isDayMatch && isDateInRange && !isExcluded;
         }) : [];
 
+        const myClinics = clinicLogs ? clinicLogs.filter(log => log.studentId === studentId && log.date === dateStr) : [];
+
         const logs = attendanceLogs ? attendanceLogs.filter(log => log.studentId === studentId && log.date === dateStr) : [];
         let status = null;
         if (logs.length > 0) {
@@ -311,9 +358,65 @@ export const ScheduleTab = ({ myClasses, externalSchedules, attendanceLogs, stud
             else if (logs.some(l => l.status === '지각')) status = '지각';
             else status = '출석';
         }
-        return { hasClass: (dayClasses.length > 0), status, hasExternal: myExternal.length > 0 };
+        return { hasClass: (dayClasses.length > 0), status, hasExternal: myExternal.length > 0, hasClinic: myClinics.length > 0 };
     };
 
+    const MonthlyView = () => {
+        const year = selectedDate.getFullYear();
+        const month = selectedDate.getMonth();
+        // const firstDayOfMonth = new Date(year, month, 1); // 사용 안함
+        // const daysInMonth = new Date(year, month + 1, 0).getDate(); // 사용 안함
+        // const startDayOfWeek = firstDayOfMonth.getDay(); // 사용 안함
+        
+        // 달력 그리드 생성 (이전/다음 달 날짜 포함 없이 현재 월 기준 간략 구현)
+        const firstDay = new Date(year, month, 1);
+        const startEmptyDays = firstDay.getDay();
+        const lastDay = new Date(year, month + 1, 0).getDate();
+        const calendarDays = Array(startEmptyDays).fill(null).concat([...Array(lastDay).keys()].map(i => new Date(year, month, i + 1)));
+
+        const prevMonth = () => setSelectedDate(new Date(year, month - 1, 1));
+        const nextMonth = () => setSelectedDate(new Date(year, month + 1, 1));
+
+        return (
+            <div className="animate-fade-in-up">
+                <div className="bg-white rounded-3xl shadow-lg p-6 border border-brand-gray/30 mb-6 max-w-2xl mx-auto">
+                    <div className="flex justify-between items-center mb-6">
+                        <button onClick={prevMonth} className="p-2 hover:bg-brand-bg rounded-full text-brand-gray"><Icon name="arrow-left" className="w-5 h-5" /></button>
+                        <h3 className="text-lg font-bold text-brand-black">{year}년 {month + 1}월</h3>
+                        <button onClick={nextMonth} className="p-2 hover:bg-brand-bg rounded-full text-brand-gray transform rotate-180"><Icon name="arrow-left" className="w-5 h-5" /></button>
+                    </div>
+                    <div className="grid grid-cols-7 mb-2 text-center">
+                        {weekDays.map((day, i) => (<div key={day} className={`text-xs font-bold ${i === 0 ? 'text-brand-red' : 'text-brand-gray'}`}>{day}</div>))}
+                    </div>
+                    <div className="grid grid-cols-7 gap-y-4 gap-x-1">
+                        {calendarDays.map((date, index) => {
+                            if (!date) return <div key={index}></div>;
+                            
+                            // ✅ [수정] hasClinic 추출
+                            const { hasClass, status, hasExternal, hasClinic } = getDayInfo(date);
+                            
+                            const isSelected = formatDate(date) === formatDate(selectedDate);
+                            const isToday = formatDate(date) === todayStr;
+                            return (
+                                <div key={index} className="flex flex-col items-center cursor-pointer group" onClick={() => setSelectedDate(date)}>
+                                    <div className={`w-8 h-8 flex items-center justify-center rounded-full text-sm font-medium transition-all ${isSelected ? 'bg-brand-main text-white shadow-brand scale-110' : ''} ${!isSelected && isToday ? 'text-brand-main font-bold bg-brand-light/30' : ''} ${!isSelected && !isToday ? 'text-brand-black group-hover:bg-brand-bg' : ''}`}>{date.getDate()}</div>
+                                    <div className="h-1.5 mt-1 flex gap-0.5 min-h-[6px]">
+                                        {status === '출석' && <div className="w-1.5 h-1.5 rounded-full bg-green-500"></div>}
+                                        {status === '지각' && <div className="w-1.5 h-1.5 rounded-full bg-yellow-400"></div>}
+                                        {status === '결석' && <div className="w-1.5 h-1.5 rounded-full bg-brand-red"></div>}
+                                        {!status && hasClass && <div className="w-1.5 h-1.5 rounded-full bg-brand-gray"></div>}
+                                        {hasExternal && <div className="w-1.5 h-1.5 rounded-full bg-brand-light"></div>}
+                                        {hasClinic && <div className="w-1.5 h-1.5 rounded-full bg-teal-400"></div>}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+                <div className="space-y-4">{renderSchedules()}</div>
+            </div>
+        );
+    };
 
     return (
         <div className="pb-20 relative">
@@ -328,7 +431,6 @@ export const ScheduleTab = ({ myClasses, externalSchedules, attendanceLogs, stud
                 </div>
             </div>
 
-            {/* 주간 뷰 */}
             {viewType === 'weekly' && (
                 <div className="space-y-6 animate-fade-in-up">
                     <div className="flex items-center justify-between px-2 mb-2">
@@ -354,46 +456,11 @@ export const ScheduleTab = ({ myClasses, externalSchedules, attendanceLogs, stud
                 </div>
             )}
 
-            {/* 월간 뷰 */}
-            {viewType === 'monthly' && (
-                <div className="animate-fade-in-up">
-                    <div className="bg-white rounded-3xl shadow-lg p-6 border border-brand-gray/30 mb-6 max-w-2xl mx-auto">
-                        <div className="flex justify-between items-center mb-6">
-                            <button onClick={prevMonth} className="p-2 hover:bg-brand-bg rounded-full text-brand-gray"><Icon name="arrow-left" className="w-5 h-5" /></button>
-                            <h3 className="text-lg font-bold text-brand-black">{year}년 {month + 1}월</h3>
-                            <button onClick={nextMonth} className="p-2 hover:bg-brand-bg rounded-full text-brand-gray transform rotate-180"><Icon name="arrow-left" className="w-5 h-5" /></button>
-                        </div>
-                        <div className="grid grid-cols-7 mb-2 text-center">
-                            {weekDays.map((day, i) => (<div key={day} className={`text-xs font-bold ${i === 0 ? 'text-brand-red' : 'text-brand-gray'}`}>{day}</div>))}
-                        </div>
-                        <div className="grid grid-cols-7 gap-y-4 gap-x-1">
-                            {calendarDays.map((date, index) => {
-                                if (!date) return <div key={index}></div>;
-                                const { hasClass, status, hasExternal } = getDayInfo(date);
-                                const isSelected = formatDate(date) === formatDate(selectedDate);
-                                const isToday = formatDate(date) === todayStr;
-                                return (
-                                    <div key={index} className="flex flex-col items-center cursor-pointer group" onClick={() => setSelectedDate(date)}>
-                                        <div className={`w-8 h-8 flex items-center justify-center rounded-full text-sm font-medium transition-all ${isSelected ? 'bg-brand-main text-white shadow-brand scale-110' : ''} ${!isSelected && isToday ? 'text-brand-main font-bold bg-brand-light/30' : ''} ${!isSelected && !isToday ? 'text-brand-black group-hover:bg-brand-bg' : ''}`}>{date.getDate()}</div>
-                                        <div className="h-1.5 mt-1 flex gap-0.5 min-h-[6px]">
-                                            {status === '출석' && <div className="w-1.5 h-1.5 rounded-full bg-green-500"></div>}
-                                            {status === '지각' && <div className="w-1.5 h-1.5 rounded-full bg-yellow-400"></div>}
-                                            {status === '결석' && <div className="w-1.5 h-1.5 rounded-full bg-brand-red"></div>}
-                                            {!status && hasClass && <div className="w-1.5 h-1.5 rounded-full bg-brand-gray"></div>}
-                                            {hasExternal && <div className="w-1.5 h-1.5 rounded-full bg-brand-light"></div>}
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    </div>
-                    <div className="space-y-4">{renderSchedules()}</div>
-                </div>
-            )}
+            {viewType === 'monthly' && <MonthlyView />}
             
             {/* 일정 등록/수정 모달 */}
-            {isScheduleModalOpen && (
-                <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => setIsScheduleModalOpen(false)}>
+            {isScheduleModalOpen && createPortal(
+                <div className="fixed inset-0 z-[70] bg-black/50 flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => setIsScheduleModalOpen(false)}>
                     <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl animate-fade-in-up" onClick={e => e.stopPropagation()}>
                         <h3 className="text-lg font-bold text-brand-black mb-4">타학원 일정 {isEditMode ? '수정' : '등록'}</h3>
                         <div className="space-y-4 max-h-[70vh] overflow-y-auto custom-scrollbar px-1">
@@ -415,12 +482,13 @@ export const ScheduleTab = ({ myClasses, externalSchedules, attendanceLogs, stud
                             </button>
                         </div>
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
 
             {/* 삭제 옵션 모달 */}
-            {isDeleteModalOpen && (
-                <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => setIsDeleteModalOpen(false)}>
+            {isDeleteModalOpen && createPortal(
+                <div className="fixed inset-0 z-[70] bg-black/50 flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => setIsDeleteModalOpen(false)}>
                     <div className="bg-white rounded-2xl w-full max-w-xs p-6 shadow-2xl animate-fade-in-up text-center" onClick={e => e.stopPropagation()}>
                         <div className="w-12 h-12 bg-brand-red/10 rounded-full flex items-center justify-center mx-auto mb-4 text-brand-red">
                             <Icon name="trash" className="w-6 h-6" />
@@ -456,7 +524,8 @@ export const ScheduleTab = ({ myClasses, externalSchedules, attendanceLogs, stud
                             취소
                         </button>
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
         </div>
     );
@@ -721,6 +790,117 @@ export const BoardTab = ({ notices }) => {
                 </div>,
                 document.body // ✅ document.body에 직접 렌더링
             )}
+        </div>
+    );
+};
+
+// 7. [신규] 클리닉 탭
+export const ClinicTab = ({ studentId, clinicLogs = [] }) => { // ✅ [수정] 기본값 = [] 추가
+    // 1. 내 클리닉 필터링 (이제 clinicLogs가 없어도 빈 배열이므로 에러 안 남)
+    const myClinics = clinicLogs.filter(log => log.studentId === studentId);
+    
+    // 2. 예약된 일정 (미래) & 완료된 기록 (과거) 분류
+    const now = new Date();
+    const upcoming = myClinics.filter(log => new Date(log.date + 'T' + log.checkIn) >= now || !log.checkOut).sort((a, b) => new Date(a.date) - new Date(b.date));
+    const history = myClinics.filter(log => log.checkOut && new Date(log.date + 'T' + log.checkIn) < now).sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    // 3. 통계 계산 (총 공부 시간 vs 평균)
+    const myTotalMinutes = history.reduce((acc, log) => acc + calculateDurationMinutes(log.checkIn, log.checkOut), 0);
+    
+    // (모의) 반 평균 계산
+    const allTotalMinutes = clinicLogs.reduce((acc, log) => log.checkOut ? acc + calculateDurationMinutes(log.checkIn, log.checkOut) : acc, 0);
+    const avgMinutes = clinicLogs.length > 0 ? Math.round(allTotalMinutes / 3) : 0; 
+
+    // 비율 계산
+    const maxVal = Math.max(myTotalMinutes, avgMinutes, 60); 
+    const myPercent = Math.min((myTotalMinutes / maxVal) * 100, 100);
+    const avgPercent = Math.min((avgMinutes / maxVal) * 100, 100);
+
+    return (
+        <div className="space-y-6 animate-fade-in-up pb-20">
+            <h2 className="text-2xl font-bold text-brand-black px-1">학습 클리닉</h2>
+
+            {/* 1. 학습 시간 분석 카드 */}
+            <div className="bg-white p-6 rounded-3xl shadow-sm border border-brand-gray/30">
+                <h3 className="text-lg font-bold text-brand-black mb-4 flex items-center gap-2">
+                    <span className="w-1.5 h-6 bg-teal-500 rounded-full"></span>
+                    이번 달 학습 시간
+                </h3>
+                
+                <div className="space-y-4">
+                    {/* 내 시간 */}
+                    <div>
+                        <div className="flex justify-between text-sm mb-1">
+                            <span className="font-bold text-brand-black">나의 학습</span>
+                            <span className="text-teal-600 font-bold">{formatDuration(myTotalMinutes)}</span>
+                        </div>
+                        <div className="w-full bg-brand-bg rounded-full h-3">
+                            <div className="bg-teal-500 h-3 rounded-full transition-all duration-1000" style={{ width: `${myPercent}%` }}></div>
+                        </div>
+                    </div>
+
+                    {/* 반 평균 */}
+                    <div>
+                        <div className="flex justify-between text-sm mb-1">
+                            <span className="text-brand-gray">반 평균</span>
+                            <span className="text-brand-gray">{formatDuration(avgMinutes)}</span>
+                        </div>
+                        <div className="w-full bg-brand-bg rounded-full h-3">
+                            <div className="bg-brand-gray/40 h-3 rounded-full transition-all duration-1000" style={{ width: `${avgPercent}%` }}></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* 2. 예약된 클리닉 (Upcoming) */}
+            <div className="space-y-3">
+                <h3 className="text-sm font-bold text-brand-black px-1 flex items-center gap-1">
+                    <Icon name="clock" className="w-4 h-4 text-teal-500" /> 예약된 일정
+                </h3>
+                {upcoming.length > 0 ? upcoming.map(log => (
+                    <div key={log.id} className="bg-white p-5 rounded-2xl shadow-sm border border-teal-100 flex justify-between items-center">
+                        <div>
+                            <div className="flex items-center gap-2 mb-1">
+                                <span className="text-xs font-bold text-teal-700 bg-teal-50 px-2 py-0.5 rounded border border-teal-200">예약됨</span>
+                                <span className="text-xs text-brand-gray">{log.date}</span>
+                            </div>
+                            <h4 className="font-bold text-brand-black text-lg">{log.checkIn} 입실 예정</h4>
+                            <p className="text-xs text-brand-gray mt-1 flex items-center gap-1">
+                                <Icon name="user" className="w-3 h-3" /> {log.tutor || '담당 선생님'}
+                            </p>
+                        </div>
+                    </div>
+                )) : (
+                    <div className="text-center py-8 text-brand-gray bg-white rounded-2xl border border-dashed border-brand-gray/30 text-sm">
+                        예약된 클리닉이 없습니다.
+                    </div>
+                )}
+            </div>
+
+            {/* 3. 지난 기록 (History) */}
+            <div className="space-y-3">
+                <h3 className="text-sm font-bold text-brand-black px-1">지난 기록</h3>
+                {history.length > 0 ? history.map(log => (
+                    <div key={log.id} className="bg-white p-4 rounded-2xl border border-brand-gray/20 flex justify-between items-center">
+                        <div>
+                            <div className="text-xs text-brand-gray mb-1">{log.date}</div>
+                            <div className="font-bold text-brand-black flex items-center gap-2">
+                                <span>{log.checkIn} ~ {log.checkOut}</span>
+                                <span className="text-xs font-normal text-brand-gray bg-brand-bg px-1.5 py-0.5 rounded">
+                                    {formatDuration(calculateDurationMinutes(log.checkIn, log.checkOut))}
+                                </span>
+                            </div>
+                        </div>
+                        <div className="w-8 h-8 rounded-full bg-brand-bg flex items-center justify-center text-teal-500">
+                            <Icon name="check" className="w-5 h-5" />
+                        </div>
+                    </div>
+                )) : (
+                    <div className="text-center py-8 text-brand-gray bg-white rounded-2xl border border-dashed border-brand-gray/30 text-sm">
+                        완료된 기록이 없습니다.
+                    </div>
+                )}
+            </div>
         </div>
     );
 };

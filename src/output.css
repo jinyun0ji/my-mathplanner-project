@@ -1669,6 +1669,9 @@
 .align-top {
   vertical-align: top;
 }
+.text-\[9px\] {
+  font-size: 9px;
+}
 .text-\[10px\] {
   font-size: 10px;
 }
