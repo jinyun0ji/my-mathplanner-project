@@ -22,7 +22,7 @@ export const initialClasses = [
 
 export const initialLessonLogs = [
     // progress 필드에 예약 시간 필드 추가: scheduleTime
-    { id: 1, classId: 1, date: '2025-11-03', progress: '다항식의 연산 P.12 ~ P.18', iframeCode: '<iframe width="560" height="315" src="https://www.youtube.com/embed/mWkuigsWe4A" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>', materialUrl: '수업자료_1103.pdf', scheduleTime: '2025-11-03T21:30' }, 
+    { id: 1, classId: 1, date: '2025-11-03', progress: '다항식의 연산 P.12 ~ P.18', iframeCode: '<iframe width="560" height="315" src="https://www.youtube.com/embed/PLPVxWCrXqY?si=RRo3fyyC4Vj44iZp" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>', materialUrl: '수업자료_1103.pdf', scheduleTime: '2025-11-03T21:30' }, 
     { id: 2, classId: 2, date: '2025-11-04', progress: '집합의 개념 및 포함 관계', iframeCode: '', materialUrl: '수업자료_1104.pdf', scheduleTime: '2025-11-04T21:30' }, 
     { id: 3, classId: 1, date: '2025-11-07', progress: '나머지 정리', iframeCode: '', materialUrl: '', scheduleTime: '2025-11-07T21:30' }, 
     { id: 4, classId: 1, date: '2025-11-10', progress: '인수분해', iframeCode: '', materialUrl: '', scheduleTime: '2025-11-10T21:30' }, 

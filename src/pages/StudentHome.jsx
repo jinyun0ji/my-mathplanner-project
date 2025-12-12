@@ -17,8 +17,6 @@ const YouTubePlayer = ({ videoId, initialProgress, onProgressUpdate }) => {
     const playerRef = useRef(null);
     const containerRef = useRef(null);
     const intervalRef = useRef(null);
-    
-    // ✅ [수정] 실제로 시청한 '초(second)'를 기록하는 Set (중복 자동 제거)
     const watchedSet = useRef(new Set()); 
 
     useEffect(() => {
@@ -31,7 +29,6 @@ const YouTubePlayer = ({ videoId, initialProgress, onProgressUpdate }) => {
 
         const initPlayer = () => {
             if (!window.YT || !window.YT.Player) return;
-            
             if (playerRef.current) return;
 
             playerRef.current = new window.YT.Player(containerRef.current, {
@@ -42,20 +39,18 @@ const YouTubePlayer = ({ videoId, initialProgress, onProgressUpdate }) => {
                     playsinline: 1,
                     modestbranding: 1,
                     rel: 0,
+                    controls: 1,
+                    fs: 1,
+                    iv_load_policy: 3,
                 },
                 events: {
                     onReady: (event) => {
                         const duration = event.target.getDuration();
-                        
-                        // ✅ [수정] 기존 진도율(initialProgress)만큼 시청 기록 복원
-                        // (예: 50% 수강했었다면, 앞부분 절반을 이미 본 것으로 처리)
                         if (initialProgress > 0 && duration > 0) {
                             const watchedSeconds = Math.floor(duration * (initialProgress / 100));
                             for (let i = 0; i <= watchedSeconds; i++) {
                                 watchedSet.current.add(i);
                             }
-                            
-                            // 이어보기 위치 이동
                             if (initialProgress < 100) {
                                 event.target.seekTo(watchedSeconds, true);
                             }
@@ -81,24 +76,19 @@ const YouTubePlayer = ({ videoId, initialProgress, onProgressUpdate }) => {
         return () => {
             stopTracking();
         };
-    }, [videoId]); // videoId가 변경되면 초기화
+    }, [videoId]); 
 
     const startTracking = () => {
         stopTracking();
-        // ✅ [수정] 1초마다 실행 (더 정밀하게 체크)
         intervalRef.current = setInterval(() => {
             if (playerRef.current && typeof playerRef.current.getCurrentTime === 'function') {
-                const current = Math.floor(playerRef.current.getCurrentTime()); // 현재 재생 위치(초)
-                const total = Math.floor(playerRef.current.getDuration());      // 전체 길이(초)
+                const current = Math.floor(playerRef.current.getCurrentTime()); 
+                const total = Math.floor(playerRef.current.getDuration());      
                 
                 if (total > 0) {
-                    // 현재 보고 있는 '초'를 기록
                     watchedSet.current.add(current);
-                    
-                    // 수강률 = (본 시간의 총량 / 전체 시간) * 100
                     const watchedCount = watchedSet.current.size;
                     const percent = Math.min(100, Math.floor((watchedCount / total) * 100));
-                    
                     onProgressUpdate(percent);
                 }
             }
@@ -121,6 +111,7 @@ export default function StudentHome({ studentId, students, classes, homeworkAssi
     const [selectedClassId, setSelectedClassId] = useState(null); 
     
     const [playingLesson, setPlayingLesson] = useState(null);
+    const [currentSessionProgress, setCurrentSessionProgress] = useState(0);
 
     const student = students.find(s => s.id === studentId);
     const myClasses = classes.filter(c => student?.classes.includes(c.id));
@@ -136,9 +127,15 @@ export default function StudentHome({ studentId, students, classes, homeworkAssi
     [studentId, classes, tests, grades]);
 
     const handleProgress = (percent) => {
+        setCurrentSessionProgress(percent);
         if (playingLesson && onSaveVideoProgress) {
             onSaveVideoProgress(studentId, playingLesson.id, percent);
         }
+    };
+
+    const openPlayer = (lesson, videoId, currentProgress) => {
+        setPlayingLesson({ ...lesson, videoId });
+        setCurrentSessionProgress(currentProgress);
     };
 
     // --- [2] 강의실 렌더링 함수 ---
@@ -207,7 +204,7 @@ export default function StudentHome({ studentId, students, classes, homeworkAssi
                                         <>
                                             {youtubeId ? (
                                                 <button 
-                                                    onClick={() => setPlayingLesson({ id: log.id, videoId: youtubeId })}
+                                                    onClick={() => openPlayer(log, youtubeId, progress)}
                                                     className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-colors"
                                                 >
                                                     <Icon name="monitor" className="w-4 h-4" /> 
@@ -249,9 +246,7 @@ export default function StudentHome({ studentId, students, classes, homeworkAssi
         );
     };
 
-    // ... (이하 나머지 탭 코드들은 이전과 동일하게 유지) ...
-    // (이전 코드 블록들을 그대로 붙여넣으시면 됩니다)
-
+    // --- [1] 홈 탭 ---
     const DashboardTab = () => (
         <div className="space-y-6 animate-fade-in-up">
             <div className="bg-gradient-to-br from-indigo-600 to-purple-700 rounded-3xl p-6 text-white shadow-xl">
@@ -659,18 +654,26 @@ export default function StudentHome({ studentId, students, classes, homeworkAssi
                 </nav>
             )}
 
-            {/* 비디오 재생 모달 (추적 기능 포함) */}
+            {/* ✅ [수정] 비디오 재생 모달 (크기 확대) */}
             {playingLesson && (
                 <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => setPlayingLesson(null)}>
-                    <div className="bg-white p-0 rounded-2xl w-full max-w-3xl shadow-2xl relative overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
-                        <div className="bg-black p-2 flex justify-end">
+                    {/* max-w-3xl -> max-w-6xl로 변경 */}
+                    <div className="bg-white p-0 rounded-2xl w-full max-w-6xl shadow-2xl relative overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+                        
+                        {/* 헤더 */}
+                        <div className="bg-gray-900 px-4 py-3 flex justify-between items-center border-b border-gray-800">
+                            <span className="text-white font-bold text-sm truncate flex-1 mr-4">
+                                {playingLesson.date} {playingLesson.progress}
+                            </span>
                             <button 
                                 onClick={() => setPlayingLesson(null)}
-                                className="text-white font-bold flex items-center gap-1 bg-white/20 hover:bg-white/30 px-3 py-1 rounded-lg transition-colors"
+                                className="text-gray-400 hover:text-white transition-colors"
                             >
-                                닫기 <Icon name="x" className="w-5 h-5" />
+                                <Icon name="x" className="w-6 h-6" />
                             </button>
                         </div>
+
+                        {/* 플레이어 */}
                         <div className="aspect-video w-full bg-black">
                             <YouTubePlayer 
                                 videoId={playingLesson.videoId}
@@ -678,8 +681,31 @@ export default function StudentHome({ studentId, students, classes, homeworkAssi
                                 onProgressUpdate={handleProgress}
                             />
                         </div>
-                        <div className="p-4 bg-gray-900 text-white text-center text-sm">
-                            강의를 시청 중입니다. 수강률이 실시간으로 기록됩니다.
+
+                        {/* 현황판 */}
+                        <div className="bg-gray-900 p-4">
+                            <div className="flex justify-between items-center mb-2">
+                                <span className="text-gray-400 text-xs font-medium">나의 수강률</span>
+                                <div className="flex items-center gap-2">
+                                    <span className={`text-xl font-bold ${currentSessionProgress === 100 ? 'text-green-500' : 'text-indigo-500'}`}>
+                                        {currentSessionProgress}%
+                                    </span>
+                                    {currentSessionProgress === 100 && (
+                                        <span className="bg-green-500/20 text-green-400 text-[10px] px-2 py-0.5 rounded-full font-bold border border-green-500/30">
+                                            수강 완료
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+                            <div className="w-full bg-gray-800 rounded-full h-2 overflow-hidden">
+                                <div 
+                                    className={`h-full rounded-full transition-all duration-300 ${currentSessionProgress === 100 ? 'bg-green-500' : 'bg-indigo-500'}`} 
+                                    style={{ width: `${currentSessionProgress}%` }}
+                                ></div>
+                            </div>
+                            <p className="text-gray-500 text-[10px] mt-3 text-center">
+                                * 학습 종료 시 반드시 '닫기' 버튼을 눌러주세요. 수강 기록이 자동 저장됩니다.
+                            </p>
                         </div>
                     </div>
                 </div>
