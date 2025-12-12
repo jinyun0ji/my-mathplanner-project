@@ -35,6 +35,9 @@ export default function StudentHome({
     const [visibleNotices, setVisibleNotices] = useState(notices); 
     const [hasNewNotifications, setHasNewNotifications] = useState(false);
 
+    // ✅ [추가] 메모 바로가기용 상태
+    const [targetMemo, setTargetMemo] = useState(null);
+
     // ✅ [추가] 클리닉 예약 알림 자동 생성 로직
     useEffect(() => {
         let newNotices = [...notices];
@@ -81,6 +84,12 @@ export default function StudentHome({
     const myGradeComparison = useMemo(() => calculateGradeComparison(studentId, classes, tests, grades), [studentId, classes, tests, grades]);
     const pendingHomeworkCount = myHomeworkStats.filter(h => h.status !== '완료').length;
 
+    // ✅ [추가] 메모 클릭 시 해당 강의실로 이동 및 영상 재생
+    const handleNavigateToMemo = (classId, lessonId, time) => {
+        setSelectedClassId(classId); // 강의실 뷰로 전환
+        setTargetMemo({ lessonId, time }); // 타겟 설정
+    };
+
     // ✅ [수정] 네비게이션 아이템에 'clinic' 추가 (공간 고려하여 배치)
     const navItems = [
         { id: 'home', icon: 'home', label: '홈' },
@@ -99,70 +108,51 @@ export default function StudentHome({
             <main className="flex-1 w-full max-w-7xl mx-auto p-4 md:p-6 pb-24 overflow-y-auto custom-scrollbar">
                 {selectedClassId ? (
                     <ClassroomView 
-                        // ... props 유지
                         classes={classes} lessonLogs={lessonLogs} attendanceLogs={attendanceLogs} studentId={studentId}
                         selectedClassId={selectedClassId} setSelectedClassId={setSelectedClassId}
                         videoProgress={videoProgress} onSaveVideoProgress={onSaveVideoProgress}
                         videoBookmarks={videoBookmarks} onSaveBookmark={onSaveBookmark}
                         onVideoModalChange={setIsVideoModalOpen}
+                        targetMemo={targetMemo} // ✅ 전달
+                        onClearTargetMemo={() => setTargetMemo(null)} // ✅ 전달
                     />
                 ) : (
                     <div className="animate-fade-in space-y-6">
                         {activeTab === 'home' && <DashboardTab student={student} myClasses={myClasses} setActiveTab={setActiveTab} pendingHomeworkCount={pendingHomeworkCount} setSelectedClassId={setSelectedClassId} />}
-                        {activeTab === 'schedule' && (
-                            <ScheduleTab 
-                                myClasses={myClasses} externalSchedules={externalSchedules} attendanceLogs={attendanceLogs} 
-                                studentId={studentId} onSaveExternalSchedule={onSaveExternalSchedule} onDeleteExternalSchedule={onDeleteExternalSchedule} 
-                                clinicLogs={clinicLogs} // ✅ 전달
-                            />
-                        )}
-                        {/* ✅ [추가] 클리닉 탭 렌더링 */}
+                        {activeTab === 'schedule' && <ScheduleTab myClasses={myClasses} externalSchedules={externalSchedules} attendanceLogs={attendanceLogs} studentId={studentId} onSaveExternalSchedule={onSaveExternalSchedule} onDeleteExternalSchedule={onDeleteExternalSchedule} clinicLogs={clinicLogs} />}
                         {activeTab === 'clinic' && <ClinicTab studentId={studentId} clinicLogs={clinicLogs} />}
                         {activeTab === 'homework' && <HomeworkTab myHomeworkStats={myHomeworkStats} />}
-                        {activeTab === 'board' && <BoardTab notices={notices} />}
+                        {activeTab === 'board' && <BoardTab notices={visibleNotices} />}
                         {activeTab === 'grades' && <GradesTab myGradeComparison={myGradeComparison} />}
+                        
+                        {/* ✅ [수정] MenuTab에 메모 관련 props 전달 */}
                         {activeTab === 'menu' && (
                             <MenuTab 
                                 student={student} 
                                 onUpdateStudent={onUpdateStudent} 
-                                onLogout={onLogout} 
+                                onLogout={onLogout}
+                                videoBookmarks={videoBookmarks}
+                                lessonLogs={lessonLogs}
+                                onLinkToMemo={handleNavigateToMemo}
                             />
                         )}
                     </div>
                 )}
             </main>
 
-            {/* 하단 네비게이션 - 아이콘이 많아졌으므로 max-w-xl 정도로 넓힘 */}
             {!selectedClassId && (
                 <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-brand-gray/20 z-40 pb-safe shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
                     <div className="max-w-2xl mx-auto flex justify-around items-center py-2 px-1">
                         {navItems.map(item => (
-                            <button 
-                                key={item.id}
-                                onClick={() => setActiveTab(item.id)}
-                                className={`flex flex-col items-center p-1.5 rounded-xl transition-all duration-200 w-12 group ${
-                                    activeTab === item.id 
-                                    ? 'text-brand-main' 
-                                    : 'text-brand-gray hover:text-brand-black'
-                                }`}
-                            >
-                                <div className={`mb-0.5 transition-transform duration-200 ${activeTab === item.id ? '-translate-y-1' : 'group-hover:-translate-y-0.5'}`}>
-                                    <Icon 
-                                        name={item.icon} 
-                                        className={`w-5 h-5 ${activeTab === item.id ? 'fill-current' : ''}`} 
-                                        strokeWidth={activeTab === item.id ? 2.5 : 2}
-                                    />
-                                </div>
-                                <span className={`text-[9px] font-medium ${activeTab === item.id ? 'opacity-100 font-bold' : 'opacity-70'}`}>
-                                    {item.label}
-                                </span>
+                            <button key={item.id} onClick={() => setActiveTab(item.id)} className={`flex flex-col items-center p-1.5 rounded-xl transition-all duration-200 w-12 group ${activeTab === item.id ? 'text-brand-main' : 'text-brand-gray hover:text-brand-black'}`}>
+                                <div className={`mb-0.5 transition-transform duration-200 ${activeTab === item.id ? '-translate-y-1' : 'group-hover:-translate-y-0.5'}`}><Icon name={item.icon} className={`w-5 h-5 ${activeTab === item.id ? 'fill-current' : ''}`} strokeWidth={activeTab === item.id ? 2.5 : 2} /></div>
+                                <span className={`text-[9px] font-medium ${activeTab === item.id ? 'opacity-100 font-bold' : 'opacity-70'}`}>{item.label}</span>
                             </button>
                         ))}
                     </div>
                 </div>
             )}
 
-            {/* ... (플로팅 버튼, 메신저, 알림 패널 기존 코드 유지) ... */}
             <div className={`fixed bottom-24 right-5 z-[60] transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${isVideoModalOpen ? 'scale-0 opacity-0 pointer-events-none' : 'scale-100 opacity-100'}`}>
                 <button onClick={handleOpenNotification} className="relative bg-white text-brand-main border border-brand-gray/20 p-3.5 rounded-full shadow-lg hover:bg-gray-50 transition-transform active:scale-90 flex items-center justify-center">
                     <NotificationsIcon className="w-6 h-6" style={{ fontSize: 24 }} />

@@ -2,14 +2,15 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Icon, getYouTubeId, formatTime } from '../../utils/helpers';
 import YouTubePlayer from '../../components/YouTubePlayer';
-// ✅ [추가] Google Material Icon
 import PlayCircleFilledWhiteIcon from '@mui/icons-material/PlayCircleFilledWhite';
-import FileDownloadIcon from '@mui/icons-material/FileDownload'; // 자료 다운로드 아이콘도 변경 (선택)
+import FileDownloadIcon from '@mui/icons-material/FileDownload';
 
 export default function ClassroomView({ 
     classes, lessonLogs, attendanceLogs, studentId, selectedClassId, setSelectedClassId, 
     videoProgress, onSaveVideoProgress, videoBookmarks, onSaveBookmark,
-    onVideoModalChange 
+    onVideoModalChange,
+    targetMemo, // ✅ [추가] 바로가기 타겟 정보
+    onClearTargetMemo // ✅ [추가] 타겟 초기화 함수
 }) {
     const targetClass = classes.find(c => c.id === selectedClassId);
     const logs = lessonLogs.filter(l => l.classId === selectedClassId).sort((a, b) => new Date(b.date) - new Date(a.date));
@@ -18,6 +19,29 @@ export default function ClassroomView({
     const [currentSessionProgress, setCurrentSessionProgress] = useState(0);
     const [bookmarkNote, setBookmarkNote] = useState('');
     const playerRef = useRef(null); 
+
+    // ✅ [추가] 타겟 메모가 있으면 자동으로 영상 열기
+    useEffect(() => {
+        if (targetMemo && targetMemo.lessonId) {
+            const lesson = logs.find(l => l.id === targetMemo.lessonId);
+            if (lesson) {
+                const youtubeId = getYouTubeId(lesson.iframeCode);
+                if (youtubeId) {
+                    const data = getProgressData(lesson.id);
+                    setPlayingLesson({ 
+                        id: lesson.id, 
+                        videoId: youtubeId, 
+                        ...data, 
+                        date: lesson.date, 
+                        progress: lesson.progress,
+                        seconds: targetMemo.time // ✅ 저장된 타임라인으로 설정
+                    });
+                    // 타겟 처리 후 초기화 (재진입 시 중복 방지)
+                    if (onClearTargetMemo) onClearTargetMemo();
+                }
+            }
+        }
+    }, [targetMemo]); // logs는 의존성에서 제외 (무한루프 방지)
 
     useEffect(() => {
         if (onVideoModalChange) {
@@ -132,7 +156,6 @@ export default function ClassroomView({
                                                 }}
                                                 className="flex-1 bg-brand-main hover:bg-brand-dark text-white py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-colors shadow-brand"
                                             >
-                                                {/* ✅ [수정] 아이콘 변경 */}
                                                 <PlayCircleFilledWhiteIcon className="w-5 h-5" /> 
                                                 {percent > 0 && percent < 100 ? '이어 보기' : (percent === 100 ? '다시 보기' : '강의 보기')}
                                             </button>
@@ -169,7 +192,6 @@ export default function ClassroomView({
                 )}
             </div>
 
-            {/* 비디오 모달 (기존 코드 유지) */}
             {playingLesson && (
                 <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => setPlayingLesson(null)}>
                     <div className="bg-gray-900 p-0 rounded-2xl w-full max-w-7xl shadow-2xl relative overflow-hidden flex flex-col h-[85vh]" onClick={e => e.stopPropagation()}>

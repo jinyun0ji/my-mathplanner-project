@@ -14,7 +14,7 @@ import {
     initialStudentMemos, initialHomeworkAssignments, initialHomeworkResults, 
     initialTests, initialGrades, initialVideoProgress, initialClinicLogs, 
     initialWorkLogs, initialAnnouncements, initialPayments,
-    initialExternalSchedules // 추가됨
+    initialExternalSchedules
 } from './api/initialData'; 
 import { 
     calculateClassSessions, calculateGradeComparison, 
@@ -37,7 +37,6 @@ import GradeManagement from './pages/GradeManagement';
 import ClinicManagement from './pages/ClinicManagement';
 import InternalCommunication from './pages/InternalCommunication';
 import PaymentManagement from './pages/PaymentManagement';
-import StudentMessenger from './components/StudentMessenger';
 
 
 const firebaseConfig = typeof window.__firebase_config !== 'undefined' ? JSON.parse(window.__firebase_config) : {};
@@ -99,14 +98,39 @@ export default function App() {
   const [grades, setGrades] = useState(initialGrades);
   const [studentMemos, setStudentMemos] = useState(initialStudentMemos); 
   const [videoProgress, setVideoProgress] = useState(initialVideoProgress); 
-  const [videoBookmarks, setVideoBookmarks] = useState({}); 
+  
+  // ✅ [수정] 북마크 상태 (LocalStorage 연동)
+  // 브라우저에 저장된 값이 있으면 불러오고, 없으면 빈 객체로 초기화
+  const [videoBookmarks, setVideoBookmarks] = useState(() => {
+      try {
+          const saved = localStorage.getItem('videoBookmarks');
+          return saved ? JSON.parse(saved) : {};
+      } catch (e) {
+          console.error("Failed to load bookmarks:", e);
+          return {};
+      }
+  });
+
+  // ✅ [추가] 북마크 상태가 변경될 때마다 LocalStorage에 저장
+  useEffect(() => {
+      try {
+          localStorage.setItem('videoBookmarks', JSON.stringify(videoBookmarks));
+      } catch (e) {
+          console.error("Failed to save bookmarks:", e);
+      }
+  }, [videoBookmarks]);
 
   const [announcements, setAnnouncements] = useState(initialAnnouncements); 
   const [clinicLogs, setClinicLogs] = useState(initialClinicLogs); 
   const [workLogs, setWorkLogs] = useState(initialWorkLogs); 
   
-  // ✅ [추가] 타학원 스케줄 상태
   const [externalSchedules, setExternalSchedules] = useState(initialExternalSchedules);
+  
+  const [studentMessages, setStudentMessages] = useState([
+      { id: 1, sender: '채수용 선생님', text: '철수야, 오늘 클리닉 늦을 것 같니?', date: '2025-11-29', time: '13:50', isMe: false },
+      { id: 2, sender: '나', text: '네 ㅠㅠ 학교 행사가 있어서 30분 정도 늦을 것 같아요.', date: '2025-11-29', time: '13:52', isMe: true },
+      { id: 3, sender: '채수용 선생님', text: '알겠어. 조심히 오렴!', date: '2025-11-29', time: '13:53', isMe: false },
+  ]);
   
   const nextStudentId = students.reduce((max, s) => Math.max(max, s.id), 0) + 1; 
   
@@ -114,13 +138,6 @@ export default function App() {
   const [hasNewNotifications, setHasNewNotifications] = useState(true);
   const [isMessengerOpen, setIsMessengerOpen] = useState(false); 
   const [hasNewMessages, setHasNewMessages] = useState(true); 
-
-  // ✅ [추가] 학생용 채팅 메시지 상태
-  const [studentMessages, setStudentMessages] = useState([
-      { id: 1, sender: '채수용 선생님', text: '철수야, 오늘 클리닉 늦을 것 같니?', date: '2025-11-29', time: '13:50', isMe: false },
-      { id: 2, sender: '나', text: '네 ㅠㅠ 학교 행사가 있어서 30분 정도 늦을 것 같아요.', date: '2025-11-29', time: '13:52', isMe: true },
-      { id: 3, sender: '채수용 선생님', text: '알겠어. 조심히 오렴!', date: '2025-11-29', time: '13:53', isMe: false },
-  ]);
 
   const toggleSidebar = () => {
     setIsSidebarOpen(prev => !prev);
@@ -138,6 +155,7 @@ export default function App() {
     }
   };
 
+  // ✅ [유지] 로그인 권한 확인 코드 (절대 삭제 안 함)
   useEffect(() => {
     if (auth) {
         const handleAuth = async () => {
@@ -170,36 +188,6 @@ export default function App() {
     const logNotification = useCallback((type, message, details) => {
         setNotifications(prev => [{ id: Date.now(), type, message, details, timestamp: new Date().toLocaleTimeString('ko-KR') }, ...prev]);
     }, []);
-
-    // ✅ [추가] 학생 메시지 전송 핸들러
-  const handleStudentSendMessage = (text) => {
-      const now = new Date();
-      const timeString = now.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
-      const todayDate = now.toISOString().split('T')[0];
-
-      const newMessage = {
-          id: Date.now(),
-          sender: '나',
-          text: text,
-          date: todayDate,
-          time: timeString,
-          isMe: true
-      };
-
-      setStudentMessages(prev => [...prev, newMessage]);
-
-      // (선택 사항) 선생님 자동 응답 시뮬레이션
-      setTimeout(() => {
-          setStudentMessages(prev => [...prev, {
-              id: Date.now() + 1,
-              sender: '채수용 선생님',
-              text: '메시지 확인했습니다. 수업 중에 답변 드릴게요! 😊',
-              date: todayDate,
-              time: new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }),
-              isMe: false
-          }]);
-      }, 1000);
-  };
 
   // ... (기존 CRUD 함수들) ...
   const handleSaveClass = (classData, isEdit) => {
@@ -325,6 +313,7 @@ export default function App() {
   };
   const handleDeleteClinicLog = (id) => setClinicLogs(prev => prev.filter(log => log.id !== id));
   
+  // ✅ 비디오 진도율 저장
   const handleSaveVideoProgress = (studentId, lessonId, data) => {
       setVideoProgress(prev => {
           const studentData = prev[studentId] || {};
@@ -343,6 +332,7 @@ export default function App() {
       });
   };
 
+  // ✅ 북마크 저장 함수
   const handleSaveBookmark = (studentId, lessonId, bookmark) => {
       setVideoBookmarks(prev => {
           const studentData = prev[studentId] || {};
@@ -357,22 +347,15 @@ export default function App() {
       });
   };
 
-  // ✅ [수정] 타학원 스케줄 저장 핸들러 (수정/추가 분기 처리)
   const handleSaveExternalSchedule = (newSchedule) => {
       setExternalSchedules(prev => {
-          // 수정 모드: 기존 ID가 있는 경우
           if (newSchedule.id) {
               return prev.map(s => s.id === newSchedule.id ? { ...s, ...newSchedule } : s);
           }
-          // 추가 모드: ID가 없는 경우
-          return [
-              ...prev, 
-              { ...newSchedule, id: Date.now() }
-          ];
+          return [...prev, { ...newSchedule, id: Date.now() }];
       });
   };
 
-  // ✅ [수정] 타학원 스케줄 삭제 핸들러 (모드별 처리)
   const handleDeleteExternalSchedule = (id, mode, targetDate) => {
       setExternalSchedules(prev => {
           if (mode === 'all') {
@@ -383,7 +366,6 @@ export default function App() {
               if (s.id !== id) return s;
 
               if (mode === 'instance') {
-                  // 제외 날짜 배열에 추가
                   return { 
                       ...s, 
                       excludedDates: [...(s.excludedDates || []), targetDate] 
@@ -391,7 +373,6 @@ export default function App() {
               }
 
               if (mode === 'future') {
-                   // 종료일을 해당 날짜의 하루 전으로 변경
                    const d = new Date(targetDate);
                    d.setDate(d.getDate() - 1); 
                    return { ...s, endDate: d.toISOString().split('T')[0] };
@@ -430,10 +411,80 @@ export default function App() {
     }
   };
 
+  // ✅ 학생 채팅 메시지 전송 핸들러
+  const handleStudentSendMessage = (text) => {
+      const now = new Date();
+      const timeString = now.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+      const todayDate = now.toISOString().split('T')[0];
+
+      const newMessage = {
+          id: Date.now(),
+          sender: '나',
+          text: text,
+          date: todayDate,
+          time: timeString,
+          isMe: true
+      };
+
+      setStudentMessages(prev => [...prev, newMessage]);
+
+      setTimeout(() => {
+          setStudentMessages(prev => [...prev, {
+              id: Date.now() + 1,
+              sender: '채수용 선생님',
+              text: '메시지 확인했습니다. 수업 중에 답변 드릴게요! 😊',
+              date: todayDate,
+              time: new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }),
+              isMe: false
+          }]);
+      }, 1000);
+  };
+
   if (!isLoggedIn) {
     return <LoginPage onLogin={handleLoginSuccess} />;
   }
 
+  // ✅ 학생 페이지 렌더링
+  if (userRole === 'student') {
+      return (
+        <StudentHome 
+            studentId={userId} 
+            students={students}
+            classes={classes}
+            homeworkAssignments={homeworkAssignments}
+            homeworkResults={homeworkResults}
+            attendanceLogs={attendanceLogs}
+            lessonLogs={lessonLogs}
+            notices={announcements}
+            tests={tests}
+            grades={grades}
+            
+            // 영상 관련 props 전달
+            videoProgress={videoProgress}
+            onSaveVideoProgress={handleSaveVideoProgress}
+            
+            videoBookmarks={videoBookmarks} 
+            onSaveBookmark={handleSaveBookmark} // ✅ [확인] 함수 전달
+            
+            // 일정 및 클리닉 관련
+            externalSchedules={externalSchedules} 
+            onSaveExternalSchedule={handleSaveExternalSchedule} 
+            onDeleteExternalSchedule={handleDeleteExternalSchedule} 
+            clinicLogs={clinicLogs}
+            
+            // 정보 수정
+            onUpdateStudent={handleSaveStudent}
+            
+            // 채팅
+            messages={studentMessages}
+            onSendMessage={handleStudentSendMessage}
+            
+            onLogout={() => setIsLoggedIn(false)}
+        />
+      );
+  }
+
+  // 직원용 페이지 렌더링
   const managementProps = {
     students, classes, lessonLogs, attendanceLogs, workLogs, clinicLogs, 
     homeworkAssignments, homeworkResults, tests, grades, studentMemos, videoProgress, announcements, 
@@ -448,45 +499,6 @@ export default function App() {
     studentSearchTerm, setStudentSearchTerm 
   };
 
-  // ----------------------------------------------------
-  // 학생용 화면 렌더링
-  // ----------------------------------------------------
-  if (userRole === 'student') {
-      return (
-        <StudentHome 
-            studentId={userId} 
-            students={students}
-            classes={classes}
-            homeworkAssignments={homeworkAssignments}
-            homeworkResults={homeworkResults}
-            attendanceLogs={attendanceLogs}
-            lessonLogs={lessonLogs}
-            notices={announcements}
-            tests={tests}
-            grades={grades}
-            videoProgress={videoProgress}
-            onSaveVideoProgress={setVideoProgress} // 또는 별도 핸들러
-            videoBookmarks={videoBookmarks} 
-            onSaveBookmark={setVideoBookmarks} // 또는 별도 핸들러
-            
-            externalSchedules={externalSchedules} 
-            onSaveExternalSchedule={handleSaveExternalSchedule} 
-            onDeleteExternalSchedule={handleDeleteExternalSchedule}
-            
-            clinicLogs={clinicLogs} // ✅ [필수] 이 부분이 누락되어 에러가 발생했음
-            
-            messages={studentMessages} 
-            onSendMessage={handleStudentSendMessage}
-
-            // ✅ [추가] 학생 정보 수정 함수 전달
-            onUpdateStudent={handleSaveStudent}
-            
-            onLogout={() => setIsLoggedIn(false)}
-        />
-      );
-  }
-
-  // 직원용 화면 렌더링
   return (
   <div className="flex h-screen bg-gray-100 font-sans text-base relative"> 
     <Sidebar page={page} setPage={handlePageChange} onLogout={() => setIsLoggedIn(false)} />
