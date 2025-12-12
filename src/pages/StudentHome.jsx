@@ -9,6 +9,7 @@ import {
 } from '../components/StudentTabs';
 import ClassroomView from './student/ClassroomView';
 import StudentMessenger from '../components/StudentMessenger';
+import StudentHeader from '../components/StudentHeader'; // ✅ 헤더 추가
 import { Icon, calculateHomeworkStats, calculateGradeComparison } from '../utils/helpers';
 
 export default function StudentHome({ 
@@ -21,39 +22,38 @@ export default function StudentHome({
     const [activeTab, setActiveTab] = useState('home');
     const [selectedClassId, setSelectedClassId] = useState(null);
 
-    // 1. 내 정보 및 내 수업 필터링
+    // ... (데이터 가공 로직은 기존과 동일) ...
     const student = students.find(s => s.id === studentId);
     const myClasses = classes.filter(c => c.students.includes(studentId));
-
-    // 2. 데이터 가공 (과제, 성적 통계)
-    // ✅ [수정] 인자 순서 변경: (studentId, data...)
+    
     const myHomeworkStats = useMemo(() => 
         calculateHomeworkStats(studentId, homeworkAssignments, homeworkResults), 
     [studentId, homeworkAssignments, homeworkResults]);
 
-    // ✅ [수정] 인자 순서 변경: (studentId, classes, tests, grades)
     const myGradeComparison = useMemo(() => 
         calculateGradeComparison(studentId, classes, tests, grades), 
     [studentId, classes, tests, grades]);
 
     const pendingHomeworkCount = myHomeworkStats.filter(h => h.status !== '완료').length;
 
-    // 3. 하단 네비게이션 아이템 설정
     const navItems = [
         { id: 'home', icon: 'home', label: '홈' },
         { id: 'schedule', icon: 'calendar', label: '일정' },
-        { id: 'homework', icon: 'clipboardCheck', label: '과제' }, // 아이콘 이름 수정 (clipboard -> clipboardCheck)
+        { id: 'homework', icon: 'clipboardCheck', label: '과제' },
         { id: 'grades', icon: 'barChart', label: '성적' },
         { id: 'menu', icon: 'menu', label: '메뉴' },
     ];
 
     return (
-        <div className="bg-gray-50 min-h-screen pb-20 max-w-md mx-auto relative shadow-2xl overflow-hidden flex flex-col">
+        // ✅ [수정] max-w-md 제거, 전체 화면 사용
+        <div className="bg-gray-50 min-h-screen flex flex-col relative font-sans">
             
+            {/* ✅ [추가] 상단 고정 헤더 (채수용 수학) */}
+            <StudentHeader onLogout={onLogout} />
+
             {/* 메인 컨텐츠 영역 */}
-            <main className="flex-1 overflow-y-auto p-6 scrollbar-hide">
+            <main className="flex-1 w-full max-w-7xl mx-auto p-4 md:p-6 pb-24 overflow-y-auto custom-scrollbar">
                 {selectedClassId ? (
-                    // 강의실 뷰 (수업 선택 시)
                     <ClassroomView 
                         classes={classes}
                         lessonLogs={lessonLogs}
@@ -67,8 +67,7 @@ export default function StudentHome({
                         onSaveBookmark={onSaveBookmark}
                     />
                 ) : (
-                    // 탭별 화면 (평소)
-                    <div className="animate-fade-in">
+                    <div className="animate-fade-in space-y-6">
                         {activeTab === 'home' && (
                             <DashboardTab 
                                 student={student} 
@@ -107,33 +106,36 @@ export default function StudentHome({
 
             {/* 하단 네비게이션 바 */}
             {!selectedClassId && (
-                <div className="fixed bottom-0 max-w-md w-full bg-white border-t border-gray-100 flex justify-around items-center py-2 px-2 z-40 pb-safe">
-                    {navItems.map(item => (
-                        <button 
-                            key={item.id}
-                            onClick={() => setActiveTab(item.id)}
-                            className={`flex flex-col items-center p-2 rounded-xl transition-all duration-200 w-16 ${
-                                activeTab === item.id 
-                                ? 'text-indigo-600' 
-                                : 'text-gray-400 hover:text-gray-600'
-                            }`}
-                        >
-                            <div className={`mb-1 transition-transform duration-200 ${activeTab === item.id ? '-translate-y-1' : ''}`}>
-                                <Icon 
-                                    name={item.icon} 
-                                    className={`w-6 h-6 ${activeTab === item.id ? 'fill-current' : ''}`} 
-                                    strokeWidth={activeTab === item.id ? 2.5 : 2}
-                                />
-                            </div>
-                            <span className={`text-[10px] font-medium ${activeTab === item.id ? 'opacity-100' : 'opacity-70'}`}>
-                                {item.label}
-                            </span>
-                        </button>
-                    ))}
+                <div className="fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-md border-t border-gray-200 z-40 pb-safe">
+                    {/* ✅ [수정] 네비게이션 바를 중앙 정렬하여 넓은 화면에서도 어색하지 않게 함 */}
+                    <div className="max-w-md mx-auto flex justify-around items-center py-2 px-2">
+                        {navItems.map(item => (
+                            <button 
+                                key={item.id}
+                                onClick={() => setActiveTab(item.id)}
+                                className={`flex flex-col items-center p-2 rounded-xl transition-all duration-200 w-16 group ${
+                                    activeTab === item.id 
+                                    ? 'text-indigo-600' 
+                                    : 'text-gray-400 hover:text-gray-600'
+                                }`}
+                            >
+                                <div className={`mb-1 transition-transform duration-200 ${activeTab === item.id ? '-translate-y-1' : 'group-hover:-translate-y-0.5'}`}>
+                                    <Icon 
+                                        name={item.icon} 
+                                        className={`w-6 h-6 ${activeTab === item.id ? 'fill-current' : ''}`} 
+                                        strokeWidth={activeTab === item.id ? 2.5 : 2}
+                                    />
+                                </div>
+                                <span className={`text-[10px] font-medium ${activeTab === item.id ? 'opacity-100' : 'opacity-70'}`}>
+                                    {item.label}
+                                </span>
+                            </button>
+                        ))}
+                    </div>
                 </div>
             )}
 
-            {/* 학생용 메신저 (우측 하단 플로팅) */}
+            {/* 메신저 (우측 하단) */}
             <StudentMessenger 
                 studentId={studentId}
                 teacherName="채수용 선생님"

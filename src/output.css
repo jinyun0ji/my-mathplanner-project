@@ -410,6 +410,9 @@
 .max-w-\[20px\] {
   max-width: 20px;
 }
+.max-w-\[40px\] {
+  max-width: 40px;
+}
 .max-w-\[75\%\] {
   max-width: 75%;
 }
@@ -430,6 +433,9 @@
 }
 .min-w-\[8rem\] {
   min-width: 8rem;
+}
+.min-w-\[40px\] {
+  min-width: 40px;
 }
 .min-w-\[80px\] {
   min-width: 80px;
