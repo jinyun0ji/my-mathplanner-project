@@ -2,10 +2,10 @@
 import React, { useState } from 'react';
 import { Icon, getWeekOfMonthISO } from '../utils/helpers';
 
-// 1. 대시보드 탭
+// ... (DashboardTab은 기존과 동일) ...
 export const DashboardTab = ({ student, myClasses, setActiveTab, pendingHomeworkCount, setSelectedClassId }) => (
     <div className="space-y-6 animate-fade-in-up">
-        {/* 상단 카드: Brand Dark -> Brand Main 그라디언트 */}
+        {/* 상단 카드 */}
         <div className="bg-gradient-to-br from-brand-dark to-brand-main rounded-3xl p-6 md:p-8 text-white shadow-brand relative overflow-hidden group">
             <div className="absolute top-0 right-0 -mr-4 -mt-4 bg-white/10 w-32 h-32 rounded-full blur-2xl group-hover:bg-white/20 transition-all"></div>
             <div className="flex justify-between items-start relative z-10">
@@ -49,7 +49,6 @@ export const DashboardTab = ({ student, myClasses, setActiveTab, pendingHomework
                         className="bg-white p-5 rounded-2xl border border-brand-gray/30 shadow-sm flex items-center justify-between cursor-pointer hover:shadow-brand hover:border-brand-main/30 hover:-translate-y-1 transition-all"
                     >
                         <div className="flex gap-4 items-center">
-                            {/* 아이콘 배경: Brand Light, 아이콘 색: Brand Main */}
                             <div className="bg-brand-light/30 w-12 h-12 rounded-xl flex items-center justify-center text-brand-main font-bold text-lg shrink-0">
                                 {cls.name.charAt(0)}
                             </div>
@@ -70,11 +69,16 @@ export const DashboardTab = ({ student, myClasses, setActiveTab, pendingHomework
     </div>
 );
 
-// 2. 시간표 탭
+// 2. 시간표 탭 (수정됨)
 export const ScheduleTab = ({ myClasses, externalSchedules, attendanceLogs, studentId, onSaveExternalSchedule, onDeleteExternalSchedule }) => {
     const [viewType, setViewType] = useState('weekly'); 
     const [selectedDate, setSelectedDate] = useState(new Date());
     const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
+    
+    // ✅ [추가] 수정 모드 및 ID 상태 관리
+    const [isEditMode, setIsEditMode] = useState(false);
+    const [editingId, setEditingId] = useState(null);
+
     const [newSchedule, setNewSchedule] = useState({
         academyName: '', courseName: '', instructor: '', startDate: new Date().toISOString().slice(0, 10), endDate: '', days: [], startTime: '', endTime: ''
     });
@@ -86,6 +90,31 @@ export const ScheduleTab = ({ myClasses, externalSchedules, attendanceLogs, stud
         return `${y}-${m}-${d}`;
     };
 
+    // ✅ [수정] 일정 클릭 시 수정 모드로 모달 열기
+    const handleEditClick = (schedule) => {
+        setNewSchedule({
+            academyName: schedule.academyName,
+            courseName: schedule.courseName, // API 데이터 구조에 맞춰 수정 (courseName vs teacher)
+            instructor: schedule.instructor || '',
+            startDate: schedule.startDate,
+            endDate: schedule.endDate || '',
+            days: schedule.days || [],
+            startTime: schedule.startTime,
+            endTime: schedule.endTime || ''
+        });
+        setIsEditMode(true);
+        setEditingId(schedule.scheduleId); // id 저장
+        setIsScheduleModalOpen(true);
+    };
+
+    // ✅ [수정] 모달 열기 (초기화)
+    const handleOpenModal = () => {
+        setNewSchedule({ academyName: '', courseName: '', instructor: '', startDate: new Date().toISOString().slice(0, 10), endDate: '', days: [], startTime: '', endTime: '' });
+        setIsEditMode(false);
+        setEditingId(null);
+        setIsScheduleModalOpen(true);
+    };
+
     const handleAddScheduleSubmit = () => {
         if (!newSchedule.academyName || !newSchedule.courseName || !newSchedule.startDate || newSchedule.days.length === 0 || !newSchedule.startTime) {
             alert('필수 정보를 모두 입력해주세요.');
@@ -93,13 +122,13 @@ export const ScheduleTab = ({ myClasses, externalSchedules, attendanceLogs, stud
         }
         if (onSaveExternalSchedule) {
             onSaveExternalSchedule({
+                id: isEditMode ? editingId : null, // ID가 있으면 수정으로 처리
                 studentId,
                 ...newSchedule, 
                 time: `${newSchedule.startTime}~${newSchedule.endTime || ''}`
             });
         }
         setIsScheduleModalOpen(false);
-        setNewSchedule({ academyName: '', courseName: '', instructor: '', startDate: new Date().toISOString().slice(0, 10), endDate: '', days: [], startTime: '', endTime: '' });
     };
     
     const toggleDay = (day) => {
@@ -115,18 +144,30 @@ export const ScheduleTab = ({ myClasses, externalSchedules, attendanceLogs, stud
          const dayOfWeek = ['일', '월', '화', '수', '목', '금', '토'][selectedDate.getDay()];
          const dateStr = formatDate(selectedDate);
          
+         // 수학 학원 일정
          const dailyClasses = myClasses.filter(cls => cls.schedule.days.includes(dayOfWeek)).map(cls => ({
              id: `math-${cls.id}`, type: 'math', name: cls.name, teacher: '채수용', time: cls.schedule.time, scheduleId: cls.id
          }));
+
+         // 타학원 일정
          const myExternal = externalSchedules ? externalSchedules.filter(s => {
              const isValidStudent = s.studentId === studentId;
              const isDayMatch = s.days && s.days.includes(dayOfWeek);
              const isDateInRange = selectedDate >= new Date(s.startDate) && (!s.endDate || selectedDate <= new Date(s.endDate));
              return isValidStudent && isDayMatch && isDateInRange;
          }) : [];
+
          const dailyExternal = myExternal.map(s => ({
-             id: `ext-${s.id}`, type: 'external', name: s.academyName, teacher: s.courseName, time: `${s.startTime}~${s.endTime}`, scheduleId: s.id
+             id: `ext-${s.id}`, 
+             type: 'external', 
+             name: s.academyName, 
+             teacher: s.courseName, // 화면 표시용
+             time: `${s.startTime}~${s.endTime}`, 
+             scheduleId: s.id,
+             // 원본 데이터 전달용
+             ...s 
          }));
+
          const allSchedules = [...dailyClasses, ...dailyExternal].sort((a, b) => (a.time.split('~')[0] || '00:00').localeCompare(b.time.split('~')[0] || '00:00'));
  
          if (allSchedules.length === 0) {
@@ -148,7 +189,12 @@ export const ScheduleTab = ({ myClasses, externalSchedules, attendanceLogs, stud
                       return (
                           <div key={item.id} className={`relative pl-6 border-l-2 py-2 ml-2 ${item.type === 'math' ? 'border-brand-main/30' : 'border-brand-light'}`}>
                               <div className={`absolute -left-[9px] top-3 w-4 h-4 rounded-full ring-4 ring-white ${item.type === 'math' ? (log?.status === '출석' ? 'bg-green-500' : log?.status === '지각' ? 'bg-yellow-400' : log?.status === '결석' ? 'bg-brand-red' : 'bg-brand-main') : 'bg-brand-light'}`}></div>
-                              <div className="bg-white p-5 rounded-2xl shadow-sm border border-brand-gray/30 relative group h-full flex flex-col justify-between hover:shadow-md transition-shadow">
+                              
+                              {/* ✅ [수정] 타학원 일정 클릭 시 수정 모달 열기 */}
+                              <div 
+                                onClick={() => item.type === 'external' ? handleEditClick(item) : null}
+                                className={`bg-white p-5 rounded-2xl shadow-sm border border-brand-gray/30 relative group h-full flex flex-col justify-between transition-all hover:shadow-md ${item.type === 'external' ? 'cursor-pointer hover:border-brand-main/50' : ''}`}
+                              >
                                   <div>
                                       <div className="flex justify-between mb-2">
                                           <span className={`text-xs font-bold px-2 py-1 rounded ${item.type === 'math' ? 'text-brand-main bg-brand-light/30' : 'text-brand-gray bg-brand-bg'}`}>{item.type === 'math' ? '수학 학원' : item.teacher}</span>
@@ -157,7 +203,25 @@ export const ScheduleTab = ({ myClasses, externalSchedules, attendanceLogs, stud
                                       <h4 className="font-bold text-brand-black text-lg mb-2">{item.name}</h4>
                                   </div>
                                   <div className="flex justify-between items-end">
-                                      {item.type === 'math' ? (<><p className="text-sm text-brand-gray flex items-center gap-1"><Icon name="users" className="w-4 h-4" /> 채수용 선생님</p>{log && (<span className={`text-xs font-bold px-2 py-1 rounded ${log.status === '출석' ? 'bg-green-100 text-green-700' : log.status === '지각' ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'}`}>{log.status}</span>)}</>) : (<div className="w-full flex justify-end"><button onClick={() => { if(window.confirm('이 일정을 삭제하시겠습니까?')) onDeleteExternalSchedule(item.scheduleId); }} className="text-xs text-brand-gray hover:text-brand-red underline">삭제</button></div>)}
+                                      {item.type === 'math' ? (
+                                        <>
+                                            <p className="text-sm text-brand-gray flex items-center gap-1"><Icon name="users" className="w-4 h-4" /> 채수용 선생님</p>
+                                            {log && (<span className={`text-xs font-bold px-2 py-1 rounded ${log.status === '출석' ? 'bg-green-100 text-green-700' : log.status === '지각' ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'}`}>{log.status}</span>)}
+                                        </>
+                                      ) : (
+                                        <div className="w-full flex justify-end gap-3">
+                                            <span className="text-xs text-brand-main opacity-0 group-hover:opacity-100 transition-opacity">클릭하여 수정</span>
+                                            <button 
+                                                onClick={(e) => { 
+                                                    e.stopPropagation(); // 카드 클릭 방지
+                                                    if(window.confirm('이 일정을 삭제하시겠습니까?')) onDeleteExternalSchedule(item.scheduleId); 
+                                                }} 
+                                                className="text-xs text-brand-gray hover:text-brand-red underline"
+                                            >
+                                                삭제
+                                            </button>
+                                        </div>
+                                      )}
                                   </div>
                               </div>
                           </div>
@@ -185,13 +249,23 @@ export const ScheduleTab = ({ myClasses, externalSchedules, attendanceLogs, stud
                     <span className="font-bold text-brand-black text-lg">{month}월 {week}주차</span>
                     <button onClick={nextWeek} className="p-2 bg-white rounded-full shadow-sm text-brand-gray hover:text-brand-main hover:bg-brand-bg transform rotate-180"><Icon name="arrow-left" className="w-5 h-5" /></button>
                 </div>
-                <div className="flex justify-between bg-white p-2 rounded-2xl shadow-sm border border-brand-gray/30 overflow-x-auto">
+                {/* ✅ [수정] 주간 달력 크기 축소: p-2 -> p-1, text-lg -> text-base, min-w-[40px] -> min-w-[32px] */}
+                <div className="flex justify-between bg-white p-1.5 rounded-2xl shadow-sm border border-brand-gray/30 overflow-x-auto">
                     {weekDays.map((day, index) => {
                         const date = new Date(sunday);
                         date.setDate(sunday.getDate() + index);
                         const isSelected = formatDate(date) === formatDate(selectedDate);
                         const isToday = formatDate(date) === formatDate(new Date());
-                        return (<button key={day} onClick={() => setSelectedDate(date)} className={`flex flex-col items-center p-2 rounded-xl flex-1 transition-all min-w-[40px] ${isSelected ? 'bg-brand-main text-white shadow-brand scale-105' : 'hover:bg-brand-bg'} ${!isSelected && isToday ? 'text-brand-main font-bold' : ''} ${!isSelected && !isToday ? 'text-brand-gray' : ''}`}><span className="text-xs mb-1">{day}</span><span className="font-bold text-lg">{date.getDate()}</span></button>);
+                        return (
+                            <button 
+                                key={day} 
+                                onClick={() => setSelectedDate(date)} 
+                                className={`flex flex-col items-center p-1 rounded-xl flex-1 transition-all min-w-[32px] ${isSelected ? 'bg-brand-main text-white shadow-brand scale-105' : 'hover:bg-brand-bg'} ${!isSelected && isToday ? 'text-brand-main font-bold' : ''} ${!isSelected && !isToday ? 'text-brand-gray' : ''}`}
+                            >
+                                <span className="text-[10px] mb-0.5">{day}</span>
+                                <span className={`font-bold ${isSelected ? 'text-base' : 'text-sm'}`}>{date.getDate()}</span>
+                            </button>
+                        );
                     })}
                 </div>
                 <div className="space-y-4">{renderScheduleList()}</div>
@@ -199,6 +273,7 @@ export const ScheduleTab = ({ myClasses, externalSchedules, attendanceLogs, stud
         );
     };
 
+    // ... (MonthlyView는 기존과 동일하게 유지) ...
     const MonthlyView = () => {
         const year = selectedDate.getFullYear();
         const month = selectedDate.getMonth();
@@ -274,7 +349,7 @@ export const ScheduleTab = ({ myClasses, externalSchedules, attendanceLogs, stud
             <div className="flex justify-between items-center mb-6">
                 <h2 className="text-2xl font-bold text-brand-black">나의 일정</h2>
                 <div className="flex gap-2">
-                    <button onClick={() => setIsScheduleModalOpen(true)} className="bg-brand-main hover:bg-brand-dark text-white px-3 py-0 h-[32px] rounded-xl text-xs font-bold flex items-center gap-1 shadow-md transition-all active:scale-95"><Icon name="plus" className="w-4 h-4" /> 일정 추가</button>
+                    <button onClick={handleOpenModal} className="bg-brand-main hover:bg-brand-dark text-white px-3 py-0 h-[32px] rounded-xl text-xs font-bold flex items-center gap-1 shadow-md transition-all active:scale-95"><Icon name="plus" className="w-4 h-4" /> 일정 추가</button>
                     <div className="bg-white p-1 rounded-xl border border-brand-gray/30 shadow-sm flex h-[32px] items-center">
                         <button onClick={() => setViewType('weekly')} className={`px-3 py-0 h-full flex items-center rounded-lg text-xs font-bold transition-all ${viewType === 'weekly' ? 'bg-brand-main text-white shadow-md' : 'text-brand-gray hover:text-brand-black'}`}>주간</button>
                         <button onClick={() => { setViewType('monthly'); setSelectedDate(new Date()); }} className={`px-3 py-0 h-full flex items-center rounded-lg text-xs font-bold transition-all ${viewType === 'monthly' ? 'bg-brand-main text-white shadow-md' : 'text-brand-gray hover:text-brand-black'}`}>월간</button>
@@ -286,7 +361,8 @@ export const ScheduleTab = ({ myClasses, externalSchedules, attendanceLogs, stud
             {isScheduleModalOpen && (
                 <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => setIsScheduleModalOpen(false)}>
                     <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl animate-fade-in-up" onClick={e => e.stopPropagation()}>
-                        <h3 className="text-lg font-bold text-brand-black mb-4">타학원 일정 등록</h3>
+                        {/* ✅ [수정] 모달 타이틀 수정 */}
+                        <h3 className="text-lg font-bold text-brand-black mb-4">타학원 일정 {isEditMode ? '수정' : '등록'}</h3>
                         <div className="space-y-4 max-h-[70vh] overflow-y-auto custom-scrollbar px-1">
                             <div><label className="block text-xs font-bold text-brand-gray mb-1">학원명 *</label><input type="text" value={newSchedule.academyName} onChange={e => setNewSchedule({...newSchedule, academyName: e.target.value})} className="w-full border border-brand-gray/30 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-main focus:outline-none" placeholder="예: 정상어학원"/></div>
                             <div><label className="block text-xs font-bold text-brand-gray mb-1">강의명 *</label><input type="text" value={newSchedule.courseName} onChange={e => setNewSchedule({...newSchedule, courseName: e.target.value})} className="w-full border border-brand-gray/30 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-main focus:outline-none" placeholder="예: TOP반 영어"/></div>
@@ -301,7 +377,11 @@ export const ScheduleTab = ({ myClasses, externalSchedules, attendanceLogs, stud
                                 </div>
                             </div>
                             <div className="flex gap-2"><div className="flex-1"><label className="block text-xs font-bold text-brand-gray mb-1">시작 시간 *</label><input type="time" value={newSchedule.startTime} onChange={e => setNewSchedule({...newSchedule, startTime: e.target.value})} className="w-full border border-brand-gray/30 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-main focus:outline-none"/></div><div className="flex-1"><label className="block text-xs font-bold text-brand-gray mb-1">종료 시간</label><input type="time" value={newSchedule.endTime} onChange={e => setNewSchedule({...newSchedule, endTime: e.target.value})} className="w-full border border-brand-gray/30 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-main focus:outline-none"/></div></div>
-                            <button onClick={handleAddScheduleSubmit} className="w-full bg-brand-main hover:bg-brand-dark text-white font-bold py-3 rounded-xl mt-2 transition-colors">등록하기</button>
+                            
+                            {/* ✅ [수정] 버튼 텍스트 변경 */}
+                            <button onClick={handleAddScheduleSubmit} className="w-full bg-brand-main hover:bg-brand-dark text-white font-bold py-3 rounded-xl mt-2 transition-colors">
+                                {isEditMode ? '수정 완료' : '등록하기'}
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -309,7 +389,6 @@ export const ScheduleTab = ({ myClasses, externalSchedules, attendanceLogs, stud
         </div>
     );
 };
-
 // 3. 과제 탭
 export const HomeworkTab = ({ myHomeworkStats }) => {
     const [selectedHwId, setSelectedHwId] = useState(null); 
@@ -357,7 +436,6 @@ export const HomeworkTab = ({ myHomeworkStats }) => {
         </div>
     );
 };
-
 // 4. 성적 탭
 export const GradesTab = ({ myGradeComparison }) => {
     const [mode, setMode] = useState('list'); 
@@ -428,8 +506,6 @@ export const GradesTab = ({ myGradeComparison }) => {
         </div>
     );
 };
-
-// 5. 메뉴 탭
 export const MenuTab = ({ onLogout }) => (
     <div className="space-y-6 animate-fade-in-up max-w-2xl mx-auto">
         <h2 className="text-2xl font-bold text-brand-black">메뉴</h2>

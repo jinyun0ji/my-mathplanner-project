@@ -357,12 +357,19 @@ export default function App() {
       });
   };
 
-  // ✅ [추가] 타학원 스케줄 저장 핸들러
+  // ✅ [수정] 타학원 스케줄 저장 핸들러 (수정/추가 분기 처리)
   const handleSaveExternalSchedule = (newSchedule) => {
-      setExternalSchedules(prev => [
-          ...prev, 
-          { ...newSchedule, id: Date.now() }
-      ]);
+      setExternalSchedules(prev => {
+          // 수정 모드: 기존 ID가 있는 경우
+          if (newSchedule.id) {
+              return prev.map(s => s.id === newSchedule.id ? { ...s, ...newSchedule } : s);
+          }
+          // 추가 모드: ID가 없는 경우
+          return [
+              ...prev, 
+              { ...newSchedule, id: Date.now() }
+          ];
+      });
   };
 
   // ✅ [추가] 타학원 스케줄 삭제 핸들러

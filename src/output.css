@@ -422,6 +422,9 @@
 .max-w-\[1600px\] {
   max-width: 1600px;
 }
+.max-w-full {
+  max-width: 100%;
+}
 .max-w-none {
   max-width: none;
 }
@@ -433,6 +436,9 @@
 }
 .min-w-\[8rem\] {
   min-width: 8rem;
+}
+.min-w-\[32px\] {
+  min-width: 32px;
 }
 .min-w-\[40px\] {
   min-width: 40px;

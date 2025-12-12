@@ -30,8 +30,8 @@ export default function StudentMessenger({
 
     return (
         <>
+            {/* 플로팅 버튼 */}
             {!isOpen && (
-                // 버튼 색상: Brand Main (#475FE9)
                 <button 
                     onClick={toggleMessenger}
                     className="fixed bottom-24 right-5 z-50 bg-brand-main hover:bg-brand-dark text-white p-3.5 rounded-full shadow-brand transition-transform active:scale-90 flex items-center justify-center"
@@ -40,11 +40,18 @@ export default function StudentMessenger({
                 </button>
             )}
 
-            <div className={`fixed inset-0 z-50 transition-transform duration-300 ease-in-out ${isOpen ? 'translate-y-0' : 'translate-y-full'}`}>
-                <div className="absolute inset-0 bg-black/30 md:bg-transparent" onClick={toggleMessenger}></div>
+            {/* 메신저 패널 (우측 슬라이드) */}
+            <div className={`fixed inset-0 z-50 overflow-hidden pointer-events-none`}>
+                {/* 배경 오버레이 */}
+                <div 
+                    className={`absolute inset-0 bg-black/30 transition-opacity duration-300 pointer-events-auto ${isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} 
+                    onClick={toggleMessenger}
+                />
 
-                <div className="absolute bottom-0 right-0 w-full md:w-96 h-[80vh] md:h-[600px] md:bottom-24 md:right-5 bg-brand-bg md:rounded-2xl shadow-2xl flex flex-col overflow-hidden rounded-t-2xl" onClick={e => e.stopPropagation()}>
+                {/* 실제 패널 컨테이너 */}
+                <div className={`absolute top-0 right-0 h-full w-full md:w-96 max-w-full bg-brand-bg shadow-2xl transform transition-transform duration-300 ease-in-out pointer-events-auto flex flex-col ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}>
                     
+                    {/* 헤더 */}
                     <div className="bg-white px-4 py-3 flex justify-between items-center border-b border-brand-gray/30 shadow-sm shrink-0">
                         <div className="flex items-center gap-3">
                             <div className="w-10 h-10 rounded-full bg-brand-light/30 flex items-center justify-center text-brand-dark font-bold">
@@ -63,7 +70,8 @@ export default function StudentMessenger({
                         </button>
                     </div>
 
-                    <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-brand-bg">
+                    {/* 메시지 리스트 */}
+                    <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-brand-bg custom-scrollbar">
                         {messages.length > 0 ? (
                             messages.map((msg) => (
                                 <div key={msg.id} className={`flex ${msg.isMe ? 'justify-end' : 'justify-start'}`}>
@@ -72,7 +80,6 @@ export default function StudentMessenger({
                                             {msg.sender[0]}
                                         </div>
                                     )}
-                                    {/* 내 메시지: Brand Main (#475FE9) / 상대 메시지: White */}
                                     <div className={`max-w-[75%] px-4 py-2 rounded-2xl text-sm leading-relaxed shadow-sm ${
                                         msg.isMe 
                                         ? 'bg-brand-main text-white rounded-tr-none' 
@@ -93,12 +100,13 @@ export default function StudentMessenger({
                         <div ref={messagesEndRef} />
                     </div>
 
+                    {/* 입력창 */}
                     <form onSubmit={handleSend} className="p-3 bg-white border-t border-brand-gray/30 flex gap-2 shrink-0 pb-6 md:pb-3">
                         <input 
                             type="text" 
                             value={inputText}
                             onChange={(e) => setInputText(e.target.value)}
-                            placeholder="메시지를 입력하세요..."
+                            placeholder="메시지 입력..."
                             className="flex-1 bg-brand-bg rounded-full px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-main transition-all"
                         />
                         <button 
