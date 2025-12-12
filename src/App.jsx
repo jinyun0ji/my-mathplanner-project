@@ -477,6 +477,9 @@ export default function App() {
             
             messages={studentMessages} 
             onSendMessage={handleStudentSendMessage}
+
+            // ✅ [추가] 학생 정보 수정 함수 전달
+            onUpdateStudent={handleSaveStudent}
             
             onLogout={() => setIsLoggedIn(false)}
         />

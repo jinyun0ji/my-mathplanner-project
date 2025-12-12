@@ -3,10 +3,13 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom'; // ✅ Portal import
 import { Icon, getWeekOfMonthISO, calculateDurationMinutes, formatDuration } from '../utils/helpers';
 
-// ✅ Portal 헬퍼 컴포넌트
+// ✅ [추가] Google Icons
+import CampaignIcon from '@mui/icons-material/Campaign'; // 필독 아이콘 (확성기)
+
+// ✅ [수정] Portal 헬퍼: modal-root가 없으면 document.body 사용 (안전장치)
 const ModalPortal = ({ children }) => {
-    const el = document.getElementById('modal-root');
-    return el ? createPortal(children, el) : null;
+    const el = document.getElementById('modal-root') || document.body;
+    return createPortal(children, el);
 };
 
 // ----------------------------------------------------------------------
@@ -45,7 +48,6 @@ export const DashboardTab = ({ student, myClasses, setActiveTab, pendingHomework
             </div>
         </div>
 
-        {/* 수강 강좌 리스트 */}
         <div>
             <h3 className="text-lg font-bold text-brand-black mb-4 px-1 flex items-center gap-2">
                 <span className="w-1 h-6 bg-brand-main rounded-full"></span>
@@ -653,21 +655,202 @@ export const GradesTab = ({ myGradeComparison }) => {
         </div>
     );
 };
-export const MenuTab = ({ onLogout }) => (
-    <div className="space-y-6 animate-fade-in-up max-w-2xl mx-auto">
-        <h2 className="text-2xl font-bold text-brand-black">메뉴</h2>
-        <div className="bg-white rounded-2xl shadow-sm border border-brand-gray/30 overflow-hidden">
-            <button className="w-full p-4 flex items-center justify-between border-b border-brand-bg hover:bg-brand-bg"><div className="flex items-center gap-3"><div className="bg-brand-bg p-2 rounded-lg"><Icon name="user" className="w-5 h-5 text-brand-gray" /></div><span className="font-medium text-brand-black">내 정보 수정</span></div><Icon name="chevronRight" className="w-4 h-4 text-brand-gray" /></button>
-            <button className="w-full p-4 flex items-center justify-between border-b border-brand-bg hover:bg-brand-bg"><div className="flex items-center gap-3"><div className="bg-brand-bg p-2 rounded-lg"><Icon name="bell" className="w-5 h-5 text-brand-gray" /></div><span className="font-medium text-brand-black">알림 설정</span></div><Icon name="chevronRight" className="w-4 h-4 text-brand-gray" /></button>
+// 8. 메뉴 탭 (수정됨)
+export const MenuTab = ({ student, onUpdateStudent, onLogout }) => {
+    const [isProfileOpen, setIsProfileOpen] = useState(false);
+    const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
+    const [editData, setEditData] = useState({
+        school: '',
+        grade: '',
+        phone: ''
+    });
+
+    // ✅ [수정] 알림 설정 카테고리 4개로 변경
+    const [notifications, setNotifications] = useState({
+        all: true,
+        post: true,       // 게시글(공지)
+        homework: true,   // 과제 마감
+        clinic: true,     // 클리닉 예약
+        class_update: true // 수업 종료 후 업로드
+    });
+
+    const handleOpenProfile = () => {
+        if (student) {
+            setEditData({
+                school: student.school || '',
+                grade: student.grade || '',
+                phone: student.phone || ''
+            });
+        }
+        setIsProfileOpen(true);
+    };
+
+    const handleSaveProfile = () => {
+        if (!editData.school || !editData.grade || !editData.phone) {
+            alert('모든 정보를 입력해주세요.');
+            return;
+        }
+
+        // ✅ [수정] 학교 이름 정규화 (~~고등학교 -> ~~고)
+        let normalizedSchool = editData.school.trim();
+        if (normalizedSchool.endsWith('고등학교')) {
+            normalizedSchool = normalizedSchool.replace('고등학교', '고');
+        } else if (!normalizedSchool.endsWith('고')) {
+            // (선택) 만약 '서울'만 입력했다면 '서울고'로? -> 이건 애매하므로 '고등학교'만 처리
+        }
+
+        onUpdateStudent({ 
+            ...student, 
+            ...editData, 
+            school: normalizedSchool // 정규화된 이름 저장
+        }, true);
+        setIsProfileOpen(false);
+        alert('정보가 수정되었습니다.');
+    };
+
+    const toggleNotification = (key) => {
+        setNotifications(prev => {
+            if (key === 'all') {
+                const newValue = !prev.all;
+                return { 
+                    all: newValue, 
+                    post: newValue, 
+                    homework: newValue, 
+                    clinic: newValue, 
+                    class_update: newValue 
+                };
+            }
+            const newSettings = { ...prev, [key]: !prev[key] };
+            
+            // 개별 설정에 따른 전체 알림 스위치 동기화
+            if (!newSettings[key]) {
+                newSettings.all = false;
+            } else if (
+                newSettings.post && 
+                newSettings.homework && 
+                newSettings.clinic && 
+                newSettings.class_update
+            ) {
+                newSettings.all = true;
+            }
+            return newSettings;
+        });
+    };
+
+    return (
+        <div className="flex flex-col h-full space-y-6 animate-fade-in-up max-w-2xl mx-auto pb-24 px-1">
+            <h2 className="text-2xl font-bold text-brand-black">메뉴</h2>
+            
+            <div className="bg-white rounded-2xl shadow-sm border border-brand-gray/30 overflow-hidden">
+                <button onClick={handleOpenProfile} className="w-full p-4 flex items-center justify-between border-b border-brand-gray/10 hover:bg-brand-bg transition-colors">
+                    <div className="flex items-center gap-3">
+                        <div className="bg-brand-bg p-2 rounded-lg"><Icon name="user" className="w-5 h-5 text-brand-gray" /></div>
+                        <span className="font-medium text-brand-black">내 정보 수정</span>
+                    </div>
+                    <Icon name="chevronRight" className="w-4 h-4 text-brand-gray" />
+                </button>
+
+                <button onClick={() => setIsSettingsOpen(true)} className="w-full p-4 flex items-center justify-between hover:bg-brand-bg transition-colors">
+                    <div className="flex items-center gap-3">
+                        <div className="bg-brand-bg p-2 rounded-lg"><Icon name="bell" className="w-5 h-5 text-brand-gray" /></div>
+                        <span className="font-medium text-brand-black">알림 설정</span>
+                    </div>
+                    <Icon name="chevronRight" className="w-4 h-4 text-brand-gray" />
+                </button>
+            </div>
+
+            <div className="mt-auto">
+                <button onClick={onLogout} className="w-full bg-brand-red/10 text-brand-red p-4 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-brand-red/20 transition-colors">
+                    <Icon name="logOut" className="w-5 h-5" />
+                    로그아웃
+                </button>
+            </div>
+
+            {/* 내 정보 수정 모달 */}
+            {isProfileOpen && <ModalPortal>
+                <div className="fixed inset-0 z-[70] bg-black/50 flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => setIsProfileOpen(false)}>
+                    <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl animate-fade-in-up" onClick={e => e.stopPropagation()}>
+                        <div className="flex justify-between items-center mb-6">
+                            <h3 className="text-lg font-bold text-brand-black">내 정보 수정</h3>
+                            <button onClick={() => setIsProfileOpen(false)} className="text-brand-gray hover:text-brand-black"><Icon name="x" className="w-6 h-6" /></button>
+                        </div>
+                        <div className="space-y-4">
+                            <div><label className="block text-xs font-bold text-brand-gray mb-1">이름</label><input type="text" value={student?.name || ''} disabled className="w-full bg-brand-bg/50 border border-brand-gray/30 rounded-lg px-3 py-2 text-sm text-brand-gray cursor-not-allowed" /></div>
+                            
+                            {/* 학교 입력 */}
+                            <div>
+                                <label className="block text-xs font-bold text-brand-gray mb-1">학교</label>
+                                <input type="text" value={editData.school} onChange={(e) => setEditData({...editData, school: e.target.value})} className="w-full border border-brand-gray/30 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-main focus:outline-none" placeholder="예: 서울고" />
+                                <p className="text-[10px] text-brand-gray mt-1 ml-1">* '고등학교'는 자동으로 '고'로 저장됩니다.</p>
+                            </div>
+                            
+                            {/* ✅ [수정] 학년 선택 (Dropdown) */}
+                            <div>
+                                <label className="block text-xs font-bold text-brand-gray mb-1">학년</label>
+                                <select 
+                                    value={editData.grade} 
+                                    onChange={(e) => setEditData({...editData, grade: e.target.value})} 
+                                    className="w-full border border-brand-gray/30 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-main focus:outline-none appearance-none bg-white"
+                                >
+                                    <option value="" disabled>학년을 선택하세요</option>
+                                    <option value="고1">고1</option>
+                                    <option value="고2">고2</option>
+                                    <option value="고3">고3</option>
+                                </select>
+                            </div>
+                            
+                            <div><label className="block text-xs font-bold text-brand-gray mb-1">전화번호</label><input type="text" value={editData.phone} onChange={(e) => setEditData({...editData, phone: e.target.value})} className="w-full border border-brand-gray/30 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-main focus:outline-none" placeholder="010-0000-0000" /></div>
+                            
+                            <button onClick={handleSaveProfile} className="w-full bg-brand-main hover:bg-brand-dark text-white font-bold py-3 rounded-xl mt-4 transition-colors">저장하기</button>
+                        </div>
+                    </div>
+                </div>
+            </ModalPortal>}
+
+            {/* 알림 설정 모달 */}
+            {isSettingsOpen && <ModalPortal>
+                <div className="fixed inset-0 z-[70] bg-black/50 flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => setIsSettingsOpen(false)}>
+                    <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl animate-fade-in-up" onClick={e => e.stopPropagation()}>
+                        <div className="flex justify-between items-center mb-6">
+                            <h3 className="text-lg font-bold text-brand-black">알림 설정</h3>
+                            <button onClick={() => setIsSettingsOpen(false)} className="text-brand-gray hover:text-brand-black"><Icon name="x" className="w-6 h-6" /></button>
+                        </div>
+                        <div className="space-y-4">
+                            <div className="flex items-center justify-between py-2 border-b border-brand-gray/10">
+                                <span className="font-bold text-brand-black">전체 알림</span>
+                                <button onClick={() => toggleNotification('all')} className={`w-12 h-6 rounded-full p-1 transition-colors duration-300 ${notifications.all ? 'bg-brand-main' : 'bg-brand-gray/30'}`}><div className={`w-4 h-4 bg-white rounded-full shadow-sm transform transition-transform duration-300 ${notifications.all ? 'translate-x-6' : 'translate-x-0'}`} /></button>
+                            </div>
+                            <div className="space-y-3 pt-2">
+                                {/* ✅ [수정] 4개 카테고리 적용 */}
+                                <div className="flex items-center justify-between">
+                                    <span className="text-sm text-brand-black">게시글(공지사항) 알림</span>
+                                    <button onClick={() => toggleNotification('post')} className={`w-10 h-5 rounded-full p-0.5 transition-colors ${notifications.post ? 'bg-brand-main' : 'bg-brand-gray/30'}`}><div className={`w-4 h-4 bg-white rounded-full shadow-sm transform transition-transform ${notifications.post ? 'translate-x-5' : 'translate-x-0'}`} /></button>
+                                </div>
+                                <div className="flex items-center justify-between">
+                                    <span className="text-sm text-brand-black">과제 마감 알림</span>
+                                    <button onClick={() => toggleNotification('homework')} className={`w-10 h-5 rounded-full p-0.5 transition-colors ${notifications.homework ? 'bg-brand-main' : 'bg-brand-gray/30'}`}><div className={`w-4 h-4 bg-white rounded-full shadow-sm transform transition-transform ${notifications.homework ? 'translate-x-5' : 'translate-x-0'}`} /></button>
+                                </div>
+                                <div className="flex items-center justify-between">
+                                    <span className="text-sm text-brand-black">클리닉 예약 알림</span>
+                                    <button onClick={() => toggleNotification('clinic')} className={`w-10 h-5 rounded-full p-0.5 transition-colors ${notifications.clinic ? 'bg-brand-main' : 'bg-brand-gray/30'}`}><div className={`w-4 h-4 bg-white rounded-full shadow-sm transform transition-transform ${notifications.clinic ? 'translate-x-5' : 'translate-x-0'}`} /></button>
+                                </div>
+                                <div className="flex items-center justify-between">
+                                    <span className="text-sm text-brand-black">수업 후 자료/성적 알림</span>
+                                    <button onClick={() => toggleNotification('class_update')} className={`w-10 h-5 rounded-full p-0.5 transition-colors ${notifications.class_update ? 'bg-brand-main' : 'bg-brand-gray/30'}`}><div className={`w-4 h-4 bg-white rounded-full shadow-sm transform transition-transform ${notifications.class_update ? 'translate-x-5' : 'translate-x-0'}`} /></button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </ModalPortal>}
         </div>
-        <button onClick={onLogout} className="w-full bg-brand-red/10 text-brand-red p-4 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-brand-red/20 transition-colors"><Icon name="logOut" className="w-5 h-5" />로그아웃</button>
-    </div>
-);
+    );
+};
 
 // 6. 게시판 탭 (수정됨)
 export const BoardTab = ({ notices }) => {
     const [selectedNotice, setSelectedNotice] = useState(null);
-
     const pinnedNotices = notices.filter(n => n.isPinned);
     const allNotices = [...notices].sort((a, b) => new Date(b.date) - new Date(a.date));
 
@@ -682,7 +865,8 @@ export const BoardTab = ({ notices }) => {
             {pinnedNotices.length > 0 && (
                 <div className="space-y-3">
                     <h3 className="text-sm font-bold text-brand-red flex items-center gap-1 px-1">
-                        <Icon name="pin" className="w-4 h-4" /> 중요 공지
+                        {/* ✅ [수정] 필독 아이콘 변경 */}
+                        <CampaignIcon className="w-5 h-5" /> 중요 공지
                     </h3>
                     
                     <div className="flex overflow-x-auto gap-4 pb-4 -mx-4 px-4 snap-x snap-mandatory scrollbar-hide">
@@ -695,7 +879,8 @@ export const BoardTab = ({ notices }) => {
                                 <div>
                                     <div className="flex justify-between items-start mb-2">
                                         <span className="bg-brand-red text-white text-xs px-2 py-0.5 rounded font-bold shadow-sm flex items-center gap-1">
-                                            <Icon name="alert" className="w-3 h-3" /> 필독
+                                            {/* ✅ [수정] 카드 내부 배지 아이콘도 변경 */}
+                                            <CampaignIcon style={{ fontSize: 14 }} /> 필독
                                         </span>
                                         <span className="text-xs text-brand-dark/70 font-medium">{notice.date}</span>
                                     </div>
@@ -727,7 +912,8 @@ export const BoardTab = ({ notices }) => {
                         >
                             <div className="flex-1 min-w-0 pr-4">
                                 <div className="flex items-center gap-2 mb-1">
-                                    {notice.isPinned && <Icon name="pin" className="w-3 h-3 text-brand-red shrink-0" />}
+                                    {/* ✅ [수정] 리스트 아이콘 변경 */}
+                                    {notice.isPinned && <CampaignIcon className="w-4 h-4 text-brand-red shrink-0" />}
                                     <h4 className={`text-sm font-bold truncate ${notice.isPinned ? 'text-brand-black' : 'text-brand-black'}`}>
                                         {notice.title}
                                     </h4>
@@ -748,52 +934,17 @@ export const BoardTab = ({ notices }) => {
                 </div>
             </div>
 
-            {/* 3. 게시글 상세 모달 - Portal 사용 */}
-            {selectedNotice && createPortal(
-                <div className="fixed inset-0 z-[9999] bg-black/60 flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => setSelectedNotice(null)}>
+            {/* 상세 모달 - Portal 사용 */}
+            {selectedNotice && <ModalPortal>
+                <div className="fixed inset-0 z-[70] bg-black/60 flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => setSelectedNotice(null)}>
                     <div className="bg-white rounded-2xl w-full max-w-lg p-6 shadow-2xl animate-fade-in-up max-h-[80vh] overflow-y-auto custom-scrollbar relative" onClick={e => e.stopPropagation()}>
-                        <button 
-                            onClick={() => setSelectedNotice(null)}
-                            className="absolute top-4 right-4 p-2 text-brand-gray hover:text-brand-black rounded-full hover:bg-brand-bg"
-                        >
-                            <Icon name="x" className="w-6 h-6" />
-                        </button>
-
-                        <div className="mb-4 pr-8">
-                            <div className="flex items-center gap-2 mb-2">
-                                <span className="text-xs font-bold text-white bg-brand-main px-2 py-1 rounded-full">
-                                    {selectedNotice.author}
-                                </span>
-                                <span className="text-xs text-brand-gray">
-                                    {selectedNotice.date}
-                                </span>
-                            </div>
-                            <h3 className="text-xl font-bold text-brand-black leading-tight">
-                                {selectedNotice.title}
-                            </h3>
-                        </div>
-
-                        <div className="prose prose-sm max-w-none text-gray-800 leading-relaxed border-t border-brand-gray/20 pt-4 min-h-[100px]">
-                            <div dangerouslySetInnerHTML={{ __html: selectedNotice.content }} />
-                        </div>
-
-                        {selectedNotice.attachments && selectedNotice.attachments.length > 0 && (
-                            <div className="mt-6 pt-4 border-t border-brand-gray/20">
-                                <p className="text-xs font-bold text-brand-gray mb-2">첨부파일</p>
-                                <div className="flex flex-wrap gap-2">
-                                    {selectedNotice.attachments.map((file, idx) => (
-                                        <button key={idx} className="flex items-center gap-2 bg-brand-bg px-3 py-2 rounded-lg text-sm text-brand-main hover:bg-brand-main/10 transition-colors">
-                                            <Icon name="fileText" className="w-4 h-4" />
-                                            {file}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
+                        <button onClick={() => setSelectedNotice(null)} className="absolute top-4 right-4 p-2 text-brand-gray hover:text-brand-black rounded-full hover:bg-brand-bg"><Icon name="x" className="w-6 h-6" /></button>
+                        <div className="mb-4 pr-8"><div className="flex items-center gap-2 mb-2"><span className="text-xs font-bold text-white bg-brand-main px-2 py-1 rounded-full">{selectedNotice.author}</span><span className="text-xs text-brand-gray">{selectedNotice.date}</span></div><h3 className="text-xl font-bold text-brand-black leading-tight">{selectedNotice.title}</h3></div>
+                        <div className="prose prose-sm max-w-none text-gray-800 leading-relaxed border-t border-brand-gray/20 pt-4 min-h-[100px]"><div dangerouslySetInnerHTML={{ __html: selectedNotice.content }} /></div>
+                        {selectedNotice.attachments && selectedNotice.attachments.length > 0 && (<div className="mt-6 pt-4 border-t border-brand-gray/20"><p className="text-xs font-bold text-brand-gray mb-2">첨부파일</p><div className="flex flex-wrap gap-2">{selectedNotice.attachments.map((file, idx) => (<button key={idx} className="flex items-center gap-2 bg-brand-bg px-3 py-2 rounded-lg text-sm text-brand-main hover:bg-brand-main/10 transition-colors"><Icon name="fileText" className="w-4 h-4" />{file}</button>))}</div></div>)}
                     </div>
-                </div>,
-                document.body // ✅ document.body에 직접 렌더링
-            )}
+                </div>
+            </ModalPortal>}
         </div>
     );
 };

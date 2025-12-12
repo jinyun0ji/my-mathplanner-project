@@ -2,11 +2,14 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Icon, getYouTubeId, formatTime } from '../../utils/helpers';
 import YouTubePlayer from '../../components/YouTubePlayer';
+// ✅ [추가] Google Material Icon
+import PlayCircleFilledWhiteIcon from '@mui/icons-material/PlayCircleFilledWhite';
+import FileDownloadIcon from '@mui/icons-material/FileDownload'; // 자료 다운로드 아이콘도 변경 (선택)
 
 export default function ClassroomView({ 
     classes, lessonLogs, attendanceLogs, studentId, selectedClassId, setSelectedClassId, 
     videoProgress, onSaveVideoProgress, videoBookmarks, onSaveBookmark,
-    onVideoModalChange
+    onVideoModalChange 
 }) {
     const targetClass = classes.find(c => c.id === selectedClassId);
     const logs = lessonLogs.filter(l => l.classId === selectedClassId).sort((a, b) => new Date(b.date) - new Date(a.date));
@@ -16,7 +19,6 @@ export default function ClassroomView({
     const [bookmarkNote, setBookmarkNote] = useState('');
     const playerRef = useRef(null); 
 
-    // ✅ [추가] playingLesson 상태가 변할 때 부모에게 알림
     useEffect(() => {
         if (onVideoModalChange) {
             onVideoModalChange(!!playingLesson);
@@ -130,22 +132,23 @@ export default function ClassroomView({
                                                 }}
                                                 className="flex-1 bg-brand-main hover:bg-brand-dark text-white py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-colors shadow-brand"
                                             >
-                                                <Icon name="monitor" className="w-4 h-4" /> 
+                                                {/* ✅ [수정] 아이콘 변경 */}
+                                                <PlayCircleFilledWhiteIcon className="w-5 h-5" /> 
                                                 {percent > 0 && percent < 100 ? '이어 보기' : (percent === 100 ? '다시 보기' : '강의 보기')}
                                             </button>
                                         ) : (
                                             <button disabled className="flex-1 bg-brand-bg text-brand-gray py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 cursor-not-allowed">
-                                                <Icon name="monitor" className="w-4 h-4" /> 영상 없음
+                                                <PlayCircleFilledWhiteIcon className="w-5 h-5" /> 영상 없음
                                             </button>
                                         )}
                                         
                                         {log.materialUrl ? (
                                             <button className="flex-1 bg-white border border-brand-gray/30 text-brand-black hover:bg-brand-bg py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-colors">
-                                                <Icon name="fileText" className="w-4 h-4" /> 자료 다운
+                                                <FileDownloadIcon className="w-5 h-5" /> 자료 다운
                                             </button>
                                         ) : (
                                             <button disabled className="flex-1 bg-brand-bg text-brand-gray py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 cursor-not-allowed">
-                                                <Icon name="fileText" className="w-4 h-4" /> 자료 없음
+                                                <FileDownloadIcon className="w-5 h-5" /> 자료 없음
                                             </button>
                                         )}
                                     </>
@@ -166,6 +169,7 @@ export default function ClassroomView({
                 )}
             </div>
 
+            {/* 비디오 모달 (기존 코드 유지) */}
             {playingLesson && (
                 <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => setPlayingLesson(null)}>
                     <div className="bg-gray-900 p-0 rounded-2xl w-full max-w-7xl shadow-2xl relative overflow-hidden flex flex-col h-[85vh]" onClick={e => e.stopPropagation()}>

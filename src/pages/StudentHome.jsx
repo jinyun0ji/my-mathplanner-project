@@ -23,7 +23,7 @@ export default function StudentHome({
     attendanceLogs, lessonLogs, notices, tests, grades, 
     videoProgress, onSaveVideoProgress, videoBookmarks, onSaveBookmark,
     externalSchedules, onSaveExternalSchedule, onDeleteExternalSchedule,
-    clinicLogs, // ✅ [확인] App.jsx에서 전달받음
+    clinicLogs, onUpdateStudent, 
     onLogout, messages, onSendMessage
 }) {
     const [activeTab, setActiveTab] = useState('home');
@@ -121,7 +121,13 @@ export default function StudentHome({
                         {activeTab === 'homework' && <HomeworkTab myHomeworkStats={myHomeworkStats} />}
                         {activeTab === 'board' && <BoardTab notices={notices} />}
                         {activeTab === 'grades' && <GradesTab myGradeComparison={myGradeComparison} />}
-                        {activeTab === 'menu' && <MenuTab onLogout={onLogout} />}
+                        {activeTab === 'menu' && (
+                            <MenuTab 
+                                student={student} 
+                                onUpdateStudent={onUpdateStudent} 
+                                onLogout={onLogout} 
+                            />
+                        )}
                     </div>
                 )}
             </main>

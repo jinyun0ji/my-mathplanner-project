@@ -1,12 +1,12 @@
 // src/components/StudentNotifications.jsx
 import React, { useEffect, useRef } from 'react';
 import { Icon } from '../utils/helpers';
-import NotificationsIcon from '@mui/icons-material/Notifications'; // ✅ Google Icon import
+import NotificationsIcon from '@mui/icons-material/Notifications';
+import CampaignIcon from '@mui/icons-material/Campaign'; // ✅ [추가]
 
 export default function StudentNotifications({ isOpen, onClose, notices = [], onDelete, onNoticeClick }) {
     const panelRef = useRef(null);
 
-    // 외부 클릭 시 닫기
     useEffect(() => {
         const handleClickOutside = (event) => {
             if (panelRef.current && !panelRef.current.contains(event.target)) {
@@ -17,7 +17,6 @@ export default function StudentNotifications({ isOpen, onClose, notices = [], on
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, [isOpen, onClose]);
 
-    // 최신순 정렬
     const sortedNotices = [...notices].sort((a, b) => {
         if (a.isPinned !== b.isPinned) return b.isPinned - a.isPinned;
         return new Date(b.date) - new Date(a.date);
@@ -25,13 +24,11 @@ export default function StudentNotifications({ isOpen, onClose, notices = [], on
 
     return (
         <div className={`fixed inset-0 z-[60] overflow-hidden pointer-events-none`}>
-            {/* 배경 오버레이 */}
             <div 
                 className={`absolute inset-0 bg-black/30 transition-opacity duration-500 ease-in-out pointer-events-auto ${isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} 
                 onClick={onClose}
             />
 
-            {/* 알림 패널 */}
             <div 
                 ref={panelRef}
                 className={`absolute top-0 right-0 h-full w-full md:w-96 max-w-full bg-brand-bg shadow-2xl pointer-events-auto flex flex-col 
@@ -41,7 +38,6 @@ export default function StudentNotifications({ isOpen, onClose, notices = [], on
                 {/* 헤더 */}
                 <div className="bg-white px-5 py-4 flex justify-between items-center border-b border-brand-gray/30 shadow-sm shrink-0">
                     <h3 className="font-bold text-brand-black text-lg flex items-center gap-2">
-                        {/* ✅ [수정] Material Icon 적용 */}
                         <div className="bg-brand-red/10 text-brand-red p-1.5 rounded-lg flex items-center justify-center">
                             <NotificationsIcon className="w-5 h-5" style={{ fontSize: 20 }} />
                         </div>
@@ -64,7 +60,8 @@ export default function StudentNotifications({ isOpen, onClose, notices = [], on
                                 <div className="flex items-center gap-2">
                                     {notice.isPinned && (
                                         <span className="bg-brand-red text-white text-[10px] font-bold px-1.5 py-0.5 rounded-md flex items-center gap-1">
-                                            <Icon name="pin" className="w-3 h-3" /> 필독
+                                            {/* ✅ [수정] 알림 리스트에서도 확성기 아이콘 사용 */}
+                                            <CampaignIcon style={{ fontSize: 14 }} /> 필독
                                         </span>
                                     )}
                                     <span className="text-xs text-brand-gray font-medium bg-brand-bg px-2 py-0.5 rounded">
@@ -79,7 +76,6 @@ export default function StudentNotifications({ isOpen, onClose, notices = [], on
                                 dangerouslySetInnerHTML={{ __html: notice.content }}
                             />
                             
-                            {/* 삭제 버튼 */}
                             <button 
                                 onClick={(e) => {
                                     e.stopPropagation(); 
@@ -93,7 +89,6 @@ export default function StudentNotifications({ isOpen, onClose, notices = [], on
                     )) : (
                         <div className="flex flex-col items-center justify-center h-64 text-brand-gray space-y-3">
                             <div className="bg-white p-4 rounded-full shadow-sm">
-                                {/* 여기도 아이콘 변경 */}
                                 <NotificationsIcon className="w-8 h-8 opacity-30" style={{ fontSize: 32 }} />
                             </div>
                             <p>새로운 알림이 없습니다.</p>
