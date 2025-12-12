@@ -95,6 +95,7 @@ export const calculateClassSessions = (cls) => {
     return sessions;
 };
 
+// ✅ [수정] 성적 상세 데이터(questions) 추가
 export const calculateGradeComparison = (studentId, classes, tests, grades) => {
     const comparison = [];
     classes.forEach(cls => {
@@ -105,6 +106,8 @@ export const calculateGradeComparison = (studentId, classes, tests, grades) => {
             const scoreData = grades[studentId]?.[test.id];
             const studentScore = scoreData?.score;
             if (studentScore === undefined || studentScore === null) return; 
+            
+            // 클래스 평균
             let totalClassScore = 0;
             let classStudentCount = 0;
             cls.students.forEach(sId => {
@@ -115,7 +118,25 @@ export const calculateGradeComparison = (studentId, classes, tests, grades) => {
                 }
             });
             const classAverage = classStudentCount > 0 ? (totalClassScore / classStudentCount).toFixed(1) : 0;
+            
+            // ✅ [New] 문항별 분석 데이터 생성
+            const questionDetails = test.questionScores.map((score, idx) => {
+                const qNum = idx + 1;
+                // grades 데이터에 correctCount가 {"1": "맞음", ...} 형태로 저장되어 있다고 가정
+                const status = scoreData?.correctCount?.[qNum] || '미응시'; 
+                const analysis = test.questionAnalysis?.[idx] || { difficulty: '-', type: '-' };
+                
+                return {
+                    no: qNum,
+                    score,
+                    status, // '맞음', '틀림', '고침' 등
+                    difficulty: analysis.difficulty,
+                    type: analysis.type
+                };
+            });
+
             comparison.push({
+                testId: test.id, // ID 추가 (Key용)
                 className: cls.name,
                 testName: test.name,
                 testDate: test.date,
@@ -123,14 +144,14 @@ export const calculateGradeComparison = (studentId, classes, tests, grades) => {
                 studentScore: Number(studentScore),
                 classAverage: Number(classAverage),
                 isAboveAverage: Number(studentScore) > Number(classAverage),
-                scoreDifference: (Number(studentScore) - Number(classAverage)).toFixed(1)
+                scoreDifference: (Number(studentScore) - Number(classAverage)).toFixed(1),
+                questions: questionDetails // ✅ 추가됨
             });
         });
     });
     return comparison.sort((a, b) => new Date(b.testDate) - new Date(a.testDate));
 };
 
-// ✅ [수정] 오답 목록(incorrectQuestionList) 및 상세 현황 계산 추가
 export const calculateHomeworkStats = (studentId, homeworkAssignments, homeworkResults) => {
     const studentAssignments = homeworkAssignments.filter(a => a.students.includes(studentId));
     
@@ -141,7 +162,7 @@ export const calculateHomeworkStats = (studentId, homeworkAssignments, homeworkR
         let completedCount = 0; 
         let incorrectCount = 0; 
         let uncheckedCount = totalQuestions;
-        let incorrectQuestionList = []; // 오답 문제 번호 리스트
+        let incorrectQuestionList = [];
 
         if (Object.keys(results).length > 0) {
             uncheckedCount = 0; 
@@ -152,14 +173,13 @@ export const calculateHomeworkStats = (studentId, homeworkAssignments, homeworkR
                 }
                 if (status === '틀림') {
                     incorrectCount++;
-                    incorrectQuestionList.push(qNum); // 오답 번호 추가
+                    incorrectQuestionList.push(qNum);
                 }
             });
             uncheckedCount = totalQuestions - completedCount - incorrectCount;
             if (uncheckedCount < 0) uncheckedCount = 0;
         }
 
-        // 오답 번호 정렬
         incorrectQuestionList.sort((a, b) => Number(a) - Number(b));
 
         const completionRate = Math.round(((completedCount + incorrectCount) / totalQuestions) * 100);
@@ -173,7 +193,7 @@ export const calculateHomeworkStats = (studentId, homeworkAssignments, homeworkR
             completedCount,
             incorrectCount,
             uncheckedCount,
-            incorrectQuestionList, // ✅ 반환값에 추가
+            incorrectQuestionList,
             completionRate,
             status: completionRate === 100 ? '완료' : (completionRate > 0 ? '진행 중' : '미시작')
         };

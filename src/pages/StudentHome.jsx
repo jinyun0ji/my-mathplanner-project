@@ -327,9 +327,9 @@ export default function StudentHome({ studentId, students, classes, homeworkAssi
         );
     };
 
-    // --- [3] 과제 탭 (수정됨: 상세/오답노트 펼치기) ---
+    // --- [3] 과제 탭 ---
     const HomeworkTab = () => {
-        const [selectedHwId, setSelectedHwId] = useState(null); // 클릭된 과제 ID
+        const [selectedHwId, setSelectedHwId] = useState(null); 
 
         const toggleDetails = (id) => {
             if (selectedHwId === id) setSelectedHwId(null);
@@ -363,7 +363,6 @@ export default function StudentHome({ studentId, students, classes, homeworkAssi
                             <div className="w-full bg-gray-100 rounded-full h-2 mb-2"><div className="bg-indigo-500 h-2 rounded-full transition-all duration-500" style={{ width: `${hw.completionRate}%` }}></div></div>
                             <div className="flex justify-between text-xs text-gray-500"><span>진행률 {hw.completionRate}%</span><span>{hw.completedCount} / {hw.totalQuestions} 완료</span></div>
 
-                            {/* ✅ 상세 현황 및 오답 목록 표시 */}
                             {selectedHwId === hw.id && (
                                 <div className="mt-4 pt-4 border-t border-gray-100 animate-fade-in-down">
                                     <div className="flex justify-around mb-4 text-center">
@@ -396,7 +395,14 @@ export default function StudentHome({ studentId, students, classes, homeworkAssi
     // --- [4] 성적 리포트 탭 ---
     const GradesTab = () => {
         const [mode, setMode] = useState('list'); 
+        const [selectedTestId, setSelectedTestId] = useState(null); // ✅ 클릭된 시험 ID
+
         const sortedGrades = [...myGradeComparison].sort((a, b) => new Date(a.testDate) - new Date(b.testDate));
+
+        const toggleTestDetails = (id) => {
+            if (selectedTestId === id) setSelectedTestId(null);
+            else setSelectedTestId(id);
+        };
 
         return (
             <div className="space-y-4 animate-fade-in-up pb-20">
@@ -419,7 +425,12 @@ export default function StudentHome({ studentId, students, classes, homeworkAssi
                     </div>
                 ) : mode === 'list' ? (
                     myGradeComparison.map((item, idx) => (
-                        <div key={idx} className="bg-white p-5 rounded-2xl shadow-md border border-gray-100">
+                        <div 
+                            key={idx} 
+                            onClick={() => toggleTestDetails(item.testId)} // ✅ 클릭 이벤트 추가
+                            className={`bg-white p-5 rounded-2xl shadow-md border border-gray-100 cursor-pointer transition-all hover:shadow-lg
+                                ${selectedTestId === item.testId ? 'ring-2 ring-indigo-500' : ''}`}
+                        >
                             <div className="flex justify-between items-start mb-3">
                                 <div>
                                     <span className="text-xs text-gray-400 font-medium block mb-0.5">{item.testDate}</span>
@@ -447,13 +458,46 @@ export default function StudentHome({ studentId, students, classes, homeworkAssi
                                     </div>
                                 </div>
                             </div>
-                            <div className="bg-gray-50 p-3 rounded-xl text-xs text-gray-600">
+                            <div className="bg-gray-50 p-3 rounded-xl text-xs text-gray-600 mb-2">
                                 {item.isAboveAverage ? (
                                     <p>🎉 평균보다 <span className="font-bold text-green-600">{item.scoreDifference}점</span> 높아요!</p>
                                 ) : (
                                     <p>🔥 평균까지 <span className="font-bold text-indigo-600">{Math.abs(item.scoreDifference)}점</span>! 힘내요!</p>
                                 )}
                             </div>
+
+                            {/* ✅ 상세 문항 리스트 표시 */}
+                            {selectedTestId === item.testId && (
+                                <div className="mt-4 pt-4 border-t border-gray-100 animate-fade-in-down">
+                                    <h4 className="text-sm font-bold text-gray-700 mb-3">문항별 상세 분석</h4>
+                                    <div className="grid grid-cols-5 gap-2 text-center text-[10px] font-bold text-gray-500 bg-gray-50 p-2 rounded-t-lg">
+                                        <span>번호</span>
+                                        <span>결과</span>
+                                        <span>배점</span>
+                                        <span>유형</span>
+                                        <span>난이도</span>
+                                    </div>
+                                    <div className="max-h-60 overflow-y-auto">
+                                        {item.questions.map((q, qIdx) => (
+                                            <div key={qIdx} className="grid grid-cols-5 gap-2 text-center text-xs p-2 border-b border-gray-50 last:border-0 hover:bg-gray-50">
+                                                <span className="font-medium text-gray-600">{q.no}</span>
+                                                <span className={`${
+                                                    q.status === '맞음' ? 'text-green-600' : 
+                                                    q.status === '틀림' ? 'text-red-600' : 'text-yellow-600'
+                                                }`}>
+                                                    {q.status === '맞음' ? 'O' : q.status === '틀림' ? 'X' : '△'}
+                                                </span>
+                                                <span className="text-gray-500">{q.score}</span>
+                                                <span className="text-gray-500">{q.type}</span>
+                                                <span className={`
+                                                    ${q.difficulty === '상' ? 'text-red-500' : 
+                                                      q.difficulty === '중' ? 'text-yellow-600' : 'text-green-500'}
+                                                `}>{q.difficulty}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     ))
                 ) : (
@@ -463,7 +507,6 @@ export default function StudentHome({ studentId, students, classes, homeworkAssi
                             <svg className="absolute inset-0 w-full h-full overflow-visible" preserveAspectRatio="none">
                                 <polyline 
                                     points={sortedGrades.map((d, i) => {
-                                        // 여기서는 간단히 x 좌표만 비율로 계산하고 y는 제외 (점만 찍거나 막대로 대체)
                                         return ""; 
                                     }).join(' ')} 
                                     fill="none" 
