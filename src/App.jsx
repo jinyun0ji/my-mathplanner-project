@@ -37,6 +37,7 @@ import GradeManagement from './pages/GradeManagement';
 import ClinicManagement from './pages/ClinicManagement';
 import InternalCommunication from './pages/InternalCommunication';
 import PaymentManagement from './pages/PaymentManagement';
+import StudentMessenger from './components/StudentMessenger';
 
 
 const firebaseConfig = typeof window.__firebase_config !== 'undefined' ? JSON.parse(window.__firebase_config) : {};
@@ -114,6 +115,13 @@ export default function App() {
   const [isMessengerOpen, setIsMessengerOpen] = useState(false); 
   const [hasNewMessages, setHasNewMessages] = useState(true); 
 
+  // ✅ [추가] 학생용 채팅 메시지 상태 (초기값: 김철수의 채팅 기록 예시)
+  const [studentMessages, setStudentMessages] = useState([
+      { id: 1, sender: '채수용 선생님', text: '철수야, 오늘 클리닉 늦을 것 같니?', date: '2025-11-29', time: '13:50', isMe: false },
+      { id: 2, sender: '나', text: '네 ㅠㅠ 학교 행사가 있어서 30분 정도 늦을 것 같아요.', date: '2025-11-29', time: '13:52', isMe: true },
+      { id: 3, sender: '채수용 선생님', text: '알겠어. 조심히 오렴!', date: '2025-11-29', time: '13:53', isMe: false },
+  ]);
+
   const toggleSidebar = () => {
     setIsSidebarOpen(prev => !prev);
     if (!isSidebarOpen) { 
@@ -162,6 +170,36 @@ export default function App() {
     const logNotification = useCallback((type, message, details) => {
         setNotifications(prev => [{ id: Date.now(), type, message, details, timestamp: new Date().toLocaleTimeString('ko-KR') }, ...prev]);
     }, []);
+
+    // ✅ [추가] 학생 메시지 전송 핸들러
+  const handleStudentSendMessage = (text) => {
+      const now = new Date();
+      const timeString = now.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+      const todayDate = now.toISOString().split('T')[0];
+
+      const newMessage = {
+          id: Date.now(),
+          sender: '나',
+          text: text,
+          date: todayDate,
+          time: timeString,
+          isMe: true
+      };
+
+      setStudentMessages(prev => [...prev, newMessage]);
+
+      // (선택 사항) 선생님 자동 응답 시뮬레이션
+      setTimeout(() => {
+          setStudentMessages(prev => [...prev, {
+              id: Date.now() + 1,
+              sender: '채수용 선생님',
+              text: '메시지 확인했습니다. 수업 중에 답변 드릴게요! 😊',
+              date: todayDate,
+              time: new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }),
+              isMe: false
+          }]);
+      }, 1000);
+  };
 
   // ... (기존 CRUD 함수들) ...
   const handleSaveClass = (classData, isEdit) => {
@@ -384,6 +422,10 @@ export default function App() {
             externalSchedules={externalSchedules} // ✅ 전달
             onSaveExternalSchedule={handleSaveExternalSchedule} // ✅ 전달
             onDeleteExternalSchedule={handleDeleteExternalSchedule} // ✅ 전달
+
+            // ✅ [추가] 채팅 관련 props 전달
+            messages={studentMessages} 
+            onSendMessage={handleStudentSendMessage}
             onLogout={() => setIsLoggedIn(false)}
         />
       );

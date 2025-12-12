@@ -85,6 +85,9 @@
 .z-30 {
   z-index: 30;
 }
+.z-40 {
+  z-index: 40;
+}
 .z-50 {
   z-index: 50;
 }
@@ -284,6 +287,9 @@
 .h-\[70vh\] {
   height: 70vh;
 }
+.h-\[80vh\] {
+  height: 80vh;
+}
 .h-\[85vh\] {
   height: 85vh;
 }
@@ -403,6 +409,9 @@
 }
 .max-w-\[20px\] {
   max-width: 20px;
+}
+.max-w-\[75\%\] {
+  max-width: 75%;
 }
 .max-w-\[85\%\] {
   max-width: 85%;
@@ -537,6 +546,10 @@
 }
 .-translate-y-1\/2 {
   --tw-translate-y: calc(calc(1/2 * 100%) * -1);
+  translate: var(--tw-translate-x) var(--tw-translate-y);
+}
+.translate-y-full {
+  --tw-translate-y: 100%;
   translate: var(--tw-translate-x) var(--tw-translate-y);
 }
 .translate-3d {
@@ -1066,6 +1079,12 @@
 .rounded-full {
   border-radius: calc(infinity * 1px);
 }
+.rounded-tl-none {
+  border-top-left-radius: 0;
+}
+.rounded-tr-none {
+  border-top-right-radius: 0;
+}
 .rounded-br-none {
   border-bottom-right-radius: 0;
 }
@@ -1167,6 +1186,9 @@
 }
 .bg-\[\#242424\] {
   background-color: #242424;
+}
+.bg-\[\#f0f2f5\] {
+  background-color: #f0f2f5;
 }
 .bg-\[\#fbf0df\] {
   background-color: #fbf0df;
@@ -2363,6 +2385,14 @@
     --tw-scale-x: 55%;
     --tw-scale-y: 55%;
     --tw-scale-z: 55%;
+    scale: var(--tw-scale-x) var(--tw-scale-y);
+  }
+}
+.active\:scale-90 {
+  &:active {
+    --tw-scale-x: 90%;
+    --tw-scale-y: 90%;
+    --tw-scale-z: 90%;
     scale: var(--tw-scale-x) var(--tw-scale-y);
   }
 }
