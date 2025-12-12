@@ -97,6 +97,12 @@
 .z-\[70\] {
   z-index: 70;
 }
+.z-\[100\] {
+  z-index: 100;
+}
+.z-\[9999\] {
+  z-index: 9999;
+}
 .z-auto {
   z-index: auto;
 }

@@ -1,5 +1,6 @@
 // src/components/StudentTabs.jsx
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom'; // ✅ [추가] Portal 사용을 위해 import
 import { Icon, getWeekOfMonthISO } from '../utils/helpers';
 
 // ----------------------------------------------------------------------
@@ -590,7 +591,7 @@ export const MenuTab = ({ onLogout }) => (
     </div>
 );
 
-// 6. 게시판 탭
+// 6. 게시판 탭 (수정됨)
 export const BoardTab = ({ notices }) => {
     const [selectedNotice, setSelectedNotice] = useState(null);
 
@@ -616,7 +617,6 @@ export const BoardTab = ({ notices }) => {
                             <div 
                                 key={notice.id}
                                 onClick={() => setSelectedNotice(notice)}
-                                // ✅ [수정] 연한 파란색 배경 (bg-brand-light/20) 및 테두리 조정
                                 className="snap-center shrink-0 w-[85%] md:w-[320px] bg-brand-light/20 border border-brand-light/50 p-5 rounded-2xl shadow-sm hover:shadow-md flex flex-col justify-between h-40 cursor-pointer transition-transform active:scale-[0.98]"
                             >
                                 <div>
@@ -624,7 +624,6 @@ export const BoardTab = ({ notices }) => {
                                         <span className="bg-brand-red text-white text-xs px-2 py-0.5 rounded font-bold shadow-sm flex items-center gap-1">
                                             <Icon name="alert" className="w-3 h-3" /> 필독
                                         </span>
-                                        {/* 텍스트 색상을 브랜드 다크로 변경하여 가독성 확보 */}
                                         <span className="text-xs text-brand-dark/70 font-medium">{notice.date}</span>
                                     </div>
                                     <h4 className="font-bold text-lg text-brand-dark leading-tight line-clamp-2 mt-2">{notice.title}</h4>
@@ -676,9 +675,9 @@ export const BoardTab = ({ notices }) => {
                 </div>
             </div>
 
-            {/* 3. 게시글 상세 모달 */}
-            {selectedNotice && (
-                <div className="fixed inset-0 z-[70] bg-black/50 flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => setSelectedNotice(null)}>
+            {/* 3. 게시글 상세 모달 - Portal 사용 */}
+            {selectedNotice && createPortal(
+                <div className="fixed inset-0 z-[9999] bg-black/60 flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => setSelectedNotice(null)}>
                     <div className="bg-white rounded-2xl w-full max-w-lg p-6 shadow-2xl animate-fade-in-up max-h-[80vh] overflow-y-auto custom-scrollbar relative" onClick={e => e.stopPropagation()}>
                         <button 
                             onClick={() => setSelectedNotice(null)}
@@ -719,7 +718,8 @@ export const BoardTab = ({ notices }) => {
                             </div>
                         )}
                     </div>
-                </div>
+                </div>,
+                document.body // ✅ document.body에 직접 렌더링
             )}
         </div>
     );

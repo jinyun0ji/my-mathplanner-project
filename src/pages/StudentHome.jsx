@@ -14,6 +14,9 @@ import StudentHeader from '../components/StudentHeader';
 import StudentNotifications from '../components/StudentNotifications';
 import { Icon, calculateHomeworkStats, calculateGradeComparison } from '../utils/helpers';
 
+// ✅ Google Icon import
+import NotificationsIcon from '@mui/icons-material/Notifications';
+
 export default function StudentHome({ 
     studentId, students, classes, homeworkAssignments, homeworkResults, 
     attendanceLogs, lessonLogs, notices, tests, grades, 
@@ -40,13 +43,11 @@ export default function StudentHome({
         setHasNewNotifications(false);
     };
 
-    // ✅ [추가] 알림 클릭 시 게시판으로 이동
     const handleLinkToBoard = () => {
-        setActiveTab('board');      // 게시판 탭 활성화
-        setIsNotificationOpen(false); // 알림 패널 닫기
+        setActiveTab('board');      
+        setIsNotificationOpen(false); 
     };
 
-    // 알림 삭제 (게시글은 유지되고, 내 알림함에서만 사라짐)
     const handleDeleteNotice = (id) => {
         setVisibleNotices(prev => prev.filter(n => n.id !== id));
     };
@@ -119,7 +120,7 @@ export default function StudentHome({
                             <HomeworkTab myHomeworkStats={myHomeworkStats} />
                         )}
                         {activeTab === 'board' && (
-                            <BoardTab notices={visibleNotices} />
+                            <BoardTab notices={notices} />
                         )}
                         {activeTab === 'grades' && (
                             <GradesTab myGradeComparison={myGradeComparison} />
@@ -165,7 +166,9 @@ export default function StudentHome({
                     onClick={handleOpenNotification}
                     className="relative bg-white text-brand-main border border-brand-gray/20 p-3.5 rounded-full shadow-lg hover:bg-gray-50 transition-transform active:scale-90 flex items-center justify-center"
                 >
-                    <Icon name="bell" className="w-6 h-6" />
+                    {/* ✅ [수정] Material Icon 적용 */}
+                    <NotificationsIcon className="w-6 h-6" style={{ fontSize: 24 }} />
+                    
                     {hasNewNotifications && (
                         <span className="absolute top-0 right-0 w-3 h-3 bg-brand-red rounded-full ring-2 ring-white"></span>
                     )}
@@ -184,9 +187,9 @@ export default function StudentHome({
             <StudentNotifications 
                 isOpen={isNotificationOpen}
                 onClose={() => setIsNotificationOpen(false)}
-                notices={visibleNotices}
+                notices={visibleNotices} 
                 onDelete={handleDeleteNotice}
-                onNoticeClick={handleLinkToBoard} // ✅ 함수 전달
+                onNoticeClick={handleLinkToBoard}
             />
         </div>
     );

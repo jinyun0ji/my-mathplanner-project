@@ -11,16 +11,12 @@ export default function LoginPage({ onLogin }) {
         e.preventDefault();
         setError('');
 
-        // 1. 직원 로그인 (기존)
         if (id === 'employee' && password === 'academy') {
-            onLogin('staff', 'employee-id'); // (role, userId)
+            onLogin('staff', 'employee-id');
         } 
-        // 2. 학생 로그인 (테스트용: ID student / PW 1234)
         else if (id === 'student' && password === '1234') {
-            // 실제 앱에서는 DB에서 학생 ID를 조회해야 함. 여기선 1번 학생(김철수)으로 가정
             onLogin('student', 1); 
         }
-        // 3. 학부모 로그인 (테스트용: ID parent / PW 1234)
         else if (id === 'parent' && password === '1234') {
             onLogin('parent', 'parent-id'); 
         }
@@ -38,13 +34,12 @@ export default function LoginPage({ onLogin }) {
                             <Icon name="graduationCap" className="w-12 h-12 text-white" />
                         </div>
                     </div>
-                    <h1 className="text-3xl font-bold text-white tracking-tight">학원 관리 시스템</h1>
-                    {/* 문구 변경: 직원 전용 -> 통합 로그인 */}
+                    {/* ✅ [수정] 텍스트 변경: 학원 관리 시스템 -> 채수용 수학 */}
+                    <h1 className="text-3xl font-bold text-white tracking-tight">채수용 수학</h1>
                     <p className="text-indigo-200 text-sm mt-2 font-medium">학생 / 학부모 / 직원 통합 로그인</p>
                 </div>
 
                 <form onSubmit={handleLogin} className="p-10 space-y-6">
-                    {/* ... (입력 필드 디자인은 기존 유지) ... */}
                     <div>
                         <label className="block text-sm font-bold text-gray-700 mb-2" htmlFor="username">
                             아이디
