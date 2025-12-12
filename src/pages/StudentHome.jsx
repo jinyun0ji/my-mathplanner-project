@@ -17,6 +17,9 @@ const YouTubePlayer = ({ videoId, initialProgress, onProgressUpdate }) => {
     const playerRef = useRef(null);
     const containerRef = useRef(null);
     const intervalRef = useRef(null);
+    
+    // ✅ [수정] 실제로 시청한 '초(second)'를 기록하는 Set (중복 자동 제거)
+    const watchedSet = useRef(new Set()); 
 
     useEffect(() => {
         if (!window.YT) {
@@ -29,7 +32,6 @@ const YouTubePlayer = ({ videoId, initialProgress, onProgressUpdate }) => {
         const initPlayer = () => {
             if (!window.YT || !window.YT.Player) return;
             
-            // 이미 플레이어가 있다면 생성하지 않음
             if (playerRef.current) return;
 
             playerRef.current = new window.YT.Player(containerRef.current, {
@@ -43,20 +45,27 @@ const YouTubePlayer = ({ videoId, initialProgress, onProgressUpdate }) => {
                 },
                 events: {
                     onReady: (event) => {
-                        // 이어보기 (선택 사항)
-                        // if (initialProgress > 0 && initialProgress < 100) {
-                        //     const duration = event.target.getDuration();
-                        //     event.target.seekTo(duration * (initialProgress / 100));
-                        // }
+                        const duration = event.target.getDuration();
+                        
+                        // ✅ [수정] 기존 진도율(initialProgress)만큼 시청 기록 복원
+                        // (예: 50% 수강했었다면, 앞부분 절반을 이미 본 것으로 처리)
+                        if (initialProgress > 0 && duration > 0) {
+                            const watchedSeconds = Math.floor(duration * (initialProgress / 100));
+                            for (let i = 0; i <= watchedSeconds; i++) {
+                                watchedSet.current.add(i);
+                            }
+                            
+                            // 이어보기 위치 이동
+                            if (initialProgress < 100) {
+                                event.target.seekTo(watchedSeconds, true);
+                            }
+                        }
                     },
                     onStateChange: (event) => {
                         if (event.data === window.YT.PlayerState.PLAYING) {
                             startTracking();
                         } else {
                             stopTracking();
-                        }
-                        if (event.data === window.YT.PlayerState.ENDED) {
-                            onProgressUpdate(100);
                         }
                     }
                 }
@@ -71,23 +80,29 @@ const YouTubePlayer = ({ videoId, initialProgress, onProgressUpdate }) => {
 
         return () => {
             stopTracking();
-            // 컴포넌트 언마운트 시 플레이어 제거하지 않고 ref만 초기화 (React StrictMode 등 이슈 방지)
-            // 실제 운영 환경에서는 playerRef.current.destroy()를 신중하게 사용해야 함
         };
-    }, [videoId]);
+    }, [videoId]); // videoId가 변경되면 초기화
 
     const startTracking = () => {
         stopTracking();
+        // ✅ [수정] 1초마다 실행 (더 정밀하게 체크)
         intervalRef.current = setInterval(() => {
             if (playerRef.current && typeof playerRef.current.getCurrentTime === 'function') {
-                const current = playerRef.current.getCurrentTime();
-                const total = playerRef.current.getDuration();
+                const current = Math.floor(playerRef.current.getCurrentTime()); // 현재 재생 위치(초)
+                const total = Math.floor(playerRef.current.getDuration());      // 전체 길이(초)
+                
                 if (total > 0) {
-                    const percent = Math.floor((current / total) * 100);
+                    // 현재 보고 있는 '초'를 기록
+                    watchedSet.current.add(current);
+                    
+                    // 수강률 = (본 시간의 총량 / 전체 시간) * 100
+                    const watchedCount = watchedSet.current.size;
+                    const percent = Math.min(100, Math.floor((watchedCount / total) * 100));
+                    
                     onProgressUpdate(percent);
                 }
             }
-        }, 5000); // 5초마다 체크
+        }, 1000); 
     };
 
     const stopTracking = () => {
@@ -105,7 +120,6 @@ export default function StudentHome({ studentId, students, classes, homeworkAssi
     const [activeTab, setActiveTab] = useState('home');
     const [selectedClassId, setSelectedClassId] = useState(null); 
     
-    // ✅ [수정] 재생 상태를 상위 컴포넌트로 이동 (리렌더링 시 초기화 방지)
     const [playingLesson, setPlayingLesson] = useState(null);
 
     const student = students.find(s => s.id === studentId);
@@ -121,14 +135,13 @@ export default function StudentHome({ studentId, students, classes, homeworkAssi
         calculateGradeComparison(studentId, classes, tests, grades),
     [studentId, classes, tests, grades]);
 
-    // ✅ [수정] 수강률 저장 핸들러 (StudentHome 레벨에서 정의)
     const handleProgress = (percent) => {
         if (playingLesson && onSaveVideoProgress) {
             onSaveVideoProgress(studentId, playingLesson.id, percent);
         }
     };
 
-    // --- [2] 강의실 렌더링 함수 (컴포넌트가 아닌 일반 함수로 변경하여 리렌더링 이슈 해결) ---
+    // --- [2] 강의실 렌더링 함수 ---
     const renderClassroom = () => {
         const targetClass = classes.find(c => c.id === selectedClassId);
         const logs = lessonLogs.filter(l => l.classId === selectedClassId).sort((a, b) => new Date(b.date) - new Date(a.date));
@@ -198,7 +211,7 @@ export default function StudentHome({ studentId, students, classes, homeworkAssi
                                                     className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-colors"
                                                 >
                                                     <Icon name="monitor" className="w-4 h-4" /> 
-                                                    {progress > 0 ? (progress === 100 ? '다시 보기' : '이어 보기') : '강의 보기'}
+                                                    {progress > 0 && progress < 100 ? '이어 보기' : (progress === 100 ? '다시 보기' : '강의 보기')}
                                                 </button>
                                             ) : (
                                                 <button disabled className="flex-1 bg-gray-100 text-gray-400 py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 cursor-not-allowed">
@@ -236,8 +249,8 @@ export default function StudentHome({ studentId, students, classes, homeworkAssi
         );
     };
 
-    // ... (이하 DashboardTab, ScheduleTab, HomeworkTab, GradesTab, MenuTab 등 기존 코드 유지) ...
-    // (이전 코드와 동일하므로 아래 전체 코드를 복사해서 사용하세요)
+    // ... (이하 나머지 탭 코드들은 이전과 동일하게 유지) ...
+    // (이전 코드 블록들을 그대로 붙여넣으시면 됩니다)
 
     const DashboardTab = () => (
         <div className="space-y-6 animate-fade-in-up">

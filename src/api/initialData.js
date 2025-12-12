@@ -153,7 +153,7 @@ export const initialGrades = {
 };
 
 export const initialVideoProgress = {
-    1: { 1: 85 }, 
+    // 1: { 1: 85 }, 
     4: { 1: 100 }, 
     6: { 3: 50 } 
 };
