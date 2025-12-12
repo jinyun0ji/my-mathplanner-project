@@ -13,7 +13,8 @@ import {
     initialStudents, initialClasses, initialLessonLogs, initialAttendanceLogs, 
     initialStudentMemos, initialHomeworkAssignments, initialHomeworkResults, 
     initialTests, initialGrades, initialVideoProgress, initialClinicLogs, 
-    initialWorkLogs, initialAnnouncements, initialPayments 
+    initialWorkLogs, initialAnnouncements, initialPayments,
+    initialExternalSchedules // 추가됨
 } from './api/initialData'; 
 import { 
     calculateClassSessions, calculateGradeComparison, 
@@ -97,9 +98,14 @@ export default function App() {
   const [grades, setGrades] = useState(initialGrades);
   const [studentMemos, setStudentMemos] = useState(initialStudentMemos); 
   const [videoProgress, setVideoProgress] = useState(initialVideoProgress); 
+  const [videoBookmarks, setVideoBookmarks] = useState({}); 
+
   const [announcements, setAnnouncements] = useState(initialAnnouncements); 
   const [clinicLogs, setClinicLogs] = useState(initialClinicLogs); 
   const [workLogs, setWorkLogs] = useState(initialWorkLogs); 
+  
+  // ✅ [추가] 타학원 스케줄 상태
+  const [externalSchedules, setExternalSchedules] = useState(initialExternalSchedules);
   
   const nextStudentId = students.reduce((max, s) => Math.max(max, s.id), 0) + 1; 
   
@@ -157,7 +163,7 @@ export default function App() {
         setNotifications(prev => [{ id: Date.now(), type, message, details, timestamp: new Date().toLocaleTimeString('ko-KR') }, ...prev]);
     }, []);
 
-  // ... (CRUD 함수들) ...
+  // ... (기존 CRUD 함수들) ...
   const handleSaveClass = (classData, isEdit) => {
     setClasses(prev => isEdit ? prev.map(c => c.id === classData.id ? { ...c, ...classData } : c) : [...prev, { ...classData, id: prev.reduce((max, c) => Math.max(max, c.id), 0) + 1, students: [] }]);
     if(!isEdit) logNotification('success', '클래스 등록 성공', `${classData.name} 클래스가 새로 등록되었습니다.`);
@@ -281,9 +287,7 @@ export default function App() {
   };
   const handleDeleteClinicLog = (id) => setClinicLogs(prev => prev.filter(log => log.id !== id));
   
-  // ✅ [수정] 수강률 저장 핸들러 (percent와 seconds를 모두 처리)
   const handleSaveVideoProgress = (studentId, lessonId, data) => {
-      // data: { percent: number, seconds: number }
       setVideoProgress(prev => {
           const studentData = prev[studentId] || {};
           const prevLessonData = studentData[lessonId] || { percent: 0, seconds: 0 };
@@ -293,14 +297,39 @@ export default function App() {
               [studentId]: {
                   ...studentData,
                   [lessonId]: {
-                      // 진도율(%)은 최대값 유지 (완료된 후 다시 봐도 100% 유지)
                       percent: Math.max(prevLessonData.percent || 0, data.percent),
-                      // 재생 위치(초)는 항상 최신값으로 업데이트 (이어보기)
                       seconds: data.seconds 
                   }
               }
           };
       });
+  };
+
+  const handleSaveBookmark = (studentId, lessonId, bookmark) => {
+      setVideoBookmarks(prev => {
+          const studentData = prev[studentId] || {};
+          const lessonBookmarks = studentData[lessonId] || [];
+          return {
+              ...prev,
+              [studentId]: {
+                  ...studentData,
+                  [lessonId]: [...lessonBookmarks, bookmark]
+              }
+          };
+      });
+  };
+
+  // ✅ [추가] 타학원 스케줄 저장 핸들러
+  const handleSaveExternalSchedule = (newSchedule) => {
+      setExternalSchedules(prev => [
+          ...prev, 
+          { ...newSchedule, id: Date.now() }
+      ]);
+  };
+
+  // ✅ [추가] 타학원 스케줄 삭제 핸들러
+  const handleDeleteExternalSchedule = (id) => {
+      setExternalSchedules(prev => prev.filter(s => s.id !== id));
   };
 
   const handlePageChange = (newPage, studentId = null, resetSearch = false) => {
@@ -350,6 +379,11 @@ export default function App() {
             grades={grades}
             videoProgress={videoProgress}
             onSaveVideoProgress={handleSaveVideoProgress}
+            videoBookmarks={videoBookmarks} 
+            onSaveBookmark={handleSaveBookmark}
+            externalSchedules={externalSchedules} // ✅ 전달
+            onSaveExternalSchedule={handleSaveExternalSchedule} // ✅ 전달
+            onDeleteExternalSchedule={handleDeleteExternalSchedule} // ✅ 전달
             onLogout={() => setIsLoggedIn(false)}
         />
       );

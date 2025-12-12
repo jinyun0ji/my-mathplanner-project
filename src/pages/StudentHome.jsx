@@ -1,8 +1,12 @@
 // src/pages/StudentHome.jsx
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
 import { Icon, calculateHomeworkStats, calculateGradeComparison, getWeekOfMonthISO } from '../utils/helpers'; 
 
-// 유튜브 비디오 ID 추출 헬퍼 함수
+// ... (getYouTubeId, formatTime, YouTubePlayer, NavButton 컴포넌트들 기존 유지) ...
+// (분량상 위쪽 코드는 생략합니다. 기존 코드를 꼭 유지해주세요!)
+// (아래는 YouTubePlayer 컴포넌트 이후부터의 내용입니다.)
+// ...
+
 const getYouTubeId = (iframeCode) => {
     if (!iframeCode) return null;
     const srcMatch = iframeCode.match(/src="([^"]+)"/);
@@ -12,12 +16,31 @@ const getYouTubeId = (iframeCode) => {
     return idMatch ? idMatch[1] : null;
 };
 
-// 유튜브 플레이어 컴포넌트
-const YouTubePlayer = ({ videoId, initialProgress, initialSeconds, onProgressUpdate }) => {
+const formatTime = (seconds) => {
+    const m = Math.floor(seconds / 60);
+    const s = Math.floor(seconds % 60);
+    return `${m}:${s < 10 ? '0' : ''}${s}`;
+};
+
+const YouTubePlayer = forwardRef(({ videoId, initialProgress, initialSeconds, onProgressUpdate }, ref) => {
     const playerRef = useRef(null);
     const containerRef = useRef(null);
     const intervalRef = useRef(null);
     const watchedSet = useRef(new Set()); 
+
+    useImperativeHandle(ref, () => ({
+        getCurrentTime: () => {
+            if (playerRef.current && typeof playerRef.current.getCurrentTime === 'function') {
+                return playerRef.current.getCurrentTime();
+            }
+            return 0;
+        },
+        seekTo: (seconds) => {
+            if (playerRef.current && typeof playerRef.current.seekTo === 'function') {
+                playerRef.current.seekTo(seconds, true);
+            }
+        }
+    }));
 
     useEffect(() => {
         if (!window.YT) {
@@ -46,16 +69,12 @@ const YouTubePlayer = ({ videoId, initialProgress, initialSeconds, onProgressUpd
                 events: {
                     onReady: (event) => {
                         const duration = event.target.getDuration();
-                        
-                        // 1. 기존 수강률(%) 복원
                         if (initialProgress > 0 && duration > 0) {
                             const watchedSeconds = Math.floor(duration * (initialProgress / 100));
                             for (let i = 0; i <= watchedSeconds; i++) {
                                 watchedSet.current.add(i);
                             }
                         }
-
-                        // 2. 마지막 시청 위치(초)로 이동 (이어보기)
                         if (initialSeconds > 0 && initialSeconds < duration - 5) {
                             event.target.seekTo(initialSeconds, true);
                         }
@@ -93,7 +112,6 @@ const YouTubePlayer = ({ videoId, initialProgress, initialSeconds, onProgressUpd
                     watchedSet.current.add(current);
                     const watchedCount = watchedSet.current.size;
                     const percent = Math.min(100, Math.floor((watchedCount / total) * 100));
-                    
                     onProgressUpdate(percent, current);
                 }
             }
@@ -108,9 +126,8 @@ const YouTubePlayer = ({ videoId, initialProgress, initialSeconds, onProgressUpd
     };
 
     return <div ref={containerRef} className="w-full h-full rounded-xl" />;
-};
+});
 
-// 하단 탭 버튼 컴포넌트
 const NavButton = ({ icon, label, isActive, onClick }) => (
     <button onClick={onClick} className={`flex flex-col items-center gap-1 w-14 transition-colors ${isActive ? 'text-indigo-600' : 'text-gray-400 hover:text-gray-600'}`}>
         <div className={`transition-all duration-300 ${isActive ? '-translate-y-1' : ''}`}><Icon name={icon} className={`w-6 h-6 ${isActive ? 'fill-current opacity-20' : ''} stroke-2`} /></div>
@@ -118,12 +135,33 @@ const NavButton = ({ icon, label, isActive, onClick }) => (
     </button>
 );
 
-export default function StudentHome({ studentId, students, classes, homeworkAssignments, homeworkResults, attendanceLogs, lessonLogs, videoProgress, onSaveVideoProgress, tests, grades, onLogout }) {
+export default function StudentHome({ 
+    studentId, students, classes, homeworkAssignments, homeworkResults, 
+    attendanceLogs, lessonLogs, videoProgress, onSaveVideoProgress, 
+    videoBookmarks, onSaveBookmark, tests, grades, 
+    externalSchedules, onSaveExternalSchedule, onDeleteExternalSchedule, // ✅ 추가
+    onLogout 
+}) {
     const [activeTab, setActiveTab] = useState('home');
     const [selectedClassId, setSelectedClassId] = useState(null); 
     
     const [playingLesson, setPlayingLesson] = useState(null);
     const [currentSessionProgress, setCurrentSessionProgress] = useState(0);
+    const [bookmarkNote, setBookmarkNote] = useState('');
+    const playerRef = useRef(null); 
+
+    // ✅ [수정] 일정 추가 모달 상태 확장
+    const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
+    const [newSchedule, setNewSchedule] = useState({
+        academyName: '', 
+        courseName: '', 
+        instructor: '',
+        startDate: new Date().toISOString().slice(0, 10), 
+        endDate: '',
+        days: [], // 다중 선택
+        startTime: '', 
+        endTime: ''
+    });
 
     const student = students.find(s => s.id === studentId);
     const myClasses = classes.filter(c => student?.classes.includes(c.id));
@@ -145,19 +183,56 @@ export default function StudentHome({ studentId, students, classes, homeworkAssi
         }
     };
 
-    // 데이터가 숫자인지 객체인지 확인하여 안전하게 값 추출
-    const getProgressData = (lessonId) => {
-        const rawData = videoProgress?.[studentId]?.[lessonId];
-        if (typeof rawData === 'number') {
-            return { percent: rawData, seconds: 0 }; 
-        }
-        return { 
-            percent: rawData?.percent || 0, 
-            seconds: rawData?.seconds || 0 
-        };
+    const handleAddBookmark = () => {
+        if (!playingLesson || !playerRef.current) return;
+        const currentTime = playerRef.current.getCurrentTime();
+        const newBookmark = { id: Date.now(), time: currentTime, note: bookmarkNote || '중요한 부분' };
+        if (onSaveBookmark) { onSaveBookmark(studentId, playingLesson.id, newBookmark); }
+        setBookmarkNote(''); 
     };
 
-    // --- [2] 강의실 렌더링 함수 ---
+    const handleSeekToBookmark = (time) => { if (playerRef.current) { playerRef.current.seekTo(time); } };
+
+    const getProgressData = (lessonId) => {
+        const rawData = videoProgress?.[studentId]?.[lessonId];
+        if (typeof rawData === 'number') { return { percent: rawData, seconds: 0 }; }
+        return { percent: rawData?.percent || 0, seconds: rawData?.seconds || 0 };
+    };
+
+    // ✅ [수정] 일정 저장 핸들러
+    const handleAddScheduleSubmit = () => {
+        if (!newSchedule.academyName || !newSchedule.courseName || !newSchedule.startDate || newSchedule.days.length === 0 || !newSchedule.startTime) {
+            alert('필수 정보를 모두 입력해주세요.');
+            return;
+        }
+        if (onSaveExternalSchedule) {
+            onSaveExternalSchedule({
+                studentId,
+                ...newSchedule, // 모든 필드 전달
+                // time 필드는 이전 코드 호환성을 위해 유지 (표시용)
+                time: `${newSchedule.startTime}~${newSchedule.endTime || ''}`
+            });
+        }
+        setIsScheduleModalOpen(false);
+        setNewSchedule({ academyName: '', courseName: '', instructor: '', startDate: new Date().toISOString().slice(0, 10), endDate: '', days: [], startTime: '', endTime: '' });
+    };
+
+    // 요일 토글 함수
+    const toggleDay = (day) => {
+        setNewSchedule(prev => {
+            const newDays = prev.days.includes(day) 
+                ? prev.days.filter(d => d !== day) 
+                : [...prev.days, day];
+            // 요일 정렬 (월화수목금토일 순)
+            const dayOrder = { '월':1, '화':2, '수':3, '목':4, '금':5, '토':6, '일':7 };
+            newDays.sort((a, b) => dayOrder[a] - dayOrder[b]);
+            return { ...prev, days: newDays };
+        });
+    };
+
+    // ... (renderClassroom, DashboardTab 등 기존 코드 유지) ...
+    // (분량상 생략하지 않고 아래에 포함합니다)
+
     const renderClassroom = () => {
         const targetClass = classes.find(c => c.id === selectedClassId);
         const logs = lessonLogs.filter(l => l.classId === selectedClassId).sort((a, b) => new Date(b.date) - new Date(a.date));
@@ -170,108 +245,33 @@ export default function StudentHome({ studentId, students, classes, homeworkAssi
                     </button>
                     <h2 className="text-xl font-bold text-gray-800">{targetClass?.name} 강의실</h2>
                 </div>
-
                 <div className="space-y-4">
                     {logs.length > 0 ? logs.map((log) => {
                         const attendRecord = attendanceLogs.find(a => a.studentId === studentId && a.classId === targetClass.id && a.date === log.date);
                         const status = attendRecord?.status;
                         const isAccessible = ['출석', '지각', '동영상보강'].includes(status);
-                        
-                        // ✅ 안전하게 데이터 추출 (객체 구조 분해)
                         const { percent } = getProgressData(log.id);
                         const youtubeId = getYouTubeId(log.iframeCode);
 
                         return (
                             <div key={log.id} className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
                                 <div className="flex justify-between items-start mb-2">
-                                    <span className="text-sm font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded">
-                                        {log.date} 수업
-                                    </span>
-                                    {status ? (
-                                        <span className={`text-xs font-bold px-2 py-1 rounded ${
-                                            status === '출석' ? 'bg-green-100 text-green-700' :
-                                            status === '지각' ? 'bg-yellow-100 text-yellow-700' :
-                                            status === '동영상보강' ? 'bg-blue-100 text-blue-700' :
-                                            'bg-red-100 text-red-700'
-                                        }`}>
-                                            {status}
-                                        </span>
-                                    ) : (
-                                        <span className="text-xs font-bold px-2 py-1 rounded bg-gray-100 text-gray-500">기록 없음</span>
-                                    )}
+                                    <span className="text-sm font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded">{log.date} 수업</span>
+                                    {status ? (<span className={`text-xs font-bold px-2 py-1 rounded ${status === '출석' ? 'bg-green-100 text-green-700' : status === '지각' ? 'bg-yellow-100 text-yellow-700' : status === '동영상보강' ? 'bg-blue-100 text-blue-700' : 'bg-red-100 text-red-700'}`}>{status}</span>) : (<span className="text-xs font-bold px-2 py-1 rounded bg-gray-100 text-gray-500">기록 없음</span>)}
                                 </div>
-                                
                                 <h3 className="text-lg font-bold text-gray-800 mb-2">{log.progress}</h3>
-
-                                {/* 진도율 바 */}
-                                {youtubeId && (
-                                    <div className="mb-4">
-                                        <div className="flex justify-between text-xs text-gray-500 mb-1">
-                                            <span>수강률</span>
-                                            {/* ✅ percent 숫자만 렌더링 (객체 렌더링 에러 방지) */}
-                                            <span className={`font-bold ${percent === 100 ? 'text-green-600' : 'text-indigo-600'}`}>{percent}%</span>
-                                        </div>
-                                        <div className="w-full bg-gray-100 rounded-full h-2">
-                                            <div 
-                                                className={`h-2 rounded-full transition-all duration-500 ${percent === 100 ? 'bg-green-500' : 'bg-indigo-500'}`} 
-                                                style={{ width: `${percent}%` }}
-                                            ></div>
-                                        </div>
-                                    </div>
-                                )}
-
+                                {youtubeId && (<div className="mb-4"><div className="flex justify-between text-xs text-gray-500 mb-1"><span>수강률</span><span className={`font-bold ${percent === 100 ? 'text-green-600' : 'text-indigo-600'}`}>{percent}%</span></div><div className="w-full bg-gray-100 rounded-full h-2"><div className={`h-2 rounded-full transition-all duration-500 ${percent === 100 ? 'bg-green-500' : 'bg-indigo-500'}`} style={{ width: `${percent}%` }}></div></div></div>)}
                                 <div className="flex gap-2">
-                                    {isAccessible ? (
-                                        <>
-                                            {youtubeId ? (
-                                                <button 
-                                                    onClick={() => {
-                                                        const data = getProgressData(log.id); // 최신 데이터 조회
-                                                        setPlayingLesson({ id: log.id, videoId: youtubeId, ...data });
-                                                        setCurrentSessionProgress(data.percent);
-                                                    }}
-                                                    className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-colors"
-                                                >
-                                                    <Icon name="monitor" className="w-4 h-4" /> 
-                                                    {percent > 0 && percent < 100 ? '이어 보기' : (percent === 100 ? '다시 보기' : '강의 보기')}
-                                                </button>
-                                            ) : (
-                                                <button disabled className="flex-1 bg-gray-100 text-gray-400 py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 cursor-not-allowed">
-                                                    <Icon name="monitor" className="w-4 h-4" /> 영상 없음
-                                                </button>
-                                            )}
-                                            
-                                            {log.materialUrl ? (
-                                                <button className="flex-1 bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-colors">
-                                                    <Icon name="fileText" className="w-4 h-4" /> 자료 다운
-                                                </button>
-                                            ) : (
-                                                <button disabled className="flex-1 bg-gray-100 text-gray-400 py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 cursor-not-allowed">
-                                                    <Icon name="fileText" className="w-4 h-4" /> 자료 없음
-                                                </button>
-                                            )}
-                                        </>
-                                    ) : (
-                                        <div className="w-full bg-gray-100 text-gray-400 py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2">
-                                            <Icon name="lock" className="w-4 h-4" /> 
-                                            {status === '결석' ? '결석으로 조회 불가' : '출결 확인 전'}
-                                        </div>
-                                    )}
+                                    {isAccessible ? (<>{youtubeId ? (<button onClick={() => { const data = getProgressData(log.id); setPlayingLesson({ id: log.id, videoId: youtubeId, ...data, date: log.date, progress: log.progress }); setCurrentSessionProgress(data.percent); }} className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-colors"><Icon name="monitor" className="w-4 h-4" /> {percent > 0 && percent < 100 ? '이어 보기' : (percent === 100 ? '다시 보기' : '강의 보기')}</button>) : (<button disabled className="flex-1 bg-gray-100 text-gray-400 py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 cursor-not-allowed"><Icon name="monitor" className="w-4 h-4" /> 영상 없음</button>)} {log.materialUrl ? (<button className="flex-1 bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-colors"><Icon name="fileText" className="w-4 h-4" /> 자료 다운</button>) : (<button disabled className="flex-1 bg-gray-100 text-gray-400 py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 cursor-not-allowed"><Icon name="fileText" className="w-4 h-4" /> 자료 없음</button>)}</>) : (<div className="w-full bg-gray-100 text-gray-400 py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2"><Icon name="lock" className="w-4 h-4" /> {status === '결석' ? '결석으로 조회 불가' : '출결 확인 전'}</div>)}
                                 </div>
                             </div>
                         );
-                    }) : (
-                        <div className="text-center py-20 text-gray-400">
-                            <Icon name="bookOpen" className="w-12 h-12 mb-2 opacity-50 mx-auto" />
-                            <p>등록된 수업 기록이 없습니다.</p>
-                        </div>
-                    )}
+                    }) : (<div className="text-center py-20 text-gray-400"><Icon name="bookOpen" className="w-12 h-12 mb-2 opacity-50 mx-auto" /><p>등록된 수업 기록이 없습니다.</p></div>)}
                 </div>
             </div>
         );
     };
 
-    // --- [1] 홈 탭 ---
     const DashboardTab = () => (
         <div className="space-y-6 animate-fade-in-up">
             <div className="bg-gradient-to-br from-indigo-600 to-purple-700 rounded-3xl p-6 text-white shadow-xl">
@@ -309,25 +309,12 @@ export default function StudentHome({ studentId, students, classes, homeworkAssi
                 </h3>
                 <div className="grid grid-cols-1 gap-3">
                     {myClasses.map(cls => (
-                        <div 
-                            key={cls.id} 
-                            onClick={() => setSelectedClassId(cls.id)} 
-                            className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex items-center justify-between cursor-pointer hover:shadow-md transition-all active:scale-[0.98]"
-                        >
+                        <div key={cls.id} onClick={() => setSelectedClassId(cls.id)} className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex items-center justify-between cursor-pointer hover:shadow-md transition-all active:scale-[0.98]">
                             <div className="flex gap-4 items-center">
-                                <div className="bg-indigo-50 w-12 h-12 rounded-xl flex items-center justify-center text-indigo-600 font-bold text-lg">
-                                    {cls.name.charAt(0)}
-                                </div>
-                                <div>
-                                    <h4 className="font-bold text-gray-800 text-lg">{cls.name}</h4>
-                                    <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
-                                        <Icon name="users" className="w-3 h-3" /> {cls.teacher} 선생님
-                                    </p>
-                                </div>
+                                <div className="bg-indigo-50 w-12 h-12 rounded-xl flex items-center justify-center text-indigo-600 font-bold text-lg">{cls.name.charAt(0)}</div>
+                                <div><h4 className="font-bold text-gray-800 text-lg">{cls.name}</h4><p className="text-xs text-gray-500 mt-1 flex items-center gap-1"><Icon name="users" className="w-3 h-3" /> {cls.teacher} 선생님</p></div>
                             </div>
-                            <div className="text-indigo-600 bg-indigo-50 p-2 rounded-full">
-                                <Icon name="chevronRight" className="w-5 h-5" />
-                            </div>
+                            <div className="text-indigo-600 bg-indigo-50 p-2 rounded-full"><Icon name="chevronRight" className="w-5 h-5" /></div>
                         </div>
                     ))}
                 </div>
@@ -338,7 +325,6 @@ export default function StudentHome({ studentId, students, classes, homeworkAssi
     const ScheduleTab = () => {
         const [viewType, setViewType] = useState('weekly'); 
         const [selectedDate, setSelectedDate] = useState(new Date());
-        const [currentDate, setCurrentDate] = useState(new Date());
 
         const formatDate = (date) => {
             const y = date.getFullYear();
@@ -349,47 +335,54 @@ export default function StudentHome({ studentId, students, classes, homeworkAssi
 
         const renderScheduleList = () => {
             const dayOfWeek = ['일', '월', '화', '수', '목', '금', '토'][selectedDate.getDay()];
-            const dailyClasses = myClasses.filter(cls => cls.schedule.days.includes(dayOfWeek));
+            const dateStr = formatDate(selectedDate);
+            
+            // 1. 수학 학원 수업
+            const dailyClasses = myClasses.filter(cls => cls.schedule.days.includes(dayOfWeek)).map(cls => ({
+                id: `math-${cls.id}`, type: 'math', name: cls.name, teacher: cls.teacher, time: cls.schedule.time, scheduleId: cls.id
+            }));
+            
+            // 2. 타학원 일정 (필터링 로직 강화)
+            const myExternal = externalSchedules ? externalSchedules.filter(s => {
+                const isValidStudent = s.studentId === studentId;
+                const isDayMatch = s.days && s.days.includes(dayOfWeek); // days 배열 체크
+                const isDateInRange = selectedDate >= new Date(s.startDate) && (!s.endDate || selectedDate <= new Date(s.endDate));
+                return isValidStudent && isDayMatch && isDateInRange;
+            }) : [];
+            
+            const dailyExternal = myExternal.map(s => ({
+                id: `ext-${s.id}`, type: 'external', name: s.academyName, 
+                teacher: s.courseName, // 과목명 대신 강의명을 표시
+                time: `${s.startTime}~${s.endTime}`, scheduleId: s.id
+            }));
+            
+            const allSchedules = [...dailyClasses, ...dailyExternal].sort((a, b) => (a.time.split('~')[0] || '00:00').localeCompare(b.time.split('~')[0] || '00:00'));
 
-            if (dailyClasses.length === 0) {
+            if (allSchedules.length === 0) {
                 return (
                     <div className="text-center py-10 text-gray-400 bg-white rounded-2xl border border-dashed border-gray-200">
                         <p className="font-bold text-gray-500 mb-1">{selectedDate.getMonth()+1}월 {selectedDate.getDate()}일 ({dayOfWeek})</p>
-                        예정된 수업이 없습니다.
+                        일정이 없습니다.
                     </div>
                 );
             }
 
-            return dailyClasses.map((cls) => {
-                 const log = attendanceLogs ? attendanceLogs.find(l => l.studentId === studentId && l.classId === cls.id && l.date === formatDate(selectedDate)) : null;
-
+            return allSchedules.map((item) => {
+                 let log = null;
+                 if (item.type === 'math') {
+                     log = attendanceLogs ? attendanceLogs.find(l => l.studentId === studentId && l.classId === item.scheduleId && l.date === dateStr) : null;
+                 }
                  return (
-                     <div key={cls.id} className="relative pl-6 border-l-2 border-indigo-200 py-2 ml-2">
-                         <div className={`absolute -left-[9px] top-3 w-4 h-4 rounded-full ring-4 ring-indigo-50 
-                            ${log?.status === '출석' ? 'bg-green-500' : log?.status === '지각' ? 'bg-yellow-400' : log?.status === '결석' ? 'bg-red-500' : 'bg-indigo-500'}
-                         `}></div>
-                         <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
+                     <div key={item.id} className={`relative pl-6 border-l-2 py-2 ml-2 ${item.type === 'math' ? 'border-indigo-200' : 'border-orange-200'}`}>
+                         <div className={`absolute -left-[9px] top-3 w-4 h-4 rounded-full ring-4 ${item.type === 'math' ? (log?.status === '출석' ? 'bg-green-500 ring-indigo-50' : log?.status === '지각' ? 'bg-yellow-400 ring-indigo-50' : log?.status === '결석' ? 'bg-red-500 ring-indigo-50' : 'bg-indigo-500 ring-indigo-50') : 'bg-orange-400 ring-orange-50'}`}></div>
+                         <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 relative group">
                              <div className="flex justify-between mb-2">
-                                 <span className="text-xs font-bold text-indigo-500 bg-indigo-50 px-2 py-1 rounded">
-                                    {dayOfWeek}요일 수업
-                                 </span>
-                                 <span className="text-xs text-gray-400 font-medium">{cls.schedule.time}</span>
+                                 <span className={`text-xs font-bold px-2 py-1 rounded ${item.type === 'math' ? 'text-indigo-500 bg-indigo-50' : 'text-orange-500 bg-orange-50'}`}>{item.type === 'math' ? '수학 학원' : item.teacher}</span>
+                                 <span className="text-xs text-gray-400 font-medium">{item.time}</span>
                              </div>
-                             <h4 className="font-bold text-gray-800 text-lg">{cls.name}</h4>
+                             <h4 className="font-bold text-gray-800 text-lg">{item.name}</h4>
                              <div className="flex justify-between items-end mt-2">
-                                 <p className="text-sm text-gray-500 flex items-center gap-1">
-                                    <Icon name="users" className="w-4 h-4" />
-                                    {cls.teacher} 선생님
-                                 </p>
-                                 {log && (
-                                     <span className={`text-xs font-bold px-2 py-1 rounded
-                                        ${log.status === '출석' ? 'bg-green-100 text-green-700' : 
-                                          log.status === '지각' ? 'bg-yellow-100 text-yellow-700' : 
-                                          'bg-red-100 text-red-700'}
-                                     `}>
-                                         {log.status}
-                                     </span>
-                                 )}
+                                 {item.type === 'math' ? (<><p className="text-sm text-gray-500 flex items-center gap-1"><Icon name="users" className="w-4 h-4" /> {item.teacher} 선생님</p>{log && (<span className={`text-xs font-bold px-2 py-1 rounded ${log.status === '출석' ? 'bg-green-100 text-green-700' : log.status === '지각' ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'}`}>{log.status}</span>)}</>) : (<div className="w-full flex justify-end"><button onClick={() => { if(window.confirm('이 일정을 삭제하시겠습니까?')) onDeleteExternalSchedule(item.scheduleId); }} className="text-xs text-gray-300 hover:text-red-500 underline">삭제</button></div>)}
                              </div>
                          </div>
                      </div>
@@ -404,17 +397,8 @@ export default function StudentHome({ studentId, students, classes, homeworkAssi
             const sunday = new Date(baseDate);
             sunday.setDate(baseDate.getDate() - baseDay);
             const { month, week } = getWeekOfMonthISO(sunday);
-
-            const prevWeek = () => {
-                const newDate = new Date(selectedDate);
-                newDate.setDate(selectedDate.getDate() - 7);
-                setSelectedDate(newDate);
-            };
-            const nextWeek = () => {
-                const newDate = new Date(selectedDate);
-                newDate.setDate(selectedDate.getDate() + 7);
-                setSelectedDate(newDate);
-            };
+            const prevWeek = () => { const newDate = new Date(selectedDate); newDate.setDate(selectedDate.getDate() - 7); setSelectedDate(newDate); };
+            const nextWeek = () => { const newDate = new Date(selectedDate); newDate.setDate(selectedDate.getDate() + 7); setSelectedDate(newDate); };
 
             return (
                 <div className="space-y-6 animate-fade-in-up">
@@ -429,12 +413,7 @@ export default function StudentHome({ studentId, students, classes, homeworkAssi
                             date.setDate(sunday.getDate() + index);
                             const isSelected = formatDate(date) === formatDate(selectedDate);
                             const isToday = formatDate(date) === formatDate(new Date());
-                            return (
-                                <button key={day} onClick={() => setSelectedDate(date)} className={`flex flex-col items-center p-2 rounded-xl flex-1 transition-all ${isSelected ? 'bg-indigo-600 text-white shadow-md scale-105' : 'hover:bg-gray-50'} ${!isSelected && isToday ? 'text-indigo-600 font-bold' : ''} ${!isSelected && !isToday ? 'text-gray-400' : ''}`}>
-                                    <span className="text-xs mb-1">{day}</span>
-                                    <span className="font-bold text-lg">{date.getDate()}</span> 
-                                </button>
-                            );
+                            return (<button key={day} onClick={() => setSelectedDate(date)} className={`flex flex-col items-center p-2 rounded-xl flex-1 transition-all ${isSelected ? 'bg-indigo-600 text-white shadow-md scale-105' : 'hover:bg-gray-50'} ${!isSelected && isToday ? 'text-indigo-600 font-bold' : ''} ${!isSelected && !isToday ? 'text-gray-400' : ''}`}><span className="text-xs mb-1">{day}</span><span className="font-bold text-lg">{date.getDate()}</span></button>);
                         })}
                     </div>
                     <div className="space-y-4">{renderScheduleList()}</div>
@@ -443,22 +422,30 @@ export default function StudentHome({ studentId, students, classes, homeworkAssi
         };
 
         const MonthlyView = () => {
-            const year = currentDate.getFullYear();
-            const month = currentDate.getMonth();
+            const year = selectedDate.getFullYear();
+            const month = selectedDate.getMonth();
             const firstDayOfMonth = new Date(year, month, 1);
-            const lastDayOfMonth = new Date(year, month + 1, 0);
-            const startDayOfWeek = firstDayOfMonth.getDay(); 
-            const daysInMonth = lastDayOfMonth.getDate();
+            const daysInMonth = new Date(year, month + 1, 0).getDate();
+            const startDayOfWeek = firstDayOfMonth.getDay();
             const calendarDays = Array(startDayOfWeek).fill(null).concat([...Array(daysInMonth).keys()].map(i => new Date(year, month, i + 1)));
 
-            const prevMonth = () => setCurrentDate(new Date(year, month - 1, 1));
-            const nextMonth = () => setCurrentDate(new Date(year, month + 1, 1));
+            const prevMonth = () => setSelectedDate(new Date(year, month - 1, 1));
+            const nextMonth = () => setSelectedDate(new Date(year, month + 1, 1));
 
             const getDayInfo = (date) => {
-                if (!date) return { hasClass: false, status: null };
+                if (!date) return { hasClass: false, status: null, hasExternal: false };
                 const dateStr = formatDate(date);
                 const dayOfWeek = ['일', '월', '화', '수', '목', '금', '토'][date.getDay()];
+                
                 const dayClasses = myClasses.filter(cls => cls.schedule.days.includes(dayOfWeek));
+                // ✅ 타학원 일정 체크 (기간 및 요일)
+                const myExternal = externalSchedules ? externalSchedules.filter(s => {
+                    const isValidStudent = s.studentId === studentId;
+                    const isDayMatch = s.days && s.days.includes(dayOfWeek);
+                    const isDateInRange = date >= new Date(s.startDate) && (!s.endDate || date <= new Date(s.endDate));
+                    return isValidStudent && isDayMatch && isDateInRange;
+                }) : [];
+                
                 const logs = attendanceLogs ? attendanceLogs.filter(log => log.studentId === studentId && log.date === dateStr) : [];
                 let status = null;
                 if (logs.length > 0) {
@@ -466,7 +453,7 @@ export default function StudentHome({ studentId, students, classes, homeworkAssi
                     else if (logs.some(l => l.status === '지각')) status = '지각';
                     else status = '출석';
                 }
-                return { hasClass: dayClasses.length > 0, status };
+                return { hasClass: (dayClasses.length > 0), status, hasExternal: myExternal.length > 0 };
             };
 
             return (
@@ -483,19 +470,18 @@ export default function StudentHome({ studentId, students, classes, homeworkAssi
                         <div className="grid grid-cols-7 gap-y-4 gap-x-1">
                             {calendarDays.map((date, index) => {
                                 if (!date) return <div key={index}></div>;
-                                const { hasClass, status } = getDayInfo(date);
-                                const isSelected = selectedDate && formatDate(date) === formatDate(selectedDate);
+                                const { hasClass, status, hasExternal } = getDayInfo(date);
+                                const isSelected = formatDate(date) === formatDate(selectedDate);
                                 const isToday = formatDate(date) === formatDate(new Date());
                                 return (
                                     <div key={index} className="flex flex-col items-center cursor-pointer" onClick={() => setSelectedDate(date)}>
-                                        <div className={`w-8 h-8 flex items-center justify-center rounded-full text-sm font-medium transition-all ${isSelected ? 'bg-indigo-600 text-white shadow-md scale-110' : ''} ${!isSelected && isToday ? 'text-indigo-600 font-bold bg-indigo-50' : ''} ${!isSelected && !isToday ? 'text-gray-700 hover:bg-gray-50' : ''}`}>
-                                            {date.getDate()}
-                                        </div>
+                                        <div className={`w-8 h-8 flex items-center justify-center rounded-full text-sm font-medium transition-all ${isSelected ? 'bg-indigo-600 text-white shadow-md scale-110' : ''} ${!isSelected && isToday ? 'text-indigo-600 font-bold bg-indigo-50' : ''} ${!isSelected && !isToday ? 'text-gray-700 hover:bg-gray-50' : ''}`}>{date.getDate()}</div>
                                         <div className="h-1.5 mt-1 flex gap-0.5 min-h-[6px]">
                                             {status === '출석' && <div className="w-1.5 h-1.5 rounded-full bg-green-500"></div>}
                                             {status === '지각' && <div className="w-1.5 h-1.5 rounded-full bg-yellow-400"></div>}
                                             {status === '결석' && <div className="w-1.5 h-1.5 rounded-full bg-red-500"></div>}
                                             {!status && hasClass && <div className="w-1.5 h-1.5 rounded-full bg-gray-300"></div>}
+                                            {hasExternal && <div className="w-1.5 h-1.5 rounded-full bg-orange-400"></div>}
                                         </div>
                                     </div>
                                 );
@@ -508,18 +494,66 @@ export default function StudentHome({ studentId, students, classes, homeworkAssi
         };
 
         return (
-            <div className="pb-20">
+            <div className="pb-20 relative">
                 <div className="flex justify-between items-center mb-6">
                     <h2 className="text-2xl font-bold text-gray-800">나의 일정</h2>
-                    <div className="bg-white p-1 rounded-xl border border-gray-100 shadow-sm flex">
-                        <button onClick={() => setViewType('weekly')} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${viewType === 'weekly' ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-400 hover:text-gray-600'}`}>주간</button>
-                        <button onClick={() => { setViewType('monthly'); setCurrentDate(new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1)); }} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${viewType === 'monthly' ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-400 hover:text-gray-600'}`}>월간</button>
+                    <div className="flex gap-2">
+                        {/* ✅ 일정 추가 버튼 */}
+                        <button onClick={() => setIsScheduleModalOpen(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2.5 rounded-xl text-xs font-bold flex items-center gap-1 shadow-md transition-all active:scale-95"><Icon name="plus" className="w-4 h-4" /> 일정 추가</button>
+                        <div className="bg-white p-1 rounded-xl border border-gray-100 shadow-sm flex">
+                            <button onClick={() => setViewType('weekly')} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${viewType === 'weekly' ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-400 hover:text-gray-600'}`}>주간</button>
+                            <button onClick={() => { setViewType('monthly'); setSelectedDate(new Date()); }} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${viewType === 'monthly' ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-400 hover:text-gray-600'}`}>월간</button>
+                        </div>
                     </div>
                 </div>
                 {viewType === 'weekly' ? <WeeklyView /> : <MonthlyView />}
+                
+                {/* ✅ 일정 추가 모달 (확장됨) */}
+                {isScheduleModalOpen && (
+                    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => setIsScheduleModalOpen(false)}>
+                        <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
+                            <h3 className="text-lg font-bold text-gray-800 mb-4">타학원 일정 등록</h3>
+                            <div className="space-y-4 max-h-[70vh] overflow-y-auto custom-scrollbar px-1">
+                                <div><label className="block text-xs font-bold text-gray-500 mb-1">학원명 *</label><input type="text" value={newSchedule.academyName} onChange={e => setNewSchedule({...newSchedule, academyName: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none" placeholder="예: 정상어학원"/></div>
+                                <div><label className="block text-xs font-bold text-gray-500 mb-1">강의명 *</label><input type="text" value={newSchedule.courseName} onChange={e => setNewSchedule({...newSchedule, courseName: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none" placeholder="예: TOP반 영어"/></div>
+                                <div><label className="block text-xs font-bold text-gray-500 mb-1">강사</label><input type="text" value={newSchedule.instructor} onChange={e => setNewSchedule({...newSchedule, instructor: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none" placeholder="예: Julie 선생님"/></div>
+                                
+                                <div className="flex gap-2">
+                                    <div className="flex-1"><label className="block text-xs font-bold text-gray-500 mb-1">개강일 *</label><input type="date" value={newSchedule.startDate} onChange={e => setNewSchedule({...newSchedule, startDate: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"/></div>
+                                    <div className="flex-1"><label className="block text-xs font-bold text-gray-500 mb-1">종강일</label><input type="date" value={newSchedule.endDate} onChange={e => setNewSchedule({...newSchedule, endDate: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"/></div>
+                                </div>
+
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 mb-1">수업 요일 *</label>
+                                    <div className="flex gap-1 justify-between">
+                                        {['월','화','수','목','금','토','일'].map(d => (
+                                            <button 
+                                                key={d} 
+                                                onClick={() => toggleDay(d)}
+                                                className={`w-8 h-8 rounded-full text-xs font-bold transition-colors ${newSchedule.days.includes(d) ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
+                                            >
+                                                {d}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <div className="flex gap-2">
+                                    <div className="flex-1"><label className="block text-xs font-bold text-gray-500 mb-1">시작 시간 *</label><input type="time" value={newSchedule.startTime} onChange={e => setNewSchedule({...newSchedule, startTime: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"/></div>
+                                    <div className="flex-1"><label className="block text-xs font-bold text-gray-500 mb-1">종료 시간</label><input type="time" value={newSchedule.endTime} onChange={e => setNewSchedule({...newSchedule, endTime: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"/></div>
+                                </div>
+                                
+                                <button onClick={handleAddScheduleSubmit} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl mt-2 transition-colors">등록하기</button>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
         );
     };
+
+    // ... (HomeworkTab, GradesTab, MenuTab 등 기존 코드 유지) ...
+    // (편의를 위해 아래에 그대로 유지합니다)
 
     const HomeworkTab = () => {
         const [selectedHwId, setSelectedHwId] = useState(null); 
@@ -645,6 +679,7 @@ export default function StudentHome({ studentId, students, classes, homeworkAssi
         </div>
     );
 
+    // --- 메인 렌더링 ---
     return (
         <div className="flex flex-col h-screen bg-gray-50 max-w-md mx-auto shadow-2xl relative overflow-hidden">
             <header className="bg-white px-6 py-4 flex justify-between items-center sticky top-0 z-20 shadow-sm/50">
@@ -679,10 +714,17 @@ export default function StudentHome({ studentId, students, classes, homeworkAssi
                 </nav>
             )}
 
+            {/* 비디오 모달 (JSX 인라인 배치) */}
             {playingLesson && (
                 <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => setPlayingLesson(null)}>
-                    <div className="bg-white p-0 rounded-2xl w-full max-w-6xl shadow-2xl relative overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
-                        <div className="bg-gray-900 px-4 py-3 flex justify-between items-center border-b border-gray-800">
+                    {/* ✅ [수정] Grid 레이아웃 적용 (PC: 7:3 비율 고정 / 모바일: 1열) */}
+                    <div 
+                        className="bg-gray-900 p-0 rounded-2xl w-full max-w-7xl shadow-2xl relative overflow-hidden flex flex-col h-[85vh]" 
+                        onClick={e => e.stopPropagation()}
+                    >
+                        
+                        {/* 1. 헤더 (고정 높이) */}
+                        <div className="px-4 py-3 flex justify-between items-center border-b border-gray-800 bg-gray-900 shrink-0">
                             <span className="text-white font-bold text-sm truncate flex-1 mr-4">
                                 {playingLesson.date} {playingLesson.progress}
                             </span>
@@ -693,39 +735,106 @@ export default function StudentHome({ studentId, students, classes, homeworkAssi
                                 <Icon name="x" className="w-6 h-6" />
                             </button>
                         </div>
-                        <div className="aspect-video w-full bg-black">
-                            <YouTubePlayer 
-                                videoId={playingLesson.videoId}
-                                // ✅ [중요] playingLesson 객체의 percent와 seconds를 전달
-                                initialProgress={playingLesson.percent || 0}
-                                initialSeconds={playingLesson.seconds || 0}
-                                onProgressUpdate={handleProgress}
-                            />
-                        </div>
-                        <div className="bg-gray-900 p-4">
-                            <div className="flex justify-between items-center mb-2">
-                                <span className="text-gray-400 text-xs font-medium">나의 수강률</span>
-                                <div className="flex items-center gap-2">
-                                    <span className={`text-xl font-bold ${currentSessionProgress === 100 ? 'text-green-500' : 'text-indigo-500'}`}>
-                                        {currentSessionProgress}%
-                                    </span>
-                                    {currentSessionProgress === 100 && (
-                                        <span className="bg-green-500/20 text-green-400 text-[10px] px-2 py-0.5 rounded-full font-bold border border-green-500/30">
-                                            수강 완료
-                                        </span>
-                                    )}
+
+                        {/* 2. 본문 영역 (CSS Grid: PC 70/30, 모바일 1열) */}
+                        <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-[7fr_3fr] overflow-hidden">
+                            
+                            {/* 좌측: 영상 + 수강률 */}
+                            <div className="flex flex-col bg-black h-full overflow-hidden relative">
+                                {/* 비디오 플레이어 (남은 공간 모두 차지) */}
+                                <div className="flex-1 relative w-full bg-black flex items-center justify-center">
+                                    <div className="w-full h-full"> 
+                                        <YouTubePlayer 
+                                            ref={playerRef}
+                                            videoId={playingLesson.videoId}
+                                            initialProgress={playingLesson.percent || 0}
+                                            initialSeconds={playingLesson.seconds || 0}
+                                            onProgressUpdate={handleProgress}
+                                        />
+                                    </div>
+                                </div>
+                                {/* 수강률 바 (하단 고정) */}
+                                <div className="p-4 bg-gray-900 border-t border-gray-800 shrink-0 z-10">
+                                    <div className="flex justify-between items-center mb-2">
+                                        <span className="text-gray-400 text-xs font-medium">나의 수강률</span>
+                                        <div className="flex items-center gap-2">
+                                            <span className={`text-xl font-bold ${currentSessionProgress === 100 ? 'text-green-500' : 'text-indigo-500'}`}>
+                                                {currentSessionProgress}%
+                                            </span>
+                                            {currentSessionProgress === 100 && (
+                                                <span className="bg-green-500/20 text-green-400 text-[10px] px-2 py-0.5 rounded-full font-bold border border-green-500/30">
+                                                    수강 완료
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <div className="w-full bg-gray-800 rounded-full h-2 overflow-hidden">
+                                        <div 
+                                            className={`h-full rounded-full transition-all duration-300 ${currentSessionProgress === 100 ? 'bg-green-500' : 'bg-indigo-500'}`} 
+                                            style={{ width: `${currentSessionProgress}%` }}
+                                        ></div>
+                                    </div>
                                 </div>
                             </div>
-                            <div className="w-full bg-gray-800 rounded-full h-2 overflow-hidden">
-                                <div 
-                                    className={`h-full rounded-full transition-all duration-300 ${currentSessionProgress === 100 ? 'bg-green-500' : 'bg-indigo-500'}`} 
-                                    style={{ width: `${currentSessionProgress}%` }}
-                                ></div>
+
+                            {/* 우측: 메모 + 북마크 */}
+                            <div className="flex flex-col h-full bg-gray-900 border-l border-gray-800 overflow-hidden">
+                                {/* 메모 입력 (상단 고정) */}
+                                <div className="p-4 border-b border-gray-800 shrink-0">
+                                    <p className="text-gray-400 text-xs mb-2 font-medium">메모 남기기</p>
+                                    <div className="flex gap-2">
+                                        <input 
+                                            type="text" 
+                                            value={bookmarkNote}
+                                            onChange={(e) => setBookmarkNote(e.target.value)}
+                                            placeholder="내용 입력..."
+                                            className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-indigo-500 placeholder-gray-600"
+                                        />
+                                        <button 
+                                            onClick={handleAddBookmark}
+                                            className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-lg text-sm font-bold transition-colors whitespace-nowrap"
+                                        >
+                                            저장
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* 북마크 리스트 (스크롤 가능) */}
+                                <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
+                                    <p className="text-gray-400 text-xs mb-3 font-medium flex items-center justify-between">
+                                        나의 북마크
+                                        <span className="text-gray-600">{videoBookmarks?.[studentId]?.[playingLesson.id]?.length || 0}개</span>
+                                    </p>
+                                    
+                                    <div className="space-y-2">
+                                        {videoBookmarks?.[studentId]?.[playingLesson.id]?.length > 0 ? (
+                                            videoBookmarks[studentId][playingLesson.id].map((bm) => (
+                                                <div 
+                                                    key={bm.id} 
+                                                    onClick={() => handleSeekToBookmark(bm.time)}
+                                                    className="bg-gray-800 hover:bg-gray-700 p-3 rounded-lg cursor-pointer flex justify-between items-start transition-colors group border border-transparent hover:border-gray-600"
+                                                >
+                                                    <div className="flex flex-col gap-1 w-full">
+                                                        <div className="flex items-center justify-between">
+                                                            <span className="text-indigo-400 font-mono text-xs bg-indigo-900/30 px-1.5 py-0.5 rounded">
+                                                                {formatTime(bm.time)}
+                                                            </span>
+                                                            <Icon name="chevronRight" className="w-3 h-3 text-gray-600 group-hover:text-gray-400" />
+                                                        </div>
+                                                        <span className="text-gray-300 text-sm break-words leading-snug">{bm.note}</span>
+                                                    </div>
+                                                </div>
+                                            ))
+                                        ) : (
+                                            <div className="text-center py-10 text-gray-600 text-xs border border-dashed border-gray-800 rounded-lg">
+                                                저장된 메모가 없습니다.<br/>중요한 부분에서 '저장'을 눌러보세요.
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
                             </div>
-                            <p className="text-gray-500 text-[10px] mt-3 text-center">
-                                * 학습 종료 시 반드시 '닫기' 버튼을 눌러주세요. 수강 기록이 자동 저장됩니다.
-                            </p>
                         </div>
+
                     </div>
                 </div>
             )}
