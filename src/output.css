@@ -58,6 +58,9 @@
 .top-1\/2 {
   top: calc(1/2 * 100%);
 }
+.bottom-full {
+  bottom: 100%;
+}
 .-left-\[9px\] {
   left: calc(9px * -1);
 }
@@ -332,6 +335,9 @@
 .max-h-screen {
   max-height: 100vh;
 }
+.min-h-\[6px\] {
+  min-height: 6px;
+}
 .min-h-\[80vh\] {
   min-height: 80vh;
 }
@@ -382,6 +388,9 @@
 }
 .w-screen {
   width: 100vw;
+}
+.max-w-\[20px\] {
+  max-width: 20px;
 }
 .max-w-\[85\%\] {
   max-width: 85%;
@@ -541,6 +550,9 @@
 }
 .scale-none {
   scale: none;
+}
+.rotate-45 {
+  rotate: 45deg;
 }
 .rotate-180 {
   rotate: 180deg;
@@ -1011,6 +1023,9 @@
 }
 .overflow-hidden {
   overflow: hidden;
+}
+.overflow-visible {
+  overflow: visible;
 }
 .overflow-x-auto {
   overflow-x: auto;
@@ -2147,6 +2162,13 @@
 }
 .transform-view {
   transform-box: view-box;
+}
+.group-hover\:opacity-100 {
+  &:is(:where(.group):hover *) {
+    @media (hover: hover) {
+      opacity: 100%;
+    }
+  }
 }
 .group-data-\[disabled\=true\]\:pointer-events-none {
   &:is(:where(.group)[data-disabled="true"] *) {

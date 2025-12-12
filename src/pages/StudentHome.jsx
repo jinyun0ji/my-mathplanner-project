@@ -1,6 +1,6 @@
 // src/pages/StudentHome.jsx
 import React, { useState, useMemo } from 'react';
-import { Icon, calculateHomeworkStats, calculateGradeComparison } from '../utils/helpers'; 
+import { Icon, calculateHomeworkStats, calculateGradeComparison, getWeekOfMonthISO } from '../utils/helpers'; 
 
 export default function StudentHome({ studentId, students, classes, homeworkAssignments, homeworkResults, attendanceLogs, tests, grades, onLogout }) {
     const [activeTab, setActiveTab] = useState('home');
@@ -171,23 +171,21 @@ export default function StudentHome({ studentId, students, classes, homeworkAssi
             });
         };
 
-        // --- 주간 뷰 ---
         const WeeklyView = () => {
             const weekDays = ['일', '월', '화', '수', '목', '금', '토'];
             
-            // selectedDate가 포함된 주의 일요일 계산
             const baseDate = new Date(selectedDate);
             const baseDay = baseDate.getDay();
             const sunday = new Date(baseDate);
             sunday.setDate(baseDate.getDate() - baseDay);
 
-            // 주간 이동 핸들러
+            const { month, week } = getWeekOfMonthISO(sunday);
+
             const prevWeek = () => {
                 const newDate = new Date(selectedDate);
                 newDate.setDate(selectedDate.getDate() - 7);
                 setSelectedDate(newDate);
             };
-
             const nextWeek = () => {
                 const newDate = new Date(selectedDate);
                 newDate.setDate(selectedDate.getDate() + 7);
@@ -196,13 +194,12 @@ export default function StudentHome({ studentId, students, classes, homeworkAssi
 
             return (
                 <div className="space-y-6 animate-fade-in-up">
-                    {/* ✅ 주간 네비게이션 헤더 추가 */}
-                    <div className="flex items-center justify-between px-2">
+                    <div className="flex items-center justify-between px-2 mb-2">
                         <button onClick={prevWeek} className="p-2 bg-white rounded-full shadow-sm text-gray-400 hover:text-indigo-600">
                             <Icon name="arrow-left" className="w-5 h-5" />
                         </button>
-                        <span className="font-bold text-gray-700">
-                            {sunday.getMonth() + 1}월 {Math.ceil(sunday.getDate() / 7)}주차
+                        <span className="font-bold text-gray-700 text-lg">
+                            {month}월 {week}주차
                         </span>
                         <button onClick={nextWeek} className="p-2 bg-white rounded-full shadow-sm text-gray-400 hover:text-indigo-600 transform rotate-180">
                             <Icon name="arrow-left" className="w-5 h-5" />
@@ -241,7 +238,6 @@ export default function StudentHome({ studentId, students, classes, homeworkAssi
             );
         };
 
-        // --- 월간 뷰 ---
         const MonthlyView = () => {
             const year = currentDate.getFullYear();
             const month = currentDate.getMonth();
@@ -256,6 +252,23 @@ export default function StudentHome({ studentId, students, classes, homeworkAssi
 
             const prevMonth = () => setCurrentDate(new Date(year, month - 1, 1));
             const nextMonth = () => setCurrentDate(new Date(year, month + 1, 1));
+
+            const getDayInfo = (date) => {
+                if (!date) return { hasClass: false, status: null };
+                const dateStr = formatDate(date);
+                const dayOfWeek = ['일', '월', '화', '수', '목', '금', '토'][date.getDay()];
+
+                const dayClasses = myClasses.filter(cls => cls.schedule.days.includes(dayOfWeek));
+                const logs = attendanceLogs ? attendanceLogs.filter(log => log.studentId === studentId && log.date === dateStr) : [];
+                
+                let status = null;
+                if (logs.length > 0) {
+                    if (logs.some(l => l.status === '결석')) status = '결석';
+                    else if (logs.some(l => l.status === '지각')) status = '지각';
+                    else status = '출석';
+                }
+                return { hasClass: dayClasses.length > 0, status };
+            };
 
             return (
                 <div className="animate-fade-in-up">
@@ -273,6 +286,7 @@ export default function StudentHome({ studentId, students, classes, homeworkAssi
                         <div className="grid grid-cols-7 gap-y-4 gap-x-1">
                             {calendarDays.map((date, index) => {
                                 if (!date) return <div key={index}></div>;
+                                const { hasClass, status } = getDayInfo(date);
                                 const isSelected = selectedDate && formatDate(date) === formatDate(selectedDate);
                                 const isToday = formatDate(date) === formatDate(new Date());
 
@@ -281,8 +295,12 @@ export default function StudentHome({ studentId, students, classes, homeworkAssi
                                         <div className={`w-8 h-8 flex items-center justify-center rounded-full text-sm font-medium transition-all ${isSelected ? 'bg-indigo-600 text-white shadow-md scale-110' : ''} ${!isSelected && isToday ? 'text-indigo-600 font-bold bg-indigo-50' : ''} ${!isSelected && !isToday ? 'text-gray-700 hover:bg-gray-50' : ''}`}>
                                             {date.getDate()}
                                         </div>
-                                        {/* 수업 있음 표시 (점) */}
-                                        <div className="h-1.5 mt-1 w-1.5 rounded-full bg-gray-100"></div>
+                                        <div className="h-1.5 mt-1 flex gap-0.5 min-h-[6px]">
+                                            {status === '출석' && <div className="w-1.5 h-1.5 rounded-full bg-green-500"></div>}
+                                            {status === '지각' && <div className="w-1.5 h-1.5 rounded-full bg-yellow-400"></div>}
+                                            {status === '결석' && <div className="w-1.5 h-1.5 rounded-full bg-red-500"></div>}
+                                            {!status && hasClass && <div className="w-1.5 h-1.5 rounded-full bg-gray-300"></div>}
+                                        </div>
                                     </div>
                                 );
                             })}
@@ -309,97 +327,188 @@ export default function StudentHome({ studentId, students, classes, homeworkAssi
         );
     };
 
-    // --- [3] 과제 탭 ---
-    const HomeworkTab = () => (
-        <div className="space-y-6 animate-fade-in-up">
-            <h2 className="text-2xl font-bold text-gray-800">과제함</h2>
-            <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
-                <button className="px-4 py-2 bg-indigo-600 text-white rounded-full text-sm font-bold whitespace-nowrap shadow-md">전체</button>
-                <button className="px-4 py-2 bg-white text-gray-500 border border-gray-200 rounded-full text-sm font-medium whitespace-nowrap">진행 중</button>
-                <button className="px-4 py-2 bg-white text-gray-500 border border-gray-200 rounded-full text-sm font-medium whitespace-nowrap">완료됨</button>
+    // --- [3] 과제 탭 (수정됨: 상세/오답노트 펼치기) ---
+    const HomeworkTab = () => {
+        const [selectedHwId, setSelectedHwId] = useState(null); // 클릭된 과제 ID
+
+        const toggleDetails = (id) => {
+            if (selectedHwId === id) setSelectedHwId(null);
+            else setSelectedHwId(id);
+        };
+
+        return (
+            <div className="space-y-6 animate-fade-in-up">
+                <h2 className="text-2xl font-bold text-gray-800">과제함</h2>
+                
+                <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+                    <button className="px-4 py-2 bg-indigo-600 text-white rounded-full text-sm font-bold whitespace-nowrap shadow-md">전체</button>
+                    <button className="px-4 py-2 bg-white text-gray-500 border border-gray-200 rounded-full text-sm font-medium whitespace-nowrap">진행 중</button>
+                    <button className="px-4 py-2 bg-white text-gray-500 border border-gray-200 rounded-full text-sm font-medium whitespace-nowrap">완료됨</button>
+                </div>
+
+                <div className="space-y-3">
+                    {myHomeworkStats.length > 0 ? myHomeworkStats.map(hw => (
+                        <div 
+                            key={hw.id} 
+                            onClick={() => toggleDetails(hw.id)}
+                            className={`bg-white p-5 rounded-2xl shadow-sm border border-gray-100 transition-all cursor-pointer hover:shadow-md
+                                ${selectedHwId === hw.id ? 'ring-2 ring-indigo-500' : ''}`}
+                        >
+                            <div className="flex justify-between items-start mb-3">
+                                <span className={`text-xs font-bold px-2 py-1 rounded ${hw.status === '완료' ? 'bg-green-100 text-green-700' : hw.status === '미시작' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'}`}>{hw.status}</span>
+                                <span className="text-xs text-gray-400">{hw.date} 마감</span>
+                            </div>
+                            <h4 className="font-bold text-gray-800 mb-1">{hw.content}</h4>
+                            <p className="text-sm text-gray-500 mb-4">{hw.book} (총 {hw.totalQuestions}문제)</p>
+                            <div className="w-full bg-gray-100 rounded-full h-2 mb-2"><div className="bg-indigo-500 h-2 rounded-full transition-all duration-500" style={{ width: `${hw.completionRate}%` }}></div></div>
+                            <div className="flex justify-between text-xs text-gray-500"><span>진행률 {hw.completionRate}%</span><span>{hw.completedCount} / {hw.totalQuestions} 완료</span></div>
+
+                            {/* ✅ 상세 현황 및 오답 목록 표시 */}
+                            {selectedHwId === hw.id && (
+                                <div className="mt-4 pt-4 border-t border-gray-100 animate-fade-in-down">
+                                    <div className="flex justify-around mb-4 text-center">
+                                        <div><p className="text-xs text-gray-400">맞음</p><p className="font-bold text-green-600">{hw.completedCount}</p></div>
+                                        <div><p className="text-xs text-gray-400">틀림</p><p className="font-bold text-red-600">{hw.incorrectCount}</p></div>
+                                        <div><p className="text-xs text-gray-400">남음</p><p className="font-bold text-gray-600">{hw.uncheckedCount}</p></div>
+                                    </div>
+                                    
+                                    {hw.incorrectQuestionList && hw.incorrectQuestionList.length > 0 ? (
+                                        <div className="bg-red-50 p-3 rounded-xl">
+                                            <p className="text-xs font-bold text-red-700 mb-2 flex items-center gap-1"><Icon name="alertCircle" className="w-3 h-3" /> 오답 노트 (다시 풀어보세요!)</p>
+                                            <div className="flex flex-wrap gap-2">
+                                                {hw.incorrectQuestionList.map(q => (
+                                                    <span key={q} className="bg-white text-red-600 text-xs font-bold px-2 py-1 rounded border border-red-100 shadow-sm">{q}번</span>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <p className="text-center text-xs text-gray-400 mt-2">오답이 없습니다. 훌륭해요! 🎉</p>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    )) : (<div className="flex flex-col items-center justify-center py-20 text-gray-400"><Icon name="clipboardCheck" className="w-12 h-12 mb-2 opacity-50" /><p>등록된 과제가 없습니다.</p></div>)}
+                </div>
             </div>
-            <div className="space-y-3">
-                {myHomeworkStats.length > 0 ? myHomeworkStats.map(hw => (
-                    <div key={hw.id} className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
-                        <div className="flex justify-between items-start mb-3">
-                            <span className={`text-xs font-bold px-2 py-1 rounded ${hw.status === '완료' ? 'bg-green-100 text-green-700' : hw.status === '미시작' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'}`}>{hw.status}</span>
-                            <span className="text-xs text-gray-400">{hw.date} 마감</span>
-                        </div>
-                        <h4 className="font-bold text-gray-800 mb-1">{hw.content}</h4>
-                        <p className="text-sm text-gray-500 mb-4">{hw.book} (총 {hw.totalQuestions}문제)</p>
-                        <div className="w-full bg-gray-100 rounded-full h-2 mb-2"><div className="bg-indigo-500 h-2 rounded-full transition-all duration-500" style={{ width: `${hw.completionRate}%` }}></div></div>
-                        <div className="flex justify-between text-xs text-gray-500"><span>진행률 {hw.completionRate}%</span><span>{hw.completedCount} / {hw.totalQuestions} 완료</span></div>
-                    </div>
-                )) : (<div className="flex flex-col items-center justify-center py-20 text-gray-400"><Icon name="clipboardCheck" className="w-12 h-12 mb-2 opacity-50" /><p>등록된 과제가 없습니다.</p></div>)}
-            </div>
-        </div>
-    );
+        );
+    };
 
-    // --- [NEW] 성적 리포트 탭 ---
-    const GradesTab = () => (
-        <div className="space-y-6 animate-fade-in-up pb-20">
-            <h2 className="text-2xl font-bold text-gray-800">성적 리포트</h2>
-            
-            {myGradeComparison.length > 0 ? myGradeComparison.map((item, idx) => (
-                <div key={idx} className="bg-white p-6 rounded-3xl shadow-lg border border-gray-100">
-                    <div className="flex justify-between items-start mb-4">
-                        <div>
-                            <span className="text-xs font-bold text-indigo-500 bg-indigo-50 px-2 py-1 rounded mb-2 inline-block">{item.className}</span>
-                            <h3 className="text-xl font-bold text-gray-800">{item.testName}</h3>
-                        </div>
-                        <div className="text-right">
-                            <span className="text-3xl font-bold text-indigo-600">{item.studentScore}</span>
-                            <span className="text-gray-400 text-sm"> / {item.maxScore}</span>
-                        </div>
-                    </div>
+    // --- [4] 성적 리포트 탭 ---
+    const GradesTab = () => {
+        const [mode, setMode] = useState('list'); 
+        const sortedGrades = [...myGradeComparison].sort((a, b) => new Date(a.testDate) - new Date(b.testDate));
 
-                    {/* 그래프 */}
-                    <div className="space-y-3 mb-6">
-                        <div>
-                            <div className="flex justify-between text-xs mb-1">
-                                <span className="font-bold text-gray-600">나의 점수</span>
-                                <span className="text-gray-500">{item.studentScore}점</span>
-                            </div>
-                            <div className="w-full bg-gray-100 rounded-full h-3">
-                                <div className="bg-indigo-500 h-3 rounded-full" style={{ width: `${(item.studentScore / item.maxScore) * 100}%` }}></div>
-                            </div>
-                        </div>
-                        <div>
-                            <div className="flex justify-between text-xs mb-1">
-                                <span className="font-bold text-gray-400">반 평균</span>
-                                <span className="text-gray-400">{item.classAverage}점</span>
-                            </div>
-                            <div className="w-full bg-gray-100 rounded-full h-3">
-                                <div className="bg-gray-400 h-3 rounded-full" style={{ width: `${(item.classAverage / item.maxScore) * 100}%` }}></div>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* 분석 코멘트 (간단 버전) */}
-                    <div className="bg-gray-50 p-4 rounded-xl text-sm text-gray-600">
-                        {item.isAboveAverage ? (
-                            <p className="flex items-center gap-2">
-                                <span className="text-green-500 font-bold">Great!</span> 
-                                평균보다 <span className="font-bold">{item.scoreDifference}점</span> 높아요. 잘하고 있어요! 🎉
-                            </p>
-                        ) : (
-                            <p className="flex items-center gap-2">
-                                <span className="text-indigo-500 font-bold">Cheer Up!</span>
-                                평균까지 <span className="font-bold">{Math.abs(item.scoreDifference)}점</span> 남았어요. 조금만 더 힘내요! 🔥
-                            </p>
-                        )}
+        return (
+            <div className="space-y-4 animate-fade-in-up pb-20">
+                <div className="flex justify-between items-center mb-2">
+                    <h2 className="text-2xl font-bold text-gray-800">성적 리포트</h2>
+                    <div className="bg-white p-1 rounded-xl border border-gray-100 shadow-sm flex">
+                        <button onClick={() => setMode('list')} className={`p-2 rounded-lg transition-all ${mode === 'list' ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-400 hover:text-gray-600'}`}>
+                            <Icon name="list" className="w-5 h-5" />
+                        </button>
+                        <button onClick={() => setMode('analysis')} className={`p-2 rounded-lg transition-all ${mode === 'analysis' ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-400 hover:text-gray-600'}`}>
+                            <Icon name="trend" className="w-5 h-5" />
+                        </button>
                     </div>
                 </div>
-            )) : (
-                <div className="flex flex-col items-center justify-center py-20 text-gray-400">
-                    <Icon name="barChart" className="w-16 h-16 mb-4 opacity-30 text-indigo-200" />
-                    <p className="font-medium">등록된 성적 데이터가 없습니다.</p>
-                </div>
-            )}
-        </div>
-    );
+                
+                {myGradeComparison.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-20 text-gray-400">
+                        <Icon name="barChart" className="w-12 h-12 mb-4 opacity-30 text-indigo-200" />
+                        <p className="font-medium text-sm">등록된 성적 데이터가 없습니다.</p>
+                    </div>
+                ) : mode === 'list' ? (
+                    myGradeComparison.map((item, idx) => (
+                        <div key={idx} className="bg-white p-5 rounded-2xl shadow-md border border-gray-100">
+                            <div className="flex justify-between items-start mb-3">
+                                <div>
+                                    <span className="text-xs text-gray-400 font-medium block mb-0.5">{item.testDate}</span>
+                                    <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                                        {item.testName}
+                                        <span className="text-[10px] text-indigo-500 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100">{item.className}</span>
+                                    </h3>
+                                </div>
+                                <div className="text-right">
+                                    <span className="text-2xl font-bold text-indigo-600">{item.studentScore}</span>
+                                    <span className="text-gray-400 text-xs"> / {item.maxScore}</span>
+                                </div>
+                            </div>
+                            <div className="space-y-2 mb-3">
+                                <div>
+                                    <div className="w-full bg-gray-100 rounded-full h-2">
+                                        <div className="bg-indigo-500 h-2 rounded-full relative" style={{ width: `${(item.studentScore / item.maxScore) * 100}%` }}></div>
+                                    </div>
+                                    <div className="flex justify-between text-[10px] mt-1 text-gray-400">
+                                        <span>내 점수: {item.studentScore}</span>
+                                        <span>평균: {item.classAverage}</span>
+                                    </div>
+                                    <div className="w-full bg-gray-100 rounded-full h-1 mt-1">
+                                        <div className="bg-gray-400 h-1 rounded-full opacity-50" style={{ width: `${(item.classAverage / item.maxScore) * 100}%` }}></div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="bg-gray-50 p-3 rounded-xl text-xs text-gray-600">
+                                {item.isAboveAverage ? (
+                                    <p>🎉 평균보다 <span className="font-bold text-green-600">{item.scoreDifference}점</span> 높아요!</p>
+                                ) : (
+                                    <p>🔥 평균까지 <span className="font-bold text-indigo-600">{Math.abs(item.scoreDifference)}점</span>! 힘내요!</p>
+                                )}
+                            </div>
+                        </div>
+                    ))
+                ) : (
+                    <div className="bg-white p-6 rounded-3xl shadow-lg border border-gray-100">
+                        <h3 className="text-lg font-bold text-gray-800 mb-6">성적 변화 추이</h3>
+                        <div className="h-64 relative flex items-end justify-between px-2 gap-2">
+                            <svg className="absolute inset-0 w-full h-full overflow-visible" preserveAspectRatio="none">
+                                <polyline 
+                                    points={sortedGrades.map((d, i) => {
+                                        // 여기서는 간단히 x 좌표만 비율로 계산하고 y는 제외 (점만 찍거나 막대로 대체)
+                                        return ""; 
+                                    }).join(' ')} 
+                                    fill="none" 
+                                    stroke="#4F46E5" 
+                                    strokeWidth="3"
+                                />
+                            </svg>
+                            
+                            {sortedGrades.map((item, idx) => (
+                                <div key={idx} className="flex-1 flex flex-col justify-end items-center group relative h-full">
+                                    <div className="mb-2 text-xs font-bold text-indigo-600">{item.studentScore}</div>
+                                    <div className="w-full max-w-[20px] bg-indigo-200 rounded-t-lg relative transition-all group-hover:bg-indigo-300" style={{ height: `${item.studentScore}%` }}>
+                                        <div className="absolute top-0 w-full h-1 bg-indigo-500 rounded-t-lg"></div>
+                                    </div>
+                                    <div className="mt-2 text-[10px] text-gray-400 rotate-45 origin-left translate-y-2 whitespace-nowrap overflow-visible">
+                                        {item.testName.split(' ')[0]} 
+                                    </div>
+                                    <div className="absolute bottom-full mb-2 bg-gray-800 text-white text-xs p-2 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 w-32 text-center">
+                                        {item.testName}<br/>
+                                        <span className="text-gray-300">{item.testDate}</span>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                        <div className="mt-8 pt-4 border-t border-gray-100">
+                            <div className="flex justify-between text-sm text-gray-600">
+                                <span>평균 점수</span>
+                                <span className="font-bold text-indigo-600">
+                                    {(sortedGrades.reduce((acc, cur) => acc + cur.studentScore, 0) / sortedGrades.length).toFixed(1)}점
+                                </span>
+                            </div>
+                            <div className="flex justify-between text-sm text-gray-600 mt-1">
+                                <span>최고 점수</span>
+                                <span className="font-bold text-green-600">
+                                    {Math.max(...sortedGrades.map(s => s.studentScore))}점
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                )}
+            </div>
+        );
+    };
 
-    // --- [4] 메뉴 탭 ---
+    // --- [5] 메뉴 탭 ---
     const MenuTab = () => (
         <div className="space-y-6 animate-fade-in-up">
             <h2 className="text-2xl font-bold text-gray-800">메뉴</h2>
