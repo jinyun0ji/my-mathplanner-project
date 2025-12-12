@@ -123,7 +123,7 @@ export const ScheduleTab = ({
     };
 
     const handleEditClick = (e, schedule) => {
-        e.stopPropagation(); // 카드 클릭 시 다른 이벤트 방지
+        e.stopPropagation();
         setNewSchedule({
             academyName: schedule.academyName,
             courseName: schedule.courseName,
@@ -161,7 +161,6 @@ export const ScheduleTab = ({
 
     const executeDelete = (mode) => {
         if (!targetScheduleForDelete) return;
-        // 현재 선택된 날짜를 기준으로 삭제 처리 (이 일정만 삭제 시 필요)
         const targetDate = formatDate(selectedDate);
         onDeleteExternalSchedule(targetScheduleForDelete.scheduleId, mode, targetDate);
         setIsDeleteModalOpen(false);
@@ -181,12 +180,10 @@ export const ScheduleTab = ({
 
     // --- 주간/월간 계산 로직 ---
     const weekDays = ['일', '월', '화', '수', '목', '금', '토'];
-    
-    // 주간 데이터 계산
     const baseDate = new Date(selectedDate);
     const baseDay = baseDate.getDay();
     const sunday = new Date(baseDate);
-    sunday.setDate(baseDate.getDate() - baseDay); // 이번주 일요일
+    sunday.setDate(baseDate.getDate() - baseDay);
     const { month: weekMonth, week: weekNum } = getWeekOfMonthISO(sunday);
 
     const prevWeek = () => { const d = new Date(selectedDate); d.setDate(d.getDate() - 7); setSelectedDate(d); };
@@ -208,44 +205,26 @@ export const ScheduleTab = ({
         const dayOfWeek = weekDays[selectedDate.getDay()];
         const dateStr = formatDate(selectedDate);
 
-        // 1. 수학 학원 일정
+        // 1. 수학 학원
         const dailyClasses = myClasses.filter(cls => cls.schedule.days.includes(dayOfWeek)).map(cls => ({
             id: `math-${cls.id}`, type: 'math', name: cls.name, teacher: '채수용', time: cls.schedule.time, scheduleId: cls.id
         }));
 
-        // 2. 타학원 일정
+        // 2. 타학원
         const myExternal = externalSchedules ? externalSchedules.filter(s => {
             const isValidStudent = s.studentId === studentId;
             const isDayMatch = s.days && s.days.includes(dayOfWeek);
             const isDateInRange = selectedDate >= new Date(s.startDate) && (!s.endDate || selectedDate <= new Date(s.endDate));
-            
-            // 제외된 날짜인지 확인
             const isExcluded = s.excludedDates && s.excludedDates.includes(dateStr);
-            
             return isValidStudent && isDayMatch && isDateInRange && !isExcluded;
         }) : [];
-
         const dailyExternal = myExternal.map(s => ({
-            id: `ext-${s.id}`, 
-            type: 'external', 
-            name: s.academyName, 
-            teacher: s.courseName, 
-            time: `${s.startTime}~${s.endTime}`, 
-            scheduleId: s.id,
-            ...s // 원본 데이터 포함
+            id: `ext-${s.id}`, type: 'external', name: s.academyName, teacher: s.courseName, time: `${s.startTime}~${s.endTime}`, scheduleId: s.id, ...s 
         }));
 
-        // 3. 클리닉 일정 (예약된 것만)
-        const myClinics = clinicLogs ? clinicLogs.filter(log => 
-            log.studentId === studentId && log.date === dateStr
-        ).map(log => ({
-            id: `clinic-${log.id}`,
-            type: 'clinic',
-            name: '학습 클리닉',
-            teacher: log.tutor || '담당 선생님',
-            time: log.checkIn ? `${log.checkIn}~${log.checkOut || ''}` : '시간 미정',
-            status: log.checkOut ? '완료' : '예약됨',
-            scheduleId: log.id
+        // 3. 클리닉
+        const myClinics = clinicLogs ? clinicLogs.filter(log => log.studentId === studentId && log.date === dateStr).map(log => ({
+            id: `clinic-${log.id}`, type: 'clinic', name: '학습 클리닉', teacher: log.tutor || '담당 선생님', time: log.checkIn ? `${log.checkIn}~${log.checkOut || ''}` : '시간 미정', status: log.checkOut ? '완료' : '예약됨', scheduleId: log.id
         })) : [];
 
         const allSchedules = [...dailyClasses, ...dailyExternal, ...myClinics].sort((a, b) => (a.time.split('~')[0] || '00:00').localeCompare(b.time.split('~')[0] || '00:00'));
@@ -333,7 +312,7 @@ export const ScheduleTab = ({
         );
     };
 
-    // --- 달력 헬퍼 (클리닉 포함) ---
+    // --- 달력 헬퍼 ---
     const getDayInfo = (date) => {
         if (!date) return { hasClass: false, status: null, hasExternal: false, hasClinic: false };
         const dateStr = formatDate(date);
@@ -361,14 +340,61 @@ export const ScheduleTab = ({
         return { hasClass: (dayClasses.length > 0), status, hasExternal: myExternal.length > 0, hasClinic: myClinics.length > 0 };
     };
 
+    const WeeklyView = () => {
+        return (
+            <div className="space-y-6 animate-fade-in-up">
+                <div className="flex items-center justify-between px-2 mb-2">
+                    <button onClick={prevWeek} className="p-2 bg-white rounded-full shadow-sm text-brand-gray hover:text-brand-main hover:bg-brand-bg"><Icon name="arrow-left" className="w-5 h-5" /></button>
+                    <span className="font-bold text-brand-black text-lg">{weekMonth}월 {weekNum}주차</span>
+                    <button onClick={nextWeek} className="p-2 bg-white rounded-full shadow-sm text-brand-gray hover:text-brand-main hover:bg-brand-bg transform rotate-180"><Icon name="arrow-left" className="w-5 h-5" /></button>
+                </div>
+                {/* ✅ 주간 달력 - 일정 점 표시 추가 */}
+                <div className="flex justify-between bg-white p-1.5 rounded-2xl shadow-sm border border-brand-gray/30 overflow-x-auto">
+                    {weekDays.map((day, index) => {
+                        const date = new Date(sunday);
+                        date.setDate(sunday.getDate() + index);
+                        const isSelected = formatDate(date) === formatDate(selectedDate);
+                        const isToday = formatDate(date) === todayStr;
+                        
+                        // 날짜별 일정 정보 조회
+                        const { hasClass, status, hasExternal, hasClinic } = getDayInfo(date);
+
+                        return (
+                            <button 
+                                key={day} 
+                                onClick={() => setSelectedDate(date)} 
+                                className={`flex flex-col items-center p-1 rounded-xl flex-1 transition-all min-w-[32px] relative ${isSelected ? 'bg-brand-main text-white shadow-brand scale-105' : 'hover:bg-brand-bg'} ${!isSelected && isToday ? 'text-brand-main font-bold' : ''} ${!isSelected && !isToday ? 'text-brand-gray' : ''}`}
+                            >
+                                <span className="text-[10px] mb-0.5">{day}</span>
+                                <span className={`font-bold ${isSelected ? 'text-base' : 'text-sm'}`}>{date.getDate()}</span>
+                                
+                                {/* ✅ 일정 점(Dot) 표시 */}
+                                <div className="flex gap-0.5 mt-1 h-1.5 items-center">
+                                    {/* 수업: 출결 상태에 따른 색상 */}
+                                    {(hasClass || status) && (
+                                        <div className={`w-1 h-1 rounded-full ${isSelected ? 'bg-white' : (status === '출석' ? 'bg-green-500' : status === '지각' ? 'bg-yellow-400' : status === '결석' ? 'bg-brand-red' : 'bg-brand-gray')}`}></div>
+                                    )}
+                                    {/* 타학원 */}
+                                    {hasExternal && (
+                                        <div className={`w-1 h-1 rounded-full ${isSelected ? 'bg-white' : 'bg-brand-light'}`}></div>
+                                    )}
+                                    {/* 클리닉 */}
+                                    {hasClinic && (
+                                        <div className={`w-1 h-1 rounded-full ${isSelected ? 'bg-white' : 'bg-teal-400'}`}></div>
+                                    )}
+                                </div>
+                            </button>
+                        );
+                    })}
+                </div>
+                <div className="space-y-4">{renderSchedules()}</div>
+            </div>
+        );
+    };
+
     const MonthlyView = () => {
         const year = selectedDate.getFullYear();
         const month = selectedDate.getMonth();
-        // const firstDayOfMonth = new Date(year, month, 1); // 사용 안함
-        // const daysInMonth = new Date(year, month + 1, 0).getDate(); // 사용 안함
-        // const startDayOfWeek = firstDayOfMonth.getDay(); // 사용 안함
-        
-        // 달력 그리드 생성 (이전/다음 달 날짜 포함 없이 현재 월 기준 간략 구현)
         const firstDay = new Date(year, month, 1);
         const startEmptyDays = firstDay.getDay();
         const lastDay = new Date(year, month + 1, 0).getDate();
@@ -391,10 +417,7 @@ export const ScheduleTab = ({
                     <div className="grid grid-cols-7 gap-y-4 gap-x-1">
                         {calendarDays.map((date, index) => {
                             if (!date) return <div key={index}></div>;
-                            
-                            // ✅ [수정] hasClinic 추출
                             const { hasClass, status, hasExternal, hasClinic } = getDayInfo(date);
-                            
                             const isSelected = formatDate(date) === formatDate(selectedDate);
                             const isToday = formatDate(date) === todayStr;
                             return (
@@ -431,32 +454,7 @@ export const ScheduleTab = ({
                 </div>
             </div>
 
-            {viewType === 'weekly' && (
-                <div className="space-y-6 animate-fade-in-up">
-                    <div className="flex items-center justify-between px-2 mb-2">
-                        <button onClick={prevWeek} className="p-2 bg-white rounded-full shadow-sm text-brand-gray hover:text-brand-main hover:bg-brand-bg"><Icon name="arrow-left" className="w-5 h-5" /></button>
-                        <span className="font-bold text-brand-black text-lg">{weekMonth}월 {weekNum}주차</span>
-                        <button onClick={nextWeek} className="p-2 bg-white rounded-full shadow-sm text-brand-gray hover:text-brand-main hover:bg-brand-bg transform rotate-180"><Icon name="arrow-left" className="w-5 h-5" /></button>
-                    </div>
-                    <div className="flex justify-between bg-white p-1.5 rounded-2xl shadow-sm border border-brand-gray/30 overflow-x-auto">
-                        {weekDays.map((day, index) => {
-                            const date = new Date(sunday);
-                            date.setDate(sunday.getDate() + index);
-                            const isSelected = formatDate(date) === formatDate(selectedDate);
-                            const isToday = formatDate(date) === todayStr;
-                            return (
-                                <button key={day} onClick={() => setSelectedDate(date)} className={`flex flex-col items-center p-1 rounded-xl flex-1 transition-all min-w-[32px] ${isSelected ? 'bg-brand-main text-white shadow-brand scale-105' : 'hover:bg-brand-bg'} ${!isSelected && isToday ? 'text-brand-main font-bold' : ''} ${!isSelected && !isToday ? 'text-brand-gray' : ''}`}>
-                                    <span className="text-[10px] mb-0.5">{day}</span>
-                                    <span className={`font-bold ${isSelected ? 'text-base' : 'text-sm'}`}>{date.getDate()}</span>
-                                </button>
-                            );
-                        })}
-                    </div>
-                    <div className="space-y-4">{renderSchedules()}</div>
-                </div>
-            )}
-
-            {viewType === 'monthly' && <MonthlyView />}
+            {viewType === 'weekly' ? <WeeklyView /> : <MonthlyView />}
             
             {/* 일정 등록/수정 모달 */}
             {isScheduleModalOpen && createPortal(
