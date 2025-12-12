@@ -1,7 +1,13 @@
 // src/components/StudentTabs.jsx
-import React, { useState } from 'react';
-import { createPortal } from 'react-dom'; // ✅ [추가] Portal 사용을 위해 import
+import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom'; // ✅ Portal import
 import { Icon, getWeekOfMonthISO, calculateDurationMinutes, formatDuration } from '../utils/helpers';
+
+// ✅ Portal 헬퍼 컴포넌트
+const ModalPortal = ({ children }) => {
+    const el = document.getElementById('modal-root');
+    return el ? createPortal(children, el) : null;
+};
 
 // ----------------------------------------------------------------------
 // 1. 대시보드 탭 (기존 유지)

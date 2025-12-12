@@ -465,16 +465,19 @@ export default function App() {
             tests={tests}
             grades={grades}
             videoProgress={videoProgress}
-            onSaveVideoProgress={handleSaveVideoProgress}
+            onSaveVideoProgress={setVideoProgress} // 또는 별도 핸들러
             videoBookmarks={videoBookmarks} 
-            onSaveBookmark={handleSaveBookmark}
-            externalSchedules={externalSchedules} // ✅ 전달
-            onSaveExternalSchedule={handleSaveExternalSchedule} // ✅ 전달
-            onDeleteExternalSchedule={handleDeleteExternalSchedule} // ✅ 전달
-
-            // ✅ [추가] 채팅 관련 props 전달
+            onSaveBookmark={setVideoBookmarks} // 또는 별도 핸들러
+            
+            externalSchedules={externalSchedules} 
+            onSaveExternalSchedule={handleSaveExternalSchedule} 
+            onDeleteExternalSchedule={handleDeleteExternalSchedule}
+            
+            clinicLogs={clinicLogs} // ✅ [필수] 이 부분이 누락되어 에러가 발생했음
+            
             messages={studentMessages} 
             onSendMessage={handleStudentSendMessage}
+            
             onLogout={() => setIsLoggedIn(false)}
         />
       );
