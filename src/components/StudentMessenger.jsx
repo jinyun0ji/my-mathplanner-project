@@ -6,7 +6,8 @@ export default function StudentMessenger({
     studentId, 
     teacherName = "채수용 선생님", 
     messages = [], 
-    onSendMessage 
+    onSendMessage,
+    isHidden = false 
 }) {
     const [isOpen, setIsOpen] = useState(false);
     const [inputText, setInputText] = useState('');
@@ -30,28 +31,33 @@ export default function StudentMessenger({
 
     return (
         <>
-            {/* 플로팅 버튼 */}
-            {!isOpen && (
-                <button 
-                    onClick={toggleMessenger}
-                    className="fixed bottom-24 right-5 z-50 bg-brand-main hover:bg-brand-dark text-white p-3.5 rounded-full shadow-brand transition-transform active:scale-90 flex items-center justify-center"
-                >
-                    <Icon name="messageSquare" className="w-6 h-6" />
-                </button>
-            )}
+            {/* 플로팅 버튼 - 스케일 애니메이션 적용 */}
+            <div className={`fixed bottom-24 right-5 z-[60] transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${isHidden ? 'scale-0 opacity-0 pointer-events-none' : 'scale-100 opacity-100'}`}>
+                {!isOpen && (
+                    <button 
+                        onClick={toggleMessenger}
+                        className="bg-brand-main hover:bg-brand-dark text-white p-3.5 rounded-full shadow-brand transition-transform active:scale-90 flex items-center justify-center"
+                    >
+                        <Icon name="messageSquare" className="w-6 h-6" />
+                    </button>
+                )}
+            </div>
 
-            {/* 메신저 패널 (우측 슬라이드) */}
-            <div className={`fixed inset-0 z-50 overflow-hidden pointer-events-none`}>
+            {/* 메신저 패널 */}
+            <div className={`fixed inset-0 z-[70] overflow-hidden pointer-events-none`}>
                 {/* 배경 오버레이 */}
                 <div 
-                    className={`absolute inset-0 bg-black/30 transition-opacity duration-300 pointer-events-auto ${isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} 
+                    className={`absolute inset-0 bg-black/40 transition-opacity duration-500 ease-in-out pointer-events-auto ${isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} 
                     onClick={toggleMessenger}
                 />
 
-                {/* 실제 패널 컨테이너 */}
-                <div className={`absolute top-0 right-0 h-full w-full md:w-96 max-w-full bg-brand-bg shadow-2xl transform transition-transform duration-300 ease-in-out pointer-events-auto flex flex-col ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}>
+                {/* 패널 - 쫀득한 슬라이드 애니메이션 */}
+                <div 
+                    className={`absolute top-0 right-0 h-full w-full md:w-96 max-w-full bg-brand-bg shadow-2xl pointer-events-auto flex flex-col 
+                    transform transition-transform duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]
+                    ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}
+                >
                     
-                    {/* 헤더 */}
                     <div className="bg-white px-4 py-3 flex justify-between items-center border-b border-brand-gray/30 shadow-sm shrink-0">
                         <div className="flex items-center gap-3">
                             <div className="w-10 h-10 rounded-full bg-brand-light/30 flex items-center justify-center text-brand-dark font-bold">
@@ -70,7 +76,6 @@ export default function StudentMessenger({
                         </button>
                     </div>
 
-                    {/* 메시지 리스트 */}
                     <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-brand-bg custom-scrollbar">
                         {messages.length > 0 ? (
                             messages.map((msg) => (
@@ -100,7 +105,6 @@ export default function StudentMessenger({
                         <div ref={messagesEndRef} />
                     </div>
 
-                    {/* 입력창 */}
                     <form onSubmit={handleSend} className="p-3 bg-white border-t border-brand-gray/30 flex gap-2 shrink-0 pb-6 md:pb-3">
                         <input 
                             type="text" 

@@ -1,11 +1,12 @@
 // src/pages/student/ClassroomView.jsx
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Icon, getYouTubeId, formatTime } from '../../utils/helpers';
 import YouTubePlayer from '../../components/YouTubePlayer';
 
 export default function ClassroomView({ 
     classes, lessonLogs, attendanceLogs, studentId, selectedClassId, setSelectedClassId, 
-    videoProgress, onSaveVideoProgress, videoBookmarks, onSaveBookmark 
+    videoProgress, onSaveVideoProgress, videoBookmarks, onSaveBookmark,
+    onVideoModalChange
 }) {
     const targetClass = classes.find(c => c.id === selectedClassId);
     const logs = lessonLogs.filter(l => l.classId === selectedClassId).sort((a, b) => new Date(b.date) - new Date(a.date));
@@ -14,6 +15,13 @@ export default function ClassroomView({
     const [currentSessionProgress, setCurrentSessionProgress] = useState(0);
     const [bookmarkNote, setBookmarkNote] = useState('');
     const playerRef = useRef(null); 
+
+    // ✅ [추가] playingLesson 상태가 변할 때 부모에게 알림
+    useEffect(() => {
+        if (onVideoModalChange) {
+            onVideoModalChange(!!playingLesson);
+        }
+    }, [playingLesson, onVideoModalChange]);
 
     const handleProgress = (percent, seconds) => {
         setCurrentSessionProgress(percent);

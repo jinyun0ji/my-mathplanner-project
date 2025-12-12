@@ -115,7 +115,7 @@ export default function App() {
   const [isMessengerOpen, setIsMessengerOpen] = useState(false); 
   const [hasNewMessages, setHasNewMessages] = useState(true); 
 
-  // ✅ [추가] 학생용 채팅 메시지 상태 (초기값: 김철수의 채팅 기록 예시)
+  // ✅ [추가] 학생용 채팅 메시지 상태
   const [studentMessages, setStudentMessages] = useState([
       { id: 1, sender: '채수용 선생님', text: '철수야, 오늘 클리닉 늦을 것 같니?', date: '2025-11-29', time: '13:50', isMe: false },
       { id: 2, sender: '나', text: '네 ㅠㅠ 학교 행사가 있어서 30분 정도 늦을 것 같아요.', date: '2025-11-29', time: '13:52', isMe: true },
@@ -372,9 +372,34 @@ export default function App() {
       });
   };
 
-  // ✅ [추가] 타학원 스케줄 삭제 핸들러
-  const handleDeleteExternalSchedule = (id) => {
-      setExternalSchedules(prev => prev.filter(s => s.id !== id));
+  // ✅ [수정] 타학원 스케줄 삭제 핸들러 (모드별 처리)
+  const handleDeleteExternalSchedule = (id, mode, targetDate) => {
+      setExternalSchedules(prev => {
+          if (mode === 'all') {
+              return prev.filter(s => s.id !== id);
+          }
+          
+          return prev.map(s => {
+              if (s.id !== id) return s;
+
+              if (mode === 'instance') {
+                  // 제외 날짜 배열에 추가
+                  return { 
+                      ...s, 
+                      excludedDates: [...(s.excludedDates || []), targetDate] 
+                  };
+              }
+
+              if (mode === 'future') {
+                   // 종료일을 해당 날짜의 하루 전으로 변경
+                   const d = new Date(targetDate);
+                   d.setDate(d.getDate() - 1); 
+                   return { ...s, endDate: d.toISOString().split('T')[0] };
+              }
+              
+              return s;
+          });
+      });
   };
 
   const handlePageChange = (newPage, studentId = null, resetSearch = false) => {
@@ -409,6 +434,23 @@ export default function App() {
     return <LoginPage onLogin={handleLoginSuccess} />;
   }
 
+  const managementProps = {
+    students, classes, lessonLogs, attendanceLogs, workLogs, clinicLogs, 
+    homeworkAssignments, homeworkResults, tests, grades, studentMemos, videoProgress, announcements, 
+    setAnnouncements, getClassesNames,
+    handleSaveStudent, handleDeleteStudent, handleSaveClass, handleSaveLessonLog, handleDeleteLessonLog,
+    handleSaveAttendance, handleSaveHomeworkAssignment, handleDeleteHomeworkAssignment, handleUpdateHomeworkResult,
+    handleSaveTest, handleDeleteTest, handleUpdateGrade, handleSaveMemo, 
+    handleSaveAnnouncement, handleSaveWorkLog, handleDeleteWorkLog, handleSaveClinicLog, handleDeleteClinicLog, 
+    calculateClassSessions, selectedStudentId, handlePageChange, logNotification, notifications, 
+    calculateGradeComparison, calculateHomeworkStats,
+    setIsGlobalDirty,
+    studentSearchTerm, setStudentSearchTerm 
+  };
+
+  // ----------------------------------------------------
+  // 학생용 화면 렌더링
+  // ----------------------------------------------------
   if (userRole === 'student') {
       return (
         <StudentHome 
@@ -438,20 +480,7 @@ export default function App() {
       );
   }
 
-  const managementProps = {
-    students, classes, lessonLogs, attendanceLogs, workLogs, clinicLogs, 
-    homeworkAssignments, homeworkResults, tests, grades, studentMemos, videoProgress, announcements, 
-    setAnnouncements, getClassesNames,
-    handleSaveStudent, handleDeleteStudent, handleSaveClass, handleSaveLessonLog, handleDeleteLessonLog,
-    handleSaveAttendance, handleSaveHomeworkAssignment, handleDeleteHomeworkAssignment, handleUpdateHomeworkResult,
-    handleSaveTest, handleDeleteTest, handleUpdateGrade, handleSaveMemo, 
-    handleSaveAnnouncement, handleSaveWorkLog, handleDeleteWorkLog, handleSaveClinicLog, handleDeleteClinicLog, 
-    calculateClassSessions, selectedStudentId, handlePageChange, logNotification, notifications, 
-    calculateGradeComparison, calculateHomeworkStats,
-    setIsGlobalDirty,
-    studentSearchTerm, setStudentSearchTerm 
-  };
-
+  // 직원용 화면 렌더링
   return (
   <div className="flex h-screen bg-gray-100 font-sans text-base relative"> 
     <Sidebar page={page} setPage={handlePageChange} onLogout={() => setIsLoggedIn(false)} />

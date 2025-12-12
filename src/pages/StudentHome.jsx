@@ -22,6 +22,9 @@ export default function StudentHome({
     const [activeTab, setActiveTab] = useState('home');
     const [selectedClassId, setSelectedClassId] = useState(null);
 
+    // ✅ [추가] 영상 모달이 열려있는지 확인하는 상태
+    const [isVideoModalOpen, setIsVideoModalOpen] = useState(false);
+
     const student = students.find(s => s.id === studentId);
     const myClasses = classes.filter(c => c.students.includes(studentId));
     
@@ -61,6 +64,9 @@ export default function StudentHome({
                         onSaveVideoProgress={onSaveVideoProgress}
                         videoBookmarks={videoBookmarks}
                         onSaveBookmark={onSaveBookmark}
+
+                        // ✅ [추가] 모달 상태 변경 함수 전달
+                        onVideoModalChange={setIsVideoModalOpen}
                     />
                 ) : (
                     <div className="animate-fade-in space-y-6">
@@ -129,11 +135,13 @@ export default function StudentHome({
                 </div>
             )}
 
+            {/* ✅ [수정] isHidden prop 전달 */}
             <StudentMessenger 
                 studentId={studentId}
                 teacherName="채수용 선생님"
                 messages={messages}
                 onSendMessage={onSendMessage}
+                isHidden={isVideoModalOpen} // 영상 볼 때는 숨김
             />
         </div>
     );
