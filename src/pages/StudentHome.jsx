@@ -9,7 +9,7 @@ import {
 } from '../components/StudentTabs';
 import ClassroomView from './student/ClassroomView';
 import StudentMessenger from '../components/StudentMessenger';
-import StudentHeader from '../components/StudentHeader'; // ✅ 헤더 추가
+import StudentHeader from '../components/StudentHeader';
 import { Icon, calculateHomeworkStats, calculateGradeComparison } from '../utils/helpers';
 
 export default function StudentHome({ 
@@ -22,7 +22,6 @@ export default function StudentHome({
     const [activeTab, setActiveTab] = useState('home');
     const [selectedClassId, setSelectedClassId] = useState(null);
 
-    // ... (데이터 가공 로직은 기존과 동일) ...
     const student = students.find(s => s.id === studentId);
     const myClasses = classes.filter(c => c.students.includes(studentId));
     
@@ -45,13 +44,10 @@ export default function StudentHome({
     ];
 
     return (
-        // ✅ [수정] max-w-md 제거, 전체 화면 사용
-        <div className="bg-gray-50 min-h-screen flex flex-col relative font-sans">
+        <div className="bg-brand-bg min-h-screen flex flex-col relative font-sans">
             
-            {/* ✅ [추가] 상단 고정 헤더 (채수용 수학) */}
             <StudentHeader onLogout={onLogout} />
 
-            {/* 메인 컨텐츠 영역 */}
             <main className="flex-1 w-full max-w-7xl mx-auto p-4 md:p-6 pb-24 overflow-y-auto custom-scrollbar">
                 {selectedClassId ? (
                     <ClassroomView 
@@ -104,10 +100,8 @@ export default function StudentHome({
                 )}
             </main>
 
-            {/* 하단 네비게이션 바 */}
             {!selectedClassId && (
-                <div className="fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-md border-t border-gray-200 z-40 pb-safe">
-                    {/* ✅ [수정] 네비게이션 바를 중앙 정렬하여 넓은 화면에서도 어색하지 않게 함 */}
+                <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-brand-gray/20 z-40 pb-safe shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
                     <div className="max-w-md mx-auto flex justify-around items-center py-2 px-2">
                         {navItems.map(item => (
                             <button 
@@ -115,8 +109,8 @@ export default function StudentHome({
                                 onClick={() => setActiveTab(item.id)}
                                 className={`flex flex-col items-center p-2 rounded-xl transition-all duration-200 w-16 group ${
                                     activeTab === item.id 
-                                    ? 'text-indigo-600' 
-                                    : 'text-gray-400 hover:text-gray-600'
+                                    ? 'text-brand-main' 
+                                    : 'text-brand-gray hover:text-brand-black'
                                 }`}
                             >
                                 <div className={`mb-1 transition-transform duration-200 ${activeTab === item.id ? '-translate-y-1' : 'group-hover:-translate-y-0.5'}`}>
@@ -126,7 +120,7 @@ export default function StudentHome({
                                         strokeWidth={activeTab === item.id ? 2.5 : 2}
                                     />
                                 </div>
-                                <span className={`text-[10px] font-medium ${activeTab === item.id ? 'opacity-100' : 'opacity-70'}`}>
+                                <span className={`text-[10px] font-medium ${activeTab === item.id ? 'opacity-100 font-bold' : 'opacity-70'}`}>
                                     {item.label}
                                 </span>
                             </button>
@@ -135,7 +129,6 @@ export default function StudentHome({
                 </div>
             )}
 
-            {/* 메신저 (우측 하단) */}
             <StudentMessenger 
                 studentId={studentId}
                 teacherName="채수용 선생님"

@@ -1893,6 +1893,10 @@
 .mix-blend-plus-lighter {
   mix-blend-mode: plus-lighter;
 }
+.shadow-\[0_-4px_6px_-1px_rgba\(0\,0\,0\,0\.05\)\] {
+  --tw-shadow: 0 -4px 6px -1px var(--tw-shadow-color, rgba(0,0,0,0.05));
+  box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);
+}
 .shadow-\[0_-4px_20px_-5px_rgba\(0\,0\,0\,0\.1\)\] {
   --tw-shadow: 0 -4px 20px -5px var(--tw-shadow-color, rgba(0,0,0,0.1));
   box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);
