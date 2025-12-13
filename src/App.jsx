@@ -2,7 +2,9 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import './output.css'; 
 import { 
-    getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, 
+    getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged,
+    // ✅ [추가] Firebase 소셜 로그인 관련 import (가상)
+    GoogleAuthProvider, signInWithPopup, FacebookAuthProvider, GithubAuthProvider 
 } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 import { 
     getFirestore, setLogLevel
@@ -110,6 +112,40 @@ export default function App() {
           return {};
       }
   });
+
+  // ✅ [추가] 소셜 로그인 처리 함수 (가상)
+  const handleSocialLogin = (providerName) => {
+      console.log(`[Social Login] ${providerName} 로그인 시도...`);
+      
+      // --- 실제 Firebase 소셜 로그인 로직 (주석 처리) ---
+      /*
+      let provider;
+      if (providerName === 'Kakao' || providerName === 'Naver') {
+          // 카카오/네이버는 별도 커스텀 인증 필요 (여기서는 시뮬레이션)
+          alert(`${providerName} 연동은 백엔드 설정이 필요합니다. 시연을 위해 학생 계정으로 로그인합니다.`);
+      } else if (providerName === 'Google') {
+          provider = new GoogleAuthProvider();
+      }
+      
+      if (provider && auth) {
+          signInWithPopup(auth, provider)
+              .then((result) => {
+                  // 성공 시 학생 역할로 가정하고 로그인 처리
+                  const user = result.user;
+                  console.log("Firebase Social Login Success:", user);
+                  handleLoginSuccess('student', 1); // 학생 ID 1번으로 강제 로그인
+              })
+              .catch((error) => {
+                  console.error("Firebase Social Login Failed:", error);
+                  alert("소셜 로그인 실패: " + error.message);
+              });
+          return;
+      }
+      */
+      
+      // ✅ [시뮬레이션] 소셜 로그인 성공 시 학생 계정으로 자동 로그인
+      handleLoginSuccess('student', 1);
+  };
 
   // ✅ [추가] 북마크 상태가 변경될 때마다 LocalStorage에 저장
   useEffect(() => {
@@ -415,6 +451,11 @@ export default function App() {
     }
   };
 
+  if (!isLoggedIn) {
+    // ✅ [수정] LoginPage에 handleSocialLogin 함수 전달
+    return <LoginPage onLogin={handleLoginSuccess} onSocialLogin={handleSocialLogin} />;
+  }
+
   // ✅ [수정] 학생 메시지 전송 핸들러 (channelId 인자 추가)
   const handleStudentSendMessage = (text, channelId = 'teacher') => {
       const now = new Date();
@@ -447,10 +488,6 @@ export default function App() {
           }]);
       }, 1000);
   };
-
-  if (!isLoggedIn) {
-    return <LoginPage onLogin={handleLoginSuccess} />;
-  }
 
   // ✅ 학생 페이지 렌더링
   if (userRole === 'student') {
