@@ -520,12 +520,44 @@ export const GradesTab = ({ myGradeComparison }) => {
                     {myGradeComparison.map((item, idx) => (
                         <div key={idx} onClick={() => toggleTestDetails(item.testId)} className={`bg-white p-5 rounded-2xl shadow-md border border-brand-gray/30 cursor-pointer transition-all hover:shadow-lg ${selectedTestId === item.testId ? 'ring-2 ring-brand-main' : 'hover:border-brand-main/30'}`}>
                             <div className="flex justify-between items-start mb-3">
-                                <div><span className="text-xs text-brand-gray font-medium block mb-0.5">{item.testDate}</span><h3 className="text-lg font-bold text-brand-black flex items-center gap-2">{item.testName}<span className="text-[10px] text-brand-main bg-brand-light/30 px-1.5 py-0.5 rounded border border-brand-light">{item.className}</span></h3></div>
-                                <div className="text-right"><span className="text-2xl font-bold text-brand-main">{item.studentScore}</span><span className="text-brand-gray text-xs"> / {item.maxScore}</span></div>
+                                <div>
+                                    <span className="text-xs text-brand-gray font-medium block mb-0.5">{item.testDate}</span>
+                                    <h3 className="text-lg font-bold text-brand-black flex items-center gap-2">{item.testName}<span className="text-[10px] text-brand-main bg-brand-light/30 px-1.5 py-0.5 rounded border border-brand-light">{item.className}</span></h3>
+                                </div>
+                                <div className="text-right">
+                                    <span className="text-2xl font-bold text-brand-main">{item.studentScore}</span>
+                                    <span className="text-brand-gray text-xs"> / {item.maxScore}</span>
+                                </div>
                             </div>
+                            
+                            {/* 정답률 표시 */}
+                            <div className="flex justify-between items-center mb-3 bg-brand-bg/50 px-3 py-2 rounded-lg">
+                                <span className="text-xs font-bold text-brand-gray">정답률</span>
+                                <div className="flex items-center gap-2">
+                                    <div className="w-16 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                                        <div 
+                                            className={`h-full rounded-full ${
+                                                (item.accuracy || 0) >= 90 ? 'bg-green-500' : 
+                                                (item.accuracy || 0) >= 70 ? 'bg-brand-main' : 
+                                                'bg-brand-red'
+                                            }`} 
+                                            style={{ width: `${item.accuracy || 0}%` }}
+                                        ></div>
+                                    </div>
+                                    <span className={`text-xs font-bold ${
+                                        (item.accuracy || 0) >= 90 ? 'text-green-600' : 
+                                        (item.accuracy || 0) >= 70 ? 'text-brand-main' : 
+                                        'text-brand-red'
+                                    }`}>
+                                        {item.accuracy || 0}%
+                                    </span>
+                                </div>
+                            </div>
+
                             <div className="space-y-2 mb-3">
                                 <div><div className="w-full bg-brand-bg rounded-full h-2"><div className="bg-brand-main h-2 rounded-full relative" style={{ width: `${(item.studentScore / item.maxScore) * 100}%` }}></div></div><div className="flex justify-between text-[10px] mt-1 text-brand-gray"><span>내 점수: {item.studentScore}</span><span>평균: {item.classAverage}</span></div><div className="w-full bg-brand-bg rounded-full h-1 mt-1"><div className="bg-brand-gray h-1 rounded-full opacity-50" style={{ width: `${(item.classAverage / item.maxScore) * 100}%` }}></div></div></div>
                             </div>
+                            
                             <div className="bg-brand-bg p-3 rounded-xl text-xs text-brand-black mb-2">
                                 {item.isAboveAverage ? (<p>🎉 평균보다 <span className="font-bold text-green-600">{item.scoreDifference}점</span> 높아요!</p>) : (<p>🔥 평균까지 <span className="font-bold text-brand-main">{Math.abs(item.scoreDifference)}점</span>! 힘내요!</p>)}
                             </div>
@@ -535,9 +567,11 @@ export const GradesTab = ({ myGradeComparison }) => {
                                     <div className="grid grid-cols-5 gap-2 text-center text-[10px] font-bold text-brand-gray bg-brand-bg p-2 rounded-t-lg"><span>번호</span><span>결과</span><span>배점</span><span>유형</span><span>난이도</span></div>
                                     <div className="max-h-60 overflow-y-auto custom-scrollbar">
                                         {item.questions.map((q, qIdx) => (
-                                            <div key={qIdx} className="grid grid-cols-5 gap-2 text-center text-xs p-2 border-b border-brand-gray/20 last:border-0 hover:bg-brand-bg">
-                                                <span className="font-medium text-brand-black">{q.no}</span>
-                                                <span className={`${q.status === '맞음' ? 'text-green-600' : q.status === '틀림' ? 'text-brand-red' : 'text-yellow-600'}`}>{q.status === '맞음' ? 'O' : q.status === '틀림' ? 'X' : '△'}</span>
+                                            <div key={qIdx} className="grid grid-cols-5 gap-2 text-center text-xs p-2 border-b border-brand-gray/20 last:border-0 hover:bg-brand-bg items-center">
+                                                <span className="font-medium text-brand-black bg-white rounded border border-brand-gray/20 py-0.5">{q.no}</span>
+                                                <span className={`font-bold ${q.status === '맞음' || q.status === '고침' ? 'text-green-600' : q.status === '틀림' ? 'text-brand-red' : 'text-yellow-600'}`}>
+                                                    {q.status === '맞음' || q.status === '고침' ? 'O' : q.status === '틀림' ? 'X' : '△'}
+                                                </span>
                                                 <span className="text-brand-gray">{q.score}</span><span className="text-brand-gray">{q.type}</span><span className={`${q.difficulty === '상' ? 'text-brand-red' : q.difficulty === '중' ? 'text-yellow-600' : 'text-green-500'}`}>{q.difficulty}</span>
                                             </div>
                                         ))}
@@ -548,6 +582,7 @@ export const GradesTab = ({ myGradeComparison }) => {
                     ))}
                 </div>
             ) : (
+                // ✅ [수정] 오류가 발생했던 585 라인 주변을 깔끔하게 정리했습니다.
                 <div className="bg-white p-6 rounded-3xl shadow-lg border border-brand-gray/30 max-w-4xl mx-auto">
                     <h3 className="text-lg font-bold text-brand-black mb-6">성적 변화 추이</h3>
                     <div className="h-64 relative flex items-end justify-between px-2 gap-2">
@@ -555,7 +590,9 @@ export const GradesTab = ({ myGradeComparison }) => {
                         {sortedGrades.map((item, idx) => (
                             <div key={idx} className="flex-1 flex flex-col justify-end items-center group relative h-full">
                                 <div className="mb-2 text-xs font-bold text-brand-main">{item.studentScore}</div>
-                                <div className="w-full max-w-[40px] bg-brand-light/30 rounded-t-lg relative transition-all group-hover:bg-brand-light" style={{ height: `${item.studentScore}%` }}><div className="absolute top-0 w-full h-1 bg-brand-main rounded-t-lg"></div></div>
+                                <div className="w-full max-w-[40px] bg-brand-light/30 rounded-t-lg relative transition-all group-hover:bg-brand-light" style={{ height: `${(item.studentScore / item.maxScore) * 100}%` }}>
+                                    <div className="absolute top-0 w-full h-1 bg-brand-main rounded-t-lg"></div>
+                                </div>
                                 <div className="mt-2 text-[10px] text-brand-gray rotate-45 origin-left translate-y-2 whitespace-nowrap overflow-visible">{item.testName.split(' ')[0]}</div>
                                 <div className="absolute bottom-full mb-2 bg-brand-dark text-white text-xs p-2 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 w-32 text-center">{item.testName}<br/><span className="text-brand-gray">{item.testDate}</span></div>
                             </div>

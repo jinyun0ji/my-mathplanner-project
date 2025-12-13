@@ -126,10 +126,14 @@ export default function App() {
   
   const [externalSchedules, setExternalSchedules] = useState(initialExternalSchedules);
   
+  // ✅ [수정] 학생용 채팅 메시지 상태 (channelId 추가)
+  // channelId: 'teacher' (채수용 선생님), 'lab' (채수용 수학 연구소)
   const [studentMessages, setStudentMessages] = useState([
-      { id: 1, sender: '채수용 선생님', text: '철수야, 오늘 클리닉 늦을 것 같니?', date: '2025-11-29', time: '13:50', isMe: false },
-      { id: 2, sender: '나', text: '네 ㅠㅠ 학교 행사가 있어서 30분 정도 늦을 것 같아요.', date: '2025-11-29', time: '13:52', isMe: true },
-      { id: 3, sender: '채수용 선생님', text: '알겠어. 조심히 오렴!', date: '2025-11-29', time: '13:53', isMe: false },
+      { id: 1, channelId: 'teacher', sender: '채수용 선생님', text: '철수야, 오늘 클리닉 늦을 것 같니?', date: '2025-11-29', time: '13:50', isMe: false },
+      { id: 2, channelId: 'teacher', sender: '나', text: '네 ㅠㅠ 학교 행사가 있어서 30분 정도 늦을 것 같아요.', date: '2025-11-29', time: '13:52', isMe: true },
+      { id: 3, channelId: 'teacher', sender: '채수용 선생님', text: '알겠어. 조심히 오렴!', date: '2025-11-29', time: '13:53', isMe: false },
+      // 연구소 채팅 예시
+      { id: 4, channelId: 'lab', sender: '연구소', text: '안녕하세요, 교재 관련 문의 남겨주셨죠?', date: '2025-11-30', time: '10:00', isMe: false },
   ]);
   
   const nextStudentId = students.reduce((max, s) => Math.max(max, s.id), 0) + 1; 
@@ -411,14 +415,15 @@ export default function App() {
     }
   };
 
-  // ✅ 학생 채팅 메시지 전송 핸들러
-  const handleStudentSendMessage = (text) => {
+  // ✅ [수정] 학생 메시지 전송 핸들러 (channelId 인자 추가)
+  const handleStudentSendMessage = (text, channelId = 'teacher') => {
       const now = new Date();
       const timeString = now.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
       const todayDate = now.toISOString().split('T')[0];
 
       const newMessage = {
           id: Date.now(),
+          channelId: channelId, // ✅ 채널 지정
           sender: '나',
           text: text,
           date: todayDate,
@@ -428,11 +433,14 @@ export default function App() {
 
       setStudentMessages(prev => [...prev, newMessage]);
 
+      // 자동 응답 시뮬레이션
       setTimeout(() => {
+          const senderName = channelId === 'teacher' ? '채수용 선생님' : '채수용 수학 연구소';
           setStudentMessages(prev => [...prev, {
               id: Date.now() + 1,
-              sender: '채수용 선생님',
-              text: '메시지 확인했습니다. 수업 중에 답변 드릴게요! 😊',
+              channelId: channelId,
+              sender: senderName,
+              text: `${senderName}입니다. 메시지 확인했습니다.`,
               date: todayDate,
               time: new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }),
               isMe: false

@@ -58,11 +58,23 @@
 .top-1\/2 {
   top: calc(1/2 * 100%);
 }
+.top-\[-20px\] {
+  top: -20px;
+}
+.right-\[-10px\] {
+  right: -10px;
+}
+.bottom-\[-10px\] {
+  bottom: -10px;
+}
 .bottom-full {
   bottom: 100%;
 }
 .-left-\[9px\] {
   left: calc(9px * -1);
+}
+.left-\[-20px\] {
+  left: -20px;
 }
 .isolate {
   isolation: isolate;
@@ -1156,6 +1168,10 @@
 .border-2 {
   border-style: var(--tw-border-style);
   border-width: 2px;
+}
+.border-4 {
+  border-style: var(--tw-border-style);
+  border-width: 4px;
 }
 .border-x {
   border-inline-style: var(--tw-border-style);

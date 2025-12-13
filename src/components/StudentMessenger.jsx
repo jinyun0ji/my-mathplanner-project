@@ -1,6 +1,8 @@
 // src/components/StudentMessenger.jsx
 import React, { useState, useEffect, useRef } from 'react';
 import { Icon } from '../utils/helpers';
+import SchoolIcon from '@mui/icons-material/School';
+import ScienceIcon from '@mui/icons-material/Science';
 
 export default function StudentMessenger({ 
     studentId, 
@@ -8,33 +10,40 @@ export default function StudentMessenger({
     messages = [], 
     onSendMessage,
     isHidden = false,
-    bottomPosition = "bottom-24" // ✅ 기본값은 유지하되 변경 가능하도록
+    bottomPosition = "bottom-24"
 }) {
     const [isOpen, setIsOpen] = useState(false);
-    // ... (기존 state 및 useEffect 유지)
     const [inputText, setInputText] = useState('');
+    const [activeChannel, setActiveChannel] = useState('teacher');
     const messagesEndRef = useRef(null);
+
+    const currentMessages = messages.filter(msg => msg.channelId === activeChannel);
 
     useEffect(() => {
         if (isOpen) {
             messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
         }
-    }, [messages, isOpen]);
+    }, [messages, isOpen, activeChannel]);
 
     const handleSend = (e) => {
         e.preventDefault();
         if (!inputText.trim()) return;
-        
-        onSendMessage(inputText);
+        onSendMessage(inputText, activeChannel);
         setInputText('');
     };
 
     const toggleMessenger = () => setIsOpen(!isOpen);
 
+    // ✅ [추가] 날짜 포맷팅 함수 (YYYY년 M월 D일 요일)
+    const formatDateDivider = (dateString) => {
+        const date = new Date(dateString);
+        const options = { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' };
+        return date.toLocaleDateString('ko-KR', options);
+    };
+
     return (
         <>
             {/* 플로팅 버튼 */}
-            {/* ✅ bottomPosition 적용 */}
             <div className={`fixed ${bottomPosition} right-5 z-[60] transition-all duration-700 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${isHidden ? 'scale-0 opacity-0 pointer-events-none' : 'scale-100 opacity-100'}`}>
                 {!isOpen && (
                     <button 
@@ -46,7 +55,7 @@ export default function StudentMessenger({
                 )}
             </div>
 
-            {/* 메신저 패널 (기존과 동일) */}
+            {/* 패널 */}
             <div className={`fixed inset-0 z-[70] overflow-hidden pointer-events-none`}>
                 <div 
                     className={`absolute inset-0 bg-black/40 transition-opacity duration-700 ease-in-out pointer-events-auto ${isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} 
@@ -58,47 +67,81 @@ export default function StudentMessenger({
                     transform transition-transform duration-700 ease-[cubic-bezier(0.32,0.72,0,1)]
                     ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}
                 >
-                    {/* ... (헤더, 메시지 리스트, 입력창 코드는 기존과 동일하게 유지) ... */}
-                    <div className="bg-white px-4 py-3 flex justify-between items-center border-b border-brand-gray/30 shadow-sm shrink-0">
-                        <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-full bg-brand-light/30 flex items-center justify-center text-brand-dark font-bold">
-                                {teacherName[0]}
-                            </div>
-                            <div>
-                                <h3 className="font-bold text-brand-black text-sm">{teacherName}</h3>
-                                <p className="text-xs text-green-500 flex items-center gap-1">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-green-500"></span>
-                                    답변 가능
-                                </p>
-                            </div>
+                    {/* 헤더 */}
+                    <div className="bg-white pt-4 pb-0 flex flex-col border-b border-brand-gray/30 shadow-sm shrink-0">
+                        <div className="px-4 flex justify-between items-center mb-3">
+                            <h3 className="font-bold text-brand-black text-lg">메시지</h3>
+                            <button onClick={toggleMessenger} className="p-2 text-brand-gray hover:text-brand-dark rounded-full hover:bg-brand-bg">
+                                <Icon name="x" className="w-6 h-6" />
+                            </button>
                         </div>
-                        <button onClick={toggleMessenger} className="p-2 text-brand-gray hover:text-brand-dark rounded-full hover:bg-brand-bg">
-                            <Icon name="x" className="w-6 h-6" />
-                        </button>
+                        <div className="flex px-4 gap-4">
+                            <button 
+                                onClick={() => setActiveChannel('teacher')}
+                                className={`flex-1 pb-3 text-sm font-bold border-b-2 transition-colors flex items-center justify-center gap-2 ${
+                                    activeChannel === 'teacher' ? 'text-brand-main border-brand-main' : 'text-brand-gray border-transparent hover:text-brand-black'
+                                }`}
+                            >
+                                <SchoolIcon style={{ fontSize: 18 }} /> 선생님
+                            </button>
+                            <button 
+                                onClick={() => setActiveChannel('lab')}
+                                className={`flex-1 pb-3 text-sm font-bold border-b-2 transition-colors flex items-center justify-center gap-2 ${
+                                    activeChannel === 'lab' ? 'text-brand-main border-brand-main' : 'text-brand-gray border-transparent hover:text-brand-black'
+                                }`}
+                            >
+                                <ScienceIcon style={{ fontSize: 18 }} /> 연구소
+                            </button>
+                        </div>
                     </div>
 
+                    {/* 메시지 리스트 */}
                     <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-brand-bg custom-scrollbar">
-                        {messages.length > 0 ? messages.map((msg) => (
-                            <div key={msg.id} className={`flex ${msg.isMe ? 'justify-end' : 'justify-start'}`}>
-                                {!msg.isMe && (
-                                    <div className="w-8 h-8 rounded-full bg-brand-light/30 flex items-center justify-center text-[10px] text-brand-dark font-bold mr-2 shrink-0 mt-1">
-                                        {msg.sender[0]}
-                                    </div>
-                                )}
-                                <div className={`max-w-[75%] px-4 py-2 rounded-2xl text-sm leading-relaxed shadow-sm ${
-                                    msg.isMe 
-                                    ? 'bg-brand-main text-white rounded-tr-none' 
-                                    : 'bg-white text-brand-black rounded-tl-none border border-brand-gray/30'
-                                }`}>
-                                    {msg.text}
-                                    <p className={`text-[10px] mt-1 text-right ${msg.isMe ? 'text-white/70' : 'text-brand-gray'}`}>
-                                        {msg.time}
-                                    </p>
-                                </div>
-                            </div>
-                        )) : (
+                        <div className="text-center py-4">
+                            <p className="text-xs text-brand-gray bg-white/50 inline-block px-3 py-1 rounded-full shadow-sm">
+                                {activeChannel === 'teacher' ? teacherName : '채수용 수학 연구소'}와의 대화입니다.
+                            </p>
+                        </div>
+
+                        {currentMessages.length > 0 ? (
+                            currentMessages.map((msg, index) => {
+                                // ✅ 날짜 구분선 로직
+                                const showDateDivider = index === 0 || currentMessages[index - 1].date !== msg.date;
+                                
+                                return (
+                                    <React.Fragment key={msg.id}>
+                                        {/* 날짜 구분선 렌더링 */}
+                                        {showDateDivider && (
+                                            <div className="flex justify-center my-4">
+                                                <span className="text-[10px] font-bold text-brand-gray/70 bg-brand-gray/10 px-3 py-1 rounded-full">
+                                                    {formatDateDivider(msg.date)}
+                                                </span>
+                                            </div>
+                                        )}
+
+                                        <div className={`flex ${msg.isMe ? 'justify-end' : 'justify-start'}`}>
+                                            {!msg.isMe && (
+                                                <div className="w-8 h-8 rounded-full bg-brand-light/30 flex items-center justify-center text-brand-dark font-bold mr-2 shrink-0 mt-1 text-xs">
+                                                    {activeChannel === 'teacher' ? msg.sender[0] : 'Lab'}
+                                                </div>
+                                            )}
+                                            <div className={`max-w-[75%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed shadow-sm ${
+                                                msg.isMe 
+                                                ? 'bg-brand-main text-white rounded-tr-none' 
+                                                : 'bg-white text-brand-black rounded-tl-none border border-brand-gray/30'
+                                            }`}>
+                                                {msg.text}
+                                                <p className={`text-[10px] mt-1 text-right ${msg.isMe ? 'text-white/70' : 'text-brand-gray'}`}>
+                                                    {msg.time}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </React.Fragment>
+                                );
+                            })
+                        ) : (
                             <div className="text-center py-10 text-brand-gray text-xs">
-                                <p>궁금한 점이 있다면<br/>언제든 선생님께 물어보세요! 👋</p>
+                                <p>궁금한 점이 있다면<br/>언제든 물어보세요! 👋</p>
                             </div>
                         )}
                         <div ref={messagesEndRef} />
@@ -109,7 +152,7 @@ export default function StudentMessenger({
                             type="text" 
                             value={inputText}
                             onChange={(e) => setInputText(e.target.value)}
-                            placeholder="메시지 입력..."
+                            placeholder={activeChannel === 'teacher' ? "선생님께 메시지 보내기..." : "연구소에 문의하기..."}
                             className="flex-1 bg-brand-bg rounded-full px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-main transition-all"
                         />
                         <button 

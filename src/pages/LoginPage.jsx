@@ -1,6 +1,8 @@
 // src/pages/LoginPage.jsx
 import React, { useState } from 'react';
-import { Icon } from '../utils/helpers'; 
+import { Icon } from '../utils/helpers';
+// ✅ Google Icon import (없으면 설치: npm install @mui/icons-material)
+import CalculateIcon from '@mui/icons-material/Calculate'; 
 
 export default function LoginPage({ onLogin }) { 
     const [id, setId] = useState('');
@@ -28,15 +30,20 @@ export default function LoginPage({ onLogin }) {
     return (
         <div className="flex items-center justify-center min-h-screen bg-gray-100 p-4">
             <div className="w-full max-w-md bg-white shadow-2xl rounded-2xl overflow-hidden border border-gray-200">
-                <div className="bg-indigo-900 p-10 text-center">
-                    <div className="flex justify-center mb-4">
-                        <div className="bg-white/10 p-4 rounded-full backdrop-blur-sm border border-white/20">
-                            <Icon name="graduationCap" className="w-12 h-12 text-white" />
+                {/* 상단 디자인 변경: 전문적인 느낌 */}
+                <div className="bg-brand-dark p-10 text-center relative overflow-hidden">
+                    {/* 배경 장식 (수학적 도형 느낌) */}
+                    <div className="absolute top-[-20px] left-[-20px] w-24 h-24 rounded-full border-4 border-white/10"></div>
+                    <div className="absolute bottom-[-10px] right-[-10px] w-32 h-32 rounded-full border-4 border-white/5"></div>
+                    
+                    <div className="flex justify-center mb-4 relative z-10">
+                        <div className="bg-white/10 p-4 rounded-2xl backdrop-blur-md border border-white/20 shadow-lg">
+                            {/* ✅ [수정] 전문적인 로고 아이콘 */}
+                            <CalculateIcon className="text-white" style={{ fontSize: 48 }} />
                         </div>
                     </div>
-                    {/* ✅ [수정] 텍스트 변경: 학원 관리 시스템 -> 채수용 수학 */}
-                    <h1 className="text-3xl font-bold text-white tracking-tight">채수용 수학</h1>
-                    <p className="text-indigo-200 text-sm mt-2 font-medium">학생 / 학부모 / 직원 통합 로그인</p>
+                    <h1 className="text-3xl font-extrabold text-white tracking-tight relative z-10">채수용 수학</h1>
+                    <p className="text-brand-light/80 text-sm mt-2 font-medium relative z-10">학생 / 학부모 / 직원 통합 로그인</p>
                 </div>
 
                 <form onSubmit={handleLogin} className="p-10 space-y-6">
@@ -49,7 +56,7 @@ export default function LoginPage({ onLogin }) {
                                 <Icon name="user" className="h-5 w-5 text-gray-400" />
                             </div>
                             <input 
-                                className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-900 focus:border-transparent transition-all" 
+                                className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-dark focus:border-transparent transition-all" 
                                 id="username" 
                                 type="text" 
                                 placeholder="아이디를 입력하세요" 
@@ -68,7 +75,7 @@ export default function LoginPage({ onLogin }) {
                                 <Icon name="lock" className="h-5 w-5 text-gray-400" />
                             </div>
                             <input 
-                                className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-900 focus:border-transparent transition-all" 
+                                className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-dark focus:border-transparent transition-all" 
                                 id="password" 
                                 type="password" 
                                 placeholder="비밀번호를 입력하세요" 
@@ -85,7 +92,7 @@ export default function LoginPage({ onLogin }) {
                     </div>
 
                     <button 
-                        className="w-full bg-indigo-900 hover:bg-indigo-800 text-white font-bold py-3.5 px-4 rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-900 shadow-lg transition-all duration-200 transform active:scale-[0.98]" 
+                        className="w-full bg-brand-dark hover:bg-brand-dark/90 text-white font-bold py-3.5 px-4 rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-dark shadow-lg transition-all duration-200 transform active:scale-[0.98]" 
                         type="submit"
                     >
                         로그인
