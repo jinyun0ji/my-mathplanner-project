@@ -272,85 +272,88 @@ export const HomeworkTab = ({ myHomeworkStats }) => {
     );
 };
 
-// ✅ [수정] GradesTab (신규 디자인: 리스트 -> 전체화면 상세)
+// 7. GradesTab (상세보기 Portal 적용)
 export const GradesTab = ({ myGradeComparison }) => {
     const [selectedGrade, setSelectedGrade] = useState(null);
 
-    // Detail View (Full Screen Overlay)
-    if (selectedGrade) {
-        return (
-            <div className="fixed inset-0 z-50 bg-gray-50 flex flex-col animate-fade-in-up">
-                {/* Header */}
-                <div className="flex-none h-14 flex items-center gap-3 px-4 border-b border-gray-200 bg-white shadow-sm">
-                    <button onClick={() => setSelectedGrade(null)} className="p-2 bg-gray-100 rounded-lg text-gray-600 hover:bg-gray-200">
-                        <Icon name="chevronLeft" className="w-5 h-5" />
-                    </button>
-                    <h2 className="text-base font-bold text-gray-900 truncate">성적 상세 분석</h2>
-                </div>
-
-                <div className="flex-1 overflow-y-auto custom-scrollbar p-4">
-                    {/* Summary Section */}
-                    <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 mb-6 text-center">
-                        <span className="text-sm text-gray-500 font-bold bg-gray-100 px-2 py-1 rounded mb-2 inline-block">{selectedGrade.testDate} 시행</span>
-                        <h3 className="text-xl font-bold text-gray-900 mb-1">{selectedGrade.testName}</h3>
-                        <div className="py-4">
-                            <span className="text-5xl font-extrabold text-indigo-600">{selectedGrade.studentScore}</span>
-                            <span className="text-gray-400 text-xl font-medium"> / {selectedGrade.maxScore}</span>
-                        </div>
-                        <div className="flex justify-center gap-2">
-                            <span className={`text-sm font-bold px-3 py-1 rounded-full ${selectedGrade.isAboveAverage ? 'bg-green-100 text-green-700' : 'bg-red-50 text-red-600'}`}>
-                                {selectedGrade.isAboveAverage ? '▲' : '▼'} 평균보다 {Math.abs(selectedGrade.scoreDifference)}점 {selectedGrade.isAboveAverage ? '높음' : '낮음'}
-                            </span>
-                        </div>
-                    </div>
-
-                    {/* Question Analysis Section */}
-                    <QuestionAnalysisList questions={selectedGrade.questions} />
-                </div>
-            </div>
-        );
-    }
-
-    // List View (Card)
     return (
-        <div className="space-y-4 pb-20">
-            {myGradeComparison.length === 0 ? (
-                <div className="text-center py-10 text-gray-400 text-sm bg-white rounded-2xl border border-dashed border-gray-200">
-                    등록된 성적이 없습니다.
-                </div>
-            ) : (
-                myGradeComparison.map((item, idx) => (
-                    <div 
-                        key={idx} 
-                        onClick={() => setSelectedGrade(item)} 
-                        className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 cursor-pointer active:scale-[0.98] transition-all hover:border-indigo-200"
-                    >
-                        <div className="flex justify-between items-start mb-2">
-                            <div className="flex items-center gap-2">
-                                <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">
-                                    {item.className}
-                                </span>
-                                <span className="text-xs text-gray-400">{item.testDate}</span>
-                            </div>
-                        </div>
-                        <div className="flex justify-between items-end">
-                            <div>
-                                <h3 className="text-lg font-bold text-gray-900 leading-tight mb-1">{item.testName}</h3>
-                                <div className="flex items-center gap-1 text-xs text-gray-500 font-medium">
-                                    {/* ✅ [수정] 아이콘 이름 정확히 매핑 */}
-                                    {item.isAboveAverage ? <Icon name="trendingUp" className="w-3 h-3 text-green-500" /> : <Icon name="trendingDown" className="w-3 h-3 text-red-500" />}
-                                    평균 {item.classAverage}점
+        <>
+            {/* 리스트 뷰 */}
+            <div className="space-y-4 pb-20">
+                {myGradeComparison.length === 0 ? (
+                    <div className="text-center py-10 text-gray-400 text-sm bg-white rounded-2xl border border-dashed border-gray-200">
+                        등록된 성적이 없습니다.
+                    </div>
+                ) : (
+                    myGradeComparison.map((item, idx) => (
+                        <div 
+                            key={idx} 
+                            onClick={() => setSelectedGrade(item)} 
+                            className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 cursor-pointer active:scale-[0.98] transition-all hover:border-indigo-200"
+                        >
+                            <div className="flex justify-between items-start mb-2">
+                                <div className="flex items-center gap-2">
+                                    <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">
+                                        {item.className}
+                                    </span>
+                                    <span className="text-xs text-gray-400">{item.testDate}</span>
                                 </div>
                             </div>
-                            <div className="text-right">
-                                <span className="text-2xl font-extrabold text-indigo-900">{item.studentScore}</span>
-                                <span className="text-xs text-gray-400 font-medium">점</span>
+                            <div className="flex justify-between items-end">
+                                <div>
+                                    <h3 className="text-lg font-bold text-gray-900 leading-tight mb-1">{item.testName}</h3>
+                                    <div className="flex items-center gap-1 text-xs text-gray-500 font-medium">
+                                        {/* 아이콘: 상승/하강 */}
+                                        {item.isAboveAverage ? <Icon name="trendingUp" className="w-3 h-3 text-green-500" /> : <Icon name="trendingDown" className="w-3 h-3 text-red-500" />}
+                                        평균 {item.classAverage}점
+                                    </div>
+                                </div>
+                                <div className="text-right">
+                                    <span className="text-2xl font-extrabold text-indigo-900">{item.studentScore}</span>
+                                    <span className="text-xs text-gray-400 font-medium">점</span>
+                                </div>
                             </div>
                         </div>
+                    ))
+                )}
+            </div>
+
+            {/* ✅ [핵심 수정] 상세 뷰 (Portal 사용하여 전체 화면 덮기) */}
+            {selectedGrade && (
+                <ModalPortal>
+                    <div className="fixed inset-0 z-50 bg-gray-50 flex flex-col animate-fade-in-up">
+                        {/* 헤더 */}
+                        <div className="flex-none h-14 flex items-center gap-3 px-4 border-b border-gray-200 bg-white shadow-sm">
+                            <button onClick={() => setSelectedGrade(null)} className="p-2 bg-gray-100 rounded-lg text-gray-600 hover:bg-gray-200">
+                                <Icon name="chevronLeft" className="w-5 h-5" />
+                            </button>
+                            <h2 className="text-base font-bold text-gray-900 truncate">성적 상세 분석</h2>
+                        </div>
+
+                        {/* 내용 */}
+                        <div className="flex-1 overflow-y-auto custom-scrollbar p-4">
+                            {/* 요약 섹션 */}
+                            <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 mb-6 text-center">
+                                <span className="text-sm text-gray-500 font-bold bg-gray-100 px-2 py-1 rounded mb-2 inline-block">{selectedGrade.testDate} 시행</span>
+                                <h3 className="text-xl font-bold text-gray-900 mb-1">{selectedGrade.testName}</h3>
+                                <div className="py-4">
+                                    <span className="text-5xl font-extrabold text-indigo-600">{selectedGrade.studentScore}</span>
+                                    <span className="text-gray-400 text-xl font-medium"> / {selectedGrade.maxScore}</span>
+                                </div>
+                                <div className="flex justify-center gap-2">
+                                    <span className={`text-sm font-bold px-3 py-1 rounded-full ${selectedGrade.isAboveAverage ? 'bg-green-100 text-green-700' : 'bg-red-50 text-red-600'}`}>
+                                        {selectedGrade.isAboveAverage ? '▲' : '▼'} 평균보다 {Math.abs(selectedGrade.scoreDifference)}점 {selectedGrade.isAboveAverage ? '높음' : '낮음'}
+                                    </span>
+                                </div>
+                            </div>
+
+                            {/* 문항 분석 리스트 */}
+                            <QuestionAnalysisList questions={selectedGrade.questions} />
+                        </div>
                     </div>
-                ))
+                </ModalPortal>
             )}
-        </div>
+        </>
     );
 };
 
