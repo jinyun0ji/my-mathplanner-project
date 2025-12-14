@@ -6,6 +6,9 @@ const YouTubePlayer = forwardRef(({ videoId, initialSeconds, onWatchedTick }, re
     const playerRef = useRef(null);
     const timerRef = useRef(null);
 
+    // ✅ [핵심] 최신 콜백 함수를 유지하기 위한 ref
+    const onWatchedTickRef = useRef(onWatchedTick);
+
     // 상위 컴포넌트에서 제어할 수 있는 함수 노출
     useImperativeHandle(ref, () => ({
         getCurrentTime: () => {
@@ -52,17 +55,16 @@ const YouTubePlayer = forwardRef(({ videoId, initialSeconds, onWatchedTick }, re
 
     const startWatcher = () => {
         stopWatcher();
-        // 1초마다 시청 시간 누적 이벤트 발생
         timerRef.current = setInterval(() => {
-            if (playerRef.current && onWatchedTick) {
+            // ✅ [수정] ref.current를 통해 항상 '최신' 함수 호출
+            if (playerRef.current && onWatchedTickRef.current) {
                 const duration = playerRef.current.getDuration();
                 const currentTime = playerRef.current.getCurrentTime();
-                // 1초 단위로 부모에게 알림 (현재위치, 전체길이 전달)
-                onWatchedTick(1, currentTime, duration); 
+                onWatchedTickRef.current(1, currentTime, duration); 
             }
         }, 1000);
     };
-
+    
     const stopWatcher = () => {
         if (timerRef.current) {
             clearInterval(timerRef.current);
@@ -70,9 +72,16 @@ const YouTubePlayer = forwardRef(({ videoId, initialSeconds, onWatchedTick }, re
         }
     };
 
+    // ✅ onWatchedTick이 바뀔 때마다(부모 리렌더링 시) ref 업데이트
     useEffect(() => {
-        return () => stopWatcher();
-    }, []);
+        onWatchedTickRef.current = onWatchedTick;
+    }, [onWatchedTick]);
+
+    useImperativeHandle(ref, () => ({
+        getCurrentTime: () => playerRef.current ? playerRef.current.getCurrentTime() : 0,
+        seekTo: (seconds) => { if (playerRef.current) playerRef.current.seekTo(seconds, true); },
+        getDuration: () => playerRef.current ? playerRef.current.getDuration() : 0
+    }), []);
 
     return (
         <div className="w-full h-full">
