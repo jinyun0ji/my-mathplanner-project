@@ -20,7 +20,7 @@ import {
 } from './api/initialData'; 
 import { 
     calculateClassSessions, calculateGradeComparison, 
-    calculateHomeworkStats 
+    calculateHomeworkStats, Icon
 } from './utils/helpers'; 
 
 import LoginPage from './pages/LoginPage';
@@ -100,6 +100,9 @@ export default function App() {
   const [grades, setGrades] = useState(initialGrades);
   const [studentMemos, setStudentMemos] = useState(initialStudentMemos); 
   const [videoProgress, setVideoProgress] = useState(initialVideoProgress); 
+
+  // ... 기존 state 선언부 아래에 추가
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false); // 모바일 사이드바 상태
   
   // ✅ [수정] 북마크 상태 (LocalStorage 연동)
   // 브라우저에 저장된 값이 있으면 불러오고, 없으면 빈 객체로 초기화
@@ -546,8 +549,44 @@ export default function App() {
 
   return (
   <div className="flex h-screen bg-gray-100 font-sans text-base relative"> 
-    <Sidebar page={page} setPage={handlePageChange} onLogout={() => setIsLoggedIn(false)} />
-    <div className={`flex-1 flex flex-col overflow-hidden min-w-0 transition-all duration-300 ease-in-out ${isSidebarOpen || isMessengerOpen ? 'mr-80' : 'mr-0'}`}>
+    
+    {/* ✅ [추가] 모바일 햄버거 메뉴 버튼 (PC에선 숨김: lg:hidden) */}
+    <div className="md:hidden fixed top-3 left-4 z-40">
+        <button 
+            onClick={() => setIsMobileMenuOpen(true)} 
+            className="p-2 bg-white rounded-lg shadow-md text-indigo-900 hover:bg-gray-50 border border-gray-100"
+        >
+            <Icon name="menu" className="w-6 h-6" />
+        </button>
+    </div>
+
+    {/* ✅ [수정] Sidebar에 상태와 닫기 함수 전달 (Wrapper div 제거함!) */}
+    <Sidebar 
+        page={page} 
+        setPage={(newPage, studentId, reset) => {
+            handlePageChange(newPage, studentId, reset);
+            setIsMobileMenuOpen(false); // 메뉴 클릭 시 사이드바 닫기
+        }} 
+        onLogout={() => setIsLoggedIn(false)}
+        isOpen={isMobileMenuOpen}           // 전달
+        onClose={() => setIsMobileMenuOpen(false)} // 전달
+    />
+
+    {/* ✅ [추가] 모바일용 배경 어둡게 처리 (Overlay) */}
+    {isMobileMenuOpen && (
+        <div 
+            className="fixed inset-0 bg-black/50 z-40 md:hidden backdrop-blur-sm transition-opacity"
+            onClick={() => setIsMobileMenuOpen(false)}
+        ></div>
+    )}
+
+    {/* ✅ [수정] 메인 콘텐츠 영역 */}
+    {/* md:ml-64 : 노트북/PC 화면(md 이상)에서는 왼쪽 여백을 64만큼 줘서 사이드바 공간 확보 */}
+    <div className={`
+        flex-1 flex flex-col overflow-hidden min-w-0 transition-all duration-300 ease-in-out 
+        md:ml-64 
+        ${isSidebarOpen || isMessengerOpen ? 'mr-80' : 'mr-0'}
+    `}>
       <Header page={page} />
       <main id="main-content" className="overflow-x-hidden overflow-y-auto bg-gray-100 p-6 min-w-0">
         <PageContent page={page} {...managementProps} />

@@ -46,10 +46,55 @@ export const getWeekOfMonthISO = (date) => {
     return { month: d.getMonth() + 1, week: weekNo };
 };
 
+// ✅ [수정] 클래스 정보를 받아 수업 회차와 날짜 목록(배열)을 반환하는 함수로 변경
 export const calculateClassSessions = (cls) => {
-    if (!cls || !cls.schedule) return 0;
-    // 간단한 예시: 주당 수업 횟수 * 4주
-    return cls.schedule.days.length * 4;
+    // 데이터 유효성 검사: 클래스나 스케줄 정보가 없으면 빈 배열 반환
+    if (!cls || !cls.schedule || !cls.schedule.days) return [];
+
+    const sessions = [];
+    const daysMap = { '일': 0, '월': 1, '화': 2, '수': 3, '목': 4, '금': 5, '토': 6 };
+    
+    // 요일 문자열을 숫자(0~6)로 변환
+    const targetDayIndexes = cls.schedule.days.map(d => daysMap[d]);
+
+    // 시작일 설정 (없으면 오늘 날짜)
+    const currentDate = cls.startDate ? new Date(cls.startDate) : new Date();
+    
+    // 종료일 설정 (없으면 시작일로부터 3개월 뒤)
+    const endDate = cls.endDate ? new Date(cls.endDate) : new Date(currentDate);
+    if (!cls.endDate) {
+        endDate.setMonth(endDate.getMonth() + 3);
+    }
+
+    // 날짜 순회하며 회차 생성
+    let sessionCount = 1;
+    // 무한 루프 방지를 위해 최대 1년(365일)까지만 계산
+    const maxIterations = 365;
+    let iterations = 0;
+
+    // 복사본 생성하여 날짜 계산 (원본 Date 객체 오염 방지)
+    const iterDate = new Date(currentDate);
+
+    while (iterDate <= endDate && iterations < maxIterations) {
+        // 현재 날짜의 요일이 수업 요일에 포함되는지 확인
+        if (targetDayIndexes.includes(iterDate.getDay())) {
+            // YYYY-MM-DD 형식으로 변환
+            const year = iterDate.getFullYear();
+            const month = String(iterDate.getMonth() + 1).padStart(2, '0');
+            const day = String(iterDate.getDate()).padStart(2, '0');
+            const dateStr = `${year}-${month}-${day}`;
+
+            sessions.push({
+                session: sessionCount++,
+                date: dateStr
+            });
+        }
+        // 하루 증가
+        iterDate.setDate(iterDate.getDate() + 1);
+        iterations++;
+    }
+
+    return sessions;
 };
 
 // ✅ [수정] 과제 통계 계산 (오답까지 완료해야 '완료' 처리)
