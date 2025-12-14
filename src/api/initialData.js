@@ -14,10 +14,20 @@ export const initialClasses = [
     { id: 2, name: '중3 수학 심화반', teacher: '이영희', type: '특강', days: ['화', '목'], students: [2, 6], schedule: { days: ['화', '목'], time: '19:00~21:00' }, startDate: '2025-11-01', endDate: '2025-12-31', books: [3] },
 ];
 
+// ✅ [수정] 1, 2, 3회차 영상 iframeCode 업데이트
 export const initialLessonLogs = [
-    { id: 1, classId: 1, date: '2025-11-03', progress: '다항식의 연산 (1)', assignment: 'p.10~15 문제 풀이', materialUrl: 'link_to_pdf', iframeCode: '<iframe width="560" height="315" src="https://www.youtube.com/embed/dQw4w9WgXcQ?si=abcdefg" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>' },
-    { id: 2, classId: 1, date: '2025-11-05', progress: '다항식의 연산 (2)', assignment: 'p.16~20 문제 풀이', materialUrl: '', iframeCode: '' },
-    { id: 3, classId: 1, date: '2025-11-07', progress: '나머지정리', assignment: 'p.21~25 문제 풀이', materialUrl: 'link_to_material', iframeCode: '' },
+    { 
+        id: 1, classId: 1, date: '2025-11-03', progress: '다항식의 연산 (1)', assignment: 'p.10~15 문제 풀이', materialUrl: 'link_to_pdf', 
+        iframeCode: '<iframe width="560" height="315" src="https://www.youtube.com/embed/PLPVxWCrXqY?si=q8Eq2XHrQiwSQHHJ" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>' 
+    },
+    { 
+        id: 2, classId: 1, date: '2025-11-05', progress: '다항식의 연산 (2)', assignment: 'p.16~20 문제 풀이', materialUrl: '', 
+        iframeCode: '<iframe width="560" height="315" src="https://www.youtube.com/embed/F0oh9Mmhl1w?si=_RkZ_8doDeCf1Y2s" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>' 
+    },
+    { 
+        id: 3, classId: 1, date: '2025-11-07', progress: '나머지정리', assignment: 'p.21~25 문제 풀이', materialUrl: 'link_to_material', 
+        iframeCode: '<iframe width="560" height="315" src="https://www.youtube.com/embed/2nkpdvSGx98?si=lZH_yw5JwOG1Tn7M" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>' 
+    },
 ];
 
 export const initialAttendanceLogs = [

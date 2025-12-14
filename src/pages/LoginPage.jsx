@@ -1,6 +1,7 @@
 // src/pages/LoginPage.jsx
 import React, { useState } from 'react';
 import { Icon } from '../utils/helpers';
+// MUI 아이콘 import 확인
 import CalculateIcon from '@mui/icons-material/Calculate'; 
 import ChatBubbleIcon from '@mui/icons-material/ChatBubble'; 
 
@@ -25,7 +26,6 @@ const NaverLogoIcon = ({ className }) => (
     }}>N</div>
 );
 
-
 export default function LoginPage({ onLogin, onSocialLogin }) { 
     const [id, setId] = useState('');
     const [password, setPassword] = useState('');
@@ -45,7 +45,7 @@ export default function LoginPage({ onLogin, onSocialLogin }) {
         <div className="flex items-center justify-center min-h-screen bg-gray-100 p-4">
             <div className="w-full max-w-md bg-white shadow-2xl rounded-2xl overflow-hidden border border-gray-200">
                 
-                {/* 로고 영역 (수학 전문성 강조) */}
+                {/* 로고 영역 */}
                 <div className="bg-brand-dark p-10 text-center relative overflow-hidden">
                     <div className="absolute top-[-20px] left-[-20px] w-24 h-24 rounded-full border-4 border-white/10"></div>
                     <div className="absolute bottom-[-10px] right-[-10px] w-32 h-32 rounded-full border-4 border-white/5"></div>
@@ -59,9 +59,39 @@ export default function LoginPage({ onLogin, onSocialLogin }) {
                 </div>
 
                 <form onSubmit={handleLogin} className="p-10 space-y-6">
-                    {/* ID/PW 입력 필드 (유지) */}
-                    <div><label className="block text-sm font-bold text-gray-700 mb-2" htmlFor="username">아이디</label><div className="relative"><div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><Icon name="user" className="h-5 w-5 text-gray-400" /></div><input className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-dark focus:border-transparent transition-all" id="username" type="text" placeholder="아이디를 입력하세요" value={id} onChange={(e) => setId(e.target.value)} /></div></div>
-                    <div><label className="block text-sm font-bold text-gray-700 mb-2" htmlFor="password">비밀번호</label><div className="relative"><div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><Icon name="lock" className="h-5 w-5 text-gray-400" /></div><input className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-dark focus:border-transparent transition-all" id="password" type="password" placeholder="비밀번호를 입력하세요" value={password} onChange={(e) => setPassword(e.target.value)} /></div>{error && (<div className="flex items-center mt-2 text-red-600 text-xs font-medium animate-pulse"><Icon name="alertCircle" className="w-4 h-4 mr-1" />{error}</div>)}</div>
+                    <div>
+                        <label className="block text-sm font-bold text-gray-700 mb-2" htmlFor="username">아이디</label>
+                        <div className="relative">
+                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                <Icon name="user" className="h-5 w-5 text-gray-400" />
+                            </div>
+                            <input 
+                                className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-dark focus:border-transparent transition-all" 
+                                id="username" 
+                                type="text" 
+                                placeholder="아이디를 입력하세요" 
+                                value={id} 
+                                onChange={(e) => setId(e.target.value)} 
+                            />
+                        </div>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-bold text-gray-700 mb-2" htmlFor="password">비밀번호</label>
+                        <div className="relative">
+                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                <Icon name="lock" className="h-5 w-5 text-gray-400" />
+                            </div>
+                            <input 
+                                className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-dark focus:border-transparent transition-all" 
+                                id="password" 
+                                type="password" 
+                                placeholder="비밀번호를 입력하세요" 
+                                value={password} 
+                                onChange={(e) => setPassword(e.target.value)} 
+                            />
+                        </div>
+                        {error && (<div className="flex items-center mt-2 text-red-600 text-xs font-medium animate-pulse"><Icon name="alertCircle" className="w-4 h-4 mr-1" />{error}</div>)}
+                    </div>
 
                     <button className="w-full bg-brand-dark hover:bg-brand-dark/90 text-white font-bold py-3.5 px-4 rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-dark shadow-lg transition-all duration-200 transform active:scale-[0.98]" type="submit">
                         로그인
@@ -79,7 +109,6 @@ export default function LoginPage({ onLogin, onSocialLogin }) {
                     </div>
 
                     <div className="grid grid-cols-1 gap-3">
-                        {/* 1. 카카오톡 로그인 (디자인 가이드 준수) */}
                         <button 
                             onClick={() => onSocialLogin('Kakao')}
                             className="w-full bg-[#FEE500] text-[#191919] font-bold h-14 rounded-lg flex items-center justify-center gap-3 shadow-md hover:brightness-95 transition-all"
@@ -88,7 +117,6 @@ export default function LoginPage({ onLogin, onSocialLogin }) {
                             <span className="text-lg font-sans">카카오 로그인</span> 
                         </button>
                         
-                        {/* 2. 네이버 로그인 (디자인 가이드 준수) */}
                         <button 
                             onClick={() => onSocialLogin('Naver')}
                             className="w-full bg-[#00C73C] text-white font-bold h-14 rounded-lg flex items-center justify-center gap-3 shadow-md hover:brightness-95 transition-all"
