@@ -9,9 +9,10 @@ export const initialStudents = [
     { id: 6, name: '강동원', grade: '고3', school: '현대고', phone: '010-1234-5678', parentPhone: '010-8765-4321', status: '재원', registeredDate: '2025-05-01', classes: [1, 2], consultationHistory: [], books: [1, 3] },
 ];
 
+// ✅ [수정] 강사 이름을 모두 '채수용'으로 통일
 export const initialClasses = [
-    { id: 1, name: '고1 수학(상) 정규반', teacher: '김철수', type: '정규', days: ['월', '수', '금'], students: [1, 3, 4, 6], schedule: { days: ['월', '수', '금'], time: '18:00~20:00' }, startDate: '2025-11-01', endDate: '2025-12-31', books: [1, 2] },
-    { id: 2, name: '중3 수학 심화반', teacher: '이영희', type: '특강', days: ['화', '목'], students: [2, 6], schedule: { days: ['화', '목'], time: '19:00~21:00' }, startDate: '2025-11-01', endDate: '2025-12-31', books: [3] },
+    { id: 1, name: '고1 수학(상) 정규반', teacher: '채수용', type: '정규', days: ['월', '수', '금'], students: [1, 3, 4, 6], schedule: { days: ['월', '수', '금'], time: '18:00~20:00' }, startDate: '2025-11-01', endDate: '2025-12-31', books: [1, 2] },
+    { id: 2, name: '중3 수학 심화반', teacher: '채수용', type: '특강', days: ['화', '목'], students: [2, 6], schedule: { days: ['화', '목'], time: '19:00~21:00' }, startDate: '2025-11-01', endDate: '2025-12-31', books: [3] },
 ];
 
 // ✅ [수정] 1, 2, 3회차 영상 iframeCode 업데이트
