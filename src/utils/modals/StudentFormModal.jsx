@@ -1,5 +1,5 @@
 // src/utils/modals/StudentFormModal.jsx
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Modal } from '../../components/common/Modal';
 import { Icon } from '../../utils/helpers';
 
@@ -15,8 +15,8 @@ export const StudentFormModal = ({ isOpen, onClose, student = null, allClasses, 
   const [bookReceived, setBookReceived] = useState(false);
   const [registeredDate, setRegisteredDate] = useState('');
 
-  // ✅ [수정] 불필요한 필터 제거 (모든 클래스 표시)
-  const availableClasses = allClasses; 
+  // ✅ [수정] 필터 제거 (모든 클래스가 나오도록 수정)
+  const availableClasses = allClasses;
 
   useEffect(() => {
     if (student) {
@@ -33,7 +33,7 @@ export const StudentFormModal = ({ isOpen, onClose, student = null, allClasses, 
     } else {
       setName('');
       setSchool('');
-      setGrade('고1'); // 기본값 수정
+      setGrade('고1');
       setPhone('');
       setParentPhone('');
       setStatus('재원생');
@@ -60,7 +60,7 @@ export const StudentFormModal = ({ isOpen, onClose, student = null, allClasses, 
       id: student ? student.id : null,
       name,
       school,
-      grade, // 문자열 그대로 저장 (ex: '고1')
+      grade,
       phone,
       parentPhone,
       status,

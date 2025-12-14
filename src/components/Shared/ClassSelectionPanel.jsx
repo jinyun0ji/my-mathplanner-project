@@ -9,23 +9,21 @@ export default function ClassSelectionPanel({
     onDateSelect 
 }) {
     const [isClassModalOpen, setIsClassModalOpen] = useState(false);
+    const [isEditMode, setIsEditMode] = useState(false); // ✅ [추가] 편집 모드 상태 관리
     const selectedClass = classes.find(c => c.id === selectedClassId);
     
-    // 1. Ref 설정: 선택된 항목을 참조할 Ref 객체
+    // Ref 설정: 선택된 항목을 참조할 Ref 객체
     const selectedItemRef = useRef(null); 
     
-    // 2. useEffect로 선택 항목이 변경될 때 스크롤 이동
+    // useEffect로 선택 항목이 변경될 때 스크롤 이동
     useEffect(() => {
         if (selectedItemRef.current) {
-            // 선택된 항목이 가장 가까운 위치에 보이도록 스크롤합니다. (페이지 점프 방지)
             selectedItemRef.current.scrollIntoView({ behavior: 'auto', block: 'nearest' });
         }
-    }, [selectedDate, selectedClassId]); // 선택 날짜나 클래스가 바뀌면 실행
+    }, [selectedDate, selectedClassId]);
 
-    // 수업 회차 목록 (모든 세션을 포함합니다.)
+    // 수업 회차 목록
     const sessions = useMemo(() => selectedClass ? calculateClassSessions(selectedClass) : [], [selectedClass, calculateClassSessions]);
-
-    // 🚨 수정: 필터링 로직 제거. sessionsBeforeSelectedDate 대신 sessions를 사용합니다.
     const displaySessions = sessions;
     
     return (
@@ -33,7 +31,8 @@ export default function ClassSelectionPanel({
             <div className="flex justify-between items-center border-b pb-2">
                 <h3 className="text-lg font-bold text-gray-800">클래스 선택</h3>
                 <button 
-                    onClick={() => setIsClassModalOpen(true)}
+                    // ✅ [수정] 새 클래스 버튼: 편집 모드 끄고 모달 열기
+                    onClick={() => { setIsEditMode(false); setIsClassModalOpen(true); }}
                     className="text-blue-500 hover:text-blue-700 text-sm font-medium flex items-center"
                 >
                     <Icon name="plus" className="w-4 h-4 mr-1" />
@@ -58,7 +57,8 @@ export default function ClassSelectionPanel({
                     <p className="text-xs text-indigo-600">총 학생: {selectedClass.students.length}명</p>
                     {showEditButton && (
                         <button 
-                            onClick={() => setIsClassModalOpen(true)}
+                            // ✅ [수정] 수정 버튼: 편집 모드 켜고 모달 열기
+                            onClick={() => { setIsEditMode(true); setIsClassModalOpen(true); }}
                             className="text-xs text-indigo-500 hover:text-indigo-700 font-medium flex items-center"
                         >
                             <Icon name="edit" className="w-4 h-4 mr-1" />
@@ -72,19 +72,15 @@ export default function ClassSelectionPanel({
                 <div className="pt-2 border-t">
                     <h4 className="text-base font-bold mb-2 flex justify-between items-center text-gray-800">
                         {customPanelTitle} ({sessions.length}회)
-                        {/* 좌우 이동 버튼은 제거되었습니다. */}
                     </h4>
                     {customPanelContent || (
                         <ul className="space-y-1 max-h-48 overflow-y-auto pr-2 text-sm">
-                            {/* 🚨 수정: 모든 세션을 역순으로 표시 (최신 회차가 상단) */}
                             {[...displaySessions].reverse().map(session => {
                                 const isSelected = session.date === selectedDate;
-                                
                                 return (
                                     <li 
                                         key={session.date} 
                                         onClick={() => onDateSelect && onDateSelect(session.date)}
-                                        // 3. Ref 연결: 선택된 항목에 Ref를 연결합니다.
                                         ref={isSelected ? selectedItemRef : null} 
                                         className={`p-2 rounded-lg transition ${
                                             isSelected 
@@ -106,7 +102,8 @@ export default function ClassSelectionPanel({
                 isOpen={isClassModalOpen}
                 onClose={() => setIsClassModalOpen(false)}
                 onSave={handleClassSave}
-                classToEdit={selectedClass}
+                // ✅ [수정] 편집 모드일 때만 선택된 클래스 정보 전달
+                classToEdit={isEditMode ? selectedClass : null}
             />
         </div>
     );
