@@ -317,6 +317,9 @@
 .h-\[32px\] {
   height: 32px;
 }
+.h-\[60px\] {
+  height: 60px;
+}
 .h-\[70vh\] {
   height: 70vh;
 }
@@ -1155,6 +1158,9 @@
 .scroll-smooth {
   scroll-behavior: smooth;
 }
+.rounded-\[2rem\] {
+  border-radius: 2rem;
+}
 .rounded-full {
   border-radius: calc(infinity * 1px);
 }
@@ -1990,6 +1996,10 @@
 }
 .shadow-\[0_-4px_6px_-1px_rgba\(0\,0\,0\,0\.05\)\] {
   --tw-shadow: 0 -4px 6px -1px var(--tw-shadow-color, rgba(0,0,0,0.05));
+  box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);
+}
+.shadow-\[0_-4px_10px_rgba\(0\,0\,0\,0\.03\)\] {
+  --tw-shadow: 0 -4px 10px var(--tw-shadow-color, rgba(0,0,0,0.03));
   box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);
 }
 .shadow-\[0_-4px_20px_-5px_rgba\(0\,0\,0\,0\.1\)\] {

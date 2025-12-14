@@ -1,22 +1,20 @@
 // src/pages/StudentHome.jsx
 import React, { useState, useMemo, useEffect } from 'react';
+// ✅ [핵심] StudentTabs에서 필요한 컴포넌트들을 정확히 가져옵니다.
 import { 
     DashboardTab, 
+    ClassTab,      // 강의실 목록 (새로 추가됨)
     ScheduleTab, 
-    HomeworkTab, 
-    GradesTab, 
-    MenuTab,
-    BoardTab,
-    ClinicTab // ✅ [추가]
+    LearningTab,   // 학습관리 (새로 추가됨: 과제/성적/클리닉 통합)
+    MenuTab 
 } from '../components/StudentTabs';
+
 import ClassroomView from './student/ClassroomView';
 import StudentMessenger from '../components/StudentMessenger';
 import StudentHeader from '../components/StudentHeader';
 import StudentNotifications from '../components/StudentNotifications';
 import { Icon, calculateHomeworkStats, calculateGradeComparison } from '../utils/helpers';
 import NotificationsIcon from '@mui/icons-material/Notifications';
-// [추가] 클리닉 데이터 가져오기 (initialData에서 clinicLogs가 이미 props로 넘어오는지 확인 필요)
-// App.jsx에서 clinicLogs를 props로 내려주고 있음.
 
 export default function StudentHome({ 
     studentId, students, classes, homeworkAssignments, homeworkResults, 
@@ -26,6 +24,7 @@ export default function StudentHome({
     clinicLogs, onUpdateStudent, 
     onLogout, messages, onSendMessage
 }) {
+    // 탭 상태 관리 (기본값: 'home')
     const [activeTab, setActiveTab] = useState('home');
     const [selectedClassId, setSelectedClassId] = useState(null);
     const [isVideoModalOpen, setIsVideoModalOpen] = useState(false);
@@ -34,27 +33,20 @@ export default function StudentHome({
     const [isNotificationOpen, setIsNotificationOpen] = useState(false);
     const [visibleNotices, setVisibleNotices] = useState(notices); 
     const [hasNewNotifications, setHasNewNotifications] = useState(false);
-
-    // ✅ [추가] 메모 바로가기용 상태
+    
+    // 강의실 바로가기용 (메모 등에서 사용)
     const [targetMemo, setTargetMemo] = useState(null);
 
-    // ✅ [추가] 클리닉 예약 알림 자동 생성 로직
+    // 클리닉 알림 자동 생성 로직
     useEffect(() => {
         let newNotices = [...notices];
         const now = new Date();
         const todayStr = now.toISOString().split('T')[0];
-
-        // 미래에 예약된 내 클리닉 찾기
-        const myUpcomingClinics = clinicLogs?.filter(log => 
-            log.studentId === studentId && 
-            log.date >= todayStr && 
-            !log.checkOut // 아직 퇴실 안 한(예약 상태인) 것
-        ) || [];
+        const myUpcomingClinics = clinicLogs?.filter(log => log.studentId === studentId && log.date >= todayStr && !log.checkOut) || [];
 
         if (myUpcomingClinics.length > 0) {
             myUpcomingClinics.forEach(clinic => {
                 const noticeId = `clinic-notice-${clinic.id}`;
-                // 중복 알림 방지
                 if (!newNotices.find(n => n.id === noticeId)) {
                     newNotices.unshift({
                         id: noticeId,
@@ -67,45 +59,41 @@ export default function StudentHome({
                 }
             });
         }
-
         setVisibleNotices(newNotices);
         if (newNotices.length > notices.length || notices.length > 0) setHasNewNotifications(true);
     }, [notices, clinicLogs, studentId]);
 
-    // ... (핸들러 함수들 기존 유지) ...
     const handleOpenNotification = () => { setIsNotificationOpen(true); setHasNewNotifications(false); };
-    const handleLinkToBoard = () => { setActiveTab('board'); setIsNotificationOpen(false); };
+    const handleLinkToBoard = () => { setActiveTab('menu'); setIsNotificationOpen(false); }; // 게시판은 메뉴 탭 안에 있음
     const handleDeleteNotice = (id) => { setVisibleNotices(prev => prev.filter(n => n.id !== id)); };
 
-    // ... (데이터 가공 로직 기존 유지) ...
+    // 데이터 가공
     const student = students.find(s => s.id === studentId);
     const myClasses = classes.filter(c => c.students.includes(studentId));
     const myHomeworkStats = useMemo(() => calculateHomeworkStats(studentId, homeworkAssignments, homeworkResults), [studentId, homeworkAssignments, homeworkResults]);
     const myGradeComparison = useMemo(() => calculateGradeComparison(studentId, classes, tests, grades), [studentId, classes, tests, grades]);
     const pendingHomeworkCount = myHomeworkStats.filter(h => h.status !== '완료').length;
 
-    // ✅ [추가] 메모 클릭 시 해당 강의실로 이동 및 영상 재생
     const handleNavigateToMemo = (classId, lessonId, time) => {
-        setSelectedClassId(classId); // 강의실 뷰로 전환
-        setTargetMemo({ lessonId, time }); // 타겟 설정
+        setSelectedClassId(classId);
+        setTargetMemo({ lessonId, time });
     };
 
-    // ✅ [수정] 네비게이션 아이템에 'clinic' 추가 (공간 고려하여 배치)
+    // 하단 탭 아이템 정의 (5개)
     const navItems = [
         { id: 'home', icon: 'home', label: '홈' },
+        { id: 'class', icon: 'fileText', label: '클래스' },
         { id: 'schedule', icon: 'calendar', label: '일정' },
-        { id: 'clinic', icon: 'clock', label: '클리닉' }, // ✅ 추가
-        { id: 'homework', icon: 'clipboardCheck', label: '과제' },
-        { id: 'board', icon: 'list', label: '게시판' },
-        { id: 'grades', icon: 'barChart', label: '성적' },
-        { id: 'menu', icon: 'menu', label: '메뉴' },
+        { id: 'learning', icon: 'clipboardCheck', label: '학습관리' },
+        { id: 'menu', icon: 'menu', label: '전체메뉴' },
     ];
 
     return (
         <div className="bg-brand-bg min-h-screen flex flex-col relative font-sans">
             <StudentHeader onLogout={onLogout} />
 
-            <main className="flex-1 w-full max-w-7xl mx-auto p-4 md:p-6 pb-24 overflow-y-auto custom-scrollbar">
+            <main className="flex-1 w-full max-w-md mx-auto p-4 pb-24 overflow-y-auto custom-scrollbar md:max-w-7xl">
+                {/* 강의실(영상 시청) 모드일 때 */}
                 {selectedClassId ? (
                     <ClassroomView 
                         classes={classes} lessonLogs={lessonLogs} attendanceLogs={attendanceLogs} studentId={studentId}
@@ -113,19 +101,58 @@ export default function StudentHome({
                         videoProgress={videoProgress} onSaveVideoProgress={onSaveVideoProgress}
                         videoBookmarks={videoBookmarks} onSaveBookmark={onSaveBookmark}
                         onVideoModalChange={setIsVideoModalOpen}
-                        targetMemo={targetMemo} // ✅ 전달
-                        onClearTargetMemo={() => setTargetMemo(null)} // ✅ 전달
+                        targetMemo={targetMemo}
+                        onClearTargetMemo={() => setTargetMemo(null)}
                     />
                 ) : (
-                    <div className="animate-fade-in space-y-6">
-                        {activeTab === 'home' && <DashboardTab student={student} myClasses={myClasses} setActiveTab={setActiveTab} pendingHomeworkCount={pendingHomeworkCount} setSelectedClassId={setSelectedClassId} />}
-                        {activeTab === 'schedule' && <ScheduleTab myClasses={myClasses} externalSchedules={externalSchedules} attendanceLogs={attendanceLogs} studentId={studentId} onSaveExternalSchedule={onSaveExternalSchedule} onDeleteExternalSchedule={onDeleteExternalSchedule} clinicLogs={clinicLogs} />}
-                        {activeTab === 'clinic' && <ClinicTab studentId={studentId} clinicLogs={clinicLogs} />}
-                        {activeTab === 'homework' && <HomeworkTab myHomeworkStats={myHomeworkStats} />}
-                        {activeTab === 'board' && <BoardTab notices={visibleNotices} />}
-                        {activeTab === 'grades' && <GradesTab myGradeComparison={myGradeComparison} />}
-                        
-                        {/* ✅ [수정] MenuTab에 메모 관련 props 전달 */}
+                    // 일반 탭 모드일 때
+                    <div className="animate-fade-in space-y-4">
+                        {/* 1. 홈 (대시보드) */}
+                        {activeTab === 'home' && (
+                            <DashboardTab 
+                                student={student} 
+                                myClasses={myClasses} 
+                                pendingHomeworkCount={pendingHomeworkCount} 
+                                attendanceLogs={attendanceLogs}
+                                clinicLogs={clinicLogs}
+                                homeworkStats={myHomeworkStats}
+                                notices={visibleNotices}
+                                setActiveTab={setActiveTab}
+                            />
+                        )}
+
+                        {/* 2. 클래스 (강의 목록) */}
+                        {activeTab === 'class' && (
+                            <ClassTab 
+                                myClasses={myClasses} 
+                                setSelectedClassId={setSelectedClassId} 
+                            />
+                        )}
+
+                        {/* 3. 일정 */}
+                        {activeTab === 'schedule' && (
+                            <ScheduleTab 
+                                myClasses={myClasses} 
+                                externalSchedules={externalSchedules} 
+                                attendanceLogs={attendanceLogs} 
+                                studentId={studentId} 
+                                onSaveExternalSchedule={onSaveExternalSchedule} 
+                                onDeleteExternalSchedule={onDeleteExternalSchedule} 
+                                clinicLogs={clinicLogs} 
+                            />
+                        )}
+
+                        {/* 4. 학습관리 (과제 + 성적 + 클리닉) */}
+                        {activeTab === 'learning' && (
+                            <LearningTab 
+                                studentId={studentId}
+                                myHomeworkStats={myHomeworkStats}
+                                myGradeComparison={myGradeComparison}
+                                clinicLogs={clinicLogs}
+                            />
+                        )}
+
+                        {/* 5. 메뉴 (더보기 + 게시판) */}
                         {activeTab === 'menu' && (
                             <MenuTab 
                                 student={student} 
@@ -134,32 +161,53 @@ export default function StudentHome({
                                 videoBookmarks={videoBookmarks}
                                 lessonLogs={lessonLogs}
                                 onLinkToMemo={handleNavigateToMemo}
+                                notices={visibleNotices}
                             />
                         )}
                     </div>
                 )}
             </main>
 
+            {/* 하단 탭바 (Bottom Navigation) */}
             {!selectedClassId && (
-                <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-brand-gray/20 z-40 pb-safe shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
-                    <div className="max-w-2xl mx-auto flex justify-around items-center py-2 px-1">
+                <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 z-40 pb-safe shadow-[0_-4px_10px_rgba(0,0,0,0.03)]">
+                    <div className="max-w-md mx-auto flex justify-around items-center h-[60px] md:max-w-7xl">
                         {navItems.map(item => (
-                            <button key={item.id} onClick={() => setActiveTab(item.id)} className={`flex flex-col items-center p-1.5 rounded-xl transition-all duration-200 w-12 group ${activeTab === item.id ? 'text-brand-main' : 'text-brand-gray hover:text-brand-black'}`}>
-                                <div className={`mb-0.5 transition-transform duration-200 ${activeTab === item.id ? '-translate-y-1' : 'group-hover:-translate-y-0.5'}`}><Icon name={item.icon} className={`w-5 h-5 ${activeTab === item.id ? 'fill-current' : ''}`} strokeWidth={activeTab === item.id ? 2.5 : 2} /></div>
-                                <span className={`text-[9px] font-medium ${activeTab === item.id ? 'opacity-100 font-bold' : 'opacity-70'}`}>{item.label}</span>
+                            <button 
+                                key={item.id} 
+                                onClick={() => setActiveTab(item.id)} 
+                                className={`flex flex-col items-center justify-center w-full h-full transition-all duration-200 active:scale-95 ${
+                                    activeTab === item.id ? 'text-brand-main' : 'text-gray-400 hover:text-gray-600'
+                                }`}
+                            >
+                                <div className={`mb-1 transition-transform duration-200 ${activeTab === item.id ? '-translate-y-0.5' : ''}`}>
+                                    <Icon 
+                                        name={item.icon} 
+                                        className={`w-6 h-6 ${activeTab === item.id ? 'fill-current' : ''}`} 
+                                        strokeWidth={activeTab === item.id ? 2.5 : 2} 
+                                    />
+                                </div>
+                                <span className={`text-[10px] ${activeTab === item.id ? 'font-bold' : 'font-medium'}`}>
+                                    {item.label}
+                                </span>
                             </button>
                         ))}
                     </div>
                 </div>
             )}
 
-            <div className={`fixed bottom-24 right-5 z-[60] transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${isVideoModalOpen ? 'scale-0 opacity-0 pointer-events-none' : 'scale-100 opacity-100'}`}>
-                <button onClick={handleOpenNotification} className="relative bg-white text-brand-main border border-brand-gray/20 p-3.5 rounded-full shadow-lg hover:bg-gray-50 transition-transform active:scale-90 flex items-center justify-center">
-                    <NotificationsIcon className="w-6 h-6" style={{ fontSize: 24 }} />
-                    {hasNewNotifications && <span className="absolute top-0 right-0 w-3 h-3 bg-brand-red rounded-full ring-2 ring-white"></span>}
+            {/* 알림 버튼 (우측 하단 플로팅) */}
+            <div className={`fixed bottom-20 right-4 z-[60] transition-all duration-300 ${isVideoModalOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
+                <button 
+                    onClick={handleOpenNotification} 
+                    className="bg-white text-brand-main border border-brand-main/20 p-3 rounded-full shadow-lg hover:bg-gray-50 active:scale-90 flex items-center justify-center relative"
+                >
+                    <NotificationsIcon style={{ fontSize: 24 }} />
+                    {hasNewNotifications && <span className="absolute top-2 right-2.5 w-2 h-2 bg-brand-red rounded-full ring-1 ring-white"></span>}
                 </button>
             </div>
-            <StudentMessenger studentId={studentId} teacherName="채수용 선생님" messages={messages} onSendMessage={onSendMessage} isHidden={isVideoModalOpen} bottomPosition="bottom-40" />
+
+            <StudentMessenger studentId={studentId} teacherName="채수용 선생님" messages={messages} onSendMessage={onSendMessage} isHidden={isVideoModalOpen} bottomPosition="bottom-36" />
             <StudentNotifications isOpen={isNotificationOpen} onClose={() => setIsNotificationOpen(false)} notices={visibleNotices} onDelete={handleDeleteNotice} onNoticeClick={handleLinkToBoard} />
         </div>
     );
