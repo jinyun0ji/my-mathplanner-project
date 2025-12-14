@@ -8,13 +8,16 @@ export const AnnouncementModal = ({ isOpen, onClose, onSave, announcementToEdit 
     const [content, setContent] = useState('');
     const [isPinned, setIsPinned] = useState(false);
     const [scheduleTime, setScheduleTime] = useState('');
-    const [attachments, setAttachments] = useState([]);
     const [newAttachment, setNewAttachment] = useState('');
     const [targetClasses, setTargetClasses] = useState([]); 
     const [targetStudents, setTargetStudents] = useState([]);
     
     // 선택된 이미지 상태 관리
     const [selectedImage, setSelectedImage] = useState(null);
+
+    // ✅ [수정] 파일 업로드 관련 상태
+    const [attachments, setAttachments] = useState([]);
+    const fileInputRef = useRef(null);
 
     const editorRef = useRef(null);
 
@@ -46,6 +49,19 @@ export const AnnouncementModal = ({ isOpen, onClose, onSave, announcementToEdit 
             setSelectedImage(null); 
         }
     }, [isOpen, announcementToEdit]);
+
+    // ✅ [추가] 파일 선택 핸들러
+    const handleFileChange = (e) => {
+        if (e.target.files && e.target.files.length > 0) {
+            const newFiles = Array.from(e.target.files).map(file => file.name);
+            setAttachments(prev => [...prev, ...newFiles]);
+        }
+    };
+
+    // ✅ [추가] 파일 삭제 핸들러
+    const removeAttachment = (index) => {
+        setAttachments(prev => prev.filter((_, i) => i !== index));
+    };
 
     const handleAddAttachment = () => {
         if (newAttachment.trim()) {
@@ -235,8 +251,52 @@ export const AnnouncementModal = ({ isOpen, onClose, onSave, announcementToEdit 
                         placeholder="공지 내용을 입력하세요. 텍스트를 드래그하거나 이미지를 붙여넣을 수 있습니다."
                     />
                 </div>
-                
-                <div className="border p-3 rounded-lg bg-yellow-50">
+
+                {/* ✅ [수정] 파일 첨부 영역 */}
+                <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-2">첨부파일</label>
+                    <div className="flex items-center gap-2">
+                        <input 
+                            type="file" 
+                            multiple 
+                            ref={fileInputRef} 
+                            onChange={handleFileChange} 
+                            className="hidden" 
+                        />
+                        <button 
+                            type="button" 
+                            onClick={() => fileInputRef.current.click()}
+                            className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition-colors border border-gray-300"
+                        >
+                            <Icon name="plus" className="w-4 h-4" />
+                            파일 추가
+                        </button>
+                        <span className="text-xs text-gray-400">PDF, HWP, JPG 등 업로드 가능</span>
+                    </div>
+
+                    {/* 첨부된 파일 리스트 */}
+                    {attachments.length > 0 && (
+                        <div className="mt-3 space-y-2">
+                            {attachments.map((file, index) => (
+                                <div key={index} className="flex items-center justify-between p-2 bg-indigo-50 border border-indigo-100 rounded-lg text-sm text-indigo-700">
+                                    <div className="flex items-center gap-2">
+                                        <Icon name="fileText" className="w-4 h-4" />
+                                        <span>{file}</span>
+                                    </div>
+                                    <button 
+                                        type="button" 
+                                        onClick={() => removeAttachment(index)} 
+                                        className="text-gray-400 hover:text-red-500 p-1"
+                                    >
+                                        <Icon name="x" className="w-4 h-4" />
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+
+                 <div className="border p-3 rounded-lg bg-yellow-50">
                     <h4 className="text-sm font-semibold mb-2 text-gray-700">대상 설정 (선택 사항)</h4>
                     <p className="text-xs text-gray-600 mb-2">특정 클래스에만 노출되도록 설정할 수 있습니다. 설정하지 않으면 전체에게 노출됩니다.</p>
                     <div className="flex flex-wrap gap-2">
@@ -253,26 +313,6 @@ export const AnnouncementModal = ({ isOpen, onClose, onSave, announcementToEdit 
                             >
                                 {cls.name}
                             </button>
-                        ))}
-                    </div>
-                </div>
-
-                <div className="border p-3 rounded-lg bg-gray-50">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">첨부 파일/링크 추가 (선택)</label>
-                    <div className="flex space-x-2 mb-2">
-                        <input type="text" value={newAttachment} onChange={e => setNewAttachment(e.target.value)} className="flex-1 rounded-md border-gray-300 shadow-sm p-2 border text-sm" placeholder="파일 이름 또는 다운로드 URL" />
-                        <button type="button" onClick={handleAddAttachment} className="px-3 py-1 text-sm rounded-lg text-white bg-gray-500 hover:bg-gray-600 flex items-center">
-                            <Icon name="plus" className="w-4 h-4 mr-1"/> 추가
-                        </button>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                        {attachments.map((file, index) => (
-                            <div key={index} className="flex items-center bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-1 rounded-full">
-                                {file}
-                                <button type="button" onClick={() => handleRemoveAttachment(index)} className="ml-1 text-blue-800 hover:text-red-600">
-                                    <Icon name="x" className="w-3 h-3"/>
-                                </button>
-                            </div>
                         ))}
                     </div>
                 </div>
