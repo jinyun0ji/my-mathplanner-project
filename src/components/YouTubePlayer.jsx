@@ -29,6 +29,8 @@ const YouTubePlayer = forwardRef(({ videoId, initialSeconds, onWatchedTick }, re
             rel: 0,
             modestbranding: 1,
             controls: 1,
+            loop: 1,
+            playlist: videoId,
         },
     };
 

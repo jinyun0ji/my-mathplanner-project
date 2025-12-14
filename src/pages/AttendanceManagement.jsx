@@ -33,7 +33,7 @@ export default function AttendanceManagement({
                 classId: selectedClassId, 
                 date: selectedDate, 
                 studentId: s.id, 
-                status: '출석' 
+                status: null
             };
         });
         return initial;

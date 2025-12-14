@@ -19,7 +19,9 @@ export const AttendanceModal = ({ isOpen, onClose, studentsData, initialAttendan
     
     const handleSubmit = (e) => {
         e.preventDefault();
-        onSave(Object.values(attendance));
+        // ✅ [수정] status가 null인(미입력) 항목은 저장하지 않고 필터링
+        const validRecords = Object.values(attendance).filter(record => record.status);
+        onSave(validRecords);
         onClose();
     };
 

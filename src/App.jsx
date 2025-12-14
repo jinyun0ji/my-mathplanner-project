@@ -356,19 +356,20 @@ export default function App() {
   };
   const handleDeleteClinicLog = (id) => setClinicLogs(prev => prev.filter(log => log.id !== id));
   
-  // ✅ 비디오 진도율 저장
+  // ✅ [수정] 비디오 진도율 저장 함수: 'accumulated' 필드 추가 저장
   const handleSaveVideoProgress = (studentId, lessonId, data) => {
       setVideoProgress(prev => {
           const studentData = prev[studentId] || {};
-          const prevLessonData = studentData[lessonId] || { percent: 0, seconds: 0 };
+          const prevLessonData = studentData[lessonId] || { percent: 0, seconds: 0, accumulated: 0 };
           
           return {
               ...prev,
               [studentId]: {
                   ...studentData,
                   [lessonId]: {
-                      percent: Math.max(prevLessonData.percent || 0, data.percent),
-                      seconds: data.seconds 
+                      percent: Math.max(prevLessonData.percent || 0, data.percent), // 최대 진도율 유지
+                      seconds: data.seconds, // 마지막 시청 위치 업데이트
+                      accumulated: data.accumulated // ✅ [핵심] 누적 시청 시간 저장
                   }
               }
           };

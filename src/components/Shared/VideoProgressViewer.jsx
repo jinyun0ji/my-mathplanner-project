@@ -1,9 +1,9 @@
+// src/components/Shared/VideoProgressViewer.jsx
 import React from 'react';
 import { Icon } from '../../utils/helpers';
 
 export default function VideoProgressViewer({ log, students, videoProgress, attendanceLogs }) {
     const classStudents = students.filter(s => {
-        // 이 로그에 출석한 학생만 필터링
         return attendanceLogs.some(a => a.studentId === s.id && a.classId === log.classId && a.date === log.date && a.status === '동영상보강');
     });
 
@@ -18,7 +18,10 @@ export default function VideoProgressViewer({ log, students, videoProgress, atte
                     <p className="col-span-4 text-sm text-gray-500">동영상 보강 대상 학생이 없습니다.</p>
                 ) : (
                     classStudents.map(student => {
-                        const progress = videoProgress[student.id]?.[log.id] || 0;
+                        // ✅ [수정] videoProgress 객체에서 .percent 값 추출 (없으면 0)
+                        const progressObj = videoProgress[student.id]?.[log.id];
+                        const progress = progressObj?.percent || 0;
+
                         return (
                             <div key={student.id} className="p-3 border rounded-lg bg-indigo-50">
                                 <p className="text-sm font-semibold">{student.name} (고{student.grade})</p>

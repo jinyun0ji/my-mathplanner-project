@@ -6,7 +6,8 @@ import {
     ClassTab,      // 강의실 목록 (새로 추가됨)
     ScheduleTab, 
     LearningTab,   // 학습관리 (새로 추가됨: 과제/성적/클리닉 통합)
-    MenuTab 
+    MenuTab,
+    BoardTab
 } from '../components/StudentTabs';
 
 import ClassroomView from './student/ClassroomView';
@@ -151,6 +152,8 @@ export default function StudentHome({
                                 clinicLogs={clinicLogs}
                             />
                         )}
+                        {/* ✅ [추가] 게시판 탭 렌더링 */}
+                        {activeTab === 'board' && <BoardTab notices={visibleNotices} />}
 
                         {/* 5. 메뉴 (더보기 + 게시판) */}
                         {activeTab === 'menu' && (
@@ -162,6 +165,7 @@ export default function StudentHome({
                                 lessonLogs={lessonLogs}
                                 onLinkToMemo={handleNavigateToMemo}
                                 notices={visibleNotices}
+                                setActiveTab={setActiveTab}
                             />
                         )}
                     </div>

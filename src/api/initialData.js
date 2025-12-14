@@ -1,12 +1,13 @@
 // src/api/initialData.js
 
+// ✅ [수정] status: '재원' -> '재원생' (코드의 필터링 조건과 일치시킴)
 export const initialStudents = [
-    { id: 1, name: '김민준', grade: '고1', school: '서울고', phone: '010-1111-2222', parentPhone: '010-9999-8888', status: '재원', registeredDate: '2025-03-01', classes: [1], consultationHistory: [], books: [1, 2] },
-    { id: 2, name: '이서연', grade: '중3', school: '서초중', phone: '010-3333-4444', parentPhone: '010-7777-6666', status: '재원', registeredDate: '2025-03-05', classes: [2], consultationHistory: [], books: [3] },
-    { id: 3, name: '박지훈', grade: '고2', school: '반포고', phone: '010-5555-6666', parentPhone: '010-5555-4444', status: '재원', registeredDate: '2025-02-20', classes: [1], consultationHistory: [], books: [1] },
-    { id: 4, name: '최지우', grade: '고1', school: '세화여고', phone: '010-7777-8888', parentPhone: '010-3333-2222', status: '재원', registeredDate: '2025-04-10', classes: [1], consultationHistory: [], books: [2] },
+    { id: 1, name: '김민준', grade: '고1', school: '서울고', phone: '010-1111-2222', parentPhone: '010-9999-8888', status: '재원생', registeredDate: '2025-03-01', classes: [1], consultationHistory: [], books: [1, 2] },
+    { id: 2, name: '이서연', grade: '중3', school: '서초중', phone: '010-3333-4444', parentPhone: '010-7777-6666', status: '재원생', registeredDate: '2025-03-05', classes: [2], consultationHistory: [], books: [3] },
+    { id: 3, name: '박지훈', grade: '고2', school: '반포고', phone: '010-5555-6666', parentPhone: '010-5555-4444', status: '재원생', registeredDate: '2025-02-20', classes: [1], consultationHistory: [], books: [1] },
+    { id: 4, name: '최지우', grade: '고1', school: '세화여고', phone: '010-7777-8888', parentPhone: '010-3333-2222', status: '재원생', registeredDate: '2025-04-10', classes: [1], consultationHistory: [], books: [2] },
     { id: 5, name: '정수민', grade: '중2', school: '경원중', phone: '010-9999-0000', parentPhone: '010-1111-0000', status: '휴원', registeredDate: '2025-01-15', classes: [], consultationHistory: [], books: [] },
-    { id: 6, name: '강동원', grade: '고3', school: '현대고', phone: '010-1234-5678', parentPhone: '010-8765-4321', status: '재원', registeredDate: '2025-05-01', classes: [1, 2], consultationHistory: [], books: [1, 3] },
+    { id: 6, name: '강동원', grade: '고3', school: '현대고', phone: '010-1234-5678', parentPhone: '010-8765-4321', status: '재원생', registeredDate: '2025-05-01', classes: [1, 2], consultationHistory: [], books: [1, 3] },
 ];
 
 // ✅ [수정] 강사 이름을 모두 '채수용'으로 통일
@@ -27,7 +28,8 @@ export const initialLessonLogs = [
     },
     { 
         id: 3, classId: 1, date: '2025-11-07', progress: '나머지정리', assignment: 'p.21~25 문제 풀이', materialUrl: 'link_to_material', 
-        iframeCode: '<iframe width="560" height="315" src="https://www.youtube.com/embed/2nkpdvSGx98?si=lZH_yw5JwOG1Tn7M" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>' 
+        // ✅ [수정] 3회차 영상 교체 (요청하신 영상)
+        iframeCode: '<iframe width="560" height="315" src="https://www.youtube.com/embed/XnZYxOyWD0c?si=hqvM7bBgY-cZZqLH" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>' 
     },
 ];
 

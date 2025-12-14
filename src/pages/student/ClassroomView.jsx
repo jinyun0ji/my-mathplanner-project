@@ -41,7 +41,7 @@ export default function ClassroomView({
     }, [viewMode, onVideoModalChange]);
 
     const [bookmarkNote, setBookmarkNote] = useState('');
-    const [isListOpen, setIsListOpen] = useState(true); // 목록 토글
+    const [isListOpen, setIsListOpen] = useState(false); // 목록 토글
 
     const handleAddBookmark = () => {
         if (!playerRef.current || !bookmarkNote.trim() || !currentLesson) return;
