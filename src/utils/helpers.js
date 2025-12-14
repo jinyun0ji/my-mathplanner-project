@@ -9,7 +9,8 @@ import {
     PlayCircle, PauseCircle, StopCircle, Volume2, VolumeX,
     Maximize, Minimize, Settings, BookOpen, PenTool,
     MapPin, Phone, Mail, Award, TrendingUp, TrendingDown, Activity,
-    Edit, List, Folder, Download // ✅ Download 추가
+    Edit, List, Folder, Download, // ✅ Download 추가
+    Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight, Link, Image, ListOrdered
 } from 'lucide-react';
 
 // Icon 컴포넌트
@@ -31,7 +32,19 @@ export const Icon = ({ name, className, ...props }) => {
         trend: TrendingUp, trendingUp: TrendingUp, trendingDown: TrendingDown, 
         list: Activity, school: Home, pin: MapPin,
         edit: Edit, schedule: List, folder: Folder,
-        download: Download, video: Video // ✅ video, download 매핑 추가
+        download: Download, video: Video, // ✅ video, download 매핑 추가
+
+        // ✅ [추가] 텍스트 에디터 아이콘 매핑
+        bold: Bold,
+        italic: Italic,
+        underline: Underline,
+        alignLeft: AlignLeft,
+        alignCenter: AlignCenter,
+        alignRight: AlignRight,
+        link: Link,
+        image: Image,
+        listOrdered: ListOrdered,
+        listBullet: List // 기존 List 아이콘 재사용
     };
     
     const LucideIcon = icons[name] || Home;
