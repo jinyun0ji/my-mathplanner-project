@@ -8,7 +8,7 @@ import {
     Search, Filter, MoreVertical, Plus, Trash2,
     PlayCircle, PauseCircle, StopCircle, Volume2, VolumeX,
     Maximize, Minimize, Settings, BookOpen, PenTool,
-    MapPin, Phone, Mail, Award, TrendingUp, Activity
+    MapPin, Phone, Mail, Award, TrendingUp, TrendingDown, Activity // ✅ TrendingDown 추가
 } from 'lucide-react';
 
 // Icon 컴포넌트
@@ -26,10 +26,11 @@ export const Icon = ({ name, className, ...props }) => {
         volume: Volume2, mute: VolumeX, fullscreen: Maximize, exitFullscreen: Minimize,
         settings: Settings, book: BookOpen, pen: PenTool,
         mapPin: MapPin, phone: Phone, mail: Mail, award: Award,
-        trend: TrendingUp, list: Activity, school: Home, pin: MapPin
+        // ✅ [수정] 아이콘 매핑 추가
+        trend: TrendingUp, trendingUp: TrendingUp, trendingDown: TrendingDown, 
+        list: Activity, school: Home, pin: MapPin
     };
     
-    // 매핑되지 않은 이름이 들어오면 Home 아이콘이 뜨도록 fallback 처리
     const LucideIcon = icons[name] || Home;
     return <LucideIcon className={className} {...props} />;
 };

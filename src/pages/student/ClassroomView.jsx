@@ -10,7 +10,9 @@ export default function ClassroomView({
     videoProgress, onSaveVideoProgress,
     videoBookmarks, onSaveBookmark,
     onVideoModalChange, 
-    targetMemo, onClearTargetMemo 
+    targetMemo, onClearTargetMemo,
+    homeworkAssignments, homeworkResults,
+    tests, grades // ✅ [추가] 성적 데이터 받기
 }) {
     const selectedClass = classes.find(c => c.id === selectedClassId);
     
@@ -23,6 +25,7 @@ export default function ClassroomView({
     const [viewMode, setViewMode] = useState('list');
     const [currentLesson, setCurrentLesson] = useState(null);
     const playerRef = useRef(null);
+    const [isAttendanceDetailOpen, setIsAttendanceDetailOpen] = useState(false);
 
     useEffect(() => {
         if (targetMemo && targetMemo.lessonId) {
@@ -41,7 +44,39 @@ export default function ClassroomView({
     }, [viewMode, onVideoModalChange]);
 
     const [bookmarkNote, setBookmarkNote] = useState('');
-    const [isListOpen, setIsListOpen] = useState(false); // 목록 토글
+    const [isListOpen, setIsListOpen] = useState(false); 
+
+    // --- 통계 계산 로직 ---
+    const stats = useMemo(() => {
+        // 1. 출결
+        const myAttendance = attendanceLogs.filter(log => log.classId === selectedClassId && log.studentId === studentId);
+        const presentCount = myAttendance.filter(l => ['출석', '동영상보강'].includes(l.status)).length;
+        const lateCount = myAttendance.filter(l => l.status === '지각').length;
+        const absentCount = myAttendance.filter(l => l.status === '결석').length;
+        const totalAttendance = myAttendance.length;
+        
+        // 2. 과제
+        const classHomeworks = homeworkAssignments.filter(h => h.classId === selectedClassId);
+        const submittedHomeworks = classHomeworks.filter(h => {
+            const result = homeworkResults?.[studentId]?.[h.id];
+            return result && Object.keys(result).length > 0;
+        });
+        const homeworkRate = classHomeworks.length > 0 ? Math.round((submittedHomeworks.length / classHomeworks.length) * 100) : 0;
+
+        // 3. ✅ [수정] 성적 평균 계산 (진도율 대체)
+        let averageScore = 0;
+        if (tests && grades) {
+            const classTests = tests.filter(t => t.classId === selectedClassId);
+            const myScores = classTests.map(t => grades[studentId]?.[t.id]?.score).filter(s => s !== undefined && s !== null);
+            averageScore = myScores.length > 0 ? Math.round(myScores.reduce((a, b) => a + b, 0) / myScores.length) : 0;
+        }
+
+        return {
+            attendance: { present: presentCount, late: lateCount, absent: absentCount, total: totalAttendance, logs: myAttendance },
+            homework: { rate: homeworkRate, submitted: submittedHomeworks.length, total: classHomeworks.length },
+            grade: { average: averageScore } // ✅ 성적 데이터
+        };
+    }, [attendanceLogs, selectedClassId, studentId, homeworkAssignments, homeworkResults, sortedLogs, videoProgress, tests, grades]);
 
     const handleAddBookmark = () => {
         if (!playerRef.current || !bookmarkNote.trim() || !currentLesson) return;
@@ -52,9 +87,7 @@ export default function ClassroomView({
     };
 
     const handleSeekToBookmark = (time) => {
-        if (playerRef.current) {
-            playerRef.current.seekTo(time);
-        }
+        if (playerRef.current) playerRef.current.seekTo(time);
     };
 
     const handleWatchedTick = (addedSeconds, currentTime, duration) => {
@@ -63,9 +96,7 @@ export default function ClassroomView({
         const newAccumulated = (prevData.accumulated || 0) + addedSeconds;
         const newPercent = Math.min(100, Math.floor((newAccumulated / duration) * 100));
         onSaveVideoProgress(studentId, currentLesson.id, {
-            percent: newPercent,
-            seconds: currentTime,
-            accumulated: newAccumulated
+            percent: newPercent, seconds: currentTime, accumulated: newAccumulated
         });
     };
 
@@ -84,10 +115,9 @@ export default function ClassroomView({
 
     const currentVideoId = getVideoIdFromLog(currentLesson);
 
-    // 1. 강의 목록 뷰
     if (viewMode === 'list') {
         return (
-            <div className="animate-fade-in-up pb-20 space-y-6">
+            <div className="animate-fade-in-up pb-20 space-y-6 relative">
                 <div className="flex items-center gap-3">
                     <button onClick={() => setSelectedClassId(null)} className="p-2 bg-white rounded-xl text-gray-600 hover:bg-gray-100 transition-colors shadow-sm">
                         <Icon name="chevronLeft" className="w-6 h-6" /> 
@@ -98,12 +128,36 @@ export default function ClassroomView({
                     </div>
                 </div>
 
+                {/* ✅ 클래스 요약 블록 (대시보드) */}
+                <div className="grid grid-cols-3 gap-3">
+                    {/* 1. 출결 요약 */}
+                    <button onClick={() => setIsAttendanceDetailOpen(true)} className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center justify-center active:scale-95 transition-transform">
+                        <div className="bg-indigo-50 p-2 rounded-full mb-2 text-indigo-600"><Icon name="user" className="w-5 h-5" /></div>
+                        <span className="text-xs text-gray-500 font-bold mb-0.5">내 출결</span>
+                        <span className="text-lg font-extrabold text-gray-900">{stats.attendance.present} <span className="text-gray-400 text-xs font-medium">/ {stats.attendance.total}</span></span>
+                        {stats.attendance.absent > 0 && <span className="text-[10px] text-red-500 font-bold mt-1">결석 {stats.attendance.absent}</span>}
+                    </button>
+
+                    {/* 2. 과제 요약 */}
+                    <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center justify-center">
+                        <div className="bg-green-50 p-2 rounded-full mb-2 text-green-600"><Icon name="fileText" className="w-5 h-5" /></div>
+                        <span className="text-xs text-gray-500 font-bold mb-0.5">과제 제출</span>
+                        <span className="text-lg font-extrabold text-gray-900">{stats.homework.rate}%</span>
+                        <span className="text-[10px] text-gray-400 mt-1">{stats.homework.submitted} / {stats.homework.total} 완료</span>
+                    </div>
+
+                    {/* 3. ✅ [수정] 내 성적 (평균 점수) */}
+                    <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center justify-center">
+                        <div className="bg-orange-50 p-2 rounded-full mb-2 text-orange-600"><Icon name="award" className="w-5 h-5" /></div>
+                        <span className="text-xs text-gray-500 font-bold mb-0.5">내 성적</span>
+                        <span className="text-lg font-extrabold text-gray-900">{stats.grade.average}점</span>
+                        <span className="text-[10px] text-gray-400 mt-1">반 평균</span>
+                    </div>
+                </div>
+
                 <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
                     <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-                        <h3 className="font-bold text-gray-800 flex items-center gap-2">
-                            <Icon name="list" className="w-5 h-5 text-indigo-600" />
-                            강의 목록 ({sortedLogs.length})
-                        </h3>
+                        <h3 className="font-bold text-gray-800 flex items-center gap-2"><Icon name="list" className="w-5 h-5 text-indigo-600" />강의 목록 ({sortedLogs.length})</h3>
                     </div>
                     <div className="divide-y divide-gray-100">
                         {sortedLogs.length > 0 ? sortedLogs.map(log => {
@@ -119,84 +173,57 @@ export default function ClassroomView({
                                         <h4 className="text-base font-bold text-gray-800 group-hover:text-indigo-900 truncate">{log.progress}</h4>
                                         <p className="text-xs text-gray-500 mt-1 truncate">{log.assignment}</p>
                                     </div>
-                                    <div className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center text-gray-300 group-hover:bg-indigo-100 group-hover:text-indigo-600 transition-all">
-                                        <PlayCircleFilledWhiteIcon className="w-6 h-6" />
-                                    </div>
+                                    <div className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center text-gray-300 group-hover:bg-indigo-100 group-hover:text-indigo-600 transition-all"><PlayCircleFilledWhiteIcon className="w-6 h-6" /></div>
                                 </div>
                             );
                         }) : (<div className="p-10 text-center text-gray-400 text-sm">등록된 강의가 없습니다.</div>)}
                     </div>
                 </div>
+
+                {isAttendanceDetailOpen && (
+                    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => setIsAttendanceDetailOpen(false)}>
+                        <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl animate-fade-in-up max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+                            <div className="flex justify-between items-center mb-4 pb-4 border-b border-gray-100">
+                                <h3 className="text-lg font-bold text-gray-900">출결 상세 기록</h3>
+                                <button onClick={() => setIsAttendanceDetailOpen(false)}><Icon name="x" className="w-5 h-5 text-gray-400" /></button>
+                            </div>
+                            <div className="overflow-y-auto flex-1 custom-scrollbar space-y-2">
+                                {stats.attendance.logs.length > 0 ? (
+                                    stats.attendance.logs.sort((a,b) => new Date(b.date) - new Date(a.date)).map(log => (
+                                        <div key={log.id} className="flex justify-between items-center p-3 rounded-xl bg-gray-50 border border-gray-100">
+                                            <span className="text-sm font-medium text-gray-600">{log.date}</span>
+                                            <span className={`text-xs font-bold px-2 py-1 rounded ${log.status === '출석' ? 'bg-green-100 text-green-700' : log.status === '지각' ? 'bg-yellow-100 text-yellow-700' : log.status === '동영상보강' ? 'bg-blue-100 text-blue-700' : 'bg-red-100 text-red-700'}`}>{log.status}</span>
+                                        </div>
+                                    ))
+                                ) : (<div className="text-center py-10 text-gray-400 text-sm">기록된 출결이 없습니다.</div>)}
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
         );
     }
 
-    // 2. 플레이어 뷰
+    // 2. 플레이어 뷰 (기존 유지)
     return (
         <div className="fixed inset-0 z-50 bg-white flex flex-col animate-fade-in-up">
-            {/* 상단 헤더 */}
             <div className="flex-none h-14 flex items-center gap-3 px-4 border-b border-gray-200 bg-white shadow-sm z-20">
-                <button onClick={() => { setViewMode('list'); onClearTargetMemo(); }} className="p-2 bg-gray-100 rounded-lg text-gray-600 hover:bg-gray-200 transition-colors">
-                    <Icon name="chevronLeft" className="w-5 h-5" /> 
-                </button>
-                <div className="flex-1 min-w-0">
-                    <h2 className="text-base font-bold text-gray-900 truncate">
-                        <span className="text-indigo-600 mr-2">[{currentLesson?.date}]</span>
-                        {currentLesson?.progress}
-                    </h2>
-                </div>
+                <button onClick={() => { setViewMode('list'); onClearTargetMemo(); }} className="p-2 bg-gray-100 rounded-lg text-gray-600 hover:bg-gray-200 transition-colors"><Icon name="chevronLeft" className="w-5 h-5" /></button>
+                <div className="flex-1 min-w-0"><h2 className="text-base font-bold text-gray-900 truncate"><span className="text-indigo-600 mr-2">[{currentLesson?.date}]</span>{currentLesson?.progress}</h2></div>
             </div>
-
-            {/* 메인 컨텐츠 */}
             <div className="flex-1 flex flex-col lg:flex-row overflow-hidden bg-black">
-                {/* 왼쪽: 영상 영역 */}
                 <div className="flex-1 flex flex-col overflow-hidden bg-gray-50 lg:border-r lg:border-gray-200 relative">
-                    
-                    {/* ✅ [수정] 영상 컨테이너: flex로 꽉 채우되 비율 유지 (잘림 방지) */}
                     <div className="flex-1 min-h-0 bg-black flex items-center justify-center w-full">
                         {currentVideoId ? (
-                            // max-w, max-h, aspect-video 조합으로 화면 안에 쏙 들어오게 함
-                            <div className="w-full h-full max-w-full max-h-full aspect-video flex items-center justify-center">
-                                <YouTubePlayer
-                                    ref={playerRef}
-                                    videoId={currentVideoId}
-                                    initialSeconds={targetMemo?.time || progressData.seconds} 
-                                    onWatchedTick={handleWatchedTick}
-                                />
-                            </div>
-                        ) : (
-                            <div className="flex flex-col items-center justify-center text-gray-500">
-                                <Icon name="monitor" className="w-12 h-12 mb-2 opacity-50" />
-                                <p>재생할 영상이 없습니다.</p>
-                            </div>
-                        )}
+                            <div className="w-full h-full max-w-full max-h-full aspect-video flex items-center justify-center"><YouTubePlayer ref={playerRef} videoId={currentVideoId} initialSeconds={targetMemo?.time || progressData.seconds} onWatchedTick={handleWatchedTick} /></div>
+                        ) : (<div className="flex flex-col items-center justify-center text-gray-500"><Icon name="monitor" className="w-12 h-12 mb-2 opacity-50" /><p>재생할 영상이 없습니다.</p></div>)}
                     </div>
-
-                    {/* ✅ [수정] 하단 컨트롤바 + 수강률 배지 이동 */}
                     <div className="bg-white border-b border-gray-200 shrink-0 z-10">
                         <div className="px-4 py-3 flex justify-between items-center">
-                            
-                            {/* 수강률 배지 (디자인 유지, 위치 변경) */}
-                            <div className="bg-gray-900 px-4 py-1.5 rounded-full flex items-center gap-3 shadow-sm border border-gray-200">
-                                <span className="text-xs text-gray-300 font-medium">내 수강률</span>
-                                <div className="w-20 bg-gray-700 rounded-full h-1.5 overflow-hidden">
-                                    <div className={`h-full rounded-full transition-all duration-500 ${progressData.percent >= 100 ? 'bg-green-500' : 'bg-indigo-500'}`} style={{ width: `${progressData.percent}%` }}></div>
-                                </div>
-                                <span className={`text-xs font-bold font-mono ${progressData.percent >= 100 ? 'text-green-400' : 'text-white'}`}>{progressData.percent}%</span>
-                            </div>
-
-                            {/* 강의 목록 토글 버튼 */}
-                            <button 
-                                onClick={() => setIsListOpen(!isListOpen)}
-                                className="flex items-center gap-1 text-sm font-bold text-gray-600 hover:text-indigo-900 transition-colors bg-gray-100 px-3 py-1.5 rounded-lg hover:bg-gray-200"
-                            >
-                                {isListOpen ? '목록 닫기' : '다른 강의'}
-                                <Icon name={isListOpen ? "chevronDown" : "chevronUp"} className="w-4 h-4" />
-                            </button>
+                            <div className="bg-gray-900 px-4 py-1.5 rounded-full flex items-center gap-3 shadow-sm border border-gray-200"><span className="text-xs text-gray-300 font-medium">내 수강률</span><div className="w-20 bg-gray-700 rounded-full h-1.5 overflow-hidden"><div className={`h-full rounded-full transition-all duration-500 ${progressData.percent >= 100 ? 'bg-green-500' : 'bg-indigo-500'}`} style={{ width: `${progressData.percent}%` }}></div></div><span className={`text-xs font-bold font-mono ${progressData.percent >= 100 ? 'text-green-400' : 'text-white'}`}>{progressData.percent}%</span></div>
+                            <button onClick={() => setIsListOpen(!isListOpen)} className="flex items-center gap-1 text-sm font-bold text-gray-600 hover:text-indigo-900 transition-colors bg-gray-100 px-3 py-1.5 rounded-lg hover:bg-gray-200">{isListOpen ? '목록 닫기' : '다른 강의'}<Icon name={isListOpen ? "chevronDown" : "chevronUp"} className="w-4 h-4" /></button>
                         </div>
                     </div>
-
-                    {/* 강의 목록 (토글됨) */}
                     {isListOpen && (
                         <div className="h-48 lg:h-1/3 flex-none overflow-y-auto p-4 custom-scrollbar bg-white border-t border-gray-100">
                             <div className="space-y-2">
@@ -204,20 +231,8 @@ export default function ClassroomView({
                                     const logProgress = videoProgress?.[studentId]?.[log.id]?.percent || 0;
                                     const isSelected = currentLesson?.id === log.id;
                                     return (
-                                        <div 
-                                            key={log.id} 
-                                            onClick={() => { setCurrentLesson(log); onClearTargetMemo(); }}
-                                            className={`p-3 rounded-xl cursor-pointer transition-all flex justify-between items-center ${isSelected ? 'bg-indigo-50 border border-indigo-200' : 'bg-white border border-gray-100 hover:bg-gray-50'}`}
-                                        >
-                                            <div className="min-w-0 flex-1 mr-3">
-                                                <div className="flex items-center gap-2 mb-1">
-                                                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${logProgress >= 100 ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
-                                                        {logProgress >= 100 ? '완료' : `${Math.round(logProgress)}%`}
-                                                    </span>
-                                                    <span className="text-xs text-gray-400">{log.date}</span>
-                                                </div>
-                                                <h4 className={`text-sm font-bold truncate ${isSelected ? 'text-indigo-900' : 'text-gray-700'}`}>{log.progress}</h4>
-                                            </div>
+                                        <div key={log.id} onClick={() => { setCurrentLesson(log); onClearTargetMemo(); }} className={`p-3 rounded-xl cursor-pointer transition-all flex justify-between items-center ${isSelected ? 'bg-indigo-50 border border-indigo-200' : 'bg-white border border-gray-100 hover:bg-gray-50'}`}>
+                                            <div className="min-w-0 flex-1 mr-3"><div className="flex items-center gap-2 mb-1"><span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${logProgress >= 100 ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>{logProgress >= 100 ? '완료' : `${Math.round(logProgress)}%`}</span><span className="text-xs text-gray-400">{log.date}</span></div><h4 className={`text-sm font-bold truncate ${isSelected ? 'text-indigo-900' : 'text-gray-700'}`}>{log.progress}</h4></div>
                                             {isSelected && <Icon name="play" className="w-4 h-4 text-indigo-500 flex-shrink-0" />}
                                         </div>
                                     );
@@ -226,8 +241,6 @@ export default function ClassroomView({
                         </div>
                     )}
                 </div>
-
-                {/* 오른쪽: 메모 및 북마크 */}
                 <div className="w-full lg:w-[400px] flex flex-col bg-white h-[40%] lg:h-full flex-shrink-0 border-t lg:border-t-0 lg:border-l border-gray-200">
                     <div className="flex border-b border-gray-200 bg-gray-50">
                         <div className="flex-1 py-3 text-center text-sm font-bold text-indigo-600 border-b-2 border-indigo-600 bg-white">학습 메모</div>
@@ -235,11 +248,7 @@ export default function ClassroomView({
                     </div>
                     <div className="p-4 border-b border-gray-100 bg-white">
                         <div className="flex gap-2">
-                            <input 
-                                type="text" value={bookmarkNote} onChange={(e) => setBookmarkNote(e.target.value)} placeholder="중요한 내용 메모하기..."
-                                className="flex-1 bg-gray-50 border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all"
-                                onKeyPress={(e) => e.key === 'Enter' && handleAddBookmark()}
-                            />
+                            <input type="text" value={bookmarkNote} onChange={(e) => setBookmarkNote(e.target.value)} placeholder="중요한 내용 메모하기..." className="flex-1 bg-gray-50 border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all" onKeyPress={(e) => e.key === 'Enter' && handleAddBookmark()} />
                             <button onClick={handleAddBookmark} className="bg-indigo-600 hover:bg-indigo-700 text-white p-2.5 rounded-xl transition-colors shadow-sm flex-shrink-0"><Icon name="plus" className="w-5 h-5" /></button>
                         </div>
                     </div>

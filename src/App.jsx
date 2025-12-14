@@ -233,6 +233,23 @@ export default function App() {
     }, []);
 
   // ... (기존 CRUD 함수들) ...
+
+  // ✅ [추가] 학생에게 개별 알림(공지) 전송 함수
+  const handleSendStudentNotification = (studentId, title, content) => {
+      const newNotice = {
+          id: Date.now(),
+          author: '알림봇',
+          date: new Date().toISOString().slice(0, 10),
+          title: title,
+          content: content,
+          isPinned: false,
+          targetStudents: [studentId], // 특정 학생 지정
+          attachments: []
+      };
+      setAnnouncements(prev => [newNotice, ...prev]); // 공지사항 목록에 추가
+      logNotification('success', '알림 전송', '학생에게 알림을 보냈습니다.'); // 직원용 피드백
+  };
+
   const handleSaveClass = (classData, isEdit) => {
     setClasses(prev => isEdit ? prev.map(c => c.id === classData.id ? { ...c, ...classData } : c) : [...prev, { ...classData, id: prev.reduce((max, c) => Math.max(max, c.id), 0) + 1, students: [] }]);
     if(!isEdit) logNotification('success', '클래스 등록 성공', `${classData.name} 클래스가 새로 등록되었습니다.`);
@@ -545,7 +562,8 @@ export default function App() {
     calculateClassSessions, selectedStudentId, handlePageChange, logNotification, notifications, 
     calculateGradeComparison, calculateHomeworkStats,
     setIsGlobalDirty,
-    studentSearchTerm, setStudentSearchTerm 
+    studentSearchTerm, setStudentSearchTerm,
+    handleSendStudentNotification
   };
 
   return (

@@ -6,7 +6,7 @@ import VideoProgressViewer from '../components/Shared/VideoProgressViewer';
 
 export default function LessonManagement({ 
     students, classes, lessonLogs, handleSaveLessonLog, handleDeleteLessonLog, 
-    handleSaveClass, videoProgress, attendanceLogs, calculateClassSessions, logNotification 
+    handleSaveClass, videoProgress, attendanceLogs, calculateClassSessions, logNotification, handleSendStudentNotification
 }) {
     const [selectedClassId, setSelectedClassId] = useState(classes[0]?.id || null);
     const [isLogModalOpen, setIsLogModalOpen] = useState(false);
@@ -176,13 +176,15 @@ export default function LessonManagement({
                                     </div>
                                 )}
 
-                                {/* 동영상 보강 현황 (로그가 있을 경우에만 표시) */}
+                                {/* 동영상 보강 현황 */}
                                 {currentLog.iframeCode && (
                                     <VideoProgressViewer 
                                         log={currentLog} 
                                         students={students} 
                                         videoProgress={videoProgress} 
                                         attendanceLogs={attendanceLogs} 
+                                        logNotification={logNotification}
+                                        handleSendStudentNotification={handleSendStudentNotification} // ✅ [추가] 전달
                                     />
                                 )}
 

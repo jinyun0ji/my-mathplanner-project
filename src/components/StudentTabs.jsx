@@ -11,7 +11,7 @@ const ModalPortal = ({ children }) => {
     return createPortal(children, el);
 };
 
-// 1. DashboardTab
+// 1. DashboardTab (수정: 출결 경고 추가)
 export const DashboardTab = ({ student, myClasses, attendanceLogs, clinicLogs, homeworkStats, notices, setActiveTab }) => {
     const today = new Date();
     const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
@@ -20,11 +20,50 @@ export const DashboardTab = ({ student, myClasses, attendanceLogs, clinicLogs, h
     const todayClasses = myClasses.filter(cls => cls.schedule.days.includes(todayDayName));
     const todayClinics = clinicLogs.filter(log => log.studentId === student.id && log.date === todayStr && !log.checkOut);
 
+    // ✅ [New] 출결 경고 로직
+    // 1) 최근 7일 이내 '결석' 기록이 있는지 확인
+    // 2) 혹은 전체 출석률이 80% 미만인지 확인
+    const attendanceAlerts = myClasses.map(cls => {
+        const clsLogs = attendanceLogs.filter(l => l.classId === cls.id && l.studentId === student.id);
+        if (clsLogs.length === 0) return null;
+
+        const absentCount = clsLogs.filter(l => l.status === '결석').length;
+        const recentAbsent = clsLogs.find(l => {
+            const logDate = new Date(l.date);
+            const diffTime = Math.abs(today - logDate);
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+            return l.status === '결석' && diffDays <= 7;
+        });
+
+        const rate = Math.round((clsLogs.filter(l => ['출석','동영상보강'].includes(l.status)).length / clsLogs.length) * 100);
+
+        if (recentAbsent) return { type: 'absent', class: cls.name, msg: '최근 결석이 발생했습니다.' };
+        if (rate < 80) return { type: 'rate', class: cls.name, msg: `출석률이 낮습니다 (${rate}%)` };
+        return null;
+    }).filter(Boolean);
+
     return (
         <div className="space-y-6 pb-6 animate-fade-in-up">
             <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100 flex justify-between items-center relative overflow-hidden">
                 <div className="relative z-10"><p className="text-gray-500 text-sm font-medium mb-1">{today.getMonth()+1}월 {today.getDate()}일 {todayDayName}요일</p><h2 className="text-2xl font-bold text-gray-900">반가워요, <span className="text-brand-main">{student.name}</span>님! 👋</h2></div><div className="w-12 h-12 bg-brand-bg rounded-full flex items-center justify-center text-2xl relative z-10">🎓</div>
             </div>
+
+            {/* ✅ [New] 출결 경고 배너 */}
+            {attendanceAlerts.length > 0 && (
+                <div className="space-y-2">
+                    {attendanceAlerts.map((alert, idx) => (
+                        <div key={idx} onClick={() => setActiveTab('class')} className="bg-red-50 border border-red-100 p-3 rounded-xl flex items-center gap-3 cursor-pointer">
+                            <div className="bg-white p-1.5 rounded-full text-red-500 shadow-sm"><Icon name="alertCircle" className="w-5 h-5" /></div>
+                            <div className="flex-1">
+                                <p className="text-xs text-red-500 font-bold">{alert.class}</p>
+                                <p className="text-sm font-bold text-gray-800">{alert.msg}</p>
+                            </div>
+                            <Icon name="chevronRight" className="w-4 h-4 text-red-300" />
+                        </div>
+                    ))}
+                </div>
+            )}
+
             <div>
                 <h3 className="text-lg font-bold text-gray-800 mb-3 px-1 flex items-center"><Icon name="calendar" className="w-5 h-5 mr-2 text-brand-main" />오늘의 일정</h3>
                 {todayClasses.length === 0 && todayClinics.length === 0 ? (
@@ -33,21 +72,12 @@ export const DashboardTab = ({ student, myClasses, attendanceLogs, clinicLogs, h
                     <div className="space-y-3">
                         {todayClasses.map(cls => (
                             <div key={cls.id} className="bg-indigo-50 p-5 rounded-2xl border border-indigo-100 flex justify-between items-center">
-                                <div>
-                                    <span className="text-xs font-bold text-indigo-600 bg-white px-2 py-0.5 rounded border border-indigo-200 mb-2 inline-block">정규 수업</span>
-                                    <h4 className="font-bold text-indigo-900 text-lg">{cls.name}</h4>
-                                    <p className="text-sm text-indigo-700 mt-0.5">{cls.schedule.time} | {cls.teacher} 선생님</p>
-                                </div>
-                                <Icon name="chevronRight" className="text-indigo-400" />
+                                <div><span className="text-xs font-bold text-indigo-600 bg-white px-2 py-0.5 rounded border border-indigo-200 mb-2 inline-block">정규 수업</span><h4 className="font-bold text-indigo-900 text-lg">{cls.name}</h4><p className="text-sm text-indigo-700 mt-0.5">{cls.schedule.time} | {cls.teacher} 선생님</p></div><Icon name="chevronRight" className="text-indigo-400" />
                             </div>
                         ))}
                         {todayClinics.map(clinic => (
                             <div key={clinic.id} className="bg-teal-50 p-5 rounded-2xl border border-teal-100 flex justify-between items-center">
-                                <div>
-                                    <span className="text-xs font-bold text-teal-600 bg-white px-2 py-0.5 rounded border border-teal-200 mb-2 inline-block">클리닉</span>
-                                    <h4 className="font-bold text-teal-900 text-lg">학습 클리닉</h4>
-                                    <p className="text-sm text-teal-700 mt-0.5">{clinic.checkIn} 입실 예정</p>
-                                </div>
+                                <div><span className="text-xs font-bold text-teal-600 bg-white px-2 py-0.5 rounded border border-teal-200 mb-2 inline-block">클리닉</span><h4 className="font-bold text-teal-900 text-lg">학습 클리닉</h4><p className="text-sm text-teal-700 mt-0.5">{clinic.checkIn} 입실 예정</p></div>
                             </div>
                         ))}
                     </div>
@@ -242,39 +272,168 @@ export const HomeworkTab = ({ myHomeworkStats }) => {
     );
 };
 
-// 7. GradesTab
+// ✅ [수정] GradesTab (신규 디자인: 리스트 -> 전체화면 상세)
 export const GradesTab = ({ myGradeComparison }) => {
-    const [selectedTestId, setSelectedTestId] = useState(null); 
-    const toggleTestDetails = (id) => setSelectedTestId(selectedTestId === id ? null : id);
+    const [selectedGrade, setSelectedGrade] = useState(null);
 
-    return (
-        <div className="space-y-4">
-            {myGradeComparison.length === 0 ? <div className="text-center py-10 text-gray-400 text-sm bg-white rounded-2xl border border-dashed border-gray-200">등록된 성적이 없습니다.</div> : 
-            myGradeComparison.map((item, idx) => (
-                <div key={idx} onClick={() => toggleTestDetails(item.testId)} className={`bg-white p-5 rounded-2xl shadow-sm border border-gray-100 cursor-pointer ${selectedTestId === item.testId ? 'ring-2 ring-indigo-500' : ''}`}>
-                    <div className="flex justify-between items-start mb-3">
-                        <div><span className="text-xs text-gray-400 font-medium block mb-0.5">{item.testDate}</span><h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">{item.testName}<span className="text-[10px] text-brand-main bg-brand-light/30 px-1.5 py-0.5 rounded border border-brand-light">{item.className}</span></h3></div><div className="text-right"><span className="text-2xl font-bold text-brand-main">{item.studentScore}</span><span className="text-gray-400 text-xs"> / {item.maxScore}</span></div>
+    // Detail View (Full Screen Overlay)
+    if (selectedGrade) {
+        return (
+            <div className="fixed inset-0 z-50 bg-gray-50 flex flex-col animate-fade-in-up">
+                {/* Header */}
+                <div className="flex-none h-14 flex items-center gap-3 px-4 border-b border-gray-200 bg-white shadow-sm">
+                    <button onClick={() => setSelectedGrade(null)} className="p-2 bg-gray-100 rounded-lg text-gray-600 hover:bg-gray-200">
+                        <Icon name="chevronLeft" className="w-5 h-5" />
+                    </button>
+                    <h2 className="text-base font-bold text-gray-900 truncate">성적 상세 분석</h2>
+                </div>
+
+                <div className="flex-1 overflow-y-auto custom-scrollbar p-4">
+                    {/* Summary Section */}
+                    <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 mb-6 text-center">
+                        <span className="text-sm text-gray-500 font-bold bg-gray-100 px-2 py-1 rounded mb-2 inline-block">{selectedGrade.testDate} 시행</span>
+                        <h3 className="text-xl font-bold text-gray-900 mb-1">{selectedGrade.testName}</h3>
+                        <div className="py-4">
+                            <span className="text-5xl font-extrabold text-indigo-600">{selectedGrade.studentScore}</span>
+                            <span className="text-gray-400 text-xl font-medium"> / {selectedGrade.maxScore}</span>
+                        </div>
+                        <div className="flex justify-center gap-2">
+                            <span className={`text-sm font-bold px-3 py-1 rounded-full ${selectedGrade.isAboveAverage ? 'bg-green-100 text-green-700' : 'bg-red-50 text-red-600'}`}>
+                                {selectedGrade.isAboveAverage ? '▲' : '▼'} 평균보다 {Math.abs(selectedGrade.scoreDifference)}점 {selectedGrade.isAboveAverage ? '높음' : '낮음'}
+                            </span>
+                        </div>
                     </div>
-                    {/* ✅ [삭제] 나의 정답률 UI 제거 */}
-                    <div className="bg-gray-50 p-3 rounded-xl text-xs text-gray-800 mb-2">{item.isAboveAverage ? (<p>🎉 평균보다 <span className="font-bold text-green-600">{item.scoreDifference}점</span> 높아요!</p>) : (<p>🔥 평균까지 <span className="font-bold text-brand-main">{Math.abs(item.scoreDifference)}점</span>! 힘내요!</p>)}</div>
-                    {selectedTestId === item.testId && (
-                        <div className="mt-4 pt-4 border-t border-gray-100 animate-fade-in-down">
-                            <h4 className="text-sm font-bold text-gray-900 mb-3">문항별 상세 분석</h4>
-                            <div className="grid grid-cols-6 gap-2 text-center text-[10px] font-bold text-gray-500 bg-gray-100 p-2 rounded-t-lg"><span>번호</span><span>결과</span><span>배점</span><span>유형</span><span>난이도</span><span>전체 정답률</span></div>
-                            <div className="max-h-60 overflow-y-auto custom-scrollbar">
-                                {item.questions.map((q, qIdx) => (
-                                    <div key={qIdx} className="grid grid-cols-6 gap-2 text-center text-xs p-2 border-b border-gray-100 last:border-0 hover:bg-gray-50 items-center">
-                                        <span className="font-medium text-gray-900 bg-white rounded border border-gray-200 py-0.5">{q.no}</span>
-                                        <span className={`font-bold ${q.status === '맞음' || q.status === '고침' ? 'text-green-600' : q.status === '틀림' ? 'text-red-500' : 'text-yellow-600'}`}>{q.status === '맞음' || q.status === '고침' ? 'O' : q.status === '틀림' ? 'X' : '△'}</span>
-                                        <span className="text-gray-500">{q.score}</span><span className="text-gray-500">{q.type}</span><span className={`${q.difficulty === '상' ? 'text-red-500' : q.difficulty === '중' ? 'text-yellow-600' : 'text-green-500'}`}>{q.difficulty}</span>
-                                        <span className="font-bold text-indigo-600">{q.itemAccuracy}%</span>
-                                    </div>
-                                ))}
+
+                    {/* Question Analysis Section */}
+                    <QuestionAnalysisList questions={selectedGrade.questions} />
+                </div>
+            </div>
+        );
+    }
+
+    // List View (Card)
+    return (
+        <div className="space-y-4 pb-20">
+            {myGradeComparison.length === 0 ? (
+                <div className="text-center py-10 text-gray-400 text-sm bg-white rounded-2xl border border-dashed border-gray-200">
+                    등록된 성적이 없습니다.
+                </div>
+            ) : (
+                myGradeComparison.map((item, idx) => (
+                    <div 
+                        key={idx} 
+                        onClick={() => setSelectedGrade(item)} 
+                        className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 cursor-pointer active:scale-[0.98] transition-all hover:border-indigo-200"
+                    >
+                        <div className="flex justify-between items-start mb-2">
+                            <div className="flex items-center gap-2">
+                                <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">
+                                    {item.className}
+                                </span>
+                                <span className="text-xs text-gray-400">{item.testDate}</span>
                             </div>
                         </div>
-                    )}
-                </div>
-            ))}
+                        <div className="flex justify-between items-end">
+                            <div>
+                                <h3 className="text-lg font-bold text-gray-900 leading-tight mb-1">{item.testName}</h3>
+                                <div className="flex items-center gap-1 text-xs text-gray-500 font-medium">
+                                    {/* ✅ [수정] 아이콘 이름 정확히 매핑 */}
+                                    {item.isAboveAverage ? <Icon name="trendingUp" className="w-3 h-3 text-green-500" /> : <Icon name="trendingDown" className="w-3 h-3 text-red-500" />}
+                                    평균 {item.classAverage}점
+                                </div>
+                            </div>
+                            <div className="text-right">
+                                <span className="text-2xl font-extrabold text-indigo-900">{item.studentScore}</span>
+                                <span className="text-xs text-gray-400 font-medium">점</span>
+                            </div>
+                        </div>
+                    </div>
+                ))
+            )}
+        </div>
+    );
+};
+
+// ✅ [추가] Helper Component for Detail View
+const QuestionAnalysisList = ({ questions }) => {
+    const [filter, setFilter] = useState('all'); // all, wrong, hard
+
+    const filtered = questions.filter(q => {
+        if (filter === 'wrong') return q.status !== '맞음'; // 틀림, 고침 등
+        if (filter === 'hard') return q.difficulty === '상';
+        return true;
+    });
+
+    return (
+        <div>
+            {/* Filter Tabs */}
+            <div className="flex p-1 bg-gray-100 rounded-xl mb-4">
+                {['all', 'wrong', 'hard'].map(type => (
+                    <button
+                        key={type}
+                        onClick={() => setFilter(type)}
+                        className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
+                            filter === type ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-400'
+                        }`}
+                    >
+                        {type === 'all' ? '전체 문항' : type === 'wrong' ? '오답만' : '고난도'}
+                    </button>
+                ))}
+            </div>
+
+            {/* List */}
+            <div className="space-y-3">
+                {filtered.length > 0 ? filtered.map((q, i) => (
+                    <div key={i} className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+                        <div className="flex justify-between items-start mb-3">
+                            <div className="flex items-center gap-2">
+                                <span className="bg-gray-100 text-gray-600 text-xs font-bold px-2 py-1 rounded">
+                                    {q.no}번
+                                </span>
+                                <span className={`text-xs font-bold px-2 py-1 rounded flex items-center gap-1 ${
+                                    q.status === '맞음' ? 'bg-green-50 text-green-600' :
+                                    q.status === '고침' ? 'bg-yellow-50 text-yellow-600' :
+                                    'bg-red-50 text-red-600'
+                                }`}>
+                                    {q.status === '맞음' ? <Icon name="check" className="w-3 h-3" /> : 
+                                     q.status === '틀림' ? <Icon name="x" className="w-3 h-3" /> : 
+                                     <Icon name="alertCircle" className="w-3 h-3" />}
+                                    {q.status}
+                                </span>
+                            </div>
+                            <span className="text-sm font-bold text-gray-900">{q.score}점</span>
+                        </div>
+                        
+                        <div className="flex items-center gap-4 text-xs text-gray-500 mb-4">
+                            <div className="flex items-center gap-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-gray-300"></span>
+                                난이도: <span className={`font-bold ${q.difficulty === '상' ? 'text-red-500' : q.difficulty === '중' ? 'text-yellow-600' : 'text-green-500'}`}>{q.difficulty}</span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-gray-300"></span>
+                                유형: {q.type}
+                            </div>
+                            <div className="flex items-center gap-1 ml-auto">
+                                정답률 <span className="font-bold text-indigo-600">{q.itemAccuracy}%</span>
+                            </div>
+                        </div>
+
+                        {/* Actions */}
+                        <div className="grid grid-cols-2 gap-2">
+                            <button className="flex items-center justify-center gap-1 py-2 rounded-lg bg-gray-50 text-gray-600 text-xs font-bold hover:bg-gray-100 transition-colors">
+                                <Icon name="pen" className="w-3 h-3" /> 다시 풀기
+                            </button>
+                            <button className="flex items-center justify-center gap-1 py-2 rounded-lg bg-indigo-50 text-indigo-600 text-xs font-bold hover:bg-indigo-100 transition-colors">
+                                <Icon name="play" className="w-3 h-3" /> 해설 강의
+                            </button>
+                        </div>
+                    </div>
+                )) : (
+                    <div className="text-center py-8 text-gray-400 text-xs">
+                        해당하는 문항이 없습니다.
+                    </div>
+                )}
+            </div>
         </div>
     );
 };
