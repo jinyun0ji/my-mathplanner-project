@@ -12,7 +12,8 @@ export default function ClassroomView({
     onVideoModalChange, 
     targetMemo, onClearTargetMemo,
     homeworkAssignments, homeworkResults,
-    tests, grades // ✅ [추가] 성적 데이터 받기
+    tests, grades,
+    onNavigateToTab // ✅ [추가] 탭 이동 함수
 }) {
     const selectedClass = classes.find(c => c.id === selectedClassId);
     
@@ -46,7 +47,7 @@ export default function ClassroomView({
     const [bookmarkNote, setBookmarkNote] = useState('');
     const [isListOpen, setIsListOpen] = useState(false); 
 
-    // --- 통계 계산 로직 ---
+    // --- 통계 및 상태 계산 (GPT 제안 반영) ---
     const stats = useMemo(() => {
         // 1. 출결
         const myAttendance = attendanceLogs.filter(log => log.classId === selectedClassId && log.studentId === studentId);
@@ -55,28 +56,42 @@ export default function ClassroomView({
         const absentCount = myAttendance.filter(l => l.status === '결석').length;
         const totalAttendance = myAttendance.length;
         
-        // 2. 과제
+        // 2. 과제 상태 (미정리 오답 vs 미제출)
         const classHomeworks = homeworkAssignments.filter(h => h.classId === selectedClassId);
-        const submittedHomeworks = classHomeworks.filter(h => {
-            const result = homeworkResults?.[studentId]?.[h.id];
-            return result && Object.keys(result).length > 0;
+        const unsubmittedCount = classHomeworks.filter(h => {
+             const result = homeworkResults?.[studentId]?.[h.id];
+             return !result || Object.keys(result).length === 0;
+        }).length;
+        
+        let unresolvedCount = 0;
+        classHomeworks.forEach(hw => {
+            const result = homeworkResults?.[studentId]?.[hw.id];
+            if (result) unresolvedCount += Object.values(result).filter(status => status === '틀림').length;
         });
-        const homeworkRate = classHomeworks.length > 0 ? Math.round((submittedHomeworks.length / classHomeworks.length) * 100) : 0;
 
-        // 3. ✅ [수정] 성적 평균 계산 (진도율 대체)
-        let averageScore = 0;
+        // 3. 성적 상태 (상승/유지/하락/초기)
+        let gradeTrend = 'initial';
         if (tests && grades) {
-            const classTests = tests.filter(t => t.classId === selectedClassId);
+            const classTests = tests.filter(t => t.classId === selectedClassId).sort((a, b) => new Date(a.date) - new Date(b.date));
             const myScores = classTests.map(t => grades[studentId]?.[t.id]?.score).filter(s => s !== undefined && s !== null);
-            averageScore = myScores.length > 0 ? Math.round(myScores.reduce((a, b) => a + b, 0) / myScores.length) : 0;
+            
+            if (myScores.length >= 2) {
+                const latest = myScores[myScores.length - 1];
+                const prev = myScores[myScores.length - 2];
+                if (latest > prev) gradeTrend = 'up';
+                else if (latest < prev) gradeTrend = 'down';
+                else gradeTrend = 'same';
+            } else if (myScores.length === 1) {
+                gradeTrend = 'initial';
+            }
         }
 
         return {
             attendance: { present: presentCount, late: lateCount, absent: absentCount, total: totalAttendance, logs: myAttendance },
-            homework: { rate: homeworkRate, submitted: submittedHomeworks.length, total: classHomeworks.length },
-            grade: { average: averageScore } // ✅ 성적 데이터
+            homework: { unresolved: unresolvedCount, unsubmitted: unsubmittedCount },
+            grade: { trend: gradeTrend }
         };
-    }, [attendanceLogs, selectedClassId, studentId, homeworkAssignments, homeworkResults, sortedLogs, videoProgress, tests, grades]);
+    }, [attendanceLogs, selectedClassId, studentId, homeworkAssignments, homeworkResults, sortedLogs, tests, grades, videoProgress]);
 
     const handleAddBookmark = () => {
         if (!playerRef.current || !bookmarkNote.trim() || !currentLesson) return;
@@ -128,31 +143,86 @@ export default function ClassroomView({
                     </div>
                 </div>
 
-                {/* ✅ 클래스 요약 블록 (대시보드) */}
+                {/* ✅ 클래스 요약 블록 (리디자인 적용) */}
                 <div className="grid grid-cols-3 gap-3">
-                    {/* 1. 출결 요약 */}
-                    <button onClick={() => setIsAttendanceDetailOpen(true)} className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center justify-center active:scale-95 transition-transform">
-                        <div className="bg-indigo-50 p-2 rounded-full mb-2 text-indigo-600"><Icon name="user" className="w-5 h-5" /></div>
+                    
+                    {/* 1. 출결 카드 (내 출결) */}
+                    <button 
+                        onClick={() => setIsAttendanceDetailOpen(true)}
+                        className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center justify-center active:scale-95 transition-transform"
+                    >
+                        {/* 아이콘: 중립 색상 */}
+                        <div className="bg-gray-50 p-2 rounded-full mb-2 text-gray-500">
+                            <Icon name="user" className="w-5 h-5" />
+                        </div>
                         <span className="text-xs text-gray-500 font-bold mb-0.5">내 출결</span>
-                        <span className="text-lg font-extrabold text-gray-900">{stats.attendance.present} <span className="text-gray-400 text-xs font-medium">/ {stats.attendance.total}</span></span>
-                        {stats.attendance.absent > 0 && <span className="text-[10px] text-red-500 font-bold mt-1">결석 {stats.attendance.absent}</span>}
+                        {/* 메인: 출석 수 */}
+                        <span className="text-lg font-extrabold text-gray-900">
+                            {stats.attendance.present} <span className="text-gray-400 text-xs font-medium">/ {stats.attendance.total}</span>
+                        </span>
+                        {/* 서브: 결석이 있을 때만 경고색(주황) 표시 */}
+                        {(stats.attendance.absent > 0 || stats.attendance.late > 0) ? (
+                            <span className="text-[10px] text-orange-600 font-bold mt-1">
+                                결석 {stats.attendance.absent} · 지각 {stats.attendance.late}
+                            </span>
+                        ) : null}
                     </button>
 
-                    {/* 2. 과제 요약 */}
-                    <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center justify-center">
-                        <div className="bg-green-50 p-2 rounded-full mb-2 text-green-600"><Icon name="fileText" className="w-5 h-5" /></div>
-                        <span className="text-xs text-gray-500 font-bold mb-0.5">과제 제출</span>
-                        <span className="text-lg font-extrabold text-gray-900">{stats.homework.rate}%</span>
-                        <span className="text-[10px] text-gray-400 mt-1">{stats.homework.submitted} / {stats.homework.total} 완료</span>
-                    </div>
+                    {/* 2. 과제 카드 (오답 관리) */}
+                    <button 
+                        onClick={() => onNavigateToTab && onNavigateToTab('learning')}
+                        className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center justify-center active:scale-95 transition-transform"
+                    >
+                        {/* 아이콘: 연한 파랑 */}
+                        <div className="bg-blue-50 p-2 rounded-full mb-2 text-blue-600">
+                            <Icon name="fileText" className="w-5 h-5" />
+                        </div>
+                        <span className="text-xs text-gray-500 font-bold mb-0.5">오답 관리</span>
+                        
+                        {/* 메인 & 서브: 상태에 따라 다르게 표시 */}
+                        {stats.homework.unsubmitted > 0 ? (
+                            <>
+                                <span className="text-sm font-extrabold text-orange-600">과제 미제출</span>
+                                <span className="text-[10px] text-orange-500 font-bold mt-1">{stats.homework.unsubmitted}회차</span>
+                            </>
+                        ) : stats.homework.unresolved > 0 ? (
+                            <>
+                                <span className="text-sm font-extrabold text-gray-800">미정리 오답</span>
+                                <span className="text-[10px] text-orange-500 font-bold mt-1">{stats.homework.unresolved}문항</span>
+                            </>
+                        ) : (
+                            <>
+                                <span className="text-sm font-extrabold text-gray-800">오답 정리</span>
+                                <span className="text-[10px] text-green-600 font-bold mt-1">완료</span>
+                            </>
+                        )}
+                    </button>
 
-                    {/* 3. ✅ [수정] 내 성적 (평균 점수) */}
-                    <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center justify-center">
-                        <div className="bg-orange-50 p-2 rounded-full mb-2 text-orange-600"><Icon name="award" className="w-5 h-5" /></div>
-                        <span className="text-xs text-gray-500 font-bold mb-0.5">내 성적</span>
-                        <span className="text-lg font-extrabold text-gray-900">{stats.grade.average}점</span>
-                        <span className="text-[10px] text-gray-400 mt-1">반 평균</span>
-                    </div>
+                    {/* 3. 성적 카드 (성적 상태) */}
+                    <button 
+                        onClick={() => onNavigateToTab && onNavigateToTab('learning')}
+                        className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center justify-center active:scale-95 transition-transform"
+                    >
+                        {/* 아이콘: 연한 보라 */}
+                        <div className="bg-purple-50 p-2 rounded-full mb-2 text-purple-600">
+                            <Icon name="trendingUp" className="w-5 h-5" />
+                        </div>
+                        <span className="text-xs text-gray-500 font-bold mb-0.5">성적 상태</span>
+                        
+                        {/* 메인: 상태 메시지 */}
+                        {stats.grade.trend === 'initial' ? (
+                            <span className="text-sm font-bold text-gray-600">분석 중</span>
+                        ) : (
+                            <span className={`text-lg font-extrabold ${
+                                stats.grade.trend === 'up' ? 'text-indigo-600' : 
+                                stats.grade.trend === 'down' ? 'text-orange-600' : 'text-gray-700'
+                            }`}>
+                                {stats.grade.trend === 'up' ? '상승 중' : 
+                                 stats.grade.trend === 'down' ? '관리 필요' : '유지'}
+                            </span>
+                        )}
+                        <span className="text-[10px] text-gray-400 mt-1">최근 3회 기준</span>
+                    </button>
                 </div>
 
                 <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
@@ -180,6 +250,7 @@ export default function ClassroomView({
                     </div>
                 </div>
 
+                {/* 출결 상세 모달 (기존 동일) */}
                 {isAttendanceDetailOpen && (
                     <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => setIsAttendanceDetailOpen(false)}>
                         <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl animate-fade-in-up max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
@@ -204,7 +275,7 @@ export default function ClassroomView({
         );
     }
 
-    // 2. 플레이어 뷰 (기존 유지)
+    // 2. 플레이어 뷰 (기존 동일)
     return (
         <div className="fixed inset-0 z-50 bg-white flex flex-col animate-fade-in-up">
             <div className="flex-none h-14 flex items-center gap-3 px-4 border-b border-gray-200 bg-white shadow-sm z-20">

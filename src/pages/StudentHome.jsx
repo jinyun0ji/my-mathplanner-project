@@ -27,7 +27,6 @@ export default function StudentHome({
     const [hasNewNotifications, setHasNewNotifications] = useState(false);
     const [targetMemo, setTargetMemo] = useState(null);
 
-    // ... (알림 useEffect 등 기존 로직 유지) ...
     useEffect(() => {
         let newNotices = [...notices];
         const now = new Date();
@@ -92,12 +91,15 @@ export default function StudentHome({
                         onVideoModalChange={setIsVideoModalOpen}
                         targetMemo={targetMemo}
                         onClearTargetMemo={() => setTargetMemo(null)}
-                        // ✅ [추가] 클래스 요약 정보를 위해 전달
                         homeworkAssignments={homeworkAssignments}
                         homeworkResults={homeworkResults}
-                        // ✅ [추가] 성적 계산을 위해 tests와 grades 전달
                         tests={tests}
                         grades={grades}
+                        // ✅ [추가] 탭 이동 함수 전달 (카드 클릭 시 이동용)
+                        onNavigateToTab={(tab) => {
+                            setSelectedClassId(null); // 클래스 뷰 닫기
+                            setActiveTab(tab);        // 해당 탭으로 이동
+                        }}
                     />
                 ) : (
                     <div className="animate-fade-in space-y-4">
@@ -137,16 +139,8 @@ export default function StudentHome({
                 <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 z-40 pb-safe shadow-[0_-4px_10px_rgba(0,0,0,0.03)]">
                     <div className="max-w-md mx-auto flex justify-around items-center h-[60px] md:max-w-7xl">
                         {navItems.map(item => (
-                            <button 
-                                key={item.id} 
-                                onClick={() => setActiveTab(item.id)} 
-                                className={`flex flex-col items-center justify-center w-full h-full transition-all duration-200 active:scale-95 ${
-                                    activeTab === item.id || (item.id === 'menu' && activeTab === 'board') ? 'text-brand-main' : 'text-gray-400 hover:text-gray-600'
-                                }`}
-                            >
-                                <div className={`mb-1 transition-transform duration-200 ${activeTab === item.id ? '-translate-y-0.5' : ''}`}>
-                                    <Icon name={item.icon} className={`w-6 h-6 ${activeTab === item.id ? 'fill-current' : ''}`} strokeWidth={activeTab === item.id ? 2.5 : 2} />
-                                </div>
+                            <button key={item.id} onClick={() => setActiveTab(item.id)} className={`flex flex-col items-center justify-center w-full h-full transition-all duration-200 active:scale-95 ${activeTab === item.id || (item.id === 'menu' && activeTab === 'board') ? 'text-brand-main' : 'text-gray-400 hover:text-gray-600'}`}>
+                                <div className={`mb-1 transition-transform duration-200 ${activeTab === item.id ? '-translate-y-0.5' : ''}`}><Icon name={item.icon} className={`w-6 h-6 ${activeTab === item.id ? 'fill-current' : ''}`} strokeWidth={activeTab === item.id ? 2.5 : 2} /></div>
                                 <span className={`text-[10px] ${activeTab === item.id ? 'font-bold' : 'font-medium'}`}>{item.label}</span>
                             </button>
                         ))}
@@ -155,12 +149,8 @@ export default function StudentHome({
             )}
 
             <div className={`fixed bottom-20 right-4 z-[60] transition-all duration-300 ${isVideoModalOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
-                <button onClick={handleOpenNotification} className="bg-white text-brand-main border border-brand-main/20 p-3 rounded-full shadow-lg hover:bg-gray-50 active:scale-90 flex items-center justify-center relative">
-                    <NotificationsIcon style={{ fontSize: 24 }} />
-                    {hasNewNotifications && <span className="absolute top-2 right-2.5 w-2 h-2 bg-brand-red rounded-full ring-1 ring-white"></span>}
-                </button>
+                <button onClick={handleOpenNotification} className="bg-white text-brand-main border border-brand-main/20 p-3 rounded-full shadow-lg hover:bg-gray-50 active:scale-90 flex items-center justify-center relative"><NotificationsIcon style={{ fontSize: 24 }} />{hasNewNotifications && <span className="absolute top-2 right-2.5 w-2 h-2 bg-brand-red rounded-full ring-1 ring-white"></span>}</button>
             </div>
-
             <StudentMessenger studentId={studentId} teacherName="채수용 선생님" messages={messages} onSendMessage={onSendMessage} isHidden={isVideoModalOpen} bottomPosition="bottom-36" />
             <StudentNotifications isOpen={isNotificationOpen} onClose={() => setIsNotificationOpen(false)} notices={visibleNotices} onDelete={handleDeleteNotice} onNoticeClick={handleLinkToBoard} />
         </div>
