@@ -1,7 +1,16 @@
 // src/components/StudentTabs.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react'; // ✅ useMemo 추가
 import { createPortal } from 'react-dom';
-import { Icon, getWeekOfMonth, calculateDurationMinutes, formatDuration, formatTime } from '../utils/helpers';
+import { 
+    Icon, 
+    getWeekOfMonth, 
+    calculateDurationMinutes, 
+    formatDuration, 
+    formatTime,
+    calculateHomeworkStats,
+    calculateGradeComparison, // ✅ 추가
+    calculateTrendZScore      // ✅ 추가 (성적 추세 계산용)
+} from '../utils/helpers';
 import CampaignIcon from '@mui/icons-material/Campaign'; 
 import NoteAltIcon from '@mui/icons-material/NoteAlt'; 
 import TuneIcon from '@mui/icons-material/Tune'; 
@@ -11,18 +20,48 @@ const ModalPortal = ({ children }) => {
     return createPortal(children, el);
 };
 
-// 1. DashboardTab (수정: 이전 디자인 복구 + 텍스트 변경)
+// ✅ [추가] 공용 헬퍼 함수 (컴포넌트 외부로 이동)
+const getTrendStyle = (t) => {
+    if (t === 'up') return 'text-indigo-600 bg-indigo-50 border-indigo-100';
+    if (t === 'down') return 'text-orange-600 bg-orange-50 border-orange-100';
+    if (t === 'same') return 'text-gray-800 bg-gray-50 border-gray-100';
+    return 'text-gray-400 bg-gray-100 border-gray-200';
+};
+
+const getTrendText = (t) => {
+    if (t === 'up') return '상승 중 ▲';
+    if (t === 'down') return '하락 주의 ▼';
+    if (t === 'same') return '유지 중 -';
+    return '...';
+};
+
+// 1. DashboardTab
 export const DashboardTab = ({ student, myClasses, attendanceLogs, clinicLogs, homeworkStats, notices, setActiveTab }) => {
     const today = new Date();
     const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
     const todayDayName = dayNames[today.getDay()];
     const todayStr = today.toISOString().split('T')[0];
 
-    // 오늘의 수업 및 클리닉 필터링
     const todayClasses = myClasses.filter(cls => cls.schedule.days.includes(todayDayName));
     const todayClinics = clinicLogs.filter(log => log.studentId === student.id && log.date === todayStr && !log.checkOut);
 
-    // 출결 경고 로직 (유지)
+    const allEvents = [
+        ...todayClasses.map(cls => ({ type: 'class', ...cls, sortTime: cls.schedule.time.split('~')[0] })),
+        ...todayClinics.map(clinic => ({ type: 'clinic', ...clinic, sortTime: clinic.checkIn }))
+    ].sort((a, b) => a.sortTime.localeCompare(b.sortTime));
+
+    const nowTimeStr = today.toTimeString().slice(0, 5); 
+    
+    let keyEvent = allEvents.find(e => {
+        const endTime = e.type === 'class' ? e.schedule.time.split('~')[1] : '23:59'; 
+        return endTime >= nowTimeStr;
+    });
+    
+    if (!keyEvent && allEvents.length > 0) keyEvent = null; 
+
+    const otherEvents = allEvents.filter(e => e !== keyEvent);
+    const [isScheduleExpanded, setIsScheduleExpanded] = useState(false);
+
     const attendanceAlerts = myClasses.map(cls => {
         const clsLogs = attendanceLogs.filter(l => l.classId === cls.id && l.studentId === student.id);
         if (clsLogs.length === 0) return null;
@@ -43,91 +82,73 @@ export const DashboardTab = ({ student, myClasses, attendanceLogs, clinicLogs, h
             <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100 flex justify-between items-center relative overflow-hidden">
                 <div className="relative z-10"><p className="text-gray-500 text-sm font-medium mb-1">{today.getMonth()+1}월 {today.getDate()}일 {todayDayName}요일</p><h2 className="text-2xl font-bold text-gray-900">반가워요, <span className="text-brand-main">{student.name}</span>님! 👋</h2></div><div className="w-12 h-12 bg-brand-bg rounded-full flex items-center justify-center text-2xl relative z-10">🎓</div>
             </div>
-
-            {/* 출결 경고 배너 */}
             {attendanceAlerts.length > 0 && (
-                <div className="space-y-2">
-                    {attendanceAlerts.map((alert, idx) => (
-                        <div key={idx} onClick={() => setActiveTab('class')} className="bg-red-50 border border-red-100 p-3 rounded-xl flex items-center gap-3 cursor-pointer active:bg-red-100 transition-colors">
-                            <div className="bg-white p-1.5 rounded-full text-red-500 shadow-sm"><Icon name="alertCircle" className="w-5 h-5" /></div>
-                            <div className="flex-1"><p className="text-xs text-red-500 font-bold">{alert.class}</p><p className="text-sm font-bold text-gray-800">{alert.msg}</p></div><Icon name="chevronRight" className="w-4 h-4 text-red-300" />
-                        </div>
-                    ))}
-                </div>
+                <div className="space-y-2">{attendanceAlerts.map((alert, idx) => (<div key={idx} onClick={() => setActiveTab('class')} className="bg-red-50 border border-red-100 p-3 rounded-xl flex items-center gap-3 cursor-pointer active:bg-red-100 transition-colors"><div className="bg-white p-1.5 rounded-full text-red-500 shadow-sm"><Icon name="alertCircle" className="w-5 h-5" /></div><div className="flex-1"><p className="text-xs text-red-500 font-bold">{alert.class}</p><p className="text-sm font-bold text-gray-800">{alert.msg}</p></div><Icon name="chevronRight" className="w-4 h-4 text-red-300" /></div>))}</div>
             )}
-
             <div>
-                {/* ✅ [수정] 텍스트 변경: 오늘의 일정 -> 오늘의 수업 */}
                 <h3 className="text-lg font-bold text-gray-800 mb-3 px-1 flex items-center"><Icon name="calendar" className="w-5 h-5 mr-2 text-brand-main" />오늘의 수업</h3>
                 
-                {/* ✅ [수정] 이전 디자인으로 복구 (리스트 나열) */}
-                {todayClasses.length === 0 && todayClinics.length === 0 ? (
-                    <div className="bg-white p-6 rounded-2xl border border-dashed border-gray-300 text-center text-gray-500 text-sm">
-                        오늘 예정된 수업이나 클리닉이 없어요. <br/>
-                        자율 학습을 해보는 건 어때요? 🔥
-                    </div>
+                {allEvents.length === 0 ? (
+                    <div className="bg-white p-6 rounded-2xl border border-dashed border-gray-300 text-center text-gray-500 text-sm">오늘 예정된 수업이나 클리닉이 없어요. <br/>자율 학습을 해보는 건 어때요? 🔥</div>
                 ) : (
                     <div className="space-y-3">
-                        {/* 정규 수업 리스트 */}
-                        {todayClasses.map(cls => (
-                            <div key={cls.id} className="bg-indigo-50 p-5 rounded-2xl border border-indigo-100 flex justify-between items-center active:scale-[0.98] transition-transform">
+                        {keyEvent ? (
+                            <div className={`p-5 rounded-2xl border flex justify-between items-center shadow-sm ${keyEvent.type === 'class' ? 'bg-indigo-50 border-indigo-100' : 'bg-teal-50 border-teal-100'}`}>
                                 <div>
-                                    <span className="text-xs font-bold text-indigo-600 bg-white px-2 py-0.5 rounded border border-indigo-200 mb-2 inline-block">정규 수업</span>
-                                    <h4 className="font-bold text-indigo-900 text-lg">{cls.name}</h4>
-                                    <p className="text-sm text-indigo-700 mt-0.5">{cls.schedule.time} | {cls.teacher} 선생님</p>
-                                </div>
-                                <Icon name="chevronRight" className="text-indigo-400" />
-                            </div>
-                        ))}
-                        {/* 클리닉 리스트 (있을 때만 표시됨) */}
-                        {todayClinics.map(clinic => (
-                            <div key={clinic.id} className="bg-teal-50 p-5 rounded-2xl border border-teal-100 flex justify-between items-center active:scale-[0.98] transition-transform">
-                                <div>
-                                    <span className="text-xs font-bold text-teal-600 bg-white px-2 py-0.5 rounded border border-teal-200 mb-2 inline-block">클리닉</span>
-                                    <h4 className="font-bold text-teal-900 text-lg">학습 클리닉</h4>
-                                    <p className="text-sm text-teal-700 mt-0.5">{clinic.checkIn} 입실 예정</p>
+                                    <span className={`text-xs font-bold px-2 py-0.5 rounded border mb-2 inline-block ${keyEvent.type === 'class' ? 'text-indigo-600 bg-white border-indigo-200' : 'text-teal-600 bg-white border-teal-200'}`}>
+                                        {keyEvent.type === 'class' ? '정규 수업' : '클리닉'}
+                                    </span>
+                                    <h4 className={`font-bold text-lg ${keyEvent.type === 'class' ? 'text-indigo-900' : 'text-teal-900'}`}>
+                                        {keyEvent.type === 'class' ? keyEvent.name : '학습 클리닉'}
+                                    </h4>
+                                    <p className={`text-sm mt-0.5 ${keyEvent.type === 'class' ? 'text-indigo-700' : 'text-teal-700'}`}>
+                                        {keyEvent.type === 'class' ? `${keyEvent.schedule.time} | ${keyEvent.teacher} 선생님` : `${keyEvent.checkIn} 입실 예정`}
+                                    </p>
                                 </div>
                             </div>
-                        ))}
+                        ) : (
+                            <div className="bg-gray-50 p-4 rounded-xl text-center text-gray-500 text-sm">오늘의 모든 일정이 종료되었습니다.</div>
+                        )}
+
+                        {otherEvents.length > 0 && (
+                            <div>
+                                <button 
+                                    onClick={() => setIsScheduleExpanded(!isScheduleExpanded)}
+                                    className="w-full flex items-center justify-between p-3 bg-white border border-gray-200 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-50 active:bg-gray-100 transition-colors"
+                                >
+                                    <span>오늘의 일정 더보기 ({otherEvents.length})</span>
+                                    <Icon name={isScheduleExpanded ? "chevronUp" : "chevronDown"} className="w-4 h-4 text-gray-400" />
+                                </button>
+                                
+                                {isScheduleExpanded && (
+                                    <div className="mt-2 space-y-2 pl-2 border-l-2 border-gray-200 ml-2">
+                                        {otherEvents.map((e, idx) => (
+                                            <div key={idx} className="flex justify-between items-center p-2 rounded-lg bg-gray-50 text-sm">
+                                                <div className="flex items-center gap-2">
+                                                    <span className={`w-1.5 h-1.5 rounded-full ${e.type === 'class' ? 'bg-indigo-400' : 'bg-teal-400'}`}></span>
+                                                    <span className="font-bold text-gray-700">{e.type === 'class' ? e.name : '학습 클리닉'}</span>
+                                                </div>
+                                                <span className="text-gray-500 text-xs font-mono">
+                                                    {e.type === 'class' ? e.schedule.time : e.checkIn}
+                                                </span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        )}
                     </div>
                 )}
             </div>
-
-            <div>
-                <div className="flex justify-between items-end mb-3 px-1"><h3 className="text-lg font-bold text-gray-800 flex items-center"><Icon name="clipboardCheck" className="w-5 h-5 mr-2 text-brand-red" />놓치면 안 돼요!</h3><button onClick={() => setActiveTab('learning')} className="text-xs text-gray-500 underline active:text-gray-800">전체보기</button></div>
-                <div className="flex gap-3 overflow-x-auto pb-4 -mx-4 px-4 snap-x scrollbar-hide">
-                    {homeworkStats.filter(h => h.status !== '완료').length > 0 ? (
-                        homeworkStats.filter(h => h.status !== '완료').map(hw => (
-                            <div key={hw.id} className="snap-center shrink-0 w-64 bg-white p-4 rounded-2xl shadow-sm border border-gray-200 relative overflow-hidden active:scale-95 transition-transform">
-                                <div className={`absolute top-0 left-0 w-1.5 h-full ${hw.status === '미시작' ? 'bg-brand-red' : 'bg-brand-main'}`}></div>
-                                <div className="flex justify-between items-start mb-2 pl-2"><span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${hw.status === '미시작' ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'}`}>{hw.status}</span><span className="text-[10px] text-gray-400">~{hw.date.slice(5)}</span></div>
-                                <h4 className="font-bold text-gray-900 text-sm mb-1 pl-2 truncate">{hw.content}</h4>
-                                <p className="text-xs text-gray-500 pl-2 mb-3">{hw.book}</p>
-                                <div className="pl-2"><div className="w-full bg-gray-100 rounded-full h-1.5"><div className="bg-brand-main h-1.5 rounded-full" style={{ width: `${hw.completionRate}%` }}></div></div><p className="text-[10px] text-right text-gray-400 mt-1">{hw.completionRate}% 달성</p></div>
-                            </div>
-                        ))
-                    ) : (<div className="w-full bg-white p-5 rounded-2xl border border-gray-100 text-center"><p className="text-sm text-gray-500">모든 과제를 완료했어요! 훌륭해요 👏</p></div>)}
-                </div>
-            </div>
-
-            <div>
-                <h3 className="text-lg font-bold text-gray-800 mb-3 px-1">📢 최근 소식</h3>
-                <div className="bg-white rounded-2xl shadow-sm border border-gray-200 divide-y divide-gray-100">
-                    {notices.slice(0, 3).map(notice => (
-                        <div key={notice.id} onClick={() => setActiveTab('board')} className="p-4 flex justify-between items-center cursor-pointer active:bg-gray-50 transition-colors">
-                            <div className="flex-1 min-w-0 mr-4"><div className="flex items-center gap-2 mb-1">{notice.isPinned && <span className="text-[10px] bg-brand-red text-white px-1 rounded">필독</span>}<h4 className="text-sm font-bold text-gray-900 truncate">{notice.title}</h4></div><p className="text-xs text-gray-400">{notice.date}</p></div><Icon name="chevronRight" className="w-4 h-4 text-gray-300" />
-                        </div>
-                    ))}
-                    {notices.length === 0 && (<div className="p-4 text-center text-gray-500 text-sm">새로운 공지사항이 없습니다.</div>)}
-                </div>
-            </div>
+            <div><div className="flex justify-between items-end mb-3 px-1"><h3 className="text-lg font-bold text-gray-800 flex items-center"><Icon name="clipboardCheck" className="w-5 h-5 mr-2 text-brand-red" />놓치면 안 돼요!</h3><button onClick={() => setActiveTab('learning')} className="text-xs text-gray-500 underline active:text-gray-800">전체보기</button></div><div className="flex gap-3 overflow-x-auto pb-4 -mx-4 px-4 snap-x scrollbar-hide">{homeworkStats.filter(h => h.status !== '완료').length > 0 ? (homeworkStats.filter(h => h.status !== '완료').map(hw => (<div key={hw.id} className="snap-center shrink-0 w-64 bg-white p-4 rounded-2xl shadow-sm border border-gray-200 relative overflow-hidden active:scale-95 transition-transform"><div className={`absolute top-0 left-0 w-1.5 h-full ${hw.status === '미시작' ? 'bg-brand-red' : 'bg-brand-main'}`}></div><div className="flex justify-between items-start mb-2 pl-2"><span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${hw.status === '미시작' ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'}`}>{hw.status}</span><span className="text-[10px] text-gray-400">~{hw.date.slice(5)}</span></div><h4 className="font-bold text-gray-900 text-sm mb-1 pl-2 truncate">{hw.content}</h4><p className="text-xs text-gray-500 pl-2 mb-3">{hw.book}</p><div className="pl-2"><div className="w-full bg-gray-100 rounded-full h-1.5"><div className="bg-brand-main h-1.5 rounded-full" style={{ width: `${hw.completionRate}%` }}></div></div><p className="text-[10px] text-right text-gray-400 mt-1">{hw.completionRate}% 달성</p></div></div>))) : (<div className="w-full bg-white p-5 rounded-2xl border border-gray-100 text-center"><p className="text-sm text-gray-500">모든 과제를 완료했어요! 훌륭해요 👏</p></div>)}</div></div>
+            <div><h3 className="text-lg font-bold text-gray-800 mb-3 px-1">📢 최근 소식</h3><div className="bg-white rounded-2xl shadow-sm border border-gray-200 divide-y divide-gray-100">{notices.slice(0, 3).map(notice => (<div key={notice.id} onClick={() => setActiveTab('board')} className="p-4 flex justify-between items-center cursor-pointer active:bg-gray-50 transition-colors"><div className="flex-1 min-w-0 mr-4"><div className="flex items-center gap-2 mb-1">{notice.isPinned && <span className="text-[10px] bg-brand-red text-white px-1 rounded">필독</span>}<h4 className="text-sm font-bold text-gray-900 truncate">{notice.title}</h4></div><p className="text-xs text-gray-400">{notice.date}</p></div><Icon name="chevronRight" className="w-4 h-4 text-gray-300" /></div>))}{notices.length === 0 && (<div className="p-4 text-center text-gray-500 text-sm">새로운 공지사항이 없습니다.</div>)}</div></div>
         </div>
     );
 };
 
-// 2. ClassTab (터치감 개선)
+// 2. ClassTab
 export const ClassTab = ({ myClasses, setSelectedClassId }) => (
-    <div className="space-y-6 animate-fade-in-up pb-20">
+    <div className="space-y-6 animate-fade-in-up pb-24">
         <h2 className="text-2xl font-bold text-gray-900 px-1">나의 강의실</h2>
         <div className="grid grid-cols-1 gap-4">
             {myClasses.map(cls => (
@@ -139,11 +160,10 @@ export const ClassTab = ({ myClasses, setSelectedClassId }) => (
     </div>
 );
 
-// 3. LearningTab (수정: initialTab 받기)
+// 3. LearningTab
 export const LearningTab = ({ studentId, myHomeworkStats, myGradeComparison, clinicLogs, students, classes, initialTab = 'homework' }) => {
     const [subTab, setSubTab] = useState(initialTab); 
     
-    // ✅ [추가] initialTab prop이 변경되면 탭 상태 업데이트
     useEffect(() => {
         setSubTab(initialTab);
     }, [initialTab]);
@@ -232,7 +252,7 @@ export const ScheduleTab = ({
 
     return (
         <div className="pb-24 relative animate-fade-in-up">
-            <div className="flex justify-between items-center mb-6 px-1"><h2 className="text-2xl font-bold text-brand-black">수업 일정</h2><div className="flex gap-2"><button onClick={handleOpenAddModal} className="bg-brand-main hover:bg-brand-dark text-white px-3 py-1 rounded-xl text-xs font-bold flex items-center gap-1 shadow-md transition-all active:scale-95"><Icon name="plus" className="w-4 h-4" /> 일정 추가</button><div className="bg-white p-1 rounded-xl border border-brand-gray/30 shadow-sm flex h-[32px] items-center"><button onClick={() => setViewType('weekly')} className={`px-3 py-0 h-full flex items-center rounded-lg text-xs font-bold transition-all ${viewType === 'weekly' ? 'bg-brand-main text-white shadow-md' : 'text-brand-gray hover:text-brand-black'}`}>주간</button><button onClick={() => { setViewType('monthly'); setSelectedDate(new Date()); }} className={`px-3 py-0 h-full flex items-center rounded-lg text-xs font-bold transition-all ${viewType === 'monthly' ? 'bg-brand-main text-white shadow-md' : 'text-brand-gray hover:text-brand-black'}`}>월간</button></div></div></div>
+            <div className="flex justify-between items-center mb-6 px-1"><h2 className="text-2xl font-bold text-brand-black">수업일정</h2><div className="flex gap-2"><button onClick={handleOpenAddModal} className="bg-brand-main hover:bg-brand-dark text-white px-3 py-1 rounded-xl text-xs font-bold flex items-center gap-1 shadow-md transition-all active:scale-95"><Icon name="plus" className="w-4 h-4" /> 일정 추가</button><div className="bg-white p-1 rounded-xl border border-brand-gray/30 shadow-sm flex h-[32px] items-center"><button onClick={() => setViewType('weekly')} className={`px-3 py-0 h-full flex items-center rounded-lg text-xs font-bold transition-all ${viewType === 'weekly' ? 'bg-brand-main text-white shadow-md' : 'text-brand-gray hover:text-brand-black'}`}>주간</button><button onClick={() => { setViewType('monthly'); setSelectedDate(new Date()); }} className={`px-3 py-0 h-full flex items-center rounded-lg text-xs font-bold transition-all ${viewType === 'monthly' ? 'bg-brand-main text-white shadow-md' : 'text-brand-gray hover:text-brand-black'}`}>월간</button></div></div></div>
             {viewType === 'weekly' ? (<div className="space-y-6"><div className="flex items-center justify-between px-2 mb-2"><button onClick={prevWeek} className="p-2 bg-white rounded-full shadow-sm text-brand-gray hover:text-brand-main hover:bg-brand-bg active:bg-gray-200 transition-colors"><Icon name="chevronLeft" className="w-5 h-5" /></button><span className="font-bold text-brand-black text-lg">{weekMonth}월 {weekNum}주차</span><button onClick={nextWeek} className="p-2 bg-white rounded-full shadow-sm text-brand-gray hover:text-brand-main hover:bg-brand-bg active:bg-gray-200 transition-colors"><Icon name="chevronRight" className="w-5 h-5" /></button></div><div className="flex justify-between bg-white p-1.5 rounded-2xl shadow-sm border border-brand-gray/30 overflow-x-auto">{weekDays.map((day, index) => { const date = new Date(sunday); date.setDate(sunday.getDate() + index); const isSelected = formatDate(date) === formatDate(selectedDate); const isToday = formatDate(date) === todayStr; const { hasClass, status, hasExternal, hasClinic } = getDayInfo(date); return (<button key={day} onClick={() => setSelectedDate(date)} className={`flex flex-col items-center p-1 rounded-xl flex-1 transition-all min-w-[32px] relative active:scale-95 ${isSelected ? 'bg-brand-main text-white shadow-brand scale-105' : 'hover:bg-brand-bg'} ${!isSelected && isToday ? 'text-brand-main font-bold' : ''} ${!isSelected && !isToday ? 'text-brand-gray' : ''}`}><span className="text-[10px] mb-0.5">{day}</span><span className={`font-bold ${isSelected ? 'text-base' : 'text-sm'}`}>{date.getDate()}</span><div className="flex gap-0.5 mt-1 h-1.5 items-center">{(hasClass || status) && <div className={`w-1 h-1 rounded-full ${isSelected ? 'bg-white' : (status === '출석' ? 'bg-green-500' : status === '지각' ? 'bg-yellow-400' : status === '결석' ? 'bg-brand-red' : 'bg-brand-gray')}`}></div>}{hasExternal && <div className={`w-1 h-1 rounded-full ${isSelected ? 'bg-white' : 'bg-brand-light'}`}></div>}{hasClinic && <div className={`w-1 h-1 rounded-full ${isSelected ? 'bg-white' : 'bg-teal-400'}`}></div>}</div></button>); })}</div><div className="space-y-4">{renderSchedules()}</div></div>) : (<div className="flex flex-col md:flex-row gap-6"><div className="bg-white rounded-3xl shadow-lg p-6 border border-brand-gray/30 mb-6 max-w-md mx-auto w-full md:w-1/2 flex-shrink-0 h-fit"><div className="flex justify-between items-center mb-6"><button onClick={prevMonth} className="p-2 hover:bg-brand-bg rounded-full text-brand-gray active:bg-gray-200"><Icon name="chevronLeft" className="w-5 h-5" /></button><h3 className="text-lg font-bold text-brand-black">{selectedDate.getFullYear()}년 {selectedDate.getMonth() + 1}월</h3><button onClick={nextMonth} className="p-2 hover:bg-brand-bg rounded-full text-brand-gray active:bg-gray-200"><Icon name="chevronRight" className="w-5 h-5" /></button></div><div className="grid grid-cols-7 mb-2 text-center">{weekDays.map((day, i) => (<div key={day} className={`text-xs font-bold ${i === 0 ? 'text-brand-red' : 'text-brand-gray'}`}>{day}</div>))}</div><div className="grid grid-cols-7 gap-y-4 gap-x-1">{calendarDays.map((date, index) => { if (!date) return <div key={index}></div>; const { hasClass, status, hasExternal, hasClinic } = getDayInfo(date); const isSelected = formatDate(date) === formatDate(selectedDate); const isToday = formatDate(date) === todayStr; return (<div key={index} className="flex flex-col items-center cursor-pointer group active:scale-90 transition-transform" onClick={() => setSelectedDate(date)}><div className={`w-8 h-8 flex items-center justify-center rounded-full text-sm font-medium transition-all ${isSelected ? 'bg-brand-main text-white shadow-brand scale-110' : ''} ${!isSelected && isToday ? 'text-brand-main font-bold bg-brand-light/30' : ''} ${!isSelected && !isToday ? 'text-brand-black group-hover:bg-brand-bg' : ''}`}>{date.getDate()}</div><div className="h-1.5 mt-1 flex gap-0.5 min-h-[6px]">{status === '출석' && <div className="w-1.5 h-1.5 rounded-full bg-green-500"></div>}{status === '지각' && <div className="w-1.5 h-1.5 rounded-full bg-yellow-400"></div>}{status === '결석' && <div className="w-1.5 h-1.5 rounded-full bg-brand-red"></div>}{!status && hasClass && <div className="w-1.5 h-1.5 rounded-full bg-brand-gray"></div>}{hasExternal && <div className="w-1.5 h-1.5 rounded-full bg-brand-light"></div>}{hasClinic && <div className="w-1.5 h-1.5 rounded-full bg-teal-400"></div>}</div></div>); })}</div></div><div className="space-y-4 w-full md:w-1/2 flex-1">{renderSchedules()}</div></div>)}
             {/* Modal Components */}
             {isScheduleModalOpen && <ModalPortal><div className="fixed inset-0 z-[70] bg-black/50 flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => setIsScheduleModalOpen(false)}><div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl animate-fade-in-up" onClick={e => e.stopPropagation()}><h3 className="text-lg font-bold text-brand-black mb-4">타학원 일정 {isEditMode ? '수정' : '등록'}</h3><div className="space-y-4 max-h-[70vh] overflow-y-auto custom-scrollbar px-1"><div><label className="block text-xs font-bold text-brand-gray mb-1">학원명 *</label><input type="text" value={newSchedule.academyName} onChange={e => setNewSchedule({...newSchedule, academyName: e.target.value})} className="w-full border border-brand-gray/30 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-main focus:outline-none" placeholder="예: 정상어학원"/></div><div><label className="block text-xs font-bold text-brand-gray mb-1">강의명 *</label><input type="text" value={newSchedule.courseName} onChange={e => setNewSchedule({...newSchedule, courseName: e.target.value})} className="w-full border border-brand-gray/30 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-main focus:outline-none" placeholder="예: TOP반 영어"/></div><div><label className="block text-xs font-bold text-brand-gray mb-1">강사</label><input type="text" value={newSchedule.instructor} onChange={e => setNewSchedule({...newSchedule, instructor: e.target.value})} className="w-full border border-brand-gray/30 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-main focus:outline-none" placeholder="예: Julie 선생님"/></div><div className="flex gap-2"><div className="flex-1"><label className="block text-xs font-bold text-brand-gray mb-1">개강일 *</label><input type="date" value={newSchedule.startDate} onChange={e => setNewSchedule({...newSchedule, startDate: e.target.value})} className="w-full border border-brand-gray/30 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-main focus:outline-none"/></div><div className="flex-1"><label className="block text-xs font-bold text-brand-gray mb-1">종강일</label><input type="date" value={newSchedule.endDate} onChange={e => setNewSchedule({...newSchedule, endDate: e.target.value})} className="w-full border border-brand-gray/30 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-main focus:outline-none"/></div></div><div><label className="block text-xs font-bold text-brand-gray mb-1">수업 요일 *</label><div className="flex gap-1 justify-between">{['월','화','수','목','금','토','일'].map(d => (<button key={d} onClick={() => toggleDay(d)} className={`w-8 h-8 rounded-full text-xs font-bold transition-colors active:scale-90 ${newSchedule.days.includes(d) ? 'bg-brand-main text-white' : 'bg-brand-bg text-brand-gray hover:bg-brand-gray/30'}`}>{d}</button>))}</div></div><div className="flex gap-2"><div className="flex-1"><label className="block text-xs font-bold text-brand-gray mb-1">시작 시간 *</label><input type="time" value={newSchedule.startTime} onChange={e => setNewSchedule({...newSchedule, startTime: e.target.value})} className="w-full border border-brand-gray/30 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-main focus:outline-none"/></div><div className="flex-1"><label className="block text-xs font-bold text-brand-gray mb-1">종료 시간</label><input type="time" value={newSchedule.endTime} onChange={e => setNewSchedule({...newSchedule, endTime: e.target.value})} className="w-full border border-brand-gray/30 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-main focus:outline-none"/></div></div><button onClick={handleSaveSubmit} className="w-full bg-brand-main hover:bg-brand-dark text-white font-bold py-3 rounded-xl mt-2 transition-colors active:scale-95">{isEditMode ? '수정 완료' : '등록하기'}</button></div></div></div></ModalPortal>}
@@ -241,8 +261,9 @@ export const ScheduleTab = ({
     );
 };
 
-// 5. MenuTab
-export const MenuTab = ({ student, onUpdateStudent, onLogout, videoBookmarks, lessonLogs, onLinkToMemo, notices, setActiveTab }) => { // ✅ setActiveTab prop 추가
+// 5. MenuTab, 6. HomeworkTab, 7. GradesTab, 8. ClinicTab, 9. BoardTab 등 나머지 코드는 기존과 동일하므로 유지합니다.
+export const MenuTab = ({ student, onUpdateStudent, onLogout, videoBookmarks, lessonLogs, onLinkToMemo, notices, setActiveTab }) => {
+    // ... MenuTab logic ...
     const [isProfileOpen, setIsProfileOpen] = useState(false);
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [isMemosOpen, setIsMemosOpen] = useState(false); 
@@ -282,6 +303,7 @@ export const MenuTab = ({ student, onUpdateStudent, onLogout, videoBookmarks, le
             <h2 className="text-2xl font-bold text-gray-900 px-1">더보기</h2>
             <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-4"><div className="w-14 h-14 bg-gray-100 rounded-full flex items-center justify-center text-2xl">😎</div><div><h3 className="text-lg font-bold text-gray-900">{student.name}</h3><p className="text-sm text-gray-500">{student.school} | 고{student.grade}</p></div><button onClick={handleOpenProfile} className="ml-auto text-xs bg-gray-100 px-3 py-1.5 rounded-lg text-gray-600 font-bold active:bg-gray-200 transition-colors">수정</button></div>
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden divide-y divide-gray-50">
+                {/* ✅ [수정] 게시판 버튼: 모달 대신 탭 이동 */}
                 <button onClick={() => { if(setActiveTab) setActiveTab('board'); }} className="w-full p-4 flex items-center justify-between hover:bg-gray-50 active:bg-gray-100 transition-colors">
                     <div className="flex items-center gap-3"><div className="bg-brand-light/20 p-2 rounded-lg text-brand-main"><CampaignIcon className="w-5 h-5" /></div><span className="font-bold text-gray-800">공지사항 / 게시판</span></div><Icon name="chevronRight" className="w-4 h-4 text-gray-300" />
                 </button>
@@ -315,66 +337,89 @@ export const HomeworkTab = ({ myHomeworkStats }) => {
 };
 
 // 7. GradesTab (리스트 -> 상세)
-export const GradesTab = ({ myGradeComparison }) => {
-    const [selectedGrade, setSelectedGrade] = useState(null);
+export const GradesTab = ({ myGradeComparison }) => { // ✅ myGradeComparison을 바로 받습니다.
+    const [selectedTestId, setSelectedTestId] = useState(null);
 
-    // Detail View (Full Screen Overlay)
-    if (selectedGrade) {
+    // ✅ Z-score 트렌드 계산 (오름차순 정렬 후 계산)
+    const trendAnalysis = useMemo(() => {
+        if (!myGradeComparison) return { trend: 'initial', description: '' };
+        
+        // 날짜 과거 -> 미래 순으로 정렬해야 추세 분석 가능
+        const sortedForTrend = [...myGradeComparison].sort((a, b) => new Date(a.testDate) - new Date(b.testDate));
+        
+        const trendResult = calculateTrendZScore(sortedForTrend);
+        let description = "";
+
+        if (trendResult === 'up') description = "최근 시험에서 상대적 위치가 개선되고 있어요.";
+        else if (trendResult === 'down') description = "최근 시험에서 상대적 위치가 낮아졌어요. 주의가 필요합니다.";
+        else if (trendResult === 'same') description = "최근 시험 성과가 비슷한 수준을 유지하고 있어요.";
+        else description = "성적 추이 분석을 위해서는 최소 3회 이상의 시험 기록이 필요합니다.";
+
+        return { trend: trendResult, description: description };
+    }, [myGradeComparison]);
+
+    const selectedTestAnalysis = myGradeComparison?.find(g => g.testId === selectedTestId);
+
+    // 상세 보기
+    if (selectedTestId && selectedTestAnalysis) {
         return (
             <ModalPortal>
-                {/* ✅ [수정] w-full h-full 추가하여 전체 화면 덮기 */}
                 <div className="fixed inset-0 z-[100] bg-gray-50 flex flex-col animate-fade-in-up w-full h-full">
-                    {/* Header */}
                     <div className="flex-none h-14 flex items-center gap-3 px-4 border-b border-gray-200 bg-white shadow-sm">
-                        <button onClick={() => setSelectedGrade(null)} className="p-2 bg-gray-100 rounded-lg text-gray-600 hover:bg-gray-200 active:bg-gray-300 transition-colors">
+                        <button onClick={() => setSelectedTestId(null)} className="p-2 bg-gray-100 rounded-lg text-gray-600 hover:bg-gray-200 active:bg-gray-300 transition-colors">
                             <Icon name="chevronLeft" className="w-5 h-5" />
                         </button>
                         <h2 className="text-base font-bold text-gray-900 truncate">성적 상세 분석</h2>
                     </div>
-
                     <div className="flex-1 overflow-y-auto custom-scrollbar p-4">
-                        {/* Summary Section */}
                         <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 mb-6 text-center">
-                            <span className="text-sm text-gray-500 font-bold bg-gray-100 px-2 py-1 rounded mb-2 inline-block">{selectedGrade.testDate} 시행</span>
-                            <h3 className="text-xl font-bold text-gray-900 mb-1">{selectedGrade.testName}</h3>
+                            <span className="text-sm text-gray-500 font-bold bg-gray-100 px-2 py-1 rounded mb-2 inline-block">{selectedTestAnalysis.testDate} 시행</span>
+                            <h3 className="text-xl font-bold text-gray-900 mb-1">{selectedTestAnalysis.testName}</h3>
                             <div className="py-4">
-                                <span className="text-5xl font-extrabold text-indigo-600">{selectedGrade.studentScore}</span>
-                                <span className="text-gray-400 text-xl font-medium"> / {selectedGrade.maxScore}</span>
-                            </div>
-                            <div className="flex justify-center gap-2">
-                                <span className={`text-sm font-bold px-3 py-1 rounded-full ${selectedGrade.isAboveAverage ? 'bg-green-100 text-green-700' : 'bg-red-50 text-red-600'}`}>
-                                    {selectedGrade.isAboveAverage ? '▲' : '▼'} 평균보다 {Math.abs(selectedGrade.scoreDifference)}점 {selectedGrade.isAboveAverage ? '높음' : '낮음'}
-                                </span>
+                                <span className="text-5xl font-extrabold text-indigo-600">{selectedTestAnalysis.studentScore}</span>
+                                <span className="text-gray-400 text-xl font-medium"> / {selectedTestAnalysis.maxScore}</span>
                             </div>
                         </div>
-
-                        {/* Question Analysis Section */}
-                        <QuestionAnalysisList questions={selectedGrade.questions} />
+                        {/* ✅ 수정된 QuestionAnalysisList에 데이터 전달 */}
+                        <QuestionAnalysisList 
+                            questions={selectedTestAnalysis.questions} 
+                            classAverage={selectedTestAnalysis.classAverage}
+                            highestScore={selectedTestAnalysis.highestScore}
+                            maxScore={selectedTestAnalysis.maxScore}
+                            trend={trendAnalysis.trend} 
+                        />
                     </div>
                 </div>
             </ModalPortal>
         );
     }
 
-    // List View (Card)
+    // 리스트 뷰
     return (
         <div className="space-y-4 pb-20">
-            {myGradeComparison.length === 0 ? (
-                <div className="text-center py-10 text-gray-400 text-sm bg-white rounded-2xl border border-dashed border-gray-200">
-                    등록된 성적이 없습니다.
+            {/* 성적 상태 카드 */}
+            <div 
+                className={`p-4 rounded-xl border ${getTrendStyle(trendAnalysis.trend)} cursor-pointer active:scale-[0.99] transition-all`}
+                onClick={() => trendAnalysis.trend === 'initial' && alert("성적 추이 분석을 위해서는 최소 3회 이상의 시험 기록이 필요합니다.")}
+            >
+                <div className="flex justify-between items-center mb-1">
+                    <p className="text-sm font-bold flex items-center gap-2">
+                        <Icon name="barChart" className="w-4 h-4" />
+                        성적 상태 분석 (최근 3회)
+                    </p>
+                    <span className="text-xs font-extrabold">{getTrendText(trendAnalysis.trend)}</span>
                 </div>
+                <p className="text-xs">{trendAnalysis.description}</p>
+            </div>
+
+            {!myGradeComparison || myGradeComparison.length === 0 ? (
+                <div className="text-center py-10 text-gray-400 text-sm bg-white rounded-2xl border border-dashed border-gray-200">등록된 성적이 없습니다.</div>
             ) : (
                 myGradeComparison.map((item, idx) => (
-                    <div 
-                        key={idx} 
-                        onClick={() => setSelectedGrade(item)} 
-                        className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 cursor-pointer active:scale-[0.98] transition-all hover:border-indigo-200 active:bg-gray-50"
-                    >
+                    <div key={idx} onClick={() => setSelectedTestId(item.testId)} className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 cursor-pointer active:scale-[0.98] transition-all hover:border-indigo-200 active:bg-gray-50">
                         <div className="flex justify-between items-start mb-2">
                             <div className="flex items-center gap-2">
-                                <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">
-                                    {item.className}
-                                </span>
+                                <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">{item.className}</span>
                                 <span className="text-xs text-gray-400">{item.testDate}</span>
                             </div>
                         </div>
@@ -382,7 +427,6 @@ export const GradesTab = ({ myGradeComparison }) => {
                             <div>
                                 <h3 className="text-lg font-bold text-gray-900 leading-tight mb-1">{item.testName}</h3>
                                 <div className="flex items-center gap-1 text-xs text-gray-500 font-medium">
-                                    {/* ✅ [수정] 아이콘 이름 정확히 매핑 */}
                                     {item.isAboveAverage ? <Icon name="trendingUp" className="w-3 h-3 text-green-500" /> : <Icon name="trendingDown" className="w-3 h-3 text-red-500" />}
                                     평균 {item.classAverage}점
                                 </div>
@@ -400,110 +444,67 @@ export const GradesTab = ({ myGradeComparison }) => {
 };
 
 // ✅ [추가] Helper Component for Detail View
-const QuestionAnalysisList = ({ questions }) => {
-    const [filter, setFilter] = useState('all'); // all, wrong, hard
-
+const QuestionAnalysisList = ({ questions, classAverage, highestScore, trend }) => {
+    const [filter, setFilter] = useState('all'); 
     const filtered = questions.filter(q => {
-        if (filter === 'wrong') return q.status !== '맞음'; // 틀림, 고침 등
+        if (filter === 'wrong') return q.status === '틀림';
         if (filter === 'hard') return q.difficulty === '상';
         return true;
     });
     
-    // ✅ [추가] 상단 요약 통계 계산
-    const totalCount = questions.length;
-    const wrongCount = questions.filter(q => q.status !== '맞음' && q.status !== '미응시').length;
-    const missedCount = questions.filter(q => q.status === '미응시').length;
-
-    // 가장 많이 틀린 유형 찾기 (간단 로직)
-    const wrongTypes = questions.filter(q => q.status === '틀림').map(q => q.type);
-    const typeCount = {};
-    let weakType = '없음';
-    let maxCount = 0;
-    wrongTypes.forEach(t => { typeCount[t] = (typeCount[t] || 0) + 1; });
-    Object.entries(typeCount).forEach(([type, count]) => { if(count > maxCount) { maxCount = count; weakType = type; } });
-
+    const handleTrendClick = () => {
+        if (trend === 'initial') alert("성적 추이 분석을 위해서는 최근 3회 이상의 시험 기록이 필요합니다.");
+    };
 
     return (
         <div>
-            {/* ✅ [추가] 분석 리포트 요약 (GPT 제안) */}
             <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm mb-4">
                 <div className="flex justify-between items-center mb-2">
                     <span className="text-sm font-bold text-gray-800">분석 요약</span>
-                    <span className="text-xs text-gray-400">총 {totalCount}문항</span>
+                    <span className="text-xs text-gray-400">총 {questions.length}문항</span>
                 </div>
                 <div className="flex gap-4 text-xs">
                     <div className="flex-1 bg-red-50 rounded-lg p-2 text-center">
-                        <span className="block text-red-500 font-bold mb-1">오답</span>
-                        <span className="text-lg font-extrabold text-red-600">{wrongCount}</span>
+                        <span className="block text-red-500 font-bold mb-1">평균</span>
+                        <span className="text-lg font-extrabold text-red-600">{classAverage}점</span> 
                     </div>
                     <div className="flex-1 bg-orange-50 rounded-lg p-2 text-center">
-                        <span className="block text-orange-500 font-bold mb-1">미응시</span>
-                        <span className="text-lg font-extrabold text-orange-600">{missedCount}</span>
+                        <span className="block text-orange-500 font-bold mb-1">최고점</span>
+                        <span className="text-lg font-extrabold text-orange-600">{highestScore}점</span>
                     </div>
-                    <div className="flex-[1.5] bg-gray-50 rounded-lg p-2 flex flex-col justify-center">
-                        <span className="block text-gray-500 font-bold mb-1">취약 유형</span>
-                        <span className="text-sm font-bold text-gray-800">{weakType}</span>
+                    <div className={`flex-[1.5] rounded-lg p-2 flex flex-col justify-center cursor-pointer active:bg-gray-100 transition-colors ${getTrendStyle(trend)}`} onClick={handleTrendClick}>
+                        <span className="block font-bold mb-1 text-xs">성적 상태</span>
+                        <span className="text-sm font-bold">{getTrendText(trend)}</span>
                     </div>
                 </div>
             </div>
 
-            {/* Filter Tabs */}
             <div className="flex p-1 bg-gray-100 rounded-xl mb-4">
                 {['all', 'wrong', 'hard'].map(type => (
-                    <button
-                        key={type}
-                        onClick={() => setFilter(type)}
-                        className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
-                            filter === type ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-400'
-                        }`}
-                    >
-                        {type === 'all' ? '전체 문항' : type === 'wrong' ? '취약 문항' : '고난도'}
-                    </button>
+                    <button key={type} onClick={() => setFilter(type)} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${filter === type ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-400'}`}>{type === 'all' ? '전체 문항' : type === 'wrong' ? '취약 문항' : '고난도'}</button>
                 ))}
             </div>
 
-            {/* List */}
             <div className="space-y-3">
                 {filtered.length > 0 ? filtered.map((q, i) => (
                     <div key={i} className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
                         <div className="flex justify-between items-start mb-3">
                             <div className="flex items-center gap-2">
-                                <span className="bg-gray-100 text-gray-600 text-xs font-bold px-2 py-1 rounded">
-                                    {q.no}번
-                                </span>
-                                {/* ✅ [수정] 상태 뱃지 색상 (오답: 주황 / 정답: 회색) */}
-                                <span className={`text-xs font-bold px-2 py-1 rounded flex items-center gap-1 ${
-                                    q.status === '맞음' ? 'bg-gray-100 text-gray-600' : 
-                                    'bg-orange-50 text-orange-600'
-                                }`}>
-                                    {q.status === '맞음' ? <Icon name="check" className="w-3 h-3" /> : 
-                                     <Icon name="alertCircle" className="w-3 h-3" />}
+                                <span className="bg-gray-100 text-gray-600 text-xs font-bold px-2 py-1 rounded">{q.no}번</span>
+                                <span className={`text-xs font-bold px-2 py-1 rounded flex items-center gap-1 ${q.status === '맞음' ? 'bg-green-50 text-green-700' : q.status === '틀림' ? 'bg-red-50 text-red-600' : 'bg-gray-100 text-gray-500'}`}>
+                                    {q.status === '맞음' ? <Icon name="check" className="w-3 h-3" /> : q.status === '틀림' ? <Icon name="x" className="w-3 h-3" /> : <Icon name="alertCircle" className="w-3 h-3" />}
                                     {q.status}
                                 </span>
                             </div>
                             <span className="text-sm font-bold text-gray-900">{q.score}점</span>
                         </div>
-                        
                         <div className="flex items-center gap-4 text-xs text-gray-500">
-                            <div className="flex items-center gap-1">
-                                <span className="w-1.5 h-1.5 rounded-full bg-gray-300"></span>
-                                난이도: <span className={`font-bold ${q.difficulty === '상' ? 'text-red-500' : q.difficulty === '중' ? 'text-yellow-600' : 'text-green-500'}`}>{q.difficulty}</span>
-                            </div>
-                            <div className="flex items-center gap-1">
-                                <span className="w-1.5 h-1.5 rounded-full bg-gray-300"></span>
-                                유형: {q.type}
-                            </div>
-                            <div className="flex items-center gap-1 ml-auto">
-                                정답률 <span className="font-bold text-indigo-600">{q.itemAccuracy}%</span>
-                            </div>
+                            <div className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-gray-300"></span>난이도: <span className={`font-bold ${q.difficulty === '상' ? 'text-red-500' : q.difficulty === '중' ? 'text-yellow-600' : 'text-green-500'}`}>{q.difficulty}</span></div>
+                            <div className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-gray-300"></span>유형: {q.type}</div>
+                            <div className="flex items-center gap-1 ml-auto">반 정답률 <span className="font-bold text-indigo-600">{q.itemAccuracy}%</span></div>
                         </div>
-                        {/* 버튼 제거됨 */}
                     </div>
-                )) : (
-                    <div className="text-center py-8 text-gray-400 text-xs">
-                        해당하는 문항이 없습니다.
-                    </div>
-                )}
+                )) : (<div className="text-center py-8 text-gray-400 text-xs">{filter === 'all' ? '등록된 문항이 없습니다.' : '해당하는 문항이 없습니다.'}</div>)}
             </div>
         </div>
     );

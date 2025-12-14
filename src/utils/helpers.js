@@ -9,11 +9,9 @@ import {
     PlayCircle, PauseCircle, StopCircle, Volume2, VolumeX,
     Maximize, Minimize, Settings, BookOpen, PenTool,
     MapPin, Phone, Mail, Award, TrendingUp, TrendingDown, Activity,
-    Edit, List, Folder, Download, // ✅ Download 추가
-    Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight, Link, Image, ListOrdered
+    Edit, List, Folder, Download
 } from 'lucide-react';
 
-// Icon 컴포넌트
 export const Icon = ({ name, className, ...props }) => {
     const icons = {
         home: Home, calendar: Calendar, clipboard: Clipboard, clipboardCheck: Clipboard, 
@@ -32,26 +30,12 @@ export const Icon = ({ name, className, ...props }) => {
         trend: TrendingUp, trendingUp: TrendingUp, trendingDown: TrendingDown, 
         list: Activity, school: Home, pin: MapPin,
         edit: Edit, schedule: List, folder: Folder,
-        download: Download, video: Video, // ✅ video, download 매핑 추가
-
-        // ✅ [추가] 텍스트 에디터 아이콘 매핑
-        bold: Bold,
-        italic: Italic,
-        underline: Underline,
-        alignLeft: AlignLeft,
-        alignCenter: AlignCenter,
-        alignRight: AlignRight,
-        link: Link,
-        image: Image,
-        listOrdered: ListOrdered,
-        listBullet: List // 기존 List 아이콘 재사용
+        download: Download, video: Video
     };
-    
     const LucideIcon = icons[name] || Home;
     return <LucideIcon className={className} {...props} />;
 };
 
-// ... (나머지 코드는 기존과 동일) ...
 export const staffMembers = [
     { id: 'teacher', name: '채수용 선생님', role: 'teacher', avatar: 'C' },
     { id: 'lab', name: '수학 연구소', role: 'admin', avatar: 'Lab' }
@@ -59,12 +43,136 @@ export const staffMembers = [
 
 export const getWeekOfMonth = (date) => {
     const firstDayOfMonth = new Date(date.getFullYear(), date.getMonth(), 1);
-    const dayOfWeek = firstDayOfMonth.getDay(); // 0: 일요일 ~ 6: 토요일
-    
-    // 날짜 + 시작 요일 보정값을 7로 나누어 올림 (달력 행 기준)
+    const dayOfWeek = firstDayOfMonth.getDay(); 
     const weekNo = Math.ceil((date.getDate() + dayOfWeek) / 7);
-    
     return { month: date.getMonth() + 1, week: weekNo };
+};
+
+// ✅ [수정] Z-Score 추세 판정 로직 (조건: Δ ≥ 0.3σ)
+export const calculateTrendZScore = (grades) => {
+    // 최근 3회 데이터가 없으면 분석 불가
+    if (!grades || grades.length < 3) return 'initial';
+
+    // 날짜순(과거->미래) 정렬된 데이터에서 최근 3개 추출
+    const [g1, g2, g3] = grades.slice(-3); 
+    
+    // Z-score가 하나라도 없으면 계산 불가
+    if (g1.zScore === undefined || g2.zScore === undefined || g3.zScore === undefined) return 'initial';
+
+    // 변화량(Delta) 계산
+    const delta1 = g2.zScore - g1.zScore; // Z2 - Z1
+    const delta2 = g3.zScore - g2.zScore; // Z3 - Z2
+
+    // ✅ 기준값: 0.3 Sigma
+    const threshold = 0.3; 
+
+    // 1. 연속 상승: 두 번의 변화량이 모두 +0.3 이상 (Δ ≥ +0.3)
+    if (delta1 >= threshold && delta2 >= threshold) {
+        return 'up';
+    }
+
+    // 2. 연속 하락: 두 번의 변화량이 모두 -0.3 이하 (Δ ≤ -0.3)
+    if (delta1 <= -threshold && delta2 <= -threshold) {
+        return 'down';
+    }
+
+    // 3. 그 외: 유지 중
+    return 'same';
+};
+
+// ✅ [수정] 성적 비교 및 Z-Score 계산
+export const calculateGradeComparison = (studentId, classes, tests, grades) => {
+    if (!tests || !grades) return []; 
+
+    const myGrades = [];
+    const myClassIds = classes.filter(c => c.students.includes(studentId)).map(c => c.id);
+    const relevantTests = tests.filter(t => myClassIds.includes(t.classId));
+
+    relevantTests.forEach(test => {
+        const myRecord = grades[studentId]?.[test.id];
+        
+        if (myRecord) {
+            let classTotal = 0;
+            let studentCount = 0;
+            let highestScore = 0; // 최고점
+
+            const questionStats = {}; 
+
+            // 반 통계 계산 (평균, 최고점 등)
+            Object.values(grades).forEach(studentGrade => {
+                const record = studentGrade[test.id];
+                if (record) {
+                    if (record.score !== null && record.score !== undefined) {
+                        classTotal += record.score;
+                        studentCount++;
+                        if (record.score > highestScore) highestScore = record.score;
+                    }
+                    if (record.correctCount) {
+                        Object.entries(record.correctCount).forEach(([qNum, status]) => {
+                            if (!questionStats[qNum]) questionStats[qNum] = { correct: 0, total: 0 };
+                            questionStats[qNum].total++;
+                            if (status === '맞음' || status === '고침') {
+                                questionStats[qNum].correct++;
+                            }
+                        });
+                    }
+                }
+            });
+
+            const classAverage = studentCount > 0 ? Math.round(classTotal / studentCount) : 0;
+            const myScore = myRecord.score || 0;
+            const myAccuracy = test.maxScore > 0 ? Math.round((myScore / test.maxScore) * 100) : 0;
+            
+            // ✅ [핵심 수정] Z-Score 계산 (공식: (내점수 - 시험평균) / 표준편차)
+            // 주의: test.average(시험 전체 평균)와 test.stdDev(표준편차) 사용
+            let zScore = 0;
+            
+            // test 데이터에 average와 stdDev가 있는 경우 우선 사용
+            const testAvg = test.average !== undefined ? test.average : classAverage;
+            
+            if (test.stdDev > 0) {
+                zScore = (myScore - testAvg) / test.stdDev;
+            } else {
+                // 표준편차가 0이거나 데이터가 없으면 Z-score 계산 불가 (0 처리)
+                zScore = 0; 
+            }
+
+            // 소수점 2자리까지만 유지 (선택사항, 계산 정확도를 위해 값은 유지하되 표시는 나중에)
+            // zScore = parseFloat(zScore.toFixed(2));
+
+            const questionsAnalysis = [];
+            if (test.questionScores && myRecord.correctCount) {
+                test.questionScores.forEach((score, idx) => {
+                    const qNum = idx + 1;
+                    const status = myRecord.correctCount[qNum] || '미응시';
+                    const stats = questionStats[qNum] || { correct: 0, total: 0 };
+                    const itemAccuracy = stats.total > 0 ? Math.round((stats.correct / stats.total) * 100) : 0;
+
+                    questionsAnalysis.push({
+                        no: qNum, score: score, status: status, itemAccuracy: itemAccuracy, 
+                        type: '객관식', difficulty: test.questionAnalysis?.[idx]?.difficulty || '중' 
+                    });
+                });
+            }
+
+            myGrades.push({
+                testId: test.id, testName: test.name, testDate: test.date,
+                className: classes.find(c => c.id === test.classId)?.name || '반 정보 없음',
+                studentScore: myScore, 
+                classAverage: classAverage, 
+                highestScore: highestScore,
+                maxScore: test.maxScore,
+                accuracy: myAccuracy, 
+                scoreDifference: myScore - classAverage,
+                isAboveAverage: myScore >= classAverage,
+                questions: questionsAnalysis,
+                zScore: zScore // 계산된 Z-Score 포함
+            });
+        }
+    });
+
+    // 날짜 내림차순 정렬 (최신순)
+    return myGrades.sort((a, b) => new Date(b.testDate) - new Date(a.testDate));
 };
 
 export const calculateClassSessions = (cls) => {
@@ -75,12 +183,10 @@ export const calculateClassSessions = (cls) => {
     const currentDate = cls.startDate ? new Date(cls.startDate) : new Date();
     const endDate = cls.endDate ? new Date(cls.endDate) : new Date(currentDate);
     if (!cls.endDate) endDate.setMonth(endDate.getMonth() + 3);
-
     let sessionCount = 1;
     const maxIterations = 365;
     let iterations = 0;
     const iterDate = new Date(currentDate);
-
     while (iterDate <= endDate && iterations < maxIterations) {
         if (targetDayIndexes.includes(iterDate.getDay())) {
             const year = iterDate.getFullYear();
@@ -101,105 +207,19 @@ export const calculateHomeworkStats = (studentId, assignments, results) => {
         const totalQuestions = hw.totalQuestions;
         let correctCount = 0;
         let incorrectCount = 0;
-        
         Object.values(studentResults).forEach(status => {
             if (status === '맞음' || status === '고침') correctCount++;
             else if (status === '틀림') incorrectCount++;
         });
-
         const completedCount = correctCount + incorrectCount;
         const uncheckedCount = totalQuestions - completedCount;
         const completionRate = Math.round((completedCount / totalQuestions) * 100);
-
         let status = '미시작';
         if (completionRate > 0 && completionRate < 100) status = '진행 중';
         else if (completionRate === 100) status = (incorrectCount > 0) ? '오답 정리' : '완료';
-
-        const incorrectQuestionList = Object.keys(studentResults)
-            .filter(qNum => studentResults[qNum] === '틀림')
-            .map(Number).sort((a, b) => a - b);
-
-        return {
-            ...hw, completionRate, status, completedCount: correctCount,
-            incorrectCount, uncheckedCount, incorrectQuestionList
-        };
+        const incorrectQuestionList = Object.keys(studentResults).filter(qNum => studentResults[qNum] === '틀림').map(Number).sort((a, b) => a - b);
+        return { ...hw, completionRate, status, completedCount: correctCount, incorrectCount, uncheckedCount, incorrectQuestionList };
     });
-};
-
-export const calculateGradeComparison = (studentId, classes, tests, grades) => {
-    if (!tests || !grades) return []; 
-
-    const myGrades = [];
-    const myClassIds = classes.filter(c => c.students.includes(studentId)).map(c => c.id);
-    const relevantTests = tests.filter(t => myClassIds.includes(t.classId));
-
-    relevantTests.forEach(test => {
-        const myRecord = grades[studentId]?.[test.id];
-        
-        if (myRecord) {
-            let classTotal = 0;
-            let studentCount = 0;
-            const questionStats = {}; 
-
-            Object.values(grades).forEach(studentGrade => {
-                const record = studentGrade[test.id];
-                if (record) {
-                    if (record.score !== null) {
-                        classTotal += record.score;
-                        studentCount++;
-                    }
-                    if (record.correctCount) {
-                        Object.entries(record.correctCount).forEach(([qNum, status]) => {
-                            if (!questionStats[qNum]) questionStats[qNum] = { correct: 0, total: 0 };
-                            questionStats[qNum].total++;
-                            if (status === '맞음' || status === '고침') {
-                                questionStats[qNum].correct++;
-                            }
-                        });
-                    }
-                }
-            });
-
-            const classAverage = studentCount > 0 ? Math.round(classTotal / studentCount) : 0;
-            const myScore = myRecord.score || 0;
-            const myAccuracy = test.maxScore > 0 ? Math.round((myScore / test.maxScore) * 100) : 0;
-
-            const questionsAnalysis = [];
-            if (test.questionScores && myRecord.correctCount) {
-                test.questionScores.forEach((score, idx) => {
-                    const qNum = idx + 1;
-                    const status = myRecord.correctCount[qNum] || '미응시';
-                    const stats = questionStats[qNum] || { correct: 0, total: 0 };
-                    const itemAccuracy = stats.total > 0 ? Math.round((stats.correct / stats.total) * 100) : 0;
-
-                    questionsAnalysis.push({
-                        no: qNum,
-                        score: score,
-                        status: status,
-                        itemAccuracy: itemAccuracy, 
-                        type: '객관식',
-                        difficulty: test.questionAnalysis?.[idx]?.difficulty || '중' 
-                    });
-                });
-            }
-
-            myGrades.push({
-                testId: test.id,
-                testName: test.name,
-                testDate: test.date,
-                className: classes.find(c => c.id === test.classId)?.name || '반 정보 없음',
-                studentScore: myScore,
-                classAverage: classAverage,
-                maxScore: test.maxScore,
-                accuracy: myAccuracy, 
-                scoreDifference: myScore - classAverage,
-                isAboveAverage: myScore >= classAverage,
-                questions: questionsAnalysis
-            });
-        }
-    });
-
-    return myGrades;
 };
 
 export const calculateDurationMinutes = (start, end) => {
