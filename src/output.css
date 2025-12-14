@@ -347,6 +347,9 @@
 .h-\[500px\] {
   height: 500px;
 }
+.h-\[calc\(60px\+env\(safe-area-inset-bottom\)\)\] {
+  height: calc(60px + env(safe-area-inset-bottom));
+}
 .h-\[calc\(100vh-150px\)\] {
   height: calc(100vh - 150px);
 }
@@ -538,6 +541,9 @@
 }
 .flex-1 {
   flex: 1;
+}
+.flex-\[1\.5\] {
+  flex: 1.5;
 }
 .flex-auto {
   flex: auto;
@@ -2620,6 +2626,11 @@
 .active\:scale-\[0\.99\] {
   &:active {
     scale: 0.99;
+  }
+}
+.active\:opacity-70 {
+  &:active {
+    opacity: 70%;
   }
 }
 .disabled\:pointer-events-none {

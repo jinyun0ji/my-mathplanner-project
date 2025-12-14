@@ -2,14 +2,14 @@
 import React from 'react';
 import { 
     Home, Calendar, Clipboard, BarChart2, Menu, 
-    User, Users, ChevronRight, ChevronLeft, CheckCircle, Clock, 
-    AlertCircle, X, ChevronDown, Check, LogOut,
+    User, Users, ChevronRight, ChevronLeft, ChevronUp, ChevronDown, 
+    CheckCircle, Clock, AlertCircle, X, Check, LogOut,
     Bell, MessageSquare, Video, FileText, Lock,
     Search, Filter, MoreVertical, Plus, Trash2,
     PlayCircle, PauseCircle, StopCircle, Volume2, VolumeX,
     Maximize, Minimize, Settings, BookOpen, PenTool,
     MapPin, Phone, Mail, Award, TrendingUp, TrendingDown, Activity,
-    Edit, List // ✅ Edit, List 추가
+    Edit, List, Folder, Download // ✅ Download 추가
 } from 'lucide-react';
 
 // Icon 컴포넌트
@@ -18,8 +18,9 @@ export const Icon = ({ name, className, ...props }) => {
         home: Home, calendar: Calendar, clipboard: Clipboard, clipboardCheck: Clipboard, 
         barChart: BarChart2, menu: Menu, user: User, users: Users, 
         chevronRight: ChevronRight, chevronLeft: ChevronLeft, 
+        chevronUp: ChevronUp, chevronDown: ChevronDown, 
         checkCircle: CheckCircle, clock: Clock, 
-        alertCircle: AlertCircle, x: X, chevronDown: ChevronDown, check: Check,
+        alertCircle: AlertCircle, x: X, check: Check,
         logOut: LogOut, bell: Bell, messageSquare: MessageSquare, monitor: Video,
         fileText: FileText, lock: Lock, search: Search, filter: Filter,
         moreVertical: MoreVertical, plus: Plus, trash: Trash2,
@@ -29,26 +30,28 @@ export const Icon = ({ name, className, ...props }) => {
         mapPin: MapPin, phone: Phone, mail: Mail, award: Award,
         trend: TrendingUp, trendingUp: TrendingUp, trendingDown: TrendingDown, 
         list: Activity, school: Home, pin: MapPin,
-        edit: Edit, // ✅ 매핑 추가
-        schedule: List 
+        edit: Edit, schedule: List, folder: Folder,
+        download: Download, video: Video // ✅ video, download 매핑 추가
     };
     
     const LucideIcon = icons[name] || Home;
     return <LucideIcon className={className} {...props} />;
 };
 
+// ... (나머지 코드는 기존과 동일) ...
 export const staffMembers = [
     { id: 'teacher', name: '채수용 선생님', role: 'teacher', avatar: 'C' },
     { id: 'lab', name: '수학 연구소', role: 'admin', avatar: 'Lab' }
 ];
 
-export const getWeekOfMonthISO = (date) => {
-    const d = new Date(date);
-    d.setHours(0, 0, 0, 0);
-    d.setDate(d.getDate() + 4 - (d.getDay() || 7));
-    const yearStart = new Date(d.getFullYear(), 0, 1);
-    const weekNo = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
-    return { month: d.getMonth() + 1, week: weekNo };
+export const getWeekOfMonth = (date) => {
+    const firstDayOfMonth = new Date(date.getFullYear(), date.getMonth(), 1);
+    const dayOfWeek = firstDayOfMonth.getDay(); // 0: 일요일 ~ 6: 토요일
+    
+    // 날짜 + 시작 요일 보정값을 7로 나누어 올림 (달력 행 기준)
+    const weekNo = Math.ceil((date.getDate() + dayOfWeek) / 7);
+    
+    return { month: date.getMonth() + 1, week: weekNo };
 };
 
 export const calculateClassSessions = (cls) => {
@@ -161,7 +164,8 @@ export const calculateGradeComparison = (studentId, classes, tests, grades) => {
                         score: score,
                         status: status,
                         itemAccuracy: itemAccuracy, 
-                        type: '객관식' 
+                        type: '객관식',
+                        difficulty: test.questionAnalysis?.[idx]?.difficulty || '중' 
                     });
                 });
             }

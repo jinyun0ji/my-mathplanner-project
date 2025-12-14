@@ -1,7 +1,7 @@
 // src/components/StudentTabs.jsx
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Icon, getWeekOfMonthISO, calculateDurationMinutes, formatDuration, formatTime } from '../utils/helpers';
+import { Icon, getWeekOfMonth, calculateDurationMinutes, formatDuration, formatTime } from '../utils/helpers';
 import CampaignIcon from '@mui/icons-material/Campaign'; 
 import NoteAltIcon from '@mui/icons-material/NoteAlt'; 
 import TuneIcon from '@mui/icons-material/Tune'; 
@@ -11,91 +11,127 @@ const ModalPortal = ({ children }) => {
     return createPortal(children, el);
 };
 
-// 1. DashboardTab (수정: 출결 경고 추가)
+// 1. DashboardTab (수정: 이전 디자인 복구 + 텍스트 변경)
 export const DashboardTab = ({ student, myClasses, attendanceLogs, clinicLogs, homeworkStats, notices, setActiveTab }) => {
     const today = new Date();
     const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
     const todayDayName = dayNames[today.getDay()];
     const todayStr = today.toISOString().split('T')[0];
+
+    // 오늘의 수업 및 클리닉 필터링
     const todayClasses = myClasses.filter(cls => cls.schedule.days.includes(todayDayName));
     const todayClinics = clinicLogs.filter(log => log.studentId === student.id && log.date === todayStr && !log.checkOut);
 
-    // ✅ [New] 출결 경고 로직
-    // 1) 최근 7일 이내 '결석' 기록이 있는지 확인
-    // 2) 혹은 전체 출석률이 80% 미만인지 확인
+    // 출결 경고 로직 (유지)
     const attendanceAlerts = myClasses.map(cls => {
         const clsLogs = attendanceLogs.filter(l => l.classId === cls.id && l.studentId === student.id);
         if (clsLogs.length === 0) return null;
-
-        const absentCount = clsLogs.filter(l => l.status === '결석').length;
         const recentAbsent = clsLogs.find(l => {
             const logDate = new Date(l.date);
             const diffTime = Math.abs(today - logDate);
             const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
             return l.status === '결석' && diffDays <= 7;
         });
-
         const rate = Math.round((clsLogs.filter(l => ['출석','동영상보강'].includes(l.status)).length / clsLogs.length) * 100);
-
         if (recentAbsent) return { type: 'absent', class: cls.name, msg: '최근 결석이 발생했습니다.' };
         if (rate < 80) return { type: 'rate', class: cls.name, msg: `출석률이 낮습니다 (${rate}%)` };
         return null;
     }).filter(Boolean);
 
     return (
-        <div className="space-y-6 pb-6 animate-fade-in-up">
+        <div className="space-y-6 pb-24 animate-fade-in-up">
             <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100 flex justify-between items-center relative overflow-hidden">
                 <div className="relative z-10"><p className="text-gray-500 text-sm font-medium mb-1">{today.getMonth()+1}월 {today.getDate()}일 {todayDayName}요일</p><h2 className="text-2xl font-bold text-gray-900">반가워요, <span className="text-brand-main">{student.name}</span>님! 👋</h2></div><div className="w-12 h-12 bg-brand-bg rounded-full flex items-center justify-center text-2xl relative z-10">🎓</div>
             </div>
 
-            {/* ✅ [New] 출결 경고 배너 */}
+            {/* 출결 경고 배너 */}
             {attendanceAlerts.length > 0 && (
                 <div className="space-y-2">
                     {attendanceAlerts.map((alert, idx) => (
-                        <div key={idx} onClick={() => setActiveTab('class')} className="bg-red-50 border border-red-100 p-3 rounded-xl flex items-center gap-3 cursor-pointer">
+                        <div key={idx} onClick={() => setActiveTab('class')} className="bg-red-50 border border-red-100 p-3 rounded-xl flex items-center gap-3 cursor-pointer active:bg-red-100 transition-colors">
                             <div className="bg-white p-1.5 rounded-full text-red-500 shadow-sm"><Icon name="alertCircle" className="w-5 h-5" /></div>
-                            <div className="flex-1">
-                                <p className="text-xs text-red-500 font-bold">{alert.class}</p>
-                                <p className="text-sm font-bold text-gray-800">{alert.msg}</p>
-                            </div>
-                            <Icon name="chevronRight" className="w-4 h-4 text-red-300" />
+                            <div className="flex-1"><p className="text-xs text-red-500 font-bold">{alert.class}</p><p className="text-sm font-bold text-gray-800">{alert.msg}</p></div><Icon name="chevronRight" className="w-4 h-4 text-red-300" />
                         </div>
                     ))}
                 </div>
             )}
 
             <div>
-                <h3 className="text-lg font-bold text-gray-800 mb-3 px-1 flex items-center"><Icon name="calendar" className="w-5 h-5 mr-2 text-brand-main" />오늘의 일정</h3>
+                {/* ✅ [수정] 텍스트 변경: 오늘의 일정 -> 오늘의 수업 */}
+                <h3 className="text-lg font-bold text-gray-800 mb-3 px-1 flex items-center"><Icon name="calendar" className="w-5 h-5 mr-2 text-brand-main" />오늘의 수업</h3>
+                
+                {/* ✅ [수정] 이전 디자인으로 복구 (리스트 나열) */}
                 {todayClasses.length === 0 && todayClinics.length === 0 ? (
-                    <div className="bg-white p-6 rounded-2xl border border-dashed border-gray-300 text-center text-gray-500 text-sm">오늘 예정된 수업이나 클리닉이 없어요. <br/>자율 학습을 해보는 건 어때요? 🔥</div>
+                    <div className="bg-white p-6 rounded-2xl border border-dashed border-gray-300 text-center text-gray-500 text-sm">
+                        오늘 예정된 수업이나 클리닉이 없어요. <br/>
+                        자율 학습을 해보는 건 어때요? 🔥
+                    </div>
                 ) : (
                     <div className="space-y-3">
+                        {/* 정규 수업 리스트 */}
                         {todayClasses.map(cls => (
-                            <div key={cls.id} className="bg-indigo-50 p-5 rounded-2xl border border-indigo-100 flex justify-between items-center">
-                                <div><span className="text-xs font-bold text-indigo-600 bg-white px-2 py-0.5 rounded border border-indigo-200 mb-2 inline-block">정규 수업</span><h4 className="font-bold text-indigo-900 text-lg">{cls.name}</h4><p className="text-sm text-indigo-700 mt-0.5">{cls.schedule.time} | {cls.teacher} 선생님</p></div><Icon name="chevronRight" className="text-indigo-400" />
+                            <div key={cls.id} className="bg-indigo-50 p-5 rounded-2xl border border-indigo-100 flex justify-between items-center active:scale-[0.98] transition-transform">
+                                <div>
+                                    <span className="text-xs font-bold text-indigo-600 bg-white px-2 py-0.5 rounded border border-indigo-200 mb-2 inline-block">정규 수업</span>
+                                    <h4 className="font-bold text-indigo-900 text-lg">{cls.name}</h4>
+                                    <p className="text-sm text-indigo-700 mt-0.5">{cls.schedule.time} | {cls.teacher} 선생님</p>
+                                </div>
+                                <Icon name="chevronRight" className="text-indigo-400" />
                             </div>
                         ))}
+                        {/* 클리닉 리스트 (있을 때만 표시됨) */}
                         {todayClinics.map(clinic => (
-                            <div key={clinic.id} className="bg-teal-50 p-5 rounded-2xl border border-teal-100 flex justify-between items-center">
-                                <div><span className="text-xs font-bold text-teal-600 bg-white px-2 py-0.5 rounded border border-teal-200 mb-2 inline-block">클리닉</span><h4 className="font-bold text-teal-900 text-lg">학습 클리닉</h4><p className="text-sm text-teal-700 mt-0.5">{clinic.checkIn} 입실 예정</p></div>
+                            <div key={clinic.id} className="bg-teal-50 p-5 rounded-2xl border border-teal-100 flex justify-between items-center active:scale-[0.98] transition-transform">
+                                <div>
+                                    <span className="text-xs font-bold text-teal-600 bg-white px-2 py-0.5 rounded border border-teal-200 mb-2 inline-block">클리닉</span>
+                                    <h4 className="font-bold text-teal-900 text-lg">학습 클리닉</h4>
+                                    <p className="text-sm text-teal-700 mt-0.5">{clinic.checkIn} 입실 예정</p>
+                                </div>
                             </div>
                         ))}
                     </div>
                 )}
             </div>
-            <div><div className="flex justify-between items-end mb-3 px-1"><h3 className="text-lg font-bold text-gray-800 flex items-center"><Icon name="clipboardCheck" className="w-5 h-5 mr-2 text-brand-red" />놓치면 안 돼요!</h3><button onClick={() => setActiveTab('learning')} className="text-xs text-gray-500 underline">전체보기</button></div><div className="flex gap-3 overflow-x-auto pb-4 -mx-4 px-4 snap-x scrollbar-hide">{homeworkStats.filter(h => h.status !== '완료').length > 0 ? (homeworkStats.filter(h => h.status !== '완료').map(hw => (<div key={hw.id} className="snap-center shrink-0 w-64 bg-white p-4 rounded-2xl shadow-sm border border-gray-200 relative overflow-hidden"><div className={`absolute top-0 left-0 w-1.5 h-full ${hw.status === '미시작' ? 'bg-brand-red' : 'bg-brand-main'}`}></div><div className="flex justify-between items-start mb-2 pl-2"><span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${hw.status === '미시작' ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'}`}>{hw.status}</span><span className="text-[10px] text-gray-400">~{hw.date.slice(5)}</span></div><h4 className="font-bold text-gray-900 text-sm mb-1 pl-2 truncate">{hw.content}</h4><p className="text-xs text-gray-500 pl-2 mb-3">{hw.book}</p><div className="pl-2"><div className="w-full bg-gray-100 rounded-full h-1.5"><div className="bg-brand-main h-1.5 rounded-full" style={{ width: `${hw.completionRate}%` }}></div></div><p className="text-[10px] text-right text-gray-400 mt-1">{hw.completionRate}% 달성</p></div></div>))) : (<div className="w-full bg-white p-5 rounded-2xl border border-gray-100 text-center"><p className="text-sm text-gray-500">모든 과제를 완료했어요! 훌륭해요 👏</p></div>)}</div></div>
-            <div><h3 className="text-lg font-bold text-gray-800 mb-3 px-1">📢 최근 소식</h3><div className="bg-white rounded-2xl shadow-sm border border-gray-200 divide-y divide-gray-100">{notices.slice(0, 3).map(notice => (<div key={notice.id} onClick={() => setActiveTab('board')} className="p-4 flex justify-between items-center cursor-pointer active:bg-gray-50"><div className="flex-1 min-w-0 mr-4"><div className="flex items-center gap-2 mb-1">{notice.isPinned && <span className="text-[10px] bg-brand-red text-white px-1 rounded">필독</span>}<h4 className="text-sm font-bold text-gray-900 truncate">{notice.title}</h4></div><p className="text-xs text-gray-400">{notice.date}</p></div><Icon name="chevronRight" className="w-4 h-4 text-gray-300" /></div>))}{notices.length === 0 && (<div className="p-4 text-center text-gray-500 text-sm">새로운 공지사항이 없습니다.</div>)}</div></div>
+
+            <div>
+                <div className="flex justify-between items-end mb-3 px-1"><h3 className="text-lg font-bold text-gray-800 flex items-center"><Icon name="clipboardCheck" className="w-5 h-5 mr-2 text-brand-red" />놓치면 안 돼요!</h3><button onClick={() => setActiveTab('learning')} className="text-xs text-gray-500 underline active:text-gray-800">전체보기</button></div>
+                <div className="flex gap-3 overflow-x-auto pb-4 -mx-4 px-4 snap-x scrollbar-hide">
+                    {homeworkStats.filter(h => h.status !== '완료').length > 0 ? (
+                        homeworkStats.filter(h => h.status !== '완료').map(hw => (
+                            <div key={hw.id} className="snap-center shrink-0 w-64 bg-white p-4 rounded-2xl shadow-sm border border-gray-200 relative overflow-hidden active:scale-95 transition-transform">
+                                <div className={`absolute top-0 left-0 w-1.5 h-full ${hw.status === '미시작' ? 'bg-brand-red' : 'bg-brand-main'}`}></div>
+                                <div className="flex justify-between items-start mb-2 pl-2"><span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${hw.status === '미시작' ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'}`}>{hw.status}</span><span className="text-[10px] text-gray-400">~{hw.date.slice(5)}</span></div>
+                                <h4 className="font-bold text-gray-900 text-sm mb-1 pl-2 truncate">{hw.content}</h4>
+                                <p className="text-xs text-gray-500 pl-2 mb-3">{hw.book}</p>
+                                <div className="pl-2"><div className="w-full bg-gray-100 rounded-full h-1.5"><div className="bg-brand-main h-1.5 rounded-full" style={{ width: `${hw.completionRate}%` }}></div></div><p className="text-[10px] text-right text-gray-400 mt-1">{hw.completionRate}% 달성</p></div>
+                            </div>
+                        ))
+                    ) : (<div className="w-full bg-white p-5 rounded-2xl border border-gray-100 text-center"><p className="text-sm text-gray-500">모든 과제를 완료했어요! 훌륭해요 👏</p></div>)}
+                </div>
+            </div>
+
+            <div>
+                <h3 className="text-lg font-bold text-gray-800 mb-3 px-1">📢 최근 소식</h3>
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-200 divide-y divide-gray-100">
+                    {notices.slice(0, 3).map(notice => (
+                        <div key={notice.id} onClick={() => setActiveTab('board')} className="p-4 flex justify-between items-center cursor-pointer active:bg-gray-50 transition-colors">
+                            <div className="flex-1 min-w-0 mr-4"><div className="flex items-center gap-2 mb-1">{notice.isPinned && <span className="text-[10px] bg-brand-red text-white px-1 rounded">필독</span>}<h4 className="text-sm font-bold text-gray-900 truncate">{notice.title}</h4></div><p className="text-xs text-gray-400">{notice.date}</p></div><Icon name="chevronRight" className="w-4 h-4 text-gray-300" />
+                        </div>
+                    ))}
+                    {notices.length === 0 && (<div className="p-4 text-center text-gray-500 text-sm">새로운 공지사항이 없습니다.</div>)}
+                </div>
+            </div>
         </div>
     );
 };
 
-// 2. ClassTab
+// 2. ClassTab (터치감 개선)
 export const ClassTab = ({ myClasses, setSelectedClassId }) => (
-    <div className="space-y-6 animate-fade-in-up pb-10">
+    <div className="space-y-6 animate-fade-in-up pb-20">
         <h2 className="text-2xl font-bold text-gray-900 px-1">나의 강의실</h2>
         <div className="grid grid-cols-1 gap-4">
             {myClasses.map(cls => (
-                <div key={cls.id} onClick={() => setSelectedClassId(cls.id)} className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm flex items-center justify-between cursor-pointer active:scale-[0.98] transition-transform">
+                <div key={cls.id} onClick={() => setSelectedClassId(cls.id)} className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm flex items-center justify-between cursor-pointer active:scale-[0.98] transition-transform active:bg-gray-50">
                     <div className="flex gap-4 items-center"><div className="bg-brand-light/20 w-14 h-14 rounded-2xl flex items-center justify-center text-brand-main font-bold text-xl shrink-0">{cls.name.charAt(0)}</div><div><h4 className="font-bold text-gray-900 text-lg mb-1">{cls.name}</h4><p className="text-xs text-gray-500 font-medium bg-gray-100 px-2 py-1 rounded-md inline-flex items-center gap-1"><Icon name="users" className="w-3 h-3" /> {cls.teacher} 선생님</p><p className="text-xs text-gray-400 mt-1 ml-0.5">{cls.schedule.days.join(', ')} {cls.schedule.time}</p></div></div><div className="text-gray-300"><Icon name="chevronRight" className="w-6 h-6" /></div>
                 </div>
             ))}
@@ -103,16 +139,22 @@ export const ClassTab = ({ myClasses, setSelectedClassId }) => (
     </div>
 );
 
-// 3. LearningTab
-export const LearningTab = ({ studentId, myHomeworkStats, myGradeComparison, clinicLogs, students, classes }) => {
-    const [subTab, setSubTab] = useState('homework'); 
+// 3. LearningTab (수정: initialTab 받기)
+export const LearningTab = ({ studentId, myHomeworkStats, myGradeComparison, clinicLogs, students, classes, initialTab = 'homework' }) => {
+    const [subTab, setSubTab] = useState(initialTab); 
+    
+    // ✅ [추가] initialTab prop이 변경되면 탭 상태 업데이트
+    useEffect(() => {
+        setSubTab(initialTab);
+    }, [initialTab]);
+
     return (
-        <div className="animate-fade-in-up h-full flex flex-col pb-10">
+        <div className="animate-fade-in-up h-full flex flex-col pb-24">
             <h2 className="text-2xl font-bold text-gray-900 px-1 mb-4">학습 관리</h2>
             <div className="flex p-1 bg-gray-100 rounded-xl mb-6">
-                <button onClick={() => setSubTab('homework')} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${subTab === 'homework' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-400'}`}>과제</button>
-                <button onClick={() => setSubTab('grades')} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${subTab === 'grades' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-400'}`}>성적</button>
-                <button onClick={() => setSubTab('clinic')} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${subTab === 'clinic' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-400'}`}>클리닉</button>
+                <button onClick={() => setSubTab('homework')} className={`flex-1 py-2.5 text-sm font-bold rounded-lg transition-all ${subTab === 'homework' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-400'}`}>과제</button>
+                <button onClick={() => setSubTab('grades')} className={`flex-1 py-2.5 text-sm font-bold rounded-lg transition-all ${subTab === 'grades' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-400'}`}>성적</button>
+                <button onClick={() => setSubTab('clinic')} className={`flex-1 py-2.5 text-sm font-bold rounded-lg transition-all ${subTab === 'clinic' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-400'}`}>클리닉</button>
             </div>
             <div className="flex-1">
                 {subTab === 'homework' && <HomeworkTab myHomeworkStats={myHomeworkStats} />}
@@ -149,7 +191,7 @@ export const ScheduleTab = ({
     const weekDays = ['일', '월', '화', '수', '목', '금', '토'];
     const baseDate = new Date(selectedDate);
     const sunday = new Date(baseDate); sunday.setDate(baseDate.getDate() - baseDate.getDay());
-    const { month: weekMonth, week: weekNum } = getWeekOfMonthISO(sunday);
+    const { month: weekMonth, week: weekNum } = getWeekOfMonth(sunday);
     const prevWeek = () => { const d = new Date(selectedDate); d.setDate(d.getDate() - 7); setSelectedDate(d); };
     const nextWeek = () => { const d = new Date(selectedDate); d.setDate(d.getDate() + 7); setSelectedDate(d); };
     const prevMonth = () => setSelectedDate(new Date(selectedDate.getFullYear(), selectedDate.getMonth() - 1, 1));
@@ -189,11 +231,12 @@ export const ScheduleTab = ({
     };
 
     return (
-        <div className="pb-10 relative animate-fade-in-up">
-            <div className="flex justify-between items-center mb-6 px-1"><h2 className="text-2xl font-bold text-brand-black">나의 일정</h2><div className="flex gap-2"><button onClick={handleOpenAddModal} className="bg-brand-main hover:bg-brand-dark text-white px-3 py-1 rounded-xl text-xs font-bold flex items-center gap-1 shadow-md transition-all active:scale-95"><Icon name="plus" className="w-4 h-4" /> 일정 추가</button><div className="bg-white p-1 rounded-xl border border-brand-gray/30 shadow-sm flex h-[32px] items-center"><button onClick={() => setViewType('weekly')} className={`px-3 py-0 h-full flex items-center rounded-lg text-xs font-bold transition-all ${viewType === 'weekly' ? 'bg-brand-main text-white shadow-md' : 'text-brand-gray hover:text-brand-black'}`}>주간</button><button onClick={() => { setViewType('monthly'); setSelectedDate(new Date()); }} className={`px-3 py-0 h-full flex items-center rounded-lg text-xs font-bold transition-all ${viewType === 'monthly' ? 'bg-brand-main text-white shadow-md' : 'text-brand-gray hover:text-brand-black'}`}>월간</button></div></div></div>
-            {viewType === 'weekly' ? (<div className="space-y-6"><div className="flex items-center justify-between px-2 mb-2"><button onClick={prevWeek} className="p-2 bg-white rounded-full shadow-sm text-brand-gray hover:text-brand-main hover:bg-brand-bg"><Icon name="chevronLeft" className="w-5 h-5" /></button><span className="font-bold text-brand-black text-lg">{weekMonth}월 {weekNum}주차</span><button onClick={nextWeek} className="p-2 bg-white rounded-full shadow-sm text-brand-gray hover:text-brand-main hover:bg-brand-bg"><Icon name="chevronRight" className="w-5 h-5" /></button></div><div className="flex justify-between bg-white p-1.5 rounded-2xl shadow-sm border border-brand-gray/30 overflow-x-auto">{weekDays.map((day, index) => { const date = new Date(sunday); date.setDate(sunday.getDate() + index); const isSelected = formatDate(date) === formatDate(selectedDate); const isToday = formatDate(date) === todayStr; const { hasClass, status, hasExternal, hasClinic } = getDayInfo(date); return (<button key={day} onClick={() => setSelectedDate(date)} className={`flex flex-col items-center p-1 rounded-xl flex-1 transition-all min-w-[32px] relative ${isSelected ? 'bg-brand-main text-white shadow-brand scale-105' : 'hover:bg-brand-bg'} ${!isSelected && isToday ? 'text-brand-main font-bold' : ''} ${!isSelected && !isToday ? 'text-brand-gray' : ''}`}><span className="text-[10px] mb-0.5">{day}</span><span className={`font-bold ${isSelected ? 'text-base' : 'text-sm'}`}>{date.getDate()}</span><div className="flex gap-0.5 mt-1 h-1.5 items-center">{(hasClass || status) && <div className={`w-1 h-1 rounded-full ${isSelected ? 'bg-white' : (status === '출석' ? 'bg-green-500' : status === '지각' ? 'bg-yellow-400' : status === '결석' ? 'bg-brand-red' : 'bg-brand-gray')}`}></div>}{hasExternal && <div className={`w-1 h-1 rounded-full ${isSelected ? 'bg-white' : 'bg-brand-light'}`}></div>}{hasClinic && <div className={`w-1 h-1 rounded-full ${isSelected ? 'bg-white' : 'bg-teal-400'}`}></div>}</div></button>); })}</div><div className="space-y-4">{renderSchedules()}</div></div>) : (<div className="flex flex-col md:flex-row gap-6"><div className="bg-white rounded-3xl shadow-lg p-6 border border-brand-gray/30 mb-6 max-w-md mx-auto w-full md:w-1/2 flex-shrink-0 h-fit"><div className="flex justify-between items-center mb-6"><button onClick={prevMonth} className="p-2 hover:bg-brand-bg rounded-full text-brand-gray"><Icon name="chevronLeft" className="w-5 h-5" /></button><h3 className="text-lg font-bold text-brand-black">{selectedDate.getFullYear()}년 {selectedDate.getMonth() + 1}월</h3><button onClick={nextMonth} className="p-2 hover:bg-brand-bg rounded-full text-brand-gray"><Icon name="chevronRight" className="w-5 h-5" /></button></div><div className="grid grid-cols-7 mb-2 text-center">{weekDays.map((day, i) => (<div key={day} className={`text-xs font-bold ${i === 0 ? 'text-brand-red' : 'text-brand-gray'}`}>{day}</div>))}</div><div className="grid grid-cols-7 gap-y-4 gap-x-1">{calendarDays.map((date, index) => { if (!date) return <div key={index}></div>; const { hasClass, status, hasExternal, hasClinic } = getDayInfo(date); const isSelected = formatDate(date) === formatDate(selectedDate); const isToday = formatDate(date) === todayStr; return (<div key={index} className="flex flex-col items-center cursor-pointer group" onClick={() => setSelectedDate(date)}><div className={`w-8 h-8 flex items-center justify-center rounded-full text-sm font-medium transition-all ${isSelected ? 'bg-brand-main text-white shadow-brand scale-110' : ''} ${!isSelected && isToday ? 'text-brand-main font-bold bg-brand-light/30' : ''} ${!isSelected && !isToday ? 'text-brand-black group-hover:bg-brand-bg' : ''}`}>{date.getDate()}</div><div className="h-1.5 mt-1 flex gap-0.5 min-h-[6px]">{status === '출석' && <div className="w-1.5 h-1.5 rounded-full bg-green-500"></div>}{status === '지각' && <div className="w-1.5 h-1.5 rounded-full bg-yellow-400"></div>}{status === '결석' && <div className="w-1.5 h-1.5 rounded-full bg-brand-red"></div>}{!status && hasClass && <div className="w-1.5 h-1.5 rounded-full bg-brand-gray"></div>}{hasExternal && <div className="w-1.5 h-1.5 rounded-full bg-brand-light"></div>}{hasClinic && <div className="w-1.5 h-1.5 rounded-full bg-teal-400"></div>}</div></div>); })}</div></div><div className="space-y-4 w-full md:w-1/2 flex-1">{renderSchedules()}</div></div>)}
-            {isScheduleModalOpen && <ModalPortal><div className="fixed inset-0 z-[70] bg-black/50 flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => setIsScheduleModalOpen(false)}><div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl animate-fade-in-up" onClick={e => e.stopPropagation()}><h3 className="text-lg font-bold text-brand-black mb-4">타학원 일정 {isEditMode ? '수정' : '등록'}</h3><div className="space-y-4 max-h-[70vh] overflow-y-auto custom-scrollbar px-1"><div><label className="block text-xs font-bold text-brand-gray mb-1">학원명 *</label><input type="text" value={newSchedule.academyName} onChange={e => setNewSchedule({...newSchedule, academyName: e.target.value})} className="w-full border border-brand-gray/30 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-main focus:outline-none" placeholder="예: 정상어학원"/></div><div><label className="block text-xs font-bold text-brand-gray mb-1">강의명 *</label><input type="text" value={newSchedule.courseName} onChange={e => setNewSchedule({...newSchedule, courseName: e.target.value})} className="w-full border border-brand-gray/30 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-main focus:outline-none" placeholder="예: TOP반 영어"/></div><div><label className="block text-xs font-bold text-brand-gray mb-1">강사</label><input type="text" value={newSchedule.instructor} onChange={e => setNewSchedule({...newSchedule, instructor: e.target.value})} className="w-full border border-brand-gray/30 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-main focus:outline-none" placeholder="예: Julie 선생님"/></div><div className="flex gap-2"><div className="flex-1"><label className="block text-xs font-bold text-brand-gray mb-1">개강일 *</label><input type="date" value={newSchedule.startDate} onChange={e => setNewSchedule({...newSchedule, startDate: e.target.value})} className="w-full border border-brand-gray/30 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-main focus:outline-none"/></div><div className="flex-1"><label className="block text-xs font-bold text-brand-gray mb-1">종강일</label><input type="date" value={newSchedule.endDate} onChange={e => setNewSchedule({...newSchedule, endDate: e.target.value})} className="w-full border border-brand-gray/30 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-main focus:outline-none"/></div></div><div><label className="block text-xs font-bold text-brand-gray mb-1">수업 요일 *</label><div className="flex gap-1 justify-between">{['월','화','수','목','금','토','일'].map(d => (<button key={d} onClick={() => toggleDay(d)} className={`w-8 h-8 rounded-full text-xs font-bold transition-colors ${newSchedule.days.includes(d) ? 'bg-brand-main text-white' : 'bg-brand-bg text-brand-gray hover:bg-brand-gray/30'}`}>{d}</button>))}</div></div><div className="flex gap-2"><div className="flex-1"><label className="block text-xs font-bold text-brand-gray mb-1">시작 시간 *</label><input type="time" value={newSchedule.startTime} onChange={e => setNewSchedule({...newSchedule, startTime: e.target.value})} className="w-full border border-brand-gray/30 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-main focus:outline-none"/></div><div className="flex-1"><label className="block text-xs font-bold text-brand-gray mb-1">종료 시간</label><input type="time" value={newSchedule.endTime} onChange={e => setNewSchedule({...newSchedule, endTime: e.target.value})} className="w-full border border-brand-gray/30 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-main focus:outline-none"/></div></div><button onClick={handleSaveSubmit} className="w-full bg-brand-main hover:bg-brand-dark text-white font-bold py-3 rounded-xl mt-2 transition-colors">{isEditMode ? '수정 완료' : '등록하기'}</button></div></div></div></ModalPortal>}
-            {isDeleteModalOpen && <ModalPortal><div className="fixed inset-0 z-[70] bg-black/50 flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => setIsDeleteModalOpen(false)}><div className="bg-white rounded-2xl w-full max-w-xs p-6 shadow-2xl animate-fade-in-up text-center" onClick={e => e.stopPropagation()}><div className="w-12 h-12 bg-brand-red/10 rounded-full flex items-center justify-center mx-auto mb-4 text-brand-red"><Icon name="trash" className="w-6 h-6" /></div><h3 className="text-lg font-bold text-brand-black mb-2">반복 일정 삭제</h3><p className="text-sm text-brand-gray mb-6">이 일정을 어떻게 삭제하시겠습니까?</p><div className="space-y-2"><button onClick={() => executeDelete('instance')} className="w-full bg-white border border-brand-gray/30 text-brand-black hover:bg-brand-bg font-bold py-3 rounded-xl text-sm transition-colors">이 일정만 삭제</button><button onClick={() => executeDelete('future')} className="w-full bg-white border border-brand-gray/30 text-brand-black hover:bg-brand-bg font-bold py-3 rounded-xl text-sm transition-colors">이 일정 및 향후 일정 삭제</button><button onClick={() => executeDelete('all')} className="w-full bg-brand-red text-white hover:bg-red-600 font-bold py-3 rounded-xl text-sm transition-colors">전체 삭제</button></div><button onClick={() => setIsDeleteModalOpen(false)} className="mt-4 text-xs text-brand-gray hover:text-brand-black underline">취소</button></div></div></ModalPortal>}
+        <div className="pb-24 relative animate-fade-in-up">
+            <div className="flex justify-between items-center mb-6 px-1"><h2 className="text-2xl font-bold text-brand-black">수업 일정</h2><div className="flex gap-2"><button onClick={handleOpenAddModal} className="bg-brand-main hover:bg-brand-dark text-white px-3 py-1 rounded-xl text-xs font-bold flex items-center gap-1 shadow-md transition-all active:scale-95"><Icon name="plus" className="w-4 h-4" /> 일정 추가</button><div className="bg-white p-1 rounded-xl border border-brand-gray/30 shadow-sm flex h-[32px] items-center"><button onClick={() => setViewType('weekly')} className={`px-3 py-0 h-full flex items-center rounded-lg text-xs font-bold transition-all ${viewType === 'weekly' ? 'bg-brand-main text-white shadow-md' : 'text-brand-gray hover:text-brand-black'}`}>주간</button><button onClick={() => { setViewType('monthly'); setSelectedDate(new Date()); }} className={`px-3 py-0 h-full flex items-center rounded-lg text-xs font-bold transition-all ${viewType === 'monthly' ? 'bg-brand-main text-white shadow-md' : 'text-brand-gray hover:text-brand-black'}`}>월간</button></div></div></div>
+            {viewType === 'weekly' ? (<div className="space-y-6"><div className="flex items-center justify-between px-2 mb-2"><button onClick={prevWeek} className="p-2 bg-white rounded-full shadow-sm text-brand-gray hover:text-brand-main hover:bg-brand-bg active:bg-gray-200 transition-colors"><Icon name="chevronLeft" className="w-5 h-5" /></button><span className="font-bold text-brand-black text-lg">{weekMonth}월 {weekNum}주차</span><button onClick={nextWeek} className="p-2 bg-white rounded-full shadow-sm text-brand-gray hover:text-brand-main hover:bg-brand-bg active:bg-gray-200 transition-colors"><Icon name="chevronRight" className="w-5 h-5" /></button></div><div className="flex justify-between bg-white p-1.5 rounded-2xl shadow-sm border border-brand-gray/30 overflow-x-auto">{weekDays.map((day, index) => { const date = new Date(sunday); date.setDate(sunday.getDate() + index); const isSelected = formatDate(date) === formatDate(selectedDate); const isToday = formatDate(date) === todayStr; const { hasClass, status, hasExternal, hasClinic } = getDayInfo(date); return (<button key={day} onClick={() => setSelectedDate(date)} className={`flex flex-col items-center p-1 rounded-xl flex-1 transition-all min-w-[32px] relative active:scale-95 ${isSelected ? 'bg-brand-main text-white shadow-brand scale-105' : 'hover:bg-brand-bg'} ${!isSelected && isToday ? 'text-brand-main font-bold' : ''} ${!isSelected && !isToday ? 'text-brand-gray' : ''}`}><span className="text-[10px] mb-0.5">{day}</span><span className={`font-bold ${isSelected ? 'text-base' : 'text-sm'}`}>{date.getDate()}</span><div className="flex gap-0.5 mt-1 h-1.5 items-center">{(hasClass || status) && <div className={`w-1 h-1 rounded-full ${isSelected ? 'bg-white' : (status === '출석' ? 'bg-green-500' : status === '지각' ? 'bg-yellow-400' : status === '결석' ? 'bg-brand-red' : 'bg-brand-gray')}`}></div>}{hasExternal && <div className={`w-1 h-1 rounded-full ${isSelected ? 'bg-white' : 'bg-brand-light'}`}></div>}{hasClinic && <div className={`w-1 h-1 rounded-full ${isSelected ? 'bg-white' : 'bg-teal-400'}`}></div>}</div></button>); })}</div><div className="space-y-4">{renderSchedules()}</div></div>) : (<div className="flex flex-col md:flex-row gap-6"><div className="bg-white rounded-3xl shadow-lg p-6 border border-brand-gray/30 mb-6 max-w-md mx-auto w-full md:w-1/2 flex-shrink-0 h-fit"><div className="flex justify-between items-center mb-6"><button onClick={prevMonth} className="p-2 hover:bg-brand-bg rounded-full text-brand-gray active:bg-gray-200"><Icon name="chevronLeft" className="w-5 h-5" /></button><h3 className="text-lg font-bold text-brand-black">{selectedDate.getFullYear()}년 {selectedDate.getMonth() + 1}월</h3><button onClick={nextMonth} className="p-2 hover:bg-brand-bg rounded-full text-brand-gray active:bg-gray-200"><Icon name="chevronRight" className="w-5 h-5" /></button></div><div className="grid grid-cols-7 mb-2 text-center">{weekDays.map((day, i) => (<div key={day} className={`text-xs font-bold ${i === 0 ? 'text-brand-red' : 'text-brand-gray'}`}>{day}</div>))}</div><div className="grid grid-cols-7 gap-y-4 gap-x-1">{calendarDays.map((date, index) => { if (!date) return <div key={index}></div>; const { hasClass, status, hasExternal, hasClinic } = getDayInfo(date); const isSelected = formatDate(date) === formatDate(selectedDate); const isToday = formatDate(date) === todayStr; return (<div key={index} className="flex flex-col items-center cursor-pointer group active:scale-90 transition-transform" onClick={() => setSelectedDate(date)}><div className={`w-8 h-8 flex items-center justify-center rounded-full text-sm font-medium transition-all ${isSelected ? 'bg-brand-main text-white shadow-brand scale-110' : ''} ${!isSelected && isToday ? 'text-brand-main font-bold bg-brand-light/30' : ''} ${!isSelected && !isToday ? 'text-brand-black group-hover:bg-brand-bg' : ''}`}>{date.getDate()}</div><div className="h-1.5 mt-1 flex gap-0.5 min-h-[6px]">{status === '출석' && <div className="w-1.5 h-1.5 rounded-full bg-green-500"></div>}{status === '지각' && <div className="w-1.5 h-1.5 rounded-full bg-yellow-400"></div>}{status === '결석' && <div className="w-1.5 h-1.5 rounded-full bg-brand-red"></div>}{!status && hasClass && <div className="w-1.5 h-1.5 rounded-full bg-brand-gray"></div>}{hasExternal && <div className="w-1.5 h-1.5 rounded-full bg-brand-light"></div>}{hasClinic && <div className="w-1.5 h-1.5 rounded-full bg-teal-400"></div>}</div></div>); })}</div></div><div className="space-y-4 w-full md:w-1/2 flex-1">{renderSchedules()}</div></div>)}
+            {/* Modal Components */}
+            {isScheduleModalOpen && <ModalPortal><div className="fixed inset-0 z-[70] bg-black/50 flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => setIsScheduleModalOpen(false)}><div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl animate-fade-in-up" onClick={e => e.stopPropagation()}><h3 className="text-lg font-bold text-brand-black mb-4">타학원 일정 {isEditMode ? '수정' : '등록'}</h3><div className="space-y-4 max-h-[70vh] overflow-y-auto custom-scrollbar px-1"><div><label className="block text-xs font-bold text-brand-gray mb-1">학원명 *</label><input type="text" value={newSchedule.academyName} onChange={e => setNewSchedule({...newSchedule, academyName: e.target.value})} className="w-full border border-brand-gray/30 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-main focus:outline-none" placeholder="예: 정상어학원"/></div><div><label className="block text-xs font-bold text-brand-gray mb-1">강의명 *</label><input type="text" value={newSchedule.courseName} onChange={e => setNewSchedule({...newSchedule, courseName: e.target.value})} className="w-full border border-brand-gray/30 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-main focus:outline-none" placeholder="예: TOP반 영어"/></div><div><label className="block text-xs font-bold text-brand-gray mb-1">강사</label><input type="text" value={newSchedule.instructor} onChange={e => setNewSchedule({...newSchedule, instructor: e.target.value})} className="w-full border border-brand-gray/30 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-main focus:outline-none" placeholder="예: Julie 선생님"/></div><div className="flex gap-2"><div className="flex-1"><label className="block text-xs font-bold text-brand-gray mb-1">개강일 *</label><input type="date" value={newSchedule.startDate} onChange={e => setNewSchedule({...newSchedule, startDate: e.target.value})} className="w-full border border-brand-gray/30 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-main focus:outline-none"/></div><div className="flex-1"><label className="block text-xs font-bold text-brand-gray mb-1">종강일</label><input type="date" value={newSchedule.endDate} onChange={e => setNewSchedule({...newSchedule, endDate: e.target.value})} className="w-full border border-brand-gray/30 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-main focus:outline-none"/></div></div><div><label className="block text-xs font-bold text-brand-gray mb-1">수업 요일 *</label><div className="flex gap-1 justify-between">{['월','화','수','목','금','토','일'].map(d => (<button key={d} onClick={() => toggleDay(d)} className={`w-8 h-8 rounded-full text-xs font-bold transition-colors active:scale-90 ${newSchedule.days.includes(d) ? 'bg-brand-main text-white' : 'bg-brand-bg text-brand-gray hover:bg-brand-gray/30'}`}>{d}</button>))}</div></div><div className="flex gap-2"><div className="flex-1"><label className="block text-xs font-bold text-brand-gray mb-1">시작 시간 *</label><input type="time" value={newSchedule.startTime} onChange={e => setNewSchedule({...newSchedule, startTime: e.target.value})} className="w-full border border-brand-gray/30 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-main focus:outline-none"/></div><div className="flex-1"><label className="block text-xs font-bold text-brand-gray mb-1">종료 시간</label><input type="time" value={newSchedule.endTime} onChange={e => setNewSchedule({...newSchedule, endTime: e.target.value})} className="w-full border border-brand-gray/30 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-main focus:outline-none"/></div></div><button onClick={handleSaveSubmit} className="w-full bg-brand-main hover:bg-brand-dark text-white font-bold py-3 rounded-xl mt-2 transition-colors active:scale-95">{isEditMode ? '수정 완료' : '등록하기'}</button></div></div></div></ModalPortal>}
+            {isDeleteModalOpen && <ModalPortal><div className="fixed inset-0 z-[70] bg-black/50 flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => setIsDeleteModalOpen(false)}><div className="bg-white rounded-2xl w-full max-w-xs p-6 shadow-2xl animate-fade-in-up text-center" onClick={e => e.stopPropagation()}><div className="w-12 h-12 bg-brand-red/10 rounded-full flex items-center justify-center mx-auto mb-4 text-brand-red"><Icon name="trash" className="w-6 h-6" /></div><h3 className="text-lg font-bold text-brand-black mb-2">반복 일정 삭제</h3><p className="text-sm text-brand-gray mb-6">이 일정을 어떻게 삭제하시겠습니까?</p><div className="space-y-2"><button onClick={() => executeDelete('instance')} className="w-full bg-white border border-brand-gray/30 text-brand-black hover:bg-brand-bg font-bold py-3 rounded-xl text-sm transition-colors active:bg-gray-100">이 일정만 삭제</button><button onClick={() => executeDelete('future')} className="w-full bg-white border border-brand-gray/30 text-brand-black hover:bg-brand-bg font-bold py-3 rounded-xl text-sm transition-colors active:bg-gray-100">이 일정 및 향후 일정 삭제</button><button onClick={() => executeDelete('all')} className="w-full bg-brand-red text-white hover:bg-red-600 font-bold py-3 rounded-xl text-sm transition-colors active:bg-red-700">전체 삭제</button></div><button onClick={() => setIsDeleteModalOpen(false)} className="mt-4 text-xs text-brand-gray hover:text-brand-black underline active:text-gray-900">취소</button></div></div></ModalPortal>}
         </div>
     );
 };
@@ -235,19 +278,18 @@ export const MenuTab = ({ student, onUpdateStudent, onLogout, videoBookmarks, le
     const myMemos = getMyMemos();
 
     return (
-        <div className="space-y-6 animate-fade-in-up pb-10">
+        <div className="space-y-6 animate-fade-in-up pb-24">
             <h2 className="text-2xl font-bold text-gray-900 px-1">더보기</h2>
-            <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-4"><div className="w-14 h-14 bg-gray-100 rounded-full flex items-center justify-center text-2xl">😎</div><div><h3 className="text-lg font-bold text-gray-900">{student.name}</h3><p className="text-sm text-gray-500">{student.school} | 고{student.grade}</p></div><button onClick={handleOpenProfile} className="ml-auto text-xs bg-gray-100 px-3 py-1.5 rounded-lg text-gray-600 font-bold">수정</button></div>
+            <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-4"><div className="w-14 h-14 bg-gray-100 rounded-full flex items-center justify-center text-2xl">😎</div><div><h3 className="text-lg font-bold text-gray-900">{student.name}</h3><p className="text-sm text-gray-500">{student.school} | 고{student.grade}</p></div><button onClick={handleOpenProfile} className="ml-auto text-xs bg-gray-100 px-3 py-1.5 rounded-lg text-gray-600 font-bold active:bg-gray-200 transition-colors">수정</button></div>
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden divide-y divide-gray-50">
-                {/* ✅ [수정] 게시판 버튼: 모달 대신 탭 이동 */}
-                <button onClick={() => { if(setActiveTab) setActiveTab('board'); }} className="w-full p-4 flex items-center justify-between hover:bg-gray-50 transition-colors">
+                <button onClick={() => { if(setActiveTab) setActiveTab('board'); }} className="w-full p-4 flex items-center justify-between hover:bg-gray-50 active:bg-gray-100 transition-colors">
                     <div className="flex items-center gap-3"><div className="bg-brand-light/20 p-2 rounded-lg text-brand-main"><CampaignIcon className="w-5 h-5" /></div><span className="font-bold text-gray-800">공지사항 / 게시판</span></div><Icon name="chevronRight" className="w-4 h-4 text-gray-300" />
                 </button>
-                <button onClick={() => setIsMemosOpen(true)} className="w-full p-4 flex items-center justify-between hover:bg-gray-50 transition-colors"><div className="flex items-center gap-3"><div className="bg-yellow-50 p-2 rounded-lg text-yellow-600"><NoteAltIcon className="w-5 h-5" /></div><span className="font-bold text-gray-800">나의 학습 메모</span></div><Icon name="chevronRight" className="w-4 h-4 text-gray-300" /></button>
-                <button onClick={() => setIsSettingsOpen(true)} className="w-full p-4 flex items-center justify-between hover:bg-gray-50 transition-colors"><div className="flex items-center gap-3"><div className="bg-gray-50 p-2 rounded-lg text-gray-500"><TuneIcon className="w-5 h-5" /></div><span className="font-bold text-gray-800">알림 설정</span></div><Icon name="chevronRight" className="w-4 h-4 text-gray-300" /></button>
+                <button onClick={() => setIsMemosOpen(true)} className="w-full p-4 flex items-center justify-between hover:bg-gray-50 active:bg-gray-100 transition-colors"><div className="flex items-center gap-3"><div className="bg-yellow-50 p-2 rounded-lg text-yellow-600"><NoteAltIcon className="w-5 h-5" /></div><span className="font-bold text-gray-800">나의 학습 메모</span></div><Icon name="chevronRight" className="w-4 h-4 text-gray-300" /></button>
+                <button onClick={() => setIsSettingsOpen(true)} className="w-full p-4 flex items-center justify-between hover:bg-gray-50 active:bg-gray-100 transition-colors"><div className="flex items-center gap-3"><div className="bg-gray-50 p-2 rounded-lg text-gray-500"><TuneIcon className="w-5 h-5" /></div><span className="font-bold text-gray-800">알림 설정</span></div><Icon name="chevronRight" className="w-4 h-4 text-gray-300" /></button>
             </div>
-            <button onClick={onLogout} className="w-full py-4 text-gray-400 text-sm font-medium underline">로그아웃</button>
-            {isProfileOpen && <ModalPortal><div className="fixed inset-0 z-[70] bg-black/50 flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => setIsProfileOpen(false)}><div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl animate-fade-in-up" onClick={e => e.stopPropagation()}><div className="flex justify-between items-center mb-6"><h3 className="text-lg font-bold text-brand-black">내 정보 수정</h3><button onClick={() => setIsProfileOpen(false)} className="text-brand-gray hover:text-brand-black"><Icon name="x" className="w-6 h-6" /></button></div><div className="space-y-4"><div><label className="block text-xs font-bold text-brand-gray mb-1">이름</label><input type="text" value={student?.name || ''} disabled className="w-full bg-brand-bg/50 border border-brand-gray/30 rounded-lg px-3 py-2 text-sm text-brand-gray cursor-not-allowed" /></div><div><label className="block text-xs font-bold text-brand-gray mb-1">학교</label><input type="text" value={editData.school} onChange={(e) => setEditData({...editData, school: e.target.value})} className="w-full border border-brand-gray/30 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-main focus:outline-none" placeholder="예: 서울고" /><p className="text-[10px] text-brand-gray mt-1 ml-1">* '고등학교'는 자동으로 '고'로 저장됩니다.</p></div><div><label className="block text-xs font-bold text-brand-gray mb-1">학년</label><select value={editData.grade} onChange={(e) => setEditData({...editData, grade: e.target.value})} className="w-full border border-brand-gray/30 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-main focus:outline-none appearance-none bg-white"><option value="" disabled>학년을 선택하세요</option><option value="고1">고1</option><option value="고2">고2</option><option value="고3">고3</option></select></div><div><label className="block text-xs font-bold text-brand-gray mb-1">전화번호</label><input type="text" value={editData.phone} onChange={(e) => setEditData({...editData, phone: e.target.value})} className="w-full border border-brand-gray/30 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-main focus:outline-none" placeholder="010-0000-0000" /></div><button onClick={handleSaveProfile} className="w-full bg-brand-main hover:bg-brand-dark text-white font-bold py-3 rounded-xl mt-4 transition-colors">저장하기</button></div></div></div></ModalPortal>}
+            <button onClick={onLogout} className="w-full py-4 text-gray-400 text-sm font-medium underline active:text-gray-600">로그아웃</button>
+            {isProfileOpen && <ModalPortal><div className="fixed inset-0 z-[70] bg-black/50 flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => setIsProfileOpen(false)}><div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl animate-fade-in-up" onClick={e => e.stopPropagation()}><div className="flex justify-between items-center mb-6"><h3 className="text-lg font-bold text-brand-black">내 정보 수정</h3><button onClick={() => setIsProfileOpen(false)} className="text-brand-gray hover:text-brand-black"><Icon name="x" className="w-6 h-6" /></button></div><div className="space-y-4"><div><label className="block text-xs font-bold text-brand-gray mb-1">이름</label><input type="text" value={student?.name || ''} disabled className="w-full bg-brand-bg/50 border border-brand-gray/30 rounded-lg px-3 py-2 text-sm text-brand-gray cursor-not-allowed" /></div><div><label className="block text-xs font-bold text-brand-gray mb-1">학교</label><input type="text" value={editData.school} onChange={(e) => setEditData({...editData, school: e.target.value})} className="w-full border border-brand-gray/30 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-main focus:outline-none" placeholder="예: 서울고" /><p className="text-[10px] text-brand-gray mt-1 ml-1">* '고등학교'는 자동으로 '고'로 저장됩니다.</p></div><div><label className="block text-xs font-bold text-brand-gray mb-1">학년</label><select value={editData.grade} onChange={(e) => setEditData({...editData, grade: e.target.value})} className="w-full border border-brand-gray/30 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-main focus:outline-none appearance-none bg-white"><option value="" disabled>학년을 선택하세요</option><option value="고1">고1</option><option value="고2">고2</option><option value="고3">고3</option></select></div><div><label className="block text-xs font-bold text-brand-gray mb-1">전화번호</label><input type="text" value={editData.phone} onChange={(e) => setEditData({...editData, phone: e.target.value})} className="w-full border border-brand-gray/30 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-main focus:outline-none" placeholder="010-0000-0000" /></div><button onClick={handleSaveProfile} className="w-full bg-brand-main hover:bg-brand-dark text-white font-bold py-3 rounded-xl mt-4 transition-colors active:scale-95">저장하기</button></div></div></div></ModalPortal>}
             {isSettingsOpen && <ModalPortal><div className="fixed inset-0 z-[70] bg-black/50 flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => setIsSettingsOpen(false)}><div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl animate-fade-in-up" onClick={e => e.stopPropagation()}><div className="flex justify-between items-center mb-6"><h3 className="text-lg font-bold text-brand-black">알림 설정</h3><button onClick={() => setIsSettingsOpen(false)} className="text-brand-gray hover:text-brand-black"><Icon name="x" className="w-6 h-6" /></button></div><div className="space-y-4"><div className="flex items-center justify-between py-2 border-b border-brand-gray/10"><span className="font-bold text-brand-black">전체 알림</span><button onClick={() => toggleNotification('all')} className={`w-12 h-6 rounded-full p-1 transition-colors duration-300 ${notifications.all ? 'bg-brand-main' : 'bg-brand-gray/30'}`}><div className={`w-4 h-4 bg-white rounded-full shadow-sm transform transition-transform duration-300 ${notifications.all ? 'translate-x-6' : 'translate-x-0'}`} /></button></div><div className="space-y-3 pt-2"><div className="flex items-center justify-between"><span className="text-sm text-brand-black">게시글(공지사항) 알림</span><button onClick={() => toggleNotification('post')} className={`w-10 h-5 rounded-full p-0.5 transition-colors ${notifications.post ? 'bg-brand-main' : 'bg-brand-gray/30'}`}><div className={`w-4 h-4 bg-white rounded-full shadow-sm transform transition-transform ${notifications.post ? 'translate-x-5' : 'translate-x-0'}`} /></button></div><div className="flex items-center justify-between"><span className="text-sm text-brand-black">과제 마감 알림</span><button onClick={() => toggleNotification('homework')} className={`w-10 h-5 rounded-full p-0.5 transition-colors ${notifications.homework ? 'bg-brand-main' : 'bg-brand-gray/30'}`}><div className={`w-4 h-4 bg-white rounded-full shadow-sm transform transition-transform ${notifications.homework ? 'translate-x-5' : 'translate-x-0'}`} /></button></div><div className="flex items-center justify-between"><span className="text-sm text-brand-black">클리닉 예약 알림</span><button onClick={() => toggleNotification('clinic')} className={`w-10 h-5 rounded-full p-0.5 transition-colors ${notifications.clinic ? 'bg-brand-main' : 'bg-brand-gray/30'}`}><div className={`w-4 h-4 bg-white rounded-full shadow-sm transform transition-transform ${notifications.clinic ? 'translate-x-5' : 'translate-x-0'}`} /></button></div><div className="flex items-center justify-between"><span className="text-sm text-brand-black">수업 후 자료/성적 알림</span><button onClick={() => toggleNotification('class_update')} className={`w-10 h-5 rounded-full p-0.5 transition-colors ${notifications.class_update ? 'bg-brand-main' : 'bg-brand-gray/30'}`}><div className={`w-4 h-4 bg-white rounded-full shadow-sm transform transition-transform ${notifications.class_update ? 'translate-x-5' : 'translate-x-0'}`} /></button></div></div></div></div></div></ModalPortal>}
             {isMemosOpen && <ModalPortal><div className="fixed inset-0 z-[70] bg-black/50 flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => setIsMemosOpen(false)}><div className="bg-white rounded-2xl w-full max-w-lg p-0 shadow-2xl animate-fade-in-up overflow-hidden flex flex-col max-h-[80vh]" onClick={e => e.stopPropagation()}><div className="flex justify-between items-center p-5 border-b border-brand-gray/20"><h3 className="text-lg font-bold text-brand-black flex items-center gap-2"><NoteAltIcon className="text-brand-main" /> 나의 학습 메모</h3><button onClick={() => setIsMemosOpen(false)} className="text-brand-gray hover:text-brand-black"><Icon name="x" className="w-6 h-6" /></button></div><div className="overflow-y-auto p-5 space-y-3 custom-scrollbar">{myMemos.length > 0 ? myMemos.map(memo => (<div key={memo.id} onClick={() => { setIsMemosOpen(false); onLinkToMemo(memo.classId, memo.lessonId, memo.time); }} className="bg-brand-bg/50 p-4 rounded-xl cursor-pointer hover:bg-brand-bg transition-colors border border-transparent hover:border-brand-main/30 group"><div className="flex justify-between items-start mb-2"><div><h4 className="font-bold text-sm text-brand-black">{memo.lessonTitle}</h4><p className="text-xs text-brand-gray mt-0.5">{memo.lessonDate}</p></div><span className="text-xs font-mono font-bold text-brand-main bg-white px-2 py-1 rounded border border-brand-gray/20">{formatTime(memo.time)}</span></div><p className="text-sm text-brand-dark/80 line-clamp-2">{memo.note}</p><div className="text-right mt-2 text-xs text-brand-main opacity-0 group-hover:opacity-100 transition-opacity">강의 보러가기 &rarr;</div></div>)) : (<div className="text-center py-10 text-brand-gray text-sm">저장된 메모가 없습니다.<br/>강의 수강 중 중요한 부분에 메모를 남겨보세요.</div>)}</div></div></div></ModalPortal>}
         </div>
@@ -272,88 +314,88 @@ export const HomeworkTab = ({ myHomeworkStats }) => {
     );
 };
 
-// 7. GradesTab (상세보기 Portal 적용)
+// 7. GradesTab (리스트 -> 상세)
 export const GradesTab = ({ myGradeComparison }) => {
     const [selectedGrade, setSelectedGrade] = useState(null);
 
+    // Detail View (Full Screen Overlay)
+    if (selectedGrade) {
+        return (
+            <ModalPortal>
+                {/* ✅ [수정] w-full h-full 추가하여 전체 화면 덮기 */}
+                <div className="fixed inset-0 z-[100] bg-gray-50 flex flex-col animate-fade-in-up w-full h-full">
+                    {/* Header */}
+                    <div className="flex-none h-14 flex items-center gap-3 px-4 border-b border-gray-200 bg-white shadow-sm">
+                        <button onClick={() => setSelectedGrade(null)} className="p-2 bg-gray-100 rounded-lg text-gray-600 hover:bg-gray-200 active:bg-gray-300 transition-colors">
+                            <Icon name="chevronLeft" className="w-5 h-5" />
+                        </button>
+                        <h2 className="text-base font-bold text-gray-900 truncate">성적 상세 분석</h2>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto custom-scrollbar p-4">
+                        {/* Summary Section */}
+                        <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 mb-6 text-center">
+                            <span className="text-sm text-gray-500 font-bold bg-gray-100 px-2 py-1 rounded mb-2 inline-block">{selectedGrade.testDate} 시행</span>
+                            <h3 className="text-xl font-bold text-gray-900 mb-1">{selectedGrade.testName}</h3>
+                            <div className="py-4">
+                                <span className="text-5xl font-extrabold text-indigo-600">{selectedGrade.studentScore}</span>
+                                <span className="text-gray-400 text-xl font-medium"> / {selectedGrade.maxScore}</span>
+                            </div>
+                            <div className="flex justify-center gap-2">
+                                <span className={`text-sm font-bold px-3 py-1 rounded-full ${selectedGrade.isAboveAverage ? 'bg-green-100 text-green-700' : 'bg-red-50 text-red-600'}`}>
+                                    {selectedGrade.isAboveAverage ? '▲' : '▼'} 평균보다 {Math.abs(selectedGrade.scoreDifference)}점 {selectedGrade.isAboveAverage ? '높음' : '낮음'}
+                                </span>
+                            </div>
+                        </div>
+
+                        {/* Question Analysis Section */}
+                        <QuestionAnalysisList questions={selectedGrade.questions} />
+                    </div>
+                </div>
+            </ModalPortal>
+        );
+    }
+
+    // List View (Card)
     return (
-        <>
-            {/* 리스트 뷰 */}
-            <div className="space-y-4 pb-20">
-                {myGradeComparison.length === 0 ? (
-                    <div className="text-center py-10 text-gray-400 text-sm bg-white rounded-2xl border border-dashed border-gray-200">
-                        등록된 성적이 없습니다.
-                    </div>
-                ) : (
-                    myGradeComparison.map((item, idx) => (
-                        <div 
-                            key={idx} 
-                            onClick={() => setSelectedGrade(item)} 
-                            className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 cursor-pointer active:scale-[0.98] transition-all hover:border-indigo-200"
-                        >
-                            <div className="flex justify-between items-start mb-2">
-                                <div className="flex items-center gap-2">
-                                    <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">
-                                        {item.className}
-                                    </span>
-                                    <span className="text-xs text-gray-400">{item.testDate}</span>
-                                </div>
-                            </div>
-                            <div className="flex justify-between items-end">
-                                <div>
-                                    <h3 className="text-lg font-bold text-gray-900 leading-tight mb-1">{item.testName}</h3>
-                                    <div className="flex items-center gap-1 text-xs text-gray-500 font-medium">
-                                        {/* 아이콘: 상승/하강 */}
-                                        {item.isAboveAverage ? <Icon name="trendingUp" className="w-3 h-3 text-green-500" /> : <Icon name="trendingDown" className="w-3 h-3 text-red-500" />}
-                                        평균 {item.classAverage}점
-                                    </div>
-                                </div>
-                                <div className="text-right">
-                                    <span className="text-2xl font-extrabold text-indigo-900">{item.studentScore}</span>
-                                    <span className="text-xs text-gray-400 font-medium">점</span>
-                                </div>
+        <div className="space-y-4 pb-20">
+            {myGradeComparison.length === 0 ? (
+                <div className="text-center py-10 text-gray-400 text-sm bg-white rounded-2xl border border-dashed border-gray-200">
+                    등록된 성적이 없습니다.
+                </div>
+            ) : (
+                myGradeComparison.map((item, idx) => (
+                    <div 
+                        key={idx} 
+                        onClick={() => setSelectedGrade(item)} 
+                        className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 cursor-pointer active:scale-[0.98] transition-all hover:border-indigo-200 active:bg-gray-50"
+                    >
+                        <div className="flex justify-between items-start mb-2">
+                            <div className="flex items-center gap-2">
+                                <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">
+                                    {item.className}
+                                </span>
+                                <span className="text-xs text-gray-400">{item.testDate}</span>
                             </div>
                         </div>
-                    ))
-                )}
-            </div>
-
-            {/* ✅ [핵심 수정] 상세 뷰 (Portal 사용하여 전체 화면 덮기) */}
-            {selectedGrade && (
-                <ModalPortal>
-                    <div className="fixed inset-0 z-50 bg-gray-50 flex flex-col animate-fade-in-up">
-                        {/* 헤더 */}
-                        <div className="flex-none h-14 flex items-center gap-3 px-4 border-b border-gray-200 bg-white shadow-sm">
-                            <button onClick={() => setSelectedGrade(null)} className="p-2 bg-gray-100 rounded-lg text-gray-600 hover:bg-gray-200">
-                                <Icon name="chevronLeft" className="w-5 h-5" />
-                            </button>
-                            <h2 className="text-base font-bold text-gray-900 truncate">성적 상세 분석</h2>
-                        </div>
-
-                        {/* 내용 */}
-                        <div className="flex-1 overflow-y-auto custom-scrollbar p-4">
-                            {/* 요약 섹션 */}
-                            <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 mb-6 text-center">
-                                <span className="text-sm text-gray-500 font-bold bg-gray-100 px-2 py-1 rounded mb-2 inline-block">{selectedGrade.testDate} 시행</span>
-                                <h3 className="text-xl font-bold text-gray-900 mb-1">{selectedGrade.testName}</h3>
-                                <div className="py-4">
-                                    <span className="text-5xl font-extrabold text-indigo-600">{selectedGrade.studentScore}</span>
-                                    <span className="text-gray-400 text-xl font-medium"> / {selectedGrade.maxScore}</span>
-                                </div>
-                                <div className="flex justify-center gap-2">
-                                    <span className={`text-sm font-bold px-3 py-1 rounded-full ${selectedGrade.isAboveAverage ? 'bg-green-100 text-green-700' : 'bg-red-50 text-red-600'}`}>
-                                        {selectedGrade.isAboveAverage ? '▲' : '▼'} 평균보다 {Math.abs(selectedGrade.scoreDifference)}점 {selectedGrade.isAboveAverage ? '높음' : '낮음'}
-                                    </span>
+                        <div className="flex justify-between items-end">
+                            <div>
+                                <h3 className="text-lg font-bold text-gray-900 leading-tight mb-1">{item.testName}</h3>
+                                <div className="flex items-center gap-1 text-xs text-gray-500 font-medium">
+                                    {/* ✅ [수정] 아이콘 이름 정확히 매핑 */}
+                                    {item.isAboveAverage ? <Icon name="trendingUp" className="w-3 h-3 text-green-500" /> : <Icon name="trendingDown" className="w-3 h-3 text-red-500" />}
+                                    평균 {item.classAverage}점
                                 </div>
                             </div>
-
-                            {/* 문항 분석 리스트 */}
-                            <QuestionAnalysisList questions={selectedGrade.questions} />
+                            <div className="text-right">
+                                <span className="text-2xl font-extrabold text-indigo-900">{item.studentScore}</span>
+                                <span className="text-xs text-gray-400 font-medium">점</span>
+                            </div>
                         </div>
                     </div>
-                </ModalPortal>
+                ))
             )}
-        </>
+        </div>
     );
 };
 
@@ -366,9 +408,45 @@ const QuestionAnalysisList = ({ questions }) => {
         if (filter === 'hard') return q.difficulty === '상';
         return true;
     });
+    
+    // ✅ [추가] 상단 요약 통계 계산
+    const totalCount = questions.length;
+    const wrongCount = questions.filter(q => q.status !== '맞음' && q.status !== '미응시').length;
+    const missedCount = questions.filter(q => q.status === '미응시').length;
+
+    // 가장 많이 틀린 유형 찾기 (간단 로직)
+    const wrongTypes = questions.filter(q => q.status === '틀림').map(q => q.type);
+    const typeCount = {};
+    let weakType = '없음';
+    let maxCount = 0;
+    wrongTypes.forEach(t => { typeCount[t] = (typeCount[t] || 0) + 1; });
+    Object.entries(typeCount).forEach(([type, count]) => { if(count > maxCount) { maxCount = count; weakType = type; } });
+
 
     return (
         <div>
+            {/* ✅ [추가] 분석 리포트 요약 (GPT 제안) */}
+            <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm mb-4">
+                <div className="flex justify-between items-center mb-2">
+                    <span className="text-sm font-bold text-gray-800">분석 요약</span>
+                    <span className="text-xs text-gray-400">총 {totalCount}문항</span>
+                </div>
+                <div className="flex gap-4 text-xs">
+                    <div className="flex-1 bg-red-50 rounded-lg p-2 text-center">
+                        <span className="block text-red-500 font-bold mb-1">오답</span>
+                        <span className="text-lg font-extrabold text-red-600">{wrongCount}</span>
+                    </div>
+                    <div className="flex-1 bg-orange-50 rounded-lg p-2 text-center">
+                        <span className="block text-orange-500 font-bold mb-1">미응시</span>
+                        <span className="text-lg font-extrabold text-orange-600">{missedCount}</span>
+                    </div>
+                    <div className="flex-[1.5] bg-gray-50 rounded-lg p-2 flex flex-col justify-center">
+                        <span className="block text-gray-500 font-bold mb-1">취약 유형</span>
+                        <span className="text-sm font-bold text-gray-800">{weakType}</span>
+                    </div>
+                </div>
+            </div>
+
             {/* Filter Tabs */}
             <div className="flex p-1 bg-gray-100 rounded-xl mb-4">
                 {['all', 'wrong', 'hard'].map(type => (
@@ -379,7 +457,7 @@ const QuestionAnalysisList = ({ questions }) => {
                             filter === type ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-400'
                         }`}
                     >
-                        {type === 'all' ? '전체 문항' : type === 'wrong' ? '오답만' : '고난도'}
+                        {type === 'all' ? '전체 문항' : type === 'wrong' ? '취약 문항' : '고난도'}
                     </button>
                 ))}
             </div>
@@ -393,13 +471,12 @@ const QuestionAnalysisList = ({ questions }) => {
                                 <span className="bg-gray-100 text-gray-600 text-xs font-bold px-2 py-1 rounded">
                                     {q.no}번
                                 </span>
+                                {/* ✅ [수정] 상태 뱃지 색상 (오답: 주황 / 정답: 회색) */}
                                 <span className={`text-xs font-bold px-2 py-1 rounded flex items-center gap-1 ${
-                                    q.status === '맞음' ? 'bg-green-50 text-green-600' :
-                                    q.status === '고침' ? 'bg-yellow-50 text-yellow-600' :
-                                    'bg-red-50 text-red-600'
+                                    q.status === '맞음' ? 'bg-gray-100 text-gray-600' : 
+                                    'bg-orange-50 text-orange-600'
                                 }`}>
                                     {q.status === '맞음' ? <Icon name="check" className="w-3 h-3" /> : 
-                                     q.status === '틀림' ? <Icon name="x" className="w-3 h-3" /> : 
                                      <Icon name="alertCircle" className="w-3 h-3" />}
                                     {q.status}
                                 </span>
@@ -407,7 +484,7 @@ const QuestionAnalysisList = ({ questions }) => {
                             <span className="text-sm font-bold text-gray-900">{q.score}점</span>
                         </div>
                         
-                        <div className="flex items-center gap-4 text-xs text-gray-500 mb-4">
+                        <div className="flex items-center gap-4 text-xs text-gray-500">
                             <div className="flex items-center gap-1">
                                 <span className="w-1.5 h-1.5 rounded-full bg-gray-300"></span>
                                 난이도: <span className={`font-bold ${q.difficulty === '상' ? 'text-red-500' : q.difficulty === '중' ? 'text-yellow-600' : 'text-green-500'}`}>{q.difficulty}</span>
@@ -420,16 +497,7 @@ const QuestionAnalysisList = ({ questions }) => {
                                 정답률 <span className="font-bold text-indigo-600">{q.itemAccuracy}%</span>
                             </div>
                         </div>
-
-                        {/* Actions */}
-                        <div className="grid grid-cols-2 gap-2">
-                            <button className="flex items-center justify-center gap-1 py-2 rounded-lg bg-gray-50 text-gray-600 text-xs font-bold hover:bg-gray-100 transition-colors">
-                                <Icon name="pen" className="w-3 h-3" /> 다시 풀기
-                            </button>
-                            <button className="flex items-center justify-center gap-1 py-2 rounded-lg bg-indigo-50 text-indigo-600 text-xs font-bold hover:bg-indigo-100 transition-colors">
-                                <Icon name="play" className="w-3 h-3" /> 해설 강의
-                            </button>
-                        </div>
+                        {/* 버튼 제거됨 */}
                     </div>
                 )) : (
                     <div className="text-center py-8 text-gray-400 text-xs">

@@ -19,16 +19,26 @@ export const initialClasses = [
 // ✅ [수정] 1, 2, 3회차 영상 iframeCode 업데이트
 export const initialLessonLogs = [
     { 
-        id: 1, classId: 1, date: '2025-11-03', progress: '다항식의 연산 (1)', assignment: 'p.10~15 문제 풀이', materialUrl: 'link_to_pdf', 
+        id: 1, classId: 1, date: '2025-11-03', progress: '다항식의 연산 (1)', assignment: 'p.10~15 문제 풀이', 
+        // ✅ [수정] 단일 링크 -> 다중 자료 배열로 변경
+        materials: [
+            { name: '01_개념정리.pdf', url: '#' },
+            { name: '01_필기노트.pdf', url: '#' },
+            { name: '워크북_문제편.pdf', url: '#' }
+        ],
         iframeCode: '<iframe width="560" height="315" src="https://www.youtube.com/embed/PLPVxWCrXqY?si=q8Eq2XHrQiwSQHHJ" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>' 
     },
     { 
-        id: 2, classId: 1, date: '2025-11-05', progress: '다항식의 연산 (2)', assignment: 'p.16~20 문제 풀이', materialUrl: '', 
+        id: 2, classId: 1, date: '2025-11-05', progress: '다항식의 연산 (2)', assignment: 'p.16~20 문제 풀이', 
+        materials: [
+            { name: '02_개념정리.pdf', url: '#' },
+            { name: '데일리_테스트.pdf', url: '#' }
+        ],
         iframeCode: '<iframe width="560" height="315" src="https://www.youtube.com/embed/F0oh9Mmhl1w?si=_RkZ_8doDeCf1Y2s" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>' 
     },
     { 
-        id: 3, classId: 1, date: '2025-11-07', progress: '나머지정리', assignment: 'p.21~25 문제 풀이', materialUrl: 'link_to_material', 
-        // ✅ [수정] 3회차 영상 교체 (요청하신 영상)
+        id: 3, classId: 1, date: '2025-11-07', progress: '나머지정리', assignment: 'p.21~25 문제 풀이', 
+        materials: [], // 자료 없음
         iframeCode: '<iframe width="560" height="315" src="https://www.youtube.com/embed/XnZYxOyWD0c?si=hqvM7bBgY-cZZqLH" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>' 
     },
 ];
