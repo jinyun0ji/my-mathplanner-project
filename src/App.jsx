@@ -563,7 +563,8 @@ export default function App() {
     calculateGradeComparison, calculateHomeworkStats,
     setIsGlobalDirty,
     studentSearchTerm, setStudentSearchTerm,
-    handleSendStudentNotification
+    handleSendStudentNotification,
+    externalSchedules // ✅ [추가] StudentManagement에서 사용하기 위해 전달
   };
 
   return (
