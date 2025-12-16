@@ -40,6 +40,8 @@ import ClinicManagement from './pages/ClinicManagement';
 import InternalCommunication from './pages/InternalCommunication';
 import PaymentManagement from './pages/PaymentManagement';
 
+import ParentHome from './pages/ParentHome'; // ✅ [추가]
+
 
 const firebaseConfig = typeof window.__firebase_config !== 'undefined' ? JSON.parse(window.__firebase_config) : {};
 const initialAuthToken = typeof window.__initial_auth_token !== 'undefined' ? window.__initial_auth_token : null; 
@@ -469,13 +471,13 @@ export default function App() {
     setIsLoggedIn(true);
     setUserRole(role);
     setUserId(id);
-    if (role === 'student') {
+    // ✅ [수정] 학부모/학생 로그인 시 해당 ID 설정 (학부모는 자녀 ID와 연동된다고 가정)
+    if (role === 'student' || role === 'parent') {
         setSelectedStudentId(id);
     }
   };
 
   if (!isLoggedIn) {
-    // ✅ [수정] LoginPage에 handleSocialLogin 함수 전달
     return <LoginPage onLogin={handleLoginSuccess} onSocialLogin={handleSocialLogin} />;
   }
 
@@ -547,6 +549,27 @@ export default function App() {
             messages={studentMessages}
             onSendMessage={handleStudentSendMessage}
             
+            onLogout={() => setIsLoggedIn(false)}
+        />
+      );
+  }
+
+  // ✅ [추가] 학부모용 화면 렌더링
+  if (userRole === 'parent') {
+      return (
+        <ParentHome 
+            studentId={userId} // 자녀 ID
+            students={students}
+            classes={classes}
+            homeworkAssignments={homeworkAssignments}
+            homeworkResults={homeworkResults}
+            attendanceLogs={attendanceLogs}
+            lessonLogs={lessonLogs}
+            notices={announcements}
+            tests={tests}
+            grades={grades}
+            clinicLogs={clinicLogs}
+            videoProgress={videoProgress} // 진도율 확인용 (재생 불가)
             onLogout={() => setIsLoggedIn(false)}
         />
       );

@@ -695,6 +695,9 @@
 .scale-none {
   scale: none;
 }
+.rotate-3 {
+  rotate: 3deg;
+}
 .rotate-45 {
   rotate: 45deg;
 }
@@ -1319,6 +1322,9 @@
 }
 .bg-\[\#1a1a1a\] {
   background-color: #1a1a1a;
+}
+.bg-\[\#03C75A\] {
+  background-color: #03C75A;
 }
 .bg-\[\#242424\] {
   background-color: #242424;
@@ -2038,6 +2044,9 @@
 .opacity-80 {
   opacity: 80%;
 }
+.opacity-90 {
+  opacity: 90%;
+}
 .opacity-100 {
   opacity: 100%;
 }
@@ -2485,6 +2494,20 @@
     @media (hover: hover) {
       --tw-translate-y: -1px;
       translate: var(--tw-translate-x) var(--tw-translate-y);
+    }
+  }
+}
+.hover\:bg-\[\#02B350\] {
+  &:hover {
+    @media (hover: hover) {
+      background-color: #02B350;
+    }
+  }
+}
+.hover\:bg-\[\#FDD835\] {
+  &:hover {
+    @media (hover: hover) {
+      background-color: #FDD835;
     }
   }
 }

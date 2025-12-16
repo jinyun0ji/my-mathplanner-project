@@ -1,136 +1,126 @@
 // src/pages/LoginPage.jsx
 import React, { useState } from 'react';
 import { Icon } from '../utils/helpers';
-// MUI 아이콘 import 확인
-import CalculateIcon from '@mui/icons-material/Calculate'; 
-import ChatBubbleIcon from '@mui/icons-material/ChatBubble'; 
 
-// 카카오톡 아이콘 (검은색 말풍선 - 가이드 준수)
-const KakaoLogoIcon = ({ className }) => (
-    <ChatBubbleIcon className={className} style={{ color: '#191919', transform: 'rotateY(180deg)' }} />
-);
-
-// 네이버 N 로고 (흰색 N - 가이드 준수)
-const NaverLogoIcon = ({ className }) => (
-    <div className={className} style={{ 
-        backgroundColor: 'white', 
-        color: '#00C73C', 
-        fontWeight: '900', 
-        fontSize: '16px', 
-        width: '24px', 
-        height: '24px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        borderRadius: '4px',
-    }}>N</div>
-);
-
-export default function LoginPage({ onLogin, onSocialLogin }) { 
+export default function LoginPage({ onLogin, onSocialLogin }) {
+    // ✅ [추가] 로그인 역할 탭 상태 (student | parent | staff)
+    const [loginRole, setLoginRole] = useState('student');
     const [id, setId] = useState('');
     const [password, setPassword] = useState('');
-    const [error, setError] = useState('');
 
-    const handleLogin = (e) => {
+    const handleSubmit = (e) => {
         e.preventDefault();
-        setError('');
-        
-        if (id === 'employee' && password === 'academy') { onLogin('staff', 'employee-id'); } 
-        else if (id === 'student' && password === '1234') { onLogin('student', 1); }
-        else if (id === 'parent' && password === '1234') { onLogin('parent', 'parent-id'); }
-        else { setError('아이디 또는 비밀번호가 올바르지 않습니다.'); }
+        // 실제로는 ID/PW 검증 로직이 필요하지만, 여기선 데모용으로 역할에 맞는 ID(1)로 로그인
+        // 학부모의 경우 자녀 ID(1)와 연결된 것으로 가정
+        onLogin(loginRole, 1); 
     };
 
     return (
-        <div className="flex items-center justify-center min-h-screen bg-gray-100 p-4">
-            <div className="w-full max-w-md bg-white shadow-2xl rounded-2xl overflow-hidden border border-gray-200">
-                
-                {/* 로고 영역 */}
-                <div className="bg-brand-dark p-10 text-center relative overflow-hidden">
-                    <div className="absolute top-[-20px] left-[-20px] w-24 h-24 rounded-full border-4 border-white/10"></div>
-                    <div className="absolute bottom-[-10px] right-[-10px] w-32 h-32 rounded-full border-4 border-white/5"></div>
-                    <div className="flex justify-center mb-4 relative z-10">
-                        <div className="bg-white/10 p-4 rounded-2xl backdrop-blur-md border border-white/20 shadow-lg">
-                            <CalculateIcon className="text-white" style={{ fontSize: 48 }} />
-                        </div>
+        <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4 sm:px-6 lg:px-8 font-sans">
+            <div className="max-w-md w-full space-y-8 bg-white p-10 rounded-2xl shadow-xl border border-gray-100">
+                <div className="text-center">
+                    {/* ✅ [수정] 로고 변경 */}
+                    <div className="mx-auto h-16 w-16 bg-indigo-600 rounded-xl flex items-center justify-center mb-4 shadow-lg transform rotate-3 text-white">
+                        <Icon name="book" className="w-10 h-10" />
                     </div>
-                    <h1 className="text-3xl font-extrabold text-white tracking-tight relative z-10">채수용 수학</h1>
-                    <p className="text-brand-light/80 text-sm mt-2 font-medium relative z-10">학생 / 학부모 / 직원 통합 로그인</p>
+                    <h2 className="text-3xl font-extrabold text-gray-900 tracking-tight">채수용 수학</h2>
+                    <p className="mt-2 text-sm text-gray-500">통합 학습 관리 시스템</p>
                 </div>
 
-                <form onSubmit={handleLogin} className="p-10 space-y-6">
-                    <div>
-                        <label className="block text-sm font-bold text-gray-700 mb-2" htmlFor="username">아이디</label>
-                        <div className="relative">
-                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                <Icon name="user" className="h-5 w-5 text-gray-400" />
+                {/* ✅ [추가] 역할 선택 탭 */}
+                <div className="flex bg-gray-100 p-1 rounded-xl">
+                    {['student', 'parent', 'staff'].map((role) => (
+                        <button
+                            key={role}
+                            onClick={() => setLoginRole(role)}
+                            className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all duration-200 ${
+                                loginRole === role
+                                    ? 'bg-white text-indigo-600 shadow-sm'
+                                    : 'text-gray-500 hover:text-gray-700'
+                            }`}
+                        >
+                            {role === 'student' ? '학생' : role === 'parent' ? '학부모' : '직원'}
+                        </button>
+                    ))}
+                </div>
+
+                <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
+                    <div className="space-y-4">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                                {loginRole === 'staff' ? '사번 또는 아이디' : '아이디'}
+                            </label>
+                            <div className="relative">
+                                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
+                                    <Icon name="user" className="w-5 h-5" />
+                                </div>
+                                <input
+                                    type="text"
+                                    required
+                                    className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors"
+                                    placeholder={loginRole === 'parent' ? "자녀 이름 또는 학부모 ID" : "아이디를 입력하세요"}
+                                    value={id}
+                                    onChange={(e) => setId(e.target.value)}
+                                />
                             </div>
-                            <input 
-                                className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-dark focus:border-transparent transition-all" 
-                                id="username" 
-                                type="text" 
-                                placeholder="아이디를 입력하세요" 
-                                value={id} 
-                                onChange={(e) => setId(e.target.value)} 
-                            />
                         </div>
-                    </div>
-                    <div>
-                        <label className="block text-sm font-bold text-gray-700 mb-2" htmlFor="password">비밀번호</label>
-                        <div className="relative">
-                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                <Icon name="lock" className="h-5 w-5 text-gray-400" />
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">비밀번호</label>
+                            <div className="relative">
+                                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
+                                    <Icon name="lock" className="w-5 h-5" />
+                                </div>
+                                <input
+                                    type="password"
+                                    required
+                                    className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors"
+                                    placeholder="비밀번호를 입력하세요"
+                                    value={password}
+                                    onChange={(e) => setPassword(e.target.value)}
+                                />
                             </div>
-                            <input 
-                                className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-dark focus:border-transparent transition-all" 
-                                id="password" 
-                                type="password" 
-                                placeholder="비밀번호를 입력하세요" 
-                                value={password} 
-                                onChange={(e) => setPassword(e.target.value)} 
-                            />
                         </div>
-                        {error && (<div className="flex items-center mt-2 text-red-600 text-xs font-medium animate-pulse"><Icon name="alertCircle" className="w-4 h-4 mr-1" />{error}</div>)}
                     </div>
 
-                    <button className="w-full bg-brand-dark hover:bg-brand-dark/90 text-white font-bold py-3.5 px-4 rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-dark shadow-lg transition-all duration-200 transform active:scale-[0.98]" type="submit">
-                        로그인
+                    <div className="flex items-center justify-between text-sm">
+                        <label className="flex items-center text-gray-600 cursor-pointer">
+                            <input type="checkbox" className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded" />
+                            <span className="ml-2">로그인 유지</span>
+                        </label>
+                        <a href="#" className="font-medium text-indigo-600 hover:text-indigo-500">비밀번호 찾기</a>
+                    </div>
+
+                    <button
+                        type="submit"
+                        className="w-full flex justify-center py-3.5 px-4 border border-transparent rounded-xl shadow-lg text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all transform active:scale-[0.98]"
+                    >
+                        {loginRole === 'student' ? '학생 로그인' : loginRole === 'parent' ? '자녀 학습 현황 보기' : '관리자 로그인'}
                     </button>
-                    
-                    <div className="text-center mt-4"><p className="text-xs text-gray-400">학생/학부모 초기 비밀번호는 1234입니다.</p></div>
                 </form>
 
-                {/* 간편 로그인 영역 */}
-                <div className="px-10 pb-10 pt-4 space-y-3">
-                    <div className="flex items-center justify-center">
-                        <hr className="flex-1 border-gray-200" />
-                        <span className="px-3 text-xs text-gray-500 font-medium">간편 로그인</span>
-                        <hr className="flex-1 border-gray-200" />
+                {/* 소셜 로그인은 학생/학부모에게만 표시 (선택 사항) */}
+                {loginRole !== 'staff' && (
+                    <div className="mt-6">
+                        <div className="relative">
+                            <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-gray-200"></div></div>
+                            <div className="relative flex justify-center text-sm"><span className="px-2 bg-white text-gray-500">간편 로그인</span></div>
+                        </div>
+                        <div className="mt-6 grid grid-cols-3 gap-3">
+                            {['google', 'kakao', 'naver'].map((provider) => (
+                                <button
+                                    key={provider}
+                                    onClick={() => onSocialLogin(provider)}
+                                    className="w-full inline-flex justify-center py-2.5 px-4 border border-gray-300 rounded-xl shadow-sm bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 transition-colors"
+                                >
+                                    <span className="sr-only">Sign in with {provider}</span>
+                                    <div className="w-5 h-5 bg-gray-400 rounded-full" /> {/* 아이콘 대체 */}
+                                </button>
+                            ))}
+                        </div>
                     </div>
-
-                    <div className="grid grid-cols-1 gap-3">
-                        <button 
-                            onClick={() => onSocialLogin('Kakao')}
-                            className="w-full bg-[#FEE500] text-[#191919] font-bold h-14 rounded-lg flex items-center justify-center gap-3 shadow-md hover:brightness-95 transition-all"
-                        >
-                            <KakaoLogoIcon className="w-6 h-6" />
-                            <span className="text-lg font-sans">카카오 로그인</span> 
-                        </button>
-                        
-                        <button 
-                            onClick={() => onSocialLogin('Naver')}
-                            className="w-full bg-[#00C73C] text-white font-bold h-14 rounded-lg flex items-center justify-center gap-3 shadow-md hover:brightness-95 transition-all"
-                        >
-                            <NaverLogoIcon className="w-6 h-6" />
-                            <span className="text-lg font-sans">네이버 로그인</span>
-                        </button>
-                    </div>
-                    
-                    <p className="text-[10px] text-gray-400 text-center pt-2">
-                        간편 로그인 시 최초 1회만 정보 동의가 필요합니다.
-                    </p>
-                </div>
+                )}
             </div>
+            <p className="fixed bottom-6 text-xs text-gray-400">© 2025 Chaesooyong Math Academy. All rights reserved.</p>
         </div>
     );
 }
