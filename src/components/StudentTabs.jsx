@@ -35,33 +35,67 @@ const getTrendText = (t) => {
     return '...';
 };
 
-// 1. DashboardTab
-export const DashboardTab = ({ student, myClasses, attendanceLogs, clinicLogs, homeworkStats, notices, setActiveTab }) => {
+// 1. DashboardTab (수정: 일정 UI 개선 및 타학원 일정 포함)
+export const DashboardTab = ({ student, myClasses, attendanceLogs, clinicLogs, homeworkStats, notices, setActiveTab, externalSchedules }) => {
     const today = new Date();
+    const todayStr = today.toISOString().split('T')[0];
     const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
     const todayDayName = dayNames[today.getDay()];
-    const todayStr = today.toISOString().split('T')[0];
 
-    const todayClasses = myClasses.filter(cls => cls.schedule.days.includes(todayDayName));
-    const todayClinics = clinicLogs.filter(log => log.studentId === student.id && log.date === todayStr && !log.checkOut);
+    // 1. 정규 수업 필터링
+    const todayClasses = myClasses.filter(cls => cls.schedule.days.includes(todayDayName)).map(cls => ({
+        type: 'class',
+        name: cls.name,
+        time: cls.schedule.time,
+        teacher: cls.teacher,
+        sortTime: cls.schedule.time.split('~')[0]
+    }));
 
-    const allEvents = [
-        ...todayClasses.map(cls => ({ type: 'class', ...cls, sortTime: cls.schedule.time.split('~')[0] })),
-        ...todayClinics.map(clinic => ({ type: 'clinic', ...clinic, sortTime: clinic.checkIn }))
-    ].sort((a, b) => a.sortTime.localeCompare(b.sortTime));
+    // 2. 클리닉 필터링 (실제 존재하는 데이터만)
+    const todayClinics = clinicLogs.filter(log => log.studentId === student.id && log.date === todayStr && !log.checkOut).map(log => ({
+        type: 'clinic',
+        name: '학습 클리닉',
+        time: `${log.checkIn} 입실`,
+        teacher: log.tutor || '담당 선생님',
+        sortTime: log.checkIn
+    }));
 
-    const nowTimeStr = today.toTimeString().slice(0, 5); 
+    // 3. 타학원 일정 필터링
+    const todayExternal = externalSchedules ? externalSchedules.filter(s => 
+        s.studentId === student.id && 
+        s.days.includes(todayDayName) &&
+        todayStr >= s.startDate && 
+        (!s.endDate || todayStr <= s.endDate)
+    ).map(s => ({
+        type: 'external',
+        name: s.academyName,
+        subName: s.courseName,
+        time: `${s.startTime}~${s.endTime}`,
+        sortTime: s.startTime
+    })) : [];
+
+    // 통합 및 정렬 (시간순)
+    const allEvents = [...todayClasses, ...todayClinics, ...todayExternal].sort((a, b) => a.sortTime.localeCompare(b.sortTime));
+
+    // 핵심 일정(Key Event) 찾기: 현재 시각 기준 끝나지 않은 가장 빠른 일정
+    const nowTimeStr = today.toTimeString().slice(0, 5); // "14:30"
     
     let keyEvent = allEvents.find(e => {
-        const endTime = e.type === 'class' ? e.schedule.time.split('~')[1] : '23:59'; 
+        // 종료 시간이 없으면(클리닉 입실 등) 23:59로 가정
+        let endTime = '23:59';
+        if (e.time.includes('~')) {
+            endTime = e.time.split('~')[1];
+        }
         return endTime >= nowTimeStr;
     });
-    
-    if (!keyEvent && allEvents.length > 0) keyEvent = null; 
 
-    const otherEvents = allEvents.filter(e => e !== keyEvent);
+    // 만약 모든 일정이 끝났다면? (keyEvent 없음) -> null 처리
+    // 화면 표시 로직: keyEvent가 있으면 그걸 강조, 나머지는 리스트
+    
+    const otherEvents = keyEvent ? allEvents.filter(e => e !== keyEvent) : allEvents;
     const [isScheduleExpanded, setIsScheduleExpanded] = useState(false);
 
+    // 출결 경고 로직 (유지)
     const attendanceAlerts = myClasses.map(cls => {
         const clsLogs = attendanceLogs.filter(l => l.classId === cls.id && l.studentId === student.id);
         if (clsLogs.length === 0) return null;
@@ -85,31 +119,51 @@ export const DashboardTab = ({ student, myClasses, attendanceLogs, clinicLogs, h
             {attendanceAlerts.length > 0 && (
                 <div className="space-y-2">{attendanceAlerts.map((alert, idx) => (<div key={idx} onClick={() => setActiveTab('class')} className="bg-red-50 border border-red-100 p-3 rounded-xl flex items-center gap-3 cursor-pointer active:bg-red-100 transition-colors"><div className="bg-white p-1.5 rounded-full text-red-500 shadow-sm"><Icon name="alertCircle" className="w-5 h-5" /></div><div className="flex-1"><p className="text-xs text-red-500 font-bold">{alert.class}</p><p className="text-sm font-bold text-gray-800">{alert.msg}</p></div><Icon name="chevronRight" className="w-4 h-4 text-red-300" /></div>))}</div>
             )}
+            
             <div>
-                <h3 className="text-lg font-bold text-gray-800 mb-3 px-1 flex items-center"><Icon name="calendar" className="w-5 h-5 mr-2 text-brand-main" />오늘의 수업</h3>
+                <h3 className="text-lg font-bold text-gray-800 mb-3 px-1 flex items-center">
+                    <Icon name="calendar" className="w-5 h-5 mr-2 text-brand-main" />
+                    오늘의 일정 {allEvents.length > 0 && <span className="text-gray-500 ml-1">({allEvents.length})</span>}
+                </h3>
                 
                 {allEvents.length === 0 ? (
-                    <div className="bg-white p-6 rounded-2xl border border-dashed border-gray-300 text-center text-gray-500 text-sm">오늘 예정된 수업이나 클리닉이 없어요. <br/>자율 학습을 해보는 건 어때요? 🔥</div>
+                    <div className="bg-white p-6 rounded-2xl border border-dashed border-gray-300 text-center text-gray-500 text-sm">오늘 예정된 일정이 없어요. <br/>자율 학습을 해보는 건 어때요? 🔥</div>
                 ) : (
                     <div className="space-y-3">
-                        {keyEvent ? (
-                            <div className={`p-5 rounded-2xl border flex justify-between items-center shadow-sm ${keyEvent.type === 'class' ? 'bg-indigo-50 border-indigo-100' : 'bg-teal-50 border-teal-100'}`}>
+                        {/* 1. 핵심 카드 (가장 가까운 일정) */}
+                        {keyEvent && (
+                            <div className={`p-5 rounded-2xl border flex justify-between items-center shadow-sm ${
+                                keyEvent.type === 'class' ? 'bg-indigo-50 border-indigo-100' : 
+                                keyEvent.type === 'clinic' ? 'bg-teal-50 border-teal-100' :
+                                'bg-gray-50 border-gray-200'
+                            }`}>
                                 <div>
-                                    <span className={`text-xs font-bold px-2 py-0.5 rounded border mb-2 inline-block ${keyEvent.type === 'class' ? 'text-indigo-600 bg-white border-indigo-200' : 'text-teal-600 bg-white border-teal-200'}`}>
-                                        {keyEvent.type === 'class' ? '정규 수업' : '클리닉'}
+                                    <span className={`text-xs font-bold px-2 py-0.5 rounded border mb-2 inline-block ${
+                                        keyEvent.type === 'class' ? 'text-indigo-600 bg-white border-indigo-200' : 
+                                        keyEvent.type === 'clinic' ? 'text-teal-600 bg-white border-teal-200' :
+                                        'text-gray-600 bg-white border-gray-200'
+                                    }`}>
+                                        {keyEvent.type === 'class' ? '정규 수업' : keyEvent.type === 'clinic' ? '클리닉' : '타학원'}
                                     </span>
-                                    <h4 className={`font-bold text-lg ${keyEvent.type === 'class' ? 'text-indigo-900' : 'text-teal-900'}`}>
-                                        {keyEvent.type === 'class' ? keyEvent.name : '학습 클리닉'}
+                                    <h4 className={`font-bold text-lg ${
+                                        keyEvent.type === 'class' ? 'text-indigo-900' : 
+                                        keyEvent.type === 'clinic' ? 'text-teal-900' : 
+                                        'text-gray-900'
+                                    }`}>
+                                        {keyEvent.name}
                                     </h4>
-                                    <p className={`text-sm mt-0.5 ${keyEvent.type === 'class' ? 'text-indigo-700' : 'text-teal-700'}`}>
-                                        {keyEvent.type === 'class' ? `${keyEvent.schedule.time} | ${keyEvent.teacher} 선생님` : `${keyEvent.checkIn} 입실 예정`}
+                                    <p className={`text-sm mt-0.5 ${
+                                        keyEvent.type === 'class' ? 'text-indigo-700' : 
+                                        keyEvent.type === 'clinic' ? 'text-teal-700' : 
+                                        'text-gray-600'
+                                    }`}>
+                                        {keyEvent.type === 'external' ? `${keyEvent.time} | ${keyEvent.subName}` : `${keyEvent.time} | ${keyEvent.teacher}`}
                                     </p>
                                 </div>
                             </div>
-                        ) : (
-                            <div className="bg-gray-50 p-4 rounded-xl text-center text-gray-500 text-sm">오늘의 모든 일정이 종료되었습니다.</div>
                         )}
 
+                        {/* 2. 나머지 일정 (접힘 리스트) */}
                         {otherEvents.length > 0 && (
                             <div>
                                 <button 
@@ -125,11 +179,18 @@ export const DashboardTab = ({ student, myClasses, attendanceLogs, clinicLogs, h
                                         {otherEvents.map((e, idx) => (
                                             <div key={idx} className="flex justify-between items-center p-2 rounded-lg bg-gray-50 text-sm">
                                                 <div className="flex items-center gap-2">
-                                                    <span className={`w-1.5 h-1.5 rounded-full ${e.type === 'class' ? 'bg-indigo-400' : 'bg-teal-400'}`}></span>
-                                                    <span className="font-bold text-gray-700">{e.type === 'class' ? e.name : '학습 클리닉'}</span>
+                                                    <span className={`w-1.5 h-1.5 rounded-full ${
+                                                        e.type === 'class' ? 'bg-indigo-400' : 
+                                                        e.type === 'clinic' ? 'bg-teal-400' : 
+                                                        'bg-gray-400'
+                                                    }`}></span>
+                                                    <div>
+                                                        <span className="font-bold text-gray-700 block">{e.name}</span>
+                                                        {e.type === 'external' && <span className="text-xs text-gray-500">{e.subName}</span>}
+                                                    </div>
                                                 </div>
                                                 <span className="text-gray-500 text-xs font-mono">
-                                                    {e.type === 'class' ? e.schedule.time : e.checkIn}
+                                                    {e.time}
                                                 </span>
                                             </div>
                                         ))}
@@ -140,7 +201,23 @@ export const DashboardTab = ({ student, myClasses, attendanceLogs, clinicLogs, h
                     </div>
                 )}
             </div>
-            <div><div className="flex justify-between items-end mb-3 px-1"><h3 className="text-lg font-bold text-gray-800 flex items-center"><Icon name="clipboardCheck" className="w-5 h-5 mr-2 text-brand-red" />놓치면 안 돼요!</h3><button onClick={() => setActiveTab('learning')} className="text-xs text-gray-500 underline active:text-gray-800">전체보기</button></div><div className="flex gap-3 overflow-x-auto pb-4 -mx-4 px-4 snap-x scrollbar-hide">{homeworkStats.filter(h => h.status !== '완료').length > 0 ? (homeworkStats.filter(h => h.status !== '완료').map(hw => (<div key={hw.id} className="snap-center shrink-0 w-64 bg-white p-4 rounded-2xl shadow-sm border border-gray-200 relative overflow-hidden active:scale-95 transition-transform"><div className={`absolute top-0 left-0 w-1.5 h-full ${hw.status === '미시작' ? 'bg-brand-red' : 'bg-brand-main'}`}></div><div className="flex justify-between items-start mb-2 pl-2"><span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${hw.status === '미시작' ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'}`}>{hw.status}</span><span className="text-[10px] text-gray-400">~{hw.date.slice(5)}</span></div><h4 className="font-bold text-gray-900 text-sm mb-1 pl-2 truncate">{hw.content}</h4><p className="text-xs text-gray-500 pl-2 mb-3">{hw.book}</p><div className="pl-2"><div className="w-full bg-gray-100 rounded-full h-1.5"><div className="bg-brand-main h-1.5 rounded-full" style={{ width: `${hw.completionRate}%` }}></div></div><p className="text-[10px] text-right text-gray-400 mt-1">{hw.completionRate}% 달성</p></div></div>))) : (<div className="w-full bg-white p-5 rounded-2xl border border-gray-100 text-center"><p className="text-sm text-gray-500">모든 과제를 완료했어요! 훌륭해요 👏</p></div>)}</div></div>
+
+            <div>
+                <div className="flex justify-between items-end mb-3 px-1"><h3 className="text-lg font-bold text-gray-800 flex items-center"><Icon name="clipboardCheck" className="w-5 h-5 mr-2 text-brand-red" />놓치면 안 돼요!</h3><button onClick={() => setActiveTab('learning')} className="text-xs text-gray-500 underline active:text-gray-800">전체보기</button></div>
+                <div className="flex gap-3 overflow-x-auto pb-4 -mx-4 px-4 snap-x scrollbar-hide">
+                    {homeworkStats.filter(h => h.status !== '완료').length > 0 ? (
+                        homeworkStats.filter(h => h.status !== '완료').map(hw => (
+                            <div key={hw.id} className="snap-center shrink-0 w-64 bg-white p-4 rounded-2xl shadow-sm border border-gray-200 relative overflow-hidden active:scale-95 transition-transform">
+                                <div className={`absolute top-0 left-0 w-1.5 h-full ${hw.status === '미시작' ? 'bg-brand-red' : 'bg-brand-main'}`}></div>
+                                <div className="flex justify-between items-start mb-2 pl-2"><span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${hw.status === '미시작' ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'}`}>{hw.status}</span><span className="text-[10px] text-gray-400">~{hw.date.slice(5)}</span></div>
+                                <h4 className="font-bold text-gray-900 text-sm mb-1 pl-2 truncate">{hw.content}</h4>
+                                <p className="text-xs text-gray-500 pl-2 mb-3">{hw.book}</p>
+                                <div className="pl-2"><div className="w-full bg-gray-100 rounded-full h-1.5"><div className="bg-brand-main h-1.5 rounded-full" style={{ width: `${hw.completionRate}%` }}></div></div><p className="text-[10px] text-right text-gray-400 mt-1">{hw.completionRate}% 달성</p></div>
+                            </div>
+                        ))
+                    ) : (<div className="w-full bg-white p-5 rounded-2xl border border-gray-100 text-center"><p className="text-sm text-gray-500">모든 과제를 완료했어요! 훌륭해요 👏</p></div>)}
+                </div>
+            </div>
             <div><h3 className="text-lg font-bold text-gray-800 mb-3 px-1">📢 최근 소식</h3><div className="bg-white rounded-2xl shadow-sm border border-gray-200 divide-y divide-gray-100">{notices.slice(0, 3).map(notice => (<div key={notice.id} onClick={() => setActiveTab('board')} className="p-4 flex justify-between items-center cursor-pointer active:bg-gray-50 transition-colors"><div className="flex-1 min-w-0 mr-4"><div className="flex items-center gap-2 mb-1">{notice.isPinned && <span className="text-[10px] bg-brand-red text-white px-1 rounded">필독</span>}<h4 className="text-sm font-bold text-gray-900 truncate">{notice.title}</h4></div><p className="text-xs text-gray-400">{notice.date}</p></div><Icon name="chevronRight" className="w-4 h-4 text-gray-300" /></div>))}{notices.length === 0 && (<div className="p-4 text-center text-gray-500 text-sm">새로운 공지사항이 없습니다.</div>)}</div></div>
         </div>
     );

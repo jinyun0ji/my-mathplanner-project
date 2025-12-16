@@ -20,10 +20,7 @@ export default function StudentHome({
     onLogout, messages, onSendMessage
 }) {
     const [activeTab, setActiveTab] = useState('home');
-    
-    // ✅ [추가] 학습관리 탭 내부의 서브 탭을 제어하기 위한 상태
     const [initialLearningTab, setInitialLearningTab] = useState('homework');
-
     const [selectedClassId, setSelectedClassId] = useState(null);
     const [isVideoModalOpen, setIsVideoModalOpen] = useState(false);
     const [isNotificationOpen, setIsNotificationOpen] = useState(false);
@@ -31,7 +28,6 @@ export default function StudentHome({
     const [hasNewNotifications, setHasNewNotifications] = useState(false);
     const [targetMemo, setTargetMemo] = useState(null);
 
-    // ... (기존 useEffect 로직 동일) ...
     useEffect(() => {
         let newNotices = [...notices];
         const now = new Date();
@@ -100,7 +96,6 @@ export default function StudentHome({
                         homeworkResults={homeworkResults}
                         tests={tests}
                         grades={grades}
-                        // ✅ [수정] 탭 이동 시 서브 탭도 같이 지정
                         onNavigateToTab={(tab, subTab = 'homework') => {
                             setSelectedClassId(null);
                             setActiveTab(tab);
@@ -116,6 +111,7 @@ export default function StudentHome({
                                 student={student} myClasses={myClasses} pendingHomeworkCount={pendingHomeworkCount} 
                                 attendanceLogs={attendanceLogs} clinicLogs={clinicLogs} homeworkStats={myHomeworkStats} notices={visibleNotices}
                                 setActiveTab={setActiveTab}
+                                externalSchedules={externalSchedules} // ✅ [추가] 타학원 일정 데이터 전달
                             />
                         )}
                         {activeTab === 'class' && <ClassTab myClasses={myClasses} setSelectedClassId={setSelectedClassId} />}
@@ -129,7 +125,6 @@ export default function StudentHome({
                             <LearningTab 
                                 studentId={studentId} myHomeworkStats={myHomeworkStats} myGradeComparison={myGradeComparison} 
                                 clinicLogs={clinicLogs} students={students} classes={classes}
-                                // ✅ [추가] 초기 서브 탭 전달
                                 initialTab={initialLearningTab} 
                             />
                         )}
@@ -166,7 +161,6 @@ export default function StudentHome({
                 </div>
             )}
             
-            {/* ... (알림 버튼, 메신저 등 기존 코드 유지) ... */}
             <div className={`fixed bottom-20 right-4 z-[60] transition-all duration-300 ${isVideoModalOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
                 <button onClick={handleOpenNotification} className="bg-white text-brand-main border border-brand-main/20 p-3 rounded-full shadow-lg hover:bg-gray-50 active:scale-90 flex items-center justify-center relative"><NotificationsIcon style={{ fontSize: 24 }} />{hasNewNotifications && <span className="absolute top-2 right-2.5 w-2 h-2 bg-brand-red rounded-full ring-1 ring-white"></span>}</button>
             </div>
