@@ -35,7 +35,7 @@ const getTrendText = (t) => {
     return '...';
 };
 
-// 1. DashboardTab (수정: 일정 UI 개선 및 타학원 일정 포함)
+// 1. DashboardTab (수정: 카드 색상 복구 및 타학원 정보 매핑 변경)
 export const DashboardTab = ({ student, myClasses, attendanceLogs, clinicLogs, homeworkStats, notices, setActiveTab, externalSchedules }) => {
     const today = new Date();
     const todayStr = today.toISOString().split('T')[0];
@@ -51,7 +51,7 @@ export const DashboardTab = ({ student, myClasses, attendanceLogs, clinicLogs, h
         sortTime: cls.schedule.time.split('~')[0]
     }));
 
-    // 2. 클리닉 필터링 (실제 존재하는 데이터만)
+    // 2. 클리닉 필터링
     const todayClinics = clinicLogs.filter(log => log.studentId === student.id && log.date === todayStr && !log.checkOut).map(log => ({
         type: 'clinic',
         name: '학습 클리닉',
@@ -68,30 +68,25 @@ export const DashboardTab = ({ student, myClasses, attendanceLogs, clinicLogs, h
         (!s.endDate || todayStr <= s.endDate)
     ).map(s => ({
         type: 'external',
-        name: s.academyName,
-        subName: s.courseName,
+        academyName: s.academyName, // 학원명 (배지용)
+        courseName: s.courseName,   // 강의명 (타이틀용)
+        instructor: s.instructor,   // 강사명 (서브텍스트용)
         time: `${s.startTime}~${s.endTime}`,
         sortTime: s.startTime
     })) : [];
 
-    // 통합 및 정렬 (시간순)
+    // 통합 및 정렬
     const allEvents = [...todayClasses, ...todayClinics, ...todayExternal].sort((a, b) => a.sortTime.localeCompare(b.sortTime));
 
-    // 핵심 일정(Key Event) 찾기: 현재 시각 기준 끝나지 않은 가장 빠른 일정
-    const nowTimeStr = today.toTimeString().slice(0, 5); // "14:30"
+    // 핵심 일정(Key Event) 찾기
+    const nowTimeStr = today.toTimeString().slice(0, 5); 
     
     let keyEvent = allEvents.find(e => {
-        // 종료 시간이 없으면(클리닉 입실 등) 23:59로 가정
         let endTime = '23:59';
-        if (e.time.includes('~')) {
-            endTime = e.time.split('~')[1];
-        }
+        if (e.time.includes('~')) endTime = e.time.split('~')[1];
         return endTime >= nowTimeStr;
     });
 
-    // 만약 모든 일정이 끝났다면? (keyEvent 없음) -> null 처리
-    // 화면 표시 로직: keyEvent가 있으면 그걸 강조, 나머지는 리스트
-    
     const otherEvents = keyEvent ? allEvents.filter(e => e !== keyEvent) : allEvents;
     const [isScheduleExpanded, setIsScheduleExpanded] = useState(false);
 
@@ -123,41 +118,58 @@ export const DashboardTab = ({ student, myClasses, attendanceLogs, clinicLogs, h
             <div>
                 <h3 className="text-lg font-bold text-gray-800 mb-3 px-1 flex items-center">
                     <Icon name="calendar" className="w-5 h-5 mr-2 text-brand-main" />
-                    오늘의 일정 {allEvents.length > 0 && <span className="text-gray-500 ml-1">({allEvents.length})</span>}
+                    오늘의 수업 {allEvents.length > 0 && <span className="text-gray-500 ml-1">({allEvents.length})</span>}
                 </h3>
                 
                 {allEvents.length === 0 ? (
                     <div className="bg-white p-6 rounded-2xl border border-dashed border-gray-300 text-center text-gray-500 text-sm">오늘 예정된 일정이 없어요. <br/>자율 학습을 해보는 건 어때요? 🔥</div>
                 ) : (
                     <div className="space-y-3">
-                        {/* 1. 핵심 카드 (가장 가까운 일정) */}
+                        {/* 1. 핵심 카드 (디자인 복구) */}
                         {keyEvent && (
+                            // ✅ [수정] 카드 배경색/테두리 복구 (첨부 이미지 스타일)
                             <div className={`p-5 rounded-2xl border flex justify-between items-center shadow-sm ${
-                                keyEvent.type === 'class' ? 'bg-indigo-50 border-indigo-100' : 
+                                keyEvent.type === 'class' ? 'bg-[#F0F2FD] border-[#E0E4F4]' : // 첨부 이미지와 유사한 연한 보라색
                                 keyEvent.type === 'clinic' ? 'bg-teal-50 border-teal-100' :
                                 'bg-gray-50 border-gray-200'
                             }`}>
-                                <div>
-                                    <span className={`text-xs font-bold px-2 py-0.5 rounded border mb-2 inline-block ${
-                                        keyEvent.type === 'class' ? 'text-indigo-600 bg-white border-indigo-200' : 
-                                        keyEvent.type === 'clinic' ? 'text-teal-600 bg-white border-teal-200' :
-                                        'text-gray-600 bg-white border-gray-200'
-                                    }`}>
-                                        {keyEvent.type === 'class' ? '정규 수업' : keyEvent.type === 'clinic' ? '클리닉' : '타학원'}
-                                    </span>
-                                    <h4 className={`font-bold text-lg ${
-                                        keyEvent.type === 'class' ? 'text-indigo-900' : 
+                                <div className="w-full"> {/* w-full 추가하여 flex 확장 */}
+                                    <div className="flex justify-between items-start">
+                                        {/* ✅ [수정] 배지 텍스트 및 스타일 */}
+                                        <span className={`text-xs font-bold px-2 py-1 rounded border mb-2 inline-block ${
+                                            keyEvent.type === 'class' ? 'text-indigo-600 bg-white border-indigo-200' : 
+                                            keyEvent.type === 'clinic' ? 'text-teal-600 bg-white border-teal-200' :
+                                            'text-gray-600 bg-white border-gray-200'
+                                        }`}>
+                                            {keyEvent.type === 'class' ? '정규 수업' : 
+                                             keyEvent.type === 'clinic' ? '클리닉' : 
+                                             keyEvent.academyName /* 타학원: 학원명 */}
+                                        </span>
+                                        {/* 화살표 아이콘 (이미지에 있어서 추가) */}
+                                        <Icon name="chevronRight" className="w-5 h-5 text-indigo-300" />
+                                    </div>
+                                    
+                                    {/* ✅ [수정] 타이틀: 강의명 */}
+                                    <h4 className={`font-bold text-lg mb-1 ${
+                                        keyEvent.type === 'class' ? 'text-[#3D4195]' : // 진한 보라색
                                         keyEvent.type === 'clinic' ? 'text-teal-900' : 
                                         'text-gray-900'
                                     }`}>
-                                        {keyEvent.name}
+                                        {keyEvent.type === 'class' ? keyEvent.name : 
+                                         keyEvent.type === 'clinic' ? keyEvent.name :
+                                         keyEvent.courseName /* 타학원: 강의명 */}
                                     </h4>
-                                    <p className={`text-sm mt-0.5 ${
-                                        keyEvent.type === 'class' ? 'text-indigo-700' : 
+                                    
+                                    {/* ✅ [수정] 서브텍스트: 시간 | 강사명 */}
+                                    <p className={`text-sm ${
+                                        keyEvent.type === 'class' ? 'text-[#6B72D3]' : // 중간톤 보라색
                                         keyEvent.type === 'clinic' ? 'text-teal-700' : 
                                         'text-gray-600'
                                     }`}>
-                                        {keyEvent.type === 'external' ? `${keyEvent.time} | ${keyEvent.subName}` : `${keyEvent.time} | ${keyEvent.teacher}`}
+                                        {keyEvent.type === 'external' 
+                                            ? `${keyEvent.time} | ${keyEvent.instructor} 선생님` 
+                                            : `${keyEvent.time} | ${keyEvent.teacher}`
+                                        }
                                     </p>
                                 </div>
                             </div>
@@ -185,8 +197,10 @@ export const DashboardTab = ({ student, myClasses, attendanceLogs, clinicLogs, h
                                                         'bg-gray-400'
                                                     }`}></span>
                                                     <div>
-                                                        <span className="font-bold text-gray-700 block">{e.name}</span>
-                                                        {e.type === 'external' && <span className="text-xs text-gray-500">{e.subName}</span>}
+                                                        <span className="font-bold text-gray-700 block">
+                                                            {e.type === 'external' ? e.courseName : e.name}
+                                                        </span>
+                                                        {e.type === 'external' && <span className="text-xs text-gray-500">{e.academyName}</span>}
                                                     </div>
                                                 </div>
                                                 <span className="text-gray-500 text-xs font-mono">
