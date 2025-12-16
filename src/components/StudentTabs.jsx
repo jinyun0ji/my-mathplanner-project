@@ -145,8 +145,6 @@ export const DashboardTab = ({ student, myClasses, attendanceLogs, clinicLogs, h
                                              keyEvent.type === 'clinic' ? '클리닉' : 
                                              keyEvent.academyName /* 타학원: 학원명 */}
                                         </span>
-                                        {/* 화살표 아이콘 (이미지에 있어서 추가) */}
-                                        <Icon name="chevronRight" className="w-5 h-5 text-indigo-300" />
                                     </div>
                                     
                                     {/* ✅ [수정] 타이틀: 강의명 */}

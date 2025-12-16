@@ -178,7 +178,7 @@ export default function App() {
   const nextStudentId = students.reduce((max, s) => Math.max(max, s.id), 0) + 1; 
   
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [hasNewNotifications, setHasNewNotifications] = useState(true);
+  const [hasNewNotifications, setHasNewNotifications] = useState(false);
   const [isMessengerOpen, setIsMessengerOpen] = useState(false); 
   const [hasNewMessages, setHasNewMessages] = useState(true); 
 
@@ -230,6 +230,8 @@ export default function App() {
 
     const logNotification = useCallback((type, message, details) => {
         setNotifications(prev => [{ id: Date.now(), type, message, details, timestamp: new Date().toLocaleTimeString('ko-KR') }, ...prev]);
+        // ✅ [추가] 새 알림이 발생했을 때만 빨간 점 표시
+        setHasNewNotifications(true);
     }, []);
 
   // ... (기존 CRUD 함수들) ...
