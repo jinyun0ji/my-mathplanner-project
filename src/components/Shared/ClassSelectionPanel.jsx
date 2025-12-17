@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { Icon } from '../../utils/helpers';
+import { Icon, formatGradeLabel } from '../../utils/helpers';
 import { ClassFormModal } from '../../utils/modals/ClassFormModal';
 
 export default function ClassSelectionPanel({ 
@@ -11,6 +11,7 @@ export default function ClassSelectionPanel({
     const [isClassModalOpen, setIsClassModalOpen] = useState(false);
     const [isEditMode, setIsEditMode] = useState(false); // ✅ [추가] 편집 모드 상태 관리
     const selectedClass = classes.find(c => c.id === selectedClassId);
+    const selectedClassGrade = selectedClass ? formatGradeLabel(selectedClass.grade) : '';
     
     // Ref 설정: 선택된 항목을 참조할 Ref 객체
     const selectedItemRef = useRef(null); 
@@ -27,7 +28,7 @@ export default function ClassSelectionPanel({
     const displaySessions = sessions;
     
     return (
-        <div className="w-80 flex-shrink-0 bg-white p-4 rounded-xl shadow-md space-y-4">
+        <div className="w-full xl:w-80 flex-shrink-0 bg-white p-4 rounded-xl shadow-md space-y-4">
             <div className="flex justify-between items-center border-b pb-2">
                 <h3 className="text-lg font-bold text-gray-800">클래스 선택</h3>
                 <button 
@@ -53,7 +54,7 @@ export default function ClassSelectionPanel({
 
             {selectedClass && (
                 <div className="border p-3 rounded-lg bg-indigo-50 space-y-2">
-                    <p className="text-sm font-semibold text-indigo-700">고{selectedClass.grade} | {selectedClass.schedule.days.join(', ')} ({selectedClass.schedule.time})</p>
+                    <p className="text-sm font-semibold text-indigo-700">{selectedClassGrade || '학년 미정'} | {selectedClass.schedule.days.join(', ')} ({selectedClass.schedule.time})</p>
                     <p className="text-xs text-indigo-600">총 학생: {selectedClass.students.length}명</p>
                     {showEditButton && (
                         <button 

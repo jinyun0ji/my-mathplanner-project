@@ -1,7 +1,7 @@
 // src/components/common/AttendanceModal.jsx
 import React, { useState, useEffect } from 'react';
 import { Modal } from './Modal';
-import { Icon } from '../../utils/helpers';
+import { Icon, formatGradeLabel } from '../../utils/helpers';
 
 export const AttendanceModal = ({ isOpen, onClose, studentsData, initialAttendance, onSave }) => {
     const [attendance, setAttendance] = useState({});
@@ -42,16 +42,16 @@ export const AttendanceModal = ({ isOpen, onClose, studentsData, initialAttendan
                             {studentList.map(student => (
                                 <tr key={student.id}>
                                     <td className="px-6 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
-                                        {student.name} <span className="text-xs text-gray-500">(고{student.grade})</span>
+                                        {student.name} <span className="text-xs text-gray-500">({formatGradeLabel(student.grade) || '학년 정보 없음'})</span>
                                     </td>
                                     <td className="px-6 py-3 whitespace-nowrap">
-                                        <div className="flex justify-center space-x-2 text-xs">
+                                        <div className="flex flex-wrap justify-center gap-2 text-xs sm:text-sm">
                                             {['출석', '지각', '결석', '동영상보강'].map(status => (
                                                 <button
                                                     type="button"
                                                     key={status}
                                                     onClick={() => handleStatusChange(student.id, status)}
-                                                    className={`px-3 py-1 rounded-full border transition duration-150 ${
+                                                    className={`px-3 py-1 rounded-full border transition duration-150 min-w-[72px] ${
                                                         attendance[student.id]?.status === status
                                                             ? 'bg-blue-600 text-white border-blue-700 shadow-md'
                                                             : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-100'

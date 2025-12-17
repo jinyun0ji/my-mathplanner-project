@@ -1,6 +1,7 @@
 // src/utils/modals/ClinicLogModal.jsx
 import React, { useState, useEffect, useMemo } from 'react';
 import { Modal } from '../../components/common/Modal';
+import { formatGradeLabel } from '../../utils/helpers';
 
 export const ClinicLogModal = ({ isOpen, onClose, onSave, logToEdit = null, students, defaultDate, classes }) => {
     const [date, setDate] = useState(defaultDate || new Date().toISOString().slice(0, 10));
@@ -66,7 +67,7 @@ export const ClinicLogModal = ({ isOpen, onClose, onSave, logToEdit = null, stud
                         <label className="block text-sm font-medium text-gray-700">학생 이름*</label>
                         <select value={studentId} onChange={e => setStudentId(Number(e.target.value))} required className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border">
                             {activeStudents.map(s => (
-                                <option key={s.id} value={s.id}>{s.name} (고{s.grade})</option>
+                                <option key={s.id} value={s.id}>{s.name} ({formatGradeLabel(s.grade)})</option>
                             ))}
                         </select>
                     </div>
@@ -76,7 +77,7 @@ export const ClinicLogModal = ({ isOpen, onClose, onSave, logToEdit = null, stud
                     <div className="text-sm p-3 bg-white border rounded-lg">
                         <p className="font-semibold text-gray-700">학생 정보 요약</p>
                         <p className="text-xs text-gray-600 mt-1">
-                            학교/학년: {selectedStudent.school} (고{selectedStudent.grade})<br/>
+                            학교/학년: {selectedStudent.school} ({formatGradeLabel(selectedStudent.grade)})<br/>
                             수강 클래스: <span className="font-medium text-blue-600">{studentClassNames || '없음'}</span><br/>
                             클리닉 희망: {selectedStudent.clinicTime || '미정'}
                         </p>

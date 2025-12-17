@@ -40,6 +40,20 @@ export const Icon = ({ name, className, ...props }) => {
     return <LucideIcon className={className} {...props} />;
 };
 
+export const formatGradeLabel = (grade) => {
+    if (grade === null || grade === undefined) return '';
+    const raw = grade.toString().trim();
+    if (!raw) return '';
+
+    const normalized = raw
+        .replace(/^(고)+/, '고')
+        .replace(/^(중)+/, '중')
+        .replace(/^(초)+/, '초');
+
+    if (/^[고중초]/.test(normalized)) return normalized;
+    return `고${normalized}`;
+};
+
 export const staffMembers = [
     { id: 'teacher', name: '채수용 선생님', role: 'teacher', avatar: 'C' },
     { id: 'lab', name: '수학 연구소', role: 'admin', avatar: 'Lab' }

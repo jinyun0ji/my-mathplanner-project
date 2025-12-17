@@ -1,6 +1,6 @@
 // src/components/Shared/VideoProgressViewer.jsx
 import React from 'react';
-import { Icon } from '../../utils/helpers';
+import { Icon, formatGradeLabel } from '../../utils/helpers';
 
 // ✅ [수정] handleSendStudentNotification prop 추가
 export default function VideoProgressViewer({ log, students, videoProgress, attendanceLogs, logNotification, handleSendStudentNotification }) {
@@ -38,7 +38,7 @@ export default function VideoProgressViewer({ log, students, videoProgress, atte
 
                         return (
                             <div key={student.id} className="p-3 border rounded-lg bg-indigo-50">
-                                <p className="text-sm font-semibold">{student.name} (고{student.grade})</p>
+                                <p className="text-sm font-semibold">{student.name} ({formatGradeLabel(student.grade)})</p>
                                 <div className="mt-2">
                                     <div className="w-full bg-gray-200 rounded-full h-2.5">
                                         <div 

@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Icon } from '../utils/helpers';
+import { Icon, formatGradeLabel } from '../utils/helpers';
 // calculateGradeComparison, calculateHomeworkStats는 App.jsx에서 props로 전달받음
 
 export default function StudentDetail({ 
@@ -56,7 +56,7 @@ export default function StudentDetail({
                 <div className="col-span-1 bg-white p-6 rounded-xl shadow-md space-y-3 h-full">
                     <h4 className="text-lg font-bold border-b pb-2 text-gray-800">기본 정보</h4>
                     <p className="text-sm"><span className="font-medium text-gray-600">상태:</span> <span className={`font-bold ${student.status === '재원생' ? 'text-green-600' : 'text-red-600'}`}>{student.status}</span></p>
-                    <p className="text-sm"><span className="font-medium text-gray-600">학교/학년:</span> {student.school} (고{student.grade})</p>
+                    <p className="text-sm"><span className="font-medium text-gray-600">학교/학년:</span> {student.school} ({formatGradeLabel(student.grade)})</p>
                     <p className="text-sm"><span className="font-medium text-gray-600">클래스:</span> <span className="font-medium text-blue-600">{studentClasses.map(c => c.name).join(', ') || '-'}</span></p>
                     <p className="text-sm"><span className="font-medium text-gray-600">연락처:</span> {student.phone} / {student.parentPhone}</p>
                     <p className="text-sm"><span className="font-medium text-gray-600">클리닉:</span> {student.clinicTime || '미정'}</p>
