@@ -43,9 +43,10 @@ export default function PaymentManagement({ students, classes, logNotification }
     const [paymentForm, setPaymentForm] = useState({
         studentId: '',
         bookId: '',
-        method: '카드',
-        channel: '현장결제',
+        method: '간편결제',
+        channel: '간편결제',
     });
+    const [useEasyPay, setUseEasyPay] = useState(true);
     
     const [viewClassId, setViewClassId] = useState(classes && classes.length > 0 ? classes[0].id : null);
     const [selectedClassForSetting, setSelectedClassForSetting] = useState(classes && classes.length > 0 ? classes[0].id : null);
@@ -195,9 +196,35 @@ export default function PaymentManagement({ students, classes, logNotification }
         return bookList.filter(b => neededBookIds.has(b.id));
     }, [paymentForm.studentId, students, classBookMap, bookList]);
 
+    const handleMethodChange = (value) => {
+        setUseEasyPay(value === '간편결제');
+        setPaymentForm(prev => ({
+            ...prev,
+            method: value,
+            channel: value === '간편결제' ? '간편결제' : (prev.channel === '간편결제' ? '현장결제' : prev.channel)
+        }));
+    };
+
+    const handleChannelChange = (value) => {
+        setUseEasyPay(value === '간편결제');
+        setPaymentForm(prev => ({
+            ...prev,
+            channel: value,
+            method: value === '간편결제' ? '간편결제' : (prev.method === '간편결제' ? '카드' : prev.method)
+        }));
+    };
+
 
     return (
         <div className="space-y-6">
+            <div className="flex items-start gap-3 p-4 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
+                <Icon name="info" className="w-5 h-5 mt-0.5" />
+                <div>
+                    <p className="font-bold">교재비 전용 수납 화면입니다.</p>
+                    <p className="mt-1 text-amber-700">학원비/수업료는 별도로 청구되며, 여기서는 교재비만 결제·안내할 수 있습니다.</p>
+                </div>
+            </div>
+
             {/* 상단 탭 네비게이션 */}
             <div className="flex justify-between items-end border-b pb-1">
                 <div className="flex space-x-1">
@@ -444,7 +471,13 @@ export default function PaymentManagement({ students, classes, logNotification }
                                         <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-indigo-600">{log.amount.toLocaleString()}원</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{log.method}</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm">
-                                            <span className={`px-2 py-1 text-xs rounded border font-medium ${log.type === '온라인결제' ? 'bg-purple-50 text-purple-600 border-purple-200' : 'bg-gray-50 text-gray-600 border-gray-200'}`}>
+                                            <span className={`px-2 py-1 text-xs rounded border font-medium ${
+                                                log.type === '간편결제'
+                                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                                    : log.type === '온라인결제'
+                                                        ? 'bg-purple-50 text-purple-600 border-purple-200'
+                                                        : 'bg-gray-50 text-gray-600 border-gray-200'
+                                            }`}>
                                                 {log.type}
                                             </span>
                                         </td>
@@ -537,6 +570,14 @@ export default function PaymentManagement({ students, classes, logNotification }
             {/* 2. 수납 결제 모달 */}
             <Modal isOpen={isPaymentModalOpen} onClose={() => setIsPaymentModalOpen(false)} title="교재 수납 결제">
                 <form onSubmit={handlePaymentSubmit} className="space-y-5">
+                     <div className="flex items-start gap-3 p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-sm text-emerald-800">
+                        <Icon name="creditCard" className="w-5 h-5 mt-0.5" />
+                        <div>
+                            <p className="font-bold">학원비는 제외하고 교재비만 결제합니다.</p>
+                            <p className="mt-1">간편결제 링크를 발송하면 학부모가 모바일로 바로 결제할 수 있어요.</p>
+                        </div>
+                    </div>
+
                     <div>
                         <label className="block text-sm font-bold text-gray-700 mb-1">학생 선택</label>
                         <select 
@@ -593,12 +634,24 @@ export default function PaymentManagement({ students, classes, logNotification }
                     
                     <div className="grid grid-cols-2 gap-4">
                         <div>
-                            <label className="block text-sm font-bold text-gray-700 mb-1">결제 수단</label>
+                            <div className="flex items-center justify-between mb-1">
+                                <label className="block text-sm font-bold text-gray-700">결제 수단</label>
+                                <label className="flex items-center text-xs text-emerald-700 font-bold cursor-pointer select-none">
+                                    <input 
+                                        type="checkbox" 
+                                        checked={useEasyPay}
+                                        onChange={(e) => handleMethodChange(e.target.checked ? '간편결제' : '카드')}
+                                        className="mr-2 h-4 w-4 text-emerald-600 border-gray-300 rounded"
+                                    />
+                                    간편결제 사용
+                                </label>
+                            </div>
                             <select 
                                 className="w-full rounded-lg border-gray-300 border p-2.5"
                                 value={paymentForm.method} 
-                                onChange={e => setPaymentForm({...paymentForm, method: e.target.value})}
+                                onChange={e => handleMethodChange(e.target.value)}
                             >
+                                <option value="간편결제">간편결제 (모바일)</option>
                                 <option value="카드">카드</option>
                                 <option value="현금">현금</option>
                                 <option value="계좌이체">계좌이체</option>
@@ -609,13 +662,25 @@ export default function PaymentManagement({ students, classes, logNotification }
                             <select 
                                 className="w-full rounded-lg border-gray-300 border p-2.5"
                                 value={paymentForm.channel} 
-                                onChange={e => setPaymentForm({...paymentForm, channel: e.target.value})}
+                                onChange={e => handleChannelChange(e.target.value)}
                             >
+                                <option value="간편결제">간편결제 링크</option>
                                 <option value="현장결제">현장결제</option>
                                 <option value="온라인결제">온라인결제</option>
                             </select>
                         </div>
                     </div>
+
+                    {paymentForm.channel === '간편결제' && (
+                        <div className="bg-white border border-emerald-200 rounded-lg p-4 text-sm text-gray-700 shadow-inner">
+                            <div className="flex items-center text-emerald-700 font-bold mb-2">
+                                <Icon name="smartphone" className="w-4 h-4 mr-2" />
+                                간편결제 안내
+                            </div>
+                            <p className="text-gray-600 leading-relaxed">결제 완료 시 학부모에게 모바일 영수증이 발송되며, <span className="font-semibold text-gray-800">교재비만 청구</span>됩니다.</p>
+                            <p className="text-xs text-emerald-700 mt-1">(학원비/수업료는 포함되지 않습니다.)</p>
+                        </div>
+                    )}
 
                     <div className="flex justify-end pt-4 border-t mt-4">
                         <button 
@@ -623,7 +688,7 @@ export default function PaymentManagement({ students, classes, logNotification }
                             className="w-full bg-indigo-600 text-white py-3 rounded-lg hover:bg-indigo-700 font-bold text-lg shadow-lg transition active:scale-95"
                         >
                             {paymentForm.bookId 
-                                ? `${bookList.find(b => b.id === Number(paymentForm.bookId)).price.toLocaleString()}원 결제하기` 
+                                ? `${bookList.find(b => b.id === Number(paymentForm.bookId)).price.toLocaleString()}원 ${paymentForm.channel === '간편결제' ? '간편결제 보내기' : '결제하기'}`
                                 : '결제하기'}
                         </button>
                     </div>

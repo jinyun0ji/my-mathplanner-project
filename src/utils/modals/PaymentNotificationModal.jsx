@@ -23,7 +23,7 @@ export const PaymentNotificationModal = ({ isOpen, onClose, targets, logNotifica
     // 단일 메시지 생성 함수
     const getMessageText = (target) => {
         const bookNames = target.unpaidBooks.map(b => b.name).join(', ');
-        return `[채수용 연구소] 교재비 납부 안내\n\n안녕하세요, ${target.student.name} 학생 학부모님.\n수업에 필요한 교재비를 안내드립니다.\n\n- 학생명: ${target.student.name}\n- 필요 교재: ${bookNames}\n- 결제 금액: ${target.unpaidAmount.toLocaleString()}원\n\n아래 링크를 통해 간편하게 결제하실 수 있습니다.\n결제 링크: https://pay.example.com/link`;
+        return `[채수용 연구소] 교재비 납부 안내\n\n안녕하세요, ${target.student.name} 학생 학부모님.\n수업에 필요한 교재비를 안내드립니다. (학원비는 포함되지 않아요)\n\n- 학생명: ${target.student.name}\n- 필요 교재: ${bookNames}\n- 결제 금액: ${target.unpaidAmount.toLocaleString()}원\n\n아래 간편결제 링크로 바로 결제하실 수 있습니다.\n결제 링크: https://pay.example.com/link`;
     };
 
     const handleSend = () => {

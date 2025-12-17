@@ -15,6 +15,10 @@ export default function LoginPage({ onLogin, onSocialLogin }) {
         onLogin(loginRole, 1); 
     };
 
+    const handleQuickLogin = () => {
+        onLogin(loginRole, 1);
+    };
+
     return (
         <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4 sm:px-6 lg:px-8 font-sans">
             <div className="max-w-md w-full space-y-8 bg-white p-10 rounded-2xl shadow-xl border border-gray-100">
@@ -97,6 +101,15 @@ export default function LoginPage({ onLogin, onSocialLogin }) {
                         {loginRole === 'student' ? '학생 로그인' : loginRole === 'parent' ? '자녀 학습 현황 보기' : '관리자 로그인'}
                     </button>
                 </form>
+
+                <button
+                        type="button"
+                        onClick={handleQuickLogin}
+                        className="w-full flex items-center justify-center gap-2 py-3 px-4 border border-dashed border-indigo-200 rounded-xl text-sm font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 transition-colors"
+                    >
+                        <Icon name="zap" className="w-4 h-4" />
+                        간편로그인 (데모 계정)
+                    </button>
 
                 {/* 소셜 로그인은 학생/학부모에게만 표시 (선택 사항) */}
                 {loginRole !== 'staff' && (
