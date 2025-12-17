@@ -22,6 +22,14 @@ export default function DashboardTab({ student, myClasses, attendanceLogs, clini
     let keyEvent = allEvents.find(e => { let endTime = '23:59'; if (e.time.includes('~')) endTime = e.time.split('~')[1]; return endTime >= nowTimeStr; });
     const otherEvents = keyEvent ? allEvents.filter(e => e !== keyEvent) : allEvents;
     const [isScheduleExpanded, setIsScheduleExpanded] = useState(false);
+    const pendingHomework = homeworkStats.filter(h => h.status !== '완료');
+    const studentLogs = attendanceLogs.filter(l => l.studentId === student.id);
+    const attendanceRate = studentLogs.length > 0 ? Math.round((studentLogs.filter(l => ['출석','동영상보강'].includes(l.status)).length / studentLogs.length) * 100) : null;
+    const momentumCards = [
+        { label: '진행 중 과제', value: pendingHomework.length, accent: 'bg-gradient-to-r from-[#FFD166] to-[#FF8C42]', chip: 'Homework', onClick: () => setActiveTab('learning') },
+        { label: '오늘의 일정', value: allEvents.length, accent: 'bg-gradient-to-r from-[#7BDFF2] to-[#65C3FF]', chip: 'Schedule', onClick: () => setActiveTab('schedule') },
+        { label: '출석률', value: attendanceRate !== null ? `${attendanceRate}%` : '--', accent: 'bg-gradient-to-r from-[#C3F0CA] to-[#7AC99B]', chip: 'Attendance', onClick: () => setActiveTab('class') },
+    ];
 
     const attendanceAlerts = myClasses.map(cls => {
         const clsLogs = attendanceLogs.filter(l => l.classId === cls.id && l.studentId === student.id);
@@ -35,10 +43,37 @@ export default function DashboardTab({ student, myClasses, attendanceLogs, clini
 
     return (
         <div className="space-y-6 pb-24 animate-fade-in-up">
-            <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100 flex justify-between items-center relative overflow-hidden">
-                <div className="relative z-10">
-                    <p className="text-gray-500 text-sm font-medium mb-1">{today.getMonth()+1}월 {today.getDate()}일 {todayDayName}요일</p>
-                    <h2 className="text-2xl font-bold text-gray-900">{isParent ? `안녕하세요, ${student.name} 학부모님!` : `반가워요, ${student.name}님! 👋`}</h2>
+            <div className="relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-brand-main via-indigo-500 to-sky-400 p-6 shadow-brand text-white">
+                <div className="absolute inset-0 opacity-20 bg-[radial-gradient(circle_at_20%_20%,rgba(255,255,255,0.3),transparent_35%),radial-gradient(circle_at_80%_0%,rgba(255,255,255,0.25),transparent_30%),radial-gradient(circle_at_50%_80%,rgba(255,255,255,0.2),transparent_25%)]"></div>
+                <div className="relative z-10 space-y-4">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <p className="text-sm font-medium text-white/80">{today.getMonth()+1}월 {today.getDate()}일 {todayDayName}요일</p>
+                            <h2 className="text-2xl font-bold leading-tight mt-1">{isParent ? `안녕하세요, ${student.name} 학부모님!` : `반가워요, ${student.name}님! 👋`}</h2>
+                            <p className="text-sm text-white/80 mt-1">오늘의 일정과 학습 현황을 한눈에 살펴보세요.</p>
+                        </div>
+                        <div className="hidden md:flex items-center gap-3 bg-white/10 px-4 py-3 rounded-2xl backdrop-blur-sm border border-white/20">
+                            <span className="text-xs uppercase tracking-wide text-white/70">Next</span>
+                            <div className="text-right">
+                                <p className="text-sm font-semibold">{keyEvent ? (keyEvent.type === 'external' ? keyEvent.courseName : keyEvent.name) : '오늘 일정 없음'}</p>
+                                <p className="text-xs text-white/70">{keyEvent ? keyEvent.time : '휴식도 중요해요 🙌'}</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-3 gap-3 text-xs">
+                        <div className="rounded-2xl bg-white/15 border border-white/25 px-3 py-3">
+                            <p className="text-white/70 mb-1 flex items-center gap-1"><Icon name="calendar" className="w-3.5 h-3.5 text-white/90" />오늘 수업</p>
+                            <p className="text-lg font-bold">{allEvents.length}개</p>
+                        </div>
+                        <div className="rounded-2xl bg-white/15 border border-white/25 px-3 py-3">
+                            <p className="text-white/70 mb-1 flex items-center gap-1"><Icon name="clipboardCheck" className="w-3.5 h-3.5 text-white/90" />남은 과제</p>
+                            <p className="text-lg font-bold">{pendingHomework.length}개</p>
+                        </div>
+                        <div className="rounded-2xl bg-white/15 border border-white/25 px-3 py-3">
+                            <p className="text-white/70 mb-1 flex items-center gap-1"><Icon name="activity" className="w-3.5 h-3.5 text-white/90" />출석률</p>
+                            <p className="text-lg font-bold">{attendanceRate !== null ? `${attendanceRate}%` : '기록 없음'}</p>
+                        </div>
+                    </div>
                 </div>
             </div>
             {attendanceAlerts.length > 0 && (<div className="space-y-2">{attendanceAlerts.map((alert, idx) => (<div key={idx} onClick={() => setActiveTab('class')} className="bg-red-50 border border-red-100 p-3 rounded-xl flex items-center gap-3 cursor-pointer active:bg-red-100 transition-colors"><div className="bg-white p-1.5 rounded-full text-red-500 shadow-sm"><Icon name="alertCircle" className="w-5 h-5" /></div><div className="flex-1"><p className="text-xs text-red-500 font-bold">{alert.class}</p><p className="text-sm font-bold text-gray-800">{alert.msg}</p></div><Icon name="chevronRight" className="w-4 h-4 text-red-300" /></div>))}</div>)}

@@ -641,22 +641,22 @@ export default function ParentHome({
                                             </button>
                                         )}
                                     </div>
-                                    <div className="space-y-3">
+                                    <div className="grid-cols-3 gap-3">
                                         {sessionReports.slice(0, 4).map(report => (
                                             <button 
                                                 key={report.sessionId} 
                                                 onClick={() => setSelectedReportId(report.sessionId)} 
-                                                className="w-full text-left bg-white border border-gray-100 rounded-2xl p-4 shadow-sm hover:border-indigo-200 hover:-translate-y-0.5 transition-all"
+                                                className="w-full text-left bg-white border border-gray-100 rounded-2xl p-4 shadow-sm hover:border-indigo-200 hover:-translate-y-0.5 transition-all h-full flex flex-col gap-3"
                                             >
                                                 <div className="flex items-start justify-between gap-3">
                                                     <div className="space-y-1 min-w-0">
                                                         <p className="text-[11px] text-gray-400 font-semibold">{report.date} • {report.className}</p>
-                                                        <p className="text-base font-bold text-gray-900 truncate">{report.progressTopic || '진도 기록 없음'}</p>
-                                                        <p className="text-xs text-gray-500 truncate">{report.lessonSummary?.[0]}</p>
+                                                        <p className="text-base font-bold text-gray-900 line-clamp-2">{report.progressTopic || '진도 기록 없음'}</p>
+                                                        <p className="text-xs text-gray-500 line-clamp-2">{report.lessonSummary?.[0]}</p>
                                                     </div>
                                                     <Icon name="chevronRight" className="w-5 h-5 text-gray-300 flex-shrink-0" />
                                                 </div>
-                                                <div className="flex flex-wrap gap-2 mt-3">
+                                                <div className="flex flex-wrap gap-2 mt-auto">
                                                     <StatusPill icon="user" label={`출결 ${report.attendance}`} tone={['결석', '지각'].includes(report.attendance) ? 'danger' : 'default'} />
                                                     <StatusPill icon="fileText" label={`과제 ${report.homeworkStatus}`} tone={['미제출', '일부 미완'].includes(report.homeworkStatus) ? 'warning' : 'info'} />
                                                     <StatusPill icon="edit" label={`테스트 ${report.testScore}`} tone={report.testScore === '미응시' ? 'warning' : 'default'} />
@@ -664,7 +664,7 @@ export default function ParentHome({
                                             </button>
                                         ))}
                                         {sessionReports.length === 0 && (
-                                            <div className="p-6 text-center bg-white border border-dashed border-gray-200 rounded-2xl text-sm text-gray-400">
+                                            <div className="p-6 text-center bg-white border border-dashed border-gray-200 rounded-2xl text-sm text-gray-400 sm:col-span-2 xl:col-span-3">
                                                 아직 기록된 리포트가 없습니다.
                                             </div>
                                         )}
@@ -679,7 +679,7 @@ export default function ParentHome({
                                         </h3>
                                         <span className="text-xs text-gray-400 font-semibold">진행 중 {myClasses.length}개 반</span>
                                     </div>
-                                    <div className="grid grid-cols-1 gap-3">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
                                         {classSummaries.map(cls => (
                                             <div key={cls.id} className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm space-y-3">
                                                 <div className="flex items-start justify-between gap-3">

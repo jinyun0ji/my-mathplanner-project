@@ -28,14 +28,13 @@ export const Icon = ({ name, className, ...props }) => {
         volume: Volume2, mute: VolumeX, fullscreen: Maximize, exitFullscreen: Minimize,
         settings: Settings, book: BookOpen, pen: PenTool,
         mapPin: MapPin, phone: Phone, mail: Mail, award: Award,
-        trend: TrendingUp, trendingUp: TrendingUp, trendingDown: TrendingDown, 
+        activity: Activity, trend: TrendingUp, trendingUp: TrendingUp, trendingDown: TrendingDown, 
         list: Activity, school: Home, pin: MapPin,
         edit: Edit, schedule: List, folder: Folder,
         download: Download, video: Video,
         creditCard: CreditCard, smartphone: Smartphone,
         alertTriangle: AlertTriangle, messageCircle: MessageCircle,
-        checkSquare: CheckSquare, calendarPlus: CalendarPlus,
-        activity: Activity
+        checkSquare: CheckSquare, calendarPlus: CalendarPlus
     };
     const LucideIcon = icons[name] || Home;
     return <LucideIcon className={className} {...props} />;
