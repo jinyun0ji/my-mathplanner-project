@@ -1983,6 +1983,9 @@
 .decoration-from-font {
   text-decoration-thickness: from-font;
 }
+.underline-offset-2 {
+  text-underline-offset: 2px;
+}
 .underline-offset-4 {
   text-underline-offset: 4px;
 }
@@ -2025,6 +2028,9 @@
 }
 .opacity-0 {
   opacity: 0%;
+}
+.opacity-5 {
+  opacity: 5%;
 }
 .opacity-20 {
   opacity: 20%;
