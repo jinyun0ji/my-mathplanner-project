@@ -3,7 +3,7 @@ import { calculateHomeworkStats } from './helpers';
 
 // [데이터 어댑터] Raw Data -> SessionReport Interface 변환
 export const generateSessionReport = (sessionId, studentId, contextData) => {
-    const { lessonLogs, attendanceLogs, homeworkAssignments, homeworkResults, tests, grades } = contextData;
+    const { lessonLogs, attendanceLogs, homeworkAssignments, homeworkResults, tests, grades, classes = [] } = contextData;
 
     // 1. 기본 수업 정보 (LessonLog)
     const lesson = lessonLogs.find(l => l.id === sessionId);
@@ -69,7 +69,7 @@ export const generateSessionReport = (sessionId, studentId, contextData) => {
         sessionId: lesson.id,
         classId: lesson.classId,
         date: lesson.date,
-        className: "고1 수학(상) 정규반", // (실제로는 classes에서 조회 필요)
+        className: classes.find(c => c.id === lesson.classId)?.name || "고1 수학(상) 정규반",
         
         attendance: attendanceStatus,
         homeworkStatus: homeworkStatus,
