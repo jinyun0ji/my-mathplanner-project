@@ -60,35 +60,50 @@ export default function LessonManagement({
         }
     };
     
-    // ClassSelectionPanel의 커스텀 회차 목록 (로그가 있는 날짜만 표시)
+    // ✅ [수정] 진도 내용이 포함된 개선된 리스트 (비용 안전)
     const logSessionsContent = useMemo(() => {
-        const loggedDates = classLogs.map(log => log.date);
         const sessions = calculateClassSessions(selectedClass);
         
         return (
-            <ul className="space-y-1 max-h-48 overflow-y-auto pr-2 text-sm">
+            <ul className="space-y-2 max-h-[500px] overflow-y-auto pr-1 text-sm custom-scrollbar">
                 {[...sessions].reverse().map(session => {
-                    const isLogged = loggedDates.includes(session.date);
+                    // 해당 날짜의 로그 찾기 (메모리에서 검색하므로 DB 비용 0)
+                    const log = classLogs.find(l => l.date === session.date);
+                    const isLogged = !!log;
                     const isSelected = session.date === selectedDate;
                     
+                    // 로그가 없고 선택되지도 않은 날짜는 숨김 (필요 시 주석 해제하여 모든 날짜 표시 가능)
                     if (!isLogged && !isSelected) return null;
 
                     return (
                         <li 
                             key={session.date} 
                             onClick={() => setSelectedDate(session.date)}
-                            // [색상 변경] 선택된 항목: bg-blue-100 -> bg-indigo-50, text-blue-700 -> text-indigo-900
-                            className={`p-2 rounded-lg transition cursor-pointer flex justify-between items-center ${
+                            className={`p-3 rounded-lg transition cursor-pointer border flex flex-col gap-1 ${
                                 isSelected 
-                                    ? 'bg-indigo-50 font-bold text-indigo-900 border border-indigo-200' 
-                                    : 'text-gray-600 hover:bg-gray-50'
+                                    ? 'bg-indigo-50 border-indigo-200 shadow-sm' 
+                                    : 'bg-white border-transparent hover:bg-gray-50 border-gray-100'
                             }`}
                         >
-                            <span>
-                                <span className="font-mono text-xs mr-2">{session.date}</span>
-                                {session.session}회차
-                            </span>
-                            {isLogged && <Icon name="check" className="w-4 h-4 text-green-600" title="일지 작성 완료" />}
+                            {/* 헤더: 회차 및 날짜 */}
+                            <div className="flex justify-between items-center">
+                                <span className={`font-bold ${isSelected ? 'text-indigo-900' : 'text-gray-700'}`}>
+                                    {session.session}회차
+                                    <span className="font-mono text-xs font-normal ml-2 text-gray-400">{session.date}</span>
+                                </span>
+                                {isLogged && <Icon name="check" className="w-4 h-4 text-green-500" />}
+                            </div>
+
+                            {/* 내용 요약: 진도 내용이 있으면 표시 */}
+                            {isLogged ? (
+                                <p className="text-xs text-gray-600 line-clamp-2 pl-2 border-l-2 border-indigo-100">
+                                    {log.progress}
+                                </p>
+                            ) : (
+                                <p className="text-xs text-red-400 pl-2 border-l-2 border-red-100">
+                                    일지 미작성
+                                </p>
+                            )}
                         </li>
                     );
                 })}

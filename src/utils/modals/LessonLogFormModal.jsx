@@ -1,5 +1,5 @@
 // src/utils/modals/LessonLogFormModal.jsx
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react'; // ✅ useRef 추가됨
 import { Modal } from '../../components/common/Modal';
 import { Icon, calculateClassSessions } from '../../utils/helpers';
 
@@ -14,6 +14,10 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
   const [materialUrl, setMaterialUrl] = useState('');
   const [scheduleTime, setScheduleTime] = useState(''); 
   const [studentNotificationMap, setStudentNotificationMap] = useState({});
+
+  // ✅ [추가] 파일 첨부 상태 및 Ref
+  const [selectedFile, setSelectedFile] = useState(null);
+  const fileInputRef = useRef(null);
 
   const [isDirty, setIsDirty] = useState(false);
 
@@ -79,6 +83,30 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
     setIsDirty(true); 
   };
 
+  // ✅ [추가] 파일 선택 핸들러
+  const handleFileChange = (e) => {
+      const file = e.target.files[0];
+      if (file) {
+          setSelectedFile(file);
+          // 파일 선택 시 자료 URL 필드에 파일명을 자동으로 입력해 줌 (사용자 편의)
+          setMaterialUrl(file.name); 
+          setIsDirty(true);
+      }
+  };
+
+  // ✅ [추가] 파일 선택 버튼 클릭 트리거
+  const handleTriggerFileUpload = () => {
+      fileInputRef.current?.click();
+  };
+
+  // ✅ [추가] 선택된 파일 취소
+  const handleClearFile = () => {
+      setSelectedFile(null);
+      setMaterialUrl('');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      setIsDirty(true);
+  };
+
   const handleChange = (setter, value) => {
       setter(value);
       setIsDirty(true);
@@ -94,7 +122,8 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
         date,
         progress,
         iframeCode,
-        materialUrl,
+        materialUrl, // URL 입력값 또는 파일명
+        file: selectedFile, // ✅ 실제 파일 객체 전달 (상위 컴포넌트에서 업로드 처리 필요)
         scheduleTime: scheduleTime || null,
     };
     
@@ -200,6 +229,57 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
                     className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border" 
                     placeholder="예: 수업자료_1103.pdf 또는 다운로드 링크" 
                 />
+            </div>
+
+            {/* ✅ [수정] 파일 첨부 및 URL 입력 통합 영역 */}
+            <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">첨부 자료</label>
+                <div className="flex gap-2 items-center">
+                    {/* 숨겨진 파일 입력 */}
+                    <input 
+                        type="file" 
+                        ref={fileInputRef}
+                        onChange={handleFileChange}
+                        className="hidden"
+                    />
+                    
+                    {/* 파일 선택 버튼 */}
+                    <button 
+                        type="button"
+                        onClick={handleTriggerFileUpload}
+                        className="flex items-center justify-center px-3 py-2 border border-gray-300 rounded-md bg-white text-gray-700 hover:bg-gray-50 text-sm font-medium shadow-sm transition"
+                    >
+                        <Icon name="upload" className="w-4 h-4 mr-2" />
+                        파일 찾기
+                    </button>
+
+                    {/* 파일명/URL 입력 필드 */}
+                    <input 
+                        type="text" 
+                        value={materialUrl} 
+                        onChange={e => handleChange(setMaterialUrl, e.target.value)} 
+                        className="block w-full rounded-md border-gray-300 shadow-sm p-2 border flex-1" 
+                        placeholder="파일을 선택하거나 URL을 직접 입력하세요." 
+                    />
+
+                    {/* 선택 취소 버튼 (파일이 선택되었을 때만 표시) */}
+                    {selectedFile && (
+                        <button 
+                            type="button" 
+                            onClick={handleClearFile}
+                            className="text-red-500 hover:text-red-700 p-2"
+                            title="첨부 파일 취소"
+                        >
+                            <Icon name="x" className="w-5 h-5" />
+                        </button>
+                    )}
+                </div>
+                {selectedFile && (
+                    <p className="text-xs text-indigo-600 mt-1 flex items-center">
+                        <Icon name="check" className="w-3 h-3 mr-1" />
+                        첨부 대기 중: <b>{selectedFile.name}</b> ({(selectedFile.size / 1024 / 1024).toFixed(2)} MB)
+                    </p>
+                )}
             </div>
 
             {scheduleTime && (

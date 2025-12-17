@@ -3,7 +3,8 @@ import { Icon } from '../utils/helpers';
 import { Modal } from '../components/common/Modal'; 
 import { PaymentNotificationModal } from '../utils/modals/PaymentNotificationModal'; // ✅ 신규 모달 import
 
-export default function PaymentManagement({ students, classes, logNotification }) { 
+// ✅ [수정] props에 paymentLogs, handleSavePayment 추가
+export default function PaymentManagement({ students, classes, paymentLogs, handleSavePayment, logNotification }) {
 
     // --- 1. 초기 데이터 및 상태 ---
     const initialBookList = [
@@ -24,9 +25,7 @@ export default function PaymentManagement({ students, classes, logNotification }
     ];
 
     const [bookList, setBookList] = useState(initialBookList);
-    const [paymentLogs, setPaymentLogs] = useState(initialPaymentLogs);
     const [classBookMap, setClassBookMap] = useState(initialClassBookMap);
-    
     const [activeTab, setActiveTab] = useState('classStatus'); 
 
     // 모달 상태
@@ -53,6 +52,27 @@ export default function PaymentManagement({ students, classes, logNotification }
 
     // ✅ 체크박스 선택 상태 (studentId 목록)
     const [selectedStudentIds, setSelectedStudentIds] = useState([]);
+
+    // const handlePayment = async () => {
+    // const response = await PortOne.requestPayment({
+    //     storeId: "store-본인상점ID",
+    //     paymentId: `payment-${crypto.randomUUID()}`,
+    //     orderName: "11월 수학 수강료",
+    //     totalAmount: 350000,
+    //     currency: "CURRENCY_KRW",
+    //     channelKey: "channel-본인채널키", // 카카오페이 등 설정된 채널
+    //     payMethod: "EASY_PAY", // 간편결제
+    // });
+
+    // if (response.code != null) {
+    //     alert("결제 실패: " + response.message);
+    //     return;
+    // }
+
+    // // 결제 성공! -> 여기서 Firebase에 '완납'으로 상태 업데이트
+    // // 주의: 실제 서비스에선 서버(Cloud Functions)에서 결제 검증(Web Hook)을 해야 안전합니다.
+    // updatePaymentStatusToFirebase(studentId, '완납');
+    // };
 
 
     // --- 2. 로직 및 헬퍼 함수 ---
@@ -141,7 +161,7 @@ export default function PaymentManagement({ students, classes, logNotification }
         }
     };
 
-    // [핸들러] 수납 처리
+    // [핸들러] 수납 처리 (App.jsx로 데이터 전달)
     const handlePaymentSubmit = (e) => {
         e.preventDefault();
         if (!paymentForm.studentId || !paymentForm.bookId) return;
@@ -155,7 +175,7 @@ export default function PaymentManagement({ students, classes, logNotification }
         }
 
         const newLog = {
-            id: Date.now(),
+            id: Date.now(), // 실제 Firestore에선 자동 ID 생성됨
             date: new Date().toISOString().slice(0, 10),
             studentName: selectedStudent.name,
             studentId: selectedStudent.id,
@@ -164,13 +184,17 @@ export default function PaymentManagement({ students, classes, logNotification }
             amount: selectedBook.price,
             method: paymentForm.method,
             type: paymentForm.channel,
+            status: '완납' // 기본 상태 추가
         };
-        setPaymentLogs(prev => [newLog, ...prev]);
+
+        // ✅ [수정] App.jsx의 핸들러 호출
+        handleSavePayment(newLog);
+
+        // 재고 차감 (로컬 상태)
         setBookList(prev => prev.map(book => book.id === selectedBook.id ? { ...book, stock: book.stock - 1 } : book));
         
         setIsPaymentModalOpen(false);
         setPaymentForm({ ...paymentForm, bookId: '' }); 
-        if(logNotification) logNotification('success', '결제 완료', `${selectedStudent.name} - ${selectedBook.name} 결제 처리됨`);
     };
 
     const toggleClassBook = (classId, bookId) => {
