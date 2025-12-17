@@ -533,6 +533,12 @@
 .min-w-\[80px\] {
   min-width: 80px;
 }
+.min-w-\[120px\] {
+  min-width: 120px;
+}
+.min-w-\[180px\] {
+  min-width: 180px;
+}
 .min-w-\[320px\] {
   min-width: 320px;
 }
@@ -2242,6 +2248,10 @@
 }
 .inset-shadow-initial {
   --tw-inset-shadow-color: initial;
+}
+.ring-offset-1 {
+  --tw-ring-offset-width: 1px;
+  --tw-ring-offset-shadow: var(--tw-ring-inset,) 0 0 0 var(--tw-ring-offset-width) var(--tw-ring-offset-color);
 }
 .outline-hidden {
   --tw-outline-style: none;

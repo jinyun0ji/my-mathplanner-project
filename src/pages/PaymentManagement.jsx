@@ -226,7 +226,7 @@ export default function PaymentManagement({ students, classes, logNotification }
             </div>
 
             {/* 상단 탭 네비게이션 */}
-             <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between border-b pb-1">
+             <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between border-b pb-1 sticky top-0 bg-white z-10 pt-1">
                 <div className="flex flex-wrap gap-2">
                     {[
                         { id: 'classStatus', label: '🏫 반별 수납 현황', icon: 'users' },
@@ -236,7 +236,7 @@ export default function PaymentManagement({ students, classes, logNotification }
                         <button 
                             key={tab.id} 
                             onClick={() => setActiveTab(tab.id)}
-                            className={`flex items-center px-5 py-3 text-sm font-bold transition-all duration-200 rounded-t-lg w-full sm:w-auto ${
+                            className={`flex items-center px-4 sm:px-5 py-3 text-sm font-bold transition-all duration-200 rounded-t-lg w-full sm:w-auto min-w-[180px] ${
                                 activeTab === tab.id 
                                     ? 'bg-white border-t border-l border-r border-gray-200 text-indigo-600 shadow-[0_2px_0_0_white]' 
                                     : 'bg-gray-50 text-gray-500 hover:text-gray-700 hover:bg-gray-100'
@@ -248,7 +248,7 @@ export default function PaymentManagement({ students, classes, logNotification }
                     ))}
                 </div>
                 
-                <div className="flex flex-wrap gap-2 pb-2">
+                <div className="flex flex-wrap gap-2 pb-2 justify-end">
                     {activeTab === 'classStatus' && (
                         <button 
                             onClick={() => setIsClassSettingModalOpen(true)}
@@ -272,6 +272,31 @@ export default function PaymentManagement({ students, classes, logNotification }
                         className="flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition font-bold text-sm w-full sm:w-auto justify-center"
                     >
                         <Icon name="creditCard" className="w-4 h-4 mr-2" />
+                        수납 처리
+                    </button>
+                </div>
+
+                <div className="sm:hidden grid grid-cols-2 gap-2">
+                    {activeTab === 'classStatus' && (
+                        <button 
+                            onClick={() => setIsClassSettingModalOpen(true)}
+                            className="w-full text-sm font-bold px-3 py-2 rounded-lg bg-indigo-50 text-indigo-800 border border-indigo-100"
+                        >
+                            반별 교재 설정
+                        </button>
+                    )}
+                    {activeTab === 'stock' && (
+                        <button 
+                            onClick={() => setIsBookModalOpen(true)}
+                            className="w-full text-sm font-bold px-3 py-2 rounded-lg bg-indigo-50 text-indigo-800 border border-indigo-100"
+                        >
+                            교재 등록
+                        </button>
+                    )}
+                    <button 
+                        onClick={() => setIsPaymentModalOpen(true)}
+                        className="w-full text-sm font-bold px-3 py-2 rounded-lg bg-green-600 text-white shadow"
+                    >
                         수납 처리
                     </button>
                 </div>
@@ -409,60 +434,62 @@ export default function PaymentManagement({ students, classes, logNotification }
                         </div>
 
                         <div className="grid gap-3 md:hidden">
-                            {classPaymentStatus.length > 0 ? classPaymentStatus.map((status, idx) => (
-                                <div key={idx} className={`border rounded-xl p-4 shadow-sm bg-white space-y-3 ${status.isFullyPaid ? 'bg-gray-50' : ''}`}>
-                                    <div className="flex items-start justify-between gap-2">
-                                        <div>
-                                            <p className="text-base font-bold text-gray-900">{status.student.name}</p>
-                                            <p className="text-xs text-gray-500 mt-0.5">총 {status.totalRequiredAmount.toLocaleString()}원</p>
+                            {classPaymentStatus.length > 0 ? (
+                                classPaymentStatus.map((status, idx) => (
+                                    <div key={idx} className={`border rounded-xl p-4 shadow-sm bg-white space-y-3 ${status.isFullyPaid ? 'bg-gray-50' : ''}`}>
+                                        <div className="flex items-start justify-between gap-2">
+                                            <div>
+                                                <p className="text-base font-bold text-gray-900">{status.student.name}</p>
+                                                <p className="text-xs text-gray-500 mt-0.5">총 {status.totalRequiredAmount.toLocaleString()}원</p>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                {!status.isFullyPaid && (
+                                                    <input 
+                                                        type="checkbox"
+                                                        checked={selectedStudentIds.includes(status.student.id)}
+                                                        onChange={() => handleSelectStudent(status.student.id)}
+                                                        className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                                                    />
+                                                )}
+                                                <span className={`text-[11px] font-bold px-2 py-1 rounded-full ${status.isFullyPaid ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                                    {status.isFullyPaid ? '완납' : '미납'}
+                                                </span>
+                                            </div>
                                         </div>
-                                        <div className="flex items-center gap-2">
+
+                                        <div className="flex flex-wrap gap-1">
+                                            {status.requiredBooks.length > 0 ? status.requiredBooks.map(b => (
+                                                <span key={b.id} className={`px-2 py-1 text-[11px] rounded border ${
+                                                    status.unpaidBooks.find(ub => ub.id === b.id) 
+                                                        ? 'bg-red-50 text-red-600 border-red-200' 
+                                                        : 'bg-green-50 text-green-600 border-green-200 line-through opacity-70'
+                                                }`}>
+                                                    {b.name}
+                                                </span>
+                                            )) : <span className="text-xs text-gray-400">지정 교재 없음</span>}
+                                        </div>
+
+                                        <div className="flex items-center justify-between text-sm">
+                                            <div className="flex items-center gap-1 text-gray-700">
+                                                <Icon name="creditCard" className="w-4 h-4" />
+                                                {status.unpaidAmount > 0 ? (
+                                                    <span className="font-bold text-red-600">{status.unpaidAmount.toLocaleString()}원 미납</span>
+                                                ) : (
+                                                    <span className="text-gray-400 line-through">{status.totalRequiredAmount.toLocaleString()}원</span>
+                                                )}
+                                            </div>
                                             {!status.isFullyPaid && (
-                                                <input 
-                                                    type="checkbox"
-                                                    checked={selectedStudentIds.includes(status.student.id)}
-                                                    onChange={() => handleSelectStudent(status.student.id)}
-                                                    className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                                                />
-                                            )}
-                                            <span className={`text-[11px] font-bold px-2 py-1 rounded-full ${status.isFullyPaid ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                                                {status.isFullyPaid ? '완납' : '미납'}
-                                            </span>
-                                        </div>
-                                    </div>
-
-                                    <div className="flex flex-wrap gap-1">
-                                        {status.requiredBooks.length > 0 ? status.requiredBooks.map(b => (
-                                            <span key={b.id} className={`px-2 py-1 text-[11px] rounded border ${
-                                                status.unpaidBooks.find(ub => ub.id === b.id) 
-                                                    ? 'bg-red-50 text-red-600 border-red-200' 
-                                                    : 'bg-green-50 text-green-600 border-green-200 line-through opacity-70'
-                                            }`}>
-                                                {b.name}
-                                            </span>
-                                        )) : <span className="text-xs text-gray-400">지정 교재 없음</span>}
-                                    </div>
-
-                                    <div className="flex items-center justify-between text-sm">
-                                        <div className="flex items-center gap-1 text-gray-700">
-                                            <Icon name="creditCard" className="w-4 h-4" />
-                                            {status.unpaidAmount > 0 ? (
-                                                <span className="font-bold text-red-600">{status.unpaidAmount.toLocaleString()}원 미납</span>
-                                            ) : (
-                                                <span className="text-gray-400 line-through">{status.totalRequiredAmount.toLocaleString()}원</span>
+                                                <button 
+                                                    onClick={() => openSingleNotification(status)}
+                                                    className="text-indigo-600 hover:text-indigo-900 text-sm font-semibold flex items-center gap-1"
+                                                >
+                                                    <Icon name="bell" className="w-4 h-4" /> 안내
+                                                </button>
                                             )}
                                         </div>
-                                        {!status.isFullyPaid && (
-                                            <button 
-                                                onClick={() => openSingleNotification(status)}
-                                                className="text-indigo-600 hover:text-indigo-900 text-sm font-semibold flex items-center gap-1"
-                                            >
-                                                <Icon name="bell" className="w-4 h-4" /> 안내
-                                            </button>
-                                        )}
                                     </div>
-                                </div>
-                            )) : (
+                                ))
+                            ) : (
                                 <div className="text-center text-gray-500 py-6 border rounded-xl bg-white">
                                     해당 클래스에 학생이 없거나 설정된 교재가 없습니다.
                                 </div>
