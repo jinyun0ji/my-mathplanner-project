@@ -86,21 +86,23 @@ export default function AttendanceManagement({
     };
 
     return (
-        <div className="flex space-x-6 h-full">
-            <ClassSelectionPanel
-                classes={classes}
-                selectedClassId={selectedClassId}
-                setSelectedClassId={setSelectedClassId}
-                handleClassSave={handleSaveClass}
-                calculateClassSessions={calculateClassSessions}
-                showSessions={true}
-                selectedDate={selectedDate}
-                showEditButton={true}
-                customPanelContent={null} 
-                customPanelTitle="수업 날짜 선택"
-                onDateSelect={setSelectedDate} 
-            />
-            <div className="flex-1 min-w-0">
+        <div className="flex flex-col xl:flex-row gap-4 xl:gap-6 h-full">
+            <div className="w-full xl:w-80 flex-shrink-0">
+                <ClassSelectionPanel
+                    classes={classes}
+                    selectedClassId={selectedClassId}
+                    setSelectedClassId={setSelectedClassId}
+                    handleClassSave={handleSaveClass}
+                    calculateClassSessions={calculateClassSessions}
+                    showSessions={true}
+                    selectedDate={selectedDate}
+                    showEditButton={true}
+                    customPanelContent={null} 
+                    customPanelTitle="수업 날짜 선택"
+                    onDateSelect={setSelectedDate} 
+                />
+            </div>
+            <div className="flex-1 min-w-0 space-y-4">
                 {selectedClassId === null ? (
                     <div className="p-6 bg-white rounded-xl shadow-sm border border-gray-200">
                         <p className="text-gray-500">클래스를 선택하고 날짜를 지정하여 출결을 관리하세요.</p>
@@ -108,8 +110,8 @@ export default function AttendanceManagement({
                 ) : (
                     <div className="space-y-6">
                         {/* [색상 변경] border-blue-500 -> border-indigo-900 */}
-                        <div className="flex justify-between items-center bg-white p-6 rounded-xl shadow-sm border border-gray-200 border-l-4 border-l-indigo-900">
-                            <h3 className="text-xl font-bold text-gray-800">
+                        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between bg-white p-6 rounded-xl shadow-sm border border-gray-200 border-l-4 border-l-indigo-900">
+                            <h3 className="text-xl font-bold text-gray-800 leading-snug">
                                 {selectedClass.name} | 
                                 {/* [색상 변경] text-blue-600 -> text-indigo-900 */}
                                 <span className="text-indigo-900 ml-2">{selectedDate}</span>
@@ -117,7 +119,7 @@ export default function AttendanceManagement({
                             {/* [색상 변경] bg-blue-600 -> bg-indigo-900 */}
                             <button 
                                 onClick={() => setIsAttendanceModalOpen(true)}
-                                className="bg-indigo-900 hover:bg-indigo-800 text-white font-medium py-2 px-4 rounded-lg flex items-center shadow-md transition duration-150"
+                                className="bg-indigo-900 hover:bg-indigo-800 text-white font-medium py-2 px-4 rounded-lg flex items-center justify-center shadow-md transition duration-150 w-full md:w-auto"
                             >
                                 <Icon name="edit" className="w-5 h-5 mr-2" />
                                 출결 기록 / 수정
@@ -127,7 +129,7 @@ export default function AttendanceManagement({
                         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
                             <h4 className="text-lg font-bold mb-4 border-b pb-2 text-gray-800">학생별 출결 현황 ({classStudents.length}명)</h4>
                             
-                            <div className="overflow-x-auto rounded-lg border border-gray-200">
+                            <div className="overflow-x-auto rounded-lg border border-gray-200 hidden md:block">
                                 <table className="min-w-full divide-y divide-gray-200">
                                     <thead className="bg-gray-100">
                                         <tr>
@@ -173,6 +175,63 @@ export default function AttendanceManagement({
                                         })}
                                     </tbody>
                                 </table>
+                            </div>
+
+                            <div className="grid gap-3 md:hidden">
+                                {classStudents.map(student => {
+                                    const attendance = classAttendance.find(log => log.studentId === student.id);
+                                    const status = attendance?.status || '미기록';
+                                    
+                                    let statusColor = 'bg-gray-100 text-gray-600';
+                                    if (status === '출석') statusColor = 'bg-green-100 text-green-700';
+                                    else if (status === '지각') statusColor = 'bg-yellow-100 text-yellow-700';
+                                    else if (status === '결석') statusColor = 'bg-red-100 text-red-700';
+                                    else if (status === '동영상보강') statusColor = 'bg-indigo-100 text-indigo-800';
+
+                                    const memoContent = studentMemos[student.id];
+
+                                    return (
+                                        <div key={student.id} className="p-4 border border-gray-200 rounded-xl shadow-sm bg-white space-y-2">
+                                            <div className="flex items-start justify-between gap-2">
+                                                <div>
+                                                    <p className="text-base font-bold text-gray-900">{student.name}</p>
+                                                    <p className="text-xs text-gray-500 mt-0.5">고{student.grade} · {student.school}</p>
+                                                </div>
+                                                <span className={`text-[11px] font-bold px-2 py-1 rounded-full ${statusColor}`}>
+                                                    {status}
+                                                </span>
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-2 text-xs text-gray-600">
+                                                <div className="bg-gray-50 rounded-lg px-3 py-2">
+                                                    <p className="font-semibold text-gray-700">클리닉</p>
+                                                    <p className="mt-0.5">{student.clinicTime || '희망 시간 없음'}</p>
+                                                </div>
+                                                <div className="bg-gray-50 rounded-lg px-3 py-2">
+                                                    <p className="font-semibold text-gray-700">기록 날짜</p>
+                                                    <p className="mt-0.5 font-mono text-[11px]">{selectedDate}</p>
+                                                </div>
+                                            </div>
+                                            <div className="flex flex-wrap gap-2">
+                                                <button 
+                                                    onClick={() => openMemoModal(student)}
+                                                    className={`flex-1 text-sm font-semibold px-3 py-2 rounded-lg border transition ${
+                                                        memoContent 
+                                                            ? 'bg-yellow-100 text-yellow-800 border-yellow-200' 
+                                                            : 'bg-gray-100 text-gray-600 hover:bg-indigo-50 hover:text-indigo-900'
+                                                    }`}
+                                                >
+                                                    {memoContent ? '메모 확인' : '메모 작성'}
+                                                </button>
+                                                <button 
+                                                    onClick={() => setIsAttendanceModalOpen(true)}
+                                                    className="flex-1 text-sm font-semibold px-3 py-2 rounded-lg bg-indigo-900 text-white hover:bg-indigo-800 transition"
+                                                >
+                                                    출결 입력
+                                                </button>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
                             </div>
                         </div>
                     </div>

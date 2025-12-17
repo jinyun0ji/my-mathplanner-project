@@ -254,17 +254,17 @@ export default function GradeManagement({
         return (
             // [색상 변경] border-l-4 border-indigo-900 (Navy Theme)
             <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 border-l-4 border-l-indigo-900 space-y-4">
-                <div className="flex justify-between items-start border-b pb-3">
-                    <h3 className="text-xl font-bold text-gray-800 flex items-center">
+                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between border-b pb-3">
+                    <h3 className="text-xl font-bold text-gray-800 flex items-center leading-snug">
                         {/* [색상 변경] 아이콘: text-indigo-900 */}
                         <Icon name="fileText" className="w-5 h-5 mr-2 text-indigo-900"/>
                         선택 시험 정보: {test.name}
                     </h3>
-                    <div className="flex space-x-2 items-center">
+                    <div className="flex flex-wrap gap-2 items-center">
                         {/* [색상 변경] 엑셀 양식: 흰색 배경, 회색 테두리 */}
                          <button 
                             onClick={handleDownloadExcelForm}
-                            className="flex items-center text-sm px-3 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition shadow-sm"
+                            className="flex items-center justify-center text-sm px-3 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition shadow-sm w-full sm:w-auto"
                         >
                             <Icon name="file-text" className="w-4 h-4 mr-1" /> 엑셀 양식
                         </button>
@@ -272,7 +272,7 @@ export default function GradeManagement({
                         {/* [색상 변경] 엑셀 입력: 흰색 배경, 남색 테두리/글자 */}
                         <button 
                             onClick={handleUploadExcel}
-                            className="flex items-center text-sm px-3 py-2 bg-white border border-indigo-900 text-indigo-900 rounded-lg hover:bg-indigo-50 transition shadow-sm"
+                            className="flex items-center justify-center text-sm px-3 py-2 bg-white border border-indigo-900 text-indigo-900 rounded-lg hover:bg-indigo-50 transition shadow-sm w-full sm:w-auto"
                         >
                             <Icon name="upload" className="w-4 h-4 mr-1" /> 엑셀로 결과 입력
                         </button>
@@ -280,7 +280,7 @@ export default function GradeManagement({
                          {/* [색상 변경] 성적 입력(메인): 남색 배경 */}
                          <button 
                             onClick={handleOpenGradeInput}
-                            className="bg-indigo-900 hover:bg-indigo-800 text-white font-bold py-2 px-4 rounded-lg flex items-center shadow-md transition duration-150 text-sm ml-2"
+                            className="bg-indigo-900 hover:bg-indigo-800 text-white font-bold py-2 px-4 rounded-lg flex items-center justify-center shadow-md transition duration-150 text-sm w-full sm:w-auto"
                         >
                             <Icon name="edit" className="w-4 h-4 mr-1" />
                             성적 입력 / 채점
@@ -288,7 +288,7 @@ export default function GradeManagement({
                     </div>
                 </div>
                 
-                <div className="grid grid-cols-3 gap-4 text-sm">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
                     <p><span className="font-medium text-gray-600">시험일:</span> {test.date}</p>
                     <p><span className="font-medium text-gray-600">총점:</span> {test.maxScore}점</p>
                     <p><span className="font-medium text-gray-600">총 문항 수:</span> {test.totalQuestions}개</p>
@@ -303,7 +303,7 @@ export default function GradeManagement({
                     </span>
                 </p>
                 
-                <div className="flex space-x-4 border-t pt-3">
+                <div className="flex flex-wrap gap-3 border-t pt-3">
                     {/* [색상 변경] 텍스트 버튼: 회색 -> 호버시 남색 */}
                      <button 
                         onClick={() => handleEditTest(test)}
@@ -324,9 +324,9 @@ export default function GradeManagement({
 
 
     return (
-        <div className="flex space-x-6 h-full">
+        <div className="flex flex-col xl:flex-row gap-4 xl:gap-6 h-full">
             {/* 왼쪽: 클래스 및 시험 목록 패널 */}
-            <div className="w-80 flex-shrink-0 space-y-4">
+            <div className="w-full xl:w-80 flex-shrink-0 space-y-4">
                 <ClassSelectionPanel
                     classes={classes}
                     selectedClassId={selectedClassId}
@@ -354,7 +354,7 @@ export default function GradeManagement({
             </div>
 
             {/* 오른쪽: 성적 테이블 또는 시험 상세/채점 패널 */}
-            <div className="flex-1 min-w-0">
+            <div className="flex-1 min-w-0 space-y-4">
                 {selectedClassId === null ? (
                     <div className="p-6 bg-white rounded-xl shadow-sm border border-gray-200">
                         <p className="text-gray-500">클래스를 선택하세요.</p>

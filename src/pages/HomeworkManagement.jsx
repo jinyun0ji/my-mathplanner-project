@@ -166,8 +166,8 @@ export default function HomeworkManagement({
     };
 
     return (
-        <div className="flex space-x-6 h-full">
-            <div className="w-80 flex-shrink-0 space-y-4">
+        <div className="flex flex-col xl:flex-row gap-4 xl:gap-6 h-full">
+            <div className="w-full xl:w-80 flex-shrink-0 space-y-4">
                 <ClassSelectionPanel
                     classes={classes}
                     selectedClassId={selectedClassId}
@@ -194,7 +194,7 @@ export default function HomeworkManagement({
                 </div>
             </div>
 
-            <div className="flex-1 min-w-0">
+            <div className="flex-1 min-w-0 space-y-4">
                 {!selectedAssignment ? (
                     <div className="p-6 bg-white rounded-xl shadow-md"><p className="text-gray-500">클래스를 선택하고 왼쪽에서 과제를 선택하세요.</p></div>
                 ) : (
@@ -202,8 +202,8 @@ export default function HomeworkManagement({
                         {/* 1. 과제 정보 및 액션 패널 */}
                         {/* [색상 변경] border-green-500 -> border-indigo-900 */}
                         <div className="bg-white p-6 rounded-xl shadow-md border-l-4 border-indigo-900">
-                            <div className="flex justify-between items-start">
-                                <div>
+                            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                                <div className="space-y-1">
                                     <h3 className="text-xl font-bold text-gray-800 flex items-center">
                                         {selectedAssignment.book}
                                         {localChanges.length > 0 && <span className="ml-2 text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full">저장되지 않음</span>}
@@ -213,7 +213,7 @@ export default function HomeworkManagement({
                                         ({selectedAssignment.rangeString || `${selectedAssignment.startQuestion || '?'}~${selectedAssignment.endQuestion || '?'}`}, 총 {selectedAssignment.totalQuestions}문항)
                                     </p>
                                 </div>
-                                <div className='flex space-x-2 items-center'>
+                                <div className='flex flex-wrap gap-2 items-center lg:justify-end'>
                                     {/* [색상 변경] bg-blue-600 -> bg-indigo-900 */}
                                     <button 
                                         onClick={handleSaveChanges}
@@ -222,13 +222,13 @@ export default function HomeworkManagement({
                                             localChanges.length > 0 
                                             ? 'bg-indigo-900 text-white hover:bg-indigo-800' 
                                             : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                                        }`}
+                                        } w-full sm:w-auto justify-center`}
                                     >
                                         <Icon name="save" className="w-4 h-4 mr-2" />
                                         채점 저장 ({localChanges.length})
                                     </button>
                                     
-                                    <div className="h-6 w-px bg-gray-300 mx-2"></div>
+                                    <div className="h-6 w-px bg-gray-300 mx-2 hidden sm:block"></div>
 
                                     {/* [색상 변경] text-indigo-600 -> text-gray-500 hover:text-indigo-900 */}
                                     <button 

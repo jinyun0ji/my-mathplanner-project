@@ -99,23 +99,25 @@ export default function LessonManagement({
     const isCurrentDateLogged = currentLog !== undefined;
     
     return (
-        <div className="flex space-x-6 h-full items-start"> 
-            <ClassSelectionPanel
-                classes={classes}
-                selectedClassId={selectedClassId}
-                setSelectedClassId={setSelectedClassId}
-                handleClassSave={handleSaveClass}
-                calculateClassSessions={calculateClassSessions}
-                showSessions={true}
-                selectedDate={selectedDate}
-                handleDateNavigate={handleDateNavigate}
-                showEditButton={true}
-                customPanelContent={logSessionsContent}
-                customPanelTitle="수업 일지 회차"
-                onDateSelect={setSelectedDate} 
-            />
+        <div className="flex flex-col xl:flex-row gap-4 xl:gap-6 h-full items-start"> 
+            <div className="w-full xl:w-80 flex-shrink-0">
+                <ClassSelectionPanel
+                    classes={classes}
+                    selectedClassId={selectedClassId}
+                    setSelectedClassId={setSelectedClassId}
+                    handleClassSave={handleSaveClass}
+                    calculateClassSessions={calculateClassSessions}
+                    showSessions={true}
+                    selectedDate={selectedDate}
+                    handleDateNavigate={handleDateNavigate}
+                    showEditButton={true}
+                    customPanelContent={logSessionsContent}
+                    customPanelTitle="수업 일지 회차"
+                    onDateSelect={setSelectedDate} 
+                />
+            </div>
 
-            <div className="flex-1 min-w-0">
+            <div className="flex-1 min-w-0 w-full space-y-4">
                 {selectedClassId === null ? (
                     <div className="p-6 bg-white rounded-xl shadow-sm border border-gray-200">
                         <p className="text-gray-500">왼쪽에서 클래스를 선택하여 일지를 확인하세요.</p>
@@ -123,19 +125,19 @@ export default function LessonManagement({
                 ) : (
                     <div className="space-y-6">
                         {/* [색상 변경] border-indigo-500 -> border-indigo-900 */}
-                        <div className="flex justify-between items-center bg-white p-6 rounded-xl shadow-sm border border-gray-200 border-l-4 border-l-indigo-900">
-                            <h3 className="text-xl font-bold text-gray-800">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between bg-white p-6 rounded-xl shadow-sm border border-gray-200 border-l-4 border-l-indigo-900">
+                            <h3 className="text-xl font-bold text-gray-800 leading-snug">
                                 {selectedClass.name} | 
                                 {/* [색상 변경] text-indigo-600 -> text-indigo-900 */}
                                 <span className="text-indigo-900 ml-2">{selectedDate}</span>
                             </h3>
-                            <div className='flex space-x-3'>
+                            <div className='flex flex-wrap gap-2 justify-start sm:justify-end w-full sm:w-auto'>
                                 {isCurrentDateLogged && (
                                     // [색상 변경] 노란색 버튼은 유지하되 톤 다운 고려 (여기서는 가독성을 위해 기존 유지하거나 약간 조정)
                                     // bg-yellow-500 -> bg-white border (Secondary Style)로 변경하여 깔끔하게 처리
                                     <button 
                                         onClick={() => handleEditLog(currentLog)}
-                                        className="bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 font-medium py-2 px-4 rounded-lg flex items-center shadow-sm transition duration-150"
+                                        className="bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 font-medium py-2 px-4 rounded-lg flex items-center justify-center shadow-sm transition duration-150 w-full sm:w-auto"
                                     >
                                         <Icon name="edit" className="w-5 h-5 mr-2 text-gray-500" />
                                         일지 수정
@@ -148,7 +150,7 @@ export default function LessonManagement({
                                         isCurrentDateLogged 
                                             ? 'bg-gray-800 hover:bg-gray-900 text-white' 
                                             : 'bg-indigo-900 hover:bg-indigo-800 text-white'
-                                    }`}
+                                    } w-full sm:w-auto justify-center`}
                                 >
                                     <Icon name="plus" className="w-5 h-5 mr-2" />
                                     {isCurrentDateLogged ? '새로운 일지 작성' : '일지 작성'}

@@ -127,7 +127,7 @@ export default function ClinicManagement({
             <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 min-h-[80vh] flex flex-col">
                 
                 {/* 모드 전환 탭 */}
-                <div className="flex space-x-1 bg-gray-100 p-1 rounded-lg w-fit mb-6">
+                <div className="flex flex-wrap gap-2 bg-gray-100 p-1 rounded-lg w-full sm:w-fit mb-6">
                     <button
                         onClick={() => setViewMode('staff')}
                         // [색상 변경] text-indigo-600 -> text-indigo-900
@@ -156,7 +156,7 @@ export default function ClinicManagement({
                         />
                         <span className="text-gray-500 text-sm font-medium">{dailyLogs.length}건의 일정</span>
                     </div>
-                    <div className='flex space-x-2'>
+                    <div className='flex flex-wrap gap-2 justify-start md:justify-end'>
                         {/* 조교 모드 버튼 */}
                         {viewMode === 'tutor' && (
                             <button 
@@ -176,9 +176,9 @@ export default function ClinicManagement({
                 </div>
 
                 {viewMode === 'staff' && selectedLogIds.length > 0 && (
-                    <div className="bg-indigo-50 border border-indigo-100 p-3 rounded-lg mb-4 flex justify-between items-center animate-fade-in">
+                    <div className="bg-indigo-50 border border-indigo-100 p-3 rounded-lg mb-4 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 animate-fade-in">
                         <span className="text-sm font-bold text-indigo-900 ml-2">{selectedLogIds.length}명 선택됨</span>
-                        <div className="flex space-x-2">
+                        <div className="flex flex-wrap gap-2">
                             <button onClick={() => { if(window.confirm(`선택한 ${selectedLogIds.length}건의 일정을 정말 삭제하시겠습니까?`)) { selectedLogIds.forEach(id => handleDeleteClinicLog(id)); setSelectedLogIds([]); } }} className="bg-white border border-gray-300 text-red-600 hover:bg-red-50 text-xs font-bold py-1.5 px-3 rounded-md flex items-center transition">
                                 <Icon name="trash" className="w-3 h-3 mr-1" /> 선택 삭제
                             </button>
@@ -272,6 +272,93 @@ export default function ClinicManagement({
                                 )}
                             </tbody>
                         </table>
+                    </div>
+                    
+                    <div className="md:hidden p-3 space-y-3 overflow-y-auto">
+                        {dailyLogs.length > 0 ? dailyLogs.map(log => {
+                            const isUnscheduled = !log.plannedTime;
+                            const isSent = log.notificationSent;
+                            const isSelected = selectedLogIds.includes(log.id);
+                            const status = log.status || (log.checkIn ? 'attended' : 'pending');
+
+                            return (
+                                <div key={log.id} className={`bg-white border rounded-xl shadow-sm p-4 space-y-3 ${isSelected ? 'ring-1 ring-indigo-200' : ''}`}>
+                                    <div className="flex items-start justify-between gap-2">
+                                        <div>
+                                            <p className="text-base font-bold text-gray-900">{log.studentName}</p>
+                                            <p className="text-xs text-gray-500 mt-0.5">{log.tutor || '담당 조교 미정'}</p>
+                                        </div>
+                                        <div className="flex flex-col items-end gap-2">
+                                            {viewMode === 'staff' && (
+                                                <label className="flex items-center gap-1 text-xs text-gray-600">
+                                                    <input 
+                                                        type="checkbox" 
+                                                        checked={isSelected} 
+                                                        onChange={() => handleSelectLog(log.id)} 
+                                                        className="rounded text-indigo-900 focus:ring-indigo-900 h-4 w-4"
+                                                    />
+                                                    선택
+                                                </label>
+                                            )}
+                                            {renderStatusBadge(log)}
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-2 text-xs text-gray-600">
+                                        <div className="bg-gray-50 rounded-lg px-3 py-2">
+                                            <p className="font-semibold text-gray-700">예정</p>
+                                            <p className="mt-0.5">{isUnscheduled ? '미예약' : log.plannedTime}</p>
+                                        </div>
+                                        <div className="bg-gray-50 rounded-lg px-3 py-2">
+                                            <p className="font-semibold text-gray-700">실제 시간</p>
+                                            <p className="mt-0.5 font-mono text-[11px]">
+                                                {log.checkIn ? `${log.checkIn} ~ ${log.checkOut || '...'}` : '-'}
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    <div className="text-sm text-gray-700">
+                                        {log.comment ? (
+                                            <p className="leading-snug">{log.comment}</p>
+                                        ) : (
+                                            <p className="text-gray-400 text-xs italic">코멘트가 없습니다.</p>
+                                        )}
+                                    </div>
+
+                                    <div className="flex flex-wrap gap-2">
+                                        <button 
+                                            onClick={() => openCommentModal(log)} 
+                                            className="flex-1 text-sm font-semibold px-3 py-2 rounded-lg bg-gray-100 text-gray-700 hover:bg-indigo-50 hover:text-indigo-900 transition"
+                                        >
+                                            기록/코멘트
+                                        </button>
+                                        
+                                        {viewMode === 'staff' && (
+                                            <>
+                                                <button 
+                                                    onClick={() => handleNotifyClick(log)}
+                                                    className={`flex-1 text-sm font-semibold px-3 py-2 rounded-lg border transition ${
+                                                        isSent ? 'bg-green-50 text-green-700 border-green-200' : 'bg-white text-gray-700 border-gray-200 hover:border-indigo-300'
+                                                    }`}
+                                                >
+                                                    알림 {isSent ? '완료' : '발송'}
+                                                </button>
+                                                <button 
+                                                    onClick={() => {if(window.confirm('일정을 삭제하시겠습니까?')) handleDeleteClinicLog(log.id)}}
+                                                    className="flex-1 text-sm font-semibold px-3 py-2 rounded-lg bg-red-50 text-red-600 border border-red-100 hover:bg-red-100 transition"
+                                                >
+                                                    삭제
+                                                </button>
+                                            </>
+                                        )}
+                                    </div>
+                                </div>
+                            );
+                        }) : (
+                            <div className="text-center text-gray-500 text-sm py-8">
+                                선택한 날짜에 일정이 없습니다.
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>
