@@ -74,12 +74,12 @@ export default function HomeworkStatisticsPanel({ assignment, summary }) {
     return (
         <div className="bg-white p-6 rounded-xl shadow-md space-y-4">
             <h2 className="text-xl font-bold text-gray-800 border-b pb-2 flex items-center">
-                <Icon name="pieChart" className="w-5 h-5 mr-2 text-blue-600" />
+                <Icon name="clipboardCheck" className="w-5 h-5 mr-2 text-blue-600" />
                 과제 결과 통계
             </h2>
             
             {/* 요약 그리드 */}
-            <div className="grid grid-cols-4 gap-4 text-center border p-3 rounded-lg bg-gray-50">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center border p-3 rounded-lg bg-gray-50">
                 {summaryItems.map((item, index) => (
                     <div key={index} className="p-2 bg-white rounded-md shadow-sm">
                         <p className="text-xs text-gray-500 font-medium">{item.label}</p>
@@ -88,7 +88,7 @@ export default function HomeworkStatisticsPanel({ assignment, summary }) {
                 ))}
             </div>
 
-            <div className="grid grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* 1. 문항별 정답률 테이블 (전체 문항) */}
                 <div className="space-y-3">
                     <h3 className="text-lg font-semibold text-gray-700 flex items-center">

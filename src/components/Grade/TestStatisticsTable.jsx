@@ -34,7 +34,7 @@ export default function TestStatisticsTable({ test, stats, currentStudents }) {
             </h2>
             
             {/* 🚨 수정: 요약 통계 1행 4열 그리드, 텍스트 크기 통일 */}
-            <div className="grid grid-cols-4 gap-4 text-center border p-3 rounded-lg bg-gray-50">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center border p-3 rounded-lg bg-gray-50">
                 {summaryItems.map((item, index) => (
                     <div key={index} className="p-2 bg-white rounded-md shadow-sm">
                         <p className="text-xs text-gray-500 font-medium">{item.label}</p>
@@ -45,7 +45,7 @@ export default function TestStatisticsTable({ test, stats, currentStudents }) {
             </div>
 
             {/* 🚨 수정: 문항별 정답률 & 학생 등수 좌우 배치 */}
-            <div className="grid grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
                 {/* 1. 문항별 정답률 (2열 테이블, 스크롤 추가) */}
                 <div className="space-y-3">

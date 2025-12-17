@@ -11,19 +11,12 @@ export default function Home({ onQuickAction }) {
         { label: '이번 주 상담', value: '5건', change: '예정됨', type: 'neutral', icon: 'messageSquare', color: 'blue' },
     ];
 
-    const todaySchedule = [
-        { time: '14:00', class: '고2 수학(상) A반', room: '1강의실', type: 'lesson' },
-        { time: '16:00', class: '김민준 학생 상담', room: '상담실', type: 'counsel' },
-        { time: '19:00', class: '고1 수학(하) 심화', room: '2강의실', type: 'lesson' },
-    ];
-
     const quickActions = [
         { key: 'newStudent', label: '신규생 등록', icon: 'userPlus', hint: '기본 정보와 반 배정', tone: 'indigo' },
         { key: 'announcement', label: '전체 공지', icon: 'messageSquare', hint: '문자/알림 발송', tone: 'blue' },
         { key: 'payment', label: '수납 처리', icon: 'creditCard', hint: '결제 및 영수증', tone: 'emerald' },
         { key: 'worklog', label: '일지 작성', icon: 'fileText', hint: '수업/상담 기록', tone: 'orange' },
         { key: 'attendance', label: '출결 체크', icon: 'checkSquare', hint: '실시간 출결 입력', tone: 'violet' },
-        { key: 'clinic', label: '상담 예약', icon: 'calendarPlus', hint: '학부모/학생 상담', tone: 'rose' },
     ];
 
     const reminders = [
@@ -71,13 +64,10 @@ export default function Home({ onQuickAction }) {
                             <div className="bg-white/10 p-3 rounded-xl backdrop-blur-sm border border-white/10 max-w-xs w-full sm:w-auto">
                                 <p className="text-xs font-medium text-sky-100">Today</p>
                                 <p className="text-lg lg:text-xl font-bold">12월 12일 (금)</p>
-                                <p className="text-xs text-sky-100 mt-1">예정된 수업 {todaySchedule.length}개</p>
+                                <p className="text-xs text-sky-100 mt-1">주요 메모 {reminders.length}건</p>
                             </div>
                         </div>
                         <div className="flex flex-wrap gap-2 text-[13px]">
-                            <span className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 font-semibold backdrop-blur">
-                                <Icon name="calendar" className="w-4 h-4" /> 오늘 일정 {todaySchedule.length}개
-                            </span>
                             <span className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 font-semibold backdrop-blur">
                                 <Icon name="checkCircle" className="w-4 h-4" /> 핵심 지표 한눈에 보기
                             </span>
@@ -150,92 +140,49 @@ export default function Home({ onQuickAction }) {
                 ))}
             </div>
 
-            <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-                {/* 오늘 일정 */}
-                <div className="xl:col-span-2 bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
-                        <h3 className="text-lg font-bold text-gray-800 flex items-center">
-                            {/* [색상 변경] text-indigo-600 -> text-indigo-900 */}
-                            <Icon name="calendar" className="w-5 h-5 mr-2 text-indigo-900" />
-                            오늘의 일정
-                        </h3>
-                        <div className="flex items-center gap-2 text-xs text-gray-500">
-                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-gray-100 font-semibold">실시간</span>
-                            <span className="text-gray-400">모바일 친화적 타임라인</span>
-                        </div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* 빠른 바로가기 */}
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                    <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-lg font-bold text-gray-800">빠른 실행</h3>
+                        <span className="text-xs text-gray-400">모바일 친화형 버튼</span>
                     </div>
-                    <div className="space-y-3">
-                        {todaySchedule.map((item, i) => (
-                            <div key={i} className="p-4 rounded-xl bg-gray-50 border border-gray-100 hover:border-indigo-200 transition">
-                                <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
-                                    <div className="flex items-center gap-3 w-full sm:w-auto">
-                                        <div className="min-w-[72px] text-sm font-bold text-gray-800">{item.time}</div>
-                                        <span className={`px-3 py-1 text-[11px] font-bold rounded-full ${
-                                            item.type === 'lesson' 
-                                                ? 'bg-indigo-100 text-indigo-900' 
-                                                : 'bg-orange-100 text-orange-800'
-                                        }`}>
-                                            {item.type === 'lesson' ? '수업' : '상담'}
-                                        </span>
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                        <h4 className="font-bold text-gray-800 truncate">{item.class}</h4>
-                                        <p className="text-xs text-gray-500 mt-0.5">{item.room}</p>
-                                    </div>
-                                    <div className="flex items-center gap-2 text-xs text-indigo-800 font-semibold bg-indigo-50 rounded-full px-3 py-1 w-fit">
-                                        <Icon name="clock" className="w-4 h-4" />
-                                        리마인드 설정
-                                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                        {quickActions.map((action, idx) => (
+                            <button 
+                                key={idx} 
+                                type="button"
+                                onClick={() => onQuickAction?.(action.key)}
+                                className={`p-4 rounded-xl border border-gray-200 hover:border-indigo-900 transition flex flex-col items-start text-left group bg-gray-50/50 min-w-0 ${hoverToneStyles[action.tone]}`}
+                            >
+                                <div className={`p-2 rounded-lg ${toneStyles[action.tone]} font-bold flex items-center justify-center text-sm shadow-inner`}>
+                                    <Icon name={action.icon} className="w-5 h-5" />
                                 </div>
-                            </div>
+                                <span className="text-sm font-bold text-gray-700 group-hover:text-indigo-900 transition-colors mt-3 truncate">{action.label}</span>
+                                <span className="text-[11px] text-gray-500 group-hover:text-indigo-800 transition-colors mt-1 leading-relaxed break-words">{action.hint}</span>
+                            </button>
                         ))}
                     </div>
                 </div>
 
-                <div className="space-y-6">
-                    {/* 빠른 바로가기 */}
-                    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-                        <div className="flex items-center justify-between mb-4">
-                            <h3 className="text-lg font-bold text-gray-800">빠른 실행</h3>
-                            <span className="text-xs text-gray-400">모바일 친화형 버튼</span>
-                        </div>
-                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                            {quickActions.map((action, idx) => (
-                                <button 
-                                    key={idx} 
-                                    type="button"
-                                    onClick={() => onQuickAction?.(action.key)}
-                                    className={`p-4 rounded-xl border border-gray-200 hover:border-indigo-900 transition flex flex-col items-start text-left group bg-gray-50/50 min-w-0 ${hoverToneStyles[action.tone]}`}
-                                >
-                                    <div className={`p-2 rounded-lg ${toneStyles[action.tone]} font-bold flex items-center justify-center text-sm shadow-inner`}>
-                                        <Icon name={action.icon} className="w-5 h-5" />
-                                    </div>
-                                    <span className="text-sm font-bold text-gray-700 group-hover:text-indigo-900 transition-colors mt-3 truncate">{action.label}</span>
-                                    <span className="text-[11px] text-gray-500 group-hover:text-indigo-800 transition-colors mt-1 leading-relaxed break-words">{action.hint}</span>
-                                </button>
-                            ))}
-                        </div>
+                {/* 업무 브리핑 */}
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                    <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-lg font-bold text-gray-800">업무 브리핑</h3>
+                        <span className="text-xs text-gray-400">현황 요약</span>
                     </div>
-
-                    {/* 업무 브리핑 */}
-                    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-                        <div className="flex items-center justify-between mb-4">
-                            <h3 className="text-lg font-bold text-gray-800">업무 브리핑</h3>
-                            <span className="text-xs text-gray-400">현황 요약</span>
-                        </div>
-                        <div className="space-y-3">
-                            {reminders.map((item, idx) => (
-                                <div key={`briefing-${idx}`} className={`flex items-start gap-3 rounded-xl border ${toneStyles[item.tone]} p-3`}>
-                                    <div className={`p-2 rounded-lg ${toneStyles[item.tone]} shadow-inner border`}>
-                                        <Icon name={item.icon} className="w-4 h-4" />
-                                    </div>
-                                    <div className="min-w-0">
-                                        <p className="text-sm font-bold text-gray-800">{item.title}</p>
-                                        <p className="text-xs text-gray-500 mt-0.5">{item.description}</p>
-                                    </div>
+                    <div className="space-y-3">
+                        {reminders.map((item, idx) => (
+                            <div key={`briefing-${idx}`} className={`flex items-start gap-3 rounded-xl border ${toneStyles[item.tone]} p-3`}>
+                                <div className={`p-2 rounded-lg ${toneStyles[item.tone]} shadow-inner border`}>
+                                    <Icon name={item.icon} className="w-4 h-4" />
                                 </div>
-                            ))}
-                        </div>
+                                <div className="min-w-0">
+                                    <p className="text-sm font-bold text-gray-800">{item.title}</p>
+                                    <p className="text-xs text-gray-500 mt-0.5">{item.description}</p>
+                                </div>
+                            </div>
+                        ))}
                     </div>
                 </div>
             </div>

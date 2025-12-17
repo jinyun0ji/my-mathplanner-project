@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Modal } from '../../components/common/Modal';
 import { Icon, calculateClassSessions } from '../../utils/helpers';
 
-export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = null, classes, defaultDate = null, students, logNotification }) => {
+export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = null, classes, defaultDate = null, students, logNotification, onDirtyChange = () => {} }) => {
   const selectedClass = classes.find(c => c.id === classId);
   
   const sessions = useMemo(() => selectedClass ? calculateClassSessions(selectedClass) : [], [selectedClass, calculateClassSessions]);
@@ -49,8 +49,13 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
     // 모달 열릴 때 dirty 상태 초기화
     if (isOpen) {
         setIsDirty(false);
+        onDirtyChange(false);
     }
   }, [log, defaultDate, sessions, selectedClass, isOpen]); 
+
+  useEffect(() => {
+    onDirtyChange(isDirty);
+  }, [isDirty, onDirtyChange]);
 
   const handleCloseWrapper = () => {
       if (isDirty) {
@@ -58,6 +63,7 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
               return;
           }
       }
+      onDirtyChange(false);
       onClose();
   };
 
@@ -125,6 +131,7 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
     }
 
     setIsDirty(false); 
+    onDirtyChange(false);
     onClose();
   };
 

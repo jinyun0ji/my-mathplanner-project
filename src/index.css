@@ -10,6 +10,17 @@ body {
   @apply font-sans bg-brand-bg text-brand-black antialiased;
 }
 
+@media (max-width: 640px) {
+  body {
+    font-size: 15px;
+    line-height: 1.45;
+  }
+
+  h1, h2, h3, h4 {
+    line-height: 1.25;
+  }
+}
+
 /* 커스텀 스크롤바 */
 .custom-scrollbar::-webkit-scrollbar {
   width: 6px;

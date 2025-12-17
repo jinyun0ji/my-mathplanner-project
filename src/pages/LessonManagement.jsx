@@ -6,12 +6,14 @@ import VideoProgressViewer from '../components/Shared/VideoProgressViewer';
 
 export default function LessonManagement({ 
     students, classes, lessonLogs, handleSaveLessonLog, handleDeleteLessonLog, 
-    handleSaveClass, videoProgress, attendanceLogs, calculateClassSessions, logNotification, handleSendStudentNotification
+    handleSaveClass, videoProgress, attendanceLogs, calculateClassSessions, logNotification, handleSendStudentNotification, setIsGlobalDirty
 }) {
     const [selectedClassId, setSelectedClassId] = useState(classes[0]?.id || null);
     const [isLogModalOpen, setIsLogModalOpen] = useState(false);
     const [logToEdit, setLogToEdit] = useState(null);
     const [selectedDate, setSelectedDate] = useState(null);
+    const [expandedLogs, setExpandedLogs] = useState([]);
+    const [isMobile, setIsMobile] = useState(false);
 
     const selectedClass = classes.find(c => c.id === selectedClassId);
     
@@ -32,6 +34,14 @@ export default function LessonManagement({
             }
         }
     }, [selectedClassId, classLogs.length]); 
+
+    useEffect(() => {
+        const mediaQuery = window.matchMedia('(max-width: 768px)');
+        const handleResize = () => setIsMobile(mediaQuery.matches);
+        handleResize();
+        mediaQuery.addEventListener('change', handleResize);
+        return () => mediaQuery.removeEventListener('change', handleResize);
+    }, []);
 
     const currentLog = useMemo(() => {
         return classLogs.find(log => log.date === selectedDate);
@@ -97,6 +107,54 @@ export default function LessonManagement({
     };
 
     const isCurrentDateLogged = currentLog !== undefined;
+
+    const toggleExpandedLog = (logId, logDate) => {
+        setExpandedLogs(prev => prev.includes(logId) ? prev.filter(id => id !== logId) : [...prev, logId]);
+        if (logDate) {
+            setSelectedDate(logDate);
+        }
+    };
+
+    const renderLogDetail = (log) => (
+        <>
+            <h4 className="text-lg font-bold text-gray-800 border-b pb-2">수업 진도 및 내용</h4>
+            <div className="text-gray-700 whitespace-pre-wrap text-sm sm:text-base leading-relaxed">{log.progress}</div>
+
+            {log.materialUrl && (
+                <p className="text-sm font-medium text-indigo-600 flex items-center border-t pt-4">
+                    <Icon name="fileText" className="w-4 h-4 mr-2" />
+                    첨부 자료: <a href={log.materialUrl} target="_blank" rel="noopener noreferrer" className="ml-1 hover:underline">{log.materialUrl}</a>
+                </p>
+            )}
+            
+            {log.iframeCode && (
+                <div className="border border-gray-300 rounded-lg overflow-hidden mt-4">
+                    <div className="aspect-w-16 aspect-h-9" dangerouslySetInnerHTML={{ __html: log.iframeCode }} />
+                </div>
+            )}
+
+            {log.iframeCode && (
+                <VideoProgressViewer 
+                    log={log} 
+                    students={students} 
+                    videoProgress={videoProgress} 
+                    attendanceLogs={attendanceLogs} 
+                    logNotification={logNotification}
+                    handleSendStudentNotification={handleSendStudentNotification}
+                />
+            )}
+
+            <div className='pt-4 border-t flex justify-end'>
+                <button
+                    onClick={() => { if(window.confirm('정말 이 수업 일지를 삭제하시겠습니까?')) handleDeleteLessonLog(log.id) }}
+                    className='text-sm text-red-500 hover:text-red-700 flex items-center font-medium'
+                >
+                    <Icon name="trash" className="w-4 h-4 mr-1"/>
+                    일지 삭제
+                </button>
+            </div>
+        </>
+    );
     
     return (
         <div className="flex flex-col xl:flex-row gap-4 xl:gap-6 h-full items-start"> 
@@ -107,7 +165,7 @@ export default function LessonManagement({
                     setSelectedClassId={setSelectedClassId}
                     handleClassSave={handleSaveClass}
                     calculateClassSessions={calculateClassSessions}
-                    showSessions={true}
+                    showSessions={!isMobile}
                     selectedDate={selectedDate}
                     handleDateNavigate={handleDateNavigate}
                     showEditButton={true}
@@ -129,7 +187,7 @@ export default function LessonManagement({
                             <h3 className="text-xl font-bold text-gray-800 leading-snug">
                                 {selectedClass.name} | 
                                 {/* [색상 변경] text-indigo-600 -> text-indigo-900 */}
-                                <span className="text-indigo-900 ml-2">{selectedDate}</span>
+                                <span className="text-indigo-900 ml-2">{selectedDate || '날짜 선택'}</span>
                             </h3>
                             <div className='flex flex-wrap gap-2 justify-start sm:justify-end w-full sm:w-auto'>
                                 {isCurrentDateLogged && (
@@ -158,50 +216,63 @@ export default function LessonManagement({
                             </div>
                         </div>
 
+                        {/* 모바일: 일지 토글 리스트 */}
+                        <div className="md:hidden space-y-3">
+                            {classLogs.length === 0 && (
+                                <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+                                    <p className="text-sm text-gray-500">작성된 수업 일지가 없습니다. 새로 작성해 주세요.</p>
+                                </div>
+                            )}
+                            {classLogs.map(log => {
+                                const isOpen = expandedLogs.includes(log.id);
+                                return (
+                                    <div key={log.id} className="bg-white border border-gray-200 rounded-xl shadow-sm">
+                                        <button
+                                            type="button"
+                                            onClick={() => toggleExpandedLog(log.id, log.date)}
+                                            className="w-full flex items-center justify-between px-4 py-3 text-left"
+                                        >
+                                            <div className="min-w-0">
+                                                <p className="text-sm font-bold text-gray-800">{log.date}</p>
+                                                <p className="text-xs text-gray-500 truncate">{selectedClass?.name}</p>
+                                            </div>
+                                            <span className={`text-xs font-semibold px-3 py-1 rounded-full border ${isOpen ? 'bg-indigo-50 text-indigo-900 border-indigo-200' : 'bg-gray-50 text-gray-600 border-gray-200'}`}>
+                                                {isOpen ? '닫기' : '내용 보기'}
+                                            </span>
+                                        </button>
+                                        {isOpen && (
+                                            <div className="border-t border-gray-100 px-4 py-3 space-y-3">
+                                                {renderLogDetail(log)}
+                                                <div className="flex flex-wrap gap-2">
+                                                    <button 
+                                                        onClick={() => handleEditLog(log)}
+                                                        className="flex-1 min-w-[140px] bg-white border border-gray-300 hover:border-indigo-300 text-gray-700 text-sm font-semibold py-2 px-3 rounded-lg flex items-center justify-center shadow-sm"
+                                                    >
+                                                        <Icon name="edit" className="w-4 h-4 mr-2 text-gray-500" />
+                                                        일지 수정
+                                                    </button>
+                                                    <button 
+                                                        onClick={() => { if(window.confirm('정말 이 수업 일지를 삭제하시겠습니까?')) handleDeleteLessonLog(log.id) }}
+                                                        className="flex-1 min-w-[140px] bg-red-50 border border-red-200 text-red-600 text-sm font-semibold py-2 px-3 rounded-lg flex items-center justify-center hover:bg-red-100"
+                                                    >
+                                                        <Icon name="trash" className="w-4 h-4 mr-2" />
+                                                        삭제
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+
                         {/* 일지 내용 */}
                         {currentLog ? (
-                            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 space-y-4">
-                                <h4 className="text-lg font-bold text-gray-800 border-b pb-2">수업 진도 및 내용</h4>
-                                <div className="text-gray-700 whitespace-pre-wrap">{currentLog.progress}</div>
-
-                                {currentLog.materialUrl && (
-                                    // [색상 변경] text-blue-600 -> text-indigo-600
-                                    <p className="text-sm font-medium text-indigo-600 flex items-center border-t pt-4">
-                                        <Icon name="fileText" className="w-4 h-4 mr-2"/>
-                                        첨부 자료: <a href={currentLog.materialUrl} target="_blank" rel="noopener noreferrer" className="ml-1 hover:underline">{currentLog.materialUrl}</a>
-                                    </p>
-                                )}
-                                
-                                {currentLog.iframeCode && (
-                                    <div className="border border-gray-300 rounded-lg overflow-hidden mt-4">
-                                        <div className="aspect-w-16 aspect-h-9" dangerouslySetInnerHTML={{ __html: currentLog.iframeCode }} />
-                                    </div>
-                                )}
-
-                                {/* 동영상 보강 현황 */}
-                                {currentLog.iframeCode && (
-                                    <VideoProgressViewer 
-                                        log={currentLog} 
-                                        students={students} 
-                                        videoProgress={videoProgress} 
-                                        attendanceLogs={attendanceLogs} 
-                                        logNotification={logNotification}
-                                        handleSendStudentNotification={handleSendStudentNotification} // ✅ [추가] 전달
-                                    />
-                                )}
-
-                                <div className='pt-4 border-t flex justify-end'>
-                                    <button
-                                        onClick={() => { if(window.confirm('정말 이 수업 일지를 삭제하시겠습니까?')) handleDeleteLessonLog(currentLog.id) }}
-                                        className='text-sm text-red-500 hover:text-red-700 flex items-center font-medium'
-                                    >
-                                        <Icon name="trash" className="w-4 h-4 mr-1"/>
-                                        일지 삭제
-                                    </button>
-                                </div>
+                            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 space-y-4 hidden md:block">
+                                {renderLogDetail(currentLog)}
                             </div>
                         ) : (
-                            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 hidden md:block">
                                 <p className="text-gray-500">선택된 날짜({selectedDate})에 작성된 수업 일지가 없습니다. 새로 작성해주세요.</p>
                             </div>
                         )}
@@ -220,6 +291,7 @@ export default function LessonManagement({
                 defaultDate={selectedDate}
                 students={students}
                 logNotification={logNotification}
+                onDirtyChange={setIsGlobalDirty}
             />
         </div>
     );

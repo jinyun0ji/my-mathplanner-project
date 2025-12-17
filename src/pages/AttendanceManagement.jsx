@@ -104,25 +104,13 @@ export default function AttendanceManagement({
         setMemoModalState({ isOpen: false, studentId: null, content: '', studentName: '' });
     };
 
-    const handleQuickStatusUpdate = (studentId, status) => {
-        if (!selectedClassId || !selectedDate) return;
-        const existingLog = classAttendance.find(log => log.studentId === studentId);
-        const record = {
-            ...(existingLog || {}),
-            classId: selectedClassId,
-            date: selectedDate,
-            studentId,
-            status,
-        };
-        handleSaveAttendance([record]);
+    const statusBadgeStyles = {
+        '출석': 'bg-green-50 text-green-800 border-green-200',
+        '지각': 'bg-yellow-50 text-yellow-700 border-yellow-200',
+        '결석': 'bg-red-50 text-red-700 border-red-200',
+        '동영상보강': 'bg-indigo-50 text-indigo-800 border-indigo-200',
+        '미기록': 'bg-gray-50 text-gray-600 border-gray-200'
     };
-
-    const statusOptions = [
-        { value: '출석', label: '출석', color: 'bg-green-100 text-green-800 border-green-200' },
-        { value: '지각', label: '지각', color: 'bg-yellow-100 text-yellow-800 border-yellow-200' },
-        { value: '결석', label: '결석', color: 'bg-red-100 text-red-700 border-red-200' },
-        { value: '동영상보강', label: '보강', color: 'bg-indigo-100 text-indigo-800 border-indigo-200' },
-    ];
 
     return (
         <div className="space-y-3">
@@ -147,7 +135,7 @@ export default function AttendanceManagement({
                 </div>
             </div>
 
-            <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex flex-col gap-3 sticky top-0 z-10">
+            <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex flex-col gap-3">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex items-center gap-2 text-sm font-semibold text-gray-700">
                         <Icon name="calendar" className="w-4 h-4 text-indigo-800" />
@@ -317,67 +305,43 @@ export default function AttendanceManagement({
                                     {classStudents.map(student => {
                                         const attendance = classAttendance.find(log => log.studentId === student.id);
                                         const status = attendance?.status || '미기록';
-
-                                        let statusColor = 'bg-gray-100 text-gray-600';
-                                        if (status === '출석') statusColor = 'bg-green-100 text-green-700';
-                                        else if (status === '지각') statusColor = 'bg-yellow-100 text-yellow-700';
-                                        else if (status === '결석') statusColor = 'bg-red-100 text-red-700';
-                                        else if (status === '동영상보강') statusColor = 'bg-indigo-100 text-indigo-800';
-
                                         const memoContent = studentMemos[student.id];
+                                        const phoneSuffix = student.phone ? student.phone.slice(-4) : '';
+
+                                        const badgeStyle = statusBadgeStyles[status] || statusBadgeStyles['미기록'];
+                                        const memoStyle = memoContent ? 'bg-amber-100 text-amber-700 border-amber-200' : 'bg-gray-50 text-gray-500 border-gray-200';
 
                                         return (
                                             <div key={student.id} className="p-4 border border-gray-200 rounded-xl shadow-sm bg-white space-y-3">
-                                                <div className="flex items-start justify-between gap-2">
-                                                    <div>
-                                                        <p className="text-base font-bold text-gray-900">{student.name}</p>
-                                                        <p className="text-xs text-gray-500 mt-0.5">{formatGradeLabel(student.grade)} · {student.school}</p>
+                                                <div className="flex items-start justify-between gap-3">
+                                                    <div className="min-w-0">
+                                                        <p className="text-base font-bold text-gray-900 leading-snug">{student.name}</p>
+                                                        <p className="text-xs text-gray-500 mt-0.5 truncate">{formatGradeLabel(student.grade)} · {student.school}{phoneSuffix ? ` · ${phoneSuffix}` : ''}</p>
                                                     </div>
-                                                    <span className={`text-[11px] font-bold px-2 py-1 rounded-full ${statusColor}`}>
-                                                        {status}
-                                                    </span>
-                                                </div>
-                                                <div className="grid grid-cols-2 gap-2 text-[11px]">
-                                                    <div className="bg-gray-50 rounded-lg px-3 py-2 text-gray-700 flex items-center justify-between border border-gray-100">
-                                                        <p className="font-semibold text-gray-700">기록 날짜</p>
-                                                        <p className="font-mono">{selectedDate}</p>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-semibold border ${memoStyle}`} title={memoContent ? '메모 있음' : '메모 작성'}>
+                                                            <Icon name="fileText" className="w-4 h-4" />
+                                                        </span>
+                                                        <span className={`w-10 h-10 rounded-full border flex items-center justify-center text-[11px] font-bold ${badgeStyle}`}>
+                                                            {status}
+                                                        </span>
                                                     </div>
+                                                    </div>
+                                                <div className="flex items-center justify-between gap-2">
                                                     <button
                                                         onClick={() => openMemoModal(student)}
-                                                        className={`rounded-lg px-3 py-2 text-left border font-semibold transition ${
-                                                            memoContent
-                                                                ? 'bg-yellow-100 text-yellow-800 border-yellow-200'
-                                                                : 'bg-gray-50 text-gray-600 hover:bg-indigo-50 hover:text-indigo-900'
-                                                        }`}
+                                                        className="text-[11px] font-semibold text-gray-600 underline-offset-2 hover:text-indigo-900"
                                                     >
-                                                        <span className="block text-xs">{memoContent ? '메모 있음' : '메모 작성'}</span>
-                                                        <span className="text-[10px] text-gray-500">교직원 공유</span>
+                                                        메모 {memoContent ? '확인/수정' : '작성'}
+                                                    </button>
+                                                    <button
+                                                        onClick={() => setIsAttendanceModalOpen(true)}
+                                                        className="text-sm font-semibold px-3 py-2 rounded-lg bg-indigo-900 text-white hover:bg-indigo-800 transition flex items-center justify-center gap-2"
+                                                    >
+                                                        <Icon name="edit" className="w-4 h-4" />
+                                                        출결 기록/수정
                                                     </button>
                                                 </div>
-
-                                                <div className="flex flex-wrap gap-2">
-                                                    {statusOptions.map(option => (
-                                                        <button
-                                                            key={option.value}
-                                                            onClick={() => handleQuickStatusUpdate(student.id, option.value)}
-                                                            className={`flex-1 min-w-[120px] text-xs font-bold px-3 py-2 rounded-lg border transition active:scale-95 ${
-                                                                status === option.value
-                                                                    ? `${option.color} ring-1 ring-offset-1 ring-indigo-200`
-                                                                    : 'bg-gray-50 text-gray-700 border-gray-200 hover:border-indigo-300 hover:text-indigo-900'
-                                                            }`}
-                                                        >
-                                                            {option.label}
-                                                        </button>
-                                                    ))}
-                                                </div>
-
-                                                <button
-                                                    onClick={() => setIsAttendanceModalOpen(true)}
-                                                    className="w-full text-sm font-semibold px-3 py-2 rounded-lg bg-indigo-900 text-white hover:bg-indigo-800 transition flex items-center justify-center gap-2"
-                                                >
-                                                    <Icon name="edit" className="w-4 h-4" />
-                                                    출결 상세 입력
-                                                </button>
                                             </div>
                                         );
                                     })}
@@ -386,21 +350,6 @@ export default function AttendanceManagement({
                         </div>
                     )}
                 </div>
-            </div>
-
-            <div className="xl:hidden sticky bottom-0 left-0 right-0 bg-white/95 backdrop-blur border-t border-gray-200 p-3 flex items-center gap-2">
-                <button
-                    onClick={() => setMobileView(prev => prev === 'class' ? 'attendance' : 'class')}
-                    className="flex-1 px-3 py-2 rounded-lg border border-gray-200 text-sm font-semibold text-gray-700 bg-gray-50"
-                >
-                    {mobileView === 'class' ? '출결 현황 보기' : '수업 일정 선택'}
-                </button>
-                <button
-                    onClick={() => setIsAttendanceModalOpen(true)}
-                    className="flex-1 px-3 py-2 rounded-lg bg-indigo-900 text-white text-sm font-semibold shadow-md"
-                >
-                    빠른 출결 입력
-                </button>
             </div>
 
             <AttendanceModal
