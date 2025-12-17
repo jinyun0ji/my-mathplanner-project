@@ -400,7 +400,7 @@ export default function ParentHome({
         <div className="bg-gray-50 min-h-screen flex flex-col relative font-sans">
             {/* 헤더 & 자녀 선택 */}
             <div className="bg-white sticky top-0 z-30 shadow-sm">
-                <div className="bg-indigo-900 text-white px-4 py-2 flex justify-between items-center text-xs font-bold">
+                <div className="bg-[radial-gradient(circle_at_15%_30%,rgba(56,189,248,0.18),transparent_35%),linear-gradient(135deg,#0f172a,#1e3a8a)] text-white px-4 py-2 flex justify-between items-center text-xs font-bold">
                     <span>학부모 전용</span>
                     <span className="opacity-80">{activeChild.school} {activeChild.grade}</span>
                 </div>
@@ -445,55 +445,55 @@ export default function ParentHome({
                     <div className="animate-fade-in space-y-4">
                         {activeTab === 'home' && (
                             <div className="space-y-4">
-                                <section className="bg-gradient-to-br from-indigo-900 via-indigo-800 to-blue-700 text-white rounded-3xl p-6 md:p-8 shadow-lg border border-indigo-800/40">
+                                <section className="bg-[radial-gradient(ellipse_at_18%_25%,rgba(56,189,248,0.28),transparent_40%),radial-gradient(ellipse_at_82%_20%,rgba(45,212,191,0.24),transparent_40%),linear-gradient(135deg,#0a1434,#1d4ed8,#0d9488)] text-white rounded-3xl p-6 md:p-8 shadow-lg border border-sky-900/40">
                                     <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
                                         <div className="space-y-3">
-                                            <p className="text-xs uppercase tracking-[0.2em] text-indigo-200 font-semibold">학부모 홈</p>
+                                            <p className="text-xs uppercase tracking-[0.2em] text-sky-200 font-semibold">학부모 홈</p>
                                             <h2 className="text-2xl md:text-3xl font-extrabold tracking-tight">{activeChild.name} 학습 현황</h2>
-                                            <p className="text-sm text-indigo-100">오늘 바로 확인해야 할 과제, 일정, 결제 정보를 한눈에 모았습니다.</p>
+                                            <p className="text-sm text-sky-100">오늘 바로 확인해야 할 과제, 일정, 결제 정보를 한눈에 모았습니다.</p>
                                             <div className="flex flex-wrap gap-2">
-                                                <span className="bg-white/10 border border-white/20 text-indigo-50 px-3 py-1.5 rounded-full text-xs font-semibold">
+                                                <span className="bg-white/10 border border-white/20 text-sky-50 px-3 py-1.5 rounded-full text-xs font-semibold">
                                                     {latestAttendance ? `최근 출결: ${latestAttendance.status} (${latestAttendance.date})` : '출결 기록 준비 중'}
                                                 </span>
-                                                <span className="bg-white/10 border border-white/20 text-indigo-50 px-3 py-1.5 rounded-full text-xs font-semibold">
+                                                <span className="bg-white/10 border border-white/20 text-sky-50 px-3 py-1.5 rounded-full text-xs font-semibold">
                                                     미제출 과제 {pendingHomeworkCount}건
                                                 </span>
-                                                <span className={`px-3 py-1.5 rounded-full text-xs font-semibold border ${unpaidPayments.length > 0 ? 'bg-red-500/20 border-red-200 text-white' : 'bg-white/10 border-white/20 text-indigo-50'}`}>
+                                                <span className={`px-3 py-1.5 rounded-full text-xs font-semibold border ${unpaidPayments.length > 0 ? 'bg-red-500/20 border-red-200 text-white' : 'bg-white/10 border-white/20 text-sky-50'}`}>
                                                     미납 {unpaidPayments.length}건
                                                 </span>
                                             </div>
                                         </div>
                                         <div className="grid grid-cols-2 gap-3 lg:w-[360px]">
                                             <div className="bg-white/10 border border-white/20 rounded-2xl p-4 backdrop-blur">
-                                                <p className="text-xs text-indigo-100 font-semibold mb-1">다음 수업</p>
+                                                <p className="text-xs text-sky-100 font-semibold mb-1">다음 수업</p>
                                                 {nextClass ? (
                                                     <>
                                                         <p className="text-lg font-bold text-white">{nextClass.name}</p>
-                                                        <p className="text-sm text-indigo-100 mt-1">{nextClass.schedule.days.join(', ')} {nextClass.schedule.time}</p>
-                                                        <p className="text-xs text-indigo-100/80 mt-2">{nextClass.teacher} 선생님</p>
+                                                        <p className="text-sm text-sky-100 mt-1">{nextClass.schedule.days.join(', ')} {nextClass.schedule.time}</p>
+                                                        <p className="text-xs text-sky-100/80 mt-2">{nextClass.teacher} 선생님</p>
                                                     </>
                                                 ) : (
-                                                    <p className="text-sm text-indigo-100">등록된 일정이 없습니다.</p>
+                                                    <p className="text-sm text-sky-100">등록된 일정이 없습니다.</p>
                                                 )}
                                             </div>
                                             <div className="bg-white/10 border border-white/20 rounded-2xl p-4 backdrop-blur">
-                                                <p className="text-xs text-indigo-100 font-semibold mb-1">최근 성적</p>
+                                                <p className="text-xs text-sky-100 font-semibold mb-1">최근 성적</p>
                                                 {latestGrade ? (
                                                     <>
                                                         <p className="text-lg font-bold text-white">{latestGrade.testName}</p>
-                                                        <p className="text-sm text-indigo-100 mt-1">점수 {latestGrade.studentScore}점 / 반 평균 {latestGrade.classAverage}점</p>
-                                                        <p className="text-xs text-indigo-100/80 mt-2">{latestGrade.testDate}</p>
+                                                        <p className="text-sm text-sky-100 mt-1">점수 {latestGrade.studentScore}점 / 반 평균 {latestGrade.classAverage}점</p>
+                                                        <p className="text-xs text-sky-100/80 mt-2">{latestGrade.testDate}</p>
                                                     </>
                                                 ) : (
-                                                    <p className="text-sm text-indigo-100">등록된 시험 기록이 없습니다.</p>
+                                                    <p className="text-sm text-sky-100">등록된 시험 기록이 없습니다.</p>
                                                 )}
                                             </div>
                                         </div>
                                     </div>
                                     <div className="flex flex-wrap gap-2 mt-6">
-                                        <button onClick={() => setActiveTab('report')} className="bg-white text-indigo-900 px-4 py-2 rounded-xl font-bold text-sm shadow-md hover:-translate-y-0.5 transition-transform">학습 리포트 보기</button>
-                                        <button onClick={() => setActiveTab('schedule')} className="bg-indigo-800/70 border border-white/20 text-white px-4 py-2 rounded-xl font-bold text-sm hover:bg-indigo-700/80 transition-colors">일정 확인</button>
-                                        <button onClick={() => setActiveTab('payment')} className="bg-indigo-800/70 border border-white/20 text-white px-4 py-2 rounded-xl font-bold text-sm hover:bg-indigo-700/80 transition-colors">결제 현황</button>
+                                        <button onClick={() => setActiveTab('report')} className="bg-white text-sky-950 px-4 py-2 rounded-xl font-bold text-sm shadow-md hover:-translate-y-0.5 transition-transform">학습 리포트 보기</button>
+                                        <button onClick={() => setActiveTab('schedule')} className="bg-blue-900/70 border border-white/20 text-white px-4 py-2 rounded-xl font-bold text-sm hover:bg-blue-800/80 transition-colors">일정 확인</button>
+                                        <button onClick={() => setActiveTab('payment')} className="bg-blue-900/70 border border-white/20 text-white px-4 py-2 rounded-xl font-bold text-sm hover:bg-blue-800/80 transition-colors">결제 현황</button>
                                     </div>
                                 </section>
 
@@ -590,7 +590,7 @@ export default function ParentHome({
                                     </div>
                                 </section>
 
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                <div className="grid grid-cols-3 gap-3">
                                     <ReportStatCard 
                                         icon="user" 
                                         label="출석 안정도" 

@@ -1,7 +1,7 @@
 import React from 'react';
 import { Icon } from '../utils/helpers';
 
-export default function Home() {
+export default function Home({ onQuickAction }) {
     // 목업 데이터
     const stats = [
         // [색상 변경] icon color: indigo -> indigo-900
@@ -18,12 +18,12 @@ export default function Home() {
     ];
 
     const quickActions = [
-        { label: '신규생 등록', icon: 'userPlus', hint: '기본 정보와 반 배정', tone: 'indigo' },
-        { label: '전체 공지', icon: 'messageSquare', hint: '문자/알림 발송', tone: 'blue' },
-        { label: '수납 처리', icon: 'creditCard', hint: '결제 및 영수증', tone: 'emerald' },
-        { label: '일지 작성', icon: 'fileText', hint: '수업/상담 기록', tone: 'orange' },
-        { label: '출결 체크', icon: 'checkSquare', hint: '실시간 출결 입력', tone: 'violet' },
-        { label: '상담 예약', icon: 'calendarPlus', hint: '학부모/학생 상담', tone: 'rose' },
+        { key: 'newStudent', label: '신규생 등록', icon: 'userPlus', hint: '기본 정보와 반 배정', tone: 'indigo' },
+        { key: 'announcement', label: '전체 공지', icon: 'messageSquare', hint: '문자/알림 발송', tone: 'blue' },
+        { key: 'payment', label: '수납 처리', icon: 'creditCard', hint: '결제 및 영수증', tone: 'emerald' },
+        { key: 'worklog', label: '일지 작성', icon: 'fileText', hint: '수업/상담 기록', tone: 'orange' },
+        { key: 'attendance', label: '출결 체크', icon: 'checkSquare', hint: '실시간 출결 입력', tone: 'violet' },
+        { key: 'clinic', label: '상담 예약', icon: 'calendarPlus', hint: '학부모/학생 상담', tone: 'rose' },
     ];
 
     const reminders = [
@@ -59,19 +59,19 @@ export default function Home() {
             {/* 상단 웰컴 메시지 */}
             {/* [색상 변경] bg-indigo-600 -> bg-indigo-900 */}
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,2.2fr)_minmax(260px,1fr)]">
-                <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-indigo-900 via-indigo-800 to-indigo-700 p-6 lg:p-7 shadow-lg text-white">
+                <div className="relative overflow-hidden rounded-2xl bg-[radial-gradient(circle_at_15%_20%,rgba(56,189,248,0.28),transparent_40%),radial-gradient(circle_at_80%_15%,rgba(45,212,191,0.26),transparent_38%),linear-gradient(135deg,#0a1434,#1d4ed8,#0d9488)] p-6 lg:p-7 shadow-lg text-white">
                     <div className="absolute inset-y-0 right-0 w-48 bg-white/10 blur-3xl" aria-hidden></div>
                     <div className="relative flex flex-col gap-5">
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                             <div className="space-y-1">
-                                <p className="text-sm text-indigo-100">오늘도 힘찬 하루 되세요.</p>
+                                <p className="text-sm text-sky-100">오늘도 힘찬 하루 보내세요.</p>
                                 <h2 className="text-2xl lg:text-3xl font-bold">환영합니다, 채수용 선생님! 👋</h2>
-                                <p className="text-indigo-100 text-sm">직원용 홈에서 주요 업무를 바로 확인해보세요.</p>
+                                <p className="text-sky-100 text-sm">직원용 홈에서 주요 업무를 바로 확인해보세요.</p>
                             </div>
                             <div className="bg-white/10 p-3 rounded-xl backdrop-blur-sm border border-white/10 max-w-xs w-full sm:w-auto">
-                                <p className="text-xs font-medium text-indigo-100">Today</p>
+                                <p className="text-xs font-medium text-sky-100">Today</p>
                                 <p className="text-lg lg:text-xl font-bold">12월 12일 (금)</p>
-                                <p className="text-xs text-indigo-100 mt-1">예정된 수업 {todaySchedule.length}개</p>
+                                <p className="text-xs text-sky-100 mt-1">예정된 수업 {todaySchedule.length}개</p>
                             </div>
                         </div>
                         <div className="flex flex-wrap gap-2 text-[13px]">
@@ -203,6 +203,8 @@ export default function Home() {
                             {quickActions.map((action, idx) => (
                                 <button 
                                     key={idx} 
+                                    type="button"
+                                    onClick={() => onQuickAction?.(action.key)}
                                     className={`p-4 rounded-xl border border-gray-200 hover:border-indigo-900 transition flex flex-col items-start text-left group bg-gray-50/50 min-w-0 ${hoverToneStyles[action.tone]}`}
                                 >
                                     <div className={`p-2 rounded-lg ${toneStyles[action.tone]} font-bold flex items-center justify-center text-sm shadow-inner`}>

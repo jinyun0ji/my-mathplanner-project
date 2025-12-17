@@ -26,9 +26,9 @@ export default function DashboardTab({ student, myClasses, attendanceLogs, clini
     const studentLogs = attendanceLogs.filter(l => l.studentId === student.id);
     const attendanceRate = studentLogs.length > 0 ? Math.round((studentLogs.filter(l => ['출석','동영상보강'].includes(l.status)).length / studentLogs.length) * 100) : null;
     const momentumCards = [
-        { label: '진행 중 과제', value: pendingHomework.length, accent: 'bg-gradient-to-r from-[#FFD166] to-[#FF8C42]', chip: 'Homework', onClick: () => setActiveTab('learning') },
-        { label: '오늘의 일정', value: allEvents.length, accent: 'bg-gradient-to-r from-[#7BDFF2] to-[#65C3FF]', chip: 'Schedule', onClick: () => setActiveTab('schedule') },
-        { label: '출석률', value: attendanceRate !== null ? `${attendanceRate}%` : '--', accent: 'bg-gradient-to-r from-[#C3F0CA] to-[#7AC99B]', chip: 'Attendance', onClick: () => setActiveTab('class') },
+        { label: '진행 중 과제', value: pendingHomework.length, accent: 'bg-gradient-to-r from-[#FF9AA2] to-[#FF4D6D]', chip: 'Homework', onClick: () => setActiveTab('learning') },
+        { label: '오늘의 일정', value: allEvents.length, accent: 'bg-gradient-to-r from-[#7CD1FF] to-[#4F8DF5]', chip: 'Schedule', onClick: () => setActiveTab('schedule') },
+        { label: '출석률', value: attendanceRate !== null ? `${attendanceRate}%` : '--', accent: 'bg-gradient-to-r from-[#B8F5CB] to-[#36D399]', chip: 'Attendance', onClick: () => setActiveTab('class') },
     ];
 
     const attendanceAlerts = myClasses.map(cls => {
@@ -43,7 +43,7 @@ export default function DashboardTab({ student, myClasses, attendanceLogs, clini
 
     return (
         <div className="space-y-6 pb-24 animate-fade-in-up">
-            <div className="relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-brand-main via-indigo-500 to-sky-400 p-6 shadow-brand text-white">
+            <div className="relative overflow-hidden rounded-[2rem] bg-[radial-gradient(circle_at_18%_25%,rgba(56,189,248,0.24),transparent_40%),radial-gradient(circle_at_82%_20%,rgba(45,212,191,0.22),transparent_40%),linear-gradient(135deg,#0a1434,#1d4ed8,#0d9488)] p-6 shadow-brand text-white">
                 <div className="absolute inset-0 opacity-20 bg-[radial-gradient(circle_at_20%_20%,rgba(255,255,255,0.3),transparent_35%),radial-gradient(circle_at_80%_0%,rgba(255,255,255,0.25),transparent_30%),radial-gradient(circle_at_50%_80%,rgba(255,255,255,0.2),transparent_25%)]"></div>
                 <div className="relative z-10 space-y-4">
                     <div className="flex items-center justify-between">

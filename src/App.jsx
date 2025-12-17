@@ -66,7 +66,7 @@ const PageContent = (props) => {
     }
 
     switch (page) {
-        case 'home': return <Home />;
+        case 'home': return <Home onQuickAction={props.onQuickAction} />;
         case 'lessons': return <LessonManagement {...props} />;
         case 'attendance': return <AttendanceManagement {...props} />;
         case 'students': return <StudentManagement {...props} />;
@@ -183,6 +183,7 @@ export default function App() {
   const [hasNewNotifications, setHasNewNotifications] = useState(false);
   const [isMessengerOpen, setIsMessengerOpen] = useState(false); 
   const [hasNewMessages, setHasNewMessages] = useState(true); 
+  const [pendingQuickAction, setPendingQuickAction] = useState(null);
 
   const toggleSidebar = () => {
     setIsSidebarOpen(prev => !prev);
@@ -451,7 +452,7 @@ export default function App() {
   const handlePageChange = (newPage, studentId = null, resetSearch = false) => {
     if (isGlobalDirty) {
         if (!window.confirm('저장되지 않은 변경사항이 있습니다. 정말 이동하시겠습니까?\n(이동 시 변경사항은 사라집니다)')) {
-            return; 
+            return false; 
         }
         setIsGlobalDirty(false); 
     }
@@ -465,7 +466,31 @@ export default function App() {
         setSelectedStudentId(studentId);
     }
     setPage(newPage);
+    return true;
   }
+
+  const quickActionMap = useMemo(() => ({
+    newStudent: { page: 'students', action: 'openStudentModal' },
+    announcement: { page: 'communication', tab: 'announcements' },
+    payment: { page: 'payment' },
+    worklog: { page: 'communication', tab: 'worklogs' },
+    attendance: { page: 'attendance' },
+    clinic: { page: 'clinic' },
+  }), []);
+
+  const handleQuickAction = (actionKey) => {
+    const action = quickActionMap[actionKey];
+    if (!action) return;
+
+    const changed = handlePageChange(action.page, null, true);
+    if (!changed) return;
+
+    if (action.tab || action.action) {
+        setPendingQuickAction(action);
+    } else {
+        setPendingQuickAction(null);
+    }
+  };
 
   const handleLoginSuccess = (role, id) => {
     setIsLoggedIn(true);
@@ -589,7 +614,10 @@ export default function App() {
     setIsGlobalDirty,
     studentSearchTerm, setStudentSearchTerm,
     handleSendStudentNotification,
-    externalSchedules // ✅ [추가] StudentManagement에서 사용하기 위해 전달
+    externalSchedules, // ✅ [추가] StudentManagement에서 사용하기 위해 전달
+    pendingQuickAction,
+    clearPendingQuickAction: () => setPendingQuickAction(null),
+    onQuickAction: handleQuickAction
   };
 
   return (

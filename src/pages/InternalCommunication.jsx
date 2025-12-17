@@ -1,11 +1,31 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import Announcement from '../components/Communication/Announcement'; // 경로 수정
 import WorkLogs from '../components/Communication/WorkLogs'; // 경로 수정
 import Messenger from '../components/Communication/Messenger'; // 경로 수정
 
-export default function InternalCommunication({ announcements, handleSaveAnnouncement, setAnnouncements, students, classes, workLogs, handleSaveWorkLog, handleDeleteWorkLog }) { 
-    
+export default function InternalCommunication({ 
+    announcements, 
+    handleSaveAnnouncement, 
+    setAnnouncements, 
+    students, 
+    classes, 
+    workLogs, 
+    handleSaveWorkLog, 
+    handleDeleteWorkLog,
+    pendingQuickAction,
+    clearPendingQuickAction
+}) { 
+
     const [activeTab, setActiveTab] = useState('announcements');
+
+    useEffect(() => {
+        if (pendingQuickAction?.page !== 'communication') return;
+
+        if (pendingQuickAction.tab) {
+            setActiveTab(pendingQuickAction.tab);
+        }
+        clearPendingQuickAction?.();
+    }, [pendingQuickAction, clearPendingQuickAction]);
     
     return (
         <div className="space-y-6">

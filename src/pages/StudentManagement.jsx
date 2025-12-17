@@ -1,5 +1,5 @@
 // src/pages/StudentManagement.jsx
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { Icon } from '../utils/helpers';
 import { StudentFormModal } from '../utils/modals/StudentFormModal';
 import { MemoModal } from '../utils/modals/MemoModal';
@@ -9,7 +9,9 @@ export default function StudentManagement({
     students, classes, getClassesNames, handleSaveStudent, handleDeleteStudent, 
     attendanceLogs, studentMemos, handleSaveMemo, handlePageChange,
     studentSearchTerm, setStudentSearchTerm,
-    externalSchedules 
+    externalSchedules,
+    pendingQuickAction,
+    clearPendingQuickAction
 }) {
     const [isStudentModalOpen, setIsStudentModalOpen] = useState(false);
     const [studentToEdit, setStudentToEdit] = useState(null);
@@ -17,6 +19,14 @@ export default function StudentManagement({
     
     const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
     const [selectedStudentSchedule, setSelectedStudentSchedule] = useState({ name: '', schedules: [] });
+
+    useEffect(() => {
+        if (pendingQuickAction?.page === 'students' && pendingQuickAction.action === 'openStudentModal') {
+            setStudentToEdit(null);
+            setIsStudentModalOpen(true);
+            clearPendingQuickAction?.();
+        }
+    }, [pendingQuickAction, clearPendingQuickAction]);
 
     const filteredStudents = useMemo(() => {
         return students.filter(student => {
