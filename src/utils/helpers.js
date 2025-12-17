@@ -9,7 +9,7 @@ import {
     PlayCircle, PauseCircle, StopCircle, Volume2, VolumeX,
     Maximize, Minimize, Settings, BookOpen, PenTool,
     MapPin, Phone, Mail, Award, TrendingUp, TrendingDown, Activity,
-    Edit, List, Folder, Download
+    Edit, List, Folder, Download, CreditCard
 } from 'lucide-react';
 
 export const Icon = ({ name, className, ...props }) => {
@@ -30,7 +30,8 @@ export const Icon = ({ name, className, ...props }) => {
         trend: TrendingUp, trendingUp: TrendingUp, trendingDown: TrendingDown, 
         list: Activity, school: Home, pin: MapPin,
         edit: Edit, schedule: List, folder: Folder,
-        download: Download, video: Video
+        download: Download, video: Video,
+        creditCard: CreditCard
     };
     const LucideIcon = icons[name] || Home;
     return <LucideIcon className={className} {...props} />;
