@@ -774,10 +774,26 @@ export default function ParentHome({
                 </div>
             )}
             
-            <div className={`fixed bottom-20 right-4 z-[60] transition-all duration-300`}>
-                <button onClick={() => setIsNotificationOpen(true)} className="bg-white text-indigo-900 border border-indigo-200 p-3 rounded-full shadow-lg hover:bg-gray-50 active:scale-90 flex items-center justify-center relative"><NotificationsIcon style={{ fontSize: 24 }} />{hasNewNotifications && <span className="absolute top-2 right-2.5 w-2 h-2 bg-red-500 rounded-full ring-1 ring-white"></span>}</button>
+            {/* ✅ [수정] 플로팅 버튼 통합 컨테이너 */}
+            <div className={`fixed bottom-24 right-5 z-[60] flex flex-col gap-3 items-center`}>
+                {/* 1. 알림 버튼 */}
+                <button 
+                    onClick={() => setIsNotificationOpen(true)} 
+                    className="bg-white text-indigo-900 border border-indigo-200 p-3 rounded-full shadow-lg hover:bg-gray-50 active:scale-90 flex items-center justify-center relative w-12 h-12"
+                >
+                    <NotificationsIcon style={{ fontSize: 24 }} />
+                    {hasNewNotifications && <span className="absolute top-2 right-2.5 w-2 h-2 bg-red-500 rounded-full ring-1 ring-white"></span>}
+                </button>
+
+                {/* 2. 메신저 버튼 */}
+                <StudentMessenger 
+                    studentId={activeChildId} 
+                    teacherName="담당 선생님" 
+                    messages={messages} 
+                    onSendMessage={onSendMessage} 
+                    isFloating={false} 
+                />
             </div>
-            <StudentMessenger studentId={activeChildId} teacherName="담당 선생님" messages={messages} onSendMessage={onSendMessage} bottomPosition="bottom-36" />
             <StudentNotifications isOpen={isNotificationOpen} onClose={() => setIsNotificationOpen(false)} notices={visibleNotices} onDelete={() => {}} onNoticeClick={() => { setActiveTab('board'); setIsNotificationOpen(false); }} />
         </div>
     );

@@ -10,7 +10,8 @@ export default function StudentMessenger({
     messages = [], 
     onSendMessage,
     isHidden = false,
-    bottomPosition = "bottom-24"
+    bottomPosition = "bottom-24",
+    isFloating = true // ✅ [추가] true면 기존처럼 고정, false면 부모 요소의 정렬을 따름
 }) {
     const [isOpen, setIsOpen] = useState(false);
     const [inputText, setInputText] = useState('');
@@ -43,12 +44,14 @@ export default function StudentMessenger({
 
     return (
         <>
-            {/* 플로팅 버튼 */}
-            <div className={`fixed ${bottomPosition} right-5 z-[60] transition-all duration-700 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${isHidden ? 'scale-0 opacity-0 pointer-events-none' : 'scale-100 opacity-100'}`}>
+            {/* ✅ [수정] isFloating 값에 따라 position 클래스 적용 여부 결정
+               - isFloating이 false면 fixed 위치 값들을 제거하여 부모 컨테이너(flex)의 정렬을 따르게 함
+            */}
+            <div className={`${isFloating ? `fixed ${bottomPosition} right-5` : ''} z-[60] transition-all duration-700 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${isHidden ? 'scale-0 opacity-0 pointer-events-none' : 'scale-100 opacity-100'}`}>
                 {!isOpen && (
                     <button 
                         onClick={toggleMessenger}
-                        className="bg-brand-main hover:bg-brand-dark text-white p-3.5 rounded-full shadow-brand transition-transform active:scale-90 flex items-center justify-center"
+                        className="bg-brand-main hover:bg-brand-dark text-white w-12 h-12 rounded-full shadow-brand transition-transform active:scale-90 flex items-center justify-center"
                     >
                         <Icon name="messageSquare" className="w-6 h-6" />
                     </button>

@@ -161,10 +161,27 @@ export default function StudentHome({
                 </div>
             )}
             
-            <div className={`fixed bottom-20 right-4 z-[60] transition-all duration-300 ${isVideoModalOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
-                <button onClick={handleOpenNotification} className="bg-white text-brand-main border border-brand-main/20 p-3 rounded-full shadow-lg hover:bg-gray-50 active:scale-90 flex items-center justify-center relative"><NotificationsIcon style={{ fontSize: 24 }} />{hasNewNotifications && <span className="absolute top-2 right-2.5 w-2 h-2 bg-brand-red rounded-full ring-1 ring-white"></span>}</button>
+            {/* ✅ [수정] 플로팅 버튼 통합 컨테이너 */}
+            <div className={`fixed bottom-24 right-5 z-[60] flex flex-col gap-3 items-center transition-all duration-300 ${isVideoModalOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
+                {/* 1. 알림 버튼 */}
+                <button 
+                    onClick={handleOpenNotification} 
+                    className="bg-white text-brand-main border border-brand-main/20 p-3 rounded-full shadow-lg hover:bg-gray-50 active:scale-90 flex items-center justify-center relative w-12 h-12"
+                >
+                    <NotificationsIcon style={{ fontSize: 24 }} />
+                    {hasNewNotifications && <span className="absolute top-2 right-2.5 w-2 h-2 bg-brand-red rounded-full ring-1 ring-white"></span>}
+                </button>
+
+                {/* 2. 메신저 버튼 (isFloating={false}로 설정하여 위 버튼 바로 아래에 붙도록 함) */}
+                <StudentMessenger 
+                    studentId={studentId} 
+                    teacherName="채수용 선생님" 
+                    messages={messages} 
+                    onSendMessage={onSendMessage} 
+                    isHidden={isVideoModalOpen} 
+                    isFloating={false} 
+                />
             </div>
-            <StudentMessenger studentId={studentId} teacherName="채수용 선생님" messages={messages} onSendMessage={onSendMessage} isHidden={isVideoModalOpen} bottomPosition="bottom-36" />
             <StudentNotifications isOpen={isNotificationOpen} onClose={() => setIsNotificationOpen(false)} notices={visibleNotices} onDelete={handleDeleteNotice} onNoticeClick={handleLinkToBoard} />
         </div>
     );
