@@ -1782,6 +1782,10 @@
   --tw-leading: 1;
   line-height: 1;
 }
+.tracking-\[0\.2em\] {
+  --tw-tracking: 0.2em;
+  letter-spacing: 0.2em;
+}
 .text-balance {
   text-wrap: balance;
 }
@@ -2923,6 +2927,10 @@ body {
   syntax: "*";
   inherits: false;
 }
+@property --tw-tracking {
+  syntax: "*";
+  inherits: false;
+}
 @property --tw-ordinal {
   syntax: "*";
   inherits: false;
@@ -3159,6 +3167,7 @@ body {
       --tw-border-style: solid;
       --tw-divide-y-reverse: 0;
       --tw-leading: initial;
+      --tw-tracking: initial;
       --tw-ordinal: initial;
       --tw-slashed-zero: initial;
       --tw-numeric-figure: initial;

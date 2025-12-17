@@ -48,8 +48,8 @@ export default function StudentManagement({
     return (
         <div className="space-y-6">
             <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-                <div className="flex justify-between items-center mb-4">
-                    <div className="flex space-x-3 items-center w-1/3">
+                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between mb-4">
+                    <div className="flex space-x-3 items-center w-full md:w-1/2 lg:w-1/3">
                         <Icon name="search" className="w-5 h-5 text-gray-400"/>
                         <input
                             type="text"
@@ -59,16 +59,18 @@ export default function StudentManagement({
                             className="p-2 border border-gray-300 rounded-lg w-full focus:ring-2 focus:ring-indigo-900 focus:border-indigo-900 transition-colors"
                         />
                     </div>
-                    <button 
-                        onClick={handleNewStudent}
-                        className="bg-indigo-900 hover:bg-indigo-800 text-white font-bold py-2 px-4 rounded-lg flex items-center shadow-md transition duration-150 text-sm"
-                    >
-                        <Icon name="plus" className="w-5 h-5 mr-2" />
-                        새 학생 등록
-                    </button>
+                    <div className="flex w-full justify-end">
+                        <button 
+                            onClick={handleNewStudent}
+                            className="w-full md:w-auto justify-center bg-indigo-900 hover:bg-indigo-800 text-white font-bold py-2 px-4 rounded-lg flex items-center shadow-md transition duration-150 text-sm"
+                        >
+                            <Icon name="plus" className="w-5 h-5 mr-2" />
+                            새 학생 등록
+                        </button>
+                    </div>
                 </div>
                 
-                <div className="overflow-x-auto rounded-lg border border-gray-200">
+                <div className="overflow-x-auto rounded-lg border border-gray-200 hidden md:block">
                     <table className="min-w-full divide-y divide-gray-200">
                         <thead className="bg-gray-100">
                             <tr>
@@ -139,8 +141,79 @@ export default function StudentManagement({
                         </tbody>
                     </table>
                 </div>
+
+                {/* ✅ 모바일 카드 뷰 */}
+                <div className="grid gap-3 md:hidden">
+                    {filteredStudents.map(student => {
+                        const hasExternal = externalSchedules?.some(s => s.studentId === student.id);
+                        return (
+                            <div 
+                                key={student.id}
+                                onClick={() => handlePageChange('students', student.id)}
+                                className="border border-gray-200 rounded-xl p-4 shadow-sm bg-white active:scale-[0.99] transition"
+                            >
+                                <div className="flex justify-between items-start">
+                                    <div>
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-base font-bold text-gray-900">{student.name}</span>
+                                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${student.status === '재원생' ? 'bg-green-50 text-green-700 ring-1 ring-green-100' : 'bg-gray-100 text-gray-500'}`}>
+                                                {student.status}
+                                            </span>
+                                        </div>
+                                        <p className="text-xs text-gray-500 mt-1">{student.school} • {student.grade}</p>
+                                        <p className="text-sm text-gray-700 mt-2 leading-snug">{getClassesNames(student.classes) || '수강 정보 없음'}</p>
+                                        <div className="mt-2 space-y-1 text-xs text-gray-500">
+                                            <p className="font-medium text-gray-700">학생: {student.phone}</p>
+                                            <p>학부모: {student.parentPhone}</p>
+                                            <p className="text-gray-400">등록일 {student.registeredDate}</p>
+                                        </div>
+                                    </div>
+                                    <div className="flex flex-col gap-2">
+                                        <button 
+                                            type="button" 
+                                            onClick={(e) => {e.stopPropagation(); openScheduleModal(student);}}
+                                            className={`p-2 rounded-lg transition-colors ${
+                                                hasExternal 
+                                                    ? 'text-indigo-700 bg-indigo-50 hover:bg-indigo-100 ring-1 ring-indigo-100' 
+                                                    : 'text-gray-400 bg-gray-50 hover:bg-gray-100'
+                                            }`}
+                                            title={hasExternal ? "타학원 시간표 보기" : "타학원 시간표 없음"}
+                                        >
+                                            <Icon name="calendar" className="w-5 h-5" />
+                                        </button>
+                                        <button 
+                                            type="button" 
+                                            onClick={(e) => {e.stopPropagation(); openMemoModal(student);}}
+                                            className="p-2 rounded-lg text-gray-500 bg-gray-50 hover:bg-yellow-50 hover:text-yellow-700 transition-colors"
+                                            title="메모"
+                                        >
+                                            <Icon name="fileText" className="w-5 h-5" />
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className="flex justify-end gap-2 mt-3">
+                                    <button 
+                                        type="button" 
+                                        onClick={(e) => {e.stopPropagation(); handleEdit(student);}}
+                                        className="flex-1 text-sm font-semibold text-indigo-900 bg-indigo-50 hover:bg-indigo-100 rounded-lg py-2 transition-colors"
+                                    >
+                                        수정
+                                    </button>
+                                    <button 
+                                        type="button" 
+                                        onClick={(e) => {e.stopPropagation(); if(window.confirm(`${student.name} 학생을 정말 삭제하시겠습니까?`)) handleDeleteStudent(student.id);}}
+                                        className="flex-1 text-sm font-semibold text-red-600 bg-red-50 hover:bg-red-100 rounded-lg py-2 transition-colors"
+                                    >
+                                        삭제
+                                    </button>
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
             </div>
-            
+
             <StudentFormModal isOpen={isStudentModalOpen} onClose={() => setIsStudentModalOpen(false)} student={studentToEdit} allClasses={classes} onSave={handleSaveStudent} />
             <MemoModal isOpen={memoModalState.isOpen} onClose={closeMemoModal} onSave={handleSaveMemo} studentId={memoModalState.studentId} initialContent={memoModalState.content} studentName={memoModalState.studentName} />
             

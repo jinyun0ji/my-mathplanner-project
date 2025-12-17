@@ -86,7 +86,7 @@ const ParentDashboard = ({
             {/* 1. 상단 상태 요약 카드 */}
             <section>
                 <h3 className="text-sm font-bold text-gray-500 mb-3 px-1">학습 상태 요약</h3>
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div onClick={() => setActiveTab('report')} className={`p-4 rounded-2xl border flex flex-col items-center justify-center text-center shadow-sm cursor-pointer active:scale-95 transition-all ${statusData.attend.color}`}>
                         <div className="mb-2 opacity-80"><Icon name="user" className="w-6 h-6" /></div>
                         <span className="text-xs font-medium opacity-70 mb-0.5">최근 출결</span>
@@ -114,10 +114,10 @@ const ParentDashboard = ({
                     </h3>
                     <span className="text-xs text-gray-500">{today.getMonth() + 1}월 {today.getDate()}일 ({todayDayName})</span>
                 </div>
-                <div className="p-2">
+                <div className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {todaySchedules.length > 0 ? (
                         todaySchedules.map((item, idx) => (
-                            <div key={idx} className="flex items-center gap-3 p-3 hover:bg-gray-50 rounded-xl transition-colors">
+                             <div key={idx} className="flex items-center gap-3 p-3 hover:bg-indigo-50 rounded-xl transition-colors border border-gray-100">
                                 <span className="text-xs font-mono font-bold text-gray-500 bg-gray-100 px-2 py-1 rounded">{item.time}</span>
                                 <div>
                                     <div className="font-bold text-gray-900 text-sm">{item.title}</div>
@@ -126,7 +126,7 @@ const ParentDashboard = ({
                             </div>
                         ))
                     ) : (
-                        <div className="py-8 text-center text-gray-400 text-xs">
+                        <div className="py-8 text-center text-gray-400 text-xs sm:col-span-2">
                             예정된 학원 일정이 없습니다.
                         </div>
                     )}
@@ -221,6 +221,33 @@ export default function ParentHome({
         if (combinedNotices.length > visibleNotices.length) setHasNewNotifications(true);
     }, [notices, activeChildId, unpaidPayments.length, activeChild.name]);
 
+    const pendingHomeworkCount = useMemo(
+        () => myHomeworkStats.filter(h => h.status !== '완료').length,
+        [myHomeworkStats]
+    );
+
+    const latestAttendance = useMemo(() => {
+        const logs = attendanceLogs
+            .filter(l => l.studentId === activeChildId)
+            .sort((a, b) => new Date(b.date) - new Date(a.date));
+        if (!logs.length) return null;
+        return { status: logs[0].status, date: logs[0].date };
+    }, [attendanceLogs, activeChildId]);
+
+    const latestGrade = useMemo(() => {
+        if (!myGradeComparison || myGradeComparison.length === 0) return null;
+        const sorted = [...myGradeComparison].sort((a, b) => new Date(a.testDate) - new Date(b.testDate));
+        return sorted[sorted.length - 1];
+    }, [myGradeComparison]);
+
+    const nextClass = useMemo(() => {
+        if (!myClasses || myClasses.length === 0) return null;
+        const sorted = [...myClasses].sort((a, b) => a.schedule.time.localeCompare(b.schedule.time));
+        return sorted[0];
+    }, [myClasses]);
+
+    const noticePreview = useMemo(() => visibleNotices.slice(0, 3), [visibleNotices]);
+
     // ✅ 리포트 데이터 생성 (현재 선택된 리포트 ID가 있을 때만)
     const activeReport = useMemo(() => {
         if (!selectedReportId) return null;
@@ -285,12 +312,124 @@ export default function ParentHome({
                     /* [라우팅 분기 3] 메인 대시보드 */
                     <div className="animate-fade-in space-y-4">
                         {activeTab === 'home' && (
-                            <ParentDashboard 
-                                child={activeChild} myClasses={myClasses} attendanceLogs={attendanceLogs} 
-                                homeworkStats={myHomeworkStats} gradeComparison={myGradeComparison} 
-                                clinicLogs={clinicLogs} unpaidPayments={unpaidPayments}
-                                setActiveTab={setActiveTab} 
-                            />
+                            <div className="space-y-4">
+                                <section className="bg-gradient-to-br from-indigo-900 via-indigo-800 to-blue-700 text-white rounded-3xl p-6 md:p-8 shadow-lg border border-indigo-800/40">
+                                    <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
+                                        <div className="space-y-3">
+                                            <p className="text-xs uppercase tracking-[0.2em] text-indigo-200 font-semibold">학부모 홈</p>
+                                            <h2 className="text-2xl md:text-3xl font-extrabold tracking-tight">{activeChild.name} 학습 현황</h2>
+                                            <p className="text-sm text-indigo-100">오늘 바로 확인해야 할 과제, 일정, 결제 정보를 한눈에 모았습니다.</p>
+                                            <div className="flex flex-wrap gap-2">
+                                                <span className="bg-white/10 border border-white/20 text-indigo-50 px-3 py-1.5 rounded-full text-xs font-semibold">
+                                                    {latestAttendance ? `최근 출결: ${latestAttendance.status} (${latestAttendance.date})` : '출결 기록 준비 중'}
+                                                </span>
+                                                <span className="bg-white/10 border border-white/20 text-indigo-50 px-3 py-1.5 rounded-full text-xs font-semibold">
+                                                    미제출 과제 {pendingHomeworkCount}건
+                                                </span>
+                                                <span className={`px-3 py-1.5 rounded-full text-xs font-semibold border ${unpaidPayments.length > 0 ? 'bg-red-500/20 border-red-200 text-white' : 'bg-white/10 border-white/20 text-indigo-50'}`}>
+                                                    미납 {unpaidPayments.length}건
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-3 lg:w-[360px]">
+                                            <div className="bg-white/10 border border-white/20 rounded-2xl p-4 backdrop-blur">
+                                                <p className="text-xs text-indigo-100 font-semibold mb-1">다음 수업</p>
+                                                {nextClass ? (
+                                                    <>
+                                                        <p className="text-lg font-bold text-white">{nextClass.name}</p>
+                                                        <p className="text-sm text-indigo-100 mt-1">{nextClass.schedule.days.join(', ')} {nextClass.schedule.time}</p>
+                                                        <p className="text-xs text-indigo-100/80 mt-2">{nextClass.teacher} 선생님</p>
+                                                    </>
+                                                ) : (
+                                                    <p className="text-sm text-indigo-100">등록된 일정이 없습니다.</p>
+                                                )}
+                                            </div>
+                                            <div className="bg-white/10 border border-white/20 rounded-2xl p-4 backdrop-blur">
+                                                <p className="text-xs text-indigo-100 font-semibold mb-1">최근 성적</p>
+                                                {latestGrade ? (
+                                                    <>
+                                                        <p className="text-lg font-bold text-white">{latestGrade.testName}</p>
+                                                        <p className="text-sm text-indigo-100 mt-1">점수 {latestGrade.studentScore}점 / 반 평균 {latestGrade.classAverage}점</p>
+                                                        <p className="text-xs text-indigo-100/80 mt-2">{latestGrade.testDate}</p>
+                                                    </>
+                                                ) : (
+                                                    <p className="text-sm text-indigo-100">등록된 시험 기록이 없습니다.</p>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="flex flex-wrap gap-2 mt-6">
+                                        <button onClick={() => setActiveTab('report')} className="bg-white text-indigo-900 px-4 py-2 rounded-xl font-bold text-sm shadow-md hover:-translate-y-0.5 transition-transform">학습 리포트 보기</button>
+                                        <button onClick={() => setActiveTab('schedule')} className="bg-indigo-800/70 border border-white/20 text-white px-4 py-2 rounded-xl font-bold text-sm hover:bg-indigo-700/80 transition-colors">일정 확인</button>
+                                        <button onClick={() => setActiveTab('payment')} className="bg-indigo-800/70 border border-white/20 text-white px-4 py-2 rounded-xl font-bold text-sm hover:bg-indigo-700/80 transition-colors">결제 현황</button>
+                                    </div>
+                                </section>
+
+                                <div className="grid gap-4 lg:grid-cols-3">
+                                    <div className="space-y-4 lg:col-span-2">
+                                        <ParentDashboard 
+                                            child={activeChild} myClasses={myClasses} attendanceLogs={attendanceLogs} 
+                                            homeworkStats={myHomeworkStats} gradeComparison={myGradeComparison} 
+                                            clinicLogs={clinicLogs} unpaidPayments={unpaidPayments}
+                                            setActiveTab={setActiveTab} 
+                                        />
+                                    </div>
+                                    <aside className="space-y-4">
+                                        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4">
+                                            <div className="flex items-center justify-between mb-2">
+                                                <h3 className="text-sm font-bold text-gray-800 flex items-center gap-2">
+                                                    <Icon name="bell" className="w-4 h-4 text-indigo-600" />
+                                                    최근 알림
+                                                </h3>
+                                                <button onClick={() => setActiveTab('board')} className="text-xs text-indigo-600 font-semibold hover:underline">전체 보기</button>
+                                            </div>
+                                            <div className="space-y-2">
+                                                {noticePreview.length > 0 ? noticePreview.map(notice => (
+                                                    <button 
+                                                        key={notice.id} 
+                                                        onClick={() => setActiveTab('board')}
+                                                        className="w-full text-left p-3 rounded-xl border border-gray-100 hover:border-indigo-200 hover:bg-indigo-50 transition-colors"
+                                                    >
+                                                        <p className="text-sm font-bold text-gray-900">{notice.title}</p>
+                                                        <p className="text-xs text-gray-500 mt-1">{notice.content}</p>
+                                                        <p className="text-[11px] text-gray-400 mt-1">{notice.author || '채수용 수학'} • {notice.date}</p>
+                                                    </button>
+                                                )) : (
+                                                    <p className="text-xs text-gray-500 py-2">새로운 알림이 없습니다.</p>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4 space-y-3">
+                                            <div className="flex items-center justify-between">
+                                                <h3 className="text-sm font-bold text-gray-800 flex items-center gap-2">
+                                                    <Icon name="wallet" className="w-4 h-4 text-indigo-600" />
+                                                    결제 요약
+                                                </h3>
+                                                <span className={`text-[11px] font-bold px-2 py-1 rounded-full ${unpaidPayments.length > 0 ? 'bg-red-50 text-red-700 ring-1 ring-red-100' : 'bg-green-50 text-green-700 ring-1 ring-green-100'}`}>
+                                                    {unpaidPayments.length > 0 ? `미납 ${unpaidPayments.length}건` : '모두 납부 완료'}
+                                                </span>
+                                            </div>
+                                            {myPayments.length > 0 ? (
+                                                <div className="p-3 rounded-xl bg-gray-50 border border-gray-100">
+                                                    <p className="text-xs text-gray-500 mb-1">최근 결제</p>
+                                                    <p className="text-sm font-bold text-gray-900">{myPayments[0].bookName || `${myPayments[0].month} 수강료`}</p>
+                                                    <p className="text-xs text-gray-500 mt-1">{myPayments[0].date} • {myPayments[0].method}</p>
+                                                    <p className="text-lg font-extrabold text-indigo-900 mt-1">{myPayments[0].amount.toLocaleString()}원</p>
+                                                </div>
+                                            ) : (
+                                                <p className="text-xs text-gray-500">결제 내역이 없습니다.</p>
+                                            )}
+                                            <button 
+                                                onClick={() => setActiveTab('payment')} 
+                                                className="w-full py-2 rounded-lg text-sm font-bold bg-indigo-50 text-indigo-900 hover:bg-indigo-100 transition-colors"
+                                            >
+                                                결제 내역 전체 보기
+                                            </button>
+                                        </div>
+                                    </aside>
+                                </div>
+                            </div>
                         )}
                         {activeTab === 'report' && (
                             <div className="space-y-6">

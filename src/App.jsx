@@ -633,7 +633,7 @@ export default function App() {
         ${isSidebarOpen || isMessengerOpen ? 'mr-80' : 'mr-0'}
     `}>
       <Header page={page} />
-      <main id="main-content" className="overflow-x-hidden overflow-y-auto bg-gray-100 p-6 min-w-0">
+      <main id="main-content" className="overflow-x-hidden overflow-y-auto bg-gray-100 p-4 md:p-6 min-w-0">
         <PageContent page={page} {...managementProps} />
       </main>
     </div>
