@@ -1,24 +1,19 @@
 import { useEffect, useState } from 'react';
-import {
-    GoogleAuthProvider,
-    onAuthStateChanged,
-    signInWithCustomToken as firebaseSignInWithCustomToken,
-    signInWithEmailAndPassword,
-    signInWithPopup,
-    signOut,
-} from 'firebase/auth';
+import { onAuthStateChanged, signInWithCustomToken as firebaseSignInWithCustomToken, signOut } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
+import { auth, db } from '../firebase/client';
+import { signInWithEmail as signInWithEmailService, signInWithGooglePopup as signInWithGooglePopupService } from './authService';
 
-export default function useAuth(authInstance, dbInstance) {
+export default function useAuth() {
     const [isLoggedIn, setIsLoggedIn] = useState(false);
     const [userRole, setUserRole] = useState(null);
     const [userId, setUserId] = useState(null);
 
     useEffect(() => {
-        if (!authInstance) return undefined;
+        if (!auth) return undefined;
         
         let isCancelled = false;
-        const unsubscribe = onAuthStateChanged(authInstance, async (user) => {
+        const unsubscribe = onAuthStateChanged(auth, async (user) => {
             if (isCancelled) return;
 
             setIsLoggedIn(Boolean(user));
@@ -29,13 +24,13 @@ export default function useAuth(authInstance, dbInstance) {
                 return;
             }
 
-            if (!dbInstance) {
+            if (!db) {
                 setUserRole(null);
                 return;
             }
 
             try {
-                const snap = await getDoc(doc(dbInstance, 'users', user.uid));
+                const snap = await getDoc(doc(db, 'users', user.uid));
                 if (isCancelled) return;
                 const role = snap.exists() ? snap.data()?.role ?? null : null;
                 setUserRole(role);
@@ -49,30 +44,21 @@ export default function useAuth(authInstance, dbInstance) {
             isCancelled = true;
             unsubscribe();
         };
-    }, [authInstance, dbInstance]);
+    }, []);
 
-    const signInWithEmail = async (email, password) => {
-        if (!authInstance) throw new Error('Firebase가 초기화되지 않았습니다.');
-        const { user } = await signInWithEmailAndPassword(authInstance, email, password);
-        return user?.uid;
-    };
+    const signInWithEmail = async (email, password) => signInWithEmailService(email, password);
 
-    const signInWithGoogle = async () => {
-        if (!authInstance) throw new Error('Firebase가 초기화되지 않았습니다.');
-        const provider = new GoogleAuthProvider();
-        const { user } = await signInWithPopup(authInstance, provider);
-        return user?.uid;
-    };
+    const signInWithGooglePopup = async () => signInWithGooglePopupService();
 
     const signInWithCustomToken = async (customToken) => {
-        if (!authInstance) throw new Error('Firebase가 초기화되지 않았습니다.');
+        if (!auth) throw new Error('Firebase가 초기화되지 않았습니다.');
         if (!customToken) throw new Error('커스텀 토큰이 필요합니다.');
-        const { user } = await firebaseSignInWithCustomToken(authInstance, customToken);
+        const { user } = await firebaseSignInWithCustomToken(auth, customToken);
         return user?.uid;
     };
 
     const handleLogout = async () => {
-        if (authInstance) await signOut(authInstance);
+        if (auth) await signOut(auth);
         setIsLoggedIn(false);
         setUserRole(null);
         setUserId(null);
@@ -84,7 +70,7 @@ export default function useAuth(authInstance, dbInstance) {
         userId,
         handleLogout,
         signInWithEmail,
-        signInWithGoogle,
+        signInWithGooglePopup,
         signInWithCustomToken,
     };
 }

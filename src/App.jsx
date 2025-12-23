@@ -1,9 +1,6 @@
 // src/App.jsx
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import './output.css';
-import { getAuth } from 'firebase/auth';
-import { getFirestore, setLogLevel } from 'firebase/firestore';
-import { initializeApp } from 'firebase/app';
 
 import { 
     initialStudents, initialClasses, initialLessonLogs, initialAttendanceLogs, 
@@ -35,22 +32,8 @@ import InternalCommunication from './pages/InternalCommunication';
 import PaymentManagement from './pages/PaymentManagement';
 import ParentHome from './pages/ParentHome';
 import useAuth from './auth/useAuth';
+import { db } from './firebase/client';
 import { loadViewerDataOnce, startStaffFirestoreSync } from './data/firestoreSync';
-
-const firebaseConfig = typeof window.__firebase_config !== 'undefined' ? JSON.parse(window.__firebase_config) : {};
-const initialAuthToken = typeof window.__initial_auth_token !== 'undefined' ? window.__initial_auth_token : null; 
-
-let db = null; 
-let auth = null; 
-
-try {
-    const firebaseApp = initializeApp(firebaseConfig);
-    db = getFirestore(firebaseApp);
-    auth = getAuth(firebaseApp);
-    setLogLevel('error');
-} catch (error) {
-    console.error("Firebase initialization error. Using local mock data only:", error);
-}
 
 const PageContent = (props) => {
     const { page, selectedStudentId } = props;
@@ -76,9 +59,9 @@ export default function App() {
     userId,
     handleLogout: handleAuthLogout,
     signInWithEmail,
-    signInWithGoogle,
+    signInWithGooglePopup,
     signInWithCustomToken,
-  } = useAuth(auth, db);
+  } = useAuth();
   const [page, setPage] = useState('lessons');
   const [selectedStudentId, setSelectedStudentId] = useState(() =>
       ['student', 'parent'].includes(userRole) ? userId : null
@@ -175,7 +158,7 @@ export default function App() {
   };
 
   const handleSocialLogin = async (providerName) => {
-      if (providerName === 'google') return signInWithGoogle();
+      if (providerName === 'google') return signInWithGooglePopup();
       const customToken = window?.__customAuthTokens?.[providerName];
       return signInWithCustomToken(customToken);
   };
