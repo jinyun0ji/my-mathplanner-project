@@ -1,5 +1,5 @@
 // src/App.jsx
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import './output.css'; 
 import { 
     getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged,
@@ -56,6 +56,16 @@ try {
     console.error("Firebase initialization error. Using local mock data only:", error);
 }
 
+const initialSession = (() => {
+    if (typeof localStorage === 'undefined') return null;
+    try {
+        return JSON.parse(localStorage.getItem('session')) || null;
+    } catch (error) {
+        console.error('세션 정보를 불러오지 못했습니다:', error);
+        return null;
+    }
+})();
+
 const PageContent = (props) => {
     const { page, selectedStudentId } = props;
     if (page === 'students' && selectedStudentId !== null) return <StudentDetail {...props} studentId={selectedStudentId} />;
@@ -73,12 +83,14 @@ const PageContent = (props) => {
     }
 };
 
-export default function App() { 
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [userRole, setUserRole] = useState(null); 
-  const [userId, setUserId] = useState(null); 
-  const [page, setPage] = useState('lessons'); 
-  const [selectedStudentId, setSelectedStudentId] = useState(null); 
+export default function App() {
+  const [isLoggedIn, setIsLoggedIn] = useState(() => Boolean(initialSession?.isLoggedIn));
+  const [userRole, setUserRole] = useState(() => initialSession?.userRole || null);
+  const [userId, setUserId] = useState(() => initialSession?.userId || null);
+  const [page, setPage] = useState('lessons');
+  const [selectedStudentId, setSelectedStudentId] = useState(() =>
+      ['student', 'parent'].includes(initialSession?.userRole) ? initialSession.userId : null
+  );
   const [notifications, setNotifications] = useState([]); 
   const [isGlobalDirty, setIsGlobalDirty] = useState(false);
   const [studentSearchTerm, setStudentSearchTerm] = useState('');
@@ -308,6 +320,7 @@ export default function App() {
   const [studentMessages, setStudentMessages] = useState([
       { id: 1, channelId: 'teacher', sender: '채수용 선생님', text: '철수야, 오늘 클리닉 늦을 것 같니?', date: '2025-11-29', time: '13:50', isMe: false },
   ]);
+  const processedAnnouncementIdsRef = useRef(new Set());
   
   const nextStudentId = students.reduce((max, s) => Math.max(max, Number(s.id) || 0), 0) + 1; 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -325,6 +338,57 @@ export default function App() {
         return () => unsubscribe();
     } 
   }, []); 
+
+  useEffect(() => {
+      if (typeof localStorage === 'undefined') return;
+      if (isLoggedIn && userRole && userId !== null) {
+          try {
+              localStorage.setItem('session', JSON.stringify({ isLoggedIn: true, userRole, userId }));
+          } catch (error) {
+              console.error('세션 정보를 저장하지 못했습니다:', error);
+          }
+      } else {
+          try {
+              localStorage.removeItem('session');
+          } catch (error) {
+              console.error('세션 정보를 삭제하지 못했습니다:', error);
+          }
+      }
+  }, [isLoggedIn, userRole, userId]);
+
+  useEffect(() => {
+      if (!announcements || announcements.length === 0) return;
+      if (!['student', 'parent'].includes(userRole)) return;
+
+      const processed = processedAnnouncementIdsRef.current;
+      const newMessages = [];
+
+      announcements.forEach((notice) => {
+          if (!notice?.id || processed.has(notice.id)) return;
+          const isTargetedToUser = !notice.targetStudents || notice.targetStudents.length === 0 || notice.targetStudents.includes(userId);
+          if (!isTargetedToUser) return;
+
+          const dateString = notice.date || new Date().toISOString().split('T')[0];
+          const timeString = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+
+          newMessages.push({
+              id: `notice-${notice.id}`,
+              channelId: 'teacher',
+              sender: notice.author || '학원 알림',
+              text: notice.content || notice.title,
+              date: dateString,
+              time: timeString,
+              isMe: false,
+          });
+
+          processed.add(notice.id);
+      });
+
+      if (newMessages.length > 0) {
+          setStudentMessages((prev) => [...prev, ...newMessages]);
+          setHasNewMessages(true);
+      }
+  }, [announcements, userRole, userId]);
 
   const logNotification = useCallback((type, message, details) => {
       setNotifications(prev => [{ id: Date.now(), type, message, details, timestamp: new Date().toLocaleTimeString('ko-KR') }, ...prev]);
@@ -410,13 +474,27 @@ export default function App() {
       if (map[key]) handlePageChange(map[key]);
   };
 
-  const handleLoginSuccess = (role, id) => { setIsLoggedIn(true); setUserRole(role); setUserId(id); if(['student','parent'].includes(role)) setSelectedStudentId(id); };
+  const handleLoginSuccess = (role, id) => {
+      setIsLoggedIn(true);
+      setUserRole(role);
+      setUserId(id);
+      processedAnnouncementIdsRef.current = new Set();
+      if(['student','parent'].includes(role)) setSelectedStudentId(id);
+  };
+
+  const handleLogout = () => {
+      setIsLoggedIn(false);
+      setUserRole(null);
+      setUserId(null);
+      setSelectedStudentId(null);
+      processedAnnouncementIdsRef.current = new Set();
+  };
 
   if (!isLoggedIn) return <LoginPage onLogin={handleLoginSuccess} onSocialLogin={handleSocialLogin} />;
 
   // 학생/학부모 뷰
-  if (userRole === 'student') return <StudentHome studentId={userId} students={students} classes={classes} homeworkAssignments={homeworkAssignments} homeworkResults={homeworkResults} attendanceLogs={attendanceLogs} lessonLogs={lessonLogs} notices={announcements} tests={tests} grades={grades} videoProgress={videoProgress} onSaveVideoProgress={handleSaveVideoProgress} videoBookmarks={videoBookmarks} onSaveBookmark={handleSaveBookmark} externalSchedules={externalSchedules} onSaveExternalSchedule={handleSaveExternalSchedule} onDeleteExternalSchedule={handleDeleteExternalSchedule} clinicLogs={clinicLogs} onUpdateStudent={handleSaveStudent} messages={studentMessages} onSendMessage={() => {}} onLogout={() => setIsLoggedIn(false)} />;
-  if (userRole === 'parent') return <ParentHome studentId={userId} students={students} classes={classes} homeworkAssignments={homeworkAssignments} homeworkResults={homeworkResults} attendanceLogs={attendanceLogs} lessonLogs={lessonLogs} notices={announcements} tests={tests} grades={grades} clinicLogs={clinicLogs} videoProgress={videoProgress} onLogout={() => setIsLoggedIn(false)} externalSchedules={externalSchedules} onSaveExternalSchedule={handleSaveExternalSchedule} onDeleteExternalSchedule={handleDeleteExternalSchedule} messages={studentMessages} onSendMessage={() => {}} />;
+  if (userRole === 'student') return <StudentHome studentId={userId} students={students} classes={classes} homeworkAssignments={homeworkAssignments} homeworkResults={homeworkResults} attendanceLogs={attendanceLogs} lessonLogs={lessonLogs} notices={announcements} tests={tests} grades={grades} videoProgress={videoProgress} onSaveVideoProgress={handleSaveVideoProgress} videoBookmarks={videoBookmarks} onSaveBookmark={handleSaveBookmark} externalSchedules={externalSchedules} onSaveExternalSchedule={handleSaveExternalSchedule} onDeleteExternalSchedule={handleDeleteExternalSchedule} clinicLogs={clinicLogs} onUpdateStudent={handleSaveStudent} messages={studentMessages} onSendMessage={() => {}} onLogout={handleLogout} />;
+  if (userRole === 'parent') return <ParentHome studentId={userId} students={students} classes={classes} homeworkAssignments={homeworkAssignments} homeworkResults={homeworkResults} attendanceLogs={attendanceLogs} lessonLogs={lessonLogs} notices={announcements} tests={tests} grades={grades} clinicLogs={clinicLogs} videoProgress={videoProgress} onLogout={handleLogout} externalSchedules={externalSchedules} onSaveExternalSchedule={handleSaveExternalSchedule} onDeleteExternalSchedule={handleDeleteExternalSchedule} messages={studentMessages} onSendMessage={() => {}} />;
 
   // 관리자(직원) 뷰 Props
   const managementProps = {
@@ -440,8 +518,8 @@ export default function App() {
     <div className="md:hidden fixed top-3 left-4 z-40">
         <button onClick={() => setIsMobileMenuOpen(true)} className="p-2 bg-white rounded-lg shadow-md text-indigo-900 hover:bg-gray-50 border border-gray-100"><Icon name="menu" className="w-6 h-6" /></button>
     </div>
-    <Sidebar page={page} setPage={(p, id, r) => { handlePageChange(p, id, r); setIsMobileMenuOpen(false); }} onLogout={() => setIsLoggedIn(false)} isOpen={isMobileMenuOpen} onClose={() => setIsMobileMenuOpen(false)} />
-    {isMobileMenuOpen && <div className="fixed inset-0 bg-black/50 z-40 md:hidden backdrop-blur-sm" onClick={() => setIsMobileMenuOpen(false)}></div>}
+    <Sidebar page={page} setPage={(p, id, r) => { handlePageChange(p, id, r); setIsMobileMenuOpen(false); }} onLogout={handleLogout} isOpen={isMobileMenuOpen} onClose={() => setIsMobileMenuOpen(false)} />
+        {isMobileMenuOpen && <div className="fixed inset-0 bg-black/50 z-40 md:hidden backdrop-blur-sm" onClick={() => setIsMobileMenuOpen(false)}></div>}
     <div className={`flex-1 flex flex-col overflow-hidden min-w-0 transition-all duration-300 md:ml-64 ${isSidebarOpen || isMessengerOpen ? 'mr-80' : 'mr-0'}`}>
       <Header page={page} />
       <main id="main-content" className="overflow-x-hidden overflow-y-auto bg-gray-100 p-4 md:p-6 min-w-0">
