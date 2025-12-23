@@ -89,6 +89,10 @@ service cloud.firestore {
       allow update: if isAdmin()
         && !request.resource.data.diff(resource.data).changedKeys().hasAny(['role']);
       allow delete: if isAdmin();
+
+      match /chatIndex/{chatId} {
+        allow get, list, create, update, delete: if isSignedIn() && request.auth.uid == uid;
+      }
     }
 
     match /linkCodes/{code} {
@@ -164,14 +168,16 @@ service cloud.firestore {
     match /chats/{chatId} {
       allow get: if isChatParticipantByData(resource.data);
       allow list: if isSignedIn() && hasChatParticipantFilter();
-      allow create: if isChatParticipantByData(request.resource.data);
-      allow update: if isChatParticipantByData(resource.data);
-      allow delete: if isChatParticipantByData(resource.data);
+      allow create: if isStaffOrAdmin() && isChatParticipantByData(request.resource.data);
+      allow update: if isStaffOrAdmin() && isChatParticipantByData(resource.data);
+      allow delete: if isStaffOrAdmin() && isChatParticipantByData(resource.data);
 
       match /messages/{messageId} {
         allow get: if isChatParticipant(chatId);
         allow list: if isSignedIn() && isChatParticipant(chatId) && isQueryAllowed();
-        allow create: if isChatParticipant(chatId);
+        allow create: if isChatParticipant(chatId)
+          && request.resource.data.senderId == request.auth.uid
+          && request.resource.data.createdAt == request.time;
         allow update, delete: if false;
       }
     }
@@ -181,7 +187,8 @@ service cloud.firestore {
       allow list: if isSignedIn() && hasNotificationTargetFilter();
       allow write: if isStaffOrAdmin();
     }
-
+    
+    // Messages should always be queried with a limit from the client to prevent cost spikes.
     match /{document=**} {
       allow read, write: if false;
     }
