@@ -183,70 +183,74 @@ export default function LessonManagement({
 
             {videos.length > 0 && (
                     <div className="space-y-3 pt-4">
-                        <div className="bg-white border border-gray-200 rounded-lg overflow-hidden shadow-sm">
-                            {activeVideo ? (
-                                <div className="aspect-w-16 aspect-h-9 bg-black/5">
-                                    {getYouTubeId(activeVideo.url) ? (
-                                        <YouTubePlayer key={activeKey} videoId={getYouTubeId(activeVideo.url)} />
-                                    ) : (
-                                        <iframe
-                                            title={activeVideo.title}
-                                            src={activeVideo.url}
-                                            className="w-full h-full"
-                                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                                            allowFullScreen
-                                        />
-                                    )}
-                                </div>
-                            ) : (
-                                <div className="p-4 text-sm text-gray-500">재생할 영상을 선택하세요.</div>
-                            )}
-                        </div>
-
-                        <div className="flex items-center justify-between text-sm">
-                            <div className="flex items-center gap-2 text-gray-800 font-semibold">
-                                <Icon name="video" className="w-4 h-4 text-indigo-600" />
-                                수업 영상 목록
+                    <div className="bg-white border border-gray-200 rounded-lg overflow-hidden shadow-sm">
+                        {activeVideo ? (
+                            <div className="aspect-w-16 aspect-h-9 bg-black/5">
+                                {getYouTubeId(activeVideo.url) ? (
+                                    <YouTubePlayer key={activeKey} videoId={getYouTubeId(activeVideo.url)} />
+                                ) : (
+                                    <iframe
+                                        title={activeVideo.title}
+                                        src={activeVideo.url}
+                                        className="w-full h-full"
+                                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                        allowFullScreen
+                                    />
+                                )}
                             </div>
-                            {overallVideoProgress !== null && (
-                                <span className="px-3 py-1 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-100">
-                                    평균 진도율 {overallVideoProgress}%
-                                </span>
-                            )}
-                        </div>
-
-                        <div className="space-y-2">
-                            {videos.map((video, index) => {
-                                const key = getVideoKey(video, index);
-                                const isActive = key === activeKey;
-                                const progressValue = Number.isFinite(video.progress) ? video.progress : 0;
-
-                                return (
-                                    <button
-                                        key={key}
-                                        type="button"
-                                        onClick={() => setActiveVideoByLog(prev => ({ ...prev, [log.id]: key }))}
-                                        className={`w-full text-left p-3 rounded-lg border transition ${isActive ? 'border-indigo-200 bg-indigo-50 shadow-sm' : 'border-gray-200 bg-white hover:bg-gray-50'}`}
-                                    >
-                                        <div className="flex items-center justify-between gap-2">
-                                            <div className="flex items-center gap-2 min-w-0">
-                                                <Icon name={isActive ? 'playCircle' : 'play'} className="w-4 h-4 text-indigo-600" />
-                                                <p className="text-sm font-semibold text-gray-800 truncate">{video.title}</p>
-                                            </div>
-                                            <span className="text-xs font-bold text-indigo-700">{progressValue}%</span>
-                                        </div>
-                                        <div className="mt-2 w-full bg-gray-200 h-2 rounded-full overflow-hidden">
-                                            <div
-                                                className="h-2 bg-indigo-500"
-                                                style={{ width: `${Math.min(100, Math.max(0, progressValue))}%` }}
-                                            />
-                                        </div>
-                                    </button>
-                                );
-                            })}
-                        </div>
+                            ) : (
+                            <div className="p-4 text-sm text-gray-500">재생할 영상을 선택하세요.</div>
+                        )}
                     </div>
-                )}
+
+                    {videos.length > 1 && (
+                        <div className="space-y-2">
+                            <div className="flex items-center justify-between text-sm">
+                                <div className="flex items-center gap-2 text-gray-800 font-semibold">
+                                    <Icon name="video" className="w-4 h-4 text-indigo-600" />
+                                    수업 영상 목록
+                                </div>
+                                {overallVideoProgress !== null && (
+                                    <span className="px-3 py-1 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-100">
+                                        평균 진도율 {overallVideoProgress}%
+                                    </span>
+                                )}
+                            </div>
+
+                                <div className="space-y-2">
+                                {videos.map((video, index) => {
+                                    const key = getVideoKey(video, index);
+                                    const isActive = key === activeKey;
+                                    const progressValue = Number.isFinite(video.progress) ? video.progress : 0;
+
+                                    return (
+                                        <button
+                                            key={key}
+                                            type="button"
+                                            onClick={() => setActiveVideoByLog(prev => ({ ...prev, [log.id]: key }))}
+                                            className={`w-full text-left p-3 rounded-lg border transition ${isActive ? 'border-indigo-200 bg-indigo-50 shadow-sm' : 'border-gray-200 bg-white hover:bg-gray-50'}`}
+                                        >
+                                            <div className="flex items-center justify-between gap-2">
+                                                <div className="flex items-center gap-2 min-w-0">
+                                                    <Icon name={isActive ? 'playCircle' : 'play'} className="w-4 h-4 text-indigo-600" />
+                                                    <p className="text-sm font-semibold text-gray-800 truncate">{video.title}</p>
+                                                </div>
+                                                <span className="text-xs font-bold text-indigo-700">{progressValue}%</span>
+                                            </div>
+                                            <div className="mt-2 w-full bg-gray-200 h-2 rounded-full overflow-hidden">
+                                                <div
+                                                    className="h-2 bg-indigo-500"
+                                                    style={{ width: `${Math.min(100, Math.max(0, progressValue))}%` }}
+                                                />
+                                            </div>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
 
                 {log.materialUrl && (
                     <p className="text-sm font-medium text-indigo-600 flex items-center border-t pt-4">

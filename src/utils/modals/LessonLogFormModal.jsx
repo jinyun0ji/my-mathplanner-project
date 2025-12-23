@@ -1,5 +1,8 @@
 // src/utils/modals/LessonLogFormModal.jsx
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { DndContext, PointerSensor, closestCenter, useSensor, useSensors } from '@dnd-kit/core';
+import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { Modal } from '../../components/common/Modal';
 import { Icon, calculateClassSessions } from '../../utils/helpers';
 
@@ -40,6 +43,78 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
   }, [createVideoEntry]);
 
   const [isDirty, setIsDirty] = useState(false);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 5,
+      },
+    })
+  );
+
+  const SortableVideoItem = ({ video, index, onRemove, onChange }) => {
+    const {
+      attributes,
+      listeners,
+      setNodeRef,
+      transform,
+      transition,
+    } = useSortable({ id: video.id });
+
+    const style = {
+      transform: CSS.Transform.toString(transform),
+      transition,
+    };
+
+    return (
+      <div
+        ref={setNodeRef}
+        style={style}
+        className="rounded-lg border border-gray-200 bg-gray-50 p-4 space-y-3"
+      >
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+            <button
+              type="button"
+              className="cursor-grab text-gray-500 hover:text-gray-700"
+              {...attributes}
+              {...listeners}
+            >
+              <Icon name="menu" className="w-4 h-4" />
+            </button>
+            <span>영상 {index + 1}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => onRemove(video.id)}
+            className="text-red-500 hover:text-red-700 text-sm inline-flex items-center"
+          >
+            <Icon name="trash" className="w-4 h-4 mr-1" /> 삭제
+          </button>
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-600">영상 제목</label>
+          <input
+            type="text"
+            value={video.title}
+            onChange={e => onChange(video.id, 'title', e.target.value)}
+            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border"
+            placeholder="예: 3강 - 다항식 연산"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-600">iframe 코드 또는 URL</label>
+          <textarea
+            value={video.url}
+            onChange={e => onChange(video.id, 'url', e.target.value)}
+            rows="2"
+            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border"
+            placeholder="유튜브 임베드 코드 또는 공유 링크를 입력하세요."
+          />
+        </div>
+      </div>
+    );
+  };
 
   useEffect(() => {
     videoIdRef.current = 0;
@@ -141,6 +216,18 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
   const handleRemoveVideo = (id) => {
       setVideos(prev => prev.filter(video => video.id !== id));
       setIsDirty(true);
+  };
+
+  const handleDragEnd = (event) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    setVideos(prev => {
+      const oldIndex = prev.findIndex(video => video.id === active.id);
+      const newIndex = prev.findIndex(video => video.id === over.id);
+      return arrayMove(prev, oldIndex, newIndex);
+    });
+    setIsDirty(true);
   };
 
   const handleChange = (setter, value) => {
@@ -267,40 +354,19 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
                             영상 추가 버튼을 눌러 임베드 코드 또는 URL을 입력하세요.
                         </div>
                     )}
-                    {videos.map((video, index) => (
-                        <div key={video.id} className="rounded-lg border border-gray-200 bg-gray-50 p-4 space-y-3">
-                            <div className="flex items-center justify-between">
-                                <span className="text-sm font-semibold text-gray-700">영상 {index + 1}</span>
-                                <button
-                                    type="button"
-                                    onClick={() => handleRemoveVideo(video.id)}
-                                    className="text-red-500 hover:text-red-700 text-sm inline-flex items-center"
-                                >
-                                    <Icon name="trash" className="w-4 h-4 mr-1" /> 삭제
-                                </button>
-                            </div>
-                            <div>
-                                <label className="block text-xs font-medium text-gray-600">영상 제목</label>
-                                <input
-                                    type="text"
-                                    value={video.title}
-                                    onChange={e => handleVideoChange(video.id, 'title', e.target.value)}
-                                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border"
-                                    placeholder="예: 3강 - 다항식 연산"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-xs font-medium text-gray-600">iframe 코드 또는 URL</label>
-                                <textarea
-                                    value={video.url}
-                                    onChange={e => handleVideoChange(video.id, 'url', e.target.value)}
-                                    rows="2"
-                                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border"
-                                    placeholder="유튜브 임베드 코드 또는 공유 링크를 입력하세요."
-                                />
-                            </div>
-                        </div>
-                    ))}
+                    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                      <SortableContext items={videos.map(video => video.id)} strategy={verticalListSortingStrategy}>
+                        {videos.map((video, index) => (
+                          <SortableVideoItem
+                            key={video.id}
+                            video={video}
+                            index={index}
+                            onRemove={handleRemoveVideo}
+                            onChange={handleVideoChange}
+                          />
+                        ))}
+                      </SortableContext>
+                    </DndContext>
                 </div>
             </div>
             

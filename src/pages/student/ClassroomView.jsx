@@ -93,6 +93,7 @@ export default function ClassroomView({
     const progressData = calculateVideoProgress(videoProgress, studentId, currentLesson?.id);
 
     const lessonVideos = useMemo(() => normalizeLessonVideos(currentLesson), [currentLesson]);
+    const hasLessonVideos = lessonVideos.length > 0;
 
     useEffect(() => {
         setSelectedVideo(lessonVideos[0] || null);
@@ -275,68 +276,69 @@ export default function ClassroomView({
                 <div className="flex-1 min-w-0"><h2 className="text-base font-bold text-gray-900 truncate"><span className="text-indigo-600 mr-2">[{currentLesson?.date}]</span>{currentLesson?.progress}</h2></div>
             </div>
 
-            <div className="flex-1 flex flex-col lg:flex-row overflow-hidden bg-black">
-                <div className="flex-1 flex flex-col overflow-hidden bg-gray-50 lg:border-r lg:border-gray-200 relative">
-                    <div className="flex-1 min-h-0 bg-black flex flex-col">
-                        <div className="flex-1 flex items-center justify-center w-full">
-                            {currentVideoId ? (
-                                <div className="w-full h-full max-w-full max-h-full aspect-video flex items-center justify-center"><YouTubePlayer ref={playerRef} videoId={currentVideoId} initialSeconds={targetMemo?.time || progressData.seconds} onWatchedTick={handleWatchedTick} /></div>
-                            ) : (<div className="flex flex-col items-center justify-center text-gray-500"><Icon name="monitor" className="w-12 h-12 mb-2 opacity-50" /><p>재생할 영상이 없습니다.</p></div>)}
-                        </div>
+            <div className={`flex-1 flex flex-col lg:flex-row overflow-hidden ${hasLessonVideos ? 'bg-black' : 'bg-white'}`}>
+                {hasLessonVideos && (
+                    <div className="flex-1 flex flex-col overflow-hidden bg-gray-50 lg:border-r lg:border-gray-200 relative">
+                        <div className="flex-1 min-h-0 bg-black flex flex-col">
+                            <div className="flex-1 flex items-center justify-center w-full">
+                                {currentVideoId ? (
+                                    <div className="w-full h-full max-w-full max-h-full aspect-video flex items-center justify-center"><YouTubePlayer ref={playerRef} videoId={currentVideoId} initialSeconds={targetMemo?.time || progressData.seconds} onWatchedTick={handleWatchedTick} /></div>
+                                ) : (<div className="flex flex-col items-center justify-center text-gray-500"><Icon name="monitor" className="w-12 h-12 mb-2 opacity-50" /><p>재생할 영상이 없습니다.</p></div>)}
+                            </div>
 
                         {lessonVideos.length > 1 && (
-                            <div className="bg-gray-900 border-t border-gray-800">
-                                <div className="px-4 py-3 flex items-center justify-between text-gray-100">
-                                    <div>
-                                        <p className="text-[11px] uppercase tracking-wide text-gray-400">영상 선택</p>
-                                        <p className="text-sm font-bold">{selectedVideo?.title || '영상 선택'}</p>
+                                <div className="bg-gray-900 border-t border-gray-800">
+                                    <div className="px-4 py-3 flex items-center justify-between text-gray-100">
+                                        <div>
+                                            <p className="text-[11px] uppercase tracking-wide text-gray-400">영상 선택</p>
+                                            <p className="text-sm font-bold">{selectedVideo?.title || '영상 선택'}</p>
+                                        </div>
+                                        <button
+                                            onClick={() => setIsVideoListOpen(!isVideoListOpen)}
+                                            className="flex items-center gap-2 text-xs font-bold px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 active:bg-gray-600 transition-colors"
+                                        >
+                                            {isVideoListOpen ? '목록 닫기' : `영상 ${lessonVideos.length}개`}
+                                            <Icon name={isVideoListOpen ? 'chevronDown' : 'chevronUp'} className="w-4 h-4" />
+                                        </button>
                                     </div>
-                                    <button
-                                        onClick={() => setIsVideoListOpen(!isVideoListOpen)}
-                                        className="flex items-center gap-2 text-xs font-bold px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 active:bg-gray-600 transition-colors"
-                                    >
-                                        {isVideoListOpen ? '목록 닫기' : `영상 ${lessonVideos.length}개`}
-                                        <Icon name={isVideoListOpen ? 'chevronDown' : 'chevronUp'} className="w-4 h-4" />
-                                    </button>
+                                    {isVideoListOpen && (
+                                        <div className="bg-black/70 divide-y divide-gray-800">
+                                            {lessonVideos.map(video => (
+                                                <button
+                                                    key={video.id}
+                                                    onClick={() => setSelectedVideo(video)}
+                                                    className={`w-full text-left px-4 py-3 flex items-center justify-between text-sm transition-colors ${selectedVideo?.id === video.id ? 'bg-gray-800 text-white' : 'text-gray-200 hover:bg-gray-800/70'}`}
+                                                >
+                                                    <span className="truncate pr-3">{video.title}</span>
+                                                    {selectedVideo?.id === video.id ? (
+                                                        <span className="text-[10px] font-bold text-green-400">재생 중</span>
+                                                    ) : (
+                                                        <span className="text-[10px] text-gray-400">선택</span>
+                                                    )}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
                                 </div>
-                                {isVideoListOpen && (
-                                    <div className="bg-black/70 divide-y divide-gray-800">
-                                        {lessonVideos.map(video => (
-                                            <button
-                                                key={video.id}
-                                                onClick={() => setSelectedVideo(video)}
-                                                className={`w-full text-left px-4 py-3 flex items-center justify-between text-sm transition-colors ${selectedVideo?.id === video.id ? 'bg-gray-800 text-white' : 'text-gray-200 hover:bg-gray-800/70'}`}
-                                            >
-                                                <span className="truncate pr-3">{video.title}</span>
-                                                {selectedVideo?.id === video.id ? (
-                                                    <span className="text-[10px] font-bold text-green-400">재생 중</span>
-                                                ) : (
-                                                    <span className="text-[10px] text-gray-400">선택</span>
-                                                )}
-                                            </button>
-                                        ))}
-                                    </div>
-                                )}
+                            )}
+                        </div>
+
+                    <div className="bg-white border-b border-gray-200 shrink-0 z-10">
+                            <div className="px-4 py-3 flex justify-between items-center">
+                                <div className="bg-gray-900 px-4 py-1.5 rounded-full flex items-center gap-3 shadow-sm border border-gray-200"><span className="text-xs text-gray-300 font-medium">내 수강률</span><div className="w-20 bg-gray-700 rounded-full h-1.5 overflow-hidden"><div className={`h-full rounded-full transition-all duration-500 ${progressData.percent >= 100 ? 'bg-green-500' : 'bg-indigo-500'}`} style={{ width: `${progressData.percent}%` }}></div></div><span className={`text-xs font-bold font-mono ${progressData.percent >= 100 ? 'text-green-400' : 'text-white'}`}>{progressData.percent}%</span></div>
+                                <button onClick={() => setIsListOpen(!isListOpen)} className="flex items-center gap-1 text-sm font-bold text-gray-600 hover:text-indigo-900 transition-colors bg-gray-100 px-3 py-1.5 rounded-lg hover:bg-gray-200 active:bg-gray-300">{isListOpen ? '목록 닫기' : '다른 강의'}<Icon name={isListOpen ? "chevronDown" : "chevronUp"} className="w-4 h-4" /></button>
+                            </div>
+                        </div>
+                    {isListOpen && (
+                            <div className="h-48 lg:h-1/3 flex-none overflow-y-auto p-4 custom-scrollbar bg-white border-t border-gray-100">
+                                <div className="space-y-2">
+                                    {sortedLogs.map(log => renderLogItem(log))}
+                                </div>
                             </div>
                         )}
                     </div>
-                    
-                    <div className="bg-white border-b border-gray-200 shrink-0 z-10">
-                        <div className="px-4 py-3 flex justify-between items-center">
-                            <div className="bg-gray-900 px-4 py-1.5 rounded-full flex items-center gap-3 shadow-sm border border-gray-200"><span className="text-xs text-gray-300 font-medium">내 수강률</span><div className="w-20 bg-gray-700 rounded-full h-1.5 overflow-hidden"><div className={`h-full rounded-full transition-all duration-500 ${progressData.percent >= 100 ? 'bg-green-500' : 'bg-indigo-500'}`} style={{ width: `${progressData.percent}%` }}></div></div><span className={`text-xs font-bold font-mono ${progressData.percent >= 100 ? 'text-green-400' : 'text-white'}`}>{progressData.percent}%</span></div>
-                            <button onClick={() => setIsListOpen(!isListOpen)} className="flex items-center gap-1 text-sm font-bold text-gray-600 hover:text-indigo-900 transition-colors bg-gray-100 px-3 py-1.5 rounded-lg hover:bg-gray-200 active:bg-gray-300">{isListOpen ? '목록 닫기' : '다른 강의'}<Icon name={isListOpen ? "chevronDown" : "chevronUp"} className="w-4 h-4" /></button>
-                        </div>
-                    </div>
-
-                    {isListOpen && (
-                        <div className="h-48 lg:h-1/3 flex-none overflow-y-auto p-4 custom-scrollbar bg-white border-t border-gray-100">
-                            <div className="space-y-2">
-                                {sortedLogs.map(log => renderLogItem(log))}
-                            </div>
-                        </div>
-                    )}
-                </div>
-                <div className="w-full lg:w-[400px] flex flex-col bg-white h-[40%] lg:h-full flex-shrink-0 border-t lg:border-t-0 lg:border-l border-gray-200">
+                )}
+                <div className={`w-full ${hasLessonVideos ? 'lg:w-[400px]' : 'lg:w-full'} flex flex-col bg-white h-[40%] lg:h-full flex-shrink-0 border-t lg:border-t-0 ${hasLessonVideos ? 'lg:border-l' : ''} border-gray-200`}>
                     <div className="flex border-b border-gray-200 bg-gray-50">
                         <div className="flex-1 py-3 text-center text-sm font-bold text-indigo-600 border-b-2 border-indigo-600 bg-white">학습 메모</div>
                     </div>
