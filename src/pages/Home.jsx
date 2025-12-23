@@ -334,17 +334,26 @@ export default function Home({ onQuickAction, onCreateStaffUser, onCreateLinkCod
                                 </div>
                             ) : (
                                 notificationLogs.map((log) => {
-                                    const total = (log.successCount || 0) + (log.failureCount || 0);
-                                    const failureRate = total === 0 ? 0 : Math.round((log.failureCount || 0) / total * 100);
+                                    const targetCount = log.targetCount ?? log.targetUserCount ?? 0;
+                                    const failureCount = log.failureCount || 0;
+                                    const successCount = log.successCount || 0;
+                                    const failureRate = targetCount === 0 ? 0 : Math.round((failureCount / targetCount) * 100);
                                     const createdAt = log.createdAt?.toDate ? log.createdAt.toDate().toLocaleString('ko-KR') : '-';
+                                    const eventType = log.eventType || log.type || '-';
                                     const retryAttempted = Boolean(log.retry?.attempted);
-                                    const canRetry = !retryAttempted && (log.failureCount || 0) > 0;
+                                    const canRetry = failureCount > 0;
+                                    const isFailureHighlighted = failureCount > 0;
                                     return (
-                                        <div key={log.id} className="border border-gray-200 rounded-xl p-4 flex flex-col gap-2">
+                                        <div
+                                            key={log.id}
+                                            className={`border rounded-xl p-4 flex flex-col gap-2 ${
+                                                isFailureHighlighted ? 'border-red-200 bg-red-50/40' : 'border-gray-200'
+                                            }`}
+                                        >
                                             <div className="flex flex-wrap items-center justify-between gap-2">
                                                 <div className="flex items-center gap-2">
                                                     <span className="text-xs font-semibold text-rose-700 bg-rose-50 border border-rose-100 px-2 py-0.5 rounded-full">
-                                                        {log.type}
+                                                        {eventType}
                                                     </span>
                                                     <span className="text-xs text-gray-400">{createdAt}</span>
                                                     {retryAttempted && (
@@ -357,28 +366,30 @@ export default function Home({ onQuickAction, onCreateStaffUser, onCreateLinkCod
                                                     <span className="text-xs font-semibold text-gray-500">
                                                         실패율 {failureRate}%
                                                     </span>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => handleRetryNotification(log.id)}
-                                                        disabled={!canRetry || retryingLogId === log.id}
-                                                        className="text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-100 px-3 py-1 rounded-full disabled:opacity-50 disabled:cursor-not-allowed"
-                                                    >
-                                                        {retryingLogId === log.id ? '재전송 중...' : '실패 재전송'}
-                                                    </button>
+                                                    {canRetry && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleRetryNotification(log.id)}
+                                                            disabled={retryAttempted || retryingLogId === log.id}
+                                                            className="text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-100 px-3 py-1 rounded-full disabled:opacity-50 disabled:cursor-not-allowed"
+                                                        >
+                                                            {retryingLogId === log.id ? '재전송 중...' : '재전송'}
+                                                        </button>
+                                                    )}
                                                 </div>
                                             </div>
                                             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
                                                 <div className="flex flex-col">
                                                     <span className="text-xs text-gray-400">대상</span>
-                                                    <span className="font-semibold text-gray-800">{log.targetUserCount || 0}명</span>
+                                                    <span className="font-semibold text-gray-800">{targetCount}명</span>
                                                 </div>
                                                 <div className="flex flex-col">
                                                     <span className="text-xs text-gray-400">성공</span>
-                                                    <span className="font-semibold text-emerald-600">{log.successCount || 0}</span>
+                                                    <span className="font-semibold text-emerald-600">{successCount}</span>
                                                 </div>
                                                 <div className="flex flex-col">
                                                     <span className="text-xs text-gray-400">실패</span>
-                                                    <span className="font-semibold text-red-500">{log.failureCount || 0}</span>
+                                                    <span className="font-semibold text-red-500">{failureCount}</span>
                                                 </div>
                                                 <div className="flex flex-col">
                                                     <span className="text-xs text-gray-400">실패 토큰</span>
