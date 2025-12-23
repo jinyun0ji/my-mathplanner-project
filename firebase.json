@@ -9,11 +9,11 @@
     "rewrites": [
       {
         "source": "/auth/kakao",
-        "function": "api"
+        "function": "kakaoLogin"
       },
       {
         "source": "/auth/naver",
-        "function": "api"
+        "function": "naverLogin"
       },
       {
         "source": "**",

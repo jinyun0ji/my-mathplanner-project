@@ -34,9 +34,11 @@ import ParentHome from './pages/ParentHome';
 import OnboardingPage from './pages/OnboardingPage';
 import useAuth from './auth/useAuth';
 import { signInWithEmail, signInWithGoogle, signOutUser } from './auth/authService';
+import { redirectToKakao, redirectToNaver } from './auth/socialRedirect';
 import { db } from './firebase/client';
 import { loadViewerDataOnce, startStaffFirestoreSync } from './data/firestoreSync';
 import { createStaffUser } from './admin/staffService';
+import SocialCallback from './pages/SocialCallback';
 
 const PageContent = (props) => {
     const { page, selectedStudentId } = props;
@@ -56,6 +58,7 @@ const PageContent = (props) => {
 };
 
 export default function App() {
+    const isSocialCallbackPage = typeof window !== 'undefined' && window.location.pathname === '/auth/callback';
   const { user, role, loading } = useAuth();
   const [page, setPage] = useState('lessons');
   const [selectedStudentId, setSelectedStudentId] = useState(null);
@@ -154,10 +157,8 @@ export default function App() {
 
   const handleSocialLogin = async (providerName) => {
       if (providerName === 'google') return signInWithGoogle();
-      if (providerName === 'kakao' || providerName === 'naver') {
-          alert('다음 단계에서 연결될 예정입니다.');
-          return;
-      }
+      if (providerName === 'kakao') return redirectToKakao();
+      if (providerName === 'naver') return redirectToNaver();
       throw new Error('지원되지 않는 소셜 로그인입니다.');
   }
 
@@ -309,6 +310,8 @@ export default function App() {
       setSelectedStudentId(null);
       processedAnnouncementIdsRef.current = new Set();
   };
+
+  if (isSocialCallbackPage) return <SocialCallback />;
 
   if (loading) return <div className="min-h-screen flex items-center justify-center">로딩 중...</div>;
   if (!isAuthenticated) return <LoginPage onEmailLogin={handleEmailLogin} onSocialLogin={handleSocialLogin} />;
