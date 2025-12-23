@@ -12,7 +12,6 @@ export default function LessonManagement({
     const [isLogModalOpen, setIsLogModalOpen] = useState(false);
     const [logToEdit, setLogToEdit] = useState(null);
     const [selectedDate, setSelectedDate] = useState(null);
-    const [expandedLogs, setExpandedLogs] = useState([]);
     const [isMobile, setIsMobile] = useState(false);
 
     const selectedClass = classes.find(c => c.id === selectedClassId);
@@ -123,13 +122,6 @@ export default function LessonManagement({
 
     const isCurrentDateLogged = currentLog !== undefined;
 
-    const toggleExpandedLog = (logId, logDate) => {
-        setExpandedLogs(prev => prev.includes(logId) ? prev.filter(id => id !== logId) : [...prev, logId]);
-        if (logDate) {
-            setSelectedDate(logDate);
-        }
-    };
-
     const renderLogDetail = (log) => (
         <>
             <h4 className="text-lg font-bold text-gray-800 border-b pb-2">수업 진도 및 내용</h4>
@@ -169,6 +161,58 @@ export default function LessonManagement({
                 </button>
             </div>
         </>
+    );
+
+    const renderLogCards = (containerClass = '') => (
+        <div className={`${containerClass} space-y-3`}>
+            {classLogs.length === 0 && (
+                <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+                    <p className="text-sm text-gray-500">작성된 수업 일지가 없습니다. 새로 작성해 주세요.</p>
+                </div>
+            )}
+            {classLogs.map(log => {
+                const isOpen = log.date === selectedDate;
+
+                return (
+                    <div key={log.id} className="bg-white border border-gray-200 rounded-xl shadow-sm">
+                        <button
+                            type="button"
+                            onClick={() => setSelectedDate(log.date)}
+                            className="w-full flex items-center justify-between px-4 py-3 text-left"
+                        >
+                            <div className="min-w-0">
+                                <p className="text-sm font-bold text-gray-800">{log.date}</p>
+                                <p className="text-xs text-gray-500 truncate">{selectedClass?.name}</p>
+                            </div>
+                            <span className={`text-xs font-semibold px-3 py-1 rounded-full border ${isOpen ? 'bg-indigo-50 text-indigo-900 border-indigo-200' : 'bg-gray-50 text-gray-600 border-gray-200'}`}>
+                                {isOpen ? '선택됨' : '선택'}
+                            </span>
+                        </button>
+                        {isOpen && (
+                            <div className="border-t border-gray-100 px-4 py-3 space-y-3">
+                                {renderLogDetail(log)}
+                                <div className="flex flex-wrap gap-2">
+                                    <button
+                                        onClick={() => handleEditLog(log)}
+                                        className="flex-1 min-w-[140px] bg-white border border-gray-300 hover:border-indigo-300 text-gray-700 text-sm font-semibold py-2 px-3 rounded-lg flex items-center justify-center shadow-sm"
+                                    >
+                                        <Icon name="edit" className="w-4 h-4 mr-2 text-gray-500" />
+                                        일지 수정
+                                    </button>
+                                    <button
+                                        onClick={() => { if(window.confirm('정말 이 수업 일지를 삭제하시겠습니까?')) handleDeleteLessonLog(log.id) }}
+                                        className="flex-1 min-w-[140px] bg-red-50 border border-red-200 text-red-600 text-sm font-semibold py-2 px-3 rounded-lg flex items-center justify-center hover:bg-red-100"
+                                    >
+                                        <Icon name="trash" className="w-4 h-4 mr-2" />
+                                        삭제
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                );
+            })}
+        </div>
     );
     
     return (
@@ -231,55 +275,9 @@ export default function LessonManagement({
                             </div>
                         </div>
 
-                        {/* 모바일: 일지 토글 리스트 */}
-                        <div className="md:hidden space-y-3">
-                            {classLogs.length === 0 && (
-                                <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
-                                    <p className="text-sm text-gray-500">작성된 수업 일지가 없습니다. 새로 작성해 주세요.</p>
-                                </div>
-                            )}
-                            {classLogs.map(log => {
-                                const isOpen = expandedLogs.includes(log.id);
-                                return (
-                                    <div key={log.id} className="bg-white border border-gray-200 rounded-xl shadow-sm">
-                                        <button
-                                            type="button"
-                                            onClick={() => toggleExpandedLog(log.id, log.date)}
-                                            className="w-full flex items-center justify-between px-4 py-3 text-left"
-                                        >
-                                            <div className="min-w-0">
-                                                <p className="text-sm font-bold text-gray-800">{log.date}</p>
-                                                <p className="text-xs text-gray-500 truncate">{selectedClass?.name}</p>
-                                            </div>
-                                            <span className={`text-xs font-semibold px-3 py-1 rounded-full border ${isOpen ? 'bg-indigo-50 text-indigo-900 border-indigo-200' : 'bg-gray-50 text-gray-600 border-gray-200'}`}>
-                                                {isOpen ? '닫기' : '내용 보기'}
-                                            </span>
-                                        </button>
-                                        {isOpen && (
-                                            <div className="border-t border-gray-100 px-4 py-3 space-y-3">
-                                                {renderLogDetail(log)}
-                                                <div className="flex flex-wrap gap-2">
-                                                    <button 
-                                                        onClick={() => handleEditLog(log)}
-                                                        className="flex-1 min-w-[140px] bg-white border border-gray-300 hover:border-indigo-300 text-gray-700 text-sm font-semibold py-2 px-3 rounded-lg flex items-center justify-center shadow-sm"
-                                                    >
-                                                        <Icon name="edit" className="w-4 h-4 mr-2 text-gray-500" />
-                                                        일지 수정
-                                                    </button>
-                                                    <button 
-                                                        onClick={() => { if(window.confirm('정말 이 수업 일지를 삭제하시겠습니까?')) handleDeleteLessonLog(log.id) }}
-                                                        className="flex-1 min-w-[140px] bg-red-50 border border-red-200 text-red-600 text-sm font-semibold py-2 px-3 rounded-lg flex items-center justify-center hover:bg-red-100"
-                                                    >
-                                                        <Icon name="trash" className="w-4 h-4 mr-2" />
-                                                        삭제
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        )}
-                                    </div>
-                                );
-                            })}
-                        </div>
+                        {/* 작성된 일지 리스트 */}
+                        {renderLogCards('hidden md:block')}
+                        {renderLogCards('md:hidden')}
 
                         {/* 일지 내용 */}
                         {currentLog ? (

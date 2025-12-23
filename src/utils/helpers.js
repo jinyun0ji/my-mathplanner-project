@@ -113,16 +113,21 @@ export const calculateGradeComparison = (studentId, classes, tests, grades) => {
             let classTotal = 0;
             let studentCount = 0;
             let highestScore = 0; // 최고점
+            const classInfo = classes.find(c => c.id === test.classId);
+            const classStudentIds = classInfo?.students || [];
+            const participantScores = [];
 
-            const questionStats = {}; 
+            const questionStats = {};
 
             // 반 통계 계산 (평균, 최고점 등)
-            Object.values(grades).forEach(studentGrade => {
+            Object.entries(grades).forEach(([stuId, studentGrade]) => {
+                if (!classStudentIds.includes(Number(stuId))) return;
                 const record = studentGrade[test.id];
                 if (record) {
                     if (record.score !== null && record.score !== undefined) {
                         classTotal += record.score;
                         studentCount++;
+                        participantScores.push(record.score);
                         if (record.score > highestScore) highestScore = record.score;
                     }
                     if (record.correctCount) {
@@ -140,6 +145,7 @@ export const calculateGradeComparison = (studentId, classes, tests, grades) => {
             const classAverage = studentCount > 0 ? Math.round(classTotal / studentCount) : 0;
             const myScore = myRecord.score || 0;
             const myAccuracy = test.maxScore > 0 ? Math.round((myScore / test.maxScore) * 100) : 0;
+            const rank = participantScores.length > 0 ? participantScores.filter(score => score > myScore).length + 1 : null;
             
             // ✅ [핵심 수정] Z-Score 계산 (공식: (내점수 - 시험평균) / 표준편차)
             // 주의: test.average(시험 전체 평균)와 test.stdDev(표준편차) 사용
@@ -180,7 +186,9 @@ export const calculateGradeComparison = (studentId, classes, tests, grades) => {
                 classAverage: classAverage, 
                 highestScore: highestScore,
                 maxScore: test.maxScore,
-                accuracy: myAccuracy, 
+                accuracy: myAccuracy,
+                rank: rank,
+                totalStudents: participantScores.length,
                 scoreDifference: myScore - classAverage,
                 isAboveAverage: myScore >= classAverage,
                 questions: questionsAnalysis,

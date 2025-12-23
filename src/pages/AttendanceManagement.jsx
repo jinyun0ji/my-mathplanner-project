@@ -114,27 +114,6 @@ export default function AttendanceManagement({
 
     return (
         <div className="space-y-3">
-            <div className="xl:hidden bg-white p-3 rounded-xl border border-gray-200 shadow-sm">
-                <div className="grid grid-cols-2 gap-2">
-                    <button
-                        onClick={() => setMobileView('class')}
-                        className={`py-2 px-3 rounded-lg text-sm font-semibold transition ${mobileView === 'class' ? 'bg-indigo-900 text-white shadow-md' : 'bg-gray-100 text-gray-700'}`}
-                    >
-                        클래스 선택
-                    </button>
-                    <button
-                        onClick={() => setMobileView('attendance')}
-                        className={`py-2 px-3 rounded-lg text-sm font-semibold transition ${mobileView === 'attendance' ? 'bg-indigo-900 text-white shadow-md' : 'bg-gray-100 text-gray-700'}`}
-                    >
-                        출결 현황/입력
-                    </button>
-                </div>
-                <div className="mt-3 text-xs text-gray-600 flex items-center justify-between">
-                    <span className="font-semibold">{selectedClass ? selectedClass.name : '클래스를 선택하세요'}</span>
-                    <span className="font-mono text-[11px] text-gray-500">{selectedDate}</span>
-                </div>
-            </div>
-
             <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex flex-col gap-3">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex items-center gap-2 text-sm font-semibold text-gray-700">
@@ -185,7 +164,7 @@ export default function AttendanceManagement({
             </div>
             
             <div className="flex flex-col xl:flex-row gap-4 xl:gap-6 h-full">
-                <div className={`w-full xl:w-80 flex-shrink-0 ${mobileView === 'class' ? 'block' : 'hidden'} xl:block`}>
+                <div className="w-full xl:w-80 flex-shrink-0">
                     <ClassSelectionPanel
                         classes={classes}
                         selectedClassId={selectedClassId}
@@ -201,7 +180,7 @@ export default function AttendanceManagement({
                     />
                 </div>
 
-                <div className={`flex-1 min-w-0 space-y-4 ${mobileView === 'attendance' ? 'block' : 'hidden'} xl:block`}>
+                <div className="flex-1 min-w-0 space-y-4">
                     {selectedClassId === null ? (
                         <div className="p-6 bg-white rounded-xl shadow-sm border border-gray-200">
                             <p className="text-gray-500">클래스를 선택하고 날짜를 지정하여 출결을 관리하세요.</p>
@@ -319,29 +298,24 @@ export default function AttendanceManagement({
                                                         <p className="text-xs text-gray-500 mt-0.5 truncate">{formatGradeLabel(student.grade)} · {student.school}{phoneSuffix ? ` · ${phoneSuffix}` : ''}</p>
                                                     </div>
                                                     <div className="flex items-center gap-2">
-                                                        <span className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-semibold border ${memoStyle}`} title={memoContent ? '메모 있음' : '메모 작성'}>
+                                                        <button
+                                                            onClick={() => openMemoModal(student)}
+                                                            className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-semibold border transition ${memoStyle} hover:border-indigo-300 hover:bg-indigo-50`}
+                                                            title={memoContent ? '메모 있음' : '메모 작성'}
+                                                            aria-label={memoContent ? `${student.name} 메모 확인` : `${student.name} 메모 작성`}
+                                                        >
                                                             <Icon name="fileText" className="w-4 h-4" />
-                                                        </span>
+                                                        </button>
                                                         <span className={`w-10 h-10 rounded-full border flex items-center justify-center text-[11px] font-bold ${badgeStyle}`}>
                                                             {status}
                                                         </span>
                                                     </div>
-                                                    </div>
-                                                <div className="flex items-center justify-between gap-2">
-                                                    <button
-                                                        onClick={() => openMemoModal(student)}
-                                                        className="text-[11px] font-semibold text-gray-600 underline-offset-2 hover:text-indigo-900"
-                                                    >
-                                                        메모 {memoContent ? '확인/수정' : '작성'}
-                                                    </button>
-                                                    <button
-                                                        onClick={() => setIsAttendanceModalOpen(true)}
-                                                        className="text-sm font-semibold px-3 py-2 rounded-lg bg-indigo-900 text-white hover:bg-indigo-800 transition flex items-center justify-center gap-2"
-                                                    >
-                                                        <Icon name="edit" className="w-4 h-4" />
-                                                        출결 기록/수정
-                                                    </button>
                                                 </div>
+                                                {memoContent && (
+                                                    <p className="text-xs text-gray-600 bg-amber-50 border border-amber-100 rounded-lg p-2 leading-snug">
+                                                        {memoContent}
+                                                    </p>
+                                                )}
                                             </div>
                                         );
                                     })}
