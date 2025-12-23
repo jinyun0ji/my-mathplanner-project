@@ -1,9 +1,10 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Icon } from '../utils/helpers';
-import ClassSelectionPanel from '../components/Shared/ClassSelectionPanel'; 
+import ClassSelectionPanel from '../components/Shared/ClassSelectionPanel';
 import HomeworkGradingTable from '../components/Homework/HomeworkGradingTable';
-import HomeworkStatisticsPanel from '../components/Homework/HomeworkStatisticsPanel'; 
-import { HomeworkAssignmentModal } from '../utils/modals/HomeworkAssignmentModal'; 
+import HomeworkStatisticsPanel from '../components/Homework/HomeworkStatisticsPanel';
+import { HomeworkAssignmentModal } from '../utils/modals/HomeworkAssignmentModal';
+import { buildAssignmentSummary, getClassAssignments, getClassStudents, getSelectedAssignment } from '../domain/homework/homework.service';
 
 export default function HomeworkManagement({ 
     students, classes, homeworkAssignments, homeworkResults, 
@@ -21,66 +22,25 @@ export default function HomeworkManagement({
 
     const selectedClass = classes.find(c => c.id === selectedClassId);
     
-    const classAssignments = useMemo(() => {
-        if (!selectedClassId) return [];
-        return homeworkAssignments
-            .filter(a => a.classId === selectedClassId)
-            .sort((a, b) => new Date(b.date) - new Date(a.date));
-    }, [homeworkAssignments, selectedClassId]);
+    const classAssignments = useMemo(
+        () => getClassAssignments(homeworkAssignments, selectedClassId),
+        [homeworkAssignments, selectedClassId]
+    );
 
-    const selectedAssignment = useMemo(() => {
-        return classAssignments.find(a => a.id === selectedAssignmentId);
-    }, [classAssignments, selectedAssignmentId]);
+    const selectedAssignment = useMemo(
+        () => getSelectedAssignment(classAssignments, selectedAssignmentId),
+        [classAssignments, selectedAssignmentId]
+    );
 
-    const classStudents = useMemo(() => {
-        if (!selectedClass) return [];
-        return students.filter(s => selectedClass.students.includes(s.id) && s.status === '재원생').sort((a, b) => a.name.localeCompare(b.name));
-    }, [students, selectedClass]);
-    
-    const assignmentSummary = useMemo(() => {
-        if (!selectedAssignment) return [];
-        
-        return classStudents.map(student => {
-            const savedResult = { ...(homeworkResults[student.id]?.[selectedAssignment.id] || {}) };
-            
-            localChanges.forEach(change => {
-                if (change.studentId === student.id && change.assignmentId === selectedAssignment.id) {
-                    if (change.status === null) delete savedResult[change.questionId];
-                    else savedResult[change.questionId] = change.status;
-                }
-            });
+    const classStudents = useMemo(
+        () => getClassStudents(students, selectedClass),
+        [students, selectedClass]
+    );
 
-            const result = savedResult;
-            const total = selectedAssignment.totalQuestions;
-            
-            let correct = 0;
-            let incorrect = 0;
-            let corrected = 0;
-
-            Object.values(result).forEach(status => {
-                if (status === '맞음') correct++;
-                if (status === '틀림') incorrect++;
-                if (status === '고침') corrected++;
-            });
-            
-            const completionCount = correct + corrected + incorrect; 
-            const unchecked = total - completionCount;
-            const completionRate = Math.round((completionCount / total) * 100) || 0;
-            
-            return {
-                studentId: student.id,
-                studentName: student.name,
-                total,
-                correct,
-                incorrect,
-                corrected,
-                unchecked,
-                completionRate,
-                isCompleted: unchecked === 0,
-                resultMap: result,
-            };
-        });
-    }, [selectedAssignment, classStudents, homeworkResults, localChanges]);
+    const assignmentSummary = useMemo(
+        () => buildAssignmentSummary(selectedAssignment, classStudents, homeworkResults, localChanges),
+        [selectedAssignment, classStudents, homeworkResults, localChanges]
+    );
 
     const handleAssignmentSelect = (id) => {
         if (localChanges.length > 0) {

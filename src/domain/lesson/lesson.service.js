@@ -23,3 +23,21 @@ export const calculateVideoProgress = (videoProgress = {}, studentId, lessonId) 
 
     return videoProgress?.[studentId]?.[lessonId] || { percent: 0, seconds: 0, accumulated: 0 };
 };
+
+export const buildLessonSessions = (sessions = [], classLogs = [], selectedDate = null) => {
+    return [...sessions]
+        .reverse()
+        .map(session => {
+            const log = classLogs.find(l => l.date === session.date);
+            const isLogged = !!log;
+            const isSelected = session.date === selectedDate;
+
+            return {
+                session,
+                log,
+                isLogged,
+                isSelected,
+            };
+        })
+        .filter(item => item.isLogged || item.isSelected);
+};

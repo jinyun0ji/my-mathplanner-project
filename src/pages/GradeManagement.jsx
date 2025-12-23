@@ -1,69 +1,11 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { Icon } from '../utils/helpers';
-import ClassSelectionPanel from '../components/Shared/ClassSelectionPanel'; 
-import FullGradeTable from '../components/Grade/FullGradeTable'; 
-import TestResultTable from '../components/Grade/TestResultTable'; 
-import TestStatisticsTable from '../components/Grade/TestStatisticsTable'; 
-import { TestFormModal } from '../utils/modals/TestFormModal'; 
-
-// ----------------------------------------------------------------------
-// 통계 계산 헬퍼 함수 (로직 유지)
-// ----------------------------------------------------------------------
-const computeTestStatistics = (test, students, grades, classAverages) => {
-    if (!test || !students.length) {
-        return { average: 0, maxScore: 0, minScore: 0, stdDev: 0, correctRates: {}, rank: [] };
-    }
-
-    const scores = students.map(s => {
-        const score = grades[s.id]?.[test.id]?.score;
-        return score === undefined ? null : score;
-    }).filter(s => s !== null);
-
-    if (scores.length === 0) {
-        return { average: 0, maxScore: 0, minScore: 0, stdDev: 0, correctRates: {}, rank: [] };
-    }
-    
-    const average = scores.reduce((sum, s) => sum + s, 0) / scores.length;
-    const maxScore = Math.max(...scores);
-    const minScore = Math.min(...scores);
-    const variance = scores.reduce((sum, s) => sum + Math.pow(s - average, 2), 0) / scores.length;
-    const stdDev = Math.sqrt(variance);
-
-    const attemptedStudents = students.filter(s => grades[s.id]?.[test.id]?.score !== null && grades[s.id]?.[test.id]?.score !== undefined);
-    const attemptedScores = attemptedStudents.map(s => ({
-        score: grades[s.id][test.id].score,
-        studentId: s.id,
-        name: s.name
-    }));
-
-    const rankedScores = attemptedScores.sort((a, b) => b.score - a.score);
-        
-    let currentRank = 1;
-    let rank = rankedScores.map((item, index) => {
-        if (index > 0 && item.score < rankedScores[index - 1].score) {
-            currentRank = index + 1;
-        }
-        return { score: item.score, studentId: item.studentId, rank: currentRank };
-    });
-
-    const correctRates = {};
-    const totalAttempted = attemptedStudents.length; 
-
-    if (test.totalQuestions > 0 && totalAttempted > 0) {
-        for (let i = 1; i <= test.totalQuestions; i++) {
-            let correctCount = 0;
-            attemptedStudents.forEach(student => {
-                const status = grades[student.id]?.[test.id]?.correctCount?.[i.toString()];
-                if (status === '맞음' || status === '고침') { 
-                    correctCount++;
-                }
-            });
-            correctRates[i] = correctCount / totalAttempted;
-        }
-    }
-
-    return { average, maxScore, minScore, stdDev, correctRates, rank };
-};
+import ClassSelectionPanel from '../components/Shared/ClassSelectionPanel';
+import FullGradeTable from '../components/Grade/FullGradeTable';
+import TestResultTable from '../components/Grade/TestResultTable';
+import TestStatisticsTable from '../components/Grade/TestStatisticsTable';
+import { TestFormModal } from '../utils/modals/TestFormModal';
+import { getClassAverages, getClassStudents, getClassTests, getTestStatistics } from '../domain/grade/grade.service';
 
 // ----------------------------------------------------------------------
 // 메인 컴포넌트: GradeManagement
@@ -91,48 +33,29 @@ export default function GradeManagement({
     // 데이터 가공 (useMemo)
     // ------------------------------------------
     
-    const classStudents = useMemo(() => {
-        if (!selectedClass) return [];
-        return students
-            .filter(s => selectedClass.students.includes(s.id) && s.status === '재원생')
-            .sort((a, b) => a.name.localeCompare(b.name));
-    }, [students, selectedClass]);
-    
-    const classTests = useMemo(() => {
-        if (!selectedClassId) return [];
-        return tests
-            .filter(t => t.classId === selectedClassId)
-            .sort((a, b) => new Date(a.date) - new Date(b.date)); 
-    }, [tests, selectedClassId]);
+    const classStudents = useMemo(
+        () => getClassStudents(students, selectedClass),
+        [students, selectedClass]
+    );
+
+    const classTests = useMemo(
+        () => getClassTests(tests, selectedClassId),
+        [tests, selectedClassId]
+    );
 
     const selectedTest = useMemo(() => {
         return tests.find(t => t.id === selectedTestId);
     }, [tests, selectedTestId]);
 
-    const classAverages = useMemo(() => {
-        const averages = {};
-        classTests.forEach(test => {
-            let totalScore = 0;
-            let count = 0;
-            classStudents.forEach(student => {
-                const score = grades[student.id]?.[test.id]?.score;
-                if (score !== undefined && score !== null) {
-                    totalScore += Number(score);
-                    count++;
-                }
-            });
-            averages[test.id] = count > 0 ? (totalScore / count) : 0;
-        });
-        return averages;
-    }, [classTests, classStudents, grades]);
-    
-    const testStatistics = useMemo(() => {
-        const stats = {};
-        classTests.forEach(test => {
-            stats[test.id] = computeTestStatistics(test, classStudents, grades, classAverages);
-        });
-        return stats;
-    }, [classTests, classStudents, grades, classAverages]); 
+    const classAverages = useMemo(
+        () => getClassAverages(classTests, classStudents, grades),
+        [classTests, classStudents, grades]
+    );
+
+    const testStatistics = useMemo(
+        () => getTestStatistics(classTests, classStudents, grades, classAverages),
+        [classTests, classStudents, grades, classAverages]
+    ); 
 
     useEffect(() => {
         setSelectedTestId(null); 
