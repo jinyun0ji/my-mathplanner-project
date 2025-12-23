@@ -1,7 +1,8 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Icon } from '../utils/helpers';
 import { collection, getDocs, limit, orderBy, query, Timestamp, where } from 'firebase/firestore';
 import { db } from '../firebase/client';
+import { retryNotification } from '../admin/notificationService.js';
 
 export default function Home({ onQuickAction, onCreateStaffUser, onCreateLinkCode, userRole }) {
     const [staffEmail, setStaffEmail] = useState('');
@@ -18,6 +19,7 @@ export default function Home({ onQuickAction, onCreateStaffUser, onCreateLinkCod
     const [logEndDate, setLogEndDate] = useState('');
     const [logLoading, setLogLoading] = useState(false);
     const [logError, setLogError] = useState('');
+    const [retryingLogId, setRetryingLogId] = useState(null);
     const isAdmin = userRole === 'admin';
 
     const notificationTypes = useMemo(() => ([
@@ -29,46 +31,64 @@ export default function Home({ onQuickAction, onCreateStaffUser, onCreateLinkCod
         { label: '채팅', value: 'CHAT_MESSAGE' },
     ]), []);
 
-    useEffect(() => {
+    const fetchLogs = useCallback(async () => {
         if (!isAdmin || !db) {
             setNotificationLogs([]);
             return;
         }
 
-        const fetchLogs = async () => {
-            setLogLoading(true);
-            setLogError('');
+        setLogLoading(true);
+        setLogError('');
 
-            try {
-                const constraints = [orderBy('createdAt', 'desc'), limit(50)];
+        try {
+            const constraints = [orderBy('createdAt', 'desc'), limit(50)];
 
-                if (logType !== 'all') {
-                    constraints.push(where('type', '==', logType));
-                }
-
-                if (logStartDate) {
-                    const start = new Date(logStartDate);
-                    start.setHours(0, 0, 0, 0);
-                    constraints.push(where('createdAt', '>=', Timestamp.fromDate(start)));
-                }
-
-                if (logEndDate) {
-                    const end = new Date(logEndDate);
-                    end.setHours(23, 59, 59, 999);
-                    constraints.push(where('createdAt', '<=', Timestamp.fromDate(end)));
-                }
-
-                const snapshot = await getDocs(query(collection(db, 'notificationLogs'), ...constraints));
-                setNotificationLogs(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
-            } catch (error) {
-                setLogError(error?.message || '알림 로그를 불러오지 못했습니다.');
-            } finally {
-                setLogLoading(false);
+            if (logType !== 'all') {
+                constraints.push(where('type', '==', logType));
             }
-        };
 
+            if (logStartDate) {
+                const start = new Date(logStartDate);
+                start.setHours(0, 0, 0, 0);
+                constraints.push(where('createdAt', '>=', Timestamp.fromDate(start)));
+            }
+
+            if (logEndDate) {
+                const end = new Date(logEndDate);
+                end.setHours(23, 59, 59, 999);
+                constraints.push(where('createdAt', '<=', Timestamp.fromDate(end)));
+            }
+
+            const snapshot = await getDocs(query(collection(db, 'notificationLogs'), ...constraints));
+            setNotificationLogs(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
+        } catch (error) {
+            setLogError(error?.message || '알림 로그를 불러오지 못했습니다.');
+        } finally {
+            setLogLoading(false);
+        }
+    }, [db, isAdmin, logType, logStartDate, logEndDate]);
+
+    useEffect(() => {
         fetchLogs();
-    }, [isAdmin, logType, logStartDate, logEndDate, db]);
+    }, [fetchLogs]);
+
+    const handleRetryNotification = async (logId) => {
+        if (!logId) {
+            return;
+        }
+
+        setRetryingLogId(logId);
+        setLogError('');
+
+        try {
+            await retryNotification({ logId });
+            await fetchLogs();
+        } catch (error) {
+            setLogError(error?.message || '알림 재전송에 실패했습니다.');
+        } finally {
+            setRetryingLogId(null);
+        }
+    };
 
     const stats = [
         { label: '총 재원생', value: '42명', change: '+2명', type: 'increase', icon: 'users', color: 'indigo' },
@@ -317,6 +337,8 @@ export default function Home({ onQuickAction, onCreateStaffUser, onCreateLinkCod
                                     const total = (log.successCount || 0) + (log.failureCount || 0);
                                     const failureRate = total === 0 ? 0 : Math.round((log.failureCount || 0) / total * 100);
                                     const createdAt = log.createdAt?.toDate ? log.createdAt.toDate().toLocaleString('ko-KR') : '-';
+                                    const retryAttempted = Boolean(log.retry?.attempted);
+                                    const canRetry = !retryAttempted && (log.failureCount || 0) > 0;
                                     return (
                                         <div key={log.id} className="border border-gray-200 rounded-xl p-4 flex flex-col gap-2">
                                             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -325,10 +347,25 @@ export default function Home({ onQuickAction, onCreateStaffUser, onCreateLinkCod
                                                         {log.type}
                                                     </span>
                                                     <span className="text-xs text-gray-400">{createdAt}</span>
+                                                    {retryAttempted && (
+                                                        <span className="text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-full">
+                                                            재전송 완료
+                                                        </span>
+                                                    )}
                                                 </div>
-                                                <span className="text-xs font-semibold text-gray-500">
-                                                    실패율 {failureRate}%
-                                                </span>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-xs font-semibold text-gray-500">
+                                                        실패율 {failureRate}%
+                                                    </span>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleRetryNotification(log.id)}
+                                                        disabled={!canRetry || retryingLogId === log.id}
+                                                        className="text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-100 px-3 py-1 rounded-full disabled:opacity-50 disabled:cursor-not-allowed"
+                                                    >
+                                                        {retryingLogId === log.id ? '재전송 중...' : '실패 재전송'}
+                                                    </button>
+                                                </div>
                                             </div>
                                             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
                                                 <div className="flex flex-col">
@@ -348,6 +385,11 @@ export default function Home({ onQuickAction, onCreateStaffUser, onCreateLinkCod
                                                     <span className="font-semibold text-orange-500">{log.failedTokenCount || 0}</span>
                                                 </div>
                                             </div>
+                                            {retryAttempted && (
+                                                <div className="text-xs text-gray-500">
+                                                    재전송 결과: 성공 {log.retry?.retrySuccessCount || 0} · 실패 {log.retry?.retryFailureCount || 0}
+                                                </div>
+                                            )}
                                         </div>
                                     );
                                 })

@@ -1,6 +1,7 @@
 const { api } = require('./api');
 const { adminCreateStaffUser } = require('./admin/createStaffUser');
 const { adminCreateLinkCode } = require('./admin/createLinkCode');
+const { retryNotification } = require('./admin/retryNotification');
 const { kakaoLogin } = require('./auth/kakaoLogin');
 const { naverLogin } = require('./auth/naverLogin');
 const { claimStudentLinkCode } = require('./link/claimStudentLinkCode');
@@ -14,6 +15,7 @@ module.exports = {
     api,
     adminCreateStaffUser,
     adminCreateLinkCode,
+    retryNotification,
     kakaoLogin,
     naverLogin,
     claimStudentLinkCode,

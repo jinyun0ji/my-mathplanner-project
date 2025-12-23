@@ -4,6 +4,7 @@ const { getRecipientsForStudent } = require('../notify/recipients');
 const { notifyUsers } = require('../notify/notifications');
 
 const TYPE = 'LESSON_UPDATED';
+const MAX_FAILED_UIDS = 200;
 
 const db = getFirestore();
 
@@ -31,10 +32,15 @@ const onLessonLogWritten = functions.firestore
                 type: TYPE,
                 refCollection: 'lessonLogs',
                 refId: context.params.id,
+                title: '수업 안내',
+                body: '새 수업 기록이 등록되었습니다.',
+                ref: `lessonLogs/${context.params.id}`,
+                studentId: studentId || null,
                 targetUserCount: 0,
                 successCount: 0,
                 failureCount: 0,
                 failedTokenCount: 0,
+                failedUids: [],
                 createdAt: FieldValue.serverTimestamp(),
             });
         }
@@ -63,10 +69,15 @@ const onLessonLogWritten = functions.firestore
             type: TYPE,
             refCollection: 'lessonLogs',
             refId,
+            title: '수업 안내',
+            body: '새 수업 기록이 등록되었습니다.',
+            ref: `lessonLogs/${refId}`,
+            studentId: studentId || null,
             targetUserCount,
             successCount: fcmStats?.successCount || 0,
             failureCount: fcmStats?.failureCount || 0,
             failedTokenCount: fcmStats?.failedTokenCount || 0,
+            failedUids: (fcmStats?.failedUids || []).slice(0, MAX_FAILED_UIDS),
             createdAt: FieldValue.serverTimestamp(),
         });
     });

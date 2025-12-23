@@ -4,6 +4,7 @@ const { getRecipientsForStudent } = require('../notify/recipients');
 const { notifyUsers } = require('../notify/notifications');
 
 const TYPE = 'GRADE_PUBLISHED';
+const MAX_FAILED_UIDS = 200;
 
 const db = getFirestore();
 
@@ -31,10 +32,15 @@ const onGradeWritten = functions.firestore
                 type: TYPE,
                 refCollection: 'grades',
                 refId: context.params.id,
+                title: '성적 업데이트',
+                body: '성적이 업데이트되었습니다.',
+                ref: `grades/${context.params.id}`,
+                studentId: studentId || null,
                 targetUserCount: 0,
                 successCount: 0,
                 failureCount: 0,
                 failedTokenCount: 0,
+                failedUids: [],
                 createdAt: FieldValue.serverTimestamp(),
             });
         }
@@ -63,10 +69,15 @@ const onGradeWritten = functions.firestore
             type: TYPE,
             refCollection: 'grades',
             refId,
+            title: '성적 업데이트',
+            body: '성적이 업데이트되었습니다.',
+            ref: `grades/${refId}`,
+            studentId: studentId || null,
             targetUserCount,
             successCount: fcmStats?.successCount || 0,
             failureCount: fcmStats?.failureCount || 0,
             failedTokenCount: fcmStats?.failedTokenCount || 0,
+            failedUids: (fcmStats?.failedUids || []).slice(0, MAX_FAILED_UIDS),
             createdAt: FieldValue.serverTimestamp(),
         });
     });

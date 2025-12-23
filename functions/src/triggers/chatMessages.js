@@ -3,6 +3,7 @@ const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 const { notifyUsers } = require('../notify/notifications');
 
 const TYPE = 'CHAT_MESSAGE';
+const MAX_FAILED_UIDS = 200;
 
 const db = getFirestore();
 
@@ -26,10 +27,14 @@ const onChatMessageCreated = functions.firestore
             return db.collection('notificationLogs').add({
                 type: TYPE,
                 refCollection: 'chats',
+                title: '새 메시지',
+                body: '새 메시지가 도착했습니다.',
+                ref: `chats/${refId}`,
                 refId,
                 targetUserCount: 0,
                 successCount: 0,
                 failureCount: 0,
+                failedUids: [],
                 failedTokenCount: 0,
                 createdAt: FieldValue.serverTimestamp(),
             });
@@ -66,10 +71,15 @@ const onChatMessageCreated = functions.firestore
             refCollection: 'chats',
             refId,
             targetUserCount,
+            title: '새 메시지',
+            body: '새 메시지가 도착했습니다.',
+            ref: `chats/${refId}`,
+            targetUserCount,
             successCount: fcmStats?.successCount || 0,
             failureCount: fcmStats?.failureCount || 0,
             failedTokenCount: fcmStats?.failedTokenCount || 0,
             createdAt: FieldValue.serverTimestamp(),
+            failedUids: (fcmStats?.failedUids || []).slice(0, MAX_FAILED_UIDS),
         });
     });
 

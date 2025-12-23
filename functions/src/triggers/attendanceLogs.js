@@ -4,6 +4,7 @@ const { getRecipientsForStudent } = require('../notify/recipients');
 const { notifyUsers } = require('../notify/notifications');
 
 const TYPE = 'ATTENDANCE_UPDATED';
+const MAX_FAILED_UIDS = 200;
 
 const db = getFirestore();
 
@@ -31,10 +32,15 @@ const onAttendanceLogWritten = functions.firestore
                 type: TYPE,
                 refCollection: 'attendanceLogs',
                 refId: context.params.id,
+                title: '출결 안내',
+                body: '출결 정보가 업데이트되었습니다.',
+                ref: `attendanceLogs/${context.params.id}`,
+                studentId: studentId || null,
                 targetUserCount: 0,
                 successCount: 0,
                 failureCount: 0,
                 failedTokenCount: 0,
+                failedUids: [],
                 createdAt: FieldValue.serverTimestamp(),
             });
         }
@@ -63,10 +69,15 @@ const onAttendanceLogWritten = functions.firestore
             type: TYPE,
             refCollection: 'attendanceLogs',
             refId,
+            title: '출결 안내',
+            body: '출결 정보가 업데이트되었습니다.',
+            ref: `attendanceLogs/${refId}`,
+            studentId: studentId || null,
             targetUserCount,
             successCount: fcmStats?.successCount || 0,
             failureCount: fcmStats?.failureCount || 0,
             failedTokenCount: fcmStats?.failedTokenCount || 0,
+            failedUids: (fcmStats?.failedUids || []).slice(0, MAX_FAILED_UIDS),
             createdAt: FieldValue.serverTimestamp(),
         });
     });

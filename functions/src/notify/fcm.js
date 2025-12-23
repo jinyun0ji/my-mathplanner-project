@@ -31,7 +31,7 @@ const sendFcmToUsers = async (userIds, dataPayload, notificationIds = {}) => {
     const uniqueIds = [...new Set(userIds.filter(Boolean))];
 
     if (uniqueIds.length === 0) {
-        return { successCount: 0, failureCount: 0, failedTokenCount: 0 };
+        return { successCount: 0, failureCount: 0, failedTokenCount: 0, failedUids: [] };
     }
 
     const messaging = getMessaging();
@@ -39,6 +39,7 @@ const sendFcmToUsers = async (userIds, dataPayload, notificationIds = {}) => {
         successCount: 0,
         failureCount: 0,
         failedTokenCount: 0,
+        failedUids: [],
     };
 
     await Promise.all(uniqueIds.map(async (uid) => {
@@ -56,6 +57,8 @@ const sendFcmToUsers = async (userIds, dataPayload, notificationIds = {}) => {
 
         const tokenChunks = chunk(tokenEntries, 500);
 
+        let uidFailed = false;
+
         await Promise.all(tokenChunks.map(async (entryBatch) => {
             const tokens = entryBatch.map((entry) => entry.token);
             const response = await messaging.sendEachForMulticast({
@@ -65,6 +68,9 @@ const sendFcmToUsers = async (userIds, dataPayload, notificationIds = {}) => {
 
             totals.successCount += response.successCount;
             totals.failureCount += response.failureCount;
+            if (response.failureCount > 0) {
+                uidFailed = true;
+            }
 
             const invalidRefs = response.responses
                 .map((result, index) => (result.success ? null : { error: result.error, ref: entryBatch[index].ref }))
@@ -75,6 +81,10 @@ const sendFcmToUsers = async (userIds, dataPayload, notificationIds = {}) => {
                 await Promise.all(invalidRefs.map((entry) => entry.ref.delete()));
             }
         }));
+
+        if (uidFailed) {
+            totals.failedUids.push(uid);
+        }
     }));
 
     return totals;
