@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Icon } from '../utils/helpers';
 import { LessonLogFormModal } from '../utils/modals/LessonLogFormModal';
-import ClassSelectionPanel from '../components/Shared/ClassSelectionPanel'; 
-import VideoProgressViewer from '../components/Shared/VideoProgressViewer'; 
+import ClassSelectionPanel from '../components/Shared/ClassSelectionPanel';
+import VideoProgressViewer from '../components/Shared/VideoProgressViewer';
+import { getCurrentLessonByDate, getSortedLessonLogs } from '../domain/lesson.service';
 
 export default function LessonManagement({ 
     students, classes, lessonLogs, handleSaveLessonLog, handleDeleteLessonLog, 
@@ -17,12 +18,10 @@ export default function LessonManagement({
     const selectedClass = classes.find(c => c.id === selectedClassId);
     
     // 선택된 클래스의 일지 목록을 날짜 역순으로 정렬
-    const classLogs = useMemo(() => {
-        if (!selectedClassId) return [];
-        return lessonLogs
-            .filter(log => log.classId === selectedClassId)
-            .sort((a, b) => new Date(b.date) - new Date(a.date));
-    }, [lessonLogs, selectedClassId]);
+    const classLogs = useMemo(
+        () => getSortedLessonLogs(lessonLogs, selectedClassId),
+        [lessonLogs, selectedClassId]
+    );
 
     useEffect(() => {
         if (selectedClassId) {
@@ -42,9 +41,10 @@ export default function LessonManagement({
         return () => mediaQuery.removeEventListener('change', handleResize);
     }, []);
 
-    const currentLog = useMemo(() => {
-        return classLogs.find(log => log.date === selectedDate);
-    }, [classLogs, selectedDate]);
+    const currentLog = useMemo(
+        () => getCurrentLessonByDate(classLogs, selectedDate),
+        [classLogs, selectedDate]
+    );
     
     const handleDateNavigate = (direction) => {
         const sessions = calculateClassSessions(selectedClass);

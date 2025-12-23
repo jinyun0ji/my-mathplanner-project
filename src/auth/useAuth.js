@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { onAuthStateChanged } from 'firebase/auth';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
 
 const loadInitialSession = () => {
     if (typeof localStorage === 'undefined') return null;
@@ -14,21 +14,25 @@ const loadInitialSession = () => {
 export default function useAuth(authInstance) {
     const initialSession = loadInitialSession();
 
-    const [isLoggedIn, setIsLoggedIn] = useState(() => Boolean(initialSession?.isLoggedIn));
+    const [isLoggedIn, setIsLoggedIn] = useState(false);
     const [userRole, setUserRole] = useState(() => initialSession?.userRole || null);
-    const [userId, setUserId] = useState(() => initialSession?.userId || null);
+    const [userId, setUserId] = useState(null);
 
     useEffect(() => {
         if (!authInstance) return undefined;
-        const unsubscribe = onAuthStateChanged(authInstance, (user) => { if (user) setUserId(user.uid); });
+        const unsubscribe = onAuthStateChanged(authInstance, (user) => {
+            setIsLoggedIn(Boolean(user));
+            setUserId(user?.uid || null);
+            if (!user) setUserRole(null);
+        });
         return () => unsubscribe();
     }, [authInstance]);
 
     useEffect(() => {
         if (typeof localStorage === 'undefined') return;
-        if (isLoggedIn && userRole && userId !== null) {
+        if (userRole && userId !== null) {
             try {
-                localStorage.setItem('session', JSON.stringify({ isLoggedIn: true, userRole, userId }));
+                localStorage.setItem('session', JSON.stringify({ userRole }));
             } catch (error) {
                 console.error('세션 정보를 저장하지 못했습니다:', error);
             }
@@ -39,15 +43,10 @@ export default function useAuth(authInstance) {
                 console.error('세션 정보를 삭제하지 못했습니다:', error);
             }
         }
-    }, [isLoggedIn, userRole, userId]);
+    }, [userRole, userId]);
 
-    const handleLoginSuccess = (role, id) => {
-        setIsLoggedIn(true);
-        setUserRole(role);
-        setUserId(id);
-    };
-
-    const handleLogout = () => {
+    const handleLogout = async () => {
+        if (authInstance) await signOut(authInstance);
         setIsLoggedIn(false);
         setUserRole(null);
         setUserId(null);
@@ -57,7 +56,7 @@ export default function useAuth(authInstance) {
         isLoggedIn,
         userRole,
         userId,
-        handleLoginSuccess,
+        setUserRole,
         handleLogout,
     };
 }

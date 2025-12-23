@@ -3,6 +3,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Icon, getYouTubeId, formatTime } from '../../utils/helpers';
 import YouTubePlayer from '../../components/YouTubePlayer';
 import PlayCircleFilledWhiteIcon from '@mui/icons-material/PlayCircleFilledWhite';
+import { calculateVideoProgress, getCurrentLessonByDate, getSortedLessonLogs } from '../../domain/lesson.service';
 
 export default function ClassroomView({ 
     classes, lessonLogs, attendanceLogs, studentId, 
@@ -17,11 +18,10 @@ export default function ClassroomView({
 }) {
     const selectedClass = classes.find(c => c.id === selectedClassId);
     
-    const sortedLogs = useMemo(() => {
-        return lessonLogs
-            .filter(log => log.classId === selectedClassId)
-            .sort((a, b) => new Date(b.date) - new Date(a.date));
-    }, [lessonLogs, selectedClassId]);
+    const sortedLogs = useMemo(
+        () => getSortedLessonLogs(lessonLogs, selectedClassId),
+        [lessonLogs, selectedClassId]
+    );
 
     const [viewMode, setViewMode] = useState('list');
     const [currentLesson, setCurrentLesson] = useState(null);
@@ -33,7 +33,7 @@ export default function ClassroomView({
 
     useEffect(() => {
         if (targetMemo && targetMemo.lessonId) {
-            const target = sortedLogs.find(l => l.id === targetMemo.lessonId);
+            const target = getCurrentLessonByDate(sortedLogs, null, targetMemo.lessonId);
             if (target) {
                 setCurrentLesson(target);
                 setViewMode('player');
@@ -107,7 +107,7 @@ export default function ClassroomView({
 
     const handleWatchedTick = (addedSeconds, currentTime, duration) => {
         if (!currentLesson || duration <= 0) return;
-        const prevData = videoProgress?.[studentId]?.[currentLesson.id] || { percent: 0, seconds: 0, accumulated: 0 };
+        const prevData = calculateVideoProgress(videoProgress, studentId, currentLesson.id);
         const newAccumulated = (prevData.accumulated || 0) + addedSeconds;
         const newPercent = Math.min(100, Math.floor((newAccumulated / duration) * 100));
         onSaveVideoProgress(studentId, currentLesson.id, {
@@ -116,7 +116,7 @@ export default function ClassroomView({
     };
 
     const myBookmarks = videoBookmarks?.[studentId]?.[currentLesson?.id] || [];
-    const progressData = videoProgress?.[studentId]?.[currentLesson?.id] || { percent: 0, seconds: 0 };
+    const progressData = calculateVideoProgress(videoProgress, studentId, currentLesson?.id);
 
     const getVideoIdFromLog = (log) => {
         if (!log) return null;
@@ -141,7 +141,7 @@ export default function ClassroomView({
     };
 
     const renderLogItem = (log) => {
-        const prog = videoProgress?.[studentId]?.[log.id]?.percent || 0;
+        const { percent: prog } = calculateVideoProgress(videoProgress, studentId, log.id);
         const isSelected = currentLesson?.id === log.id;
         const hasMaterials = log.materials && log.materials.length > 0;
         const isMaterialsExpanded = expandedMaterialLogId === log.id;

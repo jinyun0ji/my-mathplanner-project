@@ -1,9 +1,9 @@
 // src/App.jsx
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import './output.css';
-import { getAuth } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider, OAuthProvider, signInWithEmailAndPassword, signInWithPopup } from 'firebase/auth';
 import {
-    getFirestore, setLogLevel,
+    getFirestore, setLogLevel, doc, getDoc,
 } from 'firebase/firestore';
 import { initializeApp } from 'firebase/app';
 
@@ -72,7 +72,7 @@ const PageContent = (props) => {
 };
 
 export default function App() {
-  const { isLoggedIn, userRole, userId, handleLoginSuccess: handleAuthLoginSuccess, handleLogout: handleAuthLogout } = useAuth(auth);
+  const { isLoggedIn, userRole, userId, setUserRole, handleLogout: handleAuthLogout } = useAuth(auth);
   const [page, setPage] = useState('lessons');
   const [selectedStudentId, setSelectedStudentId] = useState(() =>
       ['student', 'parent'].includes(userRole) ? userId : null
@@ -115,6 +115,33 @@ export default function App() {
       }
       if (['student', 'parent'].includes(userRole)) setSelectedStudentId(userId);
   }, [isLoggedIn, userRole, userId]);
+
+  useEffect(() => {
+      if (isLoggedIn) processedAnnouncementIdsRef.current = new Set();
+  }, [isLoggedIn, userId]);
+
+  useEffect(() => {
+      if (!db || !userId) {
+          setUserRole(null);
+          return undefined;
+      }
+
+      const state = { cancelled: false };
+      const loadRole = async () => {
+          try {
+              const snap = await getDoc(doc(db, 'users', userId));
+              if (state.cancelled) return;
+              const role = snap.exists() ? snap.data()?.role || null : null;
+              setUserRole(role);
+          } catch (error) {
+              console.error('사용자 역할을 불러오는 중 오류가 발생했습니다:', error);
+              if (!state.cancelled) setUserRole(null);
+          }
+      };
+
+      loadRole();
+      return () => { state.cancelled = true; };
+  }, [db, userId, setUserRole]);
 
   // --- 🔥 Firestore 실시간 동기화 (비용 안전 장치 포함) ---
   useEffect(() => startStaffFirestoreSync({
@@ -160,8 +187,18 @@ export default function App() {
   }, [db, isLoggedIn, userRole, userId]);
 
 
-  // ... (로그인, 로컬스토리지, 메시지 등 기타 로직 유지) ...
-  const handleSocialLogin = (providerName) => handleLoginSuccess('student', 1);
+  const handleEmailLogin = async (email, password) => {
+      if (!auth) throw new Error('Firebase가 초기화되지 않았습니다.');
+      await signInWithEmailAndPassword(auth, email, password);
+  };
+
+  const handleSocialLogin = async (providerName) => {
+      if (!auth) throw new Error('Firebase가 초기화되지 않았습니다.');
+      const provider = providerName === 'google'
+          ? new GoogleAuthProvider()
+          : new OAuthProvider(`oidc.${providerName}`);
+      await signInWithPopup(auth, provider);
+  };
 
   useEffect(() => {
       try { localStorage.setItem('videoBookmarks', JSON.stringify(videoBookmarks)); } 
@@ -301,18 +338,13 @@ export default function App() {
       if (map[key]) handlePageChange(map[key]);
   };
 
-  const handleLoginSuccess = (role, id) => {
-      handleAuthLoginSuccess(role, id);
-      processedAnnouncementIdsRef.current = new Set();
-  };
-
   const handleLogout = () => {
       handleAuthLogout();
       setSelectedStudentId(null);
       processedAnnouncementIdsRef.current = new Set();
   };
 
-  if (!isLoggedIn) return <LoginPage onLogin={handleLoginSuccess} onSocialLogin={handleSocialLogin} />;
+  if (!isLoggedIn) return <LoginPage onEmailLogin={handleEmailLogin} onSocialLogin={handleSocialLogin} />;
 
   // 학생/학부모 뷰
   if (userRole === 'student') return <StudentHome studentId={userId} students={students} classes={classes} homeworkAssignments={homeworkAssignments} homeworkResults={homeworkResults} attendanceLogs={attendanceLogs} lessonLogs={lessonLogs} notices={announcements} tests={tests} grades={grades} videoProgress={videoProgress} onSaveVideoProgress={handleSaveVideoProgress} videoBookmarks={videoBookmarks} onSaveBookmark={handleSaveBookmark} externalSchedules={externalSchedules} onSaveExternalSchedule={handleSaveExternalSchedule} onDeleteExternalSchedule={handleDeleteExternalSchedule} clinicLogs={clinicLogs} onUpdateStudent={handleSaveStudent} messages={studentMessages} onSendMessage={() => {}} onLogout={handleLogout} />;
