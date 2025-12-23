@@ -12,7 +12,7 @@ import { initForegroundMessageListener } from '../firebase/messaging';
 
 export default function AuthGate() {
   const isSocialCallbackPage = typeof window !== 'undefined' && window.location.pathname === '/auth/callback';
-  const { user, role, studentIds: linkedStudentIds, loading } = useAuth();
+  const { user, role, linkedStudentIds, activeStudentId, loading } = useAuth();
 
   useEffect(() => {
       let unsubscribe = null;
@@ -54,5 +54,12 @@ export default function AuthGate() {
   if (!user) return <LoginPage onEmailLogin={handleEmailLogin} onSocialLogin={handleSocialLogin} />;
   if (role === 'pending') return <OnboardingPage onSubmitLinkCode={handleClaimLinkCode} />;
 
-  return <AppRoutes user={user} role={role} linkedStudentIds={linkedStudentIds} />;
+  return (
+      <AppRoutes
+          user={user}
+          role={role}
+          linkedStudentIds={linkedStudentIds}
+          activeStudentId={activeStudentId}
+      />
+  );
 }

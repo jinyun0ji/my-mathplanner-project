@@ -9,14 +9,16 @@ const isDevStaff =
 export default function useAuth() {
     const [user, setUser] = useState(null);
     const [role, setRole] = useState(null);
-    const [studentIds, setStudentIds] = useState([]);
+    const [linkedStudentIds, setLinkedStudentIds] = useState([]);
+    const [activeStudentId, setActiveStudentId] = useState(null);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         if (isDevStaff) {
             setUser({ uid: 'dev-staff' });
             setRole('staff');
-            setStudentIds([]);
+            setLinkedStudentIds([]);
+            setActiveStudentId(null);
             setLoading(false);
             return undefined;
         }
@@ -32,7 +34,8 @@ export default function useAuth() {
             if (!isMounted) return;
             setUser(currentUser);
             setRole(null);
-            setStudentIds([]);
+            setLinkedStudentIds([]);
+            setActiveStudentId(null);
 
             if (userDocUnsub) {
                 userDocUnsub();
@@ -56,21 +59,26 @@ export default function useAuth() {
 
                 if (!userDoc.exists()) {
                     setRole('pending');
-                    setStudentIds([]);
+                    setLinkedStudentIds([]);
+                    setActiveStudentId(null);
                 } else {
                     const data = userDoc.data();
                     setRole(data?.role || 'pending');
-                    const ids = Array.isArray(data?.studentIds)
-                        ? data.studentIds.filter((id) => id !== undefined && id !== null)
-                        : [];
-                    setStudentIds(ids);
+                    const ids = Array.isArray(data?.linkedStudentIds)
+                        ? data.linkedStudentIds.filter((id) => id !== undefined && id !== null)
+                        : Array.isArray(data?.studentIds)
+                            ? data.studentIds.filter((id) => id !== undefined && id !== null)
+                            : [];
+                    setLinkedStudentIds(ids);
+                    setActiveStudentId(data?.activeStudentId || null);
                 }
             setLoading(false);
             }, (error) => {
                 console.error('사용자 역할을 불러오는 중 오류가 발생했습니다:', error);
                 if (isMounted) {
                     setRole(null);
-                    setStudentIds([]);
+                    setLinkedStudentIds([]);
+                    setActiveStudentId(null);
                     setLoading(false);
                 }
             });
@@ -84,5 +92,5 @@ export default function useAuth() {
         };
     }, []);
 
-    return { user, role, studentIds, loading };
+    return { user, role, linkedStudentIds, activeStudentId, loading };
 }

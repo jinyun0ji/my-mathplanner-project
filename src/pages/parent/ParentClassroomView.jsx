@@ -8,7 +8,8 @@ export default function ParentClassroomView({
     homeworkAssignments, homeworkResults,
     tests, grades,
     onNavigateToTab,
-    onOpenReport
+    onOpenReport,
+    activeStudentName
 }) {
     const selectedClass = classes.find(c => c.id === selectedClassId);
     
@@ -164,14 +165,23 @@ export default function ParentClassroomView({
     return (
         <div className="animate-fade-in-up pb-20 space-y-6 relative">
             {/* 헤더 */}
-            <div className="flex items-center gap-3">
-                <button onClick={() => setSelectedClassId(null)} className="p-2 bg-white border border-gray-200 rounded-xl text-gray-600 active:bg-gray-100 transition-colors shadow-sm">
-                    <Icon name="chevronLeft" className="w-5 h-5" /> 
-                </button>
-                <div>
-                    <h2 className="text-lg font-bold text-gray-900">{selectedClass?.name}</h2>
-                    <p className="text-xs text-gray-500">{selectedClass?.schedule.days.join(', ')} {selectedClass?.schedule.time}</p>
+            <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                    <button onClick={() => setSelectedClassId(null)} className="p-2 bg-white border border-gray-200 rounded-xl text-gray-600 active:bg-gray-100 transition-colors shadow-sm">
+                        <Icon name="chevronLeft" className="w-5 h-5" /> 
+                    </button>
+                    <div>
+                        <h2 className="text-lg font-bold text-gray-900">{selectedClass?.name}</h2>
+                        <p className="text-xs text-gray-500">{selectedClass?.schedule.days.join(', ')} {selectedClass?.schedule.time}</p>
+                    </div>
                 </div>
+                <button
+                    type="button"
+                    disabled
+                    className="text-xs font-semibold text-gray-400 border border-gray-200 px-3 py-1.5 rounded-full cursor-not-allowed"
+                >
+                    {activeStudentName ? `${activeStudentName} (전환 준비 중)` : '자녀 전환 준비 중'}
+                </button>
             </div>
 
             {/* [A] 상단 상태 요약 (3단 레이아웃) */}

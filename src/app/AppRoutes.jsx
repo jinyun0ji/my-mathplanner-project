@@ -24,10 +24,14 @@ import ClinicManagement from '../pages/ClinicManagement';
 import InternalCommunication from '../pages/InternalCommunication';
 import PaymentManagement from '../pages/PaymentManagement';
 import ParentHome from '../pages/ParentHome';
+import ParentStudentPicker from '../pages/parent/ParentStudentPicker';
+import OnboardingPage from '../pages/OnboardingPage';
 import { signOutUser } from '../auth/authService';
 import { db } from '../firebase/client';
 import { loadViewerDataOnce, startStaffFirestoreSync } from '../data/firestoreSync';
 import { createLinkCode, createStaffUser } from '../admin/staffService';
+import { claimStudentLinkCode } from '../parent/linkCodeService';
+import { doc, setDoc } from 'firebase/firestore';
 
 const PageContent = (props) => {
     const { page, selectedStudentId } = props;
@@ -46,15 +50,30 @@ const PageContent = (props) => {
     }
 };
 
-export default function AppRoutes({ user, role, linkedStudentIds }) {
+export default function AppRoutes({ user, role, linkedStudentIds, activeStudentId }) {
   const [page, setPage] = useState('lessons');
   const [selectedStudentId, setSelectedStudentId] = useState(null);
   const [notifications, setNotifications] = useState([]);
   const [isGlobalDirty, setIsGlobalDirty] = useState(false);
   const [studentSearchTerm, setStudentSearchTerm] = useState('');
   const userId = user?.uid || null;
-  const primaryStudentId = role === 'parent' ? linkedStudentIds?.[0] || null : userId;
   const isAuthenticated = Boolean(user);
+  const storedActiveStudentId = (() => {
+      try {
+          return localStorage.getItem('activeStudentId') || activeStudentId || null;
+      } catch (e) {
+          return activeStudentId || null;
+      }
+  })();
+  const validActiveStudentId = Array.isArray(linkedStudentIds)
+      && linkedStudentIds.includes(storedActiveStudentId)
+      ? storedActiveStudentId
+      : null;
+  const parentStudentId = role === 'parent'
+      ? linkedStudentIds?.length === 1
+          ? linkedStudentIds[0]
+          : validActiveStudentId
+      : null;
 
   const [students, setStudents] = useState(initialStudents);
   const [classes, setClasses] = useState(initialClasses);
@@ -86,30 +105,34 @@ export default function AppRoutes({ user, role, linkedStudentIds }) {
           return;
       }
       if (role === 'student') setSelectedStudentId(userId);
-      if (role === 'parent') setSelectedStudentId(primaryStudentId);
-  }, [isAuthenticated, role, userId, primaryStudentId]);
+      if (role === 'parent') setSelectedStudentId(parentStudentId);
+  }, [isAuthenticated, role, userId, parentStudentId]);
 
   useEffect(() => {
       if (isAuthenticated) processedAnnouncementIdsRef.current = new Set();
   }, [isAuthenticated, userId]);
 
-  useEffect(() => startStaffFirestoreSync({
-      db,
-      isLoggedIn: isAuthenticated,
-      userRole: role,
-      setStudents,
-      setClasses,
-      setTests,
-      setLessonLogs,
-      setAttendanceLogs,
-      setClinicLogs,
-      setWorkLogs,
-      setAnnouncements,
-      setHomeworkAssignments,
-      setPaymentLogs,
-      setGrades,
-      setHomeworkResults,
-  }), [db, isAuthenticated, role]);
+  useEffect(() => {
+  const unsubscribe = startStaffFirestoreSync({
+    db,
+    isLoggedIn: isAuthenticated,
+    userRole: role,
+    setStudents,
+    setClasses,
+    setTests,
+    setLessonLogs,
+    setAttendanceLogs,
+    setClinicLogs,
+    setWorkLogs,
+    setAnnouncements,
+    setHomeworkAssignments,
+    setPaymentLogs,
+    setGrades,
+    setHomeworkResults,
+  });
+
+  return unsubscribe;
+}, [db, isAuthenticated, role]);
 
   useEffect(() => {
       const state = { cancelled: false };
@@ -134,6 +157,30 @@ export default function AppRoutes({ user, role, linkedStudentIds }) {
       });
       return () => { state.cancelled = true; };
   }, [db, isAuthenticated, role, userId, linkedStudentIds]);
+
+  const persistActiveStudentId = useCallback(async (nextStudentId) => {
+      if (!nextStudentId || !userId || !db) return;
+      try {
+          await setDoc(doc(db, 'users', userId), { activeStudentId: nextStudentId }, { merge: true });
+      } catch (error) {
+          console.error('activeStudentId 저장 실패:', error);
+      }
+
+      try {
+          localStorage.setItem('activeStudentId', nextStudentId);
+      } catch (e) {}
+  }, [db, userId]);
+
+  useEffect(() => {
+      if (role !== 'parent') return;
+      if (!Array.isArray(linkedStudentIds) || linkedStudentIds.length === 0) return;
+      if (linkedStudentIds.length === 1 && linkedStudentIds[0] !== activeStudentId) {
+          persistActiveStudentId(linkedStudentIds[0]);
+      }
+      if (linkedStudentIds.length > 1 && validActiveStudentId && validActiveStudentId !== activeStudentId) {
+          persistActiveStudentId(validActiveStudentId);
+      }
+  }, [role, linkedStudentIds, activeStudentId, validActiveStudentId, persistActiveStudentId]);
 
   useEffect(() => {
       try { localStorage.setItem('videoBookmarks', JSON.stringify(videoBookmarks)); }
@@ -295,9 +342,28 @@ export default function AppRoutes({ user, role, linkedStudentIds }) {
       processedAnnouncementIdsRef.current = new Set();
   };
 
-  if (role === 'student') return <StudentHome studentId={userId} userId={userId} students={students} classes={classes} homeworkAssignments={homeworkAssignments} homeworkResults={homeworkResults} attendanceLogs={attendanceLogs} lessonLogs={lessonLogs} notices={announcements} tests={tests} grades={grades} videoProgress={videoProgress} onSaveVideoProgress={handleSaveVideoProgress} videoBookmarks={videoBookmarks} onSaveBookmark={handleSaveBookmark} externalSchedules={externalSchedules} onSaveExternalSchedule={handleSaveExternalSchedule} onDeleteExternalSchedule={handleDeleteExternalSchedule} clinicLogs={clinicLogs} onUpdateStudent={handleSaveStudent} messages={studentMessages} onSendMessage={() => {}} onLogout={handleLogout} />;
-  if (role === 'parent') return <ParentHome studentId={selectedStudentId} userId={userId} students={students} classes={classes} homeworkAssignments={homeworkAssignments} homeworkResults={homeworkResults} attendanceLogs={attendanceLogs} lessonLogs={lessonLogs} notices={announcements} tests={tests} grades={grades} clinicLogs={clinicLogs} videoProgress={videoProgress} onLogout={handleLogout} externalSchedules={externalSchedules} onSaveExternalSchedule={handleSaveExternalSchedule} onDeleteExternalSchedule={handleDeleteExternalSchedule} messages={studentMessages} onSendMessage={() => {}} />;
+  const handleClaimLinkCode = async (code) => {
+      await claimStudentLinkCode(code);
+  };
 
+  if (role === 'student') return <StudentHome studentId={userId} userId={userId} students={students} classes={classes} homeworkAssignments={homeworkAssignments} homeworkResults={homeworkResults} attendanceLogs={attendanceLogs} lessonLogs={lessonLogs} notices={announcements} tests={tests} grades={grades} videoProgress={videoProgress} onSaveVideoProgress={handleSaveVideoProgress} videoBookmarks={videoBookmarks} onSaveBookmark={handleSaveBookmark} externalSchedules={externalSchedules} onSaveExternalSchedule={handleSaveExternalSchedule} onDeleteExternalSchedule={handleDeleteExternalSchedule} clinicLogs={clinicLogs} onUpdateStudent={handleSaveStudent} messages={studentMessages} onSendMessage={() => {}} onLogout={handleLogout} />;
+  if (role === 'parent') {
+      if (!linkedStudentIds || linkedStudentIds.length === 0) {
+          return <OnboardingPage onSubmitLinkCode={handleClaimLinkCode} />;
+      }
+      if (linkedStudentIds.length > 1 && !parentStudentId) {
+          return (
+              <ParentStudentPicker
+                  linkedStudentIds={linkedStudentIds}
+                  students={students}
+                  activeStudentId={storedActiveStudentId}
+                  onConfirm={persistActiveStudentId}
+              />
+          );
+      }
+      return <ParentHome studentId={parentStudentId} userId={userId} students={students} classes={classes} homeworkAssignments={homeworkAssignments} homeworkResults={homeworkResults} attendanceLogs={attendanceLogs} lessonLogs={lessonLogs} notices={announcements} tests={tests} grades={grades} clinicLogs={clinicLogs} videoProgress={videoProgress} onLogout={handleLogout} externalSchedules={externalSchedules} onSaveExternalSchedule={handleSaveExternalSchedule} onDeleteExternalSchedule={handleDeleteExternalSchedule} messages={studentMessages} onSendMessage={() => {}} />;
+  }
+  
   const managementProps = {
     students, classes, lessonLogs, attendanceLogs, workLogs, clinicLogs,
     homeworkAssignments, homeworkResults, tests, grades, studentMemos, videoProgress, announcements,

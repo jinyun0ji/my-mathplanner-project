@@ -177,13 +177,11 @@ export default function ParentHome({
 }) {
     // 1. 자녀 데이터 및 선택 로직
     const initialStudent = students.find(s => s.id === initialStudentId);
-    const myChildren = useMemo(() => {
-        if (!initialStudent) return [];
-        return students.filter(s => s.parentPhone === initialStudent.parentPhone);
-    }, [students, initialStudent]);
-
     const [activeChildId, setActiveChildId] = useState(initialStudentId);
     const activeChild = students.find(s => s.id === activeChildId) || initialStudent;
+    const activeChildName = activeChild?.name || '학생';
+    const activeChildSchool = activeChild?.school || '학교 정보 없음';
+    const activeChildGrade = activeChild?.grade || '학년 정보 없음';
 
     // 2. 데이터 필터링
     const myClasses = useMemo(() => classes.filter(c => c.students.includes(activeChildId)), [classes, activeChildId]);
@@ -204,12 +202,20 @@ export default function ParentHome({
         setReportFocus(null);
     }, [activeChildId]);
 
+    useEffect(() => {
+        setActiveChildId(initialStudentId);
+        setSelectedClassId(null);
+        setSelectedReportId(null);
+        setActiveTab('home');
+    }, [initialStudentId]);
+
     // 알림 관련
     const [isNotificationOpen, setIsNotificationOpen] = useState(false);
     const [visibleNotices, setVisibleNotices] = useState([]); 
     const { notifications, hasUnread, unreadCount, markAllRead, lastReadAt, isLoading, isMetaLoading } = useNotifications(userId);
 
     useEffect(() => {
+        if (!activeChild) return;
         const now = new Date();
         const todayStr = now.toISOString().split('T')[0];
         
@@ -221,7 +227,7 @@ export default function ParentHome({
         if (unpaidPayments.length > 0) {
             combinedNotices.unshift({
                 id: `payment-alert-${activeChildId}`, title: '🚨 수업료/교재비 미납 안내',
-                content: `${activeChild.name} 학생의 미납 내역이 ${unpaidPayments.length}건 있습니다.`,
+                content: `${activeChildName} 학생의 미납 내역이 ${unpaidPayments.length}건 있습니다.`,
                 author: '행정실', date: todayStr, isPinned: true
             });
         }
@@ -229,7 +235,7 @@ export default function ParentHome({
         if (combinedNotices.length > visibleNotices.length) {
             return;
         }
-    }, [notices, activeChildId, unpaidPayments.length, activeChild.name]);
+    }, [notices, activeChildId, unpaidPayments.length, activeChildName, activeChild]);
 
     const pendingHomeworkCount = useMemo(
         () => myHomeworkStats.filter(h => h.status !== '완료').length,
@@ -451,31 +457,38 @@ export default function ParentHome({
         { id: 'menu', icon: 'menu', label: '전체' },
     ];
 
+    if (!activeChild) {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-gray-50 text-sm text-gray-500">
+                학생 정보를 불러오는 중...
+            </div>
+        );
+    }
+
     return (
         <div className="bg-gray-50 min-h-screen flex flex-col relative font-sans">
             {/* 헤더 & 자녀 선택 */}
             <div className="bg-white sticky top-0 z-30 shadow-sm">
                 <div className="bg-[radial-gradient(circle_at_15%_30%,rgba(56,189,248,0.18),transparent_35%),linear-gradient(135deg,#0f172a,#1e3a8a)] text-white px-4 py-2 flex justify-between items-center text-xs font-bold">
                     <span>학부모 전용</span>
-                    <span className="opacity-80">{activeChild.school} {activeChild.grade}</span>
+                    <span className="opacity-80">{activeChildSchool} {activeChildGrade}</span>
                 </div>
                 <StudentHeader />
-                {myChildren.length > 1 && (
-                    <div className="flex px-4 border-b border-gray-100 overflow-x-auto no-scrollbar">
-                        {myChildren.map(child => (
-                            <button
-                                key={child.id}
-                                onClick={() => { setActiveChildId(child.id); setSelectedClassId(null); setSelectedReportId(null); setActiveTab('home'); }}
-                                className={`flex items-center gap-2 px-4 py-3 text-sm font-bold transition-all whitespace-nowrap border-b-2 ${
-                                    activeChildId === child.id ? 'border-indigo-600 text-indigo-900' : 'border-transparent text-gray-400 hover:text-gray-600'
-                                }`}
-                            >
-                                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] ${activeChildId === child.id ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-500'}`}>{child.name[0]}</div>
-                                {child.name}
-                            </button>
-                        ))}
+                <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-white">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                        <span className="text-xs text-gray-400">현재 자녀</span>
+                        <span className="px-2 py-1 rounded-full bg-indigo-50 text-indigo-700 text-xs font-bold">
+                            {activeChildName}
+                        </span>
                     </div>
-                )}
+                <button
+                        type="button"
+                        disabled
+                        className="text-xs font-semibold text-gray-400 border border-gray-200 px-3 py-1.5 rounded-full cursor-not-allowed"
+                    >
+                        자녀 전환 준비 중
+                    </button>
+                </div>
             </div>
 
             <main className="flex-1 w-full max-w-md mx-auto p-4 pb-24 overflow-y-auto custom-scrollbar md:max-w-7xl">
@@ -488,12 +501,13 @@ export default function ParentHome({
                 ) : selectedClassId ? (
                     /* [라우팅 분기 2] 강의실 화면 (리포트 진입 핸들러 전달) */
                     <ParentClassroomView 
-                        classes={classes} lessonLogs={lessonLogs} attendanceLogs={attendanceLogs} studentId={activeChildId}
-                        selectedClassId={selectedClassId} setSelectedClassId={setSelectedClassId}
-                        videoProgress={videoProgress} homeworkAssignments={homeworkAssignments} homeworkResults={homeworkResults}
-                        tests={tests} grades={grades}
-                        onNavigateToTab={(tab, subTab = 'homework') => { setSelectedClassId(null); setActiveTab('report'); if (subTab) setReportFocus(subTab); }}
-                        onOpenReport={(sessionId) => setSelectedReportId(sessionId)} // ✅ 리포트 열기 핸들러
+                            classes={classes} lessonLogs={lessonLogs} attendanceLogs={attendanceLogs} studentId={activeChildId}
+                            selectedClassId={selectedClassId} setSelectedClassId={setSelectedClassId}
+                            videoProgress={videoProgress} homeworkAssignments={homeworkAssignments} homeworkResults={homeworkResults}
+                            tests={tests} grades={grades}
+                            onNavigateToTab={(tab, subTab = 'homework') => { setSelectedClassId(null); setActiveTab('report'); if (subTab) setReportFocus(subTab); }}
+                            onOpenReport={(sessionId) => setSelectedReportId(sessionId)} // ✅ 리포트 열기 핸들러
+                            activeStudentName={activeChildName}
                     />
                 ) : (
                     /* [라우팅 분기 3] 메인 대시보드 */
@@ -504,7 +518,7 @@ export default function ParentHome({
                                     <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
                                         <div className="space-y-3">
                                             <p className="text-xs uppercase tracking-[0.2em] text-sky-200 font-semibold">학부모 홈</p>
-                                            <h2 className="text-2xl md:text-3xl font-extrabold tracking-tight">{activeChild.name} 학습 현황</h2>
+                                            <h2 className="text-2xl md:text-3xl font-extrabold tracking-tight">{activeChildName} 학습 현황</h2>
                                             <p className="text-sm text-sky-100">오늘 바로 확인해야 할 과제, 일정, 결제 정보를 한눈에 모았습니다.</p>
                                             <div className="flex flex-wrap gap-2">
                                                 <span className="bg-white/10 border border-white/20 text-sky-50 px-3 py-1.5 rounded-full text-xs font-semibold">
@@ -624,7 +638,7 @@ export default function ParentHome({
                                     <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                                         <div className="space-y-2">
                                             <p className="text-[11px] font-semibold text-indigo-600 uppercase tracking-[0.2em]">학습 리포트</p>
-                                            <h2 className="text-2xl font-extrabold text-gray-900">부모님을 위한 {activeChild.name} 리포트</h2>
+                                            <h2 className="text-2xl font-extrabold text-gray-900">부모님을 위한 {activeChildName} 리포트</h2>
                                             <p className="text-sm text-gray-600">출결, 과제, 성적을 한 화면에서 확인하고 바로 대응할 수 있도록 정리했어요.</p>
                                             {reportFocus && (
                                                 <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 text-indigo-700 text-xs font-bold border border-indigo-100">
