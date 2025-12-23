@@ -14,6 +14,8 @@ import { generateSessionReport } from '../utils/reportHelper'; // ✅ 리포트 
 import useNotifications from '../notifications/useNotifications';
 import NotificationList from '../notifications/NotificationList';
 import openNotification from '../notifications/openNotification';
+import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
+import { db } from '../firebase/client';
 
 // --- [컴포넌트] 학부모 전용 대시보드 ---
 const ParentDashboard = ({ 
@@ -205,7 +207,7 @@ export default function ParentHome({
     // 알림 관련
     const [isNotificationOpen, setIsNotificationOpen] = useState(false);
     const [visibleNotices, setVisibleNotices] = useState([]); 
-    const { notifications, hasUnread } = useNotifications(userId);
+    const { notifications, hasUnread, unreadCount, markAllRead, lastReadAt, isLoading, isMetaLoading } = useNotifications(userId);
 
     useEffect(() => {
         const now = new Date();
@@ -292,6 +294,17 @@ export default function ParentHome({
             },
         });
         setIsNotificationOpen(false);
+    };
+
+    const handleChatOpen = async (chatId) => {
+        if (!userId || !db) {
+            return;
+        }
+
+        await setDoc(doc(db, 'users', userId, 'chatIndex', chatId), {
+            unreadCount: 0,
+            lastReadAt: serverTimestamp(),
+        }, { merge: true });
     };
 
     const childAttendanceLogs = useMemo(() => {
@@ -829,18 +842,23 @@ export default function ParentHome({
 
                 {/* 2. 메신저 버튼 */}
                 <StudentMessenger 
-                studentId={activeChildId} 
-                teacherName="담당 선생님" 
-                messages={messages} 
-                onSendMessage={onSendMessage} 
-                isFloating={false} 
-            />
-        </div>
+                    studentId={activeChildId} 
+                    teacherName="담당 선생님" 
+                    messages={messages} 
+                    onSendMessage={onSendMessage} 
+                    onOpenChat={handleChatOpen}
+                    isFloating={false} 
+                />
+            </div>
             <NotificationList
                 isOpen={isNotificationOpen}
                 onClose={() => setIsNotificationOpen(false)}
                 notifications={notifications}
                 onNotificationClick={handleNotificationClick}
+                onMarkAllRead={markAllRead}
+                unreadCount={unreadCount}
+                lastReadAt={lastReadAt}
+                isLoading={isLoading || isMetaLoading}
             />
         </div>
     );

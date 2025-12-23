@@ -12,6 +12,8 @@ import NotificationsIcon from '@mui/icons-material/Notifications';
 import useNotifications from '../notifications/useNotifications';
 import NotificationList from '../notifications/NotificationList';
 import openNotification from '../notifications/openNotification';
+import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
+import { db } from '../firebase/client';
 
 export default function StudentHome({ 
     studentId, userId, students, classes, homeworkAssignments, homeworkResults, 
@@ -29,7 +31,7 @@ export default function StudentHome({
     const [visibleNotices, setVisibleNotices] = useState([]); 
     const [targetMemo, setTargetMemo] = useState(null);
     const notificationUid = userId || studentId;
-    const { notifications, hasUnread } = useNotifications(notificationUid);
+    const { notifications, hasUnread, unreadCount, markAllRead, lastReadAt, isLoading, isMetaLoading } = useNotifications(notificationUid);
 
     useEffect(() => {
         let newNotices = [...notices];
@@ -71,6 +73,17 @@ export default function StudentHome({
     const handleNavigateToMemo = (classId, lessonId, time) => {
         setSelectedClassId(classId);
         setTargetMemo({ lessonId, time });
+    };
+
+    const handleChatOpen = async (chatId) => {
+        if (!notificationUid || !db) {
+            return;
+        }
+
+        await setDoc(doc(db, 'users', notificationUid, 'chatIndex', chatId), {
+            unreadCount: 0,
+            lastReadAt: serverTimestamp(),
+        }, { merge: true });
     };
 
     const navItems = [
@@ -203,19 +216,24 @@ export default function StudentHome({
 
                 {/* 2. 메신저 버튼 (isFloating={false}로 설정하여 위 버튼 바로 아래에 붙도록 함) */}
                 <StudentMessenger 
-                studentId={studentId} 
-                teacherName="채수용 선생님" 
-                messages={messages} 
-                onSendMessage={onSendMessage} 
-                isHidden={isVideoModalOpen} 
-                isFloating={false} 
-            />
-        </div>
+                    studentId={studentId} 
+                    teacherName="채수용 선생님" 
+                    messages={messages} 
+                    onSendMessage={onSendMessage} 
+                    onOpenChat={handleChatOpen}
+                    isHidden={isVideoModalOpen} 
+                    isFloating={false} 
+                />
+            </div>
             <NotificationList
                 isOpen={isNotificationOpen}
                 onClose={() => setIsNotificationOpen(false)}
                 notifications={notifications}
                 onNotificationClick={handleNotificationClick}
+                onMarkAllRead={markAllRead}
+                unreadCount={unreadCount}
+                lastReadAt={lastReadAt}
+                isLoading={isLoading || isMetaLoading}
             />
         </div>
     );

@@ -1,5 +1,5 @@
 const functions = require('firebase-functions');
-const { getFirestore } = require('firebase-admin/firestore');
+const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 const { notifyUsers } = require('../notify/notifications');
 
 const TYPE = 'CHAT_MESSAGE';
@@ -22,6 +22,20 @@ const onChatMessageCreated = functions.firestore
         }
 
         const refId = context.params.chatId;
+        const lastMessageText = messageData.text || messageData.body || '';
+        const lastMessageAt = messageData.createdAt || FieldValue.serverTimestamp();
+        const batch = db.batch();
+
+        recipients.forEach((uid) => {
+            const chatIndexRef = db.collection('users').doc(uid).collection('chatIndex').doc(refId);
+            batch.set(chatIndexRef, {
+                unreadCount: FieldValue.increment(1),
+                lastMessageAt,
+                lastMessageText,
+            }, { merge: true });
+        });
+
+        await batch.commit();
 
         return notifyUsers({
             userIds: recipients,

@@ -9,6 +9,7 @@ export default function StudentMessenger({
     teacherName = "채수용 선생님", 
     messages = [], 
     onSendMessage,
+    onOpenChat,
     isHidden = false,
     bottomPosition = "bottom-24",
     isFloating = true // ✅ [추가] true면 기존처럼 고정, false면 부모 요소의 정렬을 따름
@@ -17,6 +18,7 @@ export default function StudentMessenger({
     const [inputText, setInputText] = useState('');
     const [activeChannel, setActiveChannel] = useState('teacher');
     const messagesEndRef = useRef(null);
+    const lastOpenedChannelRef = useRef(null);
 
     const currentMessages = messages.filter(msg => msg.channelId === activeChannel);
 
@@ -34,6 +36,18 @@ export default function StudentMessenger({
     };
 
     const toggleMessenger = () => setIsOpen(!isOpen);
+
+    useEffect(() => {
+        if (!isOpen) {
+            lastOpenedChannelRef.current = null;
+            return;
+        }
+
+        if (onOpenChat && lastOpenedChannelRef.current !== activeChannel) {
+            lastOpenedChannelRef.current = activeChannel;
+            onOpenChat(activeChannel);
+        }
+    }, [isOpen, activeChannel, onOpenChat]);
 
     // ✅ [추가] 날짜 포맷팅 함수 (YYYY년 M월 D일 요일)
     const formatDateDivider = (dateString) => {
