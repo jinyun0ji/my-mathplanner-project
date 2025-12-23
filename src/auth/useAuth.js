@@ -2,7 +2,12 @@ import { useEffect, useState } from 'react';
 import { onAuthStateChanged, signInWithCustomToken as firebaseSignInWithCustomToken, signOut } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../firebase/client';
-import { signInWithEmail as signInWithEmailService, signInWithGooglePopup as signInWithGooglePopupService } from './authService';
+import {
+    signInWithEmail as signInWithEmailService,
+    signInWithGooglePopup as signInWithGooglePopupService,
+    signInWithKakao as signInWithKakaoService,
+    signInWithNaver as signInWithNaverService,
+} from './authService';
 
 export default function useAuth() {
     const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -50,6 +55,10 @@ export default function useAuth() {
 
     const signInWithGooglePopup = async () => signInWithGooglePopupService();
 
+    const signInWithKakao = async (code) => signInWithKakaoService(code);
+
+    const signInWithNaver = async (code, state) => signInWithNaverService(code, state);
+
     const signInWithCustomToken = async (customToken) => {
         if (!auth) throw new Error('Firebase가 초기화되지 않았습니다.');
         if (!customToken) throw new Error('커스텀 토큰이 필요합니다.');
@@ -71,6 +80,8 @@ export default function useAuth() {
         handleLogout,
         signInWithEmail,
         signInWithGooglePopup,
+        signInWithKakao,
+        signInWithNaver,
         signInWithCustomToken,
     };
 }

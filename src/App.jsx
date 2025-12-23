@@ -60,7 +60,8 @@ export default function App() {
     handleLogout: handleAuthLogout,
     signInWithEmail,
     signInWithGooglePopup,
-    signInWithCustomToken,
+    signInWithKakao,
+    signInWithNaver,
   } = useAuth();
   const [page, setPage] = useState('lessons');
   const [selectedStudentId, setSelectedStudentId] = useState(() =>
@@ -157,11 +158,81 @@ export default function App() {
       await signInWithEmail(email, password);
   };
 
+  const redirectToKakao = () => {
+      const clientId = process.env.REACT_APP_KAKAO_CLIENT_ID;
+      const redirectUri = process.env.REACT_APP_KAKAO_REDIRECT_URI || `${window.location.origin}?provider=kakao`;
+      if (!clientId) throw new Error('Kakao client id가 설정되지 않았습니다.');
+
+      const params = new URLSearchParams({
+          client_id: clientId,
+          redirect_uri: redirectUri,
+          response_type: 'code',
+      });
+      window.location.href = `https://kauth.kakao.com/oauth/authorize?${params.toString()}`;
+  };
+
+  const redirectToNaver = () => {
+      const clientId = process.env.REACT_APP_NAVER_CLIENT_ID;
+      const redirectUri = process.env.REACT_APP_NAVER_REDIRECT_URI || `${window.location.origin}?provider=naver`;
+      if (!clientId) throw new Error('Naver client id가 설정되지 않았습니다.');
+
+      const state = (typeof crypto !== 'undefined' && crypto.randomUUID)
+          ? crypto.randomUUID()
+          : Math.random().toString(36).slice(2, 10);
+      sessionStorage.setItem('naver_oauth_state', state);
+
+      const params = new URLSearchParams({
+          response_type: 'code',
+          client_id: clientId,
+          redirect_uri: redirectUri,
+          state,
+      });
+      window.location.href = `https://nid.naver.com/oauth2.0/authorize?${params.toString()}`;
+  };
+
   const handleSocialLogin = async (providerName) => {
       if (providerName === 'google') return signInWithGooglePopup();
-      const customToken = window?.__customAuthTokens?.[providerName];
-      return signInWithCustomToken(customToken);
+      if (providerName === 'kakao') return redirectToKakao();
+      if (providerName === 'naver') return redirectToNaver();
+      throw new Error('지원되지 않는 소셜 로그인입니다.');
   };
+
+  useEffect(() => {
+      if (typeof window === 'undefined') return undefined;
+
+      const url = new URL(window.location.href);
+      const provider = url.searchParams.get('provider');
+      const code = url.searchParams.get('code');
+      const state = url.searchParams.get('state');
+
+      if (!provider || !code) return undefined;
+
+      const clearParams = () => {
+          url.searchParams.delete('provider');
+          url.searchParams.delete('code');
+          if (state) url.searchParams.delete('state');
+          const newSearch = url.searchParams.toString();
+          const newUrl = `${url.pathname}${newSearch ? `?${newSearch}` : ''}${url.hash}`;
+          window.history.replaceState({}, '', newUrl);
+      };
+
+      const handleOAuthCallback = async () => {
+          try {
+              if (provider === 'kakao') {
+                  await signInWithKakao(code);
+              } else if (provider === 'naver') {
+                  const storedState = sessionStorage.getItem('naver_oauth_state');
+                  await signInWithNaver(code, state || storedState || undefined);
+              }
+          } catch (error) {
+              console.error('소셜 로그인 처리 중 오류가 발생했습니다.', error);
+          } finally {
+              clearParams();
+          }
+      };
+
+      handleOAuthCallback();
+  }, [signInWithKakao, signInWithNaver]);
 
   useEffect(() => {
       try { localStorage.setItem('videoBookmarks', JSON.stringify(videoBookmarks)); } 

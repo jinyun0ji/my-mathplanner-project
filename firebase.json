@@ -8,6 +8,14 @@
     ],
     "rewrites": [
       {
+        "source": "/auth/kakao",
+        "function": "api"
+      },
+      {
+        "source": "/auth/naver",
+        "function": "api"
+      },
+      {
         "source": "**",
         "destination": "/index.html"
       }
