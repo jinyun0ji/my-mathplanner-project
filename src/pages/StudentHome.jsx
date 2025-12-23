@@ -7,12 +7,14 @@ import {
 import ClassroomView from './student/ClassroomView';
 import StudentMessenger from '../components/StudentMessenger';
 import StudentHeader from '../components/StudentHeader';
-import StudentNotifications from '../components/StudentNotifications';
 import { Icon, calculateHomeworkStats, calculateGradeComparison } from '../utils/helpers';
 import NotificationsIcon from '@mui/icons-material/Notifications';
+import useNotifications from '../notifications/useNotifications';
+import NotificationList from '../notifications/NotificationList';
+import openNotification from '../notifications/openNotification';
 
 export default function StudentHome({ 
-    studentId, students, classes, homeworkAssignments, homeworkResults, 
+    studentId, userId, students, classes, homeworkAssignments, homeworkResults, 
     attendanceLogs, lessonLogs, notices, tests, grades, 
     videoProgress, onSaveVideoProgress, videoBookmarks, onSaveBookmark,
     externalSchedules, onSaveExternalSchedule, onDeleteExternalSchedule,
@@ -25,8 +27,9 @@ export default function StudentHome({
     const [isVideoModalOpen, setIsVideoModalOpen] = useState(false);
     const [isNotificationOpen, setIsNotificationOpen] = useState(false);
     const [visibleNotices, setVisibleNotices] = useState([]); 
-    const [hasNewNotifications, setHasNewNotifications] = useState(false);
     const [targetMemo, setTargetMemo] = useState(null);
+    const notificationUid = userId || studentId;
+    const { notifications, hasUnread } = useNotifications(notificationUid);
 
     useEffect(() => {
         let newNotices = [...notices];
@@ -52,12 +55,12 @@ export default function StudentHome({
             });
         }
         setVisibleNotices(combinedNotices);
-        if (combinedNotices.length > visibleNotices.length) setHasNewNotifications(true);
+        if (combinedNotices.length > visibleNotices.length) {
+            return;
+        }
     }, [notices, clinicLogs, studentId]);
 
-    const handleOpenNotification = () => { setIsNotificationOpen(true); setHasNewNotifications(false); };
-    const handleLinkToBoard = () => { setActiveTab('board'); setIsNotificationOpen(false); };
-    const handleDeleteNotice = (id) => { setVisibleNotices(prev => prev.filter(n => n.id !== id)); };
+    const handleOpenNotification = () => { setIsNotificationOpen(true); };
 
     const student = students.find(s => s.id === studentId);
     const myClasses = classes.filter(c => c.students.includes(studentId));
@@ -77,6 +80,32 @@ export default function StudentHome({
         { id: 'learning', icon: 'clipboardCheck', label: '학습관리' },
         { id: 'menu', icon: 'menu', label: '전체메뉴' },
     ];
+
+    const handleNotificationClick = async (notification) => {
+        await openNotification({
+            notification,
+            onNavigate: ({ refCollection, refId, data }) => {
+                if (refCollection === 'lessonLogs' && data?.classId) {
+                    setSelectedClassId(data.classId);
+                    setTargetMemo({ lessonId: refId, time: data?.date || null });
+                    return;
+                }
+
+                if (['homeworkResults', 'grades', 'attendanceLogs'].includes(refCollection)) {
+                    setSelectedClassId(null);
+                    setActiveTab('learning');
+                    setInitialLearningTab('homework');
+                    return;
+                }
+
+                if (refCollection === 'chats') {
+                    setSelectedClassId(null);
+                    setActiveTab('menu');
+                }
+            },
+        });
+        setIsNotificationOpen(false);
+    };
 
     return (
         <div className="bg-brand-bg min-h-screen flex flex-col relative font-sans">
@@ -169,20 +198,25 @@ export default function StudentHome({
                     className="bg-white text-brand-main border border-brand-main/20 p-3 rounded-full shadow-lg hover:bg-gray-50 active:scale-90 flex items-center justify-center relative w-12 h-12"
                 >
                     <NotificationsIcon style={{ fontSize: 24 }} />
-                    {hasNewNotifications && <span className="absolute top-2 right-2.5 w-2 h-2 bg-brand-red rounded-full ring-1 ring-white"></span>}
+                    {hasUnread && <span className="absolute top-2 right-2.5 w-2 h-2 bg-brand-red rounded-full ring-1 ring-white"></span>}
                 </button>
 
                 {/* 2. 메신저 버튼 (isFloating={false}로 설정하여 위 버튼 바로 아래에 붙도록 함) */}
                 <StudentMessenger 
-                    studentId={studentId} 
-                    teacherName="채수용 선생님" 
-                    messages={messages} 
-                    onSendMessage={onSendMessage} 
-                    isHidden={isVideoModalOpen} 
-                    isFloating={false} 
-                />
-            </div>
-            <StudentNotifications isOpen={isNotificationOpen} onClose={() => setIsNotificationOpen(false)} notices={visibleNotices} onDelete={handleDeleteNotice} onNoticeClick={handleLinkToBoard} />
+                studentId={studentId} 
+                teacherName="채수용 선생님" 
+                messages={messages} 
+                onSendMessage={onSendMessage} 
+                isHidden={isVideoModalOpen} 
+                isFloating={false} 
+            />
+        </div>
+            <NotificationList
+                isOpen={isNotificationOpen}
+                onClose={() => setIsNotificationOpen(false)}
+                notifications={notifications}
+                onNotificationClick={handleNotificationClick}
+            />
         </div>
     );
 }

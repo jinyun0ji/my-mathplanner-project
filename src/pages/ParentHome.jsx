@@ -5,13 +5,15 @@ import {
 } from '../components/StudentTabs';
 import ParentClassroomView from './parent/ParentClassroomView';
 import StudentHeader from '../components/StudentHeader';
-import StudentNotifications from '../components/StudentNotifications';
 import StudentMessenger from '../components/StudentMessenger';
 import { Icon, calculateHomeworkStats, calculateGradeComparison } from '../utils/helpers';
 import NotificationsIcon from '@mui/icons-material/Notifications';
 import { initialPayments } from '../api/initialData';
 import ParentSessionReport from './parent/ParentSessionReport'; // ✅ 신규 리포트 컴포넌트
 import { generateSessionReport } from '../utils/reportHelper'; // ✅ 리포트 데이터 생성 헬퍼
+import useNotifications from '../notifications/useNotifications';
+import NotificationList from '../notifications/NotificationList';
+import openNotification from '../notifications/openNotification';
 
 // --- [컴포넌트] 학부모 전용 대시보드 ---
 const ParentDashboard = ({ 
@@ -165,7 +167,7 @@ const ParentDashboard = ({
 
 // --- 메인 페이지 컴포넌트 ---
 export default function ParentHome({ 
-    studentId: initialStudentId, students, classes, homeworkAssignments, homeworkResults, 
+    studentId: initialStudentId, userId, students, classes, homeworkAssignments, homeworkResults, 
     attendanceLogs, lessonLogs, notices, tests, grades, 
     videoProgress, clinicLogs, onLogout,
     externalSchedules, onSaveExternalSchedule, onDeleteExternalSchedule,
@@ -203,7 +205,7 @@ export default function ParentHome({
     // 알림 관련
     const [isNotificationOpen, setIsNotificationOpen] = useState(false);
     const [visibleNotices, setVisibleNotices] = useState([]); 
-    const [hasNewNotifications, setHasNewNotifications] = useState(false);
+    const { notifications, hasUnread } = useNotifications(userId);
 
     useEffect(() => {
         const now = new Date();
@@ -222,7 +224,9 @@ export default function ParentHome({
             });
         }
         setVisibleNotices(combinedNotices);
-        if (combinedNotices.length > visibleNotices.length) setHasNewNotifications(true);
+        if (combinedNotices.length > visibleNotices.length) {
+            return;
+        }
     }, [notices, activeChildId, unpaidPayments.length, activeChild.name]);
 
     const pendingHomeworkCount = useMemo(
@@ -251,6 +255,44 @@ export default function ParentHome({
     }, [myClasses]);
 
     const noticePreview = useMemo(() => visibleNotices.slice(0, 3), [visibleNotices]);
+
+    const handleNotificationClick = async (notification) => {
+        await openNotification({
+            notification,
+            onNavigate: ({ refCollection, refId }) => {
+                setSelectedClassId(null);
+                if (refCollection === 'lessonLogs') {
+                    setSelectedReportId(refId);
+                    setActiveTab('report');
+                    setReportFocus(null);
+                    return;
+                }
+
+                if (refCollection === 'attendanceLogs') {
+                    setActiveTab('report');
+                    setReportFocus('attendance');
+                    return;
+                }
+
+                if (refCollection === 'homeworkResults') {
+                    setActiveTab('report');
+                    setReportFocus('homework');
+                    return;
+                }
+
+                if (refCollection === 'grades') {
+                    setActiveTab('report');
+                    setReportFocus('grade');
+                    return;
+                }
+
+                if (refCollection === 'chats') {
+                    setActiveTab('menu');
+                }
+            },
+        });
+        setIsNotificationOpen(false);
+    };
 
     const childAttendanceLogs = useMemo(() => {
         return attendanceLogs
@@ -782,19 +824,24 @@ export default function ParentHome({
                     className="bg-white text-indigo-900 border border-indigo-200 p-3 rounded-full shadow-lg hover:bg-gray-50 active:scale-90 flex items-center justify-center relative w-12 h-12"
                 >
                     <NotificationsIcon style={{ fontSize: 24 }} />
-                    {hasNewNotifications && <span className="absolute top-2 right-2.5 w-2 h-2 bg-red-500 rounded-full ring-1 ring-white"></span>}
+                    {hasUnread && <span className="absolute top-2 right-2.5 w-2 h-2 bg-red-500 rounded-full ring-1 ring-white"></span>}
                 </button>
 
                 {/* 2. 메신저 버튼 */}
                 <StudentMessenger 
-                    studentId={activeChildId} 
-                    teacherName="담당 선생님" 
-                    messages={messages} 
-                    onSendMessage={onSendMessage} 
-                    isFloating={false} 
-                />
-            </div>
-            <StudentNotifications isOpen={isNotificationOpen} onClose={() => setIsNotificationOpen(false)} notices={visibleNotices} onDelete={() => {}} onNoticeClick={() => { setActiveTab('board'); setIsNotificationOpen(false); }} />
+                studentId={activeChildId} 
+                teacherName="담당 선생님" 
+                messages={messages} 
+                onSendMessage={onSendMessage} 
+                isFloating={false} 
+            />
+        </div>
+            <NotificationList
+                isOpen={isNotificationOpen}
+                onClose={() => setIsNotificationOpen(false)}
+                notifications={notifications}
+                onNotificationClick={handleNotificationClick}
+            />
         </div>
     );
 }
