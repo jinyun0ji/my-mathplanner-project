@@ -24,6 +24,10 @@ const onLessonLogWritten = functions.firestore
             return null;
         }
 
+        if (afterData.notifyMode === 'staff') {
+            return null;
+        }
+
         const studentId = afterData.studentId;
         const recipients = await getRecipientsForStudent(studentId);
 
