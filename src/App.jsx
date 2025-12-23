@@ -112,10 +112,12 @@ export default function App() {
 
   // --- 🔥 Firestore 실시간 동기화 (비용 안전 장치 포함) ---
   useEffect(() => {
-      if (!isLoggedIn || !db) return;
+      // 학생/학부모는 로컬 데이터만 사용하고, 직원/관리자만 실시간 동기화하여 읽기 수를 줄입니다.
+      const isStaff = userRole && !['student', 'parent'].includes(userRole);
+      if (!isLoggedIn || !db || !isStaff) return;
 
-      console.log("🔥 Firestore Sync Started");
-      const unsubs = []; 
+      console.log("🔥 Firestore Sync Started (staff only)");
+      const unsubs = [];
 
       // (1) 기본 컬렉션 동기화 (전체 읽기 허용: 데이터 양이 적음)
       const syncBasic = (colName, setter, orderField = null) => {
@@ -178,7 +180,121 @@ export default function App() {
           console.log("🛑 Firestore Sync Stopped");
           unsubs.forEach(u => u());
       };
-  }, [isLoggedIn]);
+  }, [isLoggedIn, userRole]);
+
+  // --- 학생/학부모: 로그인 시 1회만 필요한 데이터 읽기 ---
+  useEffect(() => {
+      const isViewerRole = ['student', 'parent'].includes(userRole);
+      if (!isLoggedIn || !db || !isViewerRole) return;
+
+      let cancelled = false;
+      const loadOnce = async () => {
+          try {
+              // 공통 유틸: 컬렉션을 한 번만 읽어서 setter에 전달
+              const fetchList = async (colName, setter, q) => {
+                  const snap = await getDocs(q || collection(db, colName));
+                  const items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                  if (cancelled) return [];
+                  setter(items);
+                  return items;
+              };
+
+              // 1) 본인 학생 정보 + 등록된 반만 읽기
+              const myStudents = await fetchList(
+                  'students',
+                  setStudents,
+                  query(collection(db, 'students'), where('id', '==', userId), limit(1))
+              );
+              const myClasses = await fetchList(
+                  'classes',
+                  setClasses,
+                  query(collection(db, 'classes'), where('students', 'array-contains', userId))
+              );
+
+              // 2) 최근 기록 위주로 제한된 조회 (읽기 비용 최소화)
+              const fetchLimitedLogs = async (colName, setter, filterField) => {
+                  const q = query(
+                      collection(db, colName),
+                      where(filterField, '==', userId),
+                      orderBy('date', 'desc'),
+                      limit(30)
+                  );
+                  await fetchList(colName, setter, q);
+              };
+
+              await fetchLimitedLogs('attendanceLogs', setAttendanceLogs, 'studentId');
+              await fetchLimitedLogs('clinicLogs', setClinicLogs, 'studentId');
+
+              // 본인이 속한 반의 수업 로그만 최근 순으로 1회 조회
+              if (myClasses.length > 0) {
+                  const classIds = myClasses.map(c => c.id).slice(0, 10); // in 조건 제한(10개) 준수
+                  const lessonQuery = query(
+                      collection(db, 'lessonLogs'),
+                      where('classId', 'in', classIds),
+                      orderBy('date', 'desc'),
+                      limit(30)
+                  );
+                  await fetchList('lessonLogs', setLessonLogs, lessonQuery);
+              }
+
+              // 3) 숙제/성적은 매핑 구조 유지
+              const qHomework = query(collection(db, 'homeworkResults'), where('studentId', '==', userId), limit(80));
+              const homeworkSnap = await getDocs(qHomework);
+              if (!cancelled) {
+                  const mapped = {};
+                  homeworkSnap.docs.forEach(doc => {
+                      const data = doc.data();
+                      const { studentId, assignmentId } = data;
+                      if (!mapped[studentId]) mapped[studentId] = {};
+                      mapped[studentId][assignmentId] = data;
+                  });
+                  setHomeworkResults(prev => ({ ...prev, ...mapped }));
+              }
+
+              const qGrades = query(collection(db, 'grades'), where('studentId', '==', userId), limit(80));
+              const gradeSnap = await getDocs(qGrades);
+              if (!cancelled) {
+                  const mappedGrades = {};
+                  gradeSnap.docs.forEach(doc => {
+                      const data = doc.data();
+                      const { studentId, testId } = data;
+                      if (!mappedGrades[studentId]) mappedGrades[studentId] = {};
+                      mappedGrades[studentId][testId] = data;
+                  });
+                  setGrades(prev => ({ ...prev, ...mappedGrades }));
+              }
+
+              // 4) 공지/숙제 등은 전체 공용 피드에서 최근만 노출
+              await fetchList(
+                  'announcements',
+                  setAnnouncements,
+                  query(collection(db, 'announcements'), orderBy('date', 'desc'), limit(20))
+              );
+              await fetchList(
+                  'homeworkAssignments',
+                  setHomeworkAssignments,
+                  query(collection(db, 'homeworkAssignments'), orderBy('date', 'desc'), limit(20))
+              );
+
+              // 5) 영상 진도/외부 일정 등 학생 개인 데이터
+              await fetchList(
+                  'videoProgress',
+                  setVideoProgress,
+                  query(collection(db, 'videoProgress'), where('studentId', '==', userId), limit(50))
+              );
+              await fetchList(
+                  'externalSchedules',
+                  setExternalSchedules,
+                  query(collection(db, 'externalSchedules'), where('studentId', '==', userId), orderBy('date', 'desc'), limit(30))
+              );
+          } catch (error) {
+              console.error('학생/학부모 단발성 데이터 로드 실패:', error);
+          }
+      };
+
+      loadOnce();
+      return () => { cancelled = true; };
+  }, [isLoggedIn, userRole, userId]);
 
 
   // ... (로그인, 로컬스토리지, 메시지 등 기타 로직 유지) ...
