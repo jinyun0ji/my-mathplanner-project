@@ -153,7 +153,7 @@ export default function AttendanceManagement({
                 </div>
             </div>
             
-            <div className="grid gap-4 xl:grid-cols-[340px,1fr]">
+            <div className="grid gap-4 xl:grid-cols-[320px,1fr]">
                 <div className="space-y-4">
                     <ClassSelectionPanel
                         classes={classes}
@@ -199,7 +199,9 @@ export default function AttendanceManagement({
                             </div>
                         </div>
                     </div>
+                </div>
 
+                <div className="space-y-4">
                     <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
                         <div className="flex items-center justify-between gap-3 mb-4">
                             <h4 className="text-lg font-bold text-gray-800">학생별 출결 현황 ({classStudents.length}명)</h4>
@@ -300,9 +302,7 @@ export default function AttendanceManagement({
                                 </>
                         )}
                     </div>
-                </div>
 
-                <div className="space-y-4">
                     {selectedClassId === null ? (
                         <div className="p-6 bg-white rounded-xl shadow-sm border border-gray-200">
                             <p className="text-gray-500">클래스를 선택하고 날짜를 지정하여 출결을 관리하세요.</p>
@@ -336,11 +336,7 @@ export default function AttendanceManagement({
                                 </button>
                             </div>
                         </div>
-                    ) : (
-                        <div className="p-6 bg-white rounded-xl shadow-sm border border-gray-200">
-                            <p className="text-gray-500">학생을 선택하면 상세 정보와 메모를 확인할 수 있습니다.</p>
-                        </div>
-                    )}
+                    ) : null}
 
                     <AttendanceModal
                         isOpen={isAttendanceModalOpen}
