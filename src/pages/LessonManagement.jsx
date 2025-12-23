@@ -218,11 +218,7 @@ export default function LessonManagement({
                 </div>
                 <button
                     onClick={isCurrentDateLogged ? () => handleEditLog(currentLog) : handleNewLog}
-                    className={`font-medium py-2 px-4 rounded-lg flex items-center justify-center shadow-md transition duration-150 ${
-                        isCurrentDateLogged
-                            ? 'bg-gray-800 hover:bg-gray-900 text-white'
-                            : 'bg-indigo-900 hover:bg-indigo-800 text-white'
-                    }`}
+                    className="flex items-center justify-center px-4 py-2 rounded-lg text-sm font-bold shadow-md transition duration-150 bg-indigo-900 hover:bg-indigo-800 text-white"
                 >
                     <Icon name={isCurrentDateLogged ? 'edit' : 'plus'} className="w-5 h-5 mr-2" />
                     {isCurrentDateLogged ? '일지 수정' : '일지 작성'}
@@ -256,9 +252,9 @@ export default function LessonManagement({
                         </div>
                     ) : (
                         <div className="space-y-4">
-                            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 border-l-4 border-l-indigo-900">
-                                <div className="flex flex-col gap-2">
-                                    <h3 className="text-xl font-bold text-gray-800 leading-snug">{selectedClass.name}</h3>
+                            <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-200 border-l-4 border-l-indigo-900">
+                                <div className="flex flex-col gap-1">
+                                    <h3 className="text-xl font-bold text-gray-800 leading-tight">{selectedClass.name}</h3>
                                     <p className="text-sm text-gray-600">{selectedDate || '날짜를 선택해 주세요.'}</p>
                                 </div>
                             </div>
