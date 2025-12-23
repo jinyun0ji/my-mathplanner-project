@@ -20,11 +20,11 @@ const onHomeworkResultWritten = functions.firestore
         const afterData = change.after.data() || {};
         const beforeData = change.before.exists ? change.before.data() : null;
 
-        if (beforeData && isUnchanged(beforeData, afterData)) {
+        if (afterData.notifyMode === 'staff') {
             return null;
         }
 
-        if (afterData.notifyMode === 'staff') {
+        if (beforeData && isUnchanged(beforeData, afterData)) {
             return null;
         }
 
