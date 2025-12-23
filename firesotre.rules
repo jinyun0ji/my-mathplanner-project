@@ -23,6 +23,29 @@ service cloud.firestore {
       return isAdmin() || isStaff();
     }
 
+    function isCollectionGroupQuery() {
+      return request.query != null && request.query.collectionGroup == true;
+    }
+
+    function hasQueryLimit() {
+      return request.query != null && request.query.limit != null;
+    }
+
+    function hasOrderBy() {
+      return request.query != null && request.query.orderBy != null && request.query.orderBy.size() > 0;
+    }
+
+    function hasWhere() {
+      return request.query != null && request.query.where != null && request.query.where.size() > 0;
+    }
+
+    function isQueryAllowed() {
+      return !isCollectionGroupQuery()
+        && hasQueryLimit()
+        && hasOrderBy()
+        && hasWhere();
+    }
+
     function parentStudentIds() {
       let doc = userDoc() != null ? userDoc().data : null;
       return isParent() && doc != null && doc.studentIds != null ? doc.studentIds : [];
@@ -35,7 +58,8 @@ service cloud.firestore {
     }
 
     match /users/{uid} {
-      allow read: if isSignedIn() && request.auth.uid == uid;
+      allow get: if isSignedIn() && request.auth.uid == uid;
+      allow list: if false;
       allow create: if isAdmin();
       allow update: if isAdmin()
         && !request.resource.data.diff(resource.data).changedKeys().hasAny(['role']);
@@ -47,53 +71,81 @@ service cloud.firestore {
     }
 
     match /students/{id} {
-      allow read: if isSignedIn() && canViewStudent(id);
+      allow get: if isSignedIn() && canViewStudent(id);
+      allow list: if false;
       allow write: if isStaffOrAdmin();
     }
 
     match /classes/{id} {
-      allow read, write: if isStaffOrAdmin();
+      allow get: if isStaffOrAdmin();
+      allow list: if false;
+      allow write: if isStaffOrAdmin();
     }
 
     match /lessonLogs/{id} {
-      allow read, write: if isStaffOrAdmin();
+      allow get: if isStaffOrAdmin();
+      allow list: if false;
+      allow write: if isStaffOrAdmin();
     }
 
     match /attendanceLogs/{id} {
-      allow read: if isSignedIn() && canViewStudent(resource.data.studentId);
+      allow get: if isSignedIn() && canViewStudent(resource.data.studentId);
+      allow list: if false;
       allow write: if isStaffOrAdmin();
     }
 
     match /clinicLogs/{id} {
-      allow read: if isSignedIn() && canViewStudent(resource.data.studentId);
+      allow get: if isSignedIn() && canViewStudent(resource.data.studentId);
+      allow list: if false;
       allow write: if isStaffOrAdmin();
     }
 
     match /homeworkAssignments/{id} {
-      allow read, write: if isStaffOrAdmin();
+      allow get: if isStaffOrAdmin();
+      allow list: if false;
+      allow write: if isStaffOrAdmin();
     }
 
     match /homeworkResults/{id} {
-      allow read: if isSignedIn() && canViewStudent(resource.data.studentId);
+      allow get: if isSignedIn() && canViewStudent(resource.data.studentId);
+      allow list: if false;
       allow write: if isStaffOrAdmin();
     }
 
     match /grades/{id} {
-      allow read, write: if isStaffOrAdmin();
+      allow get: if isSignedIn() && canViewStudent(resource.data.studentId);
+      allow list: if false;
+      allow write: if isStaffOrAdmin();
     }
 
     match /payments/{id} {
-      allow read: if isSignedIn() && canViewStudent(resource.data.studentId);
+      allow get: if isSignedIn() && canViewStudent(resource.data.studentId);
+      allow list: if false;
       allow write: if isStaffOrAdmin();
     }
 
     match /announcements/{id} {
-      allow read: if isSignedIn();
+      allow get: if isSignedIn();
+      allow list: if false;
       allow write: if isStaffOrAdmin();
     }
 
     match /workLogs/{id} {
-      allow read, write: if isStaffOrAdmin();
+      allow get: if isStaffOrAdmin();
+      allow list: if false;
+      allow write: if isStaffOrAdmin();
+    }
+
+    match /chats/{document=**} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn() && isQueryAllowed();
+      allow write: if isSignedIn();
+    }
+
+    match /notifications/{document=**} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn() && isQueryAllowed();
+      allow write: if isSignedIn();
     }
 
     match /{document=**} {
