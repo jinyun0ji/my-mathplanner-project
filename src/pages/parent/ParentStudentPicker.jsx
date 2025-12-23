@@ -1,6 +1,8 @@
 import React, { useMemo, useState } from 'react';
+import useParentContext from '../../parent/useParentContext';
 
-export default function ParentStudentPicker({ linkedStudentIds, students, activeStudentId, onConfirm }) {
+export default function ParentStudentPicker({ students }) {
+    const { activeStudentId, linkedStudentIds, setActiveStudentId } = useParentContext();
     const [selectedStudentId, setSelectedStudentId] = useState(activeStudentId || linkedStudentIds?.[0] || null);
     const [isSaving, setIsSaving] = useState(false);
 
@@ -18,10 +20,10 @@ export default function ParentStudentPicker({ linkedStudentIds, students, active
     }, [linkedStudentIds, students]);
 
     const handleConfirm = async () => {
-        if (!selectedStudentId || !onConfirm) return;
+        if (!selectedStudentId) return;
         setIsSaving(true);
         try {
-            await onConfirm(selectedStudentId);
+            await setActiveStudentId(selectedStudentId);
         } finally {
             setIsSaving(false);
         }

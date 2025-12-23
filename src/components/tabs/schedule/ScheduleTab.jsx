@@ -1,11 +1,14 @@
 import React, { useState } from 'react';
 import { Icon, getWeekOfMonth } from '../../../utils/helpers';
 import ModalPortal from '../../common/ModalPortal';
+import useParentContext from '../../../parent/useParentContext';
 
 export default function ScheduleTab({ 
     myClasses, externalSchedules, attendanceLogs, clinicLogs, studentId, 
     onSaveExternalSchedule, onDeleteExternalSchedule 
 }) {
+    const { activeStudentId } = useParentContext();
+    const resolvedStudentId = studentId ?? activeStudentId;
     const [viewType, setViewType] = useState('weekly'); 
     const [selectedDate, setSelectedDate] = useState(new Date());
     const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
@@ -19,7 +22,7 @@ export default function ScheduleTab({
     const formatDate = (date) => { const y = date.getFullYear(); const m = String(date.getMonth() + 1).padStart(2, '0'); const d = String(date.getDate()).padStart(2, '0'); return `${y}-${m}-${d}`; };
     const handleOpenAddModal = () => { setNewSchedule({ academyName: '', courseName: '', instructor: '', startDate: todayStr, endDate: '', days: [], startTime: '', endTime: '' }); setIsEditMode(false); setEditingId(null); setIsScheduleModalOpen(true); };
     const handleEditClick = (e, schedule) => { e.stopPropagation(); setNewSchedule({ academyName: schedule.academyName, courseName: schedule.courseName, instructor: schedule.instructor || '', startDate: schedule.startDate, endDate: schedule.endDate || '', days: schedule.days || [], startTime: schedule.startTime, endTime: schedule.endTime || '' }); setIsEditMode(true); setEditingId(schedule.scheduleId); setIsScheduleModalOpen(true); };
-    const handleSaveSubmit = () => { if (!newSchedule.academyName || !newSchedule.courseName || !newSchedule.startDate || newSchedule.days.length === 0 || !newSchedule.startTime) { alert('필수 정보를 모두 입력해주세요.'); return; } onSaveExternalSchedule({ id: isEditMode ? editingId : null, studentId, ...newSchedule, time: `${newSchedule.startTime}~${newSchedule.endTime || ''}` }); setIsScheduleModalOpen(false); };
+    const handleSaveSubmit = () => { if (!newSchedule.academyName || !newSchedule.courseName || !newSchedule.startDate || newSchedule.days.length === 0 || !newSchedule.startTime) { alert('필수 정보를 모두 입력해주세요.'); return; } if (!resolvedStudentId) { alert('학생 정보를 불러오는 중입니다.'); return; } onSaveExternalSchedule({ id: isEditMode ? editingId : null, studentId: resolvedStudentId, ...newSchedule, time: `${newSchedule.startTime}~${newSchedule.endTime || ''}` }); setIsScheduleModalOpen(false); };
     const handleDeleteClick = (e, schedule) => { e.stopPropagation(); setTargetScheduleForDelete(schedule); setIsDeleteModalOpen(true); };
     const executeDelete = (mode) => { if (!targetScheduleForDelete) return; onDeleteExternalSchedule(targetScheduleForDelete.scheduleId, mode, formatDate(selectedDate)); setIsDeleteModalOpen(false); setTargetScheduleForDelete(null); };
     const toggleDay = (day) => { setNewSchedule(prev => { const newDays = prev.days.includes(day) ? prev.days.filter(d => d !== day) : [...prev.days, day]; const dayOrder = { '월':1, '화':2, '수':3, '목':4, '금':5, '토':6, '일':7 }; newDays.sort((a, b) => dayOrder[a] - dayOrder[b]); return { ...prev, days: newDays }; }); };
@@ -39,9 +42,9 @@ export default function ScheduleTab({
         const dateStr = formatDate(date);
         const dayOfWeek = weekDays[date.getDay()];
         const dayClasses = myClasses.filter(cls => cls.schedule.days.includes(dayOfWeek));
-        const myExternal = externalSchedules ? externalSchedules.filter(s => s.studentId === studentId && s.days && s.days.includes(dayOfWeek) && date >= new Date(s.startDate) && (!s.endDate || date <= new Date(s.endDate)) && (!s.excludedDates || !s.excludedDates.includes(dateStr))) : [];
-        const myClinics = clinicLogs ? clinicLogs.filter(log => log.studentId === studentId && log.date === dateStr) : [];
-        const logs = attendanceLogs ? attendanceLogs.filter(log => log.studentId === studentId && log.date === dateStr) : [];
+        const myExternal = externalSchedules ? externalSchedules.filter(s => s.studentId === resolvedStudentId && s.days && s.days.includes(dayOfWeek) && date >= new Date(s.startDate) && (!s.endDate || date <= new Date(s.endDate)) && (!s.excludedDates || !s.excludedDates.includes(dateStr))) : [];
+        const myClinics = clinicLogs ? clinicLogs.filter(log => log.studentId === resolvedStudentId && log.date === dateStr) : [];
+        const logs = attendanceLogs ? attendanceLogs.filter(log => log.studentId === resolvedStudentId && log.date === dateStr) : [];
         let status = null; if (logs.length > 0) { if (logs.some(l => l.status === '결석')) status = '결석'; else if (logs.some(l => l.status === '지각')) status = '지각'; else status = '출석'; }
         return { hasClass: (dayClasses.length > 0), status, hasExternal: myExternal.length > 0, hasClinic: myClinics.length > 0 };
     };
@@ -50,9 +53,9 @@ export default function ScheduleTab({
         const dayOfWeek = weekDays[selectedDate.getDay()];
         const dateStr = formatDate(selectedDate);
         const dailyClasses = myClasses.filter(cls => cls.schedule.days.includes(dayOfWeek)).map(cls => ({ id: `math-${cls.id}`, type: 'math', name: cls.name, teacher: cls.teacher, time: cls.schedule.time, scheduleId: cls.id }));
-        const myExternal = externalSchedules ? externalSchedules.filter(s => s.studentId === studentId && s.days && s.days.includes(dayOfWeek) && selectedDate >= new Date(s.startDate) && (!s.endDate || selectedDate <= new Date(s.endDate)) && (!s.excludedDates || !s.excludedDates.includes(dateStr))) : [];
+        const myExternal = externalSchedules ? externalSchedules.filter(s => s.studentId === resolvedStudentId && s.days && s.days.includes(dayOfWeek) && selectedDate >= new Date(s.startDate) && (!s.endDate || selectedDate <= new Date(s.endDate)) && (!s.excludedDates || !s.excludedDates.includes(dateStr))) : [];
         const dailyExternal = myExternal.map(s => ({ id: `ext-${s.id}`, type: 'external', name: s.academyName, teacher: s.courseName, time: `${s.startTime}~${s.endTime}`, scheduleId: s.id, ...s }));
-        const myClinics = clinicLogs ? clinicLogs.filter(log => log.studentId === studentId && log.date === dateStr).map(log => ({ id: `clinic-${log.id}`, type: 'clinic', name: '학습 클리닉', teacher: log.tutor || '담당 선생님', time: log.checkIn ? `${log.checkIn}~${log.checkOut || ''}` : '시간 미정', status: log.checkOut ? '완료' : '예약됨', scheduleId: log.id })) : [];
+        const myClinics = clinicLogs ? clinicLogs.filter(log => log.studentId === resolvedStudentId && log.date === dateStr).map(log => ({ id: `clinic-${log.id}`, type: 'clinic', name: '학습 클리닉', teacher: log.tutor || '담당 선생님', time: log.checkIn ? `${log.checkIn}~${log.checkOut || ''}` : '시간 미정', status: log.checkOut ? '완료' : '예약됨', scheduleId: log.id })) : [];
         const allSchedules = [...dailyClasses, ...dailyExternal, ...myClinics].sort((a, b) => (a.time.split('~')[0] || '00:00').localeCompare(b.time.split('~')[0] || '00:00'));
 
         if (allSchedules.length === 0) return (<div className="text-center py-20 text-brand-gray bg-white rounded-2xl border border-dashed border-brand-gray/50"><p className="font-bold text-brand-gray mb-1">{selectedDate.getMonth()+1}월 {selectedDate.getDate()}일 ({dayOfWeek})</p>일정이 없습니다.</div>);
@@ -60,7 +63,7 @@ export default function ScheduleTab({
         return (
             <div className="grid grid-cols-1 gap-4">{allSchedules.map((item) => {
                 let log = null, borderColor = 'border-brand-main/30', dotColor = 'bg-brand-main', typeLabel = '수학 학원', typeClass = 'text-brand-main bg-brand-light/30';
-                if (item.type === 'math') { log = attendanceLogs ? attendanceLogs.find(l => l.studentId === studentId && l.classId === item.scheduleId && l.date === dateStr) : null; if(log?.status === '출석') dotColor = 'bg-green-500'; else if(log?.status === '지각') dotColor = 'bg-yellow-400'; else if(log?.status === '결석') dotColor = 'bg-brand-red'; } else if (item.type === 'external') { borderColor = 'border-brand-light'; dotColor = 'bg-brand-light'; typeLabel = item.teacher; typeClass = 'text-brand-gray bg-brand-bg'; } else if (item.type === 'clinic') { borderColor = 'border-teal-200'; dotColor = item.status === '완료' ? 'bg-teal-500' : 'bg-teal-300'; typeLabel = '클리닉'; typeClass = 'text-teal-600 bg-teal-50'; }
+                if (item.type === 'math') { log = attendanceLogs ? attendanceLogs.find(l => l.studentId === resolvedStudentId && l.classId === item.scheduleId && l.date === dateStr) : null; if(log?.status === '출석') dotColor = 'bg-green-500'; else if(log?.status === '지각') dotColor = 'bg-yellow-400'; else if(log?.status === '결석') dotColor = 'bg-brand-red'; } else if (item.type === 'external') { borderColor = 'border-brand-light'; dotColor = 'bg-brand-light'; typeLabel = item.teacher; typeClass = 'text-brand-gray bg-brand-bg'; } else if (item.type === 'clinic') { borderColor = 'border-teal-200'; dotColor = item.status === '완료' ? 'bg-teal-500' : 'bg-teal-300'; typeLabel = '클리닉'; typeClass = 'text-teal-600 bg-teal-50'; }
                 return (<div key={item.id} className={`relative pl-6 border-l-2 py-2 ml-2 ${borderColor}`}><div className={`absolute -left-[9px] top-3 w-4 h-4 rounded-full ring-4 ring-white ${dotColor}`}></div><div onClick={(e) => item.type === 'external' ? handleEditClick(e, item) : null} className={`bg-white p-5 rounded-2xl shadow-sm border border-brand-gray/30 relative group h-full flex flex-col justify-between transition-all hover:shadow-md ${item.type === 'external' ? 'cursor-pointer hover:border-brand-main/50' : ''}`}><div><div className="flex justify-between mb-2"><span className={`text-xs font-bold px-2 py-1 rounded ${typeClass}`}>{typeLabel}</span><span className="text-xs text-brand-gray font-medium">{item.time}</span></div><h4 className="font-bold text-brand-black text-lg mb-2">{item.name}</h4></div><div className="flex justify-between items-end">{item.type === 'math' ? (<><p className="text-sm text-brand-gray flex items-center gap-1"><Icon name="users" className="w-4 h-4" /> {item.teacher} 선생님</p>{log && (<span className={`text-xs font-bold px-2 py-1 rounded ${log.status === '출석' ? 'bg-green-100 text-green-700' : log.status === '지각' ? 'bg-yellow-100 text-yellow-700' : 'bg-brand-red/10 text-brand-red'}`}>{log.status}</span>)}</>) : item.type === 'clinic' ? (<><p className="text-sm text-brand-gray flex items-center gap-1"><Icon name="user" className="w-4 h-4" /> {item.teacher}</p><span className={`text-xs font-bold px-2 py-1 rounded ${item.status === '완료' ? 'bg-teal-100 text-teal-700' : 'bg-teal-50 text-teal-600 border border-teal-200'}`}>{item.status}</span></>) : (<div className="w-full flex justify-end gap-3"><span className="text-xs text-brand-main opacity-0 group-hover:opacity-100 transition-opacity">수정</span><button onClick={(e) => handleDeleteClick(e, item)} className="text-xs text-brand-gray hover:text-brand-red underline">삭제</button></div>)}</div></div></div>);
             })}</div>
         );

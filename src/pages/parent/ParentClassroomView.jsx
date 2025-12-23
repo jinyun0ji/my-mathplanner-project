@@ -1,8 +1,9 @@
 import React, { useState, useMemo } from 'react';
 import { Icon } from '../../utils/helpers';
+import useParentContext from '../../parent/useParentContext';
 
 export default function ParentClassroomView({ 
-    classes, lessonLogs, attendanceLogs, studentId, 
+    classes, lessonLogs, attendanceLogs,
     selectedClassId, setSelectedClassId,
     videoProgress, 
     homeworkAssignments, homeworkResults,
@@ -11,6 +12,7 @@ export default function ParentClassroomView({
     onOpenReport,
     activeStudentName
 }) {
+    const { activeStudentId } = useParentContext();
     const selectedClass = classes.find(c => c.id === selectedClassId);
     
     // 날짜 역순 정렬
@@ -27,7 +29,7 @@ export default function ParentClassroomView({
     const stats = useMemo(() => {
         // 1. 출결 (최근 4회 기준)
         const myAttendance = attendanceLogs
-            .filter(log => log.classId === selectedClassId && log.studentId === studentId)
+            .filter(log => log.classId === selectedClassId && log.studentId === activeStudentId)
             .sort((a, b) => new Date(b.date) - new Date(a.date));
         
         const recent4 = myAttendance.slice(0, 4);
@@ -42,7 +44,7 @@ export default function ParentClassroomView({
         // 2. 과제 (누적 미제출)
         const classHomeworks = homeworkAssignments.filter(h => h.classId === selectedClassId);
         const unsubmittedCount = classHomeworks.filter(h => {
-             const result = homeworkResults?.[studentId]?.[h.id];
+             const result = homeworkResults?.[activeStudentId]?.[h.id];
              return !result || Object.keys(result).length === 0;
         }).length;
 
@@ -51,7 +53,7 @@ export default function ParentClassroomView({
         let gradeDiff = '';
         if (tests && grades) {
             const classTests = tests.filter(t => t.classId === selectedClassId).sort((a, b) => new Date(a.date) - new Date(b.date));
-            const myScores = classTests.map(t => grades[studentId]?.[t.id]?.score).filter(s => s !== undefined && s !== null);
+            const myScores = classTests.map(t => grades[activeStudentId]?.[t.id]?.score).filter(s => s !== undefined && s !== null);
             
             if (myScores.length >= 2) {
                 const latest = myScores[myScores.length - 1];
@@ -70,7 +72,7 @@ export default function ParentClassroomView({
         const attentionItems = [];
         // 미수강 영상 (최근 3개 수업 중)
         sortedLogs.slice(0, 3).forEach(log => {
-            const prog = videoProgress?.[studentId]?.[log.id]?.percent || 0;
+            const prog = videoProgress?.[activeStudentId]?.[log.id]?.percent || 0;
             if (prog < 100) {
                 attentionItems.push({ 
                     type: 'video', 
@@ -91,7 +93,7 @@ export default function ParentClassroomView({
             grade: { trend: gradeTrend, diff: gradeDiff },
             attentionItems
         };
-    }, [attendanceLogs, selectedClassId, studentId, homeworkAssignments, homeworkResults, sortedLogs, tests, grades, videoProgress]);
+    }, [attendanceLogs, selectedClassId, activeStudentId, homeworkAssignments, homeworkResults, sortedLogs, tests, grades, videoProgress]);
 
     const toggleMaterials = (e, logId) => {
         e.stopPropagation();
@@ -100,7 +102,7 @@ export default function ParentClassroomView({
 
     // --- [3] 수업 기록 리스트 아이템 ---
     const renderLogItem = (log) => {
-        const prog = videoProgress?.[studentId]?.[log.id]?.percent || 0;
+        const prog = videoProgress?.[activeStudentId]?.[log.id]?.percent || 0;
         const hasMaterials = log.materials && log.materials.length > 0;
         const isMaterialsExpanded = expandedMaterialLogId === log.id;
         

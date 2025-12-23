@@ -6,6 +6,7 @@ import LoginPage from '../pages/LoginPage';
 import SocialCallback from '../pages/SocialCallback';
 import useAuth from '../auth/useAuth';
 import { claimStudentLinkCode } from '../parent/linkCodeService';
+import { ParentProvider } from '../parent/ParentContext';
 import { redirectToKakao, redirectToNaver } from '../auth/socialRedirect';
 import { signInWithEmail, signInWithGoogle } from '../auth/authService';
 import { initForegroundMessageListener } from '../firebase/messaging';
@@ -55,11 +56,17 @@ export default function AuthGate() {
   if (role === 'pending') return <OnboardingPage onSubmitLinkCode={handleClaimLinkCode} />;
 
   return (
-      <AppRoutes
-          user={user}
+      <ParentProvider
+          userId={user?.uid || null}
           role={role}
           linkedStudentIds={linkedStudentIds}
-          activeStudentId={activeStudentId}
-      />
+          firestoreActiveStudentId={activeStudentId}
+      >
+          <AppRoutes
+              user={user}
+              role={role}
+              linkedStudentIds={linkedStudentIds}
+          />
+      </ParentProvider>
   );
 }

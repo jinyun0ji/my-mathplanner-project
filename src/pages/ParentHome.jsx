@@ -16,6 +16,7 @@ import NotificationList from '../notifications/NotificationList';
 import openNotification from '../notifications/openNotification';
 import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { db } from '../firebase/client';
+import useParentContext from '../parent/useParentContext';
 
 // --- [컴포넌트] 학부모 전용 대시보드 ---
 const ParentDashboard = ({ 
@@ -169,15 +170,16 @@ const ParentDashboard = ({
 
 // --- 메인 페이지 컴포넌트 ---
 export default function ParentHome({ 
-    studentId: initialStudentId, userId, students, classes, homeworkAssignments, homeworkResults, 
+    userId, students, classes, homeworkAssignments, homeworkResults, 
     attendanceLogs, lessonLogs, notices, tests, grades, 
     videoProgress, clinicLogs, onLogout,
     externalSchedules, onSaveExternalSchedule, onDeleteExternalSchedule,
     messages, onSendMessage
 }) {
+    const { activeStudentId } = useParentContext();
     // 1. 자녀 데이터 및 선택 로직
-    const initialStudent = students.find(s => s.id === initialStudentId);
-    const [activeChildId, setActiveChildId] = useState(initialStudentId);
+    const initialStudent = students.find(s => s.id === activeStudentId);
+    const [activeChildId, setActiveChildId] = useState(activeStudentId);
     const activeChild = students.find(s => s.id === activeChildId) || initialStudent;
     const activeChildName = activeChild?.name || '학생';
     const activeChildSchool = activeChild?.school || '학교 정보 없음';
@@ -203,11 +205,11 @@ export default function ParentHome({
     }, [activeChildId]);
 
     useEffect(() => {
-        setActiveChildId(initialStudentId);
+        setActiveChildId(activeStudentId);
         setSelectedClassId(null);
         setSelectedReportId(null);
         setActiveTab('home');
-    }, [initialStudentId]);
+    }, [activeStudentId]);
 
     // 알림 관련
     const [isNotificationOpen, setIsNotificationOpen] = useState(false);
@@ -501,7 +503,7 @@ export default function ParentHome({
                 ) : selectedClassId ? (
                     /* [라우팅 분기 2] 강의실 화면 (리포트 진입 핸들러 전달) */
                     <ParentClassroomView 
-                            classes={classes} lessonLogs={lessonLogs} attendanceLogs={attendanceLogs} studentId={activeChildId}
+                            classes={classes} lessonLogs={lessonLogs} attendanceLogs={attendanceLogs}
                             selectedClassId={selectedClassId} setSelectedClassId={setSelectedClassId}
                             videoProgress={videoProgress} homeworkAssignments={homeworkAssignments} homeworkResults={homeworkResults}
                             tests={tests} grades={grades}
@@ -791,7 +793,7 @@ export default function ParentHome({
                         )}
                         {activeTab === 'schedule' && (
                             <ScheduleTab 
-                                myClasses={myClasses} attendanceLogs={attendanceLogs} clinicLogs={clinicLogs} studentId={activeChildId} 
+                                myClasses={myClasses} attendanceLogs={attendanceLogs} clinicLogs={clinicLogs} 
                                 externalSchedules={externalSchedules} onSaveExternalSchedule={onSaveExternalSchedule} onDeleteExternalSchedule={onDeleteExternalSchedule}
                             />
                         )}
