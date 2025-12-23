@@ -125,13 +125,23 @@ export default function HomeworkManagement({
         alert('채점 결과가 저장되었습니다.');
     };
 
+    const statusSummary = useMemo(() => {
+        if (!assignmentSummary || assignmentSummary.length === 0) return { submitted: 0, notSubmitted: 0, graded: 0 };
+
+        const graded = assignmentSummary.filter(s => s.completionRate === 100).length;
+        const submitted = assignmentSummary.filter(s => s.completionRate > 0).length;
+        const notSubmitted = assignmentSummary.length - submitted;
+
+        return { submitted, notSubmitted, graded };
+    }, [assignmentSummary]);
+
     return (
         <div className="flex flex-col gap-4 h-full">
-            <div className="sticky top-0 z-20 bg-white/90 backdrop-blur border-b border-gray-200 px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                    <div className="flex items-center gap-2">
+            <div className="sticky top-0 z-10 bg-white/90 backdrop-blur border-b border-gray-200 px-4 py-3 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+                <div className="flex flex-col gap-1">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-gray-800">
                         <Icon name="book" className="w-5 h-5 text-indigo-900" />
-                        <p className="text-sm font-semibold text-gray-800">{selectedClass?.name || '클래스 미선택'}</p>
+                        <span>{selectedClass?.name || '클래스 미선택'}</span>
                     </div>
                     <div className="flex flex-wrap items-center gap-2 text-xs text-gray-600">
                         <span>{selectedAssignment?.book || '과제 미선택'}</span>
@@ -142,21 +152,30 @@ export default function HomeworkManagement({
                         )}
                     </div>
                 </div>
-                <button
-                    onClick={handleSaveChanges}
-                    disabled={localChanges.length === 0}
-                    className={`flex items-center px-4 py-2 rounded-lg text-sm font-bold shadow-md transition ${
-                        localChanges.length > 0
-                            ? 'bg-indigo-900 text-white hover:bg-indigo-800'
-                            : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                    } w-full sm:w-auto justify-center`}
-                >
-                    <Icon name="save" className="w-4 h-4 mr-2" />
-                    채점 저장 ({localChanges.length})
-                </button>
+
+                <div className="flex flex-wrap items-center gap-2 text-xs lg:text-sm">
+                    <span className="px-3 py-1 rounded-full bg-indigo-50 text-indigo-700 font-semibold">제출 {statusSummary.submitted}명</span>
+                    <span className="px-3 py-1 rounded-full bg-gray-100 text-gray-600 font-semibold">미제출 {statusSummary.notSubmitted}명</span>
+                    <span className="px-3 py-1 rounded-full bg-green-50 text-green-700 font-semibold">채점완료 {statusSummary.graded}명</span>
+                </div>
+
+                <div className="flex items-center gap-2 w-full lg:w-auto">
+                    <button
+                        onClick={handleSaveChanges}
+                        disabled={localChanges.length === 0}
+                        className={`flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-bold shadow-md transition w-full lg:w-auto ${
+                            localChanges.length > 0
+                                ? 'bg-indigo-900 text-white hover:bg-indigo-800'
+                                : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                        }`}
+                    >
+                        <Icon name="save" className="w-4 h-4" />
+                        채점 저장 ({localChanges.length})
+                    </button>
+                </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-[360px,1fr] gap-4 items-start">
+            <div className="grid grid-cols-1 lg:grid-cols-[340px,1fr] gap-4 items-start">
                 <div className="space-y-4">
                     <ClassSelectionPanel
                         classes={classes}
@@ -170,7 +189,6 @@ export default function HomeworkManagement({
                     <div className="bg-white p-4 rounded-xl shadow-md space-y-3 border border-gray-200">
                         <div className='flex justify-between items-center border-b pb-2'>
                             <h4 className="text-lg font-bold text-gray-800">과제 목록</h4>
-                            {/* [색상 변경] text-green-600 -> text-indigo-900 */}
                             <button
                                 onClick={handleNewAssignment}
                                 disabled={!selectedClassId}
@@ -186,7 +204,9 @@ export default function HomeworkManagement({
 
                 <div className="flex-1 min-w-0 space-y-4">
                     {!selectedAssignment ? (
-                        <div className="p-6 bg-white rounded-xl shadow-md border border-gray-200"><p className="text-gray-500">클래스를 선택하고 왼쪽에서 과제를 선택하세요.</p></div>
+                        <div className="p-6 bg-white rounded-xl shadow-md border border-gray-200">
+                            <p className="text-gray-500">클래스를 선택하고 왼쪽에서 과제를 선택하세요.</p>
+                        </div>
                     ) : (
                         <div className="space-y-6">
                             <div className="bg-white p-6 rounded-xl shadow-md border-l-4 border-indigo-900 border border-gray-200">
@@ -214,6 +234,35 @@ export default function HomeworkManagement({
                                             <Icon name="trash" className="w-5 h-5" />
                                         </button>
                                     </div>
+                                </div>
+                            </div>
+
+                            <div className="bg-white p-4 rounded-xl shadow-md border border-gray-200">
+                                <div className="flex items-center justify-between mb-3">
+                                    <h4 className="text-sm font-bold text-gray-700">학생 제출/채점 상태</h4>
+                                    <div className="flex items-center gap-2 text-[11px]">
+                                        <span className="px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 font-semibold">제출</span>
+                                        <span className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 font-semibold">미제출</span>
+                                        <span className="px-2 py-0.5 rounded-full bg-green-50 text-green-700 font-semibold">채점완료</span>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                                    {assignmentSummary.map((s) => {
+                                        const statusChip = s.completionRate === 100
+                                            ? 'bg-green-100 text-green-700'
+                                            : s.completionRate > 0
+                                                ? 'bg-indigo-100 text-indigo-700'
+                                                : 'bg-gray-100 text-gray-600';
+
+                                        const statusLabel = s.completionRate === 100 ? '채점완료' : s.completionRate > 0 ? '제출' : '미제출';
+
+                                        return (
+                                            <div key={s.studentId} className="flex items-center justify-between rounded-lg border border-gray-200 px-3 py-2 bg-gray-50">
+                                                <span className="text-sm font-semibold text-gray-800 truncate">{s.studentName}</span>
+                                                <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${statusChip}`}>{statusLabel}</span>
+                                            </div>
+                                        );
+                                    })}
                                 </div>
                             </div>
 
