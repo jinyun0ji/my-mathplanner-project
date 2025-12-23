@@ -112,59 +112,49 @@ export default function AttendanceManagement({
         '미기록': 'bg-gray-50 text-gray-600 border-gray-200'
     };
 
-    return (
-        <div className="space-y-3">
-            <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex flex-col gap-3">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="flex items-center gap-2 text-sm font-semibold text-gray-700">
-                        <Icon name="calendar" className="w-4 h-4 text-indigo-800" />
-                        <span>{selectedClass ? selectedClass.name : '클래스를 선택하세요'}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <button
-                            onClick={() => handleDateNavigate(-1)}
-                            disabled={!hasPrevSession}
-                            className={`flex items-center px-3 py-2 rounded-lg text-xs font-semibold border transition ${
-                                hasPrevSession ? 'text-gray-700 border-gray-200 hover:border-indigo-300 hover:text-indigo-800' : 'text-gray-400 border-gray-100 cursor-not-allowed'
-                            }`}
-                        >
-                            <Icon name="chevronLeft" className="w-4 h-4" />
-                            이전 회차
-                        </button>
-                        <div className="px-3 py-2 rounded-lg bg-gray-50 border border-gray-200 text-xs font-bold text-gray-700">
-                            {selectedDate || '날짜 선택'}
-                        </div>
-                        <button
-                            onClick={() => handleDateNavigate(1)}
-                            disabled={!hasNextSession}
-                            className={`flex items-center px-3 py-2 rounded-lg text-xs font-semibold border transition ${
-                                hasNextSession ? 'text-gray-700 border-gray-200 hover:border-indigo-300 hover:text-indigo-800' : 'text-gray-400 border-gray-100 cursor-not-allowed'
-                            }`}
-                        >
-                            다음 회차
-                            <Icon name="chevronRight" className="w-4 h-4 ml-1" />
-                        </button>
-                    </div>
-                </div>
+    const selectedStudent = memoModalState.studentId ? classStudents.find(s => s.id === memoModalState.studentId) : null;
+    const selectedStudentStatus = selectedStudent ? classAttendance.find(log => log.studentId === selectedStudent.id)?.status || '미기록' : null;
 
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 text-xs">
-                    {[
-                        { label: '총원', value: attendanceSummary.total, tone: 'bg-gray-50 text-gray-700 border-gray-200' },
-                        { label: '출석', value: attendanceSummary['출석'], tone: 'bg-green-50 text-green-800 border-green-200' },
-                        { label: '지각', value: attendanceSummary['지각'], tone: 'bg-yellow-50 text-yellow-800 border-yellow-200' },
-                        { label: '결석', value: attendanceSummary['결석'], tone: 'bg-red-50 text-red-700 border-red-200' },
-                        { label: '동영상', value: attendanceSummary['동영상보강'], tone: 'bg-indigo-50 text-indigo-800 border-indigo-200' },
-                    ].map(item => (
-                        <div key={item.label} className={`flex items-center justify-between px-3 py-2 rounded-lg border ${item.tone}`}>
-                            <span className="font-semibold">{item.label}</span>
-                            <span className="font-bold">{item.value}</span>
+    return (
+        <div className="space-y-4">
+            <div className="sticky top-0 z-10 bg-white/90 backdrop-blur border-b border-gray-200">
+                <div className="px-4 py-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:gap-4">
+                        <div className="flex items-center gap-2 text-sm font-semibold text-gray-800">
+                            <Icon name="calendar" className="w-4 h-4 text-indigo-800" />
+                            <span>{selectedClass ? selectedClass.name : '클래스를 선택하세요'}</span>
                         </div>
-                    ))}
+                        <div className="flex items-center gap-2 text-xs text-gray-600">
+                            <Icon name="clock" className="w-4 h-4 text-indigo-800" />
+                            <span className="font-semibold text-gray-700">{selectedDate || '날짜 선택'}</span>
+                        </div>
+                        <div className="flex flex-wrap gap-2 text-xs">
+                            {[
+                                { label: '출석', value: attendanceSummary['출석'], tone: 'bg-green-50 text-green-800 border-green-200' },
+                                { label: '지각', value: attendanceSummary['지각'], tone: 'bg-yellow-50 text-yellow-800 border-yellow-200' },
+                                { label: '결석', value: attendanceSummary['결석'], tone: 'bg-red-50 text-red-700 border-red-200' },
+                            ].map(item => (
+                                <span key={item.label} className={`inline-flex items-center gap-1 px-3 py-1 rounded-full border font-semibold ${item.tone}`}>
+                                    <span>{item.label}</span>
+                                    <span className="text-sm font-bold">{item.value}</span>
+                                </span>
+                            ))}
+                        </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2 justify-end">
+                        <button
+                            onClick={() => setIsAttendanceModalOpen(true)}
+                            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-indigo-900 hover:bg-indigo-800 rounded-lg shadow-md transition"
+                        >
+                            <Icon name="save" className="w-5 h-5" />
+                            출결 저장
+                        </button>
+                    </div>
                 </div>
             </div>
             
-            <div className="flex flex-col xl:flex-row gap-4 xl:gap-6 h-full">
-                <div className="w-full xl:w-80 flex-shrink-0">
+            <div className="grid gap-4 xl:grid-cols-[340px,1fr]">
+                <div className="space-y-4">
                     <ClassSelectionPanel
                         classes={classes}
                         selectedClassId={selectedClassId}
@@ -178,59 +168,48 @@ export default function AttendanceManagement({
                         customPanelTitle="수업 날짜 선택"
                         onDateSelect={setSelectedDate} 
                     />
-                </div>
 
-                <div className="flex-1 min-w-0 space-y-4">
-                    {selectedClassId === null ? (
-                        <div className="p-6 bg-white rounded-xl shadow-sm border border-gray-200">
-                            <p className="text-gray-500">클래스를 선택하고 날짜를 지정하여 출결을 관리하세요.</p>
-                        </div>
-                    ) : (
-                        <div className="space-y-6">
-                            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between bg-white p-6 rounded-xl shadow-sm border border-gray-200 border-l-4 border-l-indigo-900">
-                                <div className="space-y-1">
-                                    <h3 className="text-xl font-bold text-gray-800 leading-snug">
-                                        {selectedClass.name}
-                                    </h3>
-                                    <p className="text-sm text-gray-500 flex items-center gap-2">
-                                        <Icon name="clock" className="w-4 h-4 text-indigo-800" />
-                                        {selectedDate} 출결 입력
-                                    </p>
-                                </div>
-                                <div className="flex flex-wrap gap-2 w-full md:w-auto">
-                                    <button
-                                        onClick={() => handleDateNavigate(-1)}
-                                        disabled={!hasPrevSession}
-                                        className={`flex-1 md:flex-none flex items-center justify-center px-3 py-2 rounded-lg text-sm font-semibold border transition ${
-                                            hasPrevSession ? 'text-gray-700 border-gray-200 hover:border-indigo-300 hover:text-indigo-800' : 'text-gray-400 border-gray-100 cursor-not-allowed'
-                                        }`}
-                                    >
-                                        <Icon name="chevronLeft" className="w-4 h-4 mr-1" />
-                                        이전
-                                    </button>
-                                    <button
-                                        onClick={() => setIsAttendanceModalOpen(true)}
-                                        className="flex-1 md:flex-none bg-indigo-900 hover:bg-indigo-800 text-white font-medium py-2 px-4 rounded-lg flex items-center justify-center shadow-md transition duration-150"
-                                    >
-                                        <Icon name="edit" className="w-5 h-5 mr-2" />
-                                        출결 기록 / 수정
-                                    </button>
-                                    <button
-                                        onClick={() => handleDateNavigate(1)}
-                                        disabled={!hasNextSession}
-                                        className={`flex-1 md:flex-none flex items-center justify-center px-3 py-2 rounded-lg text-sm font-semibold border transition ${
-                                            hasNextSession ? 'text-gray-700 border-gray-200 hover:border-indigo-300 hover:text-indigo-800' : 'text-gray-400 border-gray-100 cursor-not-allowed'
-                                        }`}
-                                    >
-                                        다음
-                                        <Icon name="chevronRight" className="w-4 h-4 ml-1" />
-                                    </button>
-                                </div>
+                <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="flex items-center gap-2 text-sm text-gray-700 font-semibold">
+                                <Icon name="calendar" className="w-4 h-4 text-indigo-800" />
+                                <span>{selectedDate || '날짜 선택'}</span>
                             </div>
-                        
-                            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-                                <h4 className="text-lg font-bold mb-4 border-b pb-2 text-gray-800">학생별 출결 현황 ({classStudents.length}명)</h4>
-                            
+                        <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => handleDateNavigate(-1)}
+                                    disabled={!hasPrevSession}
+                                    className={`flex items-center px-3 py-2 rounded-lg text-xs font-semibold border transition ${
+                                        hasPrevSession ? 'text-gray-700 border-gray-200 hover:border-indigo-300 hover:text-indigo-800' : 'text-gray-400 border-gray-100 cursor-not-allowed'
+                                    }`}
+                                >
+                                    <Icon name="chevronLeft" className="w-4 h-4 mr-1" />
+                                    이전 회차
+                                </button>
+                                <button
+                                    onClick={() => handleDateNavigate(1)}
+                                    disabled={!hasNextSession}
+                                    className={`flex items-center px-3 py-2 rounded-lg text-xs font-semibold border transition ${
+                                        hasNextSession ? 'text-gray-700 border-gray-200 hover:border-indigo-300 hover:text-indigo-800' : 'text-gray-400 border-gray-100 cursor-not-allowed'
+                                    }`}
+                                >
+                                    다음 회차
+                                    <Icon name="chevronRight" className="w-4 h-4 ml-1" />
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                        <div className="flex items-center justify-between gap-3 mb-4">
+                            <h4 className="text-lg font-bold text-gray-800">학생별 출결 현황 ({classStudents.length}명)</h4>
+                            <span className="text-xs text-gray-500">출석 상태를 클릭해 메모를 관리하세요.</span>
+                        </div>
+
+                        {selectedClassId === null ? (
+                            <p className="text-gray-500">클래스를 선택하고 날짜를 지정하여 출결을 관리하세요.</p>
+                        ) : (
+                            <>
                                 <div className="overflow-x-auto rounded-lg border border-gray-200 hidden md:block">
                                     <table className="min-w-full divide-y divide-gray-200">
                                         <thead className="bg-gray-100">
@@ -246,20 +225,18 @@ export default function AttendanceManagement({
                                             {classStudents.map(student => {
                                                 const attendance = classAttendance.find(log => log.studentId === student.id);
                                                 const status = attendance?.status || '미기록';
-                                            
-                                            let statusColor = 'text-gray-500';
-                                                if (status === '출석') statusColor = 'text-green-700';
-                                                else if (status === '지각') statusColor = 'text-yellow-600';
-                                                else if (status === '결석') statusColor = 'text-red-600 font-bold';
-                                                else if (status === '동영상보강') statusColor = 'text-indigo-700';
-
                                                 const memoContent = studentMemos[student.id];
+                                                const badgeStyle = statusBadgeStyles[status] || statusBadgeStyles['미기록'];
 
                                                 return (
                                                     <tr key={student.id} className="hover:bg-indigo-50 transition-colors">
                                                         <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">{student.name}</td>
                                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{formatGradeLabel(student.grade)} / {student.school}</td>
-                                                        <td className={`px-6 py-4 whitespace-nowrap text-sm font-bold ${statusColor}`}>{status}</td>
+                                                        <td className="px-6 py-4 whitespace-nowrap text-sm">
+                                                            <span className={`inline-flex items-center px-3 py-1 rounded-full border text-xs font-semibold ${badgeStyle}`}>
+                                                                {status}
+                                                            </span>
+                                                        </td>
                                                         <td className="px-6 py-4 whitespace-nowrap text-sm">
                                                             <button
                                                                 onClick={() => openMemoModal(student)}
@@ -320,27 +297,68 @@ export default function AttendanceManagement({
                                         );
                                     })}
                                 </div>
+                                </>
+                        )}
+                    </div>
+                </div>
+
+                <div className="space-y-4">
+                    {selectedClassId === null ? (
+                        <div className="p-6 bg-white rounded-xl shadow-sm border border-gray-200">
+                            <p className="text-gray-500">클래스를 선택하고 날짜를 지정하여 출결을 관리하세요.</p>
+                        </div>
+                    ) : selectedStudent ? (
+                        <div className="p-6 bg-white rounded-xl shadow-sm border border-gray-200 space-y-4">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <p className="text-sm text-gray-500">선택된 학생</p>
+                                    <h3 className="text-xl font-bold text-gray-900">{selectedStudent.name}</h3>
+                                    <p className="text-sm text-gray-600">{formatGradeLabel(selectedStudent.grade)} · {selectedStudent.school}</p>
+                                </div>
+                                <span className={`inline-flex items-center px-3 py-1 rounded-full border text-sm font-semibold ${selectedStudentStatus ? (statusBadgeStyles[selectedStudentStatus] || statusBadgeStyles['미기록']) : statusBadgeStyles['미기록']}`}>
+                                    {selectedStudentStatus || '미기록'}
+                                </span>
+                            </div>
+                            {memoModalState.content ? (
+                                <div className="bg-amber-50 border border-amber-100 rounded-lg p-3 text-sm text-gray-800 leading-snug">
+                                    {memoModalState.content}
+                                </div>
+                            ) : (
+                                <p className="text-sm text-gray-500">메모가 없습니다. 학생 행의 메모 버튼을 눌러 메모를 추가하세요.</p>
+                            )}
+                            <div className="flex justify-end">
+                                <button
+                                    onClick={() => openMemoModal(selectedStudent)}
+                                    className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-indigo-900 bg-indigo-50 hover:bg-indigo-100 rounded-lg border border-indigo-200"
+                                >
+                                    <Icon name="edit" className="w-4 h-4" />
+                                    메모 작성/수정
+                                </button>
                             </div>
                         </div>
+                    ) : (
+                        <div className="p-6 bg-white rounded-xl shadow-sm border border-gray-200">
+                            <p className="text-gray-500">학생을 선택하면 상세 정보와 메모를 확인할 수 있습니다.</p>
+                        </div>
                     )}
+
+                    <AttendanceModal
+                        isOpen={isAttendanceModalOpen}
+                        onClose={() => setIsAttendanceModalOpen(false)}
+                        studentsData={classStudents}
+                        initialAttendance={initialAttendanceForModal}
+                        onSave={handleSaveAttendance}
+                    />
+                    <MemoModal
+                        isOpen={memoModalState.isOpen}
+                        onClose={closeMemoModal}
+                        onSave={handleSaveMemo}
+                        studentId={memoModalState.studentId}
+                        initialContent={memoModalState.content}
+                        studentName={memoModalState.studentName}
+                    />
                 </div>
             </div>
-
-            <AttendanceModal
-                isOpen={isAttendanceModalOpen}
-                onClose={() => setIsAttendanceModalOpen(false)}
-                studentsData={classStudents}
-                initialAttendance={initialAttendanceForModal}
-                onSave={handleSaveAttendance}
-            />
-            <MemoModal
-                isOpen={memoModalState.isOpen}
-                onClose={closeMemoModal}
-                onSave={handleSaveMemo}
-                studentId={memoModalState.studentId}
-                initialContent={memoModalState.content}
-                studentName={memoModalState.studentName}
-            />
         </div>
     );
 };
