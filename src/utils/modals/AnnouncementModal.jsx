@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Modal } from '../../components/common/Modal';
 import { Icon } from '../../utils/helpers';
+import StaffNotificationFields from '../../components/Shared/StaffNotificationFields';
 
 export const AnnouncementModal = ({ isOpen, onClose, onSave, announcementToEdit = null, allClasses, allStudents }) => {
     const [title, setTitle] = useState('');
@@ -11,6 +12,10 @@ export const AnnouncementModal = ({ isOpen, onClose, onSave, announcementToEdit 
     const [newAttachment, setNewAttachment] = useState('');
     const [targetClasses, setTargetClasses] = useState([]); 
     const [targetStudents, setTargetStudents] = useState([]);
+    const [staffNotifyMode, setStaffNotifyMode] = useState('none');
+    const [staffNotifyTitle, setStaffNotifyTitle] = useState('');
+    const [staffNotifyBody, setStaffNotifyBody] = useState('');
+    const [staffNotifyScheduledAt, setStaffNotifyScheduledAt] = useState('');
     
     // 선택된 이미지 상태 관리
     const [selectedImage, setSelectedImage] = useState(null);
@@ -20,6 +25,18 @@ export const AnnouncementModal = ({ isOpen, onClose, onSave, announcementToEdit 
     const fileInputRef = useRef(null);
 
     const editorRef = useRef(null);
+
+    const toDatetimeLocal = (value) => {
+        if (!value) return '';
+        const date = value instanceof Date
+            ? value
+            : typeof value?.toDate === 'function'
+                ? value.toDate()
+                : new Date(value);
+        if (Number.isNaN(date.getTime())) return '';
+        const offset = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+        return offset.toISOString().slice(0, 16);
+    };
 
     useEffect(() => {
         if (isOpen) {
@@ -34,6 +51,21 @@ export const AnnouncementModal = ({ isOpen, onClose, onSave, announcementToEdit 
                 if (editorRef.current) {
                     editorRef.current.innerHTML = announcementToEdit.content;
                 }
+                if (announcementToEdit.notifyMode === 'staff' && announcementToEdit.staffNotification) {
+                    setStaffNotifyMode(announcementToEdit.staffNotification.mode || 'immediate');
+                    setStaffNotifyTitle(announcementToEdit.staffNotification.title || '');
+                    setStaffNotifyBody(announcementToEdit.staffNotification.body || '');
+                    setStaffNotifyScheduledAt(
+                        announcementToEdit.staffNotification.mode === 'scheduled'
+                            ? toDatetimeLocal(announcementToEdit.staffNotification.scheduledAt)
+                            : ''
+                    );
+                } else {
+                    setStaffNotifyMode('none');
+                    setStaffNotifyTitle('');
+                    setStaffNotifyBody('');
+                    setStaffNotifyScheduledAt('');
+                }
             } else {
                 setTitle('');
                 setContent('');
@@ -45,6 +77,10 @@ export const AnnouncementModal = ({ isOpen, onClose, onSave, announcementToEdit 
                 if (editorRef.current) {
                     editorRef.current.innerHTML = '';
                 }
+                setStaffNotifyMode('none');
+                setStaffNotifyTitle('');
+                setStaffNotifyBody('');
+                setStaffNotifyScheduledAt('');
             }
             setSelectedImage(null); 
         }
@@ -132,6 +168,28 @@ export const AnnouncementModal = ({ isOpen, onClose, onSave, announcementToEdit 
         e.preventDefault();
         if (!title || !editorRef.current.textContent.trim() && !editorRef.current.querySelector('img')) return;
 
+        if (staffNotifyMode !== 'none') {
+            if (!staffNotifyTitle.trim() || !staffNotifyBody.trim()) {
+                alert('직원 알림 제목과 내용을 입력해주세요.');
+                return;
+            }
+            if (staffNotifyMode === 'scheduled' && !staffNotifyScheduledAt) {
+                alert('직원 알림 예약 시간을 선택해주세요.');
+                return;
+            }
+        }
+
+        const staffNotification = staffNotifyMode === 'none'
+            ? null
+            : {
+                mode: staffNotifyMode,
+                title: staffNotifyTitle.trim(),
+                body: staffNotifyBody.trim(),
+                ...(staffNotifyMode === 'scheduled'
+                    ? { scheduledAt: new Date(staffNotifyScheduledAt) }
+                    : {}),
+            };
+
         // 저장 전 선택 테두리 제거
         if (editorRef.current) {
             const imgs = editorRef.current.querySelectorAll('img');
@@ -151,9 +209,18 @@ export const AnnouncementModal = ({ isOpen, onClose, onSave, announcementToEdit 
             attachments,
             targetClasses,
             targetStudents,
+            notifyMode: staffNotifyMode === 'none' ? 'system' : 'staff',
+            staffNotification,
         };
         onSave(announcementData, !!announcementToEdit);
         onClose();
+    };
+
+    const handleStaffNotifyModeChange = (value) => {
+        setStaffNotifyMode(value);
+        if (value !== 'scheduled') {
+            setStaffNotifyScheduledAt('');
+        }
     };
 
     const fontSizeOptions = [
@@ -251,6 +318,17 @@ export const AnnouncementModal = ({ isOpen, onClose, onSave, announcementToEdit 
                         placeholder="공지 내용을 입력하세요. 텍스트를 드래그하거나 이미지를 붙여넣을 수 있습니다."
                     />
                 </div>
+
+                <StaffNotificationFields
+                    mode={staffNotifyMode}
+                    onModeChange={handleStaffNotifyModeChange}
+                    title={staffNotifyTitle}
+                    onTitleChange={setStaffNotifyTitle}
+                    body={staffNotifyBody}
+                    onBodyChange={setStaffNotifyBody}
+                    scheduledAt={staffNotifyScheduledAt}
+                    onScheduledAtChange={setStaffNotifyScheduledAt}
+                />
 
                 {/* ✅ [수정] 파일 첨부 영역 */}
                 <div>

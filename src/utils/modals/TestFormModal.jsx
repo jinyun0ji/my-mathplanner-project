@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Modal } from '../../components/common/Modal';
 import { Icon, calculateClassSessions } from '../../utils/helpers';
+import StaffNotificationFields from '../../components/Shared/StaffNotificationFields';
 
 const DIFFICULTY_OPTIONS = ['하', '중', '상', '최상'];
 const TYPE_OPTIONS = ['개념', '계산', '응용', '심화', '서술형'];
@@ -18,6 +19,22 @@ export const TestFormModal = ({ isOpen, onClose, onSave, classId, test = null, c
     const [questionScores, setQuestionScores] = useState([]); 
     // 🚨 문항별 분석 배열 (새로운 필드)
     const [questionAnalysis, setQuestionAnalysis] = useState([]);
+    const [staffNotifyMode, setStaffNotifyMode] = useState('none');
+    const [staffNotifyTitle, setStaffNotifyTitle] = useState('');
+    const [staffNotifyBody, setStaffNotifyBody] = useState('');
+    const [staffNotifyScheduledAt, setStaffNotifyScheduledAt] = useState('');
+
+    const toDatetimeLocal = (value) => {
+        if (!value) return '';
+        const date = value instanceof Date
+            ? value
+            : typeof value?.toDate === 'function'
+                ? value.toDate()
+                : new Date(value);
+        if (Number.isNaN(date.getTime())) return '';
+        const offset = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+        return offset.toISOString().slice(0, 16);
+    };
 
     useEffect(() => {
         if (test) {
@@ -28,6 +45,21 @@ export const TestFormModal = ({ isOpen, onClose, onSave, classId, test = null, c
             setQuestionScores(test.questionScores || Array(test.totalQuestions).fill(test.maxScore / test.totalQuestions));
             // 🚨 기존 분석 데이터 로드 또는 기본값 설정
             setQuestionAnalysis(test.questionAnalysis || Array(test.totalQuestions).fill({ difficulty: '중', type: '개념' }));
+            if (test.notifyMode === 'staff' && test.staffNotification) {
+                setStaffNotifyMode(test.staffNotification.mode || 'immediate');
+                setStaffNotifyTitle(test.staffNotification.title || '');
+                setStaffNotifyBody(test.staffNotification.body || '');
+                setStaffNotifyScheduledAt(
+                    test.staffNotification.mode === 'scheduled'
+                        ? toDatetimeLocal(test.staffNotification.scheduledAt)
+                        : ''
+                );
+            } else {
+                setStaffNotifyMode('none');
+                setStaffNotifyTitle('');
+                setStaffNotifyBody('');
+                setStaffNotifyScheduledAt('');
+            }
         } else {
             setName('');
             setDate(sessions.length > 0 ? sessions[sessions.length - 1].date : new Date().toISOString().slice(0, 10));
@@ -35,6 +67,10 @@ export const TestFormModal = ({ isOpen, onClose, onSave, classId, test = null, c
             setTotalQuestions(20);
             setQuestionScores(Array(20).fill(5));
             setQuestionAnalysis(Array(20).fill({ difficulty: '중', type: '개념' }));
+            setStaffNotifyMode('none');
+            setStaffNotifyTitle('');
+            setStaffNotifyBody('');
+            setStaffNotifyScheduledAt('');
         }
     }, [test, sessions]);
     
@@ -97,6 +133,28 @@ export const TestFormModal = ({ isOpen, onClose, onSave, classId, test = null, c
         e.preventDefault();
         if (!name || !date || Number(maxScore) <= 0 || Number(totalQuestions) <= 0) return;
 
+        if (staffNotifyMode !== 'none') {
+            if (!staffNotifyTitle.trim() || !staffNotifyBody.trim()) {
+                alert('직원 알림 제목과 내용을 입력해주세요.');
+                return;
+            }
+            if (staffNotifyMode === 'scheduled' && !staffNotifyScheduledAt) {
+                alert('직원 알림 예약 시간을 선택해주세요.');
+                return;
+            }
+        }
+
+        const staffNotification = staffNotifyMode === 'none'
+            ? null
+            : {
+                mode: staffNotifyMode,
+                title: staffNotifyTitle.trim(),
+                body: staffNotifyBody.trim(),
+                ...(staffNotifyMode === 'scheduled'
+                    ? { scheduledAt: new Date(staffNotifyScheduledAt) }
+                    : {}),
+            };
+
         const testData = {
             id: test ? test.id : null,
             classId,
@@ -107,9 +165,18 @@ export const TestFormModal = ({ isOpen, onClose, onSave, classId, test = null, c
             questionScores: questionScores.map(s => Number(s)), 
             // 🚨 문항 분석 데이터 저장
             questionAnalysis: questionAnalysis,
+            notifyMode: staffNotifyMode === 'none' ? 'system' : 'staff',
+            staffNotification,
         };
         onSave(testData, !!test);
         onClose();
+    };
+
+    const handleStaffNotifyModeChange = (value) => {
+        setStaffNotifyMode(value);
+        if (value !== 'scheduled') {
+            setStaffNotifyScheduledAt('');
+        }
     };
 
     if (!selectedClass) return null;
@@ -187,6 +254,17 @@ export const TestFormModal = ({ isOpen, onClose, onSave, classId, test = null, c
                         <p className="text-sm text-red-500 mt-2 flex items-center"><Icon name="alert" className="w-4 h-4 mr-1"/> 배점의 총합이 0점입니다. 점수를 입력해주세요.</p>
                     )}
                 </div>
+
+                <StaffNotificationFields
+                    mode={staffNotifyMode}
+                    onModeChange={handleStaffNotifyModeChange}
+                    title={staffNotifyTitle}
+                    onTitleChange={setStaffNotifyTitle}
+                    body={staffNotifyBody}
+                    onBodyChange={setStaffNotifyBody}
+                    scheduledAt={staffNotifyScheduledAt}
+                    onScheduledAtChange={setStaffNotifyScheduledAt}
+                />
 
                 <div className="pt-4 border-t flex justify-end space-x-3">
                     <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium rounded-lg text-gray-700 bg-gray-200 hover:bg-gray-300 transition duration-150">

@@ -5,6 +5,7 @@ import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } 
 import { CSS } from '@dnd-kit/utilities';
 import { Modal } from '../../components/common/Modal';
 import { Icon, calculateClassSessions } from '../../utils/helpers';
+import StaffNotificationFields from '../../components/Shared/StaffNotificationFields';
 
 export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = null, classes, defaultDate = null, students, logNotification, onDirtyChange = () => {} }) => {
   const selectedClass = classes.find(c => c.id === classId);
@@ -17,6 +18,10 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
   const [materialUrl, setMaterialUrl] = useState('');
   const [scheduleTime, setScheduleTime] = useState('');
   const [studentNotificationMap, setStudentNotificationMap] = useState({});
+  const [staffNotifyMode, setStaffNotifyMode] = useState('none');
+  const [staffNotifyTitle, setStaffNotifyTitle] = useState('');
+  const [staffNotifyBody, setStaffNotifyBody] = useState('');
+  const [staffNotifyScheduledAt, setStaffNotifyScheduledAt] = useState('');
 
   // ✅ [추가] 파일 첨부 상태 및 Ref
   const [selectedFile, setSelectedFile] = useState(null);
@@ -116,6 +121,18 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
     );
   };
 
+  const toDatetimeLocal = (value) => {
+    if (!value) return '';
+    const date = value instanceof Date
+      ? value
+      : typeof value?.toDate === 'function'
+        ? value.toDate()
+        : new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    const offset = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+    return offset.toISOString().slice(0, 16);
+  };
+
   useEffect(() => {
     videoIdRef.current = 0;
     if (log) {
@@ -124,12 +141,31 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
       setVideos(normalizeVideosFromLog(log));
       setMaterialUrl(log.materialUrl);
       setScheduleTime(log.scheduleTime || '');
+      if (log.notifyMode === 'staff' && log.staffNotification) {
+        setStaffNotifyMode(log.staffNotification.mode || 'immediate');
+        setStaffNotifyTitle(log.staffNotification.title || '');
+        setStaffNotifyBody(log.staffNotification.body || '');
+        setStaffNotifyScheduledAt(
+          log.staffNotification.mode === 'scheduled'
+            ? toDatetimeLocal(log.staffNotification.scheduledAt)
+            : ''
+        );
+      } else {
+        setStaffNotifyMode('none');
+        setStaffNotifyTitle('');
+        setStaffNotifyBody('');
+        setStaffNotifyScheduledAt('');
+      }
     } else {
       setDate(defaultDate || (sessions.length > 0 ? sessions[sessions.length - 1].date : ''));
       setProgress('');
       setVideos([]);
       setMaterialUrl('');
       setScheduleTime('');
+      setStaffNotifyMode('none');
+      setStaffNotifyTitle('');
+      setStaffNotifyBody('');
+      setStaffNotifyScheduledAt('');
     }
     
     // 모달이 열릴 때 알림 설정 기본값 초기화
@@ -235,9 +271,54 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
       setIsDirty(true);
   };
 
+  const handleStaffNotifyModeChange = (value) => {
+    setStaffNotifyMode(value);
+    if (value !== 'scheduled') {
+      setStaffNotifyScheduledAt('');
+    }
+    setIsDirty(true);
+  };
+
+  const handleStaffNotifyTitleChange = (value) => {
+    setStaffNotifyTitle(value);
+    setIsDirty(true);
+  };
+
+  const handleStaffNotifyBodyChange = (value) => {
+    setStaffNotifyBody(value);
+    setIsDirty(true);
+  };
+
+  const handleStaffNotifyScheduledAtChange = (value) => {
+    setStaffNotifyScheduledAt(value);
+    setIsDirty(true);
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!classId || !date || !progress) return;
+
+    if (staffNotifyMode !== 'none') {
+      if (!staffNotifyTitle.trim() || !staffNotifyBody.trim()) {
+        alert('직원 알림 제목과 내용을 입력해주세요.');
+        return;
+      }
+      if (staffNotifyMode === 'scheduled' && !staffNotifyScheduledAt) {
+        alert('직원 알림 예약 시간을 선택해주세요.');
+        return;
+      }
+    }
+
+    const staffNotification = staffNotifyMode === 'none'
+      ? null
+      : {
+        mode: staffNotifyMode,
+        title: staffNotifyTitle.trim(),
+        body: staffNotifyBody.trim(),
+        ...(staffNotifyMode === 'scheduled'
+          ? { scheduledAt: new Date(staffNotifyScheduledAt) }
+          : {}),
+      };
 
     const logData = {
         id: log ? log.id : null,
@@ -253,6 +334,8 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
         materialUrl, // URL 입력값 또는 파일명
         file: selectedFile, // ✅ 실제 파일 객체 전달 (상위 컴포넌트에서 업로드 처리 필요)
         scheduleTime: scheduleTime || null,
+        notifyMode: staffNotifyMode === 'none' ? 'system' : 'staff',
+        staffNotification,
     };
     
     onSave(logData, !!log);
@@ -336,6 +419,17 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
                     placeholder="예: 다항식의 연산 P.12 ~ P.18 (유형 5까지)"
                 ></textarea>
             </div>
+
+            <StaffNotificationFields
+                mode={staffNotifyMode}
+                onModeChange={handleStaffNotifyModeChange}
+                title={staffNotifyTitle}
+                onTitleChange={handleStaffNotifyTitleChange}
+                body={staffNotifyBody}
+                onBodyChange={handleStaffNotifyBodyChange}
+                scheduledAt={staffNotifyScheduledAt}
+                onScheduledAtChange={handleStaffNotifyScheduledAtChange}
+            />
 
             <div>
                 <div className="flex items-center justify-between">

@@ -1,6 +1,7 @@
 // src/utils/modals/HomeworkAssignmentModal.jsx
 import React, { useState, useEffect, useMemo } from 'react';
 import { Modal } from '../../components/common/Modal';
+import StaffNotificationFields from '../../components/Shared/StaffNotificationFields';
 
 export const HomeworkAssignmentModal = ({ isOpen, onClose, onSave, classId, assignment = null, students, selectedClass }) => {
   const classStudents = useMemo(() => students.filter(s => selectedClass?.students.includes(s.id)) || [], [students, selectedClass]);
@@ -13,6 +14,22 @@ export const HomeworkAssignmentModal = ({ isOpen, onClose, onSave, classId, assi
   const [rangeString, setRangeString] = useState(''); 
   const [totalQuestions, setTotalQuestions] = useState(0);
   const [isAssignmentDate, setIsAssignmentDate] = useState(true);
+  const [staffNotifyMode, setStaffNotifyMode] = useState('none');
+  const [staffNotifyTitle, setStaffNotifyTitle] = useState('');
+  const [staffNotifyBody, setStaffNotifyBody] = useState('');
+  const [staffNotifyScheduledAt, setStaffNotifyScheduledAt] = useState('');
+
+  const toDatetimeLocal = (value) => {
+    if (!value) return '';
+    const date = value instanceof Date
+      ? value
+      : typeof value?.toDate === 'function'
+        ? value.toDate()
+        : new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    const offset = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+    return offset.toISOString().slice(0, 16);
+  };
 
   // 범위 문자열 파싱 함수 (예: "1-5, 8, 10-12" -> [1,2,3,4,5,8,10,11,12])
   const parseRangeString = (str) => {
@@ -55,6 +72,21 @@ export const HomeworkAssignmentModal = ({ isOpen, onClose, onSave, classId, assi
           setTotalQuestions(0);
       }
       setIsAssignmentDate(assignment.isAssignmentDate !== undefined ? assignment.isAssignmentDate : true);
+      if (assignment.notifyMode === 'staff' && assignment.staffNotification) {
+        setStaffNotifyMode(assignment.staffNotification.mode || 'immediate');
+        setStaffNotifyTitle(assignment.staffNotification.title || '');
+        setStaffNotifyBody(assignment.staffNotification.body || '');
+        setStaffNotifyScheduledAt(
+          assignment.staffNotification.mode === 'scheduled'
+            ? toDatetimeLocal(assignment.staffNotification.scheduledAt)
+            : ''
+        );
+      } else {
+        setStaffNotifyMode('none');
+        setStaffNotifyTitle('');
+        setStaffNotifyBody('');
+        setStaffNotifyScheduledAt('');
+      }
     } else {
       setDate(new Date().toISOString().slice(0, 10));
       setContent('');
@@ -62,6 +94,10 @@ export const HomeworkAssignmentModal = ({ isOpen, onClose, onSave, classId, assi
       setRangeString('');
       setTotalQuestions(0);
       setIsAssignmentDate(true);
+      setStaffNotifyMode('none');
+      setStaffNotifyTitle('');
+      setStaffNotifyBody('');
+      setStaffNotifyScheduledAt('');
     }
   }, [assignment]);
 
@@ -75,6 +111,28 @@ export const HomeworkAssignmentModal = ({ isOpen, onClose, onSave, classId, assi
     e.preventDefault();
     if (!classId || !date || !content || totalQuestions <= 0) return;
 
+    if (staffNotifyMode !== 'none') {
+      if (!staffNotifyTitle.trim() || !staffNotifyBody.trim()) {
+        alert('직원 알림 제목과 내용을 입력해주세요.');
+        return;
+      }
+      if (staffNotifyMode === 'scheduled' && !staffNotifyScheduledAt) {
+        alert('직원 알림 예약 시간을 선택해주세요.');
+        return;
+      }
+    }
+
+    const staffNotification = staffNotifyMode === 'none'
+      ? null
+      : {
+        mode: staffNotifyMode,
+        title: staffNotifyTitle.trim(),
+        body: staffNotifyBody.trim(),
+        ...(staffNotifyMode === 'scheduled'
+          ? { scheduledAt: new Date(staffNotifyScheduledAt) }
+          : {}),
+      };
+
     const assignmentData = {
       id: assignment ? assignment.id : null,
       classId,
@@ -85,9 +143,18 @@ export const HomeworkAssignmentModal = ({ isOpen, onClose, onSave, classId, assi
       totalQuestions,
       students: classStudents.map(s => s.id),
       isAssignmentDate,
+      notifyMode: staffNotifyMode === 'none' ? 'system' : 'staff',
+      staffNotification,
     };
     onSave(assignmentData, !!assignment);
     onClose();
+  };
+
+  const handleStaffNotifyModeChange = (value) => {
+    setStaffNotifyMode(value);
+    if (value !== 'scheduled') {
+      setStaffNotifyScheduledAt('');
+    }
   };
 
   return (
@@ -132,6 +199,17 @@ export const HomeworkAssignmentModal = ({ isOpen, onClose, onSave, classId, assi
             </div>
           </div>
         </div>
+
+        <StaffNotificationFields
+          mode={staffNotifyMode}
+          onModeChange={handleStaffNotifyModeChange}
+          title={staffNotifyTitle}
+          onTitleChange={setStaffNotifyTitle}
+          body={staffNotifyBody}
+          onBodyChange={setStaffNotifyBody}
+          scheduledAt={staffNotifyScheduledAt}
+          onScheduledAtChange={setStaffNotifyScheduledAt}
+        />
 
         <div className="pt-4 border-t flex justify-end space-x-3">
           <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium rounded-lg text-gray-700 bg-gray-200 hover:bg-gray-300 transition duration-150">
