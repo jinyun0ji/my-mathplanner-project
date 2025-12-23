@@ -11,10 +11,14 @@ export const AttendanceModal = ({ isOpen, onClose, studentsData, initialAttendan
     }, [initialAttendance, isOpen]);
 
     const handleStatusChange = (studentId, status) => {
-        setAttendance(prev => ({
-            ...prev,
-            [studentId]: { ...prev[studentId], status }
-        }));
+        setAttendance(prev => {
+            const currentStatus = prev[studentId]?.status;
+            const nextStatus = currentStatus === status ? null : status;
+            return {
+                ...prev,
+                [studentId]: { ...prev[studentId], status: nextStatus }
+            };
+        });
     };
     
     const handleSubmit = (e) => {

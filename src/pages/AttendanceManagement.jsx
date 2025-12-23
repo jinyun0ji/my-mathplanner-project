@@ -146,7 +146,7 @@ export default function AttendanceManagement({
                             onClick={() => setIsAttendanceModalOpen(true)}
                             className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-indigo-900 hover:bg-indigo-800 rounded-lg shadow-md transition"
                         >
-                            <Icon name="save" className="w-5 h-5" />
+                            <Icon name="checkSquare" className="w-5 h-5" />
                             출결 저장
                         </button>
                     </div>
