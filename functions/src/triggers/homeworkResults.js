@@ -1,8 +1,11 @@
 const functions = require('firebase-functions');
+const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 const { getRecipientsForStudent } = require('../notify/recipients');
 const { notifyUsers } = require('../notify/notifications');
 
 const TYPE = 'HOMEWORK_GRADED';
+
+const db = getFirestore();
 
 const isUnchanged = (before, after) => JSON.stringify(before) === JSON.stringify(after);
 
@@ -24,7 +27,16 @@ const onHomeworkResultWritten = functions.firestore
         const recipients = await getRecipientsForStudent(studentId);
 
         if (!recipients) {
-            return null;
+            return db.collection('notificationLogs').add({
+                type: TYPE,
+                refCollection: 'homeworkResults',
+                refId: context.params.id,
+                targetUserCount: 0,
+                successCount: 0,
+                failureCount: 0,
+                failedTokenCount: 0,
+                createdAt: FieldValue.serverTimestamp(),
+            });
         }
 
         const userIds = [recipients.studentUid, ...recipients.parentUids];
@@ -45,6 +57,17 @@ const onHomeworkResultWritten = functions.firestore
                 refId,
                 studentId,
             },
+        });
+
+        return db.collection('notificationLogs').add({
+            type: TYPE,
+            refCollection: 'homeworkResults',
+            refId,
+            targetUserCount,
+            successCount: fcmStats?.successCount || 0,
+            failureCount: fcmStats?.failureCount || 0,
+            failedTokenCount: fcmStats?.failedTokenCount || 0,
+            createdAt: FieldValue.serverTimestamp(),
         });
     });
 

@@ -75,25 +75,6 @@ export default function StudentHome({
         setTargetMemo({ lessonId, time });
     };
 
-    const handleChatOpen = async (chatId) => {
-        if (!notificationUid || !db) {
-            return;
-        }
-
-        await setDoc(doc(db, 'users', notificationUid, 'chatIndex', chatId), {
-            unreadCount: 0,
-            lastReadAt: serverTimestamp(),
-        }, { merge: true });
-    };
-
-    const navItems = [
-        { id: 'home', icon: 'home', label: '홈' },
-        { id: 'class', icon: 'fileText', label: '클래스' },
-        { id: 'schedule', icon: 'calendar', label: '수업일정' },
-        { id: 'learning', icon: 'clipboardCheck', label: '학습관리' },
-        { id: 'menu', icon: 'menu', label: '전체메뉴' },
-    ];
-
     const handleNotificationClick = async (notification) => {
         await openNotification({
             notification,
@@ -119,6 +100,25 @@ export default function StudentHome({
         });
         setIsNotificationOpen(false);
     };
+
+    const handleChatOpen = async (chatId) => {
+        if (!notificationUid || !db) {
+            return;
+        }
+
+        await setDoc(doc(db, 'users', notificationUid, 'chatIndex', chatId), {
+            unreadCount: 0,
+            lastReadAt: serverTimestamp(),
+        }, { merge: true });
+    };
+
+    const navItems = [
+        { id: 'home', icon: 'home', label: '홈' },
+        { id: 'class', icon: 'fileText', label: '클래스' },
+        { id: 'schedule', icon: 'calendar', label: '수업일정' },
+        { id: 'learning', icon: 'clipboardCheck', label: '학습관리' },
+        { id: 'menu', icon: 'menu', label: '전체메뉴' },
+    ];
 
     return (
         <div className="bg-brand-bg min-h-screen flex flex-col relative font-sans">

@@ -17,14 +17,23 @@ const onChatMessageCreated = functions.firestore
 
         const recipients = participantIds.filter((uid) => uid && uid !== senderId);
 
-        if (recipients.length === 0) {
-            return null;
-        }
-
         const refId = context.params.chatId;
         const lastMessageText = messageData.text || messageData.body || '';
         const lastMessageAt = messageData.createdAt || FieldValue.serverTimestamp();
         const batch = db.batch();
+
+        if (recipients.length === 0) {
+            return db.collection('notificationLogs').add({
+                type: TYPE,
+                refCollection: 'chats',
+                refId,
+                targetUserCount: 0,
+                successCount: 0,
+                failureCount: 0,
+                failedTokenCount: 0,
+                createdAt: FieldValue.serverTimestamp(),
+            });
+        }
 
         recipients.forEach((uid) => {
             const chatIndexRef = db.collection('users').doc(uid).collection('chatIndex').doc(refId);
@@ -37,7 +46,7 @@ const onChatMessageCreated = functions.firestore
 
         await batch.commit();
 
-        return notifyUsers({
+        const { targetUserCount, fcmStats } = await notifyUsers({
             userIds: recipients,
             payload: {
                 type: TYPE,
@@ -50,6 +59,17 @@ const onChatMessageCreated = functions.firestore
                 refCollection: 'chats',
                 refId,
             },
+        });
+
+        return db.collection('notificationLogs').add({
+            type: TYPE,
+            refCollection: 'chats',
+            refId,
+            targetUserCount,
+            successCount: fcmStats?.successCount || 0,
+            failureCount: fcmStats?.failureCount || 0,
+            failedTokenCount: fcmStats?.failedTokenCount || 0,
+            createdAt: FieldValue.serverTimestamp(),
         });
     });
 

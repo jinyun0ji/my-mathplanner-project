@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Icon } from '../utils/helpers';
+import { collection, getDocs, limit, orderBy, query, Timestamp, where } from 'firebase/firestore';
+import { db } from '../firebase/client';
 
-export default function Home({ onQuickAction, onCreateStaffUser, onCreateLinkCode }) {
+export default function Home({ onQuickAction, onCreateStaffUser, onCreateLinkCode, userRole }) {
     const [staffEmail, setStaffEmail] = useState('');
     const [staffTempPassword, setStaffTempPassword] = useState('');
     const [staffStatus, setStaffStatus] = useState('');
@@ -10,6 +12,63 @@ export default function Home({ onQuickAction, onCreateStaffUser, onCreateLinkCod
     const [linkCodeResult, setLinkCodeResult] = useState('');
     const [linkStatus, setLinkStatus] = useState('');
     const [linkSubmitting, setLinkSubmitting] = useState(false);
+    const [notificationLogs, setNotificationLogs] = useState([]);
+    const [logType, setLogType] = useState('all');
+    const [logStartDate, setLogStartDate] = useState('');
+    const [logEndDate, setLogEndDate] = useState('');
+    const [logLoading, setLogLoading] = useState(false);
+    const [logError, setLogError] = useState('');
+    const isAdmin = userRole === 'admin';
+
+    const notificationTypes = useMemo(() => ([
+        { label: '전체', value: 'all' },
+        { label: '수업일지', value: 'LESSON_UPDATED' },
+        { label: '출결', value: 'ATTENDANCE_UPDATED' },
+        { label: '과제', value: 'HOMEWORK_GRADED' },
+        { label: '성적', value: 'GRADE_PUBLISHED' },
+        { label: '채팅', value: 'CHAT_MESSAGE' },
+    ]), []);
+
+    useEffect(() => {
+        if (!isAdmin || !db) {
+            setNotificationLogs([]);
+            return;
+        }
+
+        const fetchLogs = async () => {
+            setLogLoading(true);
+            setLogError('');
+
+            try {
+                const constraints = [orderBy('createdAt', 'desc'), limit(50)];
+
+                if (logType !== 'all') {
+                    constraints.push(where('type', '==', logType));
+                }
+
+                if (logStartDate) {
+                    const start = new Date(logStartDate);
+                    start.setHours(0, 0, 0, 0);
+                    constraints.push(where('createdAt', '>=', Timestamp.fromDate(start)));
+                }
+
+                if (logEndDate) {
+                    const end = new Date(logEndDate);
+                    end.setHours(23, 59, 59, 999);
+                    constraints.push(where('createdAt', '<=', Timestamp.fromDate(end)));
+                }
+
+                const snapshot = await getDocs(query(collection(db, 'notificationLogs'), ...constraints));
+                setNotificationLogs(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
+            } catch (error) {
+                setLogError(error?.message || '알림 로그를 불러오지 못했습니다.');
+            } finally {
+                setLogLoading(false);
+            }
+        };
+
+        fetchLogs();
+    }, [isAdmin, logType, logStartDate, logEndDate, db]);
 
     const stats = [
         { label: '총 재원생', value: '42명', change: '+2명', type: 'increase', icon: 'users', color: 'indigo' },
@@ -187,6 +246,114 @@ export default function Home({ onQuickAction, onCreateStaffUser, onCreateLinkCod
                         </div>
                     )}
                     {linkStatus && <p className="text-sm text-gray-600">{linkStatus}</p>}
+                </div>
+            )}
+
+            {isAdmin && (
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-5 flex flex-col gap-4">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2.5 rounded-xl bg-rose-50 text-rose-900 border border-rose-100">
+                                <Icon name="bell" className="w-5 h-5" />
+                            </div>
+                            <div>
+                                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">관리자 전용</p>
+                                <p className="text-base font-bold text-gray-800">알림 발송 로그</p>
+                            </div>
+                        </div>
+                        <span className="px-3 py-1 text-xs font-semibold rounded-full bg-rose-50 text-rose-800 border border-rose-100">
+                            최근 50건
+                        </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <label className="flex flex-col gap-1">
+                            <span className="text-xs font-semibold text-gray-600">유형</span>
+                            <select
+                                value={logType}
+                                onChange={(e) => setLogType(e.target.value)}
+                                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-400"
+                            >
+                                {notificationTypes.map((type) => (
+                                    <option key={type.value} value={type.value}>{type.label}</option>
+                                ))}
+                            </select>
+                        </label>
+                        <label className="flex flex-col gap-1">
+                            <span className="text-xs font-semibold text-gray-600">시작일</span>
+                            <input
+                                type="date"
+                                value={logStartDate}
+                                onChange={(e) => setLogStartDate(e.target.value)}
+                                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-400"
+                            />
+                        </label>
+                        <label className="flex flex-col gap-1">
+                            <span className="text-xs font-semibold text-gray-600">종료일</span>
+                            <input
+                                type="date"
+                                value={logEndDate}
+                                onChange={(e) => setLogEndDate(e.target.value)}
+                                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-400"
+                            />
+                        </label>
+                    </div>
+
+                    {logLoading && (
+                        <div className="text-sm text-gray-500">로그를 불러오는 중...</div>
+                    )}
+                    {logError && (
+                        <div className="text-sm text-red-500">{logError}</div>
+                    )}
+
+                    {!logLoading && !logError && (
+                        <div className="space-y-3">
+                            {notificationLogs.length === 0 ? (
+                                <div className="text-sm text-gray-500 text-center py-6 border border-dashed border-gray-200 rounded-xl">
+                                    조건에 맞는 로그가 없습니다.
+                                </div>
+                            ) : (
+                                notificationLogs.map((log) => {
+                                    const total = (log.successCount || 0) + (log.failureCount || 0);
+                                    const failureRate = total === 0 ? 0 : Math.round((log.failureCount || 0) / total * 100);
+                                    const createdAt = log.createdAt?.toDate ? log.createdAt.toDate().toLocaleString('ko-KR') : '-';
+                                    return (
+                                        <div key={log.id} className="border border-gray-200 rounded-xl p-4 flex flex-col gap-2">
+                                            <div className="flex flex-wrap items-center justify-between gap-2">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-xs font-semibold text-rose-700 bg-rose-50 border border-rose-100 px-2 py-0.5 rounded-full">
+                                                        {log.type}
+                                                    </span>
+                                                    <span className="text-xs text-gray-400">{createdAt}</span>
+                                                </div>
+                                                <span className="text-xs font-semibold text-gray-500">
+                                                    실패율 {failureRate}%
+                                                </span>
+                                            </div>
+                                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                                                <div className="flex flex-col">
+                                                    <span className="text-xs text-gray-400">대상</span>
+                                                    <span className="font-semibold text-gray-800">{log.targetUserCount || 0}명</span>
+                                                </div>
+                                                <div className="flex flex-col">
+                                                    <span className="text-xs text-gray-400">성공</span>
+                                                    <span className="font-semibold text-emerald-600">{log.successCount || 0}</span>
+                                                </div>
+                                                <div className="flex flex-col">
+                                                    <span className="text-xs text-gray-400">실패</span>
+                                                    <span className="font-semibold text-red-500">{log.failureCount || 0}</span>
+                                                </div>
+                                                <div className="flex flex-col">
+                                                    <span className="text-xs text-gray-400">실패 토큰</span>
+                                                    <span className="font-semibold text-orange-500">{log.failedTokenCount || 0}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                })
+                            )}
+                        </div>
+                    )}
                 </div>
             )}
 

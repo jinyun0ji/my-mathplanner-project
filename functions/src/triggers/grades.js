@@ -1,8 +1,11 @@
 const functions = require('firebase-functions');
+const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 const { getRecipientsForStudent } = require('../notify/recipients');
 const { notifyUsers } = require('../notify/notifications');
 
 const TYPE = 'GRADE_PUBLISHED';
+
+const db = getFirestore();
 
 const isUnchanged = (before, after) => JSON.stringify(before) === JSON.stringify(after);
 
@@ -24,13 +27,22 @@ const onGradeWritten = functions.firestore
         const recipients = await getRecipientsForStudent(studentId);
 
         if (!recipients) {
-            return null;
+            return db.collection('notificationLogs').add({
+                type: TYPE,
+                refCollection: 'grades',
+                refId: context.params.id,
+                targetUserCount: 0,
+                successCount: 0,
+                failureCount: 0,
+                failedTokenCount: 0,
+                createdAt: FieldValue.serverTimestamp(),
+            });
         }
 
         const userIds = [recipients.studentUid, ...recipients.parentUids];
         const refId = context.params.id;
 
-        return notifyUsers({
+        const { targetUserCount, fcmStats } = await notifyUsers({
             userIds,
             payload: {
                 type: TYPE,
@@ -45,6 +57,17 @@ const onGradeWritten = functions.firestore
                 refId,
                 studentId,
             },
+        });
+
+        return db.collection('notificationLogs').add({
+            type: TYPE,
+            refCollection: 'grades',
+            refId,
+            targetUserCount,
+            successCount: fcmStats?.successCount || 0,
+            failureCount: fcmStats?.failureCount || 0,
+            failedTokenCount: fcmStats?.failedTokenCount || 0,
+            createdAt: FieldValue.serverTimestamp(),
         });
     });
 

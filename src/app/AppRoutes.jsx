@@ -33,7 +33,7 @@ const PageContent = (props) => {
     const { page, selectedStudentId } = props;
     if (page === 'students' && selectedStudentId !== null) return <StudentDetail {...props} studentId={selectedStudentId} />;
     switch (page) {
-        case 'home': return <Home onQuickAction={props.onQuickAction} onCreateStaffUser={props.onCreateStaffUser} />;
+        case 'home': return <Home onQuickAction={props.onQuickAction} onCreateStaffUser={props.onCreateStaffUser} onCreateLinkCode={props.onCreateLinkCode} userRole={props.userRole} />;
         case 'lessons': return <LessonManagement {...props} />;
         case 'attendance': return <AttendanceManagement {...props} />;
         case 'students': return <StudentManagement {...props} />;
@@ -297,7 +297,7 @@ export default function AppRoutes({ user, role, linkedStudentIds }) {
 
   if (role === 'student') return <StudentHome studentId={userId} userId={userId} students={students} classes={classes} homeworkAssignments={homeworkAssignments} homeworkResults={homeworkResults} attendanceLogs={attendanceLogs} lessonLogs={lessonLogs} notices={announcements} tests={tests} grades={grades} videoProgress={videoProgress} onSaveVideoProgress={handleSaveVideoProgress} videoBookmarks={videoBookmarks} onSaveBookmark={handleSaveBookmark} externalSchedules={externalSchedules} onSaveExternalSchedule={handleSaveExternalSchedule} onDeleteExternalSchedule={handleDeleteExternalSchedule} clinicLogs={clinicLogs} onUpdateStudent={handleSaveStudent} messages={studentMessages} onSendMessage={() => {}} onLogout={handleLogout} />;
   if (role === 'parent') return <ParentHome studentId={selectedStudentId} userId={userId} students={students} classes={classes} homeworkAssignments={homeworkAssignments} homeworkResults={homeworkResults} attendanceLogs={attendanceLogs} lessonLogs={lessonLogs} notices={announcements} tests={tests} grades={grades} clinicLogs={clinicLogs} videoProgress={videoProgress} onLogout={handleLogout} externalSchedules={externalSchedules} onSaveExternalSchedule={handleSaveExternalSchedule} onDeleteExternalSchedule={handleDeleteExternalSchedule} messages={studentMessages} onSendMessage={() => {}} />;
-  
+
   const managementProps = {
     students, classes, lessonLogs, attendanceLogs, workLogs, clinicLogs,
     homeworkAssignments, homeworkResults, tests, grades, studentMemos, videoProgress, announcements,

@@ -8,7 +8,7 @@ const createNotificationForUsers = async (userIds, payload) => {
     const uniqueIds = [...new Set(userIds.filter(Boolean))];
 
     if (uniqueIds.length === 0) {
-        return {};
+        return { notificationIds: {}, targetUserCount: 0 };
     }
 
     const notificationIds = {};
@@ -24,15 +24,19 @@ const createNotificationForUsers = async (userIds, payload) => {
     });
 
     await batch.commit();
-    return notificationIds;
+    return { notificationIds, targetUserCount: uniqueIds.length };
 };
 
 const notifyUsers = async ({ userIds, payload, fcmData }) => {
-    const notificationIds = await createNotificationForUsers(userIds, payload);
+    const { notificationIds, targetUserCount } = await createNotificationForUsers(userIds, payload);
 
-    await sendFcmToUsers(userIds, buildFcmDataPayload(fcmData), notificationIds);
+    const fcmStats = await sendFcmToUsers(userIds, buildFcmDataPayload(fcmData), notificationIds);
 
-    return notificationIds;
+    return {
+        notificationIds,
+        targetUserCount,
+        fcmStats,
+    };
 };
 
 module.exports = {

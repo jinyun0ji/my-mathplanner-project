@@ -185,6 +185,18 @@ service cloud.firestore {
       allow create, update, delete: if isStaffOrAdmin();
     }
 
+    match /notifications/{uid}/meta {
+      allow get: if isSignedIn() && request.auth.uid == uid;
+      allow list: if false;
+      allow create, update: if isSignedIn() && request.auth.uid == uid;
+      allow delete: if false;
+    }
+
+    match /notificationLogs/{logId} {
+      allow get, list: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

@@ -31,10 +31,15 @@ const sendFcmToUsers = async (userIds, dataPayload, notificationIds = {}) => {
     const uniqueIds = [...new Set(userIds.filter(Boolean))];
 
     if (uniqueIds.length === 0) {
-        return;
+        return { successCount: 0, failureCount: 0, failedTokenCount: 0 };
     }
 
     const messaging = getMessaging();
+    const totals = {
+        successCount: 0,
+        failureCount: 0,
+        failedTokenCount: 0,
+    };
 
     await Promise.all(uniqueIds.map(async (uid) => {
         const tokenSnapshot = await db.collection('users').doc(uid).collection('fcmTokens').get();
@@ -58,15 +63,21 @@ const sendFcmToUsers = async (userIds, dataPayload, notificationIds = {}) => {
                 data: payload,
             });
 
+            totals.successCount += response.successCount;
+            totals.failureCount += response.failureCount;
+
             const invalidRefs = response.responses
                 .map((result, index) => (result.success ? null : { error: result.error, ref: entryBatch[index].ref }))
                 .filter((entry) => entry && isInvalidTokenError(entry.error));
 
             if (invalidRefs.length > 0) {
+                totals.failedTokenCount += invalidRefs.length;
                 await Promise.all(invalidRefs.map((entry) => entry.ref.delete()));
             }
         }));
     }));
+
+    return totals;
 };
 
 module.exports = {
