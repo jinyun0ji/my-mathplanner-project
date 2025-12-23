@@ -31,7 +31,9 @@ import ClinicManagement from './pages/ClinicManagement';
 import InternalCommunication from './pages/InternalCommunication';
 import PaymentManagement from './pages/PaymentManagement';
 import ParentHome from './pages/ParentHome';
+import OnboardingPage from './pages/OnboardingPage';
 import useAuth from './auth/useAuth';
+import { signInWithEmail, signInWithGoogle, signOutUser } from './auth/authService';
 import { db } from './firebase/client';
 import { loadViewerDataOnce, startStaffFirestoreSync } from './data/firestoreSync';
 
@@ -53,23 +55,14 @@ const PageContent = (props) => {
 };
 
 export default function App() {
-  const {
-    isLoggedIn,
-    userRole,
-    userId,
-    handleLogout: handleAuthLogout,
-    signInWithEmail,
-    signInWithGooglePopup,
-    signInWithKakao,
-    signInWithNaver,
-  } = useAuth();
+  const { user, role, loading } = useAuth();
   const [page, setPage] = useState('lessons');
-  const [selectedStudentId, setSelectedStudentId] = useState(() =>
-      ['student', 'parent'].includes(userRole) ? userId : null
-  );
-  const [notifications, setNotifications] = useState([]); 
+  const [selectedStudentId, setSelectedStudentId] = useState(null);
+  const [notifications, setNotifications] = useState([]);
   const [isGlobalDirty, setIsGlobalDirty] = useState(false);
   const [studentSearchTerm, setStudentSearchTerm] = useState('');
+  const userId = user?.uid || null;
+  const isAuthenticated = Boolean(user);
 
   // --- 중앙 상태 관리 (Firestore 동기화 대상) ---
   const [students, setStudents] = useState(initialStudents);
@@ -99,22 +92,22 @@ export default function App() {
   });
 
   useEffect(() => {
-      if (!isLoggedIn) {
+      if (!isAuthenticated) {
           setSelectedStudentId(null);
           return;
       }
-      if (['student', 'parent'].includes(userRole)) setSelectedStudentId(userId);
-  }, [isLoggedIn, userRole, userId]);
+      if (['student', 'parent'].includes(role)) setSelectedStudentId(userId);
+  }, [isAuthenticated, role, userId]);
 
   useEffect(() => {
-      if (isLoggedIn) processedAnnouncementIdsRef.current = new Set();
-  }, [isLoggedIn, userId]);
+      if (isAuthenticated) processedAnnouncementIdsRef.current = new Set();
+  }, [isAuthenticated, userId]);
 
   // --- 🔥 Firestore 실시간 동기화 (비용 안전 장치 포함) ---
   useEffect(() => startStaffFirestoreSync({
       db,
-      isLoggedIn,
-      userRole,
+      isLoggedIn: isAuthenticated,
+      userRole: role,
       setStudents,
       setClasses,
       setTests,
@@ -127,15 +120,15 @@ export default function App() {
       setPaymentLogs,
       setGrades,
       setHomeworkResults,
-  }), [db, isLoggedIn, userRole]);
+  }), [db, isAuthenticated, role]);
 
   // --- 학생/학부모: 로그인 시 1회만 필요한 데이터 읽기 ---
   useEffect(() => {
       const state = { cancelled: false };
       loadViewerDataOnce({
           db,
-          isLoggedIn,
-          userRole,
+          isLoggedIn: isAuthenticated,
+          userRole: role,
           userId,
           setStudents,
           setClasses,
@@ -151,88 +144,21 @@ export default function App() {
           isCancelled: () => state.cancelled,
       });
       return () => { state.cancelled = true; };
-  }, [db, isLoggedIn, userRole, userId]);
+  }, [db, isAuthenticated, role, userId]);
 
 
   const handleEmailLogin = async (email, password) => {
       await signInWithEmail(email, password);
   };
 
-  const redirectToKakao = () => {
-      const clientId = process.env.REACT_APP_KAKAO_CLIENT_ID;
-      const redirectUri = process.env.REACT_APP_KAKAO_REDIRECT_URI || `${window.location.origin}?provider=kakao`;
-      if (!clientId) throw new Error('Kakao client id가 설정되지 않았습니다.');
-
-      const params = new URLSearchParams({
-          client_id: clientId,
-          redirect_uri: redirectUri,
-          response_type: 'code',
-      });
-      window.location.href = `https://kauth.kakao.com/oauth/authorize?${params.toString()}`;
-  };
-
-  const redirectToNaver = () => {
-      const clientId = process.env.REACT_APP_NAVER_CLIENT_ID;
-      const redirectUri = process.env.REACT_APP_NAVER_REDIRECT_URI || `${window.location.origin}?provider=naver`;
-      if (!clientId) throw new Error('Naver client id가 설정되지 않았습니다.');
-
-      const state = (typeof crypto !== 'undefined' && crypto.randomUUID)
-          ? crypto.randomUUID()
-          : Math.random().toString(36).slice(2, 10);
-      sessionStorage.setItem('naver_oauth_state', state);
-
-      const params = new URLSearchParams({
-          response_type: 'code',
-          client_id: clientId,
-          redirect_uri: redirectUri,
-          state,
-      });
-      window.location.href = `https://nid.naver.com/oauth2.0/authorize?${params.toString()}`;
-  };
-
   const handleSocialLogin = async (providerName) => {
-      if (providerName === 'google') return signInWithGooglePopup();
-      if (providerName === 'kakao') return redirectToKakao();
-      if (providerName === 'naver') return redirectToNaver();
+      if (providerName === 'google') return signInWithGoogle();
+      if (providerName === 'kakao' || providerName === 'naver') {
+          alert('다음 단계에서 연결될 예정입니다.');
+          return;
+      }
       throw new Error('지원되지 않는 소셜 로그인입니다.');
-  };
-
-  useEffect(() => {
-      if (typeof window === 'undefined') return undefined;
-
-      const url = new URL(window.location.href);
-      const provider = url.searchParams.get('provider');
-      const code = url.searchParams.get('code');
-      const state = url.searchParams.get('state');
-
-      if (!provider || !code) return undefined;
-
-      const clearParams = () => {
-          url.searchParams.delete('provider');
-          url.searchParams.delete('code');
-          if (state) url.searchParams.delete('state');
-          const newSearch = url.searchParams.toString();
-          const newUrl = `${url.pathname}${newSearch ? `?${newSearch}` : ''}${url.hash}`;
-          window.history.replaceState({}, '', newUrl);
-      };
-
-      const handleOAuthCallback = async () => {
-          try {
-              if (provider === 'kakao') {
-                  await signInWithKakao(code);
-              } else if (provider === 'naver') {
-                  const storedState = sessionStorage.getItem('naver_oauth_state');
-                  await signInWithNaver(code, state || storedState || undefined);
-              }
-          } catch (error) {
-              console.error('소셜 로그인 처리 중 오류가 발생했습니다.', error);
-          } finally {
-              clearParams();
-          }
-      };
-
-      handleOAuthCallback();
-  }, [signInWithKakao, signInWithNaver]);
+  }
 
   useEffect(() => {
       try { localStorage.setItem('videoBookmarks', JSON.stringify(videoBookmarks)); } 
@@ -256,7 +182,7 @@ export default function App() {
 
   useEffect(() => {
       if (!announcements || announcements.length === 0) return;
-      if (!['student', 'parent'].includes(userRole)) return;
+      if (!['student', 'parent'].includes(role)) return;
 
       const processed = processedAnnouncementIdsRef.current;
       const newMessages = [];
@@ -286,7 +212,7 @@ export default function App() {
           setStudentMessages((prev) => [...prev, ...newMessages]);
           setHasNewMessages(true);
       }
-  }, [announcements, userRole, userId]);
+  }, [announcements, role, userId]);
 
   const logNotification = useCallback((type, message, details) => {
       setNotifications(prev => [{ id: Date.now(), type, message, details, timestamp: new Date().toLocaleTimeString('ko-KR') }, ...prev]);
@@ -372,18 +298,20 @@ export default function App() {
       if (map[key]) handlePageChange(map[key]);
   };
 
-  const handleLogout = () => {
-      handleAuthLogout();
+  const handleLogout = async () => {
+      await signOutUser();
       setSelectedStudentId(null);
       processedAnnouncementIdsRef.current = new Set();
   };
 
-  if (!isLoggedIn) return <LoginPage onEmailLogin={handleEmailLogin} onSocialLogin={handleSocialLogin} />;
+  if (loading) return <div className="min-h-screen flex items-center justify-center">로딩 중...</div>;
+  if (!isAuthenticated) return <LoginPage onEmailLogin={handleEmailLogin} onSocialLogin={handleSocialLogin} />;
+  if (role === 'pending') return <OnboardingPage />;
 
   // 학생/학부모 뷰
-  if (userRole === 'student') return <StudentHome studentId={userId} students={students} classes={classes} homeworkAssignments={homeworkAssignments} homeworkResults={homeworkResults} attendanceLogs={attendanceLogs} lessonLogs={lessonLogs} notices={announcements} tests={tests} grades={grades} videoProgress={videoProgress} onSaveVideoProgress={handleSaveVideoProgress} videoBookmarks={videoBookmarks} onSaveBookmark={handleSaveBookmark} externalSchedules={externalSchedules} onSaveExternalSchedule={handleSaveExternalSchedule} onDeleteExternalSchedule={handleDeleteExternalSchedule} clinicLogs={clinicLogs} onUpdateStudent={handleSaveStudent} messages={studentMessages} onSendMessage={() => {}} onLogout={handleLogout} />;
-  if (userRole === 'parent') return <ParentHome studentId={userId} students={students} classes={classes} homeworkAssignments={homeworkAssignments} homeworkResults={homeworkResults} attendanceLogs={attendanceLogs} lessonLogs={lessonLogs} notices={announcements} tests={tests} grades={grades} clinicLogs={clinicLogs} videoProgress={videoProgress} onLogout={handleLogout} externalSchedules={externalSchedules} onSaveExternalSchedule={handleSaveExternalSchedule} onDeleteExternalSchedule={handleDeleteExternalSchedule} messages={studentMessages} onSendMessage={() => {}} />;
-
+  if (role === 'student') return <StudentHome studentId={userId} students={students} classes={classes} homeworkAssignments={homeworkAssignments} homeworkResults={homeworkResults} attendanceLogs={attendanceLogs} lessonLogs={lessonLogs} notices={announcements} tests={tests} grades={grades} videoProgress={videoProgress} onSaveVideoProgress={handleSaveVideoProgress} videoBookmarks={videoBookmarks} onSaveBookmark={handleSaveBookmark} externalSchedules={externalSchedules} onSaveExternalSchedule={handleSaveExternalSchedule} onDeleteExternalSchedule={handleDeleteExternalSchedule} clinicLogs={clinicLogs} onUpdateStudent={handleSaveStudent} messages={studentMessages} onSendMessage={() => {}} onLogout={handleLogout} />;
+  if (role === 'parent') return <ParentHome studentId={userId} students={students} classes={classes} homeworkAssignments={homeworkAssignments} homeworkResults={homeworkResults} attendanceLogs={attendanceLogs} lessonLogs={lessonLogs} notices={announcements} tests={tests} grades={grades} clinicLogs={clinicLogs} videoProgress={videoProgress} onLogout={handleLogout} externalSchedules={externalSchedules} onSaveExternalSchedule={handleSaveExternalSchedule} onDeleteExternalSchedule={handleDeleteExternalSchedule} messages={studentMessages} onSendMessage={() => {}} />;
+  
   // 관리자(직원) 뷰 Props
   const managementProps = {
     students, classes, lessonLogs, attendanceLogs, workLogs, clinicLogs, 

@@ -1,87 +1,59 @@
 import { useEffect, useState } from 'react';
-import { onAuthStateChanged, signInWithCustomToken as firebaseSignInWithCustomToken, signOut } from 'firebase/auth';
+import { onAuthStateChanged } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../firebase/client';
-import {
-    signInWithEmail as signInWithEmailService,
-    signInWithGooglePopup as signInWithGooglePopupService,
-    signInWithKakao as signInWithKakaoService,
-    signInWithNaver as signInWithNaverService,
-} from './authService';
 
 export default function useAuth() {
-    const [isLoggedIn, setIsLoggedIn] = useState(false);
-    const [userRole, setUserRole] = useState(null);
-    const [userId, setUserId] = useState(null);
+    const [user, setUser] = useState(null);
+    const [role, setRole] = useState(null);
+    const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        if (!auth) return undefined;
-        
-        let isCancelled = false;
-        const unsubscribe = onAuthStateChanged(auth, async (user) => {
-            if (isCancelled) return;
+        if (!auth) {
+            setLoading(false);
+            return undefined;
+        }
 
-            setIsLoggedIn(Boolean(user));
-            setUserId(user?.uid || null);
+        let isMounted = true;
+        const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+            if (!isMounted) return;
+            setUser(currentUser);
+            setRole(null);
 
-            if (!user) {
-                setUserRole(null);
+            if (!currentUser) {
+                setLoading(false);
                 return;
             }
 
             if (!db) {
-                setUserRole(null);
+                console.error('Firestore가 초기화되지 않았습니다.');
+                setLoading(false);
                 return;
             }
 
             try {
-                const snap = await getDoc(doc(db, 'users', user.uid));
-                if (isCancelled) return;
-                const role = snap.exists() ? snap.data()?.role ?? null : null;
-                setUserRole(role);
+                const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
+                if (!isMounted) return;
+
+                if (!userDoc.exists()) {
+                    setRole('pending');
+                } else {
+                    const data = userDoc.data();
+                    setRole(data?.role || 'pending');
+                }
             } catch (error) {
                 console.error('사용자 역할을 불러오는 중 오류가 발생했습니다:', error);
-                if (!isCancelled) setUserRole(null);
+                if (isMounted) setRole(null);
+            } finally {
+                if (isMounted) setLoading(false);
             }
         });
 
         return () => {
-            isCancelled = true;
+            isMounted = false;
             unsubscribe();
         };
     }, []);
 
-    const signInWithEmail = async (email, password) => signInWithEmailService(email, password);
-
-    const signInWithGooglePopup = async () => signInWithGooglePopupService();
-
-    const signInWithKakao = async (code) => signInWithKakaoService(code);
-
-    const signInWithNaver = async (code, state) => signInWithNaverService(code, state);
-
-    const signInWithCustomToken = async (customToken) => {
-        if (!auth) throw new Error('Firebase가 초기화되지 않았습니다.');
-        if (!customToken) throw new Error('커스텀 토큰이 필요합니다.');
-        const { user } = await firebaseSignInWithCustomToken(auth, customToken);
-        return user?.uid;
-    };
-
-    const handleLogout = async () => {
-        if (auth) await signOut(auth);
-        setIsLoggedIn(false);
-        setUserRole(null);
-        setUserId(null);
-    };
-
-    return {
-        isLoggedIn,
-        userRole,
-        userId,
-        handleLogout,
-        signInWithEmail,
-        signInWithGooglePopup,
-        signInWithKakao,
-        signInWithNaver,
-        signInWithCustomToken,
-    };
+    return { user, role, loading };
 }
