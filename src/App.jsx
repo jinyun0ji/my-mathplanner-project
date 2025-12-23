@@ -37,7 +37,8 @@ import { signInWithEmail, signInWithGoogle, signOutUser } from './auth/authServi
 import { redirectToKakao, redirectToNaver } from './auth/socialRedirect';
 import { db } from './firebase/client';
 import { loadViewerDataOnce, startStaffFirestoreSync } from './data/firestoreSync';
-import { createStaffUser } from './admin/staffService';
+import { createLinkCode, createStaffUser } from './admin/staffService';
+import { claimStudentLinkCode } from './parent/linkCodeService';
 import SocialCallback from './pages/SocialCallback';
 
 const PageContent = (props) => {
@@ -58,14 +59,15 @@ const PageContent = (props) => {
 };
 
 export default function App() {
-    const isSocialCallbackPage = typeof window !== 'undefined' && window.location.pathname === '/auth/callback';
-  const { user, role, loading } = useAuth();
+  const isSocialCallbackPage = typeof window !== 'undefined' && window.location.pathname === '/auth/callback';
+  const { user, role, studentIds: linkedStudentIds, loading } = useAuth();
   const [page, setPage] = useState('lessons');
   const [selectedStudentId, setSelectedStudentId] = useState(null);
   const [notifications, setNotifications] = useState([]);
   const [isGlobalDirty, setIsGlobalDirty] = useState(false);
   const [studentSearchTerm, setStudentSearchTerm] = useState('');
   const userId = user?.uid || null;
+  const primaryStudentId = role === 'parent' ? linkedStudentIds?.[0] || null : userId;
   const isAuthenticated = Boolean(user);
 
   // --- 중앙 상태 관리 (Firestore 동기화 대상) ---
@@ -100,8 +102,9 @@ export default function App() {
           setSelectedStudentId(null);
           return;
       }
-      if (['student', 'parent'].includes(role)) setSelectedStudentId(userId);
-  }, [isAuthenticated, role, userId]);
+      if (role === 'student') setSelectedStudentId(userId);
+      if (role === 'parent') setSelectedStudentId(primaryStudentId);
+  }, [isAuthenticated, role, userId, primaryStudentId]);
 
   useEffect(() => {
       if (isAuthenticated) processedAnnouncementIdsRef.current = new Set();
@@ -133,6 +136,7 @@ export default function App() {
           db,
           isLoggedIn: isAuthenticated,
           userRole: role,
+          studentIds: linkedStudentIds,
           userId,
           setStudents,
           setClasses,
@@ -148,7 +152,7 @@ export default function App() {
           isCancelled: () => state.cancelled,
       });
       return () => { state.cancelled = true; };
-  }, [db, isAuthenticated, role, userId]);
+  }, [db, isAuthenticated, role, userId, linkedStudentIds]);
 
 
   const handleEmailLogin = async (email, password) => {
@@ -161,6 +165,16 @@ export default function App() {
       if (providerName === 'naver') return redirectToNaver();
       throw new Error('지원되지 않는 소셜 로그인입니다.');
   }
+
+  const handleClaimLinkCode = async (code) => {
+      await claimStudentLinkCode(code);
+  };
+
+  const handleCreateLinkCode = async ({ studentId }) => {
+      const normalizedId = typeof studentId === 'string' ? studentId.trim() : '';
+      if (!normalizedId) throw new Error('학생 ID를 입력해주세요.');
+      return createLinkCode({ studentId: normalizedId });
+  };
 
   useEffect(() => {
       try { localStorage.setItem('videoBookmarks', JSON.stringify(videoBookmarks)); } 
@@ -189,9 +203,15 @@ export default function App() {
       const processed = processedAnnouncementIdsRef.current;
       const newMessages = [];
 
+      const announcementTargets = role === 'parent'
+          ? linkedStudentIds
+          : userId
+              ? [userId]
+              : [];
+
       announcements.forEach((notice) => {
           if (!notice?.id || processed.has(notice.id)) return;
-          const isTargetedToUser = !notice.targetStudents || notice.targetStudents.length === 0 || notice.targetStudents.includes(userId);
+          const isTargetedToUser = !notice.targetStudents || notice.targetStudents.length === 0 || announcementTargets.some((id) => notice.targetStudents.includes(id));
           if (!isTargetedToUser) return;
 
           const dateString = notice.date || new Date().toISOString().split('T')[0];
@@ -315,11 +335,11 @@ export default function App() {
 
   if (loading) return <div className="min-h-screen flex items-center justify-center">로딩 중...</div>;
   if (!isAuthenticated) return <LoginPage onEmailLogin={handleEmailLogin} onSocialLogin={handleSocialLogin} />;
-  if (role === 'pending') return <OnboardingPage />;
+  if (role === 'pending') return <OnboardingPage onSubmitLinkCode={handleClaimLinkCode} />;
 
   // 학생/학부모 뷰
   if (role === 'student') return <StudentHome studentId={userId} students={students} classes={classes} homeworkAssignments={homeworkAssignments} homeworkResults={homeworkResults} attendanceLogs={attendanceLogs} lessonLogs={lessonLogs} notices={announcements} tests={tests} grades={grades} videoProgress={videoProgress} onSaveVideoProgress={handleSaveVideoProgress} videoBookmarks={videoBookmarks} onSaveBookmark={handleSaveBookmark} externalSchedules={externalSchedules} onSaveExternalSchedule={handleSaveExternalSchedule} onDeleteExternalSchedule={handleDeleteExternalSchedule} clinicLogs={clinicLogs} onUpdateStudent={handleSaveStudent} messages={studentMessages} onSendMessage={() => {}} onLogout={handleLogout} />;
-  if (role === 'parent') return <ParentHome studentId={userId} students={students} classes={classes} homeworkAssignments={homeworkAssignments} homeworkResults={homeworkResults} attendanceLogs={attendanceLogs} lessonLogs={lessonLogs} notices={announcements} tests={tests} grades={grades} clinicLogs={clinicLogs} videoProgress={videoProgress} onLogout={handleLogout} externalSchedules={externalSchedules} onSaveExternalSchedule={handleSaveExternalSchedule} onDeleteExternalSchedule={handleDeleteExternalSchedule} messages={studentMessages} onSendMessage={() => {}} />;
+  if (role === 'parent') return <ParentHome studentId={selectedStudentId} students={students} classes={classes} homeworkAssignments={homeworkAssignments} homeworkResults={homeworkResults} attendanceLogs={attendanceLogs} lessonLogs={lessonLogs} notices={announcements} tests={tests} grades={grades} clinicLogs={clinicLogs} videoProgress={videoProgress} onLogout={handleLogout} externalSchedules={externalSchedules} onSaveExternalSchedule={handleSaveExternalSchedule} onDeleteExternalSchedule={handleDeleteExternalSchedule} messages={studentMessages} onSendMessage={() => {}} />;
 
   // 관리자(직원) 뷰 Props
   const managementProps = {
@@ -337,6 +357,7 @@ export default function App() {
     setIsGlobalDirty, studentSearchTerm, setStudentSearchTerm, handleSendStudentNotification,
     externalSchedules, pendingQuickAction, clearPendingQuickAction: () => setPendingQuickAction(null), onQuickAction: handleQuickAction,
     onCreateStaffUser: role === 'staff' ? handleCreateStaffUser : null,
+    onCreateLinkCode: role === 'staff' ? handleCreateLinkCode : null,
   };
 
   return (

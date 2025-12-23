@@ -1,11 +1,15 @@
 import React, { useState } from 'react';
 import { Icon } from '../utils/helpers';
 
-export default function Home({ onQuickAction, onCreateStaffUser }) {
+export default function Home({ onQuickAction, onCreateStaffUser, onCreateLinkCode }) {
     const [staffEmail, setStaffEmail] = useState('');
     const [staffTempPassword, setStaffTempPassword] = useState('');
     const [staffStatus, setStaffStatus] = useState('');
     const [staffSubmitting, setStaffSubmitting] = useState(false);
+    const [linkStudentId, setLinkStudentId] = useState('');
+    const [linkCodeResult, setLinkCodeResult] = useState('');
+    const [linkStatus, setLinkStatus] = useState('');
+    const [linkSubmitting, setLinkSubmitting] = useState(false);
 
     const stats = [
         { label: '총 재원생', value: '42명', change: '+2명', type: 'increase', icon: 'users', color: 'indigo' },
@@ -68,6 +72,23 @@ export default function Home({ onQuickAction, onCreateStaffUser }) {
         }
     };
 
+    const handleCreateLinkCodeSubmit = async (e) => {
+        e.preventDefault();
+        if (!onCreateLinkCode) return;
+
+        setLinkStatus('');
+        setLinkSubmitting(true);
+        try {
+            const result = await onCreateLinkCode({ studentId: linkStudentId });
+            setLinkCodeResult(result?.code || '');
+            setLinkStatus('연결 코드를 생성했습니다. 학부모에게 전달하세요.');
+        } catch (error) {
+            setLinkStatus(error?.message || '연결 코드 생성 중 오류가 발생했습니다.');
+        } finally {
+            setLinkSubmitting(false);
+        }
+    };
+
     return (
         <div className="space-y-6 lg:space-y-8 pb-2">
             {onCreateStaffUser && (
@@ -119,6 +140,53 @@ export default function Home({ onQuickAction, onCreateStaffUser }) {
                         </button>
                     </form>
                     {staffStatus && <p className="text-sm text-gray-600">{staffStatus}</p>}
+                </div>
+            )}
+
+            {onCreateLinkCode && (
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-5 flex flex-col gap-4">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2.5 rounded-xl bg-emerald-50 text-emerald-900 border border-emerald-100">
+                                <Icon name="link" className="w-5 h-5" />
+                            </div>
+                            <div>
+                                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">직원 전용</p>
+                                <p className="text-base font-bold text-gray-800">학부모 연결 코드 생성</p>
+                            </div>
+                        </div>
+                        <span className="px-3 py-1 text-xs font-semibold rounded-full bg-emerald-50 text-emerald-800 border border-emerald-100">
+                            학생 ID 필요
+                        </span>
+                    </div>
+                    <form className="grid grid-cols-1 md:grid-cols-[2fr_auto] gap-3 items-end" onSubmit={handleCreateLinkCodeSubmit}>
+                        <label className="flex flex-col gap-1">
+                            <span className="text-xs font-semibold text-gray-600">학생 ID</span>
+                            <input
+                                type="text"
+                                required
+                                value={linkStudentId}
+                                onChange={(e) => setLinkStudentId(e.target.value)}
+                                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                                placeholder="예: student123"
+                            />
+                        </label>
+                        <button
+                            type="submit"
+                            disabled={linkSubmitting}
+                            className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 text-white px-4 py-2.5 text-sm font-semibold shadow hover:bg-emerald-500 disabled:opacity-60"
+                        >
+                            <Icon name={linkSubmitting ? 'loader' : 'key'} className="w-4 h-4" />
+                            {linkSubmitting ? '생성 중...' : '연결 코드 생성'}
+                        </button>
+                    </form>
+                    {linkCodeResult && (
+                        <div className="rounded-lg bg-emerald-50 border border-emerald-100 p-3 text-sm text-emerald-900 flex items-center justify-between">
+                            <span className="font-semibold">발급된 코드</span>
+                            <code className="text-base font-bold tracking-widest">{linkCodeResult}</code>
+                        </div>
+                    )}
+                    {linkStatus && <p className="text-sm text-gray-600">{linkStatus}</p>}
                 </div>
             )}
 

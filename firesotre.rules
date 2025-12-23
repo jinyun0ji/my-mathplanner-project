@@ -1,0 +1,99 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function userRole() {
+      let data = request.auth != null ? userDoc().data : null;
+      return data != null ? data.role : null;
+    }
+
+    function isStaff() { return userRole() == 'staff'; }
+    function isParent() { return userRole() == 'parent'; }
+    function isStudent() { return userRole() == 'student'; }
+
+    function parentStudentIds() {
+      let doc = userDoc().data;
+      return isParent() && doc != null && doc.studentIds != null ? doc.studentIds : [];
+    }
+
+    function canViewStudent(studentId) {
+      return isStaff() || (isStudent() && request.auth.uid == studentId) || (isParent() && parentStudentIds().hasAny([studentId]));
+    }
+
+    function classHasMyStudents(classId) {
+      let classData = get(/databases/$(database)/documents/classes/$(classId)).data;
+      let roster = classData != null && classData.students != null ? classData.students : [];
+      return isStaff() || roster.hasAny(isParent() ? parentStudentIds() : [request.auth.uid]);
+    }
+
+    match /users/{uid} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow write: if false;
+    }
+
+    match /linkCodes/{code} {
+      allow read, write: if false;
+    }
+
+    match /students/{id} {
+      allow read: if request.auth != null && canViewStudent(id);
+      allow write: if isStaff();
+    }
+
+    match /classes/{id} {
+      allow read: if request.auth != null && classHasMyStudents(id);
+      allow write: if isStaff();
+    }
+
+    match /lessonLogs/{id} {
+      allow read: if request.auth != null && classHasMyStudents(resource.data.classId);
+      allow write: if isStaff();
+    }
+
+    match /attendanceLogs/{id} {
+      allow read: if request.auth != null && canViewStudent(resource.data.studentId);
+      allow write: if isStaff();
+    }
+
+    match /clinicLogs/{id} {
+      allow read: if request.auth != null && canViewStudent(resource.data.studentId);
+      allow write: if isStaff();
+    }
+
+    match /homeworkAssignments/{id} {
+      allow read: if request.auth != null && (isStaff() || classHasMyStudents(resource.data.classId));
+      allow write: if isStaff();
+    }
+
+    match /homeworkResults/{id} {
+      allow read: if request.auth != null && canViewStudent(resource.data.studentId);
+      allow write: if isStaff();
+    }
+
+    match /grades/{id} {
+      allow read: if request.auth != null && canViewStudent(resource.data.studentId);
+      allow write: if isStaff();
+    }
+
+    match /payments/{id} {
+      allow read: if request.auth != null && canViewStudent(resource.data.studentId);
+      allow write: if isStaff();
+    }
+
+    match /announcements/{id} {
+      allow read: if request.auth != null;
+      allow write: if isStaff();
+    }
+
+    match /workLogs/{id} {
+      allow read, write: if isStaff();
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

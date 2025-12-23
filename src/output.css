@@ -2842,6 +2842,11 @@
     opacity: 60%;
   }
 }
+.disabled\:opacity-70 {
+  &:disabled {
+    opacity: 70%;
+  }
+}
 .aria-invalid\:focus-visible\:ring-0 {
   &[aria-invalid="true"] {
     &:focus-visible {

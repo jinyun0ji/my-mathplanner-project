@@ -97,6 +97,7 @@ export const loadViewerDataOnce = async ({
     isLoggedIn,
     userRole,
     userId,
+    studentIds = [],
     setStudents,
     setClasses,
     setLessonLogs,
@@ -113,12 +114,25 @@ export const loadViewerDataOnce = async ({
     const isViewerRole = ['student', 'parent'].includes(userRole);
     if (!isLoggedIn || !db || !isViewerRole) return;
 
+    const viewerStudentIds = userRole === 'student'
+        ? [userId].filter(Boolean)
+        : Array.isArray(studentIds)
+            ? studentIds.filter(Boolean).slice(0, 10)
+            : [];
+
+    const normalizedStudentIds = viewerStudentIds.map((id) => (
+        typeof id === 'string' && !Number.isNaN(Number(id))
+            ? Number(id)
+            : id
+    ));
+    if (normalizedStudentIds.length === 0) return;
+
     try {
         const myStudents = await fetchList(
             db,
             'students',
             setStudents,
-            query(collection(db, 'students'), where('id', '==', userId), limit(1)),
+            query(collection(db, 'students'), where('id', 'in', normalizedStudentIds), limit(10)),
             isCancelled,
         );
 
@@ -126,14 +140,14 @@ export const loadViewerDataOnce = async ({
             db,
             'classes',
             setClasses,
-            query(collection(db, 'classes'), where('students', 'array-contains', userId)),
+            query(collection(db, 'classes'), where('students', 'array-contains-any', normalizedStudentIds)),
             isCancelled,
         );
 
         const fetchLimitedLogs = async (colName, setter, filterField) => {
             const q = query(
                 collection(db, colName),
-                where(filterField, '==', userId),
+                where(filterField, 'in', normalizedStudentIds),
                 orderBy('date', 'desc'),
                 limit(30),
             );
@@ -156,7 +170,7 @@ export const loadViewerDataOnce = async ({
 
         const qHomework = query(
             collection(db, 'homeworkResults'),
-            where('studentId', '==', userId),
+            where('studentId', 'in', normalizedStudentIds),
             limit(80),
         );
         const homeworkSnap = await getDocs(qHomework);
@@ -171,7 +185,7 @@ export const loadViewerDataOnce = async ({
             setHomeworkResults((prev) => ({ ...prev, ...mapped }));
         }
 
-        const qGrades = query(collection(db, 'grades'), where('studentId', '==', userId), limit(80));
+        const qGrades = query(collection(db, 'grades'), where('studentId', 'in', normalizedStudentIds), limit(80));
         const gradeSnap = await getDocs(qGrades);
         if (!isCancelled()) {
             const mappedGrades = {};

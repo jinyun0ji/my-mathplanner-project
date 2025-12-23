@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, onSnapshot } from 'firebase/firestore';
 import { auth, db } from '../firebase/client';
 
 export default function useAuth() {
     const [user, setUser] = useState(null);
     const [role, setRole] = useState(null);
+    const [studentIds, setStudentIds] = useState([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
@@ -15,10 +16,17 @@ export default function useAuth() {
         }
 
         let isMounted = true;
-        const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+        let userDocUnsub = null;
+        const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
             if (!isMounted) return;
             setUser(currentUser);
             setRole(null);
+            setStudentIds([]);
+
+            if (userDocUnsub) {
+                userDocUnsub();
+                userDocUnsub = null;
+            }
 
             if (!currentUser) {
                 setLoading(false);
@@ -31,29 +39,39 @@ export default function useAuth() {
                 return;
             }
 
-            try {
-                const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
+            const userDocRef = doc(db, 'users', currentUser.uid);
+            userDocUnsub = onSnapshot(userDocRef, (userDoc) => {
                 if (!isMounted) return;
 
                 if (!userDoc.exists()) {
                     setRole('pending');
+                    setStudentIds([]);
                 } else {
                     const data = userDoc.data();
                     setRole(data?.role || 'pending');
+                    const ids = Array.isArray(data?.studentIds)
+                        ? data.studentIds.filter((id) => id !== undefined && id !== null)
+                        : [];
+                    setStudentIds(ids);
                 }
-            } catch (error) {
+            setLoading(false);
+            }, (error) => {
                 console.error('사용자 역할을 불러오는 중 오류가 발생했습니다:', error);
-                if (isMounted) setRole(null);
-            } finally {
-                if (isMounted) setLoading(false);
-            }
+                if (isMounted) {
+                    setRole(null);
+                    setStudentIds([]);
+                    setLoading(false);
+                }
+            });
+
         });
 
         return () => {
             isMounted = false;
+            if (userDocUnsub) userDocUnsub();
             unsubscribe();
         };
     }, []);
 
-    return { user, role, loading };
+    return { user, role, studentIds, loading };
 }
