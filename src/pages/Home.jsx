@@ -1,10 +1,13 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Icon } from '../utils/helpers';
 
-export default function Home({ onQuickAction }) {
-    // 목업 데이터
+export default function Home({ onQuickAction, onCreateStaffUser }) {
+    const [staffEmail, setStaffEmail] = useState('');
+    const [staffTempPassword, setStaffTempPassword] = useState('');
+    const [staffStatus, setStaffStatus] = useState('');
+    const [staffSubmitting, setStaffSubmitting] = useState(false);
+
     const stats = [
-        // [색상 변경] icon color: indigo -> indigo-900
         { label: '총 재원생', value: '42명', change: '+2명', type: 'increase', icon: 'users', color: 'indigo' },
         { label: '오늘 출석률', value: '95%', change: '-2%', type: 'decrease', icon: 'checkCircle', color: 'green' },
         { label: '미납 수강료', value: '120만', change: '관리 필요', type: 'warning', icon: 'alertCircle', color: 'red' },
@@ -47,10 +50,78 @@ export default function Home({ onQuickAction }) {
         sky: 'hover:bg-sky-50',
     };
 
+    const handleCreateStaffSubmit = async (e) => {
+        e.preventDefault();
+        if (!onCreateStaffUser) return;
+
+        setStaffStatus('');
+        setStaffSubmitting(true);
+        try {
+            await onCreateStaffUser({ email: staffEmail, tempPassword: staffTempPassword });
+            setStaffStatus('직원 계정을 생성했습니다. 임시 비밀번호를 전달해주세요.');
+            setStaffEmail('');
+            setStaffTempPassword('');
+        } catch (error) {
+            setStaffStatus(error?.message || '직원 생성 중 오류가 발생했습니다.');
+        } finally {
+            setStaffSubmitting(false);
+        }
+    };
+
     return (
         <div className="space-y-6 lg:space-y-8 pb-2">
-            {/* 상단 웰컴 메시지 */}
-            {/* [색상 변경] bg-indigo-600 -> bg-indigo-900 */}
+            {onCreateStaffUser && (
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-5 flex flex-col gap-4">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2.5 rounded-xl bg-indigo-50 text-indigo-900 border border-indigo-100">
+                                <Icon name="shield" className="w-5 h-5" />
+                            </div>
+                            <div>
+                                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">관리자 전용</p>
+                                <p className="text-base font-bold text-gray-800">직원 계정 생성</p>
+                            </div>
+                        </div>
+                        <span className="px-3 py-1 text-xs font-semibold rounded-full bg-indigo-50 text-indigo-800 border border-indigo-100">
+                            Allowlist 인증 필요
+                        </span>
+                    </div>
+                    <form className="grid grid-cols-1 md:grid-cols-[2fr_1.5fr_auto] gap-3 items-end" onSubmit={handleCreateStaffSubmit}>
+                        <label className="flex flex-col gap-1">
+                            <span className="text-xs font-semibold text-gray-600">직원 이메일</span>
+                            <input
+                                type="email"
+                                required
+                                value={staffEmail}
+                                onChange={(e) => setStaffEmail(e.target.value)}
+                                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                placeholder="staff@example.com"
+                            />
+                        </label>
+                        <label className="flex flex-col gap-1">
+                            <span className="text-xs font-semibold text-gray-600">임시 비밀번호</span>
+                            <input
+                                type="text"
+                                required
+                                value={staffTempPassword}
+                                onChange={(e) => setStaffTempPassword(e.target.value)}
+                                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                placeholder="초기 로그인용 비밀번호"
+                            />
+                        </label>
+                        <button
+                            type="submit"
+                            disabled={staffSubmitting}
+                            className="inline-flex items-center justify-center gap-2 rounded-lg bg-indigo-900 text-white px-4 py-2.5 text-sm font-semibold shadow hover:bg-indigo-800 disabled:opacity-60"
+                        >
+                            <Icon name={staffSubmitting ? 'loader' : 'userPlus'} className="w-4 h-4" />
+                            {staffSubmitting ? '생성 중...' : '직원 계정 생성'}
+                        </button>
+                    </form>
+                    {staffStatus && <p className="text-sm text-gray-600">{staffStatus}</p>}
+                </div>
+            )}
+
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,2.2fr)_minmax(260px,1fr)]">
                 <div className="relative overflow-hidden rounded-2xl bg-[radial-gradient(circle_at_15%_20%,rgba(56,189,248,0.28),transparent_40%),radial-gradient(circle_at_80%_15%,rgba(45,212,191,0.26),transparent_38%),linear-gradient(135deg,#0a1434,#1d4ed8,#0d9488)] p-6 lg:p-7 shadow-lg text-white">
                     <div className="absolute inset-y-0 right-0 w-48 bg-white/10 blur-3xl" aria-hidden></div>
@@ -107,7 +178,6 @@ export default function Home({ onQuickAction }) {
                 </div>
             </div>
 
-            {/* KPI 카드 섹션 */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
                 {stats.map((stat, idx) => (
                     <div key={idx} className="bg-white p-5 rounded-xl shadow-sm border border-gray-200 hover:shadow-md transition-shadow duration-200 min-w-0">
@@ -116,9 +186,8 @@ export default function Home({ onQuickAction }) {
                                 <p className="text-sm font-medium text-gray-500">{stat.label}</p>
                                 <h3 className="text-2xl font-bold text-gray-800 mt-1 truncate">{stat.value}</h3>
                             </div>
-                            {/* [색상 변경] 아이콘 배경 및 색상 조정 */}
                             <div className={`p-2.5 rounded-lg ${
-                                stat.color === 'indigo' ? 'bg-indigo-50 text-indigo-900' : 
+                                stat.color === 'indigo' ? 'bg-indigo-50 text-indigo-900' :
                                 stat.color === 'green' ? 'bg-green-50 text-green-700' :
                                 stat.color === 'red' ? 'bg-red-50 text-red-600' :
                                 'bg-blue-50 text-blue-600'
@@ -128,8 +197,8 @@ export default function Home({ onQuickAction }) {
                         </div>
                         <div className="mt-4 flex items-center text-xs text-left">
                             <span className={`font-bold flex items-center ${
-                                stat.type === 'increase' ? 'text-green-600' : 
-                                stat.type === 'decrease' ? 'text-red-500' : 
+                                stat.type === 'increase' ? 'text-green-600' :
+                                stat.type === 'decrease' ? 'text-red-500' :
                                 stat.type === 'warning' ? 'text-orange-500' : 'text-gray-500'
                             }`}>
                                 {stat.change}
@@ -141,7 +210,6 @@ export default function Home({ onQuickAction }) {
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* 빠른 바로가기 */}
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
                     <div className="flex items-center justify-between mb-4">
                         <h3 className="text-lg font-bold text-gray-800">빠른 실행</h3>
@@ -165,7 +233,6 @@ export default function Home({ onQuickAction }) {
                     </div>
                 </div>
 
-                {/* 업무 브리핑 */}
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
                     <div className="flex items-center justify-between mb-4">
                         <h3 className="text-lg font-bold text-gray-800">업무 브리핑</h3>

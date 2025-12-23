@@ -1,6 +1,7 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth';
 import { getFirestore, setLogLevel } from 'firebase/firestore';
+import { getFunctions } from 'firebase/functions';
 
 const firebaseConfig = (() => {
     if (typeof window === 'undefined') {
@@ -32,6 +33,7 @@ const firebaseConfig = (() => {
 let firebaseApp = null;
 let auth = null;
 let db = null;
+let functions = null;
 let googleProvider = null;
 
 try {
@@ -42,6 +44,7 @@ try {
     if (firebaseApp) {
         auth = getAuth(firebaseApp);
         db = getFirestore(firebaseApp);
+        functions = getFunctions(firebaseApp);
         googleProvider = new GoogleAuthProvider();
         setLogLevel('error');
     }
@@ -49,4 +52,4 @@ try {
     console.error('Firebase initialization error. Using local mock data only:', error);
 }
 
-export { firebaseApp, auth, db, googleProvider, getAuth, getFirestore, GoogleAuthProvider };
+export { firebaseApp, auth, db, functions, googleProvider, getAuth, getFirestore, getFunctions, GoogleAuthProvider };

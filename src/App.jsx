@@ -36,17 +36,18 @@ import useAuth from './auth/useAuth';
 import { signInWithEmail, signInWithGoogle, signOutUser } from './auth/authService';
 import { db } from './firebase/client';
 import { loadViewerDataOnce, startStaffFirestoreSync } from './data/firestoreSync';
+import { createStaffUser } from './admin/staffService';
 
 const PageContent = (props) => {
     const { page, selectedStudentId } = props;
     if (page === 'students' && selectedStudentId !== null) return <StudentDetail {...props} studentId={selectedStudentId} />;
     switch (page) {
-        case 'home': return <Home onQuickAction={props.onQuickAction} />;
+        case 'home': return <Home onQuickAction={props.onQuickAction} onCreateStaffUser={props.onCreateStaffUser} />;
         case 'lessons': return <LessonManagement {...props} />;
         case 'attendance': return <AttendanceManagement {...props} />;
         case 'students': return <StudentManagement {...props} />;
         case 'grades': return <GradeManagement {...props} />;
-        case 'homework': return <HomeworkManagement {...props} />; 
+        case 'homework': return <HomeworkManagement {...props} />;
         case 'clinic': return <ClinicManagement {...props} />;
         case 'communication': return <InternalCommunication {...props} />;
         case 'payment': return <PaymentManagement {...props} />;
@@ -282,6 +283,11 @@ export default function App() {
   
   const handleSendStudentNotification = (sId, title, content) => handleSaveAnnouncement({ title, content, targetStudents: [sId], date: new Date().toISOString().slice(0,10), author:'알림봇' }, false);
 
+  const handleCreateStaffUser = async ({ email, tempPassword }) => {
+      await createStaffUser({ email, tempPassword });
+      logNotification('success', '직원 계정 생성', `${email} 계정이 생성되었습니다.`);
+  };
+
   const getClassesNames = useCallback((ids) => ids.map(id => classes.find(c => c.id === id)?.name).join(', '), [classes]);
 
   const handlePageChange = (newPage, sId = null, reset = false) => {
@@ -311,22 +317,23 @@ export default function App() {
   // 학생/학부모 뷰
   if (role === 'student') return <StudentHome studentId={userId} students={students} classes={classes} homeworkAssignments={homeworkAssignments} homeworkResults={homeworkResults} attendanceLogs={attendanceLogs} lessonLogs={lessonLogs} notices={announcements} tests={tests} grades={grades} videoProgress={videoProgress} onSaveVideoProgress={handleSaveVideoProgress} videoBookmarks={videoBookmarks} onSaveBookmark={handleSaveBookmark} externalSchedules={externalSchedules} onSaveExternalSchedule={handleSaveExternalSchedule} onDeleteExternalSchedule={handleDeleteExternalSchedule} clinicLogs={clinicLogs} onUpdateStudent={handleSaveStudent} messages={studentMessages} onSendMessage={() => {}} onLogout={handleLogout} />;
   if (role === 'parent') return <ParentHome studentId={userId} students={students} classes={classes} homeworkAssignments={homeworkAssignments} homeworkResults={homeworkResults} attendanceLogs={attendanceLogs} lessonLogs={lessonLogs} notices={announcements} tests={tests} grades={grades} clinicLogs={clinicLogs} videoProgress={videoProgress} onLogout={handleLogout} externalSchedules={externalSchedules} onSaveExternalSchedule={handleSaveExternalSchedule} onDeleteExternalSchedule={handleDeleteExternalSchedule} messages={studentMessages} onSendMessage={() => {}} />;
-  
+
   // 관리자(직원) 뷰 Props
   const managementProps = {
-    students, classes, lessonLogs, attendanceLogs, workLogs, clinicLogs, 
-    homeworkAssignments, homeworkResults, tests, grades, studentMemos, videoProgress, announcements, 
+    students, classes, lessonLogs, attendanceLogs, workLogs, clinicLogs,
+    homeworkAssignments, homeworkResults, tests, grades, studentMemos, videoProgress, announcements,
     paymentLogs, // ✅ 추가됨
     setAnnouncements, getClassesNames,
     handleSaveStudent, handleDeleteStudent, handleSaveClass, handleSaveLessonLog, handleDeleteLessonLog,
     handleSaveAttendance, handleSaveHomeworkAssignment, handleDeleteHomeworkAssignment, handleUpdateHomeworkResult,
     handleSaveTest, handleDeleteTest, handleUpdateGrade, handleSaveMemo, 
-    handleSaveAnnouncement, handleSaveWorkLog, handleDeleteWorkLog, handleSaveClinicLog, handleDeleteClinicLog, 
+    handleSaveAnnouncement, handleSaveWorkLog, handleDeleteWorkLog, handleSaveClinicLog, handleDeleteClinicLog,
     handleSavePayment, // ✅ 추가됨
-    calculateClassSessions, selectedStudentId, handlePageChange, logNotification, notifications, 
+    calculateClassSessions, selectedStudentId, handlePageChange, logNotification, notifications,
     calculateGradeComparison, calculateHomeworkStats,
     setIsGlobalDirty, studentSearchTerm, setStudentSearchTerm, handleSendStudentNotification,
-    externalSchedules, pendingQuickAction, clearPendingQuickAction: () => setPendingQuickAction(null), onQuickAction: handleQuickAction
+    externalSchedules, pendingQuickAction, clearPendingQuickAction: () => setPendingQuickAction(null), onQuickAction: handleQuickAction,
+    onCreateStaffUser: role === 'staff' ? handleCreateStaffUser : null,
   };
 
   return (
