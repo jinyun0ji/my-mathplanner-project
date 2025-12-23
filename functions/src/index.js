@@ -4,13 +4,11 @@ const { adminCreateLinkCode } = require('./admin/createLinkCode');
 const { kakaoLogin } = require('./auth/kakaoLogin');
 const { naverLogin } = require('./auth/naverLogin');
 const { claimStudentLinkCode } = require('./link/claimStudentLinkCode');
-const {
-    onLessonLogCreate,
-    onAttendanceLogCreate,
-    onHomeworkResultCreate,
-    onGradeCreate,
-    onChatMessageCreate,
-} = require('./notifications/notificationTriggers');
+const { onLessonLogWritten } = require('./triggers/lessonLogs');
+const { onAttendanceLogWritten } = require('./triggers/attendanceLogs');
+const { onHomeworkResultWritten } = require('./triggers/homeworkResults');
+const { onGradeWritten } = require('./triggers/grades');
+const { onChatMessageCreated } = require('./triggers/chatMessages');
 
 module.exports = {
     api,
@@ -19,9 +17,9 @@ module.exports = {
     kakaoLogin,
     naverLogin,
     claimStudentLinkCode,
-    onLessonLogCreate,
-    onAttendanceLogCreate,
-    onHomeworkResultCreate,
-    onGradeCreate,
-    onChatMessageCreate,
+    onLessonLogWritten,
+    onAttendanceLogWritten,
+    onHomeworkResultWritten,
+    onGradeWritten,
+    onChatMessageCreated,
 };
