@@ -136,7 +136,7 @@ export default function HomeworkManagement({
     }, [assignmentSummary]);
 
     return (
-        <div className="flex flex-col gap-4 h-full">
+        <div className="space-y-4 h-full">
             <div className="sticky top-0 z-10 bg-white/90 backdrop-blur border-b border-gray-200 px-4 py-3 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
                 <div className="flex flex-col gap-1">
                     <div className="flex items-center gap-2 text-sm font-semibold text-gray-800">
@@ -159,23 +159,23 @@ export default function HomeworkManagement({
                     <span className="px-3 py-1 rounded-full bg-green-50 text-green-700 font-semibold">채점완료 {statusSummary.graded}명</span>
                 </div>
 
-                <div className="flex items-center gap-2 w-full lg:w-auto">
+                <div className="flex flex-wrap gap-2 justify-end">
                     <button
                         onClick={handleSaveChanges}
                         disabled={localChanges.length === 0}
-                        className={`flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-bold shadow-md transition w-full lg:w-auto ${
+                        className={`inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-indigo-900 hover:bg-indigo-800 rounded-lg shadow-md transition ${
                             localChanges.length > 0
                                 ? 'bg-indigo-900 text-white hover:bg-indigo-800'
                                 : 'bg-gray-200 text-gray-400 cursor-not-allowed'
                         }`}
                     >
-                        <Icon name="save" className="w-4 h-4" />
-                        채점 저장 ({localChanges.length})
+                        <Icon name="checkSquare" className="w-5 h-5" />
+                        채점 입력 ({localChanges.length})
                     </button>
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-[340px,1fr] gap-4 items-start">
+            <div className="grid gap-4 xl:grid-cols-[320px,1fr]">
                 <div className="space-y-4">
                     <ClassSelectionPanel
                         classes={classes}
@@ -202,7 +202,7 @@ export default function HomeworkManagement({
                     </div>
                 </div>
 
-                <div className="flex-1 min-w-0 space-y-4">
+                <div className="space-y-4">
                     {!selectedAssignment ? (
                         <div className="p-6 bg-white rounded-xl shadow-md border border-gray-200">
                             <p className="text-gray-500">클래스를 선택하고 왼쪽에서 과제를 선택하세요.</p>

@@ -133,6 +133,7 @@ export default function AttendanceManagement({
                                 { label: '출석', value: attendanceSummary['출석'], tone: 'bg-green-50 text-green-800 border-green-200' },
                                 { label: '지각', value: attendanceSummary['지각'], tone: 'bg-yellow-50 text-yellow-800 border-yellow-200' },
                                 { label: '결석', value: attendanceSummary['결석'], tone: 'bg-red-50 text-red-700 border-red-200' },
+                                { label: '동영상보강', value: attendanceSummary['동영상보강'], tone: 'bg-indigo-50 text-indigo-800 border-indigo-200' },
                             ].map(item => (
                                 <span key={item.label} className={`inline-flex items-center gap-1 px-3 py-1 rounded-full border font-semibold ${item.tone}`}>
                                     <span>{item.label}</span>
@@ -147,7 +148,7 @@ export default function AttendanceManagement({
                             className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-indigo-900 hover:bg-indigo-800 rounded-lg shadow-md transition"
                         >
                             <Icon name="checkSquare" className="w-5 h-5" />
-                            출결 저장
+                            출결 입력
                         </button>
                     </div>
                 </div>
@@ -168,44 +169,12 @@ export default function AttendanceManagement({
                         customPanelTitle="수업 날짜 선택"
                         onDateSelect={setSelectedDate} 
                     />
-
-                <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                            <div className="flex items-center gap-2 text-sm text-gray-700 font-semibold">
-                                <Icon name="calendar" className="w-4 h-4 text-indigo-800" />
-                                <span>{selectedDate || '날짜 선택'}</span>
-                            </div>
-                        <div className="flex items-center gap-2">
-                                <button
-                                    onClick={() => handleDateNavigate(-1)}
-                                    disabled={!hasPrevSession}
-                                    className={`flex items-center px-3 py-2 rounded-lg text-xs font-semibold border transition ${
-                                        hasPrevSession ? 'text-gray-700 border-gray-200 hover:border-indigo-300 hover:text-indigo-800' : 'text-gray-400 border-gray-100 cursor-not-allowed'
-                                    }`}
-                                >
-                                    <Icon name="chevronLeft" className="w-4 h-4 mr-1" />
-                                    이전 회차
-                                </button>
-                                <button
-                                    onClick={() => handleDateNavigate(1)}
-                                    disabled={!hasNextSession}
-                                    className={`flex items-center px-3 py-2 rounded-lg text-xs font-semibold border transition ${
-                                        hasNextSession ? 'text-gray-700 border-gray-200 hover:border-indigo-300 hover:text-indigo-800' : 'text-gray-400 border-gray-100 cursor-not-allowed'
-                                    }`}
-                                >
-                                    다음 회차
-                                    <Icon name="chevronRight" className="w-4 h-4 ml-1" />
-                                </button>
-                            </div>
-                        </div>
-                    </div>
                 </div>
 
                 <div className="space-y-4">
                     <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
                         <div className="flex items-center justify-between gap-3 mb-4">
                             <h4 className="text-lg font-bold text-gray-800">학생별 출결 현황 ({classStudents.length}명)</h4>
-                            <span className="text-xs text-gray-500">출석 상태를 클릭해 메모를 관리하세요.</span>
                         </div>
 
                         {selectedClassId === null ? (

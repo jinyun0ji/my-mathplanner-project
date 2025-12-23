@@ -148,6 +148,9 @@
 .col-span-4 {
   grid-column: span 4 / span 4;
 }
+.col-span-9 {
+  grid-column: span 9 / span 9;
+}
 .col-span-full {
   grid-column: 1 / -1;
 }
@@ -890,6 +893,9 @@
 }
 .grid-cols-10 {
   grid-template-columns: repeat(10, minmax(0, 1fr));
+}
+.grid-cols-12 {
+  grid-template-columns: repeat(12, minmax(0, 1fr));
 }
 .grid-cols-\[7fr_3fr\] {
   grid-template-columns: 7fr 3fr;

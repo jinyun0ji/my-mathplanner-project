@@ -222,23 +222,23 @@ export default function GradeManagement({
 
 
     return (
-        <div className="flex flex-col gap-4 h-full">
-            <div className="sticky top-0 z-20 bg-white/90 backdrop-blur supports-[backdrop-filter]:bg-white/80 border-b border-gray-200 px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                    <div className="flex items-center gap-2">
+        <div className="space-y-4 h-full">
+            <div className="sticky top-0 z-10 bg-white/90 backdrop-blur border-b border-gray-200 px-4 py-3 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+                <div className="flex flex-col gap-1">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-gray-800">
                         <Icon name="calendar" className="w-5 h-5 text-indigo-900" />
-                        <p className="text-sm font-semibold text-gray-800">{selectedClass?.name || '클래스 미선택'}</p>
+                        <p>{selectedClass?.name || '클래스 미선택'}</p>
                     </div>
-                    <div className="text-xs text-gray-500 flex flex-wrap items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-gray-600">
                         <span>{selectedTest?.name || '시험 미선택'}</span>
                         {selectedTest?.date && <span className="text-gray-400">| {selectedTest.date}</span>}
                     </div>
-                     </div>
-                <div className="flex flex-wrap gap-2 justify-end">
+                </div>
+                <div className="flex flex-wrap gap-2 justify-end w-full lg:w-auto">
                     <button
                         onClick={handleNewTest}
                         disabled={!selectedClassId}
-                        className="flex items-center justify-center px-3 py-2 rounded-lg text-sm font-semibold bg-white border border-gray-300 text-gray-800 hover:bg-gray-50 disabled:text-gray-400 disabled:border-gray-200"
+                        className="flex items-center justify-center px-4 py-2 rounded-lg text-sm font-semibold bg-white border border-gray-300 text-gray-800 hover:bg-gray-50 disabled:text-gray-400 disabled:border-gray-200"
                     >
                         <Icon name="plus" className="w-4 h-4 mr-2" />
                         새 시험 등록
@@ -247,21 +247,21 @@ export default function GradeManagement({
                         <>
                             <button
                                 onClick={handleDownloadExcelForm}
-                                className="flex items-center justify-center px-3 py-2 rounded-lg text-sm font-semibold bg-white border border-gray-300 text-gray-700 hover:bg-gray-50"
+                                className="flex items-center justify-center px-4 py-2 rounded-lg text-sm font-semibold bg-white border border-gray-300 text-gray-700 hover:bg-gray-50"
                             >
                                 <Icon name="file-text" className="w-4 h-4 mr-2" />
                                 엑셀 양식
                             </button>
                             <button
                                 onClick={handleUploadExcel}
-                                className="flex items-center justify-center px-3 py-2 rounded-lg text-sm font-semibold bg-white border border-indigo-900 text-indigo-900 hover:bg-indigo-50"
+                                className="flex items-center justify-center px-4 py-2 rounded-lg text-sm font-semibold bg-white border border-indigo-900 text-indigo-900 hover:bg-indigo-50"
                             >
                                 <Icon name="upload" className="w-4 h-4 mr-2" />
                                 엑셀로 결과 입력
                             </button>
                             <button
                                 onClick={handleOpenGradeInput}
-                                className="flex items-center justify-center px-3 py-2 rounded-lg text-sm font-semibold bg-indigo-900 text-white hover:bg-indigo-800 shadow"
+                                className="flex items-center justify-center px-4 py-2 rounded-lg text-sm font-semibold bg-indigo-900 text-white hover:bg-indigo-800 shadow"
                             >
                                 <Icon name="edit" className="w-4 h-4 mr-2" />
                                 성적 입력/채점
@@ -271,8 +271,7 @@ export default function GradeManagement({
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 xl:grid-cols-[320px,1fr] gap-4 items-start">
-                {/* 왼쪽: 클래스 및 시험 목록 패널 */}
+            <div className="grid gap-4 xl:grid-cols-[320px,1fr]">
                 <div className="space-y-4">
                     <ClassSelectionPanel
                         classes={classes}
@@ -286,21 +285,18 @@ export default function GradeManagement({
                     <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 space-y-3">
                         <div className='flex justify-between items-center border-b pb-2'>
                             <h4 className="text-lg font-bold text-gray-800">시험 목록 (클릭 시 채점)</h4>
-                            <span className="text-xs text-gray-500">클래스 선택 후 시험을 선택하세요</span>
                         </div>
                         {testPanelContent}
                     </div>
                 </div>
 
-                {/* 오른쪽: 성적 테이블 또는 시험 상세/채점 패널 */}
-                <div className="flex-1 min-w-0 space-y-4">
+                <div className="space-y-4">
                     {selectedClassId === null ? (
                         <div className="p-6 bg-white rounded-xl shadow-sm border border-gray-200">
                             <p className="text-gray-500">클래스를 선택하세요.</p>
                         </div>
                     ) : (
                         <div className="space-y-4">
-
                             {selectedTestId ? (
                                 <>
                                     {/* 1. 선택 시험 정보 패널 */}

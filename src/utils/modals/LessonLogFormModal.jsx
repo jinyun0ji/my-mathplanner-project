@@ -1,5 +1,5 @@
 // src/utils/modals/LessonLogFormModal.jsx
-import React, { useState, useEffect, useMemo, useRef } from 'react'; // ✅ useRef 추가됨
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Modal } from '../../components/common/Modal';
 import { Icon, calculateClassSessions } from '../../utils/helpers';
 
@@ -10,28 +10,49 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
   
   const [date, setDate] = useState(defaultDate || '');
   const [progress, setProgress] = useState('');
-  const [iframeCode, setIframeCode] = useState('');
+  const [videos, setVideos] = useState([]);
   const [materialUrl, setMaterialUrl] = useState('');
-  const [scheduleTime, setScheduleTime] = useState(''); 
+  const [scheduleTime, setScheduleTime] = useState('');
   const [studentNotificationMap, setStudentNotificationMap] = useState({});
 
   // ✅ [추가] 파일 첨부 상태 및 Ref
   const [selectedFile, setSelectedFile] = useState(null);
   const fileInputRef = useRef(null);
+  const videoIdRef = useRef(0);
+
+  const createVideoEntry = useCallback((video = {}) => ({
+    id: video.id || `video-${videoIdRef.current++}`,
+    title: video.title || '',
+    url: video.url || '',
+  }), []);
+
+  const normalizeVideosFromLog = useCallback((logItem) => {
+    if (logItem?.videos && Array.isArray(logItem.videos)) {
+      return logItem.videos.map(v => createVideoEntry(v));
+    }
+
+    const fallbackUrl = logItem?.iframeCode || logItem?.videoUrl;
+    if (fallbackUrl) {
+      return [createVideoEntry({ url: fallbackUrl, title: logItem?.videoTitle || '' })];
+    }
+
+    return [];
+  }, [createVideoEntry]);
 
   const [isDirty, setIsDirty] = useState(false);
 
   useEffect(() => {
+    videoIdRef.current = 0;
     if (log) {
       setDate(log.date);
       setProgress(log.progress);
-      setIframeCode(log.iframeCode);
+      setVideos(normalizeVideosFromLog(log));
       setMaterialUrl(log.materialUrl);
       setScheduleTime(log.scheduleTime || '');
     } else {
       setDate(defaultDate || (sessions.length > 0 ? sessions[sessions.length - 1].date : ''));
       setProgress('');
-      setIframeCode('');
+      setVideos([]);
       setMaterialUrl('');
       setScheduleTime('');
     }
@@ -55,7 +76,7 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
         setIsDirty(false);
         onDirtyChange(false);
     }
-  }, [log, defaultDate, sessions, selectedClass, isOpen]); 
+  }, [log, defaultDate, sessions, selectedClass, isOpen, normalizeVideosFromLog, onDirtyChange]);
 
   useEffect(() => {
     onDirtyChange(isDirty);
@@ -107,6 +128,21 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
       setIsDirty(true);
   };
 
+  const handleAddVideo = () => {
+      setVideos(prev => [...prev, createVideoEntry()]);
+      setIsDirty(true);
+  };
+
+  const handleVideoChange = (id, field, value) => {
+      setVideos(prev => prev.map(video => video.id === id ? { ...video, [field]: value } : video));
+      setIsDirty(true);
+  };
+
+  const handleRemoveVideo = (id) => {
+      setVideos(prev => prev.filter(video => video.id !== id));
+      setIsDirty(true);
+  };
+
   const handleChange = (setter, value) => {
       setter(value);
       setIsDirty(true);
@@ -121,7 +157,12 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
         classId,
         date,
         progress,
-        iframeCode,
+        videos: videos
+            .filter(video => video.url && video.url.trim())
+            .map(video => ({
+                title: video.title || '',
+                url: video.url.trim(),
+            })),
         materialUrl, // URL 입력값 또는 파일명
         file: selectedFile, // ✅ 실제 파일 객체 전달 (상위 컴포넌트에서 업로드 처리 필요)
         scheduleTime: scheduleTime || null,
@@ -210,14 +251,57 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
             </div>
 
             <div>
-                <label className="block text-sm font-medium text-gray-700">수업 영상 URL (iframe 코드)</label>
-                <input 
-                    type="text" 
-                    value={iframeCode} 
-                    onChange={e => handleChange(setIframeCode, e.target.value)} 
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border" 
-                    placeholder="유튜브 등 영상 공유 링크의 임베드 코드를 입력하세요." 
-                />
+                <div className="flex items-center justify-between">
+                    <label className="block text-sm font-medium text-gray-700">수업 영상</label>
+                    <button
+                        type="button"
+                        onClick={handleAddVideo}
+                        className="inline-flex items-center px-3 py-1.5 rounded-md text-sm font-medium bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 transition"
+                    >
+                        <Icon name="plus" className="w-4 h-4 mr-1" /> 영상 추가
+                    </button>
+                </div>
+                <div className="mt-2 space-y-3">
+                    {videos.length === 0 && (
+                        <div className="rounded-md border border-dashed border-gray-300 bg-gray-50 p-4 text-sm text-gray-500">
+                            영상 추가 버튼을 눌러 임베드 코드 또는 URL을 입력하세요.
+                        </div>
+                    )}
+                    {videos.map((video, index) => (
+                        <div key={video.id} className="rounded-lg border border-gray-200 bg-gray-50 p-4 space-y-3">
+                            <div className="flex items-center justify-between">
+                                <span className="text-sm font-semibold text-gray-700">영상 {index + 1}</span>
+                                <button
+                                    type="button"
+                                    onClick={() => handleRemoveVideo(video.id)}
+                                    className="text-red-500 hover:text-red-700 text-sm inline-flex items-center"
+                                >
+                                    <Icon name="trash" className="w-4 h-4 mr-1" /> 삭제
+                                </button>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-medium text-gray-600">영상 제목</label>
+                                <input
+                                    type="text"
+                                    value={video.title}
+                                    onChange={e => handleVideoChange(video.id, 'title', e.target.value)}
+                                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border"
+                                    placeholder="예: 3강 - 다항식 연산"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-medium text-gray-600">iframe 코드 또는 URL</label>
+                                <textarea
+                                    value={video.url}
+                                    onChange={e => handleVideoChange(video.id, 'url', e.target.value)}
+                                    rows="2"
+                                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border"
+                                    placeholder="유튜브 임베드 코드 또는 공유 링크를 입력하세요."
+                                />
+                            </div>
+                        </div>
+                    ))}
+                </div>
             </div>
             
             <div>
