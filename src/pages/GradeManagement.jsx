@@ -177,38 +177,13 @@ export default function GradeManagement({
         return (
             // [색상 변경] border-l-4 border-indigo-900 (Navy Theme)
             <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 border-l-4 border-l-indigo-900 space-y-4">
-                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between border-b pb-3">
+                <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between border-b pb-3">
                     <h3 className="text-xl font-bold text-gray-800 flex items-center leading-snug">
                         {/* [색상 변경] 아이콘: text-indigo-900 */}
                         <Icon name="fileText" className="w-5 h-5 mr-2 text-indigo-900"/>
                         선택 시험 정보: {test.name}
                     </h3>
-                    <div className="flex flex-wrap gap-2 items-center">
-                        {/* [색상 변경] 엑셀 양식: 흰색 배경, 회색 테두리 */}
-                         <button 
-                            onClick={handleDownloadExcelForm}
-                            className="flex items-center justify-center text-sm px-3 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition shadow-sm w-full sm:w-auto"
-                        >
-                            <Icon name="file-text" className="w-4 h-4 mr-1" /> 엑셀 양식
-                        </button>
-                        
-                        {/* [색상 변경] 엑셀 입력: 흰색 배경, 남색 테두리/글자 */}
-                        <button 
-                            onClick={handleUploadExcel}
-                            className="flex items-center justify-center text-sm px-3 py-2 bg-white border border-indigo-900 text-indigo-900 rounded-lg hover:bg-indigo-50 transition shadow-sm w-full sm:w-auto"
-                        >
-                            <Icon name="upload" className="w-4 h-4 mr-1" /> 엑셀로 결과 입력
-                        </button>
-
-                         {/* [색상 변경] 성적 입력(메인): 남색 배경 */}
-                         <button 
-                            onClick={handleOpenGradeInput}
-                            className="bg-indigo-900 hover:bg-indigo-800 text-white font-bold py-2 px-4 rounded-lg flex items-center justify-center shadow-md transition duration-150 text-sm w-full sm:w-auto"
-                        >
-                            <Icon name="edit" className="w-4 h-4 mr-1" />
-                            성적 입력 / 채점
-                        </button>
-                    </div>
+                    <p className="text-xs text-gray-500">상단 바에서 채점/엑셀 작업을 진행할 수 있습니다.</p>
                 </div>
                 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
@@ -247,74 +222,115 @@ export default function GradeManagement({
 
 
     return (
-        <div className="flex flex-col xl:flex-row gap-4 xl:gap-6 h-full">
-            {/* 왼쪽: 클래스 및 시험 목록 패널 */}
-            <div className="w-full xl:w-80 flex-shrink-0 space-y-4">
-                <ClassSelectionPanel
-                    classes={classes}
-                    selectedClassId={selectedClassId}
-                    setSelectedClassId={setSelectedClassId}
-                    handleClassSave={handleSaveClass}
-                    calculateClassSessions={calculateClassSessions}
-                    showSessions={false}
-                    showEditButton={true}
-                />
-                <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 space-y-3">
-                    <div className='flex justify-between items-center border-b pb-2'>
-                        <h4 className="text-lg font-bold text-gray-800">시험 목록 (클릭 시 채점)</h4>
-                        {/* [색상 변경] 새 시험 등록: 텍스트 남색 */}
-                        <button 
-                            onClick={handleNewTest}
-                            disabled={!selectedClassId}
-                            className="text-indigo-900 hover:text-indigo-700 text-sm font-bold flex items-center disabled:text-gray-400"
-                        >
-                            <Icon name="plus" className="w-4 h-4 mr-1" />
-                            새 시험 등록
-                        </button>
+        <div className="flex flex-col gap-4 h-full">
+            <div className="sticky top-0 z-20 bg-white/90 backdrop-blur supports-[backdrop-filter]:bg-white/80 border-b border-gray-200 px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                    <div className="flex items-center gap-2">
+                        <Icon name="calendar" className="w-5 h-5 text-indigo-900" />
+                        <p className="text-sm font-semibold text-gray-800">{selectedClass?.name || '클래스 미선택'}</p>
                     </div>
-                    {testPanelContent}
+                    <div className="text-xs text-gray-500 flex flex-wrap items-center gap-2">
+                        <span>{selectedTest?.name || '시험 미선택'}</span>
+                        {selectedTest?.date && <span className="text-gray-400">| {selectedTest.date}</span>}
+                    </div>
+                     </div>
+                <div className="flex flex-wrap gap-2 justify-end">
+                    <button
+                        onClick={handleNewTest}
+                        disabled={!selectedClassId}
+                        className="flex items-center justify-center px-3 py-2 rounded-lg text-sm font-semibold bg-white border border-gray-300 text-gray-800 hover:bg-gray-50 disabled:text-gray-400 disabled:border-gray-200"
+                    >
+                        <Icon name="plus" className="w-4 h-4 mr-2" />
+                        새 시험 등록
+                    </button>
+                    {selectedTest && (
+                        <>
+                            <button
+                                onClick={handleDownloadExcelForm}
+                                className="flex items-center justify-center px-3 py-2 rounded-lg text-sm font-semibold bg-white border border-gray-300 text-gray-700 hover:bg-gray-50"
+                            >
+                                <Icon name="file-text" className="w-4 h-4 mr-2" />
+                                엑셀 양식
+                            </button>
+                            <button
+                                onClick={handleUploadExcel}
+                                className="flex items-center justify-center px-3 py-2 rounded-lg text-sm font-semibold bg-white border border-indigo-900 text-indigo-900 hover:bg-indigo-50"
+                            >
+                                <Icon name="upload" className="w-4 h-4 mr-2" />
+                                엑셀로 결과 입력
+                            </button>
+                            <button
+                                onClick={handleOpenGradeInput}
+                                className="flex items-center justify-center px-3 py-2 rounded-lg text-sm font-semibold bg-indigo-900 text-white hover:bg-indigo-800 shadow"
+                            >
+                                <Icon name="edit" className="w-4 h-4 mr-2" />
+                                성적 입력/채점
+                            </button>
+                        </>
+                    )}
                 </div>
             </div>
 
-            {/* 오른쪽: 성적 테이블 또는 시험 상세/채점 패널 */}
-            <div className="flex-1 min-w-0 space-y-4">
-                {selectedClassId === null ? (
-                    <div className="p-6 bg-white rounded-xl shadow-sm border border-gray-200">
-                        <p className="text-gray-500">클래스를 선택하세요.</p>
+            <div className="grid grid-cols-1 xl:grid-cols-[320px,1fr] gap-4 items-start">
+                {/* 왼쪽: 클래스 및 시험 목록 패널 */}
+                <div className="space-y-4">
+                    <ClassSelectionPanel
+                        classes={classes}
+                        selectedClassId={selectedClassId}
+                        setSelectedClassId={setSelectedClassId}
+                        handleClassSave={handleSaveClass}
+                        calculateClassSessions={calculateClassSessions}
+                        showSessions={false}
+                        showEditButton={true}
+                    />
+                    <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 space-y-3">
+                        <div className='flex justify-between items-center border-b pb-2'>
+                            <h4 className="text-lg font-bold text-gray-800">시험 목록 (클릭 시 채점)</h4>
+                            <span className="text-xs text-gray-500">클래스 선택 후 시험을 선택하세요</span>
+                        </div>
+                        {testPanelContent}
                     </div>
-                ) : (
-                    <div className="space-y-6">
-                        
-                        {selectedTestId ? (
-                            <>
-                                {/* 1. 선택 시험 정보 패널 (엑셀 버튼 포함됨) */}
-                                <TestActionPanel test={selectedTest} />
-                                
-                                {/* 2. 시험 통계 테이블 */}
-                                <TestStatisticsTable 
-                                    test={selectedTest}
-                                    stats={testStatistics[selectedTestId]}
-                                    currentStudents={classStudents}
-                                />
-                            </>
-                        ) : (
-                            /* 선택된 시험이 없을 때 (전체 성적 테이블) 표시 */
-                            <div className="space-y-6">
-                                {/* [색상 변경] border-indigo-900 */}
-                                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 border-l-4 border-l-indigo-900">
-                                    <h3 className="text-xl font-bold text-gray-800">{selectedClass.name} 성적 현황</h3>
-                                    <p className="text-sm text-gray-600 mt-1">총 {classTests.length}개의 시험이 등록되어 있습니다. 성적 입력은 **시험 목록에서 시험을 선택**하여 진행하세요.</p>
+                </div>
+
+                {/* 오른쪽: 성적 테이블 또는 시험 상세/채점 패널 */}
+                <div className="flex-1 min-w-0 space-y-4">
+                    {selectedClassId === null ? (
+                        <div className="p-6 bg-white rounded-xl shadow-sm border border-gray-200">
+                            <p className="text-gray-500">클래스를 선택하세요.</p>
+                        </div>
+                    ) : (
+                        <div className="space-y-4">
+
+                            {selectedTestId ? (
+                                <>
+                                    {/* 1. 선택 시험 정보 패널 */}
+                                    <TestActionPanel test={selectedTest} />
+
+                                    {/* 2. 시험 통계 테이블 */}
+                                    <TestStatisticsTable
+                                        test={selectedTest}
+                                        stats={testStatistics[selectedTestId]}
+                                        currentStudents={classStudents}
+                                    />
+                                </>
+                            ) : (
+                                /* 선택된 시험이 없을 때 (전체 성적 테이블) 표시 */
+                                <div className="space-y-4">
+                                    <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 border-l-4 border-l-indigo-900">
+                                        <h3 className="text-lg font-bold text-gray-800">{selectedClass.name} 성적 현황</h3>
+                                        <p className="text-sm text-gray-600 mt-1">총 {classTests.length}개의 시험이 등록되어 있습니다. 성적 입력은 **시험 목록에서 시험을 선택**하여 진행하세요.</p>
+                                    </div>
+                                    <FullGradeTable
+                                        classStudents={classStudents}
+                                        classTests={classTests}
+                                        grades={grades}
+                                        classAverages={classAverages}
+                                    />
                                 </div>
-                                <FullGradeTable 
-                                    classStudents={classStudents}
-                                    classTests={classTests}
-                                    grades={grades}
-                                    classAverages={classAverages}
-                                />
-                            </div>
-                        )}
-                    </div>
-                )}
+                                )}
+                        </div>
+                    )}
+                </div>
             </div>
             
             {/* 시험 등록/수정 모달 */}

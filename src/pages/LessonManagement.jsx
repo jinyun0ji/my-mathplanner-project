@@ -207,81 +207,78 @@ export default function LessonManagement({
     );
     
     return (
-        <div className="flex flex-col xl:flex-row gap-4 xl:gap-6 h-full items-start"> 
-            <div className="w-full xl:w-80 flex-shrink-0">
-                <ClassSelectionPanel
-                    classes={classes}
-                    selectedClassId={selectedClassId}
-                    setSelectedClassId={setSelectedClassId}
-                    handleClassSave={handleSaveClass}
-                    calculateClassSessions={calculateClassSessions}
-                    showSessions={!isMobile}
-                    selectedDate={selectedDate}
-                    handleDateNavigate={handleDateNavigate}
-                    showEditButton={true}
-                    customPanelContent={logSessionsContent}
-                    customPanelTitle="수업 일지 회차"
-                    onDateSelect={setSelectedDate} 
-                />
+        <div className="flex flex-col gap-4 h-full">
+            <div className="sticky top-0 z-20 bg-white/90 backdrop-blur border-b border-gray-200 px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                    <div className="flex items-center gap-2">
+                        <Icon name="calendar" className="w-5 h-5 text-indigo-900" />
+                        <p className="text-sm font-semibold text-gray-800">{selectedClass?.name || '클래스 미선택'}</p>
+                    </div>
+                    <span className="text-xs text-gray-500">{selectedDate || '날짜 선택'}</span>
+                </div>
+                <button
+                    onClick={isCurrentDateLogged ? () => handleEditLog(currentLog) : handleNewLog}
+                    className={`font-medium py-2 px-4 rounded-lg flex items-center justify-center shadow-md transition duration-150 ${
+                        isCurrentDateLogged
+                            ? 'bg-gray-800 hover:bg-gray-900 text-white'
+                            : 'bg-indigo-900 hover:bg-indigo-800 text-white'
+                    }`}
+                >
+                    <Icon name={isCurrentDateLogged ? 'edit' : 'plus'} className="w-5 h-5 mr-2" />
+                    {isCurrentDateLogged ? '일지 수정' : '일지 작성'}
+                </button>
             </div>
 
-            <div className="flex-1 min-w-0 w-full space-y-4">
-                {selectedClassId === null ? (
-                    <div className="p-6 bg-white rounded-xl shadow-sm border border-gray-200">
-                        <p className="text-gray-500">왼쪽에서 클래스를 선택하여 일지를 확인하세요.</p>
-                    </div>
-                ) : (
-                    <div className="space-y-6">
-                        {/* [색상 변경] border-indigo-500 -> border-indigo-900 */}
-                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between bg-white p-6 rounded-xl shadow-sm border border-gray-200 border-l-4 border-l-indigo-900">
-                            <h3 className="text-xl font-bold text-gray-800 leading-snug">
-                                {selectedClass.name} | 
-                                {/* [색상 변경] text-indigo-600 -> text-indigo-900 */}
-                                <span className="text-indigo-900 ml-2">{selectedDate || '날짜 선택'}</span>
-                            </h3>
-                            <div className='flex flex-wrap gap-2 justify-start sm:justify-end w-full sm:w-auto'>
-                                {isCurrentDateLogged && (
-                                    // [색상 변경] 노란색 버튼은 유지하되 톤 다운 고려 (여기서는 가독성을 위해 기존 유지하거나 약간 조정)
-                                    // bg-yellow-500 -> bg-white border (Secondary Style)로 변경하여 깔끔하게 처리
-                                    <button 
-                                        onClick={() => handleEditLog(currentLog)}
-                                        className="bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 font-medium py-2 px-4 rounded-lg flex items-center justify-center shadow-sm transition duration-150 w-full sm:w-auto"
-                                    >
-                                        <Icon name="edit" className="w-5 h-5 mr-2 text-gray-500" />
-                                        일지 수정
-                                    </button>
-                                )}
-                                <button 
-                                    onClick={handleNewLog}
-                                    // [색상 변경] bg-indigo-600 -> bg-indigo-900
-                                    className={`font-medium py-2 px-4 rounded-lg flex items-center shadow-md transition duration-150 ${
-                                        isCurrentDateLogged 
-                                            ? 'bg-gray-800 hover:bg-gray-900 text-white' 
-                                            : 'bg-indigo-900 hover:bg-indigo-800 text-white'
-                                    } w-full sm:w-auto justify-center`}
-                                >
-                                    <Icon name="plus" className="w-5 h-5 mr-2" />
-                                    {isCurrentDateLogged ? '새로운 일지 작성' : '일지 작성'}
-                                </button>
-                            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-[360px,1fr] gap-4 items-start">
+                <div className="space-y-4">
+                    <ClassSelectionPanel
+                        classes={classes}
+                        selectedClassId={selectedClassId}
+                        setSelectedClassId={setSelectedClassId}
+                        handleClassSave={handleSaveClass}
+                        calculateClassSessions={calculateClassSessions}
+                        showSessions={!isMobile}
+                        selectedDate={selectedDate}
+                        handleDateNavigate={handleDateNavigate}
+                        showEditButton={true}
+                        customPanelContent={logSessionsContent}
+                        customPanelTitle="수업 일지 회차"
+                        onDateSelect={setSelectedDate}
+                    />
+
+                    {renderLogCards('hidden md:block')}
+                </div>
+
+                <div className="flex-1 min-w-0 w-full space-y-4">
+                    {selectedClassId === null ? (
+                        <div className="p-6 bg-white rounded-xl shadow-sm border border-gray-200">
+                            <p className="text-gray-500">왼쪽에서 클래스를 선택하여 일지를 확인하세요.</p>
                         </div>
-
-                        {/* 작성된 일지 리스트 */}
-                        {renderLogCards('hidden md:block')}
-                        {renderLogCards('md:hidden')}
-
-                        {/* 일지 내용 */}
-                        {currentLog ? (
-                            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 space-y-4 hidden md:block">
-                                {renderLogDetail(currentLog)}
+                    ) : (
+                        <div className="space-y-4">
+                            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 border-l-4 border-l-indigo-900">
+                                <div className="flex flex-col gap-2">
+                                    <h3 className="text-xl font-bold text-gray-800 leading-snug">{selectedClass.name}</h3>
+                                    <p className="text-sm text-gray-600">{selectedDate || '날짜를 선택해 주세요.'}</p>
+                                </div>
                             </div>
-                        ) : (
-                            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 hidden md:block">
-                                <p className="text-gray-500">선택된 날짜({selectedDate})에 작성된 수업 일지가 없습니다. 새로 작성해주세요.</p>
+
+                            <div className="md:hidden">
+                                {renderLogCards('')}
                             </div>
-                        )}
-                    </div>
-                )}
+
+                            {currentLog ? (
+                                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 space-y-4">
+                                    {renderLogDetail(currentLog)}
+                                </div>
+                            ) : (
+                                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                                    <p className="text-gray-500">선택된 날짜({selectedDate})에 작성된 수업 일지가 없습니다. 새로 작성해주세요.</p>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
             </div>
 
             <LessonLogFormModal
