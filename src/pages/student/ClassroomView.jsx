@@ -94,6 +94,7 @@ export default function ClassroomView({
 
     const lessonVideos = useMemo(() => normalizeLessonVideos(currentLesson), [currentLesson]);
     const hasLessonVideos = lessonVideos.length > 0;
+    const hasMultipleLessonVideos = lessonVideos.length > 1;
 
     useEffect(() => {
         setSelectedVideo(lessonVideos[0] || null);
@@ -286,7 +287,7 @@ export default function ClassroomView({
                                 ) : (<div className="flex flex-col items-center justify-center text-gray-500"><Icon name="monitor" className="w-12 h-12 mb-2 opacity-50" /><p>재생할 영상이 없습니다.</p></div>)}
                             </div>
 
-                        {lessonVideos.length > 1 && (
+                        {hasMultipleLessonVideos && (
                                 <div className="bg-gray-900 border-t border-gray-800">
                                     <div className="px-4 py-3 flex items-center justify-between text-gray-100">
                                         <div>
