@@ -1,13 +1,9 @@
 // src/App.jsx
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import './output.css'; 
-import { 
-    getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged,
-    GoogleAuthProvider, signInWithPopup
-} from 'firebase/auth';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import './output.css';
+import { getAuth } from 'firebase/auth';
 import {
     getFirestore, setLogLevel,
-    collection, query, where, orderBy, limit, onSnapshot, getDocs
 } from 'firebase/firestore';
 import { initializeApp } from 'firebase/app';
 
@@ -39,7 +35,9 @@ import GradeManagement from './pages/GradeManagement';
 import ClinicManagement from './pages/ClinicManagement';
 import InternalCommunication from './pages/InternalCommunication';
 import PaymentManagement from './pages/PaymentManagement';
-import ParentHome from './pages/ParentHome'; 
+import ParentHome from './pages/ParentHome';
+import useAuth from './auth/useAuth';
+import { loadViewerDataOnce, startStaffFirestoreSync } from './data/firestoreSync';
 
 const firebaseConfig = typeof window.__firebase_config !== 'undefined' ? JSON.parse(window.__firebase_config) : {};
 const initialAuthToken = typeof window.__initial_auth_token !== 'undefined' ? window.__initial_auth_token : null; 
@@ -55,16 +53,6 @@ try {
 } catch (error) {
     console.error("Firebase initialization error. Using local mock data only:", error);
 }
-
-const initialSession = (() => {
-    if (typeof localStorage === 'undefined') return null;
-    try {
-        return JSON.parse(localStorage.getItem('session')) || null;
-    } catch (error) {
-        console.error('세션 정보를 불러오지 못했습니다:', error);
-        return null;
-    }
-})();
 
 const PageContent = (props) => {
     const { page, selectedStudentId } = props;
@@ -84,12 +72,10 @@ const PageContent = (props) => {
 };
 
 export default function App() {
-  const [isLoggedIn, setIsLoggedIn] = useState(() => Boolean(initialSession?.isLoggedIn));
-  const [userRole, setUserRole] = useState(() => initialSession?.userRole || null);
-  const [userId, setUserId] = useState(() => initialSession?.userId || null);
+  const { isLoggedIn, userRole, userId, handleLoginSuccess: handleAuthLoginSuccess, handleLogout: handleAuthLogout } = useAuth(auth);
   const [page, setPage] = useState('lessons');
   const [selectedStudentId, setSelectedStudentId] = useState(() =>
-      ['student', 'parent'].includes(initialSession?.userRole) ? initialSession.userId : null
+      ['student', 'parent'].includes(userRole) ? userId : null
   );
   const [notifications, setNotifications] = useState([]); 
   const [isGlobalDirty, setIsGlobalDirty] = useState(false);
@@ -118,195 +104,60 @@ export default function App() {
 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [videoBookmarks, setVideoBookmarks] = useState(() => {
-      try { return JSON.parse(localStorage.getItem('videoBookmarks')) || {}; } 
+      try { return JSON.parse(localStorage.getItem('videoBookmarks')) || {}; }
       catch (e) { return {}; }
   });
 
-  // --- 🔥 Firestore 실시간 동기화 (비용 안전 장치 포함) ---
   useEffect(() => {
-      // 학생/학부모는 로컬 데이터만 사용하고, 직원/관리자만 실시간 동기화하여 읽기 수를 줄입니다.
-      const isStaff = userRole && !['student', 'parent'].includes(userRole);
-      if (!isLoggedIn || !db || !isStaff) return;
+      if (!isLoggedIn) {
+          setSelectedStudentId(null);
+          return;
+      }
+      if (['student', 'parent'].includes(userRole)) setSelectedStudentId(userId);
+  }, [isLoggedIn, userRole, userId]);
 
-      console.log("🔥 Firestore Sync Started (staff only)");
-      const unsubs = [];
-
-      // (1) 기본 컬렉션 동기화 (전체 읽기 허용: 데이터 양이 적음)
-      const syncBasic = (colName, setter, orderField = null) => {
-          let q = collection(db, colName);
-          if (orderField) q = query(q, orderBy(orderField));
-          unsubs.push(onSnapshot(q, (snap) => {
-              if (!snap.empty) setter(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-          }));
-      };
-
-      // (2) 로그성 데이터 동기화 (Limit 필수: 비용 폭탄 방지)
-      const syncLogs = (colName, setter) => {
-          // 최근 150건만 가져오도록 제한
-          const q = query(collection(db, colName), orderBy('date', 'desc'), limit(150));
-          unsubs.push(onSnapshot(q, (snap) => {
-              if (!snap.empty) setter(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-          }));
-      };
-
-      // (3) 특수 구조 데이터 동기화 (Collection -> Nested Object 변환)
-      // 예: grades 컬렉션의 문서들을 { studentId: { testId: score } } 구조로 변환
-      const syncMappedData = (colName, setter, keyField1, keyField2) => {
-          // 최근 300건만 가져옴 (성적/결과는 많아질 수 있음)
-          const q = query(collection(db, colName), limit(300)); 
-          unsubs.push(onSnapshot(q, (snap) => {
-              if (!snap.empty) {
-                  const rawDocs = snap.docs.map(d => d.data());
-                  const mapped = {};
-                  rawDocs.forEach(doc => {
-                      const k1 = doc[keyField1]; // studentId
-                      const k2 = doc[keyField2]; // testId or assignmentId
-                      if (!mapped[k1]) mapped[k1] = {};
-                      mapped[k1][k2] = doc; // 전체 데이터를 저장하거나 필요한 필드만 저장
-                  });
-                  setter(prev => ({ ...prev, ...mapped }));
-              }
-          }));
-      };
-
-      // --- 실행 ---
-      syncBasic('students', setStudents, 'name');
-      syncBasic('classes', setClasses);
-      syncBasic('tests', setTests, 'date'); // 시험은 적으므로 전체 동기화
-      
-      syncLogs('lessonLogs', setLessonLogs);
-      syncLogs('attendanceLogs', setAttendanceLogs);
-      syncLogs('clinicLogs', setClinicLogs);
-      syncLogs('workLogs', setWorkLogs);
-      syncLogs('announcements', setAnnouncements);
-      syncLogs('homeworkAssignments', setHomeworkAssignments);
-      syncLogs('payments', setPaymentLogs); // ✅ 결제 내역 동기화
-      
-      // 복잡한 데이터 구조 (간소화: V1에서는 일단 로컬 데이터 + 일부 동기화 가정)
-      // 실제로는 DB 설계에 따라 이 부분을 더 정교하게 다듬어야 합니다.
-      // 여기서는 'grades' 컬렉션이 있다고 가정하고 매핑합니다.
-      syncMappedData('grades', setGrades, 'studentId', 'testId');
-      syncMappedData('homeworkResults', setHomeworkResults, 'studentId', 'assignmentId');
-
-      return () => {
-          console.log("🛑 Firestore Sync Stopped");
-          unsubs.forEach(u => u());
-      };
-  }, [isLoggedIn, userRole]);
+  // --- 🔥 Firestore 실시간 동기화 (비용 안전 장치 포함) ---
+  useEffect(() => startStaffFirestoreSync({
+      db,
+      isLoggedIn,
+      userRole,
+      setStudents,
+      setClasses,
+      setTests,
+      setLessonLogs,
+      setAttendanceLogs,
+      setClinicLogs,
+      setWorkLogs,
+      setAnnouncements,
+      setHomeworkAssignments,
+      setPaymentLogs,
+      setGrades,
+      setHomeworkResults,
+  }), [db, isLoggedIn, userRole]);
 
   // --- 학생/학부모: 로그인 시 1회만 필요한 데이터 읽기 ---
   useEffect(() => {
-      const isViewerRole = ['student', 'parent'].includes(userRole);
-      if (!isLoggedIn || !db || !isViewerRole) return;
-
-      let cancelled = false;
-      const loadOnce = async () => {
-          try {
-              // 공통 유틸: 컬렉션을 한 번만 읽어서 setter에 전달
-              const fetchList = async (colName, setter, q) => {
-                  const snap = await getDocs(q || collection(db, colName));
-                  const items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-                  if (cancelled) return [];
-                  setter(items);
-                  return items;
-              };
-
-              // 1) 본인 학생 정보 + 등록된 반만 읽기
-              const myStudents = await fetchList(
-                  'students',
-                  setStudents,
-                  query(collection(db, 'students'), where('id', '==', userId), limit(1))
-              );
-              const myClasses = await fetchList(
-                  'classes',
-                  setClasses,
-                  query(collection(db, 'classes'), where('students', 'array-contains', userId))
-              );
-
-              // 2) 최근 기록 위주로 제한된 조회 (읽기 비용 최소화)
-              const fetchLimitedLogs = async (colName, setter, filterField) => {
-                  const q = query(
-                      collection(db, colName),
-                      where(filterField, '==', userId),
-                      orderBy('date', 'desc'),
-                      limit(30)
-                  );
-                  await fetchList(colName, setter, q);
-              };
-
-              await fetchLimitedLogs('attendanceLogs', setAttendanceLogs, 'studentId');
-              await fetchLimitedLogs('clinicLogs', setClinicLogs, 'studentId');
-
-              // 본인이 속한 반의 수업 로그만 최근 순으로 1회 조회
-              if (myClasses.length > 0) {
-                  const classIds = myClasses.map(c => c.id).slice(0, 10); // in 조건 제한(10개) 준수
-                  const lessonQuery = query(
-                      collection(db, 'lessonLogs'),
-                      where('classId', 'in', classIds),
-                      orderBy('date', 'desc'),
-                      limit(30)
-                  );
-                  await fetchList('lessonLogs', setLessonLogs, lessonQuery);
-              }
-
-              // 3) 숙제/성적은 매핑 구조 유지
-              const qHomework = query(collection(db, 'homeworkResults'), where('studentId', '==', userId), limit(80));
-              const homeworkSnap = await getDocs(qHomework);
-              if (!cancelled) {
-                  const mapped = {};
-                  homeworkSnap.docs.forEach(doc => {
-                      const data = doc.data();
-                      const { studentId, assignmentId } = data;
-                      if (!mapped[studentId]) mapped[studentId] = {};
-                      mapped[studentId][assignmentId] = data;
-                  });
-                  setHomeworkResults(prev => ({ ...prev, ...mapped }));
-              }
-
-              const qGrades = query(collection(db, 'grades'), where('studentId', '==', userId), limit(80));
-              const gradeSnap = await getDocs(qGrades);
-              if (!cancelled) {
-                  const mappedGrades = {};
-                  gradeSnap.docs.forEach(doc => {
-                      const data = doc.data();
-                      const { studentId, testId } = data;
-                      if (!mappedGrades[studentId]) mappedGrades[studentId] = {};
-                      mappedGrades[studentId][testId] = data;
-                  });
-                  setGrades(prev => ({ ...prev, ...mappedGrades }));
-              }
-
-              // 4) 공지/숙제 등은 전체 공용 피드에서 최근만 노출
-              await fetchList(
-                  'announcements',
-                  setAnnouncements,
-                  query(collection(db, 'announcements'), orderBy('date', 'desc'), limit(20))
-              );
-              await fetchList(
-                  'homeworkAssignments',
-                  setHomeworkAssignments,
-                  query(collection(db, 'homeworkAssignments'), orderBy('date', 'desc'), limit(20))
-              );
-
-              // 5) 영상 진도/외부 일정 등 학생 개인 데이터
-              await fetchList(
-                  'videoProgress',
-                  setVideoProgress,
-                  query(collection(db, 'videoProgress'), where('studentId', '==', userId), limit(50))
-              );
-              await fetchList(
-                  'externalSchedules',
-                  setExternalSchedules,
-                  query(collection(db, 'externalSchedules'), where('studentId', '==', userId), orderBy('date', 'desc'), limit(30))
-              );
-          } catch (error) {
-              console.error('학생/학부모 단발성 데이터 로드 실패:', error);
-          }
-      };
-
-      loadOnce();
-      return () => { cancelled = true; };
-  }, [isLoggedIn, userRole, userId]);
+      const state = { cancelled: false };
+      loadViewerDataOnce({
+          db,
+          isLoggedIn,
+          userRole,
+          userId,
+          setStudents,
+          setClasses,
+          setLessonLogs,
+          setAttendanceLogs,
+          setClinicLogs,
+          setHomeworkAssignments,
+          setAnnouncements,
+          setVideoProgress,
+          setExternalSchedules,
+          setHomeworkResults,
+          setGrades,
+          isCancelled: () => state.cancelled,
+      });
+      return () => { state.cancelled = true; };
+  }, [db, isLoggedIn, userRole, userId]);
 
 
   // ... (로그인, 로컬스토리지, 메시지 등 기타 로직 유지) ...
@@ -331,30 +182,6 @@ export default function App() {
 
   const toggleSidebar = () => { setIsSidebarOpen(prev => !prev); if (!isSidebarOpen) { setHasNewNotifications(false); setIsMessengerOpen(false); } };
   const toggleMessenger = () => { setIsMessengerOpen(prev => !prev); if (!isMessengerOpen) { setHasNewMessages(false); setIsSidebarOpen(false); } };
-
-  useEffect(() => {
-    if (auth) {
-        const unsubscribe = onAuthStateChanged(auth, (user) => { if (user) setUserId(user.uid); });
-        return () => unsubscribe();
-    } 
-  }, []); 
-
-  useEffect(() => {
-      if (typeof localStorage === 'undefined') return;
-      if (isLoggedIn && userRole && userId !== null) {
-          try {
-              localStorage.setItem('session', JSON.stringify({ isLoggedIn: true, userRole, userId }));
-          } catch (error) {
-              console.error('세션 정보를 저장하지 못했습니다:', error);
-          }
-      } else {
-          try {
-              localStorage.removeItem('session');
-          } catch (error) {
-              console.error('세션 정보를 삭제하지 못했습니다:', error);
-          }
-      }
-  }, [isLoggedIn, userRole, userId]);
 
   useEffect(() => {
       if (!announcements || announcements.length === 0) return;
@@ -475,17 +302,12 @@ export default function App() {
   };
 
   const handleLoginSuccess = (role, id) => {
-      setIsLoggedIn(true);
-      setUserRole(role);
-      setUserId(id);
+      handleAuthLoginSuccess(role, id);
       processedAnnouncementIdsRef.current = new Set();
-      if(['student','parent'].includes(role)) setSelectedStudentId(id);
   };
 
   const handleLogout = () => {
-      setIsLoggedIn(false);
-      setUserRole(null);
-      setUserId(null);
+      handleAuthLogout();
       setSelectedStudentId(null);
       processedAnnouncementIdsRef.current = new Set();
   };

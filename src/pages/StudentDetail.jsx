@@ -1,12 +1,20 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Icon, formatGradeLabel } from '../utils/helpers';
 
 // calculateGradeComparison, calculateHomeworkStats는 App.jsx에서 props로 전달받음
 export default function StudentDetail({
     studentId, students, classes, studentMemos, grades, tests, homeworkAssignments, homeworkResults, handlePageChange,
-    calculateGradeComparison, calculateHomeworkStats
+    handleSaveMemo, calculateGradeComparison, calculateHomeworkStats
 }) {
     const student = useMemo(() => students.find(s => s.id === studentId), [students, studentId]);
+
+    const [memoDraft, setMemoDraft] = useState('');
+
+    const latestMemo = studentMemos[studentId];
+
+    useEffect(() => {
+        setMemoDraft(latestMemo || '');
+    }, [latestMemo, studentId]);
     
     if (!student) {
         return (
@@ -22,7 +30,7 @@ export default function StudentDetail({
         );
     }
     
-    const studentClasses = student.classes.map(id => classes.find(c => c.id === id)).filter(c => c);
+    const studentClasses = student?.classes.map(id => classes.find(c => c.id === id)).filter(c => c) || [];
     
     // 유틸리티 함수를 이용한 데이터 계산 (App.jsx에서 props로 전달)
     const gradeComparison = calculateGradeComparison(studentId, classes, tests, grades);
@@ -38,38 +46,32 @@ export default function StudentDetail({
     const completedHomeworks = homeworkStats.filter(h => h.isCompleted).length;
     const homeworkCompletionRate = totalHomeworks ? Math.round((completedHomeworks / totalHomeworks) * 100) : 0;
 
-    const latestMemo = studentMemos[studentId];
+    const saveMemo = () => {
+        if (!handleSaveMemo) return;
+        handleSaveMemo(studentId, memoDraft.trim());
+    };
 
     return (
         <div className="space-y-6">
             <div className="bg-[radial-gradient(circle_at_15%_20%,rgba(56,189,248,0.28),transparent_40%),radial-gradient(circle_at_80%_15%,rgba(45,212,191,0.26),transparent_38%),linear-gradient(135deg,#0a1434,#1d4ed8,#0d9488)] text-white rounded-2xl shadow-lg p-6 flex justify-between items-center">
-                <div className="flex items-center space-x-4">
-                    <button
-                        onClick={() => handlePageChange('students')}
-                        className="bg-white/10 hover:bg-white/20 text-white p-2 rounded-full transition duration-150"
-                        title="학생 목록으로 돌아가기"
-                    >
-                        <Icon name="arrow-left" className="w-6 h-6"/>
-                    </button>
-                    <div className="flex items-center space-x-3">
-                        <div className="p-3 rounded-2xl bg-white/10 border border-white/20 backdrop-blur-sm">
-                            <Icon name="user" className="w-6 h-6" />
-                        </div>
-                        <div>
-                            <p className="text-sm text-white/80">직원용 · 학생 상세 대시보드</p>
-                            <h3 className="text-2xl font-bold flex items-center gap-2">{student.name}</h3>
-                            <div className="flex flex-wrap items-center gap-2 mt-1 text-xs font-semibold">
-                                <span className={`px-3 py-1 rounded-full ${student.status === '재원생' ? 'bg-emerald-100/30 text-emerald-50 border border-emerald-200/40' : 'bg-rose-100/30 text-rose-50 border border-rose-200/40'}`}>
-                                    {student.status}
+                <div className="flex items-center space-x-3">
+                    <div className="p-3 rounded-2xl bg-white/10 border border-white/20 backdrop-blur-sm">
+                        <Icon name="user" className="w-6 h-6" />
+                    </div>
+                    <div>
+                        <p className="text-sm text-white/80">직원용 · 학생 상세 대시보드</p>
+                        <h3 className="text-2xl font-bold flex items-center gap-2">{student.name}</h3>
+                        <div className="flex flex-wrap items-center gap-2 mt-1 text-xs font-semibold">
+                            <span className={`px-3 py-1 rounded-full ${student.status === '재원생' ? 'bg-emerald-100/30 text-emerald-50 border border-emerald-200/40' : 'bg-rose-100/30 text-rose-50 border border-rose-200/40'}`}>
+                                {student.status}
+                            </span>
+                            <span className="px-3 py-1 rounded-full bg-white/10 border border-white/20">{student.school} · {formatGradeLabel(student.grade)}</span>
+                            {student.clinicTime && (
+                                <span className="px-3 py-1 rounded-full bg-white/10 border border-white/20 flex items-center space-x-1">
+                                    <Icon name="calendar" className="w-4 h-4" />
+                                    <span>{student.clinicTime}</span>
                                 </span>
-                                <span className="px-3 py-1 rounded-full bg-white/10 border border-white/20">{student.school} · {formatGradeLabel(student.grade)}</span>
-                                {student.clinicTime && (
-                                    <span className="px-3 py-1 rounded-full bg-white/10 border border-white/20 flex items-center space-x-1">
-                                        <Icon name="calendar" className="w-4 h-4" />
-                                        <span>{student.clinicTime}</span>
-                                    </span>
-                                )}
-                            </div>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -207,23 +209,34 @@ export default function StudentDetail({
                     <div className="text-sm p-4 bg-indigo-50 rounded-lg border border-indigo-100 min-h-24">
                         <p className="whitespace-pre-wrap text-gray-700">{latestMemo || '작성된 메모가 없습니다.'}</p>
                     </div>
-                    <div className="grid grid-cols-2 gap-3 text-sm">
-                        <button
-                            type="button"
-                            onClick={() => window?.open(`tel:${student.parentPhone}`, '_self')}
-                            className="p-3 rounded-lg border border-gray-100 bg-gray-50 flex items-center space-x-2 hover:border-indigo-200 hover:bg-indigo-50 transition"
-                        >
-                            <Icon name="mail" className="w-4 h-4 text-indigo-500" />
-                            <span className="font-semibold text-gray-800">학부모 연락</span>
-                         </button>
-                        <button
-                            type="button"
-                            onClick={() => handlePageChange('attendance')}
-                            className="p-3 rounded-lg border border-gray-100 bg-gray-50 flex items-center space-x-2 hover:border-indigo-200 hover:bg-indigo-50 transition"
-                        >
-                            <Icon name="schedule" className="w-4 h-4 text-indigo-500" />
-                            <span className="font-semibold text-gray-800">출결 확인</span>
-                        </button>
+                    <div className="space-y-3">
+                        <div className="space-y-1">
+                            <label className="text-sm text-gray-600 font-semibold" htmlFor="memoInput">새 메모 작성</label>
+                            <textarea
+                                id="memoInput"
+                                value={memoDraft}
+                                onChange={(e) => setMemoDraft(e.target.value)}
+                                className="w-full min-h-24 p-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-200 text-sm"
+                                placeholder="학생에 대한 최신 메모를 입력하세요."
+                            />
+                        </div>
+                        <div className="flex items-center justify-between gap-3">
+                            <button
+                                type="button"
+                                onClick={saveMemo}
+                                className="flex-1 p-3 rounded-lg bg-indigo-600 text-white font-semibold hover:bg-indigo-700 transition"
+                            >
+                                메모 저장
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => handlePageChange('attendance')}
+                                className="p-3 rounded-lg border border-gray-100 bg-gray-50 flex items-center space-x-2 hover:border-indigo-200 hover:bg-indigo-50 transition"
+                            >
+                                <Icon name="schedule" className="w-4 h-4 text-indigo-500" />
+                                <span className="font-semibold text-gray-800">출결 확인</span>
+                            </button>
+                        </div>
                     </div>
                 </div>
 
