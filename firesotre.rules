@@ -57,6 +57,31 @@ service cloud.firestore {
         || (isParent() && parentStudentIds().hasAny([studentId]));
     }
 
+    function isChatParticipantByData(chatData) {
+      return isSignedIn()
+        && chatData != null
+        && chatData.participantIds != null
+        && chatData.participantIds.hasAny([request.auth.uid]);
+    }
+
+    function isChatParticipant(chatId) {
+      return isChatParticipantByData(get(/databases/$(database)/documents/chats/$(chatId)).data);
+    }
+
+    function hasChatParticipantFilter() {
+      return isQueryAllowed()
+        && request.query.where[0].field == 'participantIds'
+        && request.query.where[0].op == 'array-contains'
+        && request.query.where[0].value == request.auth.uid;
+    }
+
+    function hasNotificationTargetFilter() {
+      return isQueryAllowed()
+        && request.query.where[0].field == 'uid'
+        && request.query.where[0].op == '=='
+        && request.query.where[0].value == request.auth.uid;
+    }
+
     match /users/{uid} {
       allow get: if isSignedIn() && request.auth.uid == uid;
       allow list: if false;
@@ -136,16 +161,25 @@ service cloud.firestore {
       allow write: if isStaffOrAdmin();
     }
 
-    match /chats/{document=**} {
-      allow get: if isSignedIn();
-      allow list: if isSignedIn() && isQueryAllowed();
-      allow write: if isSignedIn();
+    match /chats/{chatId} {
+      allow get: if isChatParticipantByData(resource.data);
+      allow list: if isSignedIn() && hasChatParticipantFilter();
+      allow create: if isChatParticipantByData(request.resource.data);
+      allow update: if isChatParticipantByData(resource.data);
+      allow delete: if isChatParticipantByData(resource.data);
+
+      match /messages/{messageId} {
+        allow get: if isChatParticipant(chatId);
+        allow list: if isSignedIn() && isChatParticipant(chatId) && isQueryAllowed();
+        allow create: if isChatParticipant(chatId);
+        allow update, delete: if false;
+      }
     }
 
-    match /notifications/{document=**} {
-      allow get: if isSignedIn();
-      allow list: if isSignedIn() && isQueryAllowed();
-      allow write: if isSignedIn();
+    match /notifications/{notificationId} {
+      allow get: if isSignedIn() && resource.data.uid == request.auth.uid;
+      allow list: if isSignedIn() && hasNotificationTargetFilter();
+      allow write: if isStaffOrAdmin();
     }
 
     match /{document=**} {
