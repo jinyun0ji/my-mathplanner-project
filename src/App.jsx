@@ -3,13 +3,13 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import './output.css'; 
 import { 
     getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged,
-    GoogleAuthProvider, signInWithPopup 
-} from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-import { 
-    getFirestore, setLogLevel, 
-    collection, query, where, orderBy, limit, onSnapshot 
-} from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    GoogleAuthProvider, signInWithPopup
+} from 'firebase/auth';
+import {
+    getFirestore, setLogLevel,
+    collection, query, where, orderBy, limit, onSnapshot, getDocs
+} from 'firebase/firestore';
+import { initializeApp } from 'firebase/app';
 
 import { 
     initialStudents, initialClasses, initialLessonLogs, initialAttendanceLogs, 
