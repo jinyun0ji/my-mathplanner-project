@@ -8,7 +8,7 @@ import useAuth from '../auth/useAuth';
 import { claimStudentLinkCode } from '../parent/linkCodeService';
 import { ParentProvider } from '../parent/ParentContext';
 import { redirectToKakao, redirectToNaver } from '../auth/socialRedirect';
-import { signInWithEmail, signInWithGoogle } from '../auth/authService';
+import { signInWithGoogle } from '../auth/authService';
 import { initForegroundMessageListener } from '../firebase/messaging';
 
 export default function AuthGate() {
@@ -35,10 +35,6 @@ export default function AuthGate() {
       };
   }, [user]);
 
-  const handleEmailLogin = async (email, password) => {
-      await signInWithEmail(email, password);
-  };
-
   const handleSocialLogin = async (providerName) => {
       if (providerName === 'google') return signInWithGoogle();
       if (providerName === 'kakao') return redirectToKakao();
@@ -52,21 +48,31 @@ export default function AuthGate() {
 
   if (isSocialCallbackPage) return <SocialCallback />;
   if (loading) return <div className="min-h-screen flex items-center justify-center">로딩 중...</div>;
-  if (!user) return <LoginPage onEmailLogin={handleEmailLogin} onSocialLogin={handleSocialLogin} />;
+  if (!user) return <LoginPage onSocialLogin={handleSocialLogin} />;
   if (role === 'pending') return <OnboardingPage onSubmitLinkCode={handleClaimLinkCode} />;
 
-  return (
-      <ParentProvider
-          userId={user?.uid || null}
-          role={role}
-          linkedStudentIds={linkedStudentIds}
-          firestoreActiveStudentId={activeStudentId}
-      >
-          <AppRoutes
-              user={user}
+  if (role === 'parent') {
+      return (
+          <ParentProvider
+              userId={user?.uid || null}
               role={role}
               linkedStudentIds={linkedStudentIds}
-          />
-      </ParentProvider>
+              firestoreActiveStudentId={activeStudentId}
+          >
+              <AppRoutes
+                  user={user}
+                  role={role}
+                  linkedStudentIds={linkedStudentIds}
+              />
+          </ParentProvider>
+      );
+  }
+
+  return (
+      <AppRoutes
+          user={user}
+
+          role={role}
+        />
   );
 }
