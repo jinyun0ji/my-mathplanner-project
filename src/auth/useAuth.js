@@ -1,9 +1,22 @@
-import { useEffect, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { auth, db } from '../firebase/client';
+import { signOutUser } from './authService';
 
-export default function useAuth() {
+const AuthContext = createContext(null);
+
+const LOCAL_STORAGE_KEYS = ['videoBookmarks', 'parent.activeStudentId'];
+
+const clearAuthStorage = () => {
+    try {
+        LOCAL_STORAGE_KEYS.forEach((key) => localStorage.removeItem(key));
+    } catch (error) {
+        // ignore
+    }
+};
+
+export function AuthProvider({ children }) {
     const [user, setUser] = useState(null);
     const [role, setRole] = useState(null);
     const [linkedStudentIds, setLinkedStudentIds] = useState([]);
@@ -80,5 +93,43 @@ export default function useAuth() {
         };
     }, []);
 
-    return { user, role, linkedStudentIds, activeStudentId, loading };
+    const logout = useCallback(async () => {
+        if (!auth) {
+            clearAuthStorage();
+            setUser(null);
+            setRole(null);
+            setLinkedStudentIds([]);
+            setActiveStudentId(null);
+            return;
+        }
+
+        try {
+            await signOutUser();
+        } finally {
+            clearAuthStorage();
+        }
+    }, []);
+
+    const value = useMemo(() => ({
+        user,
+        role,
+        linkedStudentIds,
+        activeStudentId,
+        loading,
+        logout,
+    }), [user, role, linkedStudentIds, activeStudentId, loading, logout]);
+
+    return (
+        <AuthContext.Provider value={value}>
+            {children}
+        </AuthContext.Provider>
+    );
+}
+
+export default function useAuth() {
+    const context = useContext(AuthContext);
+    if (!context) {
+        throw new Error('AuthProvider가 필요합니다.');
+    }
+    return context;
 }

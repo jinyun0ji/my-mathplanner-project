@@ -26,7 +26,7 @@ import PaymentManagement from '../pages/PaymentManagement';
 import ParentHome from '../pages/ParentHome';
 import ParentStudentPicker from '../pages/parent/ParentStudentPicker';
 import OnboardingPage from '../pages/OnboardingPage';
-import { signOutUser } from '../auth/authService';
+import useAuth from '../auth/useAuth';
 import { db } from '../firebase/client';
 import { loadViewerDataOnce, startStaffFirestoreSync } from '../data/firestoreSync';
 import { createLinkCode, createStaffUser } from '../admin/staffService';
@@ -58,6 +58,7 @@ export default function AppRoutes({ user, role, linkedStudentIds }) {
   const [studentSearchTerm, setStudentSearchTerm] = useState('');
   const userId = user?.uid || null;
   const isAuthenticated = Boolean(user);
+  const { logout } = useAuth();
   const {
       activeStudentId: parentActiveStudentId,
       linkedStudentIds: parentLinkedStudentIds,
@@ -303,7 +304,7 @@ export default function AppRoutes({ user, role, linkedStudentIds }) {
   };
 
   const handleLogout = async () => {
-      await signOutUser();
+      await logout();
       setSelectedStudentId(null);
       processedAnnouncementIdsRef.current = new Set();
   };
