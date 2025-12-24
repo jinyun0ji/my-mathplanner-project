@@ -26,10 +26,11 @@ import PaymentManagement from '../pages/PaymentManagement';
 import ParentHome from '../pages/ParentHome';
 import ParentStudentPicker from '../pages/parent/ParentStudentPicker';
 import OnboardingPage from '../pages/OnboardingPage';
-import AdminStaffPage from '../pages/admin/AdminStaffPage';
+import StaffManagement from '../pages/admin/StaffManagement';
 import AdminNotificationsPage from '../pages/admin/AdminNotificationsPage';
 import AdminPaymentsPage from '../pages/admin/AdminPaymentsPage';
 import AdminSettingsPage from '../pages/admin/AdminSettingsPage';
+import AdminRoute from '../routes/AdminRoute';
 import useAuth from '../auth/useAuth';
 import { db } from '../firebase/client';
 import { loadViewerDataOnce, startStaffFirestoreSync } from '../data/firestoreSync';
@@ -38,7 +39,7 @@ import { claimStudentLinkCode } from '../parent/linkCodeService';
 import useParentContext from '../parent/useParentContext';
 
 const PageContent = (props) => {
-    const { page, selectedStudentId, userRole } = props;
+    const { page, selectedStudentId } = props;
     if (page === 'students' && selectedStudentId !== null) return <StudentDetail {...props} studentId={selectedStudentId} />;
     switch (page) {
         case 'home': return <Home onQuickAction={props.onQuickAction} onCreateStaffUser={props.onCreateStaffUser} onCreateLinkCode={props.onCreateLinkCode} userRole={props.userRole} />;
@@ -50,10 +51,30 @@ const PageContent = (props) => {
         case 'clinic': return <ClinicManagement {...props} />;
         case 'communication': return <InternalCommunication {...props} />;
         case 'payment': return <PaymentManagement {...props} />;
-        case '/admin/staff': return userRole === 'admin' ? <AdminStaffPage /> : <Home onQuickAction={props.onQuickAction} onCreateStaffUser={props.onCreateStaffUser} onCreateLinkCode={props.onCreateLinkCode} userRole={props.userRole} />;
-        case '/admin/notifications': return userRole === 'admin' ? <AdminNotificationsPage /> : <Home onQuickAction={props.onQuickAction} onCreateStaffUser={props.onCreateStaffUser} onCreateLinkCode={props.onCreateLinkCode} userRole={props.userRole} />;
-        case '/admin/payments': return userRole === 'admin' ? <AdminPaymentsPage /> : <Home onQuickAction={props.onQuickAction} onCreateStaffUser={props.onCreateStaffUser} onCreateLinkCode={props.onCreateLinkCode} userRole={props.userRole} />;
-        case '/admin/settings': return userRole === 'admin' ? <AdminSettingsPage /> : <Home onQuickAction={props.onQuickAction} onCreateStaffUser={props.onCreateStaffUser} onCreateLinkCode={props.onCreateLinkCode} userRole={props.userRole} />;
+        case '/admin/staff':
+            return (
+                <AdminRoute>
+                    <StaffManagement />
+                </AdminRoute>
+            );
+        case '/admin/notifications':
+            return (
+                <AdminRoute>
+                    <AdminNotificationsPage />
+                </AdminRoute>
+            );
+        case '/admin/payments':
+            return (
+                <AdminRoute>
+                    <AdminPaymentsPage />
+                </AdminRoute>
+            );
+        case '/admin/settings':
+            return (
+                <AdminRoute>
+                    <AdminSettingsPage />
+                </AdminRoute>
+            );
         default: return <Home />;
     }
 };
@@ -106,12 +127,6 @@ export default function AppRoutes({ user, role, linkedStudentIds }) {
       if (role === 'student') setSelectedStudentId(userId);
       if (role === 'parent') setSelectedStudentId(parentStudentId);
   }, [isAuthenticated, role, userId, parentStudentId]);
-
-  useEffect(() => {
-      if (page.startsWith('/admin') && role !== 'admin') {
-          setPage('home');
-      }
-  }, [page, role]);
 
   useEffect(() => {
       if (isAuthenticated) processedAnnouncementIdsRef.current = new Set();
@@ -306,7 +321,6 @@ export default function AppRoutes({ user, role, linkedStudentIds }) {
 
   const handlePageChange = (newPage, sId = null, reset = false) => {
     if (isGlobalDirty && !window.confirm('저장되지 않은 변경사항이 있습니다. 이동하시겠습니까?')) return false;
-    if (newPage?.startsWith('/admin') && role !== 'admin') return false;
     if (reset) setStudentSearchTerm('');
     setSelectedStudentId(sId);
     setPage(newPage);
