@@ -13,6 +13,7 @@ import { initForegroundMessageListener } from '../firebase/messaging';
 
 export default function AuthGate() {
   const isSocialCallbackPage = typeof window !== 'undefined' && window.location.pathname === '/auth/callback';
+  const isOnboardingPage = typeof window !== 'undefined' && window.location.pathname === '/onboarding';
   const { user, role, linkedStudentIds, activeStudentId, loading } = useAuth();
 
   useEffect(() => {
@@ -35,6 +36,20 @@ export default function AuthGate() {
       };
   }, [user]);
 
+  useEffect(() => {
+      if (typeof window === 'undefined') {
+          return;
+      }
+
+      if (user && role === 'pending' && window.location.pathname !== '/onboarding') {
+          window.history.replaceState(null, '', '/onboarding');
+      }
+
+      if (user && role && role !== 'pending' && window.location.pathname === '/onboarding') {
+          window.history.replaceState(null, '', '/');
+      }
+  }, [user, role]);
+
   const handleSocialLogin = async (providerName) => {
       if (providerName === 'google') return signInWithGoogle();
       if (providerName === 'kakao') return redirectToKakao();
@@ -49,7 +64,7 @@ export default function AuthGate() {
   if (isSocialCallbackPage) return <SocialCallback />;
   if (loading) return <div className="min-h-screen flex items-center justify-center">로딩 중...</div>;
   if (!user) return <LoginPage onSocialLogin={handleSocialLogin} />;
-  if (role === 'pending') return <OnboardingPage onSubmitLinkCode={handleClaimLinkCode} />;
+  if (role === 'pending' || isOnboardingPage) return <OnboardingPage onSubmitLinkCode={handleClaimLinkCode} />;
 
   if (role === 'parent') {
       return (

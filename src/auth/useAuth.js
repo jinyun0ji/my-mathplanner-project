@@ -3,9 +3,6 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { auth, db } from '../firebase/client';
 
-const isDevStaff =
-    process.env.NODE_ENV === 'development' && process.env.REACT_APP_DEV_STAFF === 'true';
-
 export default function useAuth() {
     const [user, setUser] = useState(null);
     const [role, setRole] = useState(null);
@@ -14,15 +11,6 @@ export default function useAuth() {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        if (isDevStaff) {
-            setUser({ uid: 'dev-staff' });
-            setRole('staff');
-            setLinkedStudentIds([]);
-            setActiveStudentId(null);
-            setLoading(false);
-            return undefined;
-        }
-
         if (!auth) {
             setLoading(false);
             return undefined;

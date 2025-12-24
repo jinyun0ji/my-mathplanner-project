@@ -36,10 +36,16 @@ let db = null;
 let functions = null;
 let googleProvider = null;
 
-try {
+const getFirebaseApp = () => {
     const canInitialize = Object.keys(firebaseConfig).length > 0;
+    if (!canInitialize) {
+        return null;
+    }
+    return getApps().length ? getApp() : initializeApp(firebaseConfig);
+};
 
-    firebaseApp = getApps().length ? getApp() : canInitialize ? initializeApp(firebaseConfig) : null;
+    try {
+    firebaseApp = getFirebaseApp();
 
     if (firebaseApp) {
         auth = getAuth(firebaseApp);
