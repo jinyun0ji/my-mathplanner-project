@@ -1,8 +1,11 @@
 // src/layout/Sidebar.jsx
 import React from 'react';
 import { Icon } from '../utils/helpers';
+import useAuth from '../auth/useAuth';
 
 export default function Sidebar({ page, setPage, onLogout, isOpen, onClose }) {
+    const { role } = useAuth();
+    const isAdmin = role === 'admin';
     // ... (menuItems는 그대로 유지) ...
     const menuItems = [
         { name: '대시보드', key: 'home', icon: 'dashboard' },
@@ -14,6 +17,12 @@ export default function Sidebar({ page, setPage, onLogout, isOpen, onClose }) {
         { name: '클리닉 관리', key: 'clinic', icon: 'clock' },
         { name: '교재/수납', key: 'payment', icon: 'wallet' },
         { name: '내부 소통', key: 'communication', icon: 'messageSquare' },
+    ];
+    const adminMenuItems = [
+        { name: '직원 관리', key: '/admin/staff', icon: 'users' },
+        { name: '알림 로그', key: '/admin/notifications', icon: 'bell' },
+        { name: '결제 관리', key: '/admin/payments', icon: 'creditCard' },
+        { name: '시스템 설정', key: '/admin/settings', icon: 'settings' },
     ];
     
     return (
@@ -68,6 +77,28 @@ export default function Sidebar({ page, setPage, onLogout, isOpen, onClose }) {
                             </button>
                         );
                     })}
+                    {isAdmin && (
+                        <>
+                            <p className="px-4 text-xs font-semibold text-gray-400 mb-2 mt-6 uppercase tracking-wider">Admin</p>
+                            {adminMenuItems.map(item => {
+                                const isActive = page === item.key;
+                                return (
+                                    <button
+                                        key={item.key}
+                                        onClick={() => setPage(item.key, null, true)}
+                                        className={`flex items-center w-full px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 group ${
+                                            isActive
+                                                ? 'bg-indigo-50 text-indigo-700 shadow-sm ring-1 ring-indigo-200'
+                                                : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'
+                                        }`}
+                                    >
+                                        <Icon name={item.icon} className={`w-5 h-5 mr-3 transition-colors ${isActive ? 'text-indigo-600' : 'text-gray-400 group-hover:text-gray-600'}`} />
+                                        {item.name}
+                                    </button>
+                                );
+                            })}
+                        </>
+                    )}
                 </nav>
             </div>
 
