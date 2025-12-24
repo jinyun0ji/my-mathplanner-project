@@ -2,8 +2,8 @@ const { api } = require('./api');
 const { createStaffUser } = require('./admin/createStaffUser');
 const { adminCreateLinkCode } = require('./admin/createLinkCode');
 const { retryNotification } = require('./admin/retryNotification');
-const { kakaoLogin } = require('./auth/kakaoLogin');
-const { naverLogin } = require('./auth/naverLogin');
+// const { kakaoLogin } = require('./auth/kakaoLogin');
+// const { naverLogin } = require('./auth/naverLogin');
 const { claimStudentLinkCode } = require('./link/claimStudentLinkCode');
 const { onLessonLogWritten } = require('./triggers/lessonLogs');
 const { onAttendanceLogWritten } = require('./triggers/attendanceLogs');
@@ -11,17 +11,15 @@ const { onHomeworkResultWritten } = require('./triggers/homeworkResults');
 const { onGradeWritten } = require('./triggers/grades');
 const { onChatMessageCreated } = require('./triggers/chatMessages');
 
-module.exports = {
-    api,
-    createStaffUser,
-    adminCreateLinkCode,
-    retryNotification,
-    kakaoLogin,
-    naverLogin,
-    claimStudentLinkCode,
-    onLessonLogWritten,
-    onAttendanceLogWritten,
-    onHomeworkResultWritten,
-    onGradeWritten,
-    onChatMessageCreated,
-};
+exports.api = api;
+exports.createStaffUser = createStaffUser;
+exports.adminCreateLinkCode = adminCreateLinkCode;
+exports.retryNotification = retryNotification;
+// exports.kakaoLogin = kakaoLogin;
+// exports.naverLogin = naverLogin;
+exports.claimStudentLinkCode = claimStudentLinkCode;
+exports.onLessonLogWritten = onLessonLogWritten;
+exports.onAttendanceLogWritten = onAttendanceLogWritten;
+exports.onHomeworkResultWritten = onHomeworkResultWritten;
+exports.onGradeWritten = onGradeWritten;
+exports.onChatMessageCreated = onChatMessageCreated;
