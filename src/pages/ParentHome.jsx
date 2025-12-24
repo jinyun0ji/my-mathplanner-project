@@ -1,5 +1,5 @@
 // src/pages/ParentHome.jsx
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { 
     ScheduleTab, MenuTab, BoardTab
 } from '../components/StudentTabs';
@@ -180,6 +180,7 @@ export default function ParentHome({
     // 1. 자녀 데이터 및 선택 로직
     const initialStudent = students.find(s => s.id === activeStudentId);
     const [activeChildId, setActiveChildId] = useState(activeStudentId);
+    const pendingStudentSwitchRef = useRef(null);
     const activeChild = students.find(s => s.id === activeChildId) || initialStudent;
     const activeChildName = activeChild?.name || '학생';
     const activeChildSchool = activeChild?.school || '학교 정보 없음';
@@ -203,6 +204,26 @@ export default function ParentHome({
     useEffect(() => {
         setReportFocus(null);
     }, [activeChildId]);
+
+    const waitForActiveStudentSwitch = useCallback((studentId) => {
+        if (!studentId || studentId === activeStudentId) {
+            return Promise.resolve();
+        }
+
+        return new Promise((resolve) => {
+            pendingStudentSwitchRef.current = { studentId, resolve };
+        });
+    }, [activeStudentId]);
+
+    useEffect(() => {
+        const pending = pendingStudentSwitchRef.current;
+        if (!pending || pending.studentId !== activeStudentId) {
+            return;
+        }
+
+        pending.resolve();
+        pendingStudentSwitchRef.current = null;
+    }, [activeStudentId]);
 
     useEffect(() => {
         setActiveChildId(activeStudentId);
@@ -275,8 +296,9 @@ export default function ParentHome({
 
         if (canSwitchStudent) {
             await setActiveStudentId(targetStudentId);
+            await waitForActiveStudentSwitch(targetStudentId);
         }
-        
+
         await openNotification({
             notification,
             onNavigate: ({ refCollection, refId }) => {
