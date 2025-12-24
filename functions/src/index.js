@@ -1,6 +1,7 @@
 const { api } = require('./api');
 const { createStaffUser } = require('./admin/createStaffUser');
 const { adminCreateLinkCode } = require('./admin/createLinkCode');
+const { getStaffList } = require('./admin/getStaffList');
 const { retryNotification } = require('./admin/retryNotification');
 // const { kakaoLogin } = require('./auth/kakaoLogin');
 // const { naverLogin } = require('./auth/naverLogin');
@@ -14,6 +15,7 @@ const { onChatMessageCreated } = require('./triggers/chatMessages');
 exports.api = api;
 exports.createStaffUser = createStaffUser;
 exports.adminCreateLinkCode = adminCreateLinkCode;
+exports.getStaffList = getStaffList;
 exports.retryNotification = retryNotification;
 // exports.kakaoLogin = kakaoLogin;
 // exports.naverLogin = naverLogin;
