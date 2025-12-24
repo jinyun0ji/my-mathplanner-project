@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Icon, getWeekOfMonth } from '../../../utils/helpers';
 import ModalPortal from '../../common/ModalPortal';
-import useParentContext from '../../../parent/useParentContext';
+import { useParentContext } from '../../../parent';
 
 export default function ScheduleTab({ 
     myClasses, externalSchedules, attendanceLogs, clinicLogs, studentId, 

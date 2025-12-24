@@ -36,7 +36,7 @@ import { db } from '../firebase/client';
 import { loadViewerDataOnce, startStaffFirestoreSync } from '../data/firestoreSync';
 import { createLinkCode, createStaffUser } from '../admin/staffService';
 import { claimStudentLinkCode } from '../parent/linkCodeService';
-import useParentContext from '../parent/useParentContext';
+import { useParentContext } from '../parent';
 
 const PageContent = (props) => {
     const { page, selectedStudentId } = props;

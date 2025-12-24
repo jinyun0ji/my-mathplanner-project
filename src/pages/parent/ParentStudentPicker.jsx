@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import useParentContext from '../../parent/useParentContext';
+import { useParentContext } from '../../parent';
 
 export default function ParentStudentPicker({ students }) {
     const { activeStudentId, linkedStudentIds, setActiveStudentId } = useParentContext();

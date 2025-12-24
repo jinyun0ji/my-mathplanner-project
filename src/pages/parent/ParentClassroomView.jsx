@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Icon } from '../../utils/helpers';
-import useParentContext from '../../parent/useParentContext';
+import { useParentContext } from '../../parent';
 
 export default function ParentClassroomView({ 
     classes, lessonLogs, attendanceLogs,

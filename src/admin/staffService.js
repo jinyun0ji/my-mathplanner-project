@@ -11,6 +11,27 @@ export const createStaffUser = async ({ email, role, tempPassword }) => {
     return result.data;
 };
 
+export const getStaffList = async () => {
+    if (!functions) {
+        throw new Error('Firebase가 초기화되지 않았습니다. 관리자에게 문의해주세요.');
+    }
+
+    const callable = httpsCallable(functions, 'getStaffList');
+    const result = await callable();
+    return result.data;
+};
+
+export const deactivateStaff = async ({ uid }) => {
+    if (!functions) {
+        throw new Error('Firebase가 초기화되지 않았습니다. 관리자에게 문의해주세요.');
+    }
+
+    const callable = httpsCallable(functions, 'deactivateStaff');
+    const result = await callable({ uid });
+    return result.data;
+};
+
+
 export const createLinkCode = async ({ studentId }) => {
     if (!functions) {
         throw new Error('Firebase가 초기화되지 않았습니다. 관리자에게 문의해주세요.');

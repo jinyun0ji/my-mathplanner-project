@@ -1,6 +1,7 @@
 const { api } = require('./api');
 const { createStaffUser } = require('./admin/createStaffUser');
 const { adminCreateLinkCode } = require('./admin/createLinkCode');
+const { deactivateStaff } = require('./admin/deactivateStaff');
 const { getStaffList } = require('./admin/getStaffList');
 const { updateStaffRole } = require('./admin/updateStaffRole');
 const { retryNotification } = require('./admin/retryNotification');
@@ -15,6 +16,7 @@ const { onChatMessageCreated } = require('./triggers/chatMessages');
 
 exports.api = api;
 exports.createStaffUser = createStaffUser;
+exports.deactivateStaff = deactivateStaff;
 exports.adminCreateLinkCode = adminCreateLinkCode;
 exports.getStaffList = getStaffList;
 exports.updateStaffRole = updateStaffRole;
@@ -24,6 +26,7 @@ exports.retryNotification = retryNotification;
 exports.claimStudentLinkCode = claimStudentLinkCode;
 exports.onLessonLogWritten = onLessonLogWritten;
 exports.onAttendanceLogWritten = onAttendanceLogWritten;
+exports.onChatMessageCreated = onChatMessageCreated;
 exports.onHomeworkResultWritten = onHomeworkResultWritten;
 exports.onGradeWritten = onGradeWritten;
 exports.onChatMessageCreated = onChatMessageCreated;

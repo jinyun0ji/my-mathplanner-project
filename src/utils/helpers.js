@@ -10,7 +10,8 @@ import {
     Maximize, Minimize, Settings, BookOpen, PenTool,
     MapPin, Phone, Mail, Award, TrendingUp, TrendingDown, Activity,
     Edit, List, Folder, Download, CreditCard, Smartphone,
-    AlertTriangle, MessageCircle, CheckSquare, CalendarPlus
+    AlertTriangle, MessageCircle, CheckSquare, CalendarPlus,
+    RefreshCw, UserX
 } from 'lucide-react';
 
 export const Icon = ({ name, className, ...props }) => {
@@ -34,7 +35,8 @@ export const Icon = ({ name, className, ...props }) => {
         download: Download, video: Video,
         creditCard: CreditCard, smartphone: Smartphone,
         alertTriangle: AlertTriangle, messageCircle: MessageCircle,
-        checkSquare: CheckSquare, calendarPlus: CalendarPlus
+        checkSquare: CheckSquare, calendarPlus: CalendarPlus,
+        refreshCw: RefreshCw, userX: UserX
     };
     const LucideIcon = icons[name] || Home;
     return <LucideIcon className={className} {...props} />;

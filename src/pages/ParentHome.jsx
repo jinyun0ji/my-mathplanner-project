@@ -16,7 +16,7 @@ import NotificationList from '../notifications/NotificationList';
 import openNotification from '../notifications/openNotification';
 import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { db } from '../firebase/client';
-import useParentContext from '../parent/useParentContext';
+import { useParentContext } from '../parent';
 
 // --- [컴포넌트] 학부모 전용 대시보드 ---
 const ParentDashboard = ({ 

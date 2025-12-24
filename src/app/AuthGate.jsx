@@ -6,7 +6,7 @@ import LoginPage from '../pages/LoginPage';
 import SocialCallback from '../pages/SocialCallback';
 import useAuth from '../auth/useAuth';
 import { claimStudentLinkCode } from '../parent/linkCodeService';
-import { ParentProvider } from '../parent/ParentContext';
+import { ParentProvider } from '../parent';
 import { redirectToKakao, redirectToNaver } from '../auth/socialRedirect';
 import { signInWithGoogle } from '../auth/authService';
 import { initForegroundMessageListener } from '../firebase/messaging';
