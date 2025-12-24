@@ -6,7 +6,7 @@ import { retryNotification } from '../admin/notificationService.js';
 
 export default function Home({ onQuickAction, onCreateStaffUser, onCreateLinkCode, userRole }) {
     const [staffEmail, setStaffEmail] = useState('');
-    const [staffTempPassword, setStaffTempPassword] = useState('');
+    const [staffRole, setStaffRole] = useState('staff');
     const [staffStatus, setStaffStatus] = useState('');
     const [staffSubmitting, setStaffSubmitting] = useState(false);
     const [linkStudentId, setLinkStudentId] = useState('');
@@ -140,10 +140,13 @@ export default function Home({ onQuickAction, onCreateStaffUser, onCreateLinkCod
         setStaffStatus('');
         setStaffSubmitting(true);
         try {
-            await onCreateStaffUser({ email: staffEmail, tempPassword: staffTempPassword });
-            setStaffStatus('직원 계정을 생성했습니다. 임시 비밀번호를 전달해주세요.');
+            const result = await onCreateStaffUser({ email: staffEmail, role: staffRole });
+            const tempPasswordMessage = result?.tempPassword
+                ? `임시 비밀번호: ${result.tempPassword}`
+                : '임시 비밀번호는 계정 재설정으로 안내해주세요.';
+            setStaffStatus(`계정을 생성했습니다. ${tempPasswordMessage}`);
             setStaffEmail('');
-            setStaffTempPassword('');
+            setStaffRole('staff');
         } catch (error) {
             setStaffStatus(error?.message || '직원 생성 중 오류가 발생했습니다.');
         } finally {
@@ -199,15 +202,15 @@ export default function Home({ onQuickAction, onCreateStaffUser, onCreateLinkCod
                             />
                         </label>
                         <label className="flex flex-col gap-1">
-                            <span className="text-xs font-semibold text-gray-600">임시 비밀번호</span>
-                            <input
-                                type="text"
-                                required
-                                value={staffTempPassword}
-                                onChange={(e) => setStaffTempPassword(e.target.value)}
+                            <span className="text-xs font-semibold text-gray-600">역할</span>
+                            <select
+                                value={staffRole}
+                                onChange={(e) => setStaffRole(e.target.value)}
                                 className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                                placeholder="초기 로그인용 비밀번호"
-                            />
+                            >
+                                <option value="staff">직원</option>
+                                <option value="admin">관리자</option>
+                            </select>
                         </label>
                         <button
                             type="submit"

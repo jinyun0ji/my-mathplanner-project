@@ -1,5 +1,5 @@
 const { api } = require('./api');
-const { adminCreateStaffUser } = require('./admin/createStaffUser');
+const { createStaffUser } = require('./admin/createStaffUser');
 const { adminCreateLinkCode } = require('./admin/createLinkCode');
 const { retryNotification } = require('./admin/retryNotification');
 const { kakaoLogin } = require('./auth/kakaoLogin');
@@ -13,7 +13,7 @@ const { onChatMessageCreated } = require('./triggers/chatMessages');
 
 module.exports = {
     api,
-    adminCreateStaffUser,
+    createStaffUser,
     adminCreateLinkCode,
     retryNotification,
     kakaoLogin,

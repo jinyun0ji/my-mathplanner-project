@@ -282,9 +282,10 @@ export default function AppRoutes({ user, role, linkedStudentIds }) {
 
   const handleSendStudentNotification = (sId, title, content) => handleSaveAnnouncement({ title, content, targetStudents: [sId], date: new Date().toISOString().slice(0,10), author:'알림봇' }, false);
 
-  const handleCreateStaffUser = async ({ email, tempPassword }) => {
-      await createStaffUser({ email, tempPassword });
+  const handleCreateStaffUser = async ({ email, role }) => {
+      const result = await createStaffUser({ email, role });
       logNotification('success', '직원 계정 생성', `${email} 계정이 생성되었습니다.`);
+      return result;
   };
 
   const getClassesNames = useCallback((ids) => ids.map(id => classes.find(c => c.id === id)?.name).join(', '), [classes]);
@@ -345,7 +346,7 @@ export default function AppRoutes({ user, role, linkedStudentIds }) {
     calculateGradeComparison, calculateHomeworkStats,
     setIsGlobalDirty, studentSearchTerm, setStudentSearchTerm, handleSendStudentNotification,
     externalSchedules, pendingQuickAction, clearPendingQuickAction: () => setPendingQuickAction(null), onQuickAction: handleQuickAction,
-    onCreateStaffUser: role === 'staff' ? handleCreateStaffUser : null,
+    onCreateStaffUser: role === 'admin' ? handleCreateStaffUser : null,
     onCreateLinkCode: role === 'staff' ? handleCreateLinkCode : null,
   };
 
