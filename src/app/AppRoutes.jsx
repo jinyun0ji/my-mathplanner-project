@@ -113,7 +113,7 @@ const AppShellLayout = ({
     </AppShell>
 );
 
-export default function AppRoutes({ user, role, linkedStudentIds }) {
+export default function AppRoutes({ user, role, linkedStudentUids }) {
   const navigate = useNavigate();
   const location = useLocation();
   const page = useMemo(() => getPageKeyFromPath(location.pathname), [location.pathname]);
@@ -125,7 +125,7 @@ export default function AppRoutes({ user, role, linkedStudentIds }) {
   const { logout } = useAuth();
   const {
       activeStudentId: parentActiveStudentId,
-      linkedStudentIds: parentLinkedStudentIds,
+      linkedStudentUids: parentLinkedStudentUids,
       loading: parentLoading,
   } = useParentContext();
   const parentStudentId = role === 'parent' ? parentActiveStudentId : null;
@@ -198,7 +198,7 @@ export default function AppRoutes({ user, role, linkedStudentIds }) {
           db,
           isLoggedIn: isAuthenticated,
           userRole: role,
-          studentIds: linkedStudentIds,
+          studentIds: linkedStudentUids,
           userId,
           setStudents,
           setClasses,
@@ -214,7 +214,7 @@ export default function AppRoutes({ user, role, linkedStudentIds }) {
           isCancelled: () => state.cancelled,
       });
       return () => { state.cancelled = true; };
-  }, [db, isAuthenticated, role, userId, linkedStudentIds]);
+  }, [db, isAuthenticated, role, userId, linkedStudentUids]);
 
   useEffect(() => {
       try { localStorage.setItem('videoBookmarks', JSON.stringify(videoBookmarks)); }
@@ -244,7 +244,7 @@ export default function AppRoutes({ user, role, linkedStudentIds }) {
       const newMessages = [];
 
       const announcementTargets = role === 'parent'
-          ? linkedStudentIds
+          ? linkedStudentUids
           : userId
               ? [userId]
               : [];
@@ -275,7 +275,7 @@ export default function AppRoutes({ user, role, linkedStudentIds }) {
           setStudentMessages((prev) => [...prev, ...newMessages]);
           setHasNewMessages(true);
       }
-  }, [announcements, role, userId, linkedStudentIds]);
+  }, [announcements, role, userId, linkedStudentUids]);
 
   const logNotification = useCallback((type, message, details) => {
       setNotifications(prev => [{ id: Date.now(), type, message, details, timestamp: new Date().toLocaleTimeString('ko-KR') }, ...prev]);
@@ -389,10 +389,10 @@ export default function AppRoutes({ user, role, linkedStudentIds }) {
       if (parentLoading) {
           return <div className="min-h-screen flex items-center justify-center">로딩 중...</div>;
       }
-      if (!parentLinkedStudentIds || parentLinkedStudentIds.length === 0) {
+      if (!parentLinkedStudentUids || parentLinkedStudentUids.length === 0) {
           return <OnboardingPage onSubmitLinkCode={handleClaimLinkCode} />;
       }
-      if (parentLinkedStudentIds.length > 1 && !parentStudentId) {
+      if (parentLinkedStudentUids.length > 1 && !parentStudentId) {
           return (
               <ParentStudentPicker
                   students={students}

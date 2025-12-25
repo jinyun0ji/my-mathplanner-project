@@ -10,97 +10,122 @@ service cloud.firestore {
     }
 
     function userDoc() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid));
+      return isSignedIn()
+        ? get(/databases/$(database)/documents/users/$(request.auth.uid))
+        : null;
     }
 
-    function role() {
-      return userDoc().data.role;
+    function userRole() {
+      return userDoc() != null ? userDoc().data.role : null;
     }
 
     function isAdmin() {
-      return role() == 'admin';
+      return userRole() == 'admin';
     }
 
     function isStaff() {
-      return role() in ['admin', 'teacher', 'staff'];
+      return userRole() == 'staff' || userRole() == 'teacher';
     }
-    
+
     function isStudent() {
-      return isSignedIn() && userRole() == 'student';
+      return userRole() == 'student';
+    }
+
+    function isParent() {
+      return userRole() == 'parent';
+    }
+
+    function parentStudentUids() {
+      return isParent() && userDoc().data.linkedStudentUids != null
+        ? userDoc().data.linkedStudentUids
+        : [];
     }
 
     /* =========================
        users (가장 중요)
     ========================= */
     match /users/{userId} {
-      allow read: if isSignedIn() && request.auth.uid == userId;
+      allow read: if isSignedIn()
+        && (
+          request.auth.uid == userId
+          || isAdmin()
+          || isStaff()
+          || (isParent() && userId in parentStudentUids())
+        );
       allow write: if isAdmin();
     }
 
     /* =========================
        Staff 전용 컬렉션
     ========================= */
-    match /students/{docId} {
-    	allow read, list, get: if isStaff();
-      allow write: if isAdmin();
-
-			// 학생 본인은 자기 문서 '단건'만 허용 (선택)
-      //allow get: if isStudent() && resource.data.uid == request.auth.uid;
-    }
-
     match /classes/{docId} {
-      allow read, list: if isStaff();
+      allow read, list: if isStaff() || isAdmin();
       allow write: if isAdmin();
     }
 
     match /tests/{docId} {
-      allow read, list: if isStaff();
+      allow read, list: if isStaff() || isAdmin();
       allow write: if isAdmin();
     }
 
     match /lessonLogs/{docId} {
-      allow read, list: if isStaff();
-      allow write: if isStaff();
+      allow read, list: if isStaff()
+        || isAdmin()
+        || (isStudent() && request.auth.uid == resource.data.studentUid)
+        || (isParent() && resource.data.studentUid in parentStudentUids());
+      allow write: if isStaff() || isAdmin();
     }
 
     match /attendanceLogs/{docId} {
-      allow read, list: if isStaff();
-      allow write: if isStaff();
+      allow read, list: if isStaff()
+        || isAdmin()
+        || (isStudent() && request.auth.uid == resource.data.studentUid)
+        || (isParent() && resource.data.studentUid in parentStudentUids());
+      allow write: if isStaff() || isAdmin();
     }
 
     match /clinicLogs/{docId} {
-      allow read, list: if isStaff();
-      allow write: if isStaff();
+      allow read, list: if isStaff()
+        || isAdmin()
+        || (isStudent() && request.auth.uid == resource.data.studentUid)
+        || (isParent() && resource.data.studentUid in parentStudentUids());
+      allow write: if isStaff() || isAdmin();
     }
 
     match /workLogs/{docId} {
-      allow read, list: if isStaff();
-      allow write: if isStaff();
+      allow read, list: if isStaff() || isAdmin();
+      allow write: if isStaff() || isAdmin();
     }
 
     match /announcements/{docId} {
       allow read: if isSignedIn();
-      allow write: if isStaff();
+      allow write: if isStaff() || isAdmin();
     }
 
     match /homeworkAssignments/{docId} {
       allow read: if isSignedIn();
-      allow write: if isStaff();
+      allow write: if isStaff() || isAdmin();
     }
 
     match /payments/{docId} {
-      allow read, list: if isStaff();
+      allow read, list: if isStaff() || isAdmin();
       allow write: if isAdmin();
     }
 
     match /grades/{docId} {
-      allow read, list: if isStaff();
-      allow write: if isStaff();
+      allow read, list: if isStaff()
+        || isAdmin()
+        || (isStudent() && request.auth.uid == resource.data.studentUid)
+        || (isParent() && resource.data.studentUid in parentStudentUids());
+      allow write: if isStaff() || isAdmin();
     }
 
     match /homeworkResults/{docId} {
-      allow read, list: if isStaff();
-      allow write: if isStaff();
+      allow read, list: if isStaff()
+        || isAdmin()
+        || (isStudent() && request.auth.uid == resource.data.studentUid)
+        || (isParent() && resource.data.studentUid in parentStudentUids());
+      allow write: if isStaff() || isAdmin();
     }
 
     /* =========================

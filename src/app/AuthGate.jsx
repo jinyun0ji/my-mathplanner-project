@@ -22,7 +22,7 @@ export default function AuthGate() {
   const {
       user,
       role,
-      linkedStudentIds,
+      linkedStudentUids,
       activeStudentId,
       loading,
       profileError,
@@ -105,13 +105,13 @@ export default function AuthGate() {
       <ParentProvider
           userId={user?.uid || null}
           role={role}
-          linkedStudentIds={linkedStudentIds}
+          linkedStudentUids={linkedStudentUids}
           firestoreActiveStudentId={activeStudentId}
       >
           <AppRoutes
               user={user}
               role={role}
-              linkedStudentIds={linkedStudentIds}
+              linkedStudentUids={linkedStudentUids}
               />
       </ParentProvider>
   ) : (

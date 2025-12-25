@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { collection, getDocs, limit, orderBy, query, where } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, limit, orderBy, query, where } from 'firebase/firestore';
 import { db } from '../firebase/client';
 import { formatGradeLabel, Icon } from '../utils/helpers';
 
 export default function StudentDetail() {
-    const { studentId } = useParams();
+    const { studentId: studentUid } = useParams();
     const navigate = useNavigate();
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -18,7 +18,7 @@ export default function StudentDetail() {
     useEffect(() => {
         let isMounted = true;
 
-    const loadStudentDetail = async () => {
+        const loadStudentDetail = async () => {
             setLoading(true);
             setError(null);
             setStudent(null);
@@ -27,51 +27,43 @@ export default function StudentDetail() {
             setGrades([]);
             setMemo(null);
 
-            if (!studentId) {
+            if (!studentUid) {
                 if (isMounted) {
-                    setError('학생 ID를 찾을 수 없습니다.');
+                     setError('학생 UID를 찾을 수 없습니다.');
                     setLoading(false);
                 }
                 return;
             }
 
             try {
-                const numericStudentId = Number(studentId);
-                if (Number.isNaN(numericStudentId)) {
-                    throw new Error('invalid-student-id');
-                }
-                const studentQuery = query(
-                    collection(db, 'students'),
-                    where('id', '==', numericStudentId),
-                    limit(1),
-                );
+                const studentRef = doc(db, 'users', studentUid);
                 const attendanceQuery = query(
-                    collection(db, 'attendances'),
-                    where('studentId', '==', studentId),
+                    collection(db, 'attendanceLogs'),
+                    where('studentUid', '==', studentUid),
                     orderBy('date', 'desc'),
                     limit(5),
                 );
                 const homeworkQuery = query(
-                    collection(db, 'homeworks'),
-                    where('studentId', '==', studentId),
+                    collection(db, 'homeworkResults'),
+                    where('studentUid', '==', studentUid),
                     orderBy('date', 'desc'),
                     limit(5),
                 );
                 const gradesQuery = query(
                     collection(db, 'grades'),
-                    where('studentId', '==', studentId),
+                    where('studentUid', '==', studentUid),
                     orderBy('date', 'desc'),
                     limit(3),
                 );
                 const memoQuery = query(
-                    collection(db, 'memos'),
-                    where('studentId', '==', studentId),
-                    orderBy('createdAt', 'desc'),
+                    collection(db, 'lessonLogs'),
+                    where('studentUid', '==', studentUid),
+                    orderBy('date', 'desc'),
                     limit(1),
                 );
 
                 const [studentSnap, attendanceSnap, homeworkSnap, gradesSnap, memoSnap] = await Promise.all([
-                    getDocs(studentQuery),
+                    getDoc(studentRef),
                     getDocs(attendanceQuery),
                     getDocs(homeworkQuery),
                     getDocs(gradesQuery),
@@ -80,12 +72,11 @@ export default function StudentDetail() {
 
                 if (!isMounted) return;
 
-                const studentDoc = studentSnap.docs[0];
-                if (!studentDoc) {
+                if (!studentSnap.exists()) {
                     setError('학생 정보를 찾을 수 없습니다.');
                     setStudent(null);
                 } else {
-                    setStudent({ id: studentDoc.id, ...studentDoc.data() });
+                    setStudent({ id: studentSnap.id, ...studentSnap.data() });
                 }
                     setAttendances(attendanceSnap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })));
                     setHomeworks(homeworkSnap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })));
@@ -103,12 +94,12 @@ export default function StudentDetail() {
                 }
             };
 
-            loadStudentDetail();
-            
-            return () => {
+        loadStudentDetail();
+
+        return () => {
             isMounted = false;
         };
-    }, [studentId]);
+    }, [studentUid]);
 
     const renderStatus = () => {
         if (loading) {
@@ -140,7 +131,7 @@ export default function StudentDetail() {
             return (
                 <div className="rounded-xl border border-gray-200 bg-white p-6 text-center shadow-sm">
                     <p className="text-sm font-semibold text-gray-700">학생을 찾을 수 없습니다</p>
-                    <p className="mt-2 text-xs text-gray-500">학생 ID: {studentId}</p>
+                    <p className="mt-2 text-xs text-gray-500">학생 UID: {studentUid}</p>
                     <button
                         type="button"
                         onClick={() => navigate('/students')}

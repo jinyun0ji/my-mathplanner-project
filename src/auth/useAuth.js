@@ -24,7 +24,10 @@ const clearAuthStorage = () => {
     }
 };
 
-const normalizeLinkedStudentIds = (data) => {
+const normalizeLinkedStudentUids = (data) => {
+    if (Array.isArray(data?.linkedStudentUids)) {
+        return data.linkedStudentUids.filter((id) => id !== undefined && id !== null);
+    }
     if (Array.isArray(data?.linkedStudentIds)) {
         return data.linkedStudentIds.filter((id) => id !== undefined && id !== null);
     }
@@ -39,7 +42,7 @@ export function AuthProvider({ children }) {
     const [role, setRole] = useState(null);
     const [userProfile, setUserProfile] = useState(null);
     const [profileError, setProfileError] = useState(null);
-    const [linkedStudentIds, setLinkedStudentIds] = useState([]);
+    const [linkedStudentUids, setLinkedStudentUids] = useState([]);
     const [activeStudentId, setActiveStudentId] = useState(null);
     const [loading, setLoading] = useState(true);
     const errorLoggedRef = useRef(false);
@@ -56,7 +59,7 @@ export function AuthProvider({ children }) {
             setRole(null);
             setUserProfile(null);
             setProfileError(null);
-            setLinkedStudentIds([]);
+            setLinkedStudentUids([]);
             setActiveStudentId(null);
         };
 
@@ -95,7 +98,7 @@ export function AuthProvider({ children }) {
                 if (!userDoc.exists()) {
                     setRole(null);
                     setUserProfile(null);
-                    setLinkedStudentIds([]);
+                    setLinkedStudentUids([]);
                     setActiveStudentId(null);
                     setLoading(false);
                     return;
@@ -112,7 +115,7 @@ export function AuthProvider({ children }) {
                 };
                 setUserProfile(profile);
                 setRole(profile.role);
-                setLinkedStudentIds(normalizeLinkedStudentIds(data));
+                setLinkedStudentUids(normalizeLinkedStudentUids(data));
                 setActiveStudentId(data?.activeStudentId ?? null);
             } catch (error) {
                 logProfileErrorOnce(error);
@@ -120,7 +123,7 @@ export function AuthProvider({ children }) {
                     setProfileError('프로필을 불러올 수 없습니다.');
                     setRole(null);
                     setUserProfile(null);
-                    setLinkedStudentIds([]);
+                    setLinkedStudentUids([]);
                     setActiveStudentId(null);
                 }
             } finally {
@@ -143,7 +146,7 @@ export function AuthProvider({ children }) {
             setRole(null);
             setUserProfile(null);
             setProfileError(null);
-            setLinkedStudentIds([]);
+            setLinkedStudentUids([]);
             setActiveStudentId(null);
             return;
         }
@@ -161,12 +164,12 @@ export function AuthProvider({ children }) {
             role,
             userProfile,
             profileError,
-            linkedStudentIds,
+            linkedStudentUids,
             activeStudentId,
             loading,
             logout,
         }),
-        [user, role, userProfile, profileError, linkedStudentIds, activeStudentId, loading, logout],
+        [user, role, userProfile, profileError, linkedStudentUids, activeStudentId, loading, logout],
     );
 
     return (

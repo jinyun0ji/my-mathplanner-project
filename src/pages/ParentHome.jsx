@@ -176,7 +176,7 @@ export default function ParentHome({
     externalSchedules, onSaveExternalSchedule, onDeleteExternalSchedule,
     messages, onSendMessage
 }) {
-    const { activeStudentId, linkedStudentIds, setActiveStudentId } = useParentContext();
+    const { activeStudentId, linkedStudentUids, setActiveStudentId } = useParentContext();
     // 1. 자녀 데이터 및 선택 로직
     const initialStudent = students.find(s => s.id === activeStudentId);
     const [activeChildId, setActiveChildId] = useState(activeStudentId);
@@ -291,8 +291,8 @@ export default function ParentHome({
         const targetStudentId = notification?.studentId;
         const canSwitchStudent = targetStudentId
             && targetStudentId !== activeStudentId
-            && Array.isArray(linkedStudentIds)
-            && linkedStudentIds.includes(targetStudentId);
+            && Array.isArray(linkedStudentUids)
+            && linkedStudentUids.includes(targetStudentId);
 
         if (canSwitchStudent) {
             await setActiveStudentId(targetStudentId);

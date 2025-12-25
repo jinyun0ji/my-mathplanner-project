@@ -2,6 +2,7 @@
 // ⚠️ student / parent 계정에서는 절대 실행되면 안 된다
 import {
     collection,
+    documentId,
     query,
     where,
     orderBy,
@@ -41,8 +42,8 @@ export const startStaffFirestoreSync = ({
 
     const unsubs = [];
 
-    const syncBasic = (colName, setter, orderField = null) => {
-        let q = collection(db, colName);
+    const syncBasic = (colRef, setter, orderField = null) => {
+        let q = colRef;
         if (orderField) q = query(q, orderBy(orderField));
         unsubs.push(onSnapshot(q, (snap) => {
             if (!snap.empty) setter(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
@@ -79,9 +80,9 @@ export const startStaffFirestoreSync = ({
         }));
     };
 
-    syncBasic('students', setStudents, 'name');
-    syncBasic('classes', setClasses);
-    syncBasic('tests', setTests, 'date');
+    syncBasic(query(collection(db, 'users'), where('role', '==', 'student')), setStudents);
+    syncBasic(collection(db, 'classes'), setClasses);
+    syncBasic(collection(db, 'tests'), setTests, 'date');
 
     syncLogs('lessonLogs', setLessonLogs);
     syncLogs('attendanceLogs', setAttendanceLogs);
@@ -91,8 +92,8 @@ export const startStaffFirestoreSync = ({
     syncLogs('homeworkAssignments', setHomeworkAssignments);
     syncLogs('payments', setPaymentLogs);
 
-    syncMappedData('grades', setGrades, 'studentId', 'testId');
-    syncMappedData('homeworkResults', setHomeworkResults, 'studentId', 'assignmentId');
+    syncMappedData('grades', setGrades, 'studentUid', 'testId');
+    syncMappedData('homeworkResults', setHomeworkResults, 'studentUid', 'assignmentId');
 
     return () => {
         unsubs.forEach((u) => u());
@@ -121,25 +122,20 @@ export const loadViewerDataOnce = async ({
     const isViewerRole = ['student', 'parent'].includes(userRole);
     if (!isLoggedIn || !db || !isViewerRole) return;
 
-    const viewerStudentIds = userRole === 'student'
+    const viewerStudentUids = userRole === 'student'
         ? [userId].filter(Boolean)
         : Array.isArray(studentIds)
             ? studentIds.filter(Boolean).slice(0, 10)
             : [];
 
-    const normalizedStudentIds = viewerStudentIds.map((id) => (
-        typeof id === 'string' && !Number.isNaN(Number(id))
-            ? Number(id)
-            : id
-    ));
-    if (normalizedStudentIds.length === 0) return;
+    if (viewerStudentUids.length === 0) return;
 
     try {
         const myStudents = await fetchList(
             db,
-            'students',
+            'users',
             setStudents,
-            query(collection(db, 'students'), where('id', 'in', normalizedStudentIds), limit(10)),
+            query(collection(db, 'users'), where(documentId(), 'in', viewerStudentUids), limit(10)),
             isCancelled,
         );
 
@@ -147,22 +143,22 @@ export const loadViewerDataOnce = async ({
             db,
             'classes',
             setClasses,
-            query(collection(db, 'classes'), where('students', 'array-contains-any', normalizedStudentIds)),
+            query(collection(db, 'classes'), where('students', 'array-contains-any', viewerStudentUids)),
             isCancelled,
         );
 
         const fetchLimitedLogs = async (colName, setter, filterField) => {
             const q = query(
                 collection(db, colName),
-                where(filterField, 'in', normalizedStudentIds),
+                where(filterField, 'in', viewerStudentUids),
                 orderBy('date', 'desc'),
                 limit(30),
             );
             await fetchList(db, colName, setter, q, isCancelled);
         };
 
-        await fetchLimitedLogs('attendanceLogs', setAttendanceLogs, 'studentId');
-        await fetchLimitedLogs('clinicLogs', setClinicLogs, 'studentId');
+        await fetchLimitedLogs('attendanceLogs', setAttendanceLogs, 'studentUid');
+        await fetchLimitedLogs('clinicLogs', setClinicLogs, 'studentUid');
 
         if (myClasses.length > 0) {
             const classIds = myClasses.map((c) => c.id).slice(0, 10);
@@ -177,7 +173,7 @@ export const loadViewerDataOnce = async ({
 
         const qHomework = query(
             collection(db, 'homeworkResults'),
-            where('studentId', 'in', normalizedStudentIds),
+            where('studentUid', 'in', viewerStudentUids),
             limit(80),
         );
         const homeworkSnap = await getDocs(qHomework);
@@ -185,20 +181,20 @@ export const loadViewerDataOnce = async ({
             const mapped = {};
             homeworkSnap.docs.forEach((doc) => {
                 const data = doc.data();
-                const { studentId: sId, assignmentId } = data;
+                const { studentUid: sId, assignmentId } = data;
                 if (!mapped[sId]) mapped[sId] = {};
                 mapped[sId][assignmentId] = data;
             });
             setHomeworkResults((prev) => ({ ...prev, ...mapped }));
         }
 
-        const qGrades = query(collection(db, 'grades'), where('studentId', 'in', normalizedStudentIds), limit(80));
+        const qGrades = query(collection(db, 'grades'), where('studentUid', 'in', viewerStudentUids), limit(80));
         const gradeSnap = await getDocs(qGrades);
         if (!isCancelled()) {
             const mappedGrades = {};
             gradeSnap.docs.forEach((doc) => {
                 const data = doc.data();
-                const { studentId: sId, testId } = data;
+                const { studentUid: sId, testId } = data;
                 if (!mappedGrades[sId]) mappedGrades[sId] = {};
                 mappedGrades[sId][testId] = data;
             });
@@ -224,7 +220,7 @@ export const loadViewerDataOnce = async ({
             db,
             'videoProgress',
             setVideoProgress,
-            query(collection(db, 'videoProgress'), where('studentId', '==', userId), limit(50)),
+            query(collection(db, 'videoProgress'), where('studentUid', '==', userId), limit(50)),
             isCancelled,
         );
         await fetchList(
@@ -233,7 +229,7 @@ export const loadViewerDataOnce = async ({
             setExternalSchedules,
             query(
                 collection(db, 'externalSchedules'),
-                where('studentId', '==', userId),
+                where('studentUid', '==', userId),
                 orderBy('date', 'desc'),
                 limit(30),
             ),
