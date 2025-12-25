@@ -3,8 +3,8 @@ import {
     collection,
     doc,
     getDoc,
+    getDocs,
     limit,
-    onSnapshot,
     orderBy,
     query,
     serverTimestamp,
@@ -25,6 +25,31 @@ export default function useNotifications(uid, maxItems = DEFAULT_LIMIT) {
     const [isLoading, setIsLoading] = useState(false);
     const [lastReadAt, setLastReadAt] = useState(null);
     const [isMetaLoading, setIsMetaLoading] = useState(false);
+
+    const fetchNotifications = async () => {
+        if (!db || !uid) {
+            setNotifications([]);
+            setIsLoading(false);
+            return;
+        }
+
+        setIsLoading(true);
+
+        try {
+            const notificationsQuery = query(
+                collection(db, 'notifications', uid, 'items'),
+                orderBy('createdAt', 'desc'),
+                limit(maxItems)
+            );
+
+            const snapshot = await getDocs(notificationsQuery);
+            setNotifications(snapshot.docs.map(mapNotification));
+        } catch (error) {
+            console.error('Failed to fetch notifications', error);
+        } finally {
+            setIsLoading(false);
+        }
+    };
 
     const metaRef = useMemo(() => {
         if (!uid || !db) {
@@ -68,29 +93,7 @@ export default function useNotifications(uid, maxItems = DEFAULT_LIMIT) {
     }, [metaRef]);
 
     useEffect(() => {
-        if (!uid || !db) {
-            setNotifications([]);
-            return undefined;
-        }
-
-        setIsLoading(true);
-
-        const itemsRef = collection(db, 'notifications', uid, 'items');
-        const notificationsQuery = query(
-            itemsRef,
-            orderBy('createdAt', 'desc'),
-            limit(maxItems)
-        );
-
-        const unsubscribe = onSnapshot(notificationsQuery, (snapshot) => {
-            setNotifications(snapshot.docs.map(mapNotification));
-            setIsLoading(false);
-        }, () => {
-            setNotifications([]);
-            setIsLoading(false);
-        });
-
-        return () => unsubscribe();
+        fetchNotifications();
     }, [uid, maxItems]);
 
     const hasUnread = useMemo(
@@ -130,8 +133,9 @@ export default function useNotifications(uid, maxItems = DEFAULT_LIMIT) {
         if (!metaRef) {
             return;
         }
-        await setDoc(metaRef, { lastReadAt: serverTimestamp(), unreadCount: 0 }, { merge: true });
+        await setDoc(metaRef, { lastReadAt: serverTimestamp() }, { merge: true });
         setLastReadAt(Timestamp.now());
+        await fetchNotifications();
     };
 
     return {
