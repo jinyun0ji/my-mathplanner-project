@@ -1,39 +1,30 @@
 // src/App.jsx
-import React, { useEffect, useState } from 'react';
+import React from 'react';
+import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import './output.css';
 
 import AuthGate from './app/AuthGate';
 import { AuthProvider } from './auth/useAuth';
+import SocialCallback from './pages/SocialCallback';
 import { UserProvider } from './auth/UserContext';
-import AdminRoute from './routes/AdminRoute';
-import StaffManagement from './pages/admin/StaffManagement';
 
 function AppRouter() {
-    const [pathname, setPathname] = useState(() => window.location.pathname);
-
-    useEffect(() => {
-        const handleLocationChange = () => setPathname(window.location.pathname);
-        window.addEventListener('popstate', handleLocationChange);
-        return () => window.removeEventListener('popstate', handleLocationChange);
-    }, []);
-
-    if (pathname === '/admin/staff') {
-        return (
-            <AdminRoute>
-                <StaffManagement />
-            </AdminRoute>
-        );
-    }
-
-    return <AuthGate />;
+    return (
+        <Routes>
+            <Route path="/auth/callback" element={<SocialCallback />} />
+            <Route path="/*" element={<AuthGate />} />
+        </Routes>
+    );
 }
 
 export default function App() {
     return (
-        <UserProvider>
-            <AuthProvider>
-                <AppRouter />
-            </AuthProvider>
-        </UserProvider>
+        <BrowserRouter>
+            <UserProvider>
+                <AuthProvider>
+                    <AppRouter />
+                </AuthProvider>
+            </UserProvider>
+        </BrowserRouter>
     );
 }

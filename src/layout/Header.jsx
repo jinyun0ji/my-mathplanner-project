@@ -20,6 +20,10 @@ export default function Header({ page }) {
             clinic: '클리닉 관리',
             communication: '내부 소통',
             payment: '교재 및 수납',
+            '/admin/staff': '직원 관리',
+            '/admin/notifications': '알림 로그',
+            '/admin/payments': '결제 관리',
+            '/admin/settings': '시스템 설정',
         };
         return titles[pageKey] || '페이지';
     };

@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { Navigate, Outlet, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
 
 import AppShell from './AppShell';
 import {
@@ -38,50 +39,89 @@ import { createLinkCode, createStaffUser } from '../admin/staffService';
 import { claimStudentLinkCode } from '../parent/linkCodeService';
 import { useParentContext } from '../parent';
 
-const PageContent = (props) => {
-    const { page, selectedStudentId } = props;
-    if (page === 'students' && selectedStudentId !== null) return <StudentDetail {...props} studentId={selectedStudentId} />;
-    switch (page) {
-        case 'home': return <Home onQuickAction={props.onQuickAction} onCreateStaffUser={props.onCreateStaffUser} onCreateLinkCode={props.onCreateLinkCode} userRole={props.userRole} />;
-        case 'lessons': return <LessonManagement {...props} />;
-        case 'attendance': return <AttendanceManagement {...props} />;
-        case 'students': return <StudentManagement {...props} />;
-        case 'grades': return <GradeManagement {...props} />;
-        case 'homework': return <HomeworkManagement {...props} />;
-        case 'clinic': return <ClinicManagement {...props} />;
-        case 'communication': return <InternalCommunication {...props} />;
-        case 'payment': return <PaymentManagement {...props} />;
-        case '/admin/staff':
-            return (
-                <AdminRoute>
-                    <StaffManagement />
-                </AdminRoute>
-            );
-        case '/admin/notifications':
-            return (
-                <AdminRoute>
-                    <AdminNotificationsPage />
-                </AdminRoute>
-            );
-        case '/admin/payments':
-            return (
-                <AdminRoute>
-                    <AdminPaymentsPage />
-                </AdminRoute>
-            );
-        case '/admin/settings':
-            return (
-                <AdminRoute>
-                    <AdminSettingsPage />
-                </AdminRoute>
-            );
-        default: return <Home />;
-    }
+const PAGE_ROUTES = {
+    home: '/home',
+    lessons: '/lessons',
+    students: '/students',
+    attendance: '/attendance',
+    grades: '/grades',
+    homework: '/homework',
+    clinic: '/clinic',
+    payment: '/payment',
+    communication: '/communication',
 };
 
+const ADMIN_ROUTES = new Set([
+    '/admin/staff',
+    '/admin/notifications',
+    '/admin/payments',
+    '/admin/settings',
+]);
+
+const getPageKeyFromPath = (pathname) => {
+    if (pathname.startsWith('/students/')) return 'students';
+    if (ADMIN_ROUTES.has(pathname)) return pathname;
+    const entry = Object.entries(PAGE_ROUTES).find(([, path]) => path === pathname);
+    if (entry) return entry[0];
+    return 'lessons';
+};
+
+const getPathForPage = (pageKey, studentId) => {
+    if (!pageKey) return PAGE_ROUTES.lessons;
+    if (pageKey.startsWith('/admin/')) return pageKey;
+    if (pageKey === 'students' && studentId) return `${PAGE_ROUTES.students}/${studentId}`;
+    return PAGE_ROUTES[pageKey] || PAGE_ROUTES.lessons;
+};
+
+const StudentDetailRoute = (props) => {
+    const { studentId } = useParams();
+    return <StudentDetail {...props} studentId={studentId} />;
+};
+
+const AppShellLayout = ({
+    page,
+    notifications,
+    students,
+    classes,
+    isSidebarOpen,
+    isMessengerOpen,
+    hasNewNotifications,
+    hasNewMessages,
+    isMobileMenuOpen,
+    setIsMobileMenuOpen,
+    setHasNewNotifications,
+    setHasNewMessages,
+    toggleSidebar,
+    toggleMessenger,
+    handlePageChange,
+    handleLogout,
+}) => (
+    <AppShell
+        page={page}
+        notifications={notifications}
+        students={students}
+        classes={classes}
+        isSidebarOpen={isSidebarOpen}
+        isMessengerOpen={isMessengerOpen}
+        hasNewNotifications={hasNewNotifications}
+        hasNewMessages={hasNewMessages}
+        isMobileMenuOpen={isMobileMenuOpen}
+        setIsMobileMenuOpen={setIsMobileMenuOpen}
+        setHasNewNotifications={setHasNewNotifications}
+        setHasNewMessages={setHasNewMessages}
+        toggleSidebar={toggleSidebar}
+        toggleMessenger={toggleMessenger}
+        handlePageChange={handlePageChange}
+        handleLogout={handleLogout}
+    >
+        <Outlet />
+    </AppShell>
+);
+
 export default function AppRoutes({ user, role, linkedStudentIds }) {
-  const [page, setPage] = useState('lessons');
-  const [selectedStudentId, setSelectedStudentId] = useState(null);
+  const navigate = useNavigate();
+  const location = useLocation();
+  const page = useMemo(() => getPageKeyFromPath(location.pathname), [location.pathname]);
   const [notifications, setNotifications] = useState([]);
   const [isGlobalDirty, setIsGlobalDirty] = useState(false);
   const [studentSearchTerm, setStudentSearchTerm] = useState('');
@@ -118,15 +158,6 @@ export default function AppRoutes({ user, role, linkedStudentIds }) {
       try { return JSON.parse(localStorage.getItem('videoBookmarks')) || {}; }
       catch (e) { return {}; }
   });
-
-  useEffect(() => {
-      if (!isAuthenticated) {
-          setSelectedStudentId(null);
-          return;
-      }
-      if (role === 'student') setSelectedStudentId(userId);
-      if (role === 'parent') setSelectedStudentId(parentStudentId);
-  }, [isAuthenticated, role, userId, parentStudentId]);
 
   useEffect(() => {
       if (isAuthenticated) processedAnnouncementIdsRef.current = new Set();
@@ -236,7 +267,7 @@ export default function AppRoutes({ user, role, linkedStudentIds }) {
           setStudentMessages((prev) => [...prev, ...newMessages]);
           setHasNewMessages(true);
       }
-  }, [announcements, role, userId]);
+  }, [announcements, role, userId, linkedStudentIds]);
 
   const logNotification = useCallback((type, message, details) => {
       setNotifications(prev => [{ id: Date.now(), type, message, details, timestamp: new Date().toLocaleTimeString('ko-KR') }, ...prev]);
@@ -322,9 +353,11 @@ export default function AppRoutes({ user, role, linkedStudentIds }) {
   const handlePageChange = (newPage, sId = null, reset = false) => {
     if (isGlobalDirty && !window.confirm('저장되지 않은 변경사항이 있습니다. 이동하시겠습니까?')) return false;
     if (reset) setStudentSearchTerm('');
-    setSelectedStudentId(sId);
-    setPage(newPage);
     setIsGlobalDirty(false);
+    const nextPath = getPathForPage(newPage, sId);
+    if (location.pathname !== nextPath) {
+        navigate(nextPath);
+    }
     return true;
   };
 
@@ -335,8 +368,8 @@ export default function AppRoutes({ user, role, linkedStudentIds }) {
 
   const handleLogout = async () => {
       await logout();
-      setSelectedStudentId(null);
       processedAnnouncementIdsRef.current = new Set();
+      navigate('/login', { replace: true });
   };
 
   const handleClaimLinkCode = async (code) => {
@@ -371,7 +404,7 @@ export default function AppRoutes({ user, role, linkedStudentIds }) {
     handleSaveTest, handleDeleteTest, handleUpdateGrade, handleSaveMemo,
     handleSaveAnnouncement, handleSaveWorkLog, handleDeleteWorkLog, handleSaveClinicLog, handleDeleteClinicLog,
     handleSavePayment,
-    calculateClassSessions, selectedStudentId, handlePageChange, logNotification, notifications,
+    calculateClassSessions, handlePageChange, logNotification, notifications,
     calculateGradeComparison, calculateHomeworkStats,
     setIsGlobalDirty, studentSearchTerm, setStudentSearchTerm, handleSendStudentNotification,
     externalSchedules, pendingQuickAction, clearPendingQuickAction: () => setPendingQuickAction(null), onQuickAction: handleQuickAction,
@@ -381,25 +414,74 @@ export default function AppRoutes({ user, role, linkedStudentIds }) {
   };
 
   return (
-    <AppShell
-      page={page}
-      notifications={notifications}
-      students={students}
-      classes={classes}
-      isSidebarOpen={isSidebarOpen}
-      isMessengerOpen={isMessengerOpen}
-      hasNewNotifications={hasNewNotifications}
-      hasNewMessages={hasNewMessages}
-      isMobileMenuOpen={isMobileMenuOpen}
-      setIsMobileMenuOpen={setIsMobileMenuOpen}
-      setHasNewNotifications={setHasNewNotifications}
-      setHasNewMessages={setHasNewMessages}
-      toggleSidebar={toggleSidebar}
-      toggleMessenger={toggleMessenger}
-      handlePageChange={handlePageChange}
-      handleLogout={handleLogout}
-    >
-      <PageContent page={page} {...managementProps} />
-    </AppShell>
+    <Routes>
+        <Route
+            element={(
+                <AppShellLayout
+                    page={page}
+                    notifications={notifications}
+                    students={students}
+                    classes={classes}
+                    isSidebarOpen={isSidebarOpen}
+                    isMessengerOpen={isMessengerOpen}
+                    hasNewNotifications={hasNewNotifications}
+                    hasNewMessages={hasNewMessages}
+                    isMobileMenuOpen={isMobileMenuOpen}
+                    setIsMobileMenuOpen={setIsMobileMenuOpen}
+                    setHasNewNotifications={setHasNewNotifications}
+                    setHasNewMessages={setHasNewMessages}
+                    toggleSidebar={toggleSidebar}
+                    toggleMessenger={toggleMessenger}
+                    handlePageChange={handlePageChange}
+                    handleLogout={handleLogout}
+                />
+            )}
+        >
+            <Route index element={<Navigate to={PAGE_ROUTES.lessons} replace />} />
+            <Route path="home" element={<Home onQuickAction={handleQuickAction} onCreateStaffUser={managementProps.onCreateStaffUser} onCreateLinkCode={managementProps.onCreateLinkCode} userRole={role} />} />
+            <Route path="lessons" element={<LessonManagement {...managementProps} />} />
+            <Route path="attendance" element={<AttendanceManagement {...managementProps} />} />
+            <Route path="students" element={<StudentManagement {...managementProps} />} />
+            <Route path="students/:studentId" element={<StudentDetailRoute {...managementProps} />} />
+            <Route path="grades" element={<GradeManagement {...managementProps} />} />
+            <Route path="homework" element={<HomeworkManagement {...managementProps} />} />
+            <Route path="clinic" element={<ClinicManagement {...managementProps} />} />
+            <Route path="communication" element={<InternalCommunication {...managementProps} />} />
+            <Route path="payment" element={<PaymentManagement {...managementProps} />} />
+            <Route
+                path="admin/staff"
+                element={(
+                    <AdminRoute>
+                        <StaffManagement />
+                    </AdminRoute>
+                )}
+            />
+            <Route
+                path="admin/notifications"
+                element={(
+                    <AdminRoute>
+                        <AdminNotificationsPage />
+                    </AdminRoute>
+                )}
+            />
+            <Route
+                path="admin/payments"
+                element={(
+                    <AdminRoute>
+                        <AdminPaymentsPage />
+                    </AdminRoute>
+                )}
+            />
+            <Route
+                path="admin/settings"
+                element={(
+                    <AdminRoute>
+                        <AdminSettingsPage />
+                    </AdminRoute>
+                )}
+            />
+            <Route path="*" element={<Navigate to={PAGE_ROUTES.lessons} replace />} />
+        </Route>
+    </Routes>
   );
 }

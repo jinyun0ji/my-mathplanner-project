@@ -65,6 +65,7 @@ export default function Sidebar({ page, setPage, onLogout, isOpen, onClose }) {
                         const isActive = page === item.key;
                         return (
                             <button
+                                type="button"
                                 key={item.key}
                                 onClick={() => setPage(item.key, null, true)}
                                 className={`flex items-center w-full px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 group ${
@@ -85,6 +86,7 @@ export default function Sidebar({ page, setPage, onLogout, isOpen, onClose }) {
                                 const isActive = page === item.key;
                                 return (
                                     <button
+                                        type="button"
                                         key={item.key}
                                         onClick={() => setPage(item.key, null, true)}
                                         className={`flex items-center w-full px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 group ${

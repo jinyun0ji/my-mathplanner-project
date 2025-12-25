@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { signInWithCustomToken } from 'firebase/auth';
 import { auth } from '../firebase/client';
 import { clearStoredState, getStoredState } from '../auth/socialRedirect';
@@ -10,8 +11,10 @@ const getFunctionsBaseUrl = () => process.env.REACT_APP_FUNCTIONS_BASE_URL || ''
 const SocialCallback = () => {
     const [status, setStatus] = useState('pending');
     const [error, setError] = useState('');
+    const navigate = useNavigate();
+    const location = useLocation();
 
-    const searchParams = useMemo(() => new URLSearchParams(window.location.search), []);
+    const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
     const provider = searchParams.get('provider');
     const code = searchParams.get('code');
     const state = searchParams.get('state');
@@ -61,7 +64,7 @@ const SocialCallback = () => {
 
                 await signInWithCustomToken(auth, token);
                 clearStoredState(provider);
-                window.location.replace('/');
+                navigate('/lessons', { replace: true });
             } catch (err) {
                 console.error(err);
                 setError(err.message || '로그인 처리 중 오류가 발생했습니다.');
@@ -70,7 +73,7 @@ const SocialCallback = () => {
         };
 
         run();
-    }, [code, provider, state]);
+    }, [code, navigate, provider, state]);
 
     const renderBody = () => {
         if (status === 'pending') {
@@ -89,7 +92,7 @@ const SocialCallback = () => {
                 <button
                     type="button"
                     className="px-4 py-2 rounded-lg bg-indigo-600 text-white font-semibold"
-                    onClick={() => window.location.replace('/')}
+                    onClick={() => navigate('/login', { replace: true })}
                 >
                     돌아가기
                 </button>

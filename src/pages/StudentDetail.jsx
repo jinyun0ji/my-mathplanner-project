@@ -6,15 +6,20 @@ export default function StudentDetail({
     studentId, students, classes, studentMemos, grades, tests, homeworkAssignments, homeworkResults, handlePageChange,
     handleSaveMemo, calculateGradeComparison, calculateHomeworkStats
 }) {
-    const student = useMemo(() => students.find(s => s.id === studentId), [students, studentId]);
+    const normalizedStudentId = useMemo(() => {
+        if (studentId === null || studentId === undefined) return studentId;
+        const asNumber = Number(studentId);
+        return Number.isNaN(asNumber) ? studentId : asNumber;
+    }, [studentId]);
+    const student = useMemo(() => students.find(s => s.id === normalizedStudentId), [students, normalizedStudentId]);
 
     const [memoDraft, setMemoDraft] = useState('');
 
-    const latestMemo = studentMemos[studentId];
+    const latestMemo = studentMemos[normalizedStudentId];
 
     useEffect(() => {
         setMemoDraft(latestMemo || '');
-    }, [latestMemo, studentId]);
+    }, [latestMemo, normalizedStudentId]);
     
     if (!student) {
         return (
@@ -33,8 +38,8 @@ export default function StudentDetail({
     const studentClasses = student?.classes.map(id => classes.find(c => c.id === id)).filter(c => c) || [];
     
     // 유틸리티 함수를 이용한 데이터 계산 (App.jsx에서 props로 전달)
-    const gradeComparison = calculateGradeComparison(studentId, classes, tests, grades);
-    const homeworkStats = calculateHomeworkStats(studentId, homeworkAssignments, homeworkResults);
+    const gradeComparison = calculateGradeComparison(normalizedStudentId, classes, tests, grades);
+    const homeworkStats = calculateHomeworkStats(normalizedStudentId, homeworkAssignments, homeworkResults);
     
     // 최근 성적 4개만 표시
     const recentGrades = gradeComparison.slice(-4).reverse();
@@ -48,7 +53,7 @@ export default function StudentDetail({
 
     const saveMemo = () => {
         if (!handleSaveMemo) return;
-        handleSaveMemo(studentId, memoDraft.trim());
+        handleSaveMemo(normalizedStudentId, memoDraft.trim());
     };
 
     return (

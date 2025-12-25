@@ -1,8 +1,21 @@
-import React from 'react';
+import React, { useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import useAuth from '../auth/useAuth';
 
 export default function AdminRoute({ children }) {
     const { user, role, loading } = useAuth();
+    const navigate = useNavigate();
+
+    useEffect(() => {
+        if (loading) return;
+        if (!user) {
+            navigate('/login', { replace: true });
+            return;
+        }
+        if (role !== 'admin') {
+            navigate('/home', { replace: true });
+        }
+    }, [loading, navigate, role, user]);
 
     if (loading) {
         return (
@@ -12,20 +25,8 @@ export default function AdminRoute({ children }) {
         );
     }
 
-    if (!user) {
-        return (
-            <div className="min-h-screen flex items-center justify-center text-gray-600">
-                로그인 후 이용해주세요.
-            </div>
-        );
-    }
-
-    if (role !== 'admin') {
-        return (
-            <div className="min-h-screen flex items-center justify-center text-gray-600">
-                관리자 전용 페이지입니다.
-            </div>
-        );
+    if (!user || role !== 'admin') {
+        return null;
     }
 
     return <>{children}</>;

@@ -253,10 +253,16 @@ export default function LessonManagement({
             )}
 
                 {log.materialUrl && (
-                    <p className="text-sm font-medium text-indigo-600 flex items-center border-t pt-4">
+                    <div className="text-sm font-medium text-indigo-600 flex items-center border-t pt-4">
                         <Icon name="fileText" className="w-4 h-4 mr-2" />
-                        첨부 자료: <a href={log.materialUrl} target="_blank" rel="noopener noreferrer" className="ml-1 hover:underline">{log.materialUrl}</a>
-                    </p>
+                        <button
+                            type="button"
+                            onClick={() => window.open(log.materialUrl, '_blank', 'noopener,noreferrer')}
+                            className="ml-1 hover:underline"
+                        >
+                            첨부 자료: {log.materialUrl}
+                        </button>
+                    </div>
                 )}
 
                 {log.iframeCode && (

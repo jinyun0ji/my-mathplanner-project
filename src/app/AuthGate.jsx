@@ -1,9 +1,9 @@
 import React, { useEffect } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 import AppRoutes from './AppRoutes';
 import OnboardingPage from '../pages/OnboardingPage';
 import LoginPage from '../pages/LoginPage';
-import SocialCallback from '../pages/SocialCallback';
 import useAuth from '../auth/useAuth';
 import { claimStudentLinkCode } from '../parent/linkCodeService';
 import { ParentProvider } from '../parent';
@@ -12,8 +12,10 @@ import { signInWithGoogle } from '../auth/authService';
 import { initForegroundMessageListener } from '../firebase/messaging';
 
 export default function AuthGate() {
-  const isSocialCallbackPage = typeof window !== 'undefined' && window.location.pathname === '/auth/callback';
-  const isOnboardingPage = typeof window !== 'undefined' && window.location.pathname === '/onboarding';
+  const navigate = useNavigate();
+  const location = useLocation();
+  const pathname = location.pathname;
+  const isOnboardingPage = pathname === '/onboarding';
   const { user, role, linkedStudentIds, activeStudentId, loading } = useAuth();
 
   useEffect(() => {
@@ -37,18 +39,24 @@ export default function AuthGate() {
   }, [user]);
 
   useEffect(() => {
-      if (typeof window === 'undefined') {
+      if (loading) return;
+
+      if (!user) {
+          if (pathname !== '/login' && pathname !== '/auth/callback') {
+              navigate('/login', { replace: true });
+          }
           return;
       }
 
-      if (user && role === 'pending' && window.location.pathname !== '/onboarding') {
-          window.history.replaceState(null, '', '/onboarding');
+      if (role === 'pending' && pathname !== '/onboarding') {
+          navigate('/onboarding', { replace: true });
+          return;
       }
 
-      if (user && role && role !== 'pending' && window.location.pathname === '/onboarding') {
-          window.history.replaceState(null, '', '/');
+      if (role && role !== 'pending' && (pathname === '/onboarding' || pathname === '/login')) {
+          navigate('/lessons', { replace: true });
       }
-  }, [user, role]);
+  }, [loading, navigate, pathname, role, user]);
 
   const handleSocialLogin = async (providerName) => {
       if (providerName === 'google') return signInWithGoogle();
@@ -61,7 +69,6 @@ export default function AuthGate() {
       await claimStudentLinkCode(code);
   };
 
-  if (isSocialCallbackPage) return <SocialCallback />;
   if (loading) return <div className="min-h-screen flex items-center justify-center">로딩 중...</div>;
   if (!user) return <LoginPage onSocialLogin={handleSocialLogin} />;
   if (role === 'pending' || isOnboardingPage) return <OnboardingPage onSubmitLinkCode={handleClaimLinkCode} />;
