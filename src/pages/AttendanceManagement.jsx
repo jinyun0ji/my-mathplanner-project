@@ -1,12 +1,14 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { collection, doc, getDoc, getDocs, query, where } from 'firebase/firestore';
 import { Icon, formatGradeLabel } from '../utils/helpers';
 import ClassSelectionPanel from '../components/Shared/ClassSelectionPanel'; 
 import { AttendanceModal } from '../components/common/AttendanceModal'; 
 import { MemoModal } from '../utils/modals/MemoModal'; 
 import { getDefaultClassId } from '../utils/classStatus';
+import { db } from '../firebase/client';
 
 export default function AttendanceManagement({ 
-    students, classes, attendanceLogs, handleSaveAttendance, 
+    classes, attendanceLogs, handleSaveAttendance,
     studentMemos, handleSaveMemo, handleSaveClass, calculateClassSessions 
 }) {
     const [selectedClassId, setSelectedClassId] = useState(() => getDefaultClassId(classes));
@@ -14,6 +16,8 @@ export default function AttendanceManagement({
     const [isAttendanceModalOpen, setIsAttendanceModalOpen] = useState(false);
     const [memoModalState, setMemoModalState] = useState({ isOpen: false, studentId: null, content: '', studentName: '' });
     const [mobileView, setMobileView] = useState('attendance');
+    const [classStudents, setClassStudents] = useState([]);
+    const [isLoadingStudents, setIsLoadingStudents] = useState(false);
 
     const selectedClass = classes.find(c => String(c.id) === String(selectedClassId));
 
@@ -28,10 +32,65 @@ export default function AttendanceManagement({
         return attendanceLogs.filter(log => log.classId === selectedClassId && log.date === selectedDate);
     }, [attendanceLogs, selectedClassId, selectedDate]);
 
-    const classStudents = useMemo(() => {
-        if (!selectedClass) return [];
-        return students.filter(s => selectedClass.students.includes(s.id) && s.status === '재원생').sort((a, b) => a.name.localeCompare(b.name));
-    }, [students, selectedClass]);
+    useEffect(() => {
+        let isActive = true;
+
+        const loadClassStudents = async () => {
+            if (!selectedClassId) {
+                if (isActive) setClassStudents([]);
+                return;
+            }
+
+            setIsLoadingStudents(true);
+
+            try {
+                const classRef = doc(db, 'classes', String(selectedClassId));
+                const classSnap = await getDoc(classRef);
+
+                if (!classSnap.exists()) {
+                    if (isActive) setClassStudents([]);
+                    return;
+                }
+
+                const { studentIds = [] } = classSnap.data() || {};
+                if (!Array.isArray(studentIds) || studentIds.length === 0) {
+                    if (isActive) setClassStudents([]);
+                    return;
+                }
+
+                const chunks = [];
+                for (let i = 0; i < studentIds.length; i += 10) {
+                    chunks.push(studentIds.slice(i, i + 10));
+                }
+
+                const fetchedStudents = [];
+                for (const chunk of chunks) {
+                    const usersQuery = query(collection(db, 'users'), where('uid', 'in', chunk));
+                    const usersSnap = await getDocs(usersQuery);
+                    usersSnap.docs.forEach((docSnap) => {
+                        fetchedStudents.push({ id: docSnap.id, ...docSnap.data() });
+                    });
+                }
+
+                const filteredStudents = fetchedStudents
+                    .filter((student) => student.role === 'student')
+                    .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko'));
+
+                if (isActive) setClassStudents(filteredStudents);
+            } catch (error) {
+                console.error('[AttendanceManagement] 학생 목록 로드 실패:', error);
+                if (isActive) setClassStudents([]);
+            } finally {
+                if (isActive) setIsLoadingStudents(false);
+            }
+        };
+
+        loadClassStudents();
+
+        return () => {
+            isActive = false;
+        };
+    }, [selectedClassId]);
 
     const attendanceSummary = useMemo(() => {
         const summary = { total: classStudents.length, 출석: 0, 지각: 0, 결석: 0, 동영상보강: 0, 미기록: 0 };
@@ -102,7 +161,7 @@ export default function AttendanceManagement({
         setMemoModalState({
             isOpen: true,
             studentId: student.id,
-            content: studentMemos[student.id] || '',
+            content: studentMemos[student.id] ?? student.memo ?? '',
             studentName: student.name,
         });
     };
@@ -121,6 +180,7 @@ export default function AttendanceManagement({
 
     const selectedStudent = memoModalState.studentId ? classStudents.find(s => s.id === memoModalState.studentId) : null;
     const selectedStudentStatus = selectedStudent ? classAttendance.find(log => log.studentId === selectedStudent.id)?.status || '미기록' : null;
+    const getMemoContent = (student) => studentMemos[student.id] ?? student.memo ?? '';
 
     return (
         <div className="space-y-4">
@@ -186,6 +246,8 @@ export default function AttendanceManagement({
 
                         {selectedClassId === null ? (
                             <p className="text-gray-500">클래스를 선택하고 날짜를 지정하여 출결을 관리하세요.</p>
+                        ) : isLoadingStudents ? (
+                            <p className="text-gray-500">학생 정보를 불러오는 중입니다.</p>
                         ) : (
                             <>
                                 <div className="overflow-x-auto rounded-lg border border-gray-200 hidden md:block">
@@ -203,7 +265,7 @@ export default function AttendanceManagement({
                                             {classStudents.map(student => {
                                                 const attendance = classAttendance.find(log => log.studentId === student.id);
                                                 const status = attendance?.status || '미기록';
-                                                const memoContent = studentMemos[student.id];
+                                                const memoContent = getMemoContent(student);
                                                 const badgeStyle = statusBadgeStyles[status] || statusBadgeStyles['미기록'];
 
                                                 return (
@@ -239,7 +301,7 @@ export default function AttendanceManagement({
                                     {classStudents.map(student => {
                                         const attendance = classAttendance.find(log => log.studentId === student.id);
                                         const status = attendance?.status || '미기록';
-                                        const memoContent = studentMemos[student.id];
+                                        const memoContent = getMemoContent(student);
                                         const phoneSuffix = student.phone ? student.phone.slice(-4) : '';
 
                                         const badgeStyle = statusBadgeStyles[status] || statusBadgeStyles['미기록'];

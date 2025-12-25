@@ -179,7 +179,7 @@ export default function AppRoutes({ user, role, studentIds }) {
           isLoggedIn: isAuthenticated,
           userRole: role,
           pageKey: page,
-          setStudents,
+          setStudents: page === 'attendance' ? null : setStudents,
           setClasses,
           setTests,
           setLessonLogs,
