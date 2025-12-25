@@ -7,6 +7,78 @@ import { Modal } from '../../components/common/Modal';
 import { Icon, calculateClassSessions } from '../../utils/helpers';
 import StaffNotificationFields from '../../components/Shared/StaffNotificationFields';
 
+const SortableVideoItem = React.memo(({ video, index, onRemove, onChange }) => {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    setActivatorNodeRef,
+    transform,
+    transition,
+  } = useSortable({ id: video.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className="rounded-lg border border-gray-200 bg-gray-50 p-4 space-y-3"
+    >
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+          <button
+            type="button"
+            className="cursor-grab text-gray-500 hover:text-gray-700"
+            ref={setActivatorNodeRef}
+            {...attributes}
+            {...listeners}
+          >
+            <Icon name="menu" className="w-4 h-4" />
+          </button>
+          <span>영상 {index + 1}</span>
+        </div>
+        <button
+          type="button"
+          onClick={() => onRemove(video.id)}
+          className="text-red-500 hover:text-red-700 text-sm inline-flex items-center"
+        >
+          <Icon name="trash" className="w-4 h-4 mr-1" /> 삭제
+        </button>
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-600">영상 제목</label>
+        <input
+          type="text"
+          value={video.title ?? ''}
+          onChange={e => onChange(video.id, 'title', e.target.value)}
+          onPointerDown={e => e.stopPropagation()}
+          onPointerDownCapture={e => e.stopPropagation()}
+          onMouseDown={e => e.stopPropagation()}
+          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border"
+          placeholder="예: 3강 - 다항식 연산"
+        />
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-600">iframe 코드 또는 URL</label>
+        <textarea
+          value={video.url}
+          onChange={e => onChange(video.id, 'url', e.target.value)}
+          onPointerDown={e => e.stopPropagation()}
+          onPointerDownCapture={e => e.stopPropagation()}
+          onMouseDown={e => e.stopPropagation()}
+          rows="2"
+          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border"
+          placeholder="유튜브 임베드 코드 또는 공유 링크를 입력하세요."
+        />
+      </div>
+    </div>
+  );
+});
+
 export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = null, classes, defaultDate = null, students, logNotification, onDirtyChange = () => {} }) => {
   const selectedClass = classes.find(c => String(c.id) === String(classId));
   
@@ -56,78 +128,6 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
       },
     })
   );
-
-  const SortableVideoItem = ({ video, index, onRemove, onChange }) => {
-    const {
-      attributes,
-      listeners,
-      setNodeRef,
-      setActivatorNodeRef,
-      transform,
-      transition,
-    } = useSortable({ id: video.id });
-
-    const style = {
-      transform: CSS.Transform.toString(transform),
-      transition,
-    };
-
-    return (
-      <div
-        ref={setNodeRef}
-        style={style}
-        className="rounded-lg border border-gray-200 bg-gray-50 p-4 space-y-3"
-      >
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 text-sm font-semibold text-gray-700">
-            <button
-              type="button"
-              className="cursor-grab text-gray-500 hover:text-gray-700"
-              ref={setActivatorNodeRef}
-              {...attributes}
-              {...listeners}
-            >
-              <Icon name="menu" className="w-4 h-4" />
-            </button>
-            <span>영상 {index + 1}</span>
-          </div>
-          <button
-            type="button"
-            onClick={() => onRemove(video.id)}
-            className="text-red-500 hover:text-red-700 text-sm inline-flex items-center"
-          >
-            <Icon name="trash" className="w-4 h-4 mr-1" /> 삭제
-          </button>
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-gray-600">영상 제목</label>
-          <input
-            type="text"
-            value={video.title ?? ''}
-            onChange={e => onChange(video.id, 'title', e.target.value)}
-            onPointerDown={e => e.stopPropagation()}
-            onPointerDownCapture={e => e.stopPropagation()}
-            onMouseDown={e => e.stopPropagation()}
-            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border"
-            placeholder="예: 3강 - 다항식 연산"
-          />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-gray-600">iframe 코드 또는 URL</label>
-          <textarea
-            value={video.url}
-            onChange={e => onChange(video.id, 'url', e.target.value)}
-            onPointerDown={e => e.stopPropagation()}
-            onPointerDownCapture={e => e.stopPropagation()}
-            onMouseDown={e => e.stopPropagation()}
-            rows="2"
-            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border"
-            placeholder="유튜브 임베드 코드 또는 공유 링크를 입력하세요."
-          />
-        </div>
-      </div>
-    );
-  };
 
   const toDatetimeLocal = (value) => {
     if (!value) return '';
