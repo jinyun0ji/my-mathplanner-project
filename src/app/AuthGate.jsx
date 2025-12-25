@@ -16,6 +16,9 @@ export default function AuthGate() {
   const location = useLocation();
   const pathname = location.pathname;
   const isOnboardingPage = pathname === '/onboarding';
+  const isLoginPage = pathname === '/login';
+  const isAuthCallbackPage = pathname === '/auth/callback';
+  const isStudentDetailPage = pathname.startsWith('/students/');
   const { user, role, linkedStudentIds, activeStudentId, loading } = useAuth();
 
   useEffect(() => {
@@ -42,7 +45,7 @@ export default function AuthGate() {
       if (loading) return;
 
       if (!user) {
-          if (pathname !== '/login' && pathname !== '/auth/callback') {
+          if (!isLoginPage && !isAuthCallbackPage) {
               navigate('/login', { replace: true });
           }
           return;
@@ -53,10 +56,10 @@ export default function AuthGate() {
           return;
       }
 
-      if (role && role !== 'pending' && (pathname === '/onboarding' || pathname === '/login')) {
+      if (role && role !== 'pending' && !isStudentDetailPage && (isOnboardingPage || isLoginPage)) {
           navigate('/lessons', { replace: true });
       }
-  }, [loading, navigate, pathname, role, user]);
+  }, [isAuthCallbackPage, isLoginPage, isOnboardingPage, isStudentDetailPage, loading, navigate, role, user]);
 
   const handleSocialLogin = async (providerName) => {
       if (providerName === 'google') return signInWithGoogle();
@@ -73,28 +76,25 @@ export default function AuthGate() {
   if (!user) return <LoginPage onSocialLogin={handleSocialLogin} />;
   if (role === 'pending' || isOnboardingPage) return <OnboardingPage onSubmitLinkCode={handleClaimLinkCode} />;
 
-  if (role === 'parent') {
-      return (
-          <ParentProvider
-              userId={user?.uid || null}
+  const appRoutesElement = role === 'parent' ? (
+      <ParentProvider
+          userId={user?.uid || null}
+          role={role}
+          linkedStudentIds={linkedStudentIds}
+          firestoreActiveStudentId={activeStudentId}
+      >
+          <AppRoutes
+              user={user}
               role={role}
               linkedStudentIds={linkedStudentIds}
-              firestoreActiveStudentId={activeStudentId}
-          >
-              <AppRoutes
-                  user={user}
-                  role={role}
-                  linkedStudentIds={linkedStudentIds}
               />
-          </ParentProvider>
-      );
-  }
-
-  return (
+      </ParentProvider>
+  ) : (
       <AppRoutes
           user={user}
-
           role={role}
         />
   );
+
+  return appRoutesElement;
 }

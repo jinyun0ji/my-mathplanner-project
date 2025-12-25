@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { Navigate, Outlet, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
+import { Navigate, Outlet, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 
 import AppShell from './AppShell';
 import {
@@ -71,11 +71,6 @@ const getPathForPage = (pageKey, studentId) => {
     if (pageKey.startsWith('/admin/')) return pageKey;
     if (pageKey === 'students' && studentId) return `${PAGE_ROUTES.students}/${studentId}`;
     return PAGE_ROUTES[pageKey] || PAGE_ROUTES.lessons;
-};
-
-const StudentDetailRoute = (props) => {
-    const { studentId } = useParams();
-    return <StudentDetail {...props} studentId={studentId} />;
 };
 
 const AppShellLayout = ({
@@ -456,7 +451,7 @@ export default function AppRoutes({ user, role, linkedStudentIds }) {
             <Route path="lessons" element={<LessonManagement {...managementProps} />} />
             <Route path="attendance" element={<AttendanceManagement {...managementProps} />} />
             <Route path="students" element={<StudentManagement {...managementProps} />} />
-            <Route path="students/:studentId" element={<StudentDetailRoute {...managementProps} />} />
+            <Route path="students/:studentId" element={<StudentDetail />} />
             <Route path="grades" element={<GradeManagement {...managementProps} />} />
             <Route path="homework" element={<HomeworkManagement {...managementProps} />} />
             <Route path="clinic" element={<ClinicManagement {...managementProps} />} />
