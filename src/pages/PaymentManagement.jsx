@@ -5,9 +5,10 @@ import { PaymentNotificationModal } from '../utils/modals/PaymentNotificationMod
 import { initialClasses, initialStudents } from '../api/initialData';
 import { addDoc, collection, getDocs, query, serverTimestamp, where } from 'firebase/firestore';
 import { db } from '../firebase/client';
+import { isStaffOrTeachingRole } from '../constants/roles';
 
 // ✅ [수정] props에 paymentLogs, handleSavePayment 추가
-export default function PaymentManagement({ students, classes, paymentLogs, handleSavePayment, logNotification }) {
+export default function PaymentManagement({ students, classes, paymentLogs, handleSavePayment, logNotification, userRole, userId }) {
 
     // --- 1. 초기 데이터 및 상태 ---
     const initialPaymentLogs = [
@@ -28,7 +29,7 @@ export default function PaymentManagement({ students, classes, paymentLogs, hand
     const [notificationTargets, setNotificationTargets] = useState([]); // 알림 보낼 대상 목록
 
     // 폼 상태
-    const [newBook, setNewBook] = useState({ name: '', price: 0, stock: 0, type: '진도교재', classId: '' });
+    const [newBook, setNewBook] = useState({ name: '', price: 0, stock: 0, type: '진도교재' });
     const [paymentForm, setPaymentForm] = useState({
         studentId: '',
         bookId: '',
@@ -66,14 +67,6 @@ export default function PaymentManagement({ students, classes, paymentLogs, hand
         setSelectedClassForSetting(prev => prev || String(effectiveClasses[0].id));
     }, [effectiveClasses]);
 
-    useEffect(() => {
-        if (!effectiveClasses || effectiveClasses.length === 0) return;
-        setNewBook(prev => ({
-            ...prev,
-            classId: prev.classId || String(effectiveClasses[0].id),
-        }));
-    }, [effectiveClasses]);
-
     // const handlePayment = async () => {
     // const response = await PortOne.requestPayment({
     //     storeId: "store-본인상점ID",
@@ -97,12 +90,17 @@ export default function PaymentManagement({ students, classes, paymentLogs, hand
 
 
     // --- 2. 로직 및 헬퍼 함수 ---
+    const canReadMaterials = Boolean(userId) && isStaffOrTeachingRole(userRole);
+
     const fetchMaterialsByClass = useCallback(async (classId) => {
+        if (!canReadMaterials) {
+            return [];
+        }
         if (!classId) return [];
         try {
             const materialsQuery = query(
                 collection(db, 'materials'),
-                where('classId', '==', String(classId)),
+                where('classId', 'in', [String(classId), 'shared']),
             );
             const snapshot = await getDocs(materialsQuery);
             const materials = snapshot.docs.map((docSnap) => ({
@@ -121,20 +119,20 @@ export default function PaymentManagement({ students, classes, paymentLogs, hand
             setMaterialsByClass(prev => ({ ...prev, [String(classId)]: [] }));
             return [];
         }
-    }, [logNotification]);
+    }, [canReadMaterials, logNotification]);
 
     useEffect(() => {
-        if (!viewClassId) return;
+        if (!viewClassId || !canReadMaterials) return;
         fetchMaterialsByClass(viewClassId);
-    }, [viewClassId, fetchMaterialsByClass]);
+    }, [viewClassId, fetchMaterialsByClass, canReadMaterials]);
 
     useEffect(() => {
-        if (!selectedClassForSetting) return;
+        if (!selectedClassForSetting || !canReadMaterials) return;
         fetchMaterialsByClass(selectedClassForSetting);
-    }, [selectedClassForSetting, fetchMaterialsByClass]);
+    }, [selectedClassForSetting, fetchMaterialsByClass, canReadMaterials]);
 
     useEffect(() => {
-        if (!paymentForm.studentId) return;
+        if (!paymentForm.studentId || !canReadMaterials) return;
         const student = effectiveStudents.find(s => s.id === paymentForm.studentId);
         if (!student) return;
         const classIds = student.classes || student.classIds || [];
@@ -143,7 +141,7 @@ export default function PaymentManagement({ students, classes, paymentLogs, hand
                 fetchMaterialsByClass(classId);
             }
         });
-    }, [paymentForm.studentId, effectiveStudents, materialsByClass, fetchMaterialsByClass]);
+    }, [paymentForm.studentId, effectiveStudents, materialsByClass, fetchMaterialsByClass, canReadMaterials]);
 
     const classMaterials = useMemo(
         () => materialsByClass[String(viewClassId)] || [],
@@ -243,14 +241,14 @@ export default function PaymentManagement({ students, classes, paymentLogs, hand
     // [핸들러] 교재 등록
     const handleAddBook = async (e) => {
         e.preventDefault();
-        if (!newBook.classId) {
-            alert('클래스를 선택해주세요.');
+        if (!canReadMaterials) {
+            alert('교재 조회 권한이 없습니다.');
             return;
         }
         if (newBook.name && Number.isFinite(newBook.price) && newBook.price >= 0) {
             try {
                 await addDoc(collection(db, 'materials'), {
-                    classId: String(newBook.classId),
+                    classId: 'shared',
                     name: newBook.name,
                     price: newBook.price,
                     stock: newBook.stock,
@@ -258,8 +256,8 @@ export default function PaymentManagement({ students, classes, paymentLogs, hand
                     createdAt: serverTimestamp(),
                     updatedAt: serverTimestamp(),
                 });
-                await fetchMaterialsByClass(newBook.classId);
-                setNewBook({ name: '', price: 0, stock: 0, type: '진도교재', classId: newBook.classId });
+                await fetchMaterialsByClass(viewClassId);
+                setNewBook({ name: '', price: 0, stock: 0, type: '진도교재' });
                 setIsBookModalOpen(false);
                 if (logNotification) logNotification('success', '교재 등록 완료', `${newBook.name}이 등록되었습니다.`);
             } catch (error) {
@@ -781,19 +779,6 @@ export default function PaymentManagement({ students, classes, paymentLogs, hand
             {/* 1. 교재 등록 모달 */}
             <Modal isOpen={isBookModalOpen} onClose={() => setIsBookModalOpen(false)} title="새 교재 등록">
                 <form onSubmit={handleAddBook} className="space-y-4">
-                    <div>
-                        <label className="block text-sm font-bold text-gray-700 mb-1">클래스 선택*</label>
-                        <select
-                            value={newBook.classId}
-                            onChange={e => setNewBook({ ...newBook, classId: e.target.value })}
-                            required
-                            className="w-full rounded-lg border-gray-300 border p-2.5"
-                        >
-                            {effectiveClasses && effectiveClasses.map(c => (
-                                <option key={c.id} value={c.id}>{c.name}</option>
-                            ))}
-                        </select>
-                    </div>
                     <div>
                         <label className="block text-sm font-bold text-gray-700 mb-1">교재명</label>
                         <input 

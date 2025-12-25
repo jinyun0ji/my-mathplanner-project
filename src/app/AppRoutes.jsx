@@ -868,6 +868,7 @@ export default function AppRoutes({ user, role, studentIds }) {
     onCreateStaffUser: isAdminRole(role) ? handleCreateStaffUser : null,
     onCreateLinkCode: isStaffRole(role) ? handleCreateLinkCode : null,
     userRole: role,
+    userId,
   };
 
   return (
