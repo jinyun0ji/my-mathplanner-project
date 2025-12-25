@@ -2,11 +2,12 @@ import React, { useEffect, useState } from 'react';
 import { Icon } from '../../utils/helpers';
 import { createStaffUser, deactivateStaff, getStaffList, updateStaffRole } from '../../admin/staffService';
 import useAuth from '../../auth/useAuth';
+import { ROLE } from '../../constants/roles';
 
 export default function StaffManagement() {
     const { user } = useAuth();
     const [staffEmail, setStaffEmail] = useState('');
-    const [staffRole, setStaffRole] = useState('staff');
+    const [staffRole, setStaffRole] = useState(ROLE.STAFF);
     const [staffStatus, setStaffStatus] = useState('');
     const [staffSubmitting, setStaffSubmitting] = useState(false);
     const [staffList, setStaffList] = useState([]);
@@ -46,7 +47,7 @@ export default function StaffManagement() {
                 : '임시 비밀번호는 계정 재설정으로 안내해주세요.';
             setStaffStatus(`계정을 생성했습니다. ${tempPasswordMessage}`);
             setStaffEmail('');
-            setStaffRole('staff');
+            setStaffRole(ROLE.STAFF);
             await loadStaffList();
         } catch (error) {
             setStaffStatus(error?.message || '직원 생성 중 오류가 발생했습니다.');
@@ -146,8 +147,8 @@ export default function StaffManagement() {
                             onChange={(event) => setStaffRole(event.target.value)}
                             className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                         >
-                            <option value="staff">직원</option>
-                            <option value="admin">관리자</option>
+                            <option value={ROLE.STAFF}>직원</option>
+                            <option value={ROLE.ADMIN}>관리자</option>
                         </select>
                     </label>
                     <button
@@ -213,7 +214,7 @@ export default function StaffManagement() {
                                             <td className="px-4 py-3 text-sm text-gray-600">{staff.email || '이메일 없음'}</td>
                                             <td className="px-4 py-3 text-center">
                                                 <select
-                                                    value={staff.role || 'staff'}
+                                                    value={staff.role || ROLE.STAFF}
                                                     onChange={(event) => {
                                                         const nextRole = event.target.value;
                                                         setStaffList((prev) => prev.map((item) => (
@@ -224,8 +225,8 @@ export default function StaffManagement() {
                                                     disabled={isSelf || isUpdating}
                                                     className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-100 disabled:text-gray-400"
                                                 >
-                                                    <option value="admin">관리자</option>
-                                                    <option value="staff">직원</option>
+                                                    <option value={ROLE.ADMIN}>관리자</option>
+                                                    <option value={ROLE.STAFF}>직원</option>
                                                 </select>
                                             </td>
                                             <td className="px-4 py-3 text-center">

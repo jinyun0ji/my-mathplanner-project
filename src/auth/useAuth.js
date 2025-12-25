@@ -11,6 +11,7 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../firebase/client';
 import { signOutUser } from './authService';
+import { ROLE } from '../constants/roles';
 
 const AuthContext = createContext(null);
 
@@ -120,7 +121,7 @@ export function AuthProvider({ children }) {
                 };
                 setUserProfile(profile);
                 setRole(profile.role);
-                if (profile.role === 'parent') {
+                if (profile.role === ROLE.PARENT) {
                     setStudentIds(normalizeStudentIds(data));
                     setActiveStudentId(data?.activeStudentUid ?? null);
                 } else {

@@ -3,11 +3,12 @@ import { Icon } from '../utils/helpers';
 import { collection, getDocs, limit, orderBy, query } from 'firebase/firestore';
 import { db } from '../firebase/client';
 import useAuth from '../auth/useAuth';
+import { ROLE } from '../constants/roles';
 
 export default function Home({ onQuickAction, onCreateStaffUser, onCreateLinkCode, userRole }) {
     const { user, userProfile } = useAuth();
     const [staffEmail, setStaffEmail] = useState('');
-    const [staffRole, setStaffRole] = useState('staff');
+    const [staffRole, setStaffRole] = useState(ROLE.STAFF);
     const [staffStatus, setStaffStatus] = useState('');
     const [staffSubmitting, setStaffSubmitting] = useState(false);
     const [linkStudentId, setLinkStudentId] = useState('');
@@ -17,9 +18,13 @@ export default function Home({ onQuickAction, onCreateStaffUser, onCreateLinkCod
     const [notificationLogs, setNotificationLogs] = useState([]);
     const [logLoading, setLogLoading] = useState(false);
     const [logError, setLogError] = useState('');
-    const isAdmin = userRole === 'admin';
+    const isAdmin = userRole === ROLE.ADMIN;
     const fallbackName = userProfile?.email || user?.email ? (userProfile?.email || user?.email).split('@')[0] : '';
-    const displayName = userProfile?.displayName?.trim() || user?.displayName?.trim() || fallbackName || '사용자';
+    const displayName = userProfile?.displayName?.trim()
+        || userProfile?.name?.trim()
+        || user?.displayName?.trim()
+        || fallbackName
+        || '사용자';
 
     const fetchLogs = useCallback(async () => {
         if (!isAdmin || !db) {
@@ -104,7 +109,7 @@ export default function Home({ onQuickAction, onCreateStaffUser, onCreateLinkCod
                 : '임시 비밀번호는 계정 재설정으로 안내해주세요.';
             setStaffStatus(`계정을 생성했습니다. ${tempPasswordMessage}`);
             setStaffEmail('');
-            setStaffRole('staff');
+            setStaffRole(ROLE.STAFF);
         } catch (error) {
             setStaffStatus(error?.message || '직원 생성 중 오류가 발생했습니다.');
         } finally {
@@ -166,8 +171,8 @@ export default function Home({ onQuickAction, onCreateStaffUser, onCreateLinkCod
                                 onChange={(e) => setStaffRole(e.target.value)}
                                 className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                             >
-                                <option value="staff">직원</option>
-                                <option value="admin">관리자</option>
+                                <option value={ROLE.STAFF}>직원</option>
+                                <option value={ROLE.ADMIN}>관리자</option>
                             </select>
                         </label>
                         <button

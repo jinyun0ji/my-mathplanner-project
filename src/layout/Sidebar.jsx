@@ -2,11 +2,12 @@
 import React from 'react';
 import { Icon } from '../utils/helpers';
 import useAuth from '../auth/useAuth';
+import { ROLE } from '../constants/roles';
 
 export default function Sidebar({ page, setPage, onLogout, isOpen, onClose }) {
     const { role } = useAuth();
-    const isAdmin = role === 'admin';
-    const roleLabel = role === 'admin' ? '관리자' : '직원';
+    const isAdmin = role === ROLE.ADMIN;
+    const roleLabel = role === ROLE.ADMIN ? '관리자' : '직원';
     // ... (menuItems는 그대로 유지) ...
     const menuItems = [
         { name: '대시보드', key: 'home', icon: 'dashboard' },
