@@ -27,14 +27,55 @@ const createNotificationForUsers = async (userIds, payload) => {
     return { notificationIds, targetUserCount: uniqueIds.length };
 };
 
-const notifyUsers = async ({ userIds, payload, fcmData }) => {
-    const { notificationIds, targetUserCount } = await createNotificationForUsers(userIds, payload);
+const createNotificationLog = async ({ targetCount, payload, fcmData, logData = {} }) => {
+    const logRef = db.collection('notifications').doc();
+    await logRef.set({
+        targetCount,
+        successCount: 0,
+        failureCount: 0,
+        failedTokenCount: 0,
+        sentAt: FieldValue.serverTimestamp(),
+        eventType: fcmData?.type || payload?.type || null,
+        type: fcmData?.type || payload?.type || null,
+        title: payload?.title || null,
+        body: payload?.body || null,
+        ref: payload?.ref || null,
+        refCollection: fcmData?.refCollection || null,
+        refId: fcmData?.refId || null,
+        studentId: fcmData?.studentId || payload?.studentId || null,
+        ...logData,
+    });
+    return logRef;
+};
 
-    const fcmStats = await sendFcmToUsers(userIds, buildFcmDataPayload(fcmData), notificationIds);
+const notifyUsers = async ({ userIds, payload, fcmData, logData }) => {
+    const { notificationIds, targetUserCount } = await createNotificationForUsers(userIds, payload);
+    const logRef = await createNotificationLog({
+        targetCount: targetUserCount,
+        payload,
+        fcmData,
+        logData,
+    });
+
+    if (targetUserCount === 0) {
+        return {
+            notificationIds,
+            targetCount: targetUserCount,
+            notificationLogId: logRef.id,
+            fcmStats: { successCount: 0, failureCount: 0, failedTokenCount: 0, failedUids: [] },
+        };
+    }
+
+    const fcmStats = await sendFcmToUsers(
+        userIds,
+        buildFcmDataPayload(fcmData),
+        { notificationIds, logRef },
+    );
 
     return {
         notificationIds,
-        targetUserCount,
+        targetCount: targetUserCount,
+        notificationLogId: logRef.id,
         fcmStats,
     };
 };

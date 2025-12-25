@@ -1,12 +1,8 @@
 const functions = require('firebase-functions');
-const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 const { getRecipientsForStudent } = require('../notify/recipients');
 const { notifyUsers } = require('../notify/notifications');
 
 const TYPE = 'LESSON_UPDATED';
-const MAX_FAILED_UIDS = 200;
-
-const db = getFirestore();
 
 const isUnchanged = (before, after) => JSON.stringify(before) === JSON.stringify(after);
 
@@ -32,27 +28,29 @@ const onLessonLogWritten = functions.firestore
         const recipients = await getRecipientsForStudent(studentId);
 
         if (!recipients) {
-            return db.collection('notificationLogs').add({
-                type: TYPE,
-                refCollection: 'lessonLogs',
-                refId: context.params.id,
-                title: '수업 안내',
-                body: '새 수업 기록이 등록되었습니다.',
-                ref: `lessonLogs/${context.params.id}`,
-                studentId: studentId || null,
-                targetUserCount: 0,
-                successCount: 0,
-                failureCount: 0,
-                failedTokenCount: 0,
-                failedUids: [],
-                createdAt: FieldValue.serverTimestamp(),
+            await notifyUsers({
+                userIds: [],
+                payload: {
+                    type: TYPE,
+                    title: '수업 안내',
+                    body: '새 수업 기록이 등록되었습니다.',
+                    ref: `lessonLogs/${context.params.id}`,
+                    studentId,
+                },
+                fcmData: {
+                    type: TYPE,
+                    refCollection: 'lessonLogs',
+                    refId: context.params.id,
+                    studentId,
+                },
             });
+            return null;
         }
 
         const userIds = [recipients.studentUid, ...recipients.parentUids];
         const refId = context.params.id;
 
-        const { targetUserCount, fcmStats } = await notifyUsers({
+        await notifyUsers({
             userIds,
             payload: {
                 type: TYPE,
@@ -68,22 +66,7 @@ const onLessonLogWritten = functions.firestore
                 studentId,
             },
         });
-
-        return db.collection('notificationLogs').add({
-            type: TYPE,
-            refCollection: 'lessonLogs',
-            refId,
-            title: '수업 안내',
-            body: '새 수업 기록이 등록되었습니다.',
-            ref: `lessonLogs/${refId}`,
-            studentId: studentId || null,
-            targetUserCount,
-            successCount: fcmStats?.successCount || 0,
-            failureCount: fcmStats?.failureCount || 0,
-            failedTokenCount: fcmStats?.failedTokenCount || 0,
-            failedUids: (fcmStats?.failedUids || []).slice(0, MAX_FAILED_UIDS),
-            createdAt: FieldValue.serverTimestamp(),
-        });
+        return null;
     });
 
 module.exports = {

@@ -1,4 +1,4 @@
-const { getFirestore } = require('firebase-admin/firestore');
+const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 const { getMessaging } = require('firebase-admin/messaging');
 
 const db = getFirestore();
@@ -27,7 +27,7 @@ const resolveTokenEntries = (tokenSnapshot) => tokenSnapshot.docs.map((doc) => {
     return token ? { token, ref: doc.ref } : null;
 }).filter(Boolean);
 
-const sendFcmToUsers = async (userIds, dataPayload, notificationIds = {}) => {
+const sendFcmToUsers = async (userIds, dataPayload, { notificationIds = {}, logRef } = {}) => {
     const uniqueIds = [...new Set(userIds.filter(Boolean))];
 
     if (uniqueIds.length === 0) {
@@ -35,19 +35,18 @@ const sendFcmToUsers = async (userIds, dataPayload, notificationIds = {}) => {
     }
 
     const messaging = getMessaging();
-    const totals = {
-        successCount: 0,
-        failureCount: 0,
-        failedTokenCount: 0,
-        failedUids: [],
-    };
 
-    await Promise.all(uniqueIds.map(async (uid) => {
+    const results = await Promise.all(uniqueIds.map(async (uid) => {
         const tokenSnapshot = await db.collection('users').doc(uid).collection('fcmTokens').get();
         const tokenEntries = resolveTokenEntries(tokenSnapshot);
 
         if (tokenEntries.length === 0) {
-            return;
+            return {
+                uid,
+                success: false,
+                failedTokenCount: 0,
+                errorCode: 'no-token',
+            };
         }
 
         const payload = {
@@ -58,6 +57,8 @@ const sendFcmToUsers = async (userIds, dataPayload, notificationIds = {}) => {
         const tokenChunks = chunk(tokenEntries, 500);
 
         let uidFailed = false;
+        let uidErrorCode = '';
+        let failedTokenCount = 0;
 
         await Promise.all(tokenChunks.map(async (entryBatch) => {
             const tokens = entryBatch.map((entry) => entry.token);
@@ -66,28 +67,84 @@ const sendFcmToUsers = async (userIds, dataPayload, notificationIds = {}) => {
                 data: payload,
             });
 
-            totals.successCount += response.successCount;
-            totals.failureCount += response.failureCount;
             if (response.failureCount > 0) {
                 uidFailed = true;
             }
 
-            const invalidRefs = response.responses
+            const failedResponses = response.responses
                 .map((result, index) => (result.success ? null : { error: result.error, ref: entryBatch[index].ref }))
-                .filter((entry) => entry && isInvalidTokenError(entry.error));
+                .filter(Boolean);
+
+            if (!uidErrorCode) {
+                const firstError = failedResponses.find((entry) => entry.error);
+                uidErrorCode = firstError?.error?.code || '';
+            }
+
+            const invalidRefs = failedResponses.filter((entry) => isInvalidTokenError(entry.error));
 
             if (invalidRefs.length > 0) {
-                totals.failedTokenCount += invalidRefs.length;
+                failedTokenCount += invalidRefs.length;
                 await Promise.all(invalidRefs.map((entry) => entry.ref.delete()));
             }
         }));
 
-        if (uidFailed) {
-            totals.failedUids.push(uid);
-        }
+        return {
+            uid,
+            success: !uidFailed,
+            failedTokenCount,
+            errorCode: uidFailed ? (uidErrorCode || 'send-failed') : '',
+        };
     }));
 
-    return totals;
+    const totals = results.reduce((acc, result) => {
+        if (result.success) {
+            acc.successCount += 1;
+        } else {
+            acc.failureCount += 1;
+            acc.failedUids.push(result.uid);
+            acc.failedEntries.push({ uid: result.uid, errorCode: result.errorCode || 'send-failed' });
+        }
+
+        acc.failedTokenCount += result.failedTokenCount;
+        return acc;
+    }, {
+        successCount: 0,
+        failureCount: 0,
+        failedTokenCount: 0,
+        failedUids: [],
+        failedEntries: [],
+    });
+
+    const { failedEntries } = totals;
+
+    if (logRef) {
+        await logRef.update({
+            successCount: FieldValue.increment(totals.successCount),
+            failureCount: FieldValue.increment(totals.failureCount),
+            failedTokenCount: FieldValue.increment(totals.failedTokenCount),
+        });
+    }
+
+    if (logRef && failedEntries.length > 0) {
+        for (let i = 0; i < failedEntries.length; i += 450) {
+            const batch = db.batch();
+            failedEntries.slice(i, i + 450).forEach((entry) => {
+                const deliveryRef = logRef.collection('deliveries').doc(entry.uid);
+                batch.set(deliveryRef, {
+                    errorCode: entry.errorCode,
+                    failedAt: FieldValue.serverTimestamp(),
+                });
+            });
+            await batch.commit();
+        }
+    }
+
+    return {
+        successCount: totals.successCount,
+        failureCount: totals.failureCount,
+        failedTokenCount: totals.failedTokenCount,
+        failedUids: totals.failedUids,
+    };
 };
 
 module.exports = {

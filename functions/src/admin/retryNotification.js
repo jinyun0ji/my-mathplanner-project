@@ -23,7 +23,7 @@ const retryNotification = functions.https.onCall(async (data, context) => {
         throw new functions.https.HttpsError('invalid-argument', 'logId is required.');
     }
 
-    const logRef = db.collection('notificationLogs').doc(logId);
+    const logRef = db.collection('notifications').doc(logId);
     const logSnapshot = await logRef.get();
 
     if (!logSnapshot.exists) {
@@ -36,7 +36,8 @@ const retryNotification = functions.https.onCall(async (data, context) => {
         throw new functions.https.HttpsError('failed-precondition', 'Retry already attempted for this log.');
     }
 
-    const failedUids = Array.isArray(logData.failedUids) ? logData.failedUids.filter(Boolean) : [];
+    const failedSnapshot = await logRef.collection('deliveries').get();
+    const failedUids = failedSnapshot.docs.map((doc) => doc.id).filter(Boolean);
 
     if (failedUids.length === 0) {
         throw new functions.https.HttpsError('failed-precondition', 'No failed users to retry.');
@@ -63,42 +64,28 @@ const retryNotification = functions.https.onCall(async (data, context) => {
         studentId: logData.studentId || null,
     };
 
-    const { targetUserCount, fcmStats } = await notifyUsers({
+    const { targetCount, fcmStats, notificationLogId } = await notifyUsers({
         userIds: eligibleUids,
         payload,
         fcmData,
-    });
-
-    const retryLogRef = await db.collection('notificationLogs').add({
-        type: logData.type,
-        refCollection: logData.refCollection,
-        refId: logData.refId,
-        title: logData.title,
-        body: logData.body,
-        ref: logData.ref,
-        studentId: logData.studentId || null,
-        targetUserCount,
-        successCount: fcmStats?.successCount || 0,
-        failureCount: fcmStats?.failureCount || 0,
-        failedTokenCount: fcmStats?.failedTokenCount || 0,
-        failedUids: (fcmStats?.failedUids || []).slice(0, 200),
-        retryOf: logId,
-        createdAt: FieldValue.serverTimestamp(),
+    logData: {
+            retryOf: logId,
+        },
     });
 
     await logRef.update({
         retry: {
             attempted: true,
             attemptedAt: FieldValue.serverTimestamp(),
-            retryLogId: retryLogRef.id,
+            retryLogId: notificationLogId,
             retrySuccessCount: fcmStats?.successCount || 0,
             retryFailureCount: fcmStats?.failureCount || 0,
         },
     });
 
     return {
-        retryLogId: retryLogRef.id,
-        targetUserCount,
+        retryLogId: notificationLogId,
+        targetCount,
         successCount: fcmStats?.successCount || 0,
         failureCount: fcmStats?.failureCount || 0,
     };

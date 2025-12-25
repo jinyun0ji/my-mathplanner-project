@@ -3,8 +3,6 @@ const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 const { notifyUsers } = require('../notify/notifications');
 
 const TYPE = 'CHAT_MESSAGE';
-const MAX_FAILED_UIDS = 200;
-
 const db = getFirestore();
 
 const onChatMessageCreated = functions.firestore
@@ -24,20 +22,21 @@ const onChatMessageCreated = functions.firestore
         const batch = db.batch();
 
         if (recipients.length === 0) {
-            return db.collection('notificationLogs').add({
-                type: TYPE,
-                refCollection: 'chats',
-                title: '새 메시지',
-                body: '새 메시지가 도착했습니다.',
-                ref: `chats/${refId}`,
-                refId,
-                targetUserCount: 0,
-                successCount: 0,
-                failureCount: 0,
-                failedUids: [],
-                failedTokenCount: 0,
-                createdAt: FieldValue.serverTimestamp(),
+            await notifyUsers({
+                userIds: [],
+                payload: {
+                    type: TYPE,
+                    title: '새 메시지',
+                    body: '새 메시지가 도착했습니다.',
+                    ref: `chats/${refId}`,
+                },
+                fcmData: {
+                    type: TYPE,
+                    refCollection: 'chats',
+                    refId,
+                },
             });
+            return null;
         }
 
         recipients.forEach((uid) => {
@@ -51,7 +50,7 @@ const onChatMessageCreated = functions.firestore
 
         await batch.commit();
 
-        const { targetUserCount, fcmStats } = await notifyUsers({
+        await notifyUsers({
             userIds: recipients,
             payload: {
                 type: TYPE,
@@ -65,22 +64,7 @@ const onChatMessageCreated = functions.firestore
                 refId,
             },
         });
-
-        return db.collection('notificationLogs').add({
-            type: TYPE,
-            refCollection: 'chats',
-            refId,
-            targetUserCount,
-            title: '새 메시지',
-            body: '새 메시지가 도착했습니다.',
-            ref: `chats/${refId}`,
-            targetUserCount,
-            successCount: fcmStats?.successCount || 0,
-            failureCount: fcmStats?.failureCount || 0,
-            failedTokenCount: fcmStats?.failedTokenCount || 0,
-            createdAt: FieldValue.serverTimestamp(),
-            failedUids: (fcmStats?.failedUids || []).slice(0, MAX_FAILED_UIDS),
-        });
+        return null;
     });
 
 module.exports = {
