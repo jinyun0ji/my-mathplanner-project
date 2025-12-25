@@ -15,6 +15,7 @@ export default function PaymentManagement({ students, classes, paymentLogs, hand
     ];
 
     const [materialsByClass, setMaterialsByClass] = useState({});
+    const [materialsError, setMaterialsError] = useState('');
     const [activeTab, setActiveTab] = useState('classStatus'); 
 
     // 모달 상태
@@ -98,18 +99,29 @@ export default function PaymentManagement({ students, classes, paymentLogs, hand
     // --- 2. 로직 및 헬퍼 함수 ---
     const fetchMaterialsByClass = useCallback(async (classId) => {
         if (!classId) return [];
-        const materialsQuery = query(
-            collection(db, 'materials'),
-            where('classId', '==', String(classId)),
-        );
-        const snapshot = await getDocs(materialsQuery);
-        const materials = snapshot.docs.map((docSnap) => ({
-            id: docSnap.id,
-            ...docSnap.data(),
-        }));
-        setMaterialsByClass(prev => ({ ...prev, [String(classId)]: materials }));
-        return materials;
-    }, []);
+        try {
+            const materialsQuery = query(
+                collection(db, 'materials'),
+                where('classId', '==', String(classId)),
+            );
+            const snapshot = await getDocs(materialsQuery);
+            const materials = snapshot.docs.map((docSnap) => ({
+                id: docSnap.id,
+                ...docSnap.data(),
+            }));
+            setMaterialsByClass(prev => ({ ...prev, [String(classId)]: materials }));
+            setMaterialsError('');
+            return materials;
+        } catch (error) {
+            console.error('[Firestore READ ERROR]', error);
+            setMaterialsError('Firestore 권한을 확인해주세요.');
+            if (logNotification) {
+                logNotification('error', '교재 조회 실패', 'Firestore 권한 또는 네트워크를 확인해주세요.');
+            }
+            setMaterialsByClass(prev => ({ ...prev, [String(classId)]: [] }));
+            return [];
+        }
+    }, [logNotification]);
 
     useEffect(() => {
         if (!viewClassId) return;
@@ -236,19 +248,24 @@ export default function PaymentManagement({ students, classes, paymentLogs, hand
             return;
         }
         if (newBook.name && Number.isFinite(newBook.price) && newBook.price >= 0) {
-            await addDoc(collection(db, 'materials'), {
-                classId: String(newBook.classId),
-                name: newBook.name,
-                price: newBook.price,
-                stock: newBook.stock,
-                type: newBook.type,
-                createdAt: serverTimestamp(),
-                updatedAt: serverTimestamp(),
-            });
-            await fetchMaterialsByClass(newBook.classId);
-            setNewBook({ name: '', price: 0, stock: 0, type: '진도교재', classId: newBook.classId });
-            setIsBookModalOpen(false);
-            if(logNotification) logNotification('success', '교재 등록 완료', `${newBook.name}이 등록되었습니다.`);
+            try {
+                await addDoc(collection(db, 'materials'), {
+                    classId: String(newBook.classId),
+                    name: newBook.name,
+                    price: newBook.price,
+                    stock: newBook.stock,
+                    type: newBook.type,
+                    createdAt: serverTimestamp(),
+                    updatedAt: serverTimestamp(),
+                });
+                await fetchMaterialsByClass(newBook.classId);
+                setNewBook({ name: '', price: 0, stock: 0, type: '진도교재', classId: newBook.classId });
+                setIsBookModalOpen(false);
+                if (logNotification) logNotification('success', '교재 등록 완료', `${newBook.name}이 등록되었습니다.`);
+            } catch (error) {
+                console.error('[Firestore WRITE ERROR]', error);
+                alert('교재 등록에 실패했습니다. 권한 또는 네트워크를 확인하세요.');
+            }
         }
     };
 
@@ -413,7 +430,11 @@ export default function PaymentManagement({ students, classes, paymentLogs, hand
 
             {/* 메인 컨텐츠 영역 */}
             <div className="bg-white rounded-b-xl rounded-tr-xl shadow-sm border border-t-0 p-6 min-h-[500px]">
-                
+                {materialsError && (
+                    <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                        {materialsError}
+                    </div>
+                )}
                 {/* TAB 1: 반별 수납 현황 */}
                 {activeTab === 'classStatus' && (
                     <div className="space-y-6">
