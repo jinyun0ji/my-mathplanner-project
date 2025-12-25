@@ -1,8 +1,7 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Icon } from '../utils/helpers';
-import { collection, getDocs, limit, orderBy, query, Timestamp, where } from 'firebase/firestore';
+import { collection, getDocs, limit, orderBy, query } from 'firebase/firestore';
 import { db } from '../firebase/client';
-import { retryNotification } from '../admin/notificationService.js';
 
 export default function Home({ onQuickAction, onCreateStaffUser, onCreateLinkCode, userRole }) {
     const [staffEmail, setStaffEmail] = useState('');
@@ -14,23 +13,9 @@ export default function Home({ onQuickAction, onCreateStaffUser, onCreateLinkCod
     const [linkStatus, setLinkStatus] = useState('');
     const [linkSubmitting, setLinkSubmitting] = useState(false);
     const [notificationLogs, setNotificationLogs] = useState([]);
-    const [logType, setLogType] = useState('all');
-    const [logStartDate, setLogStartDate] = useState('');
-    const [logEndDate, setLogEndDate] = useState('');
     const [logLoading, setLogLoading] = useState(false);
     const [logError, setLogError] = useState('');
-    const [retryingLogId, setRetryingLogId] = useState(null);
-    const [deliveryDetails, setDeliveryDetails] = useState({});
     const isAdmin = userRole === 'admin';
-
-    const notificationTypes = useMemo(() => ([
-        { label: '전체', value: 'all' },
-        { label: '수업일지', value: 'LESSON_UPDATED' },
-        { label: '출결', value: 'ATTENDANCE_UPDATED' },
-        { label: '과제', value: 'HOMEWORK_GRADED' },
-        { label: '성적', value: 'GRADE_PUBLISHED' },
-        { label: '채팅', value: 'CHAT_MESSAGE' },
-    ]), []);
 
     const fetchLogs = useCallback(async () => {
         if (!isAdmin || !db) {
@@ -42,122 +27,22 @@ export default function Home({ onQuickAction, onCreateStaffUser, onCreateLinkCod
         setLogError('');
 
         try {
-            const constraints = [orderBy('sentAt', 'desc'), limit(50)];
-
-            if (logType !== 'all') {
-                constraints.push(where('type', '==', logType));
-            }
-
-            if (logStartDate) {
-                const start = new Date(logStartDate);
-                start.setHours(0, 0, 0, 0);
-                constraints.push(where('sentAt', '>=', Timestamp.fromDate(start)));
-            }
-
-            if (logEndDate) {
-                const end = new Date(logEndDate);
-                end.setHours(23, 59, 59, 999);
-                constraints.push(where('sentAt', '<=', Timestamp.fromDate(end)));
-            }
-
-            const snapshot = await getDocs(query(collection(db, 'notifications'), ...constraints));
+            const snapshot = await getDocs(query(
+                collection(db, 'notifications'),
+                orderBy('sentAt', 'desc'),
+                limit(30),
+            ));
             setNotificationLogs(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
         } catch (error) {
             setLogError(error?.message || '알림 로그를 불러오지 못했습니다.');
         } finally {
             setLogLoading(false);
         }
-    }, [db, isAdmin, logType, logStartDate, logEndDate]);
+    }, [db, isAdmin]);
 
     useEffect(() => {
         fetchLogs();
     }, [fetchLogs]);
-
-    const handleRetryNotification = async (logId) => {
-        if (!logId) {
-            return;
-        }
-
-        setRetryingLogId(logId);
-        setLogError('');
-
-        try {
-            await retryNotification({ logId });
-            await fetchLogs();
-        } catch (error) {
-            setLogError(error?.message || '알림 재전송에 실패했습니다.');
-        } finally {
-            setRetryingLogId(null);
-        }
-    };
-
-    const handleToggleDeliveryDetails = async (notificationId) => {
-        if (!notificationId || !db) {
-            return;
-        }
-
-        const existing = deliveryDetails[notificationId];
-
-        if (existing?.isOpen) {
-            setDeliveryDetails((prev) => ({
-                ...prev,
-                [notificationId]: {
-                    ...existing,
-                    isOpen: false,
-                },
-            }));
-            return;
-        }
-
-        if (existing?.fetched) {
-            setDeliveryDetails((prev) => ({
-                ...prev,
-                [notificationId]: {
-                    ...existing,
-                    isOpen: true,
-                },
-            }));
-            return;
-        }
-
-        setDeliveryDetails((prev) => ({
-            ...prev,
-            [notificationId]: {
-                ...existing,
-                isOpen: true,
-                loading: true,
-                error: '',
-                items: existing?.items ?? [],
-            },
-        }));
-
-        try {
-            const snapshot = await getDocs(query(
-                collection(db, 'notifications', notificationId, 'deliveries'),
-                limit(50),
-            ));
-            const items = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-            setDeliveryDetails((prev) => ({
-                ...prev,
-                [notificationId]: {
-                    ...prev[notificationId],
-                    loading: false,
-                    fetched: true,
-                    items,
-                },
-            }));
-        } catch (error) {
-            setDeliveryDetails((prev) => ({
-                ...prev,
-                [notificationId]: {
-                    ...prev[notificationId],
-                    loading: false,
-                    fetched: true,
-                    error: error?.message || '실패 상세를 불러오지 못했습니다.',
-                },
-            }));
-        }
-    };
 
     const stats = [
         { label: '총 재원생', value: '42명', change: '+2명', type: 'increase', icon: 'users', color: 'indigo' },
@@ -354,41 +239,8 @@ export default function Home({ onQuickAction, onCreateStaffUser, onCreateLinkCod
                             </div>
                         </div>
                         <span className="px-3 py-1 text-xs font-semibold rounded-full bg-rose-50 text-rose-800 border border-rose-100">
-                            최근 50건
+                            최근 30건
                         </span>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                        <label className="flex flex-col gap-1">
-                            <span className="text-xs font-semibold text-gray-600">유형</span>
-                            <select
-                                value={logType}
-                                onChange={(e) => setLogType(e.target.value)}
-                                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-400"
-                            >
-                                {notificationTypes.map((type) => (
-                                    <option key={type.value} value={type.value}>{type.label}</option>
-                                ))}
-                            </select>
-                        </label>
-                        <label className="flex flex-col gap-1">
-                            <span className="text-xs font-semibold text-gray-600">시작일</span>
-                            <input
-                                type="date"
-                                value={logStartDate}
-                                onChange={(e) => setLogStartDate(e.target.value)}
-                                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-400"
-                            />
-                        </label>
-                        <label className="flex flex-col gap-1">
-                            <span className="text-xs font-semibold text-gray-600">종료일</span>
-                            <input
-                                type="date"
-                                value={logEndDate}
-                                onChange={(e) => setLogEndDate(e.target.value)}
-                                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-400"
-                            />
-                        </label>
                     </div>
 
                     {logLoading && (
@@ -402,121 +254,54 @@ export default function Home({ onQuickAction, onCreateStaffUser, onCreateLinkCod
                         <div className="space-y-3">
                             {notificationLogs.length === 0 ? (
                                 <div className="text-sm text-gray-500 text-center py-6 border border-dashed border-gray-200 rounded-xl">
-                                    조건에 맞는 로그가 없습니다.
+                                    알림 로그가 없습니다.
                                 </div>
                             ) : (
-                                notificationLogs.map((log) => {
-                                    const targetCount = log.targetCount ?? log.targetUserCount ?? 0;
-                                    const failureCount = log.failureCount || 0;
-                                    const successCount = log.successCount || 0;
-                                    const failureRate = targetCount === 0 ? 0 : Math.round((failureCount / targetCount) * 100);
-                                    const sentAt = log.sentAt?.toDate ? log.sentAt.toDate().toLocaleString('ko-KR') : '-';
-                                    const eventType = log.eventType || log.type || '-';
-                                    const retryAttempted = Boolean(log.retry?.attempted);
-                                    const canRetry = failureCount > 0;
-                                    const isFailureHighlighted = failureCount > 0;
-                                    const deliveryState = deliveryDetails[log.id];
-                                    return (
-                                        <div
-                                            key={log.id}
-                                            className={`border rounded-xl p-4 flex flex-col gap-2 ${
-                                                isFailureHighlighted ? 'border-red-200 bg-red-50/40' : 'border-gray-200'
-                                            }`}
-                                        >
-                                            <div className="flex flex-wrap items-center justify-between gap-2">
-                                                <div className="flex items-center gap-2">
-                                                    <span className="text-xs font-semibold text-rose-700 bg-rose-50 border border-rose-100 px-2 py-0.5 rounded-full">
-                                                        {eventType}
-                                                    </span>
-                                                    <span className="text-xs text-gray-400">{sentAt}</span>
-                                                    {retryAttempted && (
-                                                        <span className="text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-full">
-                                                            재전송 완료
-                                                        </span>
-                                                    )}
-                                                </div>
-                                                <div className="flex items-center gap-2">
-                                                    <span className="text-xs font-semibold text-gray-500">
-                                                        실패율 {failureRate}%
-                                                    </span>
-                                                    {canRetry && (
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => handleRetryNotification(log.id)}
-                                                            disabled={retryAttempted || retryingLogId === log.id}
-                                                            className="text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-100 px-3 py-1 rounded-full disabled:opacity-50 disabled:cursor-not-allowed"
-                                                        >
-                                                            {retryingLogId === log.id ? '재전송 중...' : '재전송'}
-                                                        </button>
-                                                    )}
-                                                </div>
-                                            </div>
-                                            {log.title && (
-                                                <div className="text-sm font-semibold text-gray-800">{log.title}</div>
-                                            )}
-                                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-                                                <div className="flex flex-col">
-                                                    <span className="text-xs text-gray-400">대상</span>
-                                                    <span className="font-semibold text-gray-800">{targetCount}명</span>
-                                                </div>
-                                                <div className="flex flex-col">
-                                                    <span className="text-xs text-gray-400">성공</span>
-                                                    <span className="font-semibold text-emerald-600">{successCount}</span>
-                                                </div>
-                                                <div className="flex flex-col">
-                                                    <span className="text-xs text-gray-400">실패</span>
-                                                    <span className="font-semibold text-red-500">{failureCount}</span>
-                                                </div>
-                                                <div className="flex flex-col">
-                                                    <span className="text-xs text-gray-400">성공률</span>
-                                                    <span className="font-semibold text-emerald-600">
-                                                        {targetCount === 0 ? 0 : Math.round((successCount / targetCount) * 100)}%
-                                                    </span>
-                                                </div>
-                                            </div>
-                                            <div className="flex items-center justify-between text-xs">
-                                                <span className="text-gray-400">실패 상세는 필요할 때만 조회됩니다.</span>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleToggleDeliveryDetails(log.id)}
-                                                    className="text-xs font-semibold text-gray-600 underline underline-offset-2"
-                                                >
-                                                    {deliveryState?.isOpen ? '실패 상세 닫기' : '실패 상세 보기'}
-                                                </button>
-                                            </div>
-                                            {deliveryState?.isOpen && (
-                                                <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-xs text-gray-600">
-                                                    {deliveryState.loading && <div>실패 상세를 불러오는 중...</div>}
-                                                    {deliveryState.error && (
-                                                        <div className="text-red-500">{deliveryState.error}</div>
-                                                    )}
-                                                    {!deliveryState.loading && !deliveryState.error && (
-                                                        <div className="space-y-2">
-                                                            {deliveryState.items?.length ? (
-                                                                deliveryState.items.map((item) => (
-                                                                    <div
-                                                                        key={item.id}
-                                                                        className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-white px-3 py-2"
-                                                                    >
-                                                                        <span className="font-semibold text-gray-800">{item.id}</span>
-                                                                        <span className="text-gray-500">{item.errorCode || '실패'}</span>
-                                                                    </div>
-                                                                ))
-                                                            ) : (
-                                                                <div className="text-gray-500">실패 상세가 없습니다.</div>
-                                                            )}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            )}
-                                            {retryAttempted && (
-                                                <div className="text-xs text-gray-500">
-                                                    재전송 결과: 성공 {log.retry?.retrySuccessCount || 0} · 실패 {log.retry?.retryFailureCount || 0}
-                                                </div>
-                                            )}
-                                        </div>
-                                    );
-                                })
+                                <div className="overflow-x-auto border border-gray-200 rounded-xl">
+                                    <table className="min-w-full text-sm">
+                                        <thead className="bg-gray-50 text-gray-600 text-xs uppercase tracking-wider">
+                                            <tr>
+                                                <th className="px-4 py-3 text-left font-semibold">제목</th>
+                                                <th className="px-4 py-3 text-left font-semibold">타입</th>
+                                                <th className="px-4 py-3 text-left font-semibold">발송 시각</th>
+                                                <th className="px-4 py-3 text-right font-semibold">targetCount</th>
+                                                <th className="px-4 py-3 text-right font-semibold">failureCount</th>
+                                                <th className="px-4 py-3 text-right font-semibold">성공률</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {notificationLogs.map((log) => {
+                                                const targetCount = log.targetCount ?? log.targetUserCount ?? 0;
+                                                const failureCount = log.failureCount || 0;
+                                                const sentAt = log.sentAt?.toDate ? log.sentAt.toDate().toLocaleString('ko-KR') : '-';
+                                                const eventType = log.eventType || log.type || '-';
+                                                const successRate = targetCount === 0
+                                                    ? 0
+                                                    : Math.round(((targetCount - failureCount) / targetCount) * 100);
+                                                return (
+                                                    <tr key={log.id} className="border-t border-gray-200">
+                                                        <td className="px-4 py-3 font-semibold text-gray-800">
+                                                            {log.title || '-'}
+                                                        </td>
+                                                        <td className="px-4 py-3 text-gray-600">
+                                                            {eventType}
+                                                        </td>
+                                                        <td className="px-4 py-3 text-gray-500">{sentAt}</td>
+                                                        <td className="px-4 py-3 text-right font-semibold text-gray-800">
+                                                            {targetCount}
+                                                        </td>
+                                                        <td className="px-4 py-3 text-right font-semibold text-rose-600">
+                                                            {failureCount}
+                                                        </td>
+                                                        <td className="px-4 py-3 text-right font-semibold text-emerald-600">
+                                                            {successRate}%
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
+                                </div>
                             )}
                         </div>
                     )}
