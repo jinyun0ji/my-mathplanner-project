@@ -2,8 +2,10 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Icon } from '../utils/helpers';
 import { collection, getDocs, limit, orderBy, query } from 'firebase/firestore';
 import { db } from '../firebase/client';
+import useAuth from '../auth/useAuth';
 
 export default function Home({ onQuickAction, onCreateStaffUser, onCreateLinkCode, userRole }) {
+    const { user, userProfile } = useAuth();
     const [staffEmail, setStaffEmail] = useState('');
     const [staffRole, setStaffRole] = useState('staff');
     const [staffStatus, setStaffStatus] = useState('');
@@ -16,6 +18,8 @@ export default function Home({ onQuickAction, onCreateStaffUser, onCreateLinkCod
     const [logLoading, setLogLoading] = useState(false);
     const [logError, setLogError] = useState('');
     const isAdmin = userRole === 'admin';
+    const fallbackName = userProfile?.email || user?.email ? (userProfile?.email || user?.email).split('@')[0] : '';
+    const displayName = userProfile?.displayName?.trim() || user?.displayName?.trim() || fallbackName || '사용자';
 
     const fetchLogs = useCallback(async () => {
         if (!isAdmin || !db) {
@@ -315,7 +319,7 @@ export default function Home({ onQuickAction, onCreateStaffUser, onCreateLinkCod
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                             <div className="space-y-1">
                                 <p className="text-sm text-sky-100">오늘도 힘찬 하루 보내세요.</p>
-                                <h2 className="text-2xl lg:text-3xl font-bold">환영합니다, 채수용 선생님! 👋</h2>
+                                <h2 className="text-2xl lg:text-3xl font-bold">환영합니다, {displayName}님! 👋</h2>
                                 <p className="text-sky-100 text-sm">직원용 홈에서 주요 업무를 바로 확인해보세요.</p>
                             </div>
                             <div className="bg-white/10 p-3 rounded-xl backdrop-blur-sm border border-white/10 max-w-xs w-full sm:w-auto">
