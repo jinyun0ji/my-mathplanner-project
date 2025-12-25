@@ -1,5 +1,4 @@
 import React, { useMemo, useState } from 'react';
-import { createUserWithEmailAndPassword } from 'firebase/auth';
 import {
     doc,
     getDoc,
@@ -8,15 +7,14 @@ import {
     updateDoc,
 } from 'firebase/firestore';
 import { Link } from 'react-router-dom';
-import { auth, db } from '../firebase/client';
-import { ROLE, isParentRole, isViewerGroupRole } from '../constants/roles';
+import { db } from '../firebase/client';
+import { isParentRole, isViewerGroupRole } from '../constants/roles';
+import { signInWithGoogle } from '../auth/authService';
 
 const normalizeInviteCode = (value) => (value || '').trim();
 
 export default function InviteSignupPage() {
     const [inviteCode, setInviteCode] = useState('');
-    const [email, setEmail] = useState('');
-    const [password, setPassword] = useState('');
     const [name, setName] = useState('');
     const [status, setStatus] = useState('');
     const [submitting, setSubmitting] = useState(false);
@@ -25,7 +23,7 @@ export default function InviteSignupPage() {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        if (!db || !auth) return;
+        if (!db) return;
 
         setStatus('');
         setSubmitting(true);
@@ -37,7 +35,13 @@ export default function InviteSignupPage() {
                 return;
             }
 
-            const inviteRef = doc(db, 'invitations', code);
+            const user = await signInWithGoogle();
+            if (!user?.uid) {
+                setStatus('간편 로그인에 실패했습니다. 다시 시도해주세요.');
+                return;
+            }
+
+            const inviteRef = doc(db, 'invites', code);
             const inviteSnap = await getDoc(inviteRef);
             if (!inviteSnap.exists()) {
                 setStatus('유효하지 않거나 이미 사용된 초대 코드입니다.');
@@ -48,7 +52,7 @@ export default function InviteSignupPage() {
                 setStatus('학생/학부모 전용 초대 코드만 사용할 수 있습니다.');
                 return;
             }
-            if (inviteData?.used) {
+            if (inviteData?.consumed) {
                 setStatus('이미 사용된 초대 코드입니다.');
                 return;
             }
@@ -57,34 +61,35 @@ export default function InviteSignupPage() {
                 return;
             }
 
-            const finalName = inviteData?.name?.trim() || name.trim();
+            const presetProfile = inviteData?.presetProfile ?? {};
+            const finalName = presetProfile?.displayName?.trim()
+                || presetProfile?.name?.trim()
+                || user.displayName?.trim()
+                || name.trim();
             if (!finalName) {
                 setStatus('이름을 입력해주세요.');
                 return;
             }
-            const normalizedStudentId = inviteData?.studentId ? String(inviteData.studentId).trim() : '';
-
-            const credential = await createUserWithEmailAndPassword(auth, email.trim(), password);
-            const { user } = credential;
-            if (!user?.uid) {
-                setStatus('회원가입에 실패했습니다. 다시 시도해주세요.');
+            const normalizedStudentId = inviteData?.target?.studentId ? String(inviteData.target.studentId).trim() : '';
+            if (isParentRole(inviteData.role) && !normalizedStudentId) {
+                setStatus('학부모 초대에는 학생 정보가 필요합니다. 담당 선생님에게 문의해주세요.');
                 return;
             }
 
             const userPayload = {
                 role: inviteData.role,
                 displayName: finalName,
-                email: email.trim(),
+                email: user.email?.trim() || presetProfile?.email?.trim() || '',
                 active: true,
+                inviteId: code,
                 studentIds: isParentRole(inviteData.role) && normalizedStudentId ? [normalizedStudentId] : [],
+                activeStudentId: isParentRole(inviteData.role) && normalizedStudentId ? normalizedStudentId : null,
                 createdAt: serverTimestamp(),
             };
 
-            await setDoc(doc(db, 'users', user.uid), userPayload, { merge: true });
+            await setDoc(doc(db, 'users', user.uid), userPayload);
             await updateDoc(inviteRef, {
-                used: true,
-                usedAt: serverTimestamp(),
-                usedBy: user.uid,
+                consumed: true,
             });
             
             setStatus('가입이 완료되었습니다. 잠시 후 대시보드로 이동합니다.');
@@ -120,31 +125,6 @@ export default function InviteSignupPage() {
                     </label>
 
                     <label className="block text-left space-y-1">
-                        <span className="text-sm font-semibold text-gray-700">이메일</span>
-                        <input
-                            type="email"
-                            required
-                            value={email}
-                            onChange={(e) => setEmail(e.target.value)}
-                            className="w-full rounded-xl border border-gray-200 px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                            placeholder="example@email.com"
-                        />
-                    </label>
-
-                    <label className="block text-left space-y-1">
-                        <span className="text-sm font-semibold text-gray-700">비밀번호</span>
-                        <input
-                            type="password"
-                            required
-                            minLength={6}
-                            value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                            className="w-full rounded-xl border border-gray-200 px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                            placeholder="6자리 이상"
-                        />
-                    </label>
-
-                    <label className="block text-left space-y-1">
                         <span className="text-sm font-semibold text-gray-700">이름</span>
                         <input
                             type="text"
@@ -160,7 +140,7 @@ export default function InviteSignupPage() {
                         disabled={submitting || !inviteCodeValue}
                         className="w-full flex justify-center py-3.5 px-4 border border-transparent rounded-xl shadow-lg text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all transform active:scale-[0.98] disabled:opacity-70"
                     >
-                        {submitting ? '가입 처리 중...' : '초대 코드로 가입하기'}
+                        {submitting ? '가입 처리 중...' : 'Google로 가입하기'}
                     </button>
                 </form>
 

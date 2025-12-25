@@ -93,17 +93,7 @@ export function AuthProvider({ children }) {
                 if (!isMounted) return;
 
                 if (!userDoc || !userDoc.exists()) {
-                    setRole(null);
-                    setUserProfile(null);
-                    setStudentIds([]);
-                    setActiveStudentId(null);
-                    setLoading(false);
-                    return;
-                }
-
-                const data = userDoc.data();
-                if (data?.invited === true) {
-                    setProfileError('초대가 완료되지 않은 계정입니다.');
+                    setProfileError('초대 기반 가입이 필요합니다.');
                     setRole(null);
                     setUserProfile(null);
                     setStudentIds([]);
@@ -113,6 +103,7 @@ export function AuthProvider({ children }) {
                     return;
                 }
 
+                const data = userDoc.data();
                 const profile = {
                     uid: currentUser.uid,
                     role: normalizeRole(data?.role ?? null),

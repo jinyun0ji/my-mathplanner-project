@@ -72,6 +72,17 @@ service cloud.firestore {
         ? userDoc().data.studentIds
         : [];
     }
+    
+    function hasValidInvite(inviteId, role) {
+      return inviteId is string
+        && exists(/databases/$(database)/documents/invites/$(inviteId))
+        && get(/databases/$(database)/documents/invites/$(inviteId)).data.consumed == false
+        && get(/databases/$(database)/documents/invites/$(inviteId)).data.role == role
+        && (
+          get(/databases/$(database)/documents/invites/$(inviteId)).data.expiresAt == null
+          || get(/databases/$(database)/documents/invites/$(inviteId)).data.expiresAt > request.time
+        );
+    }
 
     /* =========================
        users (가장 중요)
@@ -91,12 +102,14 @@ service cloud.firestore {
           && request.auth.uid == userId
           && request.resource.data.active == true
           && (isRequestRole('student') || isRequestRole('parent'))
+          && hasValidInvite(request.resource.data.inviteId, request.resource.data.role)
         );
       allow update: if isStaffOrAdminOrTeacher()
         || (
           isSignedIn()
           && request.auth.uid == userId
           && (isResourceRole('student') || isResourceRole('parent'))
+          && request.resource.data.role == resource.data.role
         );
       allow delete: if isStaffOrAdminOrTeacher()
         || (isSignedIn() && request.auth.uid == userId);
@@ -182,13 +195,17 @@ service cloud.firestore {
         && request.auth.uid == request.resource.data.authUid;
     }
 
-    match /invitations/{token} {
+    match /invites/{inviteId} {
       allow get: if true;
       allow list: if false;
-      allow update: if isSignedIn()
-        && resource.data.used == false
-        && request.resource.data.used == true
-        && request.auth.uid == request.resource.data.usedBy;
+      allow create, delete: if isStaffOrAdmin();
+      allow update: if isStaffOrAdmin()
+        || (
+          isSignedIn()
+          && resource.data.consumed == false
+          && request.resource.data.consumed == true
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['consumed'])
+        );
     }
     
     /* =========================
