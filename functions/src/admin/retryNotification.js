@@ -4,6 +4,7 @@ const { assertAdmin } = require('../_utils/assertAdmin');
 const { notifyUsers } = require('../notify/notifications');
 
 const db = getFirestore();
+const RETRY_LIMIT = 50;
 
 const getUidsWithTokens = async (uids) => {
     const checks = await Promise.all(uids.map(async (uid) => {
@@ -36,7 +37,10 @@ const retryNotification = functions.https.onCall(async (data, context) => {
         throw new functions.https.HttpsError('failed-precondition', 'Retry already attempted for this log.');
     }
 
-    const failedSnapshot = await logRef.collection('deliveries').get();
+    const failedSnapshot = await logRef.collection('deliveries')
+        .where('status', '==', 'failed')
+        .limit(RETRY_LIMIT)
+        .get();
     const failedUids = failedSnapshot.docs.map((doc) => doc.id).filter(Boolean);
 
     if (failedUids.length === 0) {
@@ -68,10 +72,46 @@ const retryNotification = functions.https.onCall(async (data, context) => {
         userIds: eligibleUids,
         payload,
         fcmData,
-    logData: {
+        logData: {
             retryOf: logId,
         },
     });
+
+    const failedUidSet = new Set(fcmStats?.failedUids || []);
+    const retrySuccessUids = eligibleUids.filter((uid) => !failedUidSet.has(uid));
+
+    if (retrySuccessUids.length > 0 || failedUidSet.size > 0) {
+        const deliveryUpdates = [
+            ...retrySuccessUids.map((uid) => ({
+                uid,
+                data: {
+                    status: 'success',
+                    errorCode: FieldValue.delete(),
+                    succeededAt: FieldValue.serverTimestamp(),
+                    lastAttemptedAt: FieldValue.serverTimestamp(),
+                    retryLogId: notificationLogId,
+                },
+            })),
+            ...(fcmStats?.failedEntries || []).map((entry) => ({
+                uid: entry.uid,
+                data: {
+                    status: 'failed',
+                    errorCode: entry.errorCode,
+                    failedAt: FieldValue.serverTimestamp(),
+                    lastAttemptedAt: FieldValue.serverTimestamp(),
+                    retryLogId: notificationLogId,
+                },
+            })),
+        ];
+
+        for (let i = 0; i < deliveryUpdates.length; i += 450) {
+            const batch = db.batch();
+            deliveryUpdates.slice(i, i + 450).forEach(({ uid, data }) => {
+                batch.set(logRef.collection('deliveries').doc(uid), data, { merge: true });
+            });
+            await batch.commit();
+        }
+    }
 
     await logRef.update({
         retry: {
@@ -81,6 +121,8 @@ const retryNotification = functions.https.onCall(async (data, context) => {
             retrySuccessCount: fcmStats?.successCount || 0,
             retryFailureCount: fcmStats?.failureCount || 0,
         },
+        successCount: FieldValue.increment(fcmStats?.successCount || 0),
+        failureCount: FieldValue.increment(-(fcmStats?.successCount || 0)),
     });
 
     return {

@@ -132,7 +132,9 @@ const sendFcmToUsers = async (userIds, dataPayload, { notificationIds = {}, logR
                 const deliveryRef = logRef.collection('deliveries').doc(entry.uid);
                 batch.set(deliveryRef, {
                     errorCode: entry.errorCode,
+                    status: 'failed',
                     failedAt: FieldValue.serverTimestamp(),
+                    lastAttemptedAt: FieldValue.serverTimestamp(),
                 });
             });
             await batch.commit();
@@ -144,6 +146,7 @@ const sendFcmToUsers = async (userIds, dataPayload, { notificationIds = {}, logR
         failureCount: totals.failureCount,
         failedTokenCount: totals.failedTokenCount,
         failedUids: totals.failedUids,
+        failedEntries,
     };
 };
 
