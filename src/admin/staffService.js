@@ -31,6 +31,16 @@ export const deactivateStaff = async ({ uid }) => {
     return result.data;
 };
 
+export const updateStaffRole = async ({ uid, role }) => {
+    if (!functions) {
+        throw new Error('Firebase가 초기화되지 않았습니다. 관리자에게 문의해주세요.');
+    }
+
+    const callable = httpsCallable(functions, 'updateStaffRole');
+    const result = await callable({ uid, role });
+    return result.data;
+};
+
 
 export const createLinkCode = async ({ studentId }) => {
     if (!functions) {

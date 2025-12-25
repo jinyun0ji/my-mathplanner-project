@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Icon } from '../../utils/helpers';
-import { createStaffUser, deactivateStaff, getStaffList } from '../../admin/staffService';
+import { createStaffUser, deactivateStaff, getStaffList, updateStaffRole } from '../../admin/staffService';
 import useAuth from '../../auth/useAuth';
 
 export default function StaffManagement() {
@@ -13,6 +13,7 @@ export default function StaffManagement() {
     const [staffLoading, setStaffLoading] = useState(false);
     const [staffError, setStaffError] = useState('');
     const [staffActionStatus, setStaffActionStatus] = useState('');
+    const [staffUpdating, setStaffUpdating] = useState({});
 
     const loadStaffList = async () => {
         setStaffLoading(true);
@@ -59,6 +60,7 @@ export default function StaffManagement() {
         if (!window.confirm('해당 직원 계정을 비활성화하시겠습니까?')) return;
 
         setStaffActionStatus('');
+        setStaffUpdating((prev) => ({ ...prev, [uid]: true }));
 
         try {
             await deactivateStaff({ uid });
@@ -68,6 +70,36 @@ export default function StaffManagement() {
             )));
         } catch (error) {
             setStaffActionStatus(error?.message || '직원 비활성화 중 오류가 발생했습니다.');
+            } finally {
+            setStaffUpdating((prev) => ({ ...prev, [uid]: false }));
+        }
+    };
+
+    const handleRoleChange = async (uid, nextRole, currentRole) => {
+        if (!uid || !nextRole || nextRole === currentRole) return;
+        if (!window.confirm('직원 역할을 변경하시겠습니까?')) {
+            setStaffList((prev) => prev.map((staff) => (
+                staff.uid === uid ? { ...staff, role: currentRole } : staff
+            )));
+            return;
+        }
+
+        setStaffActionStatus('');
+        setStaffUpdating((prev) => ({ ...prev, [uid]: true }));
+
+        try {
+            await updateStaffRole({ uid, role: nextRole });
+            setStaffActionStatus('직원 역할을 변경했습니다.');
+            setStaffList((prev) => prev.map((staff) => (
+                staff.uid === uid ? { ...staff, role: nextRole } : staff
+            )));
+        } catch (error) {
+            setStaffActionStatus(error?.message || '직원 역할 변경 중 오류가 발생했습니다.');
+            setStaffList((prev) => prev.map((staff) => (
+                staff.uid === uid ? { ...staff, role: currentRole } : staff
+            )));
+        } finally {
+            setStaffUpdating((prev) => ({ ...prev, [uid]: false }));
         }
     };
 
@@ -151,46 +183,60 @@ export default function StaffManagement() {
                                 <th className="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">이름</th>
                                 <th className="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">이메일</th>
                                 <th className="px-4 py-3 text-center text-xs font-bold text-gray-600 uppercase tracking-wider">역할</th>
-                                <th className="px-4 py-3 text-center text-xs font-bold text-gray-600 uppercase tracking-wider">상태</th>
-                                <th className="px-4 py-3 text-center text-xs font-bold text-gray-600 uppercase tracking-wider">관리</th>
+                                <th className="px-4 py-3 text-center text-xs font-bold text-gray-600 uppercase tracking-wider">활성</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-200 bg-white">
                             {staffLoading ? (
                                 <tr>
-                                    <td colSpan={5} className="px-4 py-6 text-center text-sm text-gray-500">직원 목록을 불러오는 중...</td>
+                                    <td colSpan={4} className="px-4 py-6 text-center text-sm text-gray-500">직원 목록을 불러오는 중...</td>
                                 </tr>
                             ) : staffList.length === 0 ? (
                                 <tr>
-                                    <td colSpan={5} className="px-4 py-6 text-center text-sm text-gray-500">등록된 직원이 없습니다.</td>
+                                    <td colSpan={4} className="px-4 py-6 text-center text-sm text-gray-500">등록된 직원이 없습니다.</td>
                                 </tr>
                             ) : (
                                 staffList.map((staff) => {
                                     const isInactive = staff.active === false;
                                     const isSelf = staff.uid === user?.uid;
+                                    const isUpdating = staffUpdating[staff.uid];
 
                                     return (
                                         <tr key={staff.uid} className={isInactive ? 'bg-gray-50' : undefined}>
                                             <td className="px-4 py-3 text-sm font-semibold text-gray-800">{staff.displayName || '이름 없음'}</td>
                                             <td className="px-4 py-3 text-sm text-gray-600">{staff.email || '이메일 없음'}</td>
-                                            <td className="px-4 py-3 text-center text-sm text-gray-600">{staff.role === 'admin' ? '관리자' : '직원'}</td>
                                             <td className="px-4 py-3 text-center">
-                                                {isInactive ? (
-                                                    <span className="inline-flex items-center rounded-full bg-red-100 px-2.5 py-1 text-xs font-semibold text-red-700">비활성화</span>
-                                                ) : (
-                                                    <span className="inline-flex items-center rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700">활성</span>
-                                                )}
+                                                <select
+                                                    value={staff.role || 'staff'}
+                                                    onChange={(event) => {
+                                                        const nextRole = event.target.value;
+                                                        setStaffList((prev) => prev.map((item) => (
+                                                            item.uid === staff.uid ? { ...item, role: nextRole } : item
+                                                        )));
+                                                        handleRoleChange(staff.uid, nextRole, staff.role);
+                                                    }}
+                                                    disabled={isSelf || isUpdating}
+                                                    className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-100 disabled:text-gray-400"
+                                                >
+                                                    <option value="admin">관리자</option>
+                                                    <option value="staff">직원</option>
+                                                </select>
                                             </td>
                                             <td className="px-4 py-3 text-center">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleDeactivateStaff(staff.uid)}
-                                                    disabled={isInactive || isSelf}
-                                                    className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
-                                                >
-                                                    <Icon name="userX" className="w-3.5 h-3.5" />
-                                                    {isSelf ? '본인 계정' : '비활성화'}
-                                                </button>
+                                                <label className="inline-flex items-center justify-center gap-2 text-xs font-semibold text-gray-600">
+                                                    <div className="relative inline-flex items-center">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={!isInactive}
+                                                            onChange={() => handleDeactivateStaff(staff.uid)}
+                                                            disabled={isInactive || isSelf || isUpdating}
+                                                            className="peer sr-only"
+                                                        />
+                                                        <div className="h-6 w-11 rounded-full bg-gray-200 transition peer-checked:bg-emerald-500 peer-focus-visible:ring-2 peer-focus-visible:ring-emerald-500/60 peer-disabled:bg-gray-200" />
+                                                        <div className="absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow transition peer-checked:translate-x-5 peer-disabled:bg-gray-100" />
+                                                    </div>
+                                                    {isSelf ? '본인 계정' : isInactive ? '비활성화' : '활성'}
+                                                </label>
                                             </td>
                                         </tr>
                                     );
