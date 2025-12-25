@@ -4,6 +4,17 @@ import { collection, doc, getDoc, getDocs, limit, orderBy, query, where } from '
 import { db } from '../firebase/client';
 import { formatGradeLabel, Icon } from '../utils/helpers';
 
+const COL = {
+    USERS: 'users',
+    ATTENDANCE: 'attendanceLogs',
+    CLINIC: 'clinicLogs',
+    LESSON: 'lessonLogs',
+    GRADES: 'grades',
+    HOMEWORK_RESULTS: 'homeworkResults',
+    HOMEWORK_ASSIGNMENTS: 'homeworkAssignments',
+    ANNOUNCEMENTS: 'announcements',
+};
+
 export default function StudentDetail() {
     const { studentId: studentUid } = useParams();
     const navigate = useNavigate();
@@ -36,27 +47,27 @@ export default function StudentDetail() {
             }
 
             try {
-                const studentRef = doc(db, 'users', studentUid);
+                const studentRef = doc(db, COL.USERS, studentUid);
                 const attendanceQuery = query(
-                    collection(db, 'attendanceLogs'),
+                    collection(db, COL.ATTENDANCE),
                     where('studentUid', '==', studentUid),
                     orderBy('date', 'desc'),
                     limit(5),
                 );
                 const homeworkQuery = query(
-                    collection(db, 'homeworkResults'),
+                    collection(db, COL.HOMEWORK_RESULTS),
                     where('studentUid', '==', studentUid),
                     orderBy('date', 'desc'),
                     limit(5),
                 );
                 const gradesQuery = query(
-                    collection(db, 'grades'),
+                    collection(db, COL.GRADES),
                     where('studentUid', '==', studentUid),
                     orderBy('date', 'desc'),
                     limit(3),
                 );
                 const memoQuery = query(
-                    collection(db, 'lessonLogs'),
+                    collection(db, COL.LESSON),
                     where('studentUid', '==', studentUid),
                     orderBy('date', 'desc'),
                     limit(1),
