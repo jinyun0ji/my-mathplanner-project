@@ -19,7 +19,15 @@ export default function AuthGate() {
   const isLoginPage = pathname === '/login';
   const isAuthCallbackPage = pathname === '/auth/callback';
   const isStudentDetailPage = pathname.startsWith('/students/');
-  const { user, role, linkedStudentIds, activeStudentId, loading } = useAuth();
+  const {
+      user,
+      role,
+      linkedStudentIds,
+      activeStudentId,
+      loading,
+      profileError,
+      logout,
+  } = useAuth();
 
   useEffect(() => {
       let unsubscribe = null;
@@ -59,7 +67,7 @@ export default function AuthGate() {
       if (role && role !== 'pending' && !isStudentDetailPage && (isOnboardingPage || isLoginPage)) {
           navigate('/lessons', { replace: true });
       }
-  }, [isAuthCallbackPage, isLoginPage, isOnboardingPage, isStudentDetailPage, loading, navigate, role, user]);
+  }, [isAuthCallbackPage, isLoginPage, isOnboardingPage, isStudentDetailPage, loading, navigate, pathname, role, user]);
 
   const handleSocialLogin = async (providerName) => {
       if (providerName === 'google') return signInWithGoogle();
@@ -74,6 +82,23 @@ export default function AuthGate() {
 
   if (loading) return <div className="min-h-screen flex items-center justify-center">로딩 중...</div>;
   if (!user) return <LoginPage onSocialLogin={handleSocialLogin} />;
+  if (role === null) {
+      return (
+          <div className="min-h-screen flex flex-col items-center justify-center gap-4 text-gray-600">
+              <p>{profileError || '프로필을 불러오지 못했습니다. 다시 로그인해주세요.'}</p>
+              <button
+                  type="button"
+                  onClick={async () => {
+                      await logout();
+                      navigate('/login', { replace: true });
+                  }}
+                  className="px-4 py-2 rounded-md bg-indigo-600 text-white"
+              >
+                  로그아웃
+              </button>
+          </div>
+      );
+  }
   if (role === 'pending' || isOnboardingPage) return <OnboardingPage onSubmitLinkCode={handleClaimLinkCode} />;
 
   const appRoutesElement = role === 'parent' ? (

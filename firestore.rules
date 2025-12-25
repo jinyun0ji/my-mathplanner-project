@@ -1,54 +1,46 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    /* ---------- Helpers ---------- */
     function isSignedIn() {
       return request.auth != null;
     }
 
     function userDoc() {
-      return isSignedIn() ? get(/databases/$(database)/documents/users/$(request.auth.uid)) : null;
+      return isSignedIn()
+        ? get(/databases/$(database)/documents/users/$(request.auth.uid))
+        : null;
     }
 
     function userRole() {
-      let data = userDoc() != null ? userDoc().data : null;
-      return data != null ? data.role : null;
+      return userDoc() != null ? userDoc().data.role : null;
     }
 
-    function isAdmin() { return userRole() == 'admin'; }
-    function isStaff() { return userRole() == 'staff'; }
-    function isParent() { return userRole() == 'parent'; }
-    function isStudent() { return userRole() == 'student'; }
+    function isAdmin() {
+      return userRole() == 'admin';
+    }
+
+    function isStaff() {
+      return userRole() == 'staff';
+    }
 
     function isStaffOrAdmin() {
       return isAdmin() || isStaff();
     }
 
-    function isCollectionGroupQuery() {
-      return request.query != null && request.query.collectionGroup == true;
+    function isStudent() {
+      return userRole() == 'student';
     }
 
-    function hasQueryLimit() {
-      return request.query != null && request.query.limit != null;
-    }
-
-    function hasOrderBy() {
-      return request.query != null && request.query.orderBy != null && request.query.orderBy.size() > 0;
-    }
-
-    function hasWhere() {
-      return request.query != null && request.query.where != null && request.query.where.size() > 0;
-    }
-
-    function isQueryAllowed() {
-      return !isCollectionGroupQuery()
-        && hasQueryLimit()
-        && hasOrderBy()
-        && hasWhere();
+    function isParent() {
+      return userRole() == 'parent';
     }
 
     function parentStudentIds() {
-      let doc = userDoc() != null ? userDoc().data : null;
-      return isParent() && doc != null && doc.studentIds != null ? doc.studentIds : [];
+      return isParent() && userDoc().data.studentIds != null
+        ? userDoc().data.studentIds
+        : [];
     }
 
     function canViewStudent(studentId) {
@@ -57,151 +49,50 @@ service cloud.firestore {
         || (isParent() && parentStudentIds().hasAny([studentId]));
     }
 
-    function isChatParticipantByData(chatData) {
-      return isSignedIn()
-        && chatData != null
-        && chatData.participantIds != null
-        && chatData.participantIds.hasAny([request.auth.uid]);
-    }
-
-    function isChatParticipant(chatId) {
-      return isChatParticipantByData(get(/databases/$(database)/documents/chats/$(chatId)).data);
-    }
-
-    function hasChatParticipantFilter() {
-      return isQueryAllowed()
-        && request.query.where[0].field == 'participantIds'
-        && request.query.where[0].op == 'array-contains'
-        && request.query.where[0].value == request.auth.uid;
-    }
-
+    /* ---------- users (⚠️ 중요) ---------- */
     match /users/{uid} {
-      allow get: if isSignedIn() && request.auth.uid == uid;
+      // 본인 문서만 읽기 (단건)
+      allow get, read: if isSignedIn() && request.auth.uid == uid;
+
+      // 관리자만 수정
+      allow write: if isAdmin();
+
+      // list 절대 금지
       allow list: if false;
-      allow create: if isAdmin();
-      allow update: if isAdmin()
-        && !request.resource.data.diff(resource.data).changedKeys().hasAny(['role']);
-      allow delete: if isAdmin();
-
-      match /chatIndex/{chatId} {
-        allow get, list, create, update, delete: if isSignedIn() && request.auth.uid == uid;
-      }
     }
 
-    match /linkCodes/{code} {
-      allow read, write: if false;
-    }
-
+    /* ---------- students ---------- */
     match /students/{id} {
       allow get: if isSignedIn() && canViewStudent(id);
-      allow list: if false;
+      allow list: if isStaffOrAdmin();
+      allow write: if isAdmin();
+    }
+
+    /* ---------- attendances ---------- */
+    match /attendances/{id} {
+      allow read, list: if isStaffOrAdmin();
       allow write: if isStaffOrAdmin();
     }
 
-    match /classes/{id} {
-      allow get: if isStaffOrAdmin();
-      allow list: if false;
+    /* ---------- homeworks ---------- */
+    match /homeworks/{id} {
+      allow read, list: if isStaffOrAdmin();
       allow write: if isStaffOrAdmin();
     }
 
-    match /lessonLogs/{id} {
-      allow get: if isStaffOrAdmin();
-      allow list: if false;
-      allow write: if isStaffOrAdmin();
-    }
-
-    match /attendanceLogs/{id} {
-      allow get: if isSignedIn() && canViewStudent(resource.data.studentId);
-      allow list: if false;
-      allow write: if isStaffOrAdmin();
-    }
-
-    match /clinicLogs/{id} {
-      allow get: if isSignedIn() && canViewStudent(resource.data.studentId);
-      allow list: if false;
-      allow write: if isStaffOrAdmin();
-    }
-
-    match /homeworkAssignments/{id} {
-      allow get: if isStaffOrAdmin();
-      allow list: if false;
-      allow write: if isStaffOrAdmin();
-    }
-
-    match /homeworkResults/{id} {
-      allow get: if isSignedIn() && canViewStudent(resource.data.studentId);
-      allow list: if false;
-      allow write: if isStaffOrAdmin();
-    }
-
+    /* ---------- grades ---------- */
     match /grades/{id} {
-      allow get: if isSignedIn() && canViewStudent(resource.data.studentId);
-      allow list: if false;
+      allow read, list: if isStaffOrAdmin();
       allow write: if isStaffOrAdmin();
     }
 
-    match /payments/{id} {
-      allow get: if isSignedIn() && canViewStudent(resource.data.studentId);
-      allow list: if false;
+    /* ---------- memos ---------- */
+    match /memos/{id} {
+      allow read, list: if isStaffOrAdmin();
       allow write: if isStaffOrAdmin();
     }
 
-    match /announcements/{id} {
-      allow get: if isSignedIn();
-      allow list: if false;
-      allow write: if isStaffOrAdmin();
-    }
-
-    match /workLogs/{id} {
-      allow get: if isStaffOrAdmin();
-      allow list: if false;
-      allow write: if isStaffOrAdmin();
-    }
-
-    match /chats/{chatId} {
-      allow get: if isChatParticipantByData(resource.data);
-      allow list: if isSignedIn() && hasChatParticipantFilter();
-      allow create: if isStaffOrAdmin() && isChatParticipantByData(request.resource.data);
-      allow update: if isStaffOrAdmin() && isChatParticipantByData(resource.data);
-      allow delete: if isStaffOrAdmin() && isChatParticipantByData(resource.data);
-
-      match /messages/{messageId} {
-        allow get: if isChatParticipant(chatId);
-        // Clients must always apply a limit when reading messages to avoid cost spikes.
-        allow list: if isSignedIn() && isChatParticipant(chatId) && isQueryAllowed();
-        allow create: if isChatParticipant(chatId)
-          && request.resource.data.senderId == request.auth.uid
-          && request.resource.data.createdAt == request.time;
-        allow update, delete: if false;
-      }
-    }
-
-    // Notification item schema:
-    // type, title, body, ref (collection/id), studentId, createdAt, readAt
-    // FCM payloads must exclude sensitive data and include only ref info.
-    match /notifications/{uid}/items/{notificationId} {
-      allow get: if isSignedIn() && request.auth.uid == uid;
-      allow list: if false;
-      allow create, update, delete: if isStaffOrAdmin();
-    }
-
-    match /notifications/{uid}/meta {
-      allow get: if isSignedIn() && request.auth.uid == uid;
-      allow list: if false;
-      allow create, update: if isSignedIn() && request.auth.uid == uid;
-      allow delete: if false;
-    }
-
-    match /notifications/{logId} {
-      allow get, list: if isAdmin();
-      allow create, update, delete: if false;
-
-      match /deliveries/{deliveryId} {
-        allow get, list: if isAdmin();
-        allow create, update, delete: if false;
-      }
-    }
-
+    /* ---------- default deny ---------- */
     match /{document=**} {
       allow read, write: if false;
     }

@@ -2,11 +2,11 @@ import React from 'react';
 import useAuth from '../auth/useAuth';
 
 export default function Header({ page }) {
-    const { user, role } = useAuth();
+    const { user, role, userProfile } = useAuth();
 
-    const fallbackName = user?.email ? user.email.split('@')[0] : '';
-    const displayName = user?.displayName?.trim() || fallbackName || '사용자';
-    const roleLabel = role === 'admin' ? '관리자' : '직원';
+    const fallbackName = userProfile?.email || user?.email ? (userProfile?.email || user?.email).split('@')[0] : '';
+    const displayName = userProfile?.displayName?.trim() || user?.displayName?.trim() || fallbackName || '사용자';
+    const roleLabel = role === 'admin' ? '관리자' : role === 'staff' ? '직원' : role === 'parent' ? '학부모' : role === 'student' ? '학생' : '권한 확인 중';
     const avatarLabel = displayName?.[0] || '?';
 
     const getPageTitle = (pageKey) => {

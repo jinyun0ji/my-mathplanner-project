@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { collection, doc, getDoc, getDocs, limit, orderBy, query, where } from 'firebase/firestore';
+import { collection, getDocs, limit, orderBy, query, where } from 'firebase/firestore';
 import { db } from '../firebase/client';
 import { formatGradeLabel, Icon } from '../utils/helpers';
 
@@ -36,7 +36,15 @@ export default function StudentDetail() {
             }
 
             try {
-                const studentRef = doc(db, 'students', studentId);
+                const numericStudentId = Number(studentId);
+                if (Number.isNaN(numericStudentId)) {
+                    throw new Error('invalid-student-id');
+                }
+                const studentQuery = query(
+                    collection(db, 'students'),
+                    where('id', '==', numericStudentId),
+                    limit(1),
+                );
                 const attendanceQuery = query(
                     collection(db, 'attendances'),
                     where('studentId', '==', studentId),
@@ -63,7 +71,7 @@ export default function StudentDetail() {
                 );
 
             const [studentSnap, attendanceSnap, homeworkSnap, gradesSnap, memoSnap] = await Promise.all([
-                    getDoc(studentRef),
+                    getDocs(studentQuery),
                     getDocs(attendanceQuery),
                     getDocs(homeworkQuery),
                     getDocs(gradesQuery),
@@ -72,12 +80,19 @@ export default function StudentDetail() {
 
                 if (!isMounted) return;
 
-            setStudent(studentSnap.exists() ? { id: studentSnap.id, ...studentSnap.data() } : null);
+            const studentDoc = studentSnap.docs[0];
+                if (!studentDoc) {
+                    setError('학생 정보를 찾을 수 없습니다.');
+                    setStudent(null);
+                } else {
+                    setStudent({ id: studentDoc.id, ...studentDoc.data() });
+                }
                 setAttendances(attendanceSnap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })));
                 setHomeworks(homeworkSnap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })));
                 setGrades(gradesSnap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })));
                 setMemo(memoSnap.docs[0] ? { id: memoSnap.docs[0].id, ...memoSnap.docs[0].data() } : null);
             } catch (fetchError) {
+                console.error("상세 에러 로그:", fetchError); // <--- 이 줄을 추가해서 F12 콘솔 확인
                 if (isMounted) {
                     setError('학생 정보를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.');
                 }
