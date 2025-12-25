@@ -52,7 +52,7 @@ export default function LessonManagement({
     const [activeVideoByLog, setActiveVideoByLog] = useState({});
 
     const selectedClass = classes.find(c => String(c.id) === String(selectedClassId));;
-
+    
     useEffect(() => {
         if (!classes || classes.length === 0) return;
         if (selectedClassId && classes.some(c => String(c.id) === String(selectedClassId))) return;
@@ -103,7 +103,6 @@ export default function LessonManagement({
         }
     }, [currentLog, activeVideoByLog]);
 
-    
     const handleDateNavigate = (direction) => {
         const sessions = calculateClassSessions(selectedClass);
         const currentIndex = sessions.findIndex(s => s.date === selectedDate);
@@ -259,16 +258,25 @@ export default function LessonManagement({
                 </div>
             )}
 
-                {log.materialUrl && (
-                    <div className="text-sm font-medium text-indigo-600 flex items-center border-t pt-4">
-                        <Icon name="fileText" className="w-4 h-4 mr-2" />
-                        <button
-                            type="button"
-                            onClick={() => window.open(log.materialUrl, '_blank', 'noopener,noreferrer')}
-                            className="ml-1 hover:underline"
-                        >
-                            첨부 자료: {log.materialUrl}
-                        </button>
+                {log.materials && log.materials.length > 0 && (
+                    <div className="border-t pt-4 space-y-2">
+                        <div className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                            <Icon name="fileText" className="w-4 h-4 text-indigo-600" />
+                            첨부 자료 ({log.materials.length})
+                        </div>
+                        <div className="space-y-2">
+                            {log.materials.map((material, index) => (
+                                <button
+                                    key={`${material.url}-${index}`}
+                                    type="button"
+                                    onClick={() => window.open(material.url, '_blank', 'noopener,noreferrer')}
+                                    className="w-full text-left text-sm text-indigo-600 flex items-center gap-2 rounded-lg border border-indigo-100 bg-indigo-50 px-3 py-2 hover:bg-indigo-100"
+                                >
+                                    <Icon name="download" className="w-4 h-4" />
+                                    <span className="truncate">{material.name}</span>
+                                </button>
+                            ))}
+                        </div>
                     </div>
                 )}
 

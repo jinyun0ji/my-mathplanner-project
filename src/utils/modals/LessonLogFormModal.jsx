@@ -87,7 +87,7 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
   const [date, setDate] = useState(defaultDate || '');
   const [progress, setProgress] = useState('');
   const [videos, setVideos] = useState([]);
-  const [materialUrl, setMaterialUrl] = useState('');
+  const [materials, setMaterials] = useState([]);
   const [scheduleTime, setScheduleTime] = useState('');
   const [studentNotificationMap, setStudentNotificationMap] = useState({});
   const [staffNotifyMode, setStaffNotifyMode] = useState('none');
@@ -95,15 +95,19 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
   const [staffNotifyBody, setStaffNotifyBody] = useState('');
   const [staffNotifyScheduledAt, setStaffNotifyScheduledAt] = useState('');
 
-  // ✅ [추가] 파일 첨부 상태 및 Ref
-  const [selectedFile, setSelectedFile] = useState(null);
-  const fileInputRef = useRef(null);
   const videoIdRef = useRef(0);
+  const materialIdRef = useRef(0);
 
   const createVideoEntry = useCallback((video = {}) => ({
     id: video.id || `video-${videoIdRef.current++}`,
     title: video.title || '',
     url: video.url || '',
+  }), []);
+
+  const createMaterialEntry = useCallback((material = {}) => ({
+    id: material.id || `material-${materialIdRef.current++}`,
+    name: material.name || '',
+    url: material.url || '',
   }), []);
 
   const normalizeVideosFromLog = useCallback((logItem) => {
@@ -143,11 +147,18 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
 
   useEffect(() => {
     videoIdRef.current = 0;
+    materialIdRef.current = 0;
     if (log) {
       setDate(log.date);
       setProgress(log.progress);
       setVideos(normalizeVideosFromLog(log));
-      setMaterialUrl(log.materialUrl);
+      if (Array.isArray(log.materials)) {
+        setMaterials(log.materials.map(item => createMaterialEntry(item)));
+      } else if (log.materialUrl) {
+        setMaterials([createMaterialEntry({ name: log.materialUrl, url: log.materialUrl })]);
+      } else {
+        setMaterials([]);
+      }
       setScheduleTime(log.scheduleTime || '');
       if (log.notifyMode === 'staff' && log.staffNotification) {
         setStaffNotifyMode(log.staffNotification.mode || 'immediate');
@@ -168,7 +179,7 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
       setDate(defaultDate || (sessions.length > 0 ? sessions[sessions.length - 1].date : ''));
       setProgress('');
       setVideos([]);
-      setMaterialUrl('');
+      setMaterials([]);
       setScheduleTime('');
       setStaffNotifyMode('none');
       setStaffNotifyTitle('');
@@ -223,30 +234,6 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
     setIsDirty(true); 
   };
 
-  // ✅ [추가] 파일 선택 핸들러
-  const handleFileChange = (e) => {
-      const file = e.target.files[0];
-      if (file) {
-          setSelectedFile(file);
-          // 파일 선택 시 자료 URL 필드에 파일명을 자동으로 입력해 줌 (사용자 편의)
-          setMaterialUrl(file.name); 
-          setIsDirty(true);
-      }
-  };
-
-  // ✅ [추가] 파일 선택 버튼 클릭 트리거
-  const handleTriggerFileUpload = () => {
-      fileInputRef.current?.click();
-  };
-
-  // ✅ [추가] 선택된 파일 취소
-  const handleClearFile = () => {
-      setSelectedFile(null);
-      setMaterialUrl('');
-      if (fileInputRef.current) fileInputRef.current.value = '';
-      setIsDirty(true);
-  };
-
   const handleAddVideo = () => {
       setVideos(prev => [...prev, createVideoEntry()]);
       setIsDirty(true);
@@ -259,6 +246,21 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
 
   const handleRemoveVideo = (id) => {
       setVideos(prev => prev.filter(video => video.id !== id));
+      setIsDirty(true);
+  };
+
+  const handleAddMaterial = () => {
+      setMaterials(prev => [...prev, createMaterialEntry()]);
+      setIsDirty(true);
+  };
+
+  const handleMaterialChange = (id, field, value) => {
+      setMaterials(prev => prev.map(material => material.id === id ? { ...material, [field]: value ?? '' } : material));
+      setIsDirty(true);
+  };
+
+  const handleRemoveMaterial = (id) => {
+      setMaterials(prev => prev.filter(material => material.id !== id));
       setIsDirty(true);
   };
 
@@ -339,8 +341,13 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
                 title: video.title || '',
                 url: video.url.trim(),
             })),
-        materialUrl, // URL 입력값 또는 파일명
-        file: selectedFile, // ✅ 실제 파일 객체 전달 (상위 컴포넌트에서 업로드 처리 필요)
+        materials: materials
+            .map(material => {
+                const url = material.url?.trim();
+                const name = material.name?.trim() || url;
+                return { name, url };
+            })
+            .filter(material => material.url && material.name),
         scheduleTime: scheduleTime || null,
         notifyMode: staffNotifyMode === 'none' ? 'system' : 'staff',
         staffNotification,
@@ -478,65 +485,57 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
             </div>
             
             <div>
-                <label className="block text-sm font-medium text-gray-700">첨부 자료 URL/이름 (선택)</label>
-                <input 
-                    type="text" 
-                    value={materialUrl} 
-                    onChange={e => handleChange(setMaterialUrl, e.target.value)} 
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border" 
-                    placeholder="예: 수업자료_1103.pdf 또는 다운로드 링크" 
-                />
-            </div>
-
-            {/* ✅ [수정] 파일 첨부 및 URL 입력 통합 영역 */}
-            <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">첨부 자료</label>
-                <div className="flex gap-2 items-center">
-                    {/* 숨겨진 파일 입력 */}
-                    <input 
-                        type="file" 
-                        ref={fileInputRef}
-                        onChange={handleFileChange}
-                        className="hidden"
-                    />
-                    
-                    {/* 파일 선택 버튼 */}
-                    <button 
+                <div className="flex items-center justify-between">
+                    <label className="block text-sm font-medium text-gray-700">첨부 자료</label>
+                    <button
                         type="button"
-                        onClick={handleTriggerFileUpload}
-                        className="flex items-center justify-center px-3 py-2 border border-gray-300 rounded-md bg-white text-gray-700 hover:bg-gray-50 text-sm font-medium shadow-sm transition"
+                         onClick={handleAddMaterial}
+                        className="inline-flex items-center px-3 py-1.5 rounded-md text-sm font-medium bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 transition"
                     >
-                        <Icon name="upload" className="w-4 h-4 mr-2" />
-                        파일 찾기
+                        <Icon name="plus" className="w-4 h-4 mr-1" /> 자료 추가
                     </button>
-
-                    {/* 파일명/URL 입력 필드 */}
-                    <input 
-                        type="text" 
-                        value={materialUrl} 
-                        onChange={e => handleChange(setMaterialUrl, e.target.value)} 
-                        className="block w-full rounded-md border-gray-300 shadow-sm p-2 border flex-1" 
-                        placeholder="파일을 선택하거나 URL을 직접 입력하세요." 
-                    />
-
-                    {/* 선택 취소 버튼 (파일이 선택되었을 때만 표시) */}
-                    {selectedFile && (
-                        <button 
-                            type="button" 
-                            onClick={handleClearFile}
-                            className="text-red-500 hover:text-red-700 p-2"
-                            title="첨부 파일 취소"
-                        >
-                            <Icon name="x" className="w-5 h-5" />
-                        </button>
+                  </div>
+                  <div className="mt-2 space-y-3">
+                    {materials.length === 0 && (
+                        <div className="rounded-md border border-dashed border-gray-300 bg-gray-50 p-4 text-sm text-gray-500">
+                            자료 추가 버튼을 눌러 파일명과 다운로드 URL을 등록하세요.
+                        </div>
                     )}
+                    {materials.map((material, index) => (
+                        <div key={material.id} className="rounded-lg border border-gray-200 bg-gray-50 p-4 space-y-3">
+                            <div className="flex items-center justify-between">
+                                <div className="text-sm font-semibold text-gray-700">자료 {index + 1}</div>
+                                <button
+                                    type="button"
+                                    onClick={() => handleRemoveMaterial(material.id)}
+                                    className="text-red-500 hover:text-red-700 text-sm inline-flex items-center"
+                                >
+                                    <Icon name="trash" className="w-4 h-4 mr-1" /> 삭제
+                                </button>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-medium text-gray-600">자료 이름</label>
+                                <input
+                                    type="text"
+                                    value={material.name}
+                                    onChange={e => handleMaterialChange(material.id, 'name', e.target.value)}
+                                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border"
+                                    placeholder="예: 수업자료_1103.pdf"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-medium text-gray-600">다운로드 URL</label>
+                                <input
+                                    type="url"
+                                    value={material.url}
+                                    onChange={e => handleMaterialChange(material.id, 'url', e.target.value)}
+                                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border"
+                                    placeholder="https://..."
+                                />
+                            </div>
+                        </div>
+                    ))}
                 </div>
-                {selectedFile && (
-                    <p className="text-xs text-indigo-600 mt-1 flex items-center">
-                        <Icon name="check" className="w-3 h-3 mr-1" />
-                        첨부 대기 중: <b>{selectedFile.name}</b> ({(selectedFile.size / 1024 / 1024).toFixed(2)} MB)
-                    </p>
-                )}
             </div>
 
             {scheduleTime && (
