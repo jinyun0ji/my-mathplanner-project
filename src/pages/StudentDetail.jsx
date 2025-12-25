@@ -51,26 +51,26 @@ export default function StudentDetail() {
                     orderBy('date', 'desc'),
                     limit(5),
                 );
-            const homeworkQuery = query(
+                const homeworkQuery = query(
                     collection(db, 'homeworks'),
                     where('studentId', '==', studentId),
                     orderBy('date', 'desc'),
                     limit(5),
                 );
-            const gradesQuery = query(
+                const gradesQuery = query(
                     collection(db, 'grades'),
                     where('studentId', '==', studentId),
                     orderBy('date', 'desc'),
                     limit(3),
                 );
-            const memoQuery = query(
+                const memoQuery = query(
                     collection(db, 'memos'),
                     where('studentId', '==', studentId),
                     orderBy('createdAt', 'desc'),
                     limit(1),
                 );
 
-            const [studentSnap, attendanceSnap, homeworkSnap, gradesSnap, memoSnap] = await Promise.all([
+                const [studentSnap, attendanceSnap, homeworkSnap, gradesSnap, memoSnap] = await Promise.all([
                     getDocs(studentQuery),
                     getDocs(attendanceQuery),
                     getDocs(homeworkQuery),
@@ -80,28 +80,28 @@ export default function StudentDetail() {
 
                 if (!isMounted) return;
 
-            const studentDoc = studentSnap.docs[0];
+                const studentDoc = studentSnap.docs[0];
                 if (!studentDoc) {
                     setError('학생 정보를 찾을 수 없습니다.');
                     setStudent(null);
                 } else {
                     setStudent({ id: studentDoc.id, ...studentDoc.data() });
                 }
-                setAttendances(attendanceSnap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })));
-                setHomeworks(homeworkSnap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })));
-                setGrades(gradesSnap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })));
-                setMemo(memoSnap.docs[0] ? { id: memoSnap.docs[0].id, ...memoSnap.docs[0].data() } : null);
-            } catch (fetchError) {
-                console.error("상세 에러 로그:", fetchError); // <--- 이 줄을 추가해서 F12 콘솔 확인
-                if (isMounted) {
-                    setError('학생 정보를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.');
+                    setAttendances(attendanceSnap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })));
+                    setHomeworks(homeworkSnap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })));
+                    setGrades(gradesSnap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })));
+                    setMemo(memoSnap.docs[0] ? { id: memoSnap.docs[0].id, ...memoSnap.docs[0].data() } : null);
+                } catch (fetchError) {
+                    console.error("상세 에러 로그:", fetchError); // <--- 이 줄을 추가해서 F12 콘솔 확인
+                    if (isMounted) {
+                        setError('학생 정보를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.');
+                    }
+                } finally {
+                    if (isMounted) {
+                        setLoading(false);
+                    }
                 }
-            } finally {
-                if (isMounted) {
-                    setLoading(false);
-                }
-            }
-        };
+            };
 
             loadStudentDetail();
             

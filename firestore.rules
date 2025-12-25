@@ -24,6 +24,10 @@ service cloud.firestore {
     function isStaff() {
       return role() in ['admin', 'teacher', 'staff'];
     }
+    
+    function isStudent() {
+      return isSignedIn() && userRole() == 'student';
+    }
 
     /* =========================
        users (가장 중요)
@@ -37,8 +41,11 @@ service cloud.firestore {
        Staff 전용 컬렉션
     ========================= */
     match /students/{docId} {
-      allow read, list: if isStaff();
+    	allow read, list, get: if isStaff();
       allow write: if isAdmin();
+
+			// 학생 본인은 자기 문서 '단건'만 허용 (선택)
+      //allow get: if isStudent() && resource.data.uid == request.auth.uid;
     }
 
     match /classes/{docId} {
