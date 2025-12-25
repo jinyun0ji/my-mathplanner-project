@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { DndContext, PointerSensor, closestCenter, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { getDownloadURL, ref as storageRef, uploadBytes } from 'firebase/storage';
+import { getDownloadURL, ref as storageRef, uploadBytesResumable } from 'firebase/storage';
 import { Modal } from '../../components/common/Modal';
 import { Icon, calculateClassSessions } from '../../utils/helpers';
 import { storage } from '../../firebase/client';
@@ -263,23 +263,61 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
       if (files.length === 0) return;
 
       setIsUploadingMaterials(true);
+
       try {
-          const uploadedMaterials = await Promise.all(
-              files.map(async (file) => {
-                  const timestamp = Date.now();
-                  const safeName = file.name.replace(/\s+/g, '_');
-                  const path = `lesson-materials/${classId || 'unknown'}/${date || 'unscheduled'}/${timestamp}-${safeName}`;
-                  const fileRef = storageRef(storage, path);
-                  await uploadBytes(fileRef, file);
-                  const url = await getDownloadURL(fileRef);
-                  return createMaterialEntry({ name: file.name, url });
-              })
+          const uploadedMaterials = await Promise.allSettled(
+              files.map((file) => new Promise((resolve, reject) => {
+                  try {
+                      const timestamp = Date.now();
+                      const safeName = file.name.replace(/\s+/g, '_');
+                      const path = `lesson-materials/${classId || 'unknown'}/${date || 'unscheduled'}/${timestamp}-${safeName}`;
+                      const fileRef = storageRef(storage, path);
+                      const uploadTask = uploadBytesResumable(fileRef, file);
+
+                      uploadTask.on(
+                          'state_changed',
+                          null,
+                          (error) => {
+                              console.error('Failed to upload lesson materials', error);
+                              setIsUploadingMaterials(false);
+                              reject(error);
+                          },
+                          async () => {
+                              try {
+                                  const url = await getDownloadURL(uploadTask.snapshot.ref);
+                                  resolve(createMaterialEntry({ name: file.name, url }));
+                              } catch (error) {
+                                  console.error('Failed to upload lesson materials', error);
+                                  reject(error);
+                              } finally {
+                                  setIsUploadingMaterials(false);
+                              }
+                          }
+                      );
+                  } catch (error) {
+                      console.error('Failed to upload lesson materials', error);
+                      setIsUploadingMaterials(false);
+                      reject(error);
+                  }
+              }))
           );
-          setMaterials(prev => [...prev, ...uploadedMaterials]);
-          setIsDirty(true);
+          const successfulUploads = uploadedMaterials
+              .filter(result => result.status === 'fulfilled')
+              .map(result => result.value);
+          const hasFailures = uploadedMaterials.some(result => result.status === 'rejected');
+
+          if (successfulUploads.length > 0) {
+              setMaterials(prev => [...prev, ...successfulUploads]);
+              setIsDirty(true);
+          }
+
+          if (hasFailures) {
+              alert('첨부 파일 업로드에 실패했습니다. 네트워크 상태를 확인해 주세요.');
+          }
       } catch (error) {
           console.error('Failed to upload lesson materials', error);
           alert('첨부 파일 업로드에 실패했습니다. 네트워크 상태를 확인해 주세요.');
+          setIsUploadingMaterials(false);
       } finally {
           setIsUploadingMaterials(false);
           event.target.value = '';
