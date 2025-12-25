@@ -81,33 +81,26 @@ const retryNotification = functions.https.onCall(async (data, context) => {
     const retrySuccessUids = eligibleUids.filter((uid) => !failedUidSet.has(uid));
 
     if (retrySuccessUids.length > 0 || failedUidSet.size > 0) {
-        const deliveryUpdates = [
-            ...retrySuccessUids.map((uid) => ({
-                uid,
-                data: {
-                    status: 'success',
-                    errorCode: FieldValue.delete(),
-                    succeededAt: FieldValue.serverTimestamp(),
-                    lastAttemptedAt: FieldValue.serverTimestamp(),
-                    retryLogId: notificationLogId,
-                },
-            })),
-            ...(fcmStats?.failedEntries || []).map((entry) => ({
-                uid: entry.uid,
-                data: {
+        const failedEntries = fcmStats?.failedEntries || [];
+
+        for (let i = 0; i < retrySuccessUids.length; i += 450) {
+            const batch = db.batch();
+            retrySuccessUids.slice(i, i + 450).forEach((uid) => {
+                batch.delete(logRef.collection('deliveries').doc(uid));
+            });
+            await batch.commit();
+        }
+
+        for (let i = 0; i < failedEntries.length; i += 450) {
+            const batch = db.batch();
+            failedEntries.slice(i, i + 450).forEach((entry) => {
+                batch.set(logRef.collection('deliveries').doc(entry.uid), {
                     status: 'failed',
                     errorCode: entry.errorCode,
                     failedAt: FieldValue.serverTimestamp(),
                     lastAttemptedAt: FieldValue.serverTimestamp(),
                     retryLogId: notificationLogId,
-                },
-            })),
-        ];
-
-        for (let i = 0; i < deliveryUpdates.length; i += 450) {
-            const batch = db.batch();
-            deliveryUpdates.slice(i, i + 450).forEach(({ uid, data }) => {
-                batch.set(logRef.collection('deliveries').doc(uid), data, { merge: true });
+                }, { merge: true });
             });
             await batch.commit();
         }
