@@ -8,7 +8,7 @@ import { db } from '../firebase/client';
 import { isStaffOrTeachingRole } from '../constants/roles';
 
 // ✅ [수정] props에 paymentLogs, handleSavePayment 추가
-export default function PaymentManagement({ students, classes, paymentLogs, handleSavePayment, logNotification, userRole, userId }) {
+export default function PaymentManagement({ students, classes, paymentLogs, handleSavePayment, handleUpdatePayment, logNotification, userRole, userId }) {
 
     // --- 1. 초기 데이터 및 상태 ---
     const initialPaymentLogs = [
@@ -35,6 +35,12 @@ export default function PaymentManagement({ students, classes, paymentLogs, hand
         bookId: '',
         method: '간편결제',
         channel: '간편결제',
+    });
+    const [editingPaymentId, setEditingPaymentId] = useState(null);
+    const [editingPaymentForm, setEditingPaymentForm] = useState({
+        amount: '',
+        method: '간편결제',
+        memo: '',
     });
     const [useEasyPay, setUseEasyPay] = useState(true);
     
@@ -338,6 +344,33 @@ export default function PaymentManagement({ students, classes, paymentLogs, hand
         }));
     };
 
+    const startEditingPayment = (log) => {
+        setEditingPaymentId(log.id);
+        setEditingPaymentForm({
+            amount: typeof log.amount === 'number' ? log.amount : Number(log.amount) || 0,
+            method: log.method || '간편결제',
+            memo: log.memo || '',
+        });
+    };
+
+    const cancelEditingPayment = () => {
+        setEditingPaymentId(null);
+    };
+
+    const handlePaymentUpdateSubmit = async (paymentId) => {
+        if (!handleUpdatePayment) return;
+        const amountValue = Number(editingPaymentForm.amount);
+        if (!Number.isFinite(amountValue)) {
+            alert('결제 금액을 확인해주세요.');
+            return;
+        }
+        await handleUpdatePayment(paymentId, {
+            amount: amountValue,
+            method: editingPaymentForm.method,
+            memo: editingPaymentForm.memo || '',
+        });
+        setEditingPaymentId(null);
+    };
 
     return (
         <div className="space-y-6">
@@ -708,55 +741,209 @@ export default function PaymentManagement({ students, classes, paymentLogs, hand
                                     <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">결제 금액</th>
                                     <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">방법</th>
                                     <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">구분</th>
+                                    <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">메모</th>
+                                    <th className="px-6 py-3 text-center text-xs font-bold text-gray-500 uppercase">작업</th>
                                 </tr>
                             </thead>
                             <tbody className="bg-white divide-y divide-gray-200">
-                                {effectivePaymentLogs.map(log => (
-                                    <tr key={log.id} className="hover:bg-gray-50 transition">
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{log.date}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">{log.studentName}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{log.bookName}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-indigo-600">{log.amount.toLocaleString()}원</td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{log.method}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm">
-                                            <span className={`px-2 py-1 text-xs rounded border font-medium ${
-                                                log.type === '간편결제'
-                                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                                    : log.type === '온라인결제'
-                                                        ? 'bg-purple-50 text-purple-600 border-purple-200'
-                                                        : 'bg-gray-50 text-gray-600 border-gray-200'
-                                            }`}>
-                                                {log.type}
-                                            </span>
-                                        </td>
-                                    </tr>
-                                ))}
+                                {effectivePaymentLogs.map(log => {
+                                    const isEditing = editingPaymentId === log.id;
+                                    return (
+                                        <tr
+                                            key={log.id}
+                                            onClick={() => {
+                                                if (!isEditing) startEditingPayment(log);
+                                            }}
+                                            className={`transition ${isEditing ? 'bg-indigo-50/40' : 'hover:bg-gray-50'} ${isEditing ? '' : 'cursor-pointer'}`}
+                                        >
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{log.date}</td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">{log.studentName}</td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{log.bookName}</td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-indigo-600">
+                                                {isEditing ? (
+                                                    <input
+                                                        type="number"
+                                                        value={editingPaymentForm.amount}
+                                                        onChange={(e) => setEditingPaymentForm(prev => ({ ...prev, amount: e.target.value }))}
+                                                        onClick={(e) => e.stopPropagation()}
+                                                        className="w-28 rounded-md border border-gray-300 px-2 py-1 text-sm text-gray-700"
+                                                    />
+                                                ) : (
+                                                    `${log.amount.toLocaleString()}원`
+                                                )}
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                                {isEditing ? (
+                                                    <select
+                                                        value={editingPaymentForm.method}
+                                                        onChange={(e) => setEditingPaymentForm(prev => ({ ...prev, method: e.target.value }))}
+                                                        onClick={(e) => e.stopPropagation()}
+                                                        className="rounded-md border border-gray-300 px-2 py-1 text-sm"
+                                                    >
+                                                        <option value="간편결제">간편결제</option>
+                                                        <option value="카드">카드</option>
+                                                        <option value="현금">현금</option>
+                                                        <option value="계좌이체">계좌이체</option>
+                                                    </select>
+                                                ) : (
+                                                    log.method
+                                                )}
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm">
+                                                <span className={`px-2 py-1 text-xs rounded border font-medium ${
+                                                    log.type === '간편결제'
+                                                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                                        : log.type === '온라인결제'
+                                                            ? 'bg-purple-50 text-purple-600 border-purple-200'
+                                                            : 'bg-gray-50 text-gray-600 border-gray-200'
+                                                }`}>
+                                                    {log.type}
+                                                </span>
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                                {isEditing ? (
+                                                    <input
+                                                        type="text"
+                                                        value={editingPaymentForm.memo}
+                                                        onChange={(e) => setEditingPaymentForm(prev => ({ ...prev, memo: e.target.value }))}
+                                                        onClick={(e) => e.stopPropagation()}
+                                                        className="w-40 rounded-md border border-gray-300 px-2 py-1 text-sm"
+                                                    />
+                                                ) : (
+                                                    log.memo || '-'
+                                                )}
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-center text-sm">
+                                                {isEditing ? (
+                                                    <div className="flex items-center justify-center gap-2">
+                                                        <button
+                                                            type="button"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                handlePaymentUpdateSubmit(log.id);
+                                                            }}
+                                                            className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-indigo-700"
+                                                        >
+                                                            저장
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                cancelEditingPayment();
+                                                            }}
+                                                            className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-semibold text-gray-600 hover:bg-gray-50"
+                                                        >
+                                                            취소
+                                                        </button>
+                                                    </div>
+                                                ) : (
+                                                    <span className="text-xs text-gray-400">클릭하여 수정</span>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
                                 {effectivePaymentLogs.length === 0 && (
-                                    <tr><td colSpan="6" className="px-6 py-10 text-center text-gray-400">수납 내역이 없습니다.</td></tr>
+                                    <tr><td colSpan="8" className="px-6 py-10 text-center text-gray-400">수납 내역이 없습니다.</td></tr>
                                 )}
                             </tbody>
                         </table>
                     </div>
 
                     <div className="grid gap-3 md:hidden">
-                        {effectivePaymentLogs.length > 0 ? effectivePaymentLogs.map(log => (
-                            <div key={log.id} className="border rounded-xl p-4 shadow-sm bg-white space-y-2">
-                                <div className="flex items-start justify-between">
-                                    <div>
-                                        <p className="text-base font-bold text-gray-900">{log.studentName}</p>
-                                        <p className="text-xs text-gray-500">{log.date}</p>
+                        {effectivePaymentLogs.length > 0 ? effectivePaymentLogs.map(log => {
+                            const isEditing = editingPaymentId === log.id;
+                            return (
+                                <div
+                                    key={log.id}
+                                    onClick={() => {
+                                        if (!isEditing) startEditingPayment(log);
+                                    }}
+                                    className={`border rounded-xl p-4 shadow-sm space-y-3 transition ${isEditing ? 'bg-indigo-50/40' : 'bg-white hover:bg-gray-50'} ${isEditing ? '' : 'cursor-pointer'}`}
+                                >
+                                    <div className="flex items-start justify-between">
+                                        <div>
+                                            <p className="text-base font-bold text-gray-900">{log.studentName}</p>
+                                            <p className="text-xs text-gray-500">{log.date}</p>
+                                        </div>
+                                        {isEditing ? (
+                                            <input
+                                                type="number"
+                                                value={editingPaymentForm.amount}
+                                                onChange={(e) => setEditingPaymentForm(prev => ({ ...prev, amount: e.target.value }))}
+                                                onClick={(e) => e.stopPropagation()}
+                                                className="w-24 rounded-md border border-gray-300 px-2 py-1 text-sm text-indigo-700"
+                                            />
+                                        ) : (
+                                            <span className="text-sm font-bold text-indigo-700">{log.amount.toLocaleString()}원</span>
+                                        )}
                                     </div>
-                                    <span className="text-sm font-bold text-indigo-700">{log.amount.toLocaleString()}원</span>
+                                    <p className="text-sm text-gray-700">{log.bookName}</p>
+                                    <div className="flex items-center justify-between text-xs text-gray-500 gap-3">
+                                        {isEditing ? (
+                                            <select
+                                                value={editingPaymentForm.method}
+                                                onChange={(e) => setEditingPaymentForm(prev => ({ ...prev, method: e.target.value }))}
+                                                onClick={(e) => e.stopPropagation()}
+                                                className="rounded-md border border-gray-300 px-2 py-1 text-xs"
+                                            >
+                                                <option value="간편결제">간편결제</option>
+                                                <option value="카드">카드</option>
+                                                <option value="현금">현금</option>
+                                                <option value="계좌이체">계좌이체</option>
+                                            </select>
+                                        ) : (
+                                            <span>{log.method}</span>
+                                        )}
+                                        <span className={`px-2 py-1 rounded border font-medium ${log.type === '온라인결제' ? 'bg-purple-50 text-purple-600 border-purple-200' : 'bg-gray-50 text-gray-600 border-gray-200'}`}>
+                                            {log.type}
+                                        </span>
+                                    </div>
+                                    <div className="text-xs text-gray-500">
+                                        {isEditing ? (
+                                            <input
+                                                type="text"
+                                                value={editingPaymentForm.memo}
+                                                onChange={(e) => setEditingPaymentForm(prev => ({ ...prev, memo: e.target.value }))}
+                                                onClick={(e) => e.stopPropagation()}
+                                                placeholder="메모"
+                                                className="w-full rounded-md border border-gray-300 px-2 py-1 text-xs"
+                                            />
+                                        ) : (
+                                            <span>{log.memo ? `메모: ${log.memo}` : '메모 없음'}</span>
+                                        )}
+                                    </div>
+                                    {isEditing && (
+                                        <div className="flex items-center gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handlePaymentUpdateSubmit(log.id);
+                                                }}
+                                                className="flex-1 rounded-md bg-indigo-600 px-3 py-2 text-xs font-bold text-white hover:bg-indigo-700"
+                                            >
+                                                저장
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    cancelEditingPayment();
+                                                }}
+                                                className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-50"
+                                            >
+                                                취소
+                                            </button>
+                                        </div>
+                                    )}
+                                    {!isEditing && (
+                                        <div className="text-[11px] text-gray-400">카드를 눌러 수정</div>
+                                    )}
                                 </div>
-                                <p className="text-sm text-gray-700">{log.bookName}</p>
-                                <div className="flex items-center justify-between text-xs text-gray-500">
-                                    <span>{log.method}</span>
-                                    <span className={`px-2 py-1 rounded border font-medium ${log.type === '온라인결제' ? 'bg-purple-50 text-purple-600 border-purple-200' : 'bg-gray-50 text-gray-600 border-gray-200'}`}>
-                                        {log.type}
-                                    </span>
-                                </div>
-                            </div>
-                        )) : (
+                            );
+                        }) : (
                             <div className="text-center text-gray-400 py-6 border rounded-xl bg-white">
                                 수납 내역이 없습니다.
                             </div>

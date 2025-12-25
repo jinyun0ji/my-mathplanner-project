@@ -45,6 +45,10 @@ import {
     collection,
     deleteDoc,
     doc,
+    getDocs,
+    limit,
+    orderBy,
+    query,
     setDoc,
     serverTimestamp,
     updateDoc,
@@ -290,6 +294,22 @@ export default function AppRoutes({ user, role, studentIds }) {
       setHasNewNotifications(true);
   }, []);
 
+  const normalizePaymentLog = (log) => {
+      if (!log) return log;
+      if (log.studentId) return log;
+      if (log.authUid) return { ...log, studentId: log.authUid };
+      if (log.studentUid) return { ...log, studentId: log.studentUid };
+      return log;
+  };
+
+  const refreshPaymentLogs = useCallback(async () => {
+      ensureFirestoreContext();
+      const paymentQuery = query(collection(db, 'payments'), orderBy('date', 'desc'), limit(150));
+      const snapshot = await getDocs(paymentQuery);
+      const logs = snapshot.docs.map((docSnap) => normalizePaymentLog({ id: docSnap.id, ...docSnap.data() }));
+      setPaymentLogs(logs);
+  }, [db, userId]);
+
   const handleSavePayment = async (paymentData) => {
       ensureFirestoreContext();
       try {
@@ -305,6 +325,22 @@ export default function AppRoutes({ user, role, studentIds }) {
       } catch (error) {
           console.error('[Firestore WRITE ERROR]', error);
           alert('결제 기록 저장에 실패했습니다. 권한 또는 네트워크를 확인하세요.');
+      }
+  };
+
+  const handleUpdatePayment = async (paymentId, updates) => {
+      ensureFirestoreContext();
+      try {
+          await updateDoc(doc(db, 'payments', paymentId), {
+              ...updates,
+              updatedAt: serverTimestamp(),
+              updatedBy: userId,
+          });
+          await refreshPaymentLogs();
+          logNotification('success', '결제 기록 수정', '결제 정보가 업데이트되었습니다.');
+      } catch (error) {
+          console.error('[Firestore WRITE ERROR]', error);
+          alert('결제 기록 수정에 실패했습니다. 권한 또는 네트워크를 확인하세요.');
       }
   };
 
@@ -860,7 +896,7 @@ export default function AppRoutes({ user, role, studentIds }) {
     handleSaveAttendance, handleSaveHomeworkAssignment, handleDeleteHomeworkAssignment, handleUpdateHomeworkResult,
     handleSaveTest, handleDeleteTest, handleUpdateGrade, handleSaveMemo,
     handleSaveAnnouncement, handleDeleteAnnouncement, handleSaveWorkLog, handleDeleteWorkLog, handleSaveClinicLog, handleDeleteClinicLog,
-    handleSavePayment,
+    handleSavePayment, handleUpdatePayment,
     calculateClassSessions, handlePageChange, logNotification, notifications,
     calculateGradeComparison, calculateHomeworkStats,
     setIsGlobalDirty, studentSearchTerm, setStudentSearchTerm, handleSendStudentNotification,
