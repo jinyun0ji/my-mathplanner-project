@@ -1,6 +1,7 @@
 // src/pages/LoginPage.jsx
 import React from 'react';
 import { Icon } from '../utils/helpers';
+import { Link } from 'react-router-dom';
 
 export default function LoginPage({ onSocialLogin }) {
     return (
