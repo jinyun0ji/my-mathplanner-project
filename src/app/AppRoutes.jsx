@@ -362,6 +362,7 @@ export default function AppRoutes({ user, role, studentIds }) {
               role: ROLE.STUDENT,
               active: payload.active !== false,
               classIds: payload.classes || [],
+              uid: data.uid || data.id || payload.authUid || null,
           };
           if (isEdit) {
               if (!data.id) throw new Error('학생 ID가 없습니다.');
@@ -379,7 +380,11 @@ export default function AppRoutes({ user, role, studentIds }) {
                   updatedAt: serverTimestamp(),
                   updatedBy: userId,
               });
-              setStudents(prev => [...prev, { id: docRef.id, ...studentPayload }]);
+              const resolvedUid = studentPayload.uid || docRef.id;
+              if (!studentPayload.uid) {
+                  await updateDoc(doc(db, 'users', docRef.id), { uid: resolvedUid });
+              }
+              setStudents(prev => [...prev, { id: docRef.id, ...studentPayload, uid: resolvedUid }]);
           }
       } catch (error) {
           console.error('[Firestore WRITE ERROR]', error);

@@ -37,11 +37,15 @@ export default function AttendanceManagement({
 
         const loadClassStudents = async () => {
             if (!selectedClassId) {
-                if (isActive) setClassStudents([]);
+                if (isActive) {
+                    setClassStudents([]);
+                    setIsLoadingStudents(false);
+                }
                 return;
             }
 
             setIsLoadingStudents(true);
+            setClassStudents([]);
 
             try {
                 const classRef = doc(db, 'classes', String(selectedClassId));
@@ -58,19 +62,25 @@ export default function AttendanceManagement({
                     return;
                 }
 
+                const normalizedStudentIds = studentIds.map((id) => String(id));
                 const chunks = [];
-                for (let i = 0; i < studentIds.length; i += 10) {
-                    chunks.push(studentIds.slice(i, i + 10));
+                for (let i = 0; i < normalizedStudentIds.length; i += 10) {
+                    chunks.push(normalizedStudentIds.slice(i, i + 10));
                 }
 
-                const fetchedStudents = [];
-                for (const chunk of chunks) {
-                    const usersQuery = query(collection(db, 'users'), where('uid', 'in', chunk));
-                    const usersSnap = await getDocs(usersQuery);
-                    usersSnap.docs.forEach((docSnap) => {
-                        fetchedStudents.push({ id: docSnap.id, ...docSnap.data() });
-                    });
-                }
+                const fetchedStudents = (
+                    await Promise.all(
+                        chunks.map(async (chunk) => {
+                            const usersQuery = query(collection(db, 'users'), where('uid', 'in', chunk));
+                            const usersSnap = await getDocs(usersQuery);
+                            return usersSnap.docs.map((docSnap) => {
+                                const data = docSnap.data();
+                                const uid = data?.uid ?? docSnap.id;
+                                return { id: uid, ...data };
+                            });
+                        }),
+                    )
+                ).flat();
 
                 const filteredStudents = fetchedStudents
                     .filter((student) => student.role === 'student')

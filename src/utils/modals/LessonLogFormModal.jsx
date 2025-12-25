@@ -3,8 +3,10 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { DndContext, PointerSensor, closestCenter, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { getDownloadURL, ref as storageRef, uploadBytes } from 'firebase/storage';
 import { Modal } from '../../components/common/Modal';
 import { Icon, calculateClassSessions } from '../../utils/helpers';
+import { storage } from '../../firebase/client';
 import StaffNotificationFields from '../../components/Shared/StaffNotificationFields';
 
 const SortableVideoItem = React.memo(({ video, index, onRemove, onChange }) => {
@@ -94,9 +96,11 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
   const [staffNotifyTitle, setStaffNotifyTitle] = useState('');
   const [staffNotifyBody, setStaffNotifyBody] = useState('');
   const [staffNotifyScheduledAt, setStaffNotifyScheduledAt] = useState('');
+  const [isUploadingMaterials, setIsUploadingMaterials] = useState(false);
 
   const videoIdRef = useRef(0);
   const materialIdRef = useRef(0);
+  const materialFileInputRef = useRef(null);
 
   const createVideoEntry = useCallback((video = {}) => ({
     id: video.id || `video-${videoIdRef.current++}`,
@@ -252,6 +256,34 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
   const handleAddMaterial = () => {
       setMaterials(prev => [...prev, createMaterialEntry()]);
       setIsDirty(true);
+  };
+
+  const handleMaterialFilesChange = async (event) => {
+      const files = Array.from(event.target.files || []);
+      if (files.length === 0) return;
+
+      setIsUploadingMaterials(true);
+      try {
+          const uploadedMaterials = await Promise.all(
+              files.map(async (file) => {
+                  const timestamp = Date.now();
+                  const safeName = file.name.replace(/\s+/g, '_');
+                  const path = `lesson-materials/${classId || 'unknown'}/${date || 'unscheduled'}/${timestamp}-${safeName}`;
+                  const fileRef = storageRef(storage, path);
+                  await uploadBytes(fileRef, file);
+                  const url = await getDownloadURL(fileRef);
+                  return createMaterialEntry({ name: file.name, url });
+              })
+          );
+          setMaterials(prev => [...prev, ...uploadedMaterials]);
+          setIsDirty(true);
+      } catch (error) {
+          console.error('Failed to upload lesson materials', error);
+          alert('첨부 파일 업로드에 실패했습니다. 네트워크 상태를 확인해 주세요.');
+      } finally {
+          setIsUploadingMaterials(false);
+          event.target.value = '';
+      }
   };
 
   const handleMaterialChange = (id, field, value) => {
@@ -487,18 +519,40 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
             <div>
                 <div className="flex items-center justify-between">
                     <label className="block text-sm font-medium text-gray-700">첨부 자료</label>
-                    <button
-                        type="button"
-                         onClick={handleAddMaterial}
-                        className="inline-flex items-center px-3 py-1.5 rounded-md text-sm font-medium bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 transition"
-                    >
-                        <Icon name="plus" className="w-4 h-4 mr-1" /> 자료 추가
-                    </button>
+                    <div className="flex items-center gap-2">
+                        <input
+                            ref={materialFileInputRef}
+                            type="file"
+                            multiple
+                            onChange={handleMaterialFilesChange}
+                            className="hidden"
+                        />
+                        <button
+                            type="button"
+                            onClick={() => materialFileInputRef.current?.click()}
+                            className="inline-flex items-center px-3 py-1.5 rounded-md text-sm font-medium bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 transition"
+                        >
+                            <Icon name="folder" className="w-4 h-4 mr-1" /> 파일 첨부
+                        </button>
+                        <button
+                            type="button"
+                            onClick={handleAddMaterial}
+                            className="inline-flex items-center px-3 py-1.5 rounded-md text-sm font-medium bg-white text-indigo-700 border border-indigo-200 hover:bg-indigo-50 transition"
+                        >
+                            <Icon name="plus" className="w-4 h-4 mr-1" /> 자료 추가
+                        </button>
+                    </div>
                   </div>
                   <div className="mt-2 space-y-3">
                     {materials.length === 0 && (
                         <div className="rounded-md border border-dashed border-gray-300 bg-gray-50 p-4 text-sm text-gray-500">
-                            자료 추가 버튼을 눌러 파일명과 다운로드 URL을 등록하세요.
+                            파일 첨부 버튼을 눌러 로컬 파일을 업로드하거나, 자료 추가로 URL을 등록하세요.
+                        </div>
+                    )}
+                    {isUploadingMaterials && (
+                        <div className="rounded-md border border-indigo-100 bg-indigo-50 p-3 text-sm text-indigo-600 flex items-center gap-2">
+                            <Icon name="refreshCw" className="w-4 h-4 animate-spin" />
+                            파일을 업로드하는 중입니다...
                         </div>
                     )}
                     {materials.map((material, index) => (

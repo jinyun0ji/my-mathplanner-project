@@ -14,6 +14,9 @@ export default function ClassSelectionPanel({
     const { ordered: orderedClasses } = useMemo(() => sortClassesByStatus(classes), [classes]);
     const selectedClass = classes.find(c => String(c.id) === String(selectedClassId));
     const selectedClassGrade = selectedClass ? formatGradeLabel(selectedClass.grade) : '';
+    const selectedStudentCount = selectedClass
+        ? (selectedClass.studentIds?.length ?? selectedClass.students?.length ?? 0)
+        : 0;
     
     // Ref 설정: 선택된 항목을 참조할 Ref 객체
     const selectedItemRef = useRef(null); 
@@ -59,7 +62,7 @@ export default function ClassSelectionPanel({
             {selectedClass && (
                 <div className="border p-3 rounded-lg bg-indigo-50 space-y-2">
                     <p className="text-sm font-semibold text-indigo-700">{selectedClassGrade || '학년 미정'} | {selectedClass.schedule.days.join(', ')} ({selectedClass.schedule.time})</p>
-                    <p className="text-xs text-indigo-600">총 학생: {selectedClass.students.length}명</p>
+                    <p className="text-xs text-indigo-600">총 학생: {selectedStudentCount}명</p>
                     {showEditButton && (
                         <button 
                             // ✅ [수정] 수정 버튼: 편집 모드 켜고 모달 열기

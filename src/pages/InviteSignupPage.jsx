@@ -79,6 +79,7 @@ export default function InviteSignupPage() {
             const userPayload = {
                 role: inviteData.role,
                 displayName: finalName,
+                uid: user.uid,
                 email: user.email?.trim() || presetProfile?.email?.trim() || '',
                 active: true,
                 inviteId: code,
