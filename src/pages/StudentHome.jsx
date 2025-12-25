@@ -217,7 +217,7 @@ export default function StudentHome({
                 {/* 2. 메신저 버튼 (isFloating={false}로 설정하여 위 버튼 바로 아래에 붙도록 함) */}
                 <StudentMessenger 
                     studentId={studentId} 
-                    teacherName="채수용 선생님" 
+                    teacherName="채수용T" 
                     messages={messages} 
                     onSendMessage={onSendMessage} 
                     onOpenChat={handleChatOpen}

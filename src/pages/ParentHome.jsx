@@ -891,7 +891,7 @@ export default function ParentHome({
                 {/* 2. 메신저 버튼 */}
                 <StudentMessenger 
                     studentId={activeChildId} 
-                    teacherName="담당 선생님" 
+                    teacherName="채수용T" 
                     messages={messages} 
                     onSendMessage={onSendMessage} 
                     onOpenChat={handleChatOpen}

@@ -6,7 +6,7 @@ import ScienceIcon from '@mui/icons-material/Science';
 
 export default function StudentMessenger({ 
     studentId, 
-    teacherName = "채수용 선생님", 
+    teacherName = "채수용T",
     messages = [], 
     onSendMessage,
     onOpenChat,
@@ -16,11 +16,11 @@ export default function StudentMessenger({
 }) {
     const [isOpen, setIsOpen] = useState(false);
     const [inputText, setInputText] = useState('');
-    const [activeChannel, setActiveChannel] = useState('teacher');
+    const [activeChannel, setActiveChannel] = useState('teacher-room');
     const messagesEndRef = useRef(null);
     const lastOpenedChannelRef = useRef(null);
 
-    const currentMessages = messages.filter(msg => msg.channelId === activeChannel);
+    const currentMessages = messages.filter(msg => msg.roomId === activeChannel);
 
     useEffect(() => {
         if (isOpen) {
@@ -48,6 +48,19 @@ export default function StudentMessenger({
             onOpenChat(activeChannel);
         }
     }, [isOpen, activeChannel, onOpenChat]);
+
+    const resolveDisplayName = (msg) => {
+        if (msg.senderRole === 'staff') {
+            return '채수용 연구소';
+        }
+        if (msg.displayName) {
+            return msg.displayName;
+        }
+        if (msg.senderRole === 'teacher') {
+            return teacherName;
+        }
+        return '';
+    };
 
     // ✅ [추가] 날짜 포맷팅 함수 (YYYY년 M월 D일 요일)
     const formatDateDivider = (dateString) => {
@@ -94,20 +107,20 @@ export default function StudentMessenger({
                         </div>
                         <div className="flex px-4 gap-4">
                             <button 
-                                onClick={() => setActiveChannel('teacher')}
+                                onClick={() => setActiveChannel('teacher-room')}
                                 className={`flex-1 pb-3 text-sm font-bold border-b-2 transition-colors flex items-center justify-center gap-2 ${
-                                    activeChannel === 'teacher' ? 'text-brand-main border-brand-main' : 'text-brand-gray border-transparent hover:text-brand-black'
+                                    activeChannel === 'teacher-room' ? 'text-brand-main border-brand-main' : 'text-brand-gray border-transparent hover:text-brand-black'
                                 }`}
                             >
-                                <SchoolIcon style={{ fontSize: 18 }} /> 선생님
+                                <SchoolIcon style={{ fontSize: 18 }} /> 채수용T
                             </button>
                             <button 
-                                onClick={() => setActiveChannel('lab')}
+                                onClick={() => setActiveChannel('staff-room')}
                                 className={`flex-1 pb-3 text-sm font-bold border-b-2 transition-colors flex items-center justify-center gap-2 ${
-                                    activeChannel === 'lab' ? 'text-brand-main border-brand-main' : 'text-brand-gray border-transparent hover:text-brand-black'
+                                    activeChannel === 'staff-room' ? 'text-brand-main border-brand-main' : 'text-brand-gray border-transparent hover:text-brand-black'
                                 }`}
                             >
-                                <ScienceIcon style={{ fontSize: 18 }} /> 연구소
+                                <ScienceIcon style={{ fontSize: 18 }} /> 채수용 연구소
                             </button>
                         </div>
                     </div>
@@ -116,7 +129,7 @@ export default function StudentMessenger({
                     <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-brand-bg custom-scrollbar">
                         <div className="text-center py-4">
                             <p className="text-xs text-brand-gray bg-white/50 inline-block px-3 py-1 rounded-full shadow-sm">
-                                {activeChannel === 'teacher' ? teacherName : '채수용 수학 연구소'}와의 대화입니다.
+                                {activeChannel === 'teacher-room' ? teacherName : '채수용 연구소'}와의 대화입니다.
                             </p>
                         </div>
 
@@ -138,19 +151,28 @@ export default function StudentMessenger({
 
                                         <div className={`flex ${msg.isMe ? 'justify-end' : 'justify-start'}`}>
                                             {!msg.isMe && (
-                                                <div className="w-8 h-8 rounded-full bg-brand-light/30 flex items-center justify-center text-brand-dark font-bold mr-2 shrink-0 mt-1 text-xs">
-                                                    {activeChannel === 'teacher' ? msg.sender[0] : 'Lab'}
+                                                <div className="mr-2 shrink-0 mt-1 flex flex-col items-center">
+                                                    <div className="w-8 h-8 rounded-full bg-brand-light/30 flex items-center justify-center text-brand-dark font-bold text-xs">
+                                                        {resolveDisplayName(msg)?.[0] || '•'}
+                                                    </div>
                                                 </div>
                                             )}
-                                            <div className={`max-w-[75%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed shadow-sm ${
-                                                msg.isMe 
-                                                ? 'bg-brand-main text-white rounded-tr-none' 
-                                                : 'bg-white text-brand-black rounded-tl-none border border-brand-gray/30'
-                                            }`}>
-                                                {msg.text}
-                                                <p className={`text-[10px] mt-1 text-right ${msg.isMe ? 'text-white/70' : 'text-brand-gray'}`}>
-                                                    {msg.time}
-                                                </p>
+                                            <div className="flex flex-col max-w-[75%]">
+                                                {!msg.isMe && (
+                                                    <span className="text-[10px] text-brand-gray mb-1 ml-1">
+                                                        {resolveDisplayName(msg)}
+                                                    </span>
+                                                )}
+                                                <div className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed shadow-sm ${
+                                                    msg.isMe 
+                                                    ? 'bg-brand-main text-white rounded-tr-none' 
+                                                    : 'bg-white text-brand-black rounded-tl-none border border-brand-gray/30'
+                                                }`}>
+                                                    {msg.text}
+                                                    <p className={`text-[10px] mt-1 text-right ${msg.isMe ? 'text-white/70' : 'text-brand-gray'}`}>
+                                                        {msg.time}
+                                                    </p>
+                                                </div>
                                             </div>
                                         </div>
                                     </React.Fragment>
@@ -169,7 +191,7 @@ export default function StudentMessenger({
                             type="text" 
                             value={inputText}
                             onChange={(e) => setInputText(e.target.value)}
-                            placeholder={activeChannel === 'teacher' ? "선생님께 메시지 보내기..." : "연구소에 문의하기..."}
+                            placeholder={activeChannel === 'teacher-room' ? "채수용T께 메시지 보내기..." : "연구소에 문의하기..."}
                             className="flex-1 bg-brand-bg rounded-full px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-main transition-all"
                         />
                         <button 

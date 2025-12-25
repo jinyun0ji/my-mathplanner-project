@@ -158,32 +158,45 @@ export default function AppRoutes({ user, role, linkedStudentIds }) {
       try { return JSON.parse(localStorage.getItem('videoBookmarks')) || {}; }
       catch (e) { return {}; }
   });
+  const staffSyncUnsubscribeRef = useRef(null);
 
   useEffect(() => {
       if (isAuthenticated) processedAnnouncementIdsRef.current = new Set();
   }, [isAuthenticated, userId]);
 
   useEffect(() => {
-  const unsubscribe = startStaffFirestoreSync({
-    db,
-    isLoggedIn: isAuthenticated,
-    userRole: role,
-    setStudents,
-    setClasses,
-    setTests,
-    setLessonLogs,
-    setAttendanceLogs,
-    setClinicLogs,
-    setWorkLogs,
-    setAnnouncements,
-    setHomeworkAssignments,
-    setPaymentLogs,
-    setGrades,
-    setHomeworkResults,
-  });
+  if (staffSyncUnsubscribeRef.current) {
+          staffSyncUnsubscribeRef.current();
+          staffSyncUnsubscribeRef.current = null;
+      }
 
-  return unsubscribe;
-}, [db, isAuthenticated, role]);
+      const unsubscribe = startStaffFirestoreSync({
+          db,
+          isLoggedIn: isAuthenticated,
+          userRole: role,
+          setStudents,
+          setClasses,
+          setTests,
+          setLessonLogs,
+          setAttendanceLogs,
+          setClinicLogs,
+          setWorkLogs,
+          setAnnouncements,
+          setHomeworkAssignments,
+          setPaymentLogs,
+          setGrades,
+          setHomeworkResults,
+      });
+
+      staffSyncUnsubscribeRef.current = unsubscribe;
+
+  return () => {
+          if (staffSyncUnsubscribeRef.current === unsubscribe) {
+              staffSyncUnsubscribeRef.current();
+              staffSyncUnsubscribeRef.current = null;
+          }
+      };
+  }, [db, isAuthenticated, role]);
 
   useEffect(() => {
       const state = { cancelled: false };
@@ -215,7 +228,7 @@ export default function AppRoutes({ user, role, linkedStudentIds }) {
   }, [videoBookmarks]);
 
   const [studentMessages, setStudentMessages] = useState([
-      { id: 1, channelId: 'teacher', sender: '채수용 선생님', text: '철수야, 오늘 클리닉 늦을 것 같니?', date: '2025-11-29', time: '13:50', isMe: false },
+      { id: 1, roomId: 'teacher-room', senderRole: 'teacher', displayName: '채수용T', text: '철수야, 오늘 클리닉 늦을 것 같니?', date: '2025-11-29', time: '13:50', isMe: false },
   ]);
   const processedAnnouncementIdsRef = useRef(new Set());
 
@@ -252,8 +265,9 @@ export default function AppRoutes({ user, role, linkedStudentIds }) {
 
           newMessages.push({
               id: `notice-${notice.id}`,
-              channelId: 'teacher',
-              sender: notice.author || '학원 알림',
+              roomId: 'teacher-room',
+              senderRole: 'teacher',
+              displayName: notice.author || '학원 알림',
               text: notice.content || notice.title,
               date: dateString,
               time: timeString,

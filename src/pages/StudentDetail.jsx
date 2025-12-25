@@ -41,8 +41,12 @@ export default function StudentDetail({
     const studentClasses = student?.classes.map(id => classes.find(c => c.id === id)).filter(c => c) || [];
     
     // 유틸리티 함수를 이용한 데이터 계산 (App.jsx에서 props로 전달)
-    const gradeComparison = calculateGradeComparison(normalizedStudentId, classes, tests, grades);
-    const homeworkStats = calculateHomeworkStats(normalizedStudentId, homeworkAssignments, homeworkResults);
+    const gradeComparison = typeof calculateGradeComparison === 'function'
+        ? calculateGradeComparison(normalizedStudentId, classes, tests, grades)
+        : [];
+    const homeworkStats = typeof calculateHomeworkStats === 'function'
+        ? calculateHomeworkStats(normalizedStudentId, homeworkAssignments, homeworkResults)
+        : [];
     
     // 최근 성적 4개만 표시
     const recentGrades = gradeComparison.slice(-4).reverse();
