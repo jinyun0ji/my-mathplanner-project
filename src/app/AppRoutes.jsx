@@ -154,14 +154,25 @@ export default function AppRoutes({ user, role, linkedStudentUids }) {
       catch (e) { return {}; }
   });
   const staffSyncUnsubscribeRef = useRef(null);
+  const staffSyncStartedRef = useRef(false);
   useEffect(() => {
       if (isAuthenticated) processedAnnouncementIdsRef.current = new Set();
   }, [isAuthenticated, userId]);
 
   useEffect(() => {
-  if (staffSyncUnsubscribeRef.current) {
-          staffSyncUnsubscribeRef.current();
-          staffSyncUnsubscribeRef.current = null;
+  const isStaffRole = ['staff', 'admin', 'teacher'].includes(role);
+
+      if (!isAuthenticated || !role || !isStaffRole) {
+          if (staffSyncUnsubscribeRef.current) {
+              staffSyncUnsubscribeRef.current();
+              staffSyncUnsubscribeRef.current = null;
+          }
+          staffSyncStartedRef.current = false;
+          return;
+      }
+
+      if (staffSyncStartedRef.current) {
+          return;
       }
 
       const unsubscribe = startStaffFirestoreSync({
@@ -183,11 +194,13 @@ export default function AppRoutes({ user, role, linkedStudentUids }) {
       });
 
       staffSyncUnsubscribeRef.current = unsubscribe;
-      
+      staffSyncStartedRef.current = true;
+
       return () => {
           if (staffSyncUnsubscribeRef.current === unsubscribe) {
               staffSyncUnsubscribeRef.current();
               staffSyncUnsubscribeRef.current = null;
+              staffSyncStartedRef.current = false;
           }
       };
   }, [db, isAuthenticated, role]);
@@ -198,8 +211,8 @@ export default function AppRoutes({ user, role, linkedStudentUids }) {
           db,
           isLoggedIn: isAuthenticated,
           userRole: role,
-          studentIds: linkedStudentUids,
           userId,
+          activeStudentId: role === 'parent' ? parentActiveStudentId : null,
           setStudents,
           setClasses,
           setLessonLogs,
@@ -214,7 +227,7 @@ export default function AppRoutes({ user, role, linkedStudentUids }) {
           isCancelled: () => state.cancelled,
       });
       return () => { state.cancelled = true; };
-  }, [db, isAuthenticated, role, userId, linkedStudentUids]);
+  }, [db, isAuthenticated, role, userId, parentActiveStudentId]);
 
   useEffect(() => {
       try { localStorage.setItem('videoBookmarks', JSON.stringify(videoBookmarks)); }
@@ -226,7 +239,12 @@ export default function AppRoutes({ user, role, linkedStudentUids }) {
   ]);
   const processedAnnouncementIdsRef = useRef(new Set());
 
-  const nextStudentId = students.reduce((max, s) => Math.max(max, Number(s.id) || 0), 0) + 1;
+  const createStudentId = useCallback(() => {
+      if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+          return crypto.randomUUID();
+      }
+      return `student-${Date.now()}`;
+  }, []);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [hasNewNotifications, setHasNewNotifications] = useState(false);
   const [isMessengerOpen, setIsMessengerOpen] = useState(false);
@@ -293,7 +311,7 @@ export default function AppRoutes({ user, role, linkedStudentUids }) {
       return createLinkCode({ studentId: normalizedId });
   };
 
-  const handleSaveStudent = (data, isEdit) => { /* ... 기존 로직 ... */ setStudents(prev => isEdit ? prev.map(s => s.id === data.id ? {...s, ...data} : s) : [...prev, {...data, id: nextStudentId}]); };
+  const handleSaveStudent = (data, isEdit) => { /* ... 기존 로직 ... */ setStudents(prev => isEdit ? prev.map(s => s.id === data.id ? {...s, ...data} : s) : [...prev, {...data, id: createStudentId()}]); };
   const handleDeleteStudent = (id) => setStudents(prev => prev.filter(s => s.id !== id));
   const handleSaveClass = (data, isEdit) => setClasses(prev => isEdit ? prev.map(c => c.id === data.id ? {...c, ...data} : c) : [...prev, {...data, id: Date.now()}]);
 

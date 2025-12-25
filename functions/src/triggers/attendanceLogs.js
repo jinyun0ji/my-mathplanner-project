@@ -19,8 +19,8 @@ const onAttendanceLogWritten = functions.firestore
             return null;
         }
 
-        const studentId = afterData.studentId;
-        const recipients = await getRecipientsForStudent(studentId);
+        const authUid = afterData.authUid || afterData.studentUid || afterData.studentId;
+        const recipients = await getRecipientsForStudent(authUid);
 
         if (!recipients) {
             await notifyUsers({
@@ -30,13 +30,13 @@ const onAttendanceLogWritten = functions.firestore
                     title: '출결 안내',
                     body: '출결 정보가 업데이트되었습니다.',
                     ref: `attendanceLogs/${context.params.id}`,
-                    studentId,
+                    authUid,
                 },
                 fcmData: {
                     type: TYPE,
                     refCollection: 'attendanceLogs',
                     refId: context.params.id,
-                    studentId,
+                    authUid,
                 },
             });
             return null;
@@ -52,13 +52,13 @@ const onAttendanceLogWritten = functions.firestore
                 title: '출결 안내',
                 body: '출결 정보가 업데이트되었습니다.',
                 ref: `attendanceLogs/${refId}`,
-                studentId,
+                authUid,
             },
             fcmData: {
                 type: TYPE,
                 refCollection: 'attendanceLogs',
                 refId,
-                studentId,
+                authUid,
             },
         });
 

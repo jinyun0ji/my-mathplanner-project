@@ -21,7 +21,7 @@ export default function PaymentManagement({ students, classes, paymentLogs, hand
     };
 
     const initialPaymentLogs = [
-        { id: 1, date: '2025-11-20', studentName: '김민준', studentId: 1, bookId: 1, bookName: 'RPM 수학(상)', amount: 15000, method: '카드', type: '현장결제' },
+        { id: 1, date: '2025-11-20', studentName: '김민준', studentId: 'stu-1', bookId: 1, bookName: 'RPM 수학(상)', amount: 15000, method: '카드', type: '현장결제' },
     ];
 
     const [bookList, setBookList] = useState(initialBookList);
@@ -167,7 +167,7 @@ export default function PaymentManagement({ students, classes, paymentLogs, hand
         if (!paymentForm.studentId || !paymentForm.bookId) return;
 
         const selectedBook = bookList.find(b => b.id === Number(paymentForm.bookId));
-        const selectedStudent = students.find(s => s.id === Number(paymentForm.studentId));
+        const selectedStudent = students.find(s => s.id === paymentForm.studentId);
 
         if (selectedBook.stock <= 0) {
             alert('재고가 부족합니다.');
@@ -210,7 +210,7 @@ export default function PaymentManagement({ students, classes, paymentLogs, hand
 
     const recommendedBooks = useMemo(() => {
         if (!paymentForm.studentId) return [];
-        const student = students.find(s => s.id === Number(paymentForm.studentId));
+        const student = students.find(s => s.id === paymentForm.studentId);
         if (!student) return [];
         
         const neededBookIds = new Set();

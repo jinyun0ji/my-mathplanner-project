@@ -50,25 +50,25 @@ export default function StudentDetail() {
                 const studentRef = doc(db, COL.USERS, studentUid);
                 const attendanceQuery = query(
                     collection(db, COL.ATTENDANCE),
-                    where('studentUid', '==', studentUid),
+                    where('authUid', '==', studentUid),
                     orderBy('date', 'desc'),
                     limit(5),
                 );
                 const homeworkQuery = query(
                     collection(db, COL.HOMEWORK_RESULTS),
-                    where('studentUid', '==', studentUid),
+                    where('authUid', '==', studentUid),
                     orderBy('date', 'desc'),
                     limit(5),
                 );
                 const gradesQuery = query(
                     collection(db, COL.GRADES),
-                    where('studentUid', '==', studentUid),
+                    where('authUid', '==', studentUid),
                     orderBy('date', 'desc'),
                     limit(3),
                 );
                 const memoQuery = query(
                     collection(db, COL.LESSON),
-                    where('studentUid', '==', studentUid),
+                    where('authUid', '==', studentUid),
                     orderBy('date', 'desc'),
                     limit(1),
                 );

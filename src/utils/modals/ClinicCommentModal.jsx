@@ -15,7 +15,7 @@ export const ClinicCommentModal = ({ isOpen, onClose, onSave, log, students, def
     const [status, setStatus] = useState(log?.status || (log?.checkIn ? 'attended' : 'pending')); 
     const [isDirty, setIsDirty] = useState(false);
 
-    const currentStudent = useMemo(() => students.find(s => s.id === Number(studentId)), [studentId, students]);
+    const currentStudent = useMemo(() => students.find(s => s.id === studentId), [studentId, students]);
     
     // ✅ [수정] 학생 정보 텍스트에 전화번호 추가
     const studentInfoText = useMemo(() => {
@@ -102,7 +102,7 @@ export const ClinicCommentModal = ({ isOpen, onClose, onSave, log, students, def
 
         const logData = {
             id: isNewLog ? null : log.id,
-            studentId: Number(studentId),
+            studentId,
             studentName: currentStudent ? currentStudent.name : log?.studentName || 'Unknown',
             date,
             plannedTime: log?.plannedTime || null,

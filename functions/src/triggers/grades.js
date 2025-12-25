@@ -24,8 +24,8 @@ const onGradeWritten = functions.firestore
             return null;
         }
 
-        const studentId = afterData.studentId;
-        const recipients = await getRecipientsForStudent(studentId);
+        const authUid = afterData.authUid || afterData.studentUid || afterData.studentId;
+        const recipients = await getRecipientsForStudent(authUid);
 
         if (!recipients) {
             await notifyUsers({
@@ -35,13 +35,13 @@ const onGradeWritten = functions.firestore
                     title: '성적 업데이트',
                     body: '성적이 업데이트되었습니다.',
                     ref: `grades/${context.params.id}`,
-                    studentId,
+                    authUid,
                 },
                 fcmData: {
                     type: TYPE,
                     refCollection: 'grades',
                     refId: context.params.id,
-                    studentId,
+                    authUid,
                 },
             });
             return null;
@@ -57,13 +57,13 @@ const onGradeWritten = functions.firestore
                 title: '성적 업데이트',
                 body: '성적이 업데이트되었습니다.',
                 ref: `grades/${refId}`,
-                studentId,
+                authUid,
             },
             fcmData: {
                 type: TYPE,
                 refCollection: 'grades',
                 refId,
-                studentId,
+                authUid,
             },
         });
         return null;

@@ -24,8 +24,8 @@ const onLessonLogWritten = functions.firestore
             return null;
         }
 
-        const studentId = afterData.studentId;
-        const recipients = await getRecipientsForStudent(studentId);
+        const authUid = afterData.authUid || afterData.studentUid || afterData.studentId;
+        const recipients = await getRecipientsForStudent(authUid);
 
         if (!recipients) {
             await notifyUsers({
@@ -35,13 +35,13 @@ const onLessonLogWritten = functions.firestore
                     title: '수업 안내',
                     body: '새 수업 기록이 등록되었습니다.',
                     ref: `lessonLogs/${context.params.id}`,
-                    studentId,
+                    authUid,
                 },
                 fcmData: {
                     type: TYPE,
                     refCollection: 'lessonLogs',
                     refId: context.params.id,
-                    studentId,
+                    authUid,
                 },
             });
             return null;
@@ -57,13 +57,13 @@ const onLessonLogWritten = functions.firestore
                 title: '수업 안내',
                 body: '새 수업 기록이 등록되었습니다.',
                 ref: `lessonLogs/${refId}`,
-                studentId,
+                authUid,
             },
             fcmData: {
                 type: TYPE,
                 refCollection: 'lessonLogs',
                 refId,
-                studentId,
+                authUid,
             },
         });
         return null;

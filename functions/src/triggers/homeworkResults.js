@@ -24,8 +24,8 @@ const onHomeworkResultWritten = functions.firestore
             return null;
         }
 
-        const studentId = afterData.studentId;
-        const recipients = await getRecipientsForStudent(studentId);
+        const authUid = afterData.authUid || afterData.studentUid || afterData.studentId;
+        const recipients = await getRecipientsForStudent(authUid);
 
         if (!recipients) {
             await notifyUsers({
@@ -35,13 +35,13 @@ const onHomeworkResultWritten = functions.firestore
                     title: '과제 채점 완료',
                     body: '과제가 채점되었습니다.',
                     ref: `homeworkResults/${context.params.id}`,
-                    studentId,
+                    authUid,
                 },
                 fcmData: {
                     type: TYPE,
                     refCollection: 'homeworkResults',
                     refId: context.params.id,
-                    studentId,
+                    authUid,
                 },
             });
             return null;
@@ -57,13 +57,13 @@ const onHomeworkResultWritten = functions.firestore
                 title: '과제 채점 완료',
                 body: '과제가 채점되었습니다.',
                 ref: `homeworkResults/${refId}`,
-                studentId,
+                authUid,
             },
             fcmData: {
                 type: TYPE,
                 refCollection: 'homeworkResults',
                 refId,
-                studentId,
+                authUid,
             },
         });
         return null;

@@ -52,9 +52,9 @@ export function ParentProvider({ userId, role, linkedStudentUids, firestoreActiv
         }
 
         try {
-            await setDoc(doc(db, 'users', userId), { activeStudentId: nextStudentId }, { merge: true });
+            await setDoc(doc(db, 'users', userId), { activeStudentUid: nextStudentId }, { merge: true });
         } catch (error) {
-            console.error('activeStudentId 저장 실패:', error);
+            console.error('activeStudentUid 저장 실패:', error);
         }
     }, [userId]);
 

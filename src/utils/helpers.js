@@ -123,7 +123,7 @@ export const calculateGradeComparison = (studentId, classes, tests, grades) => {
 
             // 반 통계 계산 (평균, 최고점 등)
             Object.entries(grades).forEach(([stuId, studentGrade]) => {
-                if (!classStudentIds.includes(Number(stuId))) return;
+                if (!classStudentIds.includes(stuId)) return;
                 const record = studentGrade[test.id];
                 if (record) {
                     if (record.score !== null && record.score !== undefined) {

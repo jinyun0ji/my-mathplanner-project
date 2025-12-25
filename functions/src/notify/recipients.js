@@ -2,12 +2,12 @@ const { getFirestore } = require('firebase-admin/firestore');
 
 const db = getFirestore();
 
-const getRecipientsForStudent = async (studentId) => {
-    if (!studentId) {
+const getRecipientsForStudent = async (authUid) => {
+    if (!authUid) {
         return null;
     }
 
-    const studentRef = db.collection('students').doc(String(studentId));
+    const studentRef = db.collection('users').doc(String(authUid));
     const snapshot = await studentRef.get();
 
     if (!snapshot.exists) {
@@ -15,8 +15,12 @@ const getRecipientsForStudent = async (studentId) => {
     }
 
     const data = snapshot.data() || {};
-    const parentUids = Array.isArray(data.parentUids) ? data.parentUids.filter(Boolean) : [];
-    const studentUid = data.uid || studentId;
+    const parentQuery = await db.collection('users')
+        .where('role', '==', 'parent')
+        .where('linkedStudentUids', 'array-contains', String(authUid))
+        .get();
+    const parentUids = parentQuery.docs.map((doc) => doc.id).filter(Boolean);
+    const studentUid = data.authUid || data.uid || authUid;
 
     return {
         studentUid,

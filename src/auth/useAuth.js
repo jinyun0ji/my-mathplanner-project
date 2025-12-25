@@ -116,7 +116,7 @@ export function AuthProvider({ children }) {
                 setUserProfile(profile);
                 setRole(profile.role);
                 setLinkedStudentUids(normalizeLinkedStudentUids(data));
-                setActiveStudentId(data?.activeStudentId ?? null);
+                setActiveStudentId(data?.activeStudentUid ?? null);
             } catch (error) {
                 logProfileErrorOnce(error);
                 if (isMounted) {

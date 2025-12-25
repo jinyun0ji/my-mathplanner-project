@@ -11,9 +11,13 @@ import {
     getDocs,
 } from 'firebase/firestore';
 
+const normalizeAuthUid = (item) => (
+    item?.authUid && !item?.studentId ? { ...item, studentId: item.authUid } : item
+);
+
 const fetchList = async (db, colName, setter, q, isCancelled) => {
     const snap = await getDocs(q || collection(db, colName));
-    const items = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    const items = snap.docs.map((d) => normalizeAuthUid({ id: d.id, ...d.data() }));
     if (isCancelled()) return [];
     setter(items);
     return items;
@@ -46,7 +50,7 @@ export const startStaffFirestoreSync = ({
         let q = colRef;
         if (orderField) q = query(q, orderBy(orderField));
         unsubs.push(onSnapshot(q, (snap) => {
-            if (!snap.empty) setter(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+            setter(snap.docs.map((d) => normalizeAuthUid({ id: d.id, ...d.data() })));
         }, (err) => {
             console.error('[FirestoreSync] 권한 오류:', err);
         }));
@@ -55,7 +59,7 @@ export const startStaffFirestoreSync = ({
     const syncLogs = (colName, setter) => {
         const q = query(collection(db, colName), orderBy('date', 'desc'), limit(150));
         unsubs.push(onSnapshot(q, (snap) => {
-            if (!snap.empty) setter(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+            setter(snap.docs.map((d) => normalizeAuthUid({ id: d.id, ...d.data() })));
         }, (err) => {
             console.error('[FirestoreSync] 권한 오류:', err);
         }));
@@ -64,17 +68,15 @@ export const startStaffFirestoreSync = ({
     const syncMappedData = (colName, setter, keyField1, keyField2) => {
         const q = query(collection(db, colName), limit(300));
         unsubs.push(onSnapshot(q, (snap) => {
-            if (!snap.empty) {
-                const rawDocs = snap.docs.map((d) => d.data());
-                const mapped = {};
-                rawDocs.forEach((doc) => {
-                    const k1 = doc[keyField1];
-                    const k2 = doc[keyField2];
-                    if (!mapped[k1]) mapped[k1] = {};
-                    mapped[k1][k2] = doc;
-                });
-                setter((prev) => ({ ...prev, ...mapped }));
-            }
+            const rawDocs = snap.docs.map((d) => d.data());
+            const mapped = {};
+            rawDocs.forEach((doc) => {
+                const k1 = doc[keyField1];
+                const k2 = doc[keyField2];
+                if (!mapped[k1]) mapped[k1] = {};
+                mapped[k1][k2] = doc;
+            });
+            setter(mapped);
         }, (err) => {
             console.error('[FirestoreSync] 권한 오류:', err);
         }));
@@ -92,8 +94,8 @@ export const startStaffFirestoreSync = ({
     syncLogs('homeworkAssignments', setHomeworkAssignments);
     syncLogs('payments', setPaymentLogs);
 
-    syncMappedData('grades', setGrades, 'studentUid', 'testId');
-    syncMappedData('homeworkResults', setHomeworkResults, 'studentUid', 'assignmentId');
+    syncMappedData('grades', setGrades, 'authUid', 'testId');
+    syncMappedData('homeworkResults', setHomeworkResults, 'authUid', 'assignmentId');
 
     return () => {
         unsubs.forEach((u) => u());
@@ -106,6 +108,7 @@ export const loadViewerDataOnce = async ({
     userRole,
     userId,
     studentIds = [],
+    activeStudentId = null,
     setStudents,
     setClasses,
     setLessonLogs,
@@ -124,8 +127,8 @@ export const loadViewerDataOnce = async ({
 
     const viewerStudentUids = userRole === 'student'
         ? [userId].filter(Boolean)
-        : Array.isArray(studentIds)
-            ? studentIds.filter(Boolean).slice(0, 10)
+        : activeStudentId
+            ? [activeStudentId]
             : [];
 
     if (viewerStudentUids.length === 0) return;
@@ -157,8 +160,8 @@ export const loadViewerDataOnce = async ({
             await fetchList(db, colName, setter, q, isCancelled);
         };
 
-        await fetchLimitedLogs('attendanceLogs', setAttendanceLogs, 'studentUid');
-        await fetchLimitedLogs('clinicLogs', setClinicLogs, 'studentUid');
+        await fetchLimitedLogs('attendanceLogs', setAttendanceLogs, 'authUid');
+        await fetchLimitedLogs('clinicLogs', setClinicLogs, 'authUid');
 
         if (myClasses.length > 0) {
             const classIds = myClasses.map((c) => c.id).slice(0, 10);
@@ -173,7 +176,7 @@ export const loadViewerDataOnce = async ({
 
         const qHomework = query(
             collection(db, 'homeworkResults'),
-            where('studentUid', 'in', viewerStudentUids),
+            where('authUid', 'in', viewerStudentUids),
             limit(80),
         );
         const homeworkSnap = await getDocs(qHomework);
@@ -181,20 +184,20 @@ export const loadViewerDataOnce = async ({
             const mapped = {};
             homeworkSnap.docs.forEach((doc) => {
                 const data = doc.data();
-                const { studentUid: sId, assignmentId } = data;
+                const { authUid: sId, assignmentId } = data;
                 if (!mapped[sId]) mapped[sId] = {};
                 mapped[sId][assignmentId] = data;
             });
             setHomeworkResults((prev) => ({ ...prev, ...mapped }));
         }
 
-        const qGrades = query(collection(db, 'grades'), where('studentUid', 'in', viewerStudentUids), limit(80));
+        const qGrades = query(collection(db, 'grades'), where('authUid', 'in', viewerStudentUids), limit(80));
         const gradeSnap = await getDocs(qGrades);
         if (!isCancelled()) {
             const mappedGrades = {};
             gradeSnap.docs.forEach((doc) => {
                 const data = doc.data();
-                const { studentUid: sId, testId } = data;
+                const { authUid: sId, testId } = data;
                 if (!mappedGrades[sId]) mappedGrades[sId] = {};
                 mappedGrades[sId][testId] = data;
             });
@@ -216,11 +219,12 @@ export const loadViewerDataOnce = async ({
             isCancelled,
         );
 
+        const activeViewerUid = viewerStudentUids[0];
         await fetchList(
             db,
             'videoProgress',
             setVideoProgress,
-            query(collection(db, 'videoProgress'), where('studentUid', '==', userId), limit(50)),
+            query(collection(db, 'videoProgress'), where('authUid', '==', activeViewerUid), limit(50)),
             isCancelled,
         );
         await fetchList(
@@ -229,7 +233,7 @@ export const loadViewerDataOnce = async ({
             setExternalSchedules,
             query(
                 collection(db, 'externalSchedules'),
-                where('studentUid', '==', userId),
+                where('authUid', '==', activeViewerUid),
                 orderBy('date', 'desc'),
                 limit(30),
             ),

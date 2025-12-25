@@ -13,7 +13,7 @@ export const ClinicLogModal = ({ isOpen, onClose, onSave, logToEdit = null, stud
 
     const activeStudents = useMemo(() => students.filter(s => s.status === '재원생').sort((a, b) => a.name.localeCompare(b.name)), [students]);
     
-    const selectedStudent = useMemo(() => activeStudents.find(s => s.id === Number(studentId)), [activeStudents, studentId]);
+    const selectedStudent = useMemo(() => activeStudents.find(s => s.id === studentId), [activeStudents, studentId]);
     const studentClassNames = useMemo(() => {
         if (!selectedStudent) return '';
         return selectedStudent.classes.map(id => classes.find(c => c.id === id)?.name).join(', ');
@@ -44,7 +44,7 @@ export const ClinicLogModal = ({ isOpen, onClose, onSave, logToEdit = null, stud
         const logData = {
             id: logToEdit ? logToEdit.id : null,
             date,
-            studentId: Number(studentId),
+            studentId,
             studentName: selectedStudent?.name || '알 수 없음',
             checkIn,
             checkOut,
@@ -65,7 +65,7 @@ export const ClinicLogModal = ({ isOpen, onClose, onSave, logToEdit = null, stud
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-gray-700">학생 이름*</label>
-                        <select value={studentId} onChange={e => setStudentId(Number(e.target.value))} required className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border">
+                        <select value={studentId} onChange={e => setStudentId(e.target.value)} required className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border">
                             {activeStudents.map(s => (
                                 <option key={s.id} value={s.id}>{s.name} ({formatGradeLabel(s.grade)})</option>
                             ))}
