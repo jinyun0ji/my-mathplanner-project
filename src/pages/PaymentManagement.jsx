@@ -47,8 +47,8 @@ export default function PaymentManagement({ students, classes, paymentLogs, hand
     });
     const [useEasyPay, setUseEasyPay] = useState(true);
     
-    const [viewClassId, setViewClassId] = useState(classes && classes.length > 0 ? classes[0].id : null);
-    const [selectedClassForSetting, setSelectedClassForSetting] = useState(classes && classes.length > 0 ? classes[0].id : null);
+    const [viewClassId, setViewClassId] = useState(classes && classes.length > 0 ? String(classes[0].id) : '');
+    const [selectedClassForSetting, setSelectedClassForSetting] = useState(classes && classes.length > 0 ? String(classes[0].id) : '');
 
     // ✅ 체크박스 선택 상태 (studentId 목록)
     const [selectedStudentIds, setSelectedStudentIds] = useState([]);
@@ -152,7 +152,7 @@ export default function PaymentManagement({ students, classes, paymentLogs, hand
     // [핸들러] 교재 등록
     const handleAddBook = (e) => {
         e.preventDefault();
-        if (newBook.name && newBook.price > 0) {
+        if (newBook.name && Number.isFinite(newBook.price) && newBook.price >= 0) {
             const id = bookList.reduce((max, b) => Math.max(max, b.id), 0) + 1;
             setBookList(prev => [...prev, { ...newBook, id }]);
             setNewBook({ name: '', price: 0, stock: 0, type: '진도교재' });
@@ -272,7 +272,7 @@ export default function PaymentManagement({ students, classes, paymentLogs, hand
                     ))}
                 </div>
                 
-                <div className="flex flex-wrap gap-2 pb-2 justify-end">
+                <div className="hidden sm:flex flex-wrap gap-2 pb-2 justify-end">
                     {activeTab === 'classStatus' && (
                         <button 
                             onClick={() => setIsClassSettingModalOpen(true)}
@@ -338,9 +338,9 @@ export default function PaymentManagement({ students, classes, paymentLogs, hand
                                 <label className="font-bold text-gray-700">조회할 클래스:</label>
                                 <select 
                                     className="border-gray-300 rounded-md shadow-sm p-2 border focus:ring-indigo-500 focus:border-indigo-500 w-full sm:w-auto"
-                                    value={viewClassId || ''}
+                                    value={viewClassId}
                                     onChange={(e) => {
-                                        setViewClassId(Number(e.target.value));
+                                        setViewClassId(e.target.value);
                                         setSelectedStudentIds([]); // 반 변경 시 선택 초기화
                                     }}
                                 >
@@ -872,8 +872,8 @@ export default function PaymentManagement({ students, classes, paymentLogs, hand
                         <label className="block text-sm font-bold text-gray-700 mb-2">설정할 반 선택</label>
                         <select 
                             className="w-full rounded-lg border-gray-300 border p-2.5 focus:ring-2 focus:ring-indigo-500"
-                            value={selectedClassForSetting || ''}
-                            onChange={e => setSelectedClassForSetting(Number(e.target.value))}
+                            value={selectedClassForSetting}
+                            onChange={e => setSelectedClassForSetting(e.target.value)}
                         >
                             {classes && classes.map(c => (
                                 <option key={c.id} value={c.id}>{c.name}</option>
