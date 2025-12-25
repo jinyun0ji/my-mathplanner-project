@@ -154,7 +154,6 @@ export default function AppRoutes({ user, role, linkedStudentIds }) {
       catch (e) { return {}; }
   });
   const staffSyncUnsubscribeRef = useRef(null);
-
   useEffect(() => {
       if (isAuthenticated) processedAnnouncementIdsRef.current = new Set();
   }, [isAuthenticated, userId]);
@@ -184,8 +183,8 @@ export default function AppRoutes({ user, role, linkedStudentIds }) {
       });
 
       staffSyncUnsubscribeRef.current = unsubscribe;
-
-  return () => {
+      
+      return () => {
           if (staffSyncUnsubscribeRef.current === unsubscribe) {
               staffSyncUnsubscribeRef.current();
               staffSyncUnsubscribeRef.current = null;

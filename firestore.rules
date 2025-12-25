@@ -1,98 +1,114 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    
+    // --- [기본 인증 함수] ---
+    function isSignedIn() { return request.auth != null; }
+    function userDoc() { return isSignedIn() ? get(/databases/$(database)/documents/users/$(request.auth.uid)) : null; }
+    function userRole() { let data = userDoc() != null ? userDoc().data : null; return data != null ? data.role : null; }
+    function isAdmin() { return userRole() == 'admin'; }
+    function isStaff() { return userRole() == 'staff'; }
+    function isStaffOrAdmin() { return isAdmin() || isStaff(); }
 
-    /* ---------- Helpers ---------- */
-    function isSignedIn() {
-      return request.auth != null;
-    }
-
-    function userDoc() {
-      return isSignedIn()
-        ? get(/databases/$(database)/documents/users/$(request.auth.uid))
-        : null;
-    }
-
-    function userRole() {
-      return userDoc() != null ? userDoc().data.role : null;
-    }
-
-    function isAdmin() {
-      return userRole() == 'admin';
-    }
-
-    function isStaff() {
-      return userRole() == 'staff';
-    }
-
-    function isStaffOrAdmin() {
-      return isAdmin() || isStaff();
-    }
-
-    function isStudent() {
-      return userRole() == 'student';
-    }
-
-    function isParent() {
-      return userRole() == 'parent';
-    }
-
+    function isParent() { return userRole() == 'parent'; }
+    function isStudent() { return userRole() == 'student'; }
+    
+    // 부모가 자녀의 데이터를 볼 수 있는지 확인
     function parentStudentIds() {
-      return isParent() && userDoc().data.studentIds != null
-        ? userDoc().data.studentIds
-        : [];
+      let doc = userDoc() != null ? userDoc().data : null;
+      return isParent() && doc != null && doc.studentIds != null ? doc.studentIds : [];
     }
-
     function canViewStudent(studentId) {
-      return isStaffOrAdmin()
-        || (isStudent() && request.auth.uid == studentId)
-        || (isParent() && parentStudentIds().hasAny([studentId]));
+      return isStaffOrAdmin() || (isStudent() && request.auth.uid == studentId) || (isParent() && parentStudentIds().hasAny([studentId]));
     }
+    // ----------------------
 
-    /* ---------- users (⚠️ 중요) ---------- */
+    // 1. 사용자 (users) - 가장 중요! useAuth 에러의 주원인
     match /users/{uid} {
-      // 본인 문서만 읽기 (단건)
-      allow get, read: if isSignedIn() && request.auth.uid == uid;
+      // 본인 데이터거나, 직원이면 '목록 조회(list)'와 '상세 조회(get)' 모두 허용 (read = get + list)
+      allow read: if isSignedIn() && (request.auth.uid == uid || isStaffOrAdmin());
+      allow create: if isAdmin();
+      allow update: if isAdmin() && !request.resource.data.diff(resource.data).changedKeys().hasAny(['role']);
+      allow delete: if isAdmin();
 
-      // 관리자만 수정
-      allow write: if isAdmin();
-
-      // list 절대 금지
-      allow list: if false;
+      match /chatIndex/{chatId} {
+        allow read, write: if isSignedIn() && request.auth.uid == uid;
+      }
     }
 
-    /* ---------- students ---------- */
+    // 2. 알림 (notifications) - 우측 하단 종 모양 아이콘 에러 해결
+    match /notifications/{uid}/items/{notificationId} {
+      allow read: if isSignedIn() && request.auth.uid == uid; // 목록 조회(read) 허용으로 변경
+      allow write: if isStaffOrAdmin();
+    }
+    match /notifications/{uid}/meta {
+      allow read: if isSignedIn() && request.auth.uid == uid;
+      allow write: if isSignedIn() && request.auth.uid == uid;
+    }
+
+    // 3. 수업 관리 (classes) - 화면 중앙 '클래스 선택' 드롭다운 에러 해결
+    match /classes/{id} {
+      allow read: if isStaffOrAdmin(); // list 권한 포함됨
+      allow write: if isStaffOrAdmin();
+    }
+
+    // 4. 수업 로그 (lessonLogs) - '일지 수정/작성' 버튼 관련
+    match /lessonLogs/{id} {
+      allow read: if isStaffOrAdmin();
+      allow write: if isStaffOrAdmin();
+    }
+
+    // 5. 공지사항 (announcements) - 대시보드 에러 해결
+    match /announcements/{id} {
+      allow read: if isSignedIn(); // 모든 로그인 유저 조회 가능
+      allow write: if isStaffOrAdmin();
+    }
+
+    // --- [학생 상세 데이터] ---
     match /students/{id} {
-      allow get: if isSignedIn() && canViewStudent(id);
-      allow list: if isStaffOrAdmin();
+      allow read: if isSignedIn() && (isStaffOrAdmin() || (isStudent() && request.auth.uid == id));
       allow write: if isAdmin();
     }
-
-    /* ---------- attendances ---------- */
     match /attendances/{id} {
-      allow read, list: if isStaffOrAdmin();
+      allow read: if isStaffOrAdmin();
       allow write: if isStaffOrAdmin();
     }
-
-    /* ---------- homeworks ---------- */
     match /homeworks/{id} {
-      allow read, list: if isStaffOrAdmin();
+      allow read: if isStaffOrAdmin();
       allow write: if isStaffOrAdmin();
     }
-
-    /* ---------- grades ---------- */
     match /grades/{id} {
-      allow read, list: if isStaffOrAdmin();
+      allow read: if isStaffOrAdmin();
       allow write: if isStaffOrAdmin();
     }
-
-    /* ---------- memos ---------- */
     match /memos/{id} {
-      allow read, list: if isStaffOrAdmin();
+      allow read: if isStaffOrAdmin();
       allow write: if isStaffOrAdmin();
     }
-
-    /* ---------- default deny ---------- */
+    
+    // --- [기타 컬렉션] ---
+    match /clinicLogs/{id} {
+      allow read: if isSignedIn() && canViewStudent(resource.data.studentId);
+      allow write: if isStaffOrAdmin();
+    }
+    match /homeworkAssignments/{id} {
+      allow read: if isStaffOrAdmin();
+      allow write: if isStaffOrAdmin();
+    }
+    match /homeworkResults/{id} {
+      allow read: if isSignedIn() && canViewStudent(resource.data.studentId);
+      allow write: if isStaffOrAdmin();
+    }
+    match /payments/{id} {
+      allow read: if isSignedIn() && canViewStudent(resource.data.studentId);
+      allow write: if isStaffOrAdmin();
+    }
+    match /workLogs/{id} {
+      allow read: if isStaffOrAdmin();
+      allow write: if isStaffOrAdmin();
+    }
+    
+    // 채팅 및 기타 설정은 기존 유지 또는 필요시 read로 변경
     match /{document=**} {
       allow read, write: if false;
     }

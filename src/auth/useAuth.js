@@ -8,7 +8,7 @@ import React, {
     useState,
 } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
-import { doc, getDoc, onSnapshot } from 'firebase/firestore';
+import { doc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../firebase/client';
 import { signOutUser } from './authService';
 
@@ -24,15 +24,6 @@ const clearAuthStorage = () => {
     }
 };
 
-const normalizeProfile = (currentUser, data) => ({
-    uid: currentUser?.uid ?? null,
-    role: data?.role ?? null,
-    active: data?.active ?? true,
-    displayName: data?.displayName ?? currentUser?.displayName ?? '',
-    name: data?.name ?? '',
-    email: data?.email ?? currentUser?.email ?? '',
-});
-
 const normalizeLinkedStudentIds = (data) => {
     if (Array.isArray(data?.linkedStudentIds)) {
         return data.linkedStudentIds.filter((id) => id !== undefined && id !== null);
@@ -43,7 +34,7 @@ const normalizeLinkedStudentIds = (data) => {
     return [];
 };
 
-export function AuthProvider({ children, listenToProfile = false }) {
+export function AuthProvider({ children }) {
     const [user, setUser] = useState(null);
     const [role, setRole] = useState(null);
     const [userProfile, setUserProfile] = useState(null);
@@ -60,7 +51,6 @@ export function AuthProvider({ children, listenToProfile = false }) {
         }
 
         let isMounted = true;
-        let userDocUnsub = null;
 
         const resetProfileState = () => {
             setRole(null);
@@ -70,13 +60,6 @@ export function AuthProvider({ children, listenToProfile = false }) {
             setActiveStudentId(null);
         };
 
-        const stopUserDocListener = () => {
-            if (userDocUnsub) {
-                userDocUnsub();
-                userDocUnsub = null;
-            }
-            };
-
         const logProfileErrorOnce = (error) => {
             if (!errorLoggedRef.current) {
                 console.error('사용자 프로필을 불러오는 중 오류가 발생했습니다:', error);
@@ -84,13 +67,11 @@ export function AuthProvider({ children, listenToProfile = false }) {
             }
         };
 
-        const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+        const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
             if (!isMounted) return;
             setUser(currentUser);
             resetProfileState();
             errorLoggedRef.current = false;
-
-            stopUserDocListener();
 
             if (!currentUser) {
                 setLoading(false);
@@ -107,69 +88,53 @@ export function AuthProvider({ children, listenToProfile = false }) {
             const userDocRef = doc(db, 'users', currentUser.uid);
             setLoading(true);
 
-            if (listenToProfile) {
-                // 비용/안정성 요구에 따라 필요할 때만 실시간 구독을 사용합니다.
-                userDocUnsub = onSnapshot(
-                    userDocRef,
-                    (userDoc) => {
-                        if (!isMounted) return;
-                        const data = userDoc.exists() ? userDoc.data() : null;
-                        const profile = normalizeProfile(currentUser, data);
-                        setUserProfile(profile);
-                        setRole(profile.role);
-                        setLinkedStudentIds(normalizeLinkedStudentIds(data));
-                        setActiveStudentId(data?.activeStudentId ?? null);
-                        setLoading(false);
-                    },
-                    (error) => {
-                        logProfileErrorOnce(error);
-                        if (isMounted) {
-                            setUserProfile(normalizeProfile(currentUser, null));
-                            setRole(null);
-                            setProfileError('프로필을 불러올 수 없습니다.');
-                            setLinkedStudentIds([]);
-                            setActiveStudentId(null);
-                            setLoading(false);
-                        }
-                    },
-                );
-                return;
-            }
+            try {
+                const userDoc = await getDoc(userDocRef);
+                if (!isMounted) return;
 
-            // 기본값은 단발 getDoc으로 프로필을 로드합니다.
-            getDoc(userDocRef)
-                .then((userDoc) => {
-                    if (!isMounted) return;
-                    const data = userDoc.exists() ? userDoc.data() : null;
-                    const profile = normalizeProfile(currentUser, data);
-                    setUserProfile(profile);
-                    setRole(profile.role);
-                    setLinkedStudentIds(normalizeLinkedStudentIds(data));
-                    setActiveStudentId(data?.activeStudentId ?? null);
-                })
-                .catch((error) => {
-                    logProfileErrorOnce(error);
-                    if (isMounted) {
-                        setUserProfile(normalizeProfile(currentUser, null));
-                        setRole(null);
-                        setProfileError('프로필을 불러올 수 없습니다.');
-                        setLinkedStudentIds([]);
-                        setActiveStudentId(null);
-                    }
-                })
-                .finally(() => {
-                    if (isMounted) {
-                        setLoading(false);
-                    }
-                });
+                if (!userDoc.exists()) {
+                    setRole(null);
+                    setUserProfile(null);
+                    setLinkedStudentIds([]);
+                    setActiveStudentId(null);
+                    setLoading(false);
+                    return;
+                }
+
+                const data = userDoc.data();
+                const profile = {
+                    uid: currentUser.uid,
+                    role: data?.role ?? null,
+                    active: data?.active !== false,
+                    displayName: data?.displayName ?? '',
+                    name: data?.name ?? '',
+                    email: data?.email ?? '',
+                };
+                setUserProfile(profile);
+                setRole(profile.role);
+                setLinkedStudentIds(normalizeLinkedStudentIds(data));
+                setActiveStudentId(data?.activeStudentId ?? null);
+            } catch (error) {
+                logProfileErrorOnce(error);
+                if (isMounted) {
+                    setProfileError('프로필을 불러올 수 없습니다.');
+                    setRole(null);
+                    setUserProfile(null);
+                    setLinkedStudentIds([]);
+                    setActiveStudentId(null);
+                }
+            } finally {
+                if (isMounted) {
+                    setLoading(false);
+                }
+            }
         });
 
         return () => {
             isMounted = false;
-            stopUserDocListener();
             unsubscribe();
         };
-    }, [listenToProfile]);
+    }, []);
 
     const logout = useCallback(async () => {
         if (!auth) {

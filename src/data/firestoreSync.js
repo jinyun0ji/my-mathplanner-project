@@ -1,3 +1,5 @@
+// ⚠️ 이 파일은 staff/admin/teacher 전용 Firestore 실시간 동기화 로직이다
+// ⚠️ student / parent 계정에서는 절대 실행되면 안 된다
 import {
     collection,
     query,
@@ -33,10 +35,10 @@ export const startStaffFirestoreSync = ({
     setGrades,
     setHomeworkResults,
 }) => {
-    const isStaff = userRole && !['student', 'parent'].includes(userRole);
-    if (!isLoggedIn || !db || !isStaff) return () => {};
+    if (!isLoggedIn || !db) return () => {};
+    if (!userRole) return () => {};
+    if (!['staff', 'admin', 'teacher'].includes(userRole)) return () => {};
 
-    console.log('🔥 Firestore Sync Started (staff only)');
     const unsubs = [];
 
     const syncBasic = (colName, setter, orderField = null) => {
@@ -44,6 +46,8 @@ export const startStaffFirestoreSync = ({
         if (orderField) q = query(q, orderBy(orderField));
         unsubs.push(onSnapshot(q, (snap) => {
             if (!snap.empty) setter(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+        }, (err) => {
+            console.error('[FirestoreSync] 권한 오류:', err);
         }));
     };
 
@@ -51,6 +55,8 @@ export const startStaffFirestoreSync = ({
         const q = query(collection(db, colName), orderBy('date', 'desc'), limit(150));
         unsubs.push(onSnapshot(q, (snap) => {
             if (!snap.empty) setter(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+        }, (err) => {
+            console.error('[FirestoreSync] 권한 오류:', err);
         }));
     };
 
@@ -68,6 +74,8 @@ export const startStaffFirestoreSync = ({
                 });
                 setter((prev) => ({ ...prev, ...mapped }));
             }
+        }, (err) => {
+            console.error('[FirestoreSync] 권한 오류:', err);
         }));
     };
 
@@ -87,7 +95,6 @@ export const startStaffFirestoreSync = ({
     syncMappedData('homeworkResults', setHomeworkResults, 'studentId', 'assignmentId');
 
     return () => {
-        console.log('🛑 Firestore Sync Stopped');
         unsubs.forEach((u) => u());
     };
 };

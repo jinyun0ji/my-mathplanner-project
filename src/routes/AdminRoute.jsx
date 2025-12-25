@@ -12,6 +12,9 @@ export default function AdminRoute({ children }) {
             navigate('/login', { replace: true });
             return;
         }
+        if (role === null) {
+            return;
+        }
         if (role !== 'admin') {
             navigate('/home', { replace: true });
         }
@@ -25,7 +28,7 @@ export default function AdminRoute({ children }) {
         );
     }
 
-    if (!user || role !== 'admin') {
+    if (!user || role === null || role !== 'admin') {
         return null;
     }
 
