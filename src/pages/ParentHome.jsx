@@ -17,6 +17,7 @@ import openNotification from '../notifications/openNotification';
 import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { db } from '../firebase/client';
 import { useParentContext } from '../parent';
+import { getDefaultClassId, sortClassesByStatus } from '../utils/classStatus';
 
 // --- [컴포넌트] 학부모 전용 대시보드 ---
 const ParentDashboard = ({ 
@@ -188,6 +189,7 @@ export default function ParentHome({
 
     // 2. 데이터 필터링
     const myClasses = useMemo(() => classes.filter(c => c.students.includes(activeChildId)), [classes, activeChildId]);
+    const { ongoing: ongoingClasses } = useMemo(() => sortClassesByStatus(myClasses), [myClasses]);
     const myHomeworkStats = useMemo(() => calculateHomeworkStats(activeChildId, homeworkAssignments, homeworkResults), [activeChildId, homeworkAssignments, homeworkResults]);
     const myGradeComparison = useMemo(() => calculateGradeComparison(activeChildId, classes, tests, grades), [activeChildId, classes, tests, grades]);
     const myPayments = useMemo(() => initialPayments.filter(p => p.studentId === activeChildId).sort((a, b) => new Date(b.date) - new Date(a.date)), [activeChildId]);
@@ -280,10 +282,10 @@ export default function ParentHome({
     }, [myGradeComparison]);
 
     const nextClass = useMemo(() => {
-        if (!myClasses || myClasses.length === 0) return null;
-        const sorted = [...myClasses].sort((a, b) => a.schedule.time.localeCompare(b.schedule.time));
+        if (!ongoingClasses || ongoingClasses.length === 0) return null;
+        const sorted = [...ongoingClasses].sort((a, b) => a.schedule.time.localeCompare(b.schedule.time));
         return sorted[0];
-    }, [myClasses]);
+    }, [ongoingClasses]);
 
     const noticePreview = useMemo(() => visibleNotices.slice(0, 3), [visibleNotices]);
 
@@ -453,7 +455,7 @@ export default function ParentHome({
     }, [attendanceSummary, homeworkSummary, gradeSummary, unpaidPayments.length, reportFocus]);
 
     const classSummaries = useMemo(() => {
-        return myClasses.map(cls => {
+        return ongoingClasses.map(cls => {
             const latestAttendance = childAttendanceLogs.find(log => log.classId === cls.id);
             const classHomeworks = myHomeworkStats.filter(hw => hw.classId === cls.id);
             const pendingHomeworks = classHomeworks.filter(hw => hw.status !== '완료').length;
@@ -473,7 +475,12 @@ export default function ParentHome({
                 scoreDiff
             };
         });
-    }, [myClasses, childAttendanceLogs, myHomeworkStats, myGradeComparison, tests]);
+    }, [ongoingClasses, childAttendanceLogs, myHomeworkStats, myGradeComparison, tests]);
+
+    const defaultReportClassId = useMemo(
+        () => getDefaultClassId(ongoingClasses.length > 0 ? ongoingClasses : myClasses),
+        [ongoingClasses, myClasses]
+    );
 
     // ✅ 리포트 데이터 생성 (현재 선택된 리포트 ID가 있을 때만)
     const activeReport = useMemo(() => {
@@ -603,7 +610,7 @@ export default function ParentHome({
                                 <div className="grid gap-4 lg:grid-cols-3">
                                     <div className="space-y-4 lg:col-span-2">
                                         <ParentDashboard 
-                                            child={activeChild} myClasses={myClasses} attendanceLogs={attendanceLogs} 
+                                            child={activeChild} myClasses={ongoingClasses} attendanceLogs={attendanceLogs} 
                                             homeworkStats={myHomeworkStats} gradeComparison={myGradeComparison} 
                                             clinicLogs={clinicLogs} unpaidPayments={unpaidPayments}
                                             setActiveTab={setActiveTab} 
@@ -739,7 +746,7 @@ export default function ParentHome({
                                             최근 수업 리포트
                                         </h3>
                                         {myClasses.length > 0 && (
-                                            <button onClick={() => setSelectedClassId(myClasses[0].id)} className="text-xs text-indigo-600 font-semibold hover:underline">
+                                            <button onClick={() => setSelectedClassId(defaultReportClassId)} className="text-xs text-indigo-600 font-semibold hover:underline">
                                                 반별 기록 보기
                                             </button>
                                         )}
@@ -780,7 +787,7 @@ export default function ParentHome({
                                             <Icon name="barChart" className="w-5 h-5 text-indigo-600" />
                                             반별 현황
                                         </h3>
-                                        <span className="text-xs text-gray-400 font-semibold">진행 중 {myClasses.length}개 반</span>
+                                        <span className="text-xs text-gray-400 font-semibold">진행 중 {ongoingClasses.length}개 반</span>
                                     </div>
                                     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
                                         {classSummaries.map(cls => (
@@ -814,7 +821,7 @@ export default function ParentHome({
                                                 )}
                                             </div>
                                         ))}
-                                        {myClasses.length === 0 && (
+                                        {ongoingClasses.length === 0 && (
                                             <div className="p-6 text-center bg-white border border-dashed border-gray-200 rounded-2xl text-sm text-gray-400">
                                                 등록된 반이 없습니다.
                                             </div>
@@ -825,7 +832,7 @@ export default function ParentHome({
                         )}
                         {activeTab === 'schedule' && (
                             <ScheduleTab 
-                                myClasses={myClasses} attendanceLogs={attendanceLogs} clinicLogs={clinicLogs} 
+                                myClasses={ongoingClasses} attendanceLogs={attendanceLogs} clinicLogs={clinicLogs} 
                                 externalSchedules={externalSchedules} onSaveExternalSchedule={onSaveExternalSchedule} onDeleteExternalSchedule={onDeleteExternalSchedule}
                             />
                         )}

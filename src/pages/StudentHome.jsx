@@ -8,6 +8,7 @@ import ClassroomView from './student/ClassroomView';
 import StudentMessenger from '../components/StudentMessenger';
 import StudentHeader from '../components/StudentHeader';
 import { Icon, calculateHomeworkStats, calculateGradeComparison } from '../utils/helpers';
+import { sortClassesByStatus } from '../utils/classStatus';
 import NotificationsIcon from '@mui/icons-material/Notifications';
 import useNotifications from '../notifications/useNotifications';
 import NotificationList from '../notifications/NotificationList';
@@ -65,7 +66,8 @@ export default function StudentHome({
     const handleOpenNotification = () => { setIsNotificationOpen(true); };
 
     const student = students.find(s => s.id === studentId);
-    const myClasses = classes.filter(c => c.students.includes(studentId));
+    const myClasses = useMemo(() => classes.filter(c => c.students.includes(studentId)), [classes, studentId]);
+    const { ongoing: ongoingClasses } = useMemo(() => sortClassesByStatus(myClasses), [myClasses]);
     const myHomeworkStats = useMemo(() => calculateHomeworkStats(studentId, homeworkAssignments, homeworkResults), [studentId, homeworkAssignments, homeworkResults]);
     const myGradeComparison = useMemo(() => calculateGradeComparison(studentId, classes, tests, grades), [studentId, classes, tests, grades]);
     const pendingHomeworkCount = myHomeworkStats.filter(h => h.status !== '완료').length;
@@ -150,16 +152,16 @@ export default function StudentHome({
                     <div className="animate-fade-in space-y-4">
                         {activeTab === 'home' && (
                             <DashboardTab 
-                                student={student} myClasses={myClasses} pendingHomeworkCount={pendingHomeworkCount} 
+                                student={student} myClasses={ongoingClasses} pendingHomeworkCount={pendingHomeworkCount} 
                                 attendanceLogs={attendanceLogs} clinicLogs={clinicLogs} homeworkStats={myHomeworkStats} notices={visibleNotices}
                                 setActiveTab={setActiveTab}
                                 externalSchedules={externalSchedules} // ✅ [추가] 타학원 일정 데이터 전달
                             />
                         )}
-                        {activeTab === 'class' && <ClassTab myClasses={myClasses} setSelectedClassId={setSelectedClassId} />}
+                        {activeTab === 'class' && <ClassTab myClasses={ongoingClasses} setSelectedClassId={setSelectedClassId} />}
                         {activeTab === 'schedule' && (
                             <ScheduleTab 
-                                myClasses={myClasses} externalSchedules={externalSchedules} attendanceLogs={attendanceLogs} 
+                                myClasses={ongoingClasses} externalSchedules={externalSchedules} attendanceLogs={attendanceLogs} 
                                 studentId={studentId} onSaveExternalSchedule={onSaveExternalSchedule} onDeleteExternalSchedule={onDeleteExternalSchedule} clinicLogs={clinicLogs} 
                             />
                         )}

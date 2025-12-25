@@ -1,32 +1,20 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { Icon } from '../utils/helpers';
 import { Modal } from '../components/common/Modal'; 
 import { PaymentNotificationModal } from '../utils/modals/PaymentNotificationModal'; // ✅ 신규 모달 import
 import { initialClasses, initialStudents } from '../api/initialData';
+import { addDoc, collection, getDocs, query, serverTimestamp, where } from 'firebase/firestore';
+import { db } from '../firebase/client';
 
 // ✅ [수정] props에 paymentLogs, handleSavePayment 추가
 export default function PaymentManagement({ students, classes, paymentLogs, handleSavePayment, logNotification }) {
 
     // --- 1. 초기 데이터 및 상태 ---
-    const initialBookList = [
-        { id: 1, name: 'RPM 수학(상)', price: 15000, stock: 50, type: '숙제교재' },
-        { id: 2, name: '블랙라벨 수학(상)', price: 17000, stock: 35, type: '숙제교재' },
-        { id: 3, name: '개념원리 수학I', price: 18000, stock: 20, type: '진도교재' },
-        { id: 4, name: '고1 정석', price: 22000, stock: 10, type: '진도교재' },
-        { id: 5, name: '오답노트 전용 바인더', price: 5000, stock: 100, type: '기타' },
-    ];
-
-    const initialClassBookMap = {
-        1: [1, 2], 
-        2: [3],    
-    };
-
     const initialPaymentLogs = [
         { id: 1, date: '2025-11-20', studentName: '김민준', studentId: 'stu-1', bookId: 1, bookName: 'RPM 수학(상)', amount: 15000, method: '카드', type: '현장결제' },
     ];
 
-    const [bookList, setBookList] = useState(initialBookList);
-    const [classBookMap, setClassBookMap] = useState(initialClassBookMap);
+    const [materialsByClass, setMaterialsByClass] = useState({});
     const [activeTab, setActiveTab] = useState('classStatus'); 
 
     // 모달 상태
@@ -39,7 +27,7 @@ export default function PaymentManagement({ students, classes, paymentLogs, hand
     const [notificationTargets, setNotificationTargets] = useState([]); // 알림 보낼 대상 목록
 
     // 폼 상태
-    const [newBook, setNewBook] = useState({ name: '', price: 0, stock: 0, type: '진도교재' });
+    const [newBook, setNewBook] = useState({ name: '', price: 0, stock: 0, type: '진도교재', classId: '' });
     const [paymentForm, setPaymentForm] = useState({
         studentId: '',
         bookId: '',
@@ -77,6 +65,14 @@ export default function PaymentManagement({ students, classes, paymentLogs, hand
         setSelectedClassForSetting(prev => prev || String(effectiveClasses[0].id));
     }, [effectiveClasses]);
 
+    useEffect(() => {
+        if (!effectiveClasses || effectiveClasses.length === 0) return;
+        setNewBook(prev => ({
+            ...prev,
+            classId: prev.classId || String(effectiveClasses[0].id),
+        }));
+    }, [effectiveClasses]);
+
     // const handlePayment = async () => {
     // const response = await PortOne.requestPayment({
     //     storeId: "store-본인상점ID",
@@ -100,6 +96,47 @@ export default function PaymentManagement({ students, classes, paymentLogs, hand
 
 
     // --- 2. 로직 및 헬퍼 함수 ---
+    const fetchMaterialsByClass = useCallback(async (classId) => {
+        if (!classId) return [];
+        const materialsQuery = query(
+            collection(db, 'materials'),
+            where('classId', '==', String(classId)),
+        );
+        const snapshot = await getDocs(materialsQuery);
+        const materials = snapshot.docs.map((docSnap) => ({
+            id: docSnap.id,
+            ...docSnap.data(),
+        }));
+        setMaterialsByClass(prev => ({ ...prev, [String(classId)]: materials }));
+        return materials;
+    }, []);
+
+    useEffect(() => {
+        if (!viewClassId) return;
+        fetchMaterialsByClass(viewClassId);
+    }, [viewClassId, fetchMaterialsByClass]);
+
+    useEffect(() => {
+        if (!selectedClassForSetting) return;
+        fetchMaterialsByClass(selectedClassForSetting);
+    }, [selectedClassForSetting, fetchMaterialsByClass]);
+
+    useEffect(() => {
+        if (!paymentForm.studentId) return;
+        const student = effectiveStudents.find(s => s.id === paymentForm.studentId);
+        if (!student) return;
+        const classIds = student.classes || student.classIds || [];
+        classIds.forEach((classId) => {
+            if (!materialsByClass[String(classId)]) {
+                fetchMaterialsByClass(classId);
+            }
+        });
+    }, [paymentForm.studentId, effectiveStudents, materialsByClass, fetchMaterialsByClass]);
+
+    const classMaterials = useMemo(
+        () => materialsByClass[String(viewClassId)] || [],
+        [materialsByClass, viewClassId]
+    );
 
     // [로직] 특정 반의 학생별 납부 현황 계산
     const classPaymentStatus = useMemo(() => {
@@ -108,8 +145,8 @@ export default function PaymentManagement({ students, classes, paymentLogs, hand
         const targetClass = effectiveClasses.find(c => String(c.id) === String(viewClassId));
         if (!targetClass) return [];
 
-        const requiredBookIds = classBookMap[viewClassId] || [];
-        const requiredBooks = bookList.filter(b => requiredBookIds.includes(b.id));
+        const requiredBooks = classMaterials;
+        if (requiredBooks.length === 0) return [];
         const totalRequiredAmount = requiredBooks.reduce((sum, b) => sum + b.price, 0);
 
         return targetClass.students.map(studentId => {
@@ -134,7 +171,7 @@ export default function PaymentManagement({ students, classes, paymentLogs, hand
             };
         }).filter(item => item !== null);
 
-    }, [viewClassId, effectiveClasses, effectiveStudents, classBookMap, bookList, effectivePaymentLogs]);
+    }, [viewClassId, effectiveClasses, effectiveStudents, classMaterials, effectivePaymentLogs]);
 
     // [체크박스 핸들러] 전체 선택/해제
     const handleSelectAll = (e) => {
@@ -173,13 +210,43 @@ export default function PaymentManagement({ students, classes, paymentLogs, hand
     };
 
 
+    const availableBooks = useMemo(() => {
+        if (!paymentForm.studentId) {
+            return classMaterials;
+        }
+        const student = effectiveStudents.find(s => s.id === paymentForm.studentId);
+        if (!student) return classMaterials;
+        const classIds = student.classes || student.classIds || [];
+        const seen = new Map();
+        classIds.forEach((classId) => {
+            (materialsByClass[String(classId)] || []).forEach((book) => {
+                if (!seen.has(book.id)) {
+                    seen.set(book.id, book);
+                }
+            });
+        });
+        return Array.from(seen.values());
+    }, [paymentForm.studentId, effectiveStudents, materialsByClass, classMaterials]);
+
     // [핸들러] 교재 등록
-    const handleAddBook = (e) => {
+    const handleAddBook = async (e) => {
         e.preventDefault();
+        if (!newBook.classId) {
+            alert('클래스를 선택해주세요.');
+            return;
+        }
         if (newBook.name && Number.isFinite(newBook.price) && newBook.price >= 0) {
-            const id = bookList.reduce((max, b) => Math.max(max, b.id), 0) + 1;
-            setBookList(prev => [...prev, { ...newBook, id }]);
-            setNewBook({ name: '', price: 0, stock: 0, type: '진도교재' });
+            await addDoc(collection(db, 'materials'), {
+                classId: String(newBook.classId),
+                name: newBook.name,
+                price: newBook.price,
+                stock: newBook.stock,
+                type: newBook.type,
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp(),
+            });
+            await fetchMaterialsByClass(newBook.classId);
+            setNewBook({ name: '', price: 0, stock: 0, type: '진도교재', classId: newBook.classId });
             setIsBookModalOpen(false);
             if(logNotification) logNotification('success', '교재 등록 완료', `${newBook.name}이 등록되었습니다.`);
         }
@@ -190,10 +257,11 @@ export default function PaymentManagement({ students, classes, paymentLogs, hand
         e.preventDefault();
         if (!paymentForm.studentId || !paymentForm.bookId) return;
 
-        const selectedBook = bookList.find(b => b.id === Number(paymentForm.bookId));
+        const selectedBook = availableBooks.find(b => b.id === paymentForm.bookId);
         const selectedStudent = effectiveStudents.find(s => s.id === paymentForm.studentId);
 
-        if (selectedBook.stock <= 0) {
+        if (!selectedBook) return;
+        if (typeof selectedBook.stock === 'number' && selectedBook.stock <= 0) {
             alert('재고가 부족합니다.');
             return;
         }
@@ -215,34 +283,27 @@ export default function PaymentManagement({ students, classes, paymentLogs, hand
         handleSavePayment(newLog);
 
         // 재고 차감 (로컬 상태)
-        setBookList(prev => prev.map(book => book.id === selectedBook.id ? { ...book, stock: book.stock - 1 } : book));
+        setMaterialsByClass(prev => {
+            const classId = selectedBook.classId;
+            if (!classId || !prev[String(classId)]) return prev;
+            return {
+                ...prev,
+                [String(classId)]: prev[String(classId)].map(book =>
+                    book.id === selectedBook.id
+                        ? { ...book, stock: typeof book.stock === 'number' ? book.stock - 1 : book.stock }
+                        : book
+                ),
+            };
+        });
         
         setIsPaymentModalOpen(false);
         setPaymentForm({ ...paymentForm, bookId: '' }); 
     };
 
-    const toggleClassBook = (classId, bookId) => {
-        setClassBookMap(prev => {
-            const currentBooks = prev[classId] || [];
-            if (currentBooks.includes(bookId)) {
-                return { ...prev, [classId]: currentBooks.filter(id => id !== bookId) };
-            } else {
-                return { ...prev, [classId]: [...currentBooks, bookId] };
-            }
-        });
-    };
-
     const recommendedBooks = useMemo(() => {
         if (!paymentForm.studentId) return [];
-        const student = effectiveStudents.find(s => s.id === paymentForm.studentId);
-        if (!student) return [];
-        
-        const neededBookIds = new Set();
-        student.classes.forEach(clsId => {
-            (classBookMap[clsId] || []).forEach(bId => neededBookIds.add(bId));
-        });
-        return bookList.filter(b => neededBookIds.has(b.id));
-    }, [paymentForm.studentId, effectiveStudents, classBookMap, bookList]);
+        return availableBooks;
+    }, [paymentForm.studentId, availableBooks]);
 
     const handleMethodChange = (value) => {
         setUseEasyPay(value === '간편결제');
@@ -561,7 +622,7 @@ export default function PaymentManagement({ students, classes, paymentLogs, hand
                                 </tr>
                             </thead>
                             <tbody className="bg-white divide-y divide-gray-200">
-                                {bookList.map(book => (
+                                {classMaterials.map(book => (
                                     <tr key={book.id} className="hover:bg-gray-50 transition">
                                         <td className="px-6 py-4 whitespace-nowrap">
                                             <span className={`px-2 py-1 text-xs rounded-full font-bold
@@ -584,7 +645,7 @@ export default function PaymentManagement({ students, classes, paymentLogs, hand
                         </table>
 
                         <div className="grid gap-3 md:hidden">
-                        {bookList.map(book => (
+                        {classMaterials.map(book => (
                             <div key={book.id} className="border rounded-xl p-4 shadow-sm bg-white space-y-2">
                                 <div className="flex items-start justify-between">
                                     <div>
@@ -699,6 +760,19 @@ export default function PaymentManagement({ students, classes, paymentLogs, hand
             {/* 1. 교재 등록 모달 */}
             <Modal isOpen={isBookModalOpen} onClose={() => setIsBookModalOpen(false)} title="새 교재 등록">
                 <form onSubmit={handleAddBook} className="space-y-4">
+                    <div>
+                        <label className="block text-sm font-bold text-gray-700 mb-1">클래스 선택*</label>
+                        <select
+                            value={newBook.classId}
+                            onChange={e => setNewBook({ ...newBook, classId: e.target.value })}
+                            required
+                            className="w-full rounded-lg border-gray-300 border p-2.5"
+                        >
+                            {effectiveClasses && effectiveClasses.map(c => (
+                                <option key={c.id} value={c.id}>{c.name}</option>
+                            ))}
+                        </select>
+                    </div>
                     <div>
                         <label className="block text-sm font-bold text-gray-700 mb-1">교재명</label>
                         <input 
@@ -818,7 +892,7 @@ export default function PaymentManagement({ students, classes, paymentLogs, hand
                             required
                         >
                             <option value="">교재를 선택해주세요</option>
-                            {bookList.map(b => (
+                            {availableBooks.map(b => (
                                 <option key={b.id} value={b.id} disabled={b.stock <= 0}>
                                     {b.name} ({b.price.toLocaleString()}원) {b.stock <= 0 ? '- 품절' : ''}
                                 </option>
@@ -881,8 +955,8 @@ export default function PaymentManagement({ students, classes, paymentLogs, hand
                             type="submit" 
                             className="w-full bg-indigo-600 text-white py-3 rounded-lg hover:bg-indigo-700 font-bold text-lg shadow-lg transition active:scale-95"
                         >
-                            {paymentForm.bookId 
-                                ? `${bookList.find(b => b.id === Number(paymentForm.bookId)).price.toLocaleString()}원 ${paymentForm.channel === '간편결제' ? '간편결제 보내기' : '결제하기'}`
+                            {paymentForm.bookId && availableBooks.find(b => b.id === paymentForm.bookId)
+                                ? `${availableBooks.find(b => b.id === paymentForm.bookId).price.toLocaleString()}원 ${paymentForm.channel === '간편결제' ? '간편결제 보내기' : '결제하기'}`
                                 : '결제하기'}
                         </button>
                     </div>
@@ -906,29 +980,25 @@ export default function PaymentManagement({ students, classes, paymentLogs, hand
                     </div>
                     
                     <div className="flex-1 overflow-y-auto border rounded-xl p-3 bg-gray-50 space-y-2">
-                        {selectedClassForSetting ? bookList.map(book => {
-                            const isAssigned = (classBookMap[selectedClassForSetting] || []).includes(book.id);
-                            return (
-                                <div key={book.id} 
-                                    onClick={() => toggleClassBook(selectedClassForSetting, book.id)}
-                                    className={`flex items-center p-4 rounded-lg cursor-pointer border transition-all duration-200 ${
-                                        isAssigned 
-                                            ? 'bg-white border-indigo-500 ring-1 ring-indigo-500 shadow-sm' 
-                                            : 'bg-white border-gray-200 hover:border-indigo-300'
-                                    }`}
-                                >
-                                    <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center mr-4 transition-colors ${
-                                        isAssigned ? 'bg-indigo-600 border-indigo-600' : 'bg-white border-gray-300'
-                                    }`}>
-                                        {isAssigned && <Icon name="check" className="w-3.5 h-3.5 text-white" />}
+                        {selectedClassForSetting ? (
+                            (materialsByClass[String(selectedClassForSetting)] || []).length > 0 ? (
+                                (materialsByClass[String(selectedClassForSetting)] || []).map(book => (
+                                    <div key={book.id} className="flex items-center p-4 rounded-lg border bg-white">
+                                        <div className="w-6 h-6 rounded-full border-2 flex items-center justify-center mr-4 bg-indigo-600 border-indigo-600">
+                                            <Icon name="check" className="w-3.5 h-3.5 text-white" />
+                                        </div>
+                                        <div className="flex-1">
+                                            <div className="font-bold text-gray-800">{book.name}</div>
+                                            <div className="text-sm text-gray-500 mt-0.5">{book.type} · {book.price.toLocaleString()}원</div>
+                                        </div>
                                     </div>
-                                    <div className="flex-1">
-                                        <div className="font-bold text-gray-800">{book.name}</div>
-                                        <div className="text-sm text-gray-500 mt-0.5">{book.type} · {book.price.toLocaleString()}원</div>
-                                    </div>
+                                    ))
+                            ) : (
+                                <div className="flex items-center justify-center h-full text-gray-400">
+                                    설정된 교재가 없습니다.
                                 </div>
-                            );
-                        }) : (
+                            )
+                        ) : (
                             <div className="flex items-center justify-center h-full text-gray-400">
                                 반을 먼저 선택해주세요.
                             </div>

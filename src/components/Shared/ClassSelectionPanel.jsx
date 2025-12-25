@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Icon, formatGradeLabel } from '../../utils/helpers';
 import { ClassFormModal } from '../../utils/modals/ClassFormModal';
+import { isClassFinished, sortClassesByStatus } from '../../utils/classStatus';
 
 export default function ClassSelectionPanel({ 
     classes, selectedClassId, setSelectedClassId, handleClassSave, calculateClassSessions, 
@@ -10,6 +11,7 @@ export default function ClassSelectionPanel({
 }) {
     const [isClassModalOpen, setIsClassModalOpen] = useState(false);
     const [isEditMode, setIsEditMode] = useState(false); // ✅ [추가] 편집 모드 상태 관리
+    const { ordered: orderedClasses } = useMemo(() => sortClassesByStatus(classes), [classes]);
     const selectedClass = classes.find(c => String(c.id) === String(selectedClassId));
     const selectedClassGrade = selectedClass ? formatGradeLabel(selectedClass.grade) : '';
     
@@ -47,8 +49,10 @@ export default function ClassSelectionPanel({
                 className="w-full p-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-700 focus:ring-indigo-500 focus:border-indigo-500"
             >
                 <option value="" disabled>클래스를 선택하세요</option>
-                {classes.map(cls => (
-                    <option key={cls.id} value={cls.id}>{cls.name} ({cls.teacher})</option>
+                {orderedClasses.map(cls => (
+                    <option key={cls.id} value={cls.id}>
+                        {cls.name} ({cls.teacher}){isClassFinished(cls) ? ' · 종강' : ''}
+                    </option>
                 ))}
             </select>
 

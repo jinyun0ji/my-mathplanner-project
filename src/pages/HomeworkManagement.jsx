@@ -5,6 +5,7 @@ import HomeworkGradingTable from '../components/Homework/HomeworkGradingTable';
 import HomeworkStatisticsPanel from '../components/Homework/HomeworkStatisticsPanel';
 import { HomeworkAssignmentModal } from '../utils/modals/HomeworkAssignmentModal';
 import { buildAssignmentSummary, getClassAssignments, getClassStudents, getSelectedAssignment } from '../domain/homework/homework.service';
+import { getDefaultClassId } from '../utils/classStatus';
 
 export default function HomeworkManagement({
     students, classes, homeworkAssignments, homeworkResults,
@@ -12,13 +13,19 @@ export default function HomeworkManagement({
     handleUpdateHomeworkResult, handleSaveClass, calculateClassSessions,
     setIsGlobalDirty 
 }) {
-    const [selectedClassId, setSelectedClassId] = useState(classes[0]?.id || null);
+    const [selectedClassId, setSelectedClassId] = useState(() => getDefaultClassId(classes));
     const [isAssignmentModalOpen, setIsAssignmentModalOpen] = useState(false);
     const [assignmentToEdit, setAssignmentToEdit] = useState(null);
     const [selectedAssignmentId, setSelectedAssignmentId] = useState(null);
     
     // 로컬 변경 사항 관리
     const [localChanges, setLocalChanges] = useState([]); 
+
+    useEffect(() => {
+        if (!classes || classes.length === 0) return;
+        if (selectedClassId && classes.some(c => String(c.id) === String(selectedClassId))) return;
+        setSelectedClassId(getDefaultClassId(classes));
+    }, [classes, selectedClassId]);
 
     const selectedClass = classes.find(c => String(c.id) === String(selectedClassId));
     

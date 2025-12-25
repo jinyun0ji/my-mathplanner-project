@@ -3,18 +3,25 @@ import { Icon, formatGradeLabel } from '../utils/helpers';
 import ClassSelectionPanel from '../components/Shared/ClassSelectionPanel'; 
 import { AttendanceModal } from '../components/common/AttendanceModal'; 
 import { MemoModal } from '../utils/modals/MemoModal'; 
+import { getDefaultClassId } from '../utils/classStatus';
 
 export default function AttendanceManagement({ 
     students, classes, attendanceLogs, handleSaveAttendance, 
     studentMemos, handleSaveMemo, handleSaveClass, calculateClassSessions 
 }) {
-    const [selectedClassId, setSelectedClassId] = useState(classes[0]?.id || null);
+    const [selectedClassId, setSelectedClassId] = useState(() => getDefaultClassId(classes));
     const [selectedDate, setSelectedDate] = useState(new Date().toISOString().slice(0, 10));
     const [isAttendanceModalOpen, setIsAttendanceModalOpen] = useState(false);
     const [memoModalState, setMemoModalState] = useState({ isOpen: false, studentId: null, content: '', studentName: '' });
     const [mobileView, setMobileView] = useState('attendance');
 
     const selectedClass = classes.find(c => String(c.id) === String(selectedClassId));
+
+    useEffect(() => {
+        if (!classes || classes.length === 0) return;
+        if (selectedClassId && classes.some(c => String(c.id) === String(selectedClassId))) return;
+        setSelectedClassId(getDefaultClassId(classes));
+    }, [classes, selectedClassId]);
 
     const classAttendance = useMemo(() => {
         if (!selectedClassId || !selectedDate) return [];

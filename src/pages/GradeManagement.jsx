@@ -6,6 +6,7 @@ import TestResultTable from '../components/Grade/TestResultTable';
 import TestStatisticsTable from '../components/Grade/TestStatisticsTable';
 import { TestFormModal } from '../utils/modals/TestFormModal';
 import { getClassAverages, getClassStudents, getClassTests, getTestStatistics } from '../domain/grade/grade.service';
+import { getDefaultClassId } from '../utils/classStatus';
 
 // ----------------------------------------------------------------------
 // 메인 컴포넌트: GradeManagement
@@ -14,7 +15,7 @@ export default function GradeManagement({
     students, classes, tests, grades, handleSaveTest, handleDeleteTest, 
     handleUpdateGrade, handleSaveClass, calculateClassSessions 
 }) {
-    const [selectedClassId, setSelectedClassId] = useState(classes[0]?.id || null);
+    const [selectedClassId, setSelectedClassId] = useState(() => getDefaultClassId(classes));
     const [isTestModalOpen, setIsTestModalOpen] = useState(false);
     const [testToEdit, setTestToEdit] = useState(null);
     const [selectedTestId, setSelectedTestId] = useState(null); 
@@ -24,6 +25,12 @@ export default function GradeManagement({
     const fileInputRef = useRef(null);
     
     const selectedClass = classes.find(c => String(c.id) === String(selectedClassId));
+
+    useEffect(() => {
+        if (!classes || classes.length === 0) return;
+        if (selectedClassId && classes.some(c => String(c.id) === String(selectedClassId))) return;
+        setSelectedClassId(getDefaultClassId(classes));
+    }, [classes, selectedClassId]);
 
     const handleCloseGradeInput = useCallback(() => {
         setIsGradeInputModalOpen(false);

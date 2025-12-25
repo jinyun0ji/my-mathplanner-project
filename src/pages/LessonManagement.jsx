@@ -5,6 +5,7 @@ import ClassSelectionPanel from '../components/Shared/ClassSelectionPanel';
 import VideoProgressViewer from '../components/Shared/VideoProgressViewer';
 import { buildLessonSessions, getCurrentLessonByDate, getSortedLessonLogs } from '../domain/lesson/lesson.service';
 import YouTubePlayer from '../components/YouTubePlayer';
+import { getDefaultClassId } from '../utils/classStatus';
 
 const normalizeLessonVideos = (lesson) => {
     if (!lesson) return [];
@@ -43,7 +44,7 @@ export default function LessonManagement({
     students, classes, lessonLogs, handleSaveLessonLog, handleDeleteLessonLog, 
     handleSaveClass, videoProgress, attendanceLogs, calculateClassSessions, logNotification, handleSendStudentNotification, setIsGlobalDirty
 }) {
-    const [selectedClassId, setSelectedClassId] = useState(classes[0]?.id || null);
+    const [selectedClassId, setSelectedClassId] = useState(() => getDefaultClassId(classes));
     const [isLogModalOpen, setIsLogModalOpen] = useState(false);
     const [logToEdit, setLogToEdit] = useState(null);
     const [selectedDate, setSelectedDate] = useState(null);
@@ -51,6 +52,12 @@ export default function LessonManagement({
     const [activeVideoByLog, setActiveVideoByLog] = useState({});
 
     const selectedClass = classes.find(c => String(c.id) === String(selectedClassId));;
+
+    useEffect(() => {
+        if (!classes || classes.length === 0) return;
+        if (selectedClassId && classes.some(c => String(c.id) === String(selectedClassId))) return;
+        setSelectedClassId(getDefaultClassId(classes));
+    }, [classes, selectedClassId]);
     
     // 선택된 클래스의 일지 목록을 날짜 역순으로 정렬
     const classLogs = useMemo(
