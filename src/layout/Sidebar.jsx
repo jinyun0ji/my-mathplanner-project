@@ -6,6 +6,7 @@ import useAuth from '../auth/useAuth';
 export default function Sidebar({ page, setPage, onLogout, isOpen, onClose }) {
     const { role } = useAuth();
     const isAdmin = role === 'admin';
+    const roleLabel = role === 'admin' ? '관리자' : '직원';
     // ... (menuItems는 그대로 유지) ...
     const menuItems = [
         { name: '대시보드', key: 'home', icon: 'dashboard' },
@@ -48,7 +49,7 @@ export default function Sidebar({ page, setPage, onLogout, isOpen, onClose }) {
                         </div>
                         <div>
                             <h1 className="text-lg font-bold tracking-tight text-gray-900">채수용 수학</h1>
-                            <p className="text-[11px] text-gray-400 font-medium -mt-1 tracking-wide">직원용 페이지</p>
+                            <p className="text-[11px] text-gray-400 font-medium -mt-1 tracking-wide">{roleLabel} 페이지</p>
                         </div>
                     </div>
                     {/* 닫기 버튼: md 이상에서는 숨김 */}

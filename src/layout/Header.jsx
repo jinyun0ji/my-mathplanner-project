@@ -1,7 +1,14 @@
 import React from 'react';
-import { Icon } from '../utils/helpers';
+import useAuth from '../auth/useAuth';
 
 export default function Header({ page }) {
+    const { user, role } = useAuth();
+
+    const fallbackName = user?.email ? user.email.split('@')[0] : '';
+    const displayName = user?.displayName?.trim() || fallbackName || '사용자';
+    const roleLabel = role === 'admin' ? '관리자' : '직원';
+    const avatarLabel = displayName?.[0] || '?';
+
     const getPageTitle = (pageKey) => {
         const titles = {
             home: '대시보드',
@@ -31,11 +38,11 @@ export default function Header({ page }) {
 
                 <div className="flex items-center space-x-2 sm:space-x-3 cursor-pointer p-1.5 rounded-lg hover:bg-gray-50 transition">
                     <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-sm border border-indigo-200">
-                        채
+                        {avatarLabel}
                     </div>
                     <div className="text-sm">
-                        <p className="font-bold text-gray-700 leading-none">채수용 선생님</p>
-                        <p className="text-xs text-gray-400 mt-0.5 sm:mt-1">관리자</p>
+                        <p className="font-bold text-gray-700 leading-none">{displayName}</p>
+                        <p className="text-xs text-gray-400 mt-0.5 sm:mt-1">{roleLabel}</p>
                     </div>
                 </div>
             </div>
