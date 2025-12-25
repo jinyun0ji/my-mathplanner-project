@@ -1,5 +1,6 @@
 // src/utils/helpers.js
 import React from 'react';
+import { isAssignmentAssignedToStudent } from '../domain/homework/homework.service';
 import { 
     Home, Calendar, Clipboard, BarChart2, Menu, 
     User, Users, ChevronRight, ChevronLeft, ChevronUp, ChevronDown, 
@@ -230,7 +231,9 @@ export const calculateClassSessions = (cls) => {
 
 export const calculateHomeworkStats = (studentId, assignments, results) => {
     if (!assignments) return [];
-    return assignments.map(hw => {
+    return assignments
+        .filter(hw => isAssignmentAssignedToStudent(hw, studentId))
+        .map(hw => {
         const studentResults = results?.[studentId]?.[hw.id] || {};
         const totalQuestions = hw.totalQuestions;
         let correctCount = 0;

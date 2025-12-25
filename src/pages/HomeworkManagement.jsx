@@ -4,7 +4,7 @@ import ClassSelectionPanel from '../components/Shared/ClassSelectionPanel';
 import HomeworkGradingTable from '../components/Homework/HomeworkGradingTable';
 import HomeworkStatisticsPanel from '../components/Homework/HomeworkStatisticsPanel';
 import { HomeworkAssignmentModal } from '../utils/modals/HomeworkAssignmentModal';
-import { buildAssignmentSummary, getClassAssignments, getClassStudents, getSelectedAssignment } from '../domain/homework/homework.service';
+import { buildAssignmentSummary, getClassAssignments, getClassStudents, getSelectedAssignment, resolveAssignmentStudentIds } from '../domain/homework/homework.service';
 import { getDefaultClassId } from '../utils/classStatus';
 
 export default function HomeworkManagement({
@@ -44,10 +44,13 @@ export default function HomeworkManagement({
         [students, selectedClass]
     );
 
-    const assignmentSummary = useMemo(
-        () => buildAssignmentSummary(selectedAssignment, classStudents, homeworkResults, localChanges),
-        [selectedAssignment, classStudents, homeworkResults, localChanges]
-    );
+    const assignmentSummary = useMemo(() => {
+        const assignedIds = resolveAssignmentStudentIds(selectedAssignment);
+        const assignedStudents = assignedIds.length > 0
+            ? classStudents.filter(student => assignedIds.map(String).includes(String(student.id)))
+            : classStudents;
+        return buildAssignmentSummary(selectedAssignment, assignedStudents, homeworkResults, localChanges);
+    }, [selectedAssignment, classStudents, homeworkResults, localChanges]);
 
     const handleAssignmentSelect = (id) => {
         if (localChanges.length > 0) {

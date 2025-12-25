@@ -1,3 +1,5 @@
+import { isAssignmentAssignedToStudent } from '../homework/homework.service';
+
 export const buildClassroomStats = ({
     attendanceLogs = [],
     selectedClassId = null,
@@ -13,7 +15,9 @@ export const buildClassroomStats = ({
     const absentCount = myAttendance.filter(l => l.status === '결석').length;
     const totalAttendance = myAttendance.length;
 
-    const classHomeworks = homeworkAssignments.filter(h => h.classId === selectedClassId);
+    const classHomeworks = homeworkAssignments.filter(
+        h => h.classId === selectedClassId && isAssignmentAssignedToStudent(h, studentId)
+    );
     const unsubmittedCount = classHomeworks.filter(h => {
         const result = homeworkResults?.[studentId]?.[h.id];
         return !result || Object.keys(result).length === 0;

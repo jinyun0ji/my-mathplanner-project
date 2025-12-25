@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Icon } from '../../utils/helpers';
+import { isAssignmentAssignedToStudent } from '../../domain/homework/homework.service';
 import { useParentContext } from '../../parent';
 
 export default function ParentClassroomView({ 
@@ -42,7 +43,9 @@ export default function ParentClassroomView({
         else if (attendanceRate < 80) attendanceStatus = 'warning';
 
         // 2. 과제 (누적 미제출)
-        const classHomeworks = homeworkAssignments.filter(h => h.classId === selectedClassId);
+        const classHomeworks = homeworkAssignments.filter(
+            h => h.classId === selectedClassId && isAssignmentAssignedToStudent(h, activeStudentId)
+        );
         const unsubmittedCount = classHomeworks.filter(h => {
              const result = homeworkResults?.[activeStudentId]?.[h.id];
              return !result || Object.keys(result).length === 0;

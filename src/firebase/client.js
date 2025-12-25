@@ -9,7 +9,7 @@ const firebaseConfig = {
   apiKey: "AIzaSyAjjR2yJwmwGeOMjxr_jGumpkchXpFzmcQ",
   authDomain: "my-mathplanner-project.firebaseapp.com",
   projectId: "my-mathplanner-project",
-  storageBucket: "my-mathplanner-project.firebasestorage.app",
+  storageBucket: "my-mathplanner-project.appspot.com",
   messagingSenderId: "197602408828",
   appId: "1:197602408828:web:c0eae7df35a06fbe070cf9",
   measurementId: "G-ZH2BMBYE86"
@@ -21,4 +21,4 @@ export const firebaseApp =
 export const auth = getAuth(firebaseApp);
 export const db = getFirestore(firebaseApp);
 export const functions = getFunctions(firebaseApp);
-export const storage = getStorage(firebaseApp);
+export const storage = getStorage(firebaseApp, "gs://my-mathplanner-project.appspot.com");

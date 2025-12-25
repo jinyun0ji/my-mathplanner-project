@@ -57,8 +57,12 @@ const computeTestStatisticsInternal = (test, students, grades, classAverages) =>
 export const getClassStudents = (students = [], selectedClass) => {
     if (!selectedClass) return [];
 
+    const classStudentIds = Array.isArray(selectedClass.students) && selectedClass.students.length > 0
+        ? selectedClass.students
+        : (selectedClass.studentIds || []);
+
     return students
-        .filter(s => selectedClass.students.includes(s.id) && s.status === '재원생')
+        .filter(s => classStudentIds.includes(s.id))
         .sort((a, b) => a.name.localeCompare(b.name));
 };
 

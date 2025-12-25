@@ -55,8 +55,8 @@ export const initialStudentMemos = {
 };
 
 export const initialHomeworkAssignments = [
-    { id: 1, classId: 1, date: '2025-11-03', content: '쎈 수학 p.30-35', book: '쎈 수학(상)', totalQuestions: 20, students: ['stu-1', 'stu-3', 'stu-4', 'stu-6'], deadline: '2025-11-05' },
-    { id: 2, classId: 1, date: '2025-11-05', content: '일품 p.10-15', book: '일품 수학(상)', totalQuestions: 15, students: ['stu-1', 'stu-3', 'stu-4', 'stu-6'], deadline: '2025-11-07' },
+    { id: 1, classId: 1, date: '2025-11-03', content: '쎈 수학 p.30-35', book: '쎈 수학(상)', totalQuestions: 20, assignedStudentIds: ['stu-1', 'stu-3', 'stu-4', 'stu-6'], deadline: '2025-11-05' },
+    { id: 2, classId: 1, date: '2025-11-05', content: '일품 p.10-15', book: '일품 수학(상)', totalQuestions: 15, assignedStudentIds: ['stu-1', 'stu-3', 'stu-4', 'stu-6'], deadline: '2025-11-07' },
 ];
 
 export const initialHomeworkResults = {

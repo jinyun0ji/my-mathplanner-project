@@ -21,9 +21,10 @@ export default function TestResultTable({ isOpen, onClose, test, studentsData, h
 
     const inputRefs = useRef({});
 
-    const studentsInClass = useMemo(() => 
-        studentsData.filter(s => grades[s.id]?.[test.id] !== undefined || s.status === '재원생'),
-    [studentsData, grades, test.id]);
+    const studentsInClass = useMemo(
+        () => studentsData,
+        [studentsData]
+    );
 
     useEffect(() => {
         if (isOpen && !selectedStudentId && studentsInClass.length > 0) {

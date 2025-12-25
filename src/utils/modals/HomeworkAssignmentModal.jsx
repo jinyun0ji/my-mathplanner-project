@@ -4,11 +4,21 @@ import { Modal } from '../../components/common/Modal';
 import StaffNotificationFields from '../../components/Shared/StaffNotificationFields';
 
 export const HomeworkAssignmentModal = ({ isOpen, onClose, onSave, classId, assignment = null, students, selectedClass }) => {
-  const classStudents = useMemo(() => students.filter(s => selectedClass?.students.includes(s.id)) || [], [students, selectedClass]);
+  const classStudentIds = useMemo(() => {
+    if (!selectedClass) return [];
+    if (Array.isArray(selectedClass.students) && selectedClass.students.length > 0) return selectedClass.students;
+    return selectedClass.studentIds || [];
+  }, [selectedClass]);
+
+  const classStudents = useMemo(
+    () => students.filter(s => classStudentIds.includes(s.id)) || [],
+    [students, classStudentIds]
+  );
   
   const [date, setDate] = useState('');
   const [content, setContent] = useState('');
   const [book, setBook] = useState('');
+  const [assignedStudentIds, setAssignedStudentIds] = useState([]);
   
   // ✅ 변경: 단순 시작/끝 번호 대신 범위 문자열(string) 사용
   const [rangeString, setRangeString] = useState(''); 
@@ -60,6 +70,12 @@ export const HomeworkAssignmentModal = ({ isOpen, onClose, onSave, classId, assi
       setDate(assignment.date);
       setContent(assignment.content);
       setBook(assignment.book || '');
+      const assigned = assignment.assignedStudentIds ?? assignment.students;
+      if (Array.isArray(assigned) && assigned.length > 0) {
+        setAssignedStudentIds(assigned);
+      } else {
+        setAssignedStudentIds(classStudents.map(student => student.id));
+      }
       // 기존 데이터(startQuestion, endQuestion)가 있으면 문자열로 변환, 아니면 저장된 rangeString 사용
       if (assignment.rangeString) {
           setRangeString(assignment.rangeString);
@@ -91,6 +107,7 @@ export const HomeworkAssignmentModal = ({ isOpen, onClose, onSave, classId, assi
       setDate(new Date().toISOString().slice(0, 10));
       setContent('');
       setBook('');
+      setAssignedStudentIds(classStudents.map(student => student.id));
       setRangeString('');
       setTotalQuestions(0);
       setIsAssignmentDate(true);
@@ -99,7 +116,7 @@ export const HomeworkAssignmentModal = ({ isOpen, onClose, onSave, classId, assi
       setStaffNotifyBody('');
       setStaffNotifyScheduledAt('');
     }
-  }, [assignment]);
+  }, [assignment, classStudents]);
 
   // 범위 문자열이 변할 때마다 총 문제 수 자동 계산
   useEffect(() => {
@@ -110,6 +127,10 @@ export const HomeworkAssignmentModal = ({ isOpen, onClose, onSave, classId, assi
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!classId || !date || !content || totalQuestions <= 0) return;
+    if (assignedStudentIds.length === 0) {
+      alert('과제를 배정할 학생을 최소 1명 선택해주세요.');
+      return;
+    }
 
     if (staffNotifyMode !== 'none') {
       if (!staffNotifyTitle.trim() || !staffNotifyBody.trim()) {
@@ -141,7 +162,7 @@ export const HomeworkAssignmentModal = ({ isOpen, onClose, onSave, classId, assi
       book,
       rangeString, // ✅ 저장: 입력한 범위 문자열
       totalQuestions,
-      students: classStudents.map(s => s.id),
+      assignedStudentIds,
       isAssignmentDate,
       notifyMode: staffNotifyMode === 'none' ? 'system' : 'staff',
       staffNotification,
@@ -159,6 +180,22 @@ export const HomeworkAssignmentModal = ({ isOpen, onClose, onSave, classId, assi
     if (value !== 'scheduled') {
       setStaffNotifyScheduledAt('');
     }
+  };
+
+  const toggleStudent = (studentId) => {
+    setAssignedStudentIds(prev => (
+      prev.includes(studentId)
+        ? prev.filter(id => id !== studentId)
+        : [...prev, studentId]
+    ));
+  };
+
+  const handleSelectAll = () => {
+    setAssignedStudentIds(classStudents.map(student => student.id));
+  };
+
+  const handleClearAll = () => {
+    setAssignedStudentIds([]);
   };
 
   return (
@@ -202,6 +239,43 @@ export const HomeworkAssignmentModal = ({ isOpen, onClose, onSave, classId, assi
               <p className="text-sm font-bold text-blue-700">총 {totalQuestions} 문제</p>
             </div>
           </div>
+        </div>
+
+        <div className="border rounded-lg p-3 bg-gray-50">
+          <div className="flex items-center justify-between mb-2">
+            <div>
+              <h4 className="text-sm font-semibold text-gray-700">학생 선택</h4>
+              <p className="text-xs text-gray-500">선택된 학생에게만 과제가 표시됩니다.</p>
+            </div>
+            <div className="flex items-center gap-2 text-xs">
+              <button type="button" onClick={handleSelectAll} className="text-indigo-600 font-semibold hover:text-indigo-800">
+                전체 선택
+              </button>
+              <span className="text-gray-300">|</span>
+              <button type="button" onClick={handleClearAll} className="text-gray-500 hover:text-gray-700">
+                전체 해제
+              </button>
+            </div>
+          </div>
+          <div className="max-h-44 overflow-y-auto space-y-2 pr-1">
+            {classStudents.length === 0 ? (
+              <p className="text-xs text-gray-400">클래스에 등록된 학생이 없습니다.</p>
+            ) : (
+              classStudents.map(student => (
+                <label key={student.id} className="flex items-center gap-2 text-sm text-gray-700">
+                  <input
+                    type="checkbox"
+                    className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                    checked={assignedStudentIds.includes(student.id)}
+                    onChange={() => toggleStudent(student.id)}
+                  />
+                  <span className="font-medium">{student.name}</span>
+                  <span className="text-xs text-gray-400">{student.grade}</span>
+                </label>
+              ))
+            )}
+          </div>
+          <p className="text-xs text-gray-500 mt-2">선택됨: {assignedStudentIds.length}명</p>
         </div>
 
         <StaffNotificationFields

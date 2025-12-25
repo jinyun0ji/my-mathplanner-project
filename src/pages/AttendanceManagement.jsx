@@ -56,7 +56,10 @@ export default function AttendanceManagement({
                     return;
                 }
 
-                const { studentIds = [] } = classSnap.data() || {};
+                const { students: classStudentIds = [], studentIds: legacyStudentIds = [] } = classSnap.data() || {};
+                const studentIds = Array.isArray(classStudentIds) && classStudentIds.length > 0
+                    ? classStudentIds
+                    : legacyStudentIds;
                 if (!Array.isArray(studentIds) || studentIds.length === 0) {
                     if (isActive) setClassStudents([]);
                     return;
@@ -83,7 +86,6 @@ export default function AttendanceManagement({
                 ).flat();
 
                 const filteredStudents = fetchedStudents
-                    .filter((student) => student.role === 'student')
                     .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko'));
 
                 if (isActive) setClassStudents(filteredStudents);
