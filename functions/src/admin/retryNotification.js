@@ -116,6 +116,7 @@ const retryNotification = functions.https.onCall(async (data, context) => {
         },
         successCount: FieldValue.increment(fcmStats?.successCount || 0),
         failureCount: FieldValue.increment(-(fcmStats?.successCount || 0)),
+        failedTokenCount: FieldValue.increment(fcmStats?.failedTokenCount || 0),
     });
 
     return {
