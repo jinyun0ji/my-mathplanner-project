@@ -52,11 +52,36 @@ service cloud.firestore {
       allow read: if isSignedIn()
         && (
           request.auth.uid == userId
-          || isAdmin()
-          || isStaff()
-          || (isParent() && userId in parentStudentUids())
+          || (resource.data.authUid != null && request.auth.uid == resource.data.authUid)
+          || isStaffOrAdmin()
+          || (isParent() && resource.data.role == 'student' && resource.data.authUid in parentStudentUids())
         );
-      allow write: if isAdmin();
+      allow create: if isStaffOrAdmin()
+        || (
+          isSignedIn()
+          && request.auth.uid == userId
+          && request.resource.data.authUid == request.auth.uid
+          && request.resource.data.invited == false
+          && request.resource.data.active == true
+          && request.resource.data.inviteCode is string
+          && (request.resource.data.role == 'student' || request.resource.data.role == 'parent')
+        );
+      allow update: if isStaffOrAdmin()
+        || (
+          isSignedIn()
+          && resource.data.invited == true
+          && resource.data.active == true
+          && resource.data.authUid == null
+          && request.resource.data.authUid == request.auth.uid
+          && request.resource.data.invited == false
+          && (resource.data.role == 'student' || resource.data.role == 'parent')
+        );
+      allow delete: if isStaffOrAdmin()
+        || (
+          isSignedIn()
+          && resource.data.invited == false
+          && resource.data.authUid == request.auth.uid
+        );
     }
 
     /* =========================

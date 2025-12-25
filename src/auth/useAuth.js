@@ -8,7 +8,7 @@ import React, {
     useState,
 } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, limit, query, where } from 'firebase/firestore';
 import { auth, db } from '../firebase/client';
 import { signOutUser } from './authService';
 
@@ -27,12 +27,6 @@ const clearAuthStorage = () => {
 const normalizeLinkedStudentUids = (data) => {
     if (Array.isArray(data?.linkedStudentUids)) {
         return data.linkedStudentUids.filter((id) => id !== undefined && id !== null);
-    }
-    if (Array.isArray(data?.linkedStudentIds)) {
-        return data.linkedStudentIds.filter((id) => id !== undefined && id !== null);
-    }
-    if (Array.isArray(data?.studentIds)) {
-        return data.studentIds.filter((id) => id !== undefined && id !== null);
     }
     return [];
 };
@@ -92,10 +86,21 @@ export function AuthProvider({ children }) {
             setLoading(true);
 
             try {
-                const userDoc = await getDoc(userDocRef);
+                let userDoc = await getDoc(userDocRef);
                 if (!isMounted) return;
 
                 if (!userDoc.exists()) {
+                    const fallbackQuery = query(
+                        collection(db, 'users'),
+                        where('authUid', '==', currentUser.uid),
+                        limit(1),
+                    );
+                    const fallbackSnap = await getDocs(fallbackQuery);
+                    if (!isMounted) return;
+                    userDoc = fallbackSnap.docs[0] || null;
+                }
+
+                if (!userDoc || !userDoc.exists()) {
                     setRole(null);
                     setUserProfile(null);
                     setLinkedStudentUids([]);
@@ -105,6 +110,39 @@ export function AuthProvider({ children }) {
                 }
 
                 const data = userDoc.data();
+                if (data?.invited === true) {
+                    setProfileError('초대가 완료되지 않은 계정입니다.');
+                    setRole(null);
+                    setUserProfile(null);
+                    setLinkedStudentUids([]);
+                    setActiveStudentId(null);
+                    await signOutUser();
+                    setLoading(false);
+                    return;
+                }
+
+                if (data?.role === 'student' && data?.authUid !== currentUser.uid) {
+                    setProfileError('학생 계정 정보가 일치하지 않습니다.');
+                    setRole(null);
+                    setUserProfile(null);
+                    setLinkedStudentUids([]);
+                    setActiveStudentId(null);
+                    await signOutUser();
+                    setLoading(false);
+                    return;
+                }
+
+                if (data?.role === 'parent' && data?.authUid !== currentUser.uid) {
+                    setProfileError('학부모 계정 정보가 일치하지 않습니다.');
+                    setRole(null);
+                    setUserProfile(null);
+                    setLinkedStudentUids([]);
+                    setActiveStudentId(null);
+                    await signOutUser();
+                    setLoading(false);
+                    return;
+                }
+
                 const profile = {
                     uid: currentUser.uid,
                     role: data?.role ?? null,
@@ -115,8 +153,13 @@ export function AuthProvider({ children }) {
                 };
                 setUserProfile(profile);
                 setRole(profile.role);
-                setLinkedStudentUids(normalizeLinkedStudentUids(data));
-                setActiveStudentId(data?.activeStudentUid ?? null);
+                if (profile.role === 'parent') {
+                    setLinkedStudentUids(normalizeLinkedStudentUids(data));
+                    setActiveStudentId(data?.activeStudentUid ?? null);
+                } else {
+                    setLinkedStudentUids([]);
+                    setActiveStudentId(null);
+                }
             } catch (error) {
                 logProfileErrorOnce(error);
                 if (isMounted) {

@@ -53,6 +53,12 @@ export default function LoginPage({ onSocialLogin }) {
                         </button>
                     </div>
                 </div>
+                <div className="mt-6 text-center text-sm text-gray-500">
+                        <span>초대 코드로 가입하시나요?</span>{' '}
+                        <Link to="/signup" className="font-semibold text-indigo-600 hover:text-indigo-700">
+                            초대 코드로 가입하기
+                        </Link>
+                    </div>
             </div>
             <p className="fixed bottom-6 text-xs text-gray-400">© 2025 Chaesooyong Math Academy. All rights reserved.</p>
         </div>

@@ -4,6 +4,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import AppRoutes from './AppRoutes';
 import OnboardingPage from '../pages/OnboardingPage';
 import LoginPage from '../pages/LoginPage';
+import InviteSignupPage from '../pages/InviteSignupPage';
 import useAuth from '../auth/useAuth';
 import { claimStudentLinkCode } from '../parent/linkCodeService';
 import { ParentProvider } from '../parent';
@@ -17,6 +18,7 @@ export default function AuthGate() {
   const pathname = location.pathname;
   const isOnboardingPage = pathname === '/onboarding';
   const isLoginPage = pathname === '/login';
+  const isSignupPage = pathname === '/signup';
   const isAuthCallbackPage = pathname === '/auth/callback';
   const isStudentDetailPage = pathname.startsWith('/students/');
   const {
@@ -53,7 +55,7 @@ export default function AuthGate() {
       if (loading) return;
 
       if (!user) {
-          if (!isLoginPage && !isAuthCallbackPage) {
+          if (!isLoginPage && !isSignupPage && !isAuthCallbackPage) {
               navigate('/login', { replace: true });
           }
           return;
@@ -64,10 +66,10 @@ export default function AuthGate() {
           return;
       }
 
-      if (role && role !== 'pending' && !isStudentDetailPage && (isOnboardingPage || isLoginPage)) {
+      if (role && role !== 'pending' && !isStudentDetailPage && (isOnboardingPage || isLoginPage || isSignupPage)) {
           navigate('/lessons', { replace: true });
       }
-  }, [isAuthCallbackPage, isLoginPage, isOnboardingPage, isStudentDetailPage, loading, navigate, pathname, role, user]);
+  }, [isAuthCallbackPage, isLoginPage, isOnboardingPage, isSignupPage, isStudentDetailPage, loading, navigate, pathname, role, user]);
 
   const handleSocialLogin = async (providerName) => {
       if (providerName === 'google') return signInWithGoogle();
@@ -81,7 +83,12 @@ export default function AuthGate() {
   };
 
   if (loading) return <div className="min-h-screen flex items-center justify-center">로딩 중...</div>;
-  if (!user) return <LoginPage onSocialLogin={handleSocialLogin} />;
+  if (!user) {
+      if (isSignupPage) {
+          return <InviteSignupPage onComplete={() => navigate('/lessons', { replace: true })} />;
+      }
+      return <LoginPage onSocialLogin={handleSocialLogin} />;
+  }
   if (role === null) {
       return (
           <div className="min-h-screen flex flex-col items-center justify-center gap-4 text-gray-600">
