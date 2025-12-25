@@ -103,6 +103,12 @@ export default function StaffManagement() {
         }
     };
 
+    const resolveStaffName = (staff) => {
+        if (staff?.name) return staff.name;
+        if (staff?.email) return staff.email.split('@')[0] || '이메일 없음';
+        return '이메일 없음';
+    };
+
     return (
         <div className="space-y-6 lg:space-y-8 pb-2">
             <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 flex flex-col gap-5">
@@ -203,7 +209,7 @@ export default function StaffManagement() {
 
                                     return (
                                         <tr key={staff.uid} className={isInactive ? 'bg-gray-50' : undefined}>
-                                            <td className="px-4 py-3 text-sm font-semibold text-gray-800">{staff.displayName || '이름 없음'}</td>
+                                            <td className="px-4 py-3 text-sm font-semibold text-gray-800">{resolveStaffName(staff)}</td>
                                             <td className="px-4 py-3 text-sm text-gray-600">{staff.email || '이메일 없음'}</td>
                                             <td className="px-4 py-3 text-center">
                                                 <select

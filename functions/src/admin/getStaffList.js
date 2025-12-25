@@ -13,11 +13,10 @@ const getStaffList = functions.https.onCall(async (data, context) => {
 
         return {
             uid: doc.id,
+            name: payload.displayName ?? null,
             email: payload.email ?? null,
-            displayName: payload.displayName ?? null,
             role: payload.role ?? null,
             active: payload.active ?? null,
-            createdAt: payload.createdAt ?? null,
         };
     });
 });

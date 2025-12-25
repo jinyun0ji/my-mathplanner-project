@@ -1,7 +1,7 @@
 const functions = require('firebase-functions');
 const crypto = require('crypto');
 const { getAuth } = require('firebase-admin/auth');
-const { getFirestore } = require('firebase-admin/firestore');
+const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 const { assertAdmin } = require('../_utils/assertAdmin');
 
 const createStaffUser = functions.https.onCall(async (data, context) => {
@@ -23,9 +23,39 @@ const createStaffUser = functions.https.onCall(async (data, context) => {
     const auth = getAuth();
     const db = getFirestore();
 
-    const userRecord = await auth.createUser({ email, password: tempPassword, emailVerified: false });
+    let userRecord;
+    let createdUser = false;
 
-    await db.collection('users').doc(userRecord.uid).set({ role }, { merge: true });
+    try {
+        userRecord = await auth.getUserByEmail(email);
+    } catch (error) {
+        if (error?.code !== 'auth/user-not-found') {
+            throw error;
+        }
+    }
+
+    if (!userRecord) {
+        userRecord = await auth.createUser({ email, password: tempPassword, emailVerified: false });
+        createdUser = true;
+    }
+
+    const userRef = db.collection('users').doc(userRecord.uid);
+    const existingSnapshot = createdUser ? null : await userRef.get();
+    const shouldInitialize = createdUser || !existingSnapshot?.exists;
+
+    const userPayload = {
+        email: userRecord.email ?? email,
+        displayName: userRecord.displayName ?? null,
+        role,
+        updatedAt: FieldValue.serverTimestamp(),
+    };
+
+    if (shouldInitialize) {
+        userPayload.active = true;
+        userPayload.createdAt = FieldValue.serverTimestamp();
+    }
+
+    await userRef.set(userPayload, { merge: true });
 
     return { uid: userRecord.uid, email: userRecord.email, role, tempPassword };
 });
