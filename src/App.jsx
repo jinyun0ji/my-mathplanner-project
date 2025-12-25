@@ -4,6 +4,7 @@ import './output.css';
 
 import AuthGate from './app/AuthGate';
 import { AuthProvider } from './auth/useAuth';
+import { UserProvider } from './auth/UserContext';
 import AdminRoute from './routes/AdminRoute';
 import StaffManagement from './pages/admin/StaffManagement';
 
@@ -29,8 +30,10 @@ function AppRouter() {
 
 export default function App() {
     return (
-        <AuthProvider>
-            <AppRouter />
-        </AuthProvider>
+        <UserProvider>
+            <AuthProvider>
+                <AppRouter />
+            </AuthProvider>
+        </UserProvider>
     );
 }
