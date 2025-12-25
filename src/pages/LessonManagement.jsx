@@ -50,7 +50,7 @@ export default function LessonManagement({
     const [isMobile, setIsMobile] = useState(false);
     const [activeVideoByLog, setActiveVideoByLog] = useState({});
 
-    const selectedClass = classes.find(c => c.id === selectedClassId);
+    const selectedClass = classes.find(c => String(c.id) === String(selectedClassId));;
     
     // 선택된 클래스의 일지 목록을 날짜 역순으로 정렬
     const classLogs = useMemo(

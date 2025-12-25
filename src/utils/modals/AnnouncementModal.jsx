@@ -164,7 +164,7 @@ export const AnnouncementModal = ({ isOpen, onClose, onSave, announcementToEdit 
         setContent(e.currentTarget.innerHTML);
     };
 
-    const handleSubmit = (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
         if (!title || !editorRef.current.textContent.trim() && !editorRef.current.querySelector('img')) return;
 
@@ -212,8 +212,12 @@ export const AnnouncementModal = ({ isOpen, onClose, onSave, announcementToEdit 
             notifyMode: staffNotifyMode === 'none' ? 'system' : 'staff',
             staffNotification,
         };
-        onSave(announcementData, !!announcementToEdit);
-        onClose();
+        try {
+            await onSave(announcementData, !!announcementToEdit);
+            onClose();
+        } catch (error) {
+            alert('공지사항 저장에 실패했습니다. 권한 또는 네트워크를 확인하세요.');
+        }
     };
 
     const handleStaffNotifyModeChange = (value) => {

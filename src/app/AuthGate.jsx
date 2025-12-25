@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 
 import AppRoutes from './AppRoutes';
 import OnboardingPage from '../pages/OnboardingPage';
@@ -18,7 +18,7 @@ export default function AuthGate() {
   const pathname = location.pathname;
   const isOnboardingPage = pathname === '/onboarding';
   const isLoginPage = pathname === '/login';
-  const isSignupPage = pathname === '/signup';
+  const isSignupPage = pathname.startsWith('/signup');
   const isAuthCallbackPage = pathname === '/auth/callback';
   const isStudentDetailPage = pathname.startsWith('/students/');
   const {
@@ -84,10 +84,14 @@ export default function AuthGate() {
 
   if (loading) return <div className="min-h-screen flex items-center justify-center">로딩 중...</div>;
   if (!user) {
-      if (isSignupPage) {
-          return <InviteSignupPage onComplete={() => navigate('/lessons', { replace: true })} />;
-      }
-      return <LoginPage onSocialLogin={handleSocialLogin} />;
+      return (
+          <Routes>
+              <Route path="/login" element={<LoginPage onSocialLogin={handleSocialLogin} />} />
+              <Route path="/signup" element={<Navigate to="/signup/invite" replace />} />
+              <Route path="/signup/invite" element={<InviteSignupPage />} />
+              <Route path="*" element={<Navigate to="/login" replace />} />
+          </Routes>
+      );
   }
   if (role === null) {
       return (

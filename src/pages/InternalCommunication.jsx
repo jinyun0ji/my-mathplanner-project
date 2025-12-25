@@ -3,8 +3,8 @@ import Announcement from '../components/Communication/Announcement'; // 경로 �
 import WorkLogs from '../components/Communication/WorkLogs'; // 경로 수정
 import Messenger from '../components/Communication/Messenger'; // 경로 수정
 
-export default function InternalCommunication({ announcements, handleSaveAnnouncement, setAnnouncements, students, classes, workLogs, handleSaveWorkLog, handleDeleteWorkLog }) { 
-    
+export default function InternalCommunication({ announcements, handleSaveAnnouncement, handleDeleteAnnouncement, students, classes, workLogs, handleSaveWorkLog, handleDeleteWorkLog }) { 
+       
     const [activeTab, setActiveTab] = useState('announcements');
     
     return (
@@ -28,7 +28,7 @@ export default function InternalCommunication({ announcements, handleSaveAnnounc
                 <Announcement 
                     announcements={announcements} 
                     handleSaveAnnouncement={handleSaveAnnouncement} 
-                    setAnnouncements={setAnnouncements}
+                    handleDeleteAnnouncement={handleDeleteAnnouncement}
                     allClasses={classes}
                     allStudents={students}
                 />

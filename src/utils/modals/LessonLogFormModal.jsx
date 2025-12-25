@@ -8,7 +8,7 @@ import { Icon, calculateClassSessions } from '../../utils/helpers';
 import StaffNotificationFields from '../../components/Shared/StaffNotificationFields';
 
 export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = null, classes, defaultDate = null, students, logNotification, onDirtyChange = () => {} }) => {
-  const selectedClass = classes.find(c => c.id === classId);
+  const selectedClass = classes.find(c => String(c.id) === String(classId));
   
   const sessions = useMemo(() => selectedClass ? calculateClassSessions(selectedClass) : [], [selectedClass, calculateClassSessions]);
   
@@ -294,7 +294,7 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
     setIsDirty(true);
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!classId || !date || !progress) return;
 
@@ -338,7 +338,12 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
         staffNotification,
     };
     
-    onSave(logData, !!log);
+    try {
+      await onSave(logData, !!log);
+    } catch (error) {
+      alert('수업 일지 저장에 실패했습니다. 권한 또는 네트워크를 확인하세요.');
+      return;
+    }
     
     if (scheduleTime) {
         const studentRecipients = students.filter(s => {

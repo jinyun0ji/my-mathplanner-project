@@ -8,7 +8,7 @@ const DIFFICULTY_OPTIONS = ['하', '중', '상', '최상'];
 const TYPE_OPTIONS = ['개념', '계산', '응용', '심화', '서술형'];
 
 export const TestFormModal = ({ isOpen, onClose, onSave, classId, test = null, classes, calculateClassSessions }) => {
-    const selectedClass = classes.find(c => c.id === classId);
+    const selectedClass = classes.find(c => String(c.id) === String(classId));
     const sessions = useMemo(() => selectedClass ? calculateClassSessions(selectedClass) : [], [selectedClass, calculateClassSessions]);
 
     const [name, setName] = useState('');
@@ -129,7 +129,7 @@ export const TestFormModal = ({ isOpen, onClose, onSave, classId, test = null, c
         });
     };
 
-    const handleSubmit = (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
         if (!name || !date || Number(maxScore) <= 0 || Number(totalQuestions) <= 0) return;
 
@@ -168,8 +168,12 @@ export const TestFormModal = ({ isOpen, onClose, onSave, classId, test = null, c
             notifyMode: staffNotifyMode === 'none' ? 'system' : 'staff',
             staffNotification,
         };
-        onSave(testData, !!test);
-        onClose();
+        try {
+            await onSave(testData, !!test);
+            onClose();
+        } catch (error) {
+            alert('시험 저장에 실패했습니다. 권한 또는 네트워크를 확인하세요.');
+        }
     };
 
     const handleStaffNotifyModeChange = (value) => {

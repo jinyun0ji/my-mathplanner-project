@@ -69,7 +69,7 @@ export default function MessengerPanel({ isMessengerOpen, toggleMessenger, hasNe
         if (!classIds || !Array.isArray(classIds) || !classes) return '클래스 없음';
         
         const names = classIds.map(id => {
-            const cls = classes.find(c => c.id === id);
+            const cls = classes.find(c => String(c.id) === String(id));
             return cls ? cls.name : null;
         }).filter(Boolean);
 

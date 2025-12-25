@@ -14,7 +14,7 @@ export default function AttendanceManagement({
     const [memoModalState, setMemoModalState] = useState({ isOpen: false, studentId: null, content: '', studentName: '' });
     const [mobileView, setMobileView] = useState('attendance');
 
-    const selectedClass = classes.find(c => c.id === selectedClassId);
+    const selectedClass = classes.find(c => String(c.id) === String(selectedClassId));
 
     const classAttendance = useMemo(() => {
         if (!selectedClassId || !selectedDate) return [];

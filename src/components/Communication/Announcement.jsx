@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Icon } from '../../utils/helpers';
 import { AnnouncementModal } from '../../utils/modals/AnnouncementModal'; // 경로 수정
 
-export default function Announcement({ announcements, handleSaveAnnouncement, setAnnouncements, allClasses, allStudents }) {
+export default function Announcement({ announcements, handleSaveAnnouncement, handleDeleteAnnouncement, allClasses, allStudents }) {
     
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [announcementToEdit, setAnnouncementToEdit] = useState(null);
@@ -26,9 +26,9 @@ export default function Announcement({ announcements, handleSaveAnnouncement, se
         setIsModalOpen(true);
     };
 
-    const handleDelete = (id) => {
-        if(window.confirm('정말 이 공지사항을 삭제하시겠습니까?')) {
-            setAnnouncements(prev => prev.filter(a => a.id !== id));
+    const handleDelete = async (id) => {
+        if (window.confirm('정말 이 공지사항을 삭제하시겠습니까?')) {
+            await handleDeleteAnnouncement(id);
         }
     };
     

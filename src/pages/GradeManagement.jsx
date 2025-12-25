@@ -23,7 +23,7 @@ export default function GradeManagement({
     // 엑셀 파일 입력을 위한 Ref
     const fileInputRef = useRef(null);
     
-    const selectedClass = classes.find(c => c.id === selectedClassId);
+    const selectedClass = classes.find(c => String(c.id) === String(selectedClassId));
 
     const handleCloseGradeInput = useCallback(() => {
         setIsGradeInputModalOpen(false);

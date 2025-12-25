@@ -81,7 +81,7 @@ export default function PaymentManagement({ students, classes, paymentLogs, hand
     const classPaymentStatus = useMemo(() => {
         if (!viewClassId) return [];
 
-        const targetClass = classes.find(c => c.id === viewClassId);
+        const targetClass = classes.find(c => String(c.id) === String(viewClassId));
         if (!targetClass) return [];
 
         const requiredBookIds = classBookMap[viewClassId] || [];

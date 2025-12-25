@@ -17,7 +17,7 @@ export default function ClassroomView({
     tests, grades,
     onNavigateToTab 
 }) {
-    const selectedClass = classes.find(c => c.id === selectedClassId);
+    const selectedClass = classes.find(c => String(c.id) === String(selectedClassId));
     
     const sortedLogs = useMemo(
         () => getSortedLessonLogs(lessonLogs, selectedClassId),

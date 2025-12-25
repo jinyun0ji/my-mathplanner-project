@@ -10,7 +10,7 @@ export default function ClassSelectionPanel({
 }) {
     const [isClassModalOpen, setIsClassModalOpen] = useState(false);
     const [isEditMode, setIsEditMode] = useState(false); // ✅ [추가] 편집 모드 상태 관리
-    const selectedClass = classes.find(c => c.id === selectedClassId);
+    const selectedClass = classes.find(c => String(c.id) === String(selectedClassId));
     const selectedClassGrade = selectedClass ? formatGradeLabel(selectedClass.grade) : '';
     
     // Ref 설정: 선택된 항목을 참조할 Ref 객체
@@ -43,7 +43,7 @@ export default function ClassSelectionPanel({
             
             <select
                 value={selectedClassId || ''}
-                onChange={e => setSelectedClassId(Number(e.target.value))}
+                onChange={e => setSelectedClassId(e.target.value)}
                 className="w-full p-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-700 focus:ring-indigo-500 focus:border-indigo-500"
             >
                 <option value="" disabled>클래스를 선택하세요</option>

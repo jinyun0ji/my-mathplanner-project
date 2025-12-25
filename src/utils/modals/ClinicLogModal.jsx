@@ -16,7 +16,7 @@ export const ClinicLogModal = ({ isOpen, onClose, onSave, logToEdit = null, stud
     const selectedStudent = useMemo(() => activeStudents.find(s => s.id === studentId), [activeStudents, studentId]);
     const studentClassNames = useMemo(() => {
         if (!selectedStudent) return '';
-        return selectedStudent.classes.map(id => classes.find(c => c.id === id)?.name).join(', ');
+        return selectedStudent.classes.map(id => classes.find(c => String(c.id) === String(id))?.name).join(', ');
     }, [selectedStudent, classes]);
     
     useEffect(() => {

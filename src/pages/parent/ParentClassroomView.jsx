@@ -13,7 +13,7 @@ export default function ParentClassroomView({
     activeStudentName
 }) {
     const { activeStudentId } = useParentContext();
-    const selectedClass = classes.find(c => c.id === selectedClassId);
+    const selectedClass = classes.find(c => String(c.id) === String(selectedClassId));
     
     // 날짜 역순 정렬
     const sortedLogs = useMemo(() => {

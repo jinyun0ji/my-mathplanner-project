@@ -115,7 +115,7 @@ export const calculateGradeComparison = (studentId, classes, tests, grades) => {
             let classTotal = 0;
             let studentCount = 0;
             let highestScore = 0; // 최고점
-            const classInfo = classes.find(c => c.id === test.classId);
+            const classInfo = classes.find(c => String(c.id) === String(test.classId));
             const classStudentIds = classInfo?.students || [];
             const participantScores = [];
 
@@ -183,7 +183,7 @@ export const calculateGradeComparison = (studentId, classes, tests, grades) => {
 
             myGrades.push({
                 testId: test.id, testName: test.name, testDate: test.date,
-                className: classes.find(c => c.id === test.classId)?.name || '반 정보 없음',
+                className: classes.find(c => String(c.id) === String(test.classId))?.name || '반 정보 없음',
                 studentScore: myScore, 
                 classAverage: classAverage, 
                 highestScore: highestScore,

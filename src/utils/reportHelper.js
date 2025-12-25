@@ -69,7 +69,7 @@ export const generateSessionReport = (sessionId, studentId, contextData) => {
         sessionId: lesson.id,
         classId: lesson.classId,
         date: lesson.date,
-        className: classes.find(c => c.id === lesson.classId)?.name || "고1 수학(상) 정규반",
+        className: classes.find(c => String(c.id) === String(lesson.classId))?.name || "고1 수학(상) 정규반",
         
         attendance: attendanceStatus,
         homeworkStatus: homeworkStatus,

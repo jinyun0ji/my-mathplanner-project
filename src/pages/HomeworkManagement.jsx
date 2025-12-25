@@ -20,7 +20,7 @@ export default function HomeworkManagement({
     // 로컬 변경 사항 관리
     const [localChanges, setLocalChanges] = useState([]); 
 
-    const selectedClass = classes.find(c => c.id === selectedClassId);
+    const selectedClass = classes.find(c => String(c.id) === String(selectedClassId));
     
     const classAssignments = useMemo(
         () => getClassAssignments(homeworkAssignments, selectedClassId),

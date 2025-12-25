@@ -107,7 +107,7 @@ export const HomeworkAssignmentModal = ({ isOpen, onClose, onSave, classId, assi
     setTotalQuestions(questions.length);
   }, [rangeString]);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!classId || !date || !content || totalQuestions <= 0) return;
 
@@ -146,8 +146,12 @@ export const HomeworkAssignmentModal = ({ isOpen, onClose, onSave, classId, assi
       notifyMode: staffNotifyMode === 'none' ? 'system' : 'staff',
       staffNotification,
     };
-    onSave(assignmentData, !!assignment);
-    onClose();
+    try {
+      await onSave(assignmentData, !!assignment);
+      onClose();
+    } catch (error) {
+      alert('과제 저장에 실패했습니다. 권한 또는 네트워크를 확인하세요.');
+    }
   };
 
   const handleStaffNotifyModeChange = (value) => {

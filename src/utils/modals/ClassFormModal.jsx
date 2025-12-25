@@ -45,7 +45,7 @@ const handleDayToggle = (day) => {
     );
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!name || !teacher || !startDate || selectedDays.length === 0 || !time) return;
 
@@ -60,8 +60,12 @@ const handleDayToggle = (day) => {
       students: classToEdit ? classToEdit.students : [],
       schedule: { days: selectedDays, time },
     };
-    onSave(classData, !!classToEdit);
-    onClose();
+    try {
+      await onSave(classData, !!classToEdit);
+      onClose();
+    } catch (error) {
+      alert('클래스 저장에 실패했습니다. 권한 또는 네트워크를 확인하세요.');
+    }
   };
 
   return (

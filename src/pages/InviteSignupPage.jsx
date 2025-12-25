@@ -12,11 +12,12 @@ import {
     updateDoc,
     where,
 } from 'firebase/firestore';
+import { Link } from 'react-router-dom';
 import { auth, db } from '../firebase/client';
 
 const normalizeInviteCode = (value) => (value || '').trim();
 
-export default function InviteSignupPage({ onComplete }) {
+export default function InviteSignupPage() {
     const [inviteCode, setInviteCode] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -97,9 +98,6 @@ export default function InviteSignupPage({ onComplete }) {
             }
 
             setStatus('가입이 완료되었습니다. 잠시 후 대시보드로 이동합니다.');
-            if (onComplete) {
-                onComplete();
-            }
         } catch (error) {
             setStatus(error?.message || '회원가입에 실패했습니다. 다시 시도해주세요.');
         } finally {
@@ -179,6 +177,13 @@ export default function InviteSignupPage({ onComplete }) {
                 <div className="bg-indigo-50 text-indigo-900 rounded-xl p-4 text-sm">
                     <p className="font-semibold">초대 코드가 없나요?</p>
                     <p className="mt-1 text-indigo-800">담당 선생님에게 초대 코드를 요청해주세요.</p>
+                </div>
+
+                <div className="text-center text-sm text-gray-500">
+                    이미 계정이 있나요?{' '}
+                    <Link to="/login" className="font-semibold text-indigo-600 hover:text-indigo-700">
+                        로그인하러 가기
+                    </Link>
                 </div>
 
                 {status && (

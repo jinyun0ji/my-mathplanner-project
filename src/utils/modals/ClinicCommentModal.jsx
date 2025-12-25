@@ -24,7 +24,7 @@ export const ClinicCommentModal = ({ isOpen, onClose, onSave, log, students, def
         let className = '클래스 미정';
         if (currentStudent.classes && currentStudent.classes.length > 0 && classes) {
             const classNames = currentStudent.classes
-                .map(clsId => classes.find(c => c.id === clsId)?.name)
+                .map(clsId => classes.find(c => String(c.id) === String(clsId))?.name)
                 .filter(Boolean);
             if (classNames.length > 0) className = classNames.join(', ');
         }
