@@ -1,4 +1,4 @@
-// ⚠️ 이 파일은 staff/admin/teacher 전용 Firestore 실시간 동기화 로직이다
+// ⚠️ 이 파일은 staff/admin/teacher 전용 Firestore 단발성 로드 로직이다
 // ⚠️ student / parent 계정에서는 절대 실행되면 안 된다
 import {
     collection,
@@ -7,26 +7,39 @@ import {
     where,
     orderBy,
     limit,
-    onSnapshot,
     getDocs,
 } from 'firebase/firestore';
+import { ROLE, STAFF_ROLES } from '../constants/roles';
 
-const normalizeAuthUid = (item) => (
-    item?.authUid && !item?.studentId ? { ...item, studentId: item.authUid } : item
-);
+const normalizeAuthUid = (item) => {
+    if (item?.studentId) return item;
+    if (item?.authUid) return { ...item, studentId: item.authUid };
+    if (item?.studentUid) return { ...item, studentId: item.studentUid };
+    return item;
+};
 
-const fetchList = async (db, colName, setter, q, isCancelled) => {
+const fetchList = async (db, colName, setter, q, isCancelled, mapper = null) => {
     const snap = await getDocs(q || collection(db, colName));
-    const items = snap.docs.map((d) => normalizeAuthUid({ id: d.id, ...d.data() }));
+    const baseItems = snap.docs.map((d) => normalizeAuthUid({ id: d.id, ...d.data() }));
+    const items = mapper ? baseItems.map(mapper) : baseItems;
     if (isCancelled()) return [];
     setter(items);
     return items;
 };
 
-export const startStaffFirestoreSync = ({
+const normalizeStudentUser = (user) => {
+    if (!user || user.role !== ROLE.STUDENT) return user;
+    return {
+        ...user,
+        classes: Array.isArray(user.classIds) ? user.classIds : (user.classes || []),
+    };
+};
+
+export const loadStaffDataOnce = async ({
     db,
     isLoggedIn,
     userRole,
+    pageKey = null,
     setStudents,
     setClasses,
     setTests,
@@ -40,66 +53,86 @@ export const startStaffFirestoreSync = ({
     setGrades,
     setHomeworkResults,
 }) => {
-    if (!isLoggedIn || !db) return () => {};
-    if (!userRole) return () => {};
-    if (!['staff', 'admin', 'teacher'].includes(userRole)) return () => {};
+    if (!isLoggedIn || !db) return;
+    if (!userRole) return;
+    if (!STAFF_ROLES.includes(userRole)) return;
 
-    const unsubs = [];
+    const shouldLoad = (key) => !pageKey || pageKey === key;
 
-    const syncBasic = (colRef, setter, orderField = null) => {
-        let q = colRef;
-        if (orderField) q = query(q, orderBy(orderField));
-        unsubs.push(onSnapshot(q, (snap) => {
-            setter(snap.docs.map((d) => normalizeAuthUid({ id: d.id, ...d.data() })));
-        }, (err) => {
-            console.error('[FirestoreSync] 권한 오류:', err);
-        }));
-    };
+    try {
+        if (setStudents) {
+            await fetchList(
+                db,
+                'users',
+                setStudents,
+                query(collection(db, 'users'), where('role', '==', ROLE.STUDENT), limit(500)),
+                () => false,
+                normalizeStudentUser,
+            );
+        }
 
-    const syncLogs = (colName, setter) => {
-        const q = query(collection(db, colName), orderBy('date', 'desc'), limit(150));
-        unsubs.push(onSnapshot(q, (snap) => {
-            setter(snap.docs.map((d) => normalizeAuthUid({ id: d.id, ...d.data() })));
-        }, (err) => {
-            console.error('[FirestoreSync] 권한 오류:', err);
-        }));
-    };
+        if (setClasses) {
+            await fetchList(db, 'classes', setClasses, query(collection(db, 'classes'), orderBy('name')), () => false);
+        }
 
-    const syncMappedData = (colName, setter, keyField1, keyField2) => {
-        const q = query(collection(db, colName), limit(300));
-        unsubs.push(onSnapshot(q, (snap) => {
-            const rawDocs = snap.docs.map((d) => d.data());
-            const mapped = {};
-            rawDocs.forEach((doc) => {
-                const k1 = doc[keyField1];
-                const k2 = doc[keyField2];
-                if (!mapped[k1]) mapped[k1] = {};
-                mapped[k1][k2] = doc;
+        if (setTests && (shouldLoad('grades') || shouldLoad('lessons'))) {
+            await fetchList(db, 'tests', setTests, query(collection(db, 'tests'), orderBy('date', 'desc'), limit(200)), () => false);
+        }
+
+        if (setLessonLogs && shouldLoad('lessons')) {
+            await fetchList(db, 'lessonLogs', setLessonLogs, query(collection(db, 'lessonLogs'), orderBy('date', 'desc'), limit(150)), () => false);
+        }
+
+        if (setAttendanceLogs && (shouldLoad('attendance') || shouldLoad('lessons') || shouldLoad('students'))) {
+            await fetchList(db, 'attendanceLogs', setAttendanceLogs, query(collection(db, 'attendanceLogs'), orderBy('date', 'desc'), limit(150)), () => false);
+        }
+
+        if (setClinicLogs && (shouldLoad('clinic') || shouldLoad('lessons'))) {
+            await fetchList(db, 'clinicLogs', setClinicLogs, query(collection(db, 'clinicLogs'), orderBy('date', 'desc'), limit(150)), () => false);
+        }
+
+        if (setWorkLogs && shouldLoad('communication')) {
+            await fetchList(db, 'workLogs', setWorkLogs, query(collection(db, 'workLogs'), orderBy('date', 'desc'), limit(150)), () => false);
+        }
+
+        if (setAnnouncements && shouldLoad('communication')) {
+            await fetchList(db, 'announcements', setAnnouncements, query(collection(db, 'announcements'), orderBy('date', 'desc'), limit(150)), () => false);
+        }
+
+        if (setHomeworkAssignments && shouldLoad('homework')) {
+            await fetchList(db, 'homeworkAssignments', setHomeworkAssignments, query(collection(db, 'homeworkAssignments'), orderBy('date', 'desc'), limit(150)), () => false);
+        }
+
+        if (setPaymentLogs && shouldLoad('payment')) {
+            await fetchList(db, 'payments', setPaymentLogs, query(collection(db, 'payments'), orderBy('date', 'desc'), limit(150)), () => false);
+        }
+
+        if (setGrades && shouldLoad('grades')) {
+            const gradesSnap = await getDocs(query(collection(db, 'grades'), limit(500)));
+            const mappedGrades = {};
+            gradesSnap.docs.forEach((docSnap) => {
+                const data = docSnap.data();
+                const { authUid: sId, testId } = data;
+                if (!mappedGrades[sId]) mappedGrades[sId] = {};
+                mappedGrades[sId][testId] = data;
             });
-            setter(mapped);
-        }, (err) => {
-            console.error('[FirestoreSync] 권한 오류:', err);
-        }));
-    };
+            setGrades(mappedGrades);
+        }
 
-    syncBasic(query(collection(db, 'users'), where('role', '==', 'student')), setStudents);
-    syncBasic(collection(db, 'classes'), setClasses);
-    syncBasic(collection(db, 'tests'), setTests, 'date');
-
-    syncLogs('lessonLogs', setLessonLogs);
-    syncLogs('attendanceLogs', setAttendanceLogs);
-    syncLogs('clinicLogs', setClinicLogs);
-    syncLogs('workLogs', setWorkLogs);
-    syncLogs('announcements', setAnnouncements);
-    syncLogs('homeworkAssignments', setHomeworkAssignments);
-    syncLogs('payments', setPaymentLogs);
-
-    syncMappedData('grades', setGrades, 'authUid', 'testId');
-    syncMappedData('homeworkResults', setHomeworkResults, 'authUid', 'assignmentId');
-
-    return () => {
-        unsubs.forEach((u) => u());
-    };
+        if (setHomeworkResults && shouldLoad('homework')) {
+            const homeworkSnap = await getDocs(query(collection(db, 'homeworkResults'), limit(500)));
+            const mappedResults = {};
+            homeworkSnap.docs.forEach((docSnap) => {
+                const data = docSnap.data();
+                const { authUid: sId, assignmentId } = data;
+                if (!mappedResults[sId]) mappedResults[sId] = {};
+                mappedResults[sId][assignmentId] = data.results || data;
+            });
+            setHomeworkResults(mappedResults);
+        }
+    } catch (error) {
+        console.error('[FirestoreSync] staff 데이터 로드 실패:', error);
+    }
 };
 
 export const loadViewerDataOnce = async ({
@@ -116,20 +149,21 @@ export const loadViewerDataOnce = async ({
     setClinicLogs,
     setHomeworkAssignments,
     setAnnouncements,
+    setTests,
     setVideoProgress,
     setExternalSchedules,
     setHomeworkResults,
     setGrades,
     isCancelled = () => false,
 }) => {
-    const isViewerRole = ['student', 'parent'].includes(userRole);
+    const isViewerRole = [ROLE.STUDENT, ROLE.PARENT].includes(userRole);
     if (!isLoggedIn || !db || !isViewerRole) return;
 
-    const viewerStudentUids = userRole === 'student'
+    const viewerStudentUids = (userRole === 'student'
         ? [userId].filter(Boolean)
         : activeStudentId
             ? [activeStudentId]
-            : [];
+            : []).slice(0, 10);
 
     if (viewerStudentUids.length === 0) return;
 
@@ -140,13 +174,14 @@ export const loadViewerDataOnce = async ({
             setStudents,
             query(collection(db, 'users'), where(documentId(), 'in', viewerStudentUids), limit(10)),
             isCancelled,
+            normalizeStudentUser,
         );
 
         const myClasses = await fetchList(
             db,
             'classes',
             setClasses,
-            query(collection(db, 'classes'), where('students', 'array-contains-any', viewerStudentUids)),
+            query(collection(db, 'classes'), where('students', 'array-contains-any', viewerStudentUids), limit(50)),
             isCancelled,
         );
 
@@ -160,7 +195,7 @@ export const loadViewerDataOnce = async ({
             await fetchList(db, colName, setter, q, isCancelled);
         };
 
-        await fetchLimitedLogs('attendanceLogs', setAttendanceLogs, 'authUid');
+        await fetchLimitedLogs('attendanceLogs', setAttendanceLogs, 'studentUid');
         await fetchLimitedLogs('clinicLogs', setClinicLogs, 'authUid');
 
         if (myClasses.length > 0) {
@@ -172,6 +207,16 @@ export const loadViewerDataOnce = async ({
                 limit(30),
             );
             await fetchList(db, 'lessonLogs', setLessonLogs, lessonQuery, isCancelled);
+
+            if (setTests) {
+                const testsQuery = query(
+                    collection(db, 'tests'),
+                    where('classId', 'in', classIds),
+                    orderBy('date', 'desc'),
+                    limit(30),
+                );
+                await fetchList(db, 'tests', setTests, testsQuery, isCancelled);
+            }
         }
 
         const qHomework = query(
@@ -186,7 +231,7 @@ export const loadViewerDataOnce = async ({
                 const data = doc.data();
                 const { authUid: sId, assignmentId } = data;
                 if (!mapped[sId]) mapped[sId] = {};
-                mapped[sId][assignmentId] = data;
+                mapped[sId][assignmentId] = data.results || data;
             });
             setHomeworkResults((prev) => ({ ...prev, ...mapped }));
         }

@@ -8,7 +8,7 @@ import React, {
     useState,
 } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
-import { collection, doc, getDoc, getDocs, limit, query, where } from 'firebase/firestore';
+import { doc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../firebase/client';
 import { signOutUser } from './authService';
 
@@ -24,9 +24,9 @@ const clearAuthStorage = () => {
     }
 };
 
-const normalizeLinkedStudentUids = (data) => {
-    if (Array.isArray(data?.linkedStudentUids)) {
-        return data.linkedStudentUids.filter((id) => id !== undefined && id !== null);
+const normalizeStudentIds = (data) => {
+    if (Array.isArray(data?.studentIds)) {
+        return data.studentIds.filter((id) => id !== undefined && id !== null);
     }
     return [];
 };
@@ -36,7 +36,7 @@ export function AuthProvider({ children }) {
     const [role, setRole] = useState(null);
     const [userProfile, setUserProfile] = useState(null);
     const [profileError, setProfileError] = useState(null);
-    const [linkedStudentUids, setLinkedStudentUids] = useState([]);
+    const [studentIds, setStudentIds] = useState([]);
     const [activeStudentId, setActiveStudentId] = useState(null);
     const [loading, setLoading] = useState(true);
     const errorLoggedRef = useRef(false);
@@ -53,7 +53,7 @@ export function AuthProvider({ children }) {
             setRole(null);
             setUserProfile(null);
             setProfileError(null);
-            setLinkedStudentUids([]);
+            setStudentIds([]);
             setActiveStudentId(null);
         };
 
@@ -89,21 +89,10 @@ export function AuthProvider({ children }) {
                 let userDoc = await getDoc(userDocRef);
                 if (!isMounted) return;
 
-                if (!userDoc.exists()) {
-                    const fallbackQuery = query(
-                        collection(db, 'users'),
-                        where('authUid', '==', currentUser.uid),
-                        limit(1),
-                    );
-                    const fallbackSnap = await getDocs(fallbackQuery);
-                    if (!isMounted) return;
-                    userDoc = fallbackSnap.docs[0] || null;
-                }
-
                 if (!userDoc || !userDoc.exists()) {
                     setRole(null);
                     setUserProfile(null);
-                    setLinkedStudentUids([]);
+                    setStudentIds([]);
                     setActiveStudentId(null);
                     setLoading(false);
                     return;
@@ -114,29 +103,7 @@ export function AuthProvider({ children }) {
                     setProfileError('초대가 완료되지 않은 계정입니다.');
                     setRole(null);
                     setUserProfile(null);
-                    setLinkedStudentUids([]);
-                    setActiveStudentId(null);
-                    await signOutUser();
-                    setLoading(false);
-                    return;
-                }
-
-                if (data?.role === 'student' && data?.authUid !== currentUser.uid) {
-                    setProfileError('학생 계정 정보가 일치하지 않습니다.');
-                    setRole(null);
-                    setUserProfile(null);
-                    setLinkedStudentUids([]);
-                    setActiveStudentId(null);
-                    await signOutUser();
-                    setLoading(false);
-                    return;
-                }
-
-                if (data?.role === 'parent' && data?.authUid !== currentUser.uid) {
-                    setProfileError('학부모 계정 정보가 일치하지 않습니다.');
-                    setRole(null);
-                    setUserProfile(null);
-                    setLinkedStudentUids([]);
+                    setStudentIds([]);
                     setActiveStudentId(null);
                     await signOutUser();
                     setLoading(false);
@@ -147,17 +114,17 @@ export function AuthProvider({ children }) {
                     uid: currentUser.uid,
                     role: data?.role ?? null,
                     active: data?.active !== false,
-                    displayName: data?.displayName ?? '',
+                    displayName: data?.name ?? data?.displayName ?? '',
                     name: data?.name ?? '',
                     email: data?.email ?? '',
                 };
                 setUserProfile(profile);
                 setRole(profile.role);
                 if (profile.role === 'parent') {
-                    setLinkedStudentUids(normalizeLinkedStudentUids(data));
+                    setStudentIds(normalizeStudentIds(data));
                     setActiveStudentId(data?.activeStudentUid ?? null);
                 } else {
-                    setLinkedStudentUids([]);
+                    setStudentIds([]);
                     setActiveStudentId(null);
                 }
             } catch (error) {
@@ -166,7 +133,7 @@ export function AuthProvider({ children }) {
                     setProfileError('프로필을 불러올 수 없습니다.');
                     setRole(null);
                     setUserProfile(null);
-                    setLinkedStudentUids([]);
+                    setStudentIds([]);
                     setActiveStudentId(null);
                 }
             } finally {
@@ -189,7 +156,7 @@ export function AuthProvider({ children }) {
             setRole(null);
             setUserProfile(null);
             setProfileError(null);
-            setLinkedStudentUids([]);
+            setStudentIds([]);
             setActiveStudentId(null);
             return;
         }
@@ -207,12 +174,12 @@ export function AuthProvider({ children }) {
             role,
             userProfile,
             profileError,
-            linkedStudentUids,
+            studentIds,
             activeStudentId,
             loading,
             logout,
         }),
-        [user, role, userProfile, profileError, linkedStudentUids, activeStudentId, loading, logout],
+        [user, role, userProfile, profileError, studentIds, activeStudentId, loading, logout],
     );
 
     return (

@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useEffect, useMemo, useState } from 'react';
 import { doc, setDoc } from 'firebase/firestore';
 import { db } from '../firebase/client';
+import { ROLE } from '../constants/roles';
 
 const ParentContext = createContext(null);
 const STORAGE_KEY = 'parent.activeStudentId';
@@ -13,24 +14,24 @@ const readStoredActiveStudentId = () => {
     }
 };
 
-const resolveActiveStudentId = (storedId, firestoreId, linkedStudentUids) => {
-    if (!Array.isArray(linkedStudentUids) || linkedStudentUids.length === 0) {
+const resolveActiveStudentId = (storedId, firestoreId, studentIds) => {
+    if (!Array.isArray(studentIds) || studentIds.length === 0) {
         return null;
     }
 
-    const candidate = storedId || firestoreId || linkedStudentUids[0] || null;
+    const candidate = storedId || firestoreId || studentIds[0] || null;
     if (!candidate) {
         return null;
     }
 
-    if (!linkedStudentUids.includes(candidate)) {
-        return linkedStudentUids[0] || null;
+    if (!studentIds.includes(candidate)) {
+        return studentIds[0] || null;
     }
 
     return candidate;
 };
 
-export function ParentProvider({ userId, role, linkedStudentUids, firestoreActiveStudentId, children }) {
+export function ParentProvider({ userId, role, studentIds, firestoreActiveStudentId, children }) {
     const [activeStudentId, setActiveStudentIdState] = useState(null);
     const [loading, setLoading] = useState(true);
 
@@ -63,32 +64,32 @@ export function ParentProvider({ userId, role, linkedStudentUids, firestoreActiv
             return;
         }
 
-        const nextStudentId = Array.isArray(linkedStudentUids) && linkedStudentUids.includes(studentId)
+        const nextStudentId = Array.isArray(studentIds) && studentIds.includes(studentId)
             ? studentId
-            : linkedStudentUids?.[0];
+            : studentIds?.[0];
 
         if (!nextStudentId) {
             return;
         }
 
         await persistActiveStudentId(nextStudentId);
-    }, [linkedStudentUids, persistActiveStudentId]);
+    }, [studentIds, persistActiveStudentId]);
 
     useEffect(() => {
-        if (role !== 'parent') {
+        if (role !== ROLE.PARENT) {
             setActiveStudentIdState(null);
             setLoading(false);
             return;
         }
 
-        if (!Array.isArray(linkedStudentUids) || linkedStudentUids.length === 0) {
+        if (!Array.isArray(studentIds) || studentIds.length === 0) {
             setActiveStudentIdState(null);
             setLoading(false);
             return;
         }
 
         const storedId = readStoredActiveStudentId();
-         const resolvedId = resolveActiveStudentId(storedId, firestoreActiveStudentId, linkedStudentUids);
+        const resolvedId = resolveActiveStudentId(storedId, firestoreActiveStudentId, studentIds);
 
         setLoading(false);
 
@@ -103,14 +104,14 @@ export function ParentProvider({ userId, role, linkedStudentUids, firestoreActiv
         } else {
             setActiveStudentIdState(resolvedId);
         }
-    }, [role, linkedStudentUids, firestoreActiveStudentId, activeStudentId, persistActiveStudentId]);
+    }, [role, studentIds, firestoreActiveStudentId, activeStudentId, persistActiveStudentId]);
 
     const value = useMemo(() => ({
         activeStudentId,
         setActiveStudentId,
-        linkedStudentUids,
+        studentIds,
         loading,
-    }), [activeStudentId, setActiveStudentId, linkedStudentUids, loading]);
+    }), [activeStudentId, setActiveStudentId, studentIds, loading]);
 
     return (
         <ParentContext.Provider value={value}>

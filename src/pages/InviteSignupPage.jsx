@@ -1,19 +1,15 @@
 import React, { useMemo, useState } from 'react';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import {
-    collection,
-    deleteDoc,
     doc,
-    getDocs,
-    limit,
-    query,
+    getDoc,
     serverTimestamp,
     setDoc,
     updateDoc,
-    where,
 } from 'firebase/firestore';
 import { Link } from 'react-router-dom';
 import { auth, db } from '../firebase/client';
+import { ROLE } from '../constants/roles';
 
 const normalizeInviteCode = (value) => (value || '').trim();
 
@@ -41,31 +37,23 @@ export default function InviteSignupPage() {
                 return;
             }
 
-            const inviteQuery = query(
-                collection(db, 'users'),
-                where('inviteCode', '==', code),
-                where('invited', '==', true),
-                where('active', '==', true),
-                limit(2),
-            );
-            const inviteSnap = await getDocs(inviteQuery);
-            if (inviteSnap.empty) {
+            const inviteRef = doc(db, 'invitations', code);
+            const inviteSnap = await getDoc(inviteRef);
+            if (!inviteSnap.exists()) {
                 setStatus('유효하지 않거나 이미 사용된 초대 코드입니다.');
                 return;
             }
-            if (inviteSnap.size > 1) {
-                setStatus('초대 코드가 중복되어 있습니다. 관리자에게 문의해주세요.');
-                return;
-            }
-
-            const inviteDoc = inviteSnap.docs[0];
-            const inviteData = inviteDoc.data();
-            if (!['student', 'parent'].includes(inviteData?.role)) {
+            const inviteData = inviteSnap.data();
+            if (![ROLE.STUDENT, ROLE.PARENT].includes(inviteData?.role)) {
                 setStatus('학생/학부모 전용 초대 코드만 사용할 수 있습니다.');
                 return;
             }
-            if (inviteData?.authUid) {
+            if (inviteData?.used) {
                 setStatus('이미 사용된 초대 코드입니다.');
+                return;
+            }
+            if (inviteData?.expiresAt?.toDate && inviteData.expiresAt.toDate() < new Date()) {
+                setStatus('만료된 초대 코드입니다. 담당 선생님에게 문의해주세요.');
                 return;
             }
 
@@ -82,21 +70,24 @@ export default function InviteSignupPage() {
                 return;
             }
 
-            const invitePayload = {
-                ...inviteData,
-                authUid: user.uid,
-                invited: false,
-                email: email.trim(),
+            const userPayload = {
+                role: inviteData.role,
                 name: finalName,
+                email: email.trim(),
+                active: true,
+                studentIds: inviteData.role === ROLE.PARENT && inviteData.studentId ? [inviteData.studentId] : [],
+                classIds: inviteData.role === ROLE.STUDENT ? (inviteData.classIds || []) : [],
+                createdAt: serverTimestamp(),
                 updatedAt: serverTimestamp(),
             };
 
-            await updateDoc(doc(db, 'users', inviteDoc.id), invitePayload);
-            await setDoc(doc(db, 'users', user.uid), invitePayload, { merge: true });
-            if (inviteDoc.id !== user.uid) {
-                await deleteDoc(inviteDoc.ref);
-            }
-
+            await setDoc(doc(db, 'users', user.uid), userPayload, { merge: true });
+            await updateDoc(inviteRef, {
+                used: true,
+                usedAt: serverTimestamp(),
+                usedBy: user.uid,
+            });
+            
             setStatus('가입이 완료되었습니다. 잠시 후 대시보드로 이동합니다.');
         } catch (error) {
             setStatus(error?.message || '회원가입에 실패했습니다. 다시 시도해주세요.');

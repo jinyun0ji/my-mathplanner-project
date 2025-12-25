@@ -6,6 +6,7 @@ import OnboardingPage from '../pages/OnboardingPage';
 import LoginPage from '../pages/LoginPage';
 import InviteSignupPage from '../pages/InviteSignupPage';
 import useAuth from '../auth/useAuth';
+import { ROLE } from '../constants/roles';
 import { claimStudentLinkCode } from '../parent/linkCodeService';
 import { ParentProvider } from '../parent';
 import { redirectToKakao, redirectToNaver } from '../auth/socialRedirect';
@@ -24,7 +25,7 @@ export default function AuthGate() {
   const {
       user,
       role,
-      linkedStudentUids,
+      studentIds,
       activeStudentId,
       loading,
       profileError,
@@ -61,12 +62,12 @@ export default function AuthGate() {
           return;
       }
 
-      if (role === 'pending' && pathname !== '/onboarding') {
+      if (role === ROLE.PENDING && pathname !== '/onboarding') {
           navigate('/onboarding', { replace: true });
           return;
       }
 
-      if (role && role !== 'pending' && !isStudentDetailPage && (isOnboardingPage || isLoginPage || isSignupPage)) {
+      if (role && role !== ROLE.PENDING && !isStudentDetailPage && (isOnboardingPage || isLoginPage || isSignupPage)) {
           navigate('/lessons', { replace: true });
       }
   }, [isAuthCallbackPage, isLoginPage, isOnboardingPage, isSignupPage, isStudentDetailPage, loading, navigate, pathname, role, user]);
@@ -110,19 +111,19 @@ export default function AuthGate() {
           </div>
       );
   }
-  if (role === 'pending' || isOnboardingPage) return <OnboardingPage onSubmitLinkCode={handleClaimLinkCode} />;
+  if (role === ROLE.PENDING || isOnboardingPage) return <OnboardingPage onSubmitLinkCode={handleClaimLinkCode} />;
 
-  const appRoutesElement = role === 'parent' ? (
+  const appRoutesElement = role === ROLE.PARENT ? (
       <ParentProvider
           userId={user?.uid || null}
           role={role}
-          linkedStudentUids={linkedStudentUids}
+          studentIds={studentIds}
           firestoreActiveStudentId={activeStudentId}
       >
           <AppRoutes
               user={user}
               role={role}
-              linkedStudentUids={linkedStudentUids}
+              studentIds={studentIds}
               />
       </ParentProvider>
   ) : (

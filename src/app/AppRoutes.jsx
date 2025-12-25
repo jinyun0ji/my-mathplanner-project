@@ -3,13 +3,6 @@ import { Navigate, Outlet, Route, Routes, useLocation, useNavigate } from 'react
 
 import AppShell from './AppShell';
 import {
-    initialStudents, initialClasses, initialLessonLogs, initialAttendanceLogs,
-    initialStudentMemos, initialHomeworkAssignments, initialHomeworkResults,
-    initialTests, initialGrades, initialVideoProgress, initialClinicLogs,
-    initialWorkLogs, initialAnnouncements, initialPayments,
-    initialExternalSchedules
-} from '../api/initialData';
-import {
     calculateClassSessions, calculateGradeComparison,
     calculateHomeworkStats
 } from '../utils/helpers';
@@ -33,8 +26,9 @@ import AdminPaymentsPage from '../pages/admin/AdminPaymentsPage';
 import AdminSettingsPage from '../pages/admin/AdminSettingsPage';
 import AdminRoute from '../routes/AdminRoute';
 import useAuth from '../auth/useAuth';
+import { ROLE, STAFF_ROLES } from '../constants/roles';
 import { db } from '../firebase/client';
-import { loadViewerDataOnce, startStaffFirestoreSync } from '../data/firestoreSync';
+import { loadStaffDataOnce, loadViewerDataOnce } from '../data/firestoreSync';
 import { createLinkCode, createStaffUser } from '../admin/staffService';
 import { claimStudentLinkCode } from '../parent/linkCodeService';
 import { useParentContext } from '../parent';
@@ -43,6 +37,7 @@ import {
     collection,
     deleteDoc,
     doc,
+    setDoc,
     serverTimestamp,
     updateDoc,
 } from 'firebase/firestore';
@@ -121,7 +116,7 @@ const AppShellLayout = ({
     </AppShell>
 );
 
-export default function AppRoutes({ user, role, linkedStudentUids }) {
+export default function AppRoutes({ user, role, studentIds }) {
   const navigate = useNavigate();
   const location = useLocation();
   const page = useMemo(() => getPageKeyFromPath(location.pathname), [location.pathname]);
@@ -133,60 +128,46 @@ export default function AppRoutes({ user, role, linkedStudentUids }) {
   const { logout } = useAuth();
   const {
       activeStudentId: parentActiveStudentId,
-      linkedStudentUids: parentLinkedStudentUids,
+      studentIds: parentStudentIds,
       loading: parentLoading,
   } = useParentContext();
-  const parentStudentId = role === 'parent' ? parentActiveStudentId : null;
+  const parentStudentId = role === ROLE.PARENT ? parentActiveStudentId : null;
 
-  const [students, setStudents] = useState(initialStudents);
-  const [classes, setClasses] = useState(initialClasses);
+  const [students, setStudents] = useState([]);
+  const [classes, setClasses] = useState([]);
 
-  const [lessonLogs, setLessonLogs] = useState(initialLessonLogs);
-  const [attendanceLogs, setAttendanceLogs] = useState(initialAttendanceLogs);
-  const [clinicLogs, setClinicLogs] = useState(initialClinicLogs);
-  const [workLogs, setWorkLogs] = useState(initialWorkLogs);
-  const [announcements, setAnnouncements] = useState(initialAnnouncements);
-  const [tests, setTests] = useState(initialTests);
-  const [homeworkAssignments, setHomeworkAssignments] = useState(initialHomeworkAssignments);
-  const [paymentLogs, setPaymentLogs] = useState(initialPayments);
-  const [externalSchedules, setExternalSchedules] = useState(initialExternalSchedules);
+  const [lessonLogs, setLessonLogs] = useState([]);
+  const [attendanceLogs, setAttendanceLogs] = useState([]);
+  const [clinicLogs, setClinicLogs] = useState([]);
+  const [workLogs, setWorkLogs] = useState([]);
+  const [announcements, setAnnouncements] = useState([]);
+  const [tests, setTests] = useState([]);
+  const [homeworkAssignments, setHomeworkAssignments] = useState([]);
+  const [paymentLogs, setPaymentLogs] = useState([]);
+  const [externalSchedules, setExternalSchedules] = useState([]);
 
-  const [grades, setGrades] = useState(initialGrades);
-  const [homeworkResults, setHomeworkResults] = useState(initialHomeworkResults);
-  const [studentMemos, setStudentMemos] = useState(initialStudentMemos);
-  const [videoProgress, setVideoProgress] = useState(initialVideoProgress);
+  const [grades, setGrades] = useState({});
+  const [homeworkResults, setHomeworkResults] = useState({});
+  const [studentMemos, setStudentMemos] = useState({});
+  const [videoProgress, setVideoProgress] = useState({});
 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [videoBookmarks, setVideoBookmarks] = useState(() => {
       try { return JSON.parse(localStorage.getItem('videoBookmarks')) || {}; }
       catch (e) { return {}; }
   });
-  const staffSyncUnsubscribeRef = useRef(null);
-  const staffSyncStartedRef = useRef(false);
+  const isStaffRole = STAFF_ROLES.includes(role);
   useEffect(() => {
       if (isAuthenticated) processedAnnouncementIdsRef.current = new Set();
   }, [isAuthenticated, userId]);
 
   useEffect(() => {
-  const isStaffRole = ['staff', 'admin', 'teacher'].includes(role);
-
-      if (!isAuthenticated || !role || !isStaffRole) {
-          if (staffSyncUnsubscribeRef.current) {
-              staffSyncUnsubscribeRef.current();
-              staffSyncUnsubscribeRef.current = null;
-          }
-          staffSyncStartedRef.current = false;
-          return;
-      }
-
-      if (staffSyncStartedRef.current) {
-          return;
-      }
-
-      const unsubscribe = startStaffFirestoreSync({
+  if (!isAuthenticated || !role || !isStaffRole) return;
+      loadStaffDataOnce({
           db,
           isLoggedIn: isAuthenticated,
           userRole: role,
+          pageKey: page,
           setStudents,
           setClasses,
           setTests,
@@ -200,18 +181,7 @@ export default function AppRoutes({ user, role, linkedStudentUids }) {
           setGrades,
           setHomeworkResults,
       });
-
-      staffSyncUnsubscribeRef.current = unsubscribe;
-      staffSyncStartedRef.current = true;
-
-      return () => {
-          if (staffSyncUnsubscribeRef.current === unsubscribe) {
-              staffSyncUnsubscribeRef.current();
-              staffSyncUnsubscribeRef.current = null;
-              staffSyncStartedRef.current = false;
-          }
-      };
-  }, [db, isAuthenticated, role]);
+    }, [db, isAuthenticated, role, page, isStaffRole]);
 
   useEffect(() => {
       const state = { cancelled: false };
@@ -220,7 +190,7 @@ export default function AppRoutes({ user, role, linkedStudentUids }) {
           isLoggedIn: isAuthenticated,
           userRole: role,
           userId,
-          activeStudentId: role === 'parent' ? parentActiveStudentId : null,
+          activeStudentId: role === ROLE.PARENT ? parentActiveStudentId : null,
           setStudents,
           setClasses,
           setLessonLogs,
@@ -228,6 +198,7 @@ export default function AppRoutes({ user, role, linkedStudentUids }) {
           setClinicLogs,
           setHomeworkAssignments,
           setAnnouncements,
+          setTests,
           setVideoProgress,
           setExternalSchedules,
           setHomeworkResults,
@@ -242,17 +213,21 @@ export default function AppRoutes({ user, role, linkedStudentUids }) {
       catch (e) {}
   }, [videoBookmarks]);
 
+  useEffect(() => {
+      const memoMap = {};
+      students.forEach((student) => {
+          if (student?.memo) {
+              memoMap[student.id] = student.memo;
+          }
+      });
+      setStudentMemos(memoMap);
+  }, [students]);
+
   const [studentMessages, setStudentMessages] = useState([
       { id: 1, roomId: 'teacher-room', senderRole: 'teacher', displayName: '채수용T', text: '철수야, 오늘 클리닉 늦을 것 같니?', date: '2025-11-29', time: '13:50', isMe: false },
   ]);
   const processedAnnouncementIdsRef = useRef(new Set());
 
-  const createStudentId = useCallback(() => {
-      if (typeof crypto !== 'undefined' && crypto.randomUUID) {
-          return crypto.randomUUID();
-      }
-      return `student-${Date.now()}`;
-  }, []);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [hasNewNotifications, setHasNewNotifications] = useState(false);
   const [isMessengerOpen, setIsMessengerOpen] = useState(false);
@@ -264,13 +239,13 @@ export default function AppRoutes({ user, role, linkedStudentUids }) {
 
   useEffect(() => {
       if (!announcements || announcements.length === 0) return;
-      if (!['student', 'parent'].includes(role)) return;
+      if (![ROLE.STUDENT, ROLE.PARENT].includes(role)) return;
 
       const processed = processedAnnouncementIdsRef.current;
       const newMessages = [];
 
-      const announcementTargets = role === 'parent'
-          ? linkedStudentUids
+      const announcementTargets = role === ROLE.PARENT
+          ? studentIds
           : userId
               ? [userId]
               : [];
@@ -301,16 +276,29 @@ export default function AppRoutes({ user, role, linkedStudentUids }) {
           setStudentMessages((prev) => [...prev, ...newMessages]);
           setHasNewMessages(true);
       }
-  }, [announcements, role, userId, linkedStudentUids]);
+  }, [announcements, role, userId, studentIds]);
 
   const logNotification = useCallback((type, message, details) => {
       setNotifications(prev => [{ id: Date.now(), type, message, details, timestamp: new Date().toLocaleTimeString('ko-KR') }, ...prev]);
       setHasNewNotifications(true);
   }, []);
 
-  const handleSavePayment = (paymentData) => {
-      setPaymentLogs(prev => [paymentData, ...prev]);
-      logNotification('success', '결제 기록 저장', `${paymentData.studentName} 학생 결제 완료`);
+  const handleSavePayment = async (paymentData) => {
+      ensureFirestoreContext();
+      try {
+          const docRef = await addDoc(collection(db, 'payments'), {
+              ...paymentData,
+              createdAt: serverTimestamp(),
+              createdBy: userId,
+              updatedAt: serverTimestamp(),
+              updatedBy: userId,
+          });
+          setPaymentLogs(prev => [{ ...paymentData, id: docRef.id }, ...prev]);
+          logNotification('success', '결제 기록 저장', `${paymentData.studentName} 학생 결제 완료`);
+      } catch (error) {
+          console.error('[Firestore WRITE ERROR]', error);
+          alert('결제 기록 저장에 실패했습니다. 권한 또는 네트워크를 확인하세요.');
+      }
   };
 
   const handleCreateLinkCode = async ({ studentId }) => {
@@ -319,8 +307,52 @@ export default function AppRoutes({ user, role, linkedStudentUids }) {
       return createLinkCode({ studentId: normalizedId });
   };
 
-  const handleSaveStudent = (data, isEdit) => { /* ... 기존 로직 ... */ setStudents(prev => isEdit ? prev.map(s => s.id === data.id ? {...s, ...data} : s) : [...prev, {...data, id: createStudentId()}]); };
-  const handleDeleteStudent = (id) => setStudents(prev => prev.filter(s => s.id !== id));
+  const handleSaveStudent = async (data, isEdit) => {
+      ensureFirestoreContext();
+      try {
+          const payload = {
+              ...stripId(data),
+              authUid: data.studentId || data.authUid || null,
+          };
+          const studentPayload = {
+              ...payload,
+              role: ROLE.STUDENT,
+              active: payload.active !== false,
+              classIds: payload.classes || [],
+          };
+          if (isEdit) {
+              if (!data.id) throw new Error('학생 ID가 없습니다.');
+              await updateDoc(doc(db, 'users', data.id), {
+                  ...studentPayload,
+                  updatedAt: serverTimestamp(),
+                  updatedBy: userId,
+              });
+              setStudents(prev => prev.map(s => s.id === data.id ? { ...s, ...studentPayload } : s));
+          } else {
+              const docRef = await addDoc(collection(db, 'users'), {
+                  ...studentPayload,
+                  createdAt: serverTimestamp(),
+                  createdBy: userId,
+                  updatedAt: serverTimestamp(),
+                  updatedBy: userId,
+              });
+              setStudents(prev => [...prev, { id: docRef.id, ...studentPayload }]);
+          }
+      } catch (error) {
+          console.error('[Firestore WRITE ERROR]', error);
+          throw error;
+      }
+  };
+  const handleDeleteStudent = async (id) => {
+      ensureFirestoreContext();
+      try {
+          await deleteDoc(doc(db, 'users', id));
+          setStudents(prev => prev.filter(s => s.id !== id));
+      } catch (error) {
+          console.error('[Firestore WRITE ERROR]', error);
+          alert('학생 삭제에 실패했습니다. 권한 또는 네트워크를 확인하세요.');
+      }
+  };
   const ensureFirestoreContext = () => {
       if (!db || !userId) {
           throw new Error('DB 또는 사용자 없음');
@@ -343,14 +375,16 @@ export default function AppRoutes({ user, role, linkedStudentUids }) {
                   updatedAt: serverTimestamp(),
                   updatedBy: userId,
               });
+            setClasses(prev => prev.map(c => c.id === data.id ? { ...c, ...payload } : c));
           } else {
-              await addDoc(collection(db, 'classes'), {
+              const docRef = await addDoc(collection(db, 'classes'), {
                   ...payload,
                   createdAt: serverTimestamp(),
                   createdBy: userId,
                   updatedAt: serverTimestamp(),
                   updatedBy: userId,
               });
+              setClasses(prev => [...prev, { id: docRef.id, ...payload }]);
           }
           console.log('✅ 클래스 Firestore 저장 성공');
       } catch (error) {
@@ -370,14 +404,16 @@ export default function AppRoutes({ user, role, linkedStudentUids }) {
                   updatedAt: serverTimestamp(),
                   updatedBy: userId,
               });
+              setLessonLogs(prev => prev.map(l => l.id === data.id ? { ...l, ...payloadWithoutFile } : l));
           } else {
-              await addDoc(collection(db, 'lessonLogs'), {
+              const docRef = await addDoc(collection(db, 'lessonLogs'), {
                   ...payloadWithoutFile,
                   createdAt: serverTimestamp(),
                   createdBy: userId,
                   updatedAt: serverTimestamp(),
                   updatedBy: userId,
               });
+              setLessonLogs(prev => [{ id: docRef.id, ...payloadWithoutFile }, ...prev]);
           }
       } catch (error) {
           console.error('[Firestore WRITE ERROR]', error);
@@ -389,22 +425,40 @@ export default function AppRoutes({ user, role, linkedStudentUids }) {
       try {
           ensureFirestoreContext();
           await deleteDoc(doc(db, 'lessonLogs', id));
+          setLessonLogs(prev => prev.filter(l => l.id !== id));
       } catch (error) {
           console.error('[Firestore WRITE ERROR]', error);
           alert('수업 일지 삭제에 실패했습니다. 권한 또는 네트워크를 확인하세요.');
       }
   };
 
-  const handleSaveAttendance = (records) => {
-      setAttendanceLogs(prev => {
-          const newLogs = [...prev];
-          records.forEach(r => {
-              const idx = newLogs.findIndex(l => l.studentId === r.studentId && l.date === r.date && l.classId === r.classId);
-              if(idx > -1) newLogs[idx] = r; else newLogs.push({...r, id: Date.now()});
-          });
-          return newLogs;
-      });
-      logNotification('success', '출결 저장', '출결 기록이 저장되었습니다.');
+  const handleSaveAttendance = async (records) => {
+      ensureFirestoreContext();
+      try {
+          const nextLogs = [...attendanceLogs];
+          for (const record of records) {
+              const docId = record.id || `${record.classId}_${record.studentId}_${record.date}`;
+              const payload = {
+                  ...record,
+                  studentUid: record.studentId,
+                  updatedAt: serverTimestamp(),
+                  updatedBy: userId,
+              };
+              await setDoc(doc(db, 'attendanceLogs', docId), payload, { merge: true });
+              const existingIndex = nextLogs.findIndex((log) => log.id === docId);
+              const nextRecord = { ...record, id: docId, studentUid: record.studentId };
+              if (existingIndex >= 0) {
+                  nextLogs[existingIndex] = nextRecord;
+              } else {
+                  nextLogs.push(nextRecord);
+              }
+          }
+          setAttendanceLogs(nextLogs);
+          logNotification('success', '출결 저장', '출결 기록이 저장되었습니다.');
+      } catch (error) {
+          console.error('[Firestore WRITE ERROR]', error);
+          alert('출결 저장에 실패했습니다. 권한 또는 네트워크를 확인하세요.');
+      }
   };
 
   const handleSaveHomeworkAssignment = async (data, isEdit) => {
@@ -418,14 +472,16 @@ export default function AppRoutes({ user, role, linkedStudentUids }) {
                   updatedAt: serverTimestamp(),
                   updatedBy: userId,
               });
+              setHomeworkAssignments(prev => prev.map(h => h.id === data.id ? { ...h, ...payload } : h));
           } else {
-              await addDoc(collection(db, 'homeworkAssignments'), {
+              const docRef = await addDoc(collection(db, 'homeworkAssignments'), {
                   ...payload,
                   createdAt: serverTimestamp(),
                   createdBy: userId,
                   updatedAt: serverTimestamp(),
                   updatedBy: userId,
               });
+              setHomeworkAssignments(prev => [{ id: docRef.id, ...payload }, ...prev]);
           }
       } catch (error) {
           console.error('[Firestore WRITE ERROR]', error);
@@ -437,21 +493,48 @@ export default function AppRoutes({ user, role, linkedStudentUids }) {
       try {
           ensureFirestoreContext();
           await deleteDoc(doc(db, 'homeworkAssignments', id));
+          setHomeworkAssignments(prev => prev.filter(h => h.id !== id));
       } catch (error) {
           console.error('[Firestore WRITE ERROR]', error);
           alert('과제 삭제에 실패했습니다. 권한 또는 네트워크를 확인하세요.');
       }
   };
-  const handleUpdateHomeworkResult = (updates) => {
-      setHomeworkResults(prev => {
-          const next = { ...prev };
-          updates.forEach(({studentId, assignmentId, questionId, status}) => {
-              if(!next[studentId]) next[studentId] = {};
-              if(!next[studentId][assignmentId]) next[studentId][assignmentId] = {};
-              next[studentId][assignmentId][questionId] = status;
+  const handleUpdateHomeworkResult = async (updates) => {
+      ensureFirestoreContext();
+      try {
+          const grouped = new Map();
+          updates.forEach(({ studentId, assignmentId, questionId, status }) => {
+              const key = `${studentId}_${assignmentId}`;
+              if (!grouped.has(key)) {
+                  grouped.set(key, { studentId, assignmentId, results: {} });
+              }
+              grouped.get(key).results[questionId] = status;
           });
-          return next;
-      });
+
+          const nextResults = { ...homeworkResults };
+
+          for (const { studentId, assignmentId, results } of grouped.values()) {
+              const existing = nextResults[studentId]?.[assignmentId] || {};
+              const mergedResults = { ...existing, ...results };
+              const docId = `${studentId}_${assignmentId}`;
+
+              await setDoc(doc(db, 'homeworkResults', docId), {
+                  authUid: studentId,
+                  assignmentId,
+                  results: mergedResults,
+                  updatedAt: serverTimestamp(),
+                  updatedBy: userId,
+              }, { merge: true });
+
+              if (!nextResults[studentId]) nextResults[studentId] = {};
+              nextResults[studentId][assignmentId] = mergedResults;
+          }
+
+          setHomeworkResults(nextResults);
+      } catch (error) {
+          console.error('[Firestore WRITE ERROR]', error);
+          alert('과제 채점 결과 저장에 실패했습니다. 권한 또는 네트워크를 확인하세요.');
+      }
   };
 
   const handleSaveTest = async (data, isEdit) => {
@@ -465,14 +548,16 @@ export default function AppRoutes({ user, role, linkedStudentUids }) {
                   updatedAt: serverTimestamp(),
                   updatedBy: userId,
               });
+              setTests(prev => prev.map(t => t.id === data.id ? { ...t, ...payload } : t));
           } else {
-              await addDoc(collection(db, 'tests'), {
+              const docRef = await addDoc(collection(db, 'tests'), {
                   ...payload,
                   createdAt: serverTimestamp(),
                   createdBy: userId,
                   updatedAt: serverTimestamp(),
                   updatedBy: userId,
               });
+              setTests(prev => [...prev, { id: docRef.id, ...payload }]);
           }
       } catch (error) {
           console.error('[Firestore WRITE ERROR]', error);
@@ -484,19 +569,74 @@ export default function AppRoutes({ user, role, linkedStudentUids }) {
       try {
           ensureFirestoreContext();
           await deleteDoc(doc(db, 'tests', id));
+          setTests(prev => prev.filter(t => t.id !== id));
       } catch (error) {
           console.error('[Firestore WRITE ERROR]', error);
           alert('시험 삭제에 실패했습니다. 권한 또는 네트워크를 확인하세요.');
       }
   };
-  const handleUpdateGrade = (studentId, testId, result, comment) => {
-      setGrades(prev => ({
-          ...prev, [studentId]: { ...prev[studentId], [testId]: { score: 0, correctCount: result, comment } }
-      }));
+  const handleUpdateGrade = async (studentId, testId, result, comment) => {
+      ensureFirestoreContext();
+      try {
+          const docId = `${studentId}_${testId}`;
+          const isAbsent = result === '미응시';
+          const payload = {
+              authUid: studentId,
+              testId,
+              score: isAbsent ? null : 0,
+              correctCount: isAbsent ? {} : result,
+              comment: comment || '',
+              updatedAt: serverTimestamp(),
+              updatedBy: userId,
+          };
+          await setDoc(doc(db, 'grades', docId), payload, { merge: true });
+          setGrades(prev => ({
+              ...prev,
+              [studentId]: { ...prev[studentId], [testId]: payload },
+          }));
+      } catch (error) {
+          console.error('[Firestore WRITE ERROR]', error);
+          alert('성적 저장에 실패했습니다. 권한 또는 네트워크를 확인하세요.');
+      }
   };
 
-  const handleSaveClinicLog = (data, isEdit) => setClinicLogs(prev => isEdit ? prev.map(l => l.id === data.id ? {...l, ...data} : l) : [...prev, {...data, id: Date.now()}]);
-  const handleDeleteClinicLog = (id) => setClinicLogs(prev => prev.filter(l => l.id !== id));
+  const handleSaveClinicLog = async (data, isEdit) => {
+      ensureFirestoreContext();
+      try {
+          const payload = stripId(data);
+          if (isEdit) {
+              if (!data.id) throw new Error('클리닉 로그 ID가 없습니다.');
+              await updateDoc(doc(db, 'clinicLogs', data.id), {
+                  ...payload,
+                  updatedAt: serverTimestamp(),
+                  updatedBy: userId,
+              });
+              setClinicLogs(prev => prev.map(l => l.id === data.id ? { ...l, ...payload } : l));
+          } else {
+              const docRef = await addDoc(collection(db, 'clinicLogs'), {
+                  ...payload,
+                  createdAt: serverTimestamp(),
+                  createdBy: userId,
+                  updatedAt: serverTimestamp(),
+                  updatedBy: userId,
+              });
+              setClinicLogs(prev => [...prev, { id: docRef.id, ...payload }]);
+          }
+      } catch (error) {
+          console.error('[Firestore WRITE ERROR]', error);
+          alert('클리닉 기록 저장에 실패했습니다. 권한 또는 네트워크를 확인하세요.');
+      }
+  };
+  const handleDeleteClinicLog = async (id) => {
+      ensureFirestoreContext();
+      try {
+          await deleteDoc(doc(db, 'clinicLogs', id));
+          setClinicLogs(prev => prev.filter(l => l.id !== id));
+      } catch (error) {
+          console.error('[Firestore WRITE ERROR]', error);
+          alert('클리닉 기록 삭제에 실패했습니다. 권한 또는 네트워크를 확인하세요.');
+      }
+  };
 
   const handleSaveAnnouncement = async (data, isEdit) => {
       ensureFirestoreContext();
@@ -509,14 +649,16 @@ export default function AppRoutes({ user, role, linkedStudentUids }) {
                   updatedAt: serverTimestamp(),
                   updatedBy: userId,
               });
+              setAnnouncements(prev => prev.map(a => a.id === data.id ? { ...a, ...payload } : a));
           } else {
-              await addDoc(collection(db, 'announcements'), {
+              const docRef = await addDoc(collection(db, 'announcements'), {
                   ...payload,
                   createdAt: serverTimestamp(),
                   createdBy: userId,
                   updatedAt: serverTimestamp(),
                   updatedBy: userId,
               });
+              setAnnouncements(prev => [{ id: docRef.id, ...payload }, ...prev]);
           }
       } catch (error) {
           console.error('[Firestore WRITE ERROR]', error);
@@ -528,20 +670,119 @@ export default function AppRoutes({ user, role, linkedStudentUids }) {
       try {
           ensureFirestoreContext();
           await deleteDoc(doc(db, 'announcements', id));
+          setAnnouncements(prev => prev.filter(a => a.id !== id));
       } catch (error) {
           console.error('[Firestore WRITE ERROR]', error);
           alert('공지사항 삭제에 실패했습니다. 권한 또는 네트워크를 확인하세요.');
       }
   };
-  const handleSaveWorkLog = (data, isEdit) => setWorkLogs(prev => isEdit ? prev.map(l => l.id === data.id ? {...l, ...data} : l) : [...prev, {...data, id: Date.now()}]);
-  const handleDeleteWorkLog = (id) => setWorkLogs(prev => prev.filter(l => l.id !== id));
+  const handleSaveWorkLog = async (data, isEdit) => {
+      ensureFirestoreContext();
+      try {
+          const payload = stripId(data);
+          if (isEdit) {
+              if (!data.id) throw new Error('근무 일지 ID가 없습니다.');
+              await updateDoc(doc(db, 'workLogs', data.id), {
+                  ...payload,
+                  updatedAt: serverTimestamp(),
+                  updatedBy: userId,
+              });
+              setWorkLogs(prev => prev.map(l => l.id === data.id ? { ...l, ...payload } : l));
+          } else {
+              const docRef = await addDoc(collection(db, 'workLogs'), {
+                  ...payload,
+                  createdAt: serverTimestamp(),
+                  createdBy: userId,
+                  updatedAt: serverTimestamp(),
+                  updatedBy: userId,
+              });
+              setWorkLogs(prev => [...prev, { id: docRef.id, ...payload }]);
+          }
+      } catch (error) {
+          console.error('[Firestore WRITE ERROR]', error);
+          alert('근무 일지 저장에 실패했습니다. 권한 또는 네트워크를 확인하세요.');
+      }
+  };
+  const handleDeleteWorkLog = async (id) => {
+      ensureFirestoreContext();
+      try {
+          await deleteDoc(doc(db, 'workLogs', id));
+          setWorkLogs(prev => prev.filter(l => l.id !== id));
+      } catch (error) {
+          console.error('[Firestore WRITE ERROR]', error);
+          alert('근무 일지 삭제에 실패했습니다. 권한 또는 네트워크를 확인하세요.');
+      }
+  };
 
-  const handleSaveVideoProgress = (sId, lId, data) => setVideoProgress(prev => ({ ...prev, [sId]: { ...prev[sId], [lId]: data } }));
+  const handleSaveVideoProgress = async (sId, lId, data) => {
+      ensureFirestoreContext();
+      try {
+          const docId = `${sId}_${lId}`;
+          await setDoc(doc(db, 'videoProgress', docId), {
+              authUid: sId,
+              lessonId: lId,
+              ...data,
+              updatedAt: serverTimestamp(),
+          }, { merge: true });
+          setVideoProgress(prev => ({ ...prev, [sId]: { ...prev[sId], [lId]: data } }));
+      } catch (error) {
+          console.error('[Firestore WRITE ERROR]', error);
+      }
+  };
   const handleSaveBookmark = (sId, lId, bm) => setVideoBookmarks(prev => ({ ...prev, [sId]: { ...prev[sId], [lId]: [...(prev[sId]?.[lId] || []), bm] } }));
-  const handleSaveMemo = (sId, content) => setStudentMemos(prev => ({ ...prev, [sId]: content }));
+  const handleSaveMemo = async (sId, content) => {
+      ensureFirestoreContext();
+      try {
+          await updateDoc(doc(db, 'users', sId), {
+              memo: content,
+              updatedAt: serverTimestamp(),
+              updatedBy: userId,
+          });
+          setStudentMemos(prev => ({ ...prev, [sId]: content }));
+          setStudents(prev => prev.map(s => s.id === sId ? { ...s, memo: content } : s));
+      } catch (error) {
+          console.error('[Firestore WRITE ERROR]', error);
+          alert('메모 저장에 실패했습니다. 권한 또는 네트워크를 확인하세요.');
+      }
+  };
 
-  const handleSaveExternalSchedule = (data) => setExternalSchedules(prev => data.id ? prev.map(s => s.id === data.id ? {...s, ...data} : s) : [...prev, {...data, id: Date.now()}]);
-  const handleDeleteExternalSchedule = (id) => setExternalSchedules(prev => prev.filter(s => s.id !== id));
+  const handleSaveExternalSchedule = async (data) => {
+      ensureFirestoreContext();
+      try {
+          const payload = { ...stripId(data), authUid: data.authUid || userId };
+          if (data.id) {
+              await updateDoc(doc(db, 'externalSchedules', data.id), {
+                  ...payload,
+                  updatedAt: serverTimestamp(),
+                  updatedBy: userId,
+              });
+              setExternalSchedules(prev => prev.map(s => s.id === data.id ? { ...s, ...payload } : s));
+          } else {
+              const docRef = await addDoc(collection(db, 'externalSchedules'), {
+                  ...payload,
+                  authUid: userId,
+                  createdAt: serverTimestamp(),
+                  createdBy: userId,
+                  updatedAt: serverTimestamp(),
+                  updatedBy: userId,
+              });
+              setExternalSchedules(prev => [...prev, { id: docRef.id, ...payload, authUid: userId }]);
+          }
+      } catch (error) {
+          console.error('[Firestore WRITE ERROR]', error);
+          alert('외부 일정 저장에 실패했습니다. 권한 또는 네트워크를 확인하세요.');
+      }
+  };
+  const handleDeleteExternalSchedule = async (id) => {
+      ensureFirestoreContext();
+      try {
+          await deleteDoc(doc(db, 'externalSchedules', id));
+          setExternalSchedules(prev => prev.filter(s => s.id !== id));
+      } catch (error) {
+          console.error('[Firestore WRITE ERROR]', error);
+          alert('외부 일정 삭제에 실패했습니다. 권한 또는 네트워크를 확인하세요.');
+      }
+  };
 
   const handleSendStudentNotification = async (sId, title, content) => {
       try {
@@ -585,15 +826,15 @@ export default function AppRoutes({ user, role, linkedStudentUids }) {
       await claimStudentLinkCode(code);
   };
 
-  if (role === 'student') return <StudentHome studentId={userId} userId={userId} students={students} classes={classes} homeworkAssignments={homeworkAssignments} homeworkResults={homeworkResults} attendanceLogs={attendanceLogs} lessonLogs={lessonLogs} notices={announcements} tests={tests} grades={grades} videoProgress={videoProgress} onSaveVideoProgress={handleSaveVideoProgress} videoBookmarks={videoBookmarks} onSaveBookmark={handleSaveBookmark} externalSchedules={externalSchedules} onSaveExternalSchedule={handleSaveExternalSchedule} onDeleteExternalSchedule={handleDeleteExternalSchedule} clinicLogs={clinicLogs} onUpdateStudent={handleSaveStudent} messages={studentMessages} onSendMessage={() => {}} onLogout={handleLogout} />;
-  if (role === 'parent') {
+  if (role === ROLE.STUDENT) return <StudentHome studentId={userId} userId={userId} students={students} classes={classes} homeworkAssignments={homeworkAssignments} homeworkResults={homeworkResults} attendanceLogs={attendanceLogs} lessonLogs={lessonLogs} notices={announcements} tests={tests} grades={grades} videoProgress={videoProgress} onSaveVideoProgress={handleSaveVideoProgress} videoBookmarks={videoBookmarks} onSaveBookmark={handleSaveBookmark} externalSchedules={externalSchedules} onSaveExternalSchedule={handleSaveExternalSchedule} onDeleteExternalSchedule={handleDeleteExternalSchedule} clinicLogs={clinicLogs} onUpdateStudent={handleSaveStudent} messages={studentMessages} onSendMessage={() => {}} onLogout={handleLogout} />;
+  if (role === ROLE.PARENT) {
       if (parentLoading) {
           return <div className="min-h-screen flex items-center justify-center">로딩 중...</div>;
       }
-      if (!parentLinkedStudentUids || parentLinkedStudentUids.length === 0) {
+      if (!parentStudentIds || parentStudentIds.length === 0) {
           return <OnboardingPage onSubmitLinkCode={handleClaimLinkCode} />;
       }
-      if (parentLinkedStudentUids.length > 1 && !parentStudentId) {
+      if (parentStudentIds.length > 1 && !parentStudentId) {
           return (
               <ParentStudentPicker
                   students={students}
@@ -617,8 +858,8 @@ export default function AppRoutes({ user, role, linkedStudentUids }) {
     calculateGradeComparison, calculateHomeworkStats,
     setIsGlobalDirty, studentSearchTerm, setStudentSearchTerm, handleSendStudentNotification,
     externalSchedules, pendingQuickAction, clearPendingQuickAction: () => setPendingQuickAction(null), onQuickAction: handleQuickAction,
-    onCreateStaffUser: role === 'admin' ? handleCreateStaffUser : null,
-    onCreateLinkCode: role === 'staff' ? handleCreateLinkCode : null,
+    onCreateStaffUser: role === ROLE.ADMIN ? handleCreateStaffUser : null,
+    onCreateLinkCode: role === ROLE.STAFF ? handleCreateLinkCode : null,
     userRole: role,
   };
 

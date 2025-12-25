@@ -2,13 +2,13 @@ import React, { useMemo, useState } from 'react';
 import { useParentContext } from '../../parent';
 
 export default function ParentStudentPicker({ students }) {
-    const { activeStudentId, linkedStudentUids, setActiveStudentId } = useParentContext();
-    const [selectedStudentId, setSelectedStudentId] = useState(activeStudentId || linkedStudentUids?.[0] || null);
+    const { activeStudentId, studentIds, setActiveStudentId } = useParentContext();
+    const [selectedStudentId, setSelectedStudentId] = useState(activeStudentId || studentIds?.[0] || null);
     const [isSaving, setIsSaving] = useState(false);
 
     const studentCards = useMemo(() => {
-        if (!Array.isArray(linkedStudentUids)) return [];
-        return linkedStudentUids.map((studentId) => {
+        if (!Array.isArray(studentIds)) return [];
+        return studentIds.map((studentId) => {
             const student = students?.find((item) => item.id === studentId);
             return {
                 id: studentId,
@@ -17,7 +17,7 @@ export default function ParentStudentPicker({ students }) {
                 school: student?.school || '학교 정보 없음',
             };
         });
-    }, [linkedStudentUids, students]);
+    }, [studentIds, students]);
 
     const handleConfirm = async () => {
         if (!selectedStudentId) return;

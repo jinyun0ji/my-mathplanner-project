@@ -7,7 +7,7 @@ export default function useParentContext() {
     if (!context) {
         return {
             activeStudentId: null,
-            linkedStudentUids: [],
+            studentIds: [],
             loading: false,
             setActiveStudentId: async () => {},
         };
