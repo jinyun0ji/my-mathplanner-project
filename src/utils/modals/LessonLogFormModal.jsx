@@ -103,7 +103,7 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
           <label className="block text-xs font-medium text-gray-600">영상 제목</label>
           <input
             type="text"
-            value={video.title}
+            value={video.title ?? ''}
             onChange={e => onChange(video.id, 'title', e.target.value)}
             onPointerDown={e => e.stopPropagation()}
             onPointerDownCapture={e => e.stopPropagation()}
@@ -253,7 +253,7 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
   };
 
   const handleVideoChange = (id, field, value) => {
-      setVideos(prev => prev.map(video => video.id === id ? { ...video, [field]: value } : video));
+      setVideos(prev => prev.map(video => video.id === id ? { ...video, [field]: value ?? '' } : video));
       setIsDirty(true);
   };
 
