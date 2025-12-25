@@ -26,6 +26,10 @@ service cloud.firestore {
     function isStaff() {
       return userRole() == 'staff' || userRole() == 'teacher';
     }
+    
+    function isStaffOrAdmin() {
+      return isStaff() || isAdmin();
+    }
 
     function isStudent() {
       return userRole() == 'student';
@@ -126,6 +130,24 @@ service cloud.firestore {
         || (isStudent() && request.auth.uid == resource.data.studentUid)
         || (isParent() && resource.data.studentUid in parentStudentUids());
       allow write: if isStaff() || isAdmin();
+    }
+    
+    /* =========================
+       Notifications
+    ========================= */
+    match /notifications/{logId} {
+      allow read, write: if isStaffOrAdmin();
+    }
+
+    match /notifications/{uid}/items/{notificationId} {
+      allow read: if isSignedIn()
+        && (request.auth.uid == uid || isStaffOrAdmin());
+      allow write: if isStaffOrAdmin();
+    }
+
+    match /notifications/{uid}/meta {
+      allow read, write: if isSignedIn()
+        && (request.auth.uid == uid || isStaffOrAdmin());
     }
 
     /* =========================

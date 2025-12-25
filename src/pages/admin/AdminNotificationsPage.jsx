@@ -27,6 +27,7 @@ export default function AdminNotificationsPage() {
             setError('');
 
             try {
+                console.info('[AdminNotificationsPage] Firestore path: notifications');
                 const snapshot = await getDocs(query(
                     collection(db, 'notifications'),
                     orderBy('sentAt', 'desc'),
