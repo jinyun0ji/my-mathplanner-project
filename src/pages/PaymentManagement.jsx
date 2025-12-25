@@ -1,7 +1,8 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Icon } from '../utils/helpers';
 import { Modal } from '../components/common/Modal'; 
 import { PaymentNotificationModal } from '../utils/modals/PaymentNotificationModal'; // ✅ 신규 모달 import
+import { initialClasses, initialStudents } from '../api/initialData';
 
 // ✅ [수정] props에 paymentLogs, handleSavePayment 추가
 export default function PaymentManagement({ students, classes, paymentLogs, handleSavePayment, logNotification }) {
@@ -47,11 +48,34 @@ export default function PaymentManagement({ students, classes, paymentLogs, hand
     });
     const [useEasyPay, setUseEasyPay] = useState(true);
     
-    const [viewClassId, setViewClassId] = useState(classes && classes.length > 0 ? String(classes[0].id) : '');
-    const [selectedClassForSetting, setSelectedClassForSetting] = useState(classes && classes.length > 0 ? String(classes[0].id) : '');
+    const [viewClassId, setViewClassId] = useState(
+        classes && classes.length > 0 ? String(classes[0].id) : String(initialClasses[0]?.id || '')
+    );
+    const [selectedClassForSetting, setSelectedClassForSetting] = useState(
+        classes && classes.length > 0 ? String(classes[0].id) : String(initialClasses[0]?.id || '')
+    );
 
     // ✅ 체크박스 선택 상태 (studentId 목록)
     const [selectedStudentIds, setSelectedStudentIds] = useState([]);
+
+    const effectiveClasses = useMemo(
+        () => (classes && classes.length > 0 ? classes : initialClasses),
+        [classes]
+    );
+    const effectiveStudents = useMemo(
+        () => (students && students.length > 0 ? students : initialStudents),
+        [students]
+    );
+    const effectivePaymentLogs = useMemo(
+        () => (paymentLogs && paymentLogs.length > 0 ? paymentLogs : initialPaymentLogs),
+        [paymentLogs]
+    );
+
+    useEffect(() => {
+        if (!effectiveClasses || effectiveClasses.length === 0) return;
+        setViewClassId(prev => prev || String(effectiveClasses[0].id));
+        setSelectedClassForSetting(prev => prev || String(effectiveClasses[0].id));
+    }, [effectiveClasses]);
 
     // const handlePayment = async () => {
     // const response = await PortOne.requestPayment({
@@ -81,7 +105,7 @@ export default function PaymentManagement({ students, classes, paymentLogs, hand
     const classPaymentStatus = useMemo(() => {
         if (!viewClassId) return [];
 
-        const targetClass = classes.find(c => String(c.id) === String(viewClassId));
+        const targetClass = effectiveClasses.find(c => String(c.id) === String(viewClassId));
         if (!targetClass) return [];
 
         const requiredBookIds = classBookMap[viewClassId] || [];
@@ -89,10 +113,10 @@ export default function PaymentManagement({ students, classes, paymentLogs, hand
         const totalRequiredAmount = requiredBooks.reduce((sum, b) => sum + b.price, 0);
 
         return targetClass.students.map(studentId => {
-            const student = students.find(s => s.id === studentId);
+            const student = effectiveStudents.find(s => s.id === studentId);
             if (!student) return null;
 
-            const paidBookIds = paymentLogs
+            const paidBookIds = effectivePaymentLogs
                 .filter(log => log.studentId === studentId)
                 .map(log => log.bookId);
 
@@ -110,7 +134,7 @@ export default function PaymentManagement({ students, classes, paymentLogs, hand
             };
         }).filter(item => item !== null);
 
-    }, [viewClassId, classes, students, classBookMap, bookList, paymentLogs]);
+    }, [viewClassId, effectiveClasses, effectiveStudents, classBookMap, bookList, effectivePaymentLogs]);
 
     // [체크박스 핸들러] 전체 선택/해제
     const handleSelectAll = (e) => {
@@ -167,7 +191,7 @@ export default function PaymentManagement({ students, classes, paymentLogs, hand
         if (!paymentForm.studentId || !paymentForm.bookId) return;
 
         const selectedBook = bookList.find(b => b.id === Number(paymentForm.bookId));
-        const selectedStudent = students.find(s => s.id === paymentForm.studentId);
+        const selectedStudent = effectiveStudents.find(s => s.id === paymentForm.studentId);
 
         if (selectedBook.stock <= 0) {
             alert('재고가 부족합니다.');
@@ -210,7 +234,7 @@ export default function PaymentManagement({ students, classes, paymentLogs, hand
 
     const recommendedBooks = useMemo(() => {
         if (!paymentForm.studentId) return [];
-        const student = students.find(s => s.id === paymentForm.studentId);
+        const student = effectiveStudents.find(s => s.id === paymentForm.studentId);
         if (!student) return [];
         
         const neededBookIds = new Set();
@@ -218,7 +242,7 @@ export default function PaymentManagement({ students, classes, paymentLogs, hand
             (classBookMap[clsId] || []).forEach(bId => neededBookIds.add(bId));
         });
         return bookList.filter(b => neededBookIds.has(b.id));
-    }, [paymentForm.studentId, students, classBookMap, bookList]);
+    }, [paymentForm.studentId, effectiveStudents, classBookMap, bookList]);
 
     const handleMethodChange = (value) => {
         setUseEasyPay(value === '간편결제');
@@ -344,7 +368,7 @@ export default function PaymentManagement({ students, classes, paymentLogs, hand
                                         setSelectedStudentIds([]); // 반 변경 시 선택 초기화
                                     }}
                                 >
-                                    {classes && classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                    {effectiveClasses && effectiveClasses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                                 </select>
                             </div>
                             
@@ -607,7 +631,7 @@ export default function PaymentManagement({ students, classes, paymentLogs, hand
                                 </tr>
                             </thead>
                             <tbody className="bg-white divide-y divide-gray-200">
-                                {paymentLogs.map(log => (
+                                {effectivePaymentLogs.map(log => (
                                     <tr key={log.id} className="hover:bg-gray-50 transition">
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{log.date}</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">{log.studentName}</td>
@@ -627,7 +651,7 @@ export default function PaymentManagement({ students, classes, paymentLogs, hand
                                         </td>
                                     </tr>
                                 ))}
-                                {paymentLogs.length === 0 && (
+                                {effectivePaymentLogs.length === 0 && (
                                     <tr><td colSpan="6" className="px-6 py-10 text-center text-gray-400">수납 내역이 없습니다.</td></tr>
                                 )}
                             </tbody>
@@ -635,7 +659,7 @@ export default function PaymentManagement({ students, classes, paymentLogs, hand
                     </div>
 
                     <div className="grid gap-3 md:hidden">
-                        {paymentLogs.length > 0 ? paymentLogs.map(log => (
+                        {effectivePaymentLogs.length > 0 ? effectivePaymentLogs.map(log => (
                             <div key={log.id} className="border rounded-xl p-4 shadow-sm bg-white space-y-2">
                                 <div className="flex items-start justify-between">
                                     <div>
@@ -757,7 +781,7 @@ export default function PaymentManagement({ students, classes, paymentLogs, hand
                             required
                         >
                             <option value="">학생을 선택해주세요</option>
-                            {students && students.map(s => <option key={s.id} value={s.id}>{s.name} ({s.school})</option>)}
+                            {effectiveStudents && effectiveStudents.map(s => <option key={s.id} value={s.id}>{s.name} ({s.school})</option>)}
                         </select>
                     </div>
 
@@ -875,7 +899,7 @@ export default function PaymentManagement({ students, classes, paymentLogs, hand
                             value={selectedClassForSetting}
                             onChange={e => setSelectedClassForSetting(e.target.value)}
                         >
-                            {classes && classes.map(c => (
+                            {effectiveClasses && effectiveClasses.map(c => (
                                 <option key={c.id} value={c.id}>{c.name}</option>
                             ))}
                         </select>

@@ -3,7 +3,7 @@ import { Icon } from '../utils/helpers';
 import { collection, getDocs, limit, orderBy, query } from 'firebase/firestore';
 import { db } from '../firebase/client';
 import useAuth from '../auth/useAuth';
-import { ROLE } from '../constants/roles';
+import { ROLE, isAdminRole } from '../constants/roles';
 
 export default function Home({ onQuickAction, onCreateStaffUser, onCreateLinkCode, userRole }) {
     const { user, userProfile } = useAuth();
@@ -18,10 +18,9 @@ export default function Home({ onQuickAction, onCreateStaffUser, onCreateLinkCod
     const [notificationLogs, setNotificationLogs] = useState([]);
     const [logLoading, setLogLoading] = useState(false);
     const [logError, setLogError] = useState('');
-    const isAdmin = userRole === ROLE.ADMIN;
+    const isAdmin = isAdminRole(userRole);
     const fallbackName = userProfile?.email || user?.email ? (userProfile?.email || user?.email).split('@')[0] : '';
     const displayName = userProfile?.displayName?.trim()
-        || userProfile?.name?.trim()
         || user?.displayName?.trim()
         || fallbackName
         || '사용자';

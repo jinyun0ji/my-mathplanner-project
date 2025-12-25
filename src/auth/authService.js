@@ -16,13 +16,10 @@ export const signInWithGoogle = async () => {
     if (!snap.exists()) {
         await setDoc(userDocRef, {
             email: user.email ?? null,
-            name: user.displayName ?? null,
-            photoURL: user.photoURL ?? null,
-            provider: 'google',
+            displayName: user.displayName ?? null,
             role: null,
             active: true,
             createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
         });
     }
 

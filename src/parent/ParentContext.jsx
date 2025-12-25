@@ -1,7 +1,7 @@
 import React, { createContext, useCallback, useEffect, useMemo, useState } from 'react';
 import { doc, setDoc } from 'firebase/firestore';
 import { db } from '../firebase/client';
-import { ROLE } from '../constants/roles';
+import { isParentRole } from '../constants/roles';
 
 const ParentContext = createContext(null);
 const STORAGE_KEY = 'parent.activeStudentId';
@@ -53,9 +53,9 @@ export function ParentProvider({ userId, role, studentIds, firestoreActiveStuden
         }
 
         try {
-            await setDoc(doc(db, 'users', userId), { activeStudentUid: nextStudentId }, { merge: true });
+            await setDoc(doc(db, 'users', userId), { activeStudentId: nextStudentId }, { merge: true });
         } catch (error) {
-            console.error('activeStudentUid 저장 실패:', error);
+            console.error('activeStudentId 저장 실패:', error);
         }
     }, [userId]);
 
@@ -76,7 +76,7 @@ export function ParentProvider({ userId, role, studentIds, firestoreActiveStuden
     }, [studentIds, persistActiveStudentId]);
 
     useEffect(() => {
-        if (role !== ROLE.PARENT) {
+        if (!isParentRole(role)) {
             setActiveStudentIdState(null);
             setLoading(false);
             return;

@@ -7,19 +7,17 @@ export default function Header({ page }) {
 
     const fallbackName = userProfile?.email || user?.email ? (userProfile?.email || user?.email).split('@')[0] : '';
     const displayName = userProfile?.displayName?.trim()
-        || userProfile?.name?.trim()
         || user?.displayName?.trim()
         || fallbackName
         || '사용자';
-    const roleLabel = role === ROLE.ADMIN
-        ? '관리자'
-        : role === ROLE.STAFF
-            ? '직원'
-            : role === ROLE.PARENT
-                ? '학부모'
-                : role === ROLE.STUDENT
-                    ? '학생'
-                    : '권한 확인 중';
+    const roleLabels = {
+        [ROLE.ADMIN]: '관리자',
+        [ROLE.STAFF]: '직원',
+        [ROLE.TEACHER]: '강사',
+        [ROLE.PARENT]: '학부모',
+        [ROLE.STUDENT]: '학생',
+    };
+    const roleLabel = roleLabels[role] || '권한 확인 중';
     const avatarLabel = displayName?.[0] || '?';
 
     const getPageTitle = (pageKey) => {

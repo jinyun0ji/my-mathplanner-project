@@ -1,6 +1,7 @@
 const functions = require('firebase-functions');
-const { getFirestore, FieldValue } = require('firebase-admin/firestore');
+const { getFirestore } = require('firebase-admin/firestore');
 const { assertAdmin } = require('../_utils/assertAdmin');
+const { ROLE } = require('../_utils/roles');
 
 const updateStaffRole = functions.https.onCall(async (data, context) => {
     const { uid: requesterUid } = await assertAdmin(context);
@@ -12,7 +13,7 @@ const updateStaffRole = functions.https.onCall(async (data, context) => {
         throw new functions.https.HttpsError('invalid-argument', 'targetUid and newRole are required.');
     }
 
-    if (!['admin', 'staff'].includes(newRole)) {
+    if (![ROLE.ADMIN, ROLE.STAFF].includes(newRole)) {
         throw new functions.https.HttpsError('invalid-argument', 'newRole must be admin or staff.');
     }
 
@@ -24,7 +25,6 @@ const updateStaffRole = functions.https.onCall(async (data, context) => {
     await db.collection('users').doc(targetUid).set(
         {
             role: newRole,
-            updatedAt: FieldValue.serverTimestamp(),
         },
         { merge: true },
     );

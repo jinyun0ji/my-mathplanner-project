@@ -18,17 +18,45 @@ service cloud.firestore {
     function userRole() {
       return userDoc() != null ? userDoc().data.role : null;
     }
+    
+    function resourceRole() {
+      return resource != null ? resource.data.role : null;
+    }
+
+    function requestRole() {
+      return request.resource.data.role;
+    }
+
+    function isResourceRole(role) {
+      return resourceRole() == role;
+    }
+
+    function isRequestRole(role) {
+      return requestRole() == role;
+    }
 
     function isAdmin() {
       return userRole() == 'admin';
     }
 
     function isStaff() {
-      return userRole() == 'staff' || userRole() == 'teacher';
+      return userRole() == 'staff';
+    }
+    
+    function isTeacher() {
+      return userRole() == 'teacher';
+    }
+
+    function isStaffOrTeacher() {
+      return isStaff() || isTeacher();
     }
     
     function isStaffOrAdmin() {
       return isStaff() || isAdmin();
+    }
+    
+    function isStaffOrAdminOrTeacher() {
+      return isStaffOrTeacher() || isAdmin();
     }
 
     function isStudent() {
@@ -53,24 +81,24 @@ service cloud.firestore {
         && (
           request.auth.uid == userId
           || (resource.data.authUid != null && request.auth.uid == resource.data.authUid)
-          || isStaffOrAdmin()
-          || (isParent() && resource.data.role == 'student'
+          || isStaffOrAdminOrTeacher()
+          || (isParent() && isResourceRole('student')
               && (resource.data.authUid in parentStudentUids() || userId in parentStudentUids()))
         );
-      allow create: if isStaffOrAdmin()
+      allow create: if isStaffOrAdminOrTeacher()
         || (
           isSignedIn()
           && request.auth.uid == userId
           && request.resource.data.active == true
-          && (request.resource.data.role == 'student' || request.resource.data.role == 'parent')
+          && (isRequestRole('student') || isRequestRole('parent'))
         );
-      allow update: if isStaffOrAdmin()
+      allow update: if isStaffOrAdminOrTeacher()
         || (
           isSignedIn()
           && request.auth.uid == userId
-          && (resource.data.role == 'student' || resource.data.role == 'parent')
+          && (isResourceRole('student') || isResourceRole('parent'))
         );
-      allow delete: if isStaffOrAdmin()
+      allow delete: if isStaffOrAdminOrTeacher()
         || (isSignedIn() && request.auth.uid == userId);
     }
 
@@ -89,59 +117,55 @@ service cloud.firestore {
 
     match /lessonLogs/{docId} {
       allow read, list: if isSignedIn();
-      allow write: if isStaff() || isAdmin();
+      allow write: if isStaffOrAdminOrTeacher();
     }
 
     match /attendanceLogs/{docId} {
-      allow read, list: if isStaff()
-        || isAdmin()
+      allow read, list: if isStaffOrAdminOrTeacher()
         || (isStudent() && request.auth.uid == resource.data.studentUid)
         || (isParent() && resource.data.studentUid in parentStudentUids());
-      allow write: if isStaff() || isAdmin();
+      allow write: if isStaffOrAdminOrTeacher();
     }
 
     match /clinicLogs/{docId} {
-      allow read, list: if isStaff()
-        || isAdmin()
+      allow read, list: if isStaffOrAdminOrTeacher()
         || (isStudent() && request.auth.uid == resource.data.authUid)
         || (isParent() && resource.data.authUid in parentStudentUids());
-      allow write: if isStaff() || isAdmin();
+      allow write: if isStaffOrAdminOrTeacher();
     }
 
     match /workLogs/{docId} {
-      allow read, list: if isStaff() || isAdmin();
-      allow write: if isStaff() || isAdmin();
+      allow read, list: if isStaffOrAdminOrTeacher();
+      allow write: if isStaffOrAdminOrTeacher();
     }
 
     match /announcements/{docId} {
       allow read: if isSignedIn();
-      allow write: if isStaff() || isAdmin();
+      allow write: if isStaffOrAdminOrTeacher();
     }
 
     match /homeworkAssignments/{docId} {
       allow read: if isSignedIn();
-      allow write: if isStaff() || isAdmin();
+      allow write: if isStaffOrAdminOrTeacher();
     }
 
     match /payments/{docId} {
-      allow read, list: if isStaff() || isAdmin();
+      allow read, list: if isStaffOrAdminOrTeacher();
       allow write: if isAdmin();
     }
 
     match /grades/{docId} {
-      allow read, list: if isStaff()
-        || isAdmin()
+      allow read, list: if isStaffOrAdminOrTeacher()
         || (isStudent() && request.auth.uid == resource.data.authUid)
         || (isParent() && resource.data.authUid in parentStudentUids());
-      allow write: if isStaff() || isAdmin();
+      allow write: if isStaffOrAdminOrTeacher();
     }
 
     match /homeworkResults/{docId} {
-      allow read, list: if isStaff()
-        || isAdmin()
+      allow read, list: if isStaffOrAdminOrTeacher()
         || (isStudent() && request.auth.uid == resource.data.authUid)
         || (isParent() && resource.data.authUid in parentStudentUids());
-      allow write: if isStaff() || isAdmin();
+      allow write: if isStaffOrAdminOrTeacher();
     }
     
     match /videoProgress/{docId} {
@@ -171,18 +195,18 @@ service cloud.firestore {
        Notifications
     ========================= */
     match /notifications/{logId} {
-      allow read, write: if isStaffOrAdmin();
+      allow read, write: if isStaffOrAdminOrTeacher();
     }
 
     match /notifications/{uid}/items/{notificationId} {
       allow read: if isSignedIn()
-        && (request.auth.uid == uid || isStaffOrAdmin());
-      allow write: if isStaffOrAdmin();
+        && (request.auth.uid == uid || isStaffOrAdminOrTeacher());
+      allow write: if isStaffOrAdminOrTeacher();
     }
 
     match /notifications/{uid}/meta {
       allow read, write: if isSignedIn()
-        && (request.auth.uid == uid || isStaffOrAdmin());
+        && (request.auth.uid == uid || isStaffOrAdminOrTeacher());
     }
 
     /* =========================

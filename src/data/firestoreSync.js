@@ -9,7 +9,12 @@ import {
     limit,
     getDocs,
 } from 'firebase/firestore';
-import { ROLE, STAFF_ROLES } from '../constants/roles';
+import {
+    ROLE,
+    isStaffOrTeachingRole,
+    isViewerGroupRole,
+    isStudentRole,
+} from '../constants/roles';
 
 const normalizeAuthUid = (item) => {
     if (item?.studentId) return item;
@@ -28,7 +33,7 @@ const fetchList = async (db, colName, setter, q, isCancelled, mapper = null) => 
 };
 
 const normalizeStudentUser = (user) => {
-    if (!user || user.role !== ROLE.STUDENT) return user;
+    if (!user || !isStudentRole(user.role)) return user;
     return {
         ...user,
         classes: Array.isArray(user.classIds) ? user.classIds : (user.classes || []),
@@ -55,7 +60,7 @@ export const loadStaffDataOnce = async ({
 }) => {
     if (!isLoggedIn || !db) return;
     if (!userRole) return;
-    if (!STAFF_ROLES.includes(userRole)) return;
+    if (!isStaffOrTeachingRole(userRole)) return;
 
     const shouldLoad = (key) => !pageKey || pageKey === key;
 
@@ -156,7 +161,7 @@ export const loadViewerDataOnce = async ({
     setGrades,
     isCancelled = () => false,
 }) => {
-    const isViewerRole = [ROLE.STUDENT, ROLE.PARENT].includes(userRole);
+    const isViewerRole = isViewerGroupRole(userRole);
     if (!isLoggedIn || !db || !isViewerRole) return;
 
     const viewerStudentUids = (userRole === 'student'

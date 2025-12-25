@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import useAuth from '../auth/useAuth';
-import { ROLE } from '../constants/roles';
+import { isAdminRole } from '../constants/roles';
 
 export default function AdminRoute({ children }) {
     const { user, role, loading } = useAuth();
@@ -16,7 +16,7 @@ export default function AdminRoute({ children }) {
         if (role === null) {
             return;
         }
-        if (role !== ROLE.ADMIN) {
+        if (!isAdminRole(role)) {
             navigate('/home', { replace: true });
         }
     }, [loading, navigate, role, user]);
@@ -29,7 +29,7 @@ export default function AdminRoute({ children }) {
         );
     }
 
-    if (!user || role === null || role !== ROLE.ADMIN) {
+    if (!user || role === null || !isAdminRole(role)) {
         return null;
     }
 

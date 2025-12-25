@@ -9,7 +9,7 @@ import {
 } from 'firebase/firestore';
 import { Link } from 'react-router-dom';
 import { auth, db } from '../firebase/client';
-import { ROLE } from '../constants/roles';
+import { ROLE, isParentRole, isViewerGroupRole } from '../constants/roles';
 
 const normalizeInviteCode = (value) => (value || '').trim();
 
@@ -44,7 +44,7 @@ export default function InviteSignupPage() {
                 return;
             }
             const inviteData = inviteSnap.data();
-            if (![ROLE.STUDENT, ROLE.PARENT].includes(inviteData?.role)) {
+            if (!isViewerGroupRole(inviteData?.role)) {
                 setStatus('학생/학부모 전용 초대 코드만 사용할 수 있습니다.');
                 return;
             }
@@ -62,6 +62,7 @@ export default function InviteSignupPage() {
                 setStatus('이름을 입력해주세요.');
                 return;
             }
+            const normalizedStudentId = inviteData?.studentId ? String(inviteData.studentId).trim() : '';
 
             const credential = await createUserWithEmailAndPassword(auth, email.trim(), password);
             const { user } = credential;
@@ -72,13 +73,11 @@ export default function InviteSignupPage() {
 
             const userPayload = {
                 role: inviteData.role,
-                name: finalName,
+                displayName: finalName,
                 email: email.trim(),
                 active: true,
-                studentIds: inviteData.role === ROLE.PARENT && inviteData.studentId ? [inviteData.studentId] : [],
-                classIds: inviteData.role === ROLE.STUDENT ? (inviteData.classIds || []) : [],
+                studentIds: isParentRole(inviteData.role) && normalizedStudentId ? [normalizedStudentId] : [],
                 createdAt: serverTimestamp(),
-                updatedAt: serverTimestamp(),
             };
 
             await setDoc(doc(db, 'users', user.uid), userPayload, { merge: true });

@@ -1,5 +1,6 @@
 const functions = require('firebase-functions');
 const { getFirestore, FieldValue } = require('firebase-admin/firestore');
+const { ROLE } = require('../_utils/roles');
 
 const claimStudentLinkCode = functions.https.onCall(async (data, context) => {
     if (!context?.auth?.uid) {
@@ -18,7 +19,7 @@ const claimStudentLinkCode = functions.https.onCall(async (data, context) => {
     await db.runTransaction(async (tx) => {
         const userSnap = await tx.get(userRef);
         const userRole = userSnap.exists ? userSnap.data()?.role : null;
-        if (userRole && userRole !== 'pending' && userRole !== 'parent') {
+        if (userRole && userRole !== ROLE.PARENT) {
             throw new functions.https.HttpsError('permission-denied', '학부모만 학생을 연결할 수 있습니다.');
         }
 
@@ -33,17 +34,17 @@ const claimStudentLinkCode = functions.https.onCall(async (data, context) => {
         }
 
         const rawStudentId = typeof linkData.studentId === 'string' ? linkData.studentId.trim() : linkData.studentId;
-        const studentId = rawStudentId !== undefined && rawStudentId !== null && !Number.isNaN(Number(rawStudentId))
-            ? Number(rawStudentId)
-            : rawStudentId;
-        if (!studentId && studentId !== 0) {
+        const studentId = rawStudentId !== undefined && rawStudentId !== null
+            ? String(rawStudentId)
+            : '';
+        if (!studentId) {
             throw new functions.https.HttpsError('failed-precondition', '학생 정보가 없는 코드입니다.');
         }
 
         tx.update(codeRef, { claimedBy: context.auth.uid, claimedAt: FieldValue.serverTimestamp() });
         tx.set(
             userRef,
-            { role: 'parent', studentIds: FieldValue.arrayUnion(studentId) },
+            { role: ROLE.PARENT, studentIds: FieldValue.arrayUnion(studentId) },
             { merge: true },
         );
     });

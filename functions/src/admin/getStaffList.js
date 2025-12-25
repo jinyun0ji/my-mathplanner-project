@@ -1,19 +1,20 @@
 const functions = require('firebase-functions');
 const { getFirestore } = require('firebase-admin/firestore');
 const { assertAdmin } = require('../_utils/assertAdmin');
+const { ROLE } = require('../_utils/roles');
 
 const getStaffList = functions.https.onCall(async (data, context) => {
     await assertAdmin(context);
 
     const db = getFirestore();
-    const snapshot = await db.collection('users').where('role', 'in', ['admin', 'staff']).get();
+    const snapshot = await db.collection('users').where('role', 'in', [ROLE.ADMIN, ROLE.STAFF]).get();
 
     return snapshot.docs.map((doc) => {
         const payload = doc.data() || {};
 
         return {
             uid: doc.id,
-            name: payload.displayName ?? null,
+            displayName: payload.displayName ?? null,
             email: payload.email ?? null,
             role: payload.role ?? null,
             active: payload.active ?? null,

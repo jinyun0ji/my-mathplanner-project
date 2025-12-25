@@ -106,6 +106,8 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
             value={video.title}
             onChange={e => onChange(video.id, 'title', e.target.value)}
             onPointerDown={e => e.stopPropagation()}
+            onPointerDownCapture={e => e.stopPropagation()}
+            onMouseDown={e => e.stopPropagation()}
             className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border"
             placeholder="예: 3강 - 다항식 연산"
           />
@@ -116,6 +118,8 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
             value={video.url}
             onChange={e => onChange(video.id, 'url', e.target.value)}
             onPointerDown={e => e.stopPropagation()}
+            onPointerDownCapture={e => e.stopPropagation()}
+            onMouseDown={e => e.stopPropagation()}
             rows="2"
             className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border"
             placeholder="유튜브 임베드 코드 또는 공유 링크를 입력하세요."

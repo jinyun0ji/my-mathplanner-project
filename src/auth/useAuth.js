@@ -11,7 +11,7 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../firebase/client';
 import { signOutUser } from './authService';
-import { ROLE } from '../constants/roles';
+import { ALLOWED_ROLES, isParentRole } from '../constants/roles';
 
 const AuthContext = createContext(null);
 
@@ -31,6 +31,8 @@ const normalizeStudentIds = (data) => {
     }
     return [];
 };
+
+const normalizeRole = (role) => (ALLOWED_ROLES.includes(role) ? role : null);
 
 export function AuthProvider({ children }) {
     const [user, setUser] = useState(null);
@@ -113,17 +115,16 @@ export function AuthProvider({ children }) {
 
                 const profile = {
                     uid: currentUser.uid,
-                    role: data?.role ?? null,
+                    role: normalizeRole(data?.role ?? null),
                     active: data?.active !== false,
-                    displayName: data?.name ?? data?.displayName ?? '',
-                    name: data?.name ?? '',
+                    displayName: data?.displayName ?? '',
                     email: data?.email ?? '',
                 };
                 setUserProfile(profile);
                 setRole(profile.role);
-                if (profile.role === ROLE.PARENT) {
+                if (isParentRole(profile.role)) {
                     setStudentIds(normalizeStudentIds(data));
-                    setActiveStudentId(data?.activeStudentUid ?? null);
+                    setActiveStudentId(data?.activeStudentId ?? null);
                 } else {
                     setStudentIds([]);
                     setActiveStudentId(null);

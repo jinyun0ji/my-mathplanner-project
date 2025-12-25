@@ -26,7 +26,15 @@ import AdminPaymentsPage from '../pages/admin/AdminPaymentsPage';
 import AdminSettingsPage from '../pages/admin/AdminSettingsPage';
 import AdminRoute from '../routes/AdminRoute';
 import useAuth from '../auth/useAuth';
-import { ROLE, STAFF_ROLES } from '../constants/roles';
+import {
+    ROLE,
+    isParentRole,
+    isStudentRole,
+    isAdminRole,
+    isStaffRole,
+    isStaffOrTeachingRole,
+    isViewerGroupRole,
+} from '../constants/roles';
 import { db } from '../firebase/client';
 import { loadStaffDataOnce, loadViewerDataOnce } from '../data/firestoreSync';
 import { createLinkCode, createStaffUser } from '../admin/staffService';
@@ -131,7 +139,7 @@ export default function AppRoutes({ user, role, studentIds }) {
       studentIds: parentStudentIds,
       loading: parentLoading,
   } = useParentContext();
-  const parentStudentId = role === ROLE.PARENT ? parentActiveStudentId : null;
+  const parentStudentId = isParentRole(role) ? parentActiveStudentId : null;
 
   const [students, setStudents] = useState([]);
   const [classes, setClasses] = useState([]);
@@ -156,7 +164,6 @@ export default function AppRoutes({ user, role, studentIds }) {
       try { return JSON.parse(localStorage.getItem('videoBookmarks')) || {}; }
       catch (e) { return {}; }
   });
-  const isStaffRole = STAFF_ROLES.includes(role);
   useEffect(() => {
       if (isAuthenticated) processedAnnouncementIdsRef.current = new Set();
   }, [isAuthenticated, userId]);
@@ -190,7 +197,7 @@ export default function AppRoutes({ user, role, studentIds }) {
           isLoggedIn: isAuthenticated,
           userRole: role,
           userId,
-          activeStudentId: role === ROLE.PARENT ? parentActiveStudentId : null,
+          activeStudentId: isParentRole(role) ? parentActiveStudentId : null,
           setStudents,
           setClasses,
           setLessonLogs,
@@ -239,12 +246,12 @@ export default function AppRoutes({ user, role, studentIds }) {
 
   useEffect(() => {
       if (!announcements || announcements.length === 0) return;
-      if (![ROLE.STUDENT, ROLE.PARENT].includes(role)) return;
+      if (!isViewerGroupRole(role)) return;
 
       const processed = processedAnnouncementIdsRef.current;
       const newMessages = [];
 
-      const announcementTargets = role === ROLE.PARENT
+      const announcementTargets = isParentRole(role)
           ? studentIds
           : userId
               ? [userId]
@@ -826,8 +833,8 @@ export default function AppRoutes({ user, role, studentIds }) {
       await claimStudentLinkCode(code);
   };
 
-  if (role === ROLE.STUDENT) return <StudentHome studentId={userId} userId={userId} students={students} classes={classes} homeworkAssignments={homeworkAssignments} homeworkResults={homeworkResults} attendanceLogs={attendanceLogs} lessonLogs={lessonLogs} notices={announcements} tests={tests} grades={grades} videoProgress={videoProgress} onSaveVideoProgress={handleSaveVideoProgress} videoBookmarks={videoBookmarks} onSaveBookmark={handleSaveBookmark} externalSchedules={externalSchedules} onSaveExternalSchedule={handleSaveExternalSchedule} onDeleteExternalSchedule={handleDeleteExternalSchedule} clinicLogs={clinicLogs} onUpdateStudent={handleSaveStudent} messages={studentMessages} onSendMessage={() => {}} onLogout={handleLogout} />;
-  if (role === ROLE.PARENT) {
+  if (isStudentRole(role)) return <StudentHome studentId={userId} userId={userId} students={students} classes={classes} homeworkAssignments={homeworkAssignments} homeworkResults={homeworkResults} attendanceLogs={attendanceLogs} lessonLogs={lessonLogs} notices={announcements} tests={tests} grades={grades} videoProgress={videoProgress} onSaveVideoProgress={handleSaveVideoProgress} videoBookmarks={videoBookmarks} onSaveBookmark={handleSaveBookmark} externalSchedules={externalSchedules} onSaveExternalSchedule={handleSaveExternalSchedule} onDeleteExternalSchedule={handleDeleteExternalSchedule} clinicLogs={clinicLogs} onUpdateStudent={handleSaveStudent} messages={studentMessages} onSendMessage={() => {}} onLogout={handleLogout} />;
+  if (isParentRole(role)) {
       if (parentLoading) {
           return <div className="min-h-screen flex items-center justify-center">로딩 중...</div>;
       }
@@ -858,8 +865,8 @@ export default function AppRoutes({ user, role, studentIds }) {
     calculateGradeComparison, calculateHomeworkStats,
     setIsGlobalDirty, studentSearchTerm, setStudentSearchTerm, handleSendStudentNotification,
     externalSchedules, pendingQuickAction, clearPendingQuickAction: () => setPendingQuickAction(null), onQuickAction: handleQuickAction,
-    onCreateStaffUser: role === ROLE.ADMIN ? handleCreateStaffUser : null,
-    onCreateLinkCode: role === ROLE.STAFF ? handleCreateLinkCode : null,
+    onCreateStaffUser: isAdminRole(role) ? handleCreateStaffUser : null,
+    onCreateLinkCode: isStaffRole(role) ? handleCreateLinkCode : null,
     userRole: role,
   };
 

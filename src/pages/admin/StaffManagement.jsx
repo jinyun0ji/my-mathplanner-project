@@ -105,7 +105,7 @@ export default function StaffManagement() {
     };
 
     const resolveStaffName = (staff) => {
-        if (staff?.name) return staff.name;
+        if (staff?.displayName) return staff.displayName;
         if (staff?.email) return staff.email.split('@')[0] || '이메일 없음';
         return '이메일 없음';
     };

@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const { getAuth } = require('firebase-admin/auth');
 const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 const { assertAdmin } = require('../_utils/assertAdmin');
+const { ROLE } = require('../_utils/roles');
 
 const createStaffUser = functions.https.onCall(async (data, context) => {
     await assertAdmin(context);
@@ -16,7 +17,7 @@ const createStaffUser = functions.https.onCall(async (data, context) => {
         throw new functions.https.HttpsError('invalid-argument', 'Email and role are required.');
     }
 
-    if (!['staff', 'admin'].includes(role)) {
+    if (![ROLE.STAFF, ROLE.ADMIN].includes(role)) {
         throw new functions.https.HttpsError('invalid-argument', 'Role must be staff or admin.');
     }
 
@@ -47,7 +48,6 @@ const createStaffUser = functions.https.onCall(async (data, context) => {
         email: userRecord.email ?? email,
         displayName: userRecord.displayName ?? null,
         role,
-        updatedAt: FieldValue.serverTimestamp(),
     };
 
     if (shouldInitialize) {

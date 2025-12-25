@@ -6,7 +6,7 @@ import OnboardingPage from '../pages/OnboardingPage';
 import LoginPage from '../pages/LoginPage';
 import InviteSignupPage from '../pages/InviteSignupPage';
 import useAuth from '../auth/useAuth';
-import { ROLE } from '../constants/roles';
+import { isParentRole } from '../constants/roles';
 import { claimStudentLinkCode } from '../parent/linkCodeService';
 import { ParentProvider } from '../parent';
 import { redirectToKakao, redirectToNaver } from '../auth/socialRedirect';
@@ -31,6 +31,7 @@ export default function AuthGate() {
       profileError,
       logout,
   } = useAuth();
+  const needsParentOnboarding = isParentRole(role) && (!Array.isArray(studentIds) || studentIds.length === 0);
 
   useEffect(() => {
       let unsubscribe = null;
@@ -62,15 +63,15 @@ export default function AuthGate() {
           return;
       }
 
-      if (role === ROLE.PENDING && pathname !== '/onboarding') {
+      if (needsParentOnboarding && pathname !== '/onboarding') {
           navigate('/onboarding', { replace: true });
           return;
       }
 
-      if (role && role !== ROLE.PENDING && !isStudentDetailPage && (isOnboardingPage || isLoginPage || isSignupPage)) {
+      if (role && !needsParentOnboarding && !isStudentDetailPage && (isOnboardingPage || isLoginPage || isSignupPage)) {
           navigate('/lessons', { replace: true });
       }
-  }, [isAuthCallbackPage, isLoginPage, isOnboardingPage, isSignupPage, isStudentDetailPage, loading, navigate, pathname, role, user]);
+  }, [isAuthCallbackPage, isLoginPage, isOnboardingPage, isSignupPage, isStudentDetailPage, loading, navigate, needsParentOnboarding, pathname, role, user]);
 
   const handleSocialLogin = async (providerName) => {
       if (providerName === 'google') return signInWithGoogle();
@@ -111,9 +112,9 @@ export default function AuthGate() {
           </div>
       );
   }
-  if (role === ROLE.PENDING || isOnboardingPage) return <OnboardingPage onSubmitLinkCode={handleClaimLinkCode} />;
+  if (needsParentOnboarding || isOnboardingPage) return <OnboardingPage onSubmitLinkCode={handleClaimLinkCode} />;
 
-  const appRoutesElement = role === ROLE.PARENT ? (
+  const appRoutesElement = isParentRole(role) ? (
       <ParentProvider
           userId={user?.uid || null}
           role={role}

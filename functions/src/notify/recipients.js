@@ -1,4 +1,5 @@
 const { getFirestore } = require('firebase-admin/firestore');
+const { ROLE } = require('../_utils/roles');
 
 const db = getFirestore();
 
@@ -16,8 +17,8 @@ const getRecipientsForStudent = async (authUid) => {
 
     const data = snapshot.data() || {};
     const parentQuery = await db.collection('users')
-        .where('role', '==', 'parent')
-        .where('linkedStudentUids', 'array-contains', String(authUid))
+        .where('role', '==', ROLE.PARENT)
+        .where('studentIds', 'array-contains', String(authUid))
         .get();
     const parentUids = parentQuery.docs.map((doc) => doc.id).filter(Boolean);
     const studentUid = data.authUid || data.uid || authUid;
