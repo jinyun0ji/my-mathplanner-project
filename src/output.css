@@ -425,6 +425,9 @@
 .min-h-\[42px\] {
   min-height: 42px;
 }
+.min-h-\[60vh\] {
+  min-height: 60vh;
+}
 .min-h-\[80vh\] {
   min-height: 80vh;
 }
@@ -1403,6 +1406,9 @@
 }
 .bg-\[radial-gradient\(circle_at_18\%_25\%\,rgba\(56\,189\,248\,0\.24\)\,transparent_40\%\)\,radial-gradient\(circle_at_82\%_20\%\,rgba\(45\,212\,191\,0\.22\)\,transparent_40\%\)\,linear-gradient\(135deg\,\#0a1434\,\#1d4ed8\,\#0d9488\)\] {
   background-image: radial-gradient(circle at 18% 25%,rgba(56,189,248,0.24),transparent 40%),radial-gradient(circle at 82% 20%,rgba(45,212,191,0.22),transparent 40%),linear-gradient(135deg,#0a1434,#1d4ed8,#0d9488);
+}
+.bg-\[radial-gradient\(circle_at_20\%_20\%\,rgba\(56\,189\,248\,0\.35\)\,transparent_45\%\)\,radial-gradient\(circle_at_80\%_0\%\,rgba\(45\,212\,191\,0\.35\)\,transparent_45\%\)\,linear-gradient\(135deg\,\#0a1434\,\#1d4ed8\,\#0d9488\)\] {
+  background-image: radial-gradient(circle at 20% 20%,rgba(56,189,248,0.35),transparent 45%),radial-gradient(circle at 80% 0%,rgba(45,212,191,0.35),transparent 45%),linear-gradient(135deg,#0a1434,#1d4ed8,#0d9488);
 }
 .bg-\[radial-gradient\(circle_at_20\%_20\%\,rgba\(255\,255\,255\,0\.3\)\,transparent_35\%\)\,radial-gradient\(circle_at_80\%_0\%\,rgba\(255\,255\,255\,0\.25\)\,transparent_30\%\)\,radial-gradient\(circle_at_50\%_80\%\,rgba\(255\,255\,255\,0\.2\)\,transparent_25\%\)\] {
   background-image: radial-gradient(circle at 20% 20%,rgba(255,255,255,0.3),transparent 35%),radial-gradient(circle at 80% 0%,rgba(255,255,255,0.25),transparent 30%),radial-gradient(circle at 50% 80%,rgba(255,255,255,0.2),transparent 25%);
