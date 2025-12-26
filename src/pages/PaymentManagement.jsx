@@ -9,15 +9,14 @@ import { isStaffOrTeachingRole } from '../constants/roles';
 import { useClassStudents } from '../utils/useClassStudents';
 
 // ✅ [수정] props에 paymentLogs, handleSavePayment 추가
-export default function PaymentManagement({ classes, paymentLogs, handleSavePayment, handleUpdatePayment, logNotification, userRole, userId }) {
+export default function PaymentManagement({ classes, paymentLogs, isPaymentLogsLoading, handleSavePayment, handleUpdatePayment, logNotification, userRole, userId }) {
 
     // --- 1. 초기 데이터 및 상태 ---
-    const initialPaymentLogs = [
-        { id: 1, date: '2025-11-20', studentName: '김민준', studentId: 'stu-1', bookId: 1, bookName: 'RPM 수학(상)', amount: 15000, method: '카드', type: '현장결제' },
-    ];
-
     const [materialsByClass, setMaterialsByClass] = useState({});
+    const [inventoryBooks, setInventoryBooks] = useState([]);
     const [materialsError, setMaterialsError] = useState('');
+    const [isMaterialsLoading, setIsMaterialsLoading] = useState(false);
+    const [isInventoryLoading, setIsInventoryLoading] = useState(false);
     const [activeTab, setActiveTab] = useState('classStatus');
 
     const [viewClassId, setViewClassId] = useState(() => {
@@ -40,13 +39,14 @@ export default function PaymentManagement({ classes, paymentLogs, handleSavePaym
     const [notificationTargets, setNotificationTargets] = useState([]); // 알림 보낼 대상 목록
 
     // 폼 상태
-    const [newBook, setNewBook] = useState({ name: '', price: 0, stock: 0, type: '진도교재' });
+    const [newBook, setNewBook] = useState({ title: '', price: 0, stock: 0, type: '진도교재' });
     const [paymentForm, setPaymentForm] = useState({
         studentId: '',
         bookId: '',
         method: '간편결제',
         channel: '간편결제',
     });
+    const [isSubmittingPayment, setIsSubmittingPayment] = useState(false);
     const [editingPaymentId, setEditingPaymentId] = useState(null);
     const [editingPaymentForm, setEditingPaymentForm] = useState({
         amount: '',
@@ -59,17 +59,71 @@ export default function PaymentManagement({ classes, paymentLogs, handleSavePaym
     const [selectedStudentIds, setSelectedStudentIds] = useState([]);
 
     const effectiveClasses = useMemo(
-        () => (classes && classes.length > 0 ? classes : initialClasses),
+        () => (Array.isArray(classes) && classes.length > 0 ? classes : initialClasses),
         [classes]
     );
     const effectiveStudents = useMemo(
-        () => (classStudents && classStudents.length > 0 ? classStudents : []),
+        () => (Array.isArray(classStudents) && classStudents.length > 0 ? classStudents : []),
         [classStudents]
     );
     const effectivePaymentLogs = useMemo(
-        () => (paymentLogs && paymentLogs.length > 0 ? paymentLogs : initialPaymentLogs),
+        () => (Array.isArray(paymentLogs) ? paymentLogs : []),
         [paymentLogs]
     );
+
+    const normalizeBook = useCallback((book) => {
+        const price = Number.isFinite(book?.price) ? book.price : 0;
+        const stock = Number.isFinite(book?.stock) ? book.stock : 0;
+        return {
+            ...book,
+            title: book?.title || book?.name || '교재명 없음',
+            price,
+            stock,
+            active: book?.active !== false,
+        };
+    }, []);
+
+    const getBookTitle = useCallback((book) => book?.title || book?.name || '교재명 없음', []);
+    const getBookPrice = useCallback((book) => (Number.isFinite(book?.price) ? book.price : 0), []);
+    const getBookStock = useCallback((book) => (Number.isFinite(book?.stock) ? book.stock : 0), []);
+
+    const studentNameMap = useMemo(() => {
+        return effectiveStudents.reduce((acc, student) => {
+            acc[String(student.id)] = student;
+            return acc;
+        }, {});
+    }, [effectiveStudents]);
+
+    const getLogDate = useCallback((log) => {
+        if (log?.date) return log.date;
+        if (log?.createdAt?.toDate) {
+            return log.createdAt.toDate().toISOString().slice(0, 10);
+        }
+        return '';
+    }, []);
+
+    const getLogStudentName = useCallback((log) => {
+        return log?.studentName || studentNameMap[String(log?.studentId)]?.name || '학생 미확인';
+    }, [studentNameMap]);
+
+    const getLogBookName = useCallback((log) => {
+        if (log?.bookName) return log.bookName;
+        if (log?.bookTitle) return log.bookTitle;
+        const firstItem = Array.isArray(log?.items) ? log.items[0] : null;
+        return firstItem?.title || firstItem?.name || '교재 미확인';
+    }, []);
+
+    const getPaymentTypeLabel = useCallback((type) => {
+        if (type === 'book') return '교재비';
+        if (type === 'tuition') return '수업료';
+        return type || '-';
+    }, []);
+
+    const getPaymentTypeBadge = useCallback((type) => {
+        if (type === 'book') return 'bg-blue-50 text-blue-700 border-blue-200';
+        if (type === 'tuition') return 'bg-amber-50 text-amber-700 border-amber-200';
+        return 'bg-gray-50 text-gray-600 border-gray-200';
+    }, []);
 
     useEffect(() => {
         if (!effectiveClasses || effectiveClasses.length === 0) return;
@@ -108,12 +162,14 @@ export default function PaymentManagement({ classes, paymentLogs, handleSavePaym
         }
         if (!classId) return [];
         try {
+            setIsMaterialsLoading(true);
             const materialsQuery = query(
-                collection(db, 'materials'),
+                collection(db, 'books'),
+                where('active', '==', true),
                 where('classId', 'in', [String(classId), 'shared']),
             );
             const snapshot = await getDocs(materialsQuery);
-            const materials = snapshot.docs.map((docSnap) => ({
+            const materials = snapshot.docs.map((docSnap) => normalizeBook({
                 id: docSnap.id,
                 ...docSnap.data(),
             }));
@@ -128,8 +184,41 @@ export default function PaymentManagement({ classes, paymentLogs, handleSavePaym
             }
             setMaterialsByClass(prev => ({ ...prev, [String(classId)]: [] }));
             return [];
+        } finally {
+            setIsMaterialsLoading(false);
         }
-    }, [canReadMaterials, logNotification]);
+    }, [canReadMaterials, logNotification, normalizeBook]);
+
+    const fetchInventoryBooks = useCallback(async () => {
+        if (!canReadMaterials) {
+            return [];
+        }
+        try {
+            setIsInventoryLoading(true);
+            const materialsQuery = query(
+                collection(db, 'books'),
+                where('active', '==', true),
+            );
+            const snapshot = await getDocs(materialsQuery);
+            const materials = snapshot.docs.map((docSnap) => normalizeBook({
+                id: docSnap.id,
+                ...docSnap.data(),
+            }));
+            setInventoryBooks(materials);
+            setMaterialsError('');
+            return materials;
+        } catch (error) {
+            console.error('[Firestore READ ERROR]', error);
+            setMaterialsError('Firestore 권한을 확인해주세요.');
+            if (logNotification) {
+                logNotification('error', '교재 조회 실패', 'Firestore 권한 또는 네트워크를 확인해주세요.');
+            }
+            setInventoryBooks([]);
+            return [];
+        } finally {
+            setIsInventoryLoading(false);
+        }
+    }, [canReadMaterials, logNotification, normalizeBook]);
 
     useEffect(() => {
         if (!viewClassId || !canReadMaterials) return;
@@ -145,7 +234,9 @@ export default function PaymentManagement({ classes, paymentLogs, handleSavePaym
         if (!paymentForm.studentId || !canReadMaterials) return;
         const student = effectiveStudents.find(s => s.id === paymentForm.studentId);
         if (!student) return;
-        const classIds = student.classes || student.classIds || [];
+        const classIds = Array.isArray(student.classes)
+            ? student.classes
+            : (Array.isArray(student.classIds) ? student.classIds : []);
         classIds.forEach((classId) => {
             if (!materialsByClass[String(classId)]) {
                 fetchMaterialsByClass(classId);
@@ -153,9 +244,15 @@ export default function PaymentManagement({ classes, paymentLogs, handleSavePaym
         });
     }, [paymentForm.studentId, effectiveStudents, materialsByClass, fetchMaterialsByClass, canReadMaterials]);
 
+    useEffect(() => {
+        if (!canReadMaterials) return;
+        fetchInventoryBooks();
+    }, [canReadMaterials, fetchInventoryBooks]);
+
     const classMaterials = useMemo(() => {
         if (!viewClassId) return [];
-        return materialsByClass[String(viewClassId)] || [];
+        const materials = materialsByClass[String(viewClassId)];
+        return Array.isArray(materials) ? materials : [];
     }, [materialsByClass, viewClassId]);
 
     // [로직] 특정 반의 학생별 납부 현황 계산
@@ -165,21 +262,29 @@ export default function PaymentManagement({ classes, paymentLogs, handleSavePaym
         const targetClass = effectiveClasses.find(c => String(c.id) === String(viewClassId));
         if (!targetClass) return [];
 
-        const requiredBooks = classMaterials;
+        const requiredBooks = Array.isArray(classMaterials) ? classMaterials : [];
         if (requiredBooks.length === 0) return [];
-        const totalRequiredAmount = requiredBooks.reduce((sum, b) => sum + b.price, 0);
+        const totalRequiredAmount = requiredBooks.reduce((sum, b) => sum + getBookPrice(b), 0);
 
-        const classStudentIds = targetClass.students || [];
+        const classStudentIds = Array.isArray(targetClass.students) ? targetClass.students : [];
         return classStudentIds.map(studentId => {
             const student = effectiveStudents.find(s => s.id === studentId);
             if (!student) return null;
 
             const paidBookIds = effectivePaymentLogs
                 .filter(log => log.studentId === studentId)
-                .map(log => log.bookId);
+                .flatMap(log => {
+                    if (Array.isArray(log.items)) {
+                        return log.items.map(item => String(item.bookId));
+                    }
+                    if (log.bookId) {
+                        return [String(log.bookId)];
+                    }
+                    return [];
+                });
 
-            const unpaidBooks = requiredBooks.filter(b => !paidBookIds.includes(b.id));
-            const unpaidAmount = unpaidBooks.reduce((sum, b) => sum + b.price, 0);
+            const unpaidBooks = requiredBooks.filter(b => !paidBookIds.includes(String(b.id)));
+            const unpaidAmount = unpaidBooks.reduce((sum, b) => sum + getBookPrice(b), 0);
             const isFullyPaid = unpaidBooks.length === 0;
 
             return {
@@ -194,11 +299,16 @@ export default function PaymentManagement({ classes, paymentLogs, handleSavePaym
 
     }, [viewClassId, effectiveClasses, effectiveStudents, classMaterials, effectivePaymentLogs]);
 
+    const classPaymentStatusList = useMemo(
+        () => (Array.isArray(classPaymentStatus) ? classPaymentStatus : []),
+        [classPaymentStatus]
+    );
+
     // [체크박스 핸들러] 전체 선택/해제
     const handleSelectAll = (e) => {
         if (e.target.checked) {
             // 미납이 있는 학생만 선택
-            const unpaidStudentIds = classPaymentStatus
+            const unpaidStudentIds = classPaymentStatusList
                 .filter(s => !s.isFullyPaid)
                 .map(s => s.student.id);
             setSelectedStudentIds(unpaidStudentIds);
@@ -224,7 +334,7 @@ export default function PaymentManagement({ classes, paymentLogs, handleSavePaym
 
     // [알림 핸들러] 일괄 알림 버튼 클릭
     const openBulkNotification = () => {
-        const targets = classPaymentStatus.filter(s => selectedStudentIds.includes(s.student.id));
+        const targets = classPaymentStatusList.filter(s => selectedStudentIds.includes(s.student.id));
         if (targets.length === 0) return;
         setNotificationTargets(targets);
         setIsNotifModalOpen(true);
@@ -237,17 +347,21 @@ export default function PaymentManagement({ classes, paymentLogs, handleSavePaym
         }
         const student = effectiveStudents.find(s => s.id === paymentForm.studentId);
         if (!student) return classMaterials;
-        const classIds = student.classes || student.classIds || [];
+        const classIds = Array.isArray(student.classes)
+            ? student.classes
+            : (Array.isArray(student.classIds) ? student.classIds : []);
         const seen = new Map();
         classIds.forEach((classId) => {
             (materialsByClass[String(classId)] || []).forEach((book) => {
-                if (!seen.has(book.id)) {
-                    seen.set(book.id, book);
+                if (book?.active === false) return;
+                const key = String(book.id);
+                if (!seen.has(key)) {
+                    seen.set(key, normalizeBook(book));
                 }
             });
         });
         return Array.from(seen.values());
-    }, [paymentForm.studentId, effectiveStudents, materialsByClass, classMaterials]);
+    }, [paymentForm.studentId, effectiveStudents, materialsByClass, classMaterials, normalizeBook]);
 
     // [핸들러] 교재 등록
     const handleAddBook = async (e) => {
@@ -256,23 +370,25 @@ export default function PaymentManagement({ classes, paymentLogs, handleSavePaym
             alert('교재 조회 권한이 없습니다.');
             return;
         }
-        if (newBook.name && Number.isFinite(newBook.price) && newBook.price >= 0) {
+        if (newBook.title && Number.isFinite(newBook.price) && newBook.price >= 0) {
             try {
-                await addDoc(collection(db, 'materials'), {
+                await addDoc(collection(db, 'books'), {
                     classId: 'shared',
-                    name: newBook.name,
+                    title: newBook.title,
                     price: newBook.price,
                     stock: newBook.stock,
                     type: newBook.type,
+                    active: true,
                     createdAt: serverTimestamp(),
                     updatedAt: serverTimestamp(),
                 });
                 if (viewClassId) {
                     await fetchMaterialsByClass(viewClassId);
                 }
-                setNewBook({ name: '', price: 0, stock: 0, type: '진도교재' });
+                await fetchInventoryBooks();
+                setNewBook({ title: '', price: 0, stock: 0, type: '진도교재' });
                 setIsBookModalOpen(false);
-                if (logNotification) logNotification('success', '교재 등록 완료', `${newBook.name}이 등록되었습니다.`);
+                if (logNotification) logNotification('success', '교재 등록 완료', `${newBook.title}이 등록되었습니다.`);
             } catch (error) {
                 console.error('[Firestore WRITE ERROR]', error);
                 alert('교재 등록에 실패했습니다. 권한 또는 네트워크를 확인하세요.');
@@ -281,34 +397,55 @@ export default function PaymentManagement({ classes, paymentLogs, handleSavePaym
     };
 
     // [핸들러] 수납 처리 (App.jsx로 데이터 전달)
-    const handlePaymentSubmit = (e) => {
+    const handlePaymentSubmit = async (e) => {
         e.preventDefault();
         if (!paymentForm.studentId || !paymentForm.bookId) return;
 
-        const selectedBook = availableBooks.find(b => b.id === paymentForm.bookId);
+        const selectedBook = availableBooks.find(b => String(b.id) === String(paymentForm.bookId));
         const selectedStudent = effectiveStudents.find(s => s.id === paymentForm.studentId);
 
         if (!selectedBook) return;
-        if (typeof selectedBook.stock === 'number' && selectedBook.stock <= 0) {
+         const stockCount = getBookStock(selectedBook);
+        if (stockCount <= 0) {
             alert('재고가 부족합니다.');
             return;
         }
 
+        const bookPrice = getBookPrice(selectedBook);
+        const classIdCandidate = selectedBook.classId && selectedBook.classId !== 'shared'
+            ? selectedBook.classId
+            : (selectedStudent?.classIds?.[0] || selectedStudent?.classes?.[0] || viewClassId);
+        if (!classIdCandidate) {
+            alert('반 정보가 없어 결제를 저장할 수 없습니다.');
+            return;
+        }
+        const selectedBookTitle = getBookTitle(selectedBook);
         const newLog = {
-            id: Date.now(), // 실제 Firestore에선 자동 ID 생성됨
-            date: new Date().toISOString().slice(0, 10),
-            studentName: selectedStudent.name,
             studentId: selectedStudent.id,
-            bookName: selectedBook.name,
-            bookId: selectedBook.id,
-            amount: selectedBook.price,
+            classId: String(classIdCandidate),
+            amount: bookPrice,
             method: paymentForm.method,
-            type: paymentForm.channel,
-            status: '완납' // 기본 상태 추가
+            type: 'book',
+            channel: paymentForm.channel,
+            status: 'paid',
+            studentName: selectedStudent.name,
+            bookName: selectedBookTitle,
+            items: [{
+                bookId: selectedBook.id,
+                quantity: 1,
+                price: bookPrice,
+                title: selectedBookTitle,
+            }],
         };
 
         // ✅ [수정] App.jsx의 핸들러 호출
-        handleSavePayment(newLog);
+        setIsSubmittingPayment(true);
+        const result = await handleSavePayment(newLog);
+        setIsSubmittingPayment(false);
+        if (!result?.success) {
+            alert('결제 저장에 실패했습니다. 잠시 후 다시 시도해주세요.');
+            return;
+        }
 
         // 재고 차감 (로컬 상태)
         setMaterialsByClass(prev => {
@@ -318,20 +455,40 @@ export default function PaymentManagement({ classes, paymentLogs, handleSavePaym
                 ...prev,
                 [String(classId)]: prev[String(classId)].map(book =>
                     book.id === selectedBook.id
-                        ? { ...book, stock: typeof book.stock === 'number' ? book.stock - 1 : book.stock }
+                        ? { ...book, stock: Number.isFinite(book.stock) ? book.stock - 1 : 0 }
                         : book
                 ),
             };
         });
+        setInventoryBooks(prev => (
+            Array.isArray(prev)
+                ? prev.map(book => (
+                    book.id === selectedBook.id
+                        ? { ...book, stock: Number.isFinite(book.stock) ? book.stock - 1 : 0 }
+                        : book
+                ))
+                : prev
+        ));
         
         setIsPaymentModalOpen(false);
         setPaymentForm({ ...paymentForm, bookId: '' }); 
+        setActiveTab('payment');
     };
 
     const recommendedBooks = useMemo(() => {
         if (!paymentForm.studentId) return [];
         return availableBooks;
     }, [paymentForm.studentId, availableBooks]);
+
+    const paymentLogsList = useMemo(
+        () => (Array.isArray(effectivePaymentLogs) ? effectivePaymentLogs : []),
+        [effectivePaymentLogs]
+    );
+
+    const recommendedBooksList = useMemo(
+        () => (Array.isArray(recommendedBooks) ? recommendedBooks : []),
+        [recommendedBooks]
+    );
 
     const handleMethodChange = (value) => {
         setUseEasyPay(value === '간편결제');
@@ -488,7 +645,7 @@ export default function PaymentManagement({ classes, paymentLogs, handleSavePaym
                                         setSelectedStudentIds([]); // 반 변경 시 선택 초기화
                                     }}
                                 >
-                                    {effectiveClasses && effectiveClasses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                    {Array.isArray(effectiveClasses) && effectiveClasses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                                 </select>
                             </div>
                             
@@ -512,6 +669,9 @@ export default function PaymentManagement({ classes, paymentLogs, handleSavePaym
                         {isLoadingStudents && (
                             <p className="text-xs text-gray-400 mb-3">학생 목록을 불러오는 중입니다...</p>
                         )}
+                        {isMaterialsLoading && (
+                            <p className="text-xs text-gray-400 mb-3">교재 정보를 불러오는 중입니다...</p>
+                        )}
 
                         {/* 현황 테이블 */}
                         <div className="overflow-hidden border rounded-xl hidden md:block">
@@ -523,8 +683,8 @@ export default function PaymentManagement({ classes, paymentLogs, handleSavePaym
                                             <input 
                                                 type="checkbox" 
                                                 onChange={handleSelectAll}
-                                                checked={selectedStudentIds.length > 0 && selectedStudentIds.length === classPaymentStatus.filter(s => !s.isFullyPaid).length}
-                                                disabled={classPaymentStatus.filter(s => !s.isFullyPaid).length === 0}
+                                                checked={selectedStudentIds.length > 0 && selectedStudentIds.length === classPaymentStatusList.filter(s => !s.isFullyPaid).length}
+                                                disabled={classPaymentStatusList.filter(s => !s.isFullyPaid).length === 0}
                                                 className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
                                             />
                                         </th>
@@ -536,7 +696,7 @@ export default function PaymentManagement({ classes, paymentLogs, handleSavePaym
                                     </tr>
                                 </thead>
                                 <tbody className="bg-white divide-y divide-gray-200">
-                                    {classPaymentStatus.length > 0 ? classPaymentStatus.map((status, idx) => (
+                                    {classPaymentStatusList.length > 0 ? classPaymentStatusList.map((status, idx) => (
                                         <tr key={idx} className={`hover:bg-gray-50 transition ${status.isFullyPaid ? 'bg-gray-50/50' : ''}`}>
                                             {/* ✅ 체크박스 셀 */}
                                             <td className="px-6 py-4">
@@ -553,14 +713,14 @@ export default function PaymentManagement({ classes, paymentLogs, handleSavePaym
                                                 {status.student.name}
                                             </td>
                                             <td className="px-6 py-4 text-sm text-gray-600">
-                                                {status.requiredBooks.length > 0 ? (
+                                                {Array.isArray(status.requiredBooks) && status.requiredBooks.length > 0 ? (
                                                     status.requiredBooks.map(b => (
                                                         <span key={b.id} className={`inline-block mr-1 mb-1 px-2 py-0.5 rounded text-xs border ${
-                                                            status.unpaidBooks.find(ub => ub.id === b.id) 
+                                                            status.unpaidBooks.find(ub => String(ub.id) === String(b.id)) 
                                                                 ? 'bg-red-50 text-red-600 border-red-200 font-medium' 
                                                                 : 'bg-green-50 text-green-600 border-green-200 line-through opacity-60'
                                                         }`}>
-                                                            {b.name}
+                                                            {getBookTitle(b)}
                                                         </span>
                                                     ))
                                                 ) : <span className="text-gray-400">지정 교재 없음</span>}
@@ -606,8 +766,8 @@ export default function PaymentManagement({ classes, paymentLogs, handleSavePaym
                         </div>
 
                         <div className="grid gap-3 md:hidden">
-                            {classPaymentStatus.length > 0 ? (
-                                classPaymentStatus.map((status, idx) => (
+                            {classPaymentStatusList.length > 0 ? (
+                                classPaymentStatusList.map((status, idx) => (
                                     <div key={idx} className={`border rounded-xl p-4 shadow-sm bg-white space-y-3 ${status.isFullyPaid ? 'bg-gray-50' : ''}`}>
                                         <div className="flex items-start justify-between gap-2">
                                             <div>
@@ -630,13 +790,13 @@ export default function PaymentManagement({ classes, paymentLogs, handleSavePaym
                                         </div>
 
                                         <div className="flex flex-wrap gap-1">
-                                            {status.requiredBooks.length > 0 ? status.requiredBooks.map(b => (
+                                            {Array.isArray(status.requiredBooks) && status.requiredBooks.length > 0 ? status.requiredBooks.map(b => (
                                                 <span key={b.id} className={`px-2 py-1 text-[11px] rounded border ${
-                                                    status.unpaidBooks.find(ub => ub.id === b.id) 
+                                                    status.unpaidBooks.find(ub => String(ub.id) === String(b.id)) 
                                                         ? 'bg-red-50 text-red-600 border-red-200' 
                                                         : 'bg-green-50 text-green-600 border-green-200 line-through opacity-70'
                                                 }`}>
-                                                    {b.name}
+                                                    {getBookTitle(b)}
                                                 </span>
                                             )) : <span className="text-xs text-gray-400">지정 교재 없음</span>}
                                         </div>
@@ -673,6 +833,9 @@ export default function PaymentManagement({ classes, paymentLogs, handleSavePaym
                 {/* TAB 2: 교재 재고 관리 */}
                 {activeTab === 'stock' && (
                     <div className="space-y-3">
+                        {isInventoryLoading && (
+                        <p className="text-xs text-gray-400">교재 재고를 불러오는 중입니다...</p>
+                    )}
                     <div className="overflow-x-auto hidden md:block">
                         <table className="min-w-full divide-y divide-gray-200">
                             <thead className="bg-gray-50">
@@ -685,7 +848,7 @@ export default function PaymentManagement({ classes, paymentLogs, handleSavePaym
                                 </tr>
                             </thead>
                             <tbody className="bg-white divide-y divide-gray-200">
-                                {classMaterials.map(book => (
+                                {Array.isArray(inventoryBooks) && inventoryBooks.map(book => (
                                     <tr key={book.id} className="hover:bg-gray-50 transition">
                                         <td className="px-6 py-4 whitespace-nowrap">
                                             <span className={`px-2 py-1 text-xs rounded-full font-bold
@@ -694,25 +857,32 @@ export default function PaymentManagement({ classes, paymentLogs, handleSavePaym
                                                 {book.type}
                                             </span>
                                         </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{book.name}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{book.price.toLocaleString()}원</td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-indigo-600">{book.stock}권</td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{getBookTitle(book)}</td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{getBookPrice(book).toLocaleString()}원</td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-indigo-600">{getBookStock(book)}권</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm">
-                                            {book.stock < 5 ? 
+                                            {getBookStock(book) < 5 ?
                                                 <span className="text-red-500 font-bold flex items-center"><Icon name="alertCircle" className="w-4 h-4 mr-1"/>주문필요</span> : 
                                                 <span className="text-green-600 font-medium">충분</span>}
                                         </td>
                                     </tr>
                                 ))}
+                                {(!Array.isArray(inventoryBooks) || inventoryBooks.length === 0) && !isInventoryLoading && (
+                                    <tr>
+                                        <td colSpan="5" className="px-6 py-10 text-center text-gray-400">
+                                            등록된 교재가 없습니다.
+                                        </td>
+                                    </tr>
+                                )}
                             </tbody>
                         </table>
 
                         <div className="grid gap-3 md:hidden">
-                        {classMaterials.map(book => (
+                        {Array.isArray(inventoryBooks) && inventoryBooks.map(book => (
                             <div key={book.id} className="border rounded-xl p-4 shadow-sm bg-white space-y-2">
                                 <div className="flex items-start justify-between">
                                     <div>
-                                        <p className="text-base font-bold text-gray-900">{book.name}</p>
+                                        <p className="text-base font-bold text-gray-900">{getBookTitle(book)}</p>
                                         <p className="text-xs text-gray-500 mt-0.5">{book.type}</p>
                                     </div>
                                     <span className={`px-2 py-1 text-[11px] rounded-full font-bold
@@ -722,11 +892,11 @@ export default function PaymentManagement({ classes, paymentLogs, handleSavePaym
                                     </span>
                                 </div>
                                 <div className="flex items-center justify-between text-sm text-gray-700">
-                                    <span className="font-semibold">{book.price.toLocaleString()}원</span>
-                                    <span className="font-bold text-indigo-700">{book.stock}권</span>
+                                    <span className="font-semibold">{getBookPrice(book).toLocaleString()}원</span>
+                                    <span className="font-bold text-indigo-700">{getBookStock(book)}권</span>
                                 </div>
                                 <div className="text-xs text-gray-500">
-                                    {book.stock < 5 ? (
+                                    {getBookStock(book) < 5 ? (
                                         <span className="text-red-500 font-bold flex items-center gap-1"><Icon name="alertCircle" className="w-4 h-4" /> 주문필요</span>
                                     ) : (
                                         <span className="text-green-600 font-medium">재고 충분</span>
@@ -734,6 +904,11 @@ export default function PaymentManagement({ classes, paymentLogs, handleSavePaym
                                 </div>
                             </div>
                         ))}
+                        {(!Array.isArray(inventoryBooks) || inventoryBooks.length === 0) && !isInventoryLoading && (
+                            <div className="text-center text-gray-500 py-6 border rounded-xl bg-white">
+                                등록된 교재가 없습니다.
+                            </div>
+                        )}
                     </div>
                     </div>
                 </div>
@@ -742,7 +917,10 @@ export default function PaymentManagement({ classes, paymentLogs, handleSavePaym
                 {/* TAB 3: 결제 내역 조회 */}
                 {activeTab === 'payment' && (
                     <div className="space-y-3">
-                    <div className="overflow-x-auto hidden md:block">
+                    {isPaymentLogsLoading && (
+                        <p className="text-xs text-gray-400">결제 내역을 불러오는 중입니다...</p>
+                    )}
+                        <div className="overflow-x-auto hidden md:block">
                         <table className="min-w-full divide-y divide-gray-200">
                             <thead className="bg-gray-50">
                                 <tr>
@@ -757,7 +935,7 @@ export default function PaymentManagement({ classes, paymentLogs, handleSavePaym
                                 </tr>
                             </thead>
                             <tbody className="bg-white divide-y divide-gray-200">
-                                {effectivePaymentLogs.map(log => {
+                                {paymentLogsList.map(log => {
                                     const isEditing = editingPaymentId === log.id;
                                     return (
                                         <tr
@@ -767,9 +945,9 @@ export default function PaymentManagement({ classes, paymentLogs, handleSavePaym
                                             }}
                                             className={`transition ${isEditing ? 'bg-indigo-50/40' : 'hover:bg-gray-50'} ${isEditing ? '' : 'cursor-pointer'}`}
                                         >
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{log.date}</td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">{log.studentName}</td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{log.bookName}</td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{getLogDate(log)}</td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">{getLogStudentName(log)}</td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{getLogBookName(log)}</td>
                                             <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-indigo-600">
                                                 {isEditing ? (
                                                     <input
@@ -780,7 +958,7 @@ export default function PaymentManagement({ classes, paymentLogs, handleSavePaym
                                                         className="w-28 rounded-md border border-gray-300 px-2 py-1 text-sm text-gray-700"
                                                     />
                                                 ) : (
-                                                    `${log.amount.toLocaleString()}원`
+                                                    `${Number.isFinite(log.amount) ? log.amount.toLocaleString() : '0'}원`
                                                 )}
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
@@ -801,14 +979,8 @@ export default function PaymentManagement({ classes, paymentLogs, handleSavePaym
                                                 )}
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap text-sm">
-                                                <span className={`px-2 py-1 text-xs rounded border font-medium ${
-                                                    log.type === '간편결제'
-                                                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                                        : log.type === '온라인결제'
-                                                            ? 'bg-purple-50 text-purple-600 border-purple-200'
-                                                            : 'bg-gray-50 text-gray-600 border-gray-200'
-                                                }`}>
-                                                    {log.type}
+                                                <span className={`px-2 py-1 text-xs rounded border font-medium ${getPaymentTypeBadge(log.type)}`}>
+                                                    {getPaymentTypeLabel(log.type)}
                                                 </span>
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
@@ -855,15 +1027,15 @@ export default function PaymentManagement({ classes, paymentLogs, handleSavePaym
                                         </tr>
                                     );
                                 })}
-                                {effectivePaymentLogs.length === 0 && (
-                                    <tr><td colSpan="8" className="px-6 py-10 text-center text-gray-400">수납 내역이 없습니다.</td></tr>
+                                {paymentLogsList.length === 0 && (
+                                    <tr><td colSpan="8" className="px-6 py-10 text-center text-gray-400">해당 클래스에 결제 내역이 없습니다.</td></tr>
                                 )}
                             </tbody>
                         </table>
                     </div>
 
                     <div className="grid gap-3 md:hidden">
-                        {effectivePaymentLogs.length > 0 ? effectivePaymentLogs.map(log => {
+                        {paymentLogsList.length > 0 ? paymentLogsList.map(log => {
                             const isEditing = editingPaymentId === log.id;
                             return (
                                 <div
@@ -875,8 +1047,8 @@ export default function PaymentManagement({ classes, paymentLogs, handleSavePaym
                                 >
                                     <div className="flex items-start justify-between">
                                         <div>
-                                            <p className="text-base font-bold text-gray-900">{log.studentName}</p>
-                                            <p className="text-xs text-gray-500">{log.date}</p>
+                                            <p className="text-base font-bold text-gray-900">{getLogStudentName(log)}</p>
+                                            <p className="text-xs text-gray-500">{getLogDate(log)}</p>
                                         </div>
                                         {isEditing ? (
                                             <input
@@ -887,10 +1059,10 @@ export default function PaymentManagement({ classes, paymentLogs, handleSavePaym
                                                 className="w-24 rounded-md border border-gray-300 px-2 py-1 text-sm text-indigo-700"
                                             />
                                         ) : (
-                                            <span className="text-sm font-bold text-indigo-700">{log.amount.toLocaleString()}원</span>
+                                            <span className="text-sm font-bold text-indigo-700">{Number.isFinite(log.amount) ? log.amount.toLocaleString() : '0'}원</span>
                                         )}
                                     </div>
-                                    <p className="text-sm text-gray-700">{log.bookName}</p>
+                                    <p className="text-sm text-gray-700">{getLogBookName(log)}</p>
                                     <div className="flex items-center justify-between text-xs text-gray-500 gap-3">
                                         {isEditing ? (
                                             <select
@@ -907,8 +1079,8 @@ export default function PaymentManagement({ classes, paymentLogs, handleSavePaym
                                         ) : (
                                             <span>{log.method}</span>
                                         )}
-                                        <span className={`px-2 py-1 rounded border font-medium ${log.type === '온라인결제' ? 'bg-purple-50 text-purple-600 border-purple-200' : 'bg-gray-50 text-gray-600 border-gray-200'}`}>
-                                            {log.type}
+                                        <span className={`px-2 py-1 rounded border font-medium ${getPaymentTypeBadge(log.type)}`}>
+                                            {getPaymentTypeLabel(log.type)}
                                         </span>
                                     </div>
                                     <div className="text-xs text-gray-500">
@@ -956,15 +1128,13 @@ export default function PaymentManagement({ classes, paymentLogs, handleSavePaym
                             );
                         }) : (
                             <div className="text-center text-gray-400 py-6 border rounded-xl bg-white">
-                                수납 내역이 없습니다.
+                                해당 클래스에 결제 내역이 없습니다.
                             </div>
                         )}
                     </div>
-                </div>
+                    </div>
                 )}
             </div>
-
-            {/* --- Modals --- */}
             
             {/* 0. ✅ 알림 발송 모달 (신규) */}
             <PaymentNotificationModal 
@@ -981,8 +1151,8 @@ export default function PaymentManagement({ classes, paymentLogs, handleSavePaym
                         <label className="block text-sm font-bold text-gray-700 mb-1">교재명</label>
                         <input 
                             type="text" 
-                            value={newBook.name} 
-                            onChange={e => setNewBook({...newBook, name: e.target.value})} 
+                            value={newBook.title} 
+                            onChange={e => setNewBook({...newBook, title: e.target.value})} 
                             required 
                             className="w-full rounded-lg border-gray-300 border p-2.5 focus:ring-2 focus:ring-indigo-500"
                         />
@@ -1059,28 +1229,28 @@ export default function PaymentManagement({ classes, paymentLogs, handleSavePaym
                             required
                         >
                             <option value="">학생을 선택해주세요</option>
-                            {effectiveStudents && effectiveStudents.map(s => <option key={s.id} value={s.id}>{s.name} ({s.school})</option>)}
+                            {Array.isArray(effectiveStudents) && effectiveStudents.map(s => <option key={s.id} value={s.id}>{s.name} ({s.school})</option>)}
                         </select>
                     </div>
 
                     {/* 추천 교재 섹션 */}
-                    {recommendedBooks.length > 0 && (
+                    {recommendedBooksList.length > 0 && (
                         <div className="bg-indigo-50 p-4 rounded-lg border border-indigo-100">
                             <p className="text-xs font-bold text-indigo-700 mb-2 flex items-center">
                                 <Icon name="check" className="w-3 h-3 mr-1"/> 필수 구매 대상 교재
                             </p>
                             <div className="flex flex-wrap gap-2">
-                                {recommendedBooks.map(b => (
+                                {recommendedBooksList.map(b => (
                                     <button
                                         key={b.id} type="button"
                                         onClick={() => setPaymentForm({...paymentForm, bookId: b.id})}
                                         className={`text-xs px-3 py-1.5 rounded-full border transition font-medium ${
-                                            Number(paymentForm.bookId) === b.id 
+                                            String(paymentForm.bookId) === String(b.id) 
                                                 ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' 
                                                 : 'bg-white text-indigo-600 border-indigo-200 hover:bg-indigo-50'
                                         }`}
                                     >
-                                        {b.name}
+                                        {getBookTitle(b)}
                                     </button>
                                 ))}
                             </div>
@@ -1096,9 +1266,9 @@ export default function PaymentManagement({ classes, paymentLogs, handleSavePaym
                             required
                         >
                             <option value="">교재를 선택해주세요</option>
-                            {availableBooks.map(b => (
-                                <option key={b.id} value={b.id} disabled={b.stock <= 0}>
-                                    {b.name} ({b.price.toLocaleString()}원) {b.stock <= 0 ? '- 품절' : ''}
+                            {Array.isArray(availableBooks) && availableBooks.map(b => (
+                                <option key={b.id} value={b.id} disabled={getBookStock(b) <= 0}>
+                                    {getBookTitle(b)} ({getBookPrice(b).toLocaleString()}원) {getBookStock(b) <= 0 ? '- 품절' : ''}
                                 </option>
                             ))}
                         </select>
@@ -1156,12 +1326,15 @@ export default function PaymentManagement({ classes, paymentLogs, handleSavePaym
 
                     <div className="flex justify-end pt-4 border-t mt-4">
                         <button 
-                            type="submit" 
-                            className="w-full bg-indigo-600 text-white py-3 rounded-lg hover:bg-indigo-700 font-bold text-lg shadow-lg transition active:scale-95"
+                            type="submit"
+                            disabled={isSubmittingPayment}
+                            className={`w-full py-3 rounded-lg font-bold text-lg shadow-lg transition active:scale-95 ${isSubmittingPayment ? 'bg-gray-300 text-gray-600' : 'bg-indigo-600 text-white hover:bg-indigo-700'}`}
                         >
-                            {paymentForm.bookId && availableBooks.find(b => b.id === paymentForm.bookId)
-                                ? `${availableBooks.find(b => b.id === paymentForm.bookId).price.toLocaleString()}원 ${paymentForm.channel === '간편결제' ? '간편결제 보내기' : '결제하기'}`
-                                : '결제하기'}
+                            {isSubmittingPayment
+                                ? '결제 처리 중...'
+                                : (paymentForm.bookId && availableBooks.find(b => String(b.id) === String(paymentForm.bookId))
+                                    ? `${getBookPrice(availableBooks.find(b => String(b.id) === String(paymentForm.bookId))).toLocaleString()}원 ${paymentForm.channel === '간편결제' ? '간편결제 보내기' : '결제하기'}`
+                                    : '결제하기')}
                         </button>
                     </div>
                 </form>
@@ -1177,7 +1350,7 @@ export default function PaymentManagement({ classes, paymentLogs, handleSavePaym
                             value={selectedClassForSetting ?? ''}
                             onChange={e => setSelectedClassForSetting(e.target.value)}
                         >
-                            {effectiveClasses && effectiveClasses.map(c => (
+                            {Array.isArray(effectiveClasses) && effectiveClasses.map(c => (
                                 <option key={c.id} value={c.id}>{c.name}</option>
                             ))}
                         </select>
@@ -1185,15 +1358,15 @@ export default function PaymentManagement({ classes, paymentLogs, handleSavePaym
                     
                     <div className="flex-1 overflow-y-auto border rounded-xl p-3 bg-gray-50 space-y-2">
                         {selectedClassForSetting ? (
-                            (materialsByClass[String(selectedClassForSetting)] || []).length > 0 ? (
-                                (materialsByClass[String(selectedClassForSetting)] || []).map(book => (
+                            (Array.isArray(materialsByClass[String(selectedClassForSetting)]) ? materialsByClass[String(selectedClassForSetting)] : []).length > 0 ? (
+                                (Array.isArray(materialsByClass[String(selectedClassForSetting)]) ? materialsByClass[String(selectedClassForSetting)] : []).map(book => (
                                     <div key={book.id} className="flex items-center p-4 rounded-lg border bg-white">
                                         <div className="w-6 h-6 rounded-full border-2 flex items-center justify-center mr-4 bg-indigo-600 border-indigo-600">
                                             <Icon name="check" className="w-3.5 h-3.5 text-white" />
                                         </div>
                                         <div className="flex-1">
-                                            <div className="font-bold text-gray-800">{book.name}</div>
-                                            <div className="text-sm text-gray-500 mt-0.5">{book.type} · {book.price.toLocaleString()}원</div>
+                                            <div className="font-bold text-gray-800">{getBookTitle(book)}</div>
+                                            <div className="text-sm text-gray-500 mt-0.5">{book.type} · {getBookPrice(book).toLocaleString()}원</div>
                                         </div>
                                     </div>
                                     ))

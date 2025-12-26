@@ -31,6 +31,37 @@ const normalizeAuthUid = (item) => {
     return item;
 };
 
+const formatPaymentDate = (value) => {
+    if (!value) return '';
+    if (typeof value === 'string') return value;
+    if (typeof value?.toDate === 'function') {
+        return value.toDate().toISOString().slice(0, 10);
+    }
+    try {
+        return new Date(value).toISOString().slice(0, 10);
+    } catch (error) {
+        return '';
+    }
+};
+
+const normalizePaymentLog = (log) => {
+    const base = normalizeAuthUid(log);
+    const firstItem = Array.isArray(base.items) ? base.items[0] : null;
+    const itemAmount = firstItem && Number.isFinite(firstItem.price)
+        ? firstItem.price * (Number(firstItem.quantity) || 1)
+        : 0;
+    const amount = Number.isFinite(base.amount) ? base.amount : itemAmount;
+    const date = base.date || formatPaymentDate(base.createdAt);
+    return {
+        ...base,
+        amount,
+        date,
+        status: base.status || 'paid',
+        studentName: base.studentName || base.payerName,
+        bookName: base.bookName || base.bookTitle || firstItem?.title || firstItem?.name,
+    };
+};
+
 const fetchList = async (db, colName, setter, q, isCancelled, mapper = null) => {
     const snap = await getDocs(q || collection(db, colName));
     const baseItems = snap.docs.map((d) => normalizeAuthUid({ id: d.id, ...d.data() }));
@@ -117,7 +148,14 @@ export const loadStaffDataOnce = async ({
         }
 
         if (setPaymentLogs && shouldLoad('payment')) {
-            await fetchList(db, 'payments', setPaymentLogs, query(collection(db, 'payments'), orderBy('date', 'desc'), limit(150)), () => false);
+            await fetchList(
+                db,
+                'payments',
+                setPaymentLogs,
+                query(collection(db, 'payments'), orderBy('createdAt', 'desc'), limit(150)),
+                () => false,
+                normalizePaymentLog,
+            );
         }
 
         if (setGrades && shouldLoad('grades')) {

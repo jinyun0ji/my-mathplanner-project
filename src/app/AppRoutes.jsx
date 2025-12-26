@@ -159,6 +159,7 @@ export default function AppRoutes({ user, role, studentIds }) {
   const [tests, setTests] = useState([]);
   const [homeworkAssignments, setHomeworkAssignments] = useState([]);
   const [paymentLogs, setPaymentLogs] = useState([]);
+  const [isPaymentLogsLoading, setIsPaymentLogsLoading] = useState(false);
   const [externalSchedules, setExternalSchedules] = useState([]);
 
   const [grades, setGrades] = useState({});
@@ -177,6 +178,11 @@ export default function AppRoutes({ user, role, studentIds }) {
 
   useEffect(() => {
   if (!isAuthenticated || !role || !isStaffRole) return;
+      const shouldLoadPayments = page === 'payment';
+      if (shouldLoadPayments) {
+          setIsPaymentLogsLoading(true);
+      }
+      let isActive = true;
       loadStaffDataOnce({
           db,
           isLoggedIn: isAuthenticated,
@@ -194,7 +200,14 @@ export default function AppRoutes({ user, role, studentIds }) {
           setPaymentLogs,
           setGrades,
           setHomeworkResults,
+      }).finally(() => {
+          if (shouldLoadPayments && isActive) {
+              setIsPaymentLogsLoading(false);
+          }
       });
+      return () => {
+          isActive = false;
+      };
     }, [db, isAuthenticated, role, page, isStaffRole]);
 
   useEffect(() => {
@@ -297,37 +310,85 @@ export default function AppRoutes({ user, role, studentIds }) {
       setHasNewNotifications(true);
   }, []);
 
+  const formatPaymentDate = (value) => {
+      if (!value) return '';
+      if (typeof value === 'string') return value;
+      if (typeof value?.toDate === 'function') {
+          return value.toDate().toISOString().slice(0, 10);
+      }
+      try {
+          return new Date(value).toISOString().slice(0, 10);
+      } catch (error) {
+          return '';
+      }
+  };
+
   const normalizePaymentLog = (log) => {
       if (!log) return log;
-      if (log.studentId) return log;
-      if (log.authUid) return { ...log, studentId: log.authUid };
-      if (log.studentUid) return { ...log, studentId: log.studentUid };
-      return log;
+      const base = log.studentId
+          ? log
+          : log.authUid
+              ? { ...log, studentId: log.authUid }
+              : log.studentUid
+                  ? { ...log, studentId: log.studentUid }
+                  : log;
+      const firstItem = Array.isArray(base.items) ? base.items[0] : null;
+      const itemAmount = firstItem && Number.isFinite(firstItem.price)
+          ? firstItem.price * (Number(firstItem.quantity) || 1)
+          : 0;
+      const amount = Number.isFinite(base.amount) ? base.amount : itemAmount;
+      const date = base.date || formatPaymentDate(base.createdAt);
+      return {
+          ...base,
+          amount,
+          date,
+          status: base.status || 'paid',
+          studentName: base.studentName || base.payerName,
+          bookName: base.bookName || base.bookTitle || firstItem?.title || firstItem?.name,
+      };
   };
 
   const refreshPaymentLogs = useCallback(async () => {
       ensureFirestoreContext();
-      const paymentQuery = query(collection(db, 'payments'), orderBy('date', 'desc'), limit(150));
-      const snapshot = await getDocs(paymentQuery);
-      const logs = snapshot.docs.map((docSnap) => normalizePaymentLog({ id: docSnap.id, ...docSnap.data() }));
-      setPaymentLogs(logs);
+      setIsPaymentLogsLoading(true);
+      try {
+          const paymentQuery = query(collection(db, 'payments'), orderBy('createdAt', 'desc'), limit(150));
+          const snapshot = await getDocs(paymentQuery);
+          const logs = snapshot.docs.map((docSnap) => normalizePaymentLog({ id: docSnap.id, ...docSnap.data() }));
+          setPaymentLogs(logs);
+      } finally {
+          setIsPaymentLogsLoading(false);
+      }
   }, [db, userId]);
 
   const handleSavePayment = async (paymentData) => {
       ensureFirestoreContext();
+      const studentId = paymentData?.studentId;
+      const classId = paymentData?.classId;
+      if (!studentId || !classId) {
+          alert('결제 저장에 필요한 학생/반 정보를 확인해주세요.');
+          return { success: false };
+      }
       try {
-          const docRef = await addDoc(collection(db, 'payments'), {
+          const normalizedPayload = {
               ...paymentData,
+              studentId,
+              classId,
+              status: paymentData?.status || 'paid',
+              type: paymentData?.type || 'book',
               createdAt: serverTimestamp(),
               createdBy: userId,
               updatedAt: serverTimestamp(),
               updatedBy: userId,
-          });
-          setPaymentLogs(prev => [{ ...paymentData, id: docRef.id }, ...prev]);
-          logNotification('success', '결제 기록 저장', `${paymentData.studentName} 학생 결제 완료`);
+           };
+          const docRef = await addDoc(collection(db, 'payments'), normalizedPayload);
+          await refreshPaymentLogs();
+          logNotification('success', '결제 기록 저장', `${paymentData.studentName || '학생'} 결제 완료`);
+          return { success: true, id: docRef.id };
       } catch (error) {
           console.error('[Firestore WRITE ERROR]', error);
           alert('결제 기록 저장에 실패했습니다. 권한 또는 네트워크를 확인하세요.');
+          return { success: false, error };
       }
   };
 
@@ -948,6 +1009,7 @@ export default function AppRoutes({ user, role, studentIds }) {
     students, classes, lessonLogs, attendanceLogs, workLogs, clinicLogs,
     homeworkAssignments, homeworkResults, tests, grades, studentMemos, videoProgress, announcements,
     paymentLogs,
+    isPaymentLogsLoading,
     getClassesNames,
     handleSaveStudent, handleDeleteStudent, handleSaveClass, handleSaveLessonLog, handleDeleteLessonLog,
     handleSaveAttendance, handleSaveHomeworkAssignment, handleDeleteHomeworkAssignment, handleUpdateHomeworkResult,
