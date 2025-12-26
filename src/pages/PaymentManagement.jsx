@@ -19,6 +19,15 @@ export default function PaymentManagement({ classes, paymentLogs, handleSavePaym
     const [materialsByClass, setMaterialsByClass] = useState({});
     const [materialsError, setMaterialsError] = useState('');
     const [activeTab, setActiveTab] = useState('classStatus');
+
+    const [viewClassId, setViewClassId] = useState(() => {
+        const firstClass = classes?.[0] ?? initialClasses[0];
+        return firstClass ? String(firstClass.id) : null;
+    });
+    const [selectedClassForSetting, setSelectedClassForSetting] = useState(() => {
+        const firstClass = classes?.[0] ?? initialClasses[0];
+        return firstClass ? String(firstClass.id) : null;
+    });
     const { students: classStudents, isLoading: isLoadingStudents } = useClassStudents(viewClassId);
 
     // 모달 상태
@@ -45,13 +54,6 @@ export default function PaymentManagement({ classes, paymentLogs, handleSavePaym
         memo: '',
     });
     const [useEasyPay, setUseEasyPay] = useState(true);
-    
-    const [viewClassId, setViewClassId] = useState(
-        classes && classes.length > 0 ? String(classes[0].id) : String(initialClasses[0]?.id || '')
-    );
-    const [selectedClassForSetting, setSelectedClassForSetting] = useState(
-        classes && classes.length > 0 ? String(classes[0].id) : String(initialClasses[0]?.id || '')
-    );
 
     // ✅ 체크박스 선택 상태 (studentId 목록)
     const [selectedStudentIds, setSelectedStudentIds] = useState([]);
@@ -151,10 +153,10 @@ export default function PaymentManagement({ classes, paymentLogs, handleSavePaym
         });
     }, [paymentForm.studentId, effectiveStudents, materialsByClass, fetchMaterialsByClass, canReadMaterials]);
 
-    const classMaterials = useMemo(
-        () => materialsByClass[String(viewClassId)] || [],
-        [materialsByClass, viewClassId]
-    );
+    const classMaterials = useMemo(() => {
+        if (!viewClassId) return [];
+        return materialsByClass[String(viewClassId)] || [];
+    }, [materialsByClass, viewClassId]);
 
     // [로직] 특정 반의 학생별 납부 현황 계산
     const classPaymentStatus = useMemo(() => {
@@ -265,7 +267,9 @@ export default function PaymentManagement({ classes, paymentLogs, handleSavePaym
                     createdAt: serverTimestamp(),
                     updatedAt: serverTimestamp(),
                 });
-                await fetchMaterialsByClass(viewClassId);
+                if (viewClassId) {
+                    await fetchMaterialsByClass(viewClassId);
+                }
                 setNewBook({ name: '', price: 0, stock: 0, type: '진도교재' });
                 setIsBookModalOpen(false);
                 if (logNotification) logNotification('success', '교재 등록 완료', `${newBook.name}이 등록되었습니다.`);
@@ -478,7 +482,7 @@ export default function PaymentManagement({ classes, paymentLogs, handleSavePaym
                                 <label className="font-bold text-gray-700">조회할 클래스:</label>
                                 <select 
                                     className="border-gray-300 rounded-md shadow-sm p-2 border focus:ring-indigo-500 focus:border-indigo-500 w-full sm:w-auto"
-                                    value={viewClassId}
+                                    value={viewClassId ?? ''}
                                     onChange={(e) => {
                                         setViewClassId(e.target.value);
                                         setSelectedStudentIds([]); // 반 변경 시 선택 초기화
@@ -1170,7 +1174,7 @@ export default function PaymentManagement({ classes, paymentLogs, handleSavePaym
                         <label className="block text-sm font-bold text-gray-700 mb-2">설정할 반 선택</label>
                         <select 
                             className="w-full rounded-lg border-gray-300 border p-2.5 focus:ring-2 focus:ring-indigo-500"
-                            value={selectedClassForSetting}
+                            value={selectedClassForSetting ?? ''}
                             onChange={e => setSelectedClassForSetting(e.target.value)}
                         >
                             {effectiveClasses && effectiveClasses.map(c => (
