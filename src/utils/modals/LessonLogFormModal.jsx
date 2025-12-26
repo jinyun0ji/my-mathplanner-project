@@ -144,11 +144,11 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
 
   const uploadLessonFile = useCallback(async (file, targetClassId, lessonDate) => {
     const safeName = normalizeStorageSegment(file.name);
-    const teacherSegment = normalizeStorageSegment(
-      selectedClass?.teacherId || selectedClass?.teacher || targetClassId
+    const classSegment = normalizeStorageSegment(
+      selectedClass?.name || targetClassId
     );
     const dateSegment = normalizeLessonDate(lessonDate) || new Date().toISOString().slice(0, 10);
-    const filePath = `lesson-materials/${teacherSegment}/${dateSegment}/${safeName}`;
+    const filePath = `lesson-materials/${classSegment}/${dateSegment}/${safeName}`;
     const fileRef = ref(storage, filePath);
 
     await uploadBytes(fileRef, file);
@@ -160,7 +160,7 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
       size: file.size,
       type: file.type,
     };
-  }, [selectedClass, storage]);
+  }, [selectedClass]);
 
   const normalizeVideosFromLog = useCallback((logItem) => {
     if (logItem?.videos && Array.isArray(logItem.videos)) {
@@ -197,50 +197,63 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
     return offset.toISOString().slice(0, 16);
   };
 
-  useEffect(() => {
-    videoIdRef.current = 0;
-    materialIdRef.current = 0;
-    if (log) {
-      setDate(log.date);
-      setProgress(log.progress);
-      setVideos(normalizeVideosFromLog(log));
-      if (Array.isArray(log.materials)) {
-        setMaterials(log.materials.map(item => createMaterialEntry(item)));
-      } else if (log.materialUrl) {
-        setMaterials([createMaterialEntry({ name: log.materialUrl, url: log.materialUrl })]);
-      } else {
-        setMaterials([]);
-      }
-      setScheduleTime(log.scheduleTime || '');
-      if (log.notifyMode === 'staff' && log.staffNotification) {
-        setStaffNotifyMode(log.staffNotification.mode || 'immediate');
-        setStaffNotifyTitle(log.staffNotification.title || '');
-        setStaffNotifyBody(log.staffNotification.body || '');
-        setStaffNotifyScheduledAt(
-          log.staffNotification.mode === 'scheduled'
-            ? toDatetimeLocal(log.staffNotification.scheduledAt)
-            : ''
-        );
-      } else {
-        setStaffNotifyMode('none');
-        setStaffNotifyTitle('');
-        setStaffNotifyBody('');
-        setStaffNotifyScheduledAt('');
-      }
+  const resetForm = useCallback(() => {
+    setDate(defaultDate || (sessions.length > 0 ? sessions[sessions.length - 1].date : ''));
+    setProgress('');
+    setVideos([]);
+    setMaterials([]);
+    setScheduleTime('');
+    setStaffNotifyMode('none');
+    setStaffNotifyTitle('');
+    setStaffNotifyBody('');
+    setStaffNotifyScheduledAt('');
+  }, [defaultDate, sessions]);
+
+  const loadExistingLesson = useCallback(() => {
+    if (!log) return;
+    setDate(log.date || '');
+    setProgress(log.progress || '');
+    setVideos(normalizeVideosFromLog(log));
+    if (Array.isArray(log.materials)) {
+      setMaterials(log.materials.map(item => createMaterialEntry(item)));
+    } else if (log.materialUrl) {
+      setMaterials([createMaterialEntry({ name: log.materialUrl, url: log.materialUrl })]);
     } else {
-      setDate(defaultDate || (sessions.length > 0 ? sessions[sessions.length - 1].date : ''));
-      setProgress('');
-      setVideos([]);
       setMaterials([]);
-      setScheduleTime('');
+      }
+    setScheduleTime(log.scheduleTime || '');
+    if (log.notifyMode === 'staff' && log.staffNotification) {
+      setStaffNotifyMode(log.staffNotification.mode || 'immediate');
+      setStaffNotifyTitle(log.staffNotification.title || '');
+      setStaffNotifyBody(log.staffNotification.body || '');
+      setStaffNotifyScheduledAt(
+        log.staffNotification.mode === 'scheduled'
+          ? toDatetimeLocal(log.staffNotification.scheduledAt)
+          : ''
+      );
+    } else {
       setStaffNotifyMode('none');
       setStaffNotifyTitle('');
       setStaffNotifyBody('');
       setStaffNotifyScheduledAt('');
     }
+    }, [log, normalizeVideosFromLog, createMaterialEntry]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const isNew = !log?.id;
+    videoIdRef.current = 0;
+    materialIdRef.current = 0;
+
+    if (isNew) {
+      resetForm();
+    } else {
+      loadExistingLesson();
+    }
     
     // 모달이 열릴 때 알림 설정 기본값 초기화
-    if (selectedClass && isOpen) {
+    if (selectedClass) {
         const initialMap = {};
         classStudents.forEach((student) => {
             initialMap[student.id] = {
@@ -249,16 +262,14 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
             };
         });
         setStudentNotificationMap(initialMap); 
-    } else if (!selectedClass) {
+    } else {
         setStudentNotificationMap({});
     }
     
     // 모달 열릴 때 dirty 상태 초기화
-    if (isOpen) {
-        setIsDirty(false);
-        onDirtyChange(false);
-    }
-  }, [log, defaultDate, sessions, selectedClass, isOpen, normalizeVideosFromLog, onDirtyChange, classStudents]);
+    setIsDirty(false);
+    onDirtyChange(false);
+  }, [classStudents, isOpen, loadExistingLesson, log?.id, onDirtyChange, resetForm, selectedClass]);
 
   useEffect(() => {
     onDirtyChange(isDirty);
