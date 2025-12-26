@@ -166,6 +166,12 @@ service cloud.firestore {
       allow read, list: if isStaffOrAdminOrTeacher();
       allow create, update, delete: if isStaffOrAdminOrTeacher();
     }
+    
+    match /books/{docId} {
+      // 선생님(Teacher)도 교재/재고 목록을 볼 수 있도록 권한 추가
+      allow read, list: if isStaffOrAdminOrTeacher();
+      allow create, update, delete: if isStaffOrAdminOrTeacher();
+    }
 
     match /payments/{docId} {
       allow read, write, list: if isStaffOrAdminOrTeacher();

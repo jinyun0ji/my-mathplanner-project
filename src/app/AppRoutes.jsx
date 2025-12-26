@@ -250,15 +250,13 @@ export default function AppRoutes({ user, role, studentIds }) {
       setStudentMemos(memoMap);
   }, [students]);
 
-  const [studentMessages, setStudentMessages] = useState([
-      { id: 1, roomId: 'teacher-room', senderRole: 'teacher', displayName: '채수용T', text: '철수야, 오늘 클리닉 늦을 것 같니?', date: '2025-11-29', time: '13:50', isMe: false },
-  ]);
   const processedAnnouncementIdsRef = useRef(new Set());
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [hasNewNotifications, setHasNewNotifications] = useState(false);
   const [isMessengerOpen, setIsMessengerOpen] = useState(false);
   const [hasNewMessages, setHasNewMessages] = useState(true);
+  const [studentMessages, setStudentMessages] = useState([]);
   const [pendingQuickAction, setPendingQuickAction] = useState(null);
 
   const toggleSidebar = () => { setIsSidebarOpen(prev => !prev); if (!isSidebarOpen) { setHasNewNotifications(false); setIsMessengerOpen(false); } };
@@ -839,6 +837,7 @@ export default function AppRoutes({ user, role, studentIds }) {
   };
   const handleSaveWorkLog = async (data, isEdit) => {
       ensureFirestoreContext();
+      const createdByName = user?.displayName || user?.name || user?.email || '알 수 없음';
       try {
           const payload = stripId(data);
           if (isEdit) {
@@ -850,14 +849,24 @@ export default function AppRoutes({ user, role, studentIds }) {
               });
               setWorkLogs(prev => prev.map(l => l.id === data.id ? { ...l, ...payload } : l));
           } else {
+            const logDate = payload.date || new Date().toISOString().slice(0, 10);
               const docRef = await addDoc(collection(db, 'workLogs'), {
                   ...payload,
+                  date: logDate,
+                  createdByUid: userId,
+                  createdByName,
                   createdAt: serverTimestamp(),
                   createdBy: userId,
                   updatedAt: serverTimestamp(),
                   updatedBy: userId,
               });
-              setWorkLogs(prev => [...prev, { id: docRef.id, ...payload }]);
+              setWorkLogs(prev => [...prev, {
+                  id: docRef.id,
+                  ...payload,
+                  date: logDate,
+                  createdByUid: userId,
+                  createdByName,
+              }]);
           }
       } catch (error) {
           console.error('[Firestore WRITE ERROR]', error);
@@ -987,7 +996,7 @@ export default function AppRoutes({ user, role, studentIds }) {
       await claimStudentLinkCode(code);
   };
 
-  if (isStudentRole(role)) return <StudentHome studentId={userId} userId={userId} students={students} classes={classes} homeworkAssignments={homeworkAssignments} homeworkResults={homeworkResults} attendanceLogs={attendanceLogs} lessonLogs={lessonLogs} notices={announcements} tests={tests} grades={grades} videoProgress={videoProgress} onSaveVideoProgress={handleSaveVideoProgress} videoBookmarks={videoBookmarks} onSaveBookmark={handleSaveBookmark} externalSchedules={externalSchedules} onSaveExternalSchedule={handleSaveExternalSchedule} onDeleteExternalSchedule={handleDeleteExternalSchedule} clinicLogs={clinicLogs} onUpdateStudent={handleSaveStudent} messages={studentMessages} onSendMessage={() => {}} onLogout={handleLogout} />;
+  if (isStudentRole(role)) return <StudentHome studentId={userId} userId={userId} students={students} classes={classes} homeworkAssignments={homeworkAssignments} homeworkResults={homeworkResults} attendanceLogs={attendanceLogs} lessonLogs={lessonLogs} notices={announcements} tests={tests} grades={grades} videoProgress={videoProgress} onSaveVideoProgress={handleSaveVideoProgress} videoBookmarks={videoBookmarks} onSaveBookmark={handleSaveBookmark} externalSchedules={externalSchedules} onSaveExternalSchedule={handleSaveExternalSchedule} onDeleteExternalSchedule={handleDeleteExternalSchedule} clinicLogs={clinicLogs} onUpdateStudent={handleSaveStudent} onLogout={handleLogout} />;
   if (isParentRole(role)) {
       if (parentLoading) {
           return <div className="min-h-screen flex items-center justify-center">로딩 중...</div>;
@@ -1002,8 +1011,8 @@ export default function AppRoutes({ user, role, studentIds }) {
               />
           );
       }
-      return <ParentHome userId={userId} students={students} classes={classes} homeworkAssignments={homeworkAssignments} homeworkResults={homeworkResults} attendanceLogs={attendanceLogs} lessonLogs={lessonLogs} notices={announcements} tests={tests} grades={grades} clinicLogs={clinicLogs} videoProgress={videoProgress} onLogout={handleLogout} externalSchedules={externalSchedules} onSaveExternalSchedule={handleSaveExternalSchedule} onDeleteExternalSchedule={handleDeleteExternalSchedule} messages={studentMessages} onSendMessage={() => {}} />;
-  }
+      return <ParentHome userId={userId} students={students} classes={classes} homeworkAssignments={homeworkAssignments} homeworkResults={homeworkResults} attendanceLogs={attendanceLogs} lessonLogs={lessonLogs} notices={announcements} tests={tests} grades={grades} clinicLogs={clinicLogs} videoProgress={videoProgress} onLogout={handleLogout} externalSchedules={externalSchedules} onSaveExternalSchedule={handleSaveExternalSchedule} onDeleteExternalSchedule={handleDeleteExternalSchedule} />;
+}
   
   const managementProps = {
     students, classes, lessonLogs, attendanceLogs, workLogs, clinicLogs,

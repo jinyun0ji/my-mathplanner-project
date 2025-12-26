@@ -53,7 +53,7 @@ export default function WorkLogs({ logs, handleSaveLog, handleDeleteLog }) {
                         <div key={log.id} className="p-4 border-b last:border-b-0 hover:bg-gray-50">
                             <div className="flex justify-between items-start">
                                 <div>
-                                    <p className="text-sm text-gray-500 font-medium">{log.date} by <span className="text-gray-800">{log.author}</span></p>
+                                    <p className="text-sm text-gray-500 font-medium">{log.date} by <span className="text-gray-800">{log.createdByName || log.author || '알 수 없음'}</span></p>
                                 </div>
                                 <div className='flex space-x-2'>
                                     <button onClick={() => handleEdit(log)} className="text-indigo-600 hover:text-indigo-800 p-1 rounded-full hover:bg-indigo-100" title="수정"><Icon name="edit" className="w-4 h-4"/></button>

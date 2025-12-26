@@ -5,7 +5,6 @@ import {
     BoardTab 
 } from '../components/StudentTabs';
 import ClassroomView from './student/ClassroomView';
-import StudentMessenger from '../components/StudentMessenger';
 import StudentHeader from '../components/StudentHeader';
 import { Icon, calculateHomeworkStats, calculateGradeComparison } from '../utils/helpers';
 import { sortClassesByStatus } from '../utils/classStatus';
@@ -13,8 +12,6 @@ import NotificationsIcon from '@mui/icons-material/Notifications';
 import useNotifications from '../notifications/useNotifications';
 import NotificationList from '../notifications/NotificationList';
 import openNotification from '../notifications/openNotification';
-import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
-import { db } from '../firebase/client';
 
 export default function StudentHome({ 
     studentId, userId, students, classes, homeworkAssignments, homeworkResults, 
@@ -22,7 +19,7 @@ export default function StudentHome({
     videoProgress, onSaveVideoProgress, videoBookmarks, onSaveBookmark,
     externalSchedules, onSaveExternalSchedule, onDeleteExternalSchedule,
     clinicLogs, onUpdateStudent, 
-    onLogout, messages, onSendMessage
+    onLogout
 }) {
     const [activeTab, setActiveTab] = useState('home');
     const [initialLearningTab, setInitialLearningTab] = useState('homework');
@@ -101,17 +98,6 @@ export default function StudentHome({
             },
         });
         setIsNotificationOpen(false);
-    };
-
-    const handleChatOpen = async (chatId) => {
-        if (!notificationUid || !db) {
-            return;
-        }
-
-        await setDoc(doc(db, 'users', notificationUid, 'chatIndex', chatId), {
-            unreadCount: 0,
-            lastReadAt: serverTimestamp(),
-        }, { merge: true });
     };
 
     const navItems = [
@@ -215,17 +201,6 @@ export default function StudentHome({
                     <NotificationsIcon style={{ fontSize: 24 }} />
                     {hasUnread && <span className="absolute top-2 right-2.5 w-2 h-2 bg-brand-red rounded-full ring-1 ring-white"></span>}
                 </button>
-
-                {/* 2. 메신저 버튼 (isFloating={false}로 설정하여 위 버튼 바로 아래에 붙도록 함) */}
-                <StudentMessenger 
-                    studentId={studentId} 
-                    teacherName="채수용T" 
-                    messages={messages} 
-                    onSendMessage={onSendMessage} 
-                    onOpenChat={handleChatOpen}
-                    isHidden={isVideoModalOpen} 
-                    isFloating={false} 
-                />
             </div>
             <NotificationList
                 isOpen={isNotificationOpen}

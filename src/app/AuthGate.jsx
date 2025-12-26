@@ -6,7 +6,7 @@ import OnboardingPage from '../pages/OnboardingPage';
 import LoginPage from '../pages/LoginPage';
 import InviteSignupPage from '../pages/InviteSignupPage';
 import useAuth from '../auth/useAuth';
-import { isParentRole } from '../constants/roles';
+import { isParentRole, isStudentRole } from '../constants/roles';
 import { claimStudentLinkCode } from '../parent/linkCodeService';
 import { ParentProvider } from '../parent';
 import { redirectToKakao, redirectToNaver } from '../auth/socialRedirect';
@@ -32,6 +32,7 @@ export default function AuthGate() {
       logout,
   } = useAuth();
   const needsParentOnboarding = isParentRole(role) && (!Array.isArray(studentIds) || studentIds.length === 0);
+  const isMessengerRoute = pathname.startsWith('/chat') || pathname.startsWith('/messages');
 
   useEffect(() => {
       let unsubscribe = null;
@@ -68,11 +69,16 @@ export default function AuthGate() {
           return;
       }
 
+      if (role && isMessengerRoute && (isParentRole(role) || isStudentRole(role))) {
+          navigate('/home', { replace: true });
+          return;
+      }
+
       if (role && !needsParentOnboarding && !isStudentDetailPage && (isOnboardingPage || isLoginPage || isSignupPage)) {
           navigate('/lessons', { replace: true });
       }
-  }, [isAuthCallbackPage, isLoginPage, isOnboardingPage, isSignupPage, isStudentDetailPage, loading, navigate, needsParentOnboarding, pathname, role, user]);
-
+  }, [isAuthCallbackPage, isLoginPage, isMessengerRoute, isOnboardingPage, isSignupPage, isStudentDetailPage, loading, navigate, needsParentOnboarding, pathname, role, user]);
+  
   const handleSocialLogin = async (providerName) => {
       if (providerName === 'google') return signInWithGoogle();
       if (providerName === 'kakao') return redirectToKakao();
