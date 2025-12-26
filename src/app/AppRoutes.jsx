@@ -361,17 +361,33 @@ export default function AppRoutes({ user, role, studentIds }) {
 
   const handleSavePayment = async (paymentData) => {
       ensureFirestoreContext();
-      const studentId = paymentData?.studentId;
-      const classId = paymentData?.classId;
+      const studentId = paymentData?.studentId ? String(paymentData.studentId) : '';
+      const classId = paymentData?.classId ? String(paymentData.classId) : '';
       if (!studentId || !classId) {
           alert('결제 저장에 필요한 학생/반 정보를 확인해주세요.');
           return { success: false };
       }
       try {
+        const normalizedItems = Array.isArray(paymentData?.items)
+              ? paymentData.items.map((item) => ({
+                  bookId: item?.bookId ? String(item.bookId) : '',
+                  quantity: Number.isFinite(item?.quantity) ? item.quantity : Number(item?.quantity) || 1,
+                  price: Number.isFinite(item?.price) ? item.price : Number(item?.price) || 0,
+                  title: item?.title || item?.name || '',
+              }))
+              : undefined;
+          const itemsAmount = Array.isArray(normalizedItems)
+              ? normalizedItems.reduce((sum, item) => sum + (item.price * (item.quantity || 1)), 0)
+              : 0;
+          const amount = Number.isFinite(paymentData?.amount)
+              ? paymentData.amount
+              : Number(paymentData?.amount) || itemsAmount;
           const normalizedPayload = {
               ...paymentData,
               studentId,
               classId,
+              amount,
+              items: normalizedItems,
               status: paymentData?.status || 'paid',
               type: paymentData?.type || 'book',
               createdAt: serverTimestamp(),
@@ -1024,7 +1040,7 @@ export default function AppRoutes({ user, role, studentIds }) {
     handleSaveAttendance, handleSaveHomeworkAssignment, handleDeleteHomeworkAssignment, handleUpdateHomeworkResult,
     handleSaveTest, handleDeleteTest, handleUpdateGrade, handleSaveMemo,
     handleSaveAnnouncement, handleDeleteAnnouncement, handleSaveWorkLog, handleDeleteWorkLog, handleSaveClinicLog, handleDeleteClinicLog,
-    handleSavePayment, handleUpdatePayment,
+    handleSavePayment, handleUpdatePayment, refreshPaymentLogs,
     calculateClassSessions, handlePageChange, logNotification, notifications,
     calculateGradeComparison, calculateHomeworkStats,
     setIsGlobalDirty, studentSearchTerm, setStudentSearchTerm, handleSendStudentNotification,

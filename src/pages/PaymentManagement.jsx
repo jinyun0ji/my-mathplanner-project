@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Icon } from '../utils/helpers';
 import { Modal } from '../components/common/Modal'; 
 import { PaymentNotificationModal } from '../utils/modals/PaymentNotificationModal'; // ✅ 신규 모달 import
@@ -9,7 +10,7 @@ import { isStaffOrTeachingRole } from '../constants/roles';
 import { useClassStudents } from '../utils/useClassStudents';
 
 // ✅ [수정] props에 paymentLogs, handleSavePayment 추가
-export default function PaymentManagement({ classes, paymentLogs, isPaymentLogsLoading, handleSavePayment, handleUpdatePayment, logNotification, userRole, userId }) {
+export default function PaymentManagement({ classes, paymentLogs, isPaymentLogsLoading, handleSavePayment, handleUpdatePayment, refreshPaymentLogs, logNotification, userRole, userId }) {
 
     // --- 1. 초기 데이터 및 상태 ---
     const [materialsByClass, setMaterialsByClass] = useState({});
@@ -57,6 +58,7 @@ export default function PaymentManagement({ classes, paymentLogs, isPaymentLogsL
 
     // ✅ 체크박스 선택 상태 (studentId 목록)
     const [selectedStudentIds, setSelectedStudentIds] = useState([]);
+    const navigate = useNavigate();
 
     const effectiveClasses = useMemo(
         () => (Array.isArray(classes) && classes.length > 0 ? classes : initialClasses),
@@ -440,11 +442,17 @@ export default function PaymentManagement({ classes, paymentLogs, isPaymentLogsL
 
         // ✅ [수정] App.jsx의 핸들러 호출
         setIsSubmittingPayment(true);
-        const result = await handleSavePayment(newLog);
-        setIsSubmittingPayment(false);
-        if (!result?.success) {
-            alert('결제 저장에 실패했습니다. 잠시 후 다시 시도해주세요.');
-            return;
+        try {
+            const result = await handleSavePayment(newLog);
+            if (!result?.success) {
+                alert('결제 저장에 실패했습니다. 잠시 후 다시 시도해주세요.');
+                return;
+            }
+            if (refreshPaymentLogs) {
+                await refreshPaymentLogs();
+            }
+        } finally {
+            setIsSubmittingPayment(false);
         }
 
         // 재고 차감 (로컬 상태)
@@ -473,6 +481,7 @@ export default function PaymentManagement({ classes, paymentLogs, isPaymentLogsL
         setIsPaymentModalOpen(false);
         setPaymentForm({ ...paymentForm, bookId: '' }); 
         setActiveTab('payment');
+        navigate('/payment');
     };
 
     const recommendedBooks = useMemo(() => {
@@ -833,6 +842,11 @@ export default function PaymentManagement({ classes, paymentLogs, isPaymentLogsL
                 {/* TAB 2: 교재 재고 관리 */}
                 {activeTab === 'stock' && (
                     <div className="space-y-3">
+                        {!canReadMaterials && (
+                            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+                                교재 재고 조회 권한이 없습니다. 관리자 권한을 확인해주세요.
+                            </div>
+                        )}
                         {isInventoryLoading && (
                         <p className="text-xs text-gray-400">교재 재고를 불러오는 중입니다...</p>
                     )}
@@ -876,8 +890,8 @@ export default function PaymentManagement({ classes, paymentLogs, isPaymentLogsL
                                 )}
                             </tbody>
                         </table>
-
-                        <div className="grid gap-3 md:hidden">
+                    </div>
+                    <div className="grid gap-3 md:hidden">
                         {Array.isArray(inventoryBooks) && inventoryBooks.map(book => (
                             <div key={book.id} className="border rounded-xl p-4 shadow-sm bg-white space-y-2">
                                 <div className="flex items-start justify-between">
@@ -909,7 +923,6 @@ export default function PaymentManagement({ classes, paymentLogs, isPaymentLogsL
                                 등록된 교재가 없습니다.
                             </div>
                         )}
-                    </div>
                     </div>
                 </div>
                 )}
