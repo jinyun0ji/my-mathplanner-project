@@ -181,6 +181,9 @@ export default function LessonManagement({
         const overallVideoProgress = videos.length
             ? Math.round(videos.reduce((total, video) => total + (Number.isFinite(video.progress) ? video.progress : 0), 0) / videos.length)
             : null;
+            const attachments = Array.isArray(log.attachments)
+            ? log.attachments
+            : (Array.isArray(log.materials) ? log.materials : []);
 
             return (
             <>
@@ -258,14 +261,14 @@ export default function LessonManagement({
                 </div>
             )}
 
-                {log.materials && log.materials.length > 0 && (
+                {attachments.length > 0 && (
                     <div className="border-t pt-4 space-y-2">
                         <div className="text-sm font-semibold text-gray-700 flex items-center gap-2">
                             <Icon name="fileText" className="w-4 h-4 text-indigo-600" />
-                            첨부 자료 ({log.materials.length})
+                            첨부 자료 ({attachments.length})
                         </div>
                         <div className="space-y-2">
-                            {log.materials.map((material, index) => (
+                            {attachments.map((material, index) => (
                                 <button
                                     key={`${material.url}-${index}`}
                                     type="button"

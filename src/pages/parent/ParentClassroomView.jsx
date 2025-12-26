@@ -106,7 +106,10 @@ export default function ParentClassroomView({
     // --- [3] 수업 기록 리스트 아이템 ---
     const renderLogItem = (log) => {
         const prog = videoProgress?.[activeStudentId]?.[log.id]?.percent || 0;
-        const hasMaterials = log.materials && log.materials.length > 0;
+        const attachments = Array.isArray(log.attachments)
+            ? log.attachments
+            : (Array.isArray(log.materials) ? log.materials : []);
+        const hasMaterials = attachments.length > 0;
         const isMaterialsExpanded = expandedMaterialLogId === log.id;
         
         // 상태 뱃지 결정
@@ -148,7 +151,7 @@ export default function ParentClassroomView({
                 {isMaterialsExpanded && (
                     <div className="mt-3 pt-3 border-t border-gray-50 animate-fade-in-down">
                         <div className="space-y-2">
-                            {log.materials.map((mat, idx) => (
+                            {attachments.map((mat, idx) => (
                                 <a 
                                     key={idx} 
                                     href={mat.url} 

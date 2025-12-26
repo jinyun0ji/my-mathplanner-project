@@ -116,7 +116,10 @@ export default function ClassroomView({
     const renderLogItem = (log) => {
         const { percent: prog } = calculateVideoProgress(videoProgress, studentId, log.id);
         const isSelected = currentLesson?.id === log.id;
-        const hasMaterials = log.materials && log.materials.length > 0;
+        const attachments = Array.isArray(log.attachments)
+            ? log.attachments
+            : (Array.isArray(log.materials) ? log.materials : []);
+        const hasMaterials = attachments.length > 0;
         const isMaterialsExpanded = expandedMaterialLogId === log.id;
 
         return (
@@ -170,10 +173,10 @@ export default function ClassroomView({
                     <div className="mt-3 pt-3 border-t border-gray-200/60 animate-fade-in-down">
                         <p className="text-xs font-bold text-gray-500 mb-2 flex items-center gap-1">
                             <Icon name="folder" className="w-3 h-3" />
-                            강의 자료 ({log.materials.length})
+                            강의 자료 ({attachments.length})
                         </p>
                         <div className="space-y-2">
-                            {log.materials.map((mat, idx) => (
+                            {attachments.map((mat, idx) => (
                                 <a 
                                     key={idx} 
                                     href={mat.url} 

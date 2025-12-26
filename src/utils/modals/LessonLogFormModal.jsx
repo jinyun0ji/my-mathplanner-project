@@ -3,11 +3,11 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { DndContext, PointerSensor, closestCenter, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
+import { getDownloadURL, ref, uploadBytesResumable } from 'firebase/storage';
 import { Modal } from '../../components/common/Modal';
 import { Icon, calculateClassSessions } from '../../utils/helpers';
 import StaffNotificationFields from '../../components/Shared/StaffNotificationFields';
-import { storage } from '../../firebase/client';
+import { auth, storage } from '../../firebase/client';
 
 const SortableVideoItem = React.memo(({ video, index, onRemove, onChange }) => {
   const {
@@ -113,18 +113,19 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
   const [date, setDate] = useState(defaultDate || '');
   const [progress, setProgress] = useState('');
   const [videos, setVideos] = useState([]);
-  const [materials, setMaterials] = useState([]);
+  const [attachments, setAttachments] = useState([]);
+  const [files, setFiles] = useState([]);
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState({});
   const [scheduleTime, setScheduleTime] = useState('');
   const [studentNotificationMap, setStudentNotificationMap] = useState({});
   const [staffNotifyMode, setStaffNotifyMode] = useState('none');
   const [staffNotifyTitle, setStaffNotifyTitle] = useState('');
   const [staffNotifyBody, setStaffNotifyBody] = useState('');
   const [staffNotifyScheduledAt, setStaffNotifyScheduledAt] = useState('');
-  const [isUploadingMaterials, setIsUploadingMaterials] = useState(false);
-  const [materialUploadProgress, setMaterialUploadProgress] = useState(0);
 
   const videoIdRef = useRef(0);
-  const materialIdRef = useRef(0);
+  const attachmentIdRef = useRef(0);
   const materialFileInputRef = useRef(null);
 
   const createVideoEntry = useCallback((video = {}) => ({
@@ -133,34 +134,16 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
     url: video.url || '',
   }), []);
 
-  const createMaterialEntry = useCallback((material = {}) => ({
-    id: material.id || `material-${materialIdRef.current++}`,
+  const createAttachmentEntry = useCallback((material = {}) => ({
+    id: material.id || `attachment-${attachmentIdRef.current++}`,
     name: material.name || '',
     url: material.url || '',
     path: material.path || '',
-    size: material.size || null,
+    size: material.size ?? null,
     type: material.type || '',
+    uploadedAt: material.uploadedAt || null,
+    uploaderUid: material.uploaderUid || '',
   }), []);
-
-  const uploadLessonFile = useCallback(async (file, targetClassId, lessonDate) => {
-    const safeName = normalizeStorageSegment(file.name);
-    const classSegment = normalizeStorageSegment(
-      selectedClass?.name || targetClassId
-    );
-    const dateSegment = normalizeLessonDate(lessonDate) || new Date().toISOString().slice(0, 10);
-    const filePath = `lesson-materials/${classSegment}/${dateSegment}/${safeName}`;
-    const fileRef = ref(storage, filePath);
-
-    await uploadBytes(fileRef, file);
-    const downloadURL = await getDownloadURL(fileRef);
-    return {
-      name: file.name,
-      url: downloadURL,
-      path: filePath,
-      size: file.size,
-      type: file.type,
-    };
-  }, [selectedClass]);
 
   const normalizeVideosFromLog = useCallback((logItem) => {
     if (logItem?.videos && Array.isArray(logItem.videos)) {
@@ -174,6 +157,54 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
 
     return [];
   }, [createVideoEntry]);
+
+  const uploadLessonMaterials = useCallback(async ({
+    storage,
+    files: selectedFiles,
+    className,
+    lessonDate,
+    uid,
+  }) => {
+    if (!selectedFiles || selectedFiles.length === 0) return [];
+
+    const uploadResults = [];
+    const safeClassName = normalizeStorageSegment(className);
+    const safeLessonDate = normalizeLessonDate(lessonDate) || new Date().toISOString().slice(0, 10);
+
+    for (const file of selectedFiles) {
+      const filePath = `lesson-materials/${safeClassName}/${safeLessonDate}/${Date.now()}-${file.name}`;
+      const storageRef = ref(storage, filePath);
+      const task = uploadBytesResumable(storageRef, file);
+
+      await new Promise((resolve, reject) => {
+        task.on(
+          'state_changed',
+          (snapshot) => {
+            const percent = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
+            setUploadProgress((prev) => ({
+              ...prev,
+              [file.name]: percent,
+            }));
+          },
+          reject,
+          resolve
+        );
+      });
+
+      const downloadURL = await getDownloadURL(task.snapshot.ref);
+      uploadResults.push({
+        name: file.name,
+        path: filePath,
+        url: downloadURL,
+        size: file.size,
+        type: file.type,
+        uploadedAt: new Date().toISOString(),
+        uploaderUid: uid,
+      });
+    }
+
+    return uploadResults;
+  }, []);
 
   const [isDirty, setIsDirty] = useState(false);
 
@@ -201,7 +232,10 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
     setDate(defaultDate || (sessions.length > 0 ? sessions[sessions.length - 1].date : ''));
     setProgress('');
     setVideos([]);
-    setMaterials([]);
+    setAttachments([]);
+    setFiles([]);
+    setUploadProgress({});
+    setUploading(false);
     setScheduleTime('');
     setStaffNotifyMode('none');
     setStaffNotifyTitle('');
@@ -214,13 +248,18 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
     setDate(log.date || '');
     setProgress(log.progress || '');
     setVideos(normalizeVideosFromLog(log));
-    if (Array.isArray(log.materials)) {
-      setMaterials(log.materials.map(item => createMaterialEntry(item)));
+    if (Array.isArray(log.attachments)) {
+      setAttachments(log.attachments.map(item => createAttachmentEntry(item)));
+    } else if (Array.isArray(log.materials)) {
+      setAttachments(log.materials.map(item => createAttachmentEntry(item)));
     } else if (log.materialUrl) {
-      setMaterials([createMaterialEntry({ name: log.materialUrl, url: log.materialUrl })]);
+      setAttachments([createAttachmentEntry({ name: log.materialUrl, url: log.materialUrl })]);
     } else {
-      setMaterials([]);
-      }
+      setAttachments([]);
+    }
+    setFiles([]);
+    setUploadProgress({});
+    setUploading(false);
     setScheduleTime(log.scheduleTime || '');
     if (log.notifyMode === 'staff' && log.staffNotification) {
       setStaffNotifyMode(log.staffNotification.mode || 'immediate');
@@ -237,14 +276,14 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
       setStaffNotifyBody('');
       setStaffNotifyScheduledAt('');
     }
-    }, [log, normalizeVideosFromLog, createMaterialEntry]);
+    }, [log, normalizeVideosFromLog, createAttachmentEntry]);
 
   useEffect(() => {
     if (!isOpen) return;
 
     const isNew = !log?.id;
     videoIdRef.current = 0;
-    materialIdRef.current = 0;
+    attachmentIdRef.current = 0;
 
     if (isNew) {
       resetForm();
@@ -312,69 +351,29 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
       setIsDirty(true);
   };
 
-  const handleAddMaterial = () => {
-      setMaterials(prev => [...prev, createMaterialEntry()]);
+  const handleMaterialFilesChange = (event) => {
+    const selected = Array.from(event.target.files || []);
+    setFiles(selected);
+    setUploadProgress({});
+    if (selected.length > 0) {
       setIsDirty(true);
-  };
-
-  const handleMaterialFilesChange = async (event) => {
-    if (isUploadingMaterials) return;
-      const files = Array.from(event.target.files || []);
-      if (files.length === 0) return;
-
-      setIsUploadingMaterials(true);
-      setMaterialUploadProgress(0);
-      const progressByFile = new Map();
-
-      try {
-          const uploadedMaterials = await Promise.allSettled(
-            files.map(async (file) => {
-              const result = await uploadLessonFile(
-                file,
-                classId || 'unknown',
-                date || 'unscheduled'
-              );
-              progressByFile.set(file, 100);
-              const totalProgress = Array.from(progressByFile.values())
-                .reduce((sum, value) => sum + value, 0);
-              if (progressByFile.size > 0) {
-                setMaterialUploadProgress(Math.round(totalProgress / progressByFile.size));
-              }
-              return result;
-            })
-          );
-
-          const successfulUploads = uploadedMaterials
-            .filter(result => result.status === 'fulfilled')
-            .map(result => result.value);
-          const hasFailures = uploadedMaterials.some(result => result.status === 'rejected');
-
-          if (successfulUploads.length > 0) {
-            setMaterials(prev => [...prev, ...successfulUploads.map(item => createMaterialEntry(item))]);
-            setIsDirty(true);
-          }
-
-           if (hasFailures) {
-            alert('파일 업로드 실패');
-          }
-      } catch (error) {
-          console.error('Failed to upload lesson materials', error);
-          alert('파일 업로드 실패');
-      } finally {
-          setIsUploadingMaterials(false);
-          setMaterialUploadProgress(0);
-          event.target.value = '';
       }
+    event.target.value = '';
   };
 
-  const handleMaterialChange = (id, field, value) => {
-      setMaterials(prev => prev.map(material => material.id === id ? { ...material, [field]: value ?? '' } : material));
-      setIsDirty(true);
+  const handleRemoveAttachment = (id) => {
+    setAttachments(prev => prev.filter(attachment => attachment.id !== id));
+    setIsDirty(true);
   };
 
-  const handleRemoveMaterial = (id) => {
-      setMaterials(prev => prev.filter(material => material.id !== id));
-      setIsDirty(true);
+  const handleRemoveFile = (fileName) => {
+    setFiles(prev => prev.filter(file => file.name !== fileName));
+    setUploadProgress(prev => {
+      const next = { ...prev };
+      delete next[fileName];
+      return next;
+    });
+    setIsDirty(true);
   };
 
   const handleDragEnd = (event) => {
@@ -443,6 +442,35 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
           : {}),
       };
 
+      const currentUser = auth.currentUser;
+    if (!currentUser?.uid) {
+      alert('로그인이 필요합니다.');
+      return;
+    }
+
+    setUploading(true);
+    setUploadProgress({});
+    let uploadedFiles = [];
+
+    try {
+      uploadedFiles = await uploadLessonMaterials({
+        storage,
+        files,
+        className: selectedClass?.name || classId,
+        lessonDate: date,
+        uid: currentUser.uid,
+      });
+    } catch (error) {
+      console.error('Failed to upload lesson materials', error);
+      alert('파일 업로드 실패');
+      setUploading(false);
+      return;
+    }
+
+    const attachmentsForSave = [...attachments, ...uploadedFiles]
+      .map(({ id, ...rest }) => rest)
+      .filter(attachment => attachment.url && attachment.name);
+
     const logData = {
         id: log ? log.id : null,
         classId,
@@ -454,19 +482,7 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
                 title: video.title || '',
                 url: video.url.trim(),
             })),
-        materials: materials
-            .map(material => {
-                const url = material.url?.trim();
-                const name = material.name?.trim() || url;
-                return {
-                  name,
-                  url,
-                  path: material.path || '',
-                  size: material.size ?? null,
-                  type: material.type || '',
-                };
-            })
-            .filter(material => material.url && material.name),
+        attachments: attachmentsForSave,
         scheduleTime: scheduleTime || null,
         notifyMode: staffNotifyMode === 'none' ? 'system' : 'staff',
         staffNotification,
@@ -476,8 +492,14 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
       await onSave(logData, !!log);
     } catch (error) {
       alert('수업 일지 저장에 실패했습니다. 권한 또는 네트워크를 확인하세요.');
+      setUploading(false);
       return;
     }
+
+    setFiles([]);
+    setUploadProgress({});
+    setAttachments(attachmentsForSave.map(item => createAttachmentEntry(item)));
+    setUploading(false);
     
     if (scheduleTime) {
         const studentRecipients = classStudents.filter(s => {
@@ -612,69 +634,72 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
                             type="file"
                             multiple
                             onChange={handleMaterialFilesChange}
+                            disabled={uploading}
                             className="hidden"
                         />
                         <button
                             type="button"
                             onClick={() => materialFileInputRef.current?.click()}
+                            disabled={uploading}
                             className="inline-flex items-center px-3 py-1.5 rounded-md text-sm font-medium bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 transition"
                         >
                             <Icon name="folder" className="w-4 h-4 mr-1" /> 파일 첨부
                         </button>
-                        <button
-                            type="button"
-                            onClick={handleAddMaterial}
-                            className="inline-flex items-center px-3 py-1.5 rounded-md text-sm font-medium bg-white text-indigo-700 border border-indigo-200 hover:bg-indigo-50 transition"
-                        >
-                            <Icon name="plus" className="w-4 h-4 mr-1" /> 자료 추가
-                        </button>
                     </div>
                   </div>
                   <div className="mt-2 space-y-3">
-                    {materials.length === 0 && (
+                    {attachments.length === 0 && files.length === 0 && (
                         <div className="rounded-md border border-dashed border-gray-300 bg-gray-50 p-4 text-sm text-gray-500">
-                            파일 첨부 버튼을 눌러 로컬 파일을 업로드하거나, 자료 추가로 URL을 등록하세요.
+                            파일 첨부 버튼을 눌러 로컬 파일을 업로드하세요.
                         </div>
                     )}
-                    {isUploadingMaterials && (
+                    {files.length > 0 && (
+                        <div className="rounded-md border border-gray-200 bg-white p-3 text-sm text-gray-700 space-y-2">
+                            <div className="text-xs font-semibold text-gray-500">선택된 파일</div>
+                            {files.map((file) => (
+                                <div key={file.name} className="flex items-center justify-between gap-2">
+                                    <span className="truncate">{file.name}</span>
+                                    <button
+                                        type="button"
+                                        onClick={() => handleRemoveFile(file.name)}
+                                        className="text-xs text-red-500 hover:text-red-700"
+                                    >
+                                        제거
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                    {uploading && (
                         <div className="rounded-md border border-indigo-100 bg-indigo-50 p-3 text-sm text-indigo-600 flex items-center gap-2">
                             <Icon name="refreshCw" className="w-4 h-4 animate-spin" />
                             <span>파일을 업로드하는 중입니다...</span>
-                            <span className="ml-auto text-xs font-semibold">{materialUploadProgress}%</span>
                         </div>
                     )}
-                    {materials.map((material, index) => (
-                        <div key={material.id} className="rounded-lg border border-gray-200 bg-gray-50 p-4 space-y-3">
+                    {Object.entries(uploadProgress).map(([name, percent]) => (
+                      <div key={name} className="text-xs text-gray-600">
+                        {name} ({percent}%)
+                      </div>
+                    ))}
+                    {attachments.map((attachment, index) => (
+                        <div key={attachment.id} className="rounded-lg border border-gray-200 bg-gray-50 p-4 space-y-3">
                             <div className="flex items-center justify-between">
                                 <div className="text-sm font-semibold text-gray-700">자료 {index + 1}</div>
                                 <button
                                     type="button"
-                                    onClick={() => handleRemoveMaterial(material.id)}
+                                    onClick={() => handleRemoveAttachment(attachment.id)}
                                     className="text-red-500 hover:text-red-700 text-sm inline-flex items-center"
                                 >
                                     <Icon name="trash" className="w-4 h-4 mr-1" /> 삭제
                                 </button>
                             </div>
-                            <div>
-                                <label className="block text-xs font-medium text-gray-600">자료 이름</label>
-                                <input
-                                    type="text"
-                                    value={material.name}
-                                    onChange={e => handleMaterialChange(material.id, 'name', e.target.value)}
-                                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border"
-                                    placeholder="예: 수업자료_1103.pdf"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-xs font-medium text-gray-600">다운로드 URL</label>
-                                <input
-                                    type="url"
-                                    value={material.url}
-                                    onChange={e => handleMaterialChange(material.id, 'url', e.target.value)}
-                                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border"
-                                    placeholder="https://..."
-                                />
-                            </div>
+                            <button
+                                type="button"
+                                onClick={() => window.open(attachment.url, '_blank', 'noopener,noreferrer')}
+                                className="text-left text-sm text-indigo-600 hover:text-indigo-700"
+                            >
+                                {attachment.name || attachment.url}
+                            </button>
                         </div>
                     ))}
                 </div>
@@ -733,9 +758,15 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
                 <button type="button" onClick={handleCloseWrapper} className="px-4 py-2 text-sm font-medium rounded-lg text-gray-700 bg-gray-200 hover:bg-gray-300 transition duration-150">
                     취소
                 </button>
-                <button type="submit" className="px-4 py-2 text-sm font-medium rounded-lg text-white bg-green-600 hover:bg-green-700 transition duration-150 shadow-md flex items-center">
-                    <Icon name="save" className="w-4 h-4 mr-2" />
-                    {scheduleTime ? (log ? '일지 수정 & 예약 유지' : '일지 등록 & 알림 예약') : (log ? '수정 사항 저장' : '일지 등록')}
+                <button
+                    type="submit"
+                    disabled={uploading}
+                    className="px-4 py-2 text-sm font-medium rounded-lg text-white bg-green-600 hover:bg-green-700 transition duration-150 shadow-md flex items-center disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  <Icon name="save" className="w-4 h-4 mr-2" />
+                    {uploading
+                      ? '파일 업로드 중...'
+                      : (scheduleTime ? (log ? '일지 수정 & 예약 유지' : '일지 등록 & 알림 예약') : (log ? '수정 사항 저장' : '일지 등록'))}
                 </button>
             </div>
         </form>
