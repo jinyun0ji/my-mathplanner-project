@@ -177,7 +177,7 @@ export default function HomeworkManagement({
                         }`}
                     >
                         <Icon name="checkSquare" className="w-5 h-5" />
-                        채점 입력 ({localChanges.length})
+                        채점 저장 ({localChanges.length})
                     </button>
                 </div>
             </div>

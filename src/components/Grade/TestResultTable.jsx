@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Icon } from '../../utils/helpers';
 import { Modal } from '../../components/common/Modal'; 
+import { getTotalScore } from '../../domain/grade/grade.service';
 
 const RESULT_OPTIONS_GRADE = { 
     '맞음': 'text-green-600 bg-green-50 border-green-200', 
@@ -144,8 +145,13 @@ export default function TestResultTable({ isOpen, onClose, test, studentsData, h
                 <div className='w-1/4 space-y-2 border-r pr-4 overflow-y-auto custom-scrollbar'>
                     <h4 className='text-xs font-bold text-gray-500 mb-2 uppercase tracking-wide'>학생 목록 ({studentsInClass.length})</h4>
                     {studentsInClass.map(student => {
-                        const studentScore = grades[student.id]?.[test.id]?.score;
-                        const scoreDisplay = studentScore === null ? '미응시' : (studentScore === undefined ? '-' : `${Number(studentScore).toFixed(1)}`);
+                        const scoreData = grades[student.id]?.[test.id] || {};
+                        const totalScore = getTotalScore(scoreData, test);
+                        const scoreDisplay = scoreData.score === null && totalScore === null
+                            ? '미응시'
+                            : Number.isFinite(totalScore)
+                                ? totalScore.toFixed(1)
+                                : '-';
                         const isSelected = student.id === selectedStudentId;
                         
                         return (
@@ -161,7 +167,7 @@ export default function TestResultTable({ isOpen, onClose, test, studentsData, h
                                 ${isSelected ? 'bg-blue-600 text-white shadow-md' : 'hover:bg-gray-100 text-gray-700'}`}
                             >
                                 <span className="font-medium">{student.name}</span>
-                                <span className={`font-bold ${isSelected ? 'text-white' : (studentScore === null ? 'text-red-500' : 'text-gray-900')}`}>
+                                <span className={`font-bold ${isSelected ? 'text-white' : (scoreDisplay === '미응시' ? 'text-red-500' : 'text-gray-900')}`}>
                                     {scoreDisplay}
                                 </span>
                             </div>

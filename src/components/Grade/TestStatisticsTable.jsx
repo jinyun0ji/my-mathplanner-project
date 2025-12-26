@@ -4,6 +4,10 @@ import React from 'react';
 import { Icon } from '../../utils/helpers';
 
 export default function TestStatisticsTable({ test, stats, currentStudents }) {
+
+    const formatStat = (value, digits) => {
+        return Number.isFinite(value) ? value.toFixed(digits) : '-';
+    };
     
     const rankedStudents = currentStudents
         .map(student => {
@@ -20,10 +24,10 @@ export default function TestStatisticsTable({ test, stats, currentStudents }) {
 
     // 🚨 수정: 요약 통계 값과 색상 정의
     const summaryItems = [
-        { label: '평균 점수', value: stats.average?.toFixed(1) || '-', color: 'text-blue-600' },
-        { label: '최고 점수', value: stats.maxScore?.toFixed(1) || '-', color: 'text-green-600' },
-        { label: '최저 점수', value: stats.minScore?.toFixed(1) || '-', color: 'text-red-600' },
-        { label: '표준 편차', value: stats.stdDev?.toFixed(2) || '-', color: 'text-gray-700' },
+        { label: '평균 점수', value: formatStat(stats.average, 1), color: 'text-blue-600' },
+        { label: '최고 점수', value: formatStat(stats.maxScore, 1), color: 'text-green-600' },
+        { label: '최저 점수', value: formatStat(stats.minScore, 1), color: 'text-red-600' },
+        { label: '표준 편차', value: formatStat(stats.stdDev, 2), color: 'text-gray-700' },
     ];
 
     return (
@@ -96,7 +100,9 @@ export default function TestStatisticsTable({ test, stats, currentStudents }) {
                                         {student.rank}
                                     </td>
                                     <td className="px-3 py-2 font-medium text-gray-900">{student.name}</td>
-                                    <td className="px-3 py-2 text-center text-blue-600 font-semibold">{student.score.toFixed(1)}</td>
+                                    <td className="px-3 py-2 text-center text-blue-600 font-semibold">
+                                        {Number.isFinite(student.score) ? student.score.toFixed(1) : '-'}
+                                    </td>
                                 </tr>
                             )) : (
                                 <tr><td colSpan="3" className="text-center py-4 text-gray-500">채점된 성적이 없습니다.</td></tr>

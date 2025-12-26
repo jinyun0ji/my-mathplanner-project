@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { Icon } from '../../utils/helpers'; 
+import { getTotalScore } from '../../domain/grade/grade.service';
 
 export default function FullGradeTable({ classStudents, classTests, grades, classAverages }) {
     
@@ -26,11 +27,14 @@ export default function FullGradeTable({ classStudents, classTests, grades, clas
                         {/* 평균 점수 행 */}
                         <tr>
                             <th className="px-6 py-2 text-left text-xs font-bold text-gray-700 sticky left-0 bg-gray-100 border-r z-10">클래스 평균</th>
-                            {classTests.map(test => (
-                                <th key={test.id} className="px-4 py-2 text-center text-sm font-bold bg-gray-100">
-                                    {classAverages[test.id] ? classAverages[test.id].toFixed(1) + '점' : '-'}
-                                </th>
-                            ))}
+                            {classTests.map(test => {
+                                const average = classAverages[test.id];
+                                return (
+                                    <th key={test.id} className="px-4 py-2 text-center text-sm font-bold bg-gray-100">
+                                        {Number.isFinite(average) ? `${average.toFixed(1)}점` : '-'}
+                                    </th>
+                                );
+                            })}
                         </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
@@ -41,8 +45,12 @@ export default function FullGradeTable({ classStudents, classTests, grades, clas
                                 </td>
                                 {classTests.map(test => {
                                     const scoreData = grades[student.id]?.[test.id] || {};
-                                    const score = scoreData.score === undefined ? '-' : 
-                                                  scoreData.score === null ? '미응시' : Number(scoreData.score).toFixed(1);
+                                    const totalScore = getTotalScore(scoreData, test);
+                                    const score = scoreData.score === null && totalScore === null
+                                        ? '미응시'
+                                        : Number.isFinite(totalScore)
+                                            ? totalScore.toFixed(1)
+                                            : '-';
                                     
                                     return (
                                         <td 

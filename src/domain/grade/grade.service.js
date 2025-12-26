@@ -1,15 +1,70 @@
+const isCorrectAnswer = (value) => {
+    return value === true || value === 1 || value === '맞음' || value === '고침';
+};
+
+const getPerQuestionScore = (test, index) => {
+    if (Array.isArray(test?.questionScores) && test.questionScores.length > 0) {
+        return Number(test.questionScores[index] ?? 0);
+    }
+
+    if (Number.isFinite(test?.maxScore) && Number.isFinite(test?.totalQuestions) && test.totalQuestions > 0) {
+        return test.maxScore / test.totalQuestions;
+    }
+
+    return 1;
+};
+
+export const getTotalScore = (grade = {}, test = {}) => {
+    if (!grade) return null;
+
+    const totalScore = Number(grade.totalScore);
+    if (Number.isFinite(totalScore)) return totalScore;
+
+    if (grade.score === null && !grade.scores && !grade.questionResults && !grade.answers && !grade.correctCount) {
+        return null;
+    }
+
+    if (grade.scores && typeof grade.scores === 'object' && !Array.isArray(grade.scores)) {
+        const scoreValues = Object.values(grade.scores).map(Number).filter(Number.isFinite);
+        if (scoreValues.length > 0) {
+            return scoreValues.reduce((sum, value) => sum + value, 0);
+        }
+    }
+
+    if (Array.isArray(grade.questionResults) && grade.questionResults.length > 0) {
+        return grade.questionResults.reduce((sum, result) => {
+            const value = Number(result?.score);
+            return Number.isFinite(value) ? sum + value : sum;
+        }, 0);
+    }
+
+    const answerMap = grade.answers || grade.correctCount;
+    if (answerMap && typeof answerMap === 'object' && !Array.isArray(answerMap)) {
+        const entries = Object.entries(answerMap);
+        if (entries.length === 0) return 0;
+
+        return entries.reduce((sum, [questionNumber, value]) => {
+            if (!isCorrectAnswer(value)) return sum;
+            const index = Number(questionNumber) - 1;
+            return sum + getPerQuestionScore(test, Number.isFinite(index) ? index : 0);
+        }, 0);
+    }
+
+    return null;
+};
+
 const computeTestStatisticsInternal = (test, students, grades, classAverages) => {
     if (!test || !students.length) {
-        return { average: 0, maxScore: 0, minScore: 0, stdDev: 0, correctRates: {}, rank: [] };
+        return { average: null, maxScore: null, minScore: null, stdDev: null, correctRates: {}, rank: [] };
     }
 
     const scores = students.map(s => {
-        const score = grades[s.id]?.[test.id]?.score;
-        return score === undefined ? null : score;
-    }).filter(s => s !== null);
+        const grade = grades[s.id]?.[test.id];
+        return getTotalScore(grade, test);
+    }).filter(score => Number.isFinite(score));
 
     if (scores.length === 0) {
-        return { average: 0, maxScore: 0, minScore: 0, stdDev: 0, correctRates: {}, rank: [] };
+        return { average: null, maxScore: null, minScore: null, stdDev: null, correctRates: {}, rank: [] };
     }
 
     const average = scores.reduce((sum, s) => sum + s, 0) / scores.length;
@@ -18,9 +73,13 @@ const computeTestStatisticsInternal = (test, students, grades, classAverages) =>
     const variance = scores.reduce((sum, s) => sum + Math.pow(s - average, 2), 0) / scores.length;
     const stdDev = Math.sqrt(variance);
 
-    const attemptedStudents = students.filter(s => grades[s.id]?.[test.id]?.score !== null && grades[s.id]?.[test.id]?.score !== undefined);
+    const attemptedStudents = students.filter(s => {
+        const grade = grades[s.id]?.[test.id];
+        const score = getTotalScore(grade, test);
+        return Number.isFinite(score);
+    });
     const attemptedScores = attemptedStudents.map(s => ({
-        score: grades[s.id][test.id].score,
+        score: getTotalScore(grades[s.id]?.[test.id], test),
         studentId: s.id,
         name: s.name
     }));
@@ -42,8 +101,10 @@ const computeTestStatisticsInternal = (test, students, grades, classAverages) =>
         for (let i = 1; i <= test.totalQuestions; i++) {
             let correctCount = 0;
             attemptedStudents.forEach(student => {
-                const status = grades[student.id]?.[test.id]?.correctCount?.[i.toString()];
-                if (status === '맞음' || status === '고침') {
+                const grade = grades[student.id]?.[test.id] || {};
+                const answerMap = grade.answers || grade.correctCount;
+                const status = answerMap?.[i.toString()];
+                if (isCorrectAnswer(status)) {
                     correctCount++;
                 }
             });
@@ -83,13 +144,13 @@ export const getClassAverages = (classTests = [], classStudents = [], grades = {
         let totalScore = 0;
         let count = 0;
         classStudents.forEach(student => {
-            const score = grades[student.id]?.[test.id]?.score;
-            if (score !== undefined && score !== null) {
-                totalScore += Number(score);
+            const score = getTotalScore(grades[student.id]?.[test.id], test);
+            if (Number.isFinite(score)) {
+                totalScore += score;
                 count++;
             }
         });
-        averages[test.id] = count > 0 ? (totalScore / count) : 0;
+        averages[test.id] = count > 0 ? (totalScore / count) : null;
     });
     return averages;
 };
