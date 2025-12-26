@@ -2,6 +2,17 @@ import React, { useState, useMemo } from 'react';
 import { Icon } from '../../utils/helpers';
 import { isAssignmentAssignedToStudent } from '../../domain/homework/homework.service';
 import { useParentContext } from '../../parent';
+import { canAccessLessonContent } from '../../utils/attendanceAccess';
+
+const normalizeAttendanceStatus = (status) => {
+    if (!status) return null;
+    if (status === 'present' || status === 'absent' || status === 'video_makeup') return status;
+    if (status === '출석') return 'present';
+    if (status === '결석') return 'absent';
+    if (status === '동영상보강') return 'video_makeup';
+    return null;
+};
+
 
 export default function ParentClassroomView({ 
     classes, lessonLogs, attendanceLogs,
@@ -25,6 +36,24 @@ export default function ParentClassroomView({
 
     const [isHistoryExpanded, setIsHistoryExpanded] = useState(false);
     const [expandedMaterialLogId, setExpandedMaterialLogId] = useState(null);
+    const attendanceMap = useMemo(() => {
+        const map = {};
+        sortedLogs.forEach((log) => {
+            const attendance = attendanceLogs.find(
+                (attendanceLog) =>
+                    attendanceLog.studentId === activeStudentId &&
+                    (attendanceLog.lessonLogId === log.id ||
+                        (!attendanceLog.lessonLogId &&
+                            attendanceLog.classId === log.classId &&
+                            attendanceLog.date === log.date))
+            );
+            const normalizedStatus = normalizeAttendanceStatus(attendance?.status);
+            if (normalizedStatus) {
+                map[log.id] = { status: normalizedStatus };
+            }
+        });
+        return map;
+    }, [attendanceLogs, activeStudentId, sortedLogs]);
 
     // --- [1] 통계 및 상태 상세 계산 ---
     const stats = useMemo(() => {
@@ -111,6 +140,7 @@ export default function ParentClassroomView({
             : (Array.isArray(log.materials) ? log.materials : []);
         const hasMaterials = attachments.length > 0;
         const isMaterialsExpanded = expandedMaterialLogId === log.id;
+        const canAccess = canAccessLessonContent(attendanceMap[log.id]);
         
         // 상태 뱃지 결정
         let statusBadge;
@@ -152,16 +182,28 @@ export default function ParentClassroomView({
                     <div className="mt-3 pt-3 border-t border-gray-50 animate-fade-in-down">
                         <div className="space-y-2">
                             {attachments.map((mat, idx) => (
-                                <a 
-                                    key={idx} 
-                                    href={mat.url} 
-                                    target="_blank" 
-                                    rel="noopener noreferrer"
-                                    className="flex items-center gap-2 p-2 rounded-lg bg-gray-50 hover:bg-indigo-50 hover:text-indigo-700 transition-colors"
-                                >
-                                    <Icon name="download" className="w-4 h-4 text-gray-400" />
-                                    <span className="text-xs font-medium text-gray-700 truncate">{mat.name}</span>
-                                </a>
+                                canAccess ? (
+                                    <a 
+                                        key={idx} 
+                                        href={mat.url} 
+                                        target="_blank" 
+                                        rel="noopener noreferrer"
+                                        className="flex items-center gap-2 p-2 rounded-lg bg-gray-50 hover:bg-indigo-50 hover:text-indigo-700 transition-colors"
+                                    >
+                                        <Icon name="download" className="w-4 h-4 text-gray-400" />
+                                        <span className="text-xs font-medium text-gray-700 truncate">{mat.name}</span>
+                                    </a>
+                                ) : (
+                                    <span
+                                        key={idx}
+                                        className="flex items-center gap-2 p-2 rounded-lg bg-gray-100 text-gray-500"
+                                    >
+                                        <Icon name="download" className="w-4 h-4 text-gray-400" />
+                                        <span className="text-xs font-medium truncate">
+                                            {mat.name} (출결 확인 후 다운로드 가능)
+                                        </span>
+                                    </span>
+                                )
                             ))}
                         </div>
                     </div>

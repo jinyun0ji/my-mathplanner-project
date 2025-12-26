@@ -5,6 +5,17 @@ import YouTubePlayer from '../../components/YouTubePlayer';
 import PlayCircleFilledWhiteIcon from '@mui/icons-material/PlayCircleFilledWhite';
 import { calculateVideoProgress, getCurrentLessonByDate, getSortedLessonLogs, normalizeLessonVideos } from '../../domain/lesson/lesson.service';
 import { buildClassroomStats } from '../../domain/classroom/classroom.service';
+import { canAccessLessonContent } from '../../utils/attendanceAccess';
+
+const normalizeAttendanceStatus = (status) => {
+    if (!status) return null;
+    if (status === 'present' || status === 'absent' || status === 'video_makeup') return status;
+    if (status === '출석') return 'present';
+    if (status === '결석') return 'absent';
+    if (status === '동영상보강') return 'video_makeup';
+    return null;
+};
+
 
 export default function ClassroomView({ 
     classes, lessonLogs, attendanceLogs, studentId, 
@@ -33,6 +44,24 @@ export default function ClassroomView({
     
     // 자료 리스트 펼침 상태 관리
     const [expandedMaterialLogId, setExpandedMaterialLogId] = useState(null);
+    const attendanceMap = useMemo(() => {
+        const map = {};
+        sortedLogs.forEach((log) => {
+            const attendance = attendanceLogs.find(
+                (attendanceLog) =>
+                    attendanceLog.studentId === studentId &&
+                    (attendanceLog.lessonLogId === log.id ||
+                        (!attendanceLog.lessonLogId &&
+                            attendanceLog.classId === log.classId &&
+                            attendanceLog.date === log.date))
+            );
+            const normalizedStatus = normalizeAttendanceStatus(attendance?.status);
+            if (normalizedStatus) {
+                map[log.id] = { status: normalizedStatus };
+            }
+        });
+        return map;
+    }, [attendanceLogs, sortedLogs, studentId]);
 
     useEffect(() => {
         if (targetMemo && targetMemo.lessonId) {
@@ -95,6 +124,9 @@ export default function ClassroomView({
     const lessonVideos = useMemo(() => normalizeLessonVideos(currentLesson), [currentLesson]);
     const hasLessonVideos = lessonVideos.length > 0;
     const hasMultipleLessonVideos = lessonVideos.length > 1;
+    const canAccessCurrentLesson = canAccessLessonContent(
+        currentLesson ? attendanceMap[currentLesson.id] : null
+    );
 
     useEffect(() => {
         setSelectedVideo(lessonVideos[0] || null);
@@ -121,6 +153,7 @@ export default function ClassroomView({
             : (Array.isArray(log.materials) ? log.materials : []);
         const hasMaterials = attachments.length > 0;
         const isMaterialsExpanded = expandedMaterialLogId === log.id;
+        const canAccess = canAccessLessonContent(attendanceMap[log.id]);
 
         return (
             <div 
@@ -177,21 +210,35 @@ export default function ClassroomView({
                         </p>
                         <div className="space-y-2">
                             {attachments.map((mat, idx) => (
-                                <a 
-                                    key={idx} 
-                                    href={mat.url} 
-                                    target="_blank" 
-                                    rel="noopener noreferrer"
-                                    className="flex items-center gap-3 p-3 rounded-xl bg-gray-50 border border-gray-100 active:bg-gray-200 transition-colors"
-                                    onClick={(e) => e.stopPropagation()} 
-                                >
-                                    <div className="w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center flex-shrink-0 text-red-500">
-                                        {/* ✅ [수정] 다운로드 아이콘 사용 */}
-                                        <Icon name="download" className="w-4 h-4" />
-                                    </div>
-                                    <span className="text-sm font-medium text-gray-700 truncate flex-1">{mat.name}</span>
-                                    <Icon name="chevronRight" className="w-4 h-4 text-gray-400" />
-                                </a>
+                                canAccess ? (
+                                    <a 
+                                        key={idx} 
+                                        href={mat.url} 
+                                        target="_blank" 
+                                        rel="noopener noreferrer"
+                                        className="flex items-center gap-3 p-3 rounded-xl bg-gray-50 border border-gray-100 active:bg-gray-200 transition-colors"
+                                        onClick={(e) => e.stopPropagation()} 
+                                    >
+                                        <div className="w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center flex-shrink-0 text-red-500">
+                                            {/* ✅ [수정] 다운로드 아이콘 사용 */}
+                                            <Icon name="download" className="w-4 h-4" />
+                                        </div>
+                                        <span className="text-sm font-medium text-gray-700 truncate flex-1">{mat.name}</span>
+                                        <Icon name="chevronRight" className="w-4 h-4 text-gray-400" />
+                                    </a>
+                                ) : (
+                                    <span
+                                        key={idx}
+                                        className="flex items-center gap-3 p-3 rounded-xl bg-gray-100 border border-gray-200 text-gray-500"
+                                    >
+                                        <div className="w-8 h-8 rounded-lg bg-gray-200 flex items-center justify-center flex-shrink-0 text-gray-400">
+                                            <Icon name="download" className="w-4 h-4" />
+                                        </div>
+                                        <span className="text-sm font-medium truncate flex-1">
+                                            {mat.name} (출결 확인 후 다운로드 가능)
+                                        </span>
+                                    </span>
+                                )
                             ))}
                         </div>
                     </div>
@@ -285,7 +332,16 @@ export default function ClassroomView({
                     <div className="flex-1 flex flex-col overflow-hidden bg-gray-50 lg:border-r lg:border-gray-200 relative">
                         <div className="flex-1 min-h-0 bg-black flex flex-col">
                             <div className="flex-1 flex items-center justify-center w-full">
-                                {currentVideoId ? (
+                                {!canAccessCurrentLesson ? (
+                                    <div className="flex flex-col items-center justify-center text-gray-300 text-center px-6">
+                                        <Icon name="lock" className="w-10 h-10 mb-3 opacity-70" />
+                                        <p className="text-sm leading-relaxed">
+                                            해당 수업은 출결이 확인되지 않아
+                                            <br />
+                                            영상 시청이 제한되어 있습니다.
+                                        </p>
+                                    </div>
+                                ) : currentVideoId ? (
                                     <div className="w-full h-full max-w-full max-h-full aspect-video flex items-center justify-center"><YouTubePlayer ref={playerRef} videoId={currentVideoId} initialSeconds={targetMemo?.time || progressData.seconds} onWatchedTick={handleWatchedTick} /></div>
                                 ) : (<div className="flex flex-col items-center justify-center text-gray-500"><Icon name="monitor" className="w-12 h-12 mb-2 opacity-50" /><p>재생할 영상이 없습니다.</p></div>)}
                             </div>
