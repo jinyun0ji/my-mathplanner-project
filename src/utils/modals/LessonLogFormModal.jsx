@@ -3,10 +3,11 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { DndContext, PointerSensor, closestCenter, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { getDownloadURL, getStorage, ref, uploadBytes } from 'firebase/storage';
+import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { Modal } from '../../components/common/Modal';
 import { Icon, calculateClassSessions } from '../../utils/helpers';
 import StaffNotificationFields from '../../components/Shared/StaffNotificationFields';
+import { storage } from '../../firebase/client';
 
 const SortableVideoItem = React.memo(({ video, index, onRemove, onChange }) => {
   const {
@@ -80,6 +81,21 @@ const SortableVideoItem = React.memo(({ video, index, onRemove, onChange }) => {
   );
 });
 
+const normalizeLessonDate = (value) => {
+  if (!value) return '';
+  if (typeof value === 'string') return value;
+  const date = value instanceof Date
+    ? value
+    : typeof value?.toDate === 'function'
+      ? value.toDate()
+      : new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toISOString().slice(0, 10);
+};
+
+const normalizeStorageSegment = (value) =>
+  String(value || '').trim().replace(/\s+/g, '_');
+
 export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = null, classes, defaultDate = null, students, logNotification, onDirtyChange = () => {} }) => {
   const selectedClass = classes.find(c => String(c.id) === String(classId));
   
@@ -106,7 +122,6 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
   const [staffNotifyScheduledAt, setStaffNotifyScheduledAt] = useState('');
   const [isUploadingMaterials, setIsUploadingMaterials] = useState(false);
   const [materialUploadProgress, setMaterialUploadProgress] = useState(0);
-  const storage = useMemo(() => getStorage(), []);
 
   const videoIdRef = useRef(0);
   const materialIdRef = useRef(0);
@@ -128,8 +143,12 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
   }), []);
 
   const uploadLessonFile = useCallback(async (file, targetClassId, lessonDate) => {
-    const safeName = file.name.replace(/\s+/g, '_');
-    const filePath = `lesson-materials/${targetClassId}/${lessonDate}/${Date.now()}-${safeName}`;
+    const safeName = normalizeStorageSegment(file.name);
+    const teacherSegment = normalizeStorageSegment(
+      selectedClass?.teacherId || selectedClass?.teacher || targetClassId
+    );
+    const dateSegment = normalizeLessonDate(lessonDate) || new Date().toISOString().slice(0, 10);
+    const filePath = `lesson-materials/${teacherSegment}/${dateSegment}/${safeName}`;
     const fileRef = ref(storage, filePath);
 
     await uploadBytes(fileRef, file);
@@ -141,7 +160,7 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
       size: file.size,
       type: file.type,
     };
-  }, [storage]);
+  }, [selectedClass, storage]);
 
   const normalizeVideosFromLog = useCallback((logItem) => {
     if (logItem?.videos && Array.isArray(logItem.videos)) {
