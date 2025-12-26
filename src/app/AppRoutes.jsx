@@ -54,6 +54,7 @@ import {
     setDoc,
     serverTimestamp,
     updateDoc,
+    writeBatch,
 } from 'firebase/firestore';
 
 const PAGE_ROUTES = {
@@ -367,6 +368,9 @@ export default function AppRoutes({ user, role, studentIds }) {
               classIds: nextClassIds,
               uid: data.uid || data.id || payload.authUid || null,
           };
+          if (studentPayload.role !== ROLE.STUDENT) {
+              throw new Error('학생 정보만 저장할 수 있습니다.');
+          }
           if (isEdit) {
               if (!data.id) throw new Error('학생 ID가 없습니다.');
               const existingStudent = students.find((student) => student.id === data.id);
@@ -375,40 +379,43 @@ export default function AppRoutes({ user, role, studentIds }) {
                   : (existingStudent?.classes || []);
               const classIdsToAdd = nextClassIds.filter((id) => !prevClassIds.includes(id));
               const classIdsToRemove = prevClassIds.filter((id) => !nextClassIds.includes(id));
+              const batch = writeBatch(db);
 
-              await Promise.all([
-                  ...classIdsToAdd.map((classId) => updateDoc(doc(db, 'classes', classId), {
+              classIdsToAdd.forEach((classId) => {
+                  batch.update(doc(db, 'classes', classId), {
                       students: arrayUnion(studentPayload.uid),
-                  })),
-                  ...classIdsToRemove.map((classId) => updateDoc(doc(db, 'classes', classId), {
+                  });
+              });
+              classIdsToRemove.forEach((classId) => {
+                  batch.update(doc(db, 'classes', classId), {
                       students: arrayRemove(studentPayload.uid),
-                  })),
-              ]);
-
-              await updateDoc(doc(db, 'users', data.id), {
+                  });
+              });
+              batch.update(doc(db, 'users', data.id), {
                   ...studentPayload,
                   updatedAt: serverTimestamp(),
                   updatedBy: userId,
               });
+              await batch.commit();
               setStudents(prev => prev.map(s => s.id === data.id ? { ...s, ...studentPayload } : s));
           } else {
-              const docRef = await addDoc(collection(db, 'users'), {
+              const docRef = doc(collection(db, 'users'));
+              const resolvedUid = studentPayload.uid || docRef.id;
+              const batch = writeBatch(db);
+              batch.set(docRef, {
                   ...studentPayload,
+                  uid: resolvedUid,
                   createdAt: serverTimestamp(),
                   createdBy: userId,
                   updatedAt: serverTimestamp(),
                   updatedBy: userId,
               });
-              const resolvedUid = studentPayload.uid || docRef.id;
-              if (!studentPayload.uid) {
-                  await updateDoc(doc(db, 'users', docRef.id), { uid: resolvedUid });
-              }
               if (nextClassIds.length > 0) {
-                  await Promise.all(
-                      nextClassIds.map((classId) => updateDoc(doc(db, 'classes', classId), {
+                  nextClassIds.forEach((classId) => {
+                      batch.update(doc(db, 'classes', classId), {
                           students: arrayUnion(resolvedUid),
-                      })),
-                  );
+                       });
+                  });
               }
               setStudents(prev => [...prev, { id: docRef.id, ...studentPayload, uid: resolvedUid }]);
           }

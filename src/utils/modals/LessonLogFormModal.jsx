@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { DndContext, PointerSensor, closestCenter, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { getDownloadURL, getStorage, ref, uploadBytesResumable } from 'firebase/storage';
+import { getDownloadURL, getStorage, ref, uploadBytes } from 'firebase/storage';
 import { Modal } from '../../components/common/Modal';
 import { Icon, calculateClassSessions } from '../../utils/helpers';
 import StaffNotificationFields from '../../components/Shared/StaffNotificationFields';
@@ -113,48 +113,25 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
     id: material.id || `material-${materialIdRef.current++}`,
     name: material.name || '',
     url: material.url || '',
+    path: material.path || '',
+    size: material.size || null,
+    type: material.type || '',
   }), []);
 
-  const uploadLessonFile = useCallback((file, targetClassId, lessonDate, onProgress) => {
+  const uploadLessonFile = useCallback(async (file, targetClassId, lessonDate) => {
     const safeName = file.name.replace(/\s+/g, '_');
     const filePath = `lesson-materials/${targetClassId}/${lessonDate}/${Date.now()}-${safeName}`;
     const fileRef = ref(storage, filePath);
 
-    return new Promise((resolve, reject) => {
-      const uploadTask = uploadBytesResumable(fileRef, file);
-
-      uploadTask.on(
-        'state_changed',
-        (snapshot) => {
-          const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-          console.log('업로드 진행률:', progress);
-          if (onProgress) {
-            onProgress(progress);
-          }
-        },
-        (error) => {
-          console.error('Firebase Storage 업로드 실패', error);
-          reject(error);
-        },
-        async () => {
-          try {
-            const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-            if (onProgress) {
-              onProgress(100);
-            }
-            resolve({
-              name: file.name,
-              url: downloadURL,
-              path: filePath,
-              size: file.size,
-              type: file.type,
-            });
-          } catch (error) {
-            reject(error);
-          }
-        }
-      );
-    });
+    await uploadBytes(fileRef, file);
+    const downloadURL = await getDownloadURL(fileRef);
+    return {
+      name: file.name,
+      url: downloadURL,
+      path: filePath,
+      size: file.size,
+      type: file.type,
+    };
   }, [storage]);
 
   const normalizeVideosFromLog = useCallback((logItem) => {
@@ -312,19 +289,20 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
 
       try {
           const uploadedMaterials = await Promise.allSettled(
-            files.map(file => uploadLessonFile(
-              file,
-              classId || 'unknown',
-              date || 'unscheduled',
-              (progress) => {
-                progressByFile.set(file, progress);
-                const totalProgress = Array.from(progressByFile.values())
-                  .reduce((sum, value) => sum + value, 0);
-                if (progressByFile.size > 0) {
-                  setMaterialUploadProgress(Math.round(totalProgress / progressByFile.size));
-                }
+            files.map(async (file) => {
+              const result = await uploadLessonFile(
+                file,
+                classId || 'unknown',
+                date || 'unscheduled'
+              );
+              progressByFile.set(file, 100);
+              const totalProgress = Array.from(progressByFile.values())
+                .reduce((sum, value) => sum + value, 0);
+              if (progressByFile.size > 0) {
+                setMaterialUploadProgress(Math.round(totalProgress / progressByFile.size));
               }
-            ))
+              return result;
+            })
           );
 
           const successfulUploads = uploadedMaterials
@@ -441,7 +419,13 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
             .map(material => {
                 const url = material.url?.trim();
                 const name = material.name?.trim() || url;
-                return { name, url };
+                return {
+                  name,
+                  url,
+                  path: material.path || '',
+                  size: material.size ?? null,
+                  type: material.type || '',
+                };
             })
             .filter(material => material.url && material.name),
         scheduleTime: scheduleTime || null,
