@@ -84,6 +84,15 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
   const selectedClass = classes.find(c => String(c.id) === String(classId));
   
   const sessions = useMemo(() => selectedClass ? calculateClassSessions(selectedClass) : [], [selectedClass, calculateClassSessions]);
+  const classStudents = useMemo(() => {
+    if (!classId) return [];
+    return students.filter((student) => {
+      const classIds = Array.isArray(student.classIds)
+        ? student.classIds
+        : (student.classes || []);
+      return classIds.map(String).includes(String(classId));
+    });
+  }, [students, classId]);
   
   const [date, setDate] = useState(defaultDate || '');
   const [progress, setProgress] = useState('');
@@ -214,8 +223,8 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
     // 모달이 열릴 때 알림 설정 기본값 초기화
     if (selectedClass && isOpen) {
         const initialMap = {};
-        (selectedClass.students || []).forEach(sId => {
-            initialMap[sId] = {
+        classStudents.forEach((student) => {
+            initialMap[student.id] = {
                 notifyParent: true,
                 notifyStudent: true, // ✅ 기본값: 학생에게도 발송
             };
@@ -230,7 +239,7 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
         setIsDirty(false);
         onDirtyChange(false);
     }
-  }, [log, defaultDate, sessions, selectedClass, isOpen, normalizeVideosFromLog, onDirtyChange]);
+  }, [log, defaultDate, sessions, selectedClass, isOpen, normalizeVideosFromLog, onDirtyChange, classStudents]);
 
   useEffect(() => {
     onDirtyChange(isDirty);
@@ -441,7 +450,7 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
     }
     
     if (scheduleTime) {
-        const studentRecipients = students.filter(s => {
+        const studentRecipients = classStudents.filter(s => {
             const prefs = studentNotificationMap[s.id];
             return prefs && (prefs.notifyParent || prefs.notifyStudent);
         });
@@ -655,19 +664,18 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
                                 </tr>
                             </thead>
                             <tbody className="bg-white divide-y divide-gray-200">
-                                {(selectedClass.students || []).map(sId => {
-                                    const student = students.find(s => s.id === sId);
-                                    if (!student || !studentNotificationMap[sId]) return null;
-                                    const prefs = studentNotificationMap[sId];
+                                {classStudents.map((student) => {
+                                    const prefs = studentNotificationMap[student.id];
+                                    if (!prefs) return null;
 
                                     return (
-                                        <tr key={sId} className="hover:bg-gray-50">
+                                        <tr key={student.id} className="hover:bg-gray-50">
                                             <td className="p-2 font-medium text-gray-900">{student.name}</td>
                                             <td className="p-2 text-center">
                                                 <input 
                                                     type="checkbox" 
                                                     checked={prefs.notifyParent} 
-                                                    onChange={() => handleNotificationToggle(sId, 'notifyParent')}
+                                                    onChange={() => handleNotificationToggle(student.id, 'notifyParent')}
                                                     className="rounded text-blue-600 focus:ring-blue-500 h-4 w-4 cursor-pointer" 
                                                 />
                                             </td>
@@ -675,7 +683,7 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
                                                 <input 
                                                     type="checkbox" 
                                                     checked={prefs.notifyStudent} 
-                                                    onChange={() => handleNotificationToggle(sId, 'notifyStudent')}
+                                                    onChange={() => handleNotificationToggle(student.id, 'notifyStudent')}
                                                     className="rounded text-blue-600 focus:ring-blue-500 h-4 w-4 cursor-pointer" 
                                                 />
                                             </td>

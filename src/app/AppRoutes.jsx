@@ -397,6 +397,7 @@ export default function AppRoutes({ user, role, studentIds }) {
                   updatedBy: userId,
               });
               await batch.commit();
+              console.log('학생 Firestore 저장 완료', data.id);
               setStudents(prev => prev.map(s => s.id === data.id ? { ...s, ...studentPayload } : s));
           } else {
               const docRef = doc(collection(db, 'users'));
@@ -417,6 +418,8 @@ export default function AppRoutes({ user, role, studentIds }) {
                        });
                   });
               }
+              await batch.commit();
+              console.log('학생 Firestore 저장 완료', docRef.id);
               setStudents(prev => [...prev, { id: docRef.id, ...studentPayload, uid: resolvedUid }]);
           }
       } catch (error) {

@@ -16,6 +16,14 @@ import {
     isStudentRole,
 } from '../constants/roles';
 
+const chunkArray = (items, size = 10) => {
+    const chunks = [];
+    for (let i = 0; i < items.length; i += size) {
+        chunks.push(items.slice(i, i + size));
+    }
+    return chunks;
+};
+
 const normalizeAuthUid = (item) => {
     if (item?.studentId) return item;
     if (item?.authUid) return { ...item, studentId: item.authUid };
@@ -182,13 +190,38 @@ export const loadViewerDataOnce = async ({
             normalizeStudentUser,
         );
 
-        const myClasses = await fetchList(
-            db,
-            'classes',
-            setClasses,
-            query(collection(db, 'classes'), where('students', 'array-contains-any', viewerStudentUids), limit(50)),
-            isCancelled,
-        );
+        const classIds = [
+            ...new Set(
+                myStudents
+                    .flatMap((student) => (
+                        Array.isArray(student.classIds)
+                            ? student.classIds
+                            : (student.classes || [])
+                    ))
+                    .map((classId) => String(classId))
+                    .filter(Boolean),
+            ),
+        ];
+        let myClasses = [];
+        if (classIds.length > 0) {
+            const chunks = chunkArray(classIds, 10);
+            const classSnaps = await Promise.all(
+                chunks.map(async (chunk) => {
+                    const classQuery = query(
+                        collection(db, 'classes'),
+                        where(documentId(), 'in', chunk),
+                    );
+                    return getDocs(classQuery);
+                }),
+            );
+            myClasses = classSnaps.flatMap((snap) => snap.docs.map((docSnap) => ({
+                id: docSnap.id,
+                ...docSnap.data(),
+            })));
+        }
+        if (!isCancelled()) {
+            setClasses(myClasses);
+        }
 
         const fetchLimitedLogs = async (colName, setter, filterField) => {
             const q = query(
@@ -204,10 +237,10 @@ export const loadViewerDataOnce = async ({
         await fetchLimitedLogs('clinicLogs', setClinicLogs, 'authUid');
 
         if (myClasses.length > 0) {
-            const classIds = myClasses.map((c) => c.id).slice(0, 10);
+            const lessonClassIds = myClasses.map((c) => c.id).slice(0, 10);
             const lessonQuery = query(
                 collection(db, 'lessonLogs'),
-                where('classId', 'in', classIds),
+                where('classId', 'in', lessonClassIds),
                 orderBy('date', 'desc'),
                 limit(30),
             );
@@ -216,7 +249,7 @@ export const loadViewerDataOnce = async ({
             if (setTests) {
                 const testsQuery = query(
                     collection(db, 'tests'),
-                    where('classId', 'in', classIds),
+                    where('classId', 'in', lessonClassIds),
                     orderBy('date', 'desc'),
                     limit(30),
                 );

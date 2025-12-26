@@ -13,9 +13,14 @@ export const getSelectedAssignment = (assignments = [], assignmentId) => {
 export const getClassStudents = (students = [], selectedClass) => {
     if (!selectedClass) return [];
 
-    const classStudentIds = selectedClass.students || [];
+    const classId = String(selectedClass.id);
     return students
-        .filter(s => classStudentIds.includes(s.id))
+        .filter((student) => {
+            const classIds = Array.isArray(student.classIds)
+                ? student.classIds
+                : (student.classes || []);
+            return classIds.map(String).includes(classId);
+        })
         .sort((a, b) => a.name.localeCompare(b.name));
 };
 

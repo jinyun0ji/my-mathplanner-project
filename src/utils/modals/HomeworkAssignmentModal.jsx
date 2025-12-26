@@ -4,15 +4,15 @@ import { Modal } from '../../components/common/Modal';
 import StaffNotificationFields from '../../components/Shared/StaffNotificationFields';
 
 export const HomeworkAssignmentModal = ({ isOpen, onClose, onSave, classId, assignment = null, students, selectedClass }) => {
-  const classStudentIds = useMemo(() => {
-    if (!selectedClass) return [];
-    return selectedClass.students || [];
-  }, [selectedClass]);
-
-  const classStudents = useMemo(
-    () => students.filter(s => classStudentIds.includes(s.id)) || [],
-    [students, classStudentIds]
-  );
+  const classStudents = useMemo(() => {
+    if (!classId) return [];
+    return students.filter((student) => {
+      const classIds = Array.isArray(student.classIds)
+        ? student.classIds
+        : (student.classes || []);
+      return classIds.map(String).includes(String(classId));
+    });
+  }, [students, classId]);
   
   const [date, setDate] = useState('');
   const [content, setContent] = useState('');
