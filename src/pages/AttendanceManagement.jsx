@@ -1,11 +1,10 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { collection, doc, getDoc, getDocs, query, where } from 'firebase/firestore';
 import { Icon, formatGradeLabel } from '../utils/helpers';
 import ClassSelectionPanel from '../components/Shared/ClassSelectionPanel'; 
 import { AttendanceModal } from '../components/common/AttendanceModal'; 
 import { MemoModal } from '../utils/modals/MemoModal'; 
 import { getDefaultClassId } from '../utils/classStatus';
-import { db } from '../firebase/client';
+import { useClassStudents } from '../utils/useClassStudents';
 
 export default function AttendanceManagement({ 
     classes, attendanceLogs, handleSaveAttendance,
@@ -16,8 +15,7 @@ export default function AttendanceManagement({
     const [isAttendanceModalOpen, setIsAttendanceModalOpen] = useState(false);
     const [memoModalState, setMemoModalState] = useState({ isOpen: false, studentId: null, content: '', studentName: '' });
     const [mobileView, setMobileView] = useState('attendance');
-    const [classStudents, setClassStudents] = useState([]);
-    const [isLoadingStudents, setIsLoadingStudents] = useState(false);
+    const { students: classStudents, isLoading: isLoadingStudents } = useClassStudents(selectedClassId);
 
     const selectedClass = classes.find(c => String(c.id) === String(selectedClassId));
 
@@ -31,78 +29,6 @@ export default function AttendanceManagement({
         if (!selectedClassId || !selectedDate) return [];
         return attendanceLogs.filter(log => log.classId === selectedClassId && log.date === selectedDate);
     }, [attendanceLogs, selectedClassId, selectedDate]);
-
-    useEffect(() => {
-        let isActive = true;
-
-        const loadClassStudents = async () => {
-            if (!selectedClassId) {
-                if (isActive) {
-                    setClassStudents([]);
-                    setIsLoadingStudents(false);
-                }
-                return;
-            }
-
-            setIsLoadingStudents(true);
-            setClassStudents([]);
-
-            try {
-                const classRef = doc(db, 'classes', String(selectedClassId));
-                const classSnap = await getDoc(classRef);
-
-                if (!classSnap.exists()) {
-                    if (isActive) setClassStudents([]);
-                    return;
-                }
-
-                const { students: classStudentIds = [], studentIds: legacyStudentIds = [] } = classSnap.data() || {};
-                const studentIds = Array.isArray(classStudentIds) && classStudentIds.length > 0
-                    ? classStudentIds
-                    : legacyStudentIds;
-                if (!Array.isArray(studentIds) || studentIds.length === 0) {
-                    if (isActive) setClassStudents([]);
-                    return;
-                }
-
-                const normalizedStudentIds = studentIds.map((id) => String(id));
-                const chunks = [];
-                for (let i = 0; i < normalizedStudentIds.length; i += 10) {
-                    chunks.push(normalizedStudentIds.slice(i, i + 10));
-                }
-
-                const fetchedStudents = (
-                    await Promise.all(
-                        chunks.map(async (chunk) => {
-                            const usersQuery = query(collection(db, 'users'), where('uid', 'in', chunk));
-                            const usersSnap = await getDocs(usersQuery);
-                            return usersSnap.docs.map((docSnap) => {
-                                const data = docSnap.data();
-                                const uid = data?.uid ?? docSnap.id;
-                                return { id: uid, ...data };
-                            });
-                        }),
-                    )
-                ).flat();
-
-                const filteredStudents = fetchedStudents
-                    .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko'));
-
-                if (isActive) setClassStudents(filteredStudents);
-            } catch (error) {
-                console.error('[AttendanceManagement] 학생 목록 로드 실패:', error);
-                if (isActive) setClassStudents([]);
-            } finally {
-                if (isActive) setIsLoadingStudents(false);
-            }
-        };
-
-        loadClassStudents();
-
-        return () => {
-            isActive = false;
-        };
-    }, [selectedClassId]);
 
     const attendanceSummary = useMemo(() => {
         const summary = { total: classStudents.length, 출석: 0, 지각: 0, 결석: 0, 동영상보강: 0, 미기록: 0 };

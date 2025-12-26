@@ -15,7 +15,7 @@ export default function ClassSelectionPanel({
     const selectedClass = classes.find(c => String(c.id) === String(selectedClassId));
     const selectedClassGrade = selectedClass ? formatGradeLabel(selectedClass.grade) : '';
     const selectedStudentCount = selectedClass
-        ? (selectedClass.studentIds?.length ?? selectedClass.students?.length ?? 0)
+        ? (selectedClass.students?.length ?? 0)
         : 0;
     
     // Ref 설정: 선택된 항목을 참조할 Ref 객체

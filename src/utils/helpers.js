@@ -106,7 +106,7 @@ export const calculateGradeComparison = (studentId, classes, tests, grades) => {
     if (!tests || !grades) return []; 
 
     const myGrades = [];
-    const myClassIds = classes.filter(c => c.students.includes(studentId)).map(c => c.id);
+    const myClassIds = classes.filter(c => (c.students || []).includes(studentId)).map(c => c.id);
     const relevantTests = tests.filter(t => myClassIds.includes(t.classId));
 
     relevantTests.forEach(test => {

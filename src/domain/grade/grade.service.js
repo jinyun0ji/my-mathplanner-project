@@ -57,9 +57,7 @@ const computeTestStatisticsInternal = (test, students, grades, classAverages) =>
 export const getClassStudents = (students = [], selectedClass) => {
     if (!selectedClass) return [];
 
-    const classStudentIds = Array.isArray(selectedClass.students) && selectedClass.students.length > 0
-        ? selectedClass.students
-        : (selectedClass.studentIds || []);
+    const classStudentIds = selectedClass.students || [];
 
     return students
         .filter(s => classStudentIds.includes(s.id))

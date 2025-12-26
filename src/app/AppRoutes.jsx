@@ -42,6 +42,8 @@ import { claimStudentLinkCode } from '../parent/linkCodeService';
 import { useParentContext } from '../parent';
 import {
     addDoc,
+    arrayRemove,
+    arrayUnion,
     collection,
     deleteDoc,
     doc,
@@ -353,6 +355,7 @@ export default function AppRoutes({ user, role, studentIds }) {
   const handleSaveStudent = async (data, isEdit) => {
       ensureFirestoreContext();
       try {
+        const nextClassIds = Array.isArray(data.classes) ? data.classes : [];
           const payload = {
               ...stripId(data),
               authUid: data.studentId || data.authUid || null,
@@ -361,11 +364,27 @@ export default function AppRoutes({ user, role, studentIds }) {
               ...payload,
               role: ROLE.STUDENT,
               active: payload.active !== false,
-              classIds: payload.classes || [],
+              classIds: nextClassIds,
               uid: data.uid || data.id || payload.authUid || null,
           };
           if (isEdit) {
               if (!data.id) throw new Error('학생 ID가 없습니다.');
+              const existingStudent = students.find((student) => student.id === data.id);
+              const prevClassIds = Array.isArray(existingStudent?.classIds)
+                  ? existingStudent.classIds
+                  : (existingStudent?.classes || []);
+              const classIdsToAdd = nextClassIds.filter((id) => !prevClassIds.includes(id));
+              const classIdsToRemove = prevClassIds.filter((id) => !nextClassIds.includes(id));
+
+              await Promise.all([
+                  ...classIdsToAdd.map((classId) => updateDoc(doc(db, 'classes', classId), {
+                      students: arrayUnion(studentPayload.uid),
+                  })),
+                  ...classIdsToRemove.map((classId) => updateDoc(doc(db, 'classes', classId), {
+                      students: arrayRemove(studentPayload.uid),
+                  })),
+              ]);
+
               await updateDoc(doc(db, 'users', data.id), {
                   ...studentPayload,
                   updatedAt: serverTimestamp(),
@@ -384,6 +403,13 @@ export default function AppRoutes({ user, role, studentIds }) {
               if (!studentPayload.uid) {
                   await updateDoc(doc(db, 'users', docRef.id), { uid: resolvedUid });
               }
+              if (nextClassIds.length > 0) {
+                  await Promise.all(
+                      nextClassIds.map((classId) => updateDoc(doc(db, 'classes', classId), {
+                          students: arrayUnion(resolvedUid),
+                      })),
+                  );
+              }
               setStudents(prev => [...prev, { id: docRef.id, ...studentPayload, uid: resolvedUid }]);
           }
       } catch (error) {
@@ -394,6 +420,17 @@ export default function AppRoutes({ user, role, studentIds }) {
   const handleDeleteStudent = async (id) => {
       ensureFirestoreContext();
       try {
+        const existingStudent = students.find((student) => student.id === id);
+          const prevClassIds = Array.isArray(existingStudent?.classIds)
+              ? existingStudent.classIds
+              : (existingStudent?.classes || []);
+          if (prevClassIds.length > 0) {
+              await Promise.all(
+                  prevClassIds.map((classId) => updateDoc(doc(db, 'classes', classId), {
+                      students: arrayRemove(existingStudent.uid || id),
+                  })),
+              );
+          }
           await deleteDoc(doc(db, 'users', id));
           setStudents(prev => prev.filter(s => s.id !== id));
       } catch (error) {
@@ -416,23 +453,28 @@ export default function AppRoutes({ user, role, studentIds }) {
       ensureFirestoreContext();
       try {
           const payload = stripId(data);
+          const normalizedStudents = Array.isArray(payload.students) ? payload.students : [];
+          const payloadWithDefaults = {
+              ...payload,
+              students: normalizedStudents,
+          };
           if (isEdit) {
               if (!data.id) throw new Error('클래스 ID가 없습니다.');
               await updateDoc(doc(db, 'classes', data.id), {
-                  ...payload,
+                  ...payloadWithDefaults,
                   updatedAt: serverTimestamp(),
                   updatedBy: userId,
               });
-            setClasses(prev => prev.map(c => c.id === data.id ? { ...c, ...payload } : c));
+            setClasses(prev => prev.map(c => c.id === data.id ? { ...c, ...payloadWithDefaults } : c));
           } else {
               const docRef = await addDoc(collection(db, 'classes'), {
-                  ...payload,
+                  ...payloadWithDefaults,
                   createdAt: serverTimestamp(),
                   createdBy: userId,
                   updatedAt: serverTimestamp(),
                   updatedBy: userId,
               });
-              setClasses(prev => [...prev, { id: docRef.id, ...payload }]);
+              setClasses(prev => [...prev, { id: docRef.id, ...payloadWithDefaults }]);
           }
           console.log('✅ 클래스 Firestore 저장 성공');
       } catch (error) {

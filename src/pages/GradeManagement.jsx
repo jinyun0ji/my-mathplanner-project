@@ -5,14 +5,15 @@ import FullGradeTable from '../components/Grade/FullGradeTable';
 import TestResultTable from '../components/Grade/TestResultTable';
 import TestStatisticsTable from '../components/Grade/TestStatisticsTable';
 import { TestFormModal } from '../utils/modals/TestFormModal';
-import { getClassAverages, getClassStudents, getClassTests, getTestStatistics } from '../domain/grade/grade.service';
+import { getClassAverages, getClassTests, getTestStatistics } from '../domain/grade/grade.service';
 import { getDefaultClassId } from '../utils/classStatus';
+import { useClassStudents } from '../utils/useClassStudents';
 
 // ----------------------------------------------------------------------
 // 메인 컴포넌트: GradeManagement
 // ----------------------------------------------------------------------
 export default function GradeManagement({ 
-    students, classes, tests, grades, handleSaveTest, handleDeleteTest, 
+    classes, tests, grades, handleSaveTest, handleDeleteTest, 
     handleUpdateGrade, handleSaveClass, calculateClassSessions 
 }) {
     const [selectedClassId, setSelectedClassId] = useState(() => getDefaultClassId(classes));
@@ -20,6 +21,7 @@ export default function GradeManagement({
     const [testToEdit, setTestToEdit] = useState(null);
     const [selectedTestId, setSelectedTestId] = useState(null); 
     const [isGradeInputModalOpen, setIsGradeInputModalOpen] = useState(false);
+    const { students: classStudents, isLoading: isLoadingStudents } = useClassStudents(selectedClassId);
     
     // 엑셀 파일 입력을 위한 Ref
     const fileInputRef = useRef(null);
@@ -40,11 +42,6 @@ export default function GradeManagement({
     // 데이터 가공 (useMemo)
     // ------------------------------------------
     
-    const classStudents = useMemo(
-        () => getClassStudents(students, selectedClass),
-        [students, selectedClass]
-    );
-
     const classTests = useMemo(
         () => getClassTests(tests, selectedClassId),
         [tests, selectedClassId]
@@ -170,6 +167,9 @@ export default function GradeManagement({
                     </div>
                 ))}
                 {classTests.length === 0 && <p className="text-sm text-gray-500 mt-2">등록된 시험이 없습니다.</p>}
+                {isLoadingStudents && (
+                    <p className="text-xs text-gray-400 mt-2">학생 목록을 불러오는 중입니다...</p>
+                )}
             </div>
         );
     }, [classTests, selectedTestId]);

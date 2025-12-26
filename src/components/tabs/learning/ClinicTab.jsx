@@ -50,7 +50,7 @@ export default function ClinicTab({ studentId, clinicLogs = [], students = [], c
 
     // --- [학생 모드] 렌더링 ---
     const myTotalMinutes = history.reduce((acc, log) => acc + calculateDurationMinutes(log.checkIn, log.checkOut), 0);
-    const myClassIds = classes.filter(c => c.students.includes(studentId)).map(c => c.id);
+    const myClassIds = classes.filter(c => (c.students || []).includes(studentId)).map(c => c.id);
     const peerStudentIds = students.filter(s => s.id !== studentId && s.classes.some(cid => myClassIds.includes(cid))).map(s => s.id);
     const peerLogs = clinicLogs.filter(log => peerStudentIds.includes(log.studentId) && log.checkOut);
     const peerTotalMinutes = peerLogs.reduce((acc, log) => acc + calculateDurationMinutes(log.checkIn, log.checkOut), 0);

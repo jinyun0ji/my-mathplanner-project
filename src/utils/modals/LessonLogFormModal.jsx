@@ -3,10 +3,9 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { DndContext, PointerSensor, closestCenter, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { getDownloadURL, ref as storageRef, uploadBytesResumable } from 'firebase/storage';
+import { getDownloadURL, getStorage, ref, uploadBytesResumable } from 'firebase/storage';
 import { Modal } from '../../components/common/Modal';
 import { Icon, calculateClassSessions } from '../../utils/helpers';
-import { storage } from '../../firebase/client';
 import StaffNotificationFields from '../../components/Shared/StaffNotificationFields';
 
 const SortableVideoItem = React.memo(({ video, index, onRemove, onChange }) => {
@@ -97,6 +96,8 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
   const [staffNotifyBody, setStaffNotifyBody] = useState('');
   const [staffNotifyScheduledAt, setStaffNotifyScheduledAt] = useState('');
   const [isUploadingMaterials, setIsUploadingMaterials] = useState(false);
+  const [materialUploadProgress, setMaterialUploadProgress] = useState(0);
+  const storage = useMemo(() => getStorage(), []);
 
   const videoIdRef = useRef(0);
   const materialIdRef = useRef(0);
@@ -113,6 +114,48 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
     name: material.name || '',
     url: material.url || '',
   }), []);
+
+  const uploadLessonFile = useCallback((file, targetClassId, lessonDate, onProgress) => {
+    const safeName = file.name.replace(/\s+/g, '_');
+    const filePath = `lesson-materials/${targetClassId}/${lessonDate}/${Date.now()}-${safeName}`;
+    const fileRef = ref(storage, filePath);
+
+    return new Promise((resolve, reject) => {
+      const uploadTask = uploadBytesResumable(fileRef, file);
+
+      uploadTask.on(
+        'state_changed',
+        (snapshot) => {
+          const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+          console.log('업로드 진행률:', progress);
+          if (onProgress) {
+            onProgress(progress);
+          }
+        },
+        (error) => {
+          console.error('Firebase Storage 업로드 실패', error);
+          reject(error);
+        },
+        async () => {
+          try {
+            const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+            if (onProgress) {
+              onProgress(100);
+            }
+            resolve({
+              name: file.name,
+              url: downloadURL,
+              path: filePath,
+              size: file.size,
+              type: file.type,
+            });
+          } catch (error) {
+            reject(error);
+          }
+        }
+      );
+    });
+  }, [storage]);
 
   const normalizeVideosFromLog = useCallback((logItem) => {
     if (logItem?.videos && Array.isArray(logItem.videos)) {
@@ -194,7 +237,7 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
     // 모달이 열릴 때 알림 설정 기본값 초기화
     if (selectedClass && isOpen) {
         const initialMap = {};
-        selectedClass.students.forEach(sId => {
+        (selectedClass.students || []).forEach(sId => {
             initialMap[sId] = {
                 notifyParent: true,
                 notifyStudent: true, // ✅ 기본값: 학생에게도 발송
@@ -259,67 +302,50 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
   };
 
   const handleMaterialFilesChange = async (event) => {
+    if (isUploadingMaterials) return;
       const files = Array.from(event.target.files || []);
       if (files.length === 0) return;
 
       setIsUploadingMaterials(true);
+      setMaterialUploadProgress(0);
+      const progressByFile = new Map();
 
       try {
           const uploadedMaterials = await Promise.allSettled(
-              files.map((file) => new Promise((resolve, reject) => {
-                  try {
-                      const timestamp = Date.now();
-                      const safeName = file.name.replace(/\s+/g, '_');
-                      const path = `lesson-materials/${classId || 'unknown'}/${date || 'unscheduled'}/${timestamp}-${safeName}`;
-                      const fileRef = storageRef(storage, path);
-                      const uploadTask = uploadBytesResumable(fileRef, file);
-
-                      uploadTask.on(
-                          'state_changed',
-                          null,
-                          (error) => {
-                              console.error('Failed to upload lesson materials', error);
-                              setIsUploadingMaterials(false);
-                              reject(error);
-                          },
-                          async () => {
-                              try {
-                                  const url = await getDownloadURL(uploadTask.snapshot.ref);
-                                  resolve(createMaterialEntry({ name: file.name, url }));
-                              } catch (error) {
-                                  console.error('Failed to upload lesson materials', error);
-                                  reject(error);
-                              } finally {
-                                  setIsUploadingMaterials(false);
-                              }
-                          }
-                      );
-                  } catch (error) {
-                      console.error('Failed to upload lesson materials', error);
-                      setIsUploadingMaterials(false);
-                      reject(error);
-                  }
-              }))
+            files.map(file => uploadLessonFile(
+              file,
+              classId || 'unknown',
+              date || 'unscheduled',
+              (progress) => {
+                progressByFile.set(file, progress);
+                const totalProgress = Array.from(progressByFile.values())
+                  .reduce((sum, value) => sum + value, 0);
+                if (progressByFile.size > 0) {
+                  setMaterialUploadProgress(Math.round(totalProgress / progressByFile.size));
+                }
+              }
+            ))
           );
+
           const successfulUploads = uploadedMaterials
-              .filter(result => result.status === 'fulfilled')
-              .map(result => result.value);
+            .filter(result => result.status === 'fulfilled')
+            .map(result => result.value);
           const hasFailures = uploadedMaterials.some(result => result.status === 'rejected');
 
           if (successfulUploads.length > 0) {
-              setMaterials(prev => [...prev, ...successfulUploads]);
-              setIsDirty(true);
+            setMaterials(prev => [...prev, ...successfulUploads.map(item => createMaterialEntry(item))]);
+            setIsDirty(true);
           }
 
-          if (hasFailures) {
-              alert('첨부 파일 업로드에 실패했습니다. 네트워크 상태를 확인해 주세요.');
+           if (hasFailures) {
+            alert('파일 업로드 실패');
           }
       } catch (error) {
           console.error('Failed to upload lesson materials', error);
-          alert('첨부 파일 업로드에 실패했습니다. 네트워크 상태를 확인해 주세요.');
-          setIsUploadingMaterials(false);
+          alert('파일 업로드 실패');
       } finally {
           setIsUploadingMaterials(false);
+          setMaterialUploadProgress(0);
           event.target.value = '';
       }
   };
@@ -590,7 +616,8 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
                     {isUploadingMaterials && (
                         <div className="rounded-md border border-indigo-100 bg-indigo-50 p-3 text-sm text-indigo-600 flex items-center gap-2">
                             <Icon name="refreshCw" className="w-4 h-4 animate-spin" />
-                            파일을 업로드하는 중입니다...
+                            <span>파일을 업로드하는 중입니다...</span>
+                            <span className="ml-auto text-xs font-semibold">{materialUploadProgress}%</span>
                         </div>
                     )}
                     {materials.map((material, index) => (
@@ -644,7 +671,7 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
                                 </tr>
                             </thead>
                             <tbody className="bg-white divide-y divide-gray-200">
-                                {selectedClass.students.map(sId => {
+                                {(selectedClass.students || []).map(sId => {
                                     const student = students.find(s => s.id === sId);
                                     if (!student || !studentNotificationMap[sId]) return null;
                                     const prefs = studentNotificationMap[sId];

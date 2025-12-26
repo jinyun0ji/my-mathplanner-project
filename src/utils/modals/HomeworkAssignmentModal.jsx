@@ -6,8 +6,7 @@ import StaffNotificationFields from '../../components/Shared/StaffNotificationFi
 export const HomeworkAssignmentModal = ({ isOpen, onClose, onSave, classId, assignment = null, students, selectedClass }) => {
   const classStudentIds = useMemo(() => {
     if (!selectedClass) return [];
-    if (Array.isArray(selectedClass.students) && selectedClass.students.length > 0) return selectedClass.students;
-    return selectedClass.studentIds || [];
+    return selectedClass.students || [];
   }, [selectedClass]);
 
   const classStudents = useMemo(

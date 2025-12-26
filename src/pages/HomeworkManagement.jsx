@@ -4,11 +4,12 @@ import ClassSelectionPanel from '../components/Shared/ClassSelectionPanel';
 import HomeworkGradingTable from '../components/Homework/HomeworkGradingTable';
 import HomeworkStatisticsPanel from '../components/Homework/HomeworkStatisticsPanel';
 import { HomeworkAssignmentModal } from '../utils/modals/HomeworkAssignmentModal';
-import { buildAssignmentSummary, getClassAssignments, getClassStudents, getSelectedAssignment, resolveAssignmentStudentIds } from '../domain/homework/homework.service';
+import { buildAssignmentSummary, getClassAssignments, getSelectedAssignment, resolveAssignmentStudentIds } from '../domain/homework/homework.service';
 import { getDefaultClassId } from '../utils/classStatus';
+import { useClassStudents } from '../utils/useClassStudents';
 
 export default function HomeworkManagement({
-    students, classes, homeworkAssignments, homeworkResults,
+    classes, homeworkAssignments, homeworkResults,
     handleSaveHomeworkAssignment, handleDeleteHomeworkAssignment,
     handleUpdateHomeworkResult, handleSaveClass, calculateClassSessions,
     setIsGlobalDirty 
@@ -17,6 +18,7 @@ export default function HomeworkManagement({
     const [isAssignmentModalOpen, setIsAssignmentModalOpen] = useState(false);
     const [assignmentToEdit, setAssignmentToEdit] = useState(null);
     const [selectedAssignmentId, setSelectedAssignmentId] = useState(null);
+    const { students: classStudents, isLoading: isLoadingStudents } = useClassStudents(selectedClassId);
     
     // 로컬 변경 사항 관리
     const [localChanges, setLocalChanges] = useState([]); 
@@ -37,11 +39,6 @@ export default function HomeworkManagement({
     const selectedAssignment = useMemo(
         () => getSelectedAssignment(classAssignments, selectedAssignmentId),
         [classAssignments, selectedAssignmentId]
-    );
-
-    const classStudents = useMemo(
-        () => getClassStudents(students, selectedClass),
-        [students, selectedClass]
     );
 
     const assignmentSummary = useMemo(() => {
@@ -209,6 +206,9 @@ export default function HomeworkManagement({
                             </button>
                         </div>
                         {assignmentPanelContent}
+                        {isLoadingStudents && (
+                            <p className="text-xs text-gray-400">학생 목록을 불러오는 중입니다...</p>
+                        )}
                     </div>
                 </div>
 
@@ -297,7 +297,7 @@ export default function HomeworkManagement({
                 onSave={handleSaveHomeworkAssignment}
                 classId={selectedClassId}
                 assignment={assignmentToEdit}
-                students={students}
+                students={classStudents}
                 selectedClass={selectedClass}
             />
         </div>

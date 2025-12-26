@@ -66,7 +66,7 @@ export default function StudentHome({
     const handleOpenNotification = () => { setIsNotificationOpen(true); };
 
     const student = students.find(s => s.id === studentId);
-    const myClasses = useMemo(() => classes.filter(c => c.students.includes(studentId)), [classes, studentId]);
+    const myClasses = useMemo(() => classes.filter(c => (c.students || []).includes(studentId)), [classes, studentId]);
     const { ongoing: ongoingClasses } = useMemo(() => sortClassesByStatus(myClasses), [myClasses]);
     const myHomeworkStats = useMemo(() => calculateHomeworkStats(studentId, homeworkAssignments, homeworkResults), [studentId, homeworkAssignments, homeworkResults]);
     const myGradeComparison = useMemo(() => calculateGradeComparison(studentId, classes, tests, grades), [studentId, classes, tests, grades]);

@@ -2,13 +2,14 @@ import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { Icon } from '../utils/helpers';
 import { Modal } from '../components/common/Modal'; 
 import { PaymentNotificationModal } from '../utils/modals/PaymentNotificationModal'; // ✅ 신규 모달 import
-import { initialClasses, initialStudents } from '../api/initialData';
+import { initialClasses } from '../api/initialData';
 import { addDoc, collection, getDocs, query, serverTimestamp, where } from 'firebase/firestore';
 import { db } from '../firebase/client';
 import { isStaffOrTeachingRole } from '../constants/roles';
+import { useClassStudents } from '../utils/useClassStudents';
 
 // ✅ [수정] props에 paymentLogs, handleSavePayment 추가
-export default function PaymentManagement({ students, classes, paymentLogs, handleSavePayment, handleUpdatePayment, logNotification, userRole, userId }) {
+export default function PaymentManagement({ classes, paymentLogs, handleSavePayment, handleUpdatePayment, logNotification, userRole, userId }) {
 
     // --- 1. 초기 데이터 및 상태 ---
     const initialPaymentLogs = [
@@ -17,7 +18,8 @@ export default function PaymentManagement({ students, classes, paymentLogs, hand
 
     const [materialsByClass, setMaterialsByClass] = useState({});
     const [materialsError, setMaterialsError] = useState('');
-    const [activeTab, setActiveTab] = useState('classStatus'); 
+    const [activeTab, setActiveTab] = useState('classStatus');
+    const { students: classStudents, isLoading: isLoadingStudents } = useClassStudents(viewClassId);
 
     // 모달 상태
     const [isBookModalOpen, setIsBookModalOpen] = useState(false);
@@ -59,8 +61,8 @@ export default function PaymentManagement({ students, classes, paymentLogs, hand
         [classes]
     );
     const effectiveStudents = useMemo(
-        () => (students && students.length > 0 ? students : initialStudents),
-        [students]
+        () => (classStudents && classStudents.length > 0 ? classStudents : []),
+        [classStudents]
     );
     const effectivePaymentLogs = useMemo(
         () => (paymentLogs && paymentLogs.length > 0 ? paymentLogs : initialPaymentLogs),
@@ -165,7 +167,8 @@ export default function PaymentManagement({ students, classes, paymentLogs, hand
         if (requiredBooks.length === 0) return [];
         const totalRequiredAmount = requiredBooks.reduce((sum, b) => sum + b.price, 0);
 
-        return targetClass.students.map(studentId => {
+        const classStudentIds = targetClass.students || [];
+        return classStudentIds.map(studentId => {
             const student = effectiveStudents.find(s => s.id === studentId);
             if (!student) return null;
 
@@ -501,6 +504,10 @@ export default function PaymentManagement({ students, classes, paymentLogs, hand
                                 </div>
                             )}
                         </div>
+
+                        {isLoadingStudents && (
+                            <p className="text-xs text-gray-400 mb-3">학생 목록을 불러오는 중입니다...</p>
+                        )}
 
                         {/* 현황 테이블 */}
                         <div className="overflow-hidden border rounded-xl hidden md:block">
