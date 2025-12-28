@@ -110,6 +110,14 @@ service cloud.firestore {
           && request.auth.uid == userId
           && (isResourceRole('student') || isResourceRole('parent'))
           && request.resource.data.role == resource.data.role
+          )
+        || (
+          isSignedIn()
+          && isResourceRole('student')
+          && resource.data.authUid == null
+          && request.resource.data.authUid == request.auth.uid
+          && request.resource.data.role == resource.data.role
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['authUid', 'email', 'hasAccount', 'updatedAt', 'role'])
         );
       allow delete: if isStaffOrAdminOrTeacher()
         || (isSignedIn() && request.auth.uid == userId);
@@ -219,7 +227,8 @@ service cloud.firestore {
           isSignedIn()
           && resource.data.consumed == false
           && request.resource.data.consumed == true
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['consumed'])
+          && request.resource.data.consumedByAuthUid == request.auth.uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['consumed', 'consumedByAuthUid', 'consumedAt'])
         );
     }
     

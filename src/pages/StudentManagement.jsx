@@ -96,7 +96,16 @@ export default function StudentManagement({
                                 
                                 return (
                                     <tr key={student.id} className="hover:bg-indigo-50 cursor-pointer transition duration-100" onClick={() => handlePageChange('students', student.id)}>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">{student.name}</td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">
+                                            <div className="flex items-center gap-2">
+                                                <span>{student.name}</span>
+                                                {student.hasAccount && (
+                                                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700">
+                                                        계정 연결
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{student.school}</td>
                                         {/* 학년 표시 수정 */}
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{student.grade}</td>
@@ -164,8 +173,13 @@ export default function StudentManagement({
                             >
                                 <div className="flex justify-between items-start">
                                     <div>
-                                        <div className="flex items-center gap-2">
+                                        <div className="flex items-center gap-2 flex-wrap">
                                             <span className="text-base font-bold text-gray-900">{student.name}</span>
+                                            {student.hasAccount && (
+                                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700">
+                                                    계정 연결
+                                                </span>
+                                            )}
                                             <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${student.status === '재원생' ? 'bg-green-50 text-green-700 ring-1 ring-green-100' : 'bg-gray-100 text-gray-500'}`}>
                                                 {student.status}
                                             </span>

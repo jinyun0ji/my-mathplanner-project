@@ -8,7 +8,7 @@ import {
 } from 'firebase/firestore';
 import { Link } from 'react-router-dom';
 import { db } from '../firebase/client';
-import { isParentRole, isViewerGroupRole } from '../constants/roles';
+import { ROLE, isViewerGroupRole } from '../constants/roles';
 import { signInWithGoogle } from '../auth/authService';
 
 const normalizeInviteCode = (value) => (value || '').trim();
@@ -35,8 +35,8 @@ export default function InviteSignupPage() {
                 return;
             }
 
-            const user = await signInWithGoogle();
-            if (!user?.uid) {
+            const authUser = await signInWithGoogle();
+            if (!authUser?.uid) {
                 setStatus('간편 로그인에 실패했습니다. 다시 시도해주세요.');
                 return;
             }
@@ -48,7 +48,8 @@ export default function InviteSignupPage() {
                 return;
             }
             const inviteData = inviteSnap.data();
-            if (!isViewerGroupRole(inviteData?.role)) {
+            const inviteRole = inviteData?.role;
+            if (!isViewerGroupRole(inviteRole)) {
                 setStatus('학생/학부모 전용 초대 코드만 사용할 수 있습니다.');
                 return;
             }
@@ -61,39 +62,107 @@ export default function InviteSignupPage() {
                 return;
             }
 
-            const presetProfile = inviteData?.presetProfile ?? {};
-            const finalName = presetProfile?.displayName?.trim()
-                || presetProfile?.name?.trim()
-                || user.displayName?.trim()
-                || name.trim();
-            if (!finalName) {
-                setStatus('이름을 입력해주세요.');
-                return;
-            }
-            const normalizedStudentId = inviteData?.target?.studentId ? String(inviteData.target.studentId).trim() : '';
-            if (isParentRole(inviteData.role) && !normalizedStudentId) {
-                setStatus('학부모 초대에는 학생 정보가 필요합니다. 담당 선생님에게 문의해주세요.');
+            const studentDocId = inviteData?.target?.studentDocId
+                ? String(inviteData.target.studentDocId).trim()
+                : '';
+
+            if (!studentDocId) {
+                setStatus('초대 코드에 학생 문서 ID 정보가 없습니다. 담당자에게 문의해주세요.');
                 return;
             }
 
-            const userPayload = {
-                role: inviteData.role,
-                displayName: finalName,
-                uid: user.uid,
-                email: user.email?.trim() || presetProfile?.email?.trim() || '',
-                active: true,
-                inviteId: code,
-                studentIds: isParentRole(inviteData.role) && normalizedStudentId ? [normalizedStudentId] : [],
-                activeStudentId: isParentRole(inviteData.role) && normalizedStudentId ? normalizedStudentId : null,
-                createdAt: serverTimestamp(),
-            };
+            if (inviteRole === ROLE.STUDENT) {
+                const studentRef = doc(db, 'users', studentDocId);
+                const studentSnap = await getDoc(studentRef);
 
-            await setDoc(doc(db, 'users', user.uid), userPayload);
-            await updateDoc(inviteRef, {
-                consumed: true,
-            });
-            
-            setStatus('가입이 완료되었습니다. 잠시 후 자동으로 이동합니다.');
+                if (!studentSnap.exists()) {
+                    setStatus('학생 정보를 찾을 수 없습니다. 담당자에게 문의해주세요.');
+                    return;
+                }
+
+                const studentData = studentSnap.data();
+                if (studentData?.role !== ROLE.STUDENT) {
+                    setStatus('학생 전용 초대 코드가 아닙니다. 담당자에게 문의해주세요.');
+                    return;
+                }
+
+                if (studentData?.authUid && studentData.authUid !== authUser.uid) {
+                    setStatus('이미 다른 계정에 연결된 학생입니다. 담당자에게 문의해주세요.');
+                    return;
+                }
+
+                await updateDoc(studentRef, {
+                    authUid: authUser.uid,
+                    email: authUser.email?.trim() || '',
+                    hasAccount: true,
+                    updatedAt: serverTimestamp(),
+                });
+
+                await updateDoc(inviteRef, {
+                    consumed: true,
+                    consumedByAuthUid: authUser.uid,
+                    consumedAt: serverTimestamp(),
+                });
+
+                setStatus('계정이 성공적으로 연결되었습니다. 잠시 후 자동으로 이동합니다.');
+                return;
+            }
+
+            if (inviteRole === ROLE.PARENT) {
+                const presetProfile = inviteData?.presetProfile ?? {};
+                const parentRef = doc(db, 'users', authUser.uid);
+                const parentSnap = await getDoc(parentRef);
+                const parentData = parentSnap.exists() ? parentSnap.data() : {};
+
+                if (parentData?.role && parentData.role !== ROLE.PARENT) {
+                    setStatus('이미 다른 역할로 가입된 계정입니다. 담당자에게 문의해주세요.');
+                    return;
+                }
+
+                const finalName = presetProfile?.displayName?.trim()
+                    || presetProfile?.name?.trim()
+                    || authUser.displayName?.trim()
+                    || name.trim();
+
+                if (!finalName) {
+                    setStatus('이름을 입력해주세요.');
+                    return;
+                }
+
+                const existingStudentIds = Array.isArray(parentData?.studentIds)
+                    ? parentData.studentIds.filter(Boolean)
+                    : [];
+                const mergedStudentIds = Array.from(new Set([...existingStudentIds, studentDocId]));
+                const resolvedActiveStudentId = parentData?.activeStudentId || studentDocId;
+
+                const parentPayload = {
+                    role: ROLE.PARENT,
+                    authUid: authUser.uid,
+                    displayName: finalName,
+                    email: authUser.email?.trim() || presetProfile?.email?.trim() || '',
+                    active: true,
+                    inviteId: code,
+                    studentIds: mergedStudentIds,
+                    activeStudentId: mergedStudentIds.includes(resolvedActiveStudentId)
+                        ? resolvedActiveStudentId
+                        : mergedStudentIds[0],
+                    createdAt: parentData?.createdAt || serverTimestamp(),
+                    updatedAt: serverTimestamp(),
+                };
+
+                await setDoc(parentRef, parentPayload, { merge: true });
+
+                await updateDoc(inviteRef, {
+                    consumed: true,
+                    consumedByAuthUid: authUser.uid,
+                    consumedAt: serverTimestamp(),
+                });
+
+                setStatus('가입이 완료되었습니다. 잠시 후 자동으로 이동합니다.');
+                return;
+            }
+
+            setStatus('지원되지 않는 초대 코드입니다. 담당자에게 문의해주세요.');
         } catch (error) {
             setStatus(error?.message || '회원가입에 실패했습니다. 다시 시도해주세요.');
         } finally {

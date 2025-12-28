@@ -16,7 +16,7 @@ const COL = {
 };
 
 export default function StudentDetail() {
-    const { studentId: studentUid } = useParams();
+    const { studentId: studentDocId } = useParams();
     const navigate = useNavigate();
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -25,6 +25,7 @@ export default function StudentDetail() {
     const [homeworks, setHomeworks] = useState([]);
     const [grades, setGrades] = useState([]);
     const [memo, setMemo] = useState(null);
+    const [studentAuthUid, setStudentAuthUid] = useState(null);
 
     useEffect(() => {
         let isMounted = true;
@@ -37,80 +38,105 @@ export default function StudentDetail() {
             setHomeworks([]);
             setGrades([]);
             setMemo(null);
+            setStudentAuthUid(null);
 
-            if (!studentUid) {
+            if (!studentDocId) {
                 if (isMounted) {
-                     setError('학생 UID를 찾을 수 없습니다.');
+                    setError('학생 UID를 찾을 수 없습니다.');
                     setLoading(false);
                 }
                 return;
             }
 
             try {
-                const studentRef = doc(db, COL.USERS, studentUid);
-                const attendanceQuery = query(
-                    collection(db, COL.ATTENDANCE),
-                    where('studentUid', '==', studentUid),
-                    orderBy('date', 'desc'),
-                    limit(5),
-                );
-                const homeworkQuery = query(
-                    collection(db, COL.HOMEWORK_RESULTS),
-                    where('authUid', '==', studentUid),
-                    orderBy('updatedAt', 'desc'),
-                    limit(5),
-                );
-                const gradesQuery = query(
-                    collection(db, COL.GRADES),
-                    where('authUid', '==', studentUid),
-                    orderBy('updatedAt', 'desc'),
-                    limit(3),
-                );
-                const memoQuery = query(
-                    collection(db, COL.LESSON),
-                    where('authUid', '==', studentUid),
-                    orderBy('date', 'desc'),
-                    limit(1),
-                );
-
-                const [studentSnap, attendanceSnap, homeworkSnap, gradesSnap, memoSnap] = await Promise.all([
-                    getDoc(studentRef),
-                    getDocs(attendanceQuery),
-                    getDocs(homeworkQuery),
-                    getDocs(gradesQuery),
-                    getDocs(memoQuery),
-                ]);
+                const studentRef = doc(db, COL.USERS, studentDocId);
+                const studentSnap = await getDoc(studentRef);
 
                 if (!isMounted) return;
 
                 if (!studentSnap.exists()) {
                     setError('학생 정보를 찾을 수 없습니다.');
                     setStudent(null);
-                } else {
-                    setStudent({ id: studentSnap.id, ...studentSnap.data() });
+                    setLoading(false);
+                    return;
                 }
-                    setAttendances(attendanceSnap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })));
-                    setHomeworks(homeworkSnap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })));
-                    setGrades(gradesSnap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })));
-                    setMemo(memoSnap.docs[0] ? { id: memoSnap.docs[0].id, ...memoSnap.docs[0].data() } : null);
-                } catch (fetchError) {
-                    console.error("상세 에러 로그:", fetchError); // <--- 이 줄을 추가해서 F12 콘솔 확인
-                    if (isMounted) {
-                        setError('학생 정보를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.');
-                    }
-                } finally {
-                    if (isMounted) {
-                        setLoading(false);
-                    }
+
+                const studentData = studentSnap.data();
+                if (studentData?.role && studentData.role !== 'student') {
+                    setError('학생 역할의 문서가 아닙니다.');
+                    setStudent(null);
+                    setLoading(false);
+                    return;
                 }
-            };
+
+                const authUid = studentData?.authUid || null;
+                setStudent({ id: studentSnap.id, ...studentData });
+                setStudentAuthUid(authUid);
+
+                const attendanceQuery = query(
+                    collection(db, COL.ATTENDANCE),
+                    where('studentUid', '==', studentDocId),
+                    orderBy('date', 'desc'),
+                    limit(5),
+                );
+
+                const attendanceSnap = await getDocs(attendanceQuery);
+
+                let homeworkSnap = null;
+                let gradesSnap = null;
+                let memoSnap = null;
+
+                if (authUid) {
+                    const homeworkQuery = query(
+                        collection(db, COL.HOMEWORK_RESULTS),
+                        where('authUid', '==', authUid),
+                        orderBy('updatedAt', 'desc'),
+                        limit(5),
+                    );
+                    const gradesQuery = query(
+                        collection(db, COL.GRADES),
+                        where('authUid', '==', authUid),
+                        orderBy('updatedAt', 'desc'),
+                        limit(3),
+                    );
+                    const memoQuery = query(
+                        collection(db, COL.LESSON),
+                        where('authUid', '==', authUid),
+                        orderBy('date', 'desc'),
+                        limit(1),
+                    );
+
+                    [homeworkSnap, gradesSnap, memoSnap] = await Promise.all([
+                        getDocs(homeworkQuery),
+                        getDocs(gradesQuery),
+                        getDocs(memoQuery),
+                    ]);
+                }
+
+                if (!isMounted) return;
+
+                setAttendances(attendanceSnap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })));
+                setHomeworks(homeworkSnap ? homeworkSnap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })) : []);
+                setGrades(gradesSnap ? gradesSnap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })) : []);
+                setMemo(memoSnap?.docs?.[0] ? { id: memoSnap.docs[0].id, ...memoSnap.docs[0].data() } : null);
+            } catch (fetchError) {
+                console.error('상세 에러 로그:', fetchError);
+                if (isMounted) {
+                    setError('학생 정보를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.');
+                }
+                    } finally {
+                if (isMounted) {
+                    setLoading(false);
+                }
+            }
+        };
 
         loadStudentDetail();
 
         return () => {
             isMounted = false;
         };
-    }, [studentUid]);
+    }, [studentDocId]);
 
     const renderStatus = () => {
         if (loading) {
@@ -142,7 +168,7 @@ export default function StudentDetail() {
             return (
                 <div className="rounded-xl border border-gray-200 bg-white p-6 text-center shadow-sm">
                     <p className="text-sm font-semibold text-gray-700">학생을 찾을 수 없습니다</p>
-                    <p className="mt-2 text-xs text-gray-500">학생 UID: {studentUid}</p>
+                    <p className="mt-2 text-xs text-gray-500">학생 UID: {studentDocId}</p>
                     <button
                         type="button"
                         onClick={() => navigate('/students')}
@@ -158,6 +184,7 @@ export default function StudentDetail() {
         const attendanceItems = Array.isArray(attendances) ? attendances : [];
         const homeworkItems = Array.isArray(homeworks) ? homeworks : [];
         const gradeItems = Array.isArray(grades) ? grades : [];
+        const accountLinked = Boolean(studentAuthUid);
 
         return (
             <div className="space-y-6">
@@ -185,6 +212,12 @@ export default function StudentDetail() {
                         </div>
                     </div>
                 </div>
+
+                {!accountLinked && (
+                    <div className="rounded-2xl border border-dashed border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+                        아직 계정이 연결되지 않았습니다. 초대 가입을 완료하면 과제/성적/수업 기록을 확인할 수 있습니다.
+                    </div>
+                )}
 
                 <div className="grid gap-6 lg:grid-cols-2">
                     <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">

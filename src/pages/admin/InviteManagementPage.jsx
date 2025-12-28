@@ -45,7 +45,7 @@ const generateInviteCode = () => {
 export default function InviteManagementPage() {
     const { user } = useAuth();
     const [role, setRole] = useState(ROLE.STUDENT);
-    const [studentId, setStudentId] = useState('');
+    const [studentDocId, setStudentDocId] = useState('');
     const [name, setName] = useState('');
     const [email, setEmail] = useState('');
     const [expiresAtInput, setExpiresAtInput] = useState(() => {
@@ -109,8 +109,8 @@ export default function InviteManagementPage() {
         setGeneratedCode('');
 
         try {
-            if (role === ROLE.PARENT && !studentId.trim()) {
-                setError('학부모 초대에는 연결할 학생 ID가 필요합니다.');
+            if (!studentDocId.trim()) {
+                setError('학생 문서 ID(studentDocId)를 입력해주세요.');
                 return;
             }
 
@@ -127,17 +127,15 @@ export default function InviteManagementPage() {
 
             const payload = {
             code: inviteCode,
-            role,
-            target: role === ROLE.PARENT
-                ? { studentId: String(studentId).trim() }
-                : {},
-            ...(Object.keys(presetProfile).length > 0
-                ? { presetProfile }
-                : {}),
-            expiresAt: Timestamp.fromDate(expiresDate),
-            consumed: false,
-            createdBy: user.uid,
-            createdAt: serverTimestamp(),
+                role,
+                target: { studentDocId: String(studentDocId).trim() },
+                ...(Object.keys(presetProfile).length > 0
+                    ? { presetProfile }
+                    : {}),
+                expiresAt: Timestamp.fromDate(expiresDate),
+                consumed: false,
+                createdBy: user.uid,
+                createdAt: serverTimestamp(),
             };
 
             await setDoc(doc(db, 'invites', inviteCode), payload);
@@ -145,9 +143,7 @@ export default function InviteManagementPage() {
             setGeneratedCode(inviteCode);
             setName('');
             setEmail('');
-            if (role === ROLE.STUDENT) {
-                setStudentId('');
-            }
+            setStudentDocId('');
             loadInvites();
         } catch (createError) {
             setError(createError?.message || '초대 코드 생성에 실패했습니다.');
@@ -181,7 +177,9 @@ export default function InviteManagementPage() {
                 <div className="flex items-start justify-between gap-4">
                     <div>
                         <h2 className="text-lg font-semibold text-gray-800">새 초대 코드 생성</h2>
-                        <p className="text-sm text-gray-500">대상 역할과 유효기간을 지정하여 초대 코드를 발급합니다.</p>
+                        <p className="text-sm text-gray-500">
+                            학생/학부모 모두 <strong>학생 문서 ID(studentDocId)</strong> 입력이 필요합니다.
+                        </p>
                     </div>
                     <span className="px-3 py-1 text-xs font-semibold rounded-full bg-indigo-50 text-indigo-800 border border-indigo-100">
                         기본 {DEFAULT_VALIDITY_DAYS}일
@@ -217,19 +215,17 @@ export default function InviteManagementPage() {
                         </div>
                     </div>
 
-                    {role === ROLE.PARENT && (
-                        <label className="space-y-1">
-                            <span className="text-sm font-semibold text-gray-700">연결할 학생 ID</span>
-                            <input
-                                type="text"
-                                required
-                                value={studentId}
-                                onChange={(e) => setStudentId(e.target.value)}
-                                className="w-full rounded-xl border border-gray-200 px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                                placeholder="예: STU-2025-001"
-                            />
-                        </label>
-                    )}
+                    <label className="space-y-1">
+                        <span className="text-sm font-semibold text-gray-700">학생 문서 ID (studentDocId)</span>
+                        <input
+                            type="text"
+                            required
+                            value={studentDocId}
+                            onChange={(e) => setStudentDocId(e.target.value)}
+                            className="w-full rounded-xl border border-gray-200 px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                            placeholder="예: STU-2025-001"
+                        />
+                    </label>
 
                     <label className="space-y-1">
                         <span className="text-sm font-semibold text-gray-700">이름 (선택)</span>
@@ -324,7 +320,7 @@ export default function InviteManagementPage() {
                                 <tr>
                                     <th className="px-4 py-3 text-left font-semibold">코드</th>
                                     <th className="px-4 py-3 text-left font-semibold">역할</th>
-                                    <th className="px-4 py-3 text-left font-semibold">학생 ID</th>
+                                    <th className="px-4 py-3 text-left font-semibold">학생 문서 ID</th>
                                     <th className="px-4 py-3 text-left font-semibold">만료일</th>
                                     <th className="px-4 py-3 text-left font-semibold">상태</th>
                                     <th className="px-4 py-3 text-right font-semibold">액션</th>
@@ -345,7 +341,7 @@ export default function InviteManagementPage() {
                                         <tr key={invite.id} className="border-t border-gray-200">
                                             <td className="px-4 py-3 font-semibold text-gray-800 whitespace-nowrap">{invite.code || invite.id}</td>
                                             <td className="px-4 py-3 text-gray-700 capitalize">{invite.role}</td>
-                                            <td className="px-4 py-3 text-gray-600">{invite.target?.studentId || '-'}</td>
+                                            <td className="px-4 py-3 text-gray-600">{invite.target?.studentDocId || '-'}</td>
                                             <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{formatTimestamp(invite.expiresAt)}</td>
                                             <td className="px-4 py-3">
                                                 <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${badgeClass}`}>

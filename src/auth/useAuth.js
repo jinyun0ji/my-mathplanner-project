@@ -8,10 +8,18 @@ import React, {
     useState,
 } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
+import {
+    collection,
+    doc,
+    getDoc,
+    getDocs,
+    limit,
+    query,
+    where,
+} from 'firebase/firestore';
 import { auth, db } from '../firebase/client';
 import { signOutUser } from './authService';
-import { ALLOWED_ROLES, isParentRole } from '../constants/roles';
+import { ALLOWED_ROLES, ROLE, isParentRole } from '../constants/roles';
 
 const AuthContext = createContext(null);
 
@@ -37,6 +45,7 @@ const normalizeRole = (role) => (ALLOWED_ROLES.includes(role) ? role : null);
 export function AuthProvider({ children }) {
     const [user, setUser] = useState(null);
     const [role, setRole] = useState(null);
+    const [profileDocId, setProfileDocId] = useState(null);
     const [userProfile, setUserProfile] = useState(null);
     const [profileError, setProfileError] = useState(null);
     const [studentIds, setStudentIds] = useState([]);
@@ -54,6 +63,7 @@ export function AuthProvider({ children }) {
 
         const resetProfileState = () => {
             setRole(null);
+            setProfileDocId(null);
             setUserProfile(null);
             setProfileError(null);
             setStudentIds([]);
@@ -84,38 +94,87 @@ export function AuthProvider({ children }) {
                 setLoading(false);
                 return;
             }
-
-            const userDocRef = doc(db, 'users', currentUser.uid);
             setLoading(true);
 
             try {
-                let userDoc = await getDoc(userDocRef);
+                const authUid = currentUser.uid;
+                const authDocRef = doc(db, 'users', authUid);
+                const authDocSnap = await getDoc(authDocRef);
                 if (!isMounted) return;
 
-                if (!userDoc || !userDoc.exists()) {
-                    setProfileError('초대 기반 가입이 필요합니다.');
+                let resolvedProfile = null;
+                let resolvedRole = null;
+                let resolvedStudentIds = [];
+                let resolvedActiveStudentId = null;
+                let resolvedProfileDocId = null;
+
+                if (authDocSnap.exists()) {
+                    const data = authDocSnap.data();
+                    const roleFromDoc = normalizeRole(data?.role ?? null);
+
+                    if (roleFromDoc && roleFromDoc !== ROLE.STUDENT) {
+                        resolvedProfileDocId = authDocSnap.id;
+                        resolvedRole = roleFromDoc;
+                        resolvedProfile = {
+                            authUid,
+                            profileDocId: authDocSnap.id,
+                            role: roleFromDoc,
+                            active: data?.active !== false,
+                            displayName: data?.displayName ?? '',
+                            email: data?.email ?? '',
+                        };
+
+                        if (isParentRole(roleFromDoc)) {
+                            resolvedStudentIds = normalizeStudentIds(data);
+                            resolvedActiveStudentId = data?.activeStudentId ?? null;
+                        }
+                    }
+                }
+
+                if (!resolvedProfile) {
+                    const studentQuery = query(
+                        collection(db, 'users'),
+                        where('authUid', '==', authUid),
+                        where('role', '==', ROLE.STUDENT),
+                        limit(1),
+                    );
+                    const studentSnap = await getDocs(studentQuery);
+
+                    if (!isMounted) return;
+
+                    if (!studentSnap.empty) {
+                        const studentDoc = studentSnap.docs[0];
+                        const data = studentDoc.data();
+                        resolvedProfileDocId = studentDoc.id;
+                        resolvedRole = ROLE.STUDENT;
+                        resolvedProfile = {
+                            authUid,
+                            profileDocId: studentDoc.id,
+                            role: ROLE.STUDENT,
+                            active: data?.active !== false,
+                            displayName: data?.displayName ?? data?.name ?? '',
+                            email: data?.email ?? '',
+                        };
+                    }
+                }
+
+                if (!resolvedProfile) {
+                    setProfileError('프로필을 찾을 수 없습니다. 초대 코드로 가입을 진행해주세요.');
                     setRole(null);
                     setUserProfile(null);
                     setStudentIds([]);
                     setActiveStudentId(null);
-                    await signOutUser();
+                    setProfileDocId(null);
                     setLoading(false);
                     return;
                 }
 
-                const data = userDoc.data();
-                const profile = {
-                    uid: currentUser.uid,
-                    role: normalizeRole(data?.role ?? null),
-                    active: data?.active !== false,
-                    displayName: data?.displayName ?? '',
-                    email: data?.email ?? '',
-                };
-                setUserProfile(profile);
-                setRole(profile.role);
-                if (isParentRole(profile.role)) {
-                    setStudentIds(normalizeStudentIds(data));
-                    setActiveStudentId(data?.activeStudentId ?? null);
+                setUserProfile(resolvedProfile);
+                setRole(resolvedRole);
+                setProfileDocId(resolvedProfileDocId);
+                if (isParentRole(resolvedRole)) {
+                    setStudentIds(resolvedStudentIds);
+                    setActiveStudentId(resolvedActiveStudentId);
                 } else {
                     setStudentIds([]);
                     setActiveStudentId(null);
@@ -125,6 +184,7 @@ export function AuthProvider({ children }) {
                 if (isMounted) {
                     setProfileError('프로필을 불러올 수 없습니다.');
                     setRole(null);
+                    setProfileDocId(null);
                     setUserProfile(null);
                     setStudentIds([]);
                     setActiveStudentId(null);
@@ -171,8 +231,9 @@ export function AuthProvider({ children }) {
             activeStudentId,
             loading,
             logout,
+            profileDocId,
         }),
-        [user, role, userProfile, profileError, studentIds, activeStudentId, loading, logout],
+        [user, role, userProfile, profileError, studentIds, activeStudentId, loading, logout, profileDocId],
     );
 
     return (
