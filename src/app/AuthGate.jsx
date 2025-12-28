@@ -111,22 +111,26 @@ export default function AuthGate() {
           </Routes>
       );
   }
-  if (role === null && profileError) {
-      return (
-          <div className="min-h-screen flex flex-col items-center justify-center gap-4 text-gray-600">
-              <p>{profileError || '프로필을 불러오지 못했습니다. 다시 로그인해주세요.'}</p>
-              <button
-                  type="button"
-                  onClick={async () => {
-                      await logout();
-                      navigate('/login', { replace: true });
-                  }}
-                  className="px-4 py-2 rounded-md bg-indigo-600 text-white"
-              >
-                  로그아웃
-              </button>
-          </div>
-      );
+  if (role === null) {
+      if (profileError) {
+          return (
+              <div className="min-h-screen flex flex-col items-center justify-center gap-4 text-gray-600">
+                  <p>{profileError || '프로필을 불러오지 못했습니다. 다시 로그인해주세요.'}</p>
+                  <button
+                      type="button"
+                      onClick={async () => {
+                          await logout();
+                          navigate('/login', { replace: true });
+                      }}
+                      className="px-4 py-2 rounded-md bg-indigo-600 text-white"
+                  >
+                      로그아웃
+                  </button>
+              </div>
+          );
+      }
+
+      return <div className="min-h-screen flex items-center justify-center text-gray-600">프로필 설정 중입니다...</div>;
   }
   if (role === null && !profileError) {
     return (

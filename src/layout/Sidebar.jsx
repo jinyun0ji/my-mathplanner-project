@@ -2,11 +2,12 @@
 import React from 'react';
 import { Icon } from '../utils/helpers';
 import useAuth from '../auth/useAuth';
-import { isAdminRole } from '../constants/roles';
+import { isAdminRole, isStaffGroupRole } from '../constants/roles';
 
 export default function Sidebar({ page, setPage, onLogout, isOpen, onClose }) {
     const { role } = useAuth();
     const isAdmin = isAdminRole(role);
+    const isStaffGroup = isStaffGroupRole(role);
     const roleLabel = isAdminRole(role) ? '관리자' : '직원';
     // ... (menuItems는 그대로 유지) ...
     const menuItems = [
@@ -20,12 +21,16 @@ export default function Sidebar({ page, setPage, onLogout, isOpen, onClose }) {
         { name: '교재/수납', key: 'payment', icon: 'wallet' },
         { name: '내부 소통', key: 'communication', icon: 'messageSquare' },
     ];
+    const staffTools = [
+        { name: '초대 코드', key: '/admin/invites', icon: 'link' },
+    ];
     const adminMenuItems = [
         { name: '직원 관리', key: '/admin/staff', icon: 'users' },
         { name: '알림 로그', key: '/admin/notifications', icon: 'bell' },
         { name: '결제 관리', key: '/admin/payments', icon: 'creditCard' },
         { name: '시스템 설정', key: '/admin/settings', icon: 'settings' },
     ];
+    const adminSectionItems = isAdmin ? [...staffTools, ...adminMenuItems] : staffTools;
     
     return (
         <aside 
@@ -80,10 +85,10 @@ export default function Sidebar({ page, setPage, onLogout, isOpen, onClose }) {
                             </button>
                         );
                     })}
-                    {isAdmin && (
+                    {isStaffGroup && (
                         <>
                             <p className="px-4 text-xs font-semibold text-gray-400 mb-2 mt-6 uppercase tracking-wider">Admin</p>
-                            {adminMenuItems.map(item => {
+                            {adminSectionItems.map(item => {
                                 const isActive = page === item.key;
                                 return (
                                     <button

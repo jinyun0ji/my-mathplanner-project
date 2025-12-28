@@ -24,6 +24,7 @@ import StaffManagement from '../pages/admin/StaffManagement';
 import AdminNotificationsPage from '../pages/admin/AdminNotificationsPage';
 import AdminPaymentsPage from '../pages/admin/AdminPaymentsPage';
 import AdminSettingsPage from '../pages/admin/AdminSettingsPage';
+import InviteManagementPage from '../pages/admin/InviteManagementPage';
 import AdminRoute from '../routes/AdminRoute';
 import useAuth from '../auth/useAuth';
 import {
@@ -71,6 +72,7 @@ const PAGE_ROUTES = {
 
 const ADMIN_ROUTES = new Set([
     '/admin/staff',
+    '/admin/invites',
     '/admin/notifications',
     '/admin/payments',
     '/admin/settings',
@@ -1091,6 +1093,14 @@ export default function AppRoutes({ user, role, studentIds }) {
                 element={(
                     <AdminRoute>
                         <StaffManagement />
+                    </AdminRoute>
+                )}
+            />
+            <Route
+                path="admin/invites"
+                element={(
+                    <AdminRoute>
+                        <InviteManagementPage />
                     </AdminRoute>
                 )}
             />

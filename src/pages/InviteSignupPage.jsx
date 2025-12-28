@@ -93,7 +93,7 @@ export default function InviteSignupPage() {
                 consumed: true,
             });
             
-            setStatus('가입이 완료되었습니다. 잠시 후 대시보드로 이동합니다.');
+            setStatus('가입이 완료되었습니다. 잠시 후 자동으로 이동합니다.');
         } catch (error) {
             setStatus(error?.message || '회원가입에 실패했습니다. 다시 시도해주세요.');
         } finally {
