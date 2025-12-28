@@ -1,23 +1,57 @@
 import React, { useState } from 'react';
 import { Icon } from '../../../utils/helpers';
 
-export default function DashboardTab({ student, myClasses, attendanceLogs, clinicLogs, homeworkStats, notices, setActiveTab, externalSchedules, isParent = false }) {
+export default function DashboardTab({
+    student,
+    myClasses = [],
+    attendanceLogs = [],
+    clinicLogs = [],
+    homeworkStats = [],
+    notices = [],
+    setActiveTab,
+    externalSchedules = [],
+    isParent = false
+}) {
     const [isScheduleExpanded, setIsScheduleExpanded] = useState(false);
-    
-    if (!student) return null;
+    const hasStudent = Boolean(student);
+    const isDev = process.env.NODE_ENV !== 'production';
+
+    if (isDev) {
+        console.debug('[DashboardTab] render', {
+            hasStudent,
+            myClassesLength: myClasses.length,
+            attendanceLogsLength: attendanceLogs.length,
+            clinicLogsLength: clinicLogs.length,
+            homeworkStatsLength: homeworkStats.length,
+            noticesLength: notices.length,
+            externalSchedulesLength: externalSchedules.length
+        });
+    }
+
+    if (!hasStudent) {
+        return (
+            <div className="space-y-6 pb-24 animate-fade-in-up">
+                <div className="rounded-3xl bg-white p-6 shadow-sm border border-gray-200 text-center">
+                    <p className="text-lg font-bold text-gray-800 mb-2">학생 정보를 불러오는 중입니다.</p>
+                    <p className="text-sm text-gray-500">잠시만 기다려 주세요. 데이터가 준비되는 대로 대시보드를 보여드릴게요.</p>
+                </div>
+            </div>
+        );
+    }
 
     const today = new Date();
     const todayStr = today.toISOString().split('T')[0];
     const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
     const todayDayName = dayNames[today.getDay()];
+    const studentId = student?.id;
 
     const todayClasses = myClasses.filter(cls => cls.schedule.days.includes(todayDayName)).map(cls => ({
         type: 'class', name: cls.name, time: cls.schedule.time, teacher: cls.teacher, sortTime: cls.schedule.time.split('~')[0]
     }));
-    const todayClinics = clinicLogs.filter(log => log.studentId === student.id && log.date === todayStr && !log.checkOut).map(log => ({
+    const todayClinics = studentId ? clinicLogs.filter(log => log.studentId === studentId && log.date === todayStr && !log.checkOut).map(log => ({
         type: 'clinic', name: '학습 클리닉', time: `${log.checkIn} 입실`, teacher: log.tutor || '담당 선생님', sortTime: log.checkIn
-    }));
-    const todayExternal = externalSchedules ? externalSchedules.filter(s => s.studentId === student.id && s.days.includes(todayDayName) && todayStr >= s.startDate && (!s.endDate || todayStr <= s.endDate)).map(s => ({
+    })) : [];
+    const todayExternal = studentId ? externalSchedules.filter(s => s.studentId === studentId && s.days.includes(todayDayName) && todayStr >= s.startDate && (!s.endDate || todayStr <= s.endDate)).map(s => ({
         type: 'external', academyName: s.academyName, courseName: s.courseName, instructor: s.instructor, time: `${s.startTime}~${s.endTime}`, sortTime: s.startTime
     })) : [];
 
@@ -26,7 +60,7 @@ export default function DashboardTab({ student, myClasses, attendanceLogs, clini
     let keyEvent = allEvents.find(e => { let endTime = '23:59'; if (e.time.includes('~')) endTime = e.time.split('~')[1]; return endTime >= nowTimeStr; });
     const otherEvents = keyEvent ? allEvents.filter(e => e !== keyEvent) : allEvents;
     const pendingHomework = homeworkStats.filter(h => h.status !== '완료');
-    const studentLogs = attendanceLogs.filter(l => l.studentId === student.id);
+    const studentLogs = studentId ? attendanceLogs.filter(l => l.studentId === studentId) : [];
     const attendanceRate = studentLogs.length > 0 ? Math.round((studentLogs.filter(l => ['출석','동영상보강'].includes(l.status)).length / studentLogs.length) * 100) : null;
     const momentumCards = [
         { label: '진행 중 과제', value: pendingHomework.length, accent: 'bg-gradient-to-r from-[#FF9AA2] to-[#FF4D6D]', chip: 'Homework', onClick: () => setActiveTab('learning') },
@@ -35,8 +69,8 @@ export default function DashboardTab({ student, myClasses, attendanceLogs, clini
     ];
 
     const attendanceAlerts = myClasses.map(cls => {
-        const clsLogs = attendanceLogs.filter(l => l.classId === cls.id && l.studentId === student.id);
-        if (clsLogs.length === 0) return null;
+        if (!studentId) return null;
+        const clsLogs = attendanceLogs.filter(l => l.classId === cls.id && l.studentId === studentId);
         const recentAbsent = clsLogs.find(l => { const logDate = new Date(l.date); const diffTime = Math.abs(today - logDate); const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); return l.status === '결석' && diffDays <= 7; });
         const rate = Math.round((clsLogs.filter(l => ['출석','동영상보강'].includes(l.status)).length / clsLogs.length) * 100);
         if (recentAbsent) return { type: 'absent', class: cls.name, msg: '최근 결석이 발생했습니다.' };
