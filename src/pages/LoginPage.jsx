@@ -55,10 +55,13 @@ export default function LoginPage({ onSocialLogin }) {
                     </div>
                 </div>
                 <div className="mt-6 text-center text-sm text-gray-500">
-                        <span>초대 코드로 가입하시나요?</span>{' '}
+                        <span>처음 이용하시나요?</span>{' '}
                         <Link to="/signup/invite" className="font-semibold text-indigo-600 hover:text-indigo-700">
                             초대 코드로 가입하기
                         </Link>
+                        <div className="mt-4 text-center text-xs text-gray-400">
+                            학생/학부모는 초대 코드로 최초 1회 가입 후 이용 가능합니다.
+                        </div>
                     </div>
             </div>
             <p className="fixed bottom-6 text-xs text-gray-400">© 2025 Chaesooyong Math Academy. All rights reserved.</p>

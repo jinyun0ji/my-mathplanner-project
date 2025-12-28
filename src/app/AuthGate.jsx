@@ -12,6 +12,7 @@ import { ParentProvider } from '../parent';
 import { redirectToKakao, redirectToNaver } from '../auth/socialRedirect';
 import { signInWithGoogle } from '../auth/authService';
 import { initForegroundMessageListener } from '../firebase/messaging';
+import { getDefaultRouteForRole } from '../auth/authRedirects';
 
 export default function AuthGate() {
   const navigate = useNavigate();
@@ -57,6 +58,8 @@ export default function AuthGate() {
   useEffect(() => {
       if (loading) return;
 
+      const redirectPath = role ? getDefaultRouteForRole(role) || '/home' : null;
+
       if (!user) {
           if (!isLoginPage && !isSignupPage && !isAuthCallbackPage) {
               navigate('/login', { replace: true });
@@ -70,12 +73,17 @@ export default function AuthGate() {
       }
 
       if (role && isMessengerRoute && (isParentRole(role) || isStudentRole(role))) {
-          navigate('/home', { replace: true });
+          navigate(redirectPath || '/home', { replace: true });
           return;
       }
 
-      if (role && !needsParentOnboarding && !isStudentDetailPage && (isOnboardingPage || isLoginPage || isSignupPage)) {
-          navigate('/lessons', { replace: true });
+      if (
+          role &&
+          !needsParentOnboarding &&
+          !isStudentDetailPage &&
+          (isOnboardingPage || isLoginPage || isSignupPage)
+      ) {
+          navigate(redirectPath || '/home', { replace: true });
       }
   }, [isAuthCallbackPage, isLoginPage, isMessengerRoute, isOnboardingPage, isSignupPage, isStudentDetailPage, loading, navigate, needsParentOnboarding, pathname, role, user]);
   
@@ -90,7 +98,9 @@ export default function AuthGate() {
       await claimStudentLinkCode(code);
   };
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center">로딩 중...</div>;
+  if (loading) {
+      return <div className="min-h-screen flex items-center justify-center">로딩 중...</div>;
+  }
   if (!user) {
       return (
           <Routes>
@@ -101,7 +111,7 @@ export default function AuthGate() {
           </Routes>
       );
   }
-  if (role === null) {
+  if (role === null && profileError) {
       return (
           <div className="min-h-screen flex flex-col items-center justify-center gap-4 text-gray-600">
               <p>{profileError || '프로필을 불러오지 못했습니다. 다시 로그인해주세요.'}</p>
@@ -118,6 +128,13 @@ export default function AuthGate() {
           </div>
       );
   }
+  if (role === null && !profileError) {
+    return (
+        <div className="min-h-screen flex items-center justify-center text-gray-500">
+            프로필 설정 중입니다...
+        </div>
+    );
+}
   if (needsParentOnboarding || isOnboardingPage) return <OnboardingPage onSubmitLinkCode={handleClaimLinkCode} />;
 
   const appRoutesElement = isParentRole(role) ? (
