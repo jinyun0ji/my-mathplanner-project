@@ -2,12 +2,14 @@
 import React from 'react';
 import { Icon } from '../utils/helpers';
 import useAuth from '../auth/useAuth';
-import { isAdminRole, isStaffGroupRole } from '../constants/roles';
+import { isAdminRole, isStaffGroupRole, isTeachingGroupRole } from '../constants/roles';
 
 export default function Sidebar({ page, setPage, onLogout, isOpen, onClose }) {
     const { role } = useAuth();
     const isAdmin = isAdminRole(role);
     const isStaffGroup = isStaffGroupRole(role);
+    const isTeachingGroup = isTeachingGroupRole(role);
+    const canAccessInvites = isStaffGroup || isTeachingGroup;
     const roleLabel = isAdminRole(role) ? '관리자' : '직원';
     // ... (menuItems는 그대로 유지) ...
     const menuItems = [
@@ -22,7 +24,7 @@ export default function Sidebar({ page, setPage, onLogout, isOpen, onClose }) {
         { name: '내부 소통', key: 'communication', icon: 'messageSquare' },
     ];
     const staffTools = [
-        { name: '초대 코드', key: '/admin/invites', icon: 'link' },
+        { name: '초대 코드', key: '/staff/invites', icon: 'link' },
     ];
     const adminMenuItems = [
         { name: '직원 관리', key: '/admin/staff', icon: 'users' },
@@ -30,7 +32,13 @@ export default function Sidebar({ page, setPage, onLogout, isOpen, onClose }) {
         { name: '결제 관리', key: '/admin/payments', icon: 'creditCard' },
         { name: '시스템 설정', key: '/admin/settings', icon: 'settings' },
     ];
-    const adminSectionItems = isAdmin ? [...staffTools, ...adminMenuItems] : staffTools;
+    const adminSectionItems = isAdmin
+        ? [...staffTools, ...adminMenuItems]
+        : isStaffGroup
+            ? staffTools
+            : canAccessInvites
+                ? staffTools
+                : [];
     
     return (
         <aside 
@@ -85,9 +93,9 @@ export default function Sidebar({ page, setPage, onLogout, isOpen, onClose }) {
                             </button>
                         );
                     })}
-                    {isStaffGroup && (
+                    {adminSectionItems.length > 0 && (
                         <>
-                            <p className="px-4 text-xs font-semibold text-gray-400 mb-2 mt-6 uppercase tracking-wider">Admin</p>
+                            <p className="px-4 text-xs font-semibold text-gray-400 mb-2 mt-6 uppercase tracking-wider">관리 도구</p>
                             {adminSectionItems.map(item => {
                                 const isActive = page === item.key;
                                 return (

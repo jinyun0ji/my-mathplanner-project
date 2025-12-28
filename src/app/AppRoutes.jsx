@@ -26,6 +26,7 @@ import AdminPaymentsPage from '../pages/admin/AdminPaymentsPage';
 import AdminSettingsPage from '../pages/admin/AdminSettingsPage';
 import InviteManagementPage from '../pages/admin/InviteManagementPage';
 import AdminRoute from '../routes/AdminRoute';
+import StaffOrTeachingRoute from '../routes/StaffOrTeachingRoute';
 import useAuth from '../auth/useAuth';
 import {
     ROLE,
@@ -76,6 +77,7 @@ const ADMIN_ROUTES = new Set([
     '/admin/notifications',
     '/admin/payments',
     '/admin/settings',
+    '/staff/invites',
 ]);
 
 const getPageKeyFromPath = (pathname) => {
@@ -88,7 +90,7 @@ const getPageKeyFromPath = (pathname) => {
 
 const getPathForPage = (pageKey, studentId) => {
     if (!pageKey) return PAGE_ROUTES.lessons;
-    if (pageKey.startsWith('/admin/')) return pageKey;
+    if (pageKey.startsWith('/')) return pageKey;
     if (pageKey === 'students' && studentId) return `${PAGE_ROUTES.students}/${studentId}`;
     return PAGE_ROUTES[pageKey] || PAGE_ROUTES.lessons;
 };
@@ -1100,9 +1102,17 @@ export default function AppRoutes({ user, role, studentIds }) {
             <Route
                 path="admin/invites"
                 element={(
-                    <AdminRoute>
+                    <StaffOrTeachingRoute>
                         <InviteManagementPage />
-                    </AdminRoute>
+                    </StaffOrTeachingRoute>
+                )}
+            />
+            <Route
+                path="staff/invites"
+                element={(
+                    <StaffOrTeachingRoute>
+                        <InviteManagementPage />
+                    </StaffOrTeachingRoute>
                 )}
             />
             <Route

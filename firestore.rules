@@ -207,9 +207,13 @@ service cloud.firestore {
     }
 
     match /invites/{inviteId} {
-      allow get: if true;
-      allow list: if false;
-      allow create, delete: if isStaffOrAdmin();
+      // 학생/학부모 가입 플로우는 "코드 1개 조회(getDoc)"만 필요
+      // 관리자/직원/강사는 목록(query)도 봐야 함 (getDocs(query(...)))
+      allow get: if isSignedIn(); // (보안 강화) 로그인한 사용자만 조회 가능
+      allow list: if isStaffOrAdminOrTeacher(); // ✅ 목록/쿼리 허용
+      
+      // 생성/삭제도 교무실 운영상 강사에게 허용하고 싶다면 아래처럼
+      allow create, delete: if isStaffOrAdminOrTeacher();
       allow update: if isStaffOrAdmin()
         || (
           isSignedIn()

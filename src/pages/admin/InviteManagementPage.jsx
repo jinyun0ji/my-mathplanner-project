@@ -164,7 +164,7 @@ export default function InviteManagementPage() {
         <div className="space-y-6">
             <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
                 <div className="flex flex-col gap-2">
-                    <p className="text-xs font-semibold text-indigo-500 uppercase tracking-wider">관리자 전용</p>
+                    <p className="text-xs font-semibold text-indigo-500 uppercase tracking-wider">직원/관리자/강사 전용</p>
                     <h1 className="text-2xl font-bold text-gray-800">학생/학부모 초대 코드</h1>
                     <p className="text-sm text-gray-500">
                         초대 코드를 생성하고 만료 상태를 한 곳에서 관리하세요. 기본 유효기간은 생성일로부터 7일입니다.
