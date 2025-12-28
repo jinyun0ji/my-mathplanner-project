@@ -12,8 +12,6 @@ import InviteSignupPage from './pages/InviteSignupPage';
 import { redirectToKakao, redirectToNaver } from './auth/socialRedirect';
 import { signInWithGoogle } from './auth/authService';
 import StudentLogin from './auth/StudentLogin';
-import StudentHomeLanding from './pages/StudentHomeLanding';
-import ParentHomeLanding from './pages/ParentHomeLanding';
 import useAuth from './auth/useAuth';
 import { getDefaultRouteForRole } from './auth/authRedirects';
 
@@ -53,8 +51,8 @@ function AppRouter() {
             <Route path="/auth/callback" element={<SocialCallback />} />
             <Route path="/login" element={<LoginRoute />} />
             <Route path="/student/login" element={<StudentLogin />} />
-            <Route path="/student/home" element={<StudentHomeLanding />} />
-            <Route path="/parent/home" element={<ParentHomeLanding />} />
+            <Route path="/student/home" element={<Navigate to="/home" replace />} />
+            <Route path="/parent/home" element={<Navigate to="/home" replace />} />
             <Route path="/signup" element={<Navigate to="/signup/invite" replace />} />
             <Route path="/signup/invite" element={<InviteSignupPage />} />
             <Route path="/*" element={<AuthGate />} />
