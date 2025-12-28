@@ -174,12 +174,15 @@ export default function AppRoutes({ user, role, studentIds }) {
       try { return JSON.parse(localStorage.getItem('videoBookmarks')) || {}; }
       catch (e) { return {}; }
   });
+
+  const processedAnnouncementIdsRef = useRef(new Set());
+
   useEffect(() => {
       if (isAuthenticated) processedAnnouncementIdsRef.current = new Set();
   }, [isAuthenticated, userId]);
 
   useEffect(() => {
-  if (!isAuthenticated || !role || !isStaffRole) return;
+  if (!isAuthenticated || !role || !isStaffRole(role)) return;
       const shouldLoadPayments = page === 'payment';
       if (shouldLoadPayments) {
           setIsPaymentLogsLoading(true);
@@ -210,7 +213,7 @@ export default function AppRoutes({ user, role, studentIds }) {
       return () => {
           isActive = false;
       };
-    }, [db, isAuthenticated, role, page, isStaffRole]);
+    }, [db, isAuthenticated, role, page]);
 
   useEffect(() => {
       const state = { cancelled: false };
@@ -251,8 +254,6 @@ export default function AppRoutes({ user, role, studentIds }) {
       });
       setStudentMemos(memoMap);
   }, [students]);
-
-  const processedAnnouncementIdsRef = useRef(new Set());
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [hasNewNotifications, setHasNewNotifications] = useState(false);
