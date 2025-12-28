@@ -55,7 +55,7 @@ export default function useNotifications(uid, maxItems = DEFAULT_LIMIT) {
         if (!uid || !db) {
             return null;
         }
-        return doc(db, 'notifications', uid, 'meta');
+        return doc(db, 'notifications', uid, 'meta', 'meta');
     }, [uid, db]);
 
     useEffect(() => {

@@ -12,6 +12,8 @@ export default function MenuTab({ student, onUpdateStudent, onLogout, videoBookm
     const [editData, setEditData] = useState({ school: '', grade: '', phone: '' });
     const [notifications, setNotifications] = useState({ all: true, post: true, homework: true, clinic: true, class_update: true });
 
+    if (!student) return null;
+
     const handleOpenProfile = () => { if (student) setEditData({ school: student.school || '', grade: student.grade || '', phone: student.phone || '' }); setIsProfileOpen(true); };
     const handleSaveProfile = () => {
         if (!editData.school || !editData.grade || !editData.phone) { alert('모든 정보를 입력해주세요.'); return; }

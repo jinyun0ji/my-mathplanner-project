@@ -2,6 +2,10 @@ import React, { useState } from 'react';
 import { Icon } from '../../../utils/helpers';
 
 export default function DashboardTab({ student, myClasses, attendanceLogs, clinicLogs, homeworkStats, notices, setActiveTab, externalSchedules, isParent = false }) {
+    const [isScheduleExpanded, setIsScheduleExpanded] = useState(false);
+    
+    if (!student) return null;
+
     const today = new Date();
     const todayStr = today.toISOString().split('T')[0];
     const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
@@ -21,7 +25,6 @@ export default function DashboardTab({ student, myClasses, attendanceLogs, clini
     const nowTimeStr = today.toTimeString().slice(0, 5); 
     let keyEvent = allEvents.find(e => { let endTime = '23:59'; if (e.time.includes('~')) endTime = e.time.split('~')[1]; return endTime >= nowTimeStr; });
     const otherEvents = keyEvent ? allEvents.filter(e => e !== keyEvent) : allEvents;
-    const [isScheduleExpanded, setIsScheduleExpanded] = useState(false);
     const pendingHomework = homeworkStats.filter(h => h.status !== '완료');
     const studentLogs = attendanceLogs.filter(l => l.studentId === student.id);
     const attendanceRate = studentLogs.length > 0 ? Math.round((studentLogs.filter(l => ['출석','동영상보강'].includes(l.status)).length / studentLogs.length) * 100) : null;
