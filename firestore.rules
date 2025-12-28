@@ -214,7 +214,7 @@ service cloud.firestore {
       
       // 생성/삭제도 교무실 운영상 강사에게 허용하고 싶다면 아래처럼
       allow create, delete: if isStaffOrAdminOrTeacher();
-      allow update: if isStaffOrAdmin()
+      allow update: if isStaffOrAdminOrTeacher()
         || (
           isSignedIn()
           && resource.data.consumed == false

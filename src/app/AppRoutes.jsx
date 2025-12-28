@@ -184,63 +184,64 @@ export default function AppRoutes({ user, role, studentIds }) {
   }, [isAuthenticated, userId]);
 
   useEffect(() => {
-  if (!isAuthenticated || !role || !isStaffRole(role)) return;
-      const shouldLoadPayments = page === 'payment';
-      if (shouldLoadPayments) {
-          setIsPaymentLogsLoading(true);
-      }
-      let isActive = true;
-      loadStaffDataOnce({
-          db,
-          isLoggedIn: isAuthenticated,
-          userRole: role,
-          pageKey: page,
-          setStudents: page === 'attendance' ? null : setStudents,
-          setClasses,
-          setTests,
-          setLessonLogs,
-          setAttendanceLogs,
-          setClinicLogs,
-          setWorkLogs,
-          setAnnouncements,
-          setHomeworkAssignments,
-          setPaymentLogs,
-          setGrades,
-          setHomeworkResults,
-      }).finally(() => {
-          if (shouldLoadPayments && isActive) {
-              setIsPaymentLogsLoading(false);
-          }
-      });
-      return () => {
-          isActive = false;
-      };
-    }, [db, isAuthenticated, role, page]);
+    if (!isAuthenticated || !role || !(isAdminRole(role) || isStaffRole(role) || isStaffOrTeachingRole(role))) return;
+    const shouldLoadPayments = page === 'payment';
+    if (shouldLoadPayments) {
+        setIsPaymentLogsLoading(true);
+    }
+    let isActive = true;
+    loadStaffDataOnce({
+        db,
+        isLoggedIn: isAuthenticated,
+        userRole: role,
+        pageKey: page,
+        setStudents: page === 'attendance' ? null : setStudents,
+        setClasses,
+        setTests,
+        setLessonLogs,
+        setAttendanceLogs,
+        setClinicLogs,
+        setWorkLogs,
+        setAnnouncements,
+        setHomeworkAssignments,
+        setPaymentLogs,
+        setGrades,
+        setHomeworkResults,
+    }).finally(() => {
+        if (shouldLoadPayments && isActive) {
+            setIsPaymentLogsLoading(false);
+        }
+    });
+    return () => {
+        isActive = false;
+    };
+}, [db, isAuthenticated, role, page]);
 
   useEffect(() => {
-      const state = { cancelled: false };
-      loadViewerDataOnce({
-          db,
-          isLoggedIn: isAuthenticated,
-          userRole: role,
-          userId,
-          activeStudentId: isParentRole(role) ? parentActiveStudentId : null,
-          setStudents,
-          setClasses,
-          setLessonLogs,
-          setAttendanceLogs,
-          setClinicLogs,
-          setHomeworkAssignments,
-          setAnnouncements,
-          setTests,
-          setVideoProgress,
-          setExternalSchedules,
-          setHomeworkResults,
-          setGrades,
-          isCancelled: () => state.cancelled,
-      });
-      return () => { state.cancelled = true; };
-  }, [db, isAuthenticated, role, userId, parentActiveStudentId]);
+    if (!isAuthenticated || !role || !isStaffRole(role)) return;
+    const state = { cancelled: false };
+    loadViewerDataOnce({
+        db,
+        isLoggedIn: isAuthenticated,
+        userRole: role,
+        userId,
+        activeStudentId: isParentRole(role) ? parentActiveStudentId : null,
+        setStudents,
+        setClasses,
+        setLessonLogs,
+        setAttendanceLogs,
+        setClinicLogs,
+        setHomeworkAssignments,
+        setAnnouncements,
+        setTests,
+        setVideoProgress,
+        setExternalSchedules,
+        setHomeworkResults,
+        setGrades,
+        isCancelled: () => state.cancelled,
+    });
+    return () => { state.cancelled = true; };
+}, [db, isAuthenticated, role, userId, parentActiveStudentId]);
 
   useEffect(() => {
       try { localStorage.setItem('videoBookmarks', JSON.stringify(videoBookmarks)); }
