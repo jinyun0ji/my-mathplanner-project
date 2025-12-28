@@ -121,18 +121,23 @@ export default function InviteManagementPage() {
             }
 
             const inviteCode = await findUniqueCode();
+            const presetProfile = {};
+            if (name.trim()) presetProfile.name = name.trim();
+            if (email.trim()) presetProfile.email = email.trim();
+
             const payload = {
-                code: inviteCode,
-                role,
-                target: role === ROLE.PARENT ? { studentId: String(studentId).trim() } : {},
-                presetProfile: {
-                    name: name.trim() || undefined,
-                    email: email.trim() || undefined,
-                },
-                expiresAt: Timestamp.fromDate(expiresDate),
-                consumed: false,
-                createdBy: user.uid,
-                createdAt: serverTimestamp(),
+            code: inviteCode,
+            role,
+            target: role === ROLE.PARENT
+                ? { studentId: String(studentId).trim() }
+                : {},
+            ...(Object.keys(presetProfile).length > 0
+                ? { presetProfile }
+                : {}),
+            expiresAt: Timestamp.fromDate(expiresDate),
+            consumed: false,
+            createdBy: user.uid,
+            createdAt: serverTimestamp(),
             };
 
             await setDoc(doc(db, 'invites', inviteCode), payload);
