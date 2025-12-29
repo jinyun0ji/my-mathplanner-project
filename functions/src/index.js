@@ -14,6 +14,8 @@ const { onAttendanceLogWritten } = require('./triggers/attendanceLogs');
 const { onHomeworkResultWritten } = require('./triggers/homeworkResults');
 const { onGradeWritten } = require('./triggers/grades');
 const { onChatMessageCreated } = require('./triggers/chatMessages');
+const { resolveInviteCode } = require('./resolveInviteCode');
+const { acceptInviteAndCreateProfile } = require('./acceptInviteAndCreateProfile');
 
 exports.api = api;
 exports.createStaffUser = createStaffUser;
@@ -31,3 +33,5 @@ exports.onAttendanceLogWritten = onAttendanceLogWritten;
 exports.onChatMessageCreated = onChatMessageCreated;
 exports.onHomeworkResultWritten = onHomeworkResultWritten;
 exports.onGradeWritten = onGradeWritten;
+exports.resolveInviteCode = resolveInviteCode;
+exports.acceptInviteAndCreateProfile = acceptInviteAndCreateProfile;
