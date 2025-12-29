@@ -35,6 +35,7 @@ const acceptInviteAndCreateProfile = functions.https.onCall(async (data, context
 
         const inviteRef = resolution.source === 'invites' ? db.collection('invites').doc(resolution.inviteId) : null;
         const studentRef = db.collection('users').doc(resolution.studentDocId);
+        const userRef = db.collection('users').doc(uid);
         const classRef = resolution.classId ? db.collection('classes').doc(resolution.classId) : null;
 
         await db.runTransaction(async (tx) => {
@@ -60,12 +61,28 @@ const acceptInviteAndCreateProfile = functions.https.onCall(async (data, context
                 throw new functions.https.HttpsError('failed-precondition', '이미 다른 계정에 연결된 학생입니다.');
             }
 
-            tx.update(studentRef, {
+            const studentName = displayName
+                || (typeof studentData.displayName === 'string' ? studentData.displayName.trim() : '')
+                || (typeof studentData.name === 'string' ? studentData.name.trim() : '')
+                || authName
+                || '';
+
+            const studentProfile = {
+                role: ROLE.STUDENT,
                 authUid: uid,
-                email: authEmail,
+                displayName: studentName,
+                name: studentName,
+                email: authEmail || studentData.email || '',
+                active: true,
                 hasAccount: true,
+                createdAt: studentData.createdAt || FieldValue.serverTimestamp(),
                 updatedAt: FieldValue.serverTimestamp(),
-            });
+            };
+
+            tx.set(studentRef, studentProfile, { merge: true });
+            if (studentRef.id !== userRef.id) {
+                tx.set(userRef, studentProfile, { merge: true });
+            }
 
             if (inviteRef) {
                 tx.update(inviteRef, {

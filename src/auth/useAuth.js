@@ -8,15 +8,7 @@ import React, {
     useState,
 } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
-import {
-    collection,
-    doc,
-    getDoc,
-    getDocs,
-    limit,
-    query,
-    where,
-} from 'firebase/firestore';
+import { doc, getDoc } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { auth, db, functions } from '../firebase/client';
 import { signOutUser } from './authService';
@@ -159,7 +151,7 @@ export function AuthProvider({ children }) {
                     const data = authDocSnap.data();
                     const roleFromDoc = normalizeRole(data?.role ?? null);
 
-                    if (roleFromDoc && roleFromDoc !== ROLE.STUDENT) {
+                    if (roleFromDoc) {
                         resolvedProfileDocId = authDocSnap.id;
                         resolvedRole = roleFromDoc;
                         resolvedProfile = {
@@ -167,7 +159,7 @@ export function AuthProvider({ children }) {
                             profileDocId: authDocSnap.id,
                             role: roleFromDoc,
                             active: data?.active !== false,
-                            displayName: data?.displayName ?? '',
+                            displayName: data?.displayName ?? data?.name ?? '',
                             email: data?.email ?? '',
                         };
 
@@ -175,42 +167,6 @@ export function AuthProvider({ children }) {
                             resolvedStudentIds = normalizeStudentIds(data);
                             resolvedActiveStudentId = data?.activeStudentId ?? null;
                         }
-                    }
-                }
-
-                if (!resolvedProfile) {
-                    const studentQuery = query(
-                        collection(db, 'users'),
-                        where('authUid', '==', authUid),
-                        where('role', '==', ROLE.STUDENT),
-                        limit(1),
-                    );
-                    let studentSnap = null;
-                    try {
-                        studentSnap = await getDocs(studentQuery);
-                    } catch (error) {
-                        if (error?.code === 'permission-denied') {
-                            studentSnap = { empty: true, docs: [] };
-                        } else {
-                            throw error;
-                        }
-                    }
-
-                    if (!isMounted) return;
-
-                    if (!studentSnap.empty) {
-                        const studentDoc = studentSnap.docs[0];
-                        const data = studentDoc.data();
-                        resolvedProfileDocId = studentDoc.id;
-                        resolvedRole = ROLE.STUDENT;
-                        resolvedProfile = {
-                            authUid,
-                            profileDocId: studentDoc.id,
-                            role: ROLE.STUDENT,
-                            active: data?.active !== false,
-                            displayName: data?.displayName ?? data?.name ?? '',
-                            email: data?.email ?? '',
-                        };
                     }
                 }
 
