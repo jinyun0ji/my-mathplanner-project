@@ -199,4 +199,4 @@ const acceptInviteAndCreateProfile = functions.https.onCall(async (data, context
     return { ok: false, reason: 'unsupported_type' };
 });
 
-module.exports = { acceptInviteAndCreateProfile };
+exports.acceptInviteAndCreateProfile = acceptInviteAndCreateProfile;
