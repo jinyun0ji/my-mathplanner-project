@@ -5,12 +5,12 @@ service cloud.firestore {
     /* =========================
        공통 헬퍼
     ========================= */
-    function signedIn()() {
+    function signedIn() {
       return request.auth != null;
     }
 
     function uid() {
-      return request.auth != null ? request.auth.uid : null;
+      return request.auth.uid;
     }
 
     function userDoc() {
@@ -112,15 +112,7 @@ service cloud.firestore {
     ========================= */
     match /users/{userId} {
       allow read: if isAdminOrStaff()
-        || (
-          signedIn()
-          && (
-            userId == uid()
-            || (resource.data.uid != null && resource.data.uid == uid())
-            || (resource.data.authUid != null && resource.data.authUid == uid())
-            || (isParent() && (resource.data.uid in parentStudentUids() || resource.data.authUid in parentStudentUids()))
-          )
-        );
+        || (signedIn() && userId == uid());
       allow create: if isStaffOrAdminOrTeacher()
         || (
           signedIn()
@@ -159,27 +151,29 @@ service cloud.firestore {
 
     match /tests/{docId} {
       allow read, list: if isAdminOrStaff()
-        || isClassMember(resource.data.classId);
+        || (signedIn()
+          && resource.data.classId in get(/databases/$(database)/documents/classes/$(resource.data.classId)).data
+          && uid() in get(/databases/$(database)/documents/classes/$(resource.data.classId)).data.students);
       allow write: if isAdminOrStaff();
     }
 
     match /lessonLogs/{docId} {
       allow read, list: if isAdminOrStaff()
-        || isClassMember(resource.data.classId);
+        || (signedIn()
+          && resource.data.classId in get(/databases/$(database)/documents/classes/$(resource.data.classId)).data
+          && uid() in get(/databases/$(database)/documents/classes/$(resource.data.classId)).data.students);
       allow write: if isStaffOrAdminOrTeacher();
     }
 
     match /attendanceLogs/{docId} {
       allow read, list: if isStaffOrAdminOrTeacher()
-        || (isStudent() && (uid() == resource.data.studentUid || uid() == resource.data.studentId || uid() == resource.data.authUid))
-        || (isParent() && (resource.data.studentUid in parentStudentUids() || resource.data.studentId in parentStudentUids() || resource.data.authUid in parentStudentUids()));
-      allow write: if isStaffOrAdminOrTeacher();
+        || (signedIn() && resource.data.studentUid == uid());
+        allow write: if isStaffOrAdminOrTeacher();
     }
 
     match /clinicLogs/{docId} {
       allow read, list: if isStaffOrAdminOrTeacher()
-        || (isStudent() && (uid() == resource.data.authUid || uid() == resource.data.studentId || uid() == resource.data.studentUid))
-        || (isParent() && (resource.data.authUid in parentStudentUids() || resource.data.studentId in parentStudentUids() || resource.data.studentUid in parentStudentUids()));
+        || (signedIn() && resource.data.authUid == uid());
       allow write: if isStaffOrAdminOrTeacher();
     }
 
@@ -190,18 +184,20 @@ service cloud.firestore {
 
     match /announcements/{docId} {
       allow read: if isAdminOrStaff()
-        || (signedIn() && (
-          resource.data.targetStudents == null
-          || resource.data.targetStudents.size() == 0
-          || uid() in resource.data.targetStudents
-          || (isParent() && listContainsAny(resource.data.targetStudents, parentStudentUids()))
-        ));
+        || (signedIn()
+          && (
+            !('targetStudents' in resource.data)
+            || resource.data.targetStudents.size() == 0
+            || uid() in resource.data.targetStudents
+          ));
       allow write: if isStaffOrAdminOrTeacher();
     }
 
     match /homeworkAssignments/{docId} {
       allow read: if isAdminOrStaff()
-        || isClassMember(resource.data.classId);
+        || (signedIn()
+          && resource.data.classId in get(/databases/$(database)/documents/classes/$(resource.data.classId)).data
+          && uid() in get(/databases/$(database)/documents/classes/$(resource.data.classId)).data.students);
       allow write: if isStaffOrAdminOrTeacher();
     }
 
@@ -222,15 +218,13 @@ service cloud.firestore {
 
     match /grades/{docId} {
       allow read, list: if isStaffOrAdminOrTeacher()
-        || (isStudent() && (uid() == resource.data.authUid || uid() == resource.data.studentId || uid() == resource.data.studentUid))
-        || (isParent() && (resource.data.authUid in parentStudentUids() || resource.data.studentId in parentStudentUids() || resource.data.studentUid in parentStudentUids()));
+        || (signedIn() && resource.data.authUid == uid());
       allow write: if isStaffOrAdminOrTeacher();
     }
 
     match /homeworkResults/{docId} {
       allow read, list: if isStaffOrAdminOrTeacher()
-        || (isStudent() && (uid() == resource.data.authUid || uid() == resource.data.studentId || uid() == resource.data.studentUid))
-        || (isParent() && (resource.data.authUid in parentStudentUids() || resource.data.studentId in parentStudentUids() || resource.data.studentUid in parentStudentUids()));
+        || (signedIn() && resource.data.authUid == uid());
       allow write: if isStaffOrAdminOrTeacher();
     }
 
