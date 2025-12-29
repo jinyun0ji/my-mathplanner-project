@@ -76,6 +76,7 @@ const acceptInviteAndCreateProfile = functions.https.onCall(async (data, context
                 role: ROLE.STUDENT,
                 authUid: uid,
                 userUid: uid,
+                studentDocId: resolution.studentDocId,
                 studentId: resolution.studentDocId,
                 displayName: studentName,
                 name: studentName,

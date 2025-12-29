@@ -1,10 +1,8 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { httpsCallable } from 'firebase/functions';
-import { doc, setDoc } from 'firebase/firestore';
 import { Link } from 'react-router-dom';
-import { db, functions } from '../firebase/client';
+import { functions } from '../firebase/client';
 import { signInWithGoogle } from '../auth/authService';
-import { ROLE } from '../constants/roles';
 
 const normalizeInviteCode = (value) => (value || '').trim();
 
@@ -89,29 +87,6 @@ export default function InviteSignupPage() {
                 return;
             }
 
-            if (!db) {
-                setStatus('Firestore를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.');
-                return;
-            }
-
-            const resolvedRole = verified?.inviteType === 'parent' ? ROLE.PARENT : ROLE.STUDENT;
-            const resolvedDisplayName = name.trim() || authUser.displayName || '';
-            const profilePayload = {
-                role: resolvedRole,
-                authUid: authUser.uid,
-                displayName: resolvedDisplayName,
-                name: resolvedDisplayName,
-                email: authUser.email || '',
-                active: true,
-            };
-
-            try {
-                await setDoc(doc(db, 'users', authUser.uid), profilePayload, { merge: true });
-            } catch (error) {
-                setStatus('회원 정보를 저장하지 못했습니다. 잠시 후 다시 시도해주세요.');
-                console.error('Failed to persist user profile after invite signup:', error);
-                return;
-            }
             if (!functions) {
                 setStatus('Firebase Functions를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.');
                 return;
