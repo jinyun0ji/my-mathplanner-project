@@ -111,8 +111,10 @@ service cloud.firestore {
        users (가장 중요)
     ========================= */
     match /users/{userId} {
-      allow read: if isAdminOrStaff()
-        || (signedIn() && userId == uid());
+      allow get: if request.auth != null
+        && request.auth.uid == userId;
+      allow list: if false;
+      allow read: if isAdminOrStaff();
       allow create: if isStaffOrAdminOrTeacher()
         || (
           signedIn()
