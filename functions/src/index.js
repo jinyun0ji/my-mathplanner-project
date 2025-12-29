@@ -31,4 +31,3 @@ exports.onAttendanceLogWritten = onAttendanceLogWritten;
 exports.onChatMessageCreated = onChatMessageCreated;
 exports.onHomeworkResultWritten = onHomeworkResultWritten;
 exports.onGradeWritten = onGradeWritten;
-exports.onChatMessageCreated = onChatMessageCreated;
