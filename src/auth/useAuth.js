@@ -78,15 +78,13 @@ export function AuthProvider({ children }) {
             }
         };
 
-        const ensureProfileCallable = functions
-            ? httpsCallable(functions, 'ensureUserProfileDoc')
-            : null;
-
         const ensureUserProfileDoc = async () => {
-            if (!ensureProfileCallable) return null;
+            if (!functions) return null;
+
+            const ensureProfile = httpsCallable(functions, 'ensureUserProfileDoc');
             try {
-                const response = await ensureProfileCallable();
-                return response?.data || null;
+                const { data } = await ensureProfile();
+                return data ?? null;
             } catch (error) {
                 console.error('사용자 프로필 자동 생성 함수 호출 실패:', error);
                 return null;
