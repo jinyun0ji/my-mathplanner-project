@@ -79,6 +79,25 @@ const normalizeStudentUser = (user) => {
     };
 };
 
+const dedupeStudentsByAuthUid = (students = []) => {
+    const map = new Map();
+    students.forEach((student) => {
+        if (!student) return;
+        const key = student.authUid || student.id;
+        const existing = key ? map.get(key) : null;
+        if (!existing) {
+            map.set(key || student.id || `anon-${map.size}`, student);
+            return;
+        }
+
+        const shouldReplaceExisting = existing.id === existing.authUid && student.id !== student.authUid;
+        if (shouldReplaceExisting) {
+            map.set(key, student);
+        }
+    });
+    return Array.from(map.values());
+};
+
 export const loadStaffDataOnce = async ({
     db,
     isLoggedIn,
@@ -102,13 +121,14 @@ export const loadStaffDataOnce = async ({
     if (!isStaffOrTeachingRole(userRole)) return;
 
     const shouldLoad = (key) => !pageKey || pageKey === key;
+    const applyStudents = (items) => setStudents?.(dedupeStudentsByAuthUid(items));
 
     try {
         if (setStudents) {
             await fetchList(
                 db,
                 'users',
-                setStudents,
+                applyStudents,
                 query(collection(db, 'users'), where('role', '==', ROLE.STUDENT), limit(500)),
                 () => false,
                 normalizeStudentUser,
@@ -210,11 +230,12 @@ export const loadViewerDataOnce = async ({
     const isViewerRole = isViewerGroupRole(userRole);
     if (!isLoggedIn || !db || !isViewerRole) return;
 
+    const linkedStudentIds = Array.isArray(studentIds) ? studentIds.filter(Boolean) : [];
     const viewerStudentUids = (userRole === 'student'
-        ? [userId].filter(Boolean)
+        ? [userId, ...linkedStudentIds]
         : activeStudentId
             ? [activeStudentId]
-            : []).slice(0, 10);
+            : linkedStudentIds).filter(Boolean).slice(0, 10);
 
     if (viewerStudentUids.length === 0) return;
 

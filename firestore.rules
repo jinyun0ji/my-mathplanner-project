@@ -5,18 +5,36 @@ service cloud.firestore {
     /* =========================
        공통 헬퍼
     ========================= */
-    function signedIn() {
+    function isSignedIn() {
       return request.auth != null;
+    }
+
+    function signedIn() {
+      return isSignedIn();
     }
 
     function uid() {
       return request.auth.uid;
     }
 
+    function isSelf(targetUid) {
+      return isSignedIn() && uid() == targetUid;
+    }
+
     function userDoc() {
-      return signedIn()
+      return isSignedIn()
         ? get(/databases/$(database)/documents/users/$(uid()))
         : null;
+    }
+
+    function getMyStudentId() {
+      return isSignedIn() && exists(/databases/$(database)/documents/users/$(uid()))
+        ? get(/databases/$(database)/documents/users/$(uid())).data.studentId
+        : null;
+    }
+
+    function isMyStudentUid(value) {
+      return isSignedIn() && (value == uid() || value == getMyStudentId());
     }
 
     function userRole() {
@@ -90,10 +108,13 @@ service cloud.firestore {
     }
 
     function isClassMember(classId) {
-      return signedIn()
+      return isSignedIn()
         && classId is string
         && exists(/databases/$(database)/documents/classes/$(classId))
-        && uid() in get(/databases/$(database)/documents/classes/$(classId)).data.students;
+        && (
+          uid() in get(/databases/$(database)/documents/classes/$(classId)).data.students
+          || getMyStudentId() in get(/databases/$(database)/documents/classes/$(classId)).data.students
+        );
     }
 
     function hasValidInvite(inviteId, role) {
@@ -112,7 +133,7 @@ service cloud.firestore {
     ========================= */
     match /users/{userId} {
       // 로그인한 사용자는 자신의 프로필 문서(users/{uid})를 반드시 읽을 수 있어야 함
-      allow get: if request.auth != null && request.auth.uid == userId;
+      allow get: if isSelf(userId) || isAdminOrStaff();
 
       // (중요) 학생/학부모는 users 전체 list 금지 유지
       allow list: if false;
@@ -121,21 +142,21 @@ service cloud.firestore {
       allow read: if isAdminOrStaff();
       allow create: if isStaffOrAdminOrTeacher()
         || (
-          signedIn()
-          && uid() == userId
+          isSignedIn()
+          && isSelf(userId)
           && request.resource.data.active == true
           && (isRequestRole('student') || isRequestRole('parent'))
           && hasValidInvite(request.resource.data.inviteId, request.resource.data.role)
         );
       allow update: if isStaffOrAdminOrTeacher()
         || (
-          signedIn()
-          && uid() == userId
+          isSignedIn()
+          && isSelf(userId)
           && (isResourceRole('student') || isResourceRole('parent'))
           && request.resource.data.role == resource.data.role
         )
         || (
-          SignedIn()
+          isSignedIn()
           && isResourceRole('student')
           && (resource.data.authUid == null || resource.data.authUid == '')
           && request.resource.data.authUid == uid()
@@ -149,37 +170,41 @@ service cloud.firestore {
     /* =========================
        Staff 전용 컬렉션
     ========================= */
+    match /students/{studentId} {
+      allow get, read: if isSignedIn()
+        && (resource.data.authUid == uid() || studentId == getMyStudentId());
+      allow list: if isAdminOrStaff();
+      allow write: if isStaffOrAdminOrTeacher();
+    }
+
     match /classes/{docId} {
-      allow read, list: if isAdminOrStaff()
-        || (signedIn() && uid() in resource.data.students);
+      allow get, read, list: if isAdminOrStaff()
+        || (isSignedIn()
+          && ((uid() in resource.data.students) || (getMyStudentId() in resource.data.students)));
       allow write: if isAdminOrStaff();
     }
 
     match /tests/{docId} {
       allow read, list: if isAdminOrStaff()
-        || (signedIn()
-          && resource.data.classId in get(/databases/$(database)/documents/classes/$(resource.data.classId)).data
-          && uid() in get(/databases/$(database)/documents/classes/$(resource.data.classId)).data.students);
+        || (isSignedIn() && isClassMember(resource.data.classId));
       allow write: if isAdminOrStaff();
     }
 
     match /lessonLogs/{docId} {
       allow read, list: if isAdminOrStaff()
-        || (signedIn()
-          && resource.data.classId in get(/databases/$(database)/documents/classes/$(resource.data.classId)).data
-          && uid() in get(/databases/$(database)/documents/classes/$(resource.data.classId)).data.students);
+        || (isSignedIn() && isClassMember(resource.data.classId));
       allow write: if isStaffOrAdminOrTeacher();
     }
 
     match /attendanceLogs/{docId} {
       allow read, list: if isStaffOrAdminOrTeacher()
-        || (signedIn() && resource.data.studentUid == uid());
+        || (isSignedIn() && isMyStudentUid(resource.data.studentUid));
         allow write: if isStaffOrAdminOrTeacher();
     }
 
     match /clinicLogs/{docId} {
       allow read, list: if isStaffOrAdminOrTeacher()
-        || (signedIn() && resource.data.authUid == uid());
+        || (isSignedIn() && isMyStudentUid(resource.data.authUid));
       allow write: if isStaffOrAdminOrTeacher();
     }
 
@@ -190,20 +215,18 @@ service cloud.firestore {
 
     match /announcements/{docId} {
       allow read: if isAdminOrStaff()
-        || (signedIn()
+        || (isSignedIn()
           && (
-            !('targetStudents' in resource.data)
-            || resource.data.targetStudents.size() == 0
-            || uid() in resource.data.targetStudents
+            (!('targetStudents' in resource.data) || resource.data.targetStudents.size() == 0)
+              ? (!('classId' in resource.data) || isClassMember(resource.data.classId))
+              : (uid() in resource.data.targetStudents || getMyStudentId() in resource.data.targetStudents)
           ));
       allow write: if isStaffOrAdminOrTeacher();
     }
 
     match /homeworkAssignments/{docId} {
       allow read: if isAdminOrStaff()
-        || (signedIn()
-          && resource.data.classId in get(/databases/$(database)/documents/classes/$(resource.data.classId)).data
-          && uid() in get(/databases/$(database)/documents/classes/$(resource.data.classId)).data.students);
+        || (isSignedIn() && isClassMember(resource.data.classId));
       allow write: if isStaffOrAdminOrTeacher();
     }
 
@@ -224,28 +247,28 @@ service cloud.firestore {
 
     match /grades/{docId} {
       allow read, list: if isStaffOrAdminOrTeacher()
-        || (signedIn() && resource.data.authUid == uid());
+        || (isSignedIn() && isMyStudentUid(resource.data.authUid));
       allow write: if isStaffOrAdminOrTeacher();
     }
 
     match /homeworkResults/{docId} {
       allow read, list: if isStaffOrAdminOrTeacher()
-        || (signedIn() && resource.data.authUid == uid());
+        || (isSignedIn() && isMyStudentUid(resource.data.authUid));
       allow write: if isStaffOrAdminOrTeacher();
     }
 
     match /videoProgress/{docId} {
-      allow read, list: if signedIn()
-        && uid() == resource.data.authUid;
-      allow write: if signedIn()
-        && uid() == request.resource.data.authUid;
+      allow read, list: if isSignedIn()
+        && isMyStudentUid(resource.data.authUid);
+      allow write: if isSignedIn()
+        && isMyStudentUid(request.resource.data.authUid);
     }
 
     match /externalSchedules/{docId} {
-      allow read, list: if signedIn()
-        && uid() == resource.data.authUid;
-      allow write: if signedIn()
-        && uid() == request.resource.data.authUid;
+      allow read, list: if isSignedIn()
+        && isMyStudentUid(resource.data.authUid);
+      allow write: if isSignedIn()
+        && isMyStudentUid(request.resource.data.authUid);
     }
 
     match /invites/{inviteId} {

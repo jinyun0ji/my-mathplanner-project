@@ -158,7 +158,7 @@ export default function AuthGate() {
       <AppRoutes
           user={user}
           role={role}
-          student={role}
+          studentIds={studentIds}
         />
   );
 

@@ -225,6 +225,7 @@ export default function AppRoutes({ user, role, studentIds }) {
         isLoggedIn: isAuthenticated,
         userRole: role,
         userId,
+        studentIds,
         activeStudentId: isParentRole(role) ? parentActiveStudentId : null,
         setStudents,
         setClasses,
@@ -241,7 +242,7 @@ export default function AppRoutes({ user, role, studentIds }) {
         isCancelled: () => state.cancelled,
     });
     return () => { state.cancelled = true; };
-}, [db, isAuthenticated, role, userId, parentActiveStudentId]);
+}, [db, isAuthenticated, role, userId, parentActiveStudentId, studentIds]);
 
   useEffect(() => {
       try { localStorage.setItem('videoBookmarks', JSON.stringify(videoBookmarks)); }

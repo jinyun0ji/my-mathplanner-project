@@ -74,6 +74,11 @@ const buildInviteResponse = (resolution) => {
     }
 
     const classData = resolution.data || {};
+    const studentDocId = classData?.target?.studentDocId
+        ? String(classData.target.studentDocId).trim()
+        : classData?.studentDocId
+            ? String(classData.studentDocId).trim()
+            : '';
     return {
         ok: true,
         source: 'classes',
@@ -82,6 +87,7 @@ const buildInviteResponse = (resolution) => {
         classId: resolution.id,
         className: classData.name || null,
         academyId: classData.academyId || null,
+        studentDocId: studentDocId || null,
         raw: classData,
     };
 };

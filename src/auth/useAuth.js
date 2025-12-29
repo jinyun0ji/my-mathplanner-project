@@ -166,6 +166,10 @@ export function AuthProvider({ children }) {
                         if (isParentRole(roleFromDoc)) {
                             resolvedStudentIds = normalizeStudentIds(data);
                             resolvedActiveStudentId = data?.activeStudentId ?? null;
+                        } else if (roleFromDoc === ROLE.STUDENT) {
+                            const studentId = data?.studentId;
+                            resolvedStudentIds = studentId ? [studentId] : [];
+                            resolvedActiveStudentId = studentId || null;
                         }
                     }
                 }
@@ -185,6 +189,9 @@ export function AuthProvider({ children }) {
                 setRole(resolvedRole);
                 setProfileDocId(resolvedProfileDocId);
                 if (isParentRole(resolvedRole)) {
+                    setStudentIds(resolvedStudentIds);
+                    setActiveStudentId(resolvedActiveStudentId);
+                } else if (resolvedRole === ROLE.STUDENT) {
                     setStudentIds(resolvedStudentIds);
                     setActiveStudentId(resolvedActiveStudentId);
                 } else {
