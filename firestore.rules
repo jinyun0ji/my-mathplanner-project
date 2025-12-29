@@ -5,20 +5,24 @@ service cloud.firestore {
     /* =========================
        공통 헬퍼
     ========================= */
-    function isSignedIn() {
+    function signedIn()() {
       return request.auth != null;
     }
 
+    function uid() {
+      return request.auth != null ? request.auth.uid : null;
+    }
+
     function userDoc() {
-      return isSignedIn()
-        ? get(/databases/$(database)/documents/users/$(request.auth.uid))
+      return signedIn()
+        ? get(/databases/$(database)/documents/users/$(uid()))
         : null;
     }
 
     function userRole() {
       return userDoc() != null ? userDoc().data.role : null;
     }
-    
+
     function resourceRole() {
       return resource != null ? resource.data.role : null;
     }
@@ -35,6 +39,10 @@ service cloud.firestore {
       return requestRole() == role;
     }
 
+    function isAdminOrStaff() {
+      return userRole() in ['admin', 'staff', 'teaching', 'staffOrTeaching', 'teacher'];
+    }
+
     function isAdmin() {
       return userRole() == 'admin';
     }
@@ -42,21 +50,21 @@ service cloud.firestore {
     function isStaff() {
       return userRole() == 'staff';
     }
-    
+
     function isTeacher() {
-      return userRole() == 'teacher';
+      return userRole() in ['teacher', 'teaching', 'staffOrTeaching'];
     }
 
     function isStaffOrTeacher() {
       return isStaff() || isTeacher();
     }
-    
+
     function isStaffOrAdmin() {
       return isStaff() || isAdmin();
     }
-    
+
     function isStaffOrAdminOrTeacher() {
-      return isStaffOrTeacher() || isAdmin();
+      return isAdminOrStaff();
     }
 
     function isStudent() {
@@ -72,7 +80,22 @@ service cloud.firestore {
         ? userDoc().data.studentIds
         : [];
     }
-    
+
+    function listContainsAny(list, candidates) {
+      return (candidates.size() > 0 && candidates[0] in list)
+        || (candidates.size() > 1 && candidates[1] in list)
+        || (candidates.size() > 2 && candidates[2] in list)
+        || (candidates.size() > 3 && candidates[3] in list)
+        || (candidates.size() > 4 && candidates[4] in list);
+    }
+
+    function isClassMember(classId) {
+      return signedIn()
+        && classId is string
+        && exists(/databases/$(database)/documents/classes/$(classId))
+        && uid() in get(/databases/$(database)/documents/classes/$(classId)).data.students;
+    }
+
     function hasValidInvite(inviteId, role) {
       return inviteId is string
         && exists(/databases/$(database)/documents/invites/$(inviteId))
@@ -88,70 +111,75 @@ service cloud.firestore {
        users (가장 중요)
     ========================= */
     match /users/{userId} {
-      allow read: if isSignedIn()
-        && (
-          request.auth.uid == userId
-          || (resource.data.authUid != null && request.auth.uid == resource.data.authUid)
-          || isStaffOrAdminOrTeacher()
-          || (isParent() && isResourceRole('student')
-              && (resource.data.authUid in parentStudentUids() || userId in parentStudentUids()))
+      allow read: if isAdminOrStaff()
+        || (
+          signedIn()
+          && (
+            userId == uid()
+            || (resource.data.uid != null && resource.data.uid == uid())
+            || (resource.data.authUid != null && resource.data.authUid == uid())
+            || (isParent() && (resource.data.uid in parentStudentUids() || resource.data.authUid in parentStudentUids()))
+          )
         );
       allow create: if isStaffOrAdminOrTeacher()
         || (
-          isSignedIn()
-          && request.auth.uid == userId
+          signedIn()
+          && uid() == userId
           && request.resource.data.active == true
           && (isRequestRole('student') || isRequestRole('parent'))
           && hasValidInvite(request.resource.data.inviteId, request.resource.data.role)
         );
       allow update: if isStaffOrAdminOrTeacher()
         || (
-          isSignedIn()
-          && request.auth.uid == userId
+          signedIn()
+          && uid() == userId
           && (isResourceRole('student') || isResourceRole('parent'))
           && request.resource.data.role == resource.data.role
-          )
+        )
         || (
-          isSignedIn()
+          SignedIn()
           && isResourceRole('student')
-          && resource.data.authUid == null
-          && request.resource.data.authUid == request.auth.uid
+          && (resource.data.authUid == null || resource.data.authUid == '')
+          && request.resource.data.authUid == uid()
           && request.resource.data.role == resource.data.role
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['authUid', 'email', 'hasAccount', 'updatedAt', 'role'])
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['authUid', 'email', 'hasAccount', 'updatedAt'])
         );
       allow delete: if isStaffOrAdminOrTeacher()
-        || (isSignedIn() && request.auth.uid == userId);
+        || (signedIn() && uid() == userId);
     }
 
     /* =========================
        Staff 전용 컬렉션
     ========================= */
     match /classes/{docId} {
-      allow read, list: if isSignedIn();
-      allow write: if isAdmin();
+      allow read, list: if isAdminOrStaff()
+        || (signedIn() && uid() in resource.data.students);
+      allow write: if isAdminOrStaff();
     }
 
     match /tests/{docId} {
-      allow read, list: if isSignedIn();
-      allow write: if isAdmin();
+      allow read, list: if isAdminOrStaff()
+        || isClassMember(resource.data.classId);
+      allow write: if isAdminOrStaff();
     }
 
     match /lessonLogs/{docId} {
-      allow read, list: if isSignedIn();
+      allow read, list: if isAdminOrStaff()
+        || isClassMember(resource.data.classId);
       allow write: if isStaffOrAdminOrTeacher();
     }
 
     match /attendanceLogs/{docId} {
       allow read, list: if isStaffOrAdminOrTeacher()
-        || (isStudent() && request.auth.uid == resource.data.studentUid)
-        || (isParent() && resource.data.studentUid in parentStudentUids());
+        || (isStudent() && (uid() == resource.data.studentUid || uid() == resource.data.studentId || uid() == resource.data.authUid))
+        || (isParent() && (resource.data.studentUid in parentStudentUids() || resource.data.studentId in parentStudentUids() || resource.data.authUid in parentStudentUids()));
       allow write: if isStaffOrAdminOrTeacher();
     }
 
     match /clinicLogs/{docId} {
       allow read, list: if isStaffOrAdminOrTeacher()
-        || (isStudent() && request.auth.uid == resource.data.authUid)
-        || (isParent() && resource.data.authUid in parentStudentUids());
+        || (isStudent() && (uid() == resource.data.authUid || uid() == resource.data.studentId || uid() == resource.data.studentUid))
+        || (isParent() && (resource.data.authUid in parentStudentUids() || resource.data.studentId in parentStudentUids() || resource.data.studentUid in parentStudentUids()));
       allow write: if isStaffOrAdminOrTeacher();
     }
 
@@ -161,22 +189,28 @@ service cloud.firestore {
     }
 
     match /announcements/{docId} {
-      allow read: if isSignedIn();
+      allow read: if isAdminOrStaff()
+        || (signedIn() && (
+          resource.data.targetStudents == null
+          || resource.data.targetStudents.size() == 0
+          || uid() in resource.data.targetStudents
+          || (isParent() && listContainsAny(resource.data.targetStudents, parentStudentUids()))
+        ));
       allow write: if isStaffOrAdminOrTeacher();
     }
 
     match /homeworkAssignments/{docId} {
-      allow read: if isSignedIn();
+      allow read: if isAdminOrStaff()
+        || isClassMember(resource.data.classId);
       allow write: if isStaffOrAdminOrTeacher();
     }
-    
+
     match /materials/{docId} {
       allow read, list: if isStaffOrAdminOrTeacher();
       allow create, update, delete: if isStaffOrAdminOrTeacher();
     }
-    
+
     match /books/{docId} {
-      // 선생님(Teacher)도 교재/재고 목록을 볼 수 있도록 권한 추가
       allow read, list: if isStaffOrAdminOrTeacher();
       allow create, update, delete: if isStaffOrAdminOrTeacher();
     }
@@ -188,50 +222,49 @@ service cloud.firestore {
 
     match /grades/{docId} {
       allow read, list: if isStaffOrAdminOrTeacher()
-        || (isStudent() && request.auth.uid == resource.data.authUid)
-        || (isParent() && resource.data.authUid in parentStudentUids());
+        || (isStudent() && (uid() == resource.data.authUid || uid() == resource.data.studentId || uid() == resource.data.studentUid))
+        || (isParent() && (resource.data.authUid in parentStudentUids() || resource.data.studentId in parentStudentUids() || resource.data.studentUid in parentStudentUids()));
       allow write: if isStaffOrAdminOrTeacher();
     }
 
     match /homeworkResults/{docId} {
       allow read, list: if isStaffOrAdminOrTeacher()
-        || (isStudent() && request.auth.uid == resource.data.authUid)
-        || (isParent() && resource.data.authUid in parentStudentUids());
+        || (isStudent() && (uid() == resource.data.authUid || uid() == resource.data.studentId || uid() == resource.data.studentUid))
+        || (isParent() && (resource.data.authUid in parentStudentUids() || resource.data.studentId in parentStudentUids() || resource.data.studentUid in parentStudentUids()));
       allow write: if isStaffOrAdminOrTeacher();
     }
-    
+
     match /videoProgress/{docId} {
-      allow read, list: if isSignedIn()
-        && request.auth.uid == resource.data.authUid;
-      allow write: if isSignedIn()
-        && request.auth.uid == request.resource.data.authUid;
+      allow read, list: if signedIn()
+        && uid() == resource.data.authUid;
+      allow write: if signedIn()
+        && uid() == request.resource.data.authUid;
     }
 
     match /externalSchedules/{docId} {
-      allow read, list: if isSignedIn()
-        && request.auth.uid == resource.data.authUid;
-      allow write: if isSignedIn()
-        && request.auth.uid == request.resource.data.authUid;
+      allow read, list: if signedIn()
+        && uid() == resource.data.authUid;
+      allow write: if signedIn()
+        && uid() == request.resource.data.authUid;
     }
 
     match /invites/{inviteId} {
-      // 학생/학부모 가입 플로우는 "코드 1개 조회(getDoc)"만 필요
-      // 관리자/직원/강사는 목록(query)도 봐야 함 (getDocs(query(...)))
-      allow get: if isSignedIn(); // (보안 강화) 로그인한 사용자만 조회 가능
-      allow list: if isStaffOrAdminOrTeacher(); // ✅ 목록/쿼리 허용
-      
-      // 생성/삭제도 교무실 운영상 강사에게 허용하고 싶다면 아래처럼
+      allow get: if signedIn(); // (보안 강화) 로그인한 사용자만 조회 가능
+      allow list: if isStaffOrAdminOrTeacher();
+
       allow create, delete: if isStaffOrAdminOrTeacher();
+
+      // ✅ 가입자가 consumed 처리할 때는 3개 필드만 수정 가능하게 제한
       allow update: if isStaffOrAdminOrTeacher()
         || (
-          isSignedIn()
+          signedIn()
           && resource.data.consumed == false
           && request.resource.data.consumed == true
-          && request.resource.data.consumedByAuthUid == request.auth.uid
+          && request.resource.data.consumedByAuthUid == uid()
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['consumed', 'consumedByAuthUid', 'consumedAt'])
         );
     }
-    
+
     /* =========================
        Notifications
     ========================= */
@@ -239,15 +272,15 @@ service cloud.firestore {
       allow read, write: if isStaffOrAdminOrTeacher();
     }
 
-    match /notifications/{uid}/items/{notificationId} {
-      allow read: if isSignedIn()
-        && (request.auth.uid == uid || isStaffOrAdminOrTeacher());
+    match /notifications/{userUid}/items/{notificationId} {
+      allow read: if signedIn()
+        && (uid() == userUid || isStaffOrAdminOrTeacher());
       allow write: if isStaffOrAdminOrTeacher();
     }
 
-    match /notifications/{uid}/meta {
-      allow read, write: if isSignedIn()
-        && (request.auth.uid == uid || isStaffOrAdminOrTeacher());
+    match /notifications/{userUid}/meta {
+      allow read, write: if signedIn()
+        && (uid() == userUid || isStaffOrAdminOrTeacher());
     }
 
     /* =========================

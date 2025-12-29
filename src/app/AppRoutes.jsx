@@ -218,7 +218,7 @@ export default function AppRoutes({ user, role, studentIds }) {
 }, [db, isAuthenticated, role, page]);
 
   useEffect(() => {
-    if (!isAuthenticated || !role || !isStaffRole(role)) return;
+    if (!isAuthenticated || !role || !isViewerGroupRole(role)) return;
     const state = { cancelled: false };
     loadViewerDataOnce({
         db,
@@ -1018,7 +1018,40 @@ export default function AppRoutes({ user, role, studentIds }) {
       await claimStudentLinkCode(code);
   };
 
-  if (isStudentRole(role)) return <StudentHome studentId={userId} userId={userId} students={students} classes={classes} homeworkAssignments={homeworkAssignments} homeworkResults={homeworkResults} attendanceLogs={attendanceLogs} lessonLogs={lessonLogs} notices={announcements} tests={tests} grades={grades} videoProgress={videoProgress} onSaveVideoProgress={handleSaveVideoProgress} videoBookmarks={videoBookmarks} onSaveBookmark={handleSaveBookmark} externalSchedules={externalSchedules} onSaveExternalSchedule={handleSaveExternalSchedule} onDeleteExternalSchedule={handleDeleteExternalSchedule} clinicLogs={clinicLogs} onUpdateStudent={handleSaveStudent} onLogout={handleLogout} />;
+  const student = useMemo(
+      () => students.find((s) => s.authUid === userId || s.id === userId),
+      [students, userId]
+  );
+  const studentId = student?.id || userId;
+
+  if (isStudentRole(role)) {
+      return (
+          <StudentHome
+              student={student}
+              studentId={studentId}
+              userId={userId}
+              students={students}
+              classes={classes}
+              homeworkAssignments={homeworkAssignments}
+              homeworkResults={homeworkResults}
+              attendanceLogs={attendanceLogs}
+              lessonLogs={lessonLogs}
+              notices={announcements}
+              tests={tests}
+              grades={grades}
+              videoProgress={videoProgress}
+              onSaveVideoProgress={handleSaveVideoProgress}
+              videoBookmarks={videoBookmarks}
+              onSaveBookmark={handleSaveBookmark}
+              externalSchedules={externalSchedules}
+              onSaveExternalSchedule={handleSaveExternalSchedule}
+              onDeleteExternalSchedule={handleDeleteExternalSchedule}
+              clinicLogs={clinicLogs}
+              onUpdateStudent={handleSaveStudent}
+              onLogout={handleLogout}
+          />
+      );
+  }
   if (isParentRole(role)) {
       if (parentLoading) {
           return <div className="min-h-screen flex items-center justify-center">로딩 중...</div>;

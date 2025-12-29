@@ -13,9 +13,9 @@ import useNotifications from '../notifications/useNotifications';
 import NotificationList from '../notifications/NotificationList';
 import openNotification from '../notifications/openNotification';
 
-export default function StudentHome({ 
-    studentId, userId, students, classes, homeworkAssignments, homeworkResults, 
-    attendanceLogs, lessonLogs, notices, tests, grades, 
+export default function StudentHome({
+    student, studentId, userId, students, classes, homeworkAssignments, homeworkResults,
+    attendanceLogs, lessonLogs, notices, tests, grades,
     videoProgress, onSaveVideoProgress, videoBookmarks, onSaveBookmark,
     externalSchedules, onSaveExternalSchedule, onDeleteExternalSchedule,
     clinicLogs, onUpdateStudent, 
@@ -61,17 +61,6 @@ export default function StudentHome({
     }, [notices, clinicLogs, studentId]);
 
     const handleOpenNotification = () => { setIsNotificationOpen(true); };
-
-    const student = useMemo(() => students?.find(s => s.authUid === studentId), [students, studentId]);
-    useEffect(() => {
-        if (process.env.NODE_ENV !== 'production') {
-            console.debug('[StudentHome] student resolution', {
-                studentId,
-                studentsLength: students?.length ?? 0,
-                hasStudent: Boolean(student)
-            });
-        }
-    }, [studentId, students, student]);
 
     const myClasses = useMemo(() => {
         if (!classes || !studentId) return [];

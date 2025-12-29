@@ -228,43 +228,38 @@ export const loadViewerDataOnce = async ({
             normalizeStudentUser,
         );
 
-        const classIds = [
-            ...new Set(
-                myStudents
-                    .flatMap((student) => (
-                        Array.isArray(student.classIds)
-                            ? student.classIds
-                            : (student.classes || [])
-                    ))
-                    .map((classId) => String(classId))
-                    .filter(Boolean),
-            ),
-        ];
-        let myClasses = [];
-        if (classIds.length > 0) {
-            const chunks = chunkArray(classIds, 10);
+        const scopedStudentUids = Array.from(new Set([
+            ...viewerStudentUids,
+            ...myStudents.map((student) => student.authUid || student.uid || student.id).filter(Boolean),
+        ])).slice(0, 10);
+
+        const myClassesMap = new Map();
+        if (scopedStudentUids.length > 0) {
             const classSnaps = await Promise.all(
-                chunks.map(async (chunk) => {
+                scopedStudentUids.map(async (sId) => {
                     const classQuery = query(
                         collection(db, 'classes'),
-                        where(documentId(), 'in', chunk),
+                        where('students', 'array-contains', sId),
                     );
                     return getDocs(classQuery);
                 }),
             );
-            myClasses = classSnaps.flatMap((snap) => snap.docs.map((docSnap) => ({
-                id: docSnap.id,
-                ...docSnap.data(),
-            })));
+            classSnaps.forEach((snap) => {
+                snap.docs.forEach((docSnap) => {
+                    myClassesMap.set(docSnap.id, { id: docSnap.id, ...docSnap.data() });
+                });
+            });
         }
+        const myClasses = Array.from(myClassesMap.values());
         if (!isCancelled()) {
             setClasses(myClasses);
         }
 
         const fetchLimitedLogs = async (colName, setter, filterField) => {
+            if (scopedStudentUids.length === 0) return;
             const q = query(
                 collection(db, colName),
-                where(filterField, 'in', viewerStudentUids),
+                where(filterField, 'in', scopedStudentUids),
                 orderBy('date', 'desc'),
                 limit(30),
             );
@@ -274,8 +269,9 @@ export const loadViewerDataOnce = async ({
         await fetchLimitedLogs('attendanceLogs', setAttendanceLogs, 'studentUid');
         await fetchLimitedLogs('clinicLogs', setClinicLogs, 'authUid');
 
-        if (myClasses.length > 0) {
-            const lessonClassIds = myClasses.map((c) => c.id).slice(0, 10);
+        const lessonClassIds = myClasses.map((c) => c.id).slice(0, 10);
+
+        if (lessonClassIds.length > 0) {
             const lessonQuery = query(
                 collection(db, 'lessonLogs'),
                 where('classId', 'in', lessonClassIds),
@@ -293,54 +289,84 @@ export const loadViewerDataOnce = async ({
                 );
                 await fetchList(db, 'tests', setTests, testsQuery, isCancelled);
             }
+            } else if (!isCancelled()) {
+            setLessonLogs([]);
+            setTests?.([]);
         }
 
-        const qHomework = query(
-            collection(db, 'homeworkResults'),
-            where('authUid', 'in', viewerStudentUids),
-            limit(80),
-        );
-        const homeworkSnap = await getDocs(qHomework);
-        if (!isCancelled()) {
-            const mapped = {};
-            homeworkSnap.docs.forEach((doc) => {
-                const data = doc.data();
-                const { authUid: sId, assignmentId } = data;
-                if (!mapped[sId]) mapped[sId] = {};
-                mapped[sId][assignmentId] = data.results || data;
-            });
-            setHomeworkResults((prev) => ({ ...prev, ...mapped }));
+        if (scopedStudentUids.length > 0) {
+            const qHomework = query(
+                collection(db, 'homeworkResults'),
+                where('authUid', 'in', scopedStudentUids),
+                limit(80),
+            );
+            const homeworkSnap = await getDocs(qHomework);
+            if (!isCancelled()) {
+                const mapped = {};
+                homeworkSnap.docs.forEach((doc) => {
+                    const data = doc.data();
+                    const { authUid: sId, assignmentId } = data;
+                    if (!mapped[sId]) mapped[sId] = {};
+                    mapped[sId][assignmentId] = data.results || data;
+                });
+                setHomeworkResults((prev) => ({ ...prev, ...mapped }));
+            }
+
+            const qGrades = query(collection(db, 'grades'), where('authUid', 'in', scopedStudentUids), limit(80));
+            const gradeSnap = await getDocs(qGrades);
+            if (!isCancelled()) {
+                const mappedGrades = {};
+                gradeSnap.docs.forEach((doc) => {
+                    const data = doc.data();
+                    const { authUid: sId, testId } = data;
+                    if (!mappedGrades[sId]) mappedGrades[sId] = {};
+                    mappedGrades[sId][testId] = data;
+                });
+                setGrades((prev) => ({ ...prev, ...mappedGrades }));
+            }
         }
 
-        const qGrades = query(collection(db, 'grades'), where('authUid', 'in', viewerStudentUids), limit(80));
-        const gradeSnap = await getDocs(qGrades);
-        if (!isCancelled()) {
-            const mappedGrades = {};
-            gradeSnap.docs.forEach((doc) => {
-                const data = doc.data();
-                const { authUid: sId, testId } = data;
-                if (!mappedGrades[sId]) mappedGrades[sId] = {};
-                mappedGrades[sId][testId] = data;
-            });
-            setGrades((prev) => ({ ...prev, ...mappedGrades }));
+        const announcementDocs = [];
+        if (scopedStudentUids.length > 0) {
+            const targetedAnnouncements = await getDocs(
+                query(
+                    collection(db, 'announcements'),
+                    where('targetStudents', 'array-contains-any', scopedStudentUids),
+                    orderBy('date', 'desc'),
+                    limit(20),
+                ),
+            );
+            announcementDocs.push(...targetedAnnouncements.docs);
         }
-
-        await fetchList(
-            db,
-            'announcements',
-            setAnnouncements,
+        const publicAnnouncements = await getDocs(
             query(collection(db, 'announcements'), orderBy('date', 'desc'), limit(20)),
-            isCancelled,
         );
-        await fetchList(
-            db,
-            'homeworkAssignments',
-            setHomeworkAssignments,
-            query(collection(db, 'homeworkAssignments'), orderBy('date', 'desc'), limit(20)),
-            isCancelled,
-        );
+        announcementDocs.push(...publicAnnouncements.docs);
 
-        const activeViewerUid = viewerStudentUids[0];
+        if (!isCancelled()) {
+            const seen = new Set();
+            const mergedAnnouncements = announcementDocs.reduce((acc, docSnap) => {
+                if (seen.has(docSnap.id)) return acc;
+                seen.add(docSnap.id);
+                acc.push({ id: docSnap.id, ...docSnap.data() });
+                return acc;
+            }, []);
+            setAnnouncements(mergedAnnouncements);
+        }
+
+        if (lessonClassIds.length > 0) {
+            const assignmentsQuery = query(
+                collection(db, 'homeworkAssignments'),
+                where('classId', 'in', lessonClassIds),
+                orderBy('date', 'desc'),
+                limit(30),
+            );
+            await fetchList(db, 'homeworkAssignments', setHomeworkAssignments, assignmentsQuery, isCancelled);
+        } else if (!isCancelled()) {
+            setHomeworkAssignments([]);
+        }
+
+        const activeViewerUid = scopedStudentUids[0];
         await fetchList(
             db,
             'videoProgress',
