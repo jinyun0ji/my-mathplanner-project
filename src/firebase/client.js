@@ -2,7 +2,7 @@
 import { initializeApp, getApp, getApps } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
-import { getFunctions } from "firebase/functions";
+import { connectFunctionsEmulator, getFunctions } from "firebase/functions";
 import { getStorage } from "firebase/storage";
 
 const firebaseConfig = {
@@ -20,5 +20,11 @@ export const firebaseApp =
 
 export const auth = getAuth(firebaseApp);
 export const db = getFirestore(firebaseApp);
-export const functions = getFunctions(firebaseApp);
+
+const functionsInstance = getFunctions(firebaseApp);
+if (typeof window !== "undefined" && window.location.hostname === "localhost") {
+  connectFunctionsEmulator(functionsInstance, "localhost", 5001);
+}
+
+export const functions = functionsInstance;
 export const storage = getStorage(firebaseApp);

@@ -17,7 +17,8 @@ import {
     query,
     where,
 } from 'firebase/firestore';
-import { auth, db } from '../firebase/client';
+import { httpsCallable } from 'firebase/functions';
+import { auth, db, functions } from '../firebase/client';
 import { signOutUser } from './authService';
 import { ALLOWED_ROLES, ROLE, isParentRole } from '../constants/roles';
 
@@ -77,6 +78,51 @@ export function AuthProvider({ children }) {
             }
         };
 
+        const ensureUserProfileDoc = async () => {
+            if (!functions) return null;
+            try {
+                const callable = httpsCallable(functions, 'ensureUserProfileDoc');
+                const response = await callable();
+                return response?.data || null;
+            } catch (error) {
+                console.error('사용자 프로필 자동 생성 함수 호출 실패:', error);
+                return null;
+            }
+        };
+
+        const fetchUserProfileDoc = async (authDocRef) => {
+            const fetchSnapshot = async () => getDoc(authDocRef);
+
+            let authDocSnap = null;
+            try {
+                authDocSnap = await fetchSnapshot();
+            } catch (error) {
+                if (error?.code === 'permission-denied') {
+                    await ensureUserProfileDoc();
+                    try {
+                        authDocSnap = await fetchSnapshot();
+                    } catch (retryError) {
+                        console.error('프로필 문서 권한 오류로 재시도 실패:', retryError);
+                        return null;
+                    }
+                } else {
+                    throw error;
+                }
+            }
+
+            if (!authDocSnap?.exists?.()) {
+                await ensureUserProfileDoc();
+                try {
+                    authDocSnap = await fetchSnapshot();
+                } catch (retryError) {
+                    console.error('프로필 문서 재시도 실패:', retryError);
+                    return null;
+                }
+            }
+
+            return authDocSnap;
+        };
+
         const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
             if (!isMounted) return;
             setUser(currentUser);
@@ -99,7 +145,7 @@ export function AuthProvider({ children }) {
             try {
                 const authUid = currentUser.uid;
                 const authDocRef = doc(db, 'users', authUid);
-                const authDocSnap = await getDoc(authDocRef);
+                const authDocSnap = await fetchUserProfileDoc(authDocRef);
                 if (!isMounted) return;
 
                 let resolvedProfile = null;
@@ -108,7 +154,7 @@ export function AuthProvider({ children }) {
                 let resolvedActiveStudentId = null;
                 let resolvedProfileDocId = null;
 
-                if (authDocSnap.exists()) {
+                if (authDocSnap?.exists()) {
                     const data = authDocSnap.data();
                     const roleFromDoc = normalizeRole(data?.role ?? null);
 
@@ -138,7 +184,16 @@ export function AuthProvider({ children }) {
                         where('role', '==', ROLE.STUDENT),
                         limit(1),
                     );
-                    const studentSnap = await getDocs(studentQuery);
+                    let studentSnap = null;
+                    try {
+                        studentSnap = await getDocs(studentQuery);
+                    } catch (error) {
+                        if (error?.code === 'permission-denied') {
+                            studentSnap = { empty: true, docs: [] };
+                        } else {
+                            throw error;
+                        }
+                    }
 
                     if (!isMounted) return;
 
