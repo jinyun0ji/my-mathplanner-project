@@ -68,15 +68,14 @@ export default function DashboardTab({
         { label: '출석률', value: attendanceRate !== null ? `${attendanceRate}%` : '--', accent: 'bg-gradient-to-r from-[#B8F5CB] to-[#36D399]', chip: 'Attendance', onClick: () => setActiveTab('class') },
     ];
 
-    const attendanceAlerts = myClasses.map(cls => {
-        if (!studentId) return null;
+    const attendanceAlerts = !studentId ? [] : myClasses.reduce((alerts, cls) => {
         const clsLogs = attendanceLogs.filter(l => l.classId === cls.id && l.studentId === studentId);
         const recentAbsent = clsLogs.find(l => { const logDate = new Date(l.date); const diffTime = Math.abs(today - logDate); const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); return l.status === '결석' && diffDays <= 7; });
         const rate = Math.round((clsLogs.filter(l => ['출석','동영상보강'].includes(l.status)).length / clsLogs.length) * 100);
-        if (recentAbsent) return { type: 'absent', class: cls.name, msg: '최근 결석이 발생했습니다.' };
-        if (rate < 80) return { type: 'rate', class: cls.name, msg: `출석률이 낮습니다 (${rate}%)` };
-        return null;
-    }).filter(Boolean);
+        if (recentAbsent) alerts.push({ type: 'absent', class: cls.name, msg: '최근 결석이 발생했습니다.' });
+        else if (rate < 80) alerts.push({ type: 'rate', class: cls.name, msg: `출석률이 낮습니다 (${rate}%)` });
+        return alerts;
+    }, []);
 
     return (
         <div className="space-y-6 pb-24 animate-fade-in-up">

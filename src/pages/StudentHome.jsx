@@ -62,12 +62,41 @@ export default function StudentHome({
 
     const handleOpenNotification = () => { setIsNotificationOpen(true); };
 
-    const student = students.find(s => s.id === studentId);
-    const myClasses = useMemo(() => classes.filter(c => (c.students || []).includes(studentId)), [classes, studentId]);
-    const { ongoing: ongoingClasses } = useMemo(() => sortClassesByStatus(myClasses), [myClasses]);
-    const myHomeworkStats = useMemo(() => calculateHomeworkStats(studentId, homeworkAssignments, homeworkResults), [studentId, homeworkAssignments, homeworkResults]);
-    const myGradeComparison = useMemo(() => calculateGradeComparison(studentId, classes, tests, grades), [studentId, classes, tests, grades]);
-    const pendingHomeworkCount = myHomeworkStats.filter(h => h.status !== '완료').length;
+    const student = useMemo(() => students?.find(s => s.authUid === studentId), [students, studentId]);
+    useEffect(() => {
+        if (process.env.NODE_ENV !== 'production') {
+            console.debug('[StudentHome] student resolution', {
+                studentId,
+                studentsLength: students?.length ?? 0,
+                hasStudent: Boolean(student)
+            });
+        }
+    }, [studentId, students, student]);
+
+    const myClasses = useMemo(() => {
+        if (!classes || !studentId) return [];
+        return classes.filter(c => (c.students || []).includes(studentId));
+    }, [classes, studentId]);
+
+    const { ongoing: ongoingClasses } = useMemo(() => {
+        const sorted = sortClassesByStatus(myClasses);
+        return { ongoing: sorted?.ongoing || [] };
+    }, [myClasses]);
+
+    const myHomeworkStats = useMemo(() => {
+        if (!studentId) return [];
+        return calculateHomeworkStats(studentId, homeworkAssignments || [], homeworkResults || []);
+    }, [studentId, homeworkAssignments, homeworkResults]);
+
+    const myGradeComparison = useMemo(() => {
+        if (!studentId) return [];
+        return calculateGradeComparison(studentId, classes || [], tests || [], grades || {});
+    }, [studentId, classes, tests, grades]);
+
+    const pendingHomeworkCount = useMemo(
+        () => myHomeworkStats.filter(h => h.status !== '완료').length,
+        [myHomeworkStats]
+    );
 
     const handleNavigateToMemo = (classId, lessonId, time) => {
         setSelectedClassId(classId);
@@ -113,8 +142,16 @@ export default function StudentHome({
             <StudentHeader onLogout={onLogout} />
 
             <main className="flex-1 w-full max-w-md mx-auto p-4 pb-24 overflow-y-auto custom-scrollbar md:max-w-7xl">
-                {selectedClassId ? (
-                    <ClassroomView 
+                {!student ? (
+                    <div className="p-6 text-center text-gray-500">
+                        학생 정보를 불러오는 중이거나
+                        <br />
+                        계정이 아직 학원에 연결되지 않았습니다.
+                        <br />
+                        관리자에게 문의해주세요.
+                    </div>
+                ) : selectedClassId ? (
+                    <ClassroomView
                         classes={classes} lessonLogs={lessonLogs} attendanceLogs={attendanceLogs} studentId={studentId}
                         selectedClassId={selectedClassId} setSelectedClassId={setSelectedClassId}
                         videoProgress={videoProgress} onSaveVideoProgress={onSaveVideoProgress}
@@ -137,8 +174,8 @@ export default function StudentHome({
                 ) : (
                     <div className="animate-fade-in space-y-4">
                         {activeTab === 'home' && (
-                            <DashboardTab 
-                                student={student} myClasses={ongoingClasses} pendingHomeworkCount={pendingHomeworkCount} 
+                            <DashboardTab
+                                student={student} myClasses={ongoingClasses} pendingHomeworkCount={pendingHomeworkCount}
                                 attendanceLogs={attendanceLogs} clinicLogs={clinicLogs} homeworkStats={myHomeworkStats} notices={visibleNotices}
                                 setActiveTab={setActiveTab}
                                 externalSchedules={externalSchedules} // ✅ [추가] 타학원 일정 데이터 전달
@@ -146,16 +183,16 @@ export default function StudentHome({
                         )}
                         {activeTab === 'class' && <ClassTab myClasses={ongoingClasses} setSelectedClassId={setSelectedClassId} />}
                         {activeTab === 'schedule' && (
-                            <ScheduleTab 
-                                myClasses={ongoingClasses} externalSchedules={externalSchedules} attendanceLogs={attendanceLogs} 
-                                studentId={studentId} onSaveExternalSchedule={onSaveExternalSchedule} onDeleteExternalSchedule={onDeleteExternalSchedule} clinicLogs={clinicLogs} 
+                            <ScheduleTab
+                                myClasses={ongoingClasses} externalSchedules={externalSchedules} attendanceLogs={attendanceLogs}
+                                studentId={studentId} onSaveExternalSchedule={onSaveExternalSchedule} onDeleteExternalSchedule={onDeleteExternalSchedule} clinicLogs={clinicLogs}
                             />
                         )}
                         {activeTab === 'learning' && (
-                            <LearningTab 
-                                studentId={studentId} myHomeworkStats={myHomeworkStats} myGradeComparison={myGradeComparison} 
+                            <LearningTab
+                                studentId={studentId} myHomeworkStats={myHomeworkStats} myGradeComparison={myGradeComparison}
                                 clinicLogs={clinicLogs} students={students} classes={classes}
-                                initialTab={initialLearningTab} 
+                                initialTab={initialLearningTab}
                             />
                         )}
                         {activeTab === 'board' && <BoardTab notices={visibleNotices} />}
@@ -170,7 +207,7 @@ export default function StudentHome({
                 )}
             </main>
 
-            {!selectedClassId && (
+            {student && !selectedClassId && (
                 <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 z-40 pb-safe shadow-[0_-4px_10px_rgba(0,0,0,0.03)] h-[calc(60px+env(safe-area-inset-bottom))]">
                     <div className="max-w-md mx-auto flex justify-around items-center h-[60px] md:max-w-7xl">
                         {navItems.map(item => (
@@ -202,16 +239,18 @@ export default function StudentHome({
                     {hasUnread && <span className="absolute top-2 right-2.5 w-2 h-2 bg-brand-red rounded-full ring-1 ring-white"></span>}
                 </button>
             </div>
-            <NotificationList
-                isOpen={isNotificationOpen}
-                onClose={() => setIsNotificationOpen(false)}
-                notifications={notifications}
-                onNotificationClick={handleNotificationClick}
-                onMarkAllRead={markAllRead}
-                unreadCount={unreadCount}
-                lastReadAt={lastReadAt}
-                isLoading={isLoading || isMetaLoading}
-            />
+            {student && (
+                <NotificationList
+                    isOpen={isNotificationOpen}
+                    onClose={() => setIsNotificationOpen(false)}
+                    notifications={notifications}
+                    onNotificationClick={handleNotificationClick}
+                    onMarkAllRead={markAllRead}
+                    unreadCount={unreadCount}
+                    lastReadAt={lastReadAt}
+                    isLoading={isLoading || isMetaLoading}
+                />
+            )}
         </div>
     );
 }
