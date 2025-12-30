@@ -35,7 +35,7 @@ const acceptInviteAndCreateProfile = functions.https.onCall(async (data, context
 
         const inviteRef = resolution.source === 'invites' ? db.collection('invites').doc(resolution.inviteId) : null;
         const studentRef = db.collection('users').doc(resolution.studentDocId);
-        const userRef = db.collection('users').doc(uid);
+        // const userRef = db.collection('users').doc(uid);
         const classRef = resolution.classId ? db.collection('classes').doc(resolution.classId) : null;
 
         await db.runTransaction(async (tx) => {
@@ -72,29 +72,28 @@ const acceptInviteAndCreateProfile = functions.https.onCall(async (data, context
                 updatedAt: FieldValue.serverTimestamp(),
             };
 
-            const studentProfile = {
-                role: ROLE.STUDENT,
-                authUid: uid,
-                userUid: uid,
-                studentDocId: resolution.studentDocId,
-                studentId: resolution.studentDocId,
-                displayName: studentName,
-                name: studentName,
-                email: authEmail || studentData.email || '',
-                active: true,
-                hasAccount: true,
-                inviteId: code,
-                ...timestamps,
-            };
+            // const studentProfile = {
+            //     role: ROLE.STUDENT,
+            //     authUid: uid,
+            //     userUid: uid,
+            //     studentDocId: resolution.studentDocId,
+            //     studentId: resolution.studentDocId,
+            //     displayName: studentName,
+            //     name: studentName,
+            //     email: authEmail || studentData.email || '',
+            //     active: true,
+            //     hasAccount: true,
+            //     inviteId: code,
+            //     ...timestamps,
+            // };
 
-            tx.set(userRef, studentProfile, { merge: true });
             tx.set(
                 studentRef,
                 {
                     authUid: uid,
                     userUid: uid,
                     displayName: studentName,
-                    name: studentName,
+                    // name: studentName,
                     email: authEmail || studentData.email || '',
                     inviteId: code,
                     ...timestamps,
@@ -111,8 +110,9 @@ const acceptInviteAndCreateProfile = functions.https.onCall(async (data, context
             }
 
             if (classRef) {
-                const membershipIds = [resolution.studentDocId, uid].filter(Boolean);
-                tx.set(classRef, { students: FieldValue.arrayUnion(...membershipIds) }, { merge: true });
+                // const membershipIds = [resolution.studentDocId, uid].filter(Boolean);
+                // tx.set(classRef, { students: FieldValue.arrayUnion(...membershipIds) }, { merge: true });
+                tx.set(classRef, { students: FieldValue.arrayUnion(resolution.studentDocId) }, { merge: true });
             }
         });
 
