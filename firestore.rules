@@ -2,99 +2,64 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    /* =========================
-       공통 헬퍼
-    ========================= */
-    function isSignedIn() {
-      return request.auth != null;
-    }
+    function isSignedIn() { return request.auth != null; }
+    function signedIn() { return isSignedIn(); }
+    function uid() { return request.auth.uid; }
+    function isSelf(targetUid) { return isSignedIn() && uid() == targetUid; }
 
-    function signedIn() {
-      return isSignedIn();
-    }
-
-    function uid() {
-      return request.auth.uid;
-    }
-
-    function isSelf(targetUid) {
-      return isSignedIn() && uid() == targetUid;
-    }
-
-    function userDoc() {
-      return isSignedIn()
-        ? get(/databases/$(database)/documents/users/$(uid()))
+    /** ✅ B안: authUid -> userDocId/role 인덱스 */
+    function authIndex() {
+      return isSignedIn() && exists(/databases/$(database)/documents/userAuthIndex/$(uid()))
+        ? get(/databases/$(database)/documents/userAuthIndex/$(uid()))
         : null;
     }
 
-    function getMyStudentId() {
-      return isSignedIn() && exists(/databases/$(database)/documents/users/$(uid()))
-        ? get(/databases/$(database)/documents/users/$(uid())).data.studentId
-        : null;
+    /** ✅ 내 프로필 문서ID: 인덱스 있으면 userDocId, 없으면 기존 uid */
+    function myProfileDocId() {
+      return authIndex() != null
+        ? authIndex().data.userDocId
+        : uid();
     }
 
-    function isMyStudentUid(value) {
-      return isSignedIn() && (value == uid() || value == getMyStudentId());
-    }
-
+    /** ✅ 내 역할: 인덱스 role 우선, 없으면 기존 users/{uid}.role */
     function userRole() {
-      return userDoc() != null ? userDoc().data.role : null;
+      return authIndex() != null
+        ? authIndex().data.role
+        : (exists(/databases/$(database)/documents/users/$(uid()))
+            ? get(/databases/$(database)/documents/users/$(uid())).data.role
+            : null);
     }
 
-    function resourceRole() {
-      return resource != null ? resource.data.role : null;
+    /** ✅ 내 프로필 문서: users/{myProfileDocId()} */
+    function userDoc() {
+      return isSignedIn() && exists(/databases/$(database)/documents/users/$(myProfileDocId()))
+        ? get(/databases/$(database)/documents/users/$(myProfileDocId()))
+        : null;
     }
 
-    function requestRole() {
-      return request.resource.data.role;
+    function resourceRole() { return resource != null ? resource.data.role : null; }
+    function requestRole() { return request.resource.data.role; }
+    function isResourceRole(role) { return resourceRole() == role; }
+    function isRequestRole(role) { return requestRole() == role; }
+
+    function isAdminOrStaff() { return userRole() in ['admin', 'staff', 'teaching', 'staffOrTeaching', 'teacher']; }
+    function isAdmin() { return userRole() == 'admin'; }
+    function isStaff() { return userRole() == 'staff'; }
+    function isTeacher() { return userRole() in ['teacher', 'teaching', 'staffOrTeaching']; }
+    function isStaffOrTeacher() { return isStaff() || isTeacher(); }
+    function isStaffOrAdmin() { return isStaff() || isAdmin(); }
+    function isStaffOrAdminOrTeacher() { return isAdminOrStaff(); }
+    function isStudent() { return userRole() == 'student'; }
+    function isParent() { return userRole() == 'parent'; }
+
+    /** ✅ 학생이면: 내 학생 문서ID = myProfileDocId() */
+    function getMyStudentId() {
+      return isSignedIn() && isStudent() ? myProfileDocId() : null;
     }
 
-    function isResourceRole(role) {
-      return resourceRole() == role;
-    }
-
-    function isRequestRole(role) {
-      return requestRole() == role;
-    }
-
-    function isAdminOrStaff() {
-      return userRole() in ['admin', 'staff', 'teaching', 'staffOrTeaching', 'teacher'];
-    }
-
-    function isAdmin() {
-      return userRole() == 'admin';
-    }
-
-    function isStaff() {
-      return userRole() == 'staff';
-    }
-
-    function isTeacher() {
-      return userRole() in ['teacher', 'teaching', 'staffOrTeaching'];
-    }
-
-    function isStaffOrTeacher() {
-      return isStaff() || isTeacher();
-    }
-
-    function isStaffOrAdmin() {
-      return isStaff() || isAdmin();
-    }
-
-    function isStaffOrAdminOrTeacher() {
-      return isAdminOrStaff();
-    }
-
-    function isStudent() {
-      return userRole() == 'student';
-    }
-
-    function isParent() {
-      return userRole() == 'parent';
-    }
-
+    /** 부모의 연결 학생들 */
     function parentStudentUids() {
-      return isParent() && userDoc().data.studentIds != null
+      return isParent() && userDoc() != null && userDoc().data.studentIds != null
         ? userDoc().data.studentIds
         : [];
     }
@@ -107,13 +72,38 @@ service cloud.firestore {
         || (candidates.size() > 4 && candidates[4] in list);
     }
 
+    /** ✅ 학생/부모 소속 판단: authUid / studentDocId 둘 다 인정 */
+    function isMyStudentUid(value) {
+      return isSignedIn() && (
+        // 1) value가 authUid인 경우(기존)
+        value == uid()
+
+        // 2) value가 studentDocId인 경우: 그 users 문서의 authUid가 내 uid
+        || (
+          value is string
+          && exists(/databases/$(database)/documents/users/$(value))
+          && get(/databases/$(database)/documents/users/$(value)).data.authUid == uid()
+        )
+
+        // 3) 학생 본인 docId (B안)
+        || (isStudent() && value == getMyStudentId())
+
+        // 4) 부모의 studentIds
+        || (isParent() && value in parentStudentUids())
+      );
+    }
+
+    /** ✅ 클래스 멤버 체크: authUid / studentDocId / 부모 studentIds 대응 */
     function isClassMember(classId) {
       return isSignedIn()
         && classId is string
         && exists(/databases/$(database)/documents/classes/$(classId))
         && (
-          uid() in get(/databases/$(database)/documents/classes/$(classId)).data.students
-          || getMyStudentId() in get(/databases/$(database)/documents/classes/$(classId)).data.students
+          // staff/admin은 별도로 처리하지만, 여기선 학생/부모용만
+          (isStudent() && getMyStudentId() in get(/databases/$(database)/documents/classes/$(classId)).data.students)
+          || (isParent() && listContainsAny(get(/databases/$(database)/documents/classes/$(classId)).data.students, parentStudentUids()))
+          // (레거시) authUid 기반이 남아있을 경우도 허용
+          || uid() in get(/databases/$(database)/documents/classes/$(classId)).data.students
         );
     }
 
@@ -127,19 +117,32 @@ service cloud.firestore {
           || get(/databases/$(database)/documents/invites/$(inviteId)).data.expiresAt > request.time
         );
     }
+    
+    function pickStudentKey(data) {
+      return (data != null && ('studentUid' in data)) ? data.studentUid
+        : (data != null && ('studentId' in data)) ? data.studentId
+        : (data != null && ('authUid' in data)) ? data.authUid
+        : null;
+    }
+
+    function isMineByAnyKey(data) {
+      return isMyStudentUid(pickStudentKey(data));
+    }
 
     /* =========================
-       users (가장 중요)
+       users
     ========================= */
     match /users/{userId} {
-      // 로그인한 사용자는 자신의 프로필 문서(users/{uid})를 반드시 읽을 수 있어야 함
-      allow get: if isSelf(userId) || isAdminOrStaff();
+      // ✅ 내 프로필 문서(users/{myProfileDocId}) get 가능
+      allow get: if (signedIn() && userId == myProfileDocId()) || isAdminOrStaff();
 
-      // (중요) 학생/학부모는 users 전체 list 금지 유지
-      allow list: if false;
+      // list는 여전히 staff만 (보안 유지)
+      allow list: if isStaffOrAdminOrTeacher();
 
-      // 직원/관리자 전체 조회는 기존 규칙이 있다면 그대로 유지(삭제 금지)
-      allow read: if isAdminOrStaff();
+      // ✅ 학생/부모/직원 모두: 자기 authUid가 박힌 문서는 read 허용
+      allow read: if isStaffOrAdminOrTeacher()
+        || (isSignedIn() && resource.data.authUid == uid());
+
       allow create: if isStaffOrAdminOrTeacher()
         || (
           isSignedIn()
@@ -148,6 +151,7 @@ service cloud.firestore {
           && (isRequestRole('student') || isRequestRole('parent'))
           && hasValidInvite(request.resource.data.inviteId, request.resource.data.role)
         );
+
       allow update: if isStaffOrAdminOrTeacher()
         || (
           isSignedIn()
@@ -163,27 +167,34 @@ service cloud.firestore {
           && request.resource.data.role == resource.data.role
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['authUid', 'email', 'hasAccount', 'updatedAt'])
         );
+
       allow delete: if isStaffOrAdminOrTeacher()
         || (signedIn() && uid() == userId);
     }
 
-    /* =========================
-       Staff 전용 컬렉션
-    ========================= */
-    match /students/{studentId} {
-      allow get, read: if isSignedIn()
-        && (resource.data.authUid == uid() || studentId == getMyStudentId());
-      allow list: if isAdminOrStaff();
-      allow write: if isStaffOrAdminOrTeacher();
-    }
+    // ✅ userAuthIndex 읽기 허용 유지
+    match /userAuthIndex/{u} { allow read: if request.auth.uid == u; }
 
+    /* =========================
+       classes
+    ========================= */
     match /classes/{docId} {
       allow get, read, list: if isAdminOrStaff()
-        || (isSignedIn()
-          && ((uid() in resource.data.students) || (getMyStudentId() in resource.data.students)));
+        || (isSignedIn() && (
+          // 학생: studentDocId 기준
+          (isStudent() && getMyStudentId() in resource.data.students)
+          // 부모: studentIds 기준
+          || (isParent() && listContainsAny(resource.data.students, parentStudentUids()))
+          // 레거시 authUid
+          || (uid() in resource.data.students)
+        ));
       allow write: if isAdminOrStaff();
     }
 
+    /* =========================
+       tests / lessonLogs / homeworkAssignments 등
+       (여기는 기존대로 두되, isClassMember가 B안 대응되었기 때문에 대부분 살아남)
+    ========================= */
     match /tests/{docId} {
       allow read, list: if isAdminOrStaff()
         || (isSignedIn() && isClassMember(resource.data.classId));
@@ -198,13 +209,13 @@ service cloud.firestore {
 
     match /attendanceLogs/{docId} {
       allow read, list: if isStaffOrAdminOrTeacher()
-        || (isSignedIn() && isMyStudentUid(resource.data.studentUid));
-        allow write: if isStaffOrAdminOrTeacher();
+        || (isSignedIn() && isMineByAnyKey(resource.data));
+      allow write: if isStaffOrAdminOrTeacher();
     }
 
     match /clinicLogs/{docId} {
       allow read, list: if isStaffOrAdminOrTeacher()
-        || (isSignedIn() && isMyStudentUid(resource.data.authUid));
+        || (isSignedIn() && isMineByAnyKey(resource.data));
       allow write: if isStaffOrAdminOrTeacher();
     }
 
@@ -219,7 +230,7 @@ service cloud.firestore {
           && (
             (!('targetStudents' in resource.data) || resource.data.targetStudents.size() == 0)
               ? (!('classId' in resource.data) || isClassMember(resource.data.classId))
-              : (uid() in resource.data.targetStudents || getMyStudentId() in resource.data.targetStudents)
+              : (uid() in resource.data.targetStudents || getMyStudentId() in resource.data.targetStudents || (isParent() && listContainsAny(resource.data.targetStudents, parentStudentUids())))
           ));
       allow write: if isStaffOrAdminOrTeacher();
     }
@@ -247,37 +258,30 @@ service cloud.firestore {
 
     match /grades/{docId} {
       allow read, list: if isStaffOrAdminOrTeacher()
-        || (isSignedIn() && isMyStudentUid(resource.data.authUid));
+        || (isSignedIn() && isMineByAnyKey(resource.data));
       allow write: if isStaffOrAdminOrTeacher();
     }
 
     match /homeworkResults/{docId} {
       allow read, list: if isStaffOrAdminOrTeacher()
-        || (isSignedIn() && isMyStudentUid(resource.data.authUid));
+        || (isSignedIn() && isMineByAnyKey(resource.data));
       allow write: if isStaffOrAdminOrTeacher();
     }
 
     match /videoProgress/{docId} {
-      allow read, list: if isSignedIn()
-        && isMyStudentUid(resource.data.authUid);
-      allow write: if isSignedIn()
-        && isMyStudentUid(request.resource.data.authUid);
+      allow read, list: if isSignedIn() && isMineByAnyKey(resource.data);
+      allow write: if isSignedIn() && isMyStudentUid(pickStudentKey(request.resource.data));
     }
 
     match /externalSchedules/{docId} {
-      allow read, list: if isSignedIn()
-        && isMyStudentUid(resource.data.authUid);
-      allow write: if isSignedIn()
-        && isMyStudentUid(request.resource.data.authUid);
+      allow read, list: if isSignedIn() && isMineByAnyKey(resource.data);
+      allow write: if isSignedIn() && isMyStudentUid(pickStudentKey(request.resource.data));
     }
 
     match /invites/{inviteId} {
-      allow get: if signedIn(); // (보안 강화) 로그인한 사용자만 조회 가능
+      allow get: if signedIn();
       allow list: if isStaffOrAdminOrTeacher();
-
       allow create, delete: if isStaffOrAdminOrTeacher();
-
-      // ✅ 가입자가 consumed 처리할 때는 3개 필드만 수정 가능하게 제한
       allow update: if isStaffOrAdminOrTeacher()
         || (
           signedIn()
@@ -288,9 +292,12 @@ service cloud.firestore {
         );
     }
 
-    /* =========================
-       Notifications
-    ========================= */
+    match /accountLinks/{authUid} {
+      allow get: if request.auth != null && request.auth.uid == authUid;
+      allow list: if false;
+      allow create, update, delete: if false;
+    }
+
     match /notifications/{logId} {
       allow read, write: if isStaffOrAdminOrTeacher();
     }
@@ -306,9 +313,6 @@ service cloud.firestore {
         && (uid() == userUid || isStaffOrAdminOrTeacher());
     }
 
-    /* =========================
-       기본 거부
-    ========================= */
     match /{document=**} {
       allow read, write: if false;
     }

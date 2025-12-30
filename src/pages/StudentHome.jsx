@@ -127,8 +127,12 @@ export default function StudentHome({
     ];
 
     return (
-        <div className="bg-brand-bg min-h-screen flex flex-col relative font-sans">
+        <div className="bg-brand-bg min-h-screen flex flex-col relative font-sans"
+            onClickCapture={() => console.log('[UI] click captured on root')}>
             <StudentHeader onLogout={onLogout} />
+            {/* <div style={{position:'fixed', top:10, right:10, zIndex:9999, background:'#fff', padding:6}}>
+                activeTab: {activeTab}
+            </div> */}
 
             <main className="flex-1 w-full max-w-md mx-auto p-4 pb-24 overflow-y-auto custom-scrollbar md:max-w-7xl">
                 {!student ? (
