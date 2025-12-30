@@ -74,11 +74,18 @@ const buildInviteResponse = (resolution) => {
     }
 
     const classData = resolution.data || {};
+    const inviteType = classData.inviteType || 'student';
+
     const studentDocId = classData?.target?.studentDocId
         ? String(classData.target.studentDocId).trim()
         : classData?.studentDocId
             ? String(classData.studentDocId).trim()
             : '';
+
+    if (inviteType == 'student' && !studentDocId) {
+        return { ok: false, reason: 'missing_target' };
+    }
+    
     return {
         ok: true,
         source: 'classes',

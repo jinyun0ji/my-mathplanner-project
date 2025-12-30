@@ -34,7 +34,7 @@ const acceptInviteAndCreateProfile = functions.https.onCall(async (data, context
         }
 
         const inviteRef = resolution.source === 'invites' ? db.collection('invites').doc(resolution.inviteId) : null;
-        const studentRef = db.collection('students').doc(resolution.studentDocId);
+        const studentRef = db.collection('users').doc(resolution.studentDocId);
         const userRef = db.collection('users').doc(uid);
         const classRef = resolution.classId ? db.collection('classes').doc(resolution.classId) : null;
 

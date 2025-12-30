@@ -75,13 +75,20 @@ export default function InviteSignupPage() {
         setSubmitting(true);
 
         try {
+            const authUser = await signInWithGoogle();
+
             const verified = await verifyInviteCode();
             if (!verified) {
-                setStatus('초대 코드를 입력해주세요.');
+                // setStatus('초대 코드가 유효하지 않습니다.');
                 return;
             }
 
-            const authUser = await signInWithGoogle();
+            const acceptCallable = httpsCallable(functions, 'acceptInviteAndCreateProfile');
+            const { data } = await acceptCallable({
+                code: inviteCodeValue,
+                name: name.trim() || authUser.displayName || '',
+            });
+
             if (!authUser?.uid) {
                 setStatus('간편 로그인에 실패했습니다. 다시 시도해주세요.');
                 return;
@@ -91,12 +98,6 @@ export default function InviteSignupPage() {
                 setStatus('Firebase Functions를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.');
                 return;
             }
-
-            const acceptCallable = httpsCallable(functions, 'acceptInviteAndCreateProfile');
-            const { data } = await acceptCallable({
-                code: inviteCodeValue,
-                name: name.trim() || authUser.displayName || '',
-            });
 
             if (data?.ok) {
                 setStatus('가입이 완료되었습니다. 잠시 후 자동으로 이동합니다.');
