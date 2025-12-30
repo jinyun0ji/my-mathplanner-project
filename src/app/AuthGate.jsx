@@ -15,152 +15,158 @@ import { initForegroundMessageListener } from '../firebase/messaging';
 import { getDefaultRouteForRole } from '../auth/authRedirects';
 
 export default function AuthGate() {
-  const navigate = useNavigate();
-  const location = useLocation();
-  const pathname = location.pathname;
-  const isOnboardingPage = pathname === '/onboarding';
-  const isLoginPage = pathname === '/login';
-  const isSignupPage = pathname.startsWith('/signup');
-  const isAuthCallbackPage = pathname === '/auth/callback';
-  const isStudentDetailPage = pathname.startsWith('/students/');
-  const {
-      user,
-      role,
-      studentIds,
-      activeStudentId,
-      loading,
-      profileError,
-      logout,
-  } = useAuth();
-  const needsParentOnboarding = isParentRole(role) && (!Array.isArray(studentIds) || studentIds.length === 0);
-  const isMessengerRoute = pathname.startsWith('/chat') || pathname.startsWith('/messages');
+    const navigate = useNavigate();
+    const location = useLocation();
+    const pathname = location.pathname;
 
-  useEffect(() => {
-      let unsubscribe = null;
+    const isOnboardingPage = pathname === '/onboarding';
+    const isLoginPage = pathname === '/login';
+    const isSignupPage = pathname.startsWith('/signup');
+    const isAuthCallbackPage = pathname === '/auth/callback';
+    const isStudentDetailPage = pathname.startsWith('/students/');
+    const isMessengerRoute = pathname.startsWith('/chat') || pathname.startsWith('/messages');
 
-      if (!user) {
-          return undefined;
-      }
+    const {
+        user,
+        role,
+        studentIds,
+        activeStudentId,
+        loading,
+        profileError,
+        logout,
+    } = useAuth();
 
-      initForegroundMessageListener()
-          .then((stop) => {
-              unsubscribe = stop;
-          })
-          .catch(() => {});
+    const needsParentOnboarding =
+        isParentRole(role) && (!Array.isArray(studentIds) || studentIds.length === 0);
 
-      return () => {
-          if (typeof unsubscribe === 'function') {
-              unsubscribe();
-          }
-      };
-  }, [user]);
+    useEffect(() => {
+        let unsubscribe = null;
 
-  useEffect(() => {
-      if (loading) return;
+        if (!user) return undefined;
 
-      const redirectPath = role ? getDefaultRouteForRole(role) || '/home' : null;
+        initForegroundMessageListener()
+            .then((stop) => { unsubscribe = stop; })
+            .catch(() => {});
 
-      if (!user) {
-          if (!isLoginPage && !isSignupPage && !isAuthCallbackPage) {
-              navigate('/login', { replace: true });
-          }
-          return;
-      }
+        return () => {
+            if (typeof unsubscribe === 'function') unsubscribe();
+        };
+    }, [user]);
 
-      if (needsParentOnboarding && pathname !== '/onboarding') {
-          navigate('/onboarding', { replace: true });
-          return;
-      }
+    useEffect(() => {
+        if (loading) return;
 
-      if (role && isMessengerRoute && (isParentRole(role) || isStudentRole(role))) {
-          navigate(redirectPath || '/home', { replace: true });
-          return;
-      }
+        const redirectPath = role ? (getDefaultRouteForRole(role) || '/home') : null;
 
-      if (
-          role &&
-          !needsParentOnboarding &&
-          !isStudentDetailPage &&
-          (isOnboardingPage || isLoginPage || isSignupPage)
-      ) {
-          navigate(redirectPath || '/home', { replace: true });
-      }
-  }, [isAuthCallbackPage, isLoginPage, isMessengerRoute, isOnboardingPage, isSignupPage, isStudentDetailPage, loading, navigate, needsParentOnboarding, pathname, role, user]);
-  
-  const handleSocialLogin = async (providerName) => {
-      if (providerName === 'google') return signInWithGoogle();
-      if (providerName === 'kakao') return redirectToKakao();
-      if (providerName === 'naver') return redirectToNaver();
-      throw new Error('지원되지 않는 소셜 로그인입니다.');
-  };
+        if (!user) {
+            if (!isLoginPage && !isSignupPage && !isAuthCallbackPage) {
+                navigate('/login', { replace: true });
+            }
+            return;
+        }
 
-  const handleClaimLinkCode = async (code) => {
-      await claimStudentLinkCode(code);
-  };
+        if (needsParentOnboarding && pathname !== '/onboarding') {
+            navigate('/onboarding', { replace: true });
+            return;
+        }
 
-  if (loading) {
-      return <div className="min-h-screen flex items-center justify-center">로딩 중...</div>;
-  }
-  if (!user) {
-      return (
-          <Routes>
-              <Route path="/login" element={<LoginPage onSocialLogin={handleSocialLogin} />} />
-              <Route path="/signup" element={<Navigate to="/signup/invite" replace />} />
-              <Route path="/signup/invite" element={<InviteSignupPage />} />
-              <Route path="*" element={<Navigate to="/login" replace />} />
-          </Routes>
-      );
-  }
-  if (role === null) {
-      if (profileError) {
-          return (
-              <div className="min-h-screen flex flex-col items-center justify-center gap-4 text-gray-600">
-                  <p>{profileError || '프로필을 불러오지 못했습니다. 다시 로그인해주세요.'}</p>
-                  <button
-                      type="button"
-                      onClick={async () => {
-                          await logout();
-                          navigate('/login', { replace: true });
-                      }}
-                      className="px-4 py-2 rounded-md bg-indigo-600 text-white"
-                  >
-                      로그아웃
-                  </button>
-              </div>
-          );
-      }
+        if (role && isMessengerRoute && (isParentRole(role) || isStudentRole(role))) {
+            navigate(redirectPath || '/home', { replace: true });
+            return;
+        }
 
-      return <div className="min-h-screen flex items-center justify-center text-gray-600">프로필 설정 중입니다...</div>;
-  }
-  if (role === null && !profileError) {
-    return (
-        <div className="min-h-screen flex items-center justify-center text-gray-500">
-            프로필 설정 중입니다...
-        </div>
+        if (
+            role &&
+            !needsParentOnboarding &&
+            !isStudentDetailPage &&
+            (isOnboardingPage || isLoginPage || isSignupPage)
+        ) {
+            navigate(redirectPath || '/home', { replace: true });
+        }
+    }, [
+        isAuthCallbackPage,
+        isLoginPage,
+        isMessengerRoute,
+        isOnboardingPage,
+        isSignupPage,
+        isStudentDetailPage,
+        loading,
+        navigate,
+        needsParentOnboarding,
+        pathname,
+        role,
+        user,
+    ]);
+
+    const handleSocialLogin = async (providerName) => {
+        if (providerName === 'google') return signInWithGoogle();
+        if (providerName === 'kakao') return redirectToKakao();
+        if (providerName === 'naver') return redirectToNaver();
+        throw new Error('지원되지 않는 소셜 로그인입니다.');
+    };
+
+    const handleClaimLinkCode = async (code) => {
+        await claimStudentLinkCode(code);
+    };
+
+    if (loading) {
+        return <div className="min-h-screen flex items-center justify-center">로딩 중...</div>;
+    }
+
+    if (!user) {
+        return (
+            <Routes>
+                <Route path="/login" element={<LoginPage onSocialLogin={handleSocialLogin} />} />
+                <Route path="/signup" element={<Navigate to="/signup/invite" replace />} />
+                <Route path="/signup/invite" element={<InviteSignupPage />} />
+                <Route path="*" element={<Navigate to="/login" replace />} />
+            </Routes>
+        );
+    }
+
+    // ✅ 로그인은 됐는데 프로필(역할) 로딩 중 또는 아직 연결 안 된 상태
+    if (role === null) {
+        if (profileError) {
+            return (
+                <div className="min-h-screen flex flex-col items-center justify-center gap-4 text-gray-600">
+                    <p>{profileError || '프로필을 불러오지 못했습니다. 다시 로그인해주세요.'}</p>
+                    <button
+                        type="button"
+                        onClick={async () => {
+                            await logout();
+                            navigate('/login', { replace: true });
+                        }}
+                        className="px-4 py-2 rounded-md bg-indigo-600 text-white"
+                    >
+                        로그아웃
+                    </button>
+                </div>
+            );
+        }
+
+        return (
+            <div className="min-h-screen flex items-center justify-center text-gray-600">
+                프로필 설정 중입니다...
+            </div>
+        );
+    }
+
+    if (needsParentOnboarding || isOnboardingPage) {
+        return <OnboardingPage onSubmitLinkCode={handleClaimLinkCode} />;
+    }
+
+    const appRoutesElement = isParentRole(role) ? (
+        <ParentProvider
+            userId={user?.uid || null}
+            role={role}
+            studentIds={studentIds}
+            firestoreActiveStudentId={activeStudentId}
+        >
+            <AppRoutes user={user} role={role} studentIds={studentIds} />
+        </ParentProvider>
+    ) : (
+        <AppRoutes user={user} role={role} studentIds={studentIds} />
     );
-}
-  if (needsParentOnboarding || isOnboardingPage) return <OnboardingPage onSubmitLinkCode={handleClaimLinkCode} />;
 
-  const appRoutesElement = isParentRole(role) ? (
-      <ParentProvider
-          userId={user?.uid || null}
-          role={role}
-          studentIds={studentIds}
-          firestoreActiveStudentId={activeStudentId}
-      >
-          <AppRoutes
-              user={user}
-              role={role}
-              studentIds={studentIds}
-              />
-      </ParentProvider>
-  ) : (
-      <AppRoutes
-          user={user}
-          role={role}
-          studentIds={studentIds}
-        />
-  );
-
-  return appRoutesElement;
+    return appRoutesElement;
 }

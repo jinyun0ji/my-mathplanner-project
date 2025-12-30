@@ -54,6 +54,7 @@ export default function InviteSignupPage() {
         try {
             const callable = httpsCallable(functions, 'resolveInviteCode');
             const { data } = await callable({ code: inviteCodeValue });
+
             if (data?.ok) {
                 setStatus(describeInvite(data));
                 return data;
@@ -67,37 +68,40 @@ export default function InviteSignupPage() {
         } finally {
             setCheckingInvite(false);
         }
-    }, [functions, inviteCodeValue]);
+    }, [inviteCodeValue]);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
         setStatus('');
+
+        if (!inviteCodeValue) {
+            setStatus('초대 코드를 입력해주세요.');
+            return;
+        }
+        if (!functions) {
+            setStatus('Firebase Functions를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.');
+            return;
+        }
+
         setSubmitting(true);
-
         try {
-            const authUser = await signInWithGoogle();
-
+            // ✅ 1) 로그인 전에 초대 코드 먼저 검증 (불필요한 Auth 계정 생성 방지)
             const verified = await verifyInviteCode();
-            if (!verified) {
-                // setStatus('초대 코드가 유효하지 않습니다.');
-                return;
-            }
+            if (!verified) return;
 
-            const acceptCallable = httpsCallable(functions, 'acceptInviteAndCreateProfile');
-            const { data } = await acceptCallable({
-                code: inviteCodeValue,
-                name: name.trim() || authUser.displayName || '',
-            });
-
+            // ✅ 2) 검증 통과 후 로그인
+            const authUser = await signInWithGoogle();
             if (!authUser?.uid) {
                 setStatus('간편 로그인에 실패했습니다. 다시 시도해주세요.');
                 return;
             }
 
-            if (!functions) {
-                setStatus('Firebase Functions를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.');
-                return;
-            }
+            // ✅ 3) 초대 수락 + 프로필 연결(서버에서 처리)
+            const acceptCallable = httpsCallable(functions, 'acceptInviteAndCreateProfile');
+            const { data } = await acceptCallable({
+                code: inviteCodeValue,
+                name: name.trim() || authUser.displayName || '',
+            });
 
             if (data?.ok) {
                 setStatus('가입이 완료되었습니다. 잠시 후 자동으로 이동합니다.');
@@ -106,8 +110,8 @@ export default function InviteSignupPage() {
                 }, 1200);
                 return;
             }
-                
-        setStatus(getReasonMessage(data?.reason));
+
+            setStatus(getReasonMessage(data?.reason));
         } catch (error) {
             setStatus(error?.message || '회원가입에 실패했습니다. 다시 시도해주세요.');
         } finally {
