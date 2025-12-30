@@ -544,19 +544,27 @@ export const loadViewerDataOnce = async ({
                 isCancelled,
             );
 
-            await fetchListSafe(
-                'externalSchedules fetchList',
+            console.log('[viewer] fetch externalSchedules start');
+
+            try {
+            await fetchList(
                 db,
                 'externalSchedules',
                 setExternalSchedules,
                 query(
-                    collection(db, 'externalSchedules'),
-                    where('authUid', '==', activeViewerUid),
-                    orderBy('date', 'desc'),
-                    limit(30),
+                collection(db, 'externalSchedules'),
+                where('authUid', '==', activeViewerUid),
+                orderBy('date', 'desc'),
+                limit(30),
                 ),
                 isCancelled,
             );
+            console.log('[viewer] fetch externalSchedules ok');
+            } catch (e) {
+                console.error('[viewer] FAIL: externalSchedules fetchList', e);
+                // ✅ 인덱스 빌드 중이면 일단 빈 배열로 처리하고 앱 진행
+                if (!isCancelled()) setExternalSchedules?.([]);
+            }
         } else if (!isCancelled()) {
             setVideoProgress?.([]);
             setExternalSchedules?.([]);

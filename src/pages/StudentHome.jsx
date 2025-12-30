@@ -174,7 +174,7 @@ export default function StudentHome({
                                 externalSchedules={externalSchedules} // ✅ [추가] 타학원 일정 데이터 전달
                             />
                         )}
-                        {activeTab === 'class' && <ClassTab myClasses={ongoingClasses} setSelectedClassId={setSelectedClassId} />}
+                        {activeTab === 'class' && <ClassTab myClasses={myClasses} setSelectedClassId={setSelectedClassId} />}
                         {activeTab === 'schedule' && (
                             <ScheduleTab
                                 myClasses={ongoingClasses} externalSchedules={externalSchedules} attendanceLogs={attendanceLogs}
