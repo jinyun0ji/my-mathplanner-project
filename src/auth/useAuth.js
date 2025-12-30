@@ -99,7 +99,6 @@ export function AuthProvider({ children }) {
                 if (!isMounted) return;
 
                 if (!indexSnap.exists()) {
-                    // ❌ 여기서 users/{authUid} 자동생성 절대 금지
                     setProfileError('프로필을 찾을 수 없습니다. 초대 코드로 가입을 진행해주세요.');
                     setRole(null);
                     setUserProfile(null);
@@ -155,14 +154,20 @@ export function AuthProvider({ children }) {
                     return;
                 }
 
-                // ✅ 공통 프로필 구성
+                const resolvedProfileDocId = profileSnap.id; // ✅ users 문서ID (학생이면 studentDocId)
+                const academyUid =
+                    typeof data?.uid === 'string' && data.uid.trim() ? data.uid.trim() : null;
+
+                // ✅ 공통 프로필 구성 (+ 학생용 보조 필드 노출)
                 const resolvedProfile = {
                     authUid,
-                    profileDocId: profileSnap.id, // users 문서 id (studentDocId 또는 authUid(부모/직원))
+                    profileDocId: resolvedProfileDocId,
                     role: roleFromDoc,
                     active: data?.active !== false,
                     displayName: data?.displayName ?? data?.name ?? '',
                     email: data?.email ?? '',
+                    // 참고용: 내부 학생 식별자(uid 필드)
+                    academyUid,
                 };
 
                 let resolvedStudentIds = [];
@@ -172,21 +177,15 @@ export function AuthProvider({ children }) {
                     resolvedStudentIds = normalizeStudentIds(data);
                     resolvedActiveStudentId = data?.activeStudentId ?? null;
                 } else if (roleFromDoc === ROLE.STUDENT) {
-                    // ✅ 학생: 너 스키마에서 "uid"가 학생 식별자(초대코드 생성용)라고 했으니 우선 사용
-                    // 없으면 users 문서 id(=studentDocId)로 fallback
-                    const academyStudentUid =
-                        typeof data?.uid === 'string' && data.uid.trim() ? data.uid.trim() : null;
-
-                    const studentDocId = profileSnap.id;
-
-                    const studentKey = academyStudentUid || studentDocId;
-                    resolvedStudentIds = studentKey ? [studentKey] : [];
-                    resolvedActiveStudentId = studentKey || null;
+                    // ✅ 학생 화면은 "학생 문서ID(studentDocId)"를 기준으로 동작하는 코드가 많아서
+                    // studentIds/activeStudentId는 users 문서ID로 통일한다.
+                    resolvedStudentIds = [resolvedProfileDocId];
+                    resolvedActiveStudentId = resolvedProfileDocId;
                 }
 
                 setUserProfile(resolvedProfile);
                 setRole(roleFromDoc);
-                setProfileDocId(profileSnap.id);
+                setProfileDocId(resolvedProfileDocId);
 
                 if (isParentRole(roleFromDoc) || roleFromDoc === ROLE.STUDENT) {
                     setStudentIds(resolvedStudentIds);
