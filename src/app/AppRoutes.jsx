@@ -1019,11 +1019,18 @@ export default function AppRoutes({ user, role, studentIds }) {
       await claimStudentLinkCode(code);
   };
 
-  const student = useMemo(
-      () => students.find((s) => s.authUid === userId || s.id === userId),
-      [students, userId]
-  );
-  const studentId = student?.id || userId;
+  // ✅ B안 기준: 학생은 무조건 users 문서ID(profileDocId)로 식별
+    const studentId = useMemo(() => {
+        if (!isStudentRole(role)) return null;
+        return Array.isArray(studentIds) && studentIds.length > 0
+            ? studentIds[0]
+            : null;
+    }, [role, studentIds]);
+
+    const student = useMemo(() => {
+        if (!studentId) return null;
+        return students.find((s) => s.id === studentId) || null;
+    }, [students, studentId]);
 
   if (isStudentRole(role)) {
       return (
