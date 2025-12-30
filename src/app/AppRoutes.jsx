@@ -215,17 +215,28 @@ export default function AppRoutes({ user, role, studentIds }) {
     return () => {
         isActive = false;
     };
-}, [db, isAuthenticated, role, page]);
+  }, [db, isAuthenticated, role, page]);
 
+  // ✅✅✅ [수정] 학생(STUDENT)도 viewer 로딩을 타도록
   useEffect(() => {
-    if (!isAuthenticated || !role || !isViewerGroupRole(role)) return;
+    if (!isAuthenticated || !role) return;
+
+    const shouldLoadViewerData = isViewerGroupRole(role) || isStudentRole(role);
+    if (!shouldLoadViewerData) return;
+
     const state = { cancelled: false };
+
+    // 학생이면 본인 uid만 대상으로 로딩
+    const resolvedStudentIds = isStudentRole(role)
+      ? (studentIds || [])
+      : (studentIds || []);
+
     loadViewerDataOnce({
         db,
         isLoggedIn: isAuthenticated,
         userRole: role,
         userId,
-        studentIds,
+        studentIds: resolvedStudentIds,
         activeStudentId: isParentRole(role) ? parentActiveStudentId : null,
         setStudents,
         setClasses,
@@ -241,8 +252,9 @@ export default function AppRoutes({ user, role, studentIds }) {
         setGrades,
         isCancelled: () => state.cancelled,
     });
+
     return () => { state.cancelled = true; };
-}, [db, isAuthenticated, role, userId, parentActiveStudentId, studentIds]);
+  }, [db, isAuthenticated, role, userId, parentActiveStudentId, studentIds]);
 
   useEffect(() => {
       try { localStorage.setItem('videoBookmarks', JSON.stringify(videoBookmarks)); }
