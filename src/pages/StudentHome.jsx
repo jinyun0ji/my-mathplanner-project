@@ -127,8 +127,7 @@ export default function StudentHome({
     ];
 
     return (
-        <div className="bg-brand-bg min-h-screen flex flex-col relative font-sans"
-            onClickCapture={() => console.log('[UI] click captured on root')}>
+        <div className="bg-brand-bg min-h-screen flex flex-col relative font-sans">
             <StudentHeader onLogout={onLogout} />
             {/* <div style={{position:'fixed', top:10, right:10, zIndex:9999, background:'#fff', padding:6}}>
                 activeTab: {activeTab}
