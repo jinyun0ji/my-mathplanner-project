@@ -127,7 +127,13 @@ export const calculateGradeComparison = (studentId, classes, tests, grades) => {
 
 
     relevantTests.forEach(test => {
+        console.log('[grade dbg] studentId=', studentId);
+        console.log('[grade dbg] test.id=', test.id, 'test.classId=', test.classId);
+        console.log('[grade dbg] grades keys sample=', Object.keys(grades || {}).slice(0, 5));
+
         const myRecord = grades[studentId]?.[test.id];
+
+        console.log('[grade dbg] myRecord=', myRecord);
         
         if (myRecord) {
             let classTotal = 0;
@@ -140,35 +146,37 @@ export const calculateGradeComparison = (studentId, classes, tests, grades) => {
             const questionStats = {};
 
             // 반 통계 계산 (평균, 최고점 등)
-            Object.entries(grades).forEach(([stuId, studentGrade]) => {
-                if (!classStudentIds.includes(stuId)) return;
-                const record = studentGrade[test.id];
-                if (record) {
-                    const rawScore = record.score;
-                    const computedScore = computeScoreFromCorrectCount(record, test);
-                    const finalScore =
-                    (rawScore === null || rawScore === undefined)
-                        ? (computedScore ?? null)
-                        : (rawScore === 0 && record.correctCount ? (computedScore ?? 0) : rawScore);
+            Object.entries(grades).forEach(([authUid, studentGrade]) => {
+                const record = studentGrade?.[test.id];
+                if (!record) return;
 
-                    if (finalScore !== null && finalScore !== undefined) {
-                        classTotal += finalScore;
-                        studentCount++;
-                        participantScores.push(finalScore);
-                        if (finalScore > highestScore) highestScore = finalScore;
-                    }
+                const rawScore = record.score;
+                const computedScore = computeScoreFromCorrectCount(record, test);
 
-                    if (record.correctCount) {
-                        Object.entries(record.correctCount).forEach(([qNum, status]) => {
-                            if (!questionStats[qNum]) questionStats[qNum] = { correct: 0, total: 0 };
-                            questionStats[qNum].total++;
-                            if (status === '맞음' || status === '고침') {
-                                questionStats[qNum].correct++;
-                            }
-                        });
+                const finalScore =
+                    rawScore === null || rawScore === undefined
+                    ? computedScore
+                    : (rawScore === 0 && record.correctCount ? computedScore : rawScore);
+
+                if (finalScore === null || finalScore === undefined) return;
+
+                classTotal += finalScore;
+                studentCount++;
+                participantScores.push(finalScore);
+                if (finalScore > highestScore) highestScore = finalScore;
+
+                // 문항 통계
+                if (record.correctCount) {
+                    Object.entries(record.correctCount).forEach(([qNum, status]) => {
+                    if (!questionStats[qNum]) questionStats[qNum] = { correct: 0, total: 0 };
+                    questionStats[qNum].total++;
+                    if (status === '맞음' || status === '고침') {
+                        questionStats[qNum].correct++;
                     }
+                    });
                 }
             });
+
 
             const classAverage = studentCount > 0 ? Math.round(classTotal / studentCount) : 0;
             const rawMyScore = myRecord.score;

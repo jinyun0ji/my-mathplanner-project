@@ -437,10 +437,11 @@ export const loadViewerDataOnce = async ({
 
 
         /* =========================
-           lessonLogs / tests
+        lessonLogs / tests
         ========================= */
-        const lessonClassIds = myClasses.map((c) => c.id).slice(0, 10);
-        console.log('[viewer] lessonClassIds =', lessonClassIds);
+        let viewerTests = [];
+
+        const lessonClassIds = myClasses.map(c => c.id).slice(0, 10);
 
         if (lessonClassIds.length > 0) {
             await fetchListSafe(
@@ -457,24 +458,52 @@ export const loadViewerDataOnce = async ({
                 isCancelled,
             );
 
-            if (setTests) {
-                await fetchListSafe(
-                    'tests fetchList',
-                    db,
-                    'tests',
-                    setTests,
+            // ✅ tests 로딩 + 로컬 변수에 저장
+            const testSnap = await run('tests getDocs', () =>
+                getDocs(
                     query(
                         collection(db, 'tests'),
                         where('classId', 'in', lessonClassIds),
                         orderBy('date', 'desc'),
                         limit(30),
                     ),
-                    isCancelled,
-                );
-            }
+                ),
+            );
+
+            viewerTests = testSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+            setTests?.(viewerTests);
         } else if (!isCancelled()) {
             setLessonLogs?.([]);
             setTests?.([]);
+        }
+
+        /* =========================
+        grades (viewer: 학생/부모)
+        ⚠️ 반 전체 조회 금지
+        ========================= */
+        if (scopedStudentUids.length > 0) {
+            const gradeSnap = await run('grades getDocs', () =>
+                getDocs(
+                    query(
+                        collection(db, 'grades'),
+                        where('authUid', 'in', scopedStudentUids),
+                        limit(100),
+                    ),
+                ),
+            );
+
+            if (!isCancelled()) {
+                const mappedGrades = {};
+                gradeSnap.docs.forEach(docSnap => {
+                    const data = docSnap.data();
+                    const { authUid: sId, testId } = data;
+                    if (!mappedGrades[sId]) mappedGrades[sId] = {};
+                    mappedGrades[sId][testId] = data;
+                });
+                setGrades?.(mappedGrades);
+            }
+        } else if (!isCancelled()) {
+            setGrades?.({});
         }
 
         /* =========================
@@ -503,34 +532,6 @@ export const loadViewerDataOnce = async ({
             }
         } else if (!isCancelled()) {
             setHomeworkResults?.({});
-        }
-
-        /* =========================
-           grades (직접 getDocs)
-        ========================= */
-        if (scopedStudentUids.length > 0) {
-            const gradeSnap = await run('grades getDocs', () =>
-                getDocs(
-                    query(
-                        collection(db, 'grades'),
-                        where('authUid', 'in', scopedStudentUids),
-                        limit(80),
-                    ),
-                ),
-            );
-
-            if (!isCancelled()) {
-                const mappedGrades = {};
-                gradeSnap.docs.forEach((docSnap) => {
-                    const data = docSnap.data();
-                    const { authUid: sId, testId } = data;
-                    if (!mappedGrades[sId]) mappedGrades[sId] = {};
-                    mappedGrades[sId][testId] = data;
-                });
-                setGrades?.(mappedGrades);
-            }
-        } else if (!isCancelled()) {
-            setGrades?.({});
         }
 
         /* =========================
