@@ -274,8 +274,26 @@ service cloud.firestore {
     }
 
     match /externalSchedules/{docId} {
-      allow read, list: if isSignedIn() && isMineByAnyKey(resource.data);
-      allow write: if isSignedIn() && isMyStudentUid(pickStudentKey(request.resource.data));
+      allow read, list: if isStaffOrAdminOrTeacher()
+        || (
+          isSignedIn()
+          && (
+            // 기존(authUid 기반)도 살려두기
+            (resource.data.authUid is string && isMyStudentUid(resource.data.authUid))
+            // ✅ 새 구조(studentId 기반)도 허용
+            || (resource.data.studentId is string && isMyStudentUid(resource.data.studentId))
+          )
+        );
+
+      // ✅ write도 동일 기준
+      allow write: if isStaffOrAdminOrTeacher()
+        || (
+          isSignedIn()
+          && (
+            (request.resource.data.authUid is string && isMyStudentUid(request.resource.data.authUid))
+            || (request.resource.data.studentId is string && isMyStudentUid(request.resource.data.studentId))
+          )
+        );
     }
 
     match /invites/{inviteId} {

@@ -117,6 +117,7 @@ export const loadStaffDataOnce = async ({
     setPaymentLogs,
     setGrades,
     setHomeworkResults,
+    setExternalSchedules,
 }) => {
     if (!isLoggedIn || !db) return;
     if (!userRole) return;
@@ -203,6 +204,17 @@ export const loadStaffDataOnce = async ({
             });
             setHomeworkResults(mappedResults);
         }
+
+        if (setExternalSchedules && shouldLoad('schedule')) {
+            await fetchList(
+                db,
+                'externalSchedules',
+                setExternalSchedules,
+                query(collection(db, 'externalSchedules'), orderBy('startDate', 'desc'), limit(500)),
+                () => false,
+            );
+        }
+
     } catch (error) {
         console.error('[FirestoreSync] staff 데이터 로드 실패:', error);
     }
@@ -525,52 +537,71 @@ export const loadViewerDataOnce = async ({
         }
 
         /* =========================
-           videoProgress / externalSchedules
+        videoProgress / externalSchedules  (✅ authUid 기준으로 조회)
         ========================= */
-        const activeViewerUid = scopedStudentUids[0] || null;
-        console.log('[viewer] activeViewerUid =', activeViewerUid);
 
-        if (activeViewerUid) {
-            await fetchListSafe(
-                'videoProgress fetchList',
-                db,
-                'videoProgress',
-                setVideoProgress,
-                query(
-                    collection(db, 'videoProgress'),
-                    where('authUid', '==', activeViewerUid),
-                    limit(50),
-                ),
-                isCancelled,
-            );
+        // ✅ 학생 문서 id(ullo...) (화면/학생목록용)
+        const activeStudentDocId = scopedStudentUids[0] || null;
 
-            console.log('[viewer] fetch externalSchedules start');
+        // ✅ 실제 데이터 키로 쓸 authUid(7MR...) (videoProgress/externalSchedules 조회용)
+        const activeViewerAuthUid =
+        (userRole === 'student' ? userId : null) // 학생 본인 로그인: auth.uid
+        || myStudents.find(s => s?.id === activeStudentDocId)?.authUid // parent: 학생 문서의 authUid
+        || myStudents[0]?.authUid
+        || null;
 
-            try {
-            await fetchList(
-                db,
-                'externalSchedules',
-                setExternalSchedules,
-                query(
+        console.log('[viewer] activeStudentDocId =', activeStudentDocId);
+        console.log('[viewer] activeViewerAuthUid =', activeViewerAuthUid);
+
+        // ✅ 여기부터는 authUid가 있어야 조회 가능
+        if (activeViewerAuthUid) {
+        await fetchListSafe(
+            'videoProgress fetchList',
+            db,
+            'videoProgress',
+            setVideoProgress,
+            query(
+            collection(db, 'videoProgress'),
+            where('studentId', '==', activeViewerAuthUid), // ✅ 여기 바뀜 (ullo -> 7MR)
+            limit(50),
+            ),
+            isCancelled,
+        );
+
+        console.log('[viewer] fetch externalSchedules start', { activeViewerAuthUid });
+
+        try {
+        if (activeViewerAuthUid) {
+            const items = await fetchList(
+            db,
+            'externalSchedules',
+            setExternalSchedules,
+            query(
                 collection(db, 'externalSchedules'),
-                where('authUid', '==', activeViewerUid),
-                orderBy('date', 'desc'),
-                limit(30),
-                ),
-                isCancelled,
+                where('authUid', '==', activeViewerAuthUid),
+                limit(50),
+            ),
+            isCancelled,
             );
-            console.log('[viewer] fetch externalSchedules ok');
-            } catch (e) {
-                console.error('[viewer] FAIL: externalSchedules fetchList', e);
-                // ✅ 인덱스 빌드 중이면 일단 빈 배열로 처리하고 앱 진행
-                if (!isCancelled()) setExternalSchedules?.([]);
-            }
-        } else if (!isCancelled()) {
-            setVideoProgress?.([]);
-            setExternalSchedules?.([]);
+
+            console.log('[viewer] fetch externalSchedules ok', {
+            count: Array.isArray(items) ? items.length : null,
+            first: Array.isArray(items) ? items[0] : null,
+            });
+        } else {
+            console.log('[viewer] skip externalSchedules: no activeViewerAuthUid');
+        }
+        } catch (e) {
+        console.error('[viewer] FAIL externalSchedules', e);
         }
 
-        console.log('[viewer] COMPLETE');
+    } else if (!isCancelled()) {
+        setVideoProgress?.([]);
+        setExternalSchedules?.([]);
+    }
+
+    console.log('[viewer] COMPLETE');
+
     } catch (error) {
         console.error('[viewer] loadViewerDataOnce FAILED (top-level)', error);
     }

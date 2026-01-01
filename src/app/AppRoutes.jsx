@@ -207,6 +207,7 @@ export default function AppRoutes({ user, role, studentIds }) {
         setPaymentLogs,
         setGrades,
         setHomeworkResults,
+        setExternalSchedules,
     }).finally(() => {
         if (shouldLoadPayments && isActive) {
             setIsPaymentLogsLoading(false);
