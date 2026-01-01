@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Icon, getWeekOfMonth } from '../../../utils/helpers';
 import ModalPortal from '../../common/ModalPortal';
 import { useParentContext } from '../../../parent';
+import { isClassOngoing } from '../../../utils/classStatus';
 
 export default function ScheduleTab({
     myClasses, externalSchedules, attendanceLogs, clinicLogs, studentId,
@@ -46,6 +47,25 @@ export default function ScheduleTab({
         return [];
     };
 
+    const isClassActiveOnDate = (cls, date) => {
+        if (!cls) return false;
+
+        const end = cls?.endDate
+            ? (typeof cls.endDate?.toDate === 'function'
+                ? cls.endDate.toDate()
+                : new Date(cls.endDate))
+            : null;
+
+        if (!end) return true; // 종강일 없으면 항상 유효
+
+        const day = new Date(date);
+        day.setHours(0, 0, 0, 0);
+
+        const endDay = new Date(end);
+        endDay.setHours(0, 0, 0, 0);
+
+        return day <= endDay;
+    };
 
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [targetScheduleForDelete, setTargetScheduleForDelete] = useState(null);
@@ -248,7 +268,10 @@ export default function ScheduleTab({
         const dateStr = formatDate(date);
         const dayOfWeek = weekDays[date.getDay()];
 
-        const dayClasses = myClasses.filter(cls => resolveClassSchedule(cls).days.includes(dayOfWeek));
+        const dayClasses = myClasses.filter(cls =>
+            isClassActiveOnDate(cls, date) &&
+            resolveClassSchedule(cls).days.includes(dayOfWeek)
+        );
 
         // ✅ 여기 수정: 로컬 날짜 파싱 + startOfDay 비교
         const myExternal = safeExternalSchedules.filter(s => {
@@ -289,7 +312,10 @@ export default function ScheduleTab({
         const dateStr = formatDate(selectedDate);
 
         const dailyClasses = myClasses
-            .filter(cls => resolveClassSchedule(cls).days.includes(dayOfWeek))
+            .filter(cls =>
+                isClassActiveOnDate(cls, selectedDate) &&
+                resolveClassSchedule(cls).days.includes(dayOfWeek)
+            )
             .map(cls => {
                 const { time } = resolveClassSchedule(cls);
                 return {
@@ -297,7 +323,7 @@ export default function ScheduleTab({
                     type: 'math',
                     name: cls.name,
                     teacher: cls.teacher,
-                    time: time ? time.replace('-', '~') : '시간 미정',
+                    time: time || '시간 미정',
                     scheduleId: cls.id,
                 };
         });
@@ -454,8 +480,6 @@ export default function ScheduleTab({
             </div>
         );
     };
-
-    console.log('[ScheduleTab] myClasses len=', myClasses?.length, 'first schedule=', myClasses?.[0]?.schedule);
 
     return (
         <div className="pb-24 relative animate-fade-in-up">

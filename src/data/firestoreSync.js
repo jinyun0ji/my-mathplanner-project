@@ -375,7 +375,7 @@ export const loadViewerDataOnce = async ({
                 setClinicLogs,
                 query(
                     collection(db, 'clinicLogs'),
-                    where('authUid', 'in', scopedStudentUids),
+                    where('studentId', 'in', scopedStudentUids),
                     orderBy('date', 'desc'),
                     limit(30),
                 ),
