@@ -60,7 +60,7 @@ export default function ClinicTab({ studentId, clinicLogs = [], students = [], c
     return (
         <div className="space-y-6">
             <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
-                <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">이번 달 학습 시간</h3>
+                <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">누적 클리닉 시간</h3>
                 <div className="flex items-end gap-2 mb-2"><span className="text-3xl font-extrabold text-teal-600">{formatDuration(myTotalMinutes)}</span><span className="text-sm text-gray-400 mb-1.5">/ 누적</span></div>
                 <div className="space-y-3 pt-2 border-t border-gray-100">
                     <div className="flex justify-between text-xs text-gray-500 mb-1"><span>나의 시간</span><span>반 평균 ({formatDuration(averageMinutes)})</span></div>

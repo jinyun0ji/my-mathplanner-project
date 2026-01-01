@@ -365,14 +365,17 @@ export const loadViewerDataOnce = async ({
         }
 
         /* =========================
-           clinicLogs (fetchList)
+        clinicLogs (fetchList)
         ========================= */
         if (scopedStudentUids.length > 0) {
+            const clinicDocs = [];
+
+            // 1) studentId 기준 (studentDocId가 들어있는 케이스)
             await fetchListSafe(
-                'clinicLogs fetchList',
+                'clinicLogs studentId',
                 db,
                 'clinicLogs',
-                setClinicLogs,
+                (items) => clinicDocs.push(...items),
                 query(
                     collection(db, 'clinicLogs'),
                     where('studentId', 'in', scopedStudentUids),
@@ -381,9 +384,57 @@ export const loadViewerDataOnce = async ({
                 ),
                 isCancelled,
             );
-        } else if (!isCancelled()) {
-            setClinicLogs?.([]);
+
+            // 2) authUid 기준 (학생 authUid가 들어있는 케이스)
+            await fetchListSafe(
+                'clinicLogs authUid',
+                db,
+                'clinicLogs',
+                (items) => clinicDocs.push(...items),
+                query(
+                    collection(db, 'clinicLogs'),
+                    where('authUid', 'in', scopedStudentUids),
+                    orderBy('date', 'desc'),
+                    limit(30),
+                ),
+                isCancelled,
+            );
+
+            // 3) studentUid 기준 (옛 필드가 남아있는 케이스)
+            await fetchListSafe(
+                'clinicLogs studentUid',
+                db,
+                'clinicLogs',
+                (items) => clinicDocs.push(...items),
+                query(
+                    collection(db, 'clinicLogs'),
+                    where('studentUid', 'in', scopedStudentUids),
+                    orderBy('date', 'desc'),
+                    limit(30),
+                ),
+                isCancelled,
+            );
+
+            // ✅ 중복 제거 + 정렬
+            if (!isCancelled()) {
+                const map = new Map();
+                clinicDocs.forEach((x) => {
+                    if (!x?.id) return;
+                    if (!map.has(x.id)) map.set(x.id, x);
+                });
+
+                const merged = Array.from(map.values()).sort((a, b) => {
+                    const ad = String(a?.date || '');
+                    const bd = String(b?.date || '');
+                    return bd.localeCompare(ad);
+                });
+
+                setClinicLogs?.(merged.slice(0, 50));
+            }
+            } else if (!isCancelled()) {
+                setClinicLogs?.([]);
         }
+
 
         /* =========================
            lessonLogs / tests

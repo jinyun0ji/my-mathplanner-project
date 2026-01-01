@@ -775,10 +775,21 @@ export default function AppRoutes({ user, role, studentIds }) {
       try {
           const docId = `${studentId}_${testId}`;
           const isAbsent = result === '미응시';
+          // ✅ result가 객체(문항별 정오답)일 때 점수 계산
+            let computedScore = null;
+            if (!isAbsent && result && typeof result === 'object') {
+            const values = Object.values(result); // true/false 또는 'O'/'X' 등일 수 있음
+            const total = values.length;
+
+            const correct = values.filter(v => v === true || v === 'O' || v === 1 || v === '1').length;
+
+            computedScore = total > 0 ? Math.round((correct / total) * 100) : 0;
+          }
+
           const payload = {
               authUid: studentId,
               testId,
-              score: isAbsent ? null : 0,
+              score: isAbsent ? null : (computedScore ?? 0),
               correctCount: isAbsent ? {} : result,
               comment: comment || '',
               updatedAt: serverTimestamp(),

@@ -109,6 +109,23 @@ export const calculateGradeComparison = (studentId, classes, tests, grades) => {
     const myClassIds = classes.filter(c => (c.students || []).includes(studentId)).map(c => c.id);
     const relevantTests = tests.filter(t => myClassIds.includes(t.classId));
 
+    const computeScoreFromCorrectCount = (record, test) => {
+        if (!record?.correctCount) return null;
+
+        const entries = Object.entries(record.correctCount);
+        if (entries.length === 0) return 0;
+
+        // 맞음/고침을 정답으로 처리
+        const correct = entries.filter(([, v]) => v === '맞음' || v === '고침').length;
+        const total = entries.length;
+
+        const maxScore = Number(test?.maxScore) || 0;
+        if (maxScore <= 0) return correct; // 만점이 없으면 '맞은 개수'라도 반환
+
+        return Math.round((correct / total) * maxScore);
+    };
+
+
     relevantTests.forEach(test => {
         const myRecord = grades[studentId]?.[test.id];
         
@@ -127,12 +144,20 @@ export const calculateGradeComparison = (studentId, classes, tests, grades) => {
                 if (!classStudentIds.includes(stuId)) return;
                 const record = studentGrade[test.id];
                 if (record) {
-                    if (record.score !== null && record.score !== undefined) {
-                        classTotal += record.score;
+                    const rawScore = record.score;
+                    const computedScore = computeScoreFromCorrectCount(record, test);
+                    const finalScore =
+                    (rawScore === null || rawScore === undefined)
+                        ? (computedScore ?? null)
+                        : (rawScore === 0 && record.correctCount ? (computedScore ?? 0) : rawScore);
+
+                    if (finalScore !== null && finalScore !== undefined) {
+                        classTotal += finalScore;
                         studentCount++;
-                        participantScores.push(record.score);
-                        if (record.score > highestScore) highestScore = record.score;
+                        participantScores.push(finalScore);
+                        if (finalScore > highestScore) highestScore = finalScore;
                     }
+
                     if (record.correctCount) {
                         Object.entries(record.correctCount).forEach(([qNum, status]) => {
                             if (!questionStats[qNum]) questionStats[qNum] = { correct: 0, total: 0 };
@@ -146,7 +171,15 @@ export const calculateGradeComparison = (studentId, classes, tests, grades) => {
             });
 
             const classAverage = studentCount > 0 ? Math.round(classTotal / studentCount) : 0;
-            const myScore = myRecord.score || 0;
+            const rawMyScore = myRecord.score;
+            const computedMyScore = computeScoreFromCorrectCount(myRecord, test);
+
+            // score가 null/undefined 이거나, 0인데 문항 데이터가 있으면 "계산값"을 우선
+            const myScore =
+            (rawMyScore === null || rawMyScore === undefined)
+                ? (computedMyScore ?? 0)
+                : (rawMyScore === 0 && myRecord.correctCount ? (computedMyScore ?? 0) : rawMyScore);
+
             const myAccuracy = test.maxScore > 0 ? Math.round((myScore / test.maxScore) * 100) : 0;
             const rank = participantScores.length > 0 ? participantScores.filter(score => score > myScore).length + 1 : null;
             

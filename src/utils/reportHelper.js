@@ -53,7 +53,7 @@ export const generateSessionReport = (sessionId, studentId, contextData) => {
     // 5. 상세 텍스트 구성 (기존 데이터 구조상 없는 필드는 조합하거나 기본값 처리)
     // 진도(progress) 문자열을 기반으로 요약 생성
     const lessonSummary = lesson.progress 
-        ? [lesson.progress, "관련 필수 예제 풀이", "오답 노트 정리"] // (데이터가 단일 문자열이라 배열로 확장 시뮬레이션)
+        ? [lesson.progress, "관련 필수 예제 풀이", "복습 테스트 풀이"] // (데이터가 단일 문자열이라 배열로 확장 시뮬레이션)
         : ["수업 내용 기록 없음"];
 
     // 코멘트는 성적 코멘트가 있으면 우선 사용, 없으면 출결 코멘트(가정) 사용
