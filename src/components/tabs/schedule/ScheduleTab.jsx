@@ -28,6 +28,25 @@ export default function ScheduleTab({
         endTime: ''
     });
 
+    const normalizeDays = (days) => {
+        if (!days) return [];
+        if (Array.isArray(days)) {
+            return days
+            .map((d) => (typeof d === 'string' ? d.trim() : ''))
+            .map((d) => d.replace('요일', ''))   // "월요일" -> "월"
+            .filter(Boolean);
+        }
+        if (typeof days === 'string') {
+            return days
+            .split(/[,\s/]+/)                   // "월, 수" / "월 수" / "월/수"
+            .map((d) => d.trim())
+            .map((d) => d.replace('요일', ''))
+            .filter(Boolean);
+        }
+        return [];
+    };
+
+
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [targetScheduleForDelete, setTargetScheduleForDelete] = useState(null);
 
@@ -150,6 +169,47 @@ export default function ScheduleTab({
         });
     };
 
+    const KOR_DAYS = ['월','화','수','목','금','토','일'];
+
+    const extractDays = (raw) => {
+        if (!raw) return [];
+        if (Array.isArray(raw)) {
+            return raw
+            .map(v => (typeof v === 'string' ? v.trim().replace('요일','') : ''))
+            .filter(v => KOR_DAYS.includes(v));
+        }
+        if (typeof raw === 'string') {
+            const cleaned = raw.replaceAll('요일', ' ');
+            const found = KOR_DAYS.filter(d => cleaned.includes(d));
+            return Array.from(new Set(found));
+        }
+        if (typeof raw === 'object') {
+            return extractDays(raw.days || raw.weekDays || raw.weekdays || raw.dayOfWeek);
+        }
+        return [];
+    };
+
+    const extractTimeFromString = (s) => {
+        if (typeof s !== 'string') return '';
+        // "18:00-22:00" / "18:00~22:00" 둘 다 허용
+        const m = s.match(/(\d{1,2}:\d{2})\s*[-~]\s*(\d{1,2}:\d{2})/);
+        if (!m) return '';
+        return `${m[1]}~${m[2]}`;
+    };
+
+    const resolveClassSchedule = (cls) => {
+        const raw = cls?.schedule; // map일 수도, string일 수도, 없을 수도
+        const days = extractDays((raw && typeof raw === 'object') ? raw.days : raw);
+        const time =
+            (raw && typeof raw === 'object' && typeof raw.time === 'string' ? raw.time : '') ||
+            (typeof cls?.scheduleTime === 'string' ? cls.scheduleTime : '') ||
+            (typeof cls?.time === 'string' ? cls.time : '') ||
+            extractTimeFromString(typeof raw === 'string' ? raw : '') ||
+            '';
+
+        return { days, time }; 
+    };
+
     const weekDays = ['일', '월', '화', '수', '목', '금', '토'];
 
     const baseDate = new Date(selectedDate);
@@ -188,7 +248,7 @@ export default function ScheduleTab({
         const dateStr = formatDate(date);
         const dayOfWeek = weekDays[date.getDay()];
 
-        const dayClasses = (myClasses || []).filter(cls => cls?.schedule?.days?.includes(dayOfWeek));
+        const dayClasses = myClasses.filter(cls => resolveClassSchedule(cls).days.includes(dayOfWeek));
 
         // ✅ 여기 수정: 로컬 날짜 파싱 + startOfDay 비교
         const myExternal = safeExternalSchedules.filter(s => {
@@ -228,16 +288,19 @@ export default function ScheduleTab({
         const dayOfWeek = weekDays[selectedDate.getDay()];
         const dateStr = formatDate(selectedDate);
 
-        const dailyClasses = (myClasses || [])
-            .filter(cls => cls?.schedule?.days?.includes(dayOfWeek))
-            .map(cls => ({
-                id: `math-${cls.id}`,
-                type: 'math',
-                name: cls.name,
-                teacher: cls.teacher,
-                time: cls.schedule?.time,
-                scheduleId: cls.id
-            }));
+        const dailyClasses = myClasses
+            .filter(cls => resolveClassSchedule(cls).days.includes(dayOfWeek))
+            .map(cls => {
+                const { time } = resolveClassSchedule(cls);
+                return {
+                    id: `math-${cls.id}`,
+                    type: 'math',
+                    name: cls.name,
+                    teacher: cls.teacher,
+                    time: time ? time.replace('-', '~') : '시간 미정',
+                    scheduleId: cls.id,
+                };
+        });
 
         // ✅ 여기 수정: 로컬 날짜 파싱 + startOfDay 비교
         const myExternal = safeExternalSchedules.filter(s => {
@@ -274,8 +337,10 @@ export default function ScheduleTab({
                 }))
             : [];
 
+        const safeStart = (t) => (typeof t === 'string' ? (t.split('~')[0] || '00:00') : '00:00');
         const allSchedules = [...dailyClasses, ...dailyExternal, ...myClinics]
-            .sort((a, b) => (a.time?.split('~')[0] || '00:00').localeCompare(b.time?.split('~')[0] || '00:00'));
+            .sort((a, b) => safeStart(a.time).localeCompare(safeStart(b.time)));
+
 
         if (allSchedules.length === 0) {
             return (
@@ -390,9 +455,7 @@ export default function ScheduleTab({
         );
     };
 
-    console.log('[ScheduleTab] resolvedStudentId=', resolvedStudentId);
-    console.log('[ScheduleTab] externalSchedules len=', Array.isArray(externalSchedules) ? externalSchedules.length : 'not-array', externalSchedules);
-
+    console.log('[ScheduleTab] myClasses len=', myClasses?.length, 'first schedule=', myClasses?.[0]?.schedule);
 
     return (
         <div className="pb-24 relative animate-fade-in-up">
