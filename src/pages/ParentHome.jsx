@@ -376,10 +376,14 @@ export default function ParentHome({
         const now = new Date();
         const todayStr = now.toISOString().split('T')[0];
         
-        const myNotices = notices.filter(n => 
-            !n.targetStudents || n.targetStudents.length === 0 || n.targetStudents.includes(activeChildId)
-        );
-        let combinedNotices = [...myNotices];
+        const myNotices = notices.filter((n) => {
+            const isPublicNotice = n?.isPublic === true;
+            const isTargetedToChild = Array.isArray(n?.targetStudents) && n.targetStudents.includes(activeChildId);
+            return isPublicNotice || isTargetedToChild;
+        });
+        const publicNotices = myNotices.filter((n) => n?.isPublic === true);
+        const targetedNotices = myNotices.filter((n) => Array.isArray(n?.targetStudents) && n.targetStudents.includes(activeChildId));
+        let combinedNotices = [...publicNotices, ...targetedNotices];
 
         if (unpaidPayments.length > 0) {
             combinedNotices.unshift({
@@ -1037,7 +1041,7 @@ export default function ParentHome({
                                                                         <div className="flex items-center justify-between">
                                                                             <div>
                                                                                 <p className="text-sm font-bold text-gray-900">{hw.title}</p>
-                                                                                <p className="text-xs text-gray-500">상태 {hw.status}</p>
+                                                                                <p className="text-xs text-gray-500">{hw.status}</p>
                                                                             </div>
                                                                             <span className="text-xs font-bold text-indigo-700 bg-indigo-50 px-3 py-1 rounded-full border border-indigo-100">{hw.completionRate}%</span>
                                                                         </div>
@@ -1133,7 +1137,7 @@ export default function ParentHome({
                         {activeTab === 'menu' && (
                             <MenuTab student={activeChild} onUpdateStudent={() => {}} onLogout={onLogout} videoMemos={{}} lessonLogs={[]} onLinkToMemo={() => {}} notices={visibleNotices} setActiveTab={setActiveTab} isParent={true} />
                         )}
-                        {activeTab === 'board' && <BoardTab notices={visibleNotices} />}
+                        {activeTab === 'board' && <BoardTab notices={visibleNotices.filter((n) => n?.isPublic === true)} />}
                     </div>
                 )}
             </main>

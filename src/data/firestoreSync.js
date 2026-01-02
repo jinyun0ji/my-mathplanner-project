@@ -601,13 +601,32 @@ export const loadViewerDataOnce = async ({
             const publicOnes = await getDocs(
                 query(
                     collection(db, 'announcements'),
+                    where('isPublic', '==', true),
                     orderBy('date', 'desc'),
                     limit(20),
                 ),
             );
             announcementDocs.push(...publicOnes.docs);
+            console.log('[viewer] public announcements count', publicOnes.size);
         } catch (e) {
             console.error('[viewer] FAIL: announcements public', e);
+        }
+
+        try {
+            if (scopedStudentUids.length > 0) {
+                const targeted = await getDocs(
+                    query(
+                        collection(db, 'announcements'),
+                        where('targetStudents', 'array-contains-any', scopedStudentUids),
+                        orderBy('date', 'desc'),
+                        limit(20),
+                    ),
+                );
+                announcementDocs.push(...targeted.docs);
+                console.log('[viewer] targeted announcements count', targeted.size);
+            }
+        } catch (e) {
+            console.error('[viewer] FAIL: announcements targeted', e);
         }
 
         if (!isCancelled()) {
@@ -615,7 +634,8 @@ export const loadViewerDataOnce = async ({
             const merged = announcementDocs.reduce((acc, d) => {
                 if (seen.has(d.id)) return acc;
                 seen.add(d.id);
-                acc.push({ id: d.id, ...d.data() });
+                const data = d.data();
+                acc.push({ id: d.id, ...data });
                 return acc;
             }, []);
             setAnnouncements?.(merged);

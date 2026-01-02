@@ -116,10 +116,14 @@ export default function StudentHome({
         const now = new Date();
         const todayStr = now.toISOString().split('T')[0];
         
-        const myNotices = notices.filter(n => 
-            !n.targetStudents || n.targetStudents.length === 0 || n.targetStudents.includes(studentId)
-        );
-        let combinedNotices = [...myNotices];
+        const myNotices = notices.filter((n) => {
+            const isPublicNotice = n?.isPublic === true;
+            const isTargetedToMe = Array.isArray(n?.targetStudents) && n.targetStudents.includes(studentId);
+            return isPublicNotice || isTargetedToMe;
+        });
+        const publicNotices = myNotices.filter((n) => n?.isPublic === true);
+        const targetedNotices = myNotices.filter((n) => Array.isArray(n?.targetStudents) && n.targetStudents.includes(studentId));
+        let combinedNotices = [...publicNotices, ...targetedNotices];
         setVisibleNotices(combinedNotices);
         if (combinedNotices.length > visibleNotices.length) {
             return;
@@ -301,7 +305,7 @@ export default function StudentHome({
                                 initialTab={initialLearningTab}
                             />
                         )}
-                        {activeTab === 'board' && <BoardTab notices={visibleNotices} />}
+                        {activeTab === 'board' && <BoardTab notices={visibleNotices.filter((n) => n?.isPublic === true)} />}
                         {activeTab === 'menu' && (
                             <MenuTab 
                                 student={student} onUpdateStudent={onUpdateStudent} onLogout={onLogout}

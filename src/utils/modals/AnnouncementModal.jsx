@@ -198,20 +198,31 @@ export const AnnouncementModal = ({ isOpen, onClose, onSave, announcementToEdit 
         
         const finalContent = editorRef.current.innerHTML;
 
+        const selectedClassIds = (targetClasses || []).map((id) => String(id));
+        const filteredTargetStudents = (allStudents || [])
+            .filter((s) => selectedClassIds.includes(String(s.classId)))
+            .map((s) => String(s.id || s.authUid))
+            .filter(Boolean);
+
+        const isPublic = selectedClassIds.length === 0;
+
         const announcementData = {
             id: announcementToEdit ? announcementToEdit.id : null,
-            author: announcementToEdit?.author || '관리자', 
+            author: announcementToEdit?.author || '관리자',
             date: announcementToEdit?.date || new Date().toISOString().slice(0, 10),
             title,
             content: finalContent,
             isPinned,
             scheduleTime: scheduleTime || null,
             attachments,
-            targetClasses,
-            targetStudents,
+            isPublic,
+            targetClassIds: selectedClassIds,
+            targetClasses: selectedClassIds,
+            targetStudents: isPublic ? [] : filteredTargetStudents,
             notifyMode: staffNotifyMode === 'none' ? 'system' : 'staff',
             staffNotification,
         };
+        console.log('[announcement] save payload', announcementData);
         try {
             await onSave(announcementData, !!announcementToEdit);
             onClose();
