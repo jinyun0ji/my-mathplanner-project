@@ -490,24 +490,29 @@ export const loadViewerDataOnce = async ({
 
             // ✅ classTestStats 로드 (있으면만)
             if (setClassTestStats) {
-                const statDocIds = Array.from(new Set(viewerTests.map((t) => `${t.classId}_${t.id}`))).slice(0, 80);
-                const statSnapshots = await Promise.all(
-                    statDocIds.map((docId) =>
-                        run(`classTestStats get ${docId}`, () => getDoc(doc(db, 'classTestStats', docId))),
-                    ),
-                );
+                try {
+                    const statDocIds = Array.from(new Set(viewerTests.map((t) => `${t.classId}_${t.id}`))).slice(0, 80);
+                    const statSnapshots = await Promise.all(
+                        statDocIds.map((docId) =>
+                            run(`classTestStats get ${docId}`, () => getDoc(doc(db, 'classTestStats', docId))),
+                        ),
+                    );
 
-                if (!isCancelled()) {
-                    const statsMap = {};
-                    statSnapshots.forEach((snap, index) => {
-                        if (!snap?.exists()) return;
-                        const data = snap.data() || {};
-                        const docId = statDocIds[index];
-                        const testId = data.testId || docId.split('_').slice(-1)[0];
-                        statsMap[docId] = { id: docId, ...data };
-                        statsMap[testId] = { id: docId, ...data };
-                    });
-                    setClassTestStats(statsMap);
+                    if (!isCancelled()) {
+                        const statsMap = {};
+                        statSnapshots.forEach((snap, index) => {
+                            if (!snap?.exists()) return;
+                            const data = snap.data() || {};
+                            const docId = statDocIds[index];
+                            const testId = data.testId || docId.split('_').slice(-1)[0];
+                            statsMap[docId] = { id: docId, ...data };
+                            statsMap[testId] = { id: docId, ...data };
+                        });
+                        setClassTestStats(statsMap);
+                    }
+                } catch (e) {
+                    console.error('[viewer] FAIL: classTestStats (skip)', e);
+                    if (!isCancelled()) setClassTestStats({});
                 }
             }
         } else if (!isCancelled()) {
