@@ -19,7 +19,7 @@ export default function GradeManagement({
     const [selectedClassId, setSelectedClassId] = useState(() => getDefaultClassId(classes));
     const [isTestModalOpen, setIsTestModalOpen] = useState(false);
     const [testToEdit, setTestToEdit] = useState(null);
-    const [selectedTestId, setSelectedTestId] = useState(null); 
+    const [selectedTestId, setSelectedTestId] = useState(null);
     const [isGradeInputModalOpen, setIsGradeInputModalOpen] = useState(false);
     const { students: classStudents, isLoading: isLoadingStudents } = useClassStudents(selectedClassId);
     
@@ -77,6 +77,11 @@ export default function GradeManagement({
     const handleEditTest = (test) => {
         setTestToEdit(test);
         setIsTestModalOpen(true);
+    };
+
+    const handleCloseTestModal = () => {
+        setIsTestModalOpen(false);
+        setTestToEdit(null);
     };
 
     const handleOpenGradeInput = () => {
@@ -150,8 +155,8 @@ export default function GradeManagement({
         return (
             <div className="max-h-72 overflow-y-auto pr-2">
                 {classTests.map(test => (
-                    <div 
-                        key={test.id} 
+                    <div
+                        key={test.id}
                         onClick={() => setSelectedTestId(test.id)}
                         // [색상 변경] 선택 시: bg-indigo-50 border-indigo-200 (Navy Theme)
                         className={`p-3 mb-2 rounded-lg cursor-pointer border transition duration-150 ${
@@ -160,10 +165,21 @@ export default function GradeManagement({
                                 : 'bg-white border-gray-200 hover:bg-gray-50'
                         }`}
                     >
-                        <p className={`text-sm font-bold ${test.id === selectedTestId ? 'text-indigo-900' : 'text-gray-800'}`}>
-                            {test.name}
-                        </p>
-                        <p className="text-xs text-gray-600 mt-1">{test.date} | 총점 {test.maxScore}점</p>
+                        <div className="flex items-start justify-between gap-2">
+                            <div>
+                                <p className={`text-sm font-bold ${test.id === selectedTestId ? 'text-indigo-900' : 'text-gray-800'}`}>
+                                    {test.name}
+                                </p>
+                                <p className="text-xs text-gray-600 mt-1">{test.date} | 총점 {test.maxScore}점</p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); handleEditTest(test); }}
+                                className="text-xs font-medium text-indigo-900 hover:text-indigo-700 border border-indigo-100 bg-indigo-50 rounded px-2 py-1"
+                            >
+                                수정
+                            </button>
+                        </div>
                     </div>
                 ))}
                 {classTests.length === 0 && <p className="text-sm text-gray-500 mt-2">등록된 시험이 없습니다.</p>}
@@ -339,10 +355,11 @@ export default function GradeManagement({
             {/* 시험 등록/수정 모달 */}
             <TestFormModal
                 isOpen={isTestModalOpen}
-                onClose={() => setIsTestModalOpen(false)}
+                onClose={handleCloseTestModal}
                 onSave={handleSaveTest}
+                onReset={() => setTestToEdit(null)}
                 classId={selectedClassId}
-                test={testToEdit} 
+                test={testToEdit}
                 classes={classes}
                 calculateClassSessions={calculateClassSessions}
             />

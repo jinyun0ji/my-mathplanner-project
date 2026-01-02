@@ -15,7 +15,7 @@ const normalizeAttendanceStatus = (status) => {
     if (status === '결석') return 'absent';
     if (status === '동영상보강') return 'video_makeup';
     if (status === '지각') return 'late';
-    
+
     return null;
 };
 
@@ -263,7 +263,7 @@ export default function ClassroomView({
                     </div>
                 </div>
 
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-2 gap-3">
                     <button onClick={() => setIsAttendanceDetailOpen(true)} className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center justify-center active:scale-95 transition-transform">
                         <div className="bg-gray-50 p-2 rounded-full mb-2 text-gray-500"><Icon name="user" className="w-5 h-5" /></div>
                         <span className="text-xs text-gray-500 font-bold mb-0.5">내 출결</span>
@@ -276,7 +276,7 @@ export default function ClassroomView({
                         {stats.homework.unsubmitted > 0 ? (<><span className="text-sm font-extrabold text-orange-600">과제 미제출</span><span className="text-[10px] text-orange-500 font-bold mt-1">{stats.homework.unsubmitted}회차</span></>) : stats.homework.unresolved > 0 ? (<><span className="text-sm font-extrabold text-gray-800">미정리 오답</span><span className="text-[10px] text-orange-500 font-bold mt-1">{stats.homework.unresolved}문항</span></>) : (<><span className="text-sm font-extrabold text-gray-800">오답 정리</span><span className="text-[10px] text-green-600 font-bold mt-1">완료</span></>)}
                     </button>
                     {/* 성적 */}
-                    <button 
+                    {/* <button 
                         // ✅ [수정] 성적 카드 클릭 -> 성적 탭('grades')으로 이동
                         onClick={() => onNavigateToTab && onNavigateToTab('learning', 'grades')} 
                         className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center justify-center active:scale-95 transition-transform"
@@ -285,7 +285,7 @@ export default function ClassroomView({
                         <span className="text-xs text-gray-500 font-bold mb-0.5">성적 상태</span>
                         {stats.grade.trend === 'initial' ? <span className="text-sm font-bold text-gray-600">분석 중</span> : <span className={`text-lg font-extrabold ${stats.grade.trend === 'up' ? 'text-indigo-600' : stats.grade.trend === 'down' ? 'text-orange-600' : 'text-gray-700'}`}>{stats.grade.trend === 'up' ? '상승 중' : stats.grade.trend === 'down' ? '관리 필요' : '유지'}</span>}
                         <span className="text-[10px] text-gray-400 mt-1">최근 3회 기준</span>
-                    </button>
+                    </button> */}
                 </div>
 
                 <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
