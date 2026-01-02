@@ -46,7 +46,12 @@ export default function FullGradeTable({ classStudents, classTests, grades, clas
                                 {classTests.map(test => {
                                     const scoreData = grades[student.id]?.[test.id] || {};
                                     const totalScore = getTotalScore(scoreData, test);
-                                    const score = scoreData.score === null && totalScore === null
+                                    const hasAnswers = Boolean(
+                                        scoreData?.correctCount &&
+                                        Object.keys(scoreData.correctCount).length > 0
+                                    );
+
+                                    const score = hasAnswers === false
                                         ? '미응시'
                                         : Number.isFinite(totalScore)
                                             ? totalScore.toFixed(1)

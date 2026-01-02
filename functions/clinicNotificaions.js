@@ -1,6 +1,12 @@
 const functions = require('firebase-functions');
 const admin = require('firebase-admin');
 
+console.log('[clinicNotifications] TRIGGERED', {
+  before: change.before.exists,
+  after: change.after.exists,
+});
+
+
 if (!admin.apps.length) {
   admin.initializeApp();
 }
@@ -138,11 +144,6 @@ exports.onClinicLogsWriteCreateNotifications = functions
     const after = afterExists ? change.after.data() : null;
 
     const event = resolveClinicEvent(before, after);
-
-    // 업데이트인데 의미 없는 필드 변화면 skip
-    if (event === 'updated' && !isMeaningfulClinicUpdate(before, after)) {
-      return null;
-    }
 
     // clinicLogs에서 studentDocId는 studentId 필드로 들어온다고 했음
     const studentDocId = (after || before || {}).studentId || null;

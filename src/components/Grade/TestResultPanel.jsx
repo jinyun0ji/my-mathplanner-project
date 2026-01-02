@@ -33,13 +33,15 @@ export default function TestResultPanel({
     const initializeGrades = useCallback(() => {
         return studentsData.reduce((acc, student) => {
             // App.jsx의 initialGrades 구조를 참고하여 데이터 로딩
-            const studentGrade = grades[student.id]?.[test.id] || { correctCount: {}, score: null, comment: '' };
-            
+            const studentGrade = grades[student.id]?.[test.id] || { correctCount: {}, comment: '' };
+
             const initialScores = Array(test.totalQuestions).fill(null);
-            
-            if (studentGrade.score === null) {
-                // 미응시 상태일 경우 scores 배열을 초기화하여 입력 필드를 비워둡니다.
-            } else {
+            const hasAnswers = Boolean(
+                studentGrade?.correctCount &&
+                Object.keys(studentGrade.correctCount).length > 0
+            );
+
+            if (hasAnswers) {
                 for (let i = 0; i < test.totalQuestions; i++) {
                     const qNum = (i + 1).toString();
                     const status = studentGrade.correctCount?.[qNum];
@@ -231,12 +233,14 @@ export default function TestResultPanel({
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
                         {studentsData.map(student => {
-                            // 미응시 여부 확인
-                            const isAbsent = grades[student.id]?.[test.id]?.score === null;
-                            const totalScoreText = isAbsent 
-                                ? '미응시' 
-                                : (calculatedScores[student.id] !== undefined 
-                                    ? calculatedScores[student.id].toFixed(1) 
+                            const gradeData = grades[student.id]?.[test.id];
+                            const isAbsent =
+                                !gradeData?.correctCount ||
+                                Object.keys(gradeData.correctCount).length === 0;
+                            const totalScoreText = isAbsent
+                                ? '미응시'
+                                : (Number.isFinite(calculatedScores[student.id])
+                                    ? calculatedScores[student.id].toFixed(1)
                                     : '-');
 
                             return (
