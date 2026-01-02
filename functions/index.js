@@ -5,8 +5,10 @@ if (admin.apps.length === 0) {
 
 const srcExports = require('./src');
 const { onClinicLogsWriteCreateNotifications } = require('./clinicNotifications');
+const { onGradeWriteUpdateClassTestStats } = require('./classTestStats');
 
 module.exports = {
     ...srcExports,
     onClinicLogsWriteCreateNotifications,
+    onGradeWriteUpdateClassTestStats,
 };
