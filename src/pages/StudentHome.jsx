@@ -32,33 +32,18 @@ export default function StudentHome({
     const { notifications, hasUnread, unreadCount, markAllRead, lastReadAt, isLoading, isMetaLoading } = useNotifications(notificationUid);
 
     useEffect(() => {
-        let newNotices = [...notices];
         const now = new Date();
         const todayStr = now.toISOString().split('T')[0];
-        const myUpcomingClinics = clinicLogs?.filter(log => log.studentId === studentId && log.date >= todayStr && !log.checkOut) || [];
         
         const myNotices = notices.filter(n => 
             !n.targetStudents || n.targetStudents.length === 0 || n.targetStudents.includes(studentId)
         );
         let combinedNotices = [...myNotices];
-
-        if (myUpcomingClinics.length > 0) {
-            myUpcomingClinics.forEach(clinic => {
-                const noticeId = `clinic-notice-${clinic.id}`;
-                if (!combinedNotices.find(n => n.id === noticeId)) {
-                    combinedNotices.unshift({
-                        id: noticeId, title: '📅 클리닉 예약 알림',
-                        content: `${clinic.date} ${clinic.checkIn}에 학습 클리닉이 예약되어 있습니다.<br/>늦지 않게 참석해주세요!`,
-                        author: '알림봇', date: todayStr, isPinned: false
-                    });
-                }
-            });
-        }
         setVisibleNotices(combinedNotices);
         if (combinedNotices.length > visibleNotices.length) {
             return;
         }
-    }, [notices, clinicLogs, studentId]);
+    }, [notices, studentId]);
 
     const handleOpenNotification = () => { setIsNotificationOpen(true); };
 
