@@ -315,7 +315,6 @@ exports.onGradesWriteUpdateClassTestStats = functions
           average: baseStats.average,
           maxScore: baseStats.maxScore,
           minScore: baseStats.minScore,
-          minScroe: baseStats.minScore, // ✅ typo-compat
           stdDev: baseStats.stdDev,
 
           // per-question

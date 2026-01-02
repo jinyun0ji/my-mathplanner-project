@@ -1,5 +1,6 @@
 // src/pages/StudentHome.jsx
-import React, { useState, useMemo, useEffect } from 'react';
+import React, {useState, useMemo, useEffect, useCallback} from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
     collection,
     query,
@@ -31,14 +32,84 @@ export default function StudentHome({
     clinicLogs, onUpdateStudent,
     onLogout
 }) {
-    const [activeTab, setActiveTab] = useState('home');
-    const [initialLearningTab, setInitialLearningTab] = useState('homework');
-    const [selectedClassId, setSelectedClassId] = useState(null);
+    // ✅ URL(querystring)로 탭/상세 상태를 동기화해서 "뒤로가기"가 탭 전환/이전 화면으로 동작하게 함
+    const [searchParams, setSearchParams] = useSearchParams();
+
+    const readTabFromUrl = () => searchParams.get('tab') || 'home';
+    const readSubTabFromUrl = () => searchParams.get('subTab') || 'homework';
+    const readClassIdFromUrl = () => searchParams.get('classId');
+
+    const [activeTab, _setActiveTab] = useState(readTabFromUrl());
+    const [initialLearningTab, _setInitialLearningTab] = useState(readSubTabFromUrl());
+    const [selectedClassId, _setSelectedClassId] = useState(readClassIdFromUrl());
+
+    // ✅ URL -> state (브라우저 뒤로/앞으로로 URL이 바뀌면 화면도 따라감)
+    useEffect(() => {
+        const nextTab = readTabFromUrl();
+        const nextSubTab = readSubTabFromUrl();
+        const nextClassId = readClassIdFromUrl();
+
+        if (nextTab !== activeTab) _setActiveTab(nextTab);
+        if (nextSubTab !== initialLearningTab) _setInitialLearningTab(nextSubTab);
+        if ((nextClassId || null) !== (selectedClassId || null)) _setSelectedClassId(nextClassId || null);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [searchParams]);
+
+    // ✅ state -> URL (앱 내부 동작은 아래 래퍼 함수를 통해서만 변경)
+    const setActiveTab = useCallback((tab, { replace = false } = {}) => {
+        _setActiveTab(tab);
+        setSearchParams(prev => {
+            const next = new URLSearchParams(prev);
+            next.set('tab', tab);
+
+            // learning 이외 탭으로 이동하면 subTab은 정리 (원하면 정책 변경 가능)
+            if (tab !== 'learning') next.delete('subTab');
+
+            // 탭 이동 시 classId는 유지하지 않음(클래스 화면은 별도 상태)
+            if (tab !== 'class') next.delete('classId');
+
+            return next;
+        }, { replace });
+    }, [setSearchParams]);
+
+    const setInitialLearningTab = useCallback((subTab, { replace = false } = {}) => {
+        const value = subTab || 'homework';
+        _setInitialLearningTab(value);
+        setSearchParams(prev => {
+            const next = new URLSearchParams(prev);
+            next.set('tab', 'learning');
+            next.set('subTab', value);
+            next.delete('classId');
+            return next;
+        }, { replace });
+        _setActiveTab('learning');
+    }, [setSearchParams]);
+
+    const setSelectedClassId = useCallback((classId, { replace = false } = {}) => {
+        const value = classId === null || classId === undefined || classId === '' ? null : String(classId);
+        _setSelectedClassId(value);
+
+        setSearchParams(prev => {
+            const next = new URLSearchParams(prev);
+            if (value) {
+                next.set('tab', 'class');
+                next.set('classId', value);
+                next.delete('subTab');
+            } else {
+                next.delete('classId');
+            }
+            return next;
+        }, { replace });
+
+        if (value) _setActiveTab('class');
+    }, [setSearchParams]);
     const [isVideoModalOpen, setIsVideoModalOpen] = useState(false);
     const [isNotificationOpen, setIsNotificationOpen] = useState(false);
     const [visibleNotices, setVisibleNotices] = useState([]); 
     const [targetMemo, setTargetMemo] = useState(null);
     const viewerUid = student?.authUid || userId;
+    const studentDocId = studentId;
+    const studentAuthUid = student?.authUid || userId;
     const { notifications, hasUnread, unreadCount, lastReadAt, isLoading, isMetaLoading, setNotifications } = useNotifications(viewerUid);
 
     useEffect(() => {
@@ -104,7 +175,6 @@ export default function StudentHome({
 
                 if (['homeworkResults', 'grades', 'attendanceLogs'].includes(refCollection)) {
                     setSelectedClassId(null);
-                    setActiveTab('learning');
                     setInitialLearningTab('homework');
                     return;
                 }
@@ -178,10 +248,17 @@ export default function StudentHome({
                     </div>
                 ) : selectedClassId ? (
                     <ClassroomView
-                        classes={classes} lessonLogs={lessonLogs} attendanceLogs={attendanceLogs} studentId={studentId}
-                        selectedClassId={selectedClassId} setSelectedClassId={setSelectedClassId}
-                        videoProgress={videoProgress} onSaveVideoProgress={onSaveVideoProgress}
-                        videoBookmarks={videoBookmarks} onSaveBookmark={onSaveBookmark}
+                        classes={classes}
+                        lessonLogs={lessonLogs}
+                        attendanceLogs={attendanceLogs}
+                        studentDocId={studentDocId}
+                        studentAuthUid={studentAuthUid}
+                        selectedClassId={selectedClassId}
+                        setSelectedClassId={setSelectedClassId}
+                        videoProgress={videoProgress}
+                        onSaveVideoProgress={onSaveVideoProgress}
+                        videoBookmarks={videoBookmarks}
+                        onSaveBookmark={onSaveBookmark}
                         onVideoModalChange={setIsVideoModalOpen}
                         targetMemo={targetMemo}
                         onClearTargetMemo={() => setTargetMemo(null)}
@@ -191,9 +268,10 @@ export default function StudentHome({
                         grades={grades}
                         onNavigateToTab={(tab, subTab = 'homework') => {
                             setSelectedClassId(null);
-                            setActiveTab(tab);
                             if (tab === 'learning') {
                                 setInitialLearningTab(subTab);
+                            } else {
+                                setActiveTab(tab);
                             }
                         }}
                     />

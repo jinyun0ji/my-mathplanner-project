@@ -1071,7 +1071,8 @@ export default function AppRoutes({ user, role, studentIds }) {
           }, { merge: true });
           setVideoProgress(prev => ({ ...prev, [sId]: { ...prev[sId], [lId]: data } }));
       } catch (error) {
-          console.error('[Firestore WRITE ERROR]', error);
+          console.error('[Firestore WRITE ERROR][videoProgress]', error);
+          alert('수강률 저장에 실패했습니다. 권한 또는 네트워크를 확인해주세요.');
       }
   };
   const handleSaveBookmark = (sId, lId, bm) => setVideoBookmarks(prev => ({ ...prev, [sId]: { ...prev[sId], [lId]: [...(prev[sId]?.[lId] || []), bm] } }));

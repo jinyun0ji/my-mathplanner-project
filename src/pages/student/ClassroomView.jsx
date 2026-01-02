@@ -20,8 +20,8 @@ const normalizeAttendanceStatus = (status) => {
 };
 
 
-export default function ClassroomView({ 
-    classes, lessonLogs, attendanceLogs, studentId, 
+export default function ClassroomView({
+    classes, lessonLogs, attendanceLogs, studentDocId, studentAuthUid,
     selectedClassId, setSelectedClassId,
     videoProgress, onSaveVideoProgress,
     videoBookmarks, onSaveBookmark,
@@ -52,7 +52,7 @@ export default function ClassroomView({
         sortedLogs.forEach((log) => {
             const attendance = attendanceLogs.find(
                 (attendanceLog) =>
-                    attendanceLog.studentId === studentId &&
+                    (attendanceLog.studentId || attendanceLog.studentUid) === studentDocId &&
                     (attendanceLog.lessonLogId === log.id ||
                         (!attendanceLog.lessonLogId &&
                             attendanceLog.classId === log.classId &&
@@ -64,7 +64,7 @@ export default function ClassroomView({
             }
         });
         return map;
-    }, [attendanceLogs, sortedLogs, studentId]);
+    }, [attendanceLogs, sortedLogs, studentDocId]);
 
     useEffect(() => {
         if (targetMemo && targetMemo.lessonId) {
@@ -83,27 +83,34 @@ export default function ClassroomView({
     }, [viewMode, onVideoModalChange]);
 
     const [bookmarkNote, setBookmarkNote] = useState('');
-    const [isListOpen, setIsListOpen] = useState(false); 
+    const [isListOpen, setIsListOpen] = useState(false);
+
+    const getProgress = (lessonId) => {
+        const primary = calculateVideoProgress(videoProgress, studentAuthUid, lessonId);
+        if ((primary.percent || primary.seconds || primary.accumulated) && studentAuthUid) return primary;
+        return calculateVideoProgress(videoProgress, studentDocId, lessonId);
+    };
 
     // --- 통계 및 상태 계산 ---
     const stats = useMemo(
         () => buildClassroomStats({
             attendanceLogs,
             selectedClassId,
-            studentId,
+            studentDocId,
+            studentAuthUid,
             homeworkAssignments,
             homeworkResults,
             tests,
             grades,
         }),
-        [attendanceLogs, selectedClassId, studentId, homeworkAssignments, homeworkResults, tests, grades]
+        [attendanceLogs, selectedClassId, studentDocId, studentAuthUid, homeworkAssignments, homeworkResults, tests, grades]
     );
 
     const handleAddBookmark = () => {
         if (!playerRef.current || !bookmarkNote.trim() || !currentLesson) return;
         const currentTime = playerRef.current.getCurrentTime();
         const newBookmark = { id: Date.now(), time: currentTime, note: bookmarkNote };
-        onSaveBookmark(studentId, currentLesson.id, newBookmark);
+        onSaveBookmark(studentAuthUid, currentLesson.id, newBookmark);
         setBookmarkNote('');
     };
 
@@ -113,16 +120,18 @@ export default function ClassroomView({
 
     const handleWatchedTick = (addedSeconds, currentTime, duration) => {
         if (!currentLesson || duration <= 0) return;
-        const prevData = calculateVideoProgress(videoProgress, studentId, currentLesson.id);
+        const prevData = getProgress(currentLesson.id);
         const newAccumulated = (prevData.accumulated || 0) + addedSeconds;
         const newPercent = Math.min(100, Math.floor((newAccumulated / duration) * 100));
-        onSaveVideoProgress(studentId, currentLesson.id, {
+        onSaveVideoProgress(studentAuthUid, currentLesson.id, {
             percent: newPercent, seconds: currentTime, accumulated: newAccumulated
         });
     };
 
-    const myBookmarks = videoBookmarks?.[studentId]?.[currentLesson?.id] || [];
-    const progressData = calculateVideoProgress(videoProgress, studentId, currentLesson?.id);
+    const myBookmarks = videoBookmarks?.[studentAuthUid]?.[currentLesson?.id]
+        || videoBookmarks?.[studentDocId]?.[currentLesson?.id]
+        || [];
+    const progressData = getProgress(currentLesson?.id);
 
     const lessonVideos = useMemo(() => normalizeLessonVideos(currentLesson), [currentLesson]);
     const hasLessonVideos = lessonVideos.length > 0;
@@ -149,7 +158,7 @@ export default function ClassroomView({
     };
 
     const renderLogItem = (log) => {
-        const { percent: prog } = calculateVideoProgress(videoProgress, studentId, log.id);
+        const { percent: prog } = getProgress(log.id);
         const isSelected = currentLesson?.id === log.id;
         const attachments = Array.isArray(log.attachments)
             ? log.attachments

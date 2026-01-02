@@ -23,8 +23,9 @@ export default function MenuTab({ student, onUpdateStudent, onLogout, videoBookm
     const toggleNotification = (key) => { setNotifications(prev => { if (key === 'all') { const newValue = !prev.all; return { all: newValue, post: newValue, homework: newValue, clinic: newValue, class_update: newValue }; } const newSettings = { ...prev, [key]: !prev[key] }; if (!newSettings[key]) newSettings.all = false; else if (newSettings.post && newSettings.homework && newSettings.clinic && newSettings.class_update) newSettings.all = true; return newSettings; }); };
 
     const getMyMemos = () => {
-        if (!student || !videoBookmarks || !videoBookmarks[student.id]) return [];
-        const myBookmarks = videoBookmarks[student.id];
+        const bookmarkKey = student?.authUid || student?.id;
+        if (!student || !videoBookmarks || !bookmarkKey || !videoBookmarks[bookmarkKey]) return [];
+        const myBookmarks = videoBookmarks[bookmarkKey];
         const allMemos = [];
         Object.keys(myBookmarks).forEach(lessonId => {
             const lessonIdNum = parseInt(lessonId, 10);

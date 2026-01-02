@@ -664,6 +664,8 @@ export default function ParentHome({
                         onNavigateToTab={() => { setSelectedClassroomId(null); setActiveTab('report'); }}
                         onOpenReport={(sessionId) => setSelectedReportId(sessionId)}
                         activeStudentName={activeChildName}
+                        studentDocId={activeChildId}
+                        studentAuthUid={activeChild?.authUid}
                     />
                 ) : (
                     /* [라우팅 분기 3] 메인 */

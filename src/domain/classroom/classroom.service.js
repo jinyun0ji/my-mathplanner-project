@@ -3,14 +3,15 @@ import { isAssignmentAssignedToStudent } from '../homework/homework.service';
 export const buildClassroomStats = ({
   attendanceLogs = [],
   selectedClassId = null,
-  studentId = null,
+  studentDocId = null,
+  studentAuthUid = null,
   homeworkAssignments = [],
   homeworkResults = {},
   tests = [],
   grades = {},
 }) => {
   const myAttendance = attendanceLogs.filter(
-    (log) => log.classId === selectedClassId && log.studentId === studentId
+    (log) => log.classId === selectedClassId && (log.studentId || log.studentUid) === studentDocId
   );
 
   // ✅ 출결로 인정할 상태: 출석/동영상보강/지각
@@ -31,18 +32,18 @@ export const buildClassroomStats = ({
   const totalAttendance = myAttendance.length;
 
   const classHomeworks = homeworkAssignments.filter(
-    (h) => h.classId === selectedClassId && isAssignmentAssignedToStudent(h, studentId)
+    (h) => h.classId === selectedClassId && isAssignmentAssignedToStudent(h, studentDocId)
   );
 
   const unsubmittedCount = classHomeworks.filter((h) => {
-    const result = homeworkResults?.[studentId]?.[h.id];
+    const result = homeworkResults?.[studentAuthUid]?.[h.id];
     const resultMap = result?.results || result || {};
     return !result || Object.keys(resultMap).length === 0;
   }).length;
 
   let unresolvedCount = 0;
   classHomeworks.forEach((hw) => {
-    const result = homeworkResults?.[studentId]?.[hw.id];
+    const result = homeworkResults?.[studentAuthUid]?.[hw.id];
     const resultMap = result?.results || result || {};
     if (result) unresolvedCount += Object.values(resultMap).filter((status) => status === '틀림').length;
   });
@@ -55,7 +56,7 @@ export const buildClassroomStats = ({
 
     // NOTE: 기존 로직 유지 (score 기반)
     const myScores = classTests
-      .map((t) => grades[studentId]?.[t.id]?.score)
+      .map((t) => grades[studentAuthUid]?.[t.id]?.score)
       .filter((s) => s !== undefined && s !== null);
 
     if (myScores.length >= 2) {
