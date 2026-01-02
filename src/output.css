@@ -1710,6 +1710,12 @@ video {
   margin-bottom: calc(2rem * var(--tw-space-y-reverse));
 }
 
+.space-y-0\.5 > :not([hidden]) ~ :not([hidden]){
+  --tw-space-y-reverse: 0;
+  margin-top: calc(0.125rem * calc(1 - var(--tw-space-y-reverse)));
+  margin-bottom: calc(0.125rem * var(--tw-space-y-reverse));
+}
+
 .divide-y > :not([hidden]) ~ :not([hidden]){
   --tw-divide-y-reverse: 0;
   border-top-width: calc(1px * calc(1 - var(--tw-divide-y-reverse)));
@@ -1760,6 +1766,10 @@ video {
 
 .whitespace-nowrap{
   white-space: nowrap;
+}
+
+.whitespace-pre-line{
+  white-space: pre-line;
 }
 
 .whitespace-pre-wrap{
@@ -2556,6 +2566,11 @@ video {
 .bg-purple-500{
   --tw-bg-opacity: 1;
   background-color: rgb(168 85 247 / var(--tw-bg-opacity, 1));
+}
+
+.bg-emerald-500{
+  --tw-bg-opacity: 1;
+  background-color: rgb(16 185 129 / var(--tw-bg-opacity, 1));
 }
 
 .bg-opacity-50{
@@ -3431,6 +3446,10 @@ video {
 
 .opacity-\[0\.92\]{
   opacity: 0.92;
+}
+
+.opacity-\[0\.95\]{
+  opacity: 0.95;
 }
 
 .shadow{
@@ -4509,6 +4528,10 @@ body{
 
   .md\:grid-cols-\[2fr_auto\]{
     grid-template-columns: 2fr auto;
+  }
+
+  .md\:grid-cols-3{
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .md\:flex-row{
