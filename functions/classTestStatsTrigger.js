@@ -1,7 +1,8 @@
 // functions/classTestStatsTrigger.js
 // grades -> classTestStats (avg/max/min/stdDev + per-question correctRates + rank)
-// - 미응시(점수 null/undefined, 또는 답안 없음)는 통계에서 제외
+// - 미응시(결시) 및 무응답(정오표 비어있음)은 통계에서 제외
 // - rank는 studentDocId(ullo...) 기준으로 저장 (프론트 매칭용)
+// - count는 attemptedCount로 저장(미응시 포함 방지)
 
 const functions = require('firebase-functions');
 const admin = require('firebase-admin');
@@ -43,17 +44,12 @@ const toInt = (v, fallback = 0) => {
 };
 
 // grade에서 학생 키를 꺼낼 때: 가능한 한 studentDocId(ullo...)를 사용
+// (프로젝트에선 grade.authUid에 studentDocId가 들어간 케이스가 많아서 fallback)
 const pickStudentDocId = (grade) => {
-  // 신규 필드가 있다면 우선
   if (grade && typeof grade.studentDocId === 'string' && grade.studentDocId) return grade.studentDocId;
-
-  // 기존 프로젝트에서 grade.authUid에 studentDocId가 들어가는 케이스가 많음
   if (grade && typeof grade.authUid === 'string' && grade.authUid) return grade.authUid;
-
-  // 혹시 남아있는 레거시
   if (grade && typeof grade.studentUid === 'string' && grade.studentUid) return grade.studentUid;
   if (grade && typeof grade.studentId === 'string' && grade.studentId) return grade.studentId;
-
   return null;
 };
 
@@ -63,17 +59,34 @@ const getQuestionScores = (test) => {
   const maxScore = safeNum(test?.maxScore) ?? 100;
 
   if (Array.isArray(test?.questionScores) && test.questionScores.length >= totalQuestions) {
-    // questionScores는 0-based array로 가정
     return test.questionScores.map((x) => safeNum(x) ?? 0);
   }
 
-  // fallback: maxScore / totalQuestions
   if (totalQuestions > 0) {
     const each = maxScore / totalQuestions;
     return Array.from({ length: totalQuestions }).map(() => each);
   }
 
   return [];
+};
+
+// grade가 “결시/미응시”인지 판단
+const isAbsentGrade = (grade) => {
+  const r = grade?.result;
+  const s = grade?.status;
+  return (
+    r === '미응시' ||
+    s === '미응시' ||
+    grade?.isAbsent === true ||
+    grade?.absent === true
+  );
+};
+
+// correctCount(정오표)가 “비어있지 않은지”
+const hasNonEmptyCorrectCount = (grade) => {
+  const cc = grade?.correctCount;
+  if (!cc || typeof cc !== 'object') return false;
+  return Object.keys(cc).length > 0;
 };
 
 // grade에서 점수 구하기(우선순위: totalScore -> score -> 배점합산 계산)
@@ -84,7 +97,6 @@ const getScore = (grade, test, questionScores) => {
   const s = safeNum(grade?.score);
   if (s !== null) return s;
 
-  // correctCount 기반 배점 합산
   const correctCount = grade?.correctCount;
   if (!correctCount || typeof correctCount !== 'object') return null;
 
@@ -98,21 +110,27 @@ const getScore = (grade, test, questionScores) => {
     if (isCorrect(v)) sum += safeNum(questionScores[i - 1]) ?? 0;
   }
 
-  // 합산 결과가 0일 수도 있으니 null로 취급하면 안 됨
   return Number.isFinite(sum) ? sum : null;
 };
 
 // grade가 “시도함(채점 대상)”인지 판단
+// ✅ 핵심: 결시/미응시 제외 + correctCount가 비어있으면(무응답) 제외
 const hasAttempted = (grade, test, questionScores) => {
+  if (!grade) return false;
+  if (isAbsentGrade(grade)) return false;
+
+  // correctCount가 비어있으면 attempted로 보지 않음
+  // (결시가 0점으로 저장된 경우를 여기서 차단)
+  if (!hasNonEmptyCorrectCount(grade)) return false;
+
+  // 점수는 0일 수도 있으므로 null 여부만 확인
   const score = getScore(grade, test, questionScores);
   if (score === null) return false;
 
-  // 추가 안전장치: correctCount가 비어있는 경우를 미시도로 볼지 결정
-  // 점수가 있으면 attempted로 본다.
   return true;
 };
 
-// 통계 계산
+// 통계 계산 (attempted scores 기준)
 const calcStats = (scores) => {
   const n = scores.length;
   if (n === 0) {
@@ -139,15 +157,15 @@ const calcStats = (scores) => {
   }
   const stdDev = Math.sqrt(varSum / n);
 
-  // UI에서 쓰기 편하게 소수 1자리로
   const round1 = (v) => (v === null ? null : Math.round(v * 10) / 10);
+  const round2 = (v) => (v === null ? null : Math.round(v * 100) / 100);
 
   return {
     count: n,
     average: round1(avg),
     maxScore: round1(max),
     minScore: round1(min),
-    stdDev: round1(stdDev),
+    stdDev: round2(stdDev),
   };
 };
 
@@ -185,10 +203,6 @@ exports.onGradesWriteUpdateClassTestStats = functions
 
     const classData = classSnap.data() || {};
     const students = Array.isArray(classData.students) ? classData.students.filter(Boolean) : [];
-    if (students.length === 0) {
-      console.warn('[classTestStatsTrigger] class has no students', { classId, testId });
-      // 학생이 없으면 빈 stats라도 남겨두는게 낫다
-    }
 
     const questionScores = getQuestionScores(test);
     const totalQuestions = toInt(test.totalQuestions, questionScores.length);
@@ -223,11 +237,11 @@ exports.onGradesWriteUpdateClassTestStats = functions
 
     const grades = Array.from(docs.values());
 
-    // attempted grades만 필터 + 점수 계산
+    // attempted만 집계
     const attempted = [];
     const scoreList = [];
 
-    // 문항별 정답률 계산용
+    // 문항별 정답률 집계: attempted 학생 중에서도 "해당 문항 데이터가 있는 경우만" 분모로 사용
     const correctCounts = Array.from({ length: totalQuestions }).map(() => 0);
     const attemptCounts = Array.from({ length: totalQuestions }).map(() => 0);
 
@@ -243,12 +257,11 @@ exports.onGradesWriteUpdateClassTestStats = functions
       attempted.push({ studentId: studentDocId, score, grade: g });
       scoreList.push(score);
 
-      // 문항별 정오답 집계 (attempted만 분모로 사용)
       const cc = g.correctCount && typeof g.correctCount === 'object' ? g.correctCount : null;
       if (cc && totalQuestions > 0) {
         for (let i = 1; i <= totalQuestions; i++) {
           const key = String(i);
-          if (!(key in cc)) continue; // 해당 문항 데이터가 없으면 분모에 포함하지 않음(보수적으로)
+          if (!(key in cc)) continue; // 그 문항 데이터가 없으면 분모 제외
           attemptCounts[i - 1] += 1;
           if (isCorrect(cc[key])) correctCounts[i - 1] += 1;
         }
@@ -257,15 +270,15 @@ exports.onGradesWriteUpdateClassTestStats = functions
 
     const attemptedCount = attempted.length;
 
-    // stats
+    // summary stats (attempted only)
     const baseStats = calcStats(scoreList);
 
-    // correctRates: 0..1
+    // correctRates: 0..1 (attemptCounts 기준)
     const correctRates = {};
     for (let i = 1; i <= totalQuestions; i++) {
       const denom = attemptCounts[i - 1] || 0;
       const numer = correctCounts[i - 1] || 0;
-      correctRates[String(i)] = denom > 0 ? Math.round((numer / denom) * 1000) / 1000 : 0; // 소수 3자리
+      correctRates[String(i)] = denom > 0 ? Math.round((numer / denom) * 1000) / 1000 : 0;
     }
 
     // rank (dense rank)
@@ -283,6 +296,9 @@ exports.onGradesWriteUpdateClassTestStats = functions
     });
 
     const docId = `${classId}_${testId}`;
+
+    // ✅ count는 attemptedCount로 “덮어쓰기” (미응시 포함 방지)
+    // ✅ minScroe(오타)도 같이 저장(혹시 기존 코드가 오타 필드 참조할 수 있음)
     await db
       .collection('classTestStats')
       .doc(docId)
@@ -293,11 +309,13 @@ exports.onGradesWriteUpdateClassTestStats = functions
 
           // attempted only
           attemptedCount,
+          count: attemptedCount,
 
           // summary stats
           average: baseStats.average,
           maxScore: baseStats.maxScore,
           minScore: baseStats.minScore,
+          minScroe: baseStats.minScore, // ✅ typo-compat
           stdDev: baseStats.stdDev,
 
           // per-question

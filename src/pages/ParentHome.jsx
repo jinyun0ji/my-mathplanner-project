@@ -1,5 +1,6 @@
 // src/pages/ParentHome.jsx
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
     collection,
     query,
@@ -216,14 +217,87 @@ export default function ParentHome({
     const unpaidPayments = [];
 
     // 3. 상태 관리
-    const [activeTab, setActiveTab] = useState('home');
-    const [selectedClassroomId, setSelectedClassroomId] = useState(null);
-     
-    // ✅ 리포트 뷰 상태
+    // ✅ 탭/상세 상태를 URL(querystring)에 동기화해서 "뒤로가기"가 탭 전환으로 동작하게 함
+    const [searchParams, setSearchParams] = useSearchParams();
+
+    const readTabFromUrl = () => searchParams.get('tab') || 'home';
+    const readClassroomFromUrl = () => searchParams.get('classroomId');
+    const readReportFromUrl = () => searchParams.get('reportId');
+
+    const [activeTab, _setActiveTab] = useState(readTabFromUrl());
+    const [selectedClassroomId, _setSelectedClassroomId] = useState(readClassroomFromUrl());
+// ✅ 리포트 뷰 상태
     const [reportViewMode, setReportViewMode] = useState('overview'); // 'overview' | 'byClass'
     const [selectedClassId, setSelectedClassId] = useState(null);
     const [expandedSections, setExpandedSections] = useState({ homework: false, grades: false });
-    const [selectedReportId, setSelectedReportId] = useState(null);
+    const [selectedReportId, _setSelectedReportId] = useState(readReportFromUrl());
+
+    // ✅ URL -> state (브라우저 뒤로/앞으로로 URL이 바뀌면 화면도 따라감)
+    useEffect(() => {
+        const nextTab = readTabFromUrl();
+        const nextClassroomId = readClassroomFromUrl();
+        const nextReportId = readReportFromUrl();
+
+        if (nextTab !== activeTab) _setActiveTab(nextTab);
+        if ((nextClassroomId || null) !== (selectedClassroomId || null)) _setSelectedClassroomId(nextClassroomId || null);
+        if ((nextReportId || null) !== (selectedReportId || null)) _setSelectedReportId(nextReportId || null);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [searchParams]);
+
+    // ✅ state -> URL (앱 내부 동작은 아래 래퍼 함수를 통해서만 변경)
+    const setActiveTab = useCallback((tab, { replace = false } = {}) => {
+        _setActiveTab(tab);
+        setSearchParams(prev => {
+            const next = new URLSearchParams(prev);
+            next.set('tab', tab);
+
+            // 탭 이동 시, 상세 화면 파라미터 정리 (정책: report 탭이 아니면 상세 파라미터 제거)
+            if (tab !== 'report') {
+                next.delete('reportId');
+                next.delete('classroomId');
+            }
+            return next;
+        }, { replace });
+    }, [setSearchParams]);
+
+    const setSelectedClassroomId = useCallback((classId, { replace = false } = {}) => {
+        const value = classId === null || classId === undefined || classId === '' ? null : String(classId);
+        _setSelectedClassroomId(value);
+        // classroom 선택은 report 탭 컨텍스트
+        if (value) _setActiveTab('report');
+
+        setSearchParams(prev => {
+            const next = new URLSearchParams(prev);
+            if (value) {
+                next.set('tab', 'report');
+                next.set('classroomId', value);
+                next.delete('reportId');
+            } else {
+                next.delete('classroomId');
+            }
+            return next;
+        }, { replace });
+    }, [setSearchParams]);
+
+    const setSelectedReportId = useCallback((reportId, { replace = false } = {}) => {
+        const value = reportId === null || reportId === undefined || reportId === '' ? null : String(reportId);
+        _setSelectedReportId(value);
+        // report 선택은 report 탭 컨텍스트
+        if (value) _setActiveTab('report');
+
+        setSearchParams(prev => {
+            const next = new URLSearchParams(prev);
+            if (value) {
+                next.set('tab', 'report');
+                next.set('reportId', value);
+                next.delete('classroomId');
+            } else {
+                next.delete('reportId');
+            }
+            return next;
+        }, { replace });
+    }, [setSearchParams]);
+
 
     const isParent = true;
 
@@ -260,12 +334,12 @@ export default function ParentHome({
 
     useEffect(() => {
         setActiveChildId(activeStudentId);
-        setSelectedClassroomId(null);
+        setSelectedClassroomId(null, { replace: true });
         setSelectedClassId(null);
-        setSelectedReportId(null);
+        setSelectedReportId(null, { replace: true });
         setExpandedSections({ homework: false, grades: false });
         setReportViewMode('overview');
-        setActiveTab('home');
+        setActiveTab('home', { replace: true });
     }, [activeStudentId]);
 
     useEffect(() => {
