@@ -1,12 +1,6 @@
 const functions = require('firebase-functions');
 const admin = require('firebase-admin');
 
-console.log('[clinicNotifications] TRIGGERED', {
-  before: change.before.exists,
-  after: change.after.exists,
-});
-
-
 if (!admin.apps.length) {
   admin.initializeApp();
 }
@@ -139,6 +133,12 @@ exports.onClinicLogsWriteCreateNotifications = functions
 
     const beforeExists = change.before.exists;
     const afterExists = change.after.exists;
+
+    console.log('[clinicNotifications] TRIGGERED', {
+      logId,
+      beforeExists,
+      afterExists,
+    });
 
     const before = beforeExists ? change.before.data() : null;
     const after = afterExists ? change.after.data() : null;
