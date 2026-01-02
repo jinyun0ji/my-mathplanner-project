@@ -191,7 +191,15 @@ export default function ParentHome({
         [myClasses],
     );
 
-    const myHomeworkStats = useMemo(() => calculateHomeworkStats(activeChildId, homeworkAssignments, homeworkResults), [activeChildId, homeworkAssignments, homeworkResults]);
+    const myHomeworkStats = useMemo(
+        () => calculateHomeworkStats(
+            activeChildId,
+            homeworkAssignments,
+            homeworkResults,
+            { activeViewerAuthUid: activeChild?.authUid, studentAuthUid: activeChild?.authUid, activeStudentId: activeChildId, students },
+        ),
+        [activeChild?.authUid, activeChildId, homeworkAssignments, homeworkResults, students],
+    );
     const myGradeComparison = useMemo(() => calculateGradeComparison(activeChildId, classes, tests, grades, classTestStats), [activeChildId, classes, tests, grades, classTestStats]);
     const isPaymentFeatureLocked = true;
     const myPayments = useMemo(() => [], []);

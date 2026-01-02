@@ -9,10 +9,13 @@ import { canAccessLessonContent } from '../../utils/attendanceAccess';
 
 const normalizeAttendanceStatus = (status) => {
     if (!status) return null;
-    if (status === 'present' || status === 'absent' || status === 'video_makeup') return status;
+    if (status === 'present' || status === 'absent' || status === 'video_makeup' || status === 'late') return status;
+
     if (status === '출석') return 'present';
     if (status === '결석') return 'absent';
     if (status === '동영상보강') return 'video_makeup';
+    if (status === '지각') return 'late';
+    
     return null;
 };
 

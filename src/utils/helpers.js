@@ -221,47 +221,87 @@ export const calculateClassSessions = (cls) => {
     return sessions;
 };
 
-const getDateString = (v) => {
+const toDateString = (v) => {
     if (!v) return null;
     if (typeof v === 'string') return v.slice(0, 10);
     if (typeof v?.toDate === 'function') return v.toDate().toISOString().slice(0, 10);
-    try {
-        return new Date(v).toISOString().slice(0, 10);
-    } catch {
-        return null;
-    }
+    try { return new Date(v).toISOString().slice(0, 10); } catch { return null; }
 };
 
-export const calculateHomeworkStats = (studentId, assignments, results) => {
+const getSubmissionDate = (result) => {
+    if (!result) return null;
+    return (
+        toDateString(result.submittedAt) ||
+        toDateString(result.turnedInAt) ||
+        toDateString(result.submittedDate) ||
+        toDateString(result.updatedAt) ||
+        toDateString(result.createdAt) ||
+        null
+    );
+};
+
+const resolveStudentKeys = (studentId, options = {}) => {
+    const { activeViewerAuthUid, studentAuthUid, userId, activeStudentId, students } = options;
+    const studentFromList = students?.find?.((s) => s?.id === studentId) || null;
+    const keys = [
+        activeViewerAuthUid,
+        studentAuthUid,
+        studentFromList?.authUid,
+        userId,
+        activeStudentId,
+        studentId,
+    ];
+    return Array.from(new Set(keys.filter(Boolean).map(String)));
+};
+
+const findHomeworkResult = (results, studentKeys, assignmentId) => {
+    if (studentKeys.length > 0 && results && typeof results === 'object' && !Array.isArray(results)) {
+        for (const key of studentKeys) {
+            const byStudent = results?.[key];
+            if (byStudent && typeof byStudent === 'object') {
+                const match = byStudent[assignmentId];
+                if (match) return match;
+            }
+        }
+    }
+
+    if (Array.isArray(results)) {
+        return results.find((r) => {
+            const studentKey = r?.authUid || r?.studentId || r?.studentUid || r?.uid;
+            if (!studentKey || !studentKeys.includes(String(studentKey))) return false;
+            return String(r?.assignmentId) === String(assignmentId);
+        }) || null;
+    }
+    
+    return null;
+};
+
+export const calculateHomeworkStats = (studentId, assignments, results, options = {}) => {
     if (!assignments) return [];
+    const studentKeys = resolveStudentKeys(studentId, options);
+
     return assignments
         .filter(hw => isAssignmentAssignedToStudent(hw, studentId))
         .map(hw => {
-        const rawResult = results?.[studentId]?.[hw.id];
-        const studentResults = rawResult?.results || rawResult || {};
-        const submissionDate =
-            getDateString(rawResult?.submittedAt)
-            || getDateString(rawResult?.turnedInAt)
-            || getDateString(rawResult?.submittedDate)
-            || getDateString(rawResult?.updatedAt)
-            || getDateString(rawResult?.createdAt)
-            || null;
-        const totalQuestions = hw.totalQuestions;
-        let correctCount = 0;
-        let incorrectCount = 0;
-        Object.values(studentResults).forEach(status => {
-            if (status === '맞음' || status === '고침') correctCount++;
-            else if (status === '틀림') incorrectCount++;
+        const rawResult = findHomeworkResult(results, studentKeys, hw.id);
+            const studentResults = rawResult?.results || rawResult || {};
+            const submissionDate = getSubmissionDate(rawResult);
+            const totalQuestions = hw.totalQuestions;
+            let correctCount = 0;
+            let incorrectCount = 0;
+            Object.values(studentResults).forEach(status => {
+                if (status === '맞음' || status === '고침') correctCount++;
+                else if (status === '틀림') incorrectCount++;
+            });
+            const completedCount = correctCount + incorrectCount;
+            const uncheckedCount = totalQuestions - completedCount;
+            const completionRate = Math.round((completedCount / totalQuestions) * 100);
+            let status = '미시작';
+            if (completionRate > 0 && completionRate < 100) status = '진행 중';
+            else if (completionRate === 100) status = (incorrectCount > 0) ? '오답 정리' : '완료';
+            const incorrectQuestionList = Object.keys(studentResults).filter(qNum => studentResults[qNum] === '틀림').map(Number).sort((a, b) => a - b);
+            return { ...hw, completionRate, status, completedCount: correctCount, incorrectCount, uncheckedCount, incorrectQuestionList, submissionDate };
         });
-        const completedCount = correctCount + incorrectCount;
-        const uncheckedCount = totalQuestions - completedCount;
-        const completionRate = Math.round((completedCount / totalQuestions) * 100);
-        let status = '미시작';
-        if (completionRate > 0 && completionRate < 100) status = '진행 중';
-        else if (completionRate === 100) status = (incorrectCount > 0) ? '오답 정리' : '완료';
-        const incorrectQuestionList = Object.keys(studentResults).filter(qNum => studentResults[qNum] === '틀림').map(Number).sort((a, b) => a - b);
-        return { ...hw, completionRate, status, completedCount: correctCount, incorrectCount, uncheckedCount, incorrectQuestionList, submissionDate };
-    });
 };
 
 export const calculateDurationMinutes = (start, end) => {

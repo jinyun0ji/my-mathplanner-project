@@ -59,8 +59,13 @@ export default function StudentHome({
 
     const myHomeworkStats = useMemo(() => {
         if (!studentId) return [];
-        return calculateHomeworkStats(studentId, homeworkAssignments || [], homeworkResults || []);
-    }, [studentId, homeworkAssignments, homeworkResults]);
+        return calculateHomeworkStats(
+            studentId,
+            homeworkAssignments || [],
+            homeworkResults || [],
+            { activeViewerAuthUid: userId, studentAuthUid: student?.authUid, userId, students },
+        );
+    }, [studentId, homeworkAssignments, homeworkResults, student?.authUid, students, userId]);
 
     const myGradeComparison = useMemo(() => {
         if (!studentId) return [];

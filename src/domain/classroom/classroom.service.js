@@ -1,55 +1,83 @@
 import { isAssignmentAssignedToStudent } from '../homework/homework.service';
 
 export const buildClassroomStats = ({
-    attendanceLogs = [],
-    selectedClassId = null,
-    studentId = null,
-    homeworkAssignments = [],
-    homeworkResults = {},
-    tests = [],
-    grades = {}
+  attendanceLogs = [],
+  selectedClassId = null,
+  studentId = null,
+  homeworkAssignments = [],
+  homeworkResults = {},
+  tests = [],
+  grades = {},
 }) => {
-    const myAttendance = attendanceLogs.filter(log => log.classId === selectedClassId && log.studentId === studentId);
-    const presentCount = myAttendance.filter(l => ['출석', '동영상보강'].includes(l.status)).length;
-    const lateCount = myAttendance.filter(l => l.status === '지각').length;
-    const absentCount = myAttendance.filter(l => l.status === '결석').length;
-    const totalAttendance = myAttendance.length;
+  const myAttendance = attendanceLogs.filter(
+    (log) => log.classId === selectedClassId && log.studentId === studentId
+  );
 
-    const classHomeworks = homeworkAssignments.filter(
-        h => h.classId === selectedClassId && isAssignmentAssignedToStudent(h, studentId)
-    );
-    const unsubmittedCount = classHomeworks.filter(h => {
-        const result = homeworkResults?.[studentId]?.[h.id];
-        const resultMap = result?.results || result || {};
-        return !result || Object.keys(resultMap).length === 0;
-    }).length;
+  // ✅ 출결로 인정할 상태: 출석/동영상보강/지각
+  const COUNTED_STATUSES = new Set([
+    '출석',
+    '동영상보강',
+    '지각',
+    // (혹시 영어로 저장되는 경우 대비)
+    'present',
+    'video_makeup',
+    'late',
+    'tardy',
+  ]);
 
-    let unresolvedCount = 0;
-    classHomeworks.forEach(hw => {
-        const result = homeworkResults?.[studentId]?.[hw.id];
-        const resultMap = result?.results || result || {};
-        if (result) unresolvedCount += Object.values(resultMap).filter(status => status === '틀림').length;
-    });
+  const presentCount = myAttendance.filter((l) => COUNTED_STATUSES.has(l.status)).length;
+  const lateCount = myAttendance.filter((l) => l.status === '지각' || l.status === 'late' || l.status === 'tardy').length;
+  const absentCount = myAttendance.filter((l) => l.status === '결석' || l.status === 'absent').length;
+  const totalAttendance = myAttendance.length;
 
-    let gradeTrend = 'initial';
-    if (tests && grades) {
-        const classTests = tests.filter(t => t.classId === selectedClassId).sort((a, b) => new Date(a.date) - new Date(b.date));
-        const myScores = classTests.map(t => grades[studentId]?.[t.id]?.score).filter(s => s !== undefined && s !== null);
+  const classHomeworks = homeworkAssignments.filter(
+    (h) => h.classId === selectedClassId && isAssignmentAssignedToStudent(h, studentId)
+  );
 
-        if (myScores.length >= 2) {
-            const latest = myScores[myScores.length - 1];
-            const prev = myScores[myScores.length - 2];
-            if (latest > prev) gradeTrend = 'up';
-            else if (latest < prev) gradeTrend = 'down';
-            else gradeTrend = 'same';
-        } else if (myScores.length === 1) {
-            gradeTrend = 'initial';
-        }
+  const unsubmittedCount = classHomeworks.filter((h) => {
+    const result = homeworkResults?.[studentId]?.[h.id];
+    const resultMap = result?.results || result || {};
+    return !result || Object.keys(resultMap).length === 0;
+  }).length;
+
+  let unresolvedCount = 0;
+  classHomeworks.forEach((hw) => {
+    const result = homeworkResults?.[studentId]?.[hw.id];
+    const resultMap = result?.results || result || {};
+    if (result) unresolvedCount += Object.values(resultMap).filter((status) => status === '틀림').length;
+  });
+
+  let gradeTrend = 'initial';
+  if (tests && grades) {
+    const classTests = tests
+      .filter((t) => t.classId === selectedClassId)
+      .sort((a, b) => new Date(a.date) - new Date(b.date));
+
+    // NOTE: 기존 로직 유지 (score 기반)
+    const myScores = classTests
+      .map((t) => grades[studentId]?.[t.id]?.score)
+      .filter((s) => s !== undefined && s !== null);
+
+    if (myScores.length >= 2) {
+      const latest = myScores[myScores.length - 1];
+      const prev = myScores[myScores.length - 2];
+      if (latest > prev) gradeTrend = 'up';
+      else if (latest < prev) gradeTrend = 'down';
+      else gradeTrend = 'same';
+    } else if (myScores.length === 1) {
+      gradeTrend = 'initial';
     }
+  }
 
-    return {
-        attendance: { present: presentCount, late: lateCount, absent: absentCount, total: totalAttendance, logs: myAttendance },
-        homework: { unresolved: unresolvedCount, unsubmitted: unsubmittedCount },
-        grade: { trend: gradeTrend }
-    };
+  return {
+    attendance: {
+      present: presentCount,
+      late: lateCount,
+      absent: absentCount,
+      total: totalAttendance,
+      logs: myAttendance,
+    },
+    homework: { unresolved: unresolvedCount, unsubmitted: unsubmittedCount },
+    grade: { trend: gradeTrend },
+  };
 };
