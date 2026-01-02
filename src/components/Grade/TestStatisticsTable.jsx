@@ -9,9 +9,13 @@ export default function TestStatisticsTable({ test, stats, currentStudents }) {
         return Number.isFinite(value) ? value.toFixed(digits) : '-';
     };
     
-    const rankedStudents = currentStudents
+    const safeStats = stats || {};
+    const students = Array.isArray(currentStudents) ? currentStudents : [];
+    const rankList = Array.isArray(safeStats.rank) ? safeStats.rank : [];
+
+    const rankedStudents = students
         .map(student => {
-            const rankInfo = stats.rank.find(r => r.studentId === student.id);
+            const rankInfo = rankList.find(r => r.studentId === student.id);
             if (!rankInfo || rankInfo.score === null) return null;
             return {
                 name: student.name,
@@ -19,15 +23,15 @@ export default function TestStatisticsTable({ test, stats, currentStudents }) {
                 score: rankInfo.score,
             };
         })
-        .filter(r => r !== null) 
-        .sort((a, b) => a.rank - b.rank); 
+        .filter(r => r !== null)
+        .sort((a, b) => a.rank - b.rank);
 
     // 🚨 수정: 요약 통계 값과 색상 정의
     const summaryItems = [
-        { label: '평균 점수', value: formatStat(stats.average, 1), color: 'text-blue-600' },
-        { label: '최고 점수', value: formatStat(stats.maxScore, 1), color: 'text-green-600' },
-        { label: '최저 점수', value: formatStat(stats.minScore, 1), color: 'text-red-600' },
-        { label: '표준 편차', value: formatStat(stats.stdDev, 2), color: 'text-gray-700' },
+        { label: '평균 점수', value: formatStat(safeStats.average, 1), color: 'text-blue-600' },
+        { label: '최고 점수', value: formatStat(safeStats.maxScore, 1), color: 'text-green-600' },
+        { label: '최저 점수', value: formatStat(safeStats.minScore, 1), color: 'text-red-600' },
+        { label: '표준 편차', value: formatStat(safeStats.stdDev, 2), color: 'text-gray-700' },
     ];
 
     return (
@@ -63,19 +67,25 @@ export default function TestStatisticsTable({ test, stats, currentStudents }) {
                                 </tr>
                             </thead>
                             <tbody className="bg-white divide-y divide-gray-200">
-                                {Object.keys(stats.correctRates || {}).map((qNum) => {
-                                    const rate = stats.correctRates[qNum];
-                                    return (
-                                        <tr key={qNum} className="hover:bg-gray-50">
-                                            <td className="px-3 py-2 text-center font-medium text-gray-900">{qNum}번</td>
-                                            <td className="px-3 py-2 text-center font-bold">
-                                                <span className={`${rate >= 0.7 ? 'text-green-600' : rate >= 0.4 ? 'text-yellow-600' : 'text-red-600'}`}>
-                                                    {(rate * 100).toFixed(1)}%
-                                                </span>
-                                            </td>
-                                        </tr>
-                                    );
-                                })}
+                                {safeStats.correctRates && Object.keys(safeStats.correctRates).length > 0 ? (
+                                    Object.keys(safeStats.correctRates).map((qNum) => {
+                                        const rate = safeStats.correctRates[qNum];
+                                        return (
+                                            <tr key={qNum} className="hover:bg-gray-50">
+                                                <td className="px-3 py-2 text-center font-medium text-gray-900">{qNum}번</td>
+                                                <td className="px-3 py-2 text-center font-bold">
+                                                    <span className={`${rate >= 0.7 ? 'text-green-600' : rate >= 0.4 ? 'text-yellow-600' : 'text-red-600'}`}>
+                                                        {(rate * 100).toFixed(1)}%
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })
+                                ) : (
+                                    <tr>
+                                        <td colSpan="2" className="text-center py-4 text-gray-500">데이터 없음</td>
+                                    </tr>
+                                )}
                             </tbody>
                         </table>
                     </div>

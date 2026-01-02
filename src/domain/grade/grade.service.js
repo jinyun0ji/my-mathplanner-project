@@ -4,7 +4,8 @@ const isCorrectAnswer = (value) => {
 
 const getPerQuestionScore = (test, index) => {
     if (Array.isArray(test?.questionScores) && test.questionScores.length > 0) {
-        return Number(test.questionScores[index] ?? 0);
+        const value = test.questionScores[index];
+        if (Number.isFinite(Number(value))) return Number(value);
     }
 
     if (Number.isFinite(test?.maxScore) && Number.isFinite(test?.totalQuestions) && test.totalQuestions > 0) {
@@ -17,18 +18,16 @@ const getPerQuestionScore = (test, index) => {
 export const getTotalScore = (grade = {}, test = {}) => {
     if (!grade) return null;
 
-    const totalScore = Number(grade.totalScore);
-    if (Number.isFinite(totalScore)) return totalScore;
+    const answerMap = grade.answers || grade.correctCount;
+    if (answerMap && typeof answerMap === 'object' && !Array.isArray(answerMap)) {
+        const entries = Object.entries(answerMap);
+        if (entries.length === 0) return null;
 
-    if (grade.score === null && !grade.scores && !grade.questionResults && !grade.answers && !grade.correctCount) {
-        return null;
-    }
-
-    if (grade.scores && typeof grade.scores === 'object' && !Array.isArray(grade.scores)) {
-        const scoreValues = Object.values(grade.scores).map(Number).filter(Number.isFinite);
-        if (scoreValues.length > 0) {
-            return scoreValues.reduce((sum, value) => sum + value, 0);
-        }
+        return entries.reduce((sum, [questionNumber, value]) => {
+            if (!isCorrectAnswer(value)) return sum;
+            const index = Number(questionNumber) - 1;
+            return sum + getPerQuestionScore(test, Number.isFinite(index) ? index : 0);
+        }, 0);
     }
 
     if (Array.isArray(grade.questionResults) && grade.questionResults.length > 0) {
@@ -38,30 +37,27 @@ export const getTotalScore = (grade = {}, test = {}) => {
         }, 0);
     }
 
-    const answerMap = grade.answers || grade.correctCount;
-    if (answerMap && typeof answerMap === 'object' && !Array.isArray(answerMap)) {
-        const entries = Object.entries(answerMap);
-        if (entries.length === 0) return 0;
-
-        return entries.reduce((sum, [questionNumber, value]) => {
-            if (!isCorrectAnswer(value)) return sum;
-            const index = Number(questionNumber) - 1;
-            return sum + getPerQuestionScore(test, Number.isFinite(index) ? index : 0);
-        }, 0);
+    if (grade.scores && typeof grade.scores === 'object' && !Array.isArray(grade.scores)) {
+        const scoreValues = Object.values(grade.scores).map(Number).filter(Number.isFinite);
+        if (scoreValues.length > 0) {
+            return scoreValues.reduce((sum, value) => sum + value, 0);
+        }
     }
 
     return null;
 };
 
 const computeTestStatisticsInternal = (test, students, grades, classAverages) => {
-    if (!test || !students.length) {
+    const studentList = Array.isArray(students) ? students : [];
+    const gradeMap = grades || {};
+
+    if (!test || studentList.length === 0) {
         return { average: null, maxScore: null, minScore: null, stdDev: null, correctRates: {}, rank: [] };
     }
 
-    const scores = students.map(s => {
-        const grade = grades[s.id]?.[test.id];
-        return getTotalScore(grade, test);
-    }).filter(score => Number.isFinite(score));
+    const getStudentScore = (studentId) => getTotalScore(gradeMap[studentId]?.[test.id], test);
+
+    const scores = studentList.map(s => getStudentScore(s.id)).filter(score => Number.isFinite(score));
 
     if (scores.length === 0) {
         return { average: null, maxScore: null, minScore: null, stdDev: null, correctRates: {}, rank: [] };
@@ -73,14 +69,9 @@ const computeTestStatisticsInternal = (test, students, grades, classAverages) =>
     const variance = scores.reduce((sum, s) => sum + Math.pow(s - average, 2), 0) / scores.length;
     const stdDev = Math.sqrt(variance);
 
-    const attemptedStudents = students.filter(s => {
-        const grade = grades[s.id]?.[test.id];
-        const score = getTotalScore(grade, test);
-        return Number.isFinite(score);
-    });
+    const attemptedStudents = studentList.filter(s => Number.isFinite(getStudentScore(s.id)));
     const attemptedScores = attemptedStudents.map(s => ({
-        score: getTotalScore(grades[s.id]?.[test.id], test),
-        studentId: s.id,
+        score: getStudentScore(s.id),
         name: s.name
     }));
 
@@ -97,11 +88,13 @@ const computeTestStatisticsInternal = (test, students, grades, classAverages) =>
     const correctRates = {};
     const totalAttempted = attemptedStudents.length;
 
-    if (test.totalQuestions > 0 && totalAttempted > 0) {
-        for (let i = 1; i <= test.totalQuestions; i++) {
+    const totalQuestions = Number(test?.totalQuestions) || 0;
+
+    if (totalQuestions > 0 && totalAttempted > 0) {
+        for (let i = 1; i <= totalQuestions; i++) {
             let correctCount = 0;
             attemptedStudents.forEach(student => {
-                const grade = grades[student.id]?.[test.id] || {};
+                const grade = gradeMap[student.id]?.[test.id] || {};
                 const answerMap = grade.answers || grade.correctCount;
                 const status = answerMap?.[i.toString()];
                 if (isCorrectAnswer(status)) {

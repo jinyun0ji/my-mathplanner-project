@@ -112,13 +112,9 @@ export default function TestResultTable({ isOpen, onClose, test, studentsData, h
     };
 
     const calculateCurrentScore = useMemo(() => {
-        let score = 0;
-        Object.keys(resultMapping).forEach(qNum => {
-            const status = resultMapping[qNum];
-            if (status === '맞음') score += (test.questionScores[Number(qNum) - 1] || 0);
-        });
-        return score.toFixed(1);
-    }, [resultMapping, test.questionScores]);
+        const score = getTotalScore({ correctCount: resultMapping }, test);
+        return Number.isFinite(score) ? score.toFixed(1) : '-';
+    }, [resultMapping, test]);
     
     const handleSubmit = (isNoShow = false) => {
         if (!selectedStudentId) return;
@@ -209,7 +205,9 @@ export default function TestResultTable({ isOpen, onClose, test, studentsData, h
                                 <div className='grid grid-cols-10 gap-1'> 
                                     {Array.from({ length: test.totalQuestions }, (_, i) => i + 1).map(qNum => {
                                         const qIndex = qNum - 1;
-                                        const score = test.questionScores[qIndex] || 0;
+                                        const score = Array.isArray(test?.questionScores)
+                                            ? Number(test.questionScores[qIndex] ?? 0)
+                                            : 0;
                                         const status = resultMapping[qNum.toString()] || '미채점';
                                         const styleClass = getStatusStyle(status);
                                         

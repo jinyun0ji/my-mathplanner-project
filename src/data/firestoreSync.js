@@ -73,6 +73,16 @@ const fetchList = async (db, colName, setter, q, isCancelled, mapper = null) => 
     return items;
 };
 
+const warnOnQuestionScores = (tests = [], context = 'viewer') => {
+    tests.forEach((test) => {
+        const totalQuestions = Number(test?.totalQuestions) || 0;
+        const hasScores = Array.isArray(test?.questionScores);
+        if (!hasScores || test.questionScores.length < totalQuestions) {
+            console.warn(`[${context}] test missing questionScores`, test?.id);
+        }
+    });
+};
+
 const normalizeStudentUser = (user) => {
     if (!user || !isStudentRole(user.role)) return user;
     return {
@@ -143,7 +153,8 @@ export const loadStaffDataOnce = async ({
         }
 
         if (setTests && (shouldLoad('grades') || shouldLoad('lessons'))) {
-            await fetchList(db, 'tests', setTests, query(collection(db, 'tests'), orderBy('date', 'desc'), limit(200)), () => false);
+            const tests = await fetchList(db, 'tests', setTests, query(collection(db, 'tests'), orderBy('date', 'desc'), limit(200)), () => false);
+            warnOnQuestionScores(tests, 'staff');
         }
 
         if (setLessonLogs && shouldLoad('lessons')) {
@@ -472,6 +483,7 @@ export const loadViewerDataOnce = async ({
 
             viewerTests = testSnap.docs.map(d => ({ id: d.id, ...d.data() }));
             setTests?.(viewerTests);
+            warnOnQuestionScores(viewerTests, 'viewer');
         } else if (!isCancelled()) {
             setLessonLogs?.([]);
             setTests?.([]);
