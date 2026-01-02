@@ -1,6 +1,15 @@
 // src/pages/ParentHome.jsx
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { 
+import {
+    collection,
+    query,
+    where,
+    getDocs,
+    writeBatch,
+    doc,
+    serverTimestamp,
+} from 'firebase/firestore';
+import {
     ScheduleTab, MenuTab, BoardTab
 } from '../components/StudentTabs';
 import ParentClassroomView from './parent/ParentClassroomView';
@@ -14,6 +23,7 @@ import NotificationList from '../notifications/NotificationList';
 import openNotification from '../notifications/openNotification';
 import { useParentContext } from '../parent';
 import { sortClassesByStatus } from '../utils/classStatus';
+import { db } from '../firebase/client';
 
 // --- [컴포넌트] 학부모 전용 대시보드 ---
 const ParentDashboard = ({ 
@@ -269,7 +279,8 @@ export default function ParentHome({
     // 알림 관련
     const [isNotificationOpen, setIsNotificationOpen] = useState(false);
     const [visibleNotices, setVisibleNotices] = useState([]); 
-    const { notifications, hasUnread, unreadCount, markAllRead, lastReadAt, isLoading, isMetaLoading } = useNotifications(userId);
+    const viewerUid = activeChild?.authUid || userId;
+    const { notifications, hasUnread, unreadCount, lastReadAt, isLoading, isMetaLoading, setNotifications } = useNotifications(viewerUid);
 
     const myClinicLogs = useMemo(() => {
         if (!Array.isArray(clinicLogs) || !activeChildId) return [];
@@ -379,6 +390,40 @@ export default function ParentHome({
             },
         });
         setIsNotificationOpen(false);
+    };
+
+    const handleMarkAllRead = async () => {
+        console.log('[notifications] markAllRead clicked');
+
+        if (!viewerUid) {
+            console.warn('[notifications] no viewerUid');
+            return;
+        }
+
+        const q = query(
+            collection(db, 'notifications', viewerUid, 'items'),
+            where('isRead', '==', false)
+        );
+
+        const snap = await getDocs(q);
+        console.log('[notifications] unread docs =', snap.size);
+
+        if (snap.empty) return;
+
+        const batch = writeBatch(db);
+        snap.docs.forEach((d) => {
+            batch.update(doc(db, 'notifications', viewerUid, 'items', d.id), {
+                isRead: true,
+                readAt: serverTimestamp(),
+            });
+        });
+
+        await batch.commit();
+        console.log('[notifications] markAllRead committed');
+
+        setNotifications((prev) =>
+            prev.map((n) => ({ ...n, isRead: true, readAt: n.readAt || new Date() }))
+        );
     };
 
     const childAttendanceLogs = useMemo(() => {
@@ -1025,7 +1070,7 @@ export default function ParentHome({
                 onClose={() => setIsNotificationOpen(false)}
                 notifications={notifications}
                 onNotificationClick={handleNotificationClick}
-                onMarkAllRead={markAllRead}
+                onMarkAllRead={handleMarkAllRead}
                 unreadCount={unreadCount}
                 lastReadAt={lastReadAt}
                 isLoading={isLoading || isMetaLoading}

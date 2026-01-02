@@ -1,8 +1,17 @@
 // src/pages/StudentHome.jsx
 import React, { useState, useMemo, useEffect } from 'react';
-import { 
-    DashboardTab, ClassTab, ScheduleTab, LearningTab, MenuTab, 
-    BoardTab 
+import {
+    collection,
+    query,
+    where,
+    getDocs,
+    writeBatch,
+    doc,
+    serverTimestamp,
+} from 'firebase/firestore';
+import {
+    DashboardTab, ClassTab, ScheduleTab, LearningTab, MenuTab,
+    BoardTab
 } from '../components/StudentTabs';
 import ClassroomView from './student/ClassroomView';
 import StudentHeader from '../components/StudentHeader';
@@ -12,6 +21,7 @@ import NotificationsIcon from '@mui/icons-material/Notifications';
 import useNotifications from '../notifications/useNotifications';
 import NotificationList from '../notifications/NotificationList';
 import openNotification from '../notifications/openNotification';
+import { db } from '../firebase/client';
 
 export default function StudentHome({
     student, studentId, userId, students, classes, homeworkAssignments, homeworkResults,
@@ -28,8 +38,8 @@ export default function StudentHome({
     const [isNotificationOpen, setIsNotificationOpen] = useState(false);
     const [visibleNotices, setVisibleNotices] = useState([]); 
     const [targetMemo, setTargetMemo] = useState(null);
-    const notificationUid = userId || studentId;
-    const { notifications, hasUnread, unreadCount, markAllRead, lastReadAt, isLoading, isMetaLoading } = useNotifications(notificationUid);
+    const viewerUid = student?.authUid || userId;
+    const { notifications, hasUnread, unreadCount, lastReadAt, isLoading, isMetaLoading, setNotifications } = useNotifications(viewerUid);
 
     useEffect(() => {
         const now = new Date();
@@ -106,6 +116,40 @@ export default function StudentHome({
             },
         });
         setIsNotificationOpen(false);
+    };
+
+    const handleMarkAllRead = async () => {
+        console.log('[notifications] markAllRead clicked');
+
+        if (!viewerUid) {
+            console.warn('[notifications] no viewerUid');
+            return;
+        }
+
+        const q = query(
+            collection(db, 'notifications', viewerUid, 'items'),
+            where('isRead', '==', false)
+        );
+
+        const snap = await getDocs(q);
+        console.log('[notifications] unread docs =', snap.size);
+
+        if (snap.empty) return;
+
+        const batch = writeBatch(db);
+        snap.docs.forEach((d) => {
+            batch.update(doc(db, 'notifications', viewerUid, 'items', d.id), {
+                isRead: true,
+                readAt: serverTimestamp(),
+            });
+        });
+
+        await batch.commit();
+        console.log('[notifications] markAllRead committed');
+
+        setNotifications((prev) =>
+            prev.map((n) => ({ ...n, isRead: true, readAt: n.readAt || new Date() }))
+        );
     };
 
     const navItems = [
@@ -227,7 +271,7 @@ export default function StudentHome({
                     onClose={() => setIsNotificationOpen(false)}
                     notifications={notifications}
                     onNotificationClick={handleNotificationClick}
-                    onMarkAllRead={markAllRead}
+                    onMarkAllRead={handleMarkAllRead}
                     unreadCount={unreadCount}
                     lastReadAt={lastReadAt}
                     isLoading={isLoading || isMetaLoading}

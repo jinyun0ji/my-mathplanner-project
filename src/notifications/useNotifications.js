@@ -146,5 +146,6 @@ export default function useNotifications(uid, maxItems = DEFAULT_LIMIT) {
         lastReadAt,
         unreadCount,
         markAllRead,
+        setNotifications,
     };
 }
