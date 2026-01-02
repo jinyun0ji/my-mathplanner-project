@@ -21,6 +21,22 @@ export default function StudentManagement({
     const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
     const [selectedStudentSchedule, setSelectedStudentSchedule] = useState({ name: '', schedules: [] });
 
+    const shortId = (value) => {
+        if (!value) return '-';
+        const str = String(value);
+        if (str.length <= 14) return str;
+        return `${str.slice(0, 6)}…${str.slice(-4)}`;
+    };
+
+    const copyToClipboard = async (text) => {
+        if (!text) return;
+        try {
+            await navigator.clipboard.writeText(text);
+        } catch (error) {
+            console.error('copy failed', error);
+        }
+    };
+
     useEffect(() => {
         if (pendingQuickAction?.page === 'students' && pendingQuickAction.action === 'openStudentModal') {
             setStudentToEdit(null);
@@ -97,7 +113,7 @@ export default function StudentManagement({
                     <table className="min-w-full divide-y divide-gray-200">
                         <thead className="bg-gray-100">
                             <tr>
-                                {['이름', '학교', '학년', '상태', '수강 클래스', '연락처 (학생/학부모)', '등록일', '관리'].map(header => (
+                                {['이름', '문서ID', 'Auth UID', '학교', '학년', '상태', '수강 클래스', '연락처 (학생/학부모)', '등록일', '관리'].map(header => (
                                     <th key={header} className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">{header}</th>
                                 ))}
                             </tr>
@@ -127,6 +143,30 @@ export default function StudentManagement({
                                                     </span>
                                                 )}
                                             </div>
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-xs text-gray-600">
+                                            {student.id ? (
+                                                <button
+                                                    type="button"
+                                                    className="hover:underline"
+                                                    title={student.id}
+                                                    onClick={(e) => { e.stopPropagation(); copyToClipboard(student.id); }}
+                                                >
+                                                    {shortId(student.id)}
+                                                </button>
+                                            ) : '-'}
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-xs text-gray-600">
+                                            {student.authUid ? (
+                                                <button
+                                                    type="button"
+                                                    className="hover:underline"
+                                                    title={student.authUid}
+                                                    onClick={(e) => { e.stopPropagation(); copyToClipboard(student.authUid); }}
+                                                >
+                                                    {shortId(student.authUid)}
+                                                </button>
+                                            ) : '-'}
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{student.school}</td>
                                         {/* 학년 표시 수정 */}
@@ -289,6 +329,34 @@ export default function StudentManagement({
                                             <p className="font-medium text-gray-700">학생: {student.phone}</p>
                                             <p>학부모: {student.parentPhone}</p>
                                             <p className="text-gray-400">등록일 {student.registeredDate}</p>
+                                            <div className="flex flex-wrap gap-2 pt-1">
+                                                <div className="flex items-center gap-1 text-[11px] text-gray-600">
+                                                    <span className="font-semibold">문서ID</span>
+                                                    {student.id ? (
+                                                        <button
+                                                            type="button"
+                                                            className="hover:underline"
+                                                            title={student.id}
+                                                            onClick={(e) => { e.stopPropagation(); copyToClipboard(student.id); }}
+                                                        >
+                                                            {shortId(student.id)}
+                                                        </button>
+                                                    ) : '-'}
+                                                </div>
+                                                <div className="flex items-center gap-1 text-[11px] text-gray-600">
+                                                    <span className="font-semibold">Auth UID</span>
+                                                    {student.authUid ? (
+                                                        <button
+                                                            type="button"
+                                                            className="hover:underline"
+                                                            title={student.authUid}
+                                                            onClick={(e) => { e.stopPropagation(); copyToClipboard(student.authUid); }}
+                                                        >
+                                                            {shortId(student.authUid)}
+                                                        </button>
+                                                    ) : '-'}
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
                                     <div className="flex flex-col gap-2">
