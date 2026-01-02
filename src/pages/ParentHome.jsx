@@ -593,17 +593,29 @@ export default function ParentHome({
             .map((test) => {
                 const studentRecord = grades?.[activeChildId]?.[test.id] || {};
                 const studentScore = studentRecord.score ?? studentRecord.result ?? null;
-                const classAverage = test.average ?? test.classAverage;
+                const stats = classTestStats?.[test.id] || classTestStats?.[`${test.classId}_${test.id}`] || null;
+                const attemptedCount = Number.isFinite(stats?.attemptedCount)
+                    ? stats.attemptedCount
+                    : Number.isFinite(stats?.count)
+                        ? stats.count
+                        : null;
+                const classAverage = Number.isFinite(stats?.average)
+                    ? Math.round(stats.average)
+                    : (test.average ?? test.classAverage ?? null);
+                const classMax = Number.isFinite(stats?.maxScore) ? stats.maxScore : null;
                 return {
                     id: test.id,
                     name: test.name || '시험',
                     date: test.date,
                     studentScore,
                     classAverage,
+                    classMax,
+                    attemptedCount,
+                    stats,
                 };
             })
             .sort((a, b) => new Date(b.date) - new Date(a.date));
-    }, [tests, grades, activeChildId, selectedClassId]);
+    }, [tests, grades, activeChildId, selectedClassId, classTestStats]);
 
     // ✅ 리포트 데이터 생성 (현재 선택된 리포트 ID가 있을 때만)
     const activeReport = useMemo(() => {
@@ -1050,10 +1062,19 @@ export default function ParentHome({
                                                     {expandedSections.grades && (
                                                         <div className="divide-y divide-gray-100">
                                                             {testsBySelectedClass.map((test) => {
+                                                                const attemptedCount = Number.isFinite(test.attemptedCount) ? test.attemptedCount : null;
                                                                 const hasValidAverage = isValidNumber(test.classAverage);
-                                                                if (!hasValidAverage) {
-                                                                    console.error('[ParentReport] test class average missing', { classId: selectedClassId, testId: test.id });
-                                                                }
+                                                                const hasValidMax = isValidNumber(test.classMax);
+                                                                const statsText = (() => {
+                                                                    if (!test.stats) return '통계 준비 중';
+                                                                    if (attemptedCount === 0) return '반 평균 없음';
+
+                                                                    const parts = [];
+                                                                    if (hasValidAverage) parts.push(`평균 ${test.classAverage}점`);
+                                                                    if (hasValidMax) parts.push(`최고 ${test.classMax}점`);
+
+                                                                    return parts.length > 0 ? parts.join(' / ') : '통계 준비 중';
+                                                                })();
                                                                 return (
                                                                     <div key={test.id} className="p-4 space-y-2">
                                                                         <div className="flex items-center justify-between">
@@ -1065,7 +1086,7 @@ export default function ParentHome({
                                                                         </div>
                                                                         <div className="flex items-center justify-between text-xs text-gray-600">
                                                                             <span>반 평균</span>
-                                                                            <span>{hasValidAverage ? `${test.classAverage}점` : '반 평균 없음'}</span>
+                                                                            <span>{statsText}</span>
                                                                         </div>
                                                                     </div>
                                                                 );

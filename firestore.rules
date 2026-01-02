@@ -320,6 +320,11 @@ service cloud.firestore {
       allow read, list: if isSignedIn() && isMineByAnyKey(resource.data);
       allow write: if isSignedIn() && isMyStudentUid(pickStudentKey(request.resource.data));
     }
+    
+    match /videoMemos/{uid}/items/{memoId} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow create, update, delete: if request.auth != null && request.auth.uid == uid;
+    }
 
     match /externalSchedules/{docId} {
       allow read, list: if isStaffOrAdminOrTeacher()

@@ -497,28 +497,27 @@ export const loadViewerDataOnce = async ({
             setTests?.(viewerTests);
             warnOnQuestionScores(viewerTests, 'viewer');
 
-            // ✅ classTestStats 로드 (있으면만)
-            if (setClassTestStats) {
+             /* =========================
+               classTestStats (viewer: student/parent)
+               - stats are optional
+               - must NOT break viewer load
+            ========================= */
+            if (setClassTestStats && Array.isArray(viewerTests)) {
                 try {
-                    const statDocIds = Array.from(new Set(viewerTests.map((t) => `${t.classId}_${t.id}`))).slice(0, 80);
-                    const statSnapshots = await Promise.all(
-                        statDocIds.map((docId) =>
-                            run(`classTestStats get ${docId}`, () => getDoc(doc(db, 'classTestStats', docId))),
-                        ),
-                    );
+                    const statsMap = {};
 
-                    if (!isCancelled()) {
-                        const statsMap = {};
-                        statSnapshots.forEach((snap, index) => {
-                            if (!snap?.exists()) return;
-                            const data = snap.data() || {};
-                            const docId = statDocIds[index];
-                            const testId = data.testId || docId.split('_').slice(-1)[0];
-                            statsMap[docId] = { id: docId, ...data };
-                            statsMap[testId] = { id: docId, ...data };
-                        });
-                        setClassTestStats(statsMap);
+                    for (const t of viewerTests) {
+                        if (!t?.id || !t?.classId) continue;
+
+                        const statsId = `${t.classId}_${t.id}`;
+                        const snap = await getDoc(doc(db, 'classTestStats', statsId));
+
+                        if (snap.exists()) {
+                            statsMap[t.id] = snap.data();
+                        }
                     }
+
+                    if (!isCancelled()) setClassTestStats(statsMap);
                 } catch (e) {
                     console.error('[viewer] FAIL: classTestStats (skip)', e);
                     if (!isCancelled()) setClassTestStats({});
