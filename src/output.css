@@ -3009,6 +3009,10 @@ video {
   line-height: 1.25;
 }
 
+.leading-6{
+  line-height: 1.5rem;
+}
+
 .tracking-\[0\.2em\]{
   letter-spacing: 0.2em;
 }

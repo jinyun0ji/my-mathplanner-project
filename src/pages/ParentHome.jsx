@@ -13,7 +13,7 @@ import useNotifications from '../notifications/useNotifications';
 import NotificationList from '../notifications/NotificationList';
 import openNotification from '../notifications/openNotification';
 import { useParentContext } from '../parent';
-import { getDefaultClassId, sortClassesByStatus } from '../utils/classStatus';
+import { sortClassesByStatus } from '../utils/classStatus';
 
 // --- [컴포넌트] 학부모 전용 대시보드 ---
 const ParentDashboard = ({ 
@@ -199,27 +199,20 @@ export default function ParentHome({
 
     // 3. 상태 관리
     const [activeTab, setActiveTab] = useState('home');
-    const [selectedClassId, setSelectedClassId] = useState(null);
+    const [selectedClassroomId, setSelectedClassroomId] = useState(null);
      
     // ✅ 리포트 뷰 상태
+    const [reportViewMode, setReportViewMode] = useState('overview'); // 'overview' | 'byClass'
+    const [selectedClassId, setSelectedClassId] = useState(null);
+    const [expandedSections, setExpandedSections] = useState({ homework: false, grades: false });
     const [selectedReportId, setSelectedReportId] = useState(null);
-    const [visibleLessonCount, setVisibleLessonCount] = useState(2);
-    const [visibleClinicCount, setVisibleClinicCount] = useState(2);
 
     const isParent = true;
 
     const lessonSectionRef = useRef(null);
     const clinicSectionRef = useRef(null);
-    const metricsSectionRef = useRef(null);
-    const attendanceDetailRef = useRef(null);
-    const homeworkDetailRef = useRef(null);
-    const gradeDetailRef = useRef(null);
     const classStatusRef = useRef(null);
 
-    useEffect(() => {
-        setVisibleLessonCount(2);
-        setVisibleClinicCount(2);
-    }, [activeChildId]);
 
     const waitForActiveStudentSwitch = useCallback((studentId) => {
         if (!studentId || studentId === activeStudentId) {
@@ -249,10 +242,21 @@ export default function ParentHome({
 
     useEffect(() => {
         setActiveChildId(activeStudentId);
+        setSelectedClassroomId(null);
         setSelectedClassId(null);
         setSelectedReportId(null);
+        setExpandedSections({ homework: false, grades: false });
+        setReportViewMode('overview');
         setActiveTab('home');
     }, [activeStudentId]);
+
+    useEffect(() => {
+        if (activeTab === 'report') {
+            setReportViewMode('overview');
+            setSelectedClassId(null);
+            setExpandedSections({ homework: false, grades: false });
+        }
+    }, [activeTab]);
 
     // 알림 관련
     const [isNotificationOpen, setIsNotificationOpen] = useState(false);
@@ -375,47 +379,14 @@ export default function ParentHome({
             .sort((a, b) => new Date(b.date) - new Date(a.date));
     }, [attendanceLogs, activeChildId]);
 
-    const attendanceSummary = useMemo(() => {
-        const recent = childAttendanceLogs.slice(0, 4);
-        const presentCount = recent.filter(l => ['출석', '동영상보강'].includes(l.status)).length;
-        const rate = recent.length > 0 ? Math.round((presentCount / recent.length) * 100) : 100;
-        const lastStatus = recent[0]?.status || '기록 없음';
-        return { rate, presentCount, total: recent.length, lastStatus };
-    }, [childAttendanceLogs]);
-
-    const homeworkSummary = useMemo(() => {
-        const pending = myHomeworkStats.filter(hw => hw.status !== '완료').length;
-        const avgCompletion = myHomeworkStats.length > 0 
-            ? Math.round(myHomeworkStats.reduce((sum, hw) => sum + (hw.completionRate || 0), 0) / myHomeworkStats.length)
-            : 0;
-        const nextDue = [...myHomeworkStats]
-            .filter(hw => hw.status !== '완료' && hw.deadline)
-            .sort((a, b) => new Date(a.deadline) - new Date(b.deadline))[0];
-
-        return { pending, avgCompletion, nextDue };
-    }, [myHomeworkStats]);
-
-    const gradeSummary = useMemo(() => {
-        if (!myGradeComparison || myGradeComparison.length === 0) {
-            return { latest: null, diff: null, trend: '데이터 준비 중' };
-        }
-        const sorted = [...myGradeComparison].sort((a, b) => new Date(a.testDate) - new Date(b.testDate));
-        const latest = sorted[sorted.length - 1];
-        const prev = sorted[sorted.length - 2];
-        const diff = prev ? latest.studentScore - prev.studentScore : null;
-        let trend = '기록 시작';
-        if (diff !== null) {
-            trend = diff > 0 ? '상승 중' : diff < 0 ? '하락 주의' : '유지';
-        }
-        return { latest, diff, trend };
-    }, [myGradeComparison]);
-
     const myLessonLogs = useMemo(() => {
         const myClassIds = myClasses.map(c => c.id);
         return lessonLogs
             .filter(log => myClassIds.includes(log.classId))
             .sort((a, b) => new Date(b.date) - new Date(a.date));
     }, [lessonLogs, myClasses]);
+
+    const isValidNumber = (n) => typeof n === 'number' && Number.isFinite(n);
 
     const recentLessons = useMemo(() => {
         const contextData = { lessonLogs, attendanceLogs, homeworkAssignments, homeworkResults, tests, grades, classes };
@@ -425,6 +396,7 @@ export default function ParentHome({
                 const classInfo = classes.find((c) => String(c.id) === String(log.classId));
                 return {
                     id: log.id,
+                    classId: log.classId,
                     date: log.date,
                     className: classInfo?.name || '수업',
                     teacher: classInfo?.teacher || '담당 선생님',
@@ -434,42 +406,70 @@ export default function ParentHome({
                     testStatus: report?.testScore || '테스트 없음',
                 };
             })
-            .sort((a, b) => new Date(b.date) - new Date(a.date));
+            .sort((a, b) => new Date(b.date) - new Date(a.date))
+            .slice(0, 5);
     }, [myLessonLogs, activeChildId, lessonLogs, attendanceLogs, homeworkAssignments, homeworkResults, tests, grades, classes]);
 
-    // ✅ 변경: 반별 현황은 진행중 + 종강 포함
-    const allClassSummaries = useMemo(() => {
-        const build = (cls) => {
-            const latestAttendance = childAttendanceLogs.find(log => log.classId === cls.id);
-            const classHomeworks = myHomeworkStats.filter(hw => hw.classId === cls.id);
-            const pendingHomeworks = classHomeworks.filter(hw => hw.status !== '완료').length;
-            const completionRate = classHomeworks.length > 0 
-                ? Math.round(classHomeworks.reduce((sum, hw) => sum + (hw.completionRate || 0), 0) / classHomeworks.length)
-                : 0;
-            const classGrades = myGradeComparison.filter(g => (tests || []).find(t => t.id === g.testId)?.classId === cls.id);
-            const latestScore = classGrades[0];
-            const scoreDiff = classGrades.length > 1 ? classGrades[0].studentScore - classGrades[1].studentScore : null;
+    const classList = useMemo(() => {
+        const lessonsByClass = recentLessons.reduce((acc, cur) => {
+            acc[cur.classId] = acc[cur.classId] || [];
+            acc[cur.classId].push(cur.date);
+            return acc;
+        }, {});
 
+        const build = (cls, status) => {
+            const latestLessonDate = myLessonLogs.find((log) => log.classId === cls.id)?.date || lessonsByClass[cls.id]?.[0];
             return {
-                ...cls,
-                latestAttendance: latestAttendance?.status || '기록 없음',
-                pendingHomeworks,
-                completionRate,
-                latestScore,
-                scoreDiff
+                id: cls.id,
+                name: cls.name,
+                teacher: cls.teacher,
+                status,
+                latestLessonDate: latestLessonDate || '기록 없음',
             };
         };
 
-        return {
-            ongoing: ongoingClasses.map(build),
-            finished: finishedClasses.map(build),
-        };
-    }, [ongoingClasses, finishedClasses, childAttendanceLogs, myHomeworkStats, myGradeComparison, tests]);
+        return [
+            ...ongoingClasses.map((cls) => build(cls, 'ongoing')),
+            ...finishedClasses.map((cls) => build(cls, 'finished')),
+        ];
+    }, [ongoingClasses, finishedClasses, recentLessons, myLessonLogs]);
 
-    const defaultReportClassId = useMemo(
-        () => getDefaultClassId(ongoingClasses.length > 0 ? ongoingClasses : myClasses),
-        [ongoingClasses, myClasses]
-    );
+    const lessonsBySelectedClass = useMemo(() => {
+        if (!selectedClassId) return [];
+        return recentLessons.filter((lesson) => String(lesson.classId) === String(selectedClassId));
+    }, [recentLessons, selectedClassId]);
+
+    const homeworkBySelectedClass = useMemo(() => {
+        if (!selectedClassId) return [];
+        return myHomeworkStats
+            .filter((hw) => String(hw.classId) === String(selectedClassId))
+            .map((hw) => ({
+                id: hw.id,
+                title: hw.content || hw.title || '과제',
+                completionRate: hw.completionRate,
+                status: hw.status,
+                classAverage: hw.classAverage,
+            }));
+    }, [myHomeworkStats, selectedClassId]);
+
+    const testsBySelectedClass = useMemo(() => {
+        if (!selectedClassId) return [];
+        return (tests || [])
+            .filter((test) => String(test.classId) === String(selectedClassId))
+            .map((test) => {
+                const studentRecord = grades?.[activeChildId]?.[test.id] || {};
+                const studentScore = studentRecord.score ?? studentRecord.result ?? null;
+                const classAverage = test.average ?? test.classAverage;
+                return {
+                    id: test.id,
+                    name: test.name || '시험',
+                    date: test.date,
+                    studentScore,
+                    classAverage,
+                };
+            })
+            .sort((a, b) => new Date(b.date) - new Date(a.date));
+    }, [tests, grades, activeChildId, selectedClassId]);
 
     // ✅ 리포트 데이터 생성 (현재 선택된 리포트 ID가 있을 때만)
     const activeReport = useMemo(() => {
@@ -523,18 +523,18 @@ export default function ParentHome({
             <main className="flex-1 w-full max-w-md mx-auto p-4 pb-24 overflow-y-auto custom-scrollbar md:max-w-7xl">
                 {/* [라우팅 분기 1] 리포트 상세 화면 */}
                 {selectedReportId ? (
-                    <ParentSessionReport 
-                        report={activeReport} 
-                        onBack={() => setSelectedReportId(null)} 
+                    <ParentSessionReport
+                        report={activeReport}
+                        onBack={() => setSelectedReportId(null)}
                     />
-                ) : selectedClassId ? (
+                ) : selectedClassroomId ? (
                     /* [라우팅 분기 2] 강의실 화면 */
                     <ParentClassroomView 
                         classes={classes} lessonLogs={lessonLogs} attendanceLogs={attendanceLogs}
-                        selectedClassId={selectedClassId} setSelectedClassId={setSelectedClassId}
+                        selectedClassId={selectedClassroomId} setSelectedClassId={setSelectedClassroomId}
                         videoProgress={videoProgress} homeworkAssignments={homeworkAssignments} homeworkResults={homeworkResults}
                         tests={tests} grades={grades}
-                        onNavigateToTab={() => { setSelectedClassId(null); setActiveTab('report'); }}
+                        onNavigateToTab={() => { setSelectedClassroomId(null); setActiveTab('report'); }}
                         onOpenReport={(sessionId) => setSelectedReportId(sessionId)}
                         activeStudentName={activeChildName}
                     />
@@ -668,294 +668,284 @@ export default function ParentHome({
 
                         {activeTab === 'report' && (
                             <div className="space-y-6">
-                                <section className="bg-white rounded-3xl border border-gray-100 shadow-sm p-5 md:p-6">
-                                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                                        <div className="space-y-2">
-                                            <p className="text-[11px] font-semibold text-indigo-600 uppercase tracking-[0.2em]">학습 리포트</p>
-                                            <h2 className="text-2xl font-extrabold text-gray-900">{activeChildName} 최신 학습 리포트</h2>
-                                            <p className="text-sm text-gray-600">최근 수업과 클리닉을 중심으로 부모님이 바로 확인할 수 있도록 배치했어요.</p>
-                                        </div>
-                                        <div className="text-sm text-gray-500 space-y-1 text-right">
-                                            <p className="font-semibold text-gray-700">
-                                                출결 안정도 {attendanceSummary.total > 0 ? `${attendanceSummary.rate}% (${attendanceSummary.lastStatus})` : '데이터 없음'}
-                                            </p>
-                                            <p>과제 {homeworkSummary.pending > 0 ? `미완료 ${homeworkSummary.pending}건` : '모두 제출'}</p>
-                                            <p>성적 추이 {gradeSummary.trend}</p>
-                                        </div>
-                                    </div>
-                                </section>
-
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                                    {[{
-                                        key: 'attendance',
-                                        icon: 'user',
-                                        label: attendanceSummary.total > 0 ? `출결 안정도 • ${attendanceSummary.rate}%` : '출결 안정도 • 데이터 없음',
-                                        ref: attendanceDetailRef,
-                                    }, {
-                                        key: 'homework',
-                                        icon: 'fileText',
-                                        label: homeworkSummary.pending > 0 ? `과제 수행 • 미완료 ${homeworkSummary.pending}건` : '과제 수행 • 모두 완료',
-                                        ref: homeworkDetailRef,
-                                    }, {
-                                        key: 'grade',
-                                        icon: 'trendingUp',
-                                        label: gradeSummary.latest ? `최근 성적 • ${gradeSummary.latest.studentScore}점` : '최근 성적 • 데이터 준비 중',
-                                        ref: gradeDetailRef,
-                                    }].map(card => (
-                                        <button
-                                            key={card.key}
-                                            onClick={() => scrollToSection(card.ref)}
-                                            className="w-full flex items-center gap-3 p-4 rounded-2xl border border-gray-100 bg-white shadow-sm text-left hover:border-indigo-200 active:scale-95 transition"
-                                        >
-                                            <div className="p-2 rounded-lg bg-gray-50 text-indigo-700">
-                                                <Icon name={card.icon} className="w-5 h-5" />
-                                            </div>
-                                            <span className="text-sm font-semibold text-gray-800 truncate">{card.label}</span>
-                                        </button>
-                                    ))}
-                                </div>
-
-                                <section ref={lessonSectionRef} className="space-y-3">
-                                    <div className="flex items-center justify-between px-1">
-                                        <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                                            <Icon name="clipboard" className="w-5 h-5 text-indigo-600" />
-                                            최근 수업 리포트
-                                        </h3>
-                                        {myClasses.length > 0 && (
-                                            <button onClick={() => setSelectedClassId(defaultReportClassId)} className="text-xs text-indigo-600 font-semibold hover:underline">
-                                                반별 기록 보기
-                                            </button>
-                                        )}
-                                    </div>
-                                    <div className="space-y-3">
-                                        {recentLessons.slice(0, visibleLessonCount).map((lesson) => (
-                                            <button
-                                                key={lesson.id}
-                                                onClick={() => setSelectedReportId(lesson.id)}
-                                                className="w-full text-left bg-white border border-gray-100 rounded-2xl p-4 shadow-sm hover:border-indigo-200 hover:-translate-y-0.5 transition-all flex flex-col gap-2"
-                                            >
-                                                <div className="flex items-start justify-between gap-3">
-                                                    <div className="space-y-1 min-w-0">
-                                                        <p className="text-[11px] text-gray-400 font-semibold">{lesson.date} • {lesson.className}</p>
-                                                        <p className="text-sm text-gray-500">{lesson.teacher} 선생님</p>
-                                                        <p className="text-base font-bold text-gray-900 line-clamp-2">{lesson.comment}</p>
-                                                    </div>
-                                                    <Icon name="chevronRight" className="w-5 h-5 text-gray-300 flex-shrink-0" />
+                                {reportViewMode === 'overview' && (
+                                    <>
+                                        <section className="bg-white rounded-3xl border border-gray-100 shadow-sm p-5 md:p-6 space-y-4">
+                                            <div className="flex items-center justify-between gap-3">
+                                                <div>
+                                                    <p className="text-[11px] font-semibold text-indigo-600 uppercase tracking-[0.2em]">학습 리포트</p>
+                                                    <h2 className="text-2xl font-extrabold text-gray-900">{activeChildName} 리포트 요약</h2>
+                                                    <p className="text-sm text-gray-600">최근 기록 위주로 빠르게 확인하세요.</p>
                                                 </div>
-                                                <div className="flex flex-wrap gap-2 mt-1">
-                                                    <StatusPill icon="user" label={lesson.attendance} tone={['결석', '지각'].includes(lesson.attendance) ? 'warning' : 'info'} />
-                                                    <StatusPill icon="fileText" label={lesson.homeworkStatus} tone={['미제출', '일부 미완'].includes(lesson.homeworkStatus) ? 'warning' : 'default'} />
-                                                    <StatusPill icon="edit" label={lesson.testStatus} tone={lesson.testStatus === '미응시' ? 'warning' : 'default'} />
-                                                </div>
-                                            </button>
-                                        ))}
-                                        
-                                        {recentLessons.length === 0 && (
-                                            <div className="p-6 text-center bg-white border border-dashed border-gray-200 rounded-2xl text-sm text-gray-400">
-                                                아직 작성된 수업 리포트가 없습니다.
-                                            </div>
-                                        )}
-                                    </div>
-                                    {visibleLessonCount < recentLessons.length && (
-                                        <div className="pt-1">
-                                            <button
-                                                onClick={() => setVisibleLessonCount((prev) => prev + 2)}
-                                                className="w-full py-2 rounded-xl bg-indigo-50 text-indigo-700 text-sm font-semibold border border-indigo-100 hover:bg-indigo-100 active:scale-95 transition"
-                                            >
-                                                이전 수업 더 보기
-                                            </button>
-                                        </div>
-                                    )}
-                                </section>
-
-                                {isParent && (
-                                    <section ref={clinicSectionRef} className="space-y-3">
-                                        <div className="flex items-center justify-between px-1">
-                                            <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                                                <Icon name="stethoscope" className="w-5 h-5 text-indigo-600" />
-                                                클리닉 리포트
-                                            </h3>
-                                            <span className="text-xs text-gray-400 font-semibold">완료된 기록만 표시됩니다</span>
-                                        </div>
-                                        <div className="space-y-3">
-                                            {completedClinics.slice(0, visibleClinicCount).map((log) => (
-                                                <div key={log.id || `${log.date}-${log.checkOut}`} className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm space-y-2">
-                                                    <div className="flex items-start justify-between gap-3">
-                                                        <div className="space-y-0.5">
-                                                            <p className="text-[11px] text-gray-400 font-semibold">{log.date} • {log.checkOut}</p>
-                                                            <p className="text-sm font-semibold text-gray-800">{log.teacher || '담당 선생님'}</p>
-                                                            <p className="text-xs text-gray-500">{log.purpose || log.focus || '클리닉 목적이 기록됩니다.'}</p>
-                                                        </div>
-                                                        <StatusPill icon="check" label="완료" tone="info" />
-                                                    </div>
-                                                    <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-line">{log.comment || log.note || '선생님 코멘트가 곧 등록될 예정입니다.'}</p>
-                                                </div>
-                                            ))}
-
-                                            {completedClinics.length === 0 && (
-                                                <div className="p-6 text-center bg-white border border-dashed border-gray-200 rounded-2xl text-sm text-gray-400">
-                                                    아직 작성된 클리닉 리포트가 없습니다.
-                                                </div>
-                                            )}
-                                        </div>
-                                        {visibleClinicCount < completedClinics.length && (
-                                            <div className="pt-1">
                                                 <button
-                                                    onClick={() => setVisibleClinicCount((prev) => prev + 2)}
-                                                    className="w-full py-2 rounded-xl bg-gray-50 text-gray-700 text-sm font-semibold border border-gray-200 hover:bg-gray-100 active:scale-95 transition"
+                                                    onClick={() => { setReportViewMode('byClass'); setSelectedClassId(null); setExpandedSections({ homework: false, grades: false }); }}
+                                                    className="text-xs font-bold text-indigo-700 bg-indigo-50 px-3 py-1.5 rounded-full border border-indigo-100 hover:bg-indigo-100"
                                                 >
-                                                    이전 클리닉 더 보기
+                                                    반별 기록 보기
                                                 </button>
                                             </div>
-                                        )}
-                                    </section>
+                                        <div className="space-y-3" ref={lessonSectionRef}>
+                                                <div className="flex items-center justify-between">
+                                                    <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                                                        <Icon name="clipboard" className="w-5 h-5 text-indigo-600" />
+                                                        최근 수업 리포트
+                                                    </h3>
+                                                </div>
+                                                <div className="space-y-3">
+                                                    {recentLessons.slice(0, 5).map((lesson) => (
+                                                        <div key={lesson.id} className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm flex flex-col gap-2">
+                                                            <div className="flex items-start justify-between gap-3">
+                                                                <div className="space-y-1 min-w-0">
+                                                                    <p className="text-[11px] text-gray-400 font-semibold">{lesson.date} • {lesson.className}</p>
+                                                                    <p className="text-sm text-gray-500">{lesson.teacher} 선생님</p>
+                                                                    <p className="text-base font-bold text-gray-900 line-clamp-2">{lesson.comment}</p>
+                                                                </div>
+                                                            </div>
+                                                            <div className="flex flex-wrap gap-2 mt-1">
+                                                                <StatusPill icon="user" label={lesson.attendance} tone={['결석', '지각'].includes(lesson.attendance) ? 'warning' : 'info'} />
+                                                                <StatusPill icon="fileText" label={lesson.homeworkStatus} tone={['미제출', '일부 미완'].includes(lesson.homeworkStatus) ? 'warning' : 'default'} />
+                                                                <StatusPill icon="edit" label={lesson.testStatus} tone={lesson.testStatus === '미응시' ? 'warning' : 'default'} />
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                    {recentLessons.length === 0 && (
+                                                        <div className="p-6 text-center bg-white border border-dashed border-gray-200 rounded-2xl text-sm text-gray-400">
+                                                            아직 작성된 수업 리포트가 없습니다.
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </section>
+
+                                        <section ref={clinicSectionRef} className="space-y-3">
+                                            <div className="flex items-center justify-between px-1">
+                                                <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                                                    <Icon name="activity" className="w-5 h-5 text-indigo-600" />
+                                                    클리닉 리포트
+                                                </h3>
+                                                <span className="text-xs text-gray-400 font-semibold">최근 {completedClinics.length}개</span>
+                                            </div>
+                                            <div className="space-y-3">
+                                                {completedClinics.slice(0, 3).map((log) => (
+                                                    <div key={`${log.date}-${log.checkIn}`} className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm space-y-2">
+                                                        <div className="flex items-start justify-between gap-3">
+                                                            <div className="space-y-1">
+                                                                <p className="text-[11px] text-gray-400 font-semibold">{log.date} • {log.checkIn}~{log.checkOut}</p>
+                                                                <h4 className="font-bold text-gray-900 text-sm">학습 클리닉</h4>
+                                                                <p className="text-xs text-gray-500">{log.teacher || '담당 선생님'}</p>
+                                                            </div>
+                                                            <StatusPill icon="clock" label="완료" tone="info" />
+                                                        </div>
+                                                        <p className="text-sm text-gray-700 leading-6">{log.note || '코멘트가 아직 작성되지 않았습니다.'}</p>
+                                                    </div>
+                                                ))}
+                                                {completedClinics.length === 0 && (
+                                                    <div className="p-6 text-center bg-white border border-dashed border-gray-200 rounded-2xl text-sm text-gray-400">
+                                                        아직 클리닉 기록이 없습니다.
+                                                    </div>
+                                                )}
+                                            </div>
+                                            </section>
+
+                                        <section ref={classStatusRef} className="space-y-3">
+                                            <div className="flex items-center justify-between px-1">
+                                                <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                                                    <Icon name="barChart" className="w-5 h-5 text-indigo-600" />
+                                                    반별 현황
+                                                </h3>
+                                                <span className="text-xs text-gray-400 font-semibold">총 {classList.length}개 반</span>
+                                            </div>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                                                {classList.map((cls) => (
+                                                    <button
+                                                        key={cls.id}
+                                                        onClick={() => { setReportViewMode('byClass'); setSelectedClassId(cls.id); setExpandedSections({ homework: false, grades: false }); }}
+                                                        className="text-left bg-white border border-gray-100 rounded-2xl p-4 shadow-sm space-y-3 hover:border-indigo-200 transition"
+                                                    >
+                                                        <div className="flex items-start justify-between gap-3">
+                                                            <div className="space-y-1">
+                                                                <p className="text-[11px] text-gray-400 font-semibold">{cls.latestLessonDate}</p>
+                                                                <h4 className="font-bold text-gray-900">{cls.name}</h4>
+                                                                <p className="text-xs text-gray-500">{cls.teacher} 선생님</p>
+                                                            </div>
+                                                            <span className={`text-[11px] font-bold px-2 py-1 rounded-full ${cls.status === 'ongoing' ? 'bg-indigo-50 text-indigo-700 border border-indigo-100' : 'bg-gray-50 text-gray-600 border border-gray-200'}`}>
+                                                                {cls.status === 'ongoing' ? '진행중' : '종강'}
+                                                            </span>
+                                                        </div>
+                                                    </button>
+                                                ))}
+                                                {classList.length === 0 && (
+                                                    <div className="p-6 text-center bg-white border border-dashed border-gray-200 rounded-2xl text-sm text-gray-400">
+                                                        등록된 반이 없습니다.
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </section>
+                                    </>
                                 )}
-
-                                <section ref={metricsSectionRef} className="space-y-3">
-                                    <div className="flex items-center justify-between px-1">
-                                        <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                                            <Icon name="pieChart" className="w-5 h-5 text-indigo-600" />
-                                            학습 지표 상세
-                                        </h3>
-                                        <span className="text-xs text-gray-400 font-semibold">요약 카드의 확장 정보</span>
-                                    </div>
-                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                                        <div ref={attendanceDetailRef} className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm space-y-2">
-                                            <div className="flex items-center justify-between">
-                                                <p className="text-sm font-bold text-gray-900">출결 상세</p>
-                                                <StatusPill icon="user" label={attendanceSummary.lastStatus} tone={['결석', '지각'].includes(attendanceSummary.lastStatus) ? 'warning' : 'info'} />
-                                            </div>
-                                            <p className="text-xs text-gray-500">최근 4회 출석률 {attendanceSummary.total > 0 ? `${attendanceSummary.rate}%` : '데이터 없음'}</p>
-                                            <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                                                <div className="h-2 bg-indigo-500" style={{ width: `${Math.min(attendanceSummary.rate || 0, 100)}%` }} />
-                                            </div>
-                                            <p className="text-xs text-gray-500">출석 {attendanceSummary.presentCount}회 / 총 {attendanceSummary.total}회</p>
-                                        </div>
-
-                                        <div ref={homeworkDetailRef} className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm space-y-2">
-                                            <div className="flex items-center justify-between">
-                                                <p className="text-sm font-bold text-gray-900">과제 현황</p>
-                                                <StatusPill icon="clipboard" label={homeworkSummary.pending > 0 ? `미완료 ${homeworkSummary.pending}건` : '모두 완료'} tone={homeworkSummary.pending > 0 ? 'warning' : 'info'} />
-                                            </div>
-                                            <p className="text-xs text-gray-500">평균 완료율 {homeworkSummary.avgCompletion}%</p>
-                                            <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                                                <div className="h-2 bg-emerald-500" style={{ width: `${Math.min(homeworkSummary.avgCompletion || 0, 100)}%` }} />
-                                            </div>
-                                            <p className="text-xs text-gray-500">{homeworkSummary.nextDue ? `${homeworkSummary.nextDue.deadline} 마감 예정` : '다가오는 마감 없음'}</p>
-                                        </div>
-
-                                        <div ref={gradeDetailRef} className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm space-y-2">
-                                            <div className="flex items-center justify-between">
-                                                <p className="text-sm font-bold text-gray-900">성적 요약</p>
-                                                <StatusPill icon="trendingUp" label={gradeSummary.trend} tone={gradeSummary.diff !== null && gradeSummary.diff < 0 ? 'warning' : 'info'} />
-                                            </div>
-                                            <p className="text-xs text-gray-500">최근 성적 {gradeSummary.latest ? `${gradeSummary.latest.studentScore}점` : '데이터 없음'}</p>
-                                            <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                                                <div className="h-2 bg-indigo-500" style={{ width: `${Math.min(gradeSummary.latest?.studentScore || 0, 100)}%` }} />
-                                            </div>
-                                            <p className="text-xs text-gray-500">{gradeSummary.latest ? `${gradeSummary.latest.testName} · 반 평균 ${gradeSummary.latest.classAverage}점` : '시험 입력을 기다리고 있어요.'}</p>
-                                        </div>
-                                    </div>
-                                </section>
-
-                                {/* ✅ 변경: 반별 현황(종강 포함) */}
-                                <section ref={classStatusRef} className="space-y-3">
-                                    <div className="flex items-center justify-between px-1">
-                                        <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                                            <Icon name="barChart" className="w-5 h-5 text-indigo-600" />
-                                            반별 현황
-                                        </h3>
-                                        <span className="text-xs text-gray-400 font-semibold">
-                                            진행 중 {ongoingClasses.length}개 · 종강 {finishedClasses.length}개
-                                        </span>
-                                    </div>
-
-                                    {/* 진행 중 */}
-                                    {allClassSummaries.ongoing.length > 0 && (
-                                        <div className="space-y-2">
-                                            <div className="flex items-center gap-2 px-1">
-                                                <span className="text-xs font-bold text-indigo-700 bg-indigo-50 border border-indigo-100 px-2 py-1 rounded-full">
-                                                    진행 중
-                                                </span>
-                                                <span className="text-xs text-gray-400">{allClassSummaries.ongoing.length}개 반</span>
-                                            </div>
-                                            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-                                                {allClassSummaries.ongoing.map(cls => (
-                                                    <div key={cls.id} className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm space-y-3">
-                                                        <div className="flex items-start justify-between gap-3">
-                                                            <div className="space-y-1">
-                                                                <p className="text-[11px] text-gray-400 font-semibold">{cls.schedule.days.join(', ')} {cls.schedule.time}</p>
-                                                                <h4 className="font-bold text-gray-900">{cls.name}</h4>
-                                                                <p className="text-xs text-gray-500">{cls.teacher} 선생님</p>
+                                {reportViewMode === 'byClass' && (
+                                    <>
+                                        {!selectedClassId && (
+                                            <section className="space-y-3">
+                                                <div className="flex items-center justify-between px-1">
+                                                    <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                                                        <Icon name="barChart" className="w-5 h-5 text-indigo-600" />
+                                                        반별 기록 보기
+                                                    </h3>
+                                                    <button
+                                                        onClick={() => { setReportViewMode('overview'); setExpandedSections({ homework: false, grades: false }); }}
+                                                        className="text-xs text-gray-500 underline"
+                                                    >
+                                                        학습리포트로 돌아가기
+                                                    </button>
+                                                </div>
+                                                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                                                    {classList.map((cls) => (
+                                                        <button
+                                                            key={cls.id}
+                                                            onClick={() => { setSelectedClassId(cls.id); setExpandedSections({ homework: false, grades: false }); }}
+                                                            className="text-left bg-white border border-gray-100 rounded-2xl p-4 shadow-sm space-y-3 hover:border-indigo-200 transition"
+                                                        >
+                                                            <div className="flex items-start justify-between gap-3">
+                                                                <div className="space-y-1">
+                                                                    <p className="text-[11px] text-gray-400 font-semibold">{cls.latestLessonDate}</p>
+                                                                    <h4 className="font-bold text-gray-900">{cls.name}</h4>
+                                                                    <p className="text-xs text-gray-500">{cls.teacher} 선생님</p>
+                                                                </div>
+                                                                <span className={`text-[11px] font-bold px-2 py-1 rounded-full ${cls.status === 'ongoing' ? 'bg-indigo-50 text-indigo-700 border border-indigo-100' : 'bg-gray-50 text-gray-600 border border-gray-200'}`}>
+                                                                    {cls.status === 'ongoing' ? '진행중' : '종강'}
+                                                                </span>
                                                             </div>
-                                                            <button
-                                                                onClick={() => setSelectedClassId(cls.id)}
-                                                                className="text-[11px] font-bold text-indigo-600 bg-indigo-50 px-3 py-1 rounded-full border border-indigo-100 hover:bg-indigo-100 active:scale-95 transition"
-                                                            >
-                                                                강의실 열기
-                                                            </button>
-                                                        </div>
-                                                        <div className="flex flex-wrap gap-2">
-                                                            <StatusPill icon="user" label={`출결 ${cls.latestAttendance}`} tone={['결석', '지각'].includes(cls.latestAttendance) ? 'warning' : 'info'} />
-                                                            <StatusPill icon="clipboard" label={`과제 완료 ${cls.completionRate}%`} tone={cls.pendingHomeworks > 0 ? 'warning' : 'default'} />
-                                                            <StatusPill
-                                                                icon="trendingUp"
-                                                                label={cls.latestScore ? `최근 ${cls.latestScore.testName} ${cls.latestScore.studentScore}점` : '테스트 대기'}
-                                                                tone={cls.scoreDiff !== null && cls.scoreDiff < 0 ? 'warning' : 'default'}
-                                                            />
-                                                        </div>
-                                                        {cls.pendingHomeworks > 0 && (
-                                                            <p className="text-[11px] text-orange-600 bg-orange-50 px-3 py-2 rounded-xl border border-orange-100 font-semibold">
-                                                                미완료 과제 {cls.pendingHomeworks}건이 있습니다. 제출 여부를 확인해주세요.
-                                                            </p>
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </section>
+                                        )}
+
+                                        {selectedClassId && (
+                                            <section className="space-y-4">
+                                                <div className="flex flex-wrap items-center justify-between gap-3">
+                                                    <div className="flex items-center gap-2">
+                                                        <button
+                                                            onClick={() => { setSelectedClassId(null); setExpandedSections({ homework: false, grades: false }); }}
+                                                            className="text-xs text-gray-600 hover:underline flex items-center gap-1"
+                                                        >
+                                                            <Icon name="chevronLeft" className="w-4 h-4" /> 전체 반 목록으로 돌아가기
+                                                        </button>
+                                                        <button
+                                                            onClick={() => { setReportViewMode('overview'); setSelectedClassId(null); setExpandedSections({ homework: false, grades: false }); }}
+                                                            className="text-xs text-gray-400 underline"
+                                                        >
+                                                            학습리포트로 돌아가기
+                                                        </button>
+                                                    </div>
+                                                </div>
+
+                                                <div className="space-y-3">
+                                                    <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                                                        <Icon name="clipboard" className="w-5 h-5 text-indigo-600" />
+                                                        최근 수업 기록
+                                                    </h3>
+                                                    <div className="space-y-3">
+                                                        {lessonsBySelectedClass.map((lesson) => (
+                                                            <div key={lesson.id} className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm flex flex-col gap-2">
+                                                                <div className="flex items-start justify-between gap-3">
+                                                                    <div className="space-y-1 min-w-0">
+                                                                        <p className="text-[11px] text-gray-400 font-semibold">{lesson.date} • {lesson.className}</p>
+                                                                        <p className="text-sm text-gray-500">{lesson.teacher} 선생님</p>
+                                                                        <p className="text-base font-bold text-gray-900 line-clamp-2">{lesson.comment}</p>
+                                                                    </div>
+                                                                </div>
+                                                                <div className="flex flex-wrap gap-2 mt-1">
+                                                                    <StatusPill icon="user" label={lesson.attendance} tone={['결석', '지각'].includes(lesson.attendance) ? 'warning' : 'info'} />
+                                                                    <StatusPill icon="fileText" label={lesson.homeworkStatus} tone={['미제출', '일부 미완'].includes(lesson.homeworkStatus) ? 'warning' : 'default'} />
+                                                                    <StatusPill icon="edit" label={lesson.testStatus} tone={lesson.testStatus === '미응시' ? 'warning' : 'default'} />
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                        {lessonsBySelectedClass.length === 0 && (
+                                                            <div className="p-6 text-center bg-white border border-dashed border-gray-200 rounded-2xl text-sm text-gray-400">
+                                                                이 반의 수업 기록이 없습니다.
+                                                            </div>
                                                         )}
                                                     </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
+                                                </div>
 
-                                    {/* 종강 */}
-                                    {allClassSummaries.finished.length > 0 && (
-                                        <div className="space-y-2 pt-2">
-                                            <div className="flex items-center gap-2 px-1">
-                                                <span className="text-xs font-bold text-gray-700 bg-gray-50 border border-gray-200 px-2 py-1 rounded-full">
-                                                    종강
-                                                </span>
-                                                <span className="text-xs text-gray-400">{allClassSummaries.finished.length}개 반</span>
-                                            </div>
-                                            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-                                                {allClassSummaries.finished.map(cls => (
-                                                    <div key={cls.id} className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm space-y-3 opacity-[0.95]">
-                                                        <div className="flex items-start justify-between gap-3">
-                                                            <div className="space-y-1">
-                                                                <p className="text-[11px] text-gray-400 font-semibold">{cls.schedule.days.join(', ')} {cls.schedule.time}</p>
-                                                                <h4 className="font-bold text-gray-900">{cls.name}</h4>
-                                                                <p className="text-xs text-gray-500">{cls.teacher} 선생님</p>
-                                                            </div>
-                                                            <StatusPill icon="flag" label="종강" tone="default" />
+                                                <div className="bg-white border border-gray-100 rounded-2xl shadow-sm">
+                                                    <button
+                                                        className="w-full flex items-center justify-between px-4 py-3 text-left"
+                                                        onClick={() => setExpandedSections((prev) => ({ ...prev, homework: !prev.homework }))}
+                                                    >
+                                                        <span className="text-sm font-bold text-gray-900">과제 상세</span>
+                                                        <Icon name={expandedSections.homework ? 'chevronUp' : 'chevronDown'} className="w-4 h-4 text-gray-500" />
+                                                    </button>
+                                                    {expandedSections.homework && (
+                                                        <div className="divide-y divide-gray-100">
+                                                            {homeworkBySelectedClass.map((hw) => {
+                                                                const hasValidAverage = isValidNumber(hw.classAverage);
+                                                                if (!hasValidAverage) {
+                                                                    console.error('[ParentReport] homework class average missing', { classId: selectedClassId, assignmentId: hw.id });
+                                                                }
+                                                                return (
+                                                                    <div key={hw.id} className="p-4 space-y-2">
+                                                                        <div className="flex items-center justify-between">
+                                                                            <div>
+                                                                                <p className="text-sm font-bold text-gray-900">{hw.title}</p>
+                                                                                <p className="text-xs text-gray-500">상태 {hw.status}</p>
+                                                                            </div>
+                                                                            <span className="text-xs font-bold text-indigo-700 bg-indigo-50 px-3 py-1 rounded-full border border-indigo-100">{hw.completionRate}%</span>
+                                                                        </div>
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                            {homeworkBySelectedClass.length === 0 && (
+                                                                <div className="p-4 text-sm text-gray-500">과제 기록이 없습니다.</div>
+                                                            )}
                                                         </div>
-                                                        <div className="flex flex-wrap gap-2">
-                                                            <StatusPill icon="user" label={`출결 ${cls.latestAttendance}`} tone={['결석', '지각'].includes(cls.latestAttendance) ? 'warning' : 'info'} />
-                                                            <StatusPill icon="clipboard" label={`과제 완료 ${cls.completionRate}%`} tone={cls.pendingHomeworks > 0 ? 'warning' : 'default'} />
-                                                        </div>
-                                                        {cls.pendingHomeworks > 0 && (
-                                                            <p className="text-[11px] text-orange-600 bg-orange-50 px-3 py-2 rounded-xl border border-orange-100 font-semibold">
-                                                                종강 반에 미완료 과제 {cls.pendingHomeworks}건이 남아있습니다.
-                                                            </p>
-                                                        )}
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
+                                                    )}
+                                                </div>
 
-                                    {allClassSummaries.ongoing.length === 0 && allClassSummaries.finished.length === 0 && (
-                                        <div className="p-6 text-center bg-white border border-dashed border-gray-200 rounded-2xl text-sm text-gray-400">
-                                            등록된 반이 없습니다.
-                                        </div>
-                                    )}
-                                </section>
+                                                <div className="bg-white border border-gray-100 rounded-2xl shadow-sm">
+                                                    <button
+                                                        className="w-full flex items-center justify-between px-4 py-3 text-left"
+                                                        onClick={() => setExpandedSections((prev) => ({ ...prev, grades: !prev.grades }))}
+                                                    >
+                                                        <span className="text-sm font-bold text-gray-900">성적 상세</span>
+                                                        <Icon name={expandedSections.grades ? 'chevronUp' : 'chevronDown'} className="w-4 h-4 text-gray-500" />
+                                                    </button>
+                                                    {expandedSections.grades && (
+                                                        <div className="divide-y divide-gray-100">
+                                                            {testsBySelectedClass.map((test) => {
+                                                                const hasValidAverage = isValidNumber(test.classAverage);
+                                                                if (!hasValidAverage) {
+                                                                    console.error('[ParentReport] test class average missing', { classId: selectedClassId, testId: test.id });
+                                                                }
+                                                                return (
+                                                                    <div key={test.id} className="p-4 space-y-2">
+                                                                        <div className="flex items-center justify-between">
+                                                                            <div>
+                                                                                <p className="text-sm font-bold text-gray-900">{test.name}</p>
+                                                                                <p className="text-xs text-gray-500">{test.date}</p>
+                                                                            </div>
+                                                                            <span className="text-xs font-bold text-indigo-700 bg-indigo-50 px-3 py-1 rounded-full border border-indigo-100">{test.studentScore ?? '점수 없음'}</span>
+                                                                        </div>
+                                                                        <div className="flex items-center justify-between text-xs text-gray-600">
+                                                                            <span>반 평균</span>
+                                                                            <span>{hasValidAverage ? `${test.classAverage}점` : '반 평균 없음'}</span>
+                                                                        </div>
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                            {testsBySelectedClass.length === 0 && (
+                                                                <div className="p-4 text-sm text-gray-500">시험 기록이 없습니다.</div>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </section>
+                                        )}
+                                    </>
+                                )}
                             </div>
                         )}
 
