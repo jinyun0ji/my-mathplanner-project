@@ -47,17 +47,63 @@ export const getTotalScore = (grade = {}, test = {}) => {
     return null;
 };
 
-const computeTestStatisticsInternal = (test, students, grades, classAverages) => {
+export const getStudentClassStatus = (student = {}, classId) => {
+    if (!classId) return { status: 'active' };
+    const key = String(classId);
+    const status = student?.classStatuses?.[key];
+    if (status && typeof status === 'object') return status;
+    return { status: 'active' };
+};
+
+const parseTimestampToDate = (value) => {
+    if (!value) return null;
+    if (typeof value?.toDate === 'function') {
+        return value.toDate();
+    }
+    const asDate = new Date(value);
+    return Number.isNaN(asDate.getTime()) ? null : asDate;
+};
+
+export const isStudentEligibleForTest = (student = {}, test = {}, classId = null) => {
+    if (!student || !test) return false;
+    const resolvedClassId = classId || test.classId;
+    const classStatus = getStudentClassStatus(student, resolvedClassId);
+    if (classStatus.status === 'withdrawn') {
+        const testDate = test?.date ? new Date(test.date) : null;
+        const withdrawnAtDate = parseTimestampToDate(classStatus.withdrawnAt);
+
+        if (withdrawnAtDate && testDate && withdrawnAtDate <= testDate) {
+            return false;
+        }
+
+        if (!withdrawnAtDate) return false;
+    }
+
+    if (classStatus?.withdrawnAt && !test?.date) {
+        return false;
+    }
+
+    return true;
+};
+
+const computeTestStatisticsInternal = (test, students, grades, classAverages, classId = null) => {
     const studentList = Array.isArray(students) ? students : [];
     const gradeMap = grades || {};
+    const targetClassId = classId || test?.classId;
 
     if (!test || studentList.length === 0) {
         return { average: null, maxScore: null, minScore: null, stdDev: null, correctRates: {}, rank: [] };
     }
 
+    const eligibleStudents = studentList.filter((student) => isStudentEligibleForTest(student, test, targetClassId));
+
+    if (eligibleStudents.length === 0) {
+        return { average: null, maxScore: null, minScore: null, stdDev: null, correctRates: {}, rank: [] };
+    }
+
     const getStudentScore = (studentId) => getTotalScore(gradeMap[studentId]?.[test.id], test);
 
-    const scores = studentList.map(s => getStudentScore(s.id)).filter(score => Number.isFinite(score));
+    const scores = eligibleStudents.map(s => getStudentScore(s.id)).filter(score => Number.isFinite(score));
 
     if (scores.length === 0) {
         return { average: null, maxScore: null, minScore: null, stdDev: null, correctRates: {}, rank: [] };
@@ -69,10 +115,11 @@ const computeTestStatisticsInternal = (test, students, grades, classAverages) =>
     const variance = scores.reduce((sum, s) => sum + Math.pow(s - average, 2), 0) / scores.length;
     const stdDev = Math.sqrt(variance);
 
-    const attemptedStudents = studentList.filter(s => Number.isFinite(getStudentScore(s.id)));
+    const attemptedStudents = eligibleStudents.filter(s => Number.isFinite(getStudentScore(s.id)));
     const attemptedScores = attemptedStudents.map(s => ({
         score: getStudentScore(s.id),
-        name: s.name
+        name: s.name,
+        studentId: s.id,
     }));
 
     const rankedScores = attemptedScores.sort((a, b) => b.score - a.score);
@@ -137,6 +184,7 @@ export const getClassAverages = (classTests = [], classStudents = [], grades = {
         let totalScore = 0;
         let count = 0;
         classStudents.forEach(student => {
+            if (!isStudentEligibleForTest(student, test, test.classId)) return;
             const score = getTotalScore(grades[student.id]?.[test.id], test);
             if (Number.isFinite(score)) {
                 totalScore += score;
@@ -151,7 +199,7 @@ export const getClassAverages = (classTests = [], classStudents = [], grades = {
 export const getTestStatistics = (classTests = [], classStudents = [], grades = {}, classAverages = {}) => {
     const stats = {};
     classTests.forEach(test => {
-        stats[test.id] = computeTestStatisticsInternal(test, classStudents, grades, classAverages);
+        stats[test.id] = computeTestStatisticsInternal(test, classStudents, grades, classAverages, test?.classId);
     });
     return stats;
 };

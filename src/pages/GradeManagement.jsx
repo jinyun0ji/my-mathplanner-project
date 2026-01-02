@@ -344,6 +344,7 @@ export default function GradeManagement({
                                         classTests={classTests}
                                         grades={grades}
                                         classAverages={classAverages}
+                                        selectedClassId={selectedClassId}
                                     />
                                 </div>
                                 )}

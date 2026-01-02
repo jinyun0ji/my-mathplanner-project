@@ -466,6 +466,21 @@ export default function AppRoutes({ user, role, studentIds }) {
               classIds: nextClassIds,
               uid: data.uid || data.id || payload.authUid || null,
           };
+          const buildUpdatedClassStatuses = (existingStatuses = {}, classIds = []) => {
+              const map = { ...existingStatuses };
+              classIds.forEach((classId) => {
+                  const key = String(classId);
+                  const prevStatus = map[key] || {};
+                  map[key] = {
+                      ...prevStatus,
+                      status: 'active',
+                      withdrawnAt: null,
+                      withdrawnAtSession: null,
+                      joinedAt: prevStatus.joinedAt || serverTimestamp(),
+                  };
+              });
+              return map;
+          };
           if (studentPayload.role !== ROLE.STUDENT) {
               throw new Error('학생 정보만 저장할 수 있습니다.');
           }
@@ -477,6 +492,7 @@ export default function AppRoutes({ user, role, studentIds }) {
                   : (existingStudent?.classes || []);
               const classIdsToAdd = nextClassIds.filter((id) => !prevClassIds.includes(id));
               const classIdsToRemove = prevClassIds.filter((id) => !nextClassIds.includes(id));
+              const updatedClassStatuses = buildUpdatedClassStatuses(existingStudent?.classStatuses || {}, nextClassIds);
               const batch = writeBatch(db);
 
               classIdsToAdd.forEach((classId) => {
@@ -491,19 +507,22 @@ export default function AppRoutes({ user, role, studentIds }) {
               });
               batch.update(doc(db, 'users', data.id), {
                   ...studentPayload,
+                  classStatuses: updatedClassStatuses,
                   updatedAt: serverTimestamp(),
                   updatedBy: userId,
               });
               await batch.commit();
               console.log('학생 Firestore 저장 완료', data.id);
-              setStudents(prev => prev.map(s => s.id === data.id ? { ...s, ...studentPayload } : s));
+              setStudents(prev => prev.map(s => s.id === data.id ? { ...s, ...studentPayload, classStatuses: updatedClassStatuses } : s));
           } else {
               const docRef = doc(collection(db, 'users'));
               const resolvedUid = studentPayload.uid || docRef.id;
+              const createdClassStatuses = buildUpdatedClassStatuses({}, nextClassIds);
               const batch = writeBatch(db);
               batch.set(docRef, {
                   ...studentPayload,
                   uid: resolvedUid,
+                  classStatuses: createdClassStatuses,
                   createdAt: serverTimestamp(),
                   createdBy: userId,
                   updatedAt: serverTimestamp(),
@@ -518,7 +537,7 @@ export default function AppRoutes({ user, role, studentIds }) {
               }
               await batch.commit();
               console.log('학생 Firestore 저장 완료', docRef.id);
-              setStudents(prev => [...prev, { id: docRef.id, ...studentPayload, uid: resolvedUid }]);
+              setStudents(prev => [...prev, { id: docRef.id, ...studentPayload, uid: resolvedUid, classStatuses: createdClassStatuses }]);
           }
       } catch (error) {
           console.error('[Firestore WRITE ERROR]', error);
@@ -545,6 +564,67 @@ export default function AppRoutes({ user, role, studentIds }) {
           console.error('[Firestore WRITE ERROR]', error);
           alert('학생 삭제에 실패했습니다. 권한 또는 네트워크를 확인하세요.');
       }
+  };
+  const handleUpdateStudentClassStatus = async ({ studentId, classId, status }) => {
+      ensureFirestoreContext();
+      const student = students.find((s) => s.id === studentId);
+      if (!student) {
+          throw new Error('학생 정보를 찾을 수 없습니다.');
+      }
+      const classIdStr = String(classId);
+      const studentUid = student.uid || studentId;
+      const prevClassIds = Array.isArray(student.classIds)
+          ? student.classIds.map(String)
+          : (Array.isArray(student.classes) ? student.classes.map(String) : []);
+      let nextClassIds = [...prevClassIds];
+
+      const updates = {
+          updatedAt: serverTimestamp(),
+          updatedBy: userId,
+      };
+
+      if (status === 'withdrawn') {
+          nextClassIds = prevClassIds.filter((id) => id !== classIdStr);
+          updates.classIds = nextClassIds;
+          updates[`classStatuses.${classIdStr}.status`] = 'withdrawn';
+          updates[`classStatuses.${classIdStr}.withdrawnAt`] = serverTimestamp();
+          updates[`classStatuses.${classIdStr}.withdrawnAtSession`] = null;
+          await updateDoc(doc(db, 'classes', classIdStr), {
+              students: arrayRemove(studentUid),
+          });
+      } else if (status === 'active') {
+          if (!nextClassIds.includes(classIdStr)) {
+              nextClassIds = [...nextClassIds, classIdStr];
+          }
+          updates.classIds = nextClassIds;
+          updates[`classStatuses.${classIdStr}.status`] = 'active';
+          updates[`classStatuses.${classIdStr}.withdrawnAt`] = null;
+          updates[`classStatuses.${classIdStr}.withdrawnAtSession`] = null;
+          await updateDoc(doc(db, 'classes', classIdStr), {
+              students: arrayUnion(studentUid),
+          });
+      } else {
+          throw new Error('알 수 없는 상태입니다.');
+      }
+
+      await updateDoc(doc(db, 'users', studentId), updates);
+
+      setStudents((prev) => prev.map((s) => {
+          if (s.id !== studentId) return s;
+          const nextStatuses = { ...(s.classStatuses || {}) };
+          nextStatuses[classIdStr] = {
+              ...(nextStatuses[classIdStr] || {}),
+              status,
+              withdrawnAt: status === 'withdrawn' ? new Date() : null,
+              withdrawnAtSession: null,
+          };
+          return {
+              ...s,
+              classIds: nextClassIds,
+              classes: nextClassIds,
+              classStatuses: nextStatuses,
+          };
+      }));
   };
   const ensureFirestoreContext = () => {
       if (!db || !userId) {
@@ -1167,6 +1247,7 @@ export default function AppRoutes({ user, role, studentIds }) {
     externalSchedules, pendingQuickAction, clearPendingQuickAction: () => setPendingQuickAction(null), onQuickAction: handleQuickAction,
     onCreateStaffUser: isAdminRole(role) ? handleCreateStaffUser : null,
     onCreateLinkCode: isStaffRole(role) ? handleCreateLinkCode : null,
+    handleUpdateStudentClassStatus,
     userRole: role,
     userId,
   };

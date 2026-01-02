@@ -2,10 +2,10 @@
 
 import React from 'react';
 import { Icon } from '../../utils/helpers'; 
-import { getTotalScore } from '../../domain/grade/grade.service';
+import { getTotalScore, isStudentEligibleForTest } from '../../domain/grade/grade.service';
 
-export default function FullGradeTable({ classStudents, classTests, grades, classAverages }) {
-    
+export default function FullGradeTable({ classStudents, classTests, grades, classAverages, selectedClassId }) {
+
     return (
         <div className="bg-white p-6 rounded-xl shadow-md overflow-x-auto">
             <h4 className="text-lg font-bold mb-4 border-b pb-2">전체 시험 성적 상세</h4>
@@ -44,6 +44,16 @@ export default function FullGradeTable({ classStudents, classTests, grades, clas
                                     {student.name}
                                 </td>
                                 {classTests.map(test => {
+                                    const eligible = isStudentEligibleForTest(student, test, selectedClassId || test.classId);
+
+                                    if (!eligible) {
+                                        return (
+                                            <td key={test.id} className="px-4 py-2 whitespace-nowrap text-center text-gray-400">
+                                                <span className="font-semibold text-sm">해당 없음</span>
+                                            </td>
+                                        );
+                                    }
+                                    
                                     const scoreData = grades[student.id]?.[test.id] || {};
                                     const totalScore = getTotalScore(scoreData, test);
                                     const hasAnswers = Boolean(
@@ -58,9 +68,9 @@ export default function FullGradeTable({ classStudents, classTests, grades, clas
                                             : '-';
                                     
                                     return (
-                                        <td 
-                                            key={test.id} 
-                                            className="px-4 py-2 whitespace-nowrap text-center" 
+                                        <td
+                                            key={test.id}
+                                            className="px-4 py-2 whitespace-nowrap text-center"
                                         >
                                             <span className={`font-bold text-sm ${score === '미응시' ? 'text-red-500' : 'text-gray-800'}`}>
                                                 {score === '-' ? '-' : score}

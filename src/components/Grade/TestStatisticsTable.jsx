@@ -34,6 +34,10 @@ export default function TestStatisticsTable({ test, stats, currentStudents }) {
         { label: '표준 편차', value: formatStat(safeStats.stdDev, 2), color: 'text-gray-700' },
     ];
 
+    const hasSummaryData = summaryItems.some((item) => item.value !== '-');
+    const hasCorrectRates = safeStats.correctRates && Object.keys(safeStats.correctRates).length > 0;
+    const hasRanks = rankedStudents.length > 0;
+
     return (
         <div className="bg-white p-6 rounded-xl shadow-md space-y-4">
             <h2 className="text-xl font-bold text-gray-800 border-b pb-2 flex items-center">
@@ -51,6 +55,9 @@ export default function TestStatisticsTable({ test, stats, currentStudents }) {
                     </div>
                 ))}
             </div>
+             {!hasSummaryData && (
+                <p className="text-xs text-gray-500">데이터 없음</p>
+            )}
 
             {/* 🚨 수정: 문항별 정답률 & 학생 등수 좌우 배치 */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -67,7 +74,7 @@ export default function TestStatisticsTable({ test, stats, currentStudents }) {
                                 </tr>
                             </thead>
                             <tbody className="bg-white divide-y divide-gray-200">
-                                {safeStats.correctRates && Object.keys(safeStats.correctRates).length > 0 ? (
+                                {hasCorrectRates ? (
                                     Object.keys(safeStats.correctRates).map((qNum) => {
                                         const rate = safeStats.correctRates[qNum];
                                         return (
@@ -104,7 +111,7 @@ export default function TestStatisticsTable({ test, stats, currentStudents }) {
                                 </tr>
                             </thead>
                             <tbody className="bg-white divide-y divide-gray-200">
-                            {rankedStudents.length > 0 ? rankedStudents.map((student, index) => (
+                            {hasRanks ? rankedStudents.map((student, index) => (
                                 <tr key={index} className="hover:bg-gray-50">
                                     <td className="px-3 py-2 text-center font-bold text-gray-800">
                                         {student.rank}

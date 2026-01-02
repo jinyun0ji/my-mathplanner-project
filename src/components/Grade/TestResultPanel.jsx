@@ -2,10 +2,11 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Icon } from '../../utils/helpers';
+import { isStudentEligibleForTest } from '../../domain/grade/grade.service';
 // Modal은 GradeManagement.jsx에서 사용하므로 여기서는 제거하거나 유지해도 무방
 
-export default function TestResultPanel({ 
-    test, studentsData, handleUpdateGrade, grades, onSave 
+export default function TestResultPanel({
+    test, studentsData, handleUpdateGrade, grades, onSave, selectedClassId
 }) {
     
     // ref를 사용하여 모든 입력 필드에 접근
@@ -30,9 +31,17 @@ export default function TestResultPanel({
 
 
     // 초기 상태 계산 로직
+    const isEligibleForTest = useCallback((student) => {
+        return isStudentEligibleForTest(student, test, selectedClassId || test?.classId);
+    }, [test, selectedClassId]);
+
     const initializeGrades = useCallback(() => {
         return studentsData.reduce((acc, student) => {
-            // App.jsx의 initialGrades 구조를 참고하여 데이터 로딩
+            if (!isEligibleForTest(student)) {
+                acc[student.id] = { scores: Array(test.totalQuestions).fill(null), comment: '' };
+                return acc;
+            }
+
             const studentGrade = grades[student.id]?.[test.id] || { correctCount: {}, comment: '' };
 
             const initialScores = Array(test.totalQuestions).fill(null);
@@ -59,7 +68,7 @@ export default function TestResultPanel({
             };
             return acc;
         }, {});
-    }, [studentsData, grades, test.id, test.totalQuestions]);
+    }, [studentsData, grades, test.id, test.totalQuestions, isEligibleForTest]);
     
 
     const [currentGrades, setCurrentGrades] = useState(initializeGrades);
@@ -77,11 +86,15 @@ export default function TestResultPanel({
         const newCalculatedScores = {};
         studentsData.forEach(student => {
             const scores = currentGrades[student.id]?.scores || [];
+            if (!isEligibleForTest(student)) {
+                newCalculatedScores[student.id] = null;
+                return;
+            }
             // 미응시 상태 (null)가 아닌 경우에만 점수 계산
             newCalculatedScores[student.id] = calculateTotalScore(scores);
         });
         setCalculatedScores(newCalculatedScores);
-    }, [currentGrades, studentsData, calculateTotalScore]);
+    }, [currentGrades, studentsData, calculateTotalScore, isEligibleForTest]);
 
 
     // 문항 결과 변경 핸들러
@@ -160,20 +173,21 @@ export default function TestResultPanel({
     // 점수 저장 핸들러 (모달 닫지 않음)
     const handleSave = () => {
         studentsData.forEach(student => {
+            if (!isEligibleForTest(student)) return;
             const finalGrades = currentGrades[student.id];
 
             const resultMapping = finalGrades.scores.reduce((acc, status, index) => {
                 if (status !== null) {
                     // 1: 맞음 (정답/고침), 0: 틀림
-                    acc[(index + 1).toString()] = status; 
+                    acc[(index + 1).toString()] = status;
                 }
                 return acc;
             }, {});
 
             handleUpdateGrade(
-                student.id, 
-                test.id, 
-                resultMapping, 
+                student.id,
+                test.id,
+                resultMapping,
                 finalGrades.comment // ✅ 코멘트 전달
             );
         });
@@ -191,6 +205,7 @@ export default function TestResultPanel({
         }
 
         studentsData.forEach(student => {
+            if (!isEligibleForTest(student)) return;
             // App.jsx의 handleUpdateGrade 로직에 따라, '미응시' 스트링을 전달하여 처리
             handleUpdateGrade(
                 student.id, 
@@ -233,22 +248,32 @@ export default function TestResultPanel({
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
                         {studentsData.map(student => {
+                            const eligible = isEligibleForTest(student);
                             const gradeData = grades[student.id]?.[test.id];
                             const isAbsent =
                                 !gradeData?.correctCount ||
                                 Object.keys(gradeData.correctCount).length === 0;
-                            const totalScoreText = isAbsent
-                                ? '미응시'
-                                : (Number.isFinite(calculatedScores[student.id])
-                                    ? calculatedScores[student.id].toFixed(1)
-                                    : '-');
+                            const totalScoreText = !eligible
+                                ? '해당 없음'
+                                : isAbsent
+                                    ? '미응시'
+                                    : (Number.isFinite(calculatedScores[student.id])
+                                        ? calculatedScores[student.id].toFixed(1)
+                                        : '-');
 
                             return (
                                 <tr key={student.id} className={`hover:bg-gray-50 ${isAbsent ? 'bg-red-50/50' : ''}`}>
-                                    <td className="px-3 py-2 font-medium text-gray-900 sticky left-0 bg-white hover:bg-gray-50 border-r text-sm">{student.name}</td>
-                                    
+                                    <td className="px-3 py-2 font-medium text-gray-900 sticky left-0 bg-white hover:bg-gray-50 border-r text-sm flex items-center gap-2">
+                                    <span>{student.name}</span>
+                                    {!eligible && (
+                                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 border border-gray-200">
+                                            해당 없음(수강 종료)
+                                        </span>
+                                    )}
+                                </td>
+
                                     <td className="px-3 py-2 text-center font-bold text-base text-blue-600">
-                                        <span className={isAbsent ? 'text-red-500' : 'text-blue-600'}>
+                                        <span className={`${!eligible ? 'text-gray-400' : (isAbsent ? 'text-red-500' : 'text-blue-600')}`}>
                                             {totalScoreText}
                                         </span>
                                     </td>
@@ -263,14 +288,14 @@ export default function TestResultPanel({
                                                     value={status !== null ? (status === 1 ? '1' : '2') : ''} 
                                                     onKeyDown={(e) => handleKeyDown(e, student.id, i)}
                                                     maxLength="1"
-                                                    className={`w-8 h-6 text-center border rounded-md font-bold text-sm 
+                                                    className={`w-8 h-6 text-center border rounded-md font-bold text-sm
                                                         focus:ring-2 focus:ring-blue-500 transition duration-100
-                                                        ${isAbsent ? 'bg-gray-100 border-gray-300 text-gray-400 cursor-not-allowed' :
-                                                          status === 1 ? 'bg-green-100 border-green-400 text-green-700' : 
+                                                        ${(!eligible || isAbsent) ? 'bg-gray-100 border-gray-300 text-gray-400 cursor-not-allowed' :
+                                                          status === 1 ? 'bg-green-100 border-green-400 text-green-700' :
                                                           status === 0 ? 'bg-red-100 border-red-400 text-red-700' : 'border-gray-300 text-gray-700'}`
                                                     }
                                                     placeholder="-"
-                                                    disabled={isAbsent} // 미응시 처리 시 입력 비활성화
+                                                    disabled={isAbsent || !eligible} // 미응시 또는 퇴원 처리 시 입력 비활성화
                                                 />
                                             </td>
                                         );
@@ -281,8 +306,9 @@ export default function TestResultPanel({
                                             type="text"
                                             value={currentGrades[student.id]?.comment || ''}
                                             onChange={(e) => handleCommentChange(student.id, e.target.value)}
-                                            className="w-full border rounded-md px-2 py-1 text-sm focus:ring-1 focus:ring-blue-500"
+                                            className="w-full border rounded-md px-2 py-1 text-sm focus:ring-1 focus:ring-blue-500 disabled:bg-gray-100"
                                             placeholder="특이사항 입력"
+                                            disabled={!eligible}
                                         />
                                     </td>
                                 </tr>

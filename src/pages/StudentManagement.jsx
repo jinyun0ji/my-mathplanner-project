@@ -5,13 +5,14 @@ import { StudentFormModal } from '../utils/modals/StudentFormModal';
 import { MemoModal } from '../utils/modals/MemoModal';
 import { Modal } from '../components/common/Modal'; 
 
-export default function StudentManagement({ 
-    students, classes, getClassesNames, handleSaveStudent, handleDeleteStudent, 
+export default function StudentManagement({
+    students, classes, getClassesNames, handleSaveStudent, handleDeleteStudent,
     attendanceLogs, studentMemos, handleSaveMemo, handlePageChange,
     studentSearchTerm, setStudentSearchTerm,
     externalSchedules,
     pendingQuickAction,
-    clearPendingQuickAction
+    clearPendingQuickAction,
+    handleUpdateStudentClassStatus
 }) {
     const [isStudentModalOpen, setIsStudentModalOpen] = useState(false);
     const [studentToEdit, setStudentToEdit] = useState(null);
@@ -55,6 +56,18 @@ export default function StudentManagement({
         setScheduleModalOpen(true);
     };
 
+    const handleWithdrawClick = (student, classId) => {
+        if (!handleUpdateStudentClassStatus) return;
+        const confirmed = window.confirm('퇴원 처리하면 수강중 목록에서 제거되고, 기존 기록은 유지됩니다. 진행할까요?');
+        if (!confirmed) return;
+        handleUpdateStudentClassStatus({ studentId: student.id, classId, status: 'withdrawn' });
+    };
+
+    const handleRestoreClick = (student, classId) => {
+        if (!handleUpdateStudentClassStatus) return;
+        handleUpdateStudentClassStatus({ studentId: student.id, classId, status: 'active' });
+    };
+
     return (
         <div className="space-y-6">
             <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
@@ -93,6 +106,15 @@ export default function StudentManagement({
                             {filteredStudents.map(student => {
                                 // ✅ [추가] 해당 학생의 타학원 스케줄 존재 여부 확인
                                 const hasExternal = externalSchedules?.some(s => s.studentId === student.id);
+
+                                const classStatusMap = student.classStatuses || {};
+                                const activeClassIds = Array.isArray(student.classes)
+                                    ? student.classes
+                                    : (Array.isArray(student.classIds) ? student.classIds : []);
+                                const withdrawnClassIds = Object.entries(classStatusMap)
+                                    .filter(([, value]) => value?.status === 'withdrawn')
+                                    .map(([id]) => id);
+                                const getClassName = (classId) => classes.find((cls) => String(cls.id) === String(classId))?.name || classId;
                                 
                                 return (
                                     <tr key={student.id} className="hover:bg-indigo-50 cursor-pointer transition duration-100" onClick={() => handlePageChange('students', student.id)}>
@@ -109,7 +131,42 @@ export default function StudentManagement({
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{student.school}</td>
                                         {/* 학년 표시 수정 */}
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{student.grade}</td>
-                                        <td className={`px-6 py-4 whitespace-nowrap text-sm font-bold ${student.status === '재원생' ? 'text-green-700' : 'text-gray-500'}`}>{student.status}</td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                                            <div className="flex flex-wrap gap-2">
+                                                {activeClassIds.length > 0 ? activeClassIds.map((classId) => (
+                                                    <div key={classId} className="flex items-center gap-1 px-2 py-1 rounded-full bg-indigo-50 text-indigo-700 text-xs font-semibold border border-indigo-100">
+                                                        <span>{getClassName(classId)}</span>
+                                                        <button
+                                                            type="button"
+                                                            onClick={(e) => { e.stopPropagation(); handleWithdrawClick(student, classId); }}
+                                                            className="text-[10px] text-indigo-700 hover:text-indigo-900"
+                                                        >
+                                                            퇴원 처리
+                                                        </button>
+                                                    </div>
+                                                )) : <span className="text-xs text-gray-400">수강 정보 없음</span>}
+                                            </div>
+                                            {withdrawnClassIds.length > 0 && (
+                                                <div className="mt-2 text-xs text-gray-500 space-y-1">
+                                                    <p className="font-semibold text-gray-600">종료된 클래스</p>
+                                                    <div className="flex flex-wrap gap-2">
+                                                        {withdrawnClassIds.map((classId) => (
+                                                            <div key={classId} className="flex items-center gap-1 px-2 py-1 rounded-full bg-gray-100 text-gray-700 border border-gray-200">
+                                                                <span>{getClassName(classId)}</span>
+                                                                <span className="text-[10px] font-semibold text-gray-500">수강 종료</span>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={(e) => { e.stopPropagation(); handleRestoreClick(student, classId); }}
+                                                                    className="text-[10px] text-indigo-600 hover:text-indigo-800"
+                                                                >
+                                                                    복원
+                                                                </button>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{getClassesNames(student.classes)}</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm"><div className="flex flex-col"><span className="text-gray-900 font-medium">{student.phone}</span><span className="text-gray-400 text-xs">부모: {student.parentPhone}</span></div></td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{student.registeredDate}</td>
@@ -165,6 +222,14 @@ export default function StudentManagement({
                 <div className="grid gap-3 md:hidden">
                     {filteredStudents.map(student => {
                         const hasExternal = externalSchedules?.some(s => s.studentId === student.id);
+                        const classStatusMap = student.classStatuses || {};
+                        const activeClassIds = Array.isArray(student.classes)
+                            ? student.classes
+                            : (Array.isArray(student.classIds) ? student.classIds : []);
+                        const withdrawnClassIds = Object.entries(classStatusMap)
+                            .filter(([, value]) => value?.status === 'withdrawn')
+                            .map(([id]) => id);
+                        const getClassName = (classId) => classes.find((cls) => String(cls.id) === String(classId))?.name || classId;
                         return (
                             <div 
                                 key={student.id}
@@ -185,7 +250,41 @@ export default function StudentManagement({
                                             </span>
                                         </div>
                                         <p className="text-xs text-gray-500 mt-1">{student.school} • {student.grade}</p>
-                                        <p className="text-sm text-gray-700 mt-2 leading-snug">{getClassesNames(student.classes) || '수강 정보 없음'}</p>
+                                        <div className="mt-2 space-y-1">
+                                            <div className="flex flex-wrap gap-2 text-sm text-gray-700 leading-snug">
+                                                {activeClassIds.length > 0 ? activeClassIds.map((classId) => (
+                                                    <span key={classId} className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-indigo-50 text-indigo-700 text-xs font-semibold border border-indigo-100">
+                                                        {getClassName(classId)}
+                                                        <button
+                                                            type="button"
+                                                            onClick={(e) => { e.stopPropagation(); handleWithdrawClick(student, classId); }}
+                                                            className="text-[10px] text-indigo-700"
+                                                        >
+                                                            퇴원 처리
+                                                        </button>
+                                                    </span>
+                                                )) : <span className="text-xs text-gray-400">수강 정보 없음</span>}
+                                            </div>
+                                            {withdrawnClassIds.length > 0 && (
+                                                <div className="text-[11px] text-gray-500">
+                                                    <p className="font-semibold text-gray-600">종료된 클래스</p>
+                                                    <div className="flex flex-wrap gap-2 mt-1">
+                                                        {withdrawnClassIds.map((classId) => (
+                                                            <span key={classId} className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-gray-100 text-gray-700 border border-gray-200">
+                                                                {getClassName(classId)}
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={(e) => { e.stopPropagation(); handleRestoreClick(student, classId); }}
+                                                                    className="text-[10px] text-indigo-600"
+                                                                >
+                                                                    복원
+                                                                </button>
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
                                         <div className="mt-2 space-y-1 text-xs text-gray-500">
                                             <p className="font-medium text-gray-700">학생: {student.phone}</p>
                                             <p>학부모: {student.parentPhone}</p>
