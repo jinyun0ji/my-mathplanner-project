@@ -474,30 +474,37 @@ export default function ParentHome({
             return;
         }
 
-        const q = query(
-            collection(db, 'notifications', viewerUid, 'items'),
-            where('isRead', '==', false)
-        );
+        try {
+            const q = query(
+                collection(db, 'notifications', viewerUid, 'items'),
+                where('isRead', '==', false)
+            );
 
-        const snap = await getDocs(q);
-        console.log('[notifications] unread docs =', snap.size);
+            const snap = await getDocs(q);
+            console.log('[notifications] unread docs =', snap.size);
 
-        if (snap.empty) return;
+            if (snap.empty) return;
 
-        const batch = writeBatch(db);
-        snap.docs.forEach((d) => {
-            batch.update(doc(db, 'notifications', viewerUid, 'items', d.id), {
-                isRead: true,
-                readAt: serverTimestamp(),
+            const batch = writeBatch(db);
+            snap.docs.forEach((d) => {
+                batch.update(doc(db, 'notifications', viewerUid, 'items', d.id), {
+                    isRead: true,
+                    readAt: serverTimestamp(),
+                    updatedAt: serverTimestamp(),
+                });
             });
-        });
 
-        await batch.commit();
-        console.log('[notifications] markAllRead committed');
+            await batch.commit();
+            console.log('[notifications] markAllRead committed');
 
-        setNotifications((prev) =>
-            prev.map((n) => ({ ...n, isRead: true, readAt: n.readAt || new Date() }))
-        );
+            // UI 즉시 반영
+            setNotifications((prev) =>
+                prev.map((n) => ({ ...n, isRead: true, readAt: n.readAt || new Date() }))
+            );
+        } catch (e) {
+            console.error('[notifications] FAIL: markAllRead', e);
+            // ✅ 권한 문제여도 페이지 전체가 깨지지 않게 함
+        }
     };
 
     const childAttendanceLogs = useMemo(() => {
@@ -664,8 +671,6 @@ export default function ParentHome({
                         onNavigateToTab={() => { setSelectedClassroomId(null); setActiveTab('report'); }}
                         onOpenReport={(sessionId) => setSelectedReportId(sessionId)}
                         activeStudentName={activeChildName}
-                        studentDocId={activeChildId}
-                        studentAuthUid={activeChild?.authUid}
                     />
                 ) : (
                     /* [라우팅 분기 3] 메인 */
@@ -1105,7 +1110,7 @@ export default function ParentHome({
                         )}
 
                         {activeTab === 'menu' && (
-                            <MenuTab student={activeChild} onUpdateStudent={() => {}} onLogout={onLogout} videoBookmarks={{}} lessonLogs={[]} onLinkToMemo={() => {}} notices={visibleNotices} setActiveTab={setActiveTab} isParent={true} />
+                            <MenuTab student={activeChild} onUpdateStudent={() => {}} onLogout={onLogout} videoMemos={{}} lessonLogs={[]} onLinkToMemo={() => {}} notices={visibleNotices} setActiveTab={setActiveTab} isParent={true} />
                         )}
                         {activeTab === 'board' && <BoardTab notices={visibleNotices} />}
                     </div>

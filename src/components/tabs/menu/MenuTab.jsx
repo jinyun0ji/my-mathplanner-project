@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 import { Icon, formatTime } from '../../../utils/helpers';
-import CampaignIcon from '@mui/icons-material/Campaign'; 
-import NoteAltIcon from '@mui/icons-material/NoteAlt'; 
-import TuneIcon from '@mui/icons-material/Tune'; 
+import CampaignIcon from '@mui/icons-material/Campaign';
+import NoteAltIcon from '@mui/icons-material/NoteAlt';
+import TuneIcon from '@mui/icons-material/Tune';
 import ModalPortal from '../../common/ModalPortal';
 
-export default function MenuTab({ student, onUpdateStudent, onLogout, videoBookmarks, lessonLogs, onLinkToMemo, notices, setActiveTab, isParent = false }) {
+export default function MenuTab({ student, onUpdateStudent, onLogout, videoMemos, lessonLogs, onLinkToMemo, notices, setActiveTab, isParent = false }) {
     const [isProfileOpen, setIsProfileOpen] = useState(false);
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [isMemosOpen, setIsMemosOpen] = useState(false); 
@@ -22,22 +22,34 @@ export default function MenuTab({ student, onUpdateStudent, onLogout, videoBookm
     };
     const toggleNotification = (key) => { setNotifications(prev => { if (key === 'all') { const newValue = !prev.all; return { all: newValue, post: newValue, homework: newValue, clinic: newValue, class_update: newValue }; } const newSettings = { ...prev, [key]: !prev[key] }; if (!newSettings[key]) newSettings.all = false; else if (newSettings.post && newSettings.homework && newSettings.clinic && newSettings.class_update) newSettings.all = true; return newSettings; }); };
 
+    const toMillis = (value) => {
+        if (!value) return 0;
+        if (typeof value === 'number') return value;
+        if (value instanceof Date) return value.getTime();
+        if (typeof value?.toDate === 'function') return value.toDate().getTime();
+        return 0;
+    };
+
     const getMyMemos = () => {
-        const bookmarkKey = student?.authUid || student?.id;
-        if (!student || !videoBookmarks || !bookmarkKey || !videoBookmarks[bookmarkKey]) return [];
-        const myBookmarks = videoBookmarks[bookmarkKey];
-        const allMemos = [];
-        Object.keys(myBookmarks).forEach(lessonId => {
-            const lessonIdNum = parseInt(lessonId, 10);
-            const lesson = lessonLogs?.find(l => l.id === lessonIdNum);
-            const bookmarks = myBookmarks[lessonId];
-            if (lesson && bookmarks && bookmarks.length > 0) {
-                bookmarks.forEach(bm => {
-                    allMemos.push({ ...bm, lessonTitle: lesson.progress, lessonDate: lesson.date, classId: lesson.classId, lessonId: lessonIdNum });
-                });
-            }
-        });
-        return allMemos.sort((a, b) => b.id - a.id);
+        const memoKey = student?.authUid || student?.id;
+        if (!memoKey || !videoMemos) return [];
+
+        const memos = Array.isArray(videoMemos[memoKey]) ? videoMemos[memoKey] : [];
+        return memos
+            .map((memo) => {
+                const lesson = lessonLogs?.find((l) => String(l.id) === String(memo.lessonId));
+                return {
+                    ...memo,
+                    lessonTitle: lesson?.progress,
+                    lessonDate: lesson?.date,
+                    classId: lesson?.classId,
+                    lessonId: lesson?.id || memo.lessonId,
+                    updatedAtMs: toMillis(memo.updatedAt) || 0,
+                };
+            })
+            .filter((memo) => memo.classId && memo.lessonId)
+            .sort((a, b) => (b.updatedAtMs - a.updatedAtMs) || ((Number(b.time) || 0) - (Number(a.time) || 0)));
+
     };
     const myMemos = getMyMemos();
 

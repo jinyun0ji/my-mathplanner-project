@@ -3697,6 +3697,18 @@ video {
   display: none;
 }
 
+.\[videoMemo\:add\]{
+  video-memo: add;
+}
+
+.\[videoMemo\:delete\]{
+  video-memo: delete;
+}
+
+.\[videoMemo\:update\]{
+  video-memo: update;
+}
+
 /* 전체 폰트 및 배경 적용 */
 
 body{

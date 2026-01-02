@@ -24,8 +24,8 @@ export default function ClassroomView({
     classes, lessonLogs, attendanceLogs, studentDocId, studentAuthUid,
     selectedClassId, setSelectedClassId,
     videoProgress, onSaveVideoProgress,
-    videoBookmarks, onSaveBookmark,
-    onVideoModalChange, 
+    videoMemos, onAddMemo, onUpdateMemo, onDeleteMemo,
+    onVideoModalChange,
     targetMemo, onClearTargetMemo,
     homeworkAssignments, homeworkResults,
     tests, grades,
@@ -84,6 +84,13 @@ export default function ClassroomView({
 
     const [bookmarkNote, setBookmarkNote] = useState('');
     const [isListOpen, setIsListOpen] = useState(false);
+    const [editingMemoId, setEditingMemoId] = useState(null);
+    const [editFields, setEditFields] = useState({ note: '', time: '' });
+
+    useEffect(() => {
+        setEditingMemoId(null);
+        setEditFields({ note: '', time: '' });
+    }, [currentLesson?.id]);
 
     const getProgress = (lessonId) => {
         const primary = calculateVideoProgress(videoProgress, studentAuthUid, lessonId);
@@ -106,15 +113,18 @@ export default function ClassroomView({
         [attendanceLogs, selectedClassId, studentDocId, studentAuthUid, homeworkAssignments, homeworkResults, tests, grades]
     );
 
-    const handleAddBookmark = () => {
-        if (!playerRef.current || !bookmarkNote.trim() || !currentLesson) return;
+    const handleAddMemo = async () => {
+        if (!playerRef.current || !bookmarkNote.trim() || !currentLesson || !studentAuthUid) return;
         const currentTime = playerRef.current.getCurrentTime();
-        const newBookmark = { id: Date.now(), time: currentTime, note: bookmarkNote };
-        onSaveBookmark(studentAuthUid, currentLesson.id, newBookmark);
-        setBookmarkNote('');
+        try {
+            await onAddMemo?.(studentAuthUid, { lessonId: currentLesson.id, time: currentTime, note: bookmarkNote });
+            setBookmarkNote('');
+        } catch (error) {
+            console.error('[ClassroomView] add memo failed', error);
+        }
     };
 
-    const handleSeekToBookmark = (time) => {
+    const handleSeekToMemo = (time) => {
         if (playerRef.current) playerRef.current.seekTo(time);
     };
 
@@ -128,9 +138,41 @@ export default function ClassroomView({
         });
     };
 
-    const myBookmarks = videoBookmarks?.[studentAuthUid]?.[currentLesson?.id]
-        || videoBookmarks?.[studentDocId]?.[currentLesson?.id]
-        || [];
+    const startEditingMemo = (memo) => {
+        setEditingMemoId(memo.id);
+        setEditFields({ note: memo.note || '', time: memo.time ?? 0 });
+    };
+
+    const handleSaveEditedMemo = async () => {
+        if (!editingMemoId || !studentAuthUid) return;
+        try {
+            await onUpdateMemo?.(studentAuthUid, editingMemoId, editFields);
+            setEditingMemoId(null);
+            setEditFields({ note: '', time: '' });
+        } catch (error) {
+            console.error('[ClassroomView] update memo failed', error);
+        }
+    };
+
+    const handleDeleteMemo = async (memoId) => {
+        if (!memoId || !studentAuthUid) return;
+        if (!window.confirm('이 메모를 삭제하시겠어요?')) return;
+        try {
+            await onDeleteMemo?.(studentAuthUid, memoId);
+            if (editingMemoId === memoId) {
+                setEditingMemoId(null);
+                setEditFields({ note: '', time: '' });
+            }
+        } catch (error) {
+            console.error('[ClassroomView] delete memo failed', error);
+        }
+    };
+
+    const myMemos = useMemo(
+        () => (videoMemos?.[studentAuthUid] || []).filter((memo) => String(memo.lessonId) === String(currentLesson?.id)),
+        [videoMemos, studentAuthUid, currentLesson?.id],
+    );
+
     const progressData = getProgress(currentLesson?.id);
 
     const lessonVideos = useMemo(() => normalizeLessonVideos(currentLesson), [currentLesson]);
@@ -416,12 +458,71 @@ export default function ClassroomView({
                     </div>
                     <div className="p-4 border-b border-gray-100 bg-white">
                         <div className="flex gap-2">
-                            <input type="text" value={bookmarkNote} onChange={(e) => setBookmarkNote(e.target.value)} placeholder="중요한 내용 메모하기..." className="flex-1 bg-gray-50 border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all" onKeyPress={(e) => e.key === 'Enter' && handleAddBookmark()} />
-                            <button onClick={handleAddBookmark} className="bg-indigo-600 hover:bg-indigo-700 text-white p-2.5 rounded-xl transition-colors shadow-sm flex-shrink-0 active:scale-95"><Icon name="plus" className="w-5 h-5" /></button>
+                        <input type="text" value={bookmarkNote} onChange={(e) => setBookmarkNote(e.target.value)} placeholder="중요한 내용 메모하기..." className="flex-1 bg-gray-50 border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all" onKeyPress={(e) => e.key === 'Enter' && handleAddMemo()} />
+                            <button onClick={handleAddMemo} className="bg-indigo-600 hover:bg-indigo-700 text-white p-2.5 rounded-xl transition-colors shadow-sm flex-shrink-0 active:scale-95"><Icon name="plus" className="w-5 h-5" /></button>
                         </div>
                     </div>
                     <div className="flex-1 overflow-y-auto p-4 custom-scrollbar bg-gray-50/30">
-                        {myBookmarks.length > 0 ? (<div className="space-y-3">{myBookmarks.map((bm) => (<div key={bm.id} className="bg-white p-3.5 rounded-xl border border-gray-200 shadow-sm hover:border-indigo-300 hover:shadow-md transition-all group"><button onClick={() => handleSeekToBookmark(bm.time)} className="flex items-center gap-2 mb-2 w-full text-left active:opacity-70"><div className="bg-indigo-50 text-indigo-600 px-2 py-1 rounded text-[11px] font-bold font-mono border border-indigo-100 flex items-center gap-1 group-hover:bg-indigo-600 group-hover:text-white transition-colors"><Icon name="play" className="w-3 h-3" />{formatTime(bm.time)}</div><span className="text-xs text-gray-400 ml-auto">이동하기</span></button><p className="text-sm text-gray-800 leading-relaxed pl-1 break-words">{bm.note}</p></div>))}</div>) : (<div className="h-full flex flex-col items-center justify-center text-gray-400 space-y-3"><div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center"><Icon name="pen" className="w-8 h-8 text-gray-300" /></div><div className="text-center text-xs"><p>아직 작성된 메모가 없습니다.</p><p className="mt-1">영상 재생 중 중요한 부분을 기록해보세요!</p></div></div>)}
+                        {myMemos.length > 0 ? (
+                            <div className="space-y-3">
+                                {myMemos.map((bm) => {
+                                    const isEditing = editingMemoId === bm.id;
+                                    return (
+                                        <div key={bm.id} className="bg-white p-3.5 rounded-xl border border-gray-200 shadow-sm hover:border-indigo-300 hover:shadow-md transition-all group">
+                                            <button onClick={() => handleSeekToMemo(bm.time)} className="flex items-center gap-2 mb-2 w-full text-left active:opacity-70">
+                                                <div className="bg-indigo-50 text-indigo-600 px-2 py-1 rounded text-[11px] font-bold font-mono border border-indigo-100 flex items-center gap-1 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+                                                    <Icon name="play" className="w-3 h-3" />
+                                                    {formatTime(bm.time)}
+                                                </div>
+                                                <span className="text-xs text-gray-400 ml-auto">이동하기</span>
+                                            </button>
+                                            {isEditing ? (
+                                                <div className="space-y-2">
+                                                    <div className="flex gap-2">
+                                                        <input
+                                                            type="number"
+                                                            value={editFields.time}
+                                                            onChange={(e) => setEditFields((prev) => ({ ...prev, time: e.target.value }))}
+                                                            className="w-28 bg-gray-50 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                                                            min={0}
+                                                            step={1}
+                                                        />
+                                                        <div className="flex gap-2 ml-auto">
+                                                            <button onClick={handleSaveEditedMemo} className="px-3 py-2 rounded-lg bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700 active:scale-95">저장</button>
+                                                            <button onClick={() => { setEditingMemoId(null); setEditFields({ note: '', time: '' }); }} className="px-3 py-2 rounded-lg bg-gray-100 text-gray-700 text-xs font-bold hover:bg-gray-200 active:scale-95">취소</button>
+                                                        </div>
+                                                    </div>
+                                                    <textarea
+                                                        value={editFields.note}
+                                                        onChange={(e) => setEditFields((prev) => ({ ...prev, note: e.target.value }))}
+                                                        className="w-full bg-gray-50 border border-gray-300 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                                                        rows={2}
+                                                    />
+                                                </div>
+                                            ) : (
+                                                <p className="text-sm text-gray-800 leading-relaxed pl-1 break-words">{bm.note}</p>
+                                            )}
+                                            <div className="flex justify-end gap-2 mt-3">
+                                                {!isEditing && (
+                                                    <>
+                                                        <button onClick={() => startEditingMemo(bm)} className="px-3 py-1.5 rounded-lg bg-gray-100 text-gray-700 text-xs font-bold hover:bg-gray-200 active:scale-95">수정</button>
+                                                        <button onClick={() => handleDeleteMemo(bm.id)} className="px-3 py-1.5 rounded-lg bg-red-50 text-red-600 text-xs font-bold hover:bg-red-100 active:scale-95">삭제</button>
+                                                    </>
+                                                )}
+                                                {isEditing && (
+                                                    <button onClick={() => handleDeleteMemo(bm.id)} className="px-3 py-1.5 rounded-lg bg-red-50 text-red-600 text-xs font-bold hover:bg-red-100 active:scale-95">삭제</button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        ) : (
+                            <div className="h-full flex flex-col items-center justify-center text-gray-400 space-y-3">
+                                <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center"><Icon name="pen" className="w-8 h-8 text-gray-300" /></div>
+                                <div className="text-center text-xs"><p>아직 작성된 메모가 없습니다.</p><p className="mt-1">영상 재생 중 중요한 부분을 기록해보세요!</p></div>
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>

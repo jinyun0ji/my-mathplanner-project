@@ -27,7 +27,7 @@ import { db } from '../firebase/client';
 export default function StudentHome({
     student, studentId, userId, students, classes, homeworkAssignments, homeworkResults,
     attendanceLogs, lessonLogs, notices, tests, grades, classTestStats,
-    videoProgress, onSaveVideoProgress, videoBookmarks, onSaveBookmark,
+    videoProgress, onSaveVideoProgress, videoMemos, onAddMemo, onUpdateMemo, onDeleteMemo,
     externalSchedules, onSaveExternalSchedule, onDeleteExternalSchedule,
     clinicLogs, onUpdateStudent,
     onLogout
@@ -257,8 +257,10 @@ export default function StudentHome({
                         setSelectedClassId={setSelectedClassId}
                         videoProgress={videoProgress}
                         onSaveVideoProgress={onSaveVideoProgress}
-                        videoBookmarks={videoBookmarks}
-                        onSaveBookmark={onSaveBookmark}
+                        videoMemos={videoMemos}
+                        onAddMemo={onAddMemo}
+                        onUpdateMemo={onUpdateMemo}
+                        onDeleteMemo={onDeleteMemo}
                         onVideoModalChange={setIsVideoModalOpen}
                         targetMemo={targetMemo}
                         onClearTargetMemo={() => setTargetMemo(null)}
@@ -303,7 +305,7 @@ export default function StudentHome({
                         {activeTab === 'menu' && (
                             <MenuTab 
                                 student={student} onUpdateStudent={onUpdateStudent} onLogout={onLogout}
-                                videoBookmarks={videoBookmarks} lessonLogs={lessonLogs} onLinkToMemo={handleNavigateToMemo} notices={visibleNotices}
+                                videoMemos={videoMemos} lessonLogs={lessonLogs} onLinkToMemo={handleNavigateToMemo} notices={visibleNotices}
                                 setActiveTab={setActiveTab}
                             />
                         )}

@@ -224,9 +224,19 @@ service cloud.firestore {
     }
     
     match /classTestStats/{docId} {
+
+      // docId: "{classId}_{testId}" 형태를 전제로 classId 파싱
+      function statClassId() {
+        return docId.split('_')[0];
+      }
+
       allow get: if isAdminOrStaff()
-        || (isSignedIn() && isClassMember(resource.data.classId));
+        || (isSignedIn() && isClassMember(statClassId()));
+
+      // 필요하면 나중에 list도 열 수 있지만 지금은 안전하게 유지
       allow list: if false;
+
+      // write는 (직원 앱이 쓰는 경우만) 허용. Cloud Functions(Admin SDK)은 rules 무시함.
       allow write: if isStaffOrAdminOrTeacher();
     }
 
@@ -361,7 +371,15 @@ service cloud.firestore {
     match /notifications/{userUid}/items/{notificationId} {
       allow read: if signedIn()
         && (uid() == userUid || isStaffOrAdminOrTeacher());
-      allow write: if isStaffOrAdminOrTeacher();
+
+      // ✅ 본인: 읽음 처리용 update만 허용
+      allow update: if signedIn()
+        && uid() == userUid
+        && request.resource.data.diff(resource.data).changedKeys()
+            .hasOnly(['isRead', 'readAt', 'updatedAt']);
+
+      // ✅ 직원/관리자/강사: 기존대로 full 권한
+      allow create, update, delete: if isStaffOrAdminOrTeacher();
     }
 
     match /notifications/{userUid}/meta {

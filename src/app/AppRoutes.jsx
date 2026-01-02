@@ -42,6 +42,7 @@ import { loadStaffDataOnce, loadViewerDataOnce } from '../data/firestoreSync';
 import { createLinkCode, createStaffUser } from '../admin/staffService';
 import { claimStudentLinkCode } from '../parent/linkCodeService';
 import { useParentContext } from '../parent';
+import { addVideoMemo, deleteVideoMemo, updateVideoMemo } from '../domain/memo/videoMemo.service';
 import {
     addDoc,
     arrayRemove,
@@ -172,12 +173,9 @@ export default function AppRoutes({ user, role, studentIds }) {
   const [homeworkResults, setHomeworkResults] = useState({});
   const [studentMemos, setStudentMemos] = useState({});
   const [videoProgress, setVideoProgress] = useState({});
+  const [videoMemos, setVideoMemos] = useState({});
 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [videoBookmarks, setVideoBookmarks] = useState(() => {
-      try { return JSON.parse(localStorage.getItem('videoBookmarks')) || {}; }
-      catch (e) { return {}; }
-  });
 
   const processedAnnouncementIdsRef = useRef(new Set());
 
@@ -250,6 +248,7 @@ export default function AppRoutes({ user, role, studentIds }) {
         setAnnouncements,
         setTests,
         setVideoProgress,
+        setVideoMemos,
         setExternalSchedules,
         setHomeworkResults,
         setGrades,
@@ -259,11 +258,6 @@ export default function AppRoutes({ user, role, studentIds }) {
 
     return () => { state.cancelled = true; };
   }, [db, isAuthenticated, role, userId, parentActiveStudentId, studentIds]);
-
-  useEffect(() => {
-      try { localStorage.setItem('videoBookmarks', JSON.stringify(videoBookmarks)); }
-      catch (e) {}
-  }, [videoBookmarks]);
 
   useEffect(() => {
       const memoMap = {};
@@ -1075,7 +1069,59 @@ export default function AppRoutes({ user, role, studentIds }) {
           alert('수강률 저장에 실패했습니다. 권한 또는 네트워크를 확인해주세요.');
       }
   };
-  const handleSaveBookmark = (sId, lId, bm) => setVideoBookmarks(prev => ({ ...prev, [sId]: { ...prev[sId], [lId]: [...(prev[sId]?.[lId] || []), bm] } }));
+  const handleAddVideoMemo = async (authUid, payload) => {
+      ensureFirestoreContext();
+      try {
+          const created = await addVideoMemo(db, authUid, payload);
+          const fallbackTimestamp = new Date();
+          setVideoMemos((prev) => ({
+              ...prev,
+              [authUid]: [
+                  { ...created, updatedAt: created.updatedAt || fallbackTimestamp },
+                  ...(prev?.[authUid] || []),
+              ],
+          }));
+      } catch (error) {
+          console.error('[Firestore WRITE ERROR][videoMemo:add]', error);
+          alert('학습 메모 저장에 실패했습니다. 네트워크를 확인해주세요.');
+      }
+  };
+  const handleUpdateVideoMemo = async (authUid, memoId, patch) => {
+      ensureFirestoreContext();
+      try {
+          await updateVideoMemo(db, authUid, memoId, patch);
+          setVideoMemos((prev) => {
+              const list = prev?.[authUid] || [];
+              return {
+                  ...prev,
+                  [authUid]: list.map((memo) => memo.id === memoId
+                      ? {
+                          ...memo,
+                          ...(patch.time !== undefined ? { time: Number(patch.time) || 0 } : {}),
+                          ...(patch.note !== undefined ? { note: String(patch.note || '').trim() } : {}),
+                          updatedAt: patch.updatedAt || new Date(),
+                      }
+                      : memo),
+              };
+          });
+      } catch (error) {
+          console.error('[Firestore WRITE ERROR][videoMemo:update]', error);
+          alert('학습 메모 수정에 실패했습니다. 다시 시도해주세요.');
+      }
+  };
+  const handleDeleteVideoMemo = async (authUid, memoId) => {
+      ensureFirestoreContext();
+      try {
+          await deleteVideoMemo(db, authUid, memoId);
+          setVideoMemos((prev) => ({
+              ...prev,
+              [authUid]: (prev?.[authUid] || []).filter((memo) => memo.id !== memoId),
+          }));
+      } catch (error) {
+          console.error('[Firestore WRITE ERROR][videoMemo:delete]', error);
+          alert('학습 메모 삭제에 실패했습니다. 다시 시도해주세요.');
+      }
+  };
   const handleSaveMemo = async (sId, content) => {
       ensureFirestoreContext();
       try {
@@ -1203,8 +1249,10 @@ export default function AppRoutes({ user, role, studentIds }) {
               classTestStats={classTestStats}
               videoProgress={videoProgress}
               onSaveVideoProgress={handleSaveVideoProgress}
-              videoBookmarks={videoBookmarks}
-              onSaveBookmark={handleSaveBookmark}
+              videoMemos={videoMemos}
+              onAddMemo={handleAddVideoMemo}
+              onUpdateMemo={handleUpdateVideoMemo}
+              onDeleteMemo={handleDeleteVideoMemo}
               externalSchedules={externalSchedules}
               onSaveExternalSchedule={handleSaveExternalSchedule}
               onDeleteExternalSchedule={handleDeleteExternalSchedule}

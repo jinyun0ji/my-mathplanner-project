@@ -15,7 +15,7 @@ import { ALLOWED_ROLES, ROLE, isParentRole } from '../constants/roles';
 
 const AuthContext = createContext(null);
 
-const LOCAL_STORAGE_KEYS = ['videoBookmarks', 'parent.activeStudentId'];
+const LOCAL_STORAGE_KEYS = ['parent.activeStudentId'];
 
 const clearAuthStorage = () => {
   try {

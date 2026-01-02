@@ -255,6 +255,7 @@ export const loadViewerDataOnce = async ({
     setAnnouncements,
     setTests,
     setVideoProgress,
+    setVideoMemos,
     setExternalSchedules,
     setHomeworkResults,
     setGrades,
@@ -660,6 +661,41 @@ export const loadViewerDataOnce = async ({
 
         console.log('[viewer] activeStudentDocId =', activeStudentDocId);
         console.log('[viewer] activeViewerAuthUid =', activeViewerAuthUid);
+
+        const viewerAuthUids = Array.from(new Set([
+            ...(userRole === 'student' && userId ? [userId] : []),
+            ...myStudents.map((s) => s?.authUid).filter(Boolean),
+            activeViewerAuthUid,
+        ].filter(Boolean))).slice(0, 10);
+
+        if (setVideoMemos) {
+            try {
+                if (viewerAuthUids.length > 0) {
+                    const memoMap = {};
+                    await Promise.all(
+                        viewerAuthUids.map(async (uid) => {
+                            const snap = await run(`videoMemos ${uid}`, () =>
+                                getDocs(
+                                    query(
+                                        collection(db, 'videoMemos', uid, 'items'),
+                                        orderBy('updatedAt', 'desc'),
+                                    ),
+                                ),
+                            );
+                            memoMap[uid] = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+                        }),
+                    );
+
+                    if (!isCancelled()) {
+                        setVideoMemos(memoMap);
+                    }
+                } else if (!isCancelled()) {
+                    setVideoMemos({});
+                }
+            } catch (e) {
+                console.error('[viewer] FAIL videoMemos', e);
+            }
+        }
 
         // ✅ 여기부터는 authUid가 있어야 조회 가능
         if (activeViewerAuthUid) {
