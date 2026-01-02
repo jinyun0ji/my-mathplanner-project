@@ -20,13 +20,15 @@ export const buildClassroomStats = ({
     );
     const unsubmittedCount = classHomeworks.filter(h => {
         const result = homeworkResults?.[studentId]?.[h.id];
-        return !result || Object.keys(result).length === 0;
+        const resultMap = result?.results || result || {};
+        return !result || Object.keys(resultMap).length === 0;
     }).length;
 
     let unresolvedCount = 0;
     classHomeworks.forEach(hw => {
         const result = homeworkResults?.[studentId]?.[hw.id];
-        if (result) unresolvedCount += Object.values(result).filter(status => status === '틀림').length;
+        const resultMap = result?.results || result || {};
+        if (result) unresolvedCount += Object.values(resultMap).filter(status => status === '틀림').length;
     });
 
     let gradeTrend = 'initial';

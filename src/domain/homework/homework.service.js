@@ -41,7 +41,8 @@ export const buildAssignmentSummary = (selectedAssignment, classStudents = [], h
     if (!selectedAssignment) return [];
 
     return classStudents.map(student => {
-        const savedResult = { ...(homeworkResults[student.id]?.[selectedAssignment.id] || {}) };
+        const rawResult = homeworkResults[student.id]?.[selectedAssignment.id];
+        const savedResult = { ...(rawResult?.results || rawResult || {}) };
 
         localChanges.forEach(change => {
             if (change.studentId === student.id && change.assignmentId === selectedAssignment.id) {

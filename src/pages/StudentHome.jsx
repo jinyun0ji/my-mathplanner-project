@@ -15,10 +15,10 @@ import openNotification from '../notifications/openNotification';
 
 export default function StudentHome({
     student, studentId, userId, students, classes, homeworkAssignments, homeworkResults,
-    attendanceLogs, lessonLogs, notices, tests, grades,
+    attendanceLogs, lessonLogs, notices, tests, grades, classTestStats,
     videoProgress, onSaveVideoProgress, videoBookmarks, onSaveBookmark,
     externalSchedules, onSaveExternalSchedule, onDeleteExternalSchedule,
-    clinicLogs, onUpdateStudent, 
+    clinicLogs, onUpdateStudent,
     onLogout
 }) {
     const [activeTab, setActiveTab] = useState('home');
@@ -64,8 +64,8 @@ export default function StudentHome({
 
     const myGradeComparison = useMemo(() => {
         if (!studentId) return [];
-        return calculateGradeComparison(studentId, classes || [], tests || [], grades || {});
-    }, [studentId, classes, tests, grades]);
+        return calculateGradeComparison(studentId, classes || [], tests || [], grades || {}, classTestStats || {});
+    }, [studentId, classes, tests, grades, classTestStats]);
 
     const pendingHomeworkCount = useMemo(
         () => myHomeworkStats.filter(h => h.status !== '완료').length,

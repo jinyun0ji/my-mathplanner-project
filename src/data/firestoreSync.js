@@ -211,7 +211,7 @@ export const loadStaffDataOnce = async ({
                 const data = docSnap.data();
                 const { authUid: sId, assignmentId } = data;
                 if (!mappedResults[sId]) mappedResults[sId] = {};
-                mappedResults[sId][assignmentId] = data.results || data;
+                mappedResults[sId][assignmentId] = data.results ? { ...data, results: data.results } : { results: data };
             });
             setHomeworkResults(mappedResults);
         }
@@ -250,6 +250,10 @@ export const loadViewerDataOnce = async ({
     setExternalSchedules,
     setHomeworkResults,
     setGrades,
+
+    // ✅ 추가: classTestStats setter (없으면 그냥 스킵)
+    setClassTestStats = null,
+
     isCancelled = () => false,
 }) => {
     // ✅ helper (요청한 그대로)
@@ -442,10 +446,9 @@ export const loadViewerDataOnce = async ({
 
                 setClinicLogs?.(merged.slice(0, 50));
             }
-            } else if (!isCancelled()) {
-                setClinicLogs?.([]);
+        } else if (!isCancelled()) {
+            setClinicLogs?.([]);
         }
-
 
         /* =========================
         lessonLogs / tests
@@ -484,9 +487,33 @@ export const loadViewerDataOnce = async ({
             viewerTests = testSnap.docs.map(d => ({ id: d.id, ...d.data() }));
             setTests?.(viewerTests);
             warnOnQuestionScores(viewerTests, 'viewer');
+
+            // ✅ classTestStats 로드 (있으면만)
+            if (setClassTestStats) {
+                const statDocIds = Array.from(new Set(viewerTests.map((t) => `${t.classId}_${t.id}`))).slice(0, 80);
+                const statSnapshots = await Promise.all(
+                    statDocIds.map((docId) =>
+                        run(`classTestStats get ${docId}`, () => getDoc(doc(db, 'classTestStats', docId))),
+                    ),
+                );
+
+                if (!isCancelled()) {
+                    const statsMap = {};
+                    statSnapshots.forEach((snap, index) => {
+                        if (!snap?.exists()) return;
+                        const data = snap.data() || {};
+                        const docId = statDocIds[index];
+                        const testId = data.testId || docId.split('_').slice(-1)[0];
+                        statsMap[docId] = { id: docId, ...data };
+                        statsMap[testId] = { id: docId, ...data };
+                    });
+                    setClassTestStats(statsMap);
+                }
+            }
         } else if (!isCancelled()) {
             setLessonLogs?.([]);
             setTests?.([]);
+            setClassTestStats?.({});
         }
 
         /* =========================
@@ -506,12 +533,16 @@ export const loadViewerDataOnce = async ({
 
             if (!isCancelled()) {
                 const mappedGrades = {};
-                gradeSnap.docs.forEach(docSnap => {
+                gradeSnap.docs.forEach((docSnap) => {
                     const data = docSnap.data();
                     const { authUid: sId, testId } = data;
+
+                    if (!sId || !testId) return;
+
                     if (!mappedGrades[sId]) mappedGrades[sId] = {};
                     mappedGrades[sId][testId] = data;
                 });
+
                 setGrades?.(mappedGrades);
             }
         } else if (!isCancelled()) {
@@ -554,27 +585,27 @@ export const loadViewerDataOnce = async ({
         const announcementDocs = [];
 
         try {
-        const publicOnes = await getDocs(
-            query(
-            collection(db, 'announcements'),
-            orderBy('date', 'desc'),
-            limit(20),
-            ),
-        );
-        announcementDocs.push(...publicOnes.docs);
+            const publicOnes = await getDocs(
+                query(
+                    collection(db, 'announcements'),
+                    orderBy('date', 'desc'),
+                    limit(20),
+                ),
+            );
+            announcementDocs.push(...publicOnes.docs);
         } catch (e) {
-        console.error('[viewer] FAIL: announcements public', e);
+            console.error('[viewer] FAIL: announcements public', e);
         }
 
         if (!isCancelled()) {
-        const seen = new Set();
-        const merged = announcementDocs.reduce((acc, d) => {
-            if (seen.has(d.id)) return acc;
-            seen.add(d.id);
-            acc.push({ id: d.id, ...d.data() });
-            return acc;
-        }, []);
-        setAnnouncements?.(merged);
+            const seen = new Set();
+            const merged = announcementDocs.reduce((acc, d) => {
+                if (seen.has(d.id)) return acc;
+                seen.add(d.id);
+                acc.push({ id: d.id, ...d.data() });
+                return acc;
+            }, []);
+            setAnnouncements?.(merged);
         }
 
         console.log('[viewer] fetch announcements ok');
@@ -609,62 +640,62 @@ export const loadViewerDataOnce = async ({
 
         // ✅ 실제 데이터 키로 쓸 authUid(7MR...) (videoProgress/externalSchedules 조회용)
         const activeViewerAuthUid =
-        (userRole === 'student' ? userId : null) // 학생 본인 로그인: auth.uid
-        || myStudents.find(s => s?.id === activeStudentDocId)?.authUid // parent: 학생 문서의 authUid
-        || myStudents[0]?.authUid
-        || null;
+            (userRole === 'student' ? userId : null) // 학생 본인 로그인: auth.uid
+            || myStudents.find(s => s?.id === activeStudentDocId)?.authUid // parent: 학생 문서의 authUid
+            || myStudents[0]?.authUid
+            || null;
 
         console.log('[viewer] activeStudentDocId =', activeStudentDocId);
         console.log('[viewer] activeViewerAuthUid =', activeViewerAuthUid);
 
         // ✅ 여기부터는 authUid가 있어야 조회 가능
         if (activeViewerAuthUid) {
-        await fetchListSafe(
-            'videoProgress fetchList',
-            db,
-            'videoProgress',
-            setVideoProgress,
-            query(
-            collection(db, 'videoProgress'),
-            where('studentId', '==', activeViewerAuthUid), // ✅ 여기 바뀜 (ullo -> 7MR)
-            limit(50),
-            ),
-            isCancelled,
-        );
-
-        console.log('[viewer] fetch externalSchedules start', { activeViewerAuthUid });
-
-        try {
-        if (activeViewerAuthUid) {
-            const items = await fetchList(
-            db,
-            'externalSchedules',
-            setExternalSchedules,
-            query(
-                collection(db, 'externalSchedules'),
-                where('authUid', '==', activeViewerAuthUid),
-                limit(50),
-            ),
-            isCancelled,
+            await fetchListSafe(
+                'videoProgress fetchList',
+                db,
+                'videoProgress',
+                setVideoProgress,
+                query(
+                    collection(db, 'videoProgress'),
+                    where('studentId', '==', activeViewerAuthUid), // ✅ 여기 바뀜 (ullo -> 7MR)
+                    limit(50),
+                ),
+                isCancelled,
             );
 
-            console.log('[viewer] fetch externalSchedules ok', {
-            count: Array.isArray(items) ? items.length : null,
-            first: Array.isArray(items) ? items[0] : null,
-            });
-        } else {
-            console.log('[viewer] skip externalSchedules: no activeViewerAuthUid');
-        }
-        } catch (e) {
-        console.error('[viewer] FAIL externalSchedules', e);
+            console.log('[viewer] fetch externalSchedules start', { activeViewerAuthUid });
+
+            try {
+                if (activeViewerAuthUid) {
+                    const items = await fetchList(
+                        db,
+                        'externalSchedules',
+                        setExternalSchedules,
+                        query(
+                            collection(db, 'externalSchedules'),
+                            where('authUid', '==', activeViewerAuthUid),
+                            limit(50),
+                        ),
+                        isCancelled,
+                    );
+
+                    console.log('[viewer] fetch externalSchedules ok', {
+                        count: Array.isArray(items) ? items.length : null,
+                        first: Array.isArray(items) ? items[0] : null,
+                    });
+                } else {
+                    console.log('[viewer] skip externalSchedules: no activeViewerAuthUid');
+                }
+            } catch (e) {
+                console.error('[viewer] FAIL externalSchedules', e);
+            }
+
+        } else if (!isCancelled()) {
+            setVideoProgress?.([]);
+            setExternalSchedules?.([]);
         }
 
-    } else if (!isCancelled()) {
-        setVideoProgress?.([]);
-        setExternalSchedules?.([]);
-    }
-
-    console.log('[viewer] COMPLETE');
+        console.log('[viewer] COMPLETE');
 
     } catch (error) {
         console.error('[viewer] loadViewerDataOnce FAILED (top-level)', error);

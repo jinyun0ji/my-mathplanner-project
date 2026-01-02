@@ -77,7 +77,8 @@ export default function ParentClassroomView({
         );
         const unsubmittedCount = classHomeworks.filter(h => {
              const result = homeworkResults?.[activeStudentId]?.[h.id];
-             return !result || Object.keys(result).length === 0;
+             const resultMap = result?.results || result || {};
+             return !result || Object.keys(resultMap).length === 0;
         }).length;
 
         // 3. 성적 추이

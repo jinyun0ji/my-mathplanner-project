@@ -102,8 +102,8 @@ export const calculateTrendZScore = (grades) => {
 };
 
 // ✅ [수정] 성적 비교 및 Z-Score 계산
-export const calculateGradeComparison = (studentId, classes, tests, grades) => {
-    if (!tests || !grades) return []; 
+export const calculateGradeComparison = (studentId, classes, tests, grades, classTestStats = {}) => {
+    if (!tests || !grades) return [];
 
     const myGrades = [];
     const myClassIds = classes.filter(c => (c.students || []).includes(studentId)).map(c => c.id);
@@ -127,98 +127,48 @@ export const calculateGradeComparison = (studentId, classes, tests, grades) => {
 
 
     relevantTests.forEach(test => {
-        console.log('[grade dbg] studentId=', studentId);
-        console.log('[grade dbg] test.id=', test.id, 'test.classId=', test.classId);
-        console.log('[grade dbg] grades keys sample=', Object.keys(grades || {}).slice(0, 5));
-
         const myRecord = grades[studentId]?.[test.id];
-
-        console.log('[grade dbg] myRecord=', myRecord);
         
         if (myRecord) {
-            let classTotal = 0;
-            let studentCount = 0;
-            let highestScore = 0; // 최고점
-            const classInfo = classes.find(c => String(c.id) === String(test.classId));
-            const classStudentIds = classInfo?.students || [];
-            const participantScores = [];
+            const aggregatedStats = classTestStats?.[test.id] || classTestStats?.[`${test.classId}_${test.id}`] || null;
+            const hasStats = aggregatedStats && Number.isFinite(aggregatedStats.count) && aggregatedStats.count > 0;
 
-            const questionStats = {};
-
-            // 반 통계 계산 (평균, 최고점 등)
-            Object.entries(grades).forEach(([authUid, studentGrade]) => {
-                const record = studentGrade?.[test.id];
-                if (!record) return;
-
-                const rawScore = record.score;
-                const computedScore = computeScoreFromCorrectCount(record, test);
-
-                const finalScore =
-                    rawScore === null || rawScore === undefined
-                    ? computedScore
-                    : (rawScore === 0 && record.correctCount ? computedScore : rawScore);
-
-                if (finalScore === null || finalScore === undefined) return;
-
-                classTotal += finalScore;
-                studentCount++;
-                participantScores.push(finalScore);
-                if (finalScore > highestScore) highestScore = finalScore;
-
-                // 문항 통계
-                if (record.correctCount) {
-                    Object.entries(record.correctCount).forEach(([qNum, status]) => {
-                    if (!questionStats[qNum]) questionStats[qNum] = { correct: 0, total: 0 };
-                    questionStats[qNum].total++;
-                    if (status === '맞음' || status === '고침') {
-                        questionStats[qNum].correct++;
-                    }
-                    });
-                }
-            });
-
-
-            const classAverage = studentCount > 0 ? Math.round(classTotal / studentCount) : 0;
             const rawMyScore = myRecord.score;
             const computedMyScore = computeScoreFromCorrectCount(myRecord, test);
 
-            // score가 null/undefined 이거나, 0인데 문항 데이터가 있으면 "계산값"을 우선
             const myScore =
             (rawMyScore === null || rawMyScore === undefined)
                 ? (computedMyScore ?? 0)
                 : (rawMyScore === 0 && myRecord.correctCount ? (computedMyScore ?? 0) : rawMyScore);
 
+            const averageSource = hasStats && Number.isFinite(aggregatedStats.average) ? aggregatedStats.average : null;
+            const classAverage = averageSource !== null ? Math.round(averageSource) : null;
+            const highestScore = hasStats && Number.isFinite(aggregatedStats.maxScore) ? aggregatedStats.maxScore : null;
+            const totalStudents = hasStats && Number.isFinite(aggregatedStats.count) ? aggregatedStats.count : null;
+
             const myAccuracy = test.maxScore > 0 ? Math.round((myScore / test.maxScore) * 100) : 0;
-            const rank = participantScores.length > 0 ? participantScores.filter(score => score > myScore).length + 1 : null;
-            
-            // ✅ [핵심 수정] Z-Score 계산 (공식: (내점수 - 시험평균) / 표준편차)
-            // 주의: test.average(시험 전체 평균)와 test.stdDev(표준편차) 사용
+            const scoreDifference = classAverage !== null ? myScore - classAverage : null;
+            const isAboveAverage = classAverage !== null ? myScore >= classAverage : null;
+
             let zScore = 0;
             
-            // test 데이터에 average와 stdDev가 있는 경우 우선 사용
-            const testAvg = test.average !== undefined ? test.average : classAverage;
-            
-            if (test.stdDev > 0) {
-                zScore = (myScore - testAvg) / test.stdDev;
-            } else {
-                // 표준편차가 0이거나 데이터가 없으면 Z-score 계산 불가 (0 처리)
-                zScore = 0; 
+            const stdDevSource = hasStats && Number.isFinite(aggregatedStats.stdDev) ? aggregatedStats.stdDev : test.stdDev;
+            const avgForZ = averageSource !== null ? averageSource : test.average;
+            if (Number.isFinite(stdDevSource) && stdDevSource > 0 && Number.isFinite(avgForZ)) {
+                zScore = (myScore - avgForZ) / stdDevSource;
             }
-
-            // 소수점 2자리까지만 유지 (선택사항, 계산 정확도를 위해 값은 유지하되 표시는 나중에)
-            // zScore = parseFloat(zScore.toFixed(2));
 
             const questionsAnalysis = [];
             if (test.questionScores && myRecord.correctCount) {
                 test.questionScores.forEach((score, idx) => {
                     const qNum = idx + 1;
                     const status = myRecord.correctCount[qNum] || '미응시';
-                    const stats = questionStats[qNum] || { correct: 0, total: 0 };
-                    const itemAccuracy = stats.total > 0 ? Math.round((stats.correct / stats.total) * 100) : 0;
+                    const rate = aggregatedStats?.correctRates ? aggregatedStats.correctRates[qNum] : null;
+                    const itemAccuracy = Number.isFinite(rate) ? Math.round(rate * 100) : null;
 
                     questionsAnalysis.push({
-                        no: qNum, score: score, status: status, itemAccuracy: itemAccuracy, 
-                        type: '객관식', difficulty: test.questionAnalysis?.[idx]?.difficulty || '중' 
+                        no: qNum, score: score, status: status, itemAccuracy: itemAccuracy,
+                        type: '객관식', difficulty: test.questionAnalysis?.[idx]?.difficulty || '중'
                     });
                 });
             }
@@ -226,17 +176,18 @@ export const calculateGradeComparison = (studentId, classes, tests, grades) => {
             myGrades.push({
                 testId: test.id, testName: test.name, testDate: test.date,
                 className: classes.find(c => String(c.id) === String(test.classId))?.name || '반 정보 없음',
-                studentScore: myScore, 
-                classAverage: classAverage, 
+                studentScore: myScore,
+                classAverage: classAverage,
                 highestScore: highestScore,
                 maxScore: test.maxScore,
                 accuracy: myAccuracy,
-                rank: rank,
-                totalStudents: participantScores.length,
-                scoreDifference: myScore - classAverage,
-                isAboveAverage: myScore >= classAverage,
+                rank: null,
+                totalStudents: totalStudents,
+                scoreDifference: scoreDifference,
+                isAboveAverage: isAboveAverage,
                 questions: questionsAnalysis,
-                zScore: zScore // 계산된 Z-Score 포함
+                zScore: zScore, // 계산된 Z-Score 포함
+                statsReady: Boolean(hasStats)
             });
         }
     });
@@ -270,12 +221,31 @@ export const calculateClassSessions = (cls) => {
     return sessions;
 };
 
+const getDateString = (v) => {
+    if (!v) return null;
+    if (typeof v === 'string') return v.slice(0, 10);
+    if (typeof v?.toDate === 'function') return v.toDate().toISOString().slice(0, 10);
+    try {
+        return new Date(v).toISOString().slice(0, 10);
+    } catch {
+        return null;
+    }
+};
+
 export const calculateHomeworkStats = (studentId, assignments, results) => {
     if (!assignments) return [];
     return assignments
         .filter(hw => isAssignmentAssignedToStudent(hw, studentId))
         .map(hw => {
-        const studentResults = results?.[studentId]?.[hw.id] || {};
+        const rawResult = results?.[studentId]?.[hw.id];
+        const studentResults = rawResult?.results || rawResult || {};
+        const submissionDate =
+            getDateString(rawResult?.submittedAt)
+            || getDateString(rawResult?.turnedInAt)
+            || getDateString(rawResult?.submittedDate)
+            || getDateString(rawResult?.updatedAt)
+            || getDateString(rawResult?.createdAt)
+            || null;
         const totalQuestions = hw.totalQuestions;
         let correctCount = 0;
         let incorrectCount = 0;
@@ -290,7 +260,7 @@ export const calculateHomeworkStats = (studentId, assignments, results) => {
         if (completionRate > 0 && completionRate < 100) status = '진행 중';
         else if (completionRate === 100) status = (incorrectCount > 0) ? '오답 정리' : '완료';
         const incorrectQuestionList = Object.keys(studentResults).filter(qNum => studentResults[qNum] === '틀림').map(Number).sort((a, b) => a - b);
-        return { ...hw, completionRate, status, completedCount: correctCount, incorrectCount, uncheckedCount, incorrectQuestionList };
+        return { ...hw, completionRate, status, completedCount: correctCount, incorrectCount, uncheckedCount, incorrectQuestionList, submissionDate };
     });
 };
 

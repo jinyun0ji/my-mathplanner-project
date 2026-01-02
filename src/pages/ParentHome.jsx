@@ -166,9 +166,9 @@ const ParentDashboard = ({
 };
 
 // --- 메인 페이지 컴포넌트 ---
-export default function ParentHome({ 
-    userId, students, classes, homeworkAssignments, homeworkResults, 
-    attendanceLogs, lessonLogs, notices, tests, grades, 
+export default function ParentHome({
+    userId, students, classes, homeworkAssignments, homeworkResults,
+    attendanceLogs, lessonLogs, notices, tests, grades, classTestStats,
     videoProgress, clinicLogs, onLogout,
     externalSchedules, onSaveExternalSchedule, onDeleteExternalSchedule
 }) {
@@ -192,7 +192,7 @@ export default function ParentHome({
     );
 
     const myHomeworkStats = useMemo(() => calculateHomeworkStats(activeChildId, homeworkAssignments, homeworkResults), [activeChildId, homeworkAssignments, homeworkResults]);
-    const myGradeComparison = useMemo(() => calculateGradeComparison(activeChildId, classes, tests, grades), [activeChildId, classes, tests, grades]);
+    const myGradeComparison = useMemo(() => calculateGradeComparison(activeChildId, classes, tests, grades, classTestStats), [activeChildId, classes, tests, grades, classTestStats]);
     const isPaymentFeatureLocked = true;
     const myPayments = useMemo(() => [], []);
     const unpaidPayments = [];
@@ -609,7 +609,7 @@ export default function ParentHome({
                                             <div className="flex items-center justify-between mb-2">
                                                 <h3 className="text-sm font-bold text-gray-800 flex items-center gap-2">
                                                     <Icon name="bell" className="w-4 h-4 text-indigo-600" />
-                                                    최근 알림
+                                                    공지사항
                                                 </h3>
                                                 <button onClick={() => setActiveTab('board')} className="text-xs text-indigo-600 font-semibold hover:underline">전체 보기</button>
                                             </div>
@@ -681,7 +681,7 @@ export default function ParentHome({
                                                     onClick={() => { setReportViewMode('byClass'); setSelectedClassId(null); setExpandedSections({ homework: false, grades: false }); }}
                                                     className="text-xs font-bold text-indigo-700 bg-indigo-50 px-3 py-1.5 rounded-full border border-indigo-100 hover:bg-indigo-100"
                                                 >
-                                                    반별 기록 보기
+                                                    클래스별 기록 보기
                                                 </button>
                                             </div>
                                         <div className="space-y-3" ref={lessonSectionRef}>
@@ -751,7 +751,7 @@ export default function ParentHome({
                                             <div className="flex items-center justify-between px-1">
                                                 <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
                                                     <Icon name="barChart" className="w-5 h-5 text-indigo-600" />
-                                                    반별 현황
+                                                    클래스 목록
                                                 </h3>
                                                 <span className="text-xs text-gray-400 font-semibold">총 {classList.length}개 반</span>
                                             </div>
@@ -790,7 +790,7 @@ export default function ParentHome({
                                                 <div className="flex items-center justify-between px-1">
                                                     <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
                                                         <Icon name="barChart" className="w-5 h-5 text-indigo-600" />
-                                                        반별 기록 보기
+                                                        클래스별 기록 보기
                                                     </h3>
                                                     <button
                                                         onClick={() => { setReportViewMode('overview'); setExpandedSections({ homework: false, grades: false }); }}

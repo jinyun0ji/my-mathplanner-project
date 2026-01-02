@@ -18,8 +18,8 @@ const getTrendText = (t) => {
 };
 
 // 상세 분석 컴포넌트
-const QuestionAnalysisList = ({ questions, classAverage, highestScore, trend }) => {
-    const [filter, setFilter] = useState('all'); 
+const QuestionAnalysisList = ({ questions, classAverage, highestScore, trend, statsReady }) => {
+    const [filter, setFilter] = useState('all');
     const filtered = questions.filter(q => {
         if (filter === 'wrong') return q.status === '틀림';
         if (filter === 'hard') return q.difficulty === '상';
@@ -37,10 +37,15 @@ const QuestionAnalysisList = ({ questions, classAverage, highestScore, trend }) 
                     <span className="text-sm font-bold text-gray-800">분석 요약</span>
                     <span className="text-xs text-gray-400">총 {questions.length}문항</span>
                 </div>
+                {!statsReady && (
+                    <div className="mb-3 text-xs text-gray-500 bg-gray-50 border border-dashed border-gray-200 p-2 rounded-lg">
+                        통계 준비 중입니다. 시험 통계를 곧 불러올게요.
+                    </div>
+                )}
                 <div className="flex gap-4 text-xs">
                     <div className="flex-1 bg-red-50 rounded-lg p-2 text-center">
                         <span className="block text-red-500 font-bold mb-1">평균</span>
-                        <span className="text-lg font-extrabold text-red-600">{classAverage}점</span> 
+                        <span className="text-lg font-extrabold text-red-600">{statsReady && classAverage !== null ? `${classAverage}점` : '통계 준비 중'}</span>
                     </div>
                     <div className="flex-1 bg-orange-50 rounded-lg p-2 text-center">
                         <span className="block text-orange-500 font-bold mb-1">최고점</span>
@@ -55,7 +60,13 @@ const QuestionAnalysisList = ({ questions, classAverage, highestScore, trend }) 
 
             <div className="flex p-1 bg-gray-100 rounded-xl mb-4">
                 {['all', 'wrong', 'hard'].map(type => (
-                    <button key={type} onClick={() => setFilter(type)} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${filter === type ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-400'}`}>{type === 'all' ? '전체 문항' : type === 'wrong' ? '취약 문항' : '고난도'}</button>
+                    <button
+                        key={type}
+                        onClick={() => setFilter(type)}
+                        className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${filter === type ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-400'}`}
+                    >
+                        {type === 'all' ? '전체 문항' : type === 'wrong' ? '취약 문항' : '고난도'}
+                    </button>
                 ))}
             </div>
 
@@ -75,7 +86,7 @@ const QuestionAnalysisList = ({ questions, classAverage, highestScore, trend }) 
                         <div className="flex items-center gap-4 text-xs text-gray-500">
                             <div className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-gray-300"></span>난이도: <span className={`font-bold ${q.difficulty === '상' ? 'text-red-500' : q.difficulty === '중' ? 'text-yellow-600' : 'text-green-500'}`}>{q.difficulty}</span></div>
                             <div className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-gray-300"></span>유형: {q.type}</div>
-                            <div className="flex items-center gap-1 ml-auto">반 정답률 <span className="font-bold text-indigo-600">{q.itemAccuracy}%</span></div>
+                            <div className="flex items-center gap-1 ml-auto">반 정답률 <span className="font-bold text-indigo-600">{statsReady && Number.isFinite(q.itemAccuracy) ? `${q.itemAccuracy}%` : '통계 준비 중'}</span></div>
                         </div>
                     </div>
                 )) : (<div className="text-center py-8 text-gray-400 text-xs">{filter === 'all' ? '등록된 문항이 없습니다.' : '해당하는 문항이 없습니다.'}</div>)}
@@ -123,13 +134,16 @@ export default function GradesTab({ myGradeComparison }) {
                                 <span className="text-5xl font-extrabold text-indigo-600">{selectedTestAnalysis.studentScore}</span>
                                 <span className="text-gray-400 text-xl font-medium"> / {selectedTestAnalysis.maxScore}</span>
                             </div>
+                            {!selectedTestAnalysis.statsReady && (
+                                <p className="text-xs text-gray-500">통계 준비 중입니다. 전체 반 통계를 곧 불러올게요.</p>
+                            )}
                         </div>
-                        <QuestionAnalysisList 
-                            questions={selectedTestAnalysis.questions} 
+                        <QuestionAnalysisList
+                            questions={selectedTestAnalysis.questions}
                             classAverage={selectedTestAnalysis.classAverage}
                             highestScore={selectedTestAnalysis.highestScore}
-                            maxScore={selectedTestAnalysis.maxScore}
-                            trend={trendAnalysis.trend} 
+                            trend={trendAnalysis.trend}
+                            statsReady={selectedTestAnalysis.statsReady}
                         />
                     </div>
                 </div>
@@ -139,7 +153,7 @@ export default function GradesTab({ myGradeComparison }) {
 
     return (
         <div className="space-y-4 pb-20">
-            <div 
+            {/* <div 
                 className={`p-4 rounded-xl border ${getTrendStyle(trendAnalysis.trend)} cursor-pointer active:scale-[0.99] transition-all`}
                 onClick={() => trendAnalysis.trend === 'initial' && alert("성적 추이 분석을 위해서는 최소 3회 이상의 시험 기록이 필요합니다.")}
             >
@@ -151,7 +165,7 @@ export default function GradesTab({ myGradeComparison }) {
                     <span className="text-xs font-extrabold">{getTrendText(trendAnalysis.trend)}</span>
                 </div>
                 <p className="text-xs">{trendAnalysis.description}</p>
-            </div>
+            </div> */}
 
             {!myGradeComparison || myGradeComparison.length === 0 ? (
                 <div className="text-center py-10 text-gray-400 text-sm bg-white rounded-2xl border border-dashed border-gray-200">등록된 성적이 없습니다.</div>
@@ -168,8 +182,13 @@ export default function GradesTab({ myGradeComparison }) {
                             <div>
                                 <h3 className="text-lg font-bold text-gray-900 leading-tight mb-1">{item.testName}</h3>
                                 <div className="flex items-center gap-1 text-xs text-gray-500 font-medium">
-                                    {item.isAboveAverage ? <Icon name="trendingUp" className="w-3 h-3 text-green-500" /> : <Icon name="trendingDown" className="w-3 h-3 text-red-500" />}
-                                    평균 {item.classAverage}점
+                                    {item.isAboveAverage === null
+                                        ? <Icon name="minus" className="w-3 h-3 text-gray-400" />
+                                        : item.isAboveAverage
+                                            ? <Icon name="trendingUp" className="w-3 h-3 text-green-500" />
+                                            : <Icon name="trendingDown" className="w-3 h-3 text-red-500" />
+                                    }
+                                    {item.statsReady && item.classAverage !== null ? `평균 ${item.classAverage}점` : '통계 준비 중'}
                                 </div>
                             </div>
                             <div className="text-right">

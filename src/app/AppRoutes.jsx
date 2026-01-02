@@ -49,6 +49,7 @@ import {
     collection,
     deleteDoc,
     doc,
+    getDoc,
     getDocs,
     limit,
     orderBy,
@@ -167,6 +168,7 @@ export default function AppRoutes({ user, role, studentIds }) {
   const [externalSchedules, setExternalSchedules] = useState([]);
 
   const [grades, setGrades] = useState({});
+  const [classTestStats, setClassTestStats] = useState({});
   const [homeworkResults, setHomeworkResults] = useState({});
   const [studentMemos, setStudentMemos] = useState({});
   const [videoProgress, setVideoProgress] = useState({});
@@ -251,6 +253,7 @@ export default function AppRoutes({ user, role, studentIds }) {
         setExternalSchedules,
         setHomeworkResults,
         setGrades,
+        setClassTestStats,
         isCancelled: () => state.cancelled,
     });
 
@@ -709,8 +712,9 @@ export default function AppRoutes({ user, role, studentIds }) {
           const nextResults = { ...homeworkResults };
 
           for (const { studentId, assignmentId, results } of grouped.values()) {
-              const existing = nextResults[studentId]?.[assignmentId] || {};
-              const mergedResults = { ...existing, ...results };
+              const existing = nextResults[studentId]?.[assignmentId];
+              const existingMap = existing?.results || existing || {};
+              const mergedResults = { ...existingMap, ...results };
               const docId = `${studentId}_${assignmentId}`;
 
               await setDoc(doc(db, 'homeworkResults', docId), {
@@ -722,7 +726,11 @@ export default function AppRoutes({ user, role, studentIds }) {
               }, { merge: true });
 
               if (!nextResults[studentId]) nextResults[studentId] = {};
-              nextResults[studentId][assignmentId] = mergedResults;
+              nextResults[studentId][assignmentId] = {
+                  ...(existing && typeof existing === 'object' ? existing : {}),
+                  results: mergedResults,
+                  updatedAt: new Date().toISOString(),
+              };
           }
 
           setHomeworkResults(nextResults);
@@ -774,23 +782,63 @@ export default function AppRoutes({ user, role, studentIds }) {
       ensureFirestoreContext();
       try {
           const docId = `${studentId}_${testId}`;
+          const isCorrect = (v) =>
+              v === true || v === 1 || v === '1' || v === 'O' || v === '맞음' || v === '고침';
+
+          const computeWeightedScore = (resultMap, test) => {
+              if (!resultMap || typeof resultMap !== 'object') return null;
+              const entries = Object.entries(resultMap);
+              if (entries.length === 0) return null;
+
+              const qs = Array.isArray(test?.questionScores) ? test.questionScores : null;
+              const fallback = (Number.isFinite(test?.maxScore) && Number.isFinite(test?.totalQuestions) && test.totalQuestions > 0)
+                  ? (test.maxScore / test.totalQuestions)
+                  : 0;
+
+              let total = 0;
+              for (const [qNum, v] of entries) {
+                  if (!isCorrect(v)) continue;
+                  const idx = Number(qNum) - 1;
+                  const points = (qs && Number.isFinite(Number(qs[idx])))
+                      ? Number(qs[idx])
+                      : fallback;
+                  total += points;
+              }
+              return total;
+          };
+
+          const findTestById = async () => {
+              const cached = tests.find(t => t.id === testId);
+              if (cached) return cached;
+              const snapshot = await getDoc(doc(db, 'tests', testId));
+              return snapshot.exists() ? { id: testId, ...snapshot.data() } : null;
+          };
+
           const isAbsent = result === '미응시';
-          // ✅ result가 객체(문항별 정오답)일 때 점수 계산
-            let computedScore = null;
-            if (!isAbsent && result && typeof result === 'object') {
-            const values = Object.values(result); // true/false 또는 'O'/'X' 등일 수 있음
-            const total = values.length;
 
-            const correct = values.filter(v => v === true || v === 'O' || v === 1 || v === '1').length;
+          let score = null;
+          let totalScore = null;
+          let attempted = false;
+          let correctCount = {};
 
-            computedScore = total > 0 ? Math.round((correct / total) * 100) : 0;
+          if (!isAbsent && result && typeof result === 'object') {
+              const test = await findTestById();
+              const computedScore = computeWeightedScore(result, test);
+              if (computedScore !== null) {
+                  score = computedScore;
+                  totalScore = computedScore;
+                  attempted = true;
+                  correctCount = result;
+              }
           }
 
           const payload = {
               authUid: studentId,
               testId,
-              score: isAbsent ? null : (computedScore ?? 0),
-              correctCount: isAbsent ? {} : result,
+              score,
+              totalScore,
+              attempted,
+              correctCount,
               comment: comment || '',
               updatedAt: serverTimestamp(),
               updatedBy: userId,
@@ -1071,6 +1119,7 @@ export default function AppRoutes({ user, role, studentIds }) {
               notices={announcements}
               tests={tests}
               grades={grades}
+              classTestStats={classTestStats}
               videoProgress={videoProgress}
               onSaveVideoProgress={handleSaveVideoProgress}
               videoBookmarks={videoBookmarks}
@@ -1098,7 +1147,7 @@ export default function AppRoutes({ user, role, studentIds }) {
               />
           );
       }
-      return <ParentHome userId={userId} students={students} classes={classes} homeworkAssignments={homeworkAssignments} homeworkResults={homeworkResults} attendanceLogs={attendanceLogs} lessonLogs={lessonLogs} notices={announcements} tests={tests} grades={grades} clinicLogs={clinicLogs} videoProgress={videoProgress} onLogout={handleLogout} externalSchedules={externalSchedules} onSaveExternalSchedule={handleSaveExternalSchedule} onDeleteExternalSchedule={handleDeleteExternalSchedule} />;
+      return <ParentHome userId={userId} students={students} classes={classes} homeworkAssignments={homeworkAssignments} homeworkResults={homeworkResults} attendanceLogs={attendanceLogs} lessonLogs={lessonLogs} notices={announcements} tests={tests} grades={grades} classTestStats={classTestStats} clinicLogs={clinicLogs} videoProgress={videoProgress} onLogout={handleLogout} externalSchedules={externalSchedules} onSaveExternalSchedule={handleSaveExternalSchedule} onDeleteExternalSchedule={handleDeleteExternalSchedule} />;
 }
   
   const managementProps = {
