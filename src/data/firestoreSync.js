@@ -195,12 +195,20 @@ export const loadStaffDataOnce = async ({
         if (setGrades && shouldLoad('grades')) {
             const gradesSnap = await getDocs(query(collection(db, 'grades'), limit(500)));
             const mappedGrades = {};
+
             gradesSnap.docs.forEach((docSnap) => {
-                const data = docSnap.data();
-                const { authUid: sId, testId } = data;
+                const raw = docSnap.data() || {};
+                const data = normalizeAuthUid(raw); // ✅ authUid/studentUid → studentId로 정규화
+
+                const sId = data.studentId; // ✅ 이제 항상 studentId를 키로 사용
+                const testId = data.testId;
+
+                if (!sId || !testId) return; // 방어 로직
+
                 if (!mappedGrades[sId]) mappedGrades[sId] = {};
                 mappedGrades[sId][testId] = data;
             });
+
             setGrades(mappedGrades);
         }
 
