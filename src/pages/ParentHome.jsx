@@ -184,7 +184,13 @@ export default function ParentHome({
 
     // 2. 데이터 필터링
     const myClasses = useMemo(() => classes.filter(c => (c.students || []).includes(activeChildId)), [classes, activeChildId]);
-    const { ongoing: ongoingClasses } = useMemo(() => sortClassesByStatus(myClasses), [myClasses]);
+
+    // ✅ 변경: 진행중/종강 분리 + 둘 다 사용
+    const { ongoing: ongoingClasses, finished: finishedClasses, ordered: orderedClasses } = useMemo(
+        () => sortClassesByStatus(myClasses),
+        [myClasses],
+    );
+
     const myHomeworkStats = useMemo(() => calculateHomeworkStats(activeChildId, homeworkAssignments, homeworkResults), [activeChildId, homeworkAssignments, homeworkResults]);
     const myGradeComparison = useMemo(() => calculateGradeComparison(activeChildId, classes, tests, grades), [activeChildId, classes, tests, grades]);
     const isPaymentFeatureLocked = true;
@@ -234,6 +240,18 @@ export default function ParentHome({
     const [isNotificationOpen, setIsNotificationOpen] = useState(false);
     const [visibleNotices, setVisibleNotices] = useState([]); 
     const { notifications, hasUnread, unreadCount, markAllRead, lastReadAt, isLoading, isMetaLoading } = useNotifications(userId);
+
+    const myClinicLogs = useMemo(() => {
+        if (!Array.isArray(clinicLogs) || !activeChildId) return [];
+            return clinicLogs.filter((log) => log?.studentId === activeChildId);
+        }, [clinicLogs, activeChildId]);
+
+    const completedClinics = useMemo(() => {
+        const now = new Date();
+        return myClinicLogs
+            .filter((log) => log?.checkOut) // 완료된 것만
+            .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    }, [myClinicLogs]);
 
     useEffect(() => {
         if (!activeChild) return;
@@ -439,8 +457,9 @@ export default function ParentHome({
         return items;
     }, [attendanceSummary, homeworkSummary, gradeSummary, unpaidPayments.length, reportFocus]);
 
-    const classSummaries = useMemo(() => {
-        return ongoingClasses.map(cls => {
+    // ✅ 변경: 반별 현황은 진행중 + 종강 포함
+    const allClassSummaries = useMemo(() => {
+        const build = (cls) => {
             const latestAttendance = childAttendanceLogs.find(log => log.classId === cls.id);
             const classHomeworks = myHomeworkStats.filter(hw => hw.classId === cls.id);
             const pendingHomeworks = classHomeworks.filter(hw => hw.status !== '완료').length;
@@ -459,8 +478,13 @@ export default function ParentHome({
                 latestScore,
                 scoreDiff
             };
-        });
-    }, [ongoingClasses, childAttendanceLogs, myHomeworkStats, myGradeComparison, tests]);
+        };
+
+        return {
+            ongoing: ongoingClasses.map(build),
+            finished: finishedClasses.map(build),
+        };
+    }, [ongoingClasses, finishedClasses, childAttendanceLogs, myHomeworkStats, myGradeComparison, tests]);
 
     const defaultReportClassId = useMemo(
         () => getDefaultClassId(ongoingClasses.length > 0 ? ongoingClasses : myClasses),
@@ -470,7 +494,6 @@ export default function ParentHome({
     // ✅ 리포트 데이터 생성 (현재 선택된 리포트 ID가 있을 때만)
     const activeReport = useMemo(() => {
         if (!selectedReportId) return null;
-        // 전체 데이터를 컨텍스트로 전달
         const contextData = { lessonLogs, attendanceLogs, homeworkAssignments, homeworkResults, tests, grades, classes };
         return generateSessionReport(selectedReportId, activeChildId, contextData);
     }, [selectedReportId, activeChildId, lessonLogs, attendanceLogs, homeworkAssignments, homeworkResults, tests, grades, classes]);
@@ -507,7 +530,7 @@ export default function ParentHome({
                             {activeChildName}
                         </span>
                     </div>
-                <button
+                    <button
                         type="button"
                         disabled
                         className="text-xs font-semibold text-gray-400 border border-gray-200 px-3 py-1.5 rounded-full cursor-not-allowed"
@@ -525,18 +548,18 @@ export default function ParentHome({
                         onBack={() => setSelectedReportId(null)} 
                     />
                 ) : selectedClassId ? (
-                    /* [라우팅 분기 2] 강의실 화면 (리포트 진입 핸들러 전달) */
+                    /* [라우팅 분기 2] 강의실 화면 */
                     <ParentClassroomView 
-                            classes={classes} lessonLogs={lessonLogs} attendanceLogs={attendanceLogs}
-                            selectedClassId={selectedClassId} setSelectedClassId={setSelectedClassId}
-                            videoProgress={videoProgress} homeworkAssignments={homeworkAssignments} homeworkResults={homeworkResults}
-                            tests={tests} grades={grades}
-                            onNavigateToTab={(tab, subTab = 'homework') => { setSelectedClassId(null); setActiveTab('report'); if (subTab) setReportFocus(subTab); }}
-                            onOpenReport={(sessionId) => setSelectedReportId(sessionId)} // ✅ 리포트 열기 핸들러
-                            activeStudentName={activeChildName}
+                        classes={classes} lessonLogs={lessonLogs} attendanceLogs={attendanceLogs}
+                        selectedClassId={selectedClassId} setSelectedClassId={setSelectedClassId}
+                        videoProgress={videoProgress} homeworkAssignments={homeworkAssignments} homeworkResults={homeworkResults}
+                        tests={tests} grades={grades}
+                        onNavigateToTab={(tab, subTab = 'homework') => { setSelectedClassId(null); setActiveTab('report'); if (subTab) setReportFocus(subTab); }}
+                        onOpenReport={(sessionId) => setSelectedReportId(sessionId)}
+                        activeStudentName={activeChildName}
                     />
                 ) : (
-                    /* [라우팅 분기 3] 메인 대시보드 */
+                    /* [라우팅 분기 3] 메인 */
                     <div className="animate-fade-in space-y-4">
                         {activeTab === 'home' && (
                             <div className="space-y-4">
@@ -662,6 +685,7 @@ export default function ParentHome({
                                 </div>
                             </div>
                         )}
+
                         {activeTab === 'report' && (
                             <div className="space-y-6">
                                 <section className="bg-white rounded-3xl border border-gray-100 shadow-sm p-5 md:p-6">
@@ -770,61 +794,120 @@ export default function ParentHome({
                                     </div>
                                 </section>
 
+                                {/* ✅ 변경: 반별 현황(종강 포함) */}
                                 <section className="space-y-3">
                                     <div className="flex items-center justify-between px-1">
                                         <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
                                             <Icon name="barChart" className="w-5 h-5 text-indigo-600" />
                                             반별 현황
                                         </h3>
-                                        <span className="text-xs text-gray-400 font-semibold">진행 중 {ongoingClasses.length}개 반</span>
+                                        <span className="text-xs text-gray-400 font-semibold">
+                                            진행 중 {ongoingClasses.length}개 · 종강 {finishedClasses.length}개
+                                        </span>
                                     </div>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-                                        {classSummaries.map(cls => (
-                                            <div key={cls.id} className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm space-y-3">
-                                                <div className="flex items-start justify-between gap-3">
-                                                    <div className="space-y-1">
-                                                        <p className="text-[11px] text-gray-400 font-semibold">{cls.schedule.days.join(', ')} {cls.schedule.time}</p>
-                                                        <h4 className="font-bold text-gray-900">{cls.name}</h4>
-                                                         <p className="text-xs text-gray-500">{cls.teacher} 선생님</p>
+
+                                    {/* 진행 중 */}
+                                    {allClassSummaries.ongoing.length > 0 && (
+                                        <div className="space-y-2">
+                                            <div className="flex items-center gap-2 px-1">
+                                                <span className="text-xs font-bold text-indigo-700 bg-indigo-50 border border-indigo-100 px-2 py-1 rounded-full">
+                                                    진행 중
+                                                </span>
+                                                <span className="text-xs text-gray-400">{allClassSummaries.ongoing.length}개 반</span>
+                                            </div>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                                                {allClassSummaries.ongoing.map(cls => (
+                                                    <div key={cls.id} className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm space-y-3">
+                                                        <div className="flex items-start justify-between gap-3">
+                                                            <div className="space-y-1">
+                                                                <p className="text-[11px] text-gray-400 font-semibold">{cls.schedule.days.join(', ')} {cls.schedule.time}</p>
+                                                                <h4 className="font-bold text-gray-900">{cls.name}</h4>
+                                                                <p className="text-xs text-gray-500">{cls.teacher} 선생님</p>
+                                                            </div>
+                                                            <button 
+                                                                onClick={() => setSelectedClassId(cls.id)} 
+                                                                className="text-[11px] font-bold text-indigo-600 bg-indigo-50 px-3 py-1 rounded-full border border-indigo-100 hover:bg-indigo-100 active:scale-95 transition"
+                                                            >
+                                                                강의실 열기
+                                                            </button>
+                                                        </div>
+                                                        <div className="flex flex-wrap gap-2">
+                                                            <StatusPill icon="user" label={`출결 ${cls.latestAttendance}`} tone={['결석', '지각'].includes(cls.latestAttendance) ? 'warning' : 'info'} />
+                                                            <StatusPill icon="clipboard" label={`과제 완료 ${cls.completionRate}%`} tone={cls.pendingHomeworks > 0 ? 'warning' : 'default'} />
+                                                            <StatusPill 
+                                                                icon="trendingUp" 
+                                                                label={cls.latestScore ? `최근 ${cls.latestScore.testName} ${cls.latestScore.studentScore}점` : '테스트 대기'} 
+                                                                tone={cls.scoreDiff !== null && cls.scoreDiff < 0 ? 'warning' : 'default'} 
+                                                            />
+                                                        </div>
+                                                        {cls.pendingHomeworks > 0 && (
+                                                            <p className="text-[11px] text-orange-600 bg-orange-50 px-3 py-2 rounded-xl border border-orange-100 font-semibold">
+                                                                미완료 과제 {cls.pendingHomeworks}건이 있습니다. 제출 여부를 확인해주세요.
+                                                            </p>
+                                                        )}
                                                     </div>
-                                                    <button 
-                                                        onClick={() => setSelectedClassId(cls.id)} 
-                                                        className="text-[11px] font-bold text-indigo-600 bg-indigo-50 px-3 py-1 rounded-full border border-indigo-100 hover:bg-indigo-100 active:scale-95 transition"
-                                                    >
-                                                        강의실 열기
-                                                    </button>
-                                                </div>
-                                                <div className="flex flex-wrap gap-2">
-                                                    <StatusPill icon="user" label={`출결 ${cls.latestAttendance}`} tone={['결석', '지각'].includes(cls.latestAttendance) ? 'warning' : 'info'} />
-                                                    <StatusPill icon="clipboard" label={`과제 완료 ${cls.completionRate}%`} tone={cls.pendingHomeworks > 0 ? 'warning' : 'default'} />
-                                                    <StatusPill 
-                                                        icon="trendingUp" 
-                                                        label={cls.latestScore ? `최근 ${cls.latestScore.testName} ${cls.latestScore.studentScore}점` : '테스트 대기'} 
-                                                        tone={cls.scoreDiff !== null && cls.scoreDiff < 0 ? 'warning' : 'default'} 
-                                                    />
-                                                </div>
-                                                {cls.pendingHomeworks > 0 && (
-                                                    <p className="text-[11px] text-orange-600 bg-orange-50 px-3 py-2 rounded-xl border border-orange-100 font-semibold">
-                                                        미완료 과제 {cls.pendingHomeworks}건이 있습니다. 제출 여부를 확인해주세요.
-                                                    </p>
-                                                )}
+                                                ))}
                                             </div>
-                                        ))}
-                                        {ongoingClasses.length === 0 && (
-                                            <div className="p-6 text-center bg-white border border-dashed border-gray-200 rounded-2xl text-sm text-gray-400">
-                                                등록된 반이 없습니다.
+                                        </div>
+                                    )}
+
+                                    {/* 종강 */}
+                                    {allClassSummaries.finished.length > 0 && (
+                                        <div className="space-y-2 pt-2">
+                                            <div className="flex items-center gap-2 px-1">
+                                                <span className="text-xs font-bold text-gray-700 bg-gray-50 border border-gray-200 px-2 py-1 rounded-full">
+                                                    종강
+                                                </span>
+                                                <span className="text-xs text-gray-400">{allClassSummaries.finished.length}개 반</span>
                                             </div>
-                                        )}
-                                    </div>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                                                {allClassSummaries.finished.map(cls => (
+                                                    <div key={cls.id} className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm space-y-3 opacity-[0.92]">
+                                                        <div className="flex items-start justify-between gap-3">
+                                                            <div className="space-y-1">
+                                                                <p className="text-[11px] text-gray-400 font-semibold">{cls.schedule.days.join(', ')} {cls.schedule.time}</p>
+                                                                <h4 className="font-bold text-gray-900">{cls.name}</h4>
+                                                                <p className="text-xs text-gray-500">{cls.teacher} 선생님</p>
+                                                            </div>
+                                                            <button 
+                                                                onClick={() => setSelectedClassId(cls.id)} 
+                                                                className="text-[11px] font-bold text-gray-600 bg-gray-50 px-3 py-1 rounded-full border border-gray-200 hover:bg-gray-100 active:scale-95 transition"
+                                                            >
+                                                                기록 보기
+                                                            </button>
+                                                        </div>
+                                                        <div className="flex flex-wrap gap-2">
+                                                            <StatusPill icon="flag" label="종강" tone="default" />
+                                                            <StatusPill icon="user" label={`출결 ${cls.latestAttendance}`} tone={['결석', '지각'].includes(cls.latestAttendance) ? 'warning' : 'info'} />
+                                                            <StatusPill icon="clipboard" label={`과제 완료 ${cls.completionRate}%`} tone={cls.pendingHomeworks > 0 ? 'warning' : 'default'} />
+                                                        </div>
+                                                        {cls.pendingHomeworks > 0 && (
+                                                            <p className="text-[11px] text-orange-600 bg-orange-50 px-3 py-2 rounded-xl border border-orange-100 font-semibold">
+                                                                종강 반에 미완료 과제 {cls.pendingHomeworks}건이 남아있습니다.
+                                                            </p>
+                                                        )}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {allClassSummaries.ongoing.length === 0 && allClassSummaries.finished.length === 0 && (
+                                        <div className="p-6 text-center bg-white border border-dashed border-gray-200 rounded-2xl text-sm text-gray-400">
+                                            등록된 반이 없습니다.
+                                        </div>
+                                    )}
                                 </section>
                             </div>
                         )}
+
                         {activeTab === 'schedule' && (
                             <ScheduleTab 
                                 myClasses={ongoingClasses} attendanceLogs={attendanceLogs} clinicLogs={clinicLogs} 
                                 externalSchedules={externalSchedules} onSaveExternalSchedule={onSaveExternalSchedule} onDeleteExternalSchedule={onDeleteExternalSchedule}
                             />
                         )}
+
                         {activeTab === 'payment' && (
                             <div className="space-y-4">
                                 <h2 className="text-2xl font-bold text-gray-900 px-1">결제 내역</h2>
@@ -843,6 +926,7 @@ export default function ParentHome({
                                 </div>
                             </div>
                         )}
+
                         {activeTab === 'menu' && (
                             <MenuTab student={activeChild} onUpdateStudent={() => {}} onLogout={onLogout} videoBookmarks={{}} lessonLogs={[]} onLinkToMemo={() => {}} notices={visibleNotices} setActiveTab={setActiveTab} isParent={true} />
                         )}
@@ -870,9 +954,7 @@ export default function ParentHome({
                 </div>
             )}
             
-            {/* ✅ [수정] 플로팅 버튼 통합 컨테이너 */}
             <div className={`fixed bottom-24 right-5 z-[60] flex flex-col gap-3 items-center`}>
-                {/* 1. 알림 버튼 */}
                 <button 
                     onClick={() => setIsNotificationOpen(true)} 
                     className="bg-white text-indigo-900 border border-indigo-200 p-3 rounded-full shadow-lg hover:bg-gray-50 active:scale-90 flex items-center justify-center relative w-12 h-12"
@@ -881,6 +963,7 @@ export default function ParentHome({
                     {hasUnread && <span className="absolute top-2 right-2.5 w-2 h-2 bg-red-500 rounded-full ring-1 ring-white"></span>}
                 </button>
             </div>
+
             <NotificationList
                 isOpen={isNotificationOpen}
                 onClose={() => setIsNotificationOpen(false)}
