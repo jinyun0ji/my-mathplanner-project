@@ -71,7 +71,7 @@ const ParentDashboard = ({
 
         return { attend: attendStatus, hw: hwStatus, grade: gradeStatus };
     }, [attendanceLogs, homeworkStats, gradeComparison, child.id]);
-
+    
     // 2. 오늘의 수업 요약
     const todaySchedules = [
         ...myClasses.filter(c => c.schedule.days.includes(todayDayName)).map(c => ({
@@ -183,6 +183,10 @@ export default function ParentHome({
     videoProgress, clinicLogs, onLogout,
     externalSchedules, onSaveExternalSchedule, onDeleteExternalSchedule
 }) {
+    const todayStr = useMemo(() => {
+        const today = new Date();
+        return today.toISOString().split('T')[0];
+    }, []);
     const { activeStudentId, studentIds, setActiveStudentId } = useParentContext();
     // 1. 자녀 데이터 및 선택 로직
     const initialStudent = students.find(s => s.id === activeStudentId);

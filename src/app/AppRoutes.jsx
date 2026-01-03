@@ -994,10 +994,32 @@ export default function AppRoutes({ user, role, studentIds }) {
       }
   };
 
+  const normalizeAnnouncementPayload = (data) => {
+      const base = stripId(data);
+      const targetClassesFromPayload = Array.isArray(base.targetClasses)
+          ? base.targetClasses
+          : Array.isArray(base.targetClassIds)
+              ? base.targetClassIds
+              : [];
+      const targetClasses = targetClassesFromPayload.map((id) => String(id));
+      const targetStudents = Array.isArray(base.targetStudents)
+          ? base.targetStudents.map((id) => String(id))
+          : [];
+      const isPublic = targetClasses.length === 0;
+
+      return {
+          ...base,
+          targetClasses,
+          targetClassIds: targetClasses,
+          targetStudents,
+          isPublic,
+      };
+  };
+
   const handleSaveAnnouncement = async (data, isEdit) => {
       ensureFirestoreContext();
       try {
-          const payload = stripId(data);
+          const payload = normalizeAnnouncementPayload(data);
           if (isEdit) {
               if (!data.id) throw new Error('공지사항 ID가 없습니다.');
               await updateDoc(doc(db, 'announcements', data.id), {
