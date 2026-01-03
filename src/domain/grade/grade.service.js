@@ -21,7 +21,14 @@ export const getTotalScore = (grade = {}, test = {}) => {
     const answerMap = grade.answers || grade.correctCount;
     if (answerMap && typeof answerMap === 'object' && !Array.isArray(answerMap)) {
         const entries = Object.entries(answerMap);
-        if (entries.length === 0) return null;
+        // 빈 정오표는 미응시로 간주하여 학생/학부모 화면에서 0점으로 표기되지 않도록 처리
+        if (entries.length === 0) {
+            // 점수 필드가 명시적으로 null이면 미응시로 판단
+            if (grade.score === null || grade.totalScore === null) return null;
+
+            // 그 외 특수 케이스는 기존 0점 처리 유지
+            return 0;
+        }
 
         return entries.reduce((sum, [questionNumber, value]) => {
             if (!isCorrectAnswer(value)) return sum;

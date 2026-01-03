@@ -940,7 +940,7 @@ export default function AppRoutes({ user, role, studentIds }) {
               score,
               totalScore,
               attempted,
-              correctCount,
+              correctCount: isAbsent ? null : correctCount,
               comment: comment || '',
               updatedAt: serverTimestamp(),
               updatedBy: userId,
