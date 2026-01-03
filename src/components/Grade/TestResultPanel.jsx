@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Icon } from '../../utils/helpers';
-import { isStudentEligibleForTest } from '../../domain/grade/grade.service';
+import { getTotalScore, isAbsentGrade, isStudentEligibleForTest } from '../../domain/grade/grade.service';
 // Modal은 GradeManagement.jsx에서 사용하므로 여기서는 제거하거나 유지해도 무방
 
 export default function TestResultPanel({
@@ -250,15 +250,20 @@ export default function TestResultPanel({
                         {studentsData.map(student => {
                             const eligible = isEligibleForTest(student);
                             const gradeData = grades[student.id]?.[test.id];
-                            const isAbsent =
-                                !gradeData?.correctCount ||
-                                Object.keys(gradeData.correctCount).length === 0;
+                            const isAbsent = isAbsentGrade(gradeData)
+                                || !gradeData?.correctCount
+                                || Object.keys(gradeData.correctCount).length === 0;
+                            const resolvedScore = !isAbsent
+                                ? (Number.isFinite(calculatedScores[student.id])
+                                    ? calculatedScores[student.id]
+                                    : getTotalScore(gradeData, test))
+                                : null;
                             const totalScoreText = !eligible
                                 ? '해당 없음'
-                                : isAbsent
+                                : resolvedScore === null
                                     ? '미응시'
-                                    : (Number.isFinite(calculatedScores[student.id])
-                                        ? calculatedScores[student.id].toFixed(1)
+                                    : (Number.isFinite(resolvedScore)
+                                        ? resolvedScore.toFixed(1)
                                         : '-');
 
                             return (

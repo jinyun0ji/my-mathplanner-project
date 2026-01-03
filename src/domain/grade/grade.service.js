@@ -2,6 +2,9 @@ const isCorrectAnswer = (value) => {
     return value === true || value === 1 || value === '맞음' || value === '고침';
 };
 
+export const isAbsentGrade = (grade) =>
+    grade && (grade.totalScore === null || grade.score === null);
+
 const getPerQuestionScore = (test, index) => {
     if (Array.isArray(test?.questionScores) && test.questionScores.length > 0) {
         const value = test.questionScores[index];
@@ -18,17 +21,13 @@ const getPerQuestionScore = (test, index) => {
 export const getTotalScore = (grade = {}, test = {}) => {
     if (!grade) return null;
 
+    if (isAbsentGrade(grade)) return null;
+
     const answerMap = grade.answers || grade.correctCount;
     if (answerMap && typeof answerMap === 'object' && !Array.isArray(answerMap)) {
         const entries = Object.entries(answerMap);
         // 빈 정오표는 미응시로 간주하여 학생/학부모 화면에서 0점으로 표기되지 않도록 처리
-        if (entries.length === 0) {
-            // 점수 필드가 명시적으로 null이면 미응시로 판단
-            if (grade.score === null || grade.totalScore === null) return null;
-
-            // 그 외 특수 케이스는 기존 0점 처리 유지
-            return 0;
-        }
+        if (entries.length === 0) return null;
 
         return entries.reduce((sum, [questionNumber, value]) => {
             if (!isCorrectAnswer(value)) return sum;
@@ -108,9 +107,15 @@ const computeTestStatisticsInternal = (test, students, grades, classAverages, cl
         return { average: null, maxScore: null, minScore: null, stdDev: null, correctRates: {}, rank: [] };
     }
 
-    const getStudentScore = (studentId) => getTotalScore(gradeMap[studentId]?.[test.id], test);
+    const getStudentScore = (studentId) => {
+        const grade = gradeMap[studentId]?.[test.id];
+        if (isAbsentGrade(grade)) return null;
+        return getTotalScore(grade, test);
+    };
 
-    const scores = eligibleStudents.map(s => getStudentScore(s.id)).filter(score => Number.isFinite(score));
+    const scores = eligibleStudents
+        .map(s => getStudentScore(s.id))
+        .filter(score => Number.isFinite(score));
 
     if (scores.length === 0) {
         return { average: null, maxScore: null, minScore: null, stdDev: null, correctRates: {}, rank: [] };
@@ -192,7 +197,9 @@ export const getClassAverages = (classTests = [], classStudents = [], grades = {
         let count = 0;
         classStudents.forEach(student => {
             if (!isStudentEligibleForTest(student, test, test.classId)) return;
-            const score = getTotalScore(grades[student.id]?.[test.id], test);
+            const grade = grades[student.id]?.[test.id];
+            if (isAbsentGrade(grade)) return;
+            const score = getTotalScore(grade, test);
             if (Number.isFinite(score)) {
                 totalScore += score;
                 count++;

@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Icon } from '../../utils/helpers';
 import { Modal } from '../../components/common/Modal'; 
-import { getTotalScore } from '../../domain/grade/grade.service';
+import { getTotalScore, isAbsentGrade } from '../../domain/grade/grade.service';
 
 const RESULT_OPTIONS_GRADE = { 
     '맞음': 'text-green-600 bg-green-50 border-green-200', 
@@ -142,8 +142,8 @@ export default function TestResultTable({ isOpen, onClose, test, studentsData, h
                     <h4 className='text-xs font-bold text-gray-500 mb-2 uppercase tracking-wide'>학생 목록 ({studentsInClass.length})</h4>
                     {studentsInClass.map(student => {
                         const scoreData = grades[student.id]?.[test.id] || {};
-                        const totalScore = getTotalScore(scoreData, test);
-                        const scoreDisplay = scoreData.score === null && totalScore === null
+                        const totalScore = isAbsentGrade(scoreData) ? null : getTotalScore(scoreData, test);
+                        const scoreDisplay = totalScore === null
                             ? '미응시'
                             : Number.isFinite(totalScore)
                                 ? totalScore.toFixed(1)
