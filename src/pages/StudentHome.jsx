@@ -110,7 +110,37 @@ export default function StudentHome({
     const viewerUid = student?.authUid || userId;
     const studentDocId = studentId;
     const studentAuthUid = student?.authUid || userId;
+    const myClasses = useMemo(() => {
+        if (!classes || !studentId) return [];
+        return classes.filter(c => (c.students || []).includes(studentId));
+    }, [classes, studentId]);
+
     const { notifications, hasUnread, unreadCount, lastReadAt, isLoading, isMetaLoading, setNotifications } = useNotifications(viewerUid);
+
+    const { ongoing: ongoingClasses } = useMemo(() => {
+        const sorted = sortClassesByStatus(myClasses);
+        return { ongoing: sorted?.ongoing || [] };
+    }, [myClasses]);
+
+    const myHomeworkStats = useMemo(() => {
+        if (!studentId) return [];
+        return calculateHomeworkStats(
+            studentId,
+            homeworkAssignments || [],
+            homeworkResults || [],
+            { activeViewerAuthUid: userId, studentAuthUid: student?.authUid, userId, students },
+        );
+    }, [studentId, homeworkAssignments, homeworkResults, student?.authUid, students, userId]);
+
+    const myGradeComparison = useMemo(() => {
+        if (!studentId) return [];
+        return calculateGradeComparison(studentId, classes || [], tests || [], grades || {}, classTestStats || {});
+    }, [studentId, classes, tests, grades, classTestStats]);
+
+    const pendingHomeworkCount = useMemo(
+        () => myHomeworkStats.filter(h => h.status !== '완료').length,
+        [myHomeworkStats]
+    );
 
     const myClassIds = useMemo(
         () => myClasses.map((c) => String(c.id)).filter(Boolean),
@@ -151,36 +181,6 @@ export default function StudentHome({
     }, [notices, studentId, studentAuthUid, visibleNotices.length, myClassIds]);
 
     const handleOpenNotification = () => { setIsNotificationOpen(true); };
-
-    const myClasses = useMemo(() => {
-        if (!classes || !studentId) return [];
-        return classes.filter(c => (c.students || []).includes(studentId));
-    }, [classes, studentId]);
-
-    const { ongoing: ongoingClasses } = useMemo(() => {
-        const sorted = sortClassesByStatus(myClasses);
-        return { ongoing: sorted?.ongoing || [] };
-    }, [myClasses]);
-
-    const myHomeworkStats = useMemo(() => {
-        if (!studentId) return [];
-        return calculateHomeworkStats(
-            studentId,
-            homeworkAssignments || [],
-            homeworkResults || [],
-            { activeViewerAuthUid: userId, studentAuthUid: student?.authUid, userId, students },
-        );
-    }, [studentId, homeworkAssignments, homeworkResults, student?.authUid, students, userId]);
-
-    const myGradeComparison = useMemo(() => {
-        if (!studentId) return [];
-        return calculateGradeComparison(studentId, classes || [], tests || [], grades || {}, classTestStats || {});
-    }, [studentId, classes, tests, grades, classTestStats]);
-
-    const pendingHomeworkCount = useMemo(
-        () => myHomeworkStats.filter(h => h.status !== '완료').length,
-        [myHomeworkStats]
-    );
 
     const handleNavigateToMemo = (classId, lessonId, time) => {
         setSelectedClassId(classId);
