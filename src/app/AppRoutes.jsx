@@ -295,19 +295,34 @@ export default function AppRoutes({ user, role, studentIds }) {
           : userId
               ? [userId]
               : [];
+              const announcementTargetClassIds = students
+          .filter((s) => announcementTargetStudentIds.includes(s.id))
+          .flatMap((s) => {
+              if (Array.isArray(s.classes)) return s.classes;
+              if (Array.isArray(s.classIds)) return s.classIds;
+              return [];
+          })
+          .map(String);
 
       announcements.forEach((notice) => {
           if (!notice?.id || processed.has(notice.id)) return;
           const matchesAuthTarget = Array.isArray(notice?.targetAuthUids)
               && notice.targetAuthUids.some((uid) => announcementTargetAuthUids.includes(uid));
           const hasAuthTargets = Array.isArray(notice?.targetAuthUids) && notice.targetAuthUids.length > 0;
-          const matchesLegacyTarget = Array.isArray(notice?.targetStudents)
+          const matchesStudentTarget = Array.isArray(notice?.targetStudents)
               && announcementTargetStudentIds.some((id) => notice.targetStudents.includes(id));
-          const hasLegacyTargets = Array.isArray(notice?.targetStudents) && notice.targetStudents.length > 0;
+          const hasStudentTargets = Array.isArray(notice?.targetStudents) && notice.targetStudents.length > 0;
+          const targetClasses = Array.isArray(notice?.targetClasses)
+              ? notice.targetClasses.map(String)
+              : [];
+          const hasClassTargets = targetClasses.length > 0;
+          const matchesClassTarget = hasClassTargets
+              && targetClasses.some((classId) => announcementTargetClassIds.includes(classId));
 
           const isTargetedToUser = notice?.isPublic === true
-              || (hasAuthTargets ? matchesAuthTarget : false)
-              || (!hasAuthTargets && (!hasLegacyTargets || matchesLegacyTarget));
+              || (hasClassTargets
+                  ? matchesClassTarget
+                  : (hasAuthTargets ? matchesAuthTarget : (hasStudentTargets ? matchesStudentTarget : false)));
           if (!isTargetedToUser) return;
 
           const dateString = notice.date || new Date().toISOString().split('T')[0];

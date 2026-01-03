@@ -105,22 +105,36 @@ export default function StudentHome({
     }, [setSearchParams]);
     const [isVideoModalOpen, setIsVideoModalOpen] = useState(false);
     const [isNotificationOpen, setIsNotificationOpen] = useState(false);
-    const [visibleNotices, setVisibleNotices] = useState([]); 
+    const [visibleNotices, setVisibleNotices] = useState([]);
     const [targetMemo, setTargetMemo] = useState(null);
     const viewerUid = student?.authUid || userId;
     const studentDocId = studentId;
     const studentAuthUid = student?.authUid || userId;
     const { notifications, hasUnread, unreadCount, lastReadAt, isLoading, isMetaLoading, setNotifications } = useNotifications(viewerUid);
 
-    useEffect(() => {
-        const now = new Date();
-        const todayStr = now.toISOString().split('T')[0];
+    const myClassIds = useMemo(
+        () => myClasses.map((c) => String(c.id)).filter(Boolean),
+        [myClasses],
+    );
 
+    useEffect(() => {
         const isTargetedToMe = (notice) => {
-            const matchesAuth = studentAuthUid && Array.isArray(notice?.targetAuthUids)
-                && notice.targetAuthUids.includes(studentAuthUid);
-            const matchesLegacy = Array.isArray(notice?.targetStudents) && notice.targetStudents.includes(studentId);
-            return matchesAuth || matchesLegacy;
+            const targetClasses = Array.isArray(notice?.targetClasses)
+                ? notice.targetClasses.map(String)
+                : [];
+            const targetStudents = Array.isArray(notice?.targetStudents)
+                ? notice.targetStudents.map(String)
+                : [];
+            const targetAuthUids = Array.isArray(notice?.targetAuthUids)
+                ? notice.targetAuthUids.map(String)
+                : [];
+
+            const hasClassTargets = targetClasses.length > 0;
+            const matchesClass = hasClassTargets && targetClasses.some((id) => myClassIds.includes(id));
+            const matchesAuth = studentAuthUid && targetAuthUids.includes(studentAuthUid);
+            const matchesStudent = targetStudents.includes(String(studentId));
+
+            return hasClassTargets ? matchesClass : (matchesAuth || matchesStudent);
         };
         
         const myNotices = notices.filter((n) => {
@@ -128,13 +142,13 @@ export default function StudentHome({
             return isPublicNotice || isTargetedToMe(n);
         });
         const publicNotices = myNotices.filter((n) => n?.isPublic === true);
-        const targetedNotices = myNotices.filter((n) => !n?.isPublic && isTargetedToMe(n));
-        let combinedNotices = [...publicNotices, ...targetedNotices];
+        const classOrTargetedNotices = myNotices.filter((n) => n?.isPublic !== true);
+        let combinedNotices = [...publicNotices, ...classOrTargetedNotices];
         setVisibleNotices(combinedNotices);
         if (combinedNotices.length > visibleNotices.length) {
             return;
         }
-    }, [notices, studentId, studentAuthUid, visibleNotices.length]);
+    }, [notices, studentId, studentAuthUid, visibleNotices.length, myClassIds]);
 
     const handleOpenNotification = () => { setIsNotificationOpen(true); };
 

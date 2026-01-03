@@ -195,6 +195,10 @@ export default function ParentHome({
 
     // 2. 데이터 필터링
     const myClasses = useMemo(() => classes.filter(c => (c.students || []).includes(activeChildId)), [classes, activeChildId]);
+    const activeChildClassIds = useMemo(
+        () => myClasses.map((c) => String(c.id)).filter(Boolean),
+        [myClasses],
+    );
 
     // ✅ 변경: 진행중/종강 분리 + 둘 다 사용
     const { ongoing: ongoingClasses, finished: finishedClasses } = useMemo(
@@ -373,15 +377,25 @@ export default function ParentHome({
 
     useEffect(() => {
         if (!activeChild) return;
-        const now = new Date();
-        const todayStr = now.toISOString().split('T')[0];
-
+        
         const isTargetedToChild = (notice) => {
             const childAuthUid = activeChild?.authUid;
-            const matchesAuth = childAuthUid && Array.isArray(notice?.targetAuthUids)
-                && notice.targetAuthUids.includes(childAuthUid);
-            const matchesLegacy = Array.isArray(notice?.targetStudents) && notice.targetStudents.includes(activeChildId);
-            return matchesAuth || matchesLegacy;
+            const targetClasses = Array.isArray(notice?.targetClasses)
+                ? notice.targetClasses.map(String)
+                : [];
+            const targetStudents = Array.isArray(notice?.targetStudents)
+                ? notice.targetStudents.map(String)
+                : [];
+            const targetAuthUids = Array.isArray(notice?.targetAuthUids)
+                ? notice.targetAuthUids.map(String)
+                : [];
+
+            const hasClassTargets = targetClasses.length > 0;
+            const matchesClass = hasClassTargets && targetClasses.some((id) => activeChildClassIds.includes(id));
+            const matchesAuth = childAuthUid && targetAuthUids.includes(childAuthUid);
+            const matchesStudent = targetStudents.includes(String(activeChildId));
+
+            return hasClassTargets ? matchesClass : (matchesAuth || matchesStudent);
         };
         
         const myNotices = notices.filter((n) => {
@@ -389,7 +403,7 @@ export default function ParentHome({
             return isPublicNotice || isTargetedToChild(n);
         });
         const publicNotices = myNotices.filter((n) => n?.isPublic === true);
-        const targetedNotices = myNotices.filter((n) => !n?.isPublic && isTargetedToChild(n));
+        const targetedNotices = myNotices.filter((n) => n?.isPublic !== true);
         let combinedNotices = [...publicNotices, ...targetedNotices];
 
         if (unpaidPayments.length > 0) {
@@ -403,7 +417,7 @@ export default function ParentHome({
         if (combinedNotices.length > visibleNotices.length) {
             return;
         }
-    }, [notices, activeChildId, unpaidPayments.length, activeChildName, activeChild]);
+    }, [notices, activeChildId, unpaidPayments.length, activeChildName, activeChild, activeChildClassIds]);
 
     const pendingHomeworkCount = useMemo(
         () => myHomeworkStats.filter(h => h.status !== '완료').length,

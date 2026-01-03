@@ -374,6 +374,9 @@ export const loadViewerDataOnce = async ({
 
         console.log('[viewer] myClasses ids =', myClasses.map((c) => c.id));
 
+        const viewerClassIds = myClasses.map((c) => String(c.id)).filter(Boolean).slice(0, 10);
+        console.log('[viewer] viewerClassIds =', viewerClassIds);
+
         /* =========================
            attendanceLogs (fetchList)
         ========================= */
@@ -620,8 +623,25 @@ export const loadViewerDataOnce = async ({
         }
 
         try {
+            if (viewerClassIds.length > 0) {
+                const targetedByClass = await getDocs(
+                    query(
+                        collection(db, 'announcements'),
+                        where('targetClasses', 'array-contains-any', viewerClassIds),
+                        orderBy('date', 'desc'),
+                        limit(20),
+                    ),
+                );
+                announcementDocs.push(...targetedByClass.docs);
+                console.log('[viewer] class announcements count', targetedByClass.size);
+            }
+        } catch (e) {
+            console.warn('[viewer] WARN: announcements targetClasses', e);
+        }
+
+        try {
             if (scopedStudentAuthUids.length > 0) {
-                const targeted = await getDocs(
+                const targetedByAuth = await getDocs(
                     query(
                         collection(db, 'announcements'),
                         where('targetAuthUids', 'array-contains-any', scopedStudentAuthUids),
@@ -629,20 +649,60 @@ export const loadViewerDataOnce = async ({
                         limit(20),
                     ),
                 );
-                announcementDocs.push(...targeted.docs);
-                console.log('[viewer] targeted announcements count', targeted.size);
+                announcementDocs.push(...targetedByAuth.docs);
+                console.log('[viewer] targeted announcements count', targetedByAuth.size);
             }
         } catch (e) {
-            console.warn('[viewer] WARN: announcements targeted', e);
+            console.warn('[viewer] WARN: announcements targeted authUid', e);
+        }
+
+        try {
+            if (scopedStudentUids.length > 0) {
+                const targetedByStudent = await getDocs(
+                    query(
+                        collection(db, 'announcements'),
+                        where('targetStudents', 'array-contains-any', scopedStudentUids),
+                        orderBy('date', 'desc'),
+                        limit(20),
+                    ),
+                );
+                announcementDocs.push(...targetedByStudent.docs);
+                console.log('[viewer] targeted announcements (students) count', targetedByStudent.size);
+            }
+        } catch (e) {
+            console.warn('[viewer] WARN: announcements targeted students', e);
         }
 
         if (!isCancelled()) {
             const seen = new Set();
+            const viewerClassIdSet = new Set(viewerClassIds.map(String));
+            const scopedStudentUidSet = new Set(scopedStudentUids.map(String));
+            const scopedAuthUidSet = new Set(scopedStudentAuthUids.map(String));
             const merged = announcementDocs.reduce((acc, d) => {
                 if (seen.has(d.id)) return acc;
                 seen.add(d.id);
                 const data = d.data();
-                acc.push({ id: d.id, ...data });
+                const targetClasses = Array.isArray(data?.targetClasses)
+                    ? data.targetClasses.map(String)
+                    : [];
+                const targetStudents = Array.isArray(data?.targetStudents)
+                    ? data.targetStudents.map(String)
+                    : [];
+                const targetAuthUids = Array.isArray(data?.targetAuthUids)
+                    ? data.targetAuthUids.map(String)
+                    : [];
+
+                const hasClassTargets = targetClasses.length > 0;
+                const matchesClass = hasClassTargets && targetClasses.some((id) => viewerClassIdSet.has(id));
+                const matchesStudent = targetStudents.some((id) => scopedStudentUidSet.has(id));
+                const matchesAuth = targetAuthUids.some((id) => scopedAuthUidSet.has(id));
+
+                const isPublicNotice = data?.isPublic === true;
+                const isTargeted = hasClassTargets ? matchesClass : (matchesAuth || matchesStudent);
+
+                if (isPublicNotice || isTargeted) {
+                    acc.push({ id: d.id, ...data });
+                }
                 return acc;
             }, []);
             setAnnouncements?.(merged);

@@ -107,6 +107,39 @@ service cloud.firestore {
           || (myStudentDocId() != null && myStudentDocId() in get(/databases/$(database)/documents/classes/$(classId)).data.students)
         );
     }
+    
+    function isAnnouncementTargetClass(data) {
+      return data != null
+        && ('targetClasses' in data)
+        && (data.targetClasses is list)
+        && (
+          (data.targetClasses.size() > 0 && isClassMember(data.targetClasses[0]))
+          || (data.targetClasses.size() > 1 && isClassMember(data.targetClasses[1]))
+          || (data.targetClasses.size() > 2 && isClassMember(data.targetClasses[2]))
+          || (data.targetClasses.size() > 3 && isClassMember(data.targetClasses[3]))
+          || (data.targetClasses.size() > 4 && isClassMember(data.targetClasses[4]))
+        );
+    }
+
+    function isAnnouncementTargetStudent(data) {
+      return data != null
+        && ('targetStudents' in data)
+        && (data.targetStudents is list)
+        && (
+          (data.targetStudents.size() > 0 && isMyStudentUid(data.targetStudents[0]))
+          || (data.targetStudents.size() > 1 && isMyStudentUid(data.targetStudents[1]))
+          || (data.targetStudents.size() > 2 && isMyStudentUid(data.targetStudents[2]))
+          || (data.targetStudents.size() > 3 && isMyStudentUid(data.targetStudents[3]))
+          || (data.targetStudents.size() > 4 && isMyStudentUid(data.targetStudents[4]))
+        );
+    }
+
+    function isAnnouncementTargetAuthUid(data) {
+      return data != null
+        && ('targetAuthUids' in data)
+        && (data.targetAuthUids is list)
+        && (uid() in data.targetAuthUids);
+    }
 
     function hasValidInvite(inviteId, role) {
       return inviteId is string
@@ -275,19 +308,10 @@ service cloud.firestore {
       allow read: if isAdminOrStaff()
         || (isSignedIn()
           && (
-            // ✅ 1) authUid 기반 타겟팅 (가장 안전)
-            (('targetAuthUids' in resource.data)
-              && (resource.data.targetAuthUids is list)
-              && (uid() in resource.data.targetAuthUids))
-
-            // ✅ 2) 기존 로직 유지: targetStudents 없거나 비면 classId 기반
-            || ((!('targetStudents' in resource.data) || resource.data.targetStudents.size() == 0)
-              ? (!('classId' in resource.data) || isClassMember(resource.data.classId))
-              : (uid() in resource.data.targetStudents
-                  || getMyStudentId() in resource.data.targetStudents
-                  || (isParent() && listContainsAny(resource.data.targetStudents, parentStudentUids()))
-                )
-            )
+            (resource.data.isPublic == true)
+            || isAnnouncementTargetClass(resource.data)
+            || isAnnouncementTargetStudent(resource.data)
+            || isAnnouncementTargetAuthUid(resource.data)
           ));
 
       allow write: if isStaffOrAdminOrTeacher();
