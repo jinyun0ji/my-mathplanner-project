@@ -375,14 +375,21 @@ export default function ParentHome({
         if (!activeChild) return;
         const now = new Date();
         const todayStr = now.toISOString().split('T')[0];
+
+        const isTargetedToChild = (notice) => {
+            const childAuthUid = activeChild?.authUid;
+            const matchesAuth = childAuthUid && Array.isArray(notice?.targetAuthUids)
+                && notice.targetAuthUids.includes(childAuthUid);
+            const matchesLegacy = Array.isArray(notice?.targetStudents) && notice.targetStudents.includes(activeChildId);
+            return matchesAuth || matchesLegacy;
+        };
         
         const myNotices = notices.filter((n) => {
             const isPublicNotice = n?.isPublic === true;
-            const isTargetedToChild = Array.isArray(n?.targetStudents) && n.targetStudents.includes(activeChildId);
-            return isPublicNotice || isTargetedToChild;
+            return isPublicNotice || isTargetedToChild(n);
         });
         const publicNotices = myNotices.filter((n) => n?.isPublic === true);
-        const targetedNotices = myNotices.filter((n) => Array.isArray(n?.targetStudents) && n.targetStudents.includes(activeChildId));
+        const targetedNotices = myNotices.filter((n) => !n?.isPublic && isTargetedToChild(n));
         let combinedNotices = [...publicNotices, ...targetedNotices];
 
         if (unpaidPayments.length > 0) {

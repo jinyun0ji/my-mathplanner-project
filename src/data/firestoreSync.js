@@ -335,6 +335,13 @@ export const loadViewerDataOnce = async ({
 
         console.log('[viewer] scopedStudentUids =', scopedStudentUids);
 
+        const scopedStudentAuthUids = Array.from(new Set([
+            ...(userRole === 'student' ? [userId] : []),
+            ...myStudents.map((s) => s.authUid).filter(Boolean),
+        ].filter(Boolean))).slice(0, 10);
+
+        console.log('[viewer] scopedStudentAuthUids =', scopedStudentAuthUids);
+
         /* =========================
            classes (학생 id별 array-contains)
         ========================= */
@@ -613,11 +620,11 @@ export const loadViewerDataOnce = async ({
         }
 
         try {
-            if (scopedStudentUids.length > 0) {
+            if (scopedStudentAuthUids.length > 0) {
                 const targeted = await getDocs(
                     query(
                         collection(db, 'announcements'),
-                        where('targetStudents', 'array-contains-any', scopedStudentUids),
+                        where('targetAuthUids', 'array-contains-any', scopedStudentAuthUids),
                         orderBy('date', 'desc'),
                         limit(20),
                     ),
@@ -626,7 +633,7 @@ export const loadViewerDataOnce = async ({
                 console.log('[viewer] targeted announcements count', targeted.size);
             }
         } catch (e) {
-            console.error('[viewer] FAIL: announcements targeted', e);
+            console.warn('[viewer] WARN: announcements targeted', e);
         }
 
         if (!isCancelled()) {

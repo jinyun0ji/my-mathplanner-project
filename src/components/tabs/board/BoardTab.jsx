@@ -5,8 +5,9 @@ import ModalPortal from '../../common/ModalPortal';
 
 export default function BoardTab({ notices }) {
     const [selectedNotice, setSelectedNotice] = useState(null);
-    const pinnedNotices = notices.filter(n => n.isPinned);
-    const allNotices = [...notices].sort((a, b) => new Date(b.date) - new Date(a.date));
+    const publicNotices = (notices || []).filter((notice) => notice?.isPublic === true);
+    const pinnedNotices = publicNotices.filter(n => n.isPinned);
+    const allNotices = [...publicNotices].sort((a, b) => new Date(b.date) - new Date(a.date));
 
     return (
         <div className="space-y-6 pb-20">

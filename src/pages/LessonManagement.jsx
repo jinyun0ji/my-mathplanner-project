@@ -7,6 +7,31 @@ import { buildLessonSessions, getCurrentLessonByDate, getSortedLessonLogs } from
 import YouTubePlayer from '../components/YouTubePlayer';
 import { getDefaultClassId } from '../utils/classStatus';
 
+// ✅ 강의 자료: 브라우저 PDF 뷰어로 열지 말고 "즉시 다운로드"로 처리
+const downloadAttachment = async (url, filenameHint = 'material.pdf') => {
+    if (!url) return;
+    const filename = filenameHint || 'material.pdf';
+
+    try {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const blob = await res.blob();
+
+        const blobUrl = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(blobUrl);
+    } catch (e) {
+        console.error('[materials] download failed', e);
+        alert('자료를 다운로드하지 못했습니다.');
+    }
+};
+
+
 const normalizeLessonVideos = (lesson) => {
     if (!lesson) return [];
 
@@ -272,7 +297,7 @@ export default function LessonManagement({
                                 <button
                                     key={`${material.url}-${index}`}
                                     type="button"
-                                    onClick={() => window.open(material.url, '_blank', 'noopener,noreferrer')}
+                                    onClick={() => downloadAttachment(material.url, material.name || material.filename || 'material.pdf')}
                                     className="w-full text-left text-sm text-indigo-600 flex items-center gap-2 rounded-lg border border-indigo-100 bg-indigo-50 px-3 py-2 hover:bg-indigo-100"
                                 >
                                     <Icon name="download" className="w-4 h-4" />

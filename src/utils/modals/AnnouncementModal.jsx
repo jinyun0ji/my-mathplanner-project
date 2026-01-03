@@ -199,8 +199,14 @@ export const AnnouncementModal = ({ isOpen, onClose, onSave, announcementToEdit 
         const finalContent = editorRef.current.innerHTML;
 
         const selectedClassIds = (targetClasses || []).map((id) => String(id));
-        const filteredTargetStudents = (allStudents || [])
-            .filter((s) => selectedClassIds.includes(String(s.classId)))
+        const selectedStudents = (allStudents || [])
+            .filter((s) => selectedClassIds.includes(String(s.classId)));
+
+        const targetAuthUids = selectedStudents
+            .map((s) => s.authUid)
+            .filter(Boolean);
+
+        const filteredTargetStudents = selectedStudents
             .map((s) => String(s.id || s.authUid))
             .filter(Boolean);
 
@@ -218,6 +224,7 @@ export const AnnouncementModal = ({ isOpen, onClose, onSave, announcementToEdit 
             isPublic,
             targetClassIds: selectedClassIds,
             targetClasses: selectedClassIds,
+            targetAuthUids: isPublic ? [] : targetAuthUids,
             targetStudents: isPublic ? [] : filteredTargetStudents,
             notifyMode: staffNotifyMode === 'none' ? 'system' : 'staff',
             staffNotification,

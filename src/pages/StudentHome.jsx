@@ -115,20 +115,26 @@ export default function StudentHome({
     useEffect(() => {
         const now = new Date();
         const todayStr = now.toISOString().split('T')[0];
+
+        const isTargetedToMe = (notice) => {
+            const matchesAuth = studentAuthUid && Array.isArray(notice?.targetAuthUids)
+                && notice.targetAuthUids.includes(studentAuthUid);
+            const matchesLegacy = Array.isArray(notice?.targetStudents) && notice.targetStudents.includes(studentId);
+            return matchesAuth || matchesLegacy;
+        };
         
         const myNotices = notices.filter((n) => {
             const isPublicNotice = n?.isPublic === true;
-            const isTargetedToMe = Array.isArray(n?.targetStudents) && n.targetStudents.includes(studentId);
-            return isPublicNotice || isTargetedToMe;
+            return isPublicNotice || isTargetedToMe(n);
         });
         const publicNotices = myNotices.filter((n) => n?.isPublic === true);
-        const targetedNotices = myNotices.filter((n) => Array.isArray(n?.targetStudents) && n.targetStudents.includes(studentId));
+        const targetedNotices = myNotices.filter((n) => !n?.isPublic && isTargetedToMe(n));
         let combinedNotices = [...publicNotices, ...targetedNotices];
         setVisibleNotices(combinedNotices);
         if (combinedNotices.length > visibleNotices.length) {
             return;
         }
-    }, [notices, studentId]);
+    }, [notices, studentId, studentAuthUid, visibleNotices.length]);
 
     const handleOpenNotification = () => { setIsNotificationOpen(true); };
 

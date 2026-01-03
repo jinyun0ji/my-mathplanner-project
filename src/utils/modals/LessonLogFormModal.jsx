@@ -172,24 +172,45 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
     const safeLessonDate = normalizeLessonDate(lessonDate) || new Date().toISOString().slice(0, 10);
 
     for (const file of selectedFiles) {
-      const filePath = `lesson-materials/${safeClassName}/${safeLessonDate}/${Date.now()}-${file.name}`;
+      // ✅ 방어: File/size 확인
+      if (!(file instanceof File) || !Number.isFinite(file.size) || file.size <= 0) {
+        console.warn('[materials] skip invalid file:', file);
+        continue;
+      }
+
+      const safeFileName = normalizeStorageSegment(file.name).replace(/_+/g, '_');
+      const filePath = `lesson-materials/${safeClassName}/${safeLessonDate}/${Date.now()}-${safeFileName}`;
       const storageRef = ref(storage, filePath);
-      const task = uploadBytesResumable(storageRef, file);
+
+      // ✅ contentType 지정 (PDF 등에서 특히 중요)
+      const metadata = {
+        contentType: file.type || 'application/octet-stream',
+      };
+
+      const task = uploadBytesResumable(storageRef, file, metadata);
 
       await new Promise((resolve, reject) => {
         task.on(
           'state_changed',
           (snapshot) => {
-            const percent = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
+            const total = snapshot.totalBytes || file.size || 1;
+            const percent = Math.round((snapshot.bytesTransferred / total) * 100);
             setUploadProgress((prev) => ({
               ...prev,
               [file.name]: percent,
             }));
           },
-          reject,
-          resolve
+          (err) => reject(err),
+          () => resolve()
         );
       });
+
+      // ✅ 업로드 결과 검증 (0바이트 방지)
+      const uploadedBytes = task.snapshot?.totalBytes ?? 0;
+      if (!uploadedBytes || uploadedBytes <= 0) {
+        console.error('[materials] uploaded 0 bytes (abort saving url). file=', file.name, 'path=', filePath);
+        throw new Error(`Uploaded 0 bytes: ${file.name}`);
+      }
 
       const downloadURL = await getDownloadURL(task.snapshot.ref);
       uploadResults.push({
@@ -352,12 +373,21 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
   };
 
   const handleMaterialFilesChange = (event) => {
-    const selected = Array.from(event.target.files || []);
-    setFiles(selected);
+    const picked = Array.from(event.target.files || []);
+
+    // ✅ 0바이트/비정상 파일 방어
+    const valid = picked.filter((f) => f instanceof File && Number.isFinite(f.size) && f.size > 0);
+    const invalidCount = picked.length - valid.length;
+    if (invalidCount > 0) {
+      console.warn('[materials] ignored invalid files:', picked.filter(f => !(f instanceof File) || !Number.isFinite(f.size) || f.size <= 0));
+      alert('0바이트(빈 파일) 또는 잘못된 파일이 포함되어 있어 제외했습니다. 다시 선택해주세요.');
+    }
+
+    setFiles(valid);
     setUploadProgress({});
-    if (selected.length > 0) {
+    if (valid.length > 0) {
       setIsDirty(true);
-      }
+    }
     event.target.value = '';
   };
 

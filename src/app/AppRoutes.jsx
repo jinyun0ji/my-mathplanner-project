@@ -286,15 +286,28 @@ export default function AppRoutes({ user, role, studentIds }) {
       const processed = processedAnnouncementIdsRef.current;
       const newMessages = [];
 
-      const announcementTargets = isParentRole(role)
-          ? studentIds
+      const announcementTargetStudentIds = Array.isArray(studentIds) ? studentIds : [];
+      const announcementTargetAuthUids = isParentRole(role)
+          ? students
+              .filter((s) => announcementTargetStudentIds.includes(s.id))
+              .map((s) => s.authUid)
+              .filter(Boolean)
           : userId
               ? [userId]
               : [];
 
       announcements.forEach((notice) => {
           if (!notice?.id || processed.has(notice.id)) return;
-          const isTargetedToUser = !notice.targetStudents || notice.targetStudents.length === 0 || announcementTargets.some((id) => notice.targetStudents.includes(id));
+          const matchesAuthTarget = Array.isArray(notice?.targetAuthUids)
+              && notice.targetAuthUids.some((uid) => announcementTargetAuthUids.includes(uid));
+          const hasAuthTargets = Array.isArray(notice?.targetAuthUids) && notice.targetAuthUids.length > 0;
+          const matchesLegacyTarget = Array.isArray(notice?.targetStudents)
+              && announcementTargetStudentIds.some((id) => notice.targetStudents.includes(id));
+          const hasLegacyTargets = Array.isArray(notice?.targetStudents) && notice.targetStudents.length > 0;
+
+          const isTargetedToUser = notice?.isPublic === true
+              || (hasAuthTargets ? matchesAuthTarget : false)
+              || (!hasAuthTargets && (!hasLegacyTargets || matchesLegacyTarget));
           if (!isTargetedToUser) return;
 
           const dateString = notice.date || new Date().toISOString().split('T')[0];
@@ -318,7 +331,7 @@ export default function AppRoutes({ user, role, studentIds }) {
           setStudentMessages((prev) => [...prev, ...newMessages]);
           setHasNewMessages(true);
       }
-  }, [announcements, role, userId, studentIds]);
+  }, [announcements, role, userId, studentIds, students]);
 
   const logNotification = useCallback((type, message, details) => {
       setNotifications(prev => [{ id: Date.now(), type, message, details, timestamp: new Date().toLocaleTimeString('ko-KR') }, ...prev]);
@@ -1178,7 +1191,17 @@ export default function AppRoutes({ user, role, studentIds }) {
 
   const handleSendStudentNotification = async (sId, title, content) => {
       try {
-          await handleSaveAnnouncement({ title, content, targetStudents: [sId], date: new Date().toISOString().slice(0,10), author:'알림봇' }, false);
+          const targetStudent = students.find((s) => s.id === sId);
+          const targetAuthUid = targetStudent?.authUid;
+          await handleSaveAnnouncement({
+              title,
+              content,
+              isPublic: false,
+              targetStudents: [sId],
+              targetAuthUids: targetAuthUid ? [targetAuthUid] : [],
+              date: new Date().toISOString().slice(0,10),
+              author:'알림봇'
+          }, false);
       } catch (error) {
           alert('공지사항 전송에 실패했습니다. 권한 또는 네트워크를 확인하세요.');
       }
