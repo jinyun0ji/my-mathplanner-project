@@ -6,8 +6,6 @@ import ModalPortal from '../../common/ModalPortal';
 export default function BoardTab({ notices }) {
     const [selectedNotice, setSelectedNotice] = useState(null);
     const safeNotices = Array.isArray(notices) ? notices : [];
-    const publicNotices = safeNotices.filter((notice) => notice?.isPublic === true);
-    const classNotices = safeNotices.filter((notice) => notice?.isPublic !== true);
 
     const splitNotices = (items) => {
         const pinned = items
@@ -19,8 +17,7 @@ export default function BoardTab({ notices }) {
         return { pinned, general };
     };
 
-    const publicSections = splitNotices(publicNotices);
-    const classSections = splitNotices(classNotices);
+    const allSections = splitNotices(safeNotices);
 
     const renderSection = (title, section, tone = 'gray') => {
         const accent = tone === 'danger'
@@ -84,8 +81,7 @@ export default function BoardTab({ notices }) {
 
     return (
         <div className="space-y-6 pb-20">
-            {renderSection('전체 공지', publicSections, 'primary')}
-            {renderSection('반 공지', classSections, 'gray')}
+            {renderSection('전체 글', allSections, 'primary')}
             {selectedNotice && <ModalPortal><div className="fixed inset-0 z-[70] bg-black/60 flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => setSelectedNotice(null)}><div className="bg-white rounded-2xl w-full max-w-lg p-6 shadow-2xl animate-fade-in-up max-h-[80vh] overflow-y-auto custom-scrollbar relative" onClick={e => e.stopPropagation()}><button onClick={() => setSelectedNotice(null)} className="absolute top-4 right-4 p-2 text-gray-400 hover:text-gray-900 rounded-full hover:bg-gray-100"><Icon name="x" className="w-6 h-6" /></button><div className="mb-4 pr-8"><div className="flex items-center gap-2 mb-2"><span className="text-xs font-bold text-white bg-brand-main px-2 py-1 rounded-full">{selectedNotice.author}</span><span className="text-xs text-gray-500">{selectedNotice.date}</span></div><h3 className="text-xl font-bold text-gray-900 leading-tight">{selectedNotice.title}</h3></div><div className="prose prose-sm max-w-none text-gray-800 leading-relaxed border-t border-gray-100 pt-4 min-h-[100px]"><div dangerouslySetInnerHTML={{ __html: selectedNotice.content }} /></div>{selectedNotice.attachments && selectedNotice.attachments.length > 0 && (<div className="mt-6 pt-4 border-t border-gray-100"><p className="text-xs font-bold text-gray-500 mb-2">첨부파일</p><div className="flex flex-wrap gap-2">{selectedNotice.attachments.map((file, idx) => (<button key={idx} className="flex items-center gap-2 bg-gray-50 px-3 py-2 rounded-lg text-sm text-brand-main hover:bg-gray-100 transition-colors"><Icon name="fileText" className="w-4 h-4" />{file}</button>))}</div></div>)}</div></div></ModalPortal>}
         </div>
     );

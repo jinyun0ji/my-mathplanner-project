@@ -199,11 +199,7 @@ export default function ParentHome({
 
     // 2. 데이터 필터링
     const myClasses = useMemo(() => classes.filter(c => (c.students || []).includes(activeChildId)), [classes, activeChildId]);
-    const activeChildClassIds = useMemo(
-        () => myClasses.map((c) => String(c.id)).filter(Boolean),
-        [myClasses],
-    );
-
+    
     // ✅ 변경: 진행중/종강 분리 + 둘 다 사용
     const { ongoing: ongoingClasses, finished: finishedClasses } = useMemo(
         () => sortClassesByStatus(myClasses),
@@ -381,34 +377,7 @@ export default function ParentHome({
 
     useEffect(() => {
         if (!activeChild) return;
-        
-        const isTargetedToChild = (notice) => {
-            const childAuthUid = activeChild?.authUid;
-            const targetClasses = Array.isArray(notice?.targetClasses)
-                ? notice.targetClasses.map(String)
-                : [];
-            const targetStudents = Array.isArray(notice?.targetStudents)
-                ? notice.targetStudents.map(String)
-                : [];
-            const targetAuthUids = Array.isArray(notice?.targetAuthUids)
-                ? notice.targetAuthUids.map(String)
-                : [];
-
-            const hasClassTargets = targetClasses.length > 0;
-            const matchesClass = hasClassTargets && targetClasses.some((id) => activeChildClassIds.includes(id));
-            const matchesAuth = childAuthUid && targetAuthUids.includes(childAuthUid);
-            const matchesStudent = targetStudents.includes(String(activeChildId));
-
-            return hasClassTargets ? matchesClass : (matchesAuth || matchesStudent);
-        };
-        
-        const myNotices = notices.filter((n) => {
-            const isPublicNotice = n?.isPublic === true;
-            return isPublicNotice || isTargetedToChild(n);
-        });
-        const publicNotices = myNotices.filter((n) => n?.isPublic === true);
-        const targetedNotices = myNotices.filter((n) => n?.isPublic !== true);
-        let combinedNotices = [...publicNotices, ...targetedNotices];
+        let combinedNotices = Array.isArray(notices) ? [...notices] : [];
 
         if (unpaidPayments.length > 0) {
             combinedNotices.unshift({
@@ -418,10 +387,7 @@ export default function ParentHome({
             });
         }
         setVisibleNotices(combinedNotices);
-        if (combinedNotices.length > visibleNotices.length) {
-            return;
-        }
-    }, [notices, activeChildId, unpaidPayments.length, activeChildName, activeChild, activeChildClassIds]);
+        }, [notices, activeChildId, unpaidPayments.length, activeChildName, activeChild]);
 
     const pendingHomeworkCount = useMemo(
         () => myHomeworkStats.filter(h => h.status !== '완료').length,
@@ -1162,7 +1128,7 @@ export default function ParentHome({
                         {activeTab === 'menu' && (
                             <MenuTab student={activeChild} onUpdateStudent={() => {}} onLogout={onLogout} videoMemos={{}} lessonLogs={[]} onLinkToMemo={() => {}} notices={visibleNotices} setActiveTab={setActiveTab} isParent={true} />
                         )}
-                        {activeTab === 'board' && <BoardTab notices={visibleNotices.filter((n) => n?.isPublic === true)} />}
+                        {activeTab === 'board' && <BoardTab notices={visibleNotices} />}
                     </div>
                 )}
             </main>

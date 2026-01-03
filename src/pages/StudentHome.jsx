@@ -142,43 +142,10 @@ export default function StudentHome({
         [myHomeworkStats]
     );
 
-    const myClassIds = useMemo(
-        () => myClasses.map((c) => String(c.id)).filter(Boolean),
-        [myClasses],
-    );
-
     useEffect(() => {
-        const isTargetedToMe = (notice) => {
-            const targetClasses = Array.isArray(notice?.targetClasses)
-                ? notice.targetClasses.map(String)
-                : [];
-            const targetStudents = Array.isArray(notice?.targetStudents)
-                ? notice.targetStudents.map(String)
-                : [];
-            const targetAuthUids = Array.isArray(notice?.targetAuthUids)
-                ? notice.targetAuthUids.map(String)
-                : [];
-
-            const hasClassTargets = targetClasses.length > 0;
-            const matchesClass = hasClassTargets && targetClasses.some((id) => myClassIds.includes(id));
-            const matchesAuth = studentAuthUid && targetAuthUids.includes(studentAuthUid);
-            const matchesStudent = targetStudents.includes(String(studentId));
-
-            return hasClassTargets ? matchesClass : (matchesAuth || matchesStudent);
-        };
-        
-        const myNotices = notices.filter((n) => {
-            const isPublicNotice = n?.isPublic === true;
-            return isPublicNotice || isTargetedToMe(n);
-        });
-        const publicNotices = myNotices.filter((n) => n?.isPublic === true);
-        const classOrTargetedNotices = myNotices.filter((n) => n?.isPublic !== true);
-        let combinedNotices = [...publicNotices, ...classOrTargetedNotices];
+        const combinedNotices = Array.isArray(notices) ? notices : [];
         setVisibleNotices(combinedNotices);
-        if (combinedNotices.length > visibleNotices.length) {
-            return;
-        }
-    }, [notices, studentId, studentAuthUid, visibleNotices.length, myClassIds]);
+    }, [notices]);
 
     const handleOpenNotification = () => { setIsNotificationOpen(true); };
 
@@ -325,7 +292,7 @@ export default function StudentHome({
                                 initialTab={initialLearningTab}
                             />
                         )}
-                        {activeTab === 'board' && <BoardTab notices={visibleNotices.filter((n) => n?.isPublic === true)} />}
+                        {activeTab === 'board' && <BoardTab notices={visibleNotices} />}
                         {activeTab === 'menu' && (
                             <MenuTab 
                                 student={student} onUpdateStudent={onUpdateStudent} onLogout={onLogout}
