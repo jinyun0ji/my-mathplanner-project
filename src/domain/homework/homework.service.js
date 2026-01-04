@@ -30,6 +30,42 @@ export const resolveAssignmentStudentIds = (assignment) => {
     return Array.isArray(assigned) ? assigned : [];
 };
 
+const resolveResultMap = (resultData) => {
+    if (!resultData || typeof resultData !== 'object') return null;
+    const mapFromKey = resultData.results;
+    if (mapFromKey && typeof mapFromKey === 'object' && !Array.isArray(mapFromKey)) return mapFromKey;
+
+    const numericEntries = Object.entries(resultData).filter(([k, v]) => /^\d+$/.test(k) && typeof v === 'string');
+    if (numericEntries.length > 0) return Object.fromEntries(numericEntries);
+
+    return null;
+};
+
+export const hasWrongRemaining = (resultData) => {
+    if (!resultData) return false;
+
+    const wrongRemainingCount = resultData?.wrongRemainingCount ?? resultData?.remainingWrongCount;
+    if (Number.isFinite(wrongRemainingCount)) return wrongRemainingCount > 0;
+
+    const retryLists = [resultData?.wrongProblems, resultData?.needsRetry, resultData?.retryList, resultData?.retryProblems];
+    for (const list of retryLists) {
+        if (Array.isArray(list)) return list.length > 0;
+    }
+
+    const resultMap = resolveResultMap(resultData);
+    if (resultMap) {
+        return Object.values(resultMap).some(status => ['틀림', 'wrong', 'needs_retry', 'needsRetry', 'retry'].includes(String(status)));
+    }
+
+    return false;
+};
+
+export const applyHomeworkProgressCap = (progressPercent = 0, resultData) => {
+    const safeProgress = Number.isFinite(progressPercent) ? progressPercent : 0;
+    if (safeProgress >= 100 && hasWrongRemaining(resultData)) return 99;
+    return safeProgress;
+};
+
 export const isAssignmentAssignedToStudent = (assignment, studentId) => {
     if (!assignment || !studentId) return false;
     const assignedIds = resolveAssignmentStudentIds(assignment);
@@ -66,7 +102,10 @@ export const buildAssignmentSummary = (selectedAssignment, classStudents = [], h
 
         const completionCount = correct + corrected + incorrect;
         const unchecked = total - completionCount;
-        const completionRate = Math.round((completionCount / total) * 100) || 0;
+        const completionRate = applyHomeworkProgressCap(
+            Math.round((completionCount / total) * 100) || 0,
+            result
+        );
 
         return {
             studentId: student.id,

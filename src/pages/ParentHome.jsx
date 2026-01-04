@@ -438,6 +438,19 @@ export default function ParentHome({
         [myHomeworkStats]
     );
 
+    const toDateValue = (value) => {
+        if (!value) return null;
+        if (typeof value?.toDate === 'function') return value.toDate();
+        if (value instanceof Date) return value;
+        const parsed = new Date(value);
+        return Number.isNaN(parsed.getTime()) ? null : parsed;
+    };
+
+    const formatAssignedDate = (value) => {
+        const date = toDateValue(value);
+        return date ? date.toISOString().slice(0, 10) : null;
+    };
+
     const latestAttendance = useMemo(() => {
         const logs = attendanceLogs
             .filter(l => l.studentId === activeChildId)
@@ -629,6 +642,7 @@ export default function ParentHome({
                 completionRate: hw.completionRate,
                 status: hw.status,
                 classAverage: hw.classAverage,
+                assignedDate: formatAssignedDate(hw.assignedAt || hw.date || hw.createdAt),
             }));
     }, [myHomeworkStats, selectedClassId]);
 
@@ -1088,6 +1102,7 @@ export default function ParentHome({
                                                                             <div>
                                                                                 <p className="text-sm font-bold text-gray-900">{hw.title}</p>
                                                                                 <p className="text-xs text-gray-500">{hw.status}</p>
+                                                                                <p className="text-[11px] text-gray-400">출제일: {hw.assignedDate || '-'}</p>
                                                                             </div>
                                                                             <span className="text-xs font-bold text-indigo-700 bg-indigo-50 px-3 py-1 rounded-full border border-indigo-100">{hw.completionRate}%</span>
                                                                         </div>

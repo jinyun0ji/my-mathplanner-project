@@ -1,6 +1,6 @@
 // src/utils/helpers.js
 import React from 'react';
-import { isAssignmentAssignedToStudent } from '../domain/homework/homework.service';
+import { applyHomeworkProgressCap, isAssignmentAssignedToStudent } from '../domain/homework/homework.service';
 import { getTotalScore, isAbsentGrade } from '../domain/grade/grade.service';
 import { 
     Home, Calendar, Clipboard, BarChart2, Menu, 
@@ -302,10 +302,13 @@ export const calculateHomeworkStats = (studentId, assignments, results, options 
             });
             const completedCount = correctCount + incorrectCount;
             const uncheckedCount = totalQuestions - completedCount;
-            const completionRate = Math.round((completedCount / totalQuestions) * 100);
+            const completionRate = applyHomeworkProgressCap(
+                Math.round((completedCount / totalQuestions) * 100),
+                studentResults
+            );
             let status = '미시작';
             if (completionRate > 0 && completionRate < 100) status = '진행 중';
-            else if (completionRate === 100) status = (incorrectCount > 0) ? '오답 정리' : '완료';
+            else if (completionRate === 100) status = (incorrectCount > 0) ? '오답 정리가 필요합니다.' : '완료';
             const incorrectQuestionList = Object.keys(studentResults).filter(qNum => studentResults[qNum] === '틀림').map(Number).sort((a, b) => a - b);
             return { ...hw, completionRate, status, completedCount: correctCount, incorrectCount, uncheckedCount, incorrectQuestionList, submissionDate };
         });
