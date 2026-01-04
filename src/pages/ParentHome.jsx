@@ -412,7 +412,6 @@ export default function ParentHome({
             });
     }, [myClinicLogs]);
 
-    const recentLessonReportsToShow = useMemo(() => recentLessons.slice(0, 2), [recentLessons]);
     const completedClinicsToShow = useMemo(() => completedClinics.slice(0, 2), [completedClinics]);
 
     useEffect(() => {
@@ -578,6 +577,8 @@ export default function ParentHome({
             .sort((a, b) => new Date(b.date) - new Date(a.date))
             .slice(0, 5);
     }, [myLessonLogs, activeChildId, lessonLogs, attendanceLogs, homeworkAssignments, homeworkResults, tests, grades, classes]);
+
+    const recentLessonsToShow = useMemo(() => recentLessons.slice(0, 2), [recentLessons]);
 
     const classList = useMemo(() => {
         const lessonsByClass = recentLessons.reduce((acc, cur) => {
@@ -873,7 +874,7 @@ export default function ParentHome({
                                                     </h3>
                                                 </div>
                                                 <div className="space-y-3">
-                                                    {recentLessonReportsToShow.map((lesson) => (
+                                                    {recentLessonsToShow.map((lesson) => (
                                                         <div key={lesson.id} className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm flex flex-col gap-2">
                                                             <div className="flex items-start justify-between gap-3">
                                                                 <div className="space-y-1 min-w-0">
@@ -904,7 +905,7 @@ export default function ParentHome({
                                                     <Icon name="activity" className="w-5 h-5 text-indigo-600" />
                                                     클리닉 리포트
                                                 </h3>
-                                                <span className="text-xs text-gray-400 font-semibold">최근 {completedClinics.length}개</span>
+                                                <span className="text-xs text-gray-400 font-semibold">최근 2개</span>
                                             </div>
                                             <div className="space-y-3">
                                                 {completedClinicsToShow.map((log) => (
