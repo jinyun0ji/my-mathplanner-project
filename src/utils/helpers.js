@@ -307,8 +307,16 @@ export const calculateHomeworkStats = (studentId, assignments, results, options 
                 studentResults
             );
             let status = '미시작';
-            if (completionRate > 0 && completionRate < 100) status = '지금 열심히 문제를 풀고 있어요 ✏️';
-            else if (completionRate === 100) status = (incorrectCount > 0) ? '문제 풀이를 마치고, 꼼꼼하게 오답을 정리하고 있어요 🧐' : '오답 확인까지 완벽하게 숙제를 마쳤어요! 💯';
+            
+            if (completedCount > 0 && completedCount < totalQuestions) {
+                status = '지금 열심히 문제를 풀고 있어요 ✏️';
+            } else if (completedCount >= totalQuestions) {
+                status = (incorrectCount > 0)
+                    ? '문제 풀이를 마치고, 꼼꼼하게 오답을 정리하고 있어요 🧐'
+                    : '오답 확인까지 완벽하게 숙제를 마쳤어요! 💯';
+            } else {
+                status = '미시작';
+            }
             const incorrectQuestionList = Object.keys(studentResults).filter(qNum => studentResults[qNum] === '틀림').map(Number).sort((a, b) => a - b);
             return { ...hw, completionRate, status, completedCount: correctCount, incorrectCount, uncheckedCount, incorrectQuestionList, submissionDate };
         });
