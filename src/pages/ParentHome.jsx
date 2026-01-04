@@ -594,7 +594,27 @@ export default function ParentHome({
                     comment: report?.learningComment || report?.progressTopic || log.progress || '수업 기록을 준비 중입니다.',
                     attendance: report?.attendance || '기록 없음',
                     homeworkStatus: report?.homeworkStatus || '과제 없음',
-                    testStatus: report?.testScore || '테스트 없음',
+                    testStatus: (() => {
+                        const v = report?.testScore;
+
+                        // 1) 테스트 데이터 자체가 없는 경우
+                        if (v === null || v === undefined || v === '') {
+                            return '테스트 없음';
+                        }
+
+                        // 2) 문자열로 'null점' / 'null' 이 들어오는 케이스 방어
+                        if (typeof v === 'string' && v.includes('null')) {
+                            return '미응시';
+                        }
+
+                        // 3) report에 미응시 여부가 명시적으로 있는 경우
+                        if (report?.testAttempted === false || report?.testStatus === '미응시') {
+                            return '미응시';
+                        }
+
+                        // 4) 정상 점수
+                        return v;
+                    })(),
                 };
             })
             .sort((a, b) => new Date(b.date) - new Date(a.date))
