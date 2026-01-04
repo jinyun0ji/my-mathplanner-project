@@ -4,7 +4,7 @@ import { Icon } from '../utils/helpers';
 import { Modal } from '../components/common/Modal'; 
 import { PaymentNotificationModal } from '../utils/modals/PaymentNotificationModal'; // ✅ 신규 모달 import
 import { initialClasses } from '../api/initialData';
-import { addDoc, collection, getDocs, query, serverTimestamp, where } from 'firebase/firestore';
+import { addDoc, collection, doc, getDocs, query, serverTimestamp, updateDoc, where } from 'firebase/firestore';
 import { db } from '../firebase/client';
 import { isStaffOrTeachingRole } from '../constants/roles';
 import { useClassStudents } from '../utils/useClassStudents';
@@ -33,7 +33,14 @@ export default function PaymentManagement({ classes, paymentLogs, isPaymentLogsL
     // 모달 상태
     const [isBookModalOpen, setIsBookModalOpen] = useState(false);
     const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+    
     const [isClassSettingModalOpen, setIsClassSettingModalOpen] = useState(false);
+
+    // ✅ 반별 필수 교재 설정 상태
+    const [selectedRequiredBookIds, setSelectedRequiredBookIds] = useState([]);
+    const [requiredBookIdsByClass, setRequiredBookIdsByClass] = useState({});
+    const [isSavingRequiredBooks, setIsSavingRequiredBooks] = useState(false);
+
     
     // ✅ 알림 모달 상태 추가
     const [isNotifModalOpen, setIsNotifModalOpen] = useState(false);
@@ -64,6 +71,20 @@ export default function PaymentManagement({ classes, paymentLogs, isPaymentLogsL
         () => (Array.isArray(classes) && classes.length > 0 ? classes : initialClasses),
         [classes]
     );
+
+    // ✅ classes 데이터에 requiredBookIds가 포함되어 있으면 초기 맵 구성 (없으면 비어있음)
+    useEffect(() => {
+        const next = {};
+        (Array.isArray(effectiveClasses) ? effectiveClasses : []).forEach((c) => {
+            const cid = String(c?.id);
+            const ids = c?.requiredBookIds;
+            if (cid && Array.isArray(ids)) {
+                next[cid] = ids.map(String);
+            }
+        });
+        // 기존 값 보존 + 새로 들어온 값만 병합
+        setRequiredBookIdsByClass((prev) => ({ ...prev, ...next }));
+    }, [effectiveClasses]);
     const effectiveStudents = useMemo(
         () => (Array.isArray(classStudents) && classStudents.length > 0 ? classStudents : []),
         [classStudents]
@@ -257,6 +278,25 @@ export default function PaymentManagement({ classes, paymentLogs, isPaymentLogsL
         return Array.isArray(materials) ? materials : [];
     }, [materialsByClass, viewClassId]);
 
+    // ✅ 반별 필수 교재 설정 모달에서 선택 상태 초기화/동기화
+    useEffect(() => {
+        if (!isClassSettingModalOpen) return;
+        if (!selectedClassForSetting) return;
+
+        const cid = String(selectedClassForSetting);
+        const saved = requiredBookIdsByClass[cid];
+        if (Array.isArray(saved) && saved.length >= 0) {
+            // 저장된 필수 교재가 있으면 그 값을 사용 (빈 배열도 허용: "필수 교재 없음" 상태)
+            setSelectedRequiredBookIds(saved.map(String));
+            return;
+        }
+
+        // 저장값이 없다면 기존 동작 유지: 해당 반의 교재 전체를 기본 선택
+        const books = materialsByClass[cid];
+        const fallbackIds = Array.isArray(books) ? books.map((b) => String(b?.id)).filter(Boolean) : [];
+        setSelectedRequiredBookIds(fallbackIds);
+    }, [isClassSettingModalOpen, selectedClassForSetting, requiredBookIdsByClass, materialsByClass]);
+
     // [로직] 특정 반의 학생별 납부 현황 계산
     const classPaymentStatus = useMemo(() => {
         if (!viewClassId) return [];
@@ -264,7 +304,14 @@ export default function PaymentManagement({ classes, paymentLogs, isPaymentLogsL
         const targetClass = effectiveClasses.find(c => String(c.id) === String(viewClassId));
         if (!targetClass) return [];
 
-        const requiredBooks = Array.isArray(classMaterials) ? classMaterials : [];
+        const allBooks = Array.isArray(classMaterials) ? classMaterials : [];
+
+        // ✅ 반별로 설정된 필수 교재가 있으면 그 목록만 필수로 간주 (없으면 기존처럼 전체 교재)
+        const cid = String(viewClassId);
+        const requiredIds = requiredBookIdsByClass?.[cid];
+        const requiredBooks = Array.isArray(requiredIds)
+            ? allBooks.filter((b) => requiredIds.map(String).includes(String(b?.id)))
+            : allBooks;
         if (requiredBooks.length === 0) return [];
         const totalRequiredAmount = requiredBooks.reduce((sum, b) => sum + getBookPrice(b), 0);
 
@@ -299,7 +346,7 @@ export default function PaymentManagement({ classes, paymentLogs, isPaymentLogsL
             };
         }).filter(item => item !== null);
 
-    }, [viewClassId, effectiveClasses, effectiveStudents, classMaterials, effectivePaymentLogs]);
+    }, [viewClassId, effectiveClasses, effectiveStudents, classMaterials, effectivePaymentLogs , requiredBookIdsByClass]);
 
     const classPaymentStatusList = useMemo(
         () => (Array.isArray(classPaymentStatus) ? classPaymentStatus : []),
@@ -545,7 +592,37 @@ export default function PaymentManagement({ classes, paymentLogs, isPaymentLogsL
         setEditingPaymentId(null);
     };
 
-    return (
+    
+    // ✅ 반별 필수 교재 저장
+    const saveRequiredBooksForClass = useCallback(async () => {
+        if (!selectedClassForSetting) {
+            alert('반을 선택해주세요.');
+            return;
+        }
+        const cid = String(selectedClassForSetting);
+
+        try {
+            setIsSavingRequiredBooks(true);
+            // classes 문서에 필수 교재 id 목록 저장
+            await updateDoc(doc(db, 'classes', cid), {
+                requiredBookIds: (Array.isArray(selectedRequiredBookIds) ? selectedRequiredBookIds : []).map(String),
+                updatedAt: serverTimestamp(),
+            });
+
+            setRequiredBookIdsByClass((prev) => ({
+                ...prev,
+                [cid]: (Array.isArray(selectedRequiredBookIds) ? selectedRequiredBookIds : []).map(String),
+            }));
+
+            setIsClassSettingModalOpen(false);
+        } catch (e) {
+            console.error('[payment] FAIL: save required books', e);
+            alert('필수 교재 저장에 실패했습니다. 콘솔 로그를 확인해주세요.');
+        } finally {
+            setIsSavingRequiredBooks(false);
+        }
+    }, [selectedClassForSetting, selectedRequiredBookIds]);
+return (
         <div className="space-y-6">
             <div className="flex items-start gap-3 p-4 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
                 <Icon name="info" className="w-5 h-5 mt-0.5" />
@@ -1374,9 +1451,19 @@ export default function PaymentManagement({ classes, paymentLogs, isPaymentLogsL
                             (Array.isArray(materialsByClass[String(selectedClassForSetting)]) ? materialsByClass[String(selectedClassForSetting)] : []).length > 0 ? (
                                 (Array.isArray(materialsByClass[String(selectedClassForSetting)]) ? materialsByClass[String(selectedClassForSetting)] : []).map(book => (
                                     <div key={book.id} className="flex items-center p-4 rounded-lg border bg-white">
-                                        <div className="w-6 h-6 rounded-full border-2 flex items-center justify-center mr-4 bg-indigo-600 border-indigo-600">
-                                            <Icon name="check" className="w-3.5 h-3.5 text-white" />
-                                        </div>
+                                        <input
+                                            type="checkbox"
+                                            className="mr-4 h-5 w-5 text-indigo-600"
+                                            checked={(Array.isArray(selectedRequiredBookIds) ? selectedRequiredBookIds : []).includes(String(book?.id))}
+                                            onChange={() => {
+                                                const id = String(book?.id);
+                                                if (!id) return;
+                                                setSelectedRequiredBookIds((prev) => {
+                                                    const next = Array.isArray(prev) ? prev.map(String) : [];
+                                                    return next.includes(id) ? next.filter((x) => x !== id) : [...next, id];
+                                                });
+                                            }}
+                                        />
                                         <div className="flex-1">
                                             <div className="font-bold text-gray-800">{getBookTitle(book)}</div>
                                             <div className="text-sm text-gray-500 mt-0.5">{book.type} · {getBookPrice(book).toLocaleString()}원</div>
@@ -1396,10 +1483,11 @@ export default function PaymentManagement({ classes, paymentLogs, isPaymentLogsL
                     </div>
                     <div className="pt-4 border-t mt-2 flex justify-end">
                          <button 
-                            onClick={() => setIsClassSettingModalOpen(false)} 
+                            onClick={saveRequiredBooksForClass}
+                            disabled={isSavingRequiredBooks} 
                             className="px-6 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-900 font-bold transition"
                          >
-                             설정 완료
+                             {isSavingRequiredBooks ? '저장 중...' : '설정 저장'}
                          </button>
                     </div>
                 </div>
