@@ -100,10 +100,10 @@ export const StudentFormModal = ({ isOpen, onClose, student = null, allClasses, 
             <label className="block text-sm font-medium text-gray-700">학교*</label>
             <input type="text" value={school} onChange={e => setSchool(e.target.value)} required className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border" />
           </div>
-          <div>
+          {/* <div>
             <label className="block text-sm font-medium text-gray-700">클리닉 희망 시간</label>
             <input type="time" value={clinicTime || ''} onChange={e => setClinicTime(e.target.value)} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border" />
-          </div>
+          </div> */}
         </div>
 
         {/* 2열 */}
@@ -139,11 +139,11 @@ export const StudentFormModal = ({ isOpen, onClose, student = null, allClasses, 
               )) : <span className="text-xs text-gray-400">등록된 클래스가 없습니다.</span>}
             </div>
           </div>
-          <div className="flex items-center pt-2">
+          {/* <div className="flex items-center pt-2">
             <input type="checkbox" id="bookReceived" checked={bookReceived} onChange={e => setBookReceived(e.target.checked)} className="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500" />
             <label htmlFor="bookReceived" className="ml-2 block text-sm text-gray-900">교재 수령 완료</label>
             <span className="ml-auto text-xs text-gray-500 flex items-center"><Icon name="info" className="w-3 h-3 mr-1" />이 상태는 수납 관리와 연동됩니다.</span>
-          </div>
+          </div> */}
         </div>
 
         {/* 버튼 */}

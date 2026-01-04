@@ -3,7 +3,16 @@ import { Icon, calculateDurationMinutes, formatDuration } from '../../../utils/h
 import ClinicReportCard from './ClinicReportCard';
 
 export default function ClinicTab({ studentId, clinicLogs = [], students = [], classes = [], isParent = false }) {
-    const myClinics = clinicLogs.filter(log => log.studentId === studentId);
+    const resolveTeacher = (log) => log?.tutorName || log?.tutor || log?.teacherName || log?.teacher || '-';
+    const resolveComment = (log) => log?.comment || log?.notes || log?.memo || '코멘트가 아직 작성되지 않았습니다.';
+
+    const myClinics = clinicLogs
+        .filter(log => log.studentId === studentId)
+        .map(log => ({
+            ...log,
+            teacherResolved: resolveTeacher(log),
+            commentResolved: resolveComment(log),
+        }));
     const now = new Date();
     
     const upcoming = myClinics.filter(log => new Date(log.date + 'T' + log.checkIn) >= now || !log.checkOut).sort((a, b) => new Date(a.date) - new Date(b.date));
@@ -26,6 +35,9 @@ export default function ClinicTab({ studentId, clinicLogs = [], students = [], c
                                         <span className="text-xs text-gray-500">{log.date}</span>
                                     </div>
                                     <h4 className="font-bold text-gray-900 text-lg">{log.checkIn} 입실 예정</h4>
+                                    <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
+                                        <Icon name="user" className="w-3 h-3" /> {log.teacherResolved}
+                                    </p>
                                 </div>
                             </div>
                         ))}
@@ -88,7 +100,7 @@ export default function ClinicTab({ studentId, clinicLogs = [], students = [], c
 
                 </div>
             </div>
-            <div className="space-y-3"><h3 className="text-sm font-bold text-gray-900 px-1 flex items-center gap-1"><Icon name="clock" className="w-4 h-4 text-teal-500" /> 예약된 일정</h3>{upcoming.length > 0 ? upcoming.map(log => (<div key={log.id} className="bg-white p-5 rounded-2xl shadow-sm border border-teal-100 flex justify-between items-center"><div><div className="flex items-center gap-2 mb-1"><span className="text-xs font-bold text-teal-700 bg-teal-50 px-2 py-0.5 rounded border border-teal-200">예약됨</span><span className="text-xs text-gray-500">{log.date}</span></div><h4 className="font-bold text-gray-900 text-lg">{log.checkIn} 입실 예정</h4><p className="text-xs text-gray-500 mt-1 flex items-center gap-1"><Icon name="user" className="w-3 h-3" /> {log.tutor || '담당 선생님'}</p></div></div>)) : (<div className="text-center py-8 text-gray-400 bg-white rounded-2xl border border-dashed border-gray-200 text-sm">예약된 클리닉이 없습니다.</div>)}</div>
+            <div className="space-y-3"><h3 className="text-sm font-bold text-gray-900 px-1 flex items-center gap-1"><Icon name="clock" className="w-4 h-4 text-teal-500" /> 예약된 일정</h3>{upcoming.length > 0 ? upcoming.map(log => (<div key={log.id} className="bg-white p-5 rounded-2xl shadow-sm border border-teal-100 flex justify-between items-center"><div><div className="flex items-center gap-2 mb-1"><span className="text-xs font-bold text-teal-700 bg-teal-50 px-2 py-0.5 rounded border border-teal-200">예약됨</span><span className="text-xs text-gray-500">{log.date}</span></div><h4 className="font-bold text-gray-900 text-lg">{log.checkIn} 입실 예정</h4><p className="text-xs text-gray-500 mt-1 flex items-center gap-1"><Icon name="user" className="w-3 h-3" /> {log.teacherResolved}</p></div></div>)) : (<div className="text-center py-8 text-gray-400 bg-white rounded-2xl border border-dashed border-gray-200 text-sm">예약된 클리닉이 없습니다.</div>)}</div>
             <div className="space-y-3"><h3 className="text-sm font-bold text-gray-900 px-1">지난 기록</h3>{history.length > 0 ? history.map(log => (<div key={log.id} className="bg-white p-4 rounded-2xl border border-gray-100 flex justify-between items-center"><div><div className="text-xs text-gray-500 mb-1">{log.date}</div><div className="font-bold text-gray-900 flex items-center gap-2"><span>{log.checkIn} ~ {log.checkOut}</span><span className="text-xs font-normal text-gray-500 bg-gray-50 px-1.5 py-0.5 rounded">{formatDuration(calculateDurationMinutes(log.checkIn, log.checkOut))}</span></div></div><div className="w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center text-teal-500"><Icon name="check" className="w-5 h-5" /></div></div>)) : (<div className="text-center py-8 text-gray-400 bg-white rounded-2xl border border-dashed border-gray-200 text-sm">완료된 기록이 없습니다.</div>)}</div>
         </div>
     );

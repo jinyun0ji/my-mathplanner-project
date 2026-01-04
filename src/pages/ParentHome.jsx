@@ -74,14 +74,36 @@ const ParentDashboard = ({
     }, [attendanceLogs, homeworkStats, gradeComparison, child.id]);
     
     // 2. 오늘의 수업 요약
+    const buildClinicTeacher = (log) => log?.tutorName || log?.tutor || log?.teacherName || log?.teacher || '-';
+    const formatClinicTime = (log) => {
+        const start = log?.checkIn || log?.plannedTime?.start || '';
+        const end = log?.checkOut || log?.plannedTime?.end || '';
+        if (start && end) return `${start} ~ ${end}`;
+        if (start) return `${start} 예정`;
+        return '시간 미정';
+    };
+    const buildClinicStatus = (log) => {
+        if (log?.checkOut) return '완료';
+        if (log?.checkIn || log?.plannedTime) return '예약됨';
+        return '예정';
+    };
+    const todayClinicSchedules = clinicLogs
+        .filter((l) => l.studentId === child.id && l.date === todayStr)
+        .map((l) => ({
+            type: 'clinic',
+            time: l.checkIn || l.plannedTime?.start || '99:99',
+            timeLabel: formatClinicTime(l),
+            title: '클리닉',
+            sub: `선생님: ${buildClinicTeacher(l)} • ${buildClinicStatus(l)}`,
+        }));
+
     const todaySchedules = [
         ...myClasses.filter(c => c.schedule.days.includes(todayDayName)).map(c => ({
-            type: 'class', time: c.schedule.time, title: c.name, sub: `${c.teacher} 선생님`
+            type: 'class', time: c.schedule.time, title: c.name, sub: `${c.teacher} 선생님`,
+            timeLabel: c.schedule.time,
         })),
-        ...clinicLogs.filter(l => l.studentId === child.id && l.date === todayStr && !l.checkOut).map(l => ({
-            type: 'clinic', time: l.checkIn, title: '학습 클리닉', sub: '등원 예정'
-        }))
-    ].sort((a, b) => a.time.localeCompare(b.time));
+        ...todayClinicSchedules,
+    ].sort((a, b) => (a.time || '').localeCompare(b.time || ''));
 
     // 3. 확인 필요 항목 (Action Items)
     const actionItems = [];
@@ -134,7 +156,7 @@ const ParentDashboard = ({
                              <div key={idx} className="flex items-center gap-3 p-3 hover:bg-indigo-50 rounded-xl transition-colors border border-gray-100">
                                 <span className="text-xs font-mono font-bold text-gray-500 bg-gray-100 px-2 py-1 rounded">{item.time}</span>
                                 <div>
-                                    <div className="font-bold text-gray-900 text-sm">{item.title}</div>
+                                    <div className="font-bold text-gray-900 text-sm">{item.title} {item.timeLabel ? `(${item.timeLabel})` : ''}</div>
                                     <div className="text-xs text-gray-500">{item.sub}</div>
                                 </div>
                             </div>
@@ -361,10 +383,24 @@ export default function ParentHome({
     const viewerUid = activeChild?.authUid || userId;
     const { notifications, hasUnread, unreadCount, lastReadAt, isLoading, isMetaLoading, setNotifications } = useNotifications(viewerUid);
 
+    const buildClinicTeacher = useCallback((log) => (
+        log?.tutorName || log?.tutor || log?.teacherName || log?.teacher || '-'
+    ), []);
+
+    const buildClinicComment = useCallback((log) => (
+        log?.comment || log?.notes || log?.memo || '코멘트가 아직 작성되지 않았습니다.'
+    ), []);
+
     const myClinicLogs = useMemo(() => {
         if (!Array.isArray(clinicLogs) || !activeChildId) return [];
-        return clinicLogs.filter((log) => log?.studentId === activeChildId);
-    }, [clinicLogs, activeChildId]);
+        return clinicLogs
+            .filter((log) => log?.studentId === activeChildId)
+            .map((log) => ({
+                ...log,
+                teacherResolved: buildClinicTeacher(log),
+                commentResolved: buildClinicComment(log),
+            }));
+    }, [clinicLogs, activeChildId, buildClinicComment, buildClinicTeacher]);
 
     const completedClinics = useMemo(() => {
         return myClinicLogs
@@ -375,6 +411,9 @@ export default function ParentHome({
                 return bDate - aDate;
             });
     }, [myClinicLogs]);
+
+    const recentLessonReportsToShow = useMemo(() => recentLessons.slice(0, 2), [recentLessons]);
+    const completedClinicsToShow = useMemo(() => completedClinics.slice(0, 2), [completedClinics]);
 
     useEffect(() => {
         if (!activeChild) return;
@@ -622,7 +661,7 @@ export default function ParentHome({
 
     const navItems = [
         { id: 'home', icon: 'home', label: '홈' },
-        { id: 'report', icon: 'pieChart', label: '학습리포트' },
+        { id: 'report', icon: 'clipboardCheck', label: '학습리포트' },
         { id: 'schedule', icon: 'calendar', label: '일정' },
         { id: 'payment', icon: 'creditCard', label: '결제' },
         { id: 'menu', icon: 'menu', label: '전체' },
@@ -834,7 +873,7 @@ export default function ParentHome({
                                                     </h3>
                                                 </div>
                                                 <div className="space-y-3">
-                                                    {recentLessons.slice(0, 5).map((lesson) => (
+                                                    {recentLessonReportsToShow.map((lesson) => (
                                                         <div key={lesson.id} className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm flex flex-col gap-2">
                                                             <div className="flex items-start justify-between gap-3">
                                                                 <div className="space-y-1 min-w-0">
@@ -868,17 +907,17 @@ export default function ParentHome({
                                                 <span className="text-xs text-gray-400 font-semibold">최근 {completedClinics.length}개</span>
                                             </div>
                                             <div className="space-y-3">
-                                                {completedClinics.slice(0, 3).map((log) => (
+                                                {completedClinicsToShow.map((log) => (
                                                     <div key={`${log.date}-${log.checkIn}`} className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm space-y-2">
                                                         <div className="flex items-start justify-between gap-3">
                                                             <div className="space-y-1">
                                                                 <p className="text-[11px] text-gray-400 font-semibold">{log.date} • {log.checkIn}~{log.checkOut}</p>
                                                                 <h4 className="font-bold text-gray-900 text-sm">학습 클리닉</h4>
-                                                                <p className="text-xs text-gray-500">{log.teacher || '담당 선생님'}</p>
+                                                                <p className="text-xs text-gray-500">{log.teacherResolved}</p>
                                                             </div>
                                                             <StatusPill icon="clock" label="완료" tone="info" />
                                                         </div>
-                                                        <p className="text-sm text-gray-700 leading-6">{log.note || '코멘트가 아직 작성되지 않았습니다.'}</p>
+                                                        <p className="text-sm text-gray-700 leading-6">{log.commentResolved}</p>
                                                     </div>
                                                 ))}
                                                 {completedClinics.length === 0 && (
@@ -1078,7 +1117,7 @@ export default function ParentHome({
                                                                                 <p className="text-sm font-bold text-gray-900">{test.name}</p>
                                                                                 <p className="text-xs text-gray-500">{test.date}</p>
                                                                             </div>
-                                                                            <span className="text-xs font-bold text-indigo-700 bg-indigo-50 px-3 py-1 rounded-full border border-indigo-100">{test.studentScore ?? '점수 없음'}</span>
+                                                                            <span className="text-xs font-bold text-indigo-700 bg-indigo-50 px-3 py-1 rounded-full border border-indigo-100">{test.studentScore ?? '미응시'}</span>
                                                                         </div>
                                                                         <div className="flex items-center justify-between text-xs text-gray-600">
                                                                             <span>반 평균</span>

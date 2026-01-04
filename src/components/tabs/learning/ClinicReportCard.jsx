@@ -3,14 +3,19 @@ import React, { useState } from 'react';
 export default function ClinicReportCard({ log }) {
     const [isExpanded, setIsExpanded] = useState(false);
     
+    const teacher = log?.tutorName || log?.tutor || log?.teacherName || log?.teacher || log?.teacherResolved || '-';
+    const rawComment = log?.comment || log?.notes || log?.memo || log?.commentResolved;
+    const displayableComment = rawComment || '코멘트가 아직 작성되지 않았습니다.';
+    const hasComment = Boolean(rawComment);
+
     // 코멘트 길이 체크 (80자 이상이면 접기 처리)
-    const isLongComment = log.comment && log.comment.length > 80;
-    const displayComment = isExpanded ? log.comment : (isLongComment ? log.comment.slice(0, 80) + '...' : log.comment);
+    const isLongComment = rawComment && rawComment.length > 80;
+    const displayComment = isExpanded ? displayableComment : (isLongComment ? displayableComment.slice(0, 80) + '...' : displayableComment);
 
     // 상태 배지 스타일 (임시 로직: '부족' 키워드가 있으면 주황색, 아니면 파란색)
-    const isAttentionNeeded = log.comment && log.comment.includes('부족');
-    const badgeStyle = isAttentionNeeded 
-        ? 'bg-orange-50 text-orange-600 border-orange-100' 
+    const isAttentionNeeded = displayableComment && displayableComment.includes('부족');
+    const badgeStyle = isAttentionNeeded
+        ? 'bg-orange-50 text-orange-600 border-orange-100'
         : 'bg-indigo-50 text-indigo-600 border-indigo-100';
     const statusText = isAttentionNeeded ? '확인 필요' : '작성 완료';
 
@@ -25,7 +30,7 @@ export default function ClinicReportCard({ log }) {
                             {log.checkIn} ~ {log.checkOut || ''}
                         </span>
                     </div>
-                    <p className="text-xs text-gray-500">{log.tutor || '담당 조교'} 선생님</p>
+                    <p className="text-xs text-gray-500">{teacher} 선생님</p>
                 </div>
                 <span className={`px-2.5 py-1 rounded-lg text-xs font-bold border ${badgeStyle}`}>
                     {statusText}
@@ -43,7 +48,7 @@ export default function ClinicReportCard({ log }) {
 
                 <div>
                     <h4 className="text-sm font-bold text-gray-800 mb-1">선생님 코멘트</h4>
-                    {log.comment ? (
+                    {hasComment ? (
                         <div className="bg-gray-50 rounded-xl p-3.5">
                             <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
                                 {displayComment}
