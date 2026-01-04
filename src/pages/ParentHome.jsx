@@ -16,6 +16,7 @@ import {
 import ParentClassroomView from './parent/ParentClassroomView';
 import StudentHeader from '../components/StudentHeader';
 import { Icon, calculateHomeworkStats, calculateGradeComparison } from '../utils/helpers';
+import { formatGradeScoreText } from '../domain/grade/grade.service';
 import NotificationsIcon from '@mui/icons-material/Notifications';
 import ParentSessionReport from './parent/ParentSessionReport'; // ✅ 신규 리포트 컴포넌트
 import { generateSessionReport } from '../utils/reportHelper'; // ✅ 리포트 데이터 생성 헬퍼
@@ -64,10 +65,14 @@ const ParentDashboard = ({
             const sorted = [...gradeComparison].sort((a, b) => new Date(a.testDate) - new Date(b.testDate));
             const latest = sorted[sorted.length - 1];
             const prev = sorted[sorted.length - 2];
-            
-            if (latest.studentScore > prev.studentScore) gradeStatus = { color: 'bg-blue-50 text-blue-700 border-blue-100', label: '상승세' };
-            else if (latest.studentScore < prev.studentScore) gradeStatus = { color: 'bg-orange-50 text-orange-700 border-orange-100', label: '하락세' };
-            else gradeStatus = { color: 'bg-gray-50 text-gray-700 border-gray-200', label: '유지' };
+            const latestScore = Number.isFinite(latest.studentScore) ? latest.studentScore : null;
+            const prevScore = Number.isFinite(prev.studentScore) ? prev.studentScore : null;
+
+            if (latestScore !== null && prevScore !== null) {
+                if (latestScore > prevScore) gradeStatus = { color: 'bg-blue-50 text-blue-700 border-blue-100', label: '상승세' };
+                else if (latestScore < prevScore) gradeStatus = { color: 'bg-orange-50 text-orange-700 border-orange-100', label: '하락세' };
+                else gradeStatus = { color: 'bg-gray-50 text-gray-700 border-gray-200', label: '유지' };
+            }
         }
 
         return { attend: attendStatus, hw: hwStatus, grade: gradeStatus };
@@ -447,6 +452,11 @@ export default function ParentHome({
         return sorted[sorted.length - 1];
     }, [myGradeComparison]);
 
+    const latestGradeScore = useMemo(
+        () => latestGrade ? formatGradeScoreText(latestGrade.grade, latestGrade.totalScore) : null,
+        [latestGrade]
+    );
+
     const nextClass = useMemo(() => {
         if (!ongoingClasses || ongoingClasses.length === 0) return null;
         const sorted = [...ongoingClasses].sort((a, b) => a.schedule.time.localeCompare(b.schedule.time));
@@ -761,7 +771,11 @@ export default function ParentHome({
                                                 {latestGrade ? (
                                                     <>
                                                         <p className="text-lg font-bold text-white">{latestGrade.testName}</p>
-                                                        <p className="text-sm text-sky-100 mt-1">점수 {latestGrade.studentScore}점 / 반 평균 {latestGrade.classAverage}점</p>
+                                                        <p className="text-sm text-sky-100 mt-1">
+                                                            점수 {latestGradeScore?.scoreText}
+                                                            {latestGradeScore?.scoreText !== '-' && latestGradeScore?.scoreText !== '미응시' && '점'}
+                                                            {latestGrade.classAverage !== null && ` / 반 평균 ${latestGrade.classAverage}점`}
+                                                        </p>
                                                         <p className="text-xs text-sky-100/80 mt-2">{latestGrade.testDate}</p>
                                                     </>
                                                 ) : (

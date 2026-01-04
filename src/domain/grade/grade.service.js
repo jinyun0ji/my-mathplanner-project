@@ -53,6 +53,29 @@ export const getTotalScore = (grade = {}, test = {}) => {
     return null;
 };
 
+export const formatGradeScoreText = (grade = null, totalScore = null, test = {}) => {
+    const resolvedGrade = grade || null;
+    const resolvedTotalScore = Number.isFinite(totalScore)
+        ? totalScore
+        : (resolvedGrade && !isAbsentGrade(resolvedGrade) ? getTotalScore(resolvedGrade, test) : null);
+
+    const isNoShow =
+        resolvedGrade
+            ? (resolvedGrade.attempted === false)
+                || (resolvedGrade.score === null && resolvedGrade.totalScore === null
+                    && !resolvedGrade.scores && !resolvedGrade.questionResults && !resolvedGrade.answers && !resolvedGrade.correctCount)
+            : true;
+
+    let scoreText = '-';
+    if (isNoShow) {
+        scoreText = '미응시';
+    } else if (Number.isFinite(resolvedTotalScore)) {
+        scoreText = resolvedTotalScore.toFixed(1);
+    }
+
+    return { scoreText, isNoShow, totalScore: resolvedTotalScore };
+};
+
 export const getStudentClassStatus = (student = {}, classId) => {
     if (!classId) return { status: 'active' };
     const key = String(classId);

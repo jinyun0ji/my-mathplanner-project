@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Icon, calculateTrendZScore } from '../../../utils/helpers';
+import { formatGradeScoreText } from '../../../domain/grade/grade.service';
 import ModalPortal from '../../common/ModalPortal';
 
 // 로컬 헬퍼 함수
@@ -16,6 +17,8 @@ const getTrendText = (t) => {
     if (t === 'same') return '유지 중 -';
     return '...';
 };
+
+const resolveScoreText = (gradeItem = {}) => formatGradeScoreText(gradeItem.grade, gradeItem.totalScore);
 
 // 상세 분석 컴포넌트
 const QuestionAnalysisList = ({ questions, classAverage, highestScore, trend, statsReady }) => {
@@ -115,6 +118,7 @@ export default function GradesTab({ myGradeComparison }) {
     }, [myGradeComparison]);
 
     const selectedTestAnalysis = myGradeComparison?.find(g => g.testId === selectedTestId);
+    const selectedScore = selectedTestAnalysis ? resolveScoreText(selectedTestAnalysis) : { scoreText: '-' };
 
     if (selectedTestId && selectedTestAnalysis) {
         return (
@@ -131,8 +135,10 @@ export default function GradesTab({ myGradeComparison }) {
                             <span className="text-sm text-gray-500 font-bold bg-gray-100 px-2 py-1 rounded mb-2 inline-block">{selectedTestAnalysis.testDate} 시행</span>
                             <h3 className="text-xl font-bold text-gray-900 mb-1">{selectedTestAnalysis.testName}</h3>
                             <div className="py-4">
-                                <span className="text-5xl font-extrabold text-indigo-600">{selectedTestAnalysis.studentScore}</span>
-                                <span className="text-gray-400 text-xl font-medium"> / {selectedTestAnalysis.maxScore}</span>
+                                <span className="text-5xl font-extrabold text-indigo-600">{selectedScore.scoreText}</span>
+                                {selectedScore.scoreText !== '-' && selectedScore.scoreText !== '미응시' && (
+                                    <span className="text-gray-400 text-xl font-medium">점 / {selectedTestAnalysis.maxScore}</span>
+                                )}
                             </div>
                             {!selectedTestAnalysis.statsReady && (
                                 <p className="text-xs text-gray-500">통계 준비 중입니다. 전체 반 통계를 곧 불러올게요.</p>
@@ -170,34 +176,39 @@ export default function GradesTab({ myGradeComparison }) {
             {!myGradeComparison || myGradeComparison.length === 0 ? (
                 <div className="text-center py-10 text-gray-400 text-sm bg-white rounded-2xl border border-dashed border-gray-200">등록된 성적이 없습니다.</div>
             ) : (
-                myGradeComparison.map((item, idx) => (
-                    <div key={idx} onClick={() => setSelectedTestId(item.testId)} className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 cursor-pointer active:scale-[0.98] transition-all hover:border-indigo-200 active:bg-gray-50">
-                        <div className="flex justify-between items-start mb-2">
-                            <div className="flex items-center gap-2">
-                                <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">{item.className}</span>
-                                <span className="text-xs text-gray-400">{item.testDate}</span>
-                            </div>
-                        </div>
-                        <div className="flex justify-between items-end">
-                            <div>
-                                <h3 className="text-lg font-bold text-gray-900 leading-tight mb-1">{item.testName}</h3>
-                                <div className="flex items-center gap-1 text-xs text-gray-500 font-medium">
-                                    {item.isAboveAverage === null
-                                        ? <Icon name="minus" className="w-3 h-3 text-gray-400" />
-                                        : item.isAboveAverage
-                                            ? <Icon name="trendingUp" className="w-3 h-3 text-green-500" />
-                                            : <Icon name="trendingDown" className="w-3 h-3 text-red-500" />
-                                    }
-                                    {item.statsReady && item.classAverage !== null ? `평균 ${item.classAverage}점` : '통계 준비 중'}
+                myGradeComparison.map((item, idx) => {
+                    const scoreInfo = resolveScoreText(item);
+                    return (
+                        <div key={idx} onClick={() => setSelectedTestId(item.testId)} className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 cursor-pointer active:scale-[0.98] transition-all hover:border-indigo-200 active:bg-gray-50">
+                            <div className="flex justify-between items-start mb-2">
+                                <div className="flex items-center gap-2">
+                                    <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">{item.className}</span>
+                                    <span className="text-xs text-gray-400">{item.testDate}</span>
                                 </div>
                             </div>
-                            <div className="text-right">
-                                <span className="text-2xl font-extrabold text-indigo-900">{item.studentScore}</span>
-                                <span className="text-xs text-gray-400 font-medium">점</span>
+                            <div className="flex justify-between items-end">
+                                <div>
+                                    <h3 className="text-lg font-bold text-gray-900 leading-tight mb-1">{item.testName}</h3>
+                                    <div className="flex items-center gap-1 text-xs text-gray-500 font-medium">
+                                        {item.isAboveAverage === null
+                                            ? <Icon name="minus" className="w-3 h-3 text-gray-400" />
+                                            : item.isAboveAverage
+                                                ? <Icon name="trendingUp" className="w-3 h-3 text-green-500" />
+                                                : <Icon name="trendingDown" className="w-3 h-3 text-red-500" />
+                                        }
+                                        {item.statsReady && item.classAverage !== null ? `평균 ${item.classAverage}점` : '통계 준비 중'}
+                                    </div>
+                                </div>
+                                <div className="text-right">
+                                    <span className="text-2xl font-extrabold text-indigo-900">{scoreInfo.scoreText}</span>
+                                    {scoreInfo.scoreText !== '-' && scoreInfo.scoreText !== '미응시' && (
+                                        <span className="text-xs text-gray-400 font-medium">점</span>
+                                    )}
+                                </div>
                             </div>
                         </div>
-                    </div>
-                ))
+                    );
+                })
             )}
         </div>
     );

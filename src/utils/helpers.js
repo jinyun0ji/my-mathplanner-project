@@ -1,6 +1,7 @@
 // src/utils/helpers.js
 import React from 'react';
 import { isAssignmentAssignedToStudent } from '../domain/homework/homework.service';
+import { getTotalScore, isAbsentGrade } from '../domain/grade/grade.service';
 import { 
     Home, Calendar, Clipboard, BarChart2, Menu, 
     User, Users, ChevronRight, ChevronLeft, ChevronUp, ChevronDown, 
@@ -113,7 +114,7 @@ export const calculateGradeComparison = (studentId, classes, tests, grades, clas
         if (!record?.correctCount) return null;
 
         const entries = Object.entries(record.correctCount);
-        if (entries.length === 0) return 0;
+        if (entries.length === 0) return null;
 
         // 맞음/고침을 정답으로 처리
         const correct = entries.filter(([, v]) => v === '맞음' || v === '고침').length;
@@ -134,27 +135,31 @@ export const calculateGradeComparison = (studentId, classes, tests, grades, clas
             const hasStats = aggregatedStats && Number.isFinite(aggregatedStats.count) && aggregatedStats.count > 0;
 
             const rawMyScore = myRecord.score;
-            const computedMyScore = computeScoreFromCorrectCount(myRecord, test);
+            const totalScoreFromService = isAbsentGrade(myRecord) ? null : getTotalScore(myRecord, test);
+            const computedMyScore = Number.isFinite(totalScoreFromService)
+                ? totalScoreFromService
+                : computeScoreFromCorrectCount(myRecord, test);
 
-            const myScore =
-            (rawMyScore === null || rawMyScore === undefined)
-                ? (computedMyScore ?? 0)
-                : (rawMyScore === 0 && myRecord.correctCount ? (computedMyScore ?? 0) : rawMyScore);
+            const myScore = Number.isFinite(rawMyScore)
+                ? rawMyScore
+                : (Number.isFinite(computedMyScore) ? computedMyScore : null);
 
             const averageSource = hasStats && Number.isFinite(aggregatedStats.average) ? aggregatedStats.average : null;
             const classAverage = averageSource !== null ? Math.round(averageSource) : null;
             const highestScore = hasStats && Number.isFinite(aggregatedStats.maxScore) ? aggregatedStats.maxScore : null;
             const totalStudents = hasStats && Number.isFinite(aggregatedStats.count) ? aggregatedStats.count : null;
 
-            const myAccuracy = test.maxScore > 0 ? Math.round((myScore / test.maxScore) * 100) : 0;
-            const scoreDifference = classAverage !== null ? myScore - classAverage : null;
-            const isAboveAverage = classAverage !== null ? myScore >= classAverage : null;
+            const myAccuracy = (Number.isFinite(myScore) && test.maxScore > 0)
+                ? Math.round((myScore / test.maxScore) * 100)
+                : null;
+            const scoreDifference = (classAverage !== null && Number.isFinite(myScore)) ? myScore - classAverage : null;
+            const isAboveAverage = (classAverage !== null && Number.isFinite(myScore)) ? myScore >= classAverage : null;
 
-            let zScore = 0;
+            let zScore;
             
             const stdDevSource = hasStats && Number.isFinite(aggregatedStats.stdDev) ? aggregatedStats.stdDev : test.stdDev;
             const avgForZ = averageSource !== null ? averageSource : test.average;
-            if (Number.isFinite(stdDevSource) && stdDevSource > 0 && Number.isFinite(avgForZ)) {
+            if (Number.isFinite(stdDevSource) && stdDevSource > 0 && Number.isFinite(avgForZ) && Number.isFinite(myScore)) {
                 zScore = (myScore - avgForZ) / stdDevSource;
             }
 
@@ -176,7 +181,7 @@ export const calculateGradeComparison = (studentId, classes, tests, grades, clas
             myGrades.push({
                 testId: test.id, testName: test.name, testDate: test.date,
                 className: classes.find(c => String(c.id) === String(test.classId))?.name || '반 정보 없음',
-                studentScore: myScore,
+                studentScore: Number.isFinite(myScore) ? myScore : null,
                 classAverage: classAverage,
                 highestScore: highestScore,
                 maxScore: test.maxScore,
@@ -187,7 +192,9 @@ export const calculateGradeComparison = (studentId, classes, tests, grades, clas
                 isAboveAverage: isAboveAverage,
                 questions: questionsAnalysis,
                 zScore: zScore, // 계산된 Z-Score 포함
-                statsReady: Boolean(hasStats)
+                statsReady: Boolean(hasStats),
+                grade: myRecord,
+                totalScore: Number.isFinite(myScore) ? myScore : null,
             });
         }
     });
