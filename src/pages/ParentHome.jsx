@@ -25,6 +25,7 @@ import openNotification from '../notifications/openNotification';
 import { useParentContext } from '../parent';
 import { sortClassesByStatus } from '../utils/classStatus';
 import { db } from '../firebase/client';
+import { FEATURES } from '../config/features';
 
 // --- [컴포넌트] 학부모 전용 대시보드 ---
 const ParentDashboard = ({ 
@@ -1152,15 +1153,17 @@ export default function ParentHome({
                 </div>
             )}
             
-            <div className={`fixed bottom-24 right-5 z-[60] flex flex-col gap-3 items-center`}>
-                <button 
-                    onClick={() => setIsNotificationOpen(true)} 
-                    className="bg-white text-indigo-900 border border-indigo-200 p-3 rounded-full shadow-lg hover:bg-gray-50 active:scale-90 flex items-center justify-center relative w-12 h-12"
-                >
-                    <NotificationsIcon style={{ fontSize: 24 }} />
-                    {hasUnread && <span className="absolute top-2 right-2.5 w-2 h-2 bg-red-500 rounded-full ring-1 ring-white"></span>}
-                </button>
-            </div>
+            {FEATURES.ENABLE_FLOATING_NOTIFICATIONS_FOR_VIEWERS && (
+                <div className={`fixed bottom-24 right-5 z-[60] flex flex-col gap-3 items-center`}>
+                    <button
+                        onClick={() => setIsNotificationOpen(true)}
+                        className="bg-white text-indigo-900 border border-indigo-200 p-3 rounded-full shadow-lg hover:bg-gray-50 active:scale-90 flex items-center justify-center relative w-12 h-12"
+                    >
+                        <NotificationsIcon style={{ fontSize: 24 }} />
+                        {hasUnread && <span className="absolute top-2 right-2.5 w-2 h-2 bg-red-500 rounded-full ring-1 ring-white"></span>}
+                    </button>
+                </div>
+            )}
 
             <NotificationList
                 isOpen={isNotificationOpen}

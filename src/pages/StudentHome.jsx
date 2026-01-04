@@ -23,6 +23,7 @@ import useNotifications from '../notifications/useNotifications';
 import NotificationList from '../notifications/NotificationList';
 import openNotification from '../notifications/openNotification';
 import { db } from '../firebase/client';
+import { FEATURES } from '../config/features';
 
 export default function StudentHome({
     student, studentId, userId, students, classes, homeworkAssignments, homeworkResults,
@@ -326,16 +327,18 @@ export default function StudentHome({
             )}
             
             {/* ✅ [수정] 플로팅 버튼 통합 컨테이너 */}
-            <div className={`fixed bottom-24 right-5 z-[60] flex flex-col gap-3 items-center transition-all duration-300 ${isVideoModalOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
-                {/* 1. 알림 버튼 */}
-                <button 
-                    onClick={handleOpenNotification} 
-                    className="bg-white text-brand-main border border-brand-main/20 p-3 rounded-full shadow-lg hover:bg-gray-50 active:scale-90 flex items-center justify-center relative w-12 h-12"
-                >
-                    <NotificationsIcon style={{ fontSize: 24 }} />
-                    {hasUnread && <span className="absolute top-2 right-2.5 w-2 h-2 bg-brand-red rounded-full ring-1 ring-white"></span>}
-                </button>
-            </div>
+            {FEATURES.ENABLE_FLOATING_NOTIFICATIONS_FOR_VIEWERS && (
+                <div className={`fixed bottom-24 right-5 z-[60] flex flex-col gap-3 items-center transition-all duration-300 ${isVideoModalOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
+                    {/* 1. 알림 버튼 */}
+                    <button
+                        onClick={handleOpenNotification}
+                        className="bg-white text-brand-main border border-brand-main/20 p-3 rounded-full shadow-lg hover:bg-gray-50 active:scale-90 flex items-center justify-center relative w-12 h-12"
+                    >
+                        <NotificationsIcon style={{ fontSize: 24 }} />
+                        {hasUnread && <span className="absolute top-2 right-2.5 w-2 h-2 bg-brand-red rounded-full ring-1 ring-white"></span>}
+                    </button>
+                </div>
+            )}
             {student && (
                 <NotificationList
                     isOpen={isNotificationOpen}
