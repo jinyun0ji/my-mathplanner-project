@@ -933,7 +933,7 @@ export default function ParentHome({
                                                             </div>
                                                             <div className="flex flex-wrap gap-2 mt-1">
                                                                 <StatusPill icon="user" label={lesson.attendance} tone={['결석', '지각'].includes(lesson.attendance) ? 'warning' : 'info'} />
-                                                                <StatusPill icon="fileText" label={lesson.homeworkStatus} tone={['미제출', '일부 미완'].includes(lesson.homeworkStatus) ? 'warning' : 'default'} />
+                                                                <StatusPill icon="fileText" label={lesson.homeworkStatus} tone={['미제출', '숙제 출제'].includes(lesson.homeworkStatus) ? 'warning' : 'default'} />
                                                                 <StatusPill icon="edit" label={lesson.testStatus} tone={lesson.testStatus === '미응시' ? 'warning' : 'default'} />
                                                             </div>
                                                         </div>
@@ -1088,7 +1088,7 @@ export default function ParentHome({
                                                                 </div>
                                                                 <div className="flex flex-wrap gap-2 mt-1">
                                                                     <StatusPill icon="user" label={lesson.attendance} tone={['결석', '지각'].includes(lesson.attendance) ? 'warning' : 'info'} />
-                                                                    <StatusPill icon="fileText" label={lesson.homeworkStatus} tone={['미제출', '일부 미완'].includes(lesson.homeworkStatus) ? 'warning' : 'default'} />
+                                                                    <StatusPill icon="fileText" label={lesson.homeworkStatus} tone={['미제출', '숙제 출제'].includes(lesson.homeworkStatus) ? 'warning' : 'default'} />
                                                                     <StatusPill icon="edit" label={lesson.testStatus} tone={lesson.testStatus === '미응시' ? 'warning' : 'default'} />
                                                                 </div>
                                                             </div>

@@ -49,7 +49,7 @@ export const generateSessionReport = (sessionId, studentId, contextData) => {
 
         homeworkStatus = isAllDone
             ? "완료"
-            : (isAnyPending ? "일부 미완" : "미제출");
+            : (isAnyPending ? "숙제 출제" : "미제출");
 
         const nextHw = relatedHomeworks[0];
         homeworkDesc = nextHw.content;

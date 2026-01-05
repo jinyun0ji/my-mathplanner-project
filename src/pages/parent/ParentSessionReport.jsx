@@ -7,7 +7,7 @@ export default function ParentSessionReport({ report, onBack }) {
     // 상태별 색상 매핑 헬퍼
     const getStatusColor = (val) => {
         if (['결석', '미제출', '미응시'].includes(val)) return 'text-red-600 bg-red-50 border-red-100';
-        if (['지각', '일부 미완'].includes(val)) return 'text-orange-600 bg-orange-50 border-orange-100';
+        if (['지각', '숙제 출제'].includes(val)) return 'text-orange-600 bg-orange-50 border-orange-100';
         return 'text-indigo-600 bg-indigo-50 border-indigo-100';
     };
 
