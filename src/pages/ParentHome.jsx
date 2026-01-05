@@ -27,6 +27,7 @@ import { useParentContext } from '../parent';
 import { sortClassesByStatus } from '../utils/classStatus';
 import { db } from '../firebase/client';
 import { FEATURES } from '../config/features';
+import AttendanceDetailModal from './parent/AttendanceDetailModal';
 
 // --- [컴포넌트] 학부모 전용 대시보드 ---
 const ParentDashboard = ({ 
@@ -337,6 +338,10 @@ export default function ParentHome({
     const clinicSectionRef = useRef(null);
     const classStatusRef = useRef(null);
 
+    const [attendanceDetailTarget, setAttendanceDetailTarget] = useState(null);
+    const [clinicShowAll, setClinicShowAll] = useState(false);
+    const [openClinicCommentIds, setOpenClinicCommentIds] = useState(() => new Set());
+
 
     const waitForActiveStudentSwitch = useCallback((studentId) => {
         if (!studentId || studentId === activeStudentId) {
@@ -418,6 +423,10 @@ export default function ParentHome({
     }, [myClinicLogs]);
 
     const completedClinicsToShow = useMemo(() => completedClinics.slice(0, 2), [completedClinics]);
+    const visibleCompletedClinics = useMemo(
+        () => (clinicShowAll ? completedClinics : completedClinicsToShow),
+        [clinicShowAll, completedClinics, completedClinicsToShow]
+    );
 
     useEffect(() => {
         if (!activeChild) return;
@@ -578,6 +587,23 @@ export default function ParentHome({
     }, [lessonLogs, myClasses]);
 
     const isValidNumber = (n) => typeof n === 'number' && Number.isFinite(n);
+
+    const isAttendanceMissing = (v) =>
+        v == null || String(v).trim() === '' || String(v).includes('미기록');
+
+    const isAbsent = (v) => ['결석', '미출석'].includes(String(v || '').trim());
+
+    const shouldShowHomework = (attendance) => {
+        if (isAttendanceMissing(attendance)) return false;
+        if (isAbsent(attendance)) return false;
+        return true;
+    };
+
+    const shouldShowTest = (attendance) => {
+        if (isAttendanceMissing(attendance)) return false;
+        if (isAbsent(attendance)) return false;
+        return true;
+    };
 
     const recentLessons = useMemo(() => {
         const contextData = { lessonLogs, attendanceLogs, homeworkAssignments, homeworkResults, tests, grades, classes };
@@ -934,8 +960,39 @@ export default function ParentHome({
                                                             </div>
                                                             <div className="flex flex-wrap gap-2 mt-1">
                                                                 <StatusPill icon="user" label={lesson.attendance} tone={['결석', '지각'].includes(lesson.attendance) ? 'warning' : 'info'} />
-                                                                <StatusPill icon="fileText" label={lesson.homeworkStatus} tone={['미제출', '숙제 출제'].includes(lesson.homeworkStatus) ? 'warning' : 'default'} />
-                                                                <StatusPill icon="edit" label={lesson.testStatus} tone={lesson.testStatus === '미응시' ? 'warning' : 'default'} />
+                                                                <StatusPill
+                                                                    icon="fileText"
+                                                                    label={shouldShowHomework(lesson.attendance) ? (lesson.homeworkStatus ?? '과제 정보 없음') : '과제 없음'}
+                                                                    tone={shouldShowHomework(lesson.attendance) && ['미제출', '숙제 출제'].includes(lesson.homeworkStatus) ? 'warning' : 'default'}
+                                                                />
+                                                                <StatusPill
+                                                                    icon="edit"
+                                                                    label={shouldShowTest(lesson.attendance) ? (lesson.testStatus ?? '시험 정보 없음') : '시험 없음'}
+                                                                    tone={shouldShowTest(lesson.attendance) && lesson.testStatus === '미응시' ? 'warning' : 'default'}
+                                                                />
+                                                            </div>
+                                                            <div className="flex flex-wrap gap-2 mt-2">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setAttendanceDetailTarget({ ...lesson, studentId: activeChildId })}
+                                                                    className="px-3 py-1.5 rounded-full border border-gray-200 text-xs font-semibold text-gray-700 bg-gray-50 hover:bg-gray-100 active:scale-95 transition"
+                                                                >
+                                                                    출결 상세
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setSelectedReportId(lesson.id)}
+                                                                    className="px-3 py-1.5 rounded-full border border-indigo-200 text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 active:scale-95 transition"
+                                                                >
+                                                                    과제 상세
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setSelectedReportId(lesson.id)}
+                                                                    className="px-3 py-1.5 rounded-full border border-blue-200 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 active:scale-95 transition"
+                                                                >
+                                                                    성적 상세
+                                                                </button>
                                                             </div>
                                                         </div>
                                                     ))}
@@ -954,28 +1011,61 @@ export default function ParentHome({
                                                     <Icon name="activity" className="w-5 h-5 text-indigo-600" />
                                                     클리닉 리포트
                                                 </h3>
-                                                <span className="text-xs text-gray-400 font-semibold">최근 2개</span>
+                                                <span className="text-xs text-gray-400 font-semibold">{clinicShowAll ? '전체 보기' : '최근 2개'}</span>
                                             </div>
                                             <div className="space-y-3">
-                                                {completedClinicsToShow.map((log) => (
-                                                    <div key={`${log.date}-${log.checkIn}`} className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm space-y-2">
-                                                        <div className="flex items-start justify-between gap-3">
-                                                            <div className="space-y-1">
-                                                                <p className="text-[11px] text-gray-400 font-semibold">{log.date} • {log.checkIn}~{log.checkOut}</p>
-                                                                <h4 className="font-bold text-gray-900 text-sm">학습 클리닉</h4>
-                                                                <p className="text-xs text-gray-500">{log.teacherResolved}</p>
+                                                {visibleCompletedClinics.map((log) => {
+                                                    const commentKey = log.id ?? `${log.date}-${log.checkIn || log.checkOut || 'clinic'}`;
+                                                    const isOpen = openClinicCommentIds.has(commentKey);
+                                                    return (
+                                                        <div key={commentKey} className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm space-y-2">
+                                                            <div className="flex items-start justify-between gap-3">
+                                                                <div className="space-y-1">
+                                                                    <p className="text-[11px] text-gray-400 font-semibold">{log.date} • {log.checkIn}~{log.checkOut}</p>
+                                                                    <h4 className="font-bold text-gray-900 text-sm">학습 클리닉</h4>
+                                                                    <p className="text-xs text-gray-500">{log.teacherResolved}</p>
+                                                                </div>
+                                                                <StatusPill icon="clock" label="완료" tone="info" />
                                                             </div>
-                                                            <StatusPill icon="clock" label="완료" tone="info" />
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    setOpenClinicCommentIds((prev) => {
+                                                                        const next = new Set(prev);
+                                                                        if (next.has(commentKey)) next.delete(commentKey);
+                                                                        else next.add(commentKey);
+                                                                        return next;
+                                                                    });
+                                                                }}
+                                                                className="text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-100 px-3 py-1.5 rounded-full hover:bg-indigo-100 active:scale-95 transition"
+                                                            >
+                                                                {isOpen ? '코멘트 닫기' : '코멘트 보기'}
+                                                            </button>
+                                                            {isOpen && (
+                                                                <div className="mt-1 text-sm text-gray-700 whitespace-pre-wrap break-words">
+                                                                    {log.commentResolved || '코멘트가 아직 작성되지 않았습니다.'}
+                                                                </div>
+                                                            )}
                                                         </div>
-                                                        <p className="text-sm text-gray-700 leading-6">{log.commentResolved}</p>
-                                                    </div>
-                                                ))}
+                                                        );
+                                                })}
                                                 {completedClinics.length === 0 && (
                                                     <div className="p-6 text-center bg-white border border-dashed border-gray-200 rounded-2xl text-sm text-gray-400">
                                                         아직 클리닉 기록이 없습니다.
                                                     </div>
                                                 )}
                                             </div>
+                                            {completedClinics.length > 2 && (
+                                                <div className="px-1">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setClinicShowAll((v) => !v)}
+                                                        className="text-xs font-semibold text-gray-700 bg-gray-100 px-3 py-1.5 rounded-full border border-gray-200 hover:bg-gray-200 active:scale-95 transition"
+                                                    >
+                                                        {clinicShowAll ? '접기' : '더 보기'}
+                                                    </button>
+                                                </div>
+                                            )}
                                             </section>
 
                                         <section ref={classStatusRef} className="space-y-3">
@@ -1089,8 +1179,39 @@ export default function ParentHome({
                                                                 </div>
                                                                 <div className="flex flex-wrap gap-2 mt-1">
                                                                     <StatusPill icon="user" label={lesson.attendance} tone={['결석', '지각'].includes(lesson.attendance) ? 'warning' : 'info'} />
-                                                                    <StatusPill icon="fileText" label={lesson.homeworkStatus} tone={['미제출', '숙제 출제'].includes(lesson.homeworkStatus) ? 'warning' : 'default'} />
-                                                                    <StatusPill icon="edit" label={lesson.testStatus} tone={lesson.testStatus === '미응시' ? 'warning' : 'default'} />
+                                                                    <StatusPill
+                                                                        icon="fileText"
+                                                                        label={shouldShowHomework(lesson.attendance) ? (lesson.homeworkStatus ?? '과제 정보 없음') : '과제 없음'}
+                                                                        tone={shouldShowHomework(lesson.attendance) && ['미제출', '숙제 출제'].includes(lesson.homeworkStatus) ? 'warning' : 'default'}
+                                                                    />
+                                                                    <StatusPill
+                                                                        icon="edit"
+                                                                        label={shouldShowTest(lesson.attendance) ? (lesson.testStatus ?? '시험 정보 없음') : '시험 없음'}
+                                                                        tone={shouldShowTest(lesson.attendance) && lesson.testStatus === '미응시' ? 'warning' : 'default'}
+                                                                    />
+                                                                </div>
+                                                                <div className="flex flex-wrap gap-2 mt-2">
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => setAttendanceDetailTarget({ ...lesson, studentId: activeChildId })}
+                                                                        className="px-3 py-1.5 rounded-full border border-gray-200 text-xs font-semibold text-gray-700 bg-gray-50 hover:bg-gray-100 active:scale-95 transition"
+                                                                    >
+                                                                        출결 상세
+                                                                    </button>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => setSelectedReportId(lesson.id)}
+                                                                        className="px-3 py-1.5 rounded-full border border-indigo-200 text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 active:scale-95 transition"
+                                                                    >
+                                                                        과제 상세
+                                                                    </button>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => setSelectedReportId(lesson.id)}
+                                                                        className="px-3 py-1.5 rounded-full border border-blue-200 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 active:scale-95 transition"
+                                                                    >
+                                                                        성적 상세
+                                                                    </button>
                                                                 </div>
                                                             </div>
                                                         ))}
@@ -1254,6 +1375,16 @@ export default function ParentHome({
                         {hasUnread && <span className="absolute top-2 right-2.5 w-2 h-2 bg-red-500 rounded-full ring-1 ring-white"></span>}
                     </button>
                 </div>
+            )}
+
+            {attendanceDetailTarget && (
+                <AttendanceDetailModal
+                    isOpen
+                    onClose={() => setAttendanceDetailTarget(null)}
+                    lesson={attendanceDetailTarget}
+                    attendanceLogs={attendanceLogs}
+                    studentId={activeChildId}
+                />
             )}
 
             <NotificationList
