@@ -59,7 +59,7 @@ export default function DashboardTab({
     const nowTimeStr = today.toTimeString().slice(0, 5); 
     let keyEvent = allEvents.find(e => { let endTime = '23:59'; if (e.time.includes('~')) endTime = e.time.split('~')[1]; return endTime >= nowTimeStr; });
     const otherEvents = keyEvent ? allEvents.filter(e => e !== keyEvent) : allEvents;
-    const pendingHomework = homeworkStats.filter(h => h.status !== '완료');
+    const pendingHomework = homeworkStats.filter(h => !h.isComplete);
     const studentLogs = studentId ? attendanceLogs.filter(l => l.studentId === studentId) : [];
     const attendanceRate = studentLogs.length > 0 ? Math.round((studentLogs.filter(l => ['출석','동영상보강'].includes(l.status)).length / studentLogs.length) * 100) : null;
     const momentumCards = [
@@ -122,7 +122,30 @@ export default function DashboardTab({
                     </div>
                 )}
             </div>
-            <div><div className="flex justify-between items-end mb-3 px-1"><h3 className="text-lg font-bold text-gray-800 flex items-center"><Icon name="clipboardCheck" className="w-5 h-5 mr-2 text-brand-red" />놓치면 안 돼요!</h3><button onClick={() => setActiveTab('learning')} className="text-xs text-gray-500 underline active:text-gray-800">전체보기</button></div><div className="flex gap-3 overflow-x-auto pb-4 -mx-4 px-4 snap-x scrollbar-hide">{homeworkStats.filter(h => h.status !== '완료').length > 0 ? (homeworkStats.filter(h => h.status !== '완료').map(hw => (<div key={hw.id} className="snap-center shrink-0 w-64 bg-white p-4 rounded-2xl shadow-sm border border-gray-200 relative overflow-hidden active:scale-95 transition-transform"><div className={`absolute top-0 left-0 w-1.5 h-full ${hw.status === '미시작' ? 'bg-brand-red' : 'bg-brand-main'}`}></div><div className="flex justify-between items-start mb-2 pl-2"><span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${hw.status === '미시작' ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'}`}>{hw.status}</span><span className="text-[10px] text-gray-400">~{hw.date.slice(5)}</span></div><h4 className="font-bold text-gray-900 text-sm mb-1 pl-2 truncate">{hw.content}</h4><p className="text-xs text-gray-500 pl-2 mb-3">{hw.book}</p><div className="pl-2"><div className="w-full bg-gray-100 rounded-full h-1.5"><div className="bg-brand-main h-1.5 rounded-full" style={{ width: `${hw.completionRate}%` }}></div></div><p className="text-[10px] text-right text-gray-400 mt-1">{hw.completionRate}% 달성</p></div></div>))) : (<div className="w-full bg-white p-5 rounded-2xl border border-gray-100 text-center"><p className="text-sm text-gray-500">모든 과제를 완료했어요! 훌륭해요 👏</p></div>)}</div></div>
+            <div><div className="flex justify-between items-end mb-3 px-1"><h3 className="text-lg font-bold text-gray-800 flex items-center"><Icon name="clipboardCheck" className="w-5 h-5 mr-2 text-brand-red" />놓치면 안 돼요!</h3><button onClick={() => setActiveTab('learning')} className="text-xs text-gray-500 underline active:text-gray-800">전체보기</button></div><div className="flex gap-3 overflow-x-auto pb-4 -mx-4 px-4 snap-x scrollbar-hide">{homeworkStats.filter(h => !h.isComplete).length > 0 ? (homeworkStats.filter(h => !h.isComplete).map(hw => {
+                const isNotStarted = (hw.checkedCount || 0) === 0;
+                const isReviewing = (hw.checkedCount || 0) >= (hw.totalQuestions || 0) && (hw.incorrectCount || 0) > 0;
+                const accentClass = isNotStarted ? 'bg-brand-red' : isReviewing ? 'bg-amber-500' : 'bg-brand-main';
+                const badgeClass = isNotStarted ? 'bg-red-100 text-red-600' : isReviewing ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-600';
+                const assignedDate = hw.assignedDate || hw.date || '';
+                return (
+                    <div key={hw.id} className="snap-center shrink-0 w-64 bg-white p-4 rounded-2xl shadow-sm border border-gray-200 relative overflow-hidden active:scale-95 transition-transform">
+                        <div className={`absolute top-0 left-0 w-1.5 h-full ${accentClass}`}></div>
+                        <div className="flex justify-between items-start mb-2 pl-2">
+                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${badgeClass}`}>{hw.status}</span>
+                            <span className="text-[10px] text-gray-400">~{assignedDate ? assignedDate.slice(5) : ''}</span>
+                        </div>
+                        <h4 className="font-bold text-gray-900 text-sm mb-1 pl-2 truncate">{hw.content}</h4>
+                        <p className="text-xs text-gray-500 pl-2 mb-3">{hw.book}</p>
+                        <div className="pl-2">
+                            <div className="w-full bg-gray-100 rounded-full h-1.5">
+                                <div className="bg-brand-main h-1.5 rounded-full" style={{ width: `${hw.completionRate}%` }}></div>
+                            </div>
+                            <p className="text-[10px] text-right text-gray-400 mt-1">{hw.completionRate}% 달성</p>
+                        </div>
+                    </div>
+                );
+            })) : (<div className="w-full bg-white p-5 rounded-2xl border border-gray-100 text-center"><p className="text-sm text-gray-500">모든 과제를 완료했어요! 훌륭해요 👏</p></div>)}</div></div>
             <div><h3 className="text-lg font-bold text-gray-800 mb-3 px-1">📢 최근 소식</h3><div className="bg-white rounded-2xl shadow-sm border border-gray-200 divide-y divide-gray-100">{notices.slice(0, 3).map(notice => (<div key={notice.id} onClick={() => setActiveTab('board')} className="p-4 flex justify-between items-center cursor-pointer active:bg-gray-50 transition-colors"><div className="flex-1 min-w-0 mr-4"><div className="flex items-center gap-2 mb-1">{notice.isPinned && <span className="text-[10px] bg-brand-red text-white px-1 rounded">필독</span>}<h4 className="text-sm font-bold text-gray-900 truncate">{notice.title}</h4></div><p className="text-xs text-gray-400">{notice.date}</p></div><Icon name="chevronRight" className="w-4 h-4 text-gray-300" /></div>))}{notices.length === 0 && (<div className="p-4 text-center text-gray-500 text-sm">새로운 공지사항이 없습니다.</div>)}</div></div>
         </div>
     );

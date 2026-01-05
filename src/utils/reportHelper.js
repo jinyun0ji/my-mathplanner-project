@@ -1,5 +1,4 @@
 // src/utils/reportHelper.js
-import { calculateHomeworkStats } from './helpers';
 
 // [데이터 어댑터] Raw Data -> SessionReport Interface 변환
 export const generateSessionReport = (sessionId, studentId, contextData) => {
@@ -37,19 +36,7 @@ export const generateSessionReport = (sessionId, studentId, contextData) => {
     let homeworkDueDate = null;
 
     if (relatedHomeworks.length > 0) {
-        const stats = calculateHomeworkStats(
-            studentId,
-            relatedHomeworks,
-            homeworkResults,
-            { students }
-        );
-
-        const isAllDone = stats.every(h => h.status === '완료');
-        const isAnyPending = stats.some(h => h.status === '진행 중' || h.status === '미시작');
-
-        homeworkStatus = isAllDone
-            ? "완료"
-            : (isAnyPending ? "숙제 출제" : "미제출");
+        homeworkStatus = "숙제 출제";
 
         const nextHw = relatedHomeworks[0];
         homeworkDesc = nextHw.content;

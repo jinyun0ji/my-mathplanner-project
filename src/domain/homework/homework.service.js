@@ -1,9 +1,22 @@
+const resolveDateString = (value) => {
+    if (!value) return null;
+    if (typeof value === 'string') return value;
+    if (typeof value?.toDate === 'function') return value.toDate().toISOString().slice(0, 10);
+    try { return new Date(value).toISOString().slice(0, 10); } catch { return null; }
+};
+
+const resolveAssignedDate = (assignment) => (
+    resolveDateString(assignment?.assignedDate)
+    || resolveDateString(assignment?.date)
+    || resolveDateString(assignment?.createdAt)
+);
+
 export const getClassAssignments = (assignments = [], classId) => {
     if (!classId) return [];
 
     return assignments
         .filter(a => a.classId === classId)
-        .sort((a, b) => new Date(b.date) - new Date(a.date));
+        .sort((a, b) => new Date(resolveAssignedDate(b) || b.date) - new Date(resolveAssignedDate(a) || a.date));
 };
 
 export const getSelectedAssignment = (assignments = [], assignmentId) => {
@@ -60,10 +73,41 @@ export const hasWrongRemaining = (resultData) => {
     return false;
 };
 
-export const applyHomeworkProgressCap = (progressPercent = 0, resultData) => {
+export const computeHomeworkProgress = (resultData, totalQuestions) => {
+    const total = Number(totalQuestions) > 0 ? Number(totalQuestions) : 0;
+    const resultMap = resolveResultMap(resultData) || {};
+    const statuses = Object.values(resultMap);
+
+    const checkedCount = statuses.filter((status) => ['맞음', '틀림', '고침'].includes(status)).length;
+    const incorrectCount = statuses.filter((status) => status === '틀림').length;
+    const unchecked = total > 0 ? Math.max(total - checkedCount, 0) : 0;
+
+    let completionRate = total > 0 ? Math.round((checkedCount / total) * 100) : 0;
+    if (checkedCount >= total && incorrectCount > 0) completionRate = 99;
+    if (checkedCount >= total && incorrectCount === 0 && completionRate < 100) completionRate = 100;
+
+    let status = '검사 전';
+    if (checkedCount > 0 && checkedCount < total) status = '검사 진행 중';
+    else if (checkedCount >= total) {
+        status = incorrectCount > 0
+            ? '문제 풀이를 마치고, 꼼꼼하게 오답을 정리하고 있어요 🧐'
+            : '오답 확인까지 완벽하게 숙제를 마쳤어요! 💯';
+    }
+
+    return {
+        completionRate,
+        checkedCount,
+        incorrectCount,
+        uncheckedCount: unchecked,
+        status,
+    };
+};
+
+export const applyHomeworkProgressCap = (progressPercent = 0, resultData, totalQuestions = null) => {
     const safeProgress = Number.isFinite(progressPercent) ? progressPercent : 0;
-    if (safeProgress >= 100 && hasWrongRemaining(resultData)) return 99;
-    return safeProgress;
+    const progress = computeHomeworkProgress(resultData, totalQuestions);
+    if (safeProgress >= 100 && (progress.incorrectCount > 0 || hasWrongRemaining(resultData))) return 99;
+    return progress.completionRate || safeProgress;
 };
 
 export const isAssignmentAssignedToStudent = (assignment, studentId) => {
@@ -90,34 +134,21 @@ export const buildAssignmentSummary = (selectedAssignment, classStudents = [], h
         const result = savedResult;
         const total = selectedAssignment.totalQuestions;
 
-        let correct = 0;
-        let incorrect = 0;
-        let corrected = 0;
-
-        Object.values(result).forEach(status => {
-            if (status === '맞음') correct++;
-            if (status === '틀림') incorrect++;
-            if (status === '고침') corrected++;
-        });
-
-        const completionCount = correct + corrected + incorrect;
-        const unchecked = total - completionCount;
-        const completionRate = applyHomeworkProgressCap(
-            Math.round((completionCount / total) * 100) || 0,
-            result
-        );
+        const progress = computeHomeworkProgress(result, total);
 
         return {
             studentId: student.id,
             studentName: student.name,
             total,
-            correct,
-            incorrect,
-            corrected,
-            unchecked,
-            completionRate,
-            isCompleted: unchecked === 0,
+            correct: Object.values(result).filter(status => status === '맞음').length,
+            incorrect: progress.incorrectCount,
+            corrected: Object.values(result).filter(status => status === '고침').length,
+            unchecked: progress.uncheckedCount,
+            completionRate: progress.completionRate,
+            isCompleted: progress.checkedCount >= total && progress.incorrectCount === 0,
+            checkedCount: progress.checkedCount,
             resultMap: result,
+            status: progress.status,
         };
     });
 };

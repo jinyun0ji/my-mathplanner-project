@@ -20,6 +20,8 @@ export default function HomeworkManagement({
     const [selectedAssignmentId, setSelectedAssignmentId] = useState(null);
     const { students: classStudents, isLoading: isLoadingStudents } = useClassStudents(selectedClassId);
     
+    const [checkedDate, setCheckedDate] = useState(() => new Date().toISOString().slice(0, 10));
+
     // 로컬 변경 사항 관리
     const [localChanges, setLocalChanges] = useState([]); 
 
@@ -40,6 +42,31 @@ export default function HomeworkManagement({
         () => getSelectedAssignment(classAssignments, selectedAssignmentId),
         [classAssignments, selectedAssignmentId]
     );
+
+    useEffect(() => {
+        if (!selectedAssignmentId) {
+            setCheckedDate(new Date().toISOString().slice(0, 10));
+            return;
+        }
+
+        const toDateString = (v) => {
+            if (!v) return null;
+            if (typeof v === 'string') return v.slice(0, 10);
+            if (typeof v?.toDate === 'function') return v.toDate().toISOString().slice(0, 10);
+            try { return new Date(v).toISOString().slice(0, 10); } catch { return null; }
+        };
+
+        let latestChecked = null;
+        Object.values(homeworkResults || {}).forEach((byAssignment) => {
+            const record = byAssignment?.[selectedAssignmentId];
+            const candidate = toDateString(record?.lastCheckedDate);
+            if (candidate && (!latestChecked || new Date(candidate) > new Date(latestChecked))) {
+                latestChecked = candidate;
+            }
+        });
+
+        setCheckedDate(latestChecked || new Date().toISOString().slice(0, 10));
+    }, [homeworkResults, selectedAssignmentId]);
 
     const assignmentSummary = useMemo(() => {
         const assignedIds = resolveAssignmentStudentIds(selectedAssignment);
@@ -94,7 +121,7 @@ export default function HomeworkManagement({
                             }`}
                         >
                             <p className="text-sm font-bold text-gray-800">{assignment.book} ({rangeDisplay})</p>
-                            <p className="text-xs text-gray-600 mt-1">{assignment.date}: {assignment.content}</p>
+                            <p className="text-xs text-gray-600 mt-1">{assignment.assignedDate || assignment.date}: {assignment.content}</p>
                         </div>
                     );
                 })}
@@ -126,20 +153,21 @@ export default function HomeworkManagement({
 
     const handleSaveChanges = () => {
         if (localChanges.length === 0) return;
-        handleUpdateHomeworkResult(localChanges); 
+        handleUpdateHomeworkResult(localChanges, checkedDate);
         setLocalChanges([]);
         setIsGlobalDirty(false);
         alert('채점 결과가 저장되었습니다.');
     };
 
     const statusSummary = useMemo(() => {
-        if (!assignmentSummary || assignmentSummary.length === 0) return { submitted: 0, notSubmitted: 0, graded: 0 };
+        if (!assignmentSummary || assignmentSummary.length === 0) return { inProgress: 0, notStarted: 0, graded: 0, needsReview: 0 };
 
-        const graded = assignmentSummary.filter(s => s.completionRate === 100).length;
-        const submitted = assignmentSummary.filter(s => s.completionRate > 0).length;
-        const notSubmitted = assignmentSummary.length - submitted;
-
-        return { submitted, notSubmitted, graded };
+        const graded = assignmentSummary.filter(s => s.checkedCount >= s.total && s.incorrectCount === 0).length;
+        const inProgress = assignmentSummary.filter(s => s.checkedCount > 0 && s.checkedCount < s.total).length;
+        const needsReview = assignmentSummary.filter(s => s.checkedCount >= s.total && s.incorrectCount > 0).length;
+        const notStarted = Math.max(assignmentSummary.length - graded - inProgress - needsReview, 0);
+        
+        return { inProgress, notStarted, graded, needsReview };
     }, [assignmentSummary]);
 
     return (
@@ -153,7 +181,7 @@ export default function HomeworkManagement({
                     <div className="flex flex-wrap items-center gap-2 text-xs text-gray-600">
                         <span>{selectedAssignment?.book || '과제 미선택'}</span>
                         <span className="text-gray-400">|</span>
-                        <span>{selectedAssignment?.date || '날짜 없음'}</span>
+                        <span>{selectedAssignment?.assignedDate || selectedAssignment?.date || '날짜 없음'}</span>
                         {localChanges.length > 0 && (
                             <span className="ml-1 text-[11px] bg-red-100 text-red-600 px-2 py-0.5 rounded-full">저장되지 않음</span>
                         )}
@@ -161,12 +189,22 @@ export default function HomeworkManagement({
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2 text-xs lg:text-sm">
-                    <span className="px-3 py-1 rounded-full bg-indigo-50 text-indigo-700 font-semibold">제출 {statusSummary.submitted}명</span>
-                    <span className="px-3 py-1 rounded-full bg-gray-100 text-gray-600 font-semibold">미제출 {statusSummary.notSubmitted}명</span>
-                    <span className="px-3 py-1 rounded-full bg-green-50 text-green-700 font-semibold">채점완료 {statusSummary.graded}명</span>
+                    <span className="px-3 py-1 rounded-full bg-gray-100 text-gray-600 font-semibold">검사 전 {statusSummary.notStarted}명</span>
+                    <span className="px-3 py-1 rounded-full bg-indigo-50 text-indigo-700 font-semibold">검사 진행 {statusSummary.inProgress}명</span>
+                    <span className="px-3 py-1 rounded-full bg-yellow-50 text-yellow-700 font-semibold">오답 정리 {statusSummary.needsReview}명</span>
+                    <span className="px-3 py-1 rounded-full bg-green-50 text-green-700 font-semibold">검사 완료 {statusSummary.graded}명</span>
                 </div>
 
-                <div className="flex flex-wrap gap-2 justify-end">
+                <div className="flex flex-wrap gap-3 items-center justify-end">
+                    <label className="text-xs font-semibold text-gray-700 flex items-center gap-2">
+                        <span>검사일</span>
+                        <input
+                            type="date"
+                            value={checkedDate}
+                            onChange={(e) => setCheckedDate(e.target.value)}
+                            className="border rounded-md px-2 py-1 text-xs"
+                        />
+                    </label>
                     <button
                         onClick={handleSaveChanges}
                         disabled={localChanges.length === 0}
@@ -226,7 +264,7 @@ export default function HomeworkManagement({
                                             {selectedAssignment.book}
                                         </h3>
                                         <p className="text-sm text-gray-600 mt-1">
-                                            {selectedAssignment.date} | {selectedAssignment.content}
+                                            {selectedAssignment.assignedDate || selectedAssignment.date} | {selectedAssignment.content}
                                             ({selectedAssignment.rangeString || `${selectedAssignment.startQuestion || '?'}~${selectedAssignment.endQuestion || '?'}`} 총 {selectedAssignment.totalQuestions}문항)
                                         </p>
                                     </div>
@@ -258,13 +296,20 @@ export default function HomeworkManagement({
                                 </div>
                                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                                     {assignmentSummary.map((s) => {
-                                        const statusChip = s.completionRate === 100
+                                        const statusChip = s.checkedCount >= s.total && s.incorrectCount === 0
                                             ? 'bg-green-100 text-green-700'
-                                            : s.completionRate > 0
-                                                ? 'bg-indigo-100 text-indigo-700'
-                                                : 'bg-gray-100 text-gray-600';
+                                            : s.checkedCount >= s.total
+                                                ? 'bg-yellow-100 text-yellow-700'
+                                                : s.checkedCount > 0
+                                                    ? 'bg-indigo-100 text-indigo-700'
+                                                    : 'bg-gray-100 text-gray-600';
 
-                                        const statusLabel = s.completionRate === 100 ? '채점완료' : s.completionRate > 0 ? '제출' : '미제출';
+                                        const statusLabel = (() => {
+                                            if (s.checkedCount >= s.total && s.incorrectCount === 0) return '검사 완료';
+                                            if (s.checkedCount >= s.total && s.incorrectCount > 0) return '오답 정리';
+                                            if (s.checkedCount > 0) return '검사 진행';
+                                            return '검사 전';
+                                        })();
 
                                         return (
                                             <div key={s.studentId} className="flex items-center justify-between rounded-lg border border-gray-200 px-3 py-2 bg-gray-50">

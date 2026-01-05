@@ -139,7 +139,7 @@ export default function StudentHome({
     }, [studentId, classes, tests, grades, classTestStats]);
 
     const pendingHomeworkCount = useMemo(
-        () => myHomeworkStats.filter(h => h.status !== '완료').length,
+        () => myHomeworkStats.filter(h => !h.isComplete).length,
         [myHomeworkStats]
     );
 

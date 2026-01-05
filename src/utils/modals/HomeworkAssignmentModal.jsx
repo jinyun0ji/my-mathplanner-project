@@ -14,7 +14,7 @@ export const HomeworkAssignmentModal = ({ isOpen, onClose, onSave, classId, assi
     });
   }, [students, classId]);
   
-  const [date, setDate] = useState('');
+  const [assignedDate, setAssignedDate] = useState('');
   const [content, setContent] = useState('');
   const [book, setBook] = useState('');
   const [assignedStudentIds, setAssignedStudentIds] = useState([]);
@@ -66,7 +66,7 @@ export const HomeworkAssignmentModal = ({ isOpen, onClose, onSave, classId, assi
 
   useEffect(() => {
     if (assignment) {
-      setDate(assignment.date);
+      setAssignedDate(assignment.assignedDate || assignment.date || '');
       setContent(assignment.content);
       setBook(assignment.book || '');
       const assigned = assignment.assignedStudentIds ?? assignment.students;
@@ -103,7 +103,7 @@ export const HomeworkAssignmentModal = ({ isOpen, onClose, onSave, classId, assi
         setStaffNotifyScheduledAt('');
       }
     } else {
-      setDate(new Date().toISOString().slice(0, 10));
+      setAssignedDate(new Date().toISOString().slice(0, 10));
       setContent('');
       setBook('');
       setAssignedStudentIds(classStudents.map(student => student.id));
@@ -125,7 +125,7 @@ export const HomeworkAssignmentModal = ({ isOpen, onClose, onSave, classId, assi
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!classId || !date || !content || totalQuestions <= 0) return;
+    if (!classId || !assignedDate || !content || totalQuestions <= 0) return;
     if (assignedStudentIds.length === 0) {
       alert('과제를 배정할 학생을 최소 1명 선택해주세요.');
       return;
@@ -156,7 +156,8 @@ export const HomeworkAssignmentModal = ({ isOpen, onClose, onSave, classId, assi
     const assignmentData = {
       id: assignment ? assignment.id : null,
       classId,
-      date,
+      assignedDate,
+      date: assignedDate,
       content,
       book,
       rangeString, // ✅ 저장: 입력한 범위 문자열
@@ -202,8 +203,8 @@ export const HomeworkAssignmentModal = ({ isOpen, onClose, onSave, classId, assi
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700">배정일*</label>
-            <input type="date" value={date} onChange={e => setDate(e.target.value)} required className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border" />
+            <label className="block text-sm font-medium text-gray-700">출제일*</label>
+            <input type="date" value={assignedDate} onChange={e => setAssignedDate(e.target.value)} required className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border" />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700">교재명 (선택)</label>

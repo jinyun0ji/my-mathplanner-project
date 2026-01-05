@@ -1,6 +1,6 @@
 // src/utils/helpers.js
 import React from 'react';
-import { applyHomeworkProgressCap, isAssignmentAssignedToStudent } from '../domain/homework/homework.service';
+import { computeHomeworkProgress, isAssignmentAssignedToStudent } from '../domain/homework/homework.service';
 import { getTotalScore, isAbsentGrade } from '../domain/grade/grade.service';
 import { 
     Home, Calendar, Clipboard, BarChart2, Menu, 
@@ -235,18 +235,6 @@ const toDateString = (v) => {
     try { return new Date(v).toISOString().slice(0, 10); } catch { return null; }
 };
 
-const getSubmissionDate = (result) => {
-    if (!result) return null;
-    return (
-        toDateString(result.submittedAt) ||
-        toDateString(result.turnedInAt) ||
-        toDateString(result.submittedDate) ||
-        toDateString(result.updatedAt) ||
-        toDateString(result.createdAt) ||
-        null
-    );
-};
-
 const resolveStudentKeys = (studentId, options = {}) => {
     const { activeViewerAuthUid, studentAuthUid, userId, activeStudentId, students } = options;
     const studentFromList = students?.find?.((s) => s?.id === studentId) || null;
@@ -292,33 +280,27 @@ export const calculateHomeworkStats = (studentId, assignments, results, options 
         .map(hw => {
         const rawResult = findHomeworkResult(results, studentKeys, hw.id);
             const studentResults = rawResult?.results || rawResult || {};
-            const submissionDate = getSubmissionDate(rawResult);
             const totalQuestions = hw.totalQuestions;
-            let correctCount = 0;
-            let incorrectCount = 0;
-            Object.values(studentResults).forEach(status => {
-                if (status === '맞음' || status === '고침') correctCount++;
-                else if (status === '틀림') incorrectCount++;
-            });
-            const completedCount = correctCount + incorrectCount;
-            const uncheckedCount = totalQuestions - completedCount;
-            const completionRate = applyHomeworkProgressCap(
-                Math.round((completedCount / totalQuestions) * 100),
-                studentResults
-            );
-            let status = '미시작';
-            
-            if (completedCount > 0 && completedCount < totalQuestions) {
-                status = '지금 열심히 문제를 풀고 있어요 ✏️';
-            } else if (completedCount >= totalQuestions) {
-                status = (incorrectCount > 0)
-                    ? '문제 풀이를 마치고, 꼼꼼하게 오답을 정리하고 있어요 🧐'
-                    : '오답 확인까지 완벽하게 숙제를 마쳤어요! 💯';
-            } else {
-                status = '미시작';
-            }
-            const incorrectQuestionList = Object.keys(studentResults).filter(qNum => studentResults[qNum] === '틀림').map(Number).sort((a, b) => a - b);
-            return { ...hw, completionRate, status, completedCount: correctCount, incorrectCount, uncheckedCount, incorrectQuestionList, submissionDate };
+            const progress = computeHomeworkProgress(studentResults, totalQuestions);
+
+            const incorrectQuestionList = Object.keys(studentResults)
+                .filter(qNum => studentResults[qNum] === '틀림')
+                .map(Number)
+                .sort((a, b) => a - b);
+
+            return {
+                ...hw,
+                assignedDate: toDateString(hw.assignedDate) || toDateString(hw.date) || toDateString(hw.createdAt),
+                lastCheckedDate: toDateString(rawResult?.lastCheckedDate) || toDateString(rawResult?.updatedAt),
+                completionRate: progress.completionRate,
+                status: progress.status,
+                checkedCount: progress.checkedCount,
+                completedCount: progress.checkedCount,
+                incorrectCount: progress.incorrectCount,
+                uncheckedCount: progress.uncheckedCount,
+                isComplete: progress.checkedCount >= totalQuestions && progress.incorrectCount === 0,
+                incorrectQuestionList,
+            };
         });
 };
 

@@ -799,7 +799,7 @@ export default function AppRoutes({ user, role, studentIds }) {
           alert('과제 삭제에 실패했습니다. 권한 또는 네트워크를 확인하세요.');
       }
   };
-  const handleUpdateHomeworkResult = async (updates) => {
+  const handleUpdateHomeworkResult = async (updates, checkedDateInput = null) => {
       ensureFirestoreContext();
       try {
           const grouped = new Map();
@@ -813,16 +813,35 @@ export default function AppRoutes({ user, role, studentIds }) {
 
           const nextResults = { ...homeworkResults };
 
+          const toDateString = (v) => {
+              if (!v) return null;
+              if (typeof v === 'string') return v.slice(0, 10);
+              if (typeof v?.toDate === 'function') return v.toDate().toISOString().slice(0, 10);
+              try { return new Date(v).toISOString().slice(0, 10); } catch { return null; }
+          };
+
+          const checkedDate = toDateString(checkedDateInput) || new Date().toISOString().slice(0, 10);
+
           for (const { studentId, assignmentId, results } of grouped.values()) {
               const existing = nextResults[studentId]?.[assignmentId];
               const existingMap = existing?.results || existing || {};
               const mergedResults = { ...existingMap, ...results };
+              Object.keys(mergedResults).forEach((key) => {
+                  if (mergedResults[key] === null || mergedResults[key] === undefined) {
+                      delete mergedResults[key];
+                  }
+              });
               const docId = `${studentId}_${assignmentId}`;
+
+              const existingHistory = Array.isArray(existing?.checkHistory) ? existing.checkHistory : [];
+              const nextHistory = [...existingHistory, { checkedDate, checkedBy: userId }];
 
               await setDoc(doc(db, 'homeworkResults', docId), {
                   authUid: studentId,
                   assignmentId,
                   results: mergedResults,
+                  lastCheckedDate: checkedDate,
+                  checkHistory: nextHistory,
                   updatedAt: serverTimestamp(),
                   updatedBy: userId,
               }, { merge: true });
@@ -831,6 +850,8 @@ export default function AppRoutes({ user, role, studentIds }) {
               nextResults[studentId][assignmentId] = {
                   ...(existing && typeof existing === 'object' ? existing : {}),
                   results: mergedResults,
+                  lastCheckedDate: checkedDate,
+                  checkHistory: nextHistory,
                   updatedAt: new Date().toISOString(),
               };
           }

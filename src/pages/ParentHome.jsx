@@ -54,7 +54,7 @@ const ParentDashboard = ({
         else if (attendRate < 80) attendStatus = { color: 'bg-orange-50 text-orange-700 border-orange-100', label: '확인 요망', icon: 'alertCircle' };
 
         // [과제] 미제출 건수 기준
-        const pendingCount = homeworkStats.filter(h => h.status !== '완료').length;
+        const pendingCount = homeworkStats.filter(h => !h.isComplete).length;
         let hwStatus = { color: 'bg-indigo-50 text-indigo-700 border-indigo-100', label: '양호' };
         if (pendingCount >= 5) hwStatus = { color: 'bg-red-50 text-red-700 border-red-100', label: '제출 지연' };
         else if (pendingCount >= 3) hwStatus = { color: 'bg-orange-50 text-orange-700 border-orange-100', label: '확인 필요' };
@@ -434,7 +434,7 @@ export default function ParentHome({
         }, [notices, activeChildId, unpaidPayments.length, activeChildName, activeChild]);
 
     const pendingHomeworkCount = useMemo(
-        () => myHomeworkStats.filter(h => h.status !== '완료').length,
+        () => myHomeworkStats.filter(h => !h.isComplete).length,
         [myHomeworkStats]
     );
 
@@ -662,7 +662,8 @@ export default function ParentHome({
                 completionRate: hw.completionRate,
                 status: hw.status,
                 classAverage: hw.classAverage,
-                assignedDate: formatAssignedDate(hw.assignedAt || hw.date || hw.createdAt),
+                assignedDate: formatAssignedDate(hw.assignedDate || hw.assignedAt || hw.date || hw.createdAt),
+                lastCheckedDate: formatAssignedDate(hw.lastCheckedDate),
             }));
     }, [myHomeworkStats, selectedClassId]);
 
@@ -1123,6 +1124,7 @@ export default function ParentHome({
                                                                                 <p className="text-sm font-bold text-gray-900">{hw.title}</p>
                                                                                 <p className="text-xs text-gray-500">{hw.status}</p>
                                                                                 <p className="text-[11px] text-gray-400">출제일: {hw.assignedDate || '-'}</p>
+                                                                                <p className="text-[11px] text-gray-400">최근 검사일: {hw.lastCheckedDate || '-'}</p>
                                                                             </div>
                                                                             <span className="text-xs font-bold text-indigo-700 bg-indigo-50 px-3 py-1 rounded-full border border-indigo-100">{hw.completionRate}%</span>
                                                                         </div>
