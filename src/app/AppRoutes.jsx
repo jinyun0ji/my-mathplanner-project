@@ -57,6 +57,7 @@ import {
     query,
     setDoc,
     serverTimestamp,
+    where,
     updateDoc,
     writeBatch,
 } from 'firebase/firestore';
@@ -764,7 +765,7 @@ export default function AppRoutes({ user, role, studentIds }) {
   const handleSaveHomeworkAssignment = async (data, isEdit) => {
       ensureFirestoreContext();
       try {
-          const payload = stripId(data);
+          const payload = { type: data?.type || 'homework', ...stripId(data) };
           if (isEdit) {
               if (!data.id) throw new Error('과제 ID가 없습니다.');
               await updateDoc(doc(db, 'homeworkAssignments', data.id), {
@@ -1209,10 +1210,85 @@ export default function AppRoutes({ user, role, studentIds }) {
       }
   };
 
+  const resolveDefaultClassIdForStudent = useCallback((studentId) => {
+      if (!studentId || !Array.isArray(classes)) return null;
+      const matched = classes.find((cls) => Array.isArray(cls.students)
+          && cls.students.map(String).includes(String(studentId)));
+      return matched?.id || null;
+  }, [classes]);
+
+  const upsertVideoMakeupAssignment = useCallback(async (externalScheduleId, schedulePayload) => {
+      if (!externalScheduleId || !schedulePayload?.studentId) return;
+      const targetStudents = [schedulePayload.studentId].filter(Boolean);
+      const classId = schedulePayload.classId || resolveDefaultClassIdForStudent(schedulePayload.studentId) || null;
+
+      const assignmentBase = {
+          type: 'video_makeup',
+          title: schedulePayload.courseName || schedulePayload.academyName || '동영상 보강',
+          content: schedulePayload.note || schedulePayload.courseName || '동영상 보강',
+          classId,
+          targetStudents,
+          assignedStudentIds: targetStudents,
+          students: targetStudents,
+          assignedDate: schedulePayload.startDate || schedulePayload.date || new Date().toISOString().slice(0, 10),
+          totalQuestions: 0,
+          video: schedulePayload.video || schedulePayload.videoMeta || null,
+          source: { externalScheduleId },
+      };
+
+      const existingSnap = await getDocs(
+          query(
+              collection(db, 'homeworkAssignments'),
+              where('source.externalScheduleId', '==', externalScheduleId),
+              limit(1),
+          ),
+      );
+
+      if (existingSnap.empty) {
+          const docRef = await addDoc(collection(db, 'homeworkAssignments'), {
+              ...assignmentBase,
+              createdAt: serverTimestamp(),
+              createdBy: userId,
+              updatedAt: serverTimestamp(),
+              updatedBy: userId,
+          });
+          setHomeworkAssignments((prev) => [{ id: docRef.id, ...assignmentBase }, ...prev]);
+      } else {
+          const targetDoc = existingSnap.docs[0];
+          await updateDoc(doc(db, 'homeworkAssignments', targetDoc.id), {
+              ...assignmentBase,
+              updatedAt: serverTimestamp(),
+              updatedBy: userId,
+          });
+          setHomeworkAssignments((prev) => {
+              const rest = prev.filter((h) => h.id !== targetDoc.id);
+              return [{ id: targetDoc.id, ...targetDoc.data(), ...assignmentBase }, ...rest];
+          });
+      }
+  }, [classes, resolveDefaultClassIdForStudent, userId]);
+
+  const removeVideoMakeupAssignment = useCallback(async (externalScheduleId) => {
+      if (!externalScheduleId) return;
+      const snap = await getDocs(
+          query(
+              collection(db, 'homeworkAssignments'),
+              where('source.externalScheduleId', '==', externalScheduleId),
+              limit(3),
+          ),
+      );
+
+      const docIds = snap.docs.map((d) => d.id);
+      await Promise.all(docIds.map((id) => deleteDoc(doc(db, 'homeworkAssignments', id))));
+      if (docIds.length > 0) {
+          setHomeworkAssignments((prev) => prev.filter((h) => !docIds.includes(h.id)));
+      }
+  }, []);
+
   const handleSaveExternalSchedule = async (data) => {
       ensureFirestoreContext();
       try {
           const payload = { ...stripId(data), authUid: data.authUid || userId };
+          let scheduleId = data.id;
           if (data.id) {
               await updateDoc(doc(db, 'externalSchedules', data.id), {
                   ...payload,
@@ -1220,6 +1296,7 @@ export default function AppRoutes({ user, role, studentIds }) {
                   updatedBy: userId,
               });
               setExternalSchedules(prev => prev.map(s => s.id === data.id ? { ...s, ...payload } : s));
+              scheduleId = data.id;
           } else {
               const docRef = await addDoc(collection(db, 'externalSchedules'), {
                   ...payload,
@@ -1230,6 +1307,11 @@ export default function AppRoutes({ user, role, studentIds }) {
                   updatedBy: userId,
               });
               setExternalSchedules(prev => [...prev, { id: docRef.id, ...payload, authUid: userId }]);
+              scheduleId = docRef.id;
+          }
+
+          if (scheduleId) {
+              await upsertVideoMakeupAssignment(scheduleId, payload);
           }
       } catch (error) {
           console.error('[Firestore WRITE ERROR]', error);
@@ -1241,6 +1323,7 @@ export default function AppRoutes({ user, role, studentIds }) {
       try {
           await deleteDoc(doc(db, 'externalSchedules', id));
           setExternalSchedules(prev => prev.filter(s => s.id !== id));
+          await removeVideoMakeupAssignment(id);
       } catch (error) {
           console.error('[Firestore WRITE ERROR]', error);
           alert('외부 일정 삭제에 실패했습니다. 권한 또는 네트워크를 확인하세요.');

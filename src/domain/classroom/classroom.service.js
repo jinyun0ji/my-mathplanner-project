@@ -32,7 +32,7 @@ export const buildClassroomStats = ({
   const totalAttendance = myAttendance.length;
 
   const classHomeworks = homeworkAssignments.filter(
-    (h) => h.classId === selectedClassId && isAssignmentAssignedToStudent(h, studentDocId)
+    (h) => h.classId === selectedClassId && isAssignmentAssignedToStudent(h, studentDocId, [studentAuthUid])
   );
 
   const unsubmittedCount = classHomeworks.filter((h) => {

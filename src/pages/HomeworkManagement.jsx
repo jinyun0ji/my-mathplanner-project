@@ -4,7 +4,7 @@ import ClassSelectionPanel from '../components/Shared/ClassSelectionPanel';
 import HomeworkGradingTable from '../components/Homework/HomeworkGradingTable';
 import HomeworkStatisticsPanel from '../components/Homework/HomeworkStatisticsPanel';
 import { HomeworkAssignmentModal } from '../utils/modals/HomeworkAssignmentModal';
-import { buildAssignmentSummary, getClassAssignments, getSelectedAssignment, resolveAssignmentStudentIds } from '../domain/homework/homework.service';
+import { buildAssignmentSummary, getClassAssignments, getSelectedAssignment, resolveAssignmentStudentIds, resolveAssignmentTypeLabel, resolveAssignmentType } from '../domain/homework/homework.service';
 import { getDefaultClassId } from '../utils/classStatus';
 import { useClassStudents } from '../utils/useClassStudents';
 
@@ -105,13 +105,18 @@ export default function HomeworkManagement({
         return (
             <div className="max-h-[70vh] overflow-y-auto pr-2">
                 {classAssignments.map(assignment => {
-                    const rangeDisplay = assignment.rangeString 
-                        ? assignment.rangeString 
+                    const rangeDisplay = assignment.rangeString
+                        ? assignment.rangeString
                         : (assignment.startQuestion ? `${assignment.startQuestion}~${assignment.endQuestion}` : '범위 없음');
+                    const typeLabel = resolveAssignmentTypeLabel(assignment);
+                    const assignmentType = resolveAssignmentType(assignment);
+                    const detailText = assignmentType === 'video_makeup'
+                        ? (assignment.content || assignment.title || '동영상 보강')
+                        : `${assignment.assignedDate || assignment.date}: ${assignment.content}`;
 
                     return (
-                        <div 
-                            key={assignment.id} 
+                        <div
+                            key={assignment.id}
                             onClick={() => handleAssignmentSelect(assignment.id)}
                             // [색상 변경] 선택 시: bg-indigo-50 border-indigo-200
                             className={`p-3 mb-2 rounded-lg cursor-pointer border transition duration-150 ${
@@ -120,8 +125,15 @@ export default function HomeworkManagement({
                                     : 'bg-white border-gray-200 hover:bg-gray-50'
                             }`}
                         >
-                            <p className="text-sm font-bold text-gray-800">{assignment.book} ({rangeDisplay})</p>
-                            <p className="text-xs text-gray-600 mt-1">{assignment.assignedDate || assignment.date}: {assignment.content}</p>
+                            <div className="flex items-center gap-2">
+                                <p className="text-sm font-bold text-gray-800">{assignment.book || assignment.title || '과제'}</p>
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-700 border border-gray-200">{typeLabel}</span>
+                            </div>
+                            <p className="text-xs text-gray-600 mt-1">
+                                {assignmentType === 'video_makeup'
+                                    ? detailText
+                                    : `${assignment.assignedDate || assignment.date}: ${assignment.content} (${rangeDisplay} 총 ${assignment.totalQuestions}문항)`}
+                            </p>
                         </div>
                     );
                 })}
@@ -261,11 +273,16 @@ export default function HomeworkManagement({
                                 <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                                     <div className="space-y-1">
                                         <h3 className="text-xl font-bold text-gray-800 flex items-center">
-                                            {selectedAssignment.book}
+                                            {selectedAssignment.book || selectedAssignment.title || '과제'}
+                                            <span className="ml-2 text-[11px] font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-700 border border-gray-200">
+                                                {resolveAssignmentTypeLabel(selectedAssignment)}
+                                            </span>
                                         </h3>
                                         <p className="text-sm text-gray-600 mt-1">
                                             {selectedAssignment.assignedDate || selectedAssignment.date} | {selectedAssignment.content}
-                                            ({selectedAssignment.rangeString || `${selectedAssignment.startQuestion || '?'}~${selectedAssignment.endQuestion || '?'}`} 총 {selectedAssignment.totalQuestions}문항)
+                                            {resolveAssignmentType(selectedAssignment) === 'video_makeup'
+                                                ? ''
+                                                : ` (${selectedAssignment.rangeString || `${selectedAssignment.startQuestion || '?' }~${selectedAssignment.endQuestion || '?'}`} 총 ${selectedAssignment.totalQuestions}문항)`}
                                         </p>
                                     </div>
                                     <div className='flex flex-wrap gap-2 items-center lg:justify-end'>

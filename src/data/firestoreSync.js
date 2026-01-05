@@ -752,22 +752,57 @@ export const loadViewerDataOnce = async ({
         /* =========================
            homeworkAssignments
         ========================= */
+        const homeworkDocs = [];
+        const pushedIds = new Set();
+        const pushHomeworkDocs = (docs) => {
+            docs.forEach((d) => {
+                if (!pushedIds.has(d.id)) {
+                    pushedIds.add(d.id);
+                    homeworkDocs.push({ id: d.id, ...d.data() });
+                }
+            });
+        };
+
         if (lessonClassIds.length > 0) {
-            await fetchListSafe(
-                'homeworkAssignments fetchList',
-                db,
-                'homeworkAssignments',
-                setHomeworkAssignments,
-                query(
-                    collection(db, 'homeworkAssignments'),
-                    where('classId', 'in', lessonClassIds),
-                    orderBy('date', 'desc'),
-                    limit(30),
-                ),
-                isCancelled,
-            );
-        } else if (!isCancelled()) {
-            setHomeworkAssignments?.([]);
+            try {
+                const snap = await run('homeworkAssignments by class', () =>
+                    getDocs(
+                        query(
+                            collection(db, 'homeworkAssignments'),
+                            where('classId', 'in', lessonClassIds),
+                            orderBy('date', 'desc'),
+                            limit(30),
+                        ),
+                    ),
+                );
+                pushHomeworkDocs(snap.docs);
+            } catch (e) {
+                console.warn('[viewer] homeworkAssignments class load skipped', e);
+            }
+        }
+
+        if (scopedStudentUids.length > 0) {
+            try {
+                const directDocs = await getDocs(
+                    query(
+                        collection(db, 'homeworkAssignments'),
+                        where('targetStudents', 'array-contains-any', scopedStudentUids.slice(0, 10)),
+                        limit(30),
+                    ),
+                );
+                pushHomeworkDocs(directDocs.docs);
+            } catch (e) {
+                console.warn('[viewer] homeworkAssignments targetStudents load skipped', e);
+            }
+        }
+
+        if (!isCancelled()) {
+            const sortedHomework = homeworkDocs.sort((a, b) => {
+                const da = a.date || a.assignedDate || a.createdAt?.toDate?.() || a.createdAt;
+                const dbb = b.date || b.assignedDate || b.createdAt?.toDate?.() || b.createdAt;
+                return new Date(dbb || 0) - new Date(da || 0);
+            });
+            setHomeworkAssignments?.(sortedHomework);
         }
 
         /* =========================

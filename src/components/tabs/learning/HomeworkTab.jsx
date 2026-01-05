@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { resolveAssignmentType, resolveAssignmentTypeLabel } from '../../../domain/homework/homework.service';
 
 export default function HomeworkTab({ myHomeworkStats }) {
     const [selectedHwId, setSelectedHwId] = useState(null);
@@ -8,6 +9,8 @@ export default function HomeworkTab({ myHomeworkStats }) {
         <div className="space-y-4">
             {myHomeworkStats.length === 0 && <div className="text-center py-10 text-gray-400 text-sm bg-white rounded-2xl border border-dashed border-gray-200">등록된 과제가 없습니다.</div>}
             {myHomeworkStats.map(hw => {
+                const assignmentType = resolveAssignmentType(hw);
+                const typeLabel = resolveAssignmentTypeLabel(hw);
                 const issuedDate =
                     typeof hw.date === 'string'
                         ? hw.date
@@ -23,8 +26,17 @@ export default function HomeworkTab({ myHomeworkStats }) {
                             <span className={`text-xs font-bold px-2 py-0.5 rounded ${hw.status === '완료' ? 'bg-green-100 text-green-700' : hw.status === '미시작' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'}`}>{hw.status}</span>
                             <span className="text-xs text-gray-500 font-semibold">출제일: {issuedDate || '-'}</span>
                         </div>
-                        <h4 className="font-bold text-gray-900 mb-1">{hw.content}</h4>
-                        <p className="text-xs text-gray-500 mb-4">{hw.book} (총 {hw.totalQuestions}문제)</p>
+                        <div className="flex items-center gap-2 mb-1">
+                            <h4 className="font-bold text-gray-900">{hw.content || hw.title || '과제'}</h4>
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-700 border border-gray-200">
+                                {typeLabel}
+                            </span>
+                        </div>
+                        <p className="text-xs text-gray-500 mb-4">
+                            {assignmentType === 'video_makeup'
+                                ? (hw.book || '동영상 과제')
+                                : `${hw.book || '교재 미정'} (총 ${hw.totalQuestions}문제)`}
+                        </p>
                         <div className="w-full bg-gray-100 rounded-full h-1.5 mb-2">
                             <div className="bg-brand-main h-1.5 rounded-full transition-all" style={{ width: `${hw.completionRate}%` }}></div>
                         </div>

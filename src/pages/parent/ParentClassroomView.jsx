@@ -77,7 +77,7 @@ export default function ParentClassroomView({
 
         // 2. 과제 (누적 미제출)
         const classHomeworks = homeworkAssignments.filter(
-            h => h.classId === selectedClassId && isAssignmentAssignedToStudent(h, attendanceStudentId)
+            h => h.classId === selectedClassId && isAssignmentAssignedToStudent(h, attendanceStudentId, [progressStudentUid])
         );
         const unsubmittedCount = classHomeworks.filter(h => {
              const result = homeworkResults?.[progressStudentUid]?.[h.id];

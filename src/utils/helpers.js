@@ -291,12 +291,17 @@ export const calculateHomeworkStats = (studentId, assignments, results, options 
     const studentKeys = resolveStudentKeys(studentId, options);
 
     return assignments
-        .filter(hw => isAssignmentAssignedToStudent(hw, studentId))
+        .filter(hw => isAssignmentAssignedToStudent(hw, studentId, studentKeys))
         .map(hw => {
         const rawResult = findHomeworkResult(results, studentKeys, hw.id);
             const studentResults = rawResult?.results || rawResult || {};
             const totalQuestions = hw.totalQuestions;
             const progress = computeHomeworkProgress(studentResults, totalQuestions);
+            const assignmentType = hw.type || 'homework';
+
+            const statusLabel = assignmentType === 'video_makeup'
+                ? '출제됨'
+                : progress.status;
 
             const incorrectQuestionList = Object.keys(studentResults)
                 .filter(qNum => studentResults[qNum] === '틀림')
@@ -310,7 +315,7 @@ export const calculateHomeworkStats = (studentId, assignments, results, options 
                 assignedDate: toDateString(hw.assignedDate) || toDateString(hw.date) || toDateString(hw.createdAt),
                 lastCheckedDate: toDateString(resolvedCheckedDate),
                 completionRate: progress.completionRate,
-                status: progress.status,
+                status: statusLabel,
                 checkedCount: progress.checkedCount,
                 completedCount: progress.checkedCount,
                 incorrectCount: progress.incorrectCount,

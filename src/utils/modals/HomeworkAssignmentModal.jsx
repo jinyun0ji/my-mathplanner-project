@@ -158,6 +158,7 @@ export const HomeworkAssignmentModal = ({ isOpen, onClose, onSave, classId, assi
       classId,
       assignedDate,
       date: assignedDate,
+      type: assignment?.type || 'homework',
       content,
       book,
       rangeString, // ✅ 저장: 입력한 범위 문자열

@@ -37,10 +37,37 @@ export const getClassStudents = (students = [], selectedClass) => {
         .sort((a, b) => a.name.localeCompare(b.name));
 };
 
+export const resolveAssignmentType = (assignment) => {
+    const type = assignment?.type || 'homework';
+    return typeof type === 'string' ? type : 'homework';
+};
+
+export const resolveAssignmentTypeLabel = (assignment) => {
+    const type = resolveAssignmentType(assignment);
+    if (type === 'video_makeup') return '동영상 보강';
+    return '숙제';
+};
+
 export const resolveAssignmentStudentIds = (assignment) => {
     if (!assignment) return [];
-    const assigned = assignment.assignedStudentIds ?? assignment.students ?? [];
-    return Array.isArray(assigned) ? assigned : [];
+    const candidates = [
+        assignment.assignedStudentIds,
+        assignment.assignedStudentUids,
+        assignment.students,
+        assignment.targetStudents,
+        assignment.targetStudentIds,
+        assignment.studentIds,
+        assignment.studentUid,
+        assignment.studentId,
+    ].flat().filter(Boolean);
+
+    const authIds = [
+        assignment.assignedAuthUids,
+        assignment.targetAuthUids,
+    ].flat().filter(Boolean);
+
+    const merged = [...candidates, ...authIds];
+    return merged.filter(Boolean);
 };
 
 const resolveResultMap = (resultData) => {
@@ -110,11 +137,12 @@ export const applyHomeworkProgressCap = (progressPercent = 0, resultData, totalQ
     return progress.completionRate || safeProgress;
 };
 
-export const isAssignmentAssignedToStudent = (assignment, studentId) => {
+export const isAssignmentAssignedToStudent = (assignment, studentId, extraStudentKeys = []) => {
     if (!assignment || !studentId) return false;
-    const assignedIds = resolveAssignmentStudentIds(assignment);
+    const assignedIds = resolveAssignmentStudentIds(assignment).map(String);
+    const compareKeys = [studentId, ...extraStudentKeys].filter(Boolean).map(String);
     if (assignedIds.length === 0) return true;
-    return assignedIds.map(String).includes(String(studentId));
+    return compareKeys.some((key) => assignedIds.includes(key));
 };
 
 export const buildAssignmentSummary = (selectedAssignment, classStudents = [], homeworkResults = {}, localChanges = []) => {
