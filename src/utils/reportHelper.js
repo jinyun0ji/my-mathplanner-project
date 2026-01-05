@@ -72,6 +72,9 @@ export const generateSessionReport = (sessionId, studentId, contextData) => {
     } else if (attendanceStatus === '출석') {
         learningComment =
             gradeComment || "특이사항 없이 성실하게 수업에 참여하였습니다.";
+    } else if (attendanceStatus === '동영상보강') {
+        learningComment =
+            gradeComment || "동영상보강으로 대체하였습니다.";
     } else {
         // 기록 없음
         learningComment = "출결 기록이 없습니다.";
