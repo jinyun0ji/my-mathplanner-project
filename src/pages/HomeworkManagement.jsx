@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Icon } from '../utils/helpers';
+import { Icon, getLastCheckedDate } from '../utils/helpers';
 import ClassSelectionPanel from '../components/Shared/ClassSelectionPanel';
 import HomeworkGradingTable from '../components/Homework/HomeworkGradingTable';
 import HomeworkStatisticsPanel from '../components/Homework/HomeworkStatisticsPanel';
@@ -59,7 +59,7 @@ export default function HomeworkManagement({
         let latestChecked = null;
         Object.values(homeworkResults || {}).forEach((byAssignment) => {
             const record = byAssignment?.[selectedAssignmentId];
-            const candidate = toDateString(record?.lastCheckedDate);
+            const candidate = toDateString(getLastCheckedDate(record));
             if (candidate && (!latestChecked || new Date(candidate) > new Date(latestChecked))) {
                 latestChecked = candidate;
             }

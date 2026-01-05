@@ -235,6 +235,21 @@ const toDateString = (v) => {
     try { return new Date(v).toISOString().slice(0, 10); } catch { return null; }
 };
 
+export const getLastCheckedDate = (rawResult) => {
+    if (!rawResult) return null;
+
+    const direct = rawResult.lastCheckedDate ?? rawResult.checkedAt ?? rawResult.checkedDate ?? null;
+    if (direct) return direct;
+
+    const history = rawResult.checkHistory;
+    if (Array.isArray(history) && history.length > 0) {
+        const last = history[history.length - 1]?.checkedDate ?? null;
+        return last || null;
+    }
+
+    return null;
+};
+
 const resolveStudentKeys = (studentId, options = {}) => {
     const { activeViewerAuthUid, studentAuthUid, userId, activeStudentId, students } = options;
     const studentFromList = students?.find?.((s) => s?.id === studentId) || null;
@@ -288,10 +303,12 @@ export const calculateHomeworkStats = (studentId, assignments, results, options 
                 .map(Number)
                 .sort((a, b) => a - b);
 
+            const resolvedCheckedDate = getLastCheckedDate(rawResult) ?? rawResult?.updatedAt ?? null;
+
             return {
                 ...hw,
                 assignedDate: toDateString(hw.assignedDate) || toDateString(hw.date) || toDateString(hw.createdAt),
-                lastCheckedDate: toDateString(rawResult?.lastCheckedDate) || toDateString(rawResult?.updatedAt),
+                lastCheckedDate: toDateString(resolvedCheckedDate),
                 completionRate: progress.completionRate,
                 status: progress.status,
                 checkedCount: progress.checkedCount,
