@@ -4,15 +4,12 @@ import { Modal } from '../../components/common/Modal';
 import { Icon } from '../../utils/helpers';
 
 export const StudentFormModal = ({ isOpen, onClose, student = null, allClasses, onSave }) => {
-  const RETIRE_REASONS = ['종강', '중도퇴원', '전반'];
   const [name, setName] = useState('');
   const [school, setSchool] = useState('');
   const [grade, setGrade] = useState('');
   const [phone, setPhone] = useState('');
   const [parentPhone, setParentPhone] = useState('');
-  const [status, setStatus] = useState('active');
-  const [endDate, setEndDate] = useState('');
-  const [endReason, setEndReason] = useState('');
+  const [status, setStatus] = useState('재원생');
   const [classSelections, setClassSelections] = useState([]);
   const [clinicTime, setClinicTime] = useState('');
   const [bookReceived, setBookReceived] = useState(false);
@@ -23,7 +20,7 @@ export const StudentFormModal = ({ isOpen, onClose, student = null, allClasses, 
 
   useEffect(() => {
     if (student) {
-      const nextStatus = student.status === 'inactive' ? 'inactive' : 'active';
+      const nextStatus = student.status === 'inactive' ? '재원생' : (student.status || '재원생');
       setName(student.name);
       setSchool(student.school);
       setGrade(student.grade);
@@ -34,37 +31,19 @@ export const StudentFormModal = ({ isOpen, onClose, student = null, allClasses, 
       setClinicTime(student.clinicTime || '');
       setBookReceived(student.bookReceived || false);
       setRegisteredDate(student.registeredDate || '');
-      setEndDate(student.endDate || student.retireDate || '');
-      setEndReason(student.endReason || student.retireReason || '');
-    } else {
+      } else {
       setName('');
       setSchool('');
       setGrade('고1');
       setPhone('');
       setParentPhone('');
-      setStatus('active');
+      setStatus('재원생');
       setClassSelections([]);
       setClinicTime('');
       setBookReceived(false);
       setRegisteredDate(new Date().toISOString().slice(0, 10));
-      setEndDate('');
-      setEndReason('');
     }
   }, [student]);
-
-  useEffect(() => {
-    if (status === 'inactive') {
-      if (!endDate) {
-        setEndDate(new Date().toISOString().slice(0, 10));
-      }
-      if (!endReason) {
-        setEndReason('종강');
-      }
-      return;
-    }
-    if (endDate) setEndDate('');
-    if (endReason) setEndReason('');
-  }, [status, endDate, endReason]);
 
   const handleClassToggle = (classId) => {
     setClassSelections(prev => 
@@ -77,14 +56,6 @@ export const StudentFormModal = ({ isOpen, onClose, student = null, allClasses, 
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!name || !school || !grade) return;
-    const isInactive = status === 'inactive';
-    if (isInactive && !endDate) {
-      alert('퇴원일을 입력해주세요.');
-      return;
-    }
-    const resolvedEndDate = isInactive ? (endDate || new Date().toISOString().slice(0, 10)) : '';
-    const resolvedEndReason = isInactive ? (endReason || '종강') : '';
-
     const studentData = {
       id: student ? student.id : null,
       name,
@@ -93,9 +64,6 @@ export const StudentFormModal = ({ isOpen, onClose, student = null, allClasses, 
       phone,
       parentPhone,
       status,
-      ...(isInactive
-        ? { endDate: resolvedEndDate, endReason: resolvedEndReason }
-        : {}),
       classes: classSelections,
       clinicTime: clinicTime || null,
       bookReceived,
@@ -124,28 +92,11 @@ export const StudentFormModal = ({ isOpen, onClose, student = null, allClasses, 
               <div>
                 <label className="block text-sm font-medium text-gray-700">재원 상태*</label>
                 <select value={status} onChange={e => setStatus(e.target.value)} required className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border">
-                  <option value="active">재원</option>
-                  <option value="inactive">퇴원</option>
+                  <option value="재원생">재원생</option>
+                  <option value="휴원">휴원</option>
                 </select>
               </div>
           </div>
-          {status === 'inactive' && (
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-sm font-medium text-gray-700">퇴원일</label>
-                <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border" />
-                <p className="text-xs text-gray-400 mt-1">퇴원일 기준 이후 수업 업데이트는 차단(정책 적용 예정)</p>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700">퇴원 사유</label>
-                <select value={endReason} onChange={e => setEndReason(e.target.value)} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border">
-                  {RETIRE_REASONS.map((reason) => (
-                    <option key={reason} value={reason}>{reason}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          )}
           <div>
             <label className="block text-sm font-medium text-gray-700">학교*</label>
             <input type="text" value={school} onChange={e => setSchool(e.target.value)} required className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border" />

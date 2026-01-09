@@ -479,24 +479,18 @@ export default function AppRoutes({ user, role, studentIds }) {
       ensureFirestoreContext();
       try {
           const nextClassIds = Array.isArray(data.classes) ? data.classes : [];
-          const isInactive = data.status === 'inactive';
-          const today = new Date().toISOString().slice(0, 10);
           const {
-              endDate: incomingEndDate,
-              endReason: incomingEndReason,
+              endDate: _incomingEndDate,
+              endReason: _incomingEndReason,
               ...rest
           } = stripId(data);
+          const normalizedStatus = data.status === 'inactive' ? '재원생' : (data.status || '재원생');
           const payload = {
               ...rest,
-              status: isInactive ? 'inactive' : 'active',
+              status: normalizedStatus,
               authUid: data.studentId || data.authUid || null,
           };
-          const resolvedEndDate = incomingEndDate || today;
-          const resolvedEndReason = incomingEndReason || '종강';
-          if (isInactive) {
-              payload.endDate = resolvedEndDate;
-              payload.endReason = resolvedEndReason;
-          } else if (isEdit) {
+          if (isEdit) {
               payload.endDate = deleteField();
               payload.endReason = deleteField();
           }
@@ -514,9 +508,10 @@ export default function AppRoutes({ user, role, studentIds }) {
                   const prevStatus = map[key] || {};
                   map[key] = {
                       ...prevStatus,
-                      status: 'active',
-                      withdrawnAt: null,
-                      withdrawnAtSession: null,
+                      status: '재원',
+                      endDate: null,
+                      endReason: null,
+                      updatedAt: serverTimestamp(),
                       joinedAt: prevStatus.joinedAt || serverTimestamp(),
                   };
               });
@@ -606,7 +601,7 @@ export default function AppRoutes({ user, role, studentIds }) {
           alert('학생 삭제에 실패했습니다. 권한 또는 네트워크를 확인하세요.');
       }
   };
-  const handleUpdateStudentClassStatus = async ({ studentId, classId, status }) => {
+  const handleUpdateStudentClassStatus = async ({ studentId, classId, status, endDate, endReason }) => {
       ensureFirestoreContext();
       const student = students.find((s) => s.id === studentId);
       if (!student) {
@@ -624,18 +619,22 @@ export default function AppRoutes({ user, role, studentIds }) {
           updatedBy: userId,
       };
 
-      if (status === 'withdrawn') {
-          updates[`classStatuses.${classIdStr}.status`] = 'withdrawn';
-          updates[`classStatuses.${classIdStr}.withdrawnAt`] = serverTimestamp();
-          updates[`classStatuses.${classIdStr}.withdrawnAtSession`] = null;
-      } else if (status === 'active') {
+      if (status === '퇴원') {
+          const safeDate = endDate || new Date().toISOString().slice(0, 10);
+          const safeReason = endReason || '종강';
+          updates[`classStatuses.${classIdStr}.status`] = '퇴원';
+          updates[`classStatuses.${classIdStr}.endDate`] = safeDate;
+          updates[`classStatuses.${classIdStr}.endReason`] = safeReason;
+          updates[`classStatuses.${classIdStr}.updatedAt`] = serverTimestamp();
+      } else if (status === '재원') {
           if (!nextClassIds.includes(classIdStr)) {
               nextClassIds = [...nextClassIds, classIdStr];
               updates.classIds = nextClassIds;
           }
-          updates[`classStatuses.${classIdStr}.status`] = 'active';
-          updates[`classStatuses.${classIdStr}.withdrawnAt`] = null;
-          updates[`classStatuses.${classIdStr}.withdrawnAtSession`] = null;
+          updates[`classStatuses.${classIdStr}.status`] = '재원';
+          updates[`classStatuses.${classIdStr}.endDate`] = null;
+          updates[`classStatuses.${classIdStr}.endReason`] = null;
+          updates[`classStatuses.${classIdStr}.updatedAt`] = serverTimestamp();
           await updateDoc(doc(db, 'classes', classIdStr), {
               students: arrayUnion(studentUid),
           });
@@ -651,8 +650,9 @@ export default function AppRoutes({ user, role, studentIds }) {
           nextStatuses[classIdStr] = {
               ...(nextStatuses[classIdStr] || {}),
               status,
-              withdrawnAt: status === 'withdrawn' ? new Date() : null,
-              withdrawnAtSession: null,
+              endDate: status === '퇴원' ? (endDate || new Date().toISOString().slice(0, 10)) : null,
+              endReason: status === '퇴원' ? (endReason || '종강') : null,
+              updatedAt: new Date(),
           };
           return {
               ...s,

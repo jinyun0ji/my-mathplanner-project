@@ -28,13 +28,14 @@ export default function StudentManagement({
     const [retireDate, setRetireDate] = useState(new Date().toISOString().slice(0, 10));
     const [retireReason, setRetireReason] = useState('종강');
     const todayString = useMemo(() => new Date().toISOString().slice(0, 10), []);
-    const isInactiveStatus = (value) => value === 'inactive' || value === '퇴원생';
-    const isActiveStatus = (value) => value === 'active' || value === '재원생';
-    const getStatusLabel = (value) => {
-        if (value === 'inactive') return '퇴원';
+    const normalizeClassStatus = (value) => {
+        if (value === 'withdrawn') return '퇴원';
         if (value === 'active') return '재원';
-        return value || '상태 미정';
+        return value;
     };
+    const isInactiveStatus = (value) => Boolean(value) && value !== '재원생';
+    const isActiveStatus = (value) => value === '재원생';
+    const getStatusLabel = (value) => value || '상태 미정';
 
     const shortId = (value) => {
         if (!value) return '-';
@@ -97,19 +98,24 @@ export default function StudentManagement({
 
     const handleRestoreClick = (student, classId) => {
         if (!handleUpdateStudentClassStatus) return;
-        handleUpdateStudentClassStatus({ studentId: student.id, classId, status: 'active' });
+        handleUpdateStudentClassStatus({ studentId: student.id, classId, status: '재원' });
     };
 
-    const retireStudentOnlyUpdate = async (student, { endDate, endReason }) => {
+    const retireStudentOnlyUpdate = async (student, { classId, endDate, endReason }) => {
         if (!student?.id) throw new Error('retireStudentOnlyUpdate: missing student.id');
+        if (!classId) throw new Error('retireStudentOnlyUpdate: missing classId');
 
         const safeReason = RETIRE_REASONS.includes(endReason) ? endReason : '종강';
         const safeDate = endDate || new Date().toISOString().slice(0, 10);
 
         await updateDoc(doc(db, 'users', student.id), {
-            status: 'inactive',
-            endDate: safeDate,
-            endReason: safeReason,
+            status: '재원생',
+            [`classStatuses.${classId}`]: {
+                status: '퇴원',
+                endDate: safeDate,
+                endReason: safeReason,
+                updatedAt: serverTimestamp(),
+            },
             updatedAt: serverTimestamp(),
         });
     };
@@ -118,6 +124,7 @@ export default function StudentManagement({
         if (!retireModal.student) return;
         try {
             await retireStudentOnlyUpdate(retireModal.student, {
+                classId: retireModal.classId,
                 endDate: retireDate,
                 endReason: retireReason,
             });
@@ -175,9 +182,9 @@ export default function StudentManagement({
                                 const allClassIds = Array.isArray(student.classes)
                                     ? student.classes
                                     : (Array.isArray(student.classIds) ? student.classIds : []);
-                                const activeClassIds = allClassIds.filter((classId) => classStatusMap[classId]?.status !== 'withdrawn');
+                                const activeClassIds = allClassIds.filter((classId) => normalizeClassStatus(classStatusMap[classId]?.status) !== '퇴원');
                                 const withdrawnClassIds = Object.entries(classStatusMap)
-                                    .filter(([, value]) => value?.status === 'withdrawn')
+                                    .filter(([, value]) => normalizeClassStatus(value?.status) === '퇴원')
                                     .map(([id]) => id);
                                 const getClassName = (classId) => classes.find((cls) => String(cls.id) === String(classId))?.name || classId;
                                 
@@ -315,9 +322,9 @@ export default function StudentManagement({
                         const allClassIds = Array.isArray(student.classes)
                             ? student.classes
                             : (Array.isArray(student.classIds) ? student.classIds : []);
-                            const activeClassIds = allClassIds.filter((classId) => classStatusMap[classId]?.status !== 'withdrawn');
+                            const activeClassIds = allClassIds.filter((classId) => normalizeClassStatus(classStatusMap[classId]?.status) !== '퇴원');
                         const withdrawnClassIds = Object.entries(classStatusMap)
-                            .filter(([, value]) => value?.status === 'withdrawn')
+                            .filter(([, value]) => normalizeClassStatus(value?.status) === '퇴원')
                             .map(([id]) => id);
                         const getClassName = (classId) => classes.find((cls) => String(cls.id) === String(classId))?.name || classId;
                         return (

@@ -77,11 +77,11 @@ export const formatGradeScoreText = (grade = null, totalScore = null, test = {})
 };
 
 export const getStudentClassStatus = (student = {}, classId) => {
-    if (!classId) return { status: 'active' };
+    if (!classId) return { status: '재원' };
     const key = String(classId);
     const status = student?.classStatuses?.[key];
     if (status && typeof status === 'object') return status;
-    return { status: 'active' };
+    return { status: '재원' };
 };
 
 const parseTimestampToDate = (value) => {
@@ -97,19 +97,18 @@ export const isStudentEligibleForTest = (student = {}, test = {}, classId = null
     if (!student || !test) return false;
     const resolvedClassId = classId || test.classId;
     const classStatus = getStudentClassStatus(student, resolvedClassId);
-    if (classStatus.status === 'withdrawn') {
-        const testDate = test?.date ? new Date(test.date) : null;
-        const withdrawnAtDate = parseTimestampToDate(classStatus.withdrawnAt);
+    const normalizedStatus = classStatus?.status === 'withdrawn' ? '퇴원' : classStatus?.status;
+    if (normalizedStatus === '퇴원') {
+        const testDate = parseTimestampToDate(test?.date);
+        const endDate = parseTimestampToDate(classStatus.endDate || classStatus.withdrawnAt);
 
-        if (withdrawnAtDate && testDate && withdrawnAtDate <= testDate) {
+        if (endDate && testDate && endDate < testDate) {
             return false;
         }
 
-        if (!withdrawnAtDate) return false;
-    }
-
-    if (classStatus?.withdrawnAt && !test?.date) {
-        return false;
+        if (!testDate) {
+            return false;
+        }
     }
 
     return true;

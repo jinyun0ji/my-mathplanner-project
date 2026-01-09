@@ -111,27 +111,47 @@ export default function StudentHome({
     const viewerUid = student?.authUid || userId;
     const studentDocId = studentId;
     const studentAuthUid = student?.authUid || userId;
-    const shouldFilterByEndDate = student?.status === 'inactive' && student?.endDate;
-    const isOnOrBeforeEndDate = (dateValue, endDateValue) => {
-        if (!endDateValue) return true;
-        if (!dateValue) return true;
-        return String(dateValue) <= String(endDateValue);
+    const normalizeClassStatus = (value) => {
+        if (value === 'withdrawn') return '퇴원';
+        if (value === 'active') return '재원';
+        return value;
+    };
+    const toYmd = (value) => {
+        if (!value) return null;
+        if (typeof value === 'string') return value.slice(0, 10);
+        if (typeof value?.toDate === 'function') return value.toDate().toISOString().slice(0, 10);
+        try {
+            return new Date(value).toISOString().slice(0, 10);
+        } catch (error) {
+            return null;
+        }
+    };
+    const isAfterEndDate = (dateValue, endDateValue) => {
+        const date = toYmd(dateValue);
+        const endDate = toYmd(endDateValue);
+        if (!date || !endDate) return false;
+        return date > endDate;
+    };
+    const isLogAfterClassEndDate = (classId, dateValue) => {
+        if (!classId) return false;
+        const classStatus = student?.classStatuses?.[String(classId)];
+        const normalizedStatus = normalizeClassStatus(classStatus?.status);
+        if (normalizedStatus !== '퇴원') return false;
+        if (!classStatus?.endDate) return false;
+        return isAfterEndDate(dateValue, classStatus.endDate);
     };
     const filteredLessonLogs = useMemo(() => {
         if (!Array.isArray(lessonLogs)) return [];
-        if (!shouldFilterByEndDate) return lessonLogs;
-        return lessonLogs.filter((log) => isOnOrBeforeEndDate(log?.date, student?.endDate));
-    }, [lessonLogs, shouldFilterByEndDate, student?.endDate]);
+        return lessonLogs.filter((log) => !isLogAfterClassEndDate(log?.classId, log?.date));
+    }, [lessonLogs, student?.classStatuses]);
     const filteredTests = useMemo(() => {
         if (!Array.isArray(tests)) return [];
-        if (!shouldFilterByEndDate) return tests;
-        return tests.filter((test) => isOnOrBeforeEndDate(test?.date, student?.endDate));
-    }, [tests, shouldFilterByEndDate, student?.endDate]);
+        return tests.filter((test) => !isLogAfterClassEndDate(test?.classId, test?.date));
+    }, [tests, student?.classStatuses]);
     const filteredHomeworkAssignments = useMemo(() => {
         if (!Array.isArray(homeworkAssignments)) return [];
-        if (!shouldFilterByEndDate) return homeworkAssignments;
-        return homeworkAssignments.filter((assignment) => isOnOrBeforeEndDate(assignment?.assignedDate || assignment?.date, student?.endDate));
-    }, [homeworkAssignments, shouldFilterByEndDate, student?.endDate]);
+        return homeworkAssignments.filter((assignment) => !isLogAfterClassEndDate(assignment?.classId, assignment?.assignedDate || assignment?.date));
+    }, [homeworkAssignments, student?.classStatuses]);
     const myClasses = useMemo(() => {
         if (!classes || !studentId) return [];
         return classes.filter(c => (c.students || []).includes(studentId));

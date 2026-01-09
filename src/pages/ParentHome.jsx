@@ -225,27 +225,47 @@ export default function ParentHome({
     const activeChildName = activeChild?.name || '학생';
     const activeChildSchool = activeChild?.school || '학교 정보 없음';
     const activeChildGrade = activeChild?.grade || '학년 정보 없음';
-    const shouldFilterByEndDate = activeChild?.status === 'inactive' && activeChild?.endDate;
-    const isOnOrBeforeEndDate = (dateValue, endDateValue) => {
-        if (!endDateValue) return true;
-        if (!dateValue) return true;
-        return String(dateValue) <= String(endDateValue);
+    const normalizeClassStatus = (value) => {
+        if (value === 'withdrawn') return '퇴원';
+        if (value === 'active') return '재원';
+        return value;
+    };
+    const toYmd = (value) => {
+        if (!value) return null;
+        if (typeof value === 'string') return value.slice(0, 10);
+        if (typeof value?.toDate === 'function') return value.toDate().toISOString().slice(0, 10);
+        try {
+            return new Date(value).toISOString().slice(0, 10);
+        } catch (error) {
+            return null;
+        }
+    };
+    const isAfterEndDate = (dateValue, endDateValue) => {
+        const date = toYmd(dateValue);
+        const endDate = toYmd(endDateValue);
+        if (!date || !endDate) return false;
+        return date > endDate;
+    };
+    const isLogAfterClassEndDate = (classId, dateValue) => {
+        if (!classId) return false;
+        const classStatus = activeChild?.classStatuses?.[String(classId)];
+        const normalizedStatus = normalizeClassStatus(classStatus?.status);
+        if (normalizedStatus !== '퇴원') return false;
+        if (!classStatus?.endDate) return false;
+        return isAfterEndDate(dateValue, classStatus.endDate);
     };
     const filteredLessonLogs = useMemo(() => {
         if (!Array.isArray(lessonLogs)) return [];
-        if (!shouldFilterByEndDate) return lessonLogs;
-        return lessonLogs.filter((log) => isOnOrBeforeEndDate(log?.date, activeChild?.endDate));
-    }, [lessonLogs, shouldFilterByEndDate, activeChild?.endDate]);
+        return lessonLogs.filter((log) => !isLogAfterClassEndDate(log?.classId, log?.date));
+    }, [lessonLogs, activeChild?.classStatuses]);
     const filteredTests = useMemo(() => {
         if (!Array.isArray(tests)) return [];
-        if (!shouldFilterByEndDate) return tests;
-        return tests.filter((test) => isOnOrBeforeEndDate(test?.date, activeChild?.endDate));
-    }, [tests, shouldFilterByEndDate, activeChild?.endDate]);
+        return tests.filter((test) => !isLogAfterClassEndDate(test?.classId, test?.date));
+    }, [tests, activeChild?.classStatuses]);
     const filteredHomeworkAssignments = useMemo(() => {
         if (!Array.isArray(homeworkAssignments)) return [];
-        if (!shouldFilterByEndDate) return homeworkAssignments;
-        return homeworkAssignments.filter((assignment) => isOnOrBeforeEndDate(assignment?.assignedDate || assignment?.date, activeChild?.endDate));
-    }, [homeworkAssignments, shouldFilterByEndDate, activeChild?.endDate]);
+        return homeworkAssignments.filter((assignment) => !isLogAfterClassEndDate(assignment?.classId, assignment?.assignedDate || assignment?.date));
+    }, [homeworkAssignments, activeChild?.classStatuses]);
 
     // 2. 데이터 필터링
     const myClasses = useMemo(() => classes.filter(c => (c.students || []).includes(activeChildId)), [classes, activeChildId]);
@@ -1351,6 +1371,7 @@ export default function ParentHome({
                             <ScheduleTab 
                                 myClasses={ongoingClasses} attendanceLogs={attendanceLogs} clinicLogs={clinicLogs} 
                                 externalSchedules={externalSchedules} onSaveExternalSchedule={onSaveExternalSchedule} onDeleteExternalSchedule={onDeleteExternalSchedule}
+                                student={activeChild}
                             />
                         )}
 
