@@ -481,18 +481,32 @@ export default function AppRoutes({ user, role, studentIds }) {
           const nextClassIds = Array.isArray(data.classes) ? data.classes : [];
           const isInactive = data.status === 'inactive';
           const today = new Date().toISOString().slice(0, 10);
-          const { endDate: incomingEndDate, endReason: incomingEndReason, ...rest } = stripId(data);
+          const {
+              endDate: incomingEndDate,
+              endReason: incomingEndReason,
+              retireDate: incomingRetireDate,
+              retireReason: incomingRetireReason,
+              ...rest
+          } = stripId(data);
           const payload = {
               ...rest,
               status: isInactive ? 'inactive' : 'active',
               authUid: data.studentId || data.authUid || null,
           };
+          const resolvedRetireDate = incomingRetireDate || incomingEndDate || today;
+          const resolvedRetireReason = incomingRetireReason || incomingEndReason || '종강';
           if (isInactive) {
-              payload.endDate = incomingEndDate || today;
-              payload.endReason = incomingEndReason || '종강';
-          } else if (isEdit) {
-              payload.endDate = deleteField();
-              payload.endReason = deleteField();
+              payload.retireDate = resolvedRetireDate;
+              payload.retireReason = resolvedRetireReason;
+              payload.endDate = resolvedRetireDate;
+              payload.endReason = resolvedRetireReason;
+          } else {
+              payload.retireDate = '';
+              payload.retireReason = '';
+              if (isEdit) {
+                  payload.endDate = deleteField();
+                  payload.endReason = deleteField();
+              }
           }
           const studentPayload = {
               ...payload,

@@ -4,14 +4,15 @@ import { Modal } from '../../components/common/Modal';
 import { Icon } from '../../utils/helpers';
 
 export const StudentFormModal = ({ isOpen, onClose, student = null, allClasses, onSave }) => {
+  const RETIRE_REASONS = ['종강', '중도퇴원', '전반'];
   const [name, setName] = useState('');
   const [school, setSchool] = useState('');
   const [grade, setGrade] = useState('');
   const [phone, setPhone] = useState('');
   const [parentPhone, setParentPhone] = useState('');
   const [status, setStatus] = useState('active');
-  const [endDate, setEndDate] = useState('');
-  const [endReason, setEndReason] = useState('');
+  const [retireDate, setRetireDate] = useState('');
+  const [retireReason, setRetireReason] = useState('');
   const [classSelections, setClassSelections] = useState([]);
   const [clinicTime, setClinicTime] = useState('');
   const [bookReceived, setBookReceived] = useState(false);
@@ -33,8 +34,8 @@ export const StudentFormModal = ({ isOpen, onClose, student = null, allClasses, 
       setClinicTime(student.clinicTime || '');
       setBookReceived(student.bookReceived || false);
       setRegisteredDate(student.registeredDate || '');
-      setEndDate(student.endDate || '');
-      setEndReason(student.endReason || '');
+      setRetireDate(student.retireDate || student.endDate || '');
+      setRetireReason(student.retireReason || student.endReason || '');
     } else {
       setName('');
       setSchool('');
@@ -46,24 +47,24 @@ export const StudentFormModal = ({ isOpen, onClose, student = null, allClasses, 
       setClinicTime('');
       setBookReceived(false);
       setRegisteredDate(new Date().toISOString().slice(0, 10));
-      setEndDate('');
-      setEndReason('');
+      setRetireDate('');
+      setRetireReason('');
     }
   }, [student]);
 
   useEffect(() => {
     if (status === 'inactive') {
-      if (!endDate) {
-        setEndDate(new Date().toISOString().slice(0, 10));
+      if (!retireDate) {
+        setRetireDate(new Date().toISOString().slice(0, 10));
       }
-      if (!endReason) {
-        setEndReason('종강');
+      if (!retireReason) {
+        setRetireReason('종강');
       }
       return;
     }
-    if (endDate) setEndDate('');
-    if (endReason) setEndReason('');
-  }, [status, endDate, endReason]);
+    if (retireDate) setRetireDate('');
+    if (retireReason) setRetireReason('');
+  }, [status, retireDate, retireReason]);
 
   const handleClassToggle = (classId) => {
     setClassSelections(prev => 
@@ -77,8 +78,8 @@ export const StudentFormModal = ({ isOpen, onClose, student = null, allClasses, 
     e.preventDefault();
     if (!name || !school || !grade) return;
     const isInactive = status === 'inactive';
-    const resolvedEndDate = isInactive ? (endDate || new Date().toISOString().slice(0, 10)) : null;
-    const resolvedEndReason = isInactive ? (endReason || '종강') : null;
+    const resolvedRetireDate = isInactive ? (retireDate || new Date().toISOString().slice(0, 10)) : '';
+    const resolvedRetireReason = isInactive ? (retireReason || '종강') : '';
 
     const studentData = {
       id: student ? student.id : null,
@@ -88,8 +89,8 @@ export const StudentFormModal = ({ isOpen, onClose, student = null, allClasses, 
       phone,
       parentPhone,
       status,
-      endDate: resolvedEndDate,
-      endReason: resolvedEndReason,
+      retireDate: resolvedRetireDate,
+      retireReason: resolvedRetireReason,
       classes: classSelections,
       clinicTime: clinicTime || null,
       bookReceived,
@@ -127,14 +128,15 @@ export const StudentFormModal = ({ isOpen, onClose, student = null, allClasses, 
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-sm font-medium text-gray-700">퇴원일</label>
-                <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border" />
+                <input type="date" value={retireDate} onChange={e => setRetireDate(e.target.value)} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border" />
+                <p className="text-xs text-gray-400 mt-1">퇴원일 기준 이후 수업 업데이트는 차단(정책 적용 예정)</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700">퇴원 사유</label>
-                <select value={endReason} onChange={e => setEndReason(e.target.value)} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border">
-                  <option value="종강">종강</option>
-                  <option value="중도퇴원">중도퇴원</option>
-                  <option value="전반">전반</option>
+                <select value={retireReason} onChange={e => setRetireReason(e.target.value)} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border">
+                  {RETIRE_REASONS.map((reason) => (
+                    <option key={reason} value={reason}>{reason}</option>
+                  ))}
                 </select>
               </div>
             </div>

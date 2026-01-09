@@ -416,6 +416,42 @@ export const loadViewerDataOnce = async ({
             });
         });
 
+        // ✅ (추가) student 문서의 classIds 기반으로 클래스도 합쳐서 로드한다
+        // - 퇴원 처리 과정에서 classes.students에서 학생을 빼버린 경우에도 과거 반을 유지하기 위함
+        const classIdsFromStudents = Array.from(new Set(
+            myStudents
+                .flatMap((s) => Array.isArray(s?.classIds) ? s.classIds : (Array.isArray(s?.classes) ? s.classes : []))
+                .filter(Boolean)
+                .map(String),
+        ));
+
+        // Firestore where(documentId(), 'in', ...) 는 10개 제한이 있으므로 chunk 처리
+        const chunkArrayLocal = (items, size = 10) => {
+            const chunks = [];
+            for (let i = 0; i < items.length; i += size) chunks.push(items.slice(i, i + size));
+            return chunks;
+        };
+
+        if (classIdsFromStudents.length > 0) {
+            const chunks = chunkArrayLocal(classIdsFromStudents, 10);
+
+            for (const ch of chunks) {
+                try {
+                    const snap = await getDocs(
+                        query(
+                            collection(db, 'classes'),
+                            where(documentId(), 'in', ch),
+                        ),
+                    );
+                    snap.docs.forEach((docSnap) => {
+                        myClassesMap.set(docSnap.id, { id: docSnap.id, ...docSnap.data() });
+                    });
+                } catch (e) {
+                    console.warn('[viewer] classes by classIds load skipped', e);
+                }
+            }
+        }
+
         const myClasses = Array.from(myClassesMap.values());
         if (!isCancelled()) {
             setClasses?.(myClasses);
@@ -847,11 +883,11 @@ export const loadViewerDataOnce = async ({
            homeworkAssignments
         ========================= */
         const homeworkDocs = [];
-        const pushedIds = new Set();
+        const pushedHomeworkIds = new Set();
         const pushHomeworkDocs = (docs) => {
             docs.forEach((d) => {
-                if (!pushedIds.has(d.id)) {
-                    pushedIds.add(d.id);
+                if (!pushedHomeworkIds.has(d.id)) {
+                    pushedHomeworkIds.add(d.id);
                     homeworkDocs.push({ id: d.id, ...d.data() });
                 }
             });
