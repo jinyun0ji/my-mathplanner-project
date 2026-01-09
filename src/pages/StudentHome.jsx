@@ -111,6 +111,27 @@ export default function StudentHome({
     const viewerUid = student?.authUid || userId;
     const studentDocId = studentId;
     const studentAuthUid = student?.authUid || userId;
+    const shouldFilterByEndDate = student?.status === 'inactive' && student?.endDate;
+    const isOnOrBeforeEndDate = (dateValue, endDateValue) => {
+        if (!endDateValue) return true;
+        if (!dateValue) return true;
+        return String(dateValue) <= String(endDateValue);
+    };
+    const filteredLessonLogs = useMemo(() => {
+        if (!Array.isArray(lessonLogs)) return [];
+        if (!shouldFilterByEndDate) return lessonLogs;
+        return lessonLogs.filter((log) => isOnOrBeforeEndDate(log?.date, student?.endDate));
+    }, [lessonLogs, shouldFilterByEndDate, student?.endDate]);
+    const filteredTests = useMemo(() => {
+        if (!Array.isArray(tests)) return [];
+        if (!shouldFilterByEndDate) return tests;
+        return tests.filter((test) => isOnOrBeforeEndDate(test?.date, student?.endDate));
+    }, [tests, shouldFilterByEndDate, student?.endDate]);
+    const filteredHomeworkAssignments = useMemo(() => {
+        if (!Array.isArray(homeworkAssignments)) return [];
+        if (!shouldFilterByEndDate) return homeworkAssignments;
+        return homeworkAssignments.filter((assignment) => isOnOrBeforeEndDate(assignment?.assignedDate || assignment?.date, student?.endDate));
+    }, [homeworkAssignments, shouldFilterByEndDate, student?.endDate]);
     const myClasses = useMemo(() => {
         if (!classes || !studentId) return [];
         return classes.filter(c => (c.students || []).includes(studentId));
@@ -127,16 +148,16 @@ export default function StudentHome({
         if (!studentId) return [];
         return calculateHomeworkStats(
             studentId,
-            homeworkAssignments || [],
+            filteredHomeworkAssignments || [],
             homeworkResults || [],
             { activeViewerAuthUid: userId, studentAuthUid: student?.authUid, userId, students },
         );
-    }, [studentId, homeworkAssignments, homeworkResults, student?.authUid, students, userId]);
+    }, [studentId, filteredHomeworkAssignments, homeworkResults, student?.authUid, students, userId]);
 
     const myGradeComparison = useMemo(() => {
         if (!studentId) return [];
-        return calculateGradeComparison(studentId, classes || [], tests || [], grades || {}, classTestStats || {});
-    }, [studentId, classes, tests, grades, classTestStats]);
+        return calculateGradeComparison(studentId, classes || [], filteredTests || [], grades || {}, classTestStats || {});
+    }, [studentId, classes, filteredTests, grades, classTestStats]);
 
     const pendingHomeworkCount = useMemo(
         () => myHomeworkStats.filter(h => !h.isComplete).length,
@@ -241,7 +262,7 @@ export default function StudentHome({
                 ) : selectedClassId ? (
                     <ClassroomView
                         classes={classes}
-                        lessonLogs={lessonLogs}
+                        lessonLogs={filteredLessonLogs}
                         attendanceLogs={attendanceLogs}
                         studentDocId={studentDocId}
                         studentAuthUid={studentAuthUid}
@@ -256,9 +277,9 @@ export default function StudentHome({
                         onVideoModalChange={setIsVideoModalOpen}
                         targetMemo={targetMemo}
                         onClearTargetMemo={() => setTargetMemo(null)}
-                        homeworkAssignments={homeworkAssignments}
+                        homeworkAssignments={filteredHomeworkAssignments}
                         homeworkResults={homeworkResults}
-                        tests={tests}
+                        tests={filteredTests}
                         grades={grades}
                         onNavigateToTab={(tab, subTab = 'homework') => {
                             setSelectedClassId(null);
@@ -297,7 +318,7 @@ export default function StudentHome({
                         {activeTab === 'menu' && (
                             <MenuTab 
                                 student={student} onUpdateStudent={onUpdateStudent} onLogout={onLogout}
-                                videoMemos={videoMemos} lessonLogs={lessonLogs} onLinkToMemo={handleNavigateToMemo} notices={visibleNotices}
+                                videoMemos={videoMemos} lessonLogs={filteredLessonLogs} onLinkToMemo={handleNavigateToMemo} notices={visibleNotices}
                                 setActiveTab={setActiveTab}
                             />
                         )}

@@ -9,7 +9,9 @@ export const StudentFormModal = ({ isOpen, onClose, student = null, allClasses, 
   const [grade, setGrade] = useState('');
   const [phone, setPhone] = useState('');
   const [parentPhone, setParentPhone] = useState('');
-  const [status, setStatus] = useState('재원생');
+  const [status, setStatus] = useState('active');
+  const [endDate, setEndDate] = useState('');
+  const [endReason, setEndReason] = useState('');
   const [classSelections, setClassSelections] = useState([]);
   const [clinicTime, setClinicTime] = useState('');
   const [bookReceived, setBookReceived] = useState(false);
@@ -20,29 +22,48 @@ export const StudentFormModal = ({ isOpen, onClose, student = null, allClasses, 
 
   useEffect(() => {
     if (student) {
+      const nextStatus = student.status === 'inactive' ? 'inactive' : 'active';
       setName(student.name);
       setSchool(student.school);
       setGrade(student.grade);
       setPhone(student.phone);
       setParentPhone(student.parentPhone);
-      setStatus(student.status);
+      setStatus(nextStatus);
       setClassSelections(student.classes || []);
       setClinicTime(student.clinicTime || '');
       setBookReceived(student.bookReceived || false);
       setRegisteredDate(student.registeredDate || '');
+      setEndDate(student.endDate || '');
+      setEndReason(student.endReason || '');
     } else {
       setName('');
       setSchool('');
       setGrade('고1');
       setPhone('');
       setParentPhone('');
-      setStatus('재원생');
+      setStatus('active');
       setClassSelections([]);
       setClinicTime('');
       setBookReceived(false);
       setRegisteredDate(new Date().toISOString().slice(0, 10));
+      setEndDate('');
+      setEndReason('');
     }
   }, [student]);
+
+  useEffect(() => {
+    if (status === 'inactive') {
+      if (!endDate) {
+        setEndDate(new Date().toISOString().slice(0, 10));
+      }
+      if (!endReason) {
+        setEndReason('종강');
+      }
+      return;
+    }
+    if (endDate) setEndDate('');
+    if (endReason) setEndReason('');
+  }, [status, endDate, endReason]);
 
   const handleClassToggle = (classId) => {
     setClassSelections(prev => 
@@ -55,6 +76,7 @@ export const StudentFormModal = ({ isOpen, onClose, student = null, allClasses, 
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!name || !school || !grade) return;
+    const isInactive = status === 'inactive';
 
     const studentData = {
       id: student ? student.id : null,
@@ -64,6 +86,8 @@ export const StudentFormModal = ({ isOpen, onClose, student = null, allClasses, 
       phone,
       parentPhone,
       status,
+      endDate: isInactive ? endDate || null : null,
+      endReason: isInactive ? endReason || null : null,
       classes: classSelections,
       clinicTime: clinicTime || null,
       bookReceived,
@@ -92,10 +116,27 @@ export const StudentFormModal = ({ isOpen, onClose, student = null, allClasses, 
               <div>
                 <label className="block text-sm font-medium text-gray-700">재원 상태*</label>
                 <select value={status} onChange={e => setStatus(e.target.value)} required className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border">
-                  {['재원생', '상담생', '휴원생', '퇴원생'].map(s => <option key={s} value={s}>{s}</option>)}
+                  <option value="active">재원</option>
+                  <option value="inactive">퇴원</option>
                 </select>
               </div>
           </div>
+          {status === 'inactive' && (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700">퇴원일</label>
+                <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">퇴원 사유</label>
+                <select value={endReason} onChange={e => setEndReason(e.target.value)} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border">
+                  <option value="종강">종강</option>
+                  <option value="중도퇴원">중도퇴원</option>
+                  <option value="전반">전반</option>
+                </select>
+              </div>
+            </div>
+          )}
           <div>
             <label className="block text-sm font-medium text-gray-700">학교*</label>
             <input type="text" value={school} onChange={e => setSchool(e.target.value)} required className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border" />

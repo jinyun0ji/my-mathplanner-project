@@ -20,6 +20,13 @@ export default function StudentManagement({
     
     const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
     const [selectedStudentSchedule, setSelectedStudentSchedule] = useState({ name: '', schedules: [] });
+    const isInactiveStatus = (value) => value === 'inactive' || value === '퇴원생';
+    const isActiveStatus = (value) => value === 'active' || value === '재원생';
+    const getStatusLabel = (value) => {
+        if (value === 'inactive') return '퇴원';
+        if (value === 'active') return '재원';
+        return value || '상태 미정';
+    };
 
     const shortId = (value) => {
         if (!value) return '-';
@@ -55,8 +62,10 @@ export default function StudentManagement({
                 studentClassNames.includes(studentSearchTerm)
             );
         }).sort((a, b) => {
-            if (a.status === '재원생' && b.status !== '재원생') return -1;
-            if (a.status !== '재원생' && b.status === '재원생') return 1;
+            const aActive = isActiveStatus(a.status) && !isInactiveStatus(a.status);
+            const bActive = isActiveStatus(b.status) && !isInactiveStatus(b.status);
+            if (aActive && !bActive) return -1;
+            if (!aActive && bActive) return 1;
             return b.registeredDate.localeCompare(a.registeredDate);
         });
     }, [students, studentSearchTerm, getClassesNames]);
@@ -285,8 +294,8 @@ export default function StudentManagement({
                                                     계정 연결
                                                 </span>
                                             )}
-                                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${student.status === '재원생' ? 'bg-green-50 text-green-700 ring-1 ring-green-100' : 'bg-gray-100 text-gray-500'}`}>
-                                                {student.status}
+                                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${isInactiveStatus(student.status) ? 'bg-gray-100 text-gray-500' : 'bg-green-50 text-green-700 ring-1 ring-green-100'}`}>
+                                                {getStatusLabel(student.status)}
                                             </span>
                                         </div>
                                         <p className="text-xs text-gray-500 mt-1">{student.school} • {student.grade}</p>

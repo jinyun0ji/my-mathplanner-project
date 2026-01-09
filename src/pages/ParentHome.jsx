@@ -225,6 +225,27 @@ export default function ParentHome({
     const activeChildName = activeChild?.name || '학생';
     const activeChildSchool = activeChild?.school || '학교 정보 없음';
     const activeChildGrade = activeChild?.grade || '학년 정보 없음';
+    const shouldFilterByEndDate = activeChild?.status === 'inactive' && activeChild?.endDate;
+    const isOnOrBeforeEndDate = (dateValue, endDateValue) => {
+        if (!endDateValue) return true;
+        if (!dateValue) return true;
+        return String(dateValue) <= String(endDateValue);
+    };
+    const filteredLessonLogs = useMemo(() => {
+        if (!Array.isArray(lessonLogs)) return [];
+        if (!shouldFilterByEndDate) return lessonLogs;
+        return lessonLogs.filter((log) => isOnOrBeforeEndDate(log?.date, activeChild?.endDate));
+    }, [lessonLogs, shouldFilterByEndDate, activeChild?.endDate]);
+    const filteredTests = useMemo(() => {
+        if (!Array.isArray(tests)) return [];
+        if (!shouldFilterByEndDate) return tests;
+        return tests.filter((test) => isOnOrBeforeEndDate(test?.date, activeChild?.endDate));
+    }, [tests, shouldFilterByEndDate, activeChild?.endDate]);
+    const filteredHomeworkAssignments = useMemo(() => {
+        if (!Array.isArray(homeworkAssignments)) return [];
+        if (!shouldFilterByEndDate) return homeworkAssignments;
+        return homeworkAssignments.filter((assignment) => isOnOrBeforeEndDate(assignment?.assignedDate || assignment?.date, activeChild?.endDate));
+    }, [homeworkAssignments, shouldFilterByEndDate, activeChild?.endDate]);
 
     // 2. 데이터 필터링
     const myClasses = useMemo(() => classes.filter(c => (c.students || []).includes(activeChildId)), [classes, activeChildId]);
@@ -238,13 +259,13 @@ export default function ParentHome({
     const myHomeworkStats = useMemo(
         () => calculateHomeworkStats(
             activeChildId,
-            homeworkAssignments,
+            filteredHomeworkAssignments,
             homeworkResults,
             { activeViewerAuthUid: activeChild?.authUid, studentAuthUid: activeChild?.authUid, activeStudentId: activeChildId, students },
         ),
-        [activeChild?.authUid, activeChildId, homeworkAssignments, homeworkResults, students],
+        [activeChild?.authUid, activeChildId, filteredHomeworkAssignments, homeworkResults, students],
     );
-    const myGradeComparison = useMemo(() => calculateGradeComparison(activeChildId, classes, tests, grades, classTestStats), [activeChildId, classes, tests, grades, classTestStats]);
+    const myGradeComparison = useMemo(() => calculateGradeComparison(activeChildId, classes, filteredTests, grades, classTestStats), [activeChildId, classes, filteredTests, grades, classTestStats]);
     const isPaymentFeatureLocked = true;
     const myPayments = useMemo(() => [], []);
     const unpaidPayments = [];
@@ -583,10 +604,10 @@ export default function ParentHome({
 
     const myLessonLogs = useMemo(() => {
         const myClassIds = myClasses.map(c => c.id);
-        return lessonLogs
+        return filteredLessonLogs
             .filter(log => myClassIds.includes(log.classId))
             .sort((a, b) => new Date(b.date) - new Date(a.date));
-    }, [lessonLogs, myClasses]);
+    }, [filteredLessonLogs, myClasses]);
 
     const isValidNumber = (n) => typeof n === 'number' && Number.isFinite(n);
 
@@ -608,7 +629,7 @@ export default function ParentHome({
     };
 
     const recentLessons = useMemo(() => {
-        const contextData = { lessonLogs, attendanceLogs, homeworkAssignments, homeworkResults, tests, grades, classes };
+        const contextData = { lessonLogs: filteredLessonLogs, attendanceLogs, homeworkAssignments: filteredHomeworkAssignments, homeworkResults, tests: filteredTests, grades, classes };
         return myLessonLogs
             .map((log) => {
                 const report = generateSessionReport(log.id, activeChildId, contextData);
@@ -647,7 +668,7 @@ export default function ParentHome({
             })
             .sort((a, b) => new Date(b.date) - new Date(a.date))
             .slice(0, 5);
-    }, [myLessonLogs, activeChildId, lessonLogs, attendanceLogs, homeworkAssignments, homeworkResults, tests, grades, classes]);
+    }, [myLessonLogs, activeChildId, filteredLessonLogs, attendanceLogs, filteredHomeworkAssignments, homeworkResults, filteredTests, grades, classes]);
 
     const recentLessonsToShow = useMemo(() => recentLessons.slice(0, 2), [recentLessons]);
 
@@ -699,7 +720,7 @@ export default function ParentHome({
 
     const testsBySelectedClass = useMemo(() => {
         if (!selectedClassId) return [];
-        return (tests || [])
+        return (filteredTests || [])
             .filter((test) => String(test.classId) === String(selectedClassId))
             .map((test) => {
                 const studentRecord = grades?.[activeChildId]?.[test.id] || {};
@@ -726,14 +747,14 @@ export default function ParentHome({
                 };
             })
             .sort((a, b) => new Date(b.date) - new Date(a.date));
-    }, [tests, grades, activeChildId, selectedClassId, classTestStats]);
+    }, [filteredTests, grades, activeChildId, selectedClassId, classTestStats]);
 
     // ✅ 리포트 데이터 생성 (현재 선택된 리포트 ID가 있을 때만)
     const activeReport = useMemo(() => {
         if (!selectedReportId) return null;
-        const contextData = { lessonLogs, attendanceLogs, homeworkAssignments, homeworkResults, tests, grades, classes };
+        const contextData = { lessonLogs: filteredLessonLogs, attendanceLogs, homeworkAssignments: filteredHomeworkAssignments, homeworkResults, tests: filteredTests, grades, classes };
         return generateSessionReport(selectedReportId, activeChildId, contextData);
-    }, [selectedReportId, activeChildId, lessonLogs, attendanceLogs, homeworkAssignments, homeworkResults, tests, grades, classes]);
+    }, [selectedReportId, activeChildId, filteredLessonLogs, attendanceLogs, filteredHomeworkAssignments, homeworkResults, filteredTests, grades, classes]);
 
     const navItems = [
         { id: 'home', icon: 'home', label: '홈' },
@@ -787,10 +808,10 @@ export default function ParentHome({
                 ) : selectedClassroomId ? (
                     /* [라우팅 분기 2] 강의실 화면 */
                     <ParentClassroomView 
-                        classes={classes} lessonLogs={lessonLogs} attendanceLogs={attendanceLogs}
+                        cclasses={classes} lessonLogs={filteredLessonLogs} attendanceLogs={attendanceLogs}
                         selectedClassId={selectedClassroomId} setSelectedClassId={setSelectedClassroomId}
-                        videoProgress={videoProgress} homeworkAssignments={homeworkAssignments} homeworkResults={homeworkResults}
-                        tests={tests} grades={grades}
+                        videoProgress={videoProgress} homeworkAssignments={filteredHomeworkAssignments} homeworkResults={homeworkResults}
+                        tests={filteredTests} grades={grades}
                         onNavigateToTab={() => { setSelectedClassroomId(null); setActiveTab('report'); }}
                         onOpenReport={(sessionId) => setSelectedReportId(sessionId)}
                         activeStudentName={activeChildName}

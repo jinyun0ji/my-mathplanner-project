@@ -477,9 +477,13 @@ export default function AppRoutes({ user, role, studentIds }) {
   const handleSaveStudent = async (data, isEdit) => {
       ensureFirestoreContext();
       try {
-        const nextClassIds = Array.isArray(data.classes) ? data.classes : [];
+          const nextClassIds = Array.isArray(data.classes) ? data.classes : [];
+          const isInactive = data.status === 'inactive';
           const payload = {
               ...stripId(data),
+              status: isInactive ? 'inactive' : 'active',
+              endDate: isInactive ? data.endDate || null : null,
+              endReason: isInactive ? data.endReason || null : null,
               authUid: data.studentId || data.authUid || null,
           };
           const studentPayload = {
