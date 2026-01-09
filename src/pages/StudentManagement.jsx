@@ -20,6 +20,10 @@ export default function StudentManagement({
     
     const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
     const [selectedStudentSchedule, setSelectedStudentSchedule] = useState({ name: '', schedules: [] });
+    const [retireModal, setRetireModal] = useState({ isOpen: false, student: null, classId: null });
+    const [retireDate, setRetireDate] = useState(new Date().toISOString().slice(0, 10));
+    const [retireReason, setRetireReason] = useState('종강');
+    const todayString = useMemo(() => new Date().toISOString().slice(0, 10), []);
     const isInactiveStatus = (value) => value === 'inactive' || value === '퇴원생';
     const isActiveStatus = (value) => value === 'active' || value === '재원생';
     const getStatusLabel = (value) => {
@@ -82,15 +86,34 @@ export default function StudentManagement({
     };
 
     const handleWithdrawClick = (student, classId) => {
-        if (!handleUpdateStudentClassStatus) return;
-        const confirmed = window.confirm('퇴원 처리하면 수강중 목록에서 제거되고, 기존 기록은 유지됩니다. 진행할까요?');
-        if (!confirmed) return;
-        handleUpdateStudentClassStatus({ studentId: student.id, classId, status: 'withdrawn' });
+        setRetireModal({ isOpen: true, student, classId });
+        setRetireDate(todayString);
+        setRetireReason('종강');
     };
 
     const handleRestoreClick = (student, classId) => {
         if (!handleUpdateStudentClassStatus) return;
         handleUpdateStudentClassStatus({ studentId: student.id, classId, status: 'active' });
+    };
+
+    const handleRetireSave = async () => {
+        if (!retireModal.student || !handleSaveStudent) return;
+        try {
+            await handleSaveStudent({
+                ...retireModal.student,
+                status: 'inactive',
+                endDate: retireDate,
+                endReason: retireReason,
+            });
+            setRetireModal({ isOpen: false, student: null, classId: null });
+        } catch (error) {
+            console.error('퇴원 처리 저장 실패', error);
+            alert('저장 실패');
+        }
+    };
+
+    const closeRetireModal = () => {
+        setRetireModal({ isOpen: false, student: null, classId: null });
     };
 
     return (
@@ -418,7 +441,48 @@ export default function StudentManagement({
 
             <StudentFormModal isOpen={isStudentModalOpen} onClose={() => setIsStudentModalOpen(false)} student={studentToEdit} allClasses={classes} onSave={handleSaveStudent} />
             <MemoModal isOpen={memoModalState.isOpen} onClose={closeMemoModal} onSave={handleSaveMemo} studentId={memoModalState.studentId} initialContent={memoModalState.content} studentName={memoModalState.studentName} />
-            
+            <Modal isOpen={retireModal.isOpen} onClose={closeRetireModal} title="퇴원 처리">
+                <div className="space-y-4">
+                    <div className="space-y-2">
+                        <label className="text-sm font-semibold text-gray-700">퇴원일</label>
+                        <input
+                            type="date"
+                            value={retireDate}
+                            onChange={(e) => setRetireDate(e.target.value)}
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-indigo-600 focus:ring-2 focus:ring-indigo-200"
+                        />
+                    </div>
+                    <div className="space-y-2">
+                        <label className="text-sm font-semibold text-gray-700">퇴원 사유</label>
+                        <select
+                            value={retireReason}
+                            onChange={(e) => setRetireReason(e.target.value)}
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-indigo-600 focus:ring-2 focus:ring-indigo-200"
+                        >
+                            <option value="종강">종강</option>
+                            <option value="중도퇴원">중도퇴원</option>
+                            <option value="전반">전반</option>
+                        </select>
+                    </div>
+                    <div className="flex justify-end gap-2 pt-2">
+                        <button
+                            type="button"
+                            onClick={closeRetireModal}
+                            className="px-4 py-2 rounded-lg bg-gray-100 text-gray-700 text-sm font-semibold hover:bg-gray-200 transition-colors"
+                        >
+                            취소
+                        </button>
+                        <button
+                            type="button"
+                            onClick={handleRetireSave}
+                            className="px-4 py-2 rounded-lg bg-indigo-900 text-white text-sm font-semibold hover:bg-indigo-800 transition-colors"
+                        >
+                            저장
+                        </button>
+                    </div>
+                </div>
+            </Modal>
+
             {/* ✅ [수정] 타학원 시간표 모달: 정보 전체 표시 */}
             <Modal isOpen={scheduleModalOpen} onClose={() => setScheduleModalOpen(false)} title={`${selectedStudentSchedule.name} 학생 타학원 시간표`}>
                 <div className="space-y-4 max-h-[60vh] overflow-y-auto p-1">
