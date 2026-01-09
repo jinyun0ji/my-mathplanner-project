@@ -91,6 +91,47 @@ const normalizeStudentUser = (user) => {
     };
 };
 
+const toDateString = (value) => {
+    if (!value) return null;
+    if (typeof value === 'string') return value.slice(0, 10);
+    if (typeof value?.toDate === 'function') return value.toDate().toISOString().slice(0, 10);
+    try {
+        return new Date(value).toISOString().slice(0, 10);
+    } catch (error) {
+        return null;
+    }
+};
+
+const isOnOrBefore = (dateValue, endDateValue) => {
+    const date = toDateString(dateValue);
+    const endDate = toDateString(endDateValue);
+    if (!date || !endDate) return true;
+    return date <= endDate;
+};
+
+const buildInactiveEndDateMap = (students = []) => {
+    const map = new Map();
+    students.forEach((student) => {
+        if (!student || student.status !== 'inactive' || !student.endDate) return;
+        const endDate = toDateString(student.endDate);
+        if (!endDate) return;
+        const studentId = student.id ? String(student.id) : null;
+        const authUid = student.authUid ? String(student.authUid) : null;
+        if (studentId) map.set(studentId, endDate);
+        if (authUid) map.set(authUid, endDate);
+    });
+    return map;
+};
+
+const resolveStudentEndDate = (map, keys = []) => {
+    for (const key of keys) {
+        if (!key) continue;
+        const value = map.get(String(key));
+        if (value) return value;
+    }
+    return null;
+};
+
 const dedupeStudentsByAuthUid = (students = []) => {
     const map = new Map();
     students.forEach((student) => {
@@ -326,6 +367,8 @@ export const loadViewerDataOnce = async ({
             setStudents?.(myStudents);
         }
 
+        const inactiveEndDateMap = buildInactiveEndDateMap(myStudents);
+        const resolveRecordEndDate = (recordKeys = []) => resolveStudentEndDate(inactiveEndDateMap, recordKeys);
         console.log('[viewer] myStudents ids =', myStudents.map((s) => s.id));
 
         const scopedStudentUids = Array.from(new Set([
@@ -334,6 +377,12 @@ export const loadViewerDataOnce = async ({
         ])).slice(0, 10);
 
         console.log('[viewer] scopedStudentUids =', scopedStudentUids);
+
+        const activeStudentEndDate = resolveStudentEndDate(inactiveEndDateMap, [
+            activeStudentId,
+            scopedStudentUids[0],
+            userId,
+        ]);
 
         const scopedStudentAuthUids = Array.from(new Set([
             ...(userRole === 'student' ? [userId] : []),
@@ -385,7 +434,19 @@ export const loadViewerDataOnce = async ({
                 'attendanceLogs fetchList',
                 db,
                 'attendanceLogs',
-                setAttendanceLogs,
+                (items) => {
+                    const filtered = inactiveEndDateMap.size > 0
+                        ? items.filter((record) => {
+                            const endDate = resolveRecordEndDate([
+                                record?.studentId,
+                                record?.studentUid,
+                                record?.authUid,
+                            ]);
+                            return endDate ? isOnOrBefore(record?.date, endDate) : true;
+                        })
+                        : items;
+                    setAttendanceLogs?.(filtered);
+                },
                 query(
                     collection(db, 'attendanceLogs'),
                     where('studentUid', 'in', scopedStudentUids),
@@ -473,6 +534,8 @@ export const loadViewerDataOnce = async ({
         lessonLogs / tests
         ========================= */
         let viewerTests = [];
+        let filteredTests = [];
+        let allowedTestIds = null;
 
         const lessonClassIds = myClasses.map(c => c.id).slice(0, 10);
 
@@ -481,7 +544,12 @@ export const loadViewerDataOnce = async ({
                 'lessonLogs fetchList',
                 db,
                 'lessonLogs',
-                setLessonLogs,
+                (items) => {
+                    const filtered = activeStudentEndDate
+                        ? items.filter((record) => isOnOrBefore(record?.date, activeStudentEndDate))
+                        : items;
+                    setLessonLogs?.(filtered);
+                },
                 query(
                     collection(db, 'lessonLogs'),
                     where('classId', 'in', lessonClassIds),
@@ -504,8 +572,12 @@ export const loadViewerDataOnce = async ({
             );
 
             viewerTests = testSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-            setTests?.(viewerTests);
-            warnOnQuestionScores(viewerTests, 'viewer');
+            filteredTests = activeStudentEndDate
+                ? viewerTests.filter((test) => isOnOrBefore(test?.date, activeStudentEndDate))
+                : viewerTests;
+            setTests?.(filteredTests);
+            warnOnQuestionScores(filteredTests, 'viewer');
+            allowedTestIds = activeStudentEndDate ? new Set(filteredTests.map((test) => test.id)) : null;
 
              /* =========================
                classTestStats (viewer: student/parent)
@@ -561,6 +633,7 @@ export const loadViewerDataOnce = async ({
                     const { authUid: sId, testId } = data;
 
                     if (!sId || !testId) return;
+                    if (allowedTestIds && !allowedTestIds.has(testId)) return;
 
                     if (!mappedGrades[sId]) mappedGrades[sId] = {};
                     mappedGrades[sId][testId] = data;
@@ -591,6 +664,12 @@ export const loadViewerDataOnce = async ({
                 homeworkSnap.docs.forEach((docSnap) => {
                     const data = docSnap.data();
                     const { authUid: sId, assignmentId } = data;
+                    if (activeStudentEndDate && assignmentId) {
+                        const recordDate = data?.date || data?.updatedAt || data?.createdAt;
+                        if (recordDate && !isOnOrBefore(recordDate, activeStudentEndDate)) {
+                            return;
+                        }
+                    }
                     if (!mapped[sId]) mapped[sId] = {};
                     mapped[sId][assignmentId] = data.results || data;
                 });
@@ -734,6 +813,21 @@ export const loadViewerDataOnce = async ({
         if (!isCancelled()) {
             const merged = announcementDocs
                 .map((d) => ({ id: d.id, ...d.data() }))
+                .filter((notice) => {
+                    if (!inactiveEndDateMap.size) return true;
+                    const activeEndDate = resolveStudentEndDate(inactiveEndDateMap, [
+                        activeStudentDocId,
+                        activeViewerAuthUid,
+                    ]);
+                    if (!activeEndDate) return true;
+                    const hasClassTargets = Array.isArray(notice?.targetClasses)
+                        && notice.targetClasses.length > 0;
+                    if (!hasClassTargets) return true;
+                    if (notice?.isPublic === true) return true;
+                    const noticeTargets = Array.isArray(notice?.targetStudents) ? notice.targetStudents.map(String) : [];
+                    const isPersonalTarget = noticeTargets.some((key) => targetStudentKeys.includes(String(key)));
+                    return isPersonalTarget;
+                })
                 .sort((a, b) => {
                     // date가 "YYYY-MM-DD" string인 경우 우선, 없으면 createdAt/updatedAt fallback
                     const da = a.date || '';
@@ -802,7 +896,10 @@ export const loadViewerDataOnce = async ({
                 const dbb = b.date || b.assignedDate || b.createdAt?.toDate?.() || b.createdAt;
                 return new Date(dbb || 0) - new Date(da || 0);
             });
-            setHomeworkAssignments?.(sortedHomework);
+            const filteredHomework = activeStudentEndDate
+                ? sortedHomework.filter((assignment) => isOnOrBefore(assignment?.date || assignment?.assignedDate, activeStudentEndDate))
+                : sortedHomework;
+            setHomeworkAssignments?.(filteredHomework);
         }
 
         /* =========================

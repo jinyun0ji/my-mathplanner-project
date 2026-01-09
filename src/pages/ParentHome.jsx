@@ -263,6 +263,7 @@ export default function ParentHome({
     const [reportViewMode, setReportViewMode] = useState('overview'); // 'overview' | 'byClass'
     const [selectedClassId, setSelectedClassId] = useState(null);
     const [expandedSections, setExpandedSections] = useState({ homework: false, grades: false });
+    const [showAttendanceDetail, setShowAttendanceDetail] = useState(false);
     const [selectedReportId, _setSelectedReportId] = useState(readReportFromUrl());
 
     // ✅ URL -> state (브라우저 뒤로/앞으로로 URL이 바뀌면 화면도 따라감)
@@ -375,6 +376,7 @@ export default function ParentHome({
         setSelectedClassId(null);
         setSelectedReportId(null, { replace: true });
         setExpandedSections({ homework: false, grades: false });
+        setShowAttendanceDetail(false);
         setReportViewMode('overview');
         setActiveTab('home', { replace: true });
     }, [activeStudentId]);
@@ -678,6 +680,8 @@ export default function ParentHome({
         return recentLessons.filter((lesson) => String(lesson.classId) === String(selectedClassId));
     }, [recentLessons, selectedClassId]);
 
+    const latestLessonBySelectedClass = lessonsBySelectedClass[0] ?? null;
+
     const homeworkBySelectedClass = useMemo(() => {
         if (!selectedClassId) return [];
         return myHomeworkStats
@@ -935,7 +939,13 @@ export default function ParentHome({
                                                     <p className="text-sm text-gray-600">최근 기록 위주로 빠르게 확인하세요.</p>
                                                 </div>
                                                 <button
-                                                    onClick={() => { setReportViewMode('byClass'); setSelectedClassId(null); setExpandedSections({ homework: false, grades: false }); }}
+                                                    onClick={() => {
+                                                        setReportViewMode('byClass');
+                                                        setSelectedClassId(null);
+                                                        setExpandedSections({ homework: false, grades: false });
+                                                        setShowAttendanceDetail(false);
+                                                    }}
+
                                                     className="text-xs font-bold text-indigo-700 bg-indigo-50 px-3 py-1.5 rounded-full border border-indigo-100 hover:bg-indigo-100"
                                                 >
                                                     클래스별 기록 보기
@@ -970,29 +980,6 @@ export default function ParentHome({
                                                                     label={shouldShowTest(lesson.attendance) ? (lesson.testStatus ?? '시험 정보 없음') : '시험 없음'}
                                                                     tone={shouldShowTest(lesson.attendance) && lesson.testStatus === '미응시' ? 'warning' : 'default'}
                                                                 />
-                                                            </div>
-                                                            <div className="flex flex-wrap gap-2 mt-2">
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => setAttendanceDetailTarget({ ...lesson, studentId: activeChildId })}
-                                                                    className="px-3 py-1.5 rounded-full border border-gray-200 text-xs font-semibold text-gray-700 bg-gray-50 hover:bg-gray-100 active:scale-95 transition"
-                                                                >
-                                                                    출결 상세
-                                                                </button>
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => setSelectedReportId(lesson.id)}
-                                                                    className="px-3 py-1.5 rounded-full border border-indigo-200 text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 active:scale-95 transition"
-                                                                >
-                                                                    과제 상세
-                                                                </button>
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => setSelectedReportId(lesson.id)}
-                                                                    className="px-3 py-1.5 rounded-full border border-blue-200 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 active:scale-95 transition"
-                                                                >
-                                                                    성적 상세
-                                                                </button>
                                                             </div>
                                                         </div>
                                                     ))}
@@ -1080,7 +1067,12 @@ export default function ParentHome({
                                                 {classList.map((cls) => (
                                                     <button
                                                         key={cls.id}
-                                                        onClick={() => { setReportViewMode('byClass'); setSelectedClassId(cls.id); setExpandedSections({ homework: false, grades: false }); }}
+                                                        onClick={() => {
+                                                            setReportViewMode('byClass');
+                                                            setSelectedClassId(cls.id);
+                                                            setExpandedSections({ homework: false, grades: false });
+                                                            setShowAttendanceDetail(false);
+                                                        }}
                                                         className="text-left bg-white border border-gray-100 rounded-2xl p-4 shadow-sm space-y-3 hover:border-indigo-200 transition"
                                                     >
                                                         <div className="flex items-start justify-between gap-3">
@@ -1114,7 +1106,11 @@ export default function ParentHome({
                                                         클래스별 기록 보기
                                                     </h3>
                                                     <button
-                                                        onClick={() => { setReportViewMode('overview'); setExpandedSections({ homework: false, grades: false }); }}
+                                                        onClick={() => {
+                                                            setReportViewMode('overview');
+                                                            setExpandedSections({ homework: false, grades: false });
+                                                            setShowAttendanceDetail(false);
+                                                        }}
                                                         className="text-xs text-gray-500 underline"
                                                     >
                                                         학습리포트로 돌아가기
@@ -1124,7 +1120,11 @@ export default function ParentHome({
                                                     {classList.map((cls) => (
                                                         <button
                                                             key={cls.id}
-                                                            onClick={() => { setSelectedClassId(cls.id); setExpandedSections({ homework: false, grades: false }); }}
+                                                            onClick={() => {
+                                                                setSelectedClassId(cls.id);
+                                                                setExpandedSections({ homework: false, grades: false });
+                                                                setShowAttendanceDetail(false);
+                                                            }}
                                                             className="text-left bg-white border border-gray-100 rounded-2xl p-4 shadow-sm space-y-3 hover:border-indigo-200 transition"
                                                         >
                                                             <div className="flex items-start justify-between gap-3">
@@ -1148,13 +1148,22 @@ export default function ParentHome({
                                                 <div className="flex flex-wrap items-center justify-between gap-3">
                                                     <div className="flex items-center gap-2">
                                                         <button
-                                                            onClick={() => { setSelectedClassId(null); setExpandedSections({ homework: false, grades: false }); }}
+                                                            onClick={() => {
+                                                                setSelectedClassId(null);
+                                                                setExpandedSections({ homework: false, grades: false });
+                                                                setShowAttendanceDetail(false);
+                                                            }}
                                                             className="text-xs text-gray-600 hover:underline flex items-center gap-1"
                                                         >
                                                             <Icon name="chevronLeft" className="w-4 h-4" /> 전체 반 목록으로 돌아가기
                                                         </button>
                                                         <button
-                                                            onClick={() => { setReportViewMode('overview'); setSelectedClassId(null); setExpandedSections({ homework: false, grades: false }); }}
+                                                            onClick={() => {
+                                                                setReportViewMode('overview');
+                                                                setSelectedClassId(null);
+                                                                setExpandedSections({ homework: false, grades: false });
+                                                                setShowAttendanceDetail(false);
+                                                            }}
                                                             className="text-xs text-gray-400 underline"
                                                         >
                                                             학습리포트로 돌아가기
@@ -1190,29 +1199,6 @@ export default function ParentHome({
                                                                         tone={shouldShowTest(lesson.attendance) && lesson.testStatus === '미응시' ? 'warning' : 'default'}
                                                                     />
                                                                 </div>
-                                                                <div className="flex flex-wrap gap-2 mt-2">
-                                                                    <button
-                                                                        type="button"
-                                                                        onClick={() => setAttendanceDetailTarget({ ...lesson, studentId: activeChildId })}
-                                                                        className="px-3 py-1.5 rounded-full border border-gray-200 text-xs font-semibold text-gray-700 bg-gray-50 hover:bg-gray-100 active:scale-95 transition"
-                                                                    >
-                                                                        출결 상세
-                                                                    </button>
-                                                                    <button
-                                                                        type="button"
-                                                                        onClick={() => setSelectedReportId(lesson.id)}
-                                                                        className="px-3 py-1.5 rounded-full border border-indigo-200 text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 active:scale-95 transition"
-                                                                    >
-                                                                        과제 상세
-                                                                    </button>
-                                                                    <button
-                                                                        type="button"
-                                                                        onClick={() => setSelectedReportId(lesson.id)}
-                                                                        className="px-3 py-1.5 rounded-full border border-blue-200 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 active:scale-95 transition"
-                                                                    >
-                                                                        성적 상세
-                                                                    </button>
-                                                                </div>
                                                             </div>
                                                         ))}
                                                         {lessonsBySelectedClass.length === 0 && (
@@ -1221,6 +1207,34 @@ export default function ParentHome({
                                                             </div>
                                                         )}
                                                     </div>
+                                                </div>
+
+                                                <div className="bg-white border border-gray-100 rounded-2xl shadow-sm">
+                                                    <button
+                                                        className="w-full flex items-center justify-between px-4 py-3 text-left"
+                                                        onClick={() => setShowAttendanceDetail((v) => !v)}
+                                                    >
+                                                        <span className="text-sm font-bold text-gray-900">출결 상세</span>
+                                                        <Icon name={showAttendanceDetail ? 'chevronUp' : 'chevronDown'} className="w-4 h-4 text-gray-500" />
+                                                    </button>
+                                                    {showAttendanceDetail && (
+                                                        <div className="p-4">
+                                                            {latestLessonBySelectedClass?.attendance ? (
+                                                                <div>
+                                                                    <div>출결 상태: {latestLessonBySelectedClass.attendance}</div>
+                                                                    {latestLessonBySelectedClass.attendanceMemo && (
+                                                                        <div className="text-sm text-gray-600 mt-1">
+                                                                            {latestLessonBySelectedClass.attendanceMemo}
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            ) : (
+                                                                <div className="text-sm text-gray-500">
+                                                                    출결 기록이 없습니다.
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
                                                 </div>
 
                                                 <div className="bg-white border border-gray-100 rounded-2xl shadow-sm">
