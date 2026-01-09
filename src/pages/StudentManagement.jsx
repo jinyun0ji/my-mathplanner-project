@@ -1,9 +1,13 @@
 // src/pages/StudentManagement.jsx
 import React, { useEffect, useState, useMemo } from 'react';
+import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { Icon } from '../utils/helpers';
 import { StudentFormModal } from '../utils/modals/StudentFormModal';
 import { MemoModal } from '../utils/modals/MemoModal';
 import { Modal } from '../components/common/Modal'; 
+import { db } from '../firebase/client';
+
+const RETIRE_REASONS = ['종강', '중도퇴원', '전반'];
 
 export default function StudentManagement({
     students, classes, getClassesNames, handleSaveStudent, handleDeleteStudent,
@@ -96,12 +100,24 @@ export default function StudentManagement({
         handleUpdateStudentClassStatus({ studentId: student.id, classId, status: 'active' });
     };
 
+    const retireStudentOnlyUpdate = async (student, { endDate, endReason }) => {
+        if (!student?.id) throw new Error('retireStudentOnlyUpdate: missing student.id');
+
+        const safeReason = RETIRE_REASONS.includes(endReason) ? endReason : '종강';
+        const safeDate = endDate || new Date().toISOString().slice(0, 10);
+
+        await updateDoc(doc(db, 'users', student.id), {
+            status: 'inactive',
+            endDate: safeDate,
+            endReason: safeReason,
+            updatedAt: serverTimestamp(),
+        });
+    };
+
     const handleRetireSave = async () => {
-        if (!retireModal.student || !handleSaveStudent) return;
+        if (!retireModal.student) return;
         try {
-            await handleSaveStudent({
-                ...retireModal.student,
-                status: 'inactive',
+            await retireStudentOnlyUpdate(retireModal.student, {
                 endDate: retireDate,
                 endReason: retireReason,
             });
