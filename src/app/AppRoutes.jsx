@@ -49,6 +49,7 @@ import {
     arrayUnion,
     collection,
     deleteDoc,
+    deleteField,
     doc,
     getDoc,
     getDocs,
@@ -479,13 +480,20 @@ export default function AppRoutes({ user, role, studentIds }) {
       try {
           const nextClassIds = Array.isArray(data.classes) ? data.classes : [];
           const isInactive = data.status === 'inactive';
+          const today = new Date().toISOString().slice(0, 10);
+          const { endDate: incomingEndDate, endReason: incomingEndReason, ...rest } = stripId(data);
           const payload = {
-              ...stripId(data),
+              ...rest,
               status: isInactive ? 'inactive' : 'active',
-              endDate: isInactive ? data.endDate || null : null,
-              endReason: isInactive ? data.endReason || null : null,
               authUid: data.studentId || data.authUid || null,
           };
+          if (isInactive) {
+              payload.endDate = incomingEndDate || today;
+              payload.endReason = incomingEndReason || '종강';
+          } else if (isEdit) {
+              payload.endDate = deleteField();
+              payload.endReason = deleteField();
+          }
           const studentPayload = {
               ...payload,
               role: ROLE.STUDENT,

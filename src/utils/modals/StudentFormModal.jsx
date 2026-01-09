@@ -77,6 +77,8 @@ export const StudentFormModal = ({ isOpen, onClose, student = null, allClasses, 
     e.preventDefault();
     if (!name || !school || !grade) return;
     const isInactive = status === 'inactive';
+    const resolvedEndDate = isInactive ? (endDate || new Date().toISOString().slice(0, 10)) : null;
+    const resolvedEndReason = isInactive ? (endReason || '종강') : null;
 
     const studentData = {
       id: student ? student.id : null,
@@ -86,8 +88,8 @@ export const StudentFormModal = ({ isOpen, onClose, student = null, allClasses, 
       phone,
       parentPhone,
       status,
-      endDate: isInactive ? endDate || null : null,
-      endReason: isInactive ? endReason || null : null,
+      endDate: resolvedEndDate,
+      endReason: resolvedEndReason,
       classes: classSelections,
       clinicTime: clinicTime || null,
       bookReceived,
