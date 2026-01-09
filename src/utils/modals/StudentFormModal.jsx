@@ -78,6 +78,10 @@ export const StudentFormModal = ({ isOpen, onClose, student = null, allClasses, 
     e.preventDefault();
     if (!name || !school || !grade) return;
     const isInactive = status === 'inactive';
+    if (isInactive && !endDate) {
+      alert('퇴원일을 입력해주세요.');
+      return;
+    }
     const resolvedEndDate = isInactive ? (endDate || new Date().toISOString().slice(0, 10)) : '';
     const resolvedEndReason = isInactive ? (endReason || '종강') : '';
 

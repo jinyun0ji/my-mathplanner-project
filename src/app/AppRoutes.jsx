@@ -496,10 +496,9 @@ export default function AppRoutes({ user, role, studentIds }) {
           if (isInactive) {
               payload.endDate = resolvedEndDate;
               payload.endReason = resolvedEndReason;
-              if (isEdit) {
-                  payload.endDate = deleteField();
-                  payload.endReason = deleteField();
-              }
+          } else if (isEdit) {
+              payload.endDate = deleteField();
+              payload.endReason = deleteField();
           }
           const studentPayload = {
               ...payload,

@@ -304,7 +304,7 @@ export default function StudentHome({
                         {activeTab === 'schedule' && (
                             <ScheduleTab
                                 myClasses={myClasses} externalSchedules={externalSchedules} attendanceLogs={attendanceLogs}
-                                studentId={studentId} onSaveExternalSchedule={onSaveExternalSchedule} onDeleteExternalSchedule={onDeleteExternalSchedule} clinicLogs={clinicLogs}
+                                studentId={studentId} student={student} onSaveExternalSchedule={onSaveExternalSchedule} onDeleteExternalSchedule={onDeleteExternalSchedule} clinicLogs={clinicLogs}
                             />
                         )}
                         {activeTab === 'learning' && (

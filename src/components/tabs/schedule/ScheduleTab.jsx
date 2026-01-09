@@ -5,7 +5,7 @@ import { useParentContext } from '../../../parent';
 import { isClassOngoing } from '../../../utils/classStatus';
 
 export default function ScheduleTab({
-    myClasses, externalSchedules, attendanceLogs, clinicLogs, studentId,
+    myClasses, externalSchedules, attendanceLogs, clinicLogs, studentId, student,
     onSaveExternalSchedule, onDeleteExternalSchedule
 }) {
     const { activeStudentId } = useParentContext();
@@ -90,6 +90,17 @@ export default function ScheduleTab({
         if (!m) return null;
         const [, y, mo, da] = m;
         return startOfDay(new Date(Number(y), Number(mo) - 1, Number(da)));
+    };
+
+    const cutoffDate = student?.status === 'inactive' ? parseLocalYmd(student?.endDate) : null;
+    const isAfterCutoff = (dateObj) => {
+        if (!cutoffDate || !dateObj) return false;
+        return startOfDay(dateObj) > cutoffDate;
+    };
+    const isLogAfterCutoff = (dateStr) => {
+        if (!cutoffDate || !dateStr) return false;
+        const parsed = parseLocalYmd(dateStr);
+        return parsed ? parsed > cutoffDate : false;
     };
 
     const isDateInRange = (dateObj, startDateStr, endDateStr) => {
@@ -268,10 +279,14 @@ export default function ScheduleTab({
         const dateStr = formatDate(date);
         const dayOfWeek = weekDays[date.getDay()];
 
-        const dayClasses = myClasses.filter(cls =>
-            isClassActiveOnDate(cls, date) &&
-            resolveClassSchedule(cls).days.includes(dayOfWeek)
-        );
+        const isPastCutoff = isAfterCutoff(date);
+
+        const dayClasses = isPastCutoff
+            ? []
+            : myClasses.filter(cls =>
+                isClassActiveOnDate(cls, date) &&
+                resolveClassSchedule(cls).days.includes(dayOfWeek)
+            );
 
         // ✅ 여기 수정: 로컬 날짜 파싱 + startOfDay 비교
         const myExternal = safeExternalSchedules.filter(s => {
@@ -289,7 +304,11 @@ export default function ScheduleTab({
             : [];
 
         const logs = attendanceLogs
-            ? attendanceLogs.filter(log => normalizeId(log.studentId) === normalizeId(resolvedStudentId) && log.date === dateStr)
+            ? attendanceLogs.filter(log =>
+                normalizeId(log.studentId) === normalizeId(resolvedStudentId)
+                && log.date === dateStr
+                && !isLogAfterCutoff(log.date)
+            )
             : [];
 
         let status = null;
@@ -310,23 +329,26 @@ export default function ScheduleTab({
     const renderSchedules = () => {
         const dayOfWeek = weekDays[selectedDate.getDay()];
         const dateStr = formatDate(selectedDate);
+        const isPastCutoff = isAfterCutoff(selectedDate);
 
-        const dailyClasses = myClasses
-            .filter(cls =>
-                isClassActiveOnDate(cls, selectedDate) &&
-                resolveClassSchedule(cls).days.includes(dayOfWeek)
-            )
-            .map(cls => {
-                const { time } = resolveClassSchedule(cls);
-                return {
-                    id: `math-${cls.id}`,
-                    type: 'math',
-                    name: cls.name,
-                    teacher: cls.teacher,
-                    time: time || '시간 미정',
-                    scheduleId: cls.id,
-                };
-        });
+        const dailyClasses = isPastCutoff
+            ? []
+            : myClasses
+                .filter(cls =>
+                    isClassActiveOnDate(cls, selectedDate) &&
+                    resolveClassSchedule(cls).days.includes(dayOfWeek)
+                )
+                .map(cls => {
+                    const { time } = resolveClassSchedule(cls);
+                    return {
+                        id: `math-${cls.id}`,
+                        type: 'math',
+                        name: cls.name,
+                        teacher: cls.teacher,
+                        time: time || '시간 미정',
+                        scheduleId: cls.id,
+                    };
+            });
 
         // ✅ 여기 수정: 로컬 날짜 파싱 + startOfDay 비교
         const myExternal = safeExternalSchedules.filter(s => {
@@ -389,11 +411,12 @@ export default function ScheduleTab({
                     let typeClass = 'text-brand-main bg-brand-light/30';
 
                     if (item.type === 'math') {
-                        log = attendanceLogs
+                        log = (!isPastCutoff && attendanceLogs)
                             ? attendanceLogs.find(l =>
                                 normalizeId(l.studentId) === normalizeId(resolvedStudentId)
                                 && l.classId === item.scheduleId
                                 && l.date === dateStr
+                                && !isLogAfterCutoff(l.date)
                             )
                             : null;
 
