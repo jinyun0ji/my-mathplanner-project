@@ -11,8 +11,8 @@ export const StudentFormModal = ({ isOpen, onClose, student = null, allClasses, 
   const [phone, setPhone] = useState('');
   const [parentPhone, setParentPhone] = useState('');
   const [status, setStatus] = useState('active');
-  const [retireDate, setRetireDate] = useState('');
-  const [retireReason, setRetireReason] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [endReason, setEndReason] = useState('');
   const [classSelections, setClassSelections] = useState([]);
   const [clinicTime, setClinicTime] = useState('');
   const [bookReceived, setBookReceived] = useState(false);
@@ -34,8 +34,8 @@ export const StudentFormModal = ({ isOpen, onClose, student = null, allClasses, 
       setClinicTime(student.clinicTime || '');
       setBookReceived(student.bookReceived || false);
       setRegisteredDate(student.registeredDate || '');
-      setRetireDate(student.retireDate || student.endDate || '');
-      setRetireReason(student.retireReason || student.endReason || '');
+      setEndDate(student.endDate || student.retireDate || '');
+      setEndReason(student.endReason || student.retireReason || '');
     } else {
       setName('');
       setSchool('');
@@ -47,24 +47,24 @@ export const StudentFormModal = ({ isOpen, onClose, student = null, allClasses, 
       setClinicTime('');
       setBookReceived(false);
       setRegisteredDate(new Date().toISOString().slice(0, 10));
-      setRetireDate('');
-      setRetireReason('');
+      setEndDate('');
+      setEndReason('');
     }
   }, [student]);
 
   useEffect(() => {
     if (status === 'inactive') {
-      if (!retireDate) {
-        setRetireDate(new Date().toISOString().slice(0, 10));
+      if (!endDate) {
+        setEndDate(new Date().toISOString().slice(0, 10));
       }
-      if (!retireReason) {
-        setRetireReason('종강');
+      if (!endReason) {
+        setEndReason('종강');
       }
       return;
     }
-    if (retireDate) setRetireDate('');
-    if (retireReason) setRetireReason('');
-  }, [status, retireDate, retireReason]);
+    if (endDate) setEndDate('');
+    if (endReason) setEndReason('');
+  }, [status, endDate, endReason]);
 
   const handleClassToggle = (classId) => {
     setClassSelections(prev => 
@@ -78,8 +78,8 @@ export const StudentFormModal = ({ isOpen, onClose, student = null, allClasses, 
     e.preventDefault();
     if (!name || !school || !grade) return;
     const isInactive = status === 'inactive';
-    const resolvedRetireDate = isInactive ? (retireDate || new Date().toISOString().slice(0, 10)) : '';
-    const resolvedRetireReason = isInactive ? (retireReason || '종강') : '';
+    const resolvedEndDate = isInactive ? (endDate || new Date().toISOString().slice(0, 10)) : '';
+    const resolvedEndReason = isInactive ? (endReason || '종강') : '';
 
     const studentData = {
       id: student ? student.id : null,
@@ -89,8 +89,9 @@ export const StudentFormModal = ({ isOpen, onClose, student = null, allClasses, 
       phone,
       parentPhone,
       status,
-      retireDate: resolvedRetireDate,
-      retireReason: resolvedRetireReason,
+      ...(isInactive
+        ? { endDate: resolvedEndDate, endReason: resolvedEndReason }
+        : {}),
       classes: classSelections,
       clinicTime: clinicTime || null,
       bookReceived,
@@ -128,12 +129,12 @@ export const StudentFormModal = ({ isOpen, onClose, student = null, allClasses, 
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-sm font-medium text-gray-700">퇴원일</label>
-                <input type="date" value={retireDate} onChange={e => setRetireDate(e.target.value)} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border" />
+                <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border" />
                 <p className="text-xs text-gray-400 mt-1">퇴원일 기준 이후 수업 업데이트는 차단(정책 적용 예정)</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700">퇴원 사유</label>
-                <select value={retireReason} onChange={e => setRetireReason(e.target.value)} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border">
+                <select value={endReason} onChange={e => setEndReason(e.target.value)} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border">
                   {RETIRE_REASONS.map((reason) => (
                     <option key={reason} value={reason}>{reason}</option>
                   ))}

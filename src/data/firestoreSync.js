@@ -425,15 +425,8 @@ export const loadViewerDataOnce = async ({
                 .map(String),
         ));
 
-        // Firestore where(documentId(), 'in', ...) 는 10개 제한이 있으므로 chunk 처리
-        const chunkArrayLocal = (items, size = 10) => {
-            const chunks = [];
-            for (let i = 0; i < items.length; i += size) chunks.push(items.slice(i, i + size));
-            return chunks;
-        };
-
         if (classIdsFromStudents.length > 0) {
-            const chunks = chunkArrayLocal(classIdsFromStudents, 10);
+            const chunks = chunkArray(classIdsFromStudents, 10);
 
             for (const ch of chunks) {
                 try {

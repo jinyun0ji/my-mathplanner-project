@@ -484,8 +484,6 @@ export default function AppRoutes({ user, role, studentIds }) {
           const {
               endDate: incomingEndDate,
               endReason: incomingEndReason,
-              retireDate: incomingRetireDate,
-              retireReason: incomingRetireReason,
               ...rest
           } = stripId(data);
           const payload = {
@@ -493,16 +491,11 @@ export default function AppRoutes({ user, role, studentIds }) {
               status: isInactive ? 'inactive' : 'active',
               authUid: data.studentId || data.authUid || null,
           };
-          const resolvedRetireDate = incomingRetireDate || incomingEndDate || today;
-          const resolvedRetireReason = incomingRetireReason || incomingEndReason || '종강';
+          const resolvedEndDate = incomingEndDate || today;
+          const resolvedEndReason = incomingEndReason || '종강';
           if (isInactive) {
-              payload.retireDate = resolvedRetireDate;
-              payload.retireReason = resolvedRetireReason;
-              payload.endDate = resolvedRetireDate;
-              payload.endReason = resolvedRetireReason;
-          } else {
-              payload.retireDate = '';
-              payload.retireReason = '';
+              payload.endDate = resolvedEndDate;
+              payload.endReason = resolvedEndReason;
               if (isEdit) {
                   payload.endDate = deleteField();
                   payload.endReason = deleteField();
@@ -633,19 +626,14 @@ export default function AppRoutes({ user, role, studentIds }) {
       };
 
       if (status === 'withdrawn') {
-          nextClassIds = prevClassIds.filter((id) => id !== classIdStr);
-          updates.classIds = nextClassIds;
           updates[`classStatuses.${classIdStr}.status`] = 'withdrawn';
           updates[`classStatuses.${classIdStr}.withdrawnAt`] = serverTimestamp();
           updates[`classStatuses.${classIdStr}.withdrawnAtSession`] = null;
-          await updateDoc(doc(db, 'classes', classIdStr), {
-              students: arrayRemove(studentUid),
-          });
       } else if (status === 'active') {
           if (!nextClassIds.includes(classIdStr)) {
               nextClassIds = [...nextClassIds, classIdStr];
+              updates.classIds = nextClassIds;
           }
-          updates.classIds = nextClassIds;
           updates[`classStatuses.${classIdStr}.status`] = 'active';
           updates[`classStatuses.${classIdStr}.withdrawnAt`] = null;
           updates[`classStatuses.${classIdStr}.withdrawnAtSession`] = null;

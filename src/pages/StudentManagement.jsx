@@ -133,9 +133,10 @@ export default function StudentManagement({
                                 const hasExternal = externalSchedules?.some(s => s.studentId === student.id);
 
                                 const classStatusMap = student.classStatuses || {};
-                                const activeClassIds = Array.isArray(student.classes)
+                                const allClassIds = Array.isArray(student.classes)
                                     ? student.classes
                                     : (Array.isArray(student.classIds) ? student.classIds : []);
+                                const activeClassIds = allClassIds.filter((classId) => classStatusMap[classId]?.status !== 'withdrawn');
                                 const withdrawnClassIds = Object.entries(classStatusMap)
                                     .filter(([, value]) => value?.status === 'withdrawn')
                                     .map(([id]) => id);
@@ -272,9 +273,10 @@ export default function StudentManagement({
                     {filteredStudents.map(student => {
                         const hasExternal = externalSchedules?.some(s => s.studentId === student.id);
                         const classStatusMap = student.classStatuses || {};
-                        const activeClassIds = Array.isArray(student.classes)
+                        const allClassIds = Array.isArray(student.classes)
                             ? student.classes
                             : (Array.isArray(student.classIds) ? student.classIds : []);
+                            const activeClassIds = allClassIds.filter((classId) => classStatusMap[classId]?.status !== 'withdrawn');
                         const withdrawnClassIds = Object.entries(classStatusMap)
                             .filter(([, value]) => value?.status === 'withdrawn')
                             .map(([id]) => id);
