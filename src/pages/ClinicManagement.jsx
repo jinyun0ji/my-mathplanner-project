@@ -16,6 +16,8 @@ export default function ClinicManagement({
     const [selectedStudentId, setSelectedStudentId] = useState('');
     const [selectedAssistantId, setSelectedAssistantId] = useState('');
     const [searchText, setSearchText] = useState('');
+    const [page, setPage] = useState(1);
+    const PAGE_SIZE = 25;
 
     // 모달 상태
     const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
@@ -134,16 +136,22 @@ export default function ClinicManagement({
     };
 
     // 날짜별 로그 필터링
-    const visibleLogs = useMemo(() => {
+    const dateLogs = useMemo(() => {
         const filteredByDeletion = clinicLogs.filter(log => !log?.isDeleted);
         if (filterMode === 'date') {
             const filtered = filteredByDeletion.filter(log => log.effectiveDate === filterDate);
             return [...filtered].sort((a, b) => {
-                const timeA = a.plannedTime || '23:59:59';
-                const timeB = b.plannedTime || '23:59:59';
-                return timeA.localeCompare(timeB) || getStudentName(a).localeCompare(getStudentName(b), 'ko');
+                const nameCompare = getStudentName(a).localeCompare(getStudentName(b), 'ko');
+                if (nameCompare !== 0) return nameCompare;
+                return String(a.id).localeCompare(String(b.id));
             });
         }
+
+        return [];
+    }, [clinicLogs, filterDate, filterMode, getStudentName]);
+
+    const filteredAndSortedLogs = useMemo(() => {
+        const filteredByDeletion = clinicLogs.filter(log => !log?.isDeleted);
 
         const normalizedSearch = searchText.trim().toLowerCase();
         const filtered = filteredByDeletion.filter(log => {
@@ -194,8 +202,6 @@ export default function ClinicManagement({
         });
     }, [
         clinicLogs,
-        filterDate,
-        filterMode,
         selectedClassId,
         selectedStudentId,
         selectedAssistantId,
@@ -205,10 +211,35 @@ export default function ClinicManagement({
         getAssistantName,
         getParentPhoneLast4,
     ]);
+    const totalPages = useMemo(() => {
+        if (filterMode !== 'all') return 1;
+        return Math.max(1, Math.ceil(filteredAndSortedLogs.length / PAGE_SIZE));
+    }, [filteredAndSortedLogs.length, filterMode]);
+
+    useEffect(() => {
+        if (filterMode !== 'all') return;
+        if (page > totalPages) {
+            setPage(totalPages);
+        }
+    }, [page, totalPages, filterMode]);
+
+    const pagedLogs = useMemo(() => {
+        if (filterMode !== 'all') return [];
+        const startIndex = (page - 1) * PAGE_SIZE;
+        return filteredAndSortedLogs.slice(startIndex, startIndex + PAGE_SIZE);
+    }, [filteredAndSortedLogs, page, filterMode]);
+
+    const visibleLogs = filterMode === 'date' ? dateLogs : pagedLogs;
 
     useEffect(() => {
         setSelectedLogIds([]);
     }, [filterDate, filterMode]);
+
+    useEffect(() => {
+        if (filterMode === 'all') {
+            setPage(1);
+        }
+    }, [filterMode, selectedClassId, selectedStudentId, selectedAssistantId, searchText]);
 
     // 핸들러
     const openScheduleModal = () => setIsScheduleModalOpen(true);
@@ -343,7 +374,9 @@ export default function ClinicManagement({
                                 />
                             )}
                         </div>
-                        <span className="text-gray-500 text-sm font-medium">{visibleLogs.length}건의 일정</span>
+                        <span className="text-gray-500 text-sm font-medium">
+                            {filterMode === 'all' ? filteredAndSortedLogs.length : dateLogs.length}건의 일정
+                        </span>
                     </div>
                     <div className='flex flex-wrap gap-2 justify-start md:justify-end'>
                         {/* 조교 모드 버튼 */}
@@ -458,6 +491,9 @@ export default function ClinicManagement({
                                             <input type="checkbox" onChange={handleSelectAll} checked={visibleLogs.length > 0 && selectedLogIds.length === visibleLogs.length} className="rounded text-indigo-900 focus:ring-indigo-900 h-4 w-4" />
                                         </th>
                                     )}
+                                    {filterMode === 'all' && (
+                                        <th className="px-3 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider min-w-[90px]">날짜</th>
+                                    )}
                                     <th className="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">학생명</th>
                                     <th className="px-4 py-3 text-center text-xs font-bold text-gray-600 uppercase tracking-wider">예정</th>
                                     <th className="px-4 py-3 text-center text-xs font-bold text-gray-600 uppercase tracking-wider">상태</th>
@@ -482,6 +518,11 @@ export default function ClinicManagement({
                                                 {viewMode === 'staff' && (
                                                     <td className="px-4 py-4 text-center">
                                                         <input type="checkbox" checked={isSelected} onChange={() => handleSelectLog(log.id)} className="rounded text-indigo-900 focus:ring-indigo-900 h-4 w-4" />
+                                                    </td>
+                                                )}
+                                                {filterMode === 'all' && (
+                                                    <td className="px-3 py-4 whitespace-nowrap text-xs font-mono text-gray-600">
+                                                        {log.effectiveDate || log.date || ''}
                                                     </td>
                                                 )}
                                                 <td className="px-4 py-4 whitespace-nowrap">
@@ -534,11 +575,45 @@ export default function ClinicManagement({
                                         )
                                     })
                                 ) : (
-                                    <tr><td colSpan={viewMode === 'staff' ? 9 : 7} className="px-6 py-12 text-center text-gray-500 bg-gray-50"><div className="flex flex-col items-center"><Icon name="calendar" className="w-12 h-12 text-gray-300 mb-2" /><p className="text-lg font-medium">등록된 일정이 없습니다.</p></div></td></tr>
+                                    <tr>
+                                        <td colSpan={viewMode === 'staff' ? (filterMode === 'all' ? 10 : 9) : (filterMode === 'all' ? 8 : 7)} className="px-6 py-12 text-center text-gray-500 bg-gray-50">
+                                            <div className="flex flex-col items-center">
+                                                <Icon name="calendar" className="w-12 h-12 text-gray-300 mb-2" />
+                                                <p className="text-lg font-medium">등록된 일정이 없습니다.</p>
+                                            </div>
+                                        </td>
+                                    </tr>
                                 )}
                             </tbody>
                         </table>
                     </div>
+
+                    {filterMode === 'all' && (
+                        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600">
+                            <span className="font-medium">총 {filteredAndSortedLogs.length}개</span>
+                            <div className="flex items-center gap-3">
+                                <button
+                                    type="button"
+                                    onClick={() => setPage(prev => Math.max(1, prev - 1))}
+                                    disabled={page <= 1}
+                                    className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:border-indigo-200 hover:text-indigo-900 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                    이전
+                                </button>
+                                <span className="text-xs font-semibold text-gray-600">
+                                    {page} / {totalPages}
+                                </span>
+                                <button
+                                    type="button"
+                                    onClick={() => setPage(prev => Math.min(totalPages, prev + 1))}
+                                    disabled={page >= totalPages}
+                                    className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:border-indigo-200 hover:text-indigo-900 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                    다음
+                                </button>
+                            </div>
+                        </div>
+                    )}
                     
                     <div className="md:hidden p-3 space-y-3 overflow-y-auto">
                         {visibleLogs.length > 0 ? visibleLogs.map(log => {
@@ -546,6 +621,7 @@ export default function ClinicManagement({
                             const isSent = log.notificationSent;
                             const isSelected = selectedLogIds.includes(log.id);
                             const status = log.status || (log.checkIn ? 'attended' : 'pending');
+                            const dateText = log.effectiveDate || log.date || '';
 
                             return (
                                 <div key={log.id} className={`bg-white border rounded-xl shadow-sm p-4 space-y-3 ${isSelected ? 'ring-1 ring-indigo-200' : ''}`}>
@@ -557,6 +633,9 @@ export default function ClinicManagement({
                                                     <span className="ml-1 text-xs font-normal text-gray-400">({getParentPhoneLast4(log)})</span>
                                                 )}
                                             </p>
+                                            {filterMode === 'all' && dateText && (
+                                                <p className="mt-0.5 text-xs font-mono text-gray-500">{dateText}</p>
+                                            )}
                                             <p className="text-xs text-gray-500 mt-0.5">{log.tutor || '담당 조교 미정'}</p>
                                         </div>
                                         <div className="flex flex-col items-end gap-2">
