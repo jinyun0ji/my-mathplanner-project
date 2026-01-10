@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { Icon } from '../utils/helpers';
 import { ClinicScheduleModal } from '../utils/modals/ClinicScheduleModal';
 import { ClinicCommentModal } from '../utils/modals/ClinicCommentModal';
@@ -12,6 +12,10 @@ export default function ClinicManagement({
     const [filterDate, setFilterDate] = useState(new Date().toISOString().slice(0, 10));
     const [filterMode, setFilterMode] = useState('all'); // all | date
     const [viewMode, setViewMode] = useState('staff'); // staff | tutor
+    const [selectedClassId, setSelectedClassId] = useState('');
+    const [selectedStudentId, setSelectedStudentId] = useState('');
+    const [selectedAssistantId, setSelectedAssistantId] = useState('');
+    const [searchText, setSearchText] = useState('');
 
     // 모달 상태
     const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
@@ -36,23 +40,171 @@ export default function ClinicManagement({
         }
     }, [clinicLogs]);
 
+    const studentById = useMemo(() => {
+        return new Map(students.map(student => [student.id, student]));
+    }, [students]);
+
+    const classById = useMemo(() => {
+        return new Map(classes.map(item => [item.id, item]));
+    }, [classes]);
+
+    const classOptions = useMemo(() => {
+        return classes
+            .map(item => ({ id: item.id, name: item.name }))
+            .filter(item => item.id && item.name)
+            .sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+    }, [classes]);
+
+    const studentOptions = useMemo(() => {
+        if (students.length > 0) {
+            return students
+                .map(student => ({ id: student.id, name: student.name }))
+                .filter(student => student.id && student.name)
+                .sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+        }
+
+        const fromLogs = new Map();
+        clinicLogs.forEach(log => {
+            if (log.studentId && log.studentName) {
+                fromLogs.set(log.studentId, { id: log.studentId, name: log.studentName });
+            }
+        });
+        return Array.from(fromLogs.values()).sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+    }, [students, clinicLogs]);
+
+    const assistantOptions = useMemo(() => {
+        const seen = new Map();
+        clinicLogs.forEach(log => {
+            const id = log.assistantId || log.tutorId || '';
+            const name = log.tutor || log.assistantName || log.assistant?.name || '';
+            const key = id || name;
+            if (!key || !name) return;
+            if (!seen.has(key)) {
+                seen.set(key, { id: id || name, name });
+            }
+        });
+
+        return Array.from(seen.values()).sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+    }, [clinicLogs]);
+
+    const getStudentName = useCallback((log) => {
+        if (log.studentName) return log.studentName;
+        const student = studentById.get(log.studentId);
+        return student?.name || '';
+    }, [studentById]);
+
+    const getClassName = useCallback((log) => {
+        if (log.className) return log.className;
+        const classInfo = classById.get(log.classId);
+        return classInfo?.name || '';
+    }, [classById]);
+
+    const getAssistantName = useCallback((log) => {
+        return log.tutor || log.assistantName || log.assistant?.name || '';
+    }, []);
+
+    const getParentPhoneLast4 = useCallback((log) => {
+        const student = studentById.get(log.studentId);
+        const candidates = [
+            log.parentPhone,
+            log.studentParentPhone,
+            log.parentPhoneNumber,
+            log.student?.parentPhone,
+            log.student?.parentPhoneNumber,
+            log.parent?.phone,
+            log.parent?.phoneNumber,
+            student?.parentPhone,
+            student?.parentPhoneNumber,
+            student?.parent?.phone,
+            student?.parent?.phoneNumber,
+        ];
+
+        const digits = candidates
+            .map(value => String(value || '').replace(/\D/g, ''))
+            .find(value => value.length > 0) || '';
+
+        return digits.length >= 4 ? digits.slice(-4) : '';
+    }, [studentById]);
+
+    const resetFilters = () => {
+        setSelectedClassId('');
+        setSelectedStudentId('');
+        setSelectedAssistantId('');
+        setSearchText('');
+    };
+
     // 날짜별 로그 필터링
     const visibleLogs = useMemo(() => {
         const filteredByDeletion = clinicLogs.filter(log => !log?.isDeleted);
-        const filtered = filterMode === 'date'
-            ? filteredByDeletion.filter(log => log.effectiveDate === filterDate)
-            : filteredByDeletion;
+        if (filterMode === 'date') {
+            const filtered = filteredByDeletion.filter(log => log.effectiveDate === filterDate);
+            return [...filtered].sort((a, b) => {
+                const timeA = a.plannedTime || '23:59:59';
+                const timeB = b.plannedTime || '23:59:59';
+                return timeA.localeCompare(timeB) || getStudentName(a).localeCompare(getStudentName(b), 'ko');
+            });
+        }
+
+        const normalizedSearch = searchText.trim().toLowerCase();
+        const filtered = filteredByDeletion.filter(log => {
+            if (selectedClassId) {
+                const classId = log.classId || log.class?.id || '';
+                if (classId !== selectedClassId) return false;
+            }
+            if (selectedStudentId) {
+                const studentId = log.studentId || log.student?.id || '';
+                if (studentId !== selectedStudentId) return false;
+            }
+            if (selectedAssistantId) {
+                const assistantId = log.assistantId || log.tutorId || log.assistant?.id || '';
+                if (assistantId) {
+                    if (assistantId !== selectedAssistantId) return false;
+                } else if (getAssistantName(log) !== selectedAssistantId) {
+                    return false;
+                }
+            }
+
+            if (!normalizedSearch) return true;
+
+            const searchPool = [
+                getStudentName(log),
+                getClassName(log),
+                getAssistantName(log),
+                log.comment,
+                log.memo,
+                log.note,
+                log.notes,
+                getParentPhoneLast4(log),
+            ]
+                .filter(Boolean)
+                .join(' ')
+                .toLowerCase();
+
+            return searchPool.includes(normalizedSearch);
+        });
 
         return [...filtered].sort((a, b) => {
-            if (filterMode !== 'date') {
-                const dateCompare = String(b.effectiveDate || '').localeCompare(String(a.effectiveDate || ''));
-                if (dateCompare !== 0) return dateCompare;
-            }
-            const timeA = a.plannedTime || '23:59:59';
-            const timeB = b.plannedTime || '23:59:59';
-            return timeA.localeCompare(timeB) || a.studentName.localeCompare(b.studentName);
+            const dA = String(a.effectiveDate || a.date || '');
+            const dB = String(b.effectiveDate || b.date || '');
+            const dateCompare = dB.localeCompare(dA);
+            if (dateCompare !== 0) return dateCompare;
+            const nameCompare = getStudentName(a).localeCompare(getStudentName(b), 'ko');
+            if (nameCompare !== 0) return nameCompare;
+            return String(a.id).localeCompare(String(b.id));
         });
-    }, [clinicLogs, filterDate, filterMode]);
+    }, [
+        clinicLogs,
+        filterDate,
+        filterMode,
+        selectedClassId,
+        selectedStudentId,
+        selectedAssistantId,
+        searchText,
+        getStudentName,
+        getClassName,
+        getAssistantName,
+        getParentPhoneLast4,
+    ]);
 
     useEffect(() => {
         setSelectedLogIds([]);
@@ -212,6 +364,76 @@ export default function ClinicManagement({
                     </div>
                 </div>
 
+                {filterMode === 'all' && (
+                    <div className="mb-4 rounded-lg border border-gray-200 bg-gray-50 p-4">
+                        <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
+                            <div className="grid w-full grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                                <label className="text-xs font-semibold text-gray-600">
+                                    클래스
+                                    <select
+                                        value={selectedClassId}
+                                        onChange={(e) => setSelectedClassId(e.target.value)}
+                                        className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:border-indigo-900 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                                    >
+                                        <option value="">전체</option>
+                                        {classOptions.map(option => (
+                                            <option key={option.id} value={option.id}>
+                                                {option.name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </label>
+                                <label className="text-xs font-semibold text-gray-600">
+                                    학생
+                                    <select
+                                        value={selectedStudentId}
+                                        onChange={(e) => setSelectedStudentId(e.target.value)}
+                                        className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:border-indigo-900 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                                    >
+                                        <option value="">전체</option>
+                                        {studentOptions.map(option => (
+                                            <option key={option.id} value={option.id}>
+                                                {option.name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </label>
+                                <label className="text-xs font-semibold text-gray-600">
+                                    담당 조교
+                                    <select
+                                        value={selectedAssistantId}
+                                        onChange={(e) => setSelectedAssistantId(e.target.value)}
+                                        className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:border-indigo-900 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                                    >
+                                        <option value="">전체</option>
+                                        {assistantOptions.map(option => (
+                                            <option key={option.id} value={option.id}>
+                                                {option.name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </label>
+                                <label className="text-xs font-semibold text-gray-600">
+                                    검색
+                                    <input
+                                        type="text"
+                                        value={searchText}
+                                        onChange={(e) => setSearchText(e.target.value)}
+                                        placeholder="학생/클래스/담당자/메모 검색"
+                                        className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:border-indigo-900 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                                    />
+                                </label>
+                            </div>
+                            <button
+                                onClick={resetFilters}
+                                className="w-full rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-600 transition hover:border-indigo-200 hover:text-indigo-900 lg:w-auto"
+                            >
+                                필터 초기화
+                            </button>
+                        </div>
+                    </div>
+                )}
+
                 {viewMode === 'staff' && selectedLogIds.length > 0 && (
                     <div className="bg-indigo-50 border border-indigo-100 p-3 rounded-lg mb-4 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 animate-fade-in">
                         <span className="text-sm font-bold text-indigo-900 ml-2">{selectedLogIds.length}명 선택됨</span>
@@ -262,7 +484,14 @@ export default function ClinicManagement({
                                                         <input type="checkbox" checked={isSelected} onChange={() => handleSelectLog(log.id)} className="rounded text-indigo-900 focus:ring-indigo-900 h-4 w-4" />
                                                     </td>
                                                 )}
-                                                <td className="px-4 py-4 whitespace-nowrap"><div className="text-sm font-bold text-gray-900">{log.studentName}</div></td>
+                                                <td className="px-4 py-4 whitespace-nowrap">
+                                                    <div className="text-sm font-bold text-gray-900">
+                                                        {getStudentName(log)}
+                                                        {getParentPhoneLast4(log) && (
+                                                            <span className="ml-1 text-xs font-normal text-gray-400">({getParentPhoneLast4(log)})</span>
+                                                        )}
+                                                    </div>
+                                                </td>
                                                 <td className="px-4 py-4 whitespace-nowrap text-center">
                                                     {isUnscheduled ? <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">미예약</span> : <span className="text-sm font-medium text-gray-700 font-mono">{log.plannedTime}</span>}
                                                 </td>
@@ -322,7 +551,12 @@ export default function ClinicManagement({
                                 <div key={log.id} className={`bg-white border rounded-xl shadow-sm p-4 space-y-3 ${isSelected ? 'ring-1 ring-indigo-200' : ''}`}>
                                     <div className="flex items-start justify-between gap-2">
                                         <div>
-                                            <p className="text-base font-bold text-gray-900">{log.studentName}</p>
+                                            <p className="text-base font-bold text-gray-900">
+                                                {getStudentName(log)}
+                                                {getParentPhoneLast4(log) && (
+                                                    <span className="ml-1 text-xs font-normal text-gray-400">({getParentPhoneLast4(log)})</span>
+                                                )}
+                                            </p>
                                             <p className="text-xs text-gray-500 mt-0.5">{log.tutor || '담당 조교 미정'}</p>
                                         </div>
                                         <div className="flex flex-col items-end gap-2">
