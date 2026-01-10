@@ -393,6 +393,51 @@ export default function AppRoutes({ user, role, studentIds }) {
       };
   };
 
+  const normalizeClinicDateString = (value) => {
+      if (!value) return '';
+      if (typeof value === 'string') {
+          const trimmed = value.trim();
+          if (!trimmed) return '';
+          const match = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})/);
+          if (match) return `${match[1]}-${match[2]}-${match[3]}`;
+          const parsed = new Date(trimmed);
+          if (!Number.isNaN(parsed.getTime())) {
+              return parsed.toISOString().slice(0, 10);
+          }
+          return '';
+      }
+      if (typeof value?.toDate === 'function') {
+          return value.toDate().toISOString().slice(0, 10);
+      }
+      if (value instanceof Date) {
+          return value.toISOString().slice(0, 10);
+      }
+      try {
+          return new Date(value).toISOString().slice(0, 10);
+      } catch (error) {
+          return '';
+      }
+  };
+
+  const resolveClinicEffectiveDate = (log) => {
+      if (!log) return '';
+      const date = normalizeClinicDateString(log.date);
+      if (date) return date;
+      const clinicDate = normalizeClinicDateString(log.clinicDate);
+      if (clinicDate) return clinicDate;
+      const createdAt = normalizeClinicDateString(log.createdAt);
+      if (createdAt) return createdAt;
+      return '';
+  };
+
+  const normalizeClinicLog = (log) => {
+      if (!log) return log;
+      return {
+          ...log,
+          effectiveDate: resolveClinicEffectiveDate(log),
+      };
+  };
+
   const refreshPaymentLogs = useCallback(async () => {
       ensureFirestoreContext();
       setIsPaymentLogsLoading(true);
@@ -994,7 +1039,7 @@ export default function AppRoutes({ user, role, studentIds }) {
   const handleSaveClinicLog = async (data, isEdit) => {
       ensureFirestoreContext();
       try {
-          const payload = stripId(data);
+          const { effectiveDate, ...payload } = stripId(data);
           if (isEdit) {
               if (!data.id) throw new Error('클리닉 로그 ID가 없습니다.');
               await updateDoc(doc(db, 'clinicLogs', data.id), {
@@ -1002,7 +1047,8 @@ export default function AppRoutes({ user, role, studentIds }) {
                   updatedAt: serverTimestamp(),
                   updatedBy: userId,
               });
-              setClinicLogs(prev => prev.map(l => l.id === data.id ? { ...l, ...payload } : l));
+              const normalized = normalizeClinicLog({ id: data.id, ...payload });
+              setClinicLogs(prev => prev.map(l => l.id === data.id ? { ...l, ...normalized } : l));
           } else {
               const docRef = await addDoc(collection(db, 'clinicLogs'), {
                   ...payload,
@@ -1011,7 +1057,8 @@ export default function AppRoutes({ user, role, studentIds }) {
                   updatedAt: serverTimestamp(),
                   updatedBy: userId,
               });
-              setClinicLogs(prev => [...prev, { id: docRef.id, ...payload }]);
+              const normalized = normalizeClinicLog({ id: docRef.id, ...payload });
+              setClinicLogs(prev => [...prev, normalized]);
           }
       } catch (error) {
           console.error('[Firestore WRITE ERROR]', error);

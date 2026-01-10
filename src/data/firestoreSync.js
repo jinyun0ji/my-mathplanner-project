@@ -46,6 +46,51 @@ const formatPaymentDate = (value) => {
     }
 };
 
+const normalizeClinicDateString = (value) => {
+    if (!value) return '';
+    if (typeof value === 'string') {
+        const trimmed = value.trim();
+        if (!trimmed) return '';
+        const match = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (match) return `${match[1]}-${match[2]}-${match[3]}`;
+        const parsed = new Date(trimmed);
+        if (!Number.isNaN(parsed.getTime())) {
+            return parsed.toISOString().slice(0, 10);
+        }
+        return '';
+    }
+    if (typeof value?.toDate === 'function') {
+        return value.toDate().toISOString().slice(0, 10);
+    }
+    if (value instanceof Date) {
+        return value.toISOString().slice(0, 10);
+    }
+    try {
+        return new Date(value).toISOString().slice(0, 10);
+    } catch (error) {
+        return '';
+    }
+};
+
+const resolveClinicEffectiveDate = (log) => {
+    if (!log) return '';
+    const date = normalizeClinicDateString(log.date);
+    if (date) return date;
+    const clinicDate = normalizeClinicDateString(log.clinicDate);
+    if (clinicDate) return clinicDate;
+    const createdAt = normalizeClinicDateString(log.createdAt);
+    if (createdAt) return createdAt;
+    return '';
+};
+
+const normalizeClinicLog = (log) => {
+    if (!log) return log;
+    return {
+        ...log,
+        effectiveDate: resolveClinicEffectiveDate(log),
+    };
+};
+
 const normalizePaymentLog = (log) => {
     const base = normalizeAuthUid(log);
     const firstItem = Array.isArray(base.items) ? base.items[0] : null;
@@ -172,6 +217,7 @@ export const loadStaffDataOnce = async ({
                 setClinicLogs,
                 query(collection(db, 'clinicLogs'), orderBy('date', 'desc'), limit(300)),
                 () => false,
+                normalizeClinicLog,
             );
             console.log('[staff] clinicLogs loaded =', clinicDocs.length);
         }
@@ -455,6 +501,7 @@ export const loadViewerDataOnce = async ({
                     limit(30),
                 ),
                 isCancelled,
+                normalizeClinicLog,
             );
 
             // 2) authUid 기준 (학생 authUid가 들어있는 케이스)
@@ -485,6 +532,7 @@ export const loadViewerDataOnce = async ({
                     limit(30),
                 ),
                 isCancelled,
+                normalizeClinicLog,
             );
 
             // ✅ 중복 제거 + 정렬
@@ -496,8 +544,8 @@ export const loadViewerDataOnce = async ({
                 });
 
                 const merged = Array.from(map.values()).sort((a, b) => {
-                    const ad = String(a?.date || '');
-                    const bd = String(b?.date || '');
+                    const ad = String(a?.effectiveDate || '');
+                    const bd = String(b?.effectiveDate || '');
                     return bd.localeCompare(ad);
                 });
 

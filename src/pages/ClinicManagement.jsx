@@ -25,17 +25,27 @@ export default function ClinicManagement({
 
     useEffect(() => {
         console.log('[clinic management] clinicLogs loaded =', clinicLogs.length);
+        if (clinicLogs.length > 0) {
+            console.log('[clinic management] effectiveDate sample', clinicLogs.slice(0, 30).map((log) => ({
+                id: log.id,
+                effectiveDate: log.effectiveDate,
+                date: log.date,
+                clinicDate: log.clinicDate,
+                createdAt: log.createdAt,
+            })));
+        }
     }, [clinicLogs]);
 
     // 날짜별 로그 필터링
     const visibleLogs = useMemo(() => {
+        const filteredByDeletion = clinicLogs.filter(log => !log?.isDeleted);
         const filtered = filterMode === 'date'
-            ? clinicLogs.filter(log => log.date === filterDate)
-            : clinicLogs;
+            ? filteredByDeletion.filter(log => log.effectiveDate === filterDate)
+            : filteredByDeletion;
 
         return [...filtered].sort((a, b) => {
             if (filterMode !== 'date') {
-                const dateCompare = String(b.date || '').localeCompare(String(a.date || ''));
+                const dateCompare = String(b.effectiveDate || '').localeCompare(String(a.effectiveDate || ''));
                 if (dateCompare !== 0) return dateCompare;
             }
             const timeA = a.plannedTime || '23:59:59';
