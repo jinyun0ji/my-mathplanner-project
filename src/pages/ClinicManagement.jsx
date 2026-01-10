@@ -10,6 +10,7 @@ export default function ClinicManagement({
     logNotification 
 }) {
     const [filterDate, setFilterDate] = useState(new Date().toISOString().slice(0, 10));
+    const [filterMode, setFilterMode] = useState('all'); // all | date
     const [viewMode, setViewMode] = useState('staff'); // staff | tutor
 
     // 모달 상태
@@ -22,20 +23,30 @@ export default function ClinicManagement({
     const [selectedLogIds, setSelectedLogIds] = useState([]);
     const [selectedNotificationType, setSelectedNotificationType] = useState('comment'); 
 
+    useEffect(() => {
+        console.log('[clinic management] clinicLogs loaded =', clinicLogs.length);
+    }, [clinicLogs]);
+
     // 날짜별 로그 필터링
-    const dailyLogs = useMemo(() => {
-        return clinicLogs
-            .filter(log => log.date === filterDate)
-            .sort((a, b) => {
-                const timeA = a.plannedTime || '23:59:59';
-                const timeB = b.plannedTime || '23:59:59';
-                return timeA.localeCompare(timeB) || a.studentName.localeCompare(b.studentName);
-            });
-    }, [clinicLogs, filterDate]);
+    const visibleLogs = useMemo(() => {
+        const filtered = filterMode === 'date'
+            ? clinicLogs.filter(log => log.date === filterDate)
+            : clinicLogs;
+
+        return [...filtered].sort((a, b) => {
+            if (filterMode !== 'date') {
+                const dateCompare = String(b.date || '').localeCompare(String(a.date || ''));
+                if (dateCompare !== 0) return dateCompare;
+            }
+            const timeA = a.plannedTime || '23:59:59';
+            const timeB = b.plannedTime || '23:59:59';
+            return timeA.localeCompare(timeB) || a.studentName.localeCompare(b.studentName);
+        });
+    }, [clinicLogs, filterDate, filterMode]);
 
     useEffect(() => {
         setSelectedLogIds([]);
-    }, [filterDate]);
+    }, [filterDate, filterMode]);
 
     // 핸들러
     const openScheduleModal = () => setIsScheduleModalOpen(true);
@@ -91,7 +102,7 @@ export default function ClinicManagement({
 
     const handleSelectAll = (e) => {
         if (e.target.checked) {
-            setSelectedLogIds(dailyLogs.map(log => log.id));
+            setSelectedLogIds(visibleLogs.map(log => log.id));
         } else {
             setSelectedLogIds([]);
         }
@@ -147,14 +158,30 @@ export default function ClinicManagement({
 
                 <div className="flex justify-between items-center mb-4 border-b pb-4">
                     <div className='flex items-center space-x-4'>
-                        <input
-                            type="date"
-                            value={filterDate}
-                            onChange={(e) => setFilterDate(e.target.value)}
-                            // [색상 변경] focus:ring-indigo-500 -> focus:ring-indigo-900
-                            className="p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-900 focus:border-indigo-900 text-sm font-medium text-gray-700"
-                        />
-                        <span className="text-gray-500 text-sm font-medium">{dailyLogs.length}건의 일정</span>
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={() => setFilterMode('all')}
+                                className={`px-3 py-1.5 rounded-md text-sm font-bold transition ${filterMode === 'all' ? 'bg-indigo-900 text-white' : 'bg-gray-100 text-gray-600 hover:text-gray-800'}`}
+                            >
+                                전체
+                            </button>
+                            <button
+                                onClick={() => setFilterMode('date')}
+                                className={`px-3 py-1.5 rounded-md text-sm font-bold transition ${filterMode === 'date' ? 'bg-indigo-900 text-white' : 'bg-gray-100 text-gray-600 hover:text-gray-800'}`}
+                            >
+                                날짜별
+                            </button>
+                            {filterMode === 'date' && (
+                                <input
+                                    type="date"
+                                    value={filterDate}
+                                    onChange={(e) => setFilterDate(e.target.value)}
+                                    // [색상 변경] focus:ring-indigo-500 -> focus:ring-indigo-900
+                                    className="p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-900 focus:border-indigo-900 text-sm font-medium text-gray-700"
+                                />
+                            )}
+                        </div>
+                        <span className="text-gray-500 text-sm font-medium">{visibleLogs.length}건의 일정</span>
                     </div>
                     <div className='flex flex-wrap gap-2 justify-start md:justify-end'>
                         {/* 조교 모드 버튼 */}
@@ -196,7 +223,7 @@ export default function ClinicManagement({
                                 <tr>
                                     {viewMode === 'staff' && (
                                         <th className="px-4 py-3 text-center w-10">
-                                            <input type="checkbox" onChange={handleSelectAll} checked={dailyLogs.length > 0 && selectedLogIds.length === dailyLogs.length} className="rounded text-indigo-900 focus:ring-indigo-900 h-4 w-4" />
+                                            <input type="checkbox" onChange={handleSelectAll} checked={visibleLogs.length > 0 && selectedLogIds.length === visibleLogs.length} className="rounded text-indigo-900 focus:ring-indigo-900 h-4 w-4" />
                                         </th>
                                     )}
                                     <th className="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">학생명</th>
@@ -210,8 +237,8 @@ export default function ClinicManagement({
                                 </tr>
                             </thead>
                             <tbody className="bg-white divide-y divide-gray-200">
-                                {dailyLogs.length > 0 ? (
-                                    dailyLogs.map(log => {
+                                {visibleLogs.length > 0 ? (
+                                    visibleLogs.map(log => {
                                         const isUnscheduled = !log.plannedTime;
                                         const isSent = log.notificationSent;
                                         const isSelected = selectedLogIds.includes(log.id);
@@ -275,7 +302,7 @@ export default function ClinicManagement({
                     </div>
                     
                     <div className="md:hidden p-3 space-y-3 overflow-y-auto">
-                        {dailyLogs.length > 0 ? dailyLogs.map(log => {
+                        {visibleLogs.length > 0 ? visibleLogs.map(log => {
                             const isUnscheduled = !log.plannedTime;
                             const isSent = log.notificationSent;
                             const isSelected = selectedLogIds.includes(log.id);
@@ -356,7 +383,7 @@ export default function ClinicManagement({
                             );
                         }) : (
                             <div className="text-center text-gray-500 text-sm py-8">
-                                선택한 날짜에 일정이 없습니다.
+                                {filterMode === 'date' ? '선택한 날짜에 일정이 없습니다.' : '등록된 일정이 없습니다.'}
                             </div>
                         )}
                     </div>
@@ -366,7 +393,7 @@ export default function ClinicManagement({
             <ClinicScheduleModal isOpen={isScheduleModalOpen} onClose={() => setIsScheduleModalOpen(false)} onSave={handleSaveClinicLog} students={students} defaultDate={filterDate} clinicLogs={clinicLogs} classes={classes} />
             <ClinicCommentModal isOpen={isCommentModalOpen} onClose={() => setIsCommentModalOpen(false)} onSave={handleSaveClinicLog} log={selectedLog} students={students} defaultDate={filterDate} classes={classes} />
             <ClinicNotificationModal isOpen={isNotifyModalOpen} onClose={() => setIsNotifyModalOpen(false)} log={selectedLog} students={students} logNotification={logNotification} onSent={handleNotificationSent} notificationType={selectedNotificationType} />
-            <ClinicBulkNotificationModal isOpen={isBulkNotifyModalOpen} onClose={() => setIsBulkNotifyModalOpen(false)} selectedLogs={dailyLogs.filter(log => selectedLogIds.includes(log.id))} students={students} logNotification={logNotification} onSent={handleNotificationSent} />
+            <ClinicBulkNotificationModal isOpen={isBulkNotifyModalOpen} onClose={() => setIsBulkNotifyModalOpen(false)} selectedLogs={visibleLogs.filter(log => selectedLogIds.includes(log.id))} students={students} logNotification={logNotification} onSent={handleNotificationSent} />
         </div>
     );
 };

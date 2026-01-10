@@ -166,7 +166,14 @@ export const loadStaffDataOnce = async ({
         }
 
         if (setClinicLogs && (shouldLoad('clinic') || shouldLoad('lessons'))) {
-            await fetchList(db, 'clinicLogs', setClinicLogs, query(collection(db, 'clinicLogs'), orderBy('date', 'desc'), limit(150)), () => false);
+            const clinicDocs = await fetchList(
+                db,
+                'clinicLogs',
+                setClinicLogs,
+                query(collection(db, 'clinicLogs'), orderBy('date', 'desc'), limit(300)),
+                () => false,
+            );
+            console.log('[staff] clinicLogs loaded =', clinicDocs.length);
         }
 
         if (setWorkLogs && shouldLoad('communication')) {
