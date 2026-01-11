@@ -419,6 +419,7 @@ export const loadViewerDataOnce = async ({
         ].filter(Boolean))).slice(0, 10);
 
         console.log('[viewer] scopedStudentAuthUids =', scopedStudentAuthUids);
+        const nonEmpty = (arr) => Array.isArray(arr) && arr.length > 0;
 
         /* =========================
            classes (학생 id별 array-contains)
@@ -487,22 +488,93 @@ export const loadViewerDataOnce = async ({
         /* =========================
            attendanceLogs (fetchList)
         ========================= */
-        if (scopedStudentUids.length > 0) {
-            await fetchListSafe(
-                'attendanceLogs fetchList',
-                db,
-                'attendanceLogs',
-                (items) => {
-                    setAttendanceLogs?.(items);
-                },
-                query(
-                    collection(db, 'attendanceLogs'),
-                    where('studentUid', 'in', scopedStudentUids),
-                    orderBy('date', 'desc'),
-                    limit(30),
-                ),
-                isCancelled,
-            );
+        if (nonEmpty(scopedStudentUids) || nonEmpty(scopedStudentAuthUids)) {
+            const attendanceDocs = [];
+
+            if (nonEmpty(scopedStudentUids)) {
+                try {
+                    const snap = await run('attendanceLogs studentId', () =>
+                        getDocs(
+                            query(
+                                collection(db, 'attendanceLogs'),
+                                where('studentId', 'in', scopedStudentUids),
+                                orderBy('date', 'desc'),
+                                limit(300),
+                            ),
+                        ),
+                    );
+                    attendanceDocs.push(...snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+                } catch (e) {
+                    console.warn('[viewer] attendanceLogs studentId load skipped', e);
+                }
+            }
+
+            if (nonEmpty(scopedStudentUids)) {
+                try {
+                    const snap = await run('attendanceLogs studentUid', () =>
+                        getDocs(
+                            query(
+                                collection(db, 'attendanceLogs'),
+                                where('studentUid', 'in', scopedStudentUids),
+                                orderBy('date', 'desc'),
+                                limit(300),
+                            ),
+                        ),
+                    );
+                    attendanceDocs.push(...snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+                } catch (e) {
+                    console.warn('[viewer] attendanceLogs studentUid load skipped', e);
+                }
+            }
+
+            if (nonEmpty(scopedStudentAuthUids)) {
+                try {
+                    const snap = await run('attendanceLogs authUid', () =>
+                        getDocs(
+                            query(
+                                collection(db, 'attendanceLogs'),
+                                where('authUid', 'in', scopedStudentAuthUids),
+                                orderBy('date', 'desc'),
+                                limit(300),
+                            ),
+                        ),
+                    );
+                    attendanceDocs.push(...snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+                } catch (e) {
+                    console.warn('[viewer] attendanceLogs authUid load skipped', e);
+                }
+            }
+
+            if (!isCancelled()) {
+                const authUidToStudentDocId = new Map(
+                    myStudents.map((s) => [s?.authUid, s?.id]).filter(([authUid, id]) => authUid && id),
+                );
+                const map = new Map();
+                attendanceDocs.forEach((log) => {
+                    if (!log?.id) return;
+                    if (!map.has(log.id)) map.set(log.id, log);
+                });
+
+                const normalizedLogs = Array.from(map.values()).map((log) => {
+                    const normalized = { ...log };
+                    if (!normalized.studentId && normalized.studentUid) {
+                        normalized.studentId = normalized.studentUid;
+                    }
+                    if (!normalized.studentId && normalized.authUid) {
+                        const mappedId = authUidToStudentDocId.get(normalized.authUid);
+                        if (mappedId) {
+                            normalized.studentId = mappedId;
+                        }
+                    }
+                    return normalized;
+                }).sort((a, b) => {
+                    const ad = String(a?.date || '');
+                    const bd = String(b?.date || '');
+                    return bd.localeCompare(ad);
+                });
+
+                setAttendanceLogs?.(normalizedLogs);
+            }
         } else if (!isCancelled()) {
             setAttendanceLogs?.([]);
         }

@@ -10,7 +10,7 @@ import { db } from '../firebase/client';
 const RETIRE_REASONS = ['종강', '중도퇴원', '전반'];
 
 export default function StudentManagement({
-    students, parents = [], classes, getClassesNames, handleSaveStudent, handleDeleteStudent,
+    students, parents = [], classes, handleSaveStudent, handleDeleteStudent,
     attendanceLogs, studentMemos, handleSaveMemo, handlePageChange,
     studentSearchTerm, setStudentSearchTerm,
     externalSchedules,
@@ -27,6 +27,8 @@ export default function StudentManagement({
     const [retireModal, setRetireModal] = useState({ isOpen: false, student: null, classId: null });
     const [retireDate, setRetireDate] = useState(new Date().toISOString().slice(0, 10));
     const [retireReason, setRetireReason] = useState('종강');
+    const [selectedClassId, setSelectedClassId] = useState('all');
+    const [selectedStatus, setSelectedStatus] = useState('all');
     const todayString = useMemo(() => new Date().toISOString().slice(0, 10), []);
     const debugLoggedRef = useRef(false);
     const normalizeClassStatus = (value) => {
@@ -112,23 +114,62 @@ export default function StudentManagement({
         }
     }, [parents, students]);
 
+    const normalizedStudents = useMemo(() => Array.isArray(students) ? students : [], [students]);
+
+    const classOptions = useMemo(() => {
+        return (Array.isArray(classes) ? classes : []).filter((item) => item?.id && item?.name);
+    }, [classes]);
+
+    const statusOptions = useMemo(() => {
+        const options = new Set(
+            normalizedStudents
+                .map((student) => student?.status)
+                .filter((status) => Boolean(status)),
+        );
+        return Array.from(options);
+    }, [normalizedStudents]);
+
     const filteredStudents = useMemo(() => {
-        return students.filter(student => {
-            const studentClassNames = getClassesNames(student.classes);
-            return (
-                student.name.includes(studentSearchTerm) || 
-                student.school.includes(studentSearchTerm) ||
-                student.phone.includes(studentSearchTerm) ||
-                studentClassNames.includes(studentSearchTerm)
-            );
-        }).sort((a, b) => {
-            const aActive = isActiveStatus(a.status) && !isInactiveStatus(a.status);
-            const bActive = isActiveStatus(b.status) && !isInactiveStatus(b.status);
-            if (aActive && !bActive) return -1;
-            if (!aActive && bActive) return 1;
-            return b.registeredDate.localeCompare(a.registeredDate);
+        const term = String(studentSearchTerm || '').trim().toLowerCase();
+
+        const byClass = (student) => {
+            if (selectedClassId === 'all') return true;
+            const ids = Array.isArray(student.classIds)
+                ? student.classIds
+                : (Array.isArray(student.classes) ? student.classes : []);
+            return ids.map((id) => String(id)).includes(String(selectedClassId));
+        };
+
+        const byStatus = (student) => {
+            if (selectedStatus === 'all') return true;
+            return String(student.status || '') === selectedStatus;
+        };
+
+        const bySearch = (student) => {
+            if (!term) return true;
+            const name = String(student.name || '').toLowerCase();
+            const phone = String(student.phone || '').toLowerCase();
+            const parentName = String(student.parentName || '').toLowerCase();
+            return name.includes(term) || phone.includes(term) || parentName.includes(term);
+        };
+
+        const list = normalizedStudents
+            .filter(byClass)
+            .filter(byStatus)
+            .filter(bySearch);
+
+        const hasClass = (student) => Array.isArray(student.classIds)
+            ? student.classIds.length > 0
+            : (Array.isArray(student.classes) ? student.classes.length > 0 : false);
+
+        list.sort((a, b) => {
+            const aHas = hasClass(a);
+            const bHas = hasClass(b);
+            if (aHas !== bHas) return aHas ? -1 : 1;
+            return String(a?.name || '').localeCompare(String(b?.name || ''), 'ko');
         });
-    }, [students, studentSearchTerm, getClassesNames]);
+    return list;
+    }, [normalizedStudents, studentSearchTerm, selectedClassId, selectedStatus]);
 
     const handleEdit = (student) => { setStudentToEdit(student); setIsStudentModalOpen(true); };
     const handleNewStudent = () => { setStudentToEdit(null); setIsStudentModalOpen(true); };
@@ -193,21 +234,56 @@ export default function StudentManagement({
     return (
         <div className="space-y-6">
             <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between mb-4">
-                    <div className="flex space-x-3 items-center w-full md:w-1/2 lg:w-1/3">
-                        <Icon name="search" className="w-5 h-5 text-gray-400"/>
-                        <input
-                            type="text"
-                            placeholder="이름, 학교, 연락처, 클래스명으로 검색..."
-                            value={studentSearchTerm}
-                            onChange={(e) => setStudentSearchTerm(e.target.value)}
-                            className="p-2 border border-gray-300 rounded-lg w-full focus:ring-2 focus:ring-indigo-900 focus:border-indigo-900 transition-colors"
-                        />
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between mb-4">
+                    <div className="grid w-full grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                        <label className="text-xs font-semibold text-gray-600">
+                            클래스
+                            <select
+                                value={selectedClassId}
+                                onChange={(e) => setSelectedClassId(e.target.value)}
+                                className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:border-indigo-900 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                            >
+                                <option value="all">전체</option>
+                                {classOptions.map((option) => (
+                                    <option key={option.id} value={option.id}>
+                                        {option.name}
+                                    </option>
+                                ))}
+                            </select>
+                        </label>
+                        <label className="text-xs font-semibold text-gray-600">
+                            상태
+                            <select
+                                value={selectedStatus}
+                                onChange={(e) => setSelectedStatus(e.target.value)}
+                                className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:border-indigo-900 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                            >
+                                <option value="all">전체</option>
+                                {statusOptions.map((status) => (
+                                    <option key={status} value={status}>
+                                        {status}
+                                    </option>
+                                ))}
+                            </select>
+                        </label>
+                        <label className="text-xs font-semibold text-gray-600 sm:col-span-2">
+                            검색
+                            <div className="mt-1 flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus-within:border-indigo-900 focus-within:ring-2 focus-within:ring-indigo-200">
+                                <Icon name="search" className="w-4 h-4 text-gray-400"/>
+                                <input
+                                    type="text"
+                                    placeholder="이름, 연락처, 보호자 이름"
+                                    value={studentSearchTerm}
+                                    onChange={(e) => setStudentSearchTerm(e.target.value)}
+                                    className="w-full border-0 p-0 focus:outline-none focus:ring-0"
+                                />
+                            </div>
+                        </label>
                     </div>
-                    <div className="flex w-full justify-end">
+                    <div className="flex w-full justify-end lg:w-auto">
                         <button 
                             onClick={handleNewStudent}
-                            className="w-full md:w-auto justify-center bg-indigo-900 hover:bg-indigo-800 text-white font-bold py-2 px-4 rounded-lg flex items-center shadow-md transition duration-150 text-sm"
+                            className="w-full lg:w-auto justify-center bg-indigo-900 hover:bg-indigo-800 text-white font-bold py-2 px-4 rounded-lg flex items-center shadow-md transition duration-150 text-sm"
                         >
                             <Icon name="plus" className="w-5 h-5 mr-2" />
                             새 학생 등록
