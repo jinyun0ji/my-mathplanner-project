@@ -3,14 +3,10 @@ import { Icon } from '../utils/helpers';
 import { collection, getDocs, limit, orderBy, query } from 'firebase/firestore';
 import { db } from '../firebase/client';
 import useAuth from '../auth/useAuth';
-import { ROLE, isAdminRole } from '../constants/roles';
+import { isAdminRole } from '../constants/roles';
 
-export default function Home({ onQuickAction, onCreateStaffUser, onCreateLinkCode, userRole }) {
+export default function Home({ onQuickAction, onCreateLinkCode, userRole }) {
     const { user, userProfile } = useAuth();
-    const [staffEmail, setStaffEmail] = useState('');
-    const [staffRole, setStaffRole] = useState(ROLE.STAFF);
-    const [staffStatus, setStaffStatus] = useState('');
-    const [staffSubmitting, setStaffSubmitting] = useState(false);
     const [linkStudentId, setLinkStudentId] = useState('');
     const [linkCodeResult, setLinkCodeResult] = useState('');
     const [linkStatus, setLinkStatus] = useState('');
@@ -38,7 +34,7 @@ export default function Home({ onQuickAction, onCreateStaffUser, onCreateLinkCod
             const snapshot = await getDocs(query(
                 collection(db, 'notifications'),
                 orderBy('sentAt', 'desc'),
-                limit(30),
+                limit(10),
             ));
             setNotificationLogs(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
         } catch (error) {
@@ -95,27 +91,6 @@ export default function Home({ onQuickAction, onCreateStaffUser, onCreateLinkCod
         sky: 'hover:bg-sky-50',
     };
 
-    const handleCreateStaffSubmit = async (e) => {
-        e.preventDefault();
-        if (!onCreateStaffUser) return;
-
-        setStaffStatus('');
-        setStaffSubmitting(true);
-        try {
-            const result = await onCreateStaffUser({ email: staffEmail, role: staffRole });
-            const tempPasswordMessage = result?.tempPassword
-                ? `임시 비밀번호: ${result.tempPassword}`
-                : '임시 비밀번호는 계정 재설정으로 안내해주세요.';
-            setStaffStatus(`계정을 생성했습니다. ${tempPasswordMessage}`);
-            setStaffEmail('');
-            setStaffRole(ROLE.STAFF);
-        } catch (error) {
-            setStaffStatus(error?.message || '직원 생성 중 오류가 발생했습니다.');
-        } finally {
-            setStaffSubmitting(false);
-        }
-    };
-
     const handleCreateLinkCodeSubmit = async (e) => {
         e.preventDefault();
         if (!onCreateLinkCode) return;
@@ -133,59 +108,10 @@ export default function Home({ onQuickAction, onCreateStaffUser, onCreateLinkCod
         }
     };
 
+    const visibleNotificationLogs = (notificationLogs || []).slice(0, 10);
+
     return (
         <div className="space-y-6 lg:space-y-8 pb-2">
-            {onCreateStaffUser && (
-                <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-5 flex flex-col gap-4">
-                    <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                            <div className="p-2.5 rounded-xl bg-indigo-50 text-indigo-900 border border-indigo-100">
-                                <Icon name="shield" className="w-5 h-5" />
-                            </div>
-                            <div>
-                                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">관리자 전용</p>
-                                <p className="text-base font-bold text-gray-800">직원 계정 생성</p>
-                            </div>
-                        </div>
-                        <span className="px-3 py-1 text-xs font-semibold rounded-full bg-indigo-50 text-indigo-800 border border-indigo-100">
-                            Allowlist 인증 필요
-                        </span>
-                    </div>
-                    <form className="grid grid-cols-1 md:grid-cols-[2fr_1.5fr_auto] gap-3 items-end" onSubmit={handleCreateStaffSubmit}>
-                        <label className="flex flex-col gap-1">
-                            <span className="text-xs font-semibold text-gray-600">직원 이메일</span>
-                            <input
-                                type="email"
-                                required
-                                value={staffEmail}
-                                onChange={(e) => setStaffEmail(e.target.value)}
-                                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                                placeholder="staff@example.com"
-                            />
-                        </label>
-                        <label className="flex flex-col gap-1">
-                            <span className="text-xs font-semibold text-gray-600">역할</span>
-                            <select
-                                value={staffRole}
-                                onChange={(e) => setStaffRole(e.target.value)}
-                                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                            >
-                                <option value={ROLE.STAFF}>직원</option>
-                                <option value={ROLE.ADMIN}>관리자</option>
-                            </select>
-                        </label>
-                        <button
-                            type="submit"
-                            disabled={staffSubmitting}
-                            className="inline-flex items-center justify-center gap-2 rounded-lg bg-indigo-900 text-white px-4 py-2.5 text-sm font-semibold shadow hover:bg-indigo-800 disabled:opacity-60"
-                        >
-                            <Icon name={staffSubmitting ? 'loader' : 'userPlus'} className="w-4 h-4" />
-                            {staffSubmitting ? '생성 중...' : '직원 계정 생성'}
-                        </button>
-                    </form>
-                    {staffStatus && <p className="text-sm text-gray-600">{staffStatus}</p>}
-                </div>
-            )}
 
             {onCreateLinkCode && (
                 <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-5 flex flex-col gap-4">
@@ -247,7 +173,7 @@ export default function Home({ onQuickAction, onCreateStaffUser, onCreateLinkCod
                             </div>
                         </div>
                         <span className="px-3 py-1 text-xs font-semibold rounded-full bg-rose-50 text-rose-800 border border-rose-100">
-                            최근 30건
+                            최근 10건
                         </span>
                     </div>
 
@@ -260,7 +186,7 @@ export default function Home({ onQuickAction, onCreateStaffUser, onCreateLinkCod
 
                     {!logLoading && !logError && (
                         <div className="space-y-3">
-                            {notificationLogs.length === 0 ? (
+                            {visibleNotificationLogs.length === 0 ? (
                                 <div className="text-sm text-gray-500 text-center py-6 border border-dashed border-gray-200 rounded-xl">
                                     알림 로그가 없습니다.
                                 </div>
@@ -278,7 +204,7 @@ export default function Home({ onQuickAction, onCreateStaffUser, onCreateLinkCod
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {notificationLogs.map((log) => {
+                                            {visibleNotificationLogs.map((log) => {
                                                 const targetCount = log.targetCount ?? log.targetUserCount ?? 0;
                                                 const failureCount = log.failureCount || 0;
                                                 const sentAt = log.sentAt?.toDate ? log.sentAt.toDate().toLocaleString('ko-KR') : '-';
@@ -340,34 +266,6 @@ export default function Home({ onQuickAction, onCreateStaffUser, onCreateLinkCod
                                 <Icon name="smartphone" className="w-4 h-4" /> 모바일에서도 편리하게
                             </span>
                         </div>
-                    </div>
-                </div>
-                
-                <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-5 flex flex-col gap-4">
-                    <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                            <div className="p-2.5 rounded-xl bg-indigo-50 text-indigo-900 border border-indigo-100">
-                                <Icon name="activity" className="w-5 h-5" />
-                            </div>
-                            <div>
-                                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">오늘의 브리핑</p>
-                                <p className="text-base font-bold text-gray-800">업무 체크리스트</p>
-                            </div>
-                        </div>
-                        <span className="px-3 py-1 text-xs font-semibold rounded-full bg-indigo-50 text-indigo-800 border border-indigo-100">Live</span>
-                    </div>
-                    <div className="space-y-3">
-                        {reminders.map((item, idx) => (
-                            <div key={idx} className={`flex items-start gap-3 rounded-xl border ${toneStyles[item.tone]} p-3`}>
-                                <div className={`p-2 rounded-lg ${toneStyles[item.tone]} shadow-inner border`}>
-                                    <Icon name={item.icon} className="w-4 h-4" />
-                                </div>
-                                <div className="min-w-0">
-                                    <p className="text-sm font-bold text-gray-800">{item.title}</p>
-                                    <p className="text-xs text-gray-500 mt-0.5">{item.description}</p>
-                                </div>
-                            </div>
-                        ))}
                     </div>
                 </div>
             </div>
