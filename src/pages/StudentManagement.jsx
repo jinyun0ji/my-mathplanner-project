@@ -7,7 +7,7 @@ import { MemoModal } from '../utils/modals/MemoModal';
 import { Modal } from '../components/common/Modal'; 
 import { db } from '../firebase/client';
 
-const RETIRE_REASONS = ['종강', '중도퇴원', '전반'];
+const RETIRE_REASONS = ['중도퇴원', '전반'];
 
 export default function StudentManagement({
     students, parents = [], classes, handleSaveStudent, handleDeleteStudent,
@@ -26,7 +26,7 @@ export default function StudentManagement({
     const [selectedStudentSchedule, setSelectedStudentSchedule] = useState({ name: '', schedules: [] });
     const [retireModal, setRetireModal] = useState({ isOpen: false, student: null, classId: null });
     const [retireDate, setRetireDate] = useState(new Date().toISOString().slice(0, 10));
-    const [retireReason, setRetireReason] = useState('종강');
+    const [retireReason, setRetireReason] = useState('중도퇴원');
     const [selectedClassId, setSelectedClassId] = useState('all');
     const [selectedStatus, setSelectedStatus] = useState('all');
     const todayString = useMemo(() => new Date().toISOString().slice(0, 10), []);
@@ -215,7 +215,7 @@ export default function StudentManagement({
     const handleWithdrawClick = (student, classId) => {
         setRetireModal({ isOpen: true, student, classId });
         setRetireDate(todayString);
-        setRetireReason('종강');
+        setRetireReason('중도퇴원');
     };
 
     const handleRestoreClick = (student, classId) => {
@@ -227,8 +227,8 @@ export default function StudentManagement({
         if (!student?.id) throw new Error('retireStudentOnlyUpdate: missing student.id');
         if (!classId) throw new Error('retireStudentOnlyUpdate: missing classId');
 
-        const safeReason = RETIRE_REASONS.includes(endReason) ? endReason : '종강';
-        const nextStatus = safeReason === '전반' ? '전반' : safeReason === '종강' ? '종강' : '퇴원';
+        const safeReason = RETIRE_REASONS.includes(endReason) ? endReason : '중도퇴원';
+        const nextStatus = safeReason === '전반' ? '전반' : '퇴원';
         const safeDate = endDate || new Date().toISOString().slice(0, 10);
 
         const resolvedEndedAt = safeDate ? Timestamp.fromDate(new Date(safeDate)) : serverTimestamp();
@@ -668,7 +668,6 @@ export default function StudentManagement({
                             onChange={(e) => setRetireReason(e.target.value)}
                             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-indigo-600 focus:ring-2 focus:ring-indigo-200"
                         >
-                            <option value="종강">종강</option>
                             <option value="중도퇴원">중도퇴원</option>
                             <option value="전반">전반</option>
                         </select>

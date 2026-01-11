@@ -29,6 +29,25 @@ import { db } from '../firebase/client';
 import { FEATURES } from '../config/features';
 import AttendanceDetailModal from './parent/AttendanceDetailModal';
 
+const buildStudentClassStatusMap = (child) => {
+    if (!child) return {};
+    if (child.classStatusMap && typeof child.classStatusMap === 'object') return child.classStatusMap;
+    if (child.classStatusByClassId && typeof child.classStatusByClassId === 'object') return child.classStatusByClassId;
+
+    const list =
+        (Array.isArray(child.classStatuses) && child.classStatuses)
+        || (Array.isArray(child.classes) && child.classes)
+        || [];
+
+    const map = {};
+    for (const item of list) {
+        const cid = String(item?.classId || item?.id || '');
+        const st = item?.status || item?.classStatus || '';
+        if (cid) map[cid] = st;
+    }
+    return map;
+};
+
 // --- [컴포넌트] 학부모 전용 대시보드 ---
 const ParentDashboard = ({ 
     child, myClasses, attendanceLogs, homeworkStats, 
@@ -272,11 +291,20 @@ export default function ParentHome({
 
     // 2. 데이터 필터링
     const myClasses = useMemo(() => classes.filter(c => (c.students || []).includes(activeChildId)), [classes, activeChildId]);
-    
-    // ✅ 변경: 진행중/종강 분리 + 둘 다 사용
-    const { ongoing: ongoingClasses, finished: finishedClasses } = useMemo(
-        () => sortClassesByStatus(myClasses),
-        [myClasses],
+    const studentClassStatusMap = useMemo(
+        () => buildStudentClassStatusMap(activeChild),
+        [activeChild],
+    );
+
+    // ✅ 변경: 진행중/종강/퇴원 분리 + 모두 사용
+    const {
+        ongoing: ongoingClasses,
+        finished: finishedClasses,
+        withdrawn: withdrawnClasses,
+        ordered: orderedClasses,
+    } = useMemo(
+        () => sortClassesByStatus(myClasses, studentClassStatusMap),
+        [myClasses, studentClassStatusMap],
     );
 
     const myHomeworkStats = useMemo(
@@ -306,6 +334,7 @@ export default function ParentHome({
 // ✅ 리포트 뷰 상태
     const [reportViewMode, setReportViewMode] = useState('overview'); // 'overview' | 'byClass'
     const [selectedClassId, setSelectedClassId] = useState(null);
+    const [classFilter, setClassFilter] = useState('ongoing'); // 기본: 진행중
     const [expandedSections, setExpandedSections] = useState({ homework: false, grades: false });
     const [showAttendanceDetail, setShowAttendanceDetail] = useState(false);
     const [selectedReportId, _setSelectedReportId] = useState(readReportFromUrl());
@@ -422,6 +451,7 @@ export default function ParentHome({
         setExpandedSections({ homework: false, grades: false });
         setShowAttendanceDetail(false);
         setReportViewMode('overview');
+        setClassFilter('ongoing');
         setActiveTab('home', { replace: true });
     }, [activeStudentId]);
 
@@ -744,6 +774,44 @@ export default function ParentHome({
 
     const recentLessonsToShow = useMemo(() => recentLessons.slice(0, 2), [recentLessons]);
 
+    const getClassBadge = useCallback((cls) => {
+        const classId = String(cls?.id || cls?.classId || '');
+        const statusValue = studentClassStatusMap?.[classId];
+        const normalized = String(statusValue || '').trim();
+
+        if (['퇴원', '중도퇴원', '전반', '전반퇴원', '종강'].includes(normalized)) {
+            if (normalized !== '종강') {
+                return '퇴원';
+            }
+        }
+
+        const end = cls?.endDate || cls?.endAt || cls?.finishedAt;
+        if (end) {
+            const date = typeof end === 'string'
+                ? new Date(end)
+                : (typeof end?.toDate === 'function' ? end.toDate() : new Date(end));
+            if (!Number.isNaN(date.getTime()) && date.getTime() < Date.now()) return '종강';
+        }
+
+        return '진행중';
+    }, [studentClassStatusMap]);
+
+    const getClassBadgeClassName = (status) => {
+        if (status === '퇴원') {
+            return 'bg-red-50 text-red-700 border border-red-100';
+        }
+        if (status === '종강') {
+            return 'bg-gray-50 text-gray-600 border border-gray-200';
+        }
+        return 'bg-indigo-50 text-indigo-700 border border-indigo-100';
+    };
+
+    const filteredClasses = useMemo(() => {
+        if (classFilter === 'withdrawn') return withdrawnClasses;
+        if (classFilter === 'finished') return finishedClasses;
+        return ongoingClasses;
+    }, [classFilter, ongoingClasses, withdrawnClasses, finishedClasses]);
+
     const classList = useMemo(() => {
         const lessonsByClass = recentLessons.reduce((acc, cur) => {
             acc[cur.classId] = acc[cur.classId] || [];
@@ -751,22 +819,24 @@ export default function ParentHome({
             return acc;
         }, {});
 
-        const build = (cls, status) => {
+        const build = (cls) => {
             const latestLessonDate = myLessonLogs.find((log) => log.classId === cls.id)?.date || lessonsByClass[cls.id]?.[0];
             return {
                 id: cls.id,
                 name: cls.name,
                 teacher: cls.teacher,
-                status,
+                status: getClassBadge(cls),
                 latestLessonDate: latestLessonDate || '기록 없음',
             };
         };
 
-        return [
-            ...ongoingClasses.map((cls) => build(cls, 'ongoing')),
-            ...finishedClasses.map((cls) => build(cls, 'finished')),
-        ];
-    }, [ongoingClasses, finishedClasses, recentLessons, myLessonLogs]);
+        return orderedClasses.map((cls) => build(cls));
+    }, [orderedClasses, recentLessons, myLessonLogs, getClassBadge]);
+
+    const filteredClassList = useMemo(() => {
+        const filteredIds = new Set(filteredClasses.map((cls) => String(cls?.id || cls?.classId || '')));
+        return classList.filter((cls) => filteredIds.has(String(cls?.id || '')));
+    }, [classList, filteredClasses]);
 
     const lessonsBySelectedClass = useMemo(() => {
         if (!selectedClassId) return [];
@@ -1172,8 +1242,8 @@ export default function ParentHome({
                                                                 <h4 className="font-bold text-gray-900">{cls.name}</h4>
                                                                 <p className="text-xs text-gray-500">{cls.teacher} 선생님</p>
                                                             </div>
-                                                            <span className={`text-[11px] font-bold px-2 py-1 rounded-full ${cls.status === 'ongoing' ? 'bg-indigo-50 text-indigo-700 border border-indigo-100' : 'bg-gray-50 text-gray-600 border border-gray-200'}`}>
-                                                                {cls.status === 'ongoing' ? '진행중' : '종강'}
+                                                            <span className={`text-[11px] font-bold px-2 py-1 rounded-full ${getClassBadgeClassName(cls.status)}`}>
+                                                                {cls.status}
                                                             </span>
                                                         </div>
                                                     </button>
@@ -1207,8 +1277,37 @@ export default function ParentHome({
                                                         학습리포트로 돌아가기
                                                     </button>
                                                 </div>
+                                                <div className="flex gap-2 mb-4">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setClassFilter('ongoing')}
+                                                        className={classFilter === 'ongoing'
+                                                            ? 'text-xs font-semibold text-indigo-700 bg-indigo-50 px-3 py-1.5 rounded-full border border-indigo-100'
+                                                            : 'text-xs font-semibold text-gray-500 bg-gray-50 px-3 py-1.5 rounded-full border border-gray-200'}
+                                                    >
+                                                        진행중
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setClassFilter('withdrawn')}
+                                                        className={classFilter === 'withdrawn'
+                                                            ? 'text-xs font-semibold text-indigo-700 bg-indigo-50 px-3 py-1.5 rounded-full border border-indigo-100'
+                                                            : 'text-xs font-semibold text-gray-500 bg-gray-50 px-3 py-1.5 rounded-full border border-gray-200'}
+                                                    >
+                                                        퇴원
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setClassFilter('finished')}
+                                                        className={classFilter === 'finished'
+                                                            ? 'text-xs font-semibold text-indigo-700 bg-indigo-50 px-3 py-1.5 rounded-full border border-indigo-100'
+                                                            : 'text-xs font-semibold text-gray-500 bg-gray-50 px-3 py-1.5 rounded-full border border-gray-200'}
+                                                    >
+                                                        종강
+                                                    </button>
+                                                </div>
                                                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-                                                    {classList.map((cls) => (
+                                                    {filteredClassList.map((cls) => (
                                                         <button
                                                             key={cls.id}
                                                             onClick={() => {
@@ -1224,12 +1323,17 @@ export default function ParentHome({
                                                                     <h4 className="font-bold text-gray-900">{cls.name}</h4>
                                                                     <p className="text-xs text-gray-500">{cls.teacher} 선생님</p>
                                                                 </div>
-                                                                <span className={`text-[11px] font-bold px-2 py-1 rounded-full ${cls.status === 'ongoing' ? 'bg-indigo-50 text-indigo-700 border border-indigo-100' : 'bg-gray-50 text-gray-600 border border-gray-200'}`}>
-                                                                    {cls.status === 'ongoing' ? '진행중' : '종강'}
+                                                                <span className={`text-[11px] font-bold px-2 py-1 rounded-full ${getClassBadgeClassName(cls.status)}`}>
+                                                                    {cls.status}
                                                                 </span>
                                                             </div>
                                                         </button>
                                                     ))}
+                                                    {filteredClassList.length === 0 && (
+                                                        <div className="p-6 text-center bg-white border border-dashed border-gray-200 rounded-2xl text-sm text-gray-400 md:col-span-2 xl:col-span-3">
+                                                            선택한 상태의 클래스가 없습니다.
+                                                        </div>
+                                                    )}
                                                 </div>
                                             </section>
                                         )}

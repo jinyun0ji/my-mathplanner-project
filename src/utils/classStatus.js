@@ -56,15 +56,47 @@ export const getDefaultClassId = (classes = []) => {
     return ongoing?.id ?? classes[0]?.id ?? null;
 };
 
-export const sortClassesByStatus = (classes = []) => {
+export const sortClassesByStatus = (classes = [], studentClassStatusMap = {}) => {
+    const all = Array.isArray(classes) ? classes : [];
+
+    const isWithdrawn = (value) => {
+        const status = String(value || '').trim();
+        return ['퇴원', '중도퇴원', '전반', '전반퇴원'].includes(status);
+    };
+
+    const isEndedByDate = (classDoc) => {
+        const end = classDoc?.endDate || classDoc?.endAt || classDoc?.finishedAt;
+        if (!end) return false;
+        const date = typeof end === 'string'
+            ? new Date(end)
+            : (typeof end?.toDate === 'function' ? end.toDate() : new Date(end));
+        return !Number.isNaN(date.getTime()) && date.getTime() < Date.now();
+    };
     const ongoing = [];
     const finished = [];
-    classes.forEach((cls) => {
-        if (isClassOngoing(cls)) {
-            ongoing.push(cls);
-        } else {
-            finished.push(cls);
+    const withdrawn = [];
+
+    all.forEach((cls) => {
+        const classId = String(cls?.id || cls?.classId || '');
+        const status = studentClassStatusMap?.[classId];
+
+        if (isWithdrawn(status)) {
+            withdrawn.push(cls);
+            return;
         }
+
+        if (isEndedByDate(cls)) {
+            finished.push(cls);
+            return;
+        }
+
+        ongoing.push(cls);
     });
-    return { ongoing, finished, ordered: [...ongoing, ...finished] };
+    return {
+        all,
+        ongoing,
+        finished,
+        withdrawn,
+        ordered: [...ongoing, ...finished, ...withdrawn],
+    };
 };
