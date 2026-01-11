@@ -157,6 +157,7 @@ export default function AppRoutes({ user, role, studentIds }) {
   const parentStudentId = isParentRole(role) ? parentActiveStudentId : null;
 
   const [students, setStudents] = useState([]);
+  const [parents, setParents] = useState([]);
   const [classes, setClasses] = useState([]);
 
   const [lessonLogs, setLessonLogs] = useState([]);
@@ -198,6 +199,7 @@ export default function AppRoutes({ user, role, studentIds }) {
         userRole: role,
         pageKey: page,
         setStudents: page === 'attendance' ? null : setStudents,
+        setParents,
         setClasses,
         setTests,
         setLessonLogs,
@@ -1504,7 +1506,7 @@ export default function AppRoutes({ user, role, studentIds }) {
 }
   
   const managementProps = {
-    students, classes, lessonLogs, attendanceLogs, workLogs, clinicLogs,
+    students, parents, classes, lessonLogs, attendanceLogs, workLogs, clinicLogs,
     homeworkAssignments, homeworkResults, tests, grades, studentMemos, videoProgress, announcements,
     paymentLogs,
     isPaymentLogsLoading,

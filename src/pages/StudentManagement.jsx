@@ -10,7 +10,7 @@ import { db } from '../firebase/client';
 const RETIRE_REASONS = ['종강', '중도퇴원', '전반'];
 
 export default function StudentManagement({
-    students, classes, getClassesNames, handleSaveStudent, handleDeleteStudent,
+    students, parents = [], classes, getClassesNames, handleSaveStudent, handleDeleteStudent,
     attendanceLogs, studentMemos, handleSaveMemo, handlePageChange,
     studentSearchTerm, setStudentSearchTerm,
     externalSchedules,
@@ -168,7 +168,7 @@ export default function StudentManagement({
                     <table className="min-w-full divide-y divide-gray-200">
                         <thead className="bg-gray-100">
                             <tr>
-                                {['이름', '문서ID', 'Auth UID', '학교', '학년', '상태', '수강 클래스', '연락처 (학생/학부모)', '등록일', '관리'].map(header => (
+                                {['이름', '문서ID', 'Auth UID', '학교', '학년', '상태', '연락처 (학생/학부모)', '등록일', '관리'].map(header => (
                                     <th key={header} className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">{header}</th>
                                 ))}
                             </tr>
@@ -177,6 +177,10 @@ export default function StudentManagement({
                             {filteredStudents.map(student => {
                                 // ✅ [추가] 해당 학생의 타학원 스케줄 존재 여부 확인
                                 const hasExternal = externalSchedules?.some(s => s.studentId === student.id);
+                                const parentAuthUids = parents
+                                    .filter((parent) => Array.isArray(parent.studentIds) && parent.studentIds.includes(student.id))
+                                    .map((parent) => parent.authUid)
+                                    .filter(Boolean);
 
                                 const classStatusMap = student.classStatuses || {};
                                 const allClassIds = Array.isArray(student.classes)
@@ -213,16 +217,23 @@ export default function StudentManagement({
                                             ) : '-'}
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-xs text-gray-600">
-                                            {student.authUid ? (
-                                                <button
-                                                    type="button"
-                                                    className="hover:underline"
-                                                    title={student.authUid}
-                                                    onClick={(e) => { e.stopPropagation(); copyToClipboard(student.authUid); }}
-                                                >
-                                                    {shortId(student.authUid)}
-                                                </button>
-                                            ) : '-'}
+                                            <div className="flex flex-col gap-1">
+                                                <span className="text-gray-700">
+                                                    학생: {student.authUid ? (
+                                                        <button
+                                                            type="button"
+                                                            className="hover:underline"
+                                                            title={student.authUid}
+                                                            onClick={(e) => { e.stopPropagation(); copyToClipboard(student.authUid); }}
+                                                        >
+                                                            {shortId(student.authUid)}
+                                                        </button>
+                                                    ) : '-'}
+                                                </span>
+                                                <span className="text-gray-500">
+                                                    학부모: {parentAuthUids.length > 0 ? parentAuthUids.join(', ') : '-'}
+                                                </span>
+                                            </div>
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{student.school}</td>
                                         {/* 학년 표시 수정 */}
@@ -263,7 +274,6 @@ export default function StudentManagement({
                                                 </div>
                                             )}
                                         </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{getClassesNames(student.classes)}</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm"><div className="flex flex-col"><span className="text-gray-900 font-medium">{student.phone}</span><span className="text-gray-400 text-xs">부모: {student.parentPhone}</span></div></td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{student.registeredDate}</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
@@ -318,6 +328,10 @@ export default function StudentManagement({
                 <div className="grid gap-3 md:hidden">
                     {filteredStudents.map(student => {
                         const hasExternal = externalSchedules?.some(s => s.studentId === student.id);
+                        const parentAuthUids = parents
+                            .filter((parent) => Array.isArray(parent.studentIds) && parent.studentIds.includes(student.id))
+                            .map((parent) => parent.authUid)
+                            .filter(Boolean);
                         const classStatusMap = student.classStatuses || {};
                         const allClassIds = Array.isArray(student.classes)
                             ? student.classes
@@ -402,16 +416,23 @@ export default function StudentManagement({
                                                 </div>
                                                 <div className="flex items-center gap-1 text-[11px] text-gray-600">
                                                     <span className="font-semibold">Auth UID</span>
-                                                    {student.authUid ? (
-                                                        <button
-                                                            type="button"
-                                                            className="hover:underline"
-                                                            title={student.authUid}
-                                                            onClick={(e) => { e.stopPropagation(); copyToClipboard(student.authUid); }}
-                                                        >
-                                                            {shortId(student.authUid)}
-                                                        </button>
-                                                    ) : '-'}
+                                                    <div className="flex flex-col gap-0.5">
+                                                        <span>
+                                                            학생: {student.authUid ? (
+                                                                <button
+                                                                    type="button"
+                                                                    className="hover:underline"
+                                                                    title={student.authUid}
+                                                                    onClick={(e) => { e.stopPropagation(); copyToClipboard(student.authUid); }}
+                                                                >
+                                                                    {shortId(student.authUid)}
+                                                                </button>
+                                                            ) : '-'}
+                                                        </span>
+                                                        <span className="text-gray-500">
+                                                            학부모: {parentAuthUids.length > 0 ? parentAuthUids.join(', ') : '-'}
+                                                        </span>
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>

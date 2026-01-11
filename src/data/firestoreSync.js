@@ -161,6 +161,7 @@ export const loadStaffDataOnce = async ({
     userRole,
     pageKey = null,
     setStudents,
+    setParents,
     setClasses,
     setTests,
     setLessonLogs,
@@ -190,6 +191,16 @@ export const loadStaffDataOnce = async ({
                 query(collection(db, 'users'), where('role', '==', ROLE.STUDENT), limit(500)),
                 () => false,
                 normalizeStudentUser,
+            );
+        }
+
+        if (setParents) {
+            await fetchList(
+                db,
+                'users',
+                setParents,
+                query(collection(db, 'users'), where('role', '==', ROLE.PARENT), limit(500)),
+                () => false,
             );
         }
 

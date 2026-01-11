@@ -156,8 +156,8 @@ export default function ClinicManagement({
         const normalizedSearch = searchText.trim().toLowerCase();
         const filtered = filteredByDeletion.filter(log => {
             if (selectedClassId) {
-                const classId = log.classId || log.class?.id || '';
-                if (classId !== selectedClassId) return false;
+                const itemClassId = log.classId || log.classDocId || log.class?.id || log.class?.classId || '';
+                if (String(itemClassId) !== String(selectedClassId)) return false;
             }
             if (selectedStudentId) {
                 const studentId = log.studentId || log.student?.id || '';
