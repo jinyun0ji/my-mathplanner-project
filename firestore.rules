@@ -226,6 +226,10 @@ service cloud.firestore {
       allow delete: if isStaffOrAdminOrTeacher()
         || (signedIn() && uid() == userId);
     }
+    
+    match /users/{studentId}/staffMemos/{memoId} {
+      allow read, write: if request.auth != null && isStaffOrAdminOrTeacher();
+    }
 
     // ✅ userAuthIndex 읽기 허용 유지
     match /userAuthIndex/{u} { allow read: if request.auth.uid == u; }

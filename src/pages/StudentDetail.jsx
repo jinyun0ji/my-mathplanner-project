@@ -1,7 +1,22 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { collection, doc, getDoc, getDocs, limit, orderBy, query, where } from 'firebase/firestore';
+import {
+    addDoc,
+    collection,
+    doc,
+    documentId,
+    getDoc,
+    getDocs,
+    limit,
+    onSnapshot,
+    orderBy,
+    query,
+    serverTimestamp,
+    where,
+} from 'firebase/firestore';
 import { db } from '../firebase/client';
+import useAuth from '../auth/useAuth';
+import { ROLE } from '../constants/roles';
 import { formatGradeLabel, Icon } from '../utils/helpers';
 
 const COL = {
@@ -11,21 +26,104 @@ const COL = {
     LESSON: 'lessonLogs',
     GRADES: 'grades',
     HOMEWORK_RESULTS: 'homeworkResults',
-    HOMEWORK_ASSIGNMENTS: 'homeworkAssignments',
-    ANNOUNCEMENTS: 'announcements',
+    CLASSES: 'classes',
+    STAFF_MEMOS: 'staffMemos',
+};
+
+const STAFF_MEMO_LIMIT = 100;
+
+const formatDateTime = (value) => {
+    if (!value) return '작성 시각 정보 없음';
+    if (typeof value?.toDate === 'function') {
+        return value.toDate().toLocaleString('ko-KR');
+    }
+    if (value instanceof Date) {
+        return value.toLocaleString('ko-KR');
+    }
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) {
+        return parsed.toLocaleString('ko-KR');
+    }
+    return String(value);
+};
+
+const formatDate = (value) => {
+    if (!value) return '날짜 정보 없음';
+    if (typeof value?.toDate === 'function') {
+        return value.toDate().toISOString().slice(0, 10);
+    }
+    if (value instanceof Date) {
+        return value.toISOString().slice(0, 10);
+    }
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) {
+        return parsed.toISOString().slice(0, 10);
+    }
+    return String(value);
+};
+
+const resolveParentAuthUids = (studentData) => {
+    if (!studentData) return [];
+    const rawValues = [
+        studentData.parentAuthUid,
+        studentData.parentAuthUID,
+        studentData.parentUid,
+        studentData.parentUID,
+        ...(Array.isArray(studentData.parentAuthUids) ? studentData.parentAuthUids : []),
+    ];
+    return rawValues
+        .flatMap((value) => (Array.isArray(value) ? value : [value]))
+        .filter(Boolean)
+        .map((value) => String(value));
+};
+
+const getStudentClassIds = (studentData) => {
+    if (!studentData) return [];
+    const rawIds = Array.isArray(studentData.classIds)
+        ? studentData.classIds
+        : (Array.isArray(studentData.classes) ? studentData.classes : []);
+    return rawIds.map((value) => String(value));
+};
+
+const fetchClassesByIds = async (ids) => {
+    if (!ids?.length) return [];
+    const batches = [];
+    for (let i = 0; i < ids.length; i += 10) {
+        batches.push(ids.slice(i, i + 10));
+    }
+    const snapshots = await Promise.all(
+        batches.map((chunk) =>
+            getDocs(query(collection(db, COL.CLASSES), where(documentId(), 'in', chunk))),
+        ),
+    );
+    return snapshots.flatMap((snapshot) =>
+        snapshot.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })),
+    );
 };
 
 export default function StudentDetail() {
     const { studentId: studentDocId } = useParams();
     const navigate = useNavigate();
+    const { user, role, userProfile, profileDocId } = useAuth();
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [student, setStudent] = useState(null);
     const [attendances, setAttendances] = useState([]);
     const [homeworks, setHomeworks] = useState([]);
     const [grades, setGrades] = useState([]);
-    const [memo, setMemo] = useState(null);
+    const [lessonLogs, setLessonLogs] = useState([]);
+    const [clinicLogs, setClinicLogs] = useState([]);
+    const [classes, setClasses] = useState([]);
+    const [staffMemos, setStaffMemos] = useState([]);
+    const [memoDraft, setMemoDraft] = useState('');
+    const [memoSaving, setMemoSaving] = useState(false);
+    const [memoError, setMemoError] = useState(null);
     const [studentAuthUid, setStudentAuthUid] = useState(null);
+
+    const canManageStaffMemos = useMemo(
+        () => [ROLE.ADMIN, ROLE.STAFF, ROLE.TEACHER].includes(role),
+        [role],
+    );
 
     useEffect(() => {
         let isMounted = true;
@@ -37,7 +135,9 @@ export default function StudentDetail() {
             setAttendances([]);
             setHomeworks([]);
             setGrades([]);
-            setMemo(null);
+            setLessonLogs([]);
+            setClinicLogs([]);
+            setClasses([]);
             setStudentAuthUid(null);
 
             if (!studentDocId) {
@@ -80,11 +180,19 @@ export default function StudentDetail() {
                     limit(5),
                 );
 
-                const attendanceSnap = await getDocs(attendanceQuery);
+                const clinicQuery = query(
+                    collection(db, COL.CLINIC),
+                    where('studentId', '==', studentDocId),
+                    orderBy('date', 'desc'),
+                    limit(5),
+                );
+
+                const attendancePromise = getDocs(attendanceQuery);
+                const clinicPromise = getDocs(clinicQuery);
 
                 let homeworkSnap = null;
                 let gradesSnap = null;
-                let memoSnap = null;
+                let lessonSnap = null;
 
                 if (authUid) {
                     const homeworkQuery = query(
@@ -99,32 +207,44 @@ export default function StudentDetail() {
                         orderBy('updatedAt', 'desc'),
                         limit(3),
                     );
-                    const memoQuery = query(
+                    const lessonQuery = query(
                         collection(db, COL.LESSON),
                         where('authUid', '==', authUid),
                         orderBy('date', 'desc'),
-                        limit(1),
+                        limit(5),
                     );
 
-                    [homeworkSnap, gradesSnap, memoSnap] = await Promise.all([
+                    [homeworkSnap, gradesSnap, lessonSnap] = await Promise.all([
                         getDocs(homeworkQuery),
                         getDocs(gradesQuery),
-                        getDocs(memoQuery),
+                        getDocs(lessonQuery),
                     ]);
                 }
+
+                const [attendanceSnap, clinicSnap] = await Promise.all([
+                    attendancePromise,
+                    clinicPromise,
+                ]);
+
+                if (!isMounted) return;
+
+                const classIds = getStudentClassIds(studentData);
+                const classDocs = await fetchClassesByIds(classIds);
 
                 if (!isMounted) return;
 
                 setAttendances(attendanceSnap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })));
+                setClinicLogs(clinicSnap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })));
                 setHomeworks(homeworkSnap ? homeworkSnap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })) : []);
                 setGrades(gradesSnap ? gradesSnap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })) : []);
-                setMemo(memoSnap?.docs?.[0] ? { id: memoSnap.docs[0].id, ...memoSnap.docs[0].data() } : null);
+                setLessonLogs(lessonSnap ? lessonSnap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })) : []);
+                setClasses(classDocs);
             } catch (fetchError) {
                 console.error('상세 에러 로그:', fetchError);
                 if (isMounted) {
                     setError('학생 정보를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.');
                 }
-                    } finally {
+                } finally {
                 if (isMounted) {
                     setLoading(false);
                 }
@@ -137,6 +257,58 @@ export default function StudentDetail() {
             isMounted = false;
         };
     }, [studentDocId]);
+
+    useEffect(() => {
+        if (!studentDocId || !canManageStaffMemos) {
+            setStaffMemos([]);
+            return undefined;
+        }
+
+        const memosQuery = query(
+            collection(db, COL.USERS, studentDocId, COL.STAFF_MEMOS),
+            orderBy('createdAt', 'desc'),
+            limit(STAFF_MEMO_LIMIT),
+        );
+
+        const unsubscribe = onSnapshot(
+            memosQuery,
+            (snapshot) => {
+                const items = snapshot.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
+                setStaffMemos(items);
+            },
+            (fetchError) => {
+                console.error('staff memo load error:', fetchError);
+                setMemoError('직원 메모를 불러오는 데 실패했습니다.');
+            },
+        );
+
+        return () => unsubscribe();
+    }, [studentDocId, canManageStaffMemos]);
+
+    const handleSaveStaffMemo = async () => {
+        const trimmed = memoDraft.trim();
+        if (!trimmed || !studentDocId) return;
+        setMemoSaving(true);
+        setMemoError(null);
+
+        try {
+            const createdByName = userProfile?.displayName || user?.displayName || user?.email || '알 수 없음';
+            await addDoc(collection(db, COL.USERS, studentDocId, COL.STAFF_MEMOS), {
+                content: trimmed,
+                createdAt: serverTimestamp(),
+                createdByUid: profileDocId || user?.uid || null,
+                createdByName,
+                tags: [],
+                visibility: 'staff',
+            });
+            setMemoDraft('');
+        } catch (saveError) {
+            console.error('staff memo save error:', saveError);
+            setMemoError('직원 메모 저장에 실패했습니다.');
+        } finally {
+            setMemoSaving(false);
+        }
+    };
 
     const renderStatus = () => {
         if (loading) {
@@ -184,7 +356,22 @@ export default function StudentDetail() {
         const attendanceItems = Array.isArray(attendances) ? attendances : [];
         const homeworkItems = Array.isArray(homeworks) ? homeworks : [];
         const gradeItems = Array.isArray(grades) ? grades : [];
+        const lessonItems = Array.isArray(lessonLogs) ? lessonLogs : [];
+        const clinicItems = Array.isArray(clinicLogs) ? clinicLogs : [];
+        const classItems = Array.isArray(classes) ? classes : [];
         const accountLinked = Boolean(studentAuthUid);
+        const parentAuthUids = resolveParentAuthUids(student);
+        const classStatusMap = student.classStatusMap || student.classStatuses || {};
+        const classIds = getStudentClassIds(student);
+        const classBadges = classIds.map((classId) => {
+            const classInfo = classItems.find((item) => String(item.id) === String(classId));
+            const status = classStatusMap?.[classId]?.status || student.status || '상태 정보 없음';
+            return {
+                id: classId,
+                name: classInfo?.name || `클래스 ${classId}`,
+                status,
+            };
+        });
 
         return (
             <div className="space-y-6">
@@ -211,6 +398,48 @@ export default function StudentDetail() {
                             </button>
                         </div>
                     </div>
+                    <div className="mt-6 grid gap-4 lg:grid-cols-3">
+                        <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
+                            <p className="text-xs font-semibold text-gray-500">계정 정보</p>
+                            <div className="mt-3 space-y-2 text-xs text-gray-600">
+                                <p>문서 ID: <span className="font-medium text-gray-800">{student.id}</span></p>
+                                <p>학생 authUid: <span className="font-medium text-gray-800">{studentAuthUid || '연결 없음'}</span></p>
+                                <p>
+                                    학부모 authUid: <span className="font-medium text-gray-800">
+                                        {parentAuthUids.length > 0 ? parentAuthUids.join(', ') : '연결 없음'}
+                                    </span>
+                                </p>
+                            </div>
+                        </div>
+                        <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
+                            <p className="text-xs font-semibold text-gray-500">연락처</p>
+                            <div className="mt-3 space-y-2 text-xs text-gray-600">
+                                <p>학생 연락처: <span className="font-medium text-gray-800">{student.phone || '번호 없음'}</span></p>
+                                <p>학부모 연락처: <span className="font-medium text-gray-800">{student.parentPhone || '번호 없음'}</span></p>
+                                <p>학부모 이름: <span className="font-medium text-gray-800">{student.parentName || '정보 없음'}</span></p>
+                            </div>
+                        </div>
+                        <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
+                            <p className="text-xs font-semibold text-gray-500">수강 클래스</p>
+                            <div className="mt-3 flex flex-wrap gap-2">
+                                {classBadges.length > 0 ? (
+                                    classBadges.map((item) => (
+                                        <span
+                                            key={item.id}
+                                            className="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-white px-3 py-1 text-xs font-semibold text-indigo-600"
+                                        >
+                                            {item.name}
+                                            <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-500">
+                                                {item.status}
+                                            </span>
+                                        </span>
+                                    ))
+                                ) : (
+                                    <span className="text-xs text-gray-400">등록된 클래스가 없습니다.</span>
+                                )}
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 {!accountLinked && (
@@ -220,6 +449,36 @@ export default function StudentDetail() {
                 )}
 
                 <div className="grid gap-6 lg:grid-cols-2">
+                    <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+                        <div className="flex items-center justify-between">
+                            <h3 className="text-base font-semibold text-gray-900">수업 기록</h3>
+                            <button
+                                type="button"
+                                onClick={() => navigate('/lessons')}
+                                className="text-xs font-semibold text-indigo-600 hover:underline"
+                            >
+                                수업 관리
+                            </button>
+                        </div>
+                        <div className="mt-4 space-y-3 text-sm text-gray-600">
+                            {lessonItems.length > 0 ? (
+                                lessonItems.map((item) => (
+                                    <div key={item.id} className="rounded-lg border border-gray-100 bg-gray-50 px-4 py-3">
+                                        <div className="flex items-center justify-between">
+                                            <p className="font-semibold text-gray-800">{item.title || item.lessonTitle || '수업 기록'}</p>
+                                            <span className="text-xs font-semibold text-gray-500">{item.className || item.classId || '클래스 정보 없음'}</span>
+                                        </div>
+                                        <p className="mt-1 text-xs text-gray-500">{formatDate(item.date)}</p>
+                                    </div>
+                                ))
+                            ) : (
+                                <p className="rounded-lg border border-dashed border-gray-200 bg-gray-50 p-4 text-xs text-gray-500">
+                                    최근 수업 기록이 없습니다.
+                                </p>
+                            )}
+                        </div>
+                    </div>
+
                     <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
                         <div className="flex items-center justify-between">
                             <h3 className="text-base font-semibold text-gray-900">출결 요약</h3>
@@ -249,7 +508,9 @@ export default function StudentDetail() {
                             )}
                         </div>
                     </div>
+                </div>
 
+                <div className="grid gap-6 lg:grid-cols-2">
                     <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
                         <div className="flex items-center justify-between">
                             <h3 className="text-base font-semibold text-gray-900">과제 요약</h3>
@@ -269,7 +530,7 @@ export default function StudentDetail() {
                                             <p className="font-semibold text-gray-800">{item.title || item.content || '과제명 없음'}</p>
                                             <span className="text-xs font-semibold text-gray-500">{item.status || '상태 없음'}</span>
                                         </div>
-                                        <p className="mt-1 text-xs text-gray-500">{item.date || '날짜 정보 없음'}</p>
+                                        <p className="mt-1 text-xs text-gray-500">{formatDate(item.date || item.updatedAt)}</p>
                                     </div>
                                 ))
                             ) : (
@@ -279,12 +540,10 @@ export default function StudentDetail() {
                             )}
                         </div>
                     </div>
-                </div>
-            
-                <div className="grid gap-6 lg:grid-cols-3">
-                    <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm lg:col-span-2">
+
+                <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
                         <div className="flex items-center justify-between">
-                            <h3 className="text-base font-semibold text-gray-900">성적 요약</h3>
+                            <h3 className="text-base font-semibold text-gray-900">시험/성적 요약</h3>
                             <button
                                 type="button"
                                 onClick={() => navigate('/grades')}
@@ -292,13 +551,13 @@ export default function StudentDetail() {
                             >
                                 성적 관리
                             </button>
-                            </div>
+                        </div>
                         <div className="mt-4 grid gap-3 md:grid-cols-2">
                             {gradeItems.length > 0 ? (
                                 gradeItems.map((item) => (
                                     <div key={item.id} className="rounded-lg border border-gray-100 bg-gray-50 px-4 py-3">
                                         <p className="text-sm font-semibold text-gray-800">{item.testName || item.subject || '시험 정보 없음'}</p>
-                                        <p className="mt-1 text-xs text-gray-500">{item.date || '날짜 정보 없음'}</p>
+                                        <p className="mt-1 text-xs text-gray-500">{formatDate(item.date || item.updatedAt)}</p>
                                         <p className="mt-2 text-sm font-semibold text-indigo-600">
                                             {item.score ? `${item.score}점` : '점수 정보 없음'}
                                         </p>
@@ -311,10 +570,43 @@ export default function StudentDetail() {
                             )}
                         </div>
                     </div>
+                </div>
+
+                <div className="grid gap-6 lg:grid-cols-2">
 
                     <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
                         <div className="flex items-center justify-between">
-                            <h3 className="text-base font-semibold text-gray-900">최신 메모</h3>
+                            <h3 className="text-base font-semibold text-gray-900">클리닉 기록 요약</h3>
+                            <button
+                                type="button"
+                                onClick={() => navigate('/clinic')}
+                                className="text-xs font-semibold text-indigo-600 hover:underline"
+                            >
+                                클리닉 관리
+                            </button>
+                        </div>
+                        <div className="mt-4 space-y-3 text-sm text-gray-600">
+                            {clinicItems.length > 0 ? (
+                                clinicItems.map((item) => (
+                                    <div key={item.id} className="rounded-lg border border-gray-100 bg-gray-50 px-4 py-3">
+                                        <div className="flex items-center justify-between">
+                                            <p className="font-semibold text-gray-800">{item.tutor || '담당 선생님 미정'}</p>
+                                            <span className="text-xs font-semibold text-gray-500">{item.status || '상태 없음'}</span>
+                                        </div>
+                                        <p className="mt-1 text-xs text-gray-500">{item.date || '날짜 정보 없음'} · {item.plannedTime || item.checkIn || '시간 정보 없음'}</p>
+                                    </div>
+                                ))
+                            ) : (
+                                <p className="rounded-lg border border-dashed border-gray-200 bg-gray-50 p-4 text-xs text-gray-500">
+                                    최근 클리닉 기록이 없습니다.
+                                </p>
+                            )}
+                        </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+                        <div className="flex items-center justify-between">
+                            <h3 className="text-base font-semibold text-gray-900">커뮤니케이션 요약</h3>
                             <button
                                 type="button"
                                 onClick={() => navigate('/communication')}
@@ -323,16 +615,64 @@ export default function StudentDetail() {
                                 커뮤니케이션
                             </button>
                         </div>
-                    <div className="mt-4 rounded-lg border border-gray-100 bg-gray-50 p-4 text-sm text-gray-600">
-                            {memo?.content || memo?.text || '작성된 메모가 없습니다.'}
+                        <div className="mt-4 rounded-lg border border-gray-100 bg-gray-50 p-4 text-sm text-gray-600">
+                            {lessonItems[0]?.content || lessonItems[0]?.text || '작성된 메모가 없습니다.'}
                         </div>
-                    <p className="mt-3 text-xs text-gray-400">
-                            {memo?.createdAt || memo?.date || '작성 시각 정보 없음'}
+                        <p className="mt-3 text-xs text-gray-400">
+                            {lessonItems[0]?.createdAt || lessonItems[0]?.date || '작성 시각 정보 없음'}
                         </p>
                     </div>
                 </div>
+
+                {canManageStaffMemos && (
+                    <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <h3 className="text-base font-semibold text-gray-900">직원 메모 타임라인</h3>
+                                <p className="mt-1 text-xs text-gray-500">직원 전용 메모는 학생/학부모에게 노출되지 않습니다.</p>
+                            </div>
+                        </div>
+                        <div className="mt-4 space-y-3">
+                            <textarea
+                                value={memoDraft}
+                                onChange={(event) => setMemoDraft(event.target.value)}
+                                placeholder="학생 관련 내부 메모를 남겨주세요."
+                                rows={4}
+                                className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                            />
+                            <div className="flex items-center justify-between">
+                                <p className="text-xs text-rose-500">{memoError}</p>
+                                <button
+                                    type="button"
+                                    onClick={handleSaveStaffMemo}
+                                    disabled={memoSaving || !memoDraft.trim()}
+                                    className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-indigo-300"
+                                >
+                                    {memoSaving ? '저장 중...' : '저장'}
+                                </button>
+                            </div>
+                        </div>
+                        <div className="mt-6 space-y-4">
+                            {staffMemos.length > 0 ? (
+                                staffMemos.map((item) => (
+                                    <div key={item.id} className="rounded-xl border border-gray-100 bg-gray-50 p-4">
+                                        <div className="flex items-center justify-between">
+                                            <p className="text-xs font-semibold text-gray-700">{item.createdByName || '작성자 정보 없음'}</p>
+                                            <span className="text-xs text-gray-400">{formatDateTime(item.createdAt)}</span>
+                                        </div>
+                                        <p className="mt-2 whitespace-pre-wrap text-sm text-gray-700">{item.content}</p>
+                                    </div>
+                                ))
+                            ) : (
+                                <p className="rounded-lg border border-dashed border-gray-200 bg-gray-50 p-4 text-xs text-gray-500">
+                                    아직 등록된 직원 메모가 없습니다.
+                                </p>
+                            )}
+                        </div>
+                    </div>
+                )}
             </div>
-            );
+        );
     };
 
     return <div className="space-y-6">{renderStatus()}</div>;

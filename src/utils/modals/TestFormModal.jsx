@@ -30,6 +30,7 @@ export const TestFormModal = ({
   const [totalQuestions, setTotalQuestions] = useState(20);
   const [questionScores, setQuestionScores] = useState([]); // 문항별 배점
   const [questionAnalysis, setQuestionAnalysis] = useState([]); // 문항 분석
+  const [autoScoreMode, setAutoScoreMode] = useState(true);
 
   const [staffNotifyMode, setStaffNotifyMode] = useState('none');
   const [staffNotifyTitle, setStaffNotifyTitle] = useState('');
@@ -70,6 +71,7 @@ export const TestFormModal = ({
     setMaxScore(defaultMaxScore);
     setTotalQuestions(defaultQuestions);
     setQuestionScores(Array(defaultQuestions).fill(defaultMaxScore / defaultQuestions));
+    setAutoScoreMode(true);
     setQuestionAnalysis(Array(defaultQuestions).fill({ difficulty: '중', type: '개념' }));
 
     setStaffNotifyMode('none');
@@ -77,6 +79,18 @@ export const TestFormModal = ({
     setStaffNotifyBody('');
     setStaffNotifyScheduledAt('');
   }, [getDefaultDate]);
+
+  const distributeScores = useCallback((questionCount, totalScore) => {
+    const safeQuestions = Math.max(1, Number(questionCount) || 1);
+    const safeScore = Number(totalScore) || 0;
+    const base = Math.floor(safeScore / safeQuestions);
+    const remainder = safeScore % safeQuestions;
+    const scores = Array(safeQuestions).fill(base);
+    for (let i = 0; i < remainder; i += 1) {
+      scores[i] += 1;
+    }
+    return scores;
+  }, []);
 
   // ✅ test가 들어오면 "수정 모드" + 폼 프리필
   useEffect(() => {
@@ -100,6 +114,7 @@ export const TestFormModal = ({
           : Array.from({ length: tq }, (_, i) => Number(qs[i]) || 0);
 
       setQuestionScores(filledScores);
+      setAutoScoreMode(!(qs.length === tq && qs.length > 0));
 
       const qa = Array.isArray(test.questionAnalysis) ? test.questionAnalysis : [];
       const filledAnalysis =
@@ -140,13 +155,6 @@ export const TestFormModal = ({
   useEffect(() => {
     const newCount = Math.max(1, Number(totalQuestions) || 1);
 
-    setQuestionScores((prev) => {
-      const next = Array.isArray(prev) ? [...prev] : [];
-      while (next.length < newCount) next.push(0);
-      next.length = newCount;
-      return next.map((n) => Number(n) || 0);
-    });
-
     setQuestionAnalysis((prev) => {
       const next = Array.isArray(prev) ? [...prev] : [];
       while (next.length < newCount) next.push({ difficulty: '중', type: '개념' });
@@ -157,6 +165,31 @@ export const TestFormModal = ({
       }));
     });
   }, [totalQuestions]);
+
+  useEffect(() => {
+    const newCount = Math.max(1, Number(totalQuestions) || 1);
+    if (Number(maxScore) > 0) return;
+
+    setQuestionScores((prev) => {
+      const next = Array.isArray(prev) ? [...prev] : [];
+      while (next.length < newCount) next.push(0);
+      next.length = newCount;
+      return next.map((n) => Number(n) || 0);
+    });
+  }, [maxScore, totalQuestions]);
+
+  useEffect(() => {
+    const questionCount = Number(totalQuestions) || 0;
+    const totalScore = Number(maxScore) || 0;
+    const scoresEmpty = !Array.isArray(questionScores) || questionScores.length === 0;
+    const scoresLengthMismatch =
+      Array.isArray(questionScores) && questionScores.length !== questionCount;
+    const shouldAutoScore = autoScoreMode || scoresEmpty || scoresLengthMismatch;
+
+    if (questionCount <= 0 || totalScore <= 0 || !shouldAutoScore) return;
+
+    setQuestionScores(distributeScores(questionCount, totalScore));
+  }, [autoScoreMode, maxScore, questionScores, totalQuestions, distributeScores]);
 
   const questionScoreSum = useMemo(
     () => (questionScores || []).reduce((sum, score) => sum + (Number(score) || 0), 0),
@@ -178,11 +211,18 @@ export const TestFormModal = ({
     const newScore = value === '' ? 0 : Number(value);
     if (!Number.isFinite(newScore) || newScore < 0) return;
 
+    setAutoScoreMode(false);
     setQuestionScores((prev) => {
       const updated = [...prev];
       updated[index] = newScore;
       return updated;
     });
+  };
+
+  const handleApplyEqualScores = () => {
+    if (Number(totalQuestions) <= 0 || Number(maxScore) <= 0) return;
+    setAutoScoreMode(true);
+    setQuestionScores(distributeScores(totalQuestions, maxScore));
   };
 
   const handleAnalysisChange = (index, field, value) => {
@@ -323,6 +363,15 @@ export const TestFormModal = ({
           <p className="text-sm text-gray-600 mb-2">
             총점: <span className="font-bold text-red-600">{Number(maxScore || 0).toFixed(1)}</span>점
           </p>
+          <div className="mb-2">
+            <button
+              type="button"
+              onClick={handleApplyEqualScores}
+              className="px-3 py-1 text-xs font-semibold rounded-md text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200"
+            >
+              균등 배점 적용
+            </button>
+          </div>
 
           {questionScoreSum !== Number(maxScore) && (
             <p className="text-xs text-orange-600 mb-2 flex items-center">

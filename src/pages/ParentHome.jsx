@@ -506,14 +506,6 @@ export default function ParentHome({
         return date ? date.toISOString().slice(0, 10) : null;
     };
 
-    const latestAttendance = useMemo(() => {
-        const logs = attendanceLogs
-            .filter(l => l.studentId === activeChildId)
-            .sort((a, b) => new Date(b.date) - new Date(a.date));
-        if (!logs.length) return null;
-        return { status: logs[0].status, date: logs[0].date };
-    }, [attendanceLogs, activeChildId]);
-
     const latestGrade = useMemo(() => {
         if (!myGradeComparison || myGradeComparison.length === 0) return null;
         const sorted = [...myGradeComparison].sort((a, b) => new Date(a.testDate) - new Date(b.testDate));
@@ -693,6 +685,35 @@ export default function ParentHome({
             .slice(0, 5);
     }, [myLessonLogs, activeChildId, filteredLessonLogs, attendanceLogs, filteredHomeworkAssignments, homeworkResults, filteredTests, grades, classes]);
 
+    const attendanceHistory = useMemo(() => {
+        const list = Array.isArray(recentLessons) ? recentLessons : [];
+
+        const getAttendance = (lesson) =>
+            lesson?.attendance
+            || lesson?.attendanceStatus
+            || lesson?.attendanceType
+            || lesson?.status
+            || null;
+
+        const getDate = (lesson) =>
+            lesson?.date
+            || lesson?.lessonDate
+            || lesson?.createdAt
+            || null;
+
+        return list
+            .map((lesson) => ({
+                id: lesson?.id || `${getDate(lesson)}-${getAttendance(lesson)}`,
+                date: getDate(lesson),
+                attendance: getAttendance(lesson),
+                memo: lesson?.attendanceMemo || lesson?.memo || '',
+            }))
+            .filter(item => item.attendance)
+            .sort((a, b) =>
+                String(b.date || '').localeCompare(String(a.date || ''))
+            );
+    }, [recentLessons]);
+
     const recentLessonsToShow = useMemo(() => recentLessons.slice(0, 2), [recentLessons]);
 
     const classList = useMemo(() => {
@@ -723,8 +744,6 @@ export default function ParentHome({
         if (!selectedClassId) return [];
         return recentLessons.filter((lesson) => String(lesson.classId) === String(selectedClassId));
     }, [recentLessons, selectedClassId]);
-
-    const latestLessonBySelectedClass = lessonsBySelectedClass[0] ?? null;
 
     const homeworkBySelectedClass = useMemo(() => {
         if (!selectedClassId) return [];
@@ -852,7 +871,7 @@ export default function ParentHome({
                                             <p className="text-sm text-sky-100">오늘 바로 확인해야 할 과제, 일정, 결제 정보를 한눈에 모았습니다.</p>
                                             <div className="flex flex-wrap gap-2">
                                                 <span className="bg-white/10 border border-white/20 text-sky-50 px-3 py-1.5 rounded-full text-xs font-semibold">
-                                                    {latestAttendance ? `최근 출결: ${latestAttendance.status} (${latestAttendance.date})` : '출결 기록 준비 중'}
+                                                    {attendanceHistory[0] ? `최근 출결: ${attendanceHistory[0].attendance} (${attendanceHistory[0].date})` : '출결 기록 준비 중'}
                                                 </span>
                                                 <span className="bg-white/10 border border-white/20 text-sky-50 px-3 py-1.5 rounded-full text-xs font-semibold">
                                                     미제출 과제 {pendingHomeworkCount}건
@@ -1263,20 +1282,30 @@ export default function ParentHome({
                                                     </button>
                                                     {showAttendanceDetail && (
                                                         <div className="p-4">
-                                                            {latestLessonBySelectedClass?.attendance ? (
-                                                                <div>
-                                                                    <div>출결 상태: {latestLessonBySelectedClass.attendance}</div>
-                                                                    {latestLessonBySelectedClass.attendanceMemo && (
-                                                                        <div className="text-sm text-gray-600 mt-1">
-                                                                            {latestLessonBySelectedClass.attendanceMemo}
+                                                            <div className="mt-3 space-y-2">
+                                                                {attendanceHistory.length === 0 ? (
+                                                                    <div className="text-sm text-gray-500">
+                                                                        출결 기록이 없습니다.
+                                                                    </div>
+                                                                ) : (
+                                                                    attendanceHistory.map(item => (
+                                                                        <div
+                                                                            key={item.id}
+                                                                            className="rounded-lg border border-gray-200 bg-gray-50 p-3"
+                                                                        >
+                                                                            <div className="text-sm font-semibold text-gray-800">
+                                                                                {item.date || '(날짜 없음)'} · {item.attendance}
+                                                                            </div>
+
+                                                                            {item.memo && (
+                                                                                <div className="mt-1 text-sm text-gray-600 whitespace-pre-wrap">
+                                                                                    {item.memo}
+                                                                                </div>
+                                                                            )}
                                                                         </div>
-                                                                    )}
-                                                                </div>
-                                                            ) : (
-                                                                <div className="text-sm text-gray-500">
-                                                                    출결 기록이 없습니다.
-                                                                </div>
-                                                            )}
+                                                                    ))
+                                                                )}
+                                                            </div>
                                                         </div>
                                                     )}
                                                 </div>
