@@ -4,6 +4,7 @@ import {
     addDoc,
     collection,
     doc,
+    deleteDoc,
     documentId,
     getDoc,
     getDocs,
@@ -12,25 +13,28 @@ import {
     orderBy,
     query,
     serverTimestamp,
+    updateDoc,
     where,
 } from 'firebase/firestore';
 import { db } from '../firebase/client';
 import useAuth from '../auth/useAuth';
 import { ROLE } from '../constants/roles';
 import { formatGradeLabel, Icon } from '../utils/helpers';
+import { formatGradeScoreText } from '../domain/grade/grade.service';
 
 const COL = {
     USERS: 'users',
     ATTENDANCE: 'attendanceLogs',
     CLINIC: 'clinicLogs',
-    LESSON: 'lessonLogs',
     GRADES: 'grades',
     HOMEWORK_RESULTS: 'homeworkResults',
+    TESTS: 'tests',
     CLASSES: 'classes',
     STAFF_MEMOS: 'staffMemos',
 };
 
 const STAFF_MEMO_LIMIT = 100;
+const SUMMARY_LIMIT = 20;
 
 const formatDateTime = (value) => {
     if (!value) return '작성 시각 정보 없음';
@@ -60,6 +64,30 @@ const formatDate = (value) => {
         return parsed.toISOString().slice(0, 10);
     }
     return String(value);
+};
+
+const resolveValue = (record, keys) => keys.map((key) => record?.[key]).find((value) => value !== null && value !== undefined && value !== '');
+
+const toSortableDate = (value) => {
+    if (!value) return null;
+    if (typeof value?.toDate === 'function') return value.toDate();
+    if (value instanceof Date) return value;
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) return parsed;
+    return null;
+};
+
+const sortByDateDesc = (items, keys) => {
+    const sorted = [...items];
+    sorted.sort((a, b) => {
+        const aDate = toSortableDate(resolveValue(a, keys));
+        const bDate = toSortableDate(resolveValue(b, keys));
+        if (!aDate && !bDate) return 0;
+        if (!aDate) return 1;
+        if (!bDate) return -1;
+        return bDate.getTime() - aDate.getTime();
+    });
+    return sorted;
 };
 
 const resolveParentAuthUids = (studentData) => {
@@ -101,6 +129,43 @@ const fetchClassesByIds = async (ids) => {
     );
 };
 
+const fetchDocsByIds = async (collectionName, ids) => {
+    if (!ids?.length) return [];
+    const batches = [];
+    for (let i = 0; i < ids.length; i += 10) {
+        batches.push(ids.slice(i, i + 10));
+    }
+    const snapshots = await Promise.all(
+        batches.map((chunk) =>
+            getDocs(query(collection(db, collectionName), where(documentId(), 'in', chunk))),
+        ),
+    );
+    return snapshots.flatMap((snapshot) =>
+        snapshot.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })),
+    );
+};
+
+const mergeSnapshots = (snapshots) => {
+    const merged = new Map();
+    snapshots.filter(Boolean).forEach((snapshot) => {
+        snapshot.docs.forEach((docSnap) => {
+            merged.set(docSnap.id, { id: docSnap.id, ...docSnap.data() });
+        });
+    });
+    return Array.from(merged.values());
+};
+
+const fetchByFields = async (collectionName, fields, limitCount = 200) => {
+    const queries = fields
+        .filter(({ value }) => value)
+        .map(({ key, value }) => query(collection(db, collectionName), where(key, '==', value), limit(limitCount)));
+    if (queries.length === 0) return [];
+    const snapshots = await Promise.all(queries.map((q) => getDocs(q)));
+    return mergeSnapshots(snapshots);
+};
+
+const getClassId = (record) => record?.classId || record?.classDocId || record?.class?.id || '';
+
 export default function StudentDetail() {
     const { studentId: studentDocId } = useParams();
     const navigate = useNavigate();
@@ -111,17 +176,20 @@ export default function StudentDetail() {
     const [attendances, setAttendances] = useState([]);
     const [homeworks, setHomeworks] = useState([]);
     const [grades, setGrades] = useState([]);
-    const [lessonLogs, setLessonLogs] = useState([]);
     const [clinicLogs, setClinicLogs] = useState([]);
     const [classes, setClasses] = useState([]);
+    const [tests, setTests] = useState([]);
     const [staffMemos, setStaffMemos] = useState([]);
     const [memoDraft, setMemoDraft] = useState('');
     const [memoSaving, setMemoSaving] = useState(false);
     const [memoError, setMemoError] = useState(null);
     const [studentAuthUid, setStudentAuthUid] = useState(null);
+    const [editingMemoId, setEditingMemoId] = useState(null);
+    const [editingMemoDraft, setEditingMemoDraft] = useState('');
+    const [memoActionId, setMemoActionId] = useState(null);
 
     const canManageStaffMemos = useMemo(
-        () => [ROLE.ADMIN, ROLE.STAFF, ROLE.TEACHER].includes(role),
+        () => [ROLE.ADMIN, ROLE.STAFF].includes(role),
         [role],
     );
 
@@ -135,9 +203,9 @@ export default function StudentDetail() {
             setAttendances([]);
             setHomeworks([]);
             setGrades([]);
-            setLessonLogs([]);
             setClinicLogs([]);
             setClasses([]);
+            setTests([]);
             setStudentAuthUid(null);
 
             if (!studentDocId) {
@@ -173,71 +241,86 @@ export default function StudentDetail() {
                 setStudent({ id: studentSnap.id, ...studentData });
                 setStudentAuthUid(authUid);
 
-                const attendanceQuery = query(
-                    collection(db, COL.ATTENDANCE),
-                    where('studentUid', '==', studentDocId),
-                    orderBy('date', 'desc'),
-                    limit(5),
+                const attendancePromise = fetchByFields(
+                    COL.ATTENDANCE,
+                    [
+                        { key: 'studentId', value: studentDocId },
+                        { key: 'studentDocId', value: studentDocId },
+                        { key: 'studentUid', value: studentDocId },
+                        { key: 'authUid', value: authUid },
+                        { key: 'uid', value: authUid },
+                    ],
+                    200,
                 );
 
-                const clinicQuery = query(
-                    collection(db, COL.CLINIC),
-                    where('studentId', '==', studentDocId),
-                    orderBy('date', 'desc'),
-                    limit(5),
+                const clinicPromise = fetchByFields(
+                    COL.CLINIC,
+                    [
+                        { key: 'studentId', value: studentDocId },
+                        { key: 'studentDocId', value: studentDocId },
+                        { key: 'studentUid', value: studentDocId },
+                        { key: 'authUid', value: authUid },
+                        { key: 'uid', value: authUid },
+                    ],
+                    200,
                 );
 
-                const attendancePromise = getDocs(attendanceQuery);
-                const clinicPromise = getDocs(clinicQuery);
+                const homeworkPromise = fetchByFields(
+                    COL.HOMEWORK_RESULTS,
+                    [
+                        { key: 'studentId', value: studentDocId },
+                        { key: 'studentDocId', value: studentDocId },
+                        { key: 'uid', value: authUid },
+                        { key: 'authUid', value: authUid },
+                    ],
+                    200,
+                );
 
-                let homeworkSnap = null;
-                let gradesSnap = null;
-                let lessonSnap = null;
+                const gradesPromise = fetchByFields(
+                    COL.GRADES,
+                    [
+                        { key: 'studentId', value: studentDocId },
+                        { key: 'studentDocId', value: studentDocId },
+                        { key: 'authUid', value: authUid },
+                    ],
+                    200,
+                );
 
-                if (authUid) {
-                    const homeworkQuery = query(
-                        collection(db, COL.HOMEWORK_RESULTS),
-                        where('authUid', '==', authUid),
-                        orderBy('updatedAt', 'desc'),
-                        limit(5),
-                    );
-                    const gradesQuery = query(
-                        collection(db, COL.GRADES),
-                        where('authUid', '==', authUid),
-                        orderBy('updatedAt', 'desc'),
-                        limit(3),
-                    );
-                    const lessonQuery = query(
-                        collection(db, COL.LESSON),
-                        where('authUid', '==', authUid),
-                        orderBy('date', 'desc'),
-                        limit(5),
-                    );
-
-                    [homeworkSnap, gradesSnap, lessonSnap] = await Promise.all([
-                        getDocs(homeworkQuery),
-                        getDocs(gradesQuery),
-                        getDocs(lessonQuery),
-                    ]);
-                }
-
-                const [attendanceSnap, clinicSnap] = await Promise.all([
+                const [attendanceItems, clinicItems, homeworkItems, gradeItems] = await Promise.all([
                     attendancePromise,
                     clinicPromise,
+                    homeworkPromise,
+                    gradesPromise,
                 ]);
 
                 if (!isMounted) return;
 
-                const classIds = getStudentClassIds(studentData);
-                const classDocs = await fetchClassesByIds(classIds);
+                const testIds = Array.from(
+                    new Set(
+                        gradeItems
+                            .map((item) => item.testId || item.testDocId || item.test?.id)
+                            .filter(Boolean)
+                            .map((value) => String(value)),
+                    ),
+                );
+                const testDocs = await fetchDocsByIds(COL.TESTS, testIds);
 
                 if (!isMounted) return;
 
-                setAttendances(attendanceSnap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })));
-                setClinicLogs(clinicSnap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })));
-                setHomeworks(homeworkSnap ? homeworkSnap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })) : []);
-                setGrades(gradesSnap ? gradesSnap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })) : []);
-                setLessonLogs(lessonSnap ? lessonSnap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })) : []);
+                const classIds = new Set(getStudentClassIds(studentData));
+                [...attendanceItems, ...clinicItems, ...homeworkItems, ...gradeItems, ...testDocs].forEach((record) => {
+                    const id = getClassId(record) || record?.classId;
+                    if (id) classIds.add(String(id));
+                });
+                const classDocs = await fetchClassesByIds(Array.from(classIds));
+
+                if (!isMounted) return;
+
+                setAttendances(attendanceItems);
+                setClinicLogs(clinicItems);
+                setHomeworks(homeworkItems);
+                setGrades(gradeItems);
+                setTests(testDocs);
                 setClasses(classDocs);
             } catch (fetchError) {
                 console.error('상세 에러 로그:', fetchError);
@@ -257,6 +340,22 @@ export default function StudentDetail() {
             isMounted = false;
         };
     }, [studentDocId]);
+
+    const classNameById = useMemo(
+        () => new Map((Array.isArray(classes) ? classes : []).map((item) => [String(item.id), item.name])),
+        [classes],
+    );
+
+    const testsById = useMemo(
+        () => new Map((Array.isArray(tests) ? tests : []).map((item) => [String(item.id), item])),
+        [tests],
+    );
+
+    const resolveClassName = (record, fallbackId = '') => {
+        const classId = fallbackId || getClassId(record);
+        if (!classId) return '(클래스 미상)';
+        return classNameById.get(String(classId)) || '(클래스 미상)';
+    };
 
     useEffect(() => {
         if (!studentDocId || !canManageStaffMemos) {
@@ -356,7 +455,6 @@ export default function StudentDetail() {
         const attendanceItems = Array.isArray(attendances) ? attendances : [];
         const homeworkItems = Array.isArray(homeworks) ? homeworks : [];
         const gradeItems = Array.isArray(grades) ? grades : [];
-        const lessonItems = Array.isArray(lessonLogs) ? lessonLogs : [];
         const clinicItems = Array.isArray(clinicLogs) ? clinicLogs : [];
         const classItems = Array.isArray(classes) ? classes : [];
         const accountLinked = Boolean(studentAuthUid);
@@ -435,10 +533,10 @@ export default function StudentDetail() {
                                         </span>
                                     ))
                                 ) : (
-                                    <span className="text-xs text-gray-400">등록된 클래스가 없습니다.</span>
-                                )}
-                            </div>
-                        </div>
+                    <span className="text-xs text-gray-400">등록된 클래스가 없습니다.</span>
+                )}
+            </div>
+        </div>
                     </div>
                 </div>
 
@@ -449,36 +547,6 @@ export default function StudentDetail() {
                 )}
 
                 <div className="grid gap-6 lg:grid-cols-2">
-                    <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-                        <div className="flex items-center justify-between">
-                            <h3 className="text-base font-semibold text-gray-900">수업 기록</h3>
-                            <button
-                                type="button"
-                                onClick={() => navigate('/lessons')}
-                                className="text-xs font-semibold text-indigo-600 hover:underline"
-                            >
-                                수업 관리
-                            </button>
-                        </div>
-                        <div className="mt-4 space-y-3 text-sm text-gray-600">
-                            {lessonItems.length > 0 ? (
-                                lessonItems.map((item) => (
-                                    <div key={item.id} className="rounded-lg border border-gray-100 bg-gray-50 px-4 py-3">
-                                        <div className="flex items-center justify-between">
-                                            <p className="font-semibold text-gray-800">{item.title || item.lessonTitle || '수업 기록'}</p>
-                                            <span className="text-xs font-semibold text-gray-500">{item.className || item.classId || '클래스 정보 없음'}</span>
-                                        </div>
-                                        <p className="mt-1 text-xs text-gray-500">{formatDate(item.date)}</p>
-                                    </div>
-                                ))
-                            ) : (
-                                <p className="rounded-lg border border-dashed border-gray-200 bg-gray-50 p-4 text-xs text-gray-500">
-                                    최근 수업 기록이 없습니다.
-                                </p>
-                            )}
-                        </div>
-                    </div>
-
                     <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
                         <div className="flex items-center justify-between">
                             <h3 className="text-base font-semibold text-gray-900">출결 요약</h3>
@@ -492,15 +560,18 @@ export default function StudentDetail() {
                         </div>
                         <div className="mt-4 space-y-3 text-sm text-gray-600">
                             {attendanceItems.length > 0 ? (
-                                attendanceItems.map((item) => (
-                                    <div key={item.id} className="flex items-center justify-between rounded-lg bg-gray-50 px-4 py-3">
-                                        <div>
-                                            <p className="font-semibold text-gray-800">{item.status || '상태 없음'}</p>
-                                            <p className="text-xs text-gray-500">{item.date || '날짜 정보 없음'}</p>
-                                        </div>
-                                        <span className="text-xs font-semibold text-gray-500">{item.note || '메모 없음'}</span>
-                                    </div>
-                                ))
+                                sortByDateDesc(attendanceItems, ['date', 'createdAt', 'updatedAt'])
+                                    .slice(0, SUMMARY_LIMIT)
+                                    .map((item) => {
+                                        const dateValue = resolveValue(item, ['date', 'createdAt', 'updatedAt']);
+                                        const className = resolveClassName(item);
+                                        return (
+                                            <div key={item.id} className="rounded-lg bg-gray-50 px-4 py-3">
+                                                <p className="text-xs text-gray-500">{formatDate(dateValue)} · {className}</p>
+                                                <p className="mt-1 text-sm font-semibold text-gray-800">{item.status || item.attendance || '상태 없음'}</p>
+                                            </div>
+                                        );
+                                    })
                             ) : (
                                 <p className="rounded-lg border border-dashed border-gray-200 bg-gray-50 p-4 text-xs text-gray-500">
                                     최근 출결 기록이 없습니다.
@@ -524,15 +595,29 @@ export default function StudentDetail() {
                         </div>
                         <div className="mt-4 space-y-3 text-sm text-gray-600">
                             {homeworkItems.length > 0 ? (
-                                homeworkItems.map((item) => (
-                                    <div key={item.id} className="rounded-lg border border-gray-100 bg-gray-50 px-4 py-3">
-                                        <div className="flex items-center justify-between">
-                                            <p className="font-semibold text-gray-800">{item.title || item.content || '과제명 없음'}</p>
-                                            <span className="text-xs font-semibold text-gray-500">{item.status || '상태 없음'}</span>
-                                        </div>
-                                        <p className="mt-1 text-xs text-gray-500">{formatDate(item.date || item.updatedAt)}</p>
-                                    </div>
-                                ))
+                                sortByDateDesc(homeworkItems, ['checkedAt', 'updatedAt', 'submittedAt', 'completedAt', 'date', 'assignedDate', 'createdAt'])
+                                    .slice(0, SUMMARY_LIMIT)
+                                    .map((item) => {
+                                        const dateValue = resolveValue(item, ['checkedAt', 'updatedAt', 'submittedAt', 'completedAt', 'date', 'assignedDate', 'createdAt']);
+                                        const className = resolveClassName(item);
+                                        const title = item.title || item.assignmentTitle || item.name || item.homeworkTitle || item.assignmentName || item.content || '과제명 없음';
+                                        const status = item.status || item.state || (item.isComplete ? '완료' : null) || (item.completedAt ? '완료' : null)
+                                            || (item.submittedAt ? '제출' : null) || '진행 중';
+                                        const progressRate = Number.isFinite(item.progressRate)
+                                            ? `${item.progressRate}%`
+                                            : (Number.isFinite(item.progress) ? `${item.progress}%` : null);
+                                        return (
+                                            <div key={item.id} className="rounded-lg border border-gray-100 bg-gray-50 px-4 py-3">
+                                                <div className="flex items-center justify-between">
+                                                    <p className="font-semibold text-gray-800">{title}</p>
+                                                    <span className="text-xs font-semibold text-gray-500">
+                                                        {progressRate || status}
+                                                    </span>
+                                                </div>
+                                                <p className="mt-1 text-xs text-gray-500">{formatDate(dateValue)} · {className}</p>
+                                            </div>
+                                        );
+                                    })
                             ) : (
                                 <p className="rounded-lg border border-dashed border-gray-200 bg-gray-50 p-4 text-xs text-gray-500">
                                     최근 과제 기록이 없습니다.
@@ -541,7 +626,7 @@ export default function StudentDetail() {
                         </div>
                     </div>
 
-                <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+                    <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
                         <div className="flex items-center justify-between">
                             <h3 className="text-base font-semibold text-gray-900">시험/성적 요약</h3>
                             <button
@@ -554,15 +639,41 @@ export default function StudentDetail() {
                         </div>
                         <div className="mt-4 grid gap-3 md:grid-cols-2">
                             {gradeItems.length > 0 ? (
-                                gradeItems.map((item) => (
-                                    <div key={item.id} className="rounded-lg border border-gray-100 bg-gray-50 px-4 py-3">
-                                        <p className="text-sm font-semibold text-gray-800">{item.testName || item.subject || '시험 정보 없음'}</p>
-                                        <p className="mt-1 text-xs text-gray-500">{formatDate(item.date || item.updatedAt)}</p>
-                                        <p className="mt-2 text-sm font-semibold text-indigo-600">
-                                            {item.score ? `${item.score}점` : '점수 정보 없음'}
-                                        </p>
-                                    </div>
-                                ))
+                                sortByDateDesc(gradeItems, ['date', 'updatedAt', 'createdAt'])
+                                    .slice(0, SUMMARY_LIMIT)
+                                    .map((item) => {
+                                        const testId = item.testId || item.testDocId || item.test?.id;
+                                        const test = testId ? testsById.get(String(testId)) : null;
+                                        const testName = test?.name || item.testName || item.subject || '(시험명 없음)';
+                                        const className = resolveClassName(item, test?.classId);
+                                        const dateValue = resolveValue(item, ['date', 'updatedAt', 'createdAt']) || test?.date;
+                                        const maxScore = Number.isFinite(test?.maxScore) ? test.maxScore : item.maxScore;
+                                        const { scoreText } = formatGradeScoreText(item, item.totalScore ?? item.score ?? null, test || {});
+                                        const classAverage = [item.classAverage, item.average, item.classAvg].find(Number.isFinite)
+                                            ?? (Number.isFinite(test?.classAverage) ? test.classAverage : (Number.isFinite(test?.average) ? test.average : null));
+                                        const classMax = [item.classMax, item.highestScore].find(Number.isFinite)
+                                            ?? (Number.isFinite(test?.classMax) ? test.classMax : (Number.isFinite(test?.highestScore) ? test.highestScore : null));
+                                        return (
+                                            <div key={item.id} className="rounded-lg border border-gray-100 bg-gray-50 px-4 py-3">
+                                                <p className="text-sm font-semibold text-gray-800">{testName}</p>
+                                                <p className="mt-1 text-xs text-gray-500">{formatDate(dateValue)} · {className}</p>
+                                                <p className="mt-2 text-sm font-semibold text-indigo-600">
+                                                    {scoreText === '미응시'
+                                                        ? '미응시'
+                                                        : (scoreText && maxScore
+                                                            ? `${scoreText} / ${maxScore}점`
+                                                            : (scoreText || '점수 정보 없음'))}
+                                                </p>
+                                                {(classAverage !== null || classMax !== null) && (
+                                                    <p className="mt-1 text-xs text-gray-500">
+                                                        {classAverage !== null && `반 평균 ${classAverage}점`}
+                                                        {classAverage !== null && classMax !== null && ' · '}
+                                                        {classMax !== null && `최고점 ${classMax}점`}
+                                                    </p>
+                                                )}
+                                            </div>
+                                        );
+                                    })
                             ) : (
                                 <p className="rounded-lg border border-dashed border-gray-200 bg-gray-50 p-4 text-xs text-gray-500">
                                     최근 성적 기록이 없습니다.
@@ -587,40 +698,31 @@ export default function StudentDetail() {
                         </div>
                         <div className="mt-4 space-y-3 text-sm text-gray-600">
                             {clinicItems.length > 0 ? (
-                                clinicItems.map((item) => (
-                                    <div key={item.id} className="rounded-lg border border-gray-100 bg-gray-50 px-4 py-3">
-                                        <div className="flex items-center justify-between">
-                                            <p className="font-semibold text-gray-800">{item.tutor || '담당 선생님 미정'}</p>
-                                            <span className="text-xs font-semibold text-gray-500">{item.status || '상태 없음'}</span>
-                                        </div>
-                                        <p className="mt-1 text-xs text-gray-500">{item.date || '날짜 정보 없음'} · {item.plannedTime || item.checkIn || '시간 정보 없음'}</p>
-                                    </div>
-                                ))
+                                sortByDateDesc(clinicItems, ['date', 'clinicDate', 'createdAt'])
+                                    .slice(0, SUMMARY_LIMIT)
+                                    .map((item) => {
+                                        const dateValue = resolveValue(item, ['date', 'clinicDate', 'createdAt']);
+                                        const className = resolveClassName(item);
+                                        const comment = item.comment || item.note || item.memo || item.content || '';
+                                        return (
+                                            <div key={item.id} className="rounded-lg border border-gray-100 bg-gray-50 px-4 py-3">
+                                                <div className="flex items-center justify-between">
+                                                    <p className="font-semibold text-gray-800">{item.tutor || item.teacher || '담당자 미정'}</p>
+                                                    <span className="text-xs font-semibold text-gray-500">{item.status || '상태 없음'}</span>
+                                                </div>
+                                                <p className="mt-1 text-xs text-gray-500">{formatDate(dateValue)} · {className}</p>
+                                                {comment && (
+                                                    <p className="mt-2 text-xs text-gray-600">{comment}</p>
+                                                )}
+                                            </div>
+                                        );
+                                    })
                             ) : (
                                 <p className="rounded-lg border border-dashed border-gray-200 bg-gray-50 p-4 text-xs text-gray-500">
                                     최근 클리닉 기록이 없습니다.
                                 </p>
                             )}
                         </div>
-                    </div>
-
-                    <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-                        <div className="flex items-center justify-between">
-                            <h3 className="text-base font-semibold text-gray-900">커뮤니케이션 요약</h3>
-                            <button
-                                type="button"
-                                onClick={() => navigate('/communication')}
-                                className="text-xs font-semibold text-indigo-600 hover:underline"
-                            >
-                                커뮤니케이션
-                            </button>
-                        </div>
-                        <div className="mt-4 rounded-lg border border-gray-100 bg-gray-50 p-4 text-sm text-gray-600">
-                            {lessonItems[0]?.content || lessonItems[0]?.text || '작성된 메모가 없습니다.'}
-                        </div>
-                        <p className="mt-3 text-xs text-gray-400">
-                            {lessonItems[0]?.createdAt || lessonItems[0]?.date || '작성 시각 정보 없음'}
-                        </p>
                     </div>
                 </div>
 
@@ -658,9 +760,93 @@ export default function StudentDetail() {
                                     <div key={item.id} className="rounded-xl border border-gray-100 bg-gray-50 p-4">
                                         <div className="flex items-center justify-between">
                                             <p className="text-xs font-semibold text-gray-700">{item.createdByName || '작성자 정보 없음'}</p>
-                                            <span className="text-xs text-gray-400">{formatDateTime(item.createdAt)}</span>
+                                            <div className="text-right text-xs text-gray-400">
+                                                <p>{formatDateTime(item.createdAt)}</p>
+                                                {item.editedAt && <p>수정 {formatDateTime(item.editedAt)}</p>}
+                                            </div>
                                         </div>
-                                        <p className="mt-2 whitespace-pre-wrap text-sm text-gray-700">{item.content}</p>
+                                        {editingMemoId === item.id ? (
+                                            <div className="mt-3 space-y-2">
+                                                <textarea
+                                                    value={editingMemoDraft}
+                                                    onChange={(event) => setEditingMemoDraft(event.target.value)}
+                                                    rows={3}
+                                                    className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700"
+                                                />
+                                                <div className="flex items-center justify-end gap-2 text-xs font-semibold">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setEditingMemoId(null);
+                                                            setEditingMemoDraft('');
+                                                        }}
+                                                        className="rounded-lg border border-gray-200 px-3 py-1 text-gray-600"
+                                                    >
+                                                        취소
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        disabled={memoActionId === item.id || !editingMemoDraft.trim()}
+                                                        onClick={async () => {
+                                                            setMemoActionId(item.id);
+                                                            setMemoError(null);
+                                                            try {
+                                                                await updateDoc(
+                                                                    doc(db, COL.USERS, studentDocId, COL.STAFF_MEMOS, item.id),
+                                                                    { content: editingMemoDraft.trim(), editedAt: serverTimestamp() },
+                                                                );
+                                                                setEditingMemoId(null);
+                                                                setEditingMemoDraft('');
+                                                            } catch (updateError) {
+                                                                console.error('staff memo update error:', updateError);
+                                                                setMemoError('직원 메모 수정에 실패했습니다.');
+                                                            } finally {
+                                                                setMemoActionId(null);
+                                                            }
+                                                        }}
+                                                        className="rounded-lg bg-indigo-600 px-3 py-1 text-white disabled:cursor-not-allowed disabled:bg-indigo-300"
+                                                    >
+                                                        저장
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <>
+                                                <p className="mt-2 whitespace-pre-wrap text-sm text-gray-700">{item.content}</p>
+                                                <div className="mt-3 flex items-center justify-end gap-2 text-xs font-semibold">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setEditingMemoId(item.id);
+                                                            setEditingMemoDraft(item.content || '');
+                                                        }}
+                                                        className="rounded-lg border border-gray-200 px-3 py-1 text-gray-600"
+                                                    >
+                                                        수정
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        disabled={memoActionId === item.id}
+                                                        onClick={async () => {
+                                                            if (!window.confirm('해당 메모를 삭제할까요?')) return;
+                                                            setMemoActionId(item.id);
+                                                            setMemoError(null);
+                                                            try {
+                                                                await deleteDoc(doc(db, COL.USERS, studentDocId, COL.STAFF_MEMOS, item.id));
+                                                            } catch (deleteError) {
+                                                                console.error('staff memo delete error:', deleteError);
+                                                                setMemoError('직원 메모 삭제에 실패했습니다.');
+                                                            } finally {
+                                                                setMemoActionId(null);
+                                                            }
+                                                        }}
+                                                        className="rounded-lg border border-gray-200 px-3 py-1 text-rose-600 disabled:cursor-not-allowed disabled:text-rose-300"
+                                                    >
+                                                        삭제
+                                                    </button>
+                                                </div>
+                                            </>
+                                        )}
                                     </div>
                                 ))
                             ) : (
