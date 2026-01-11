@@ -49,7 +49,6 @@ import {
     arrayUnion,
     collection,
     deleteDoc,
-    deleteField,
     doc,
     getDoc,
     getDocs,
@@ -58,6 +57,7 @@ import {
     query,
     setDoc,
     serverTimestamp,
+    Timestamp,
     where,
     updateDoc,
     writeBatch,
@@ -537,10 +537,6 @@ export default function AppRoutes({ user, role, studentIds }) {
               status: normalizedStatus,
               authUid: data.studentId || data.authUid || null,
           };
-          if (isEdit) {
-              payload.endDate = deleteField();
-              payload.endReason = deleteField();
-          }
           const studentPayload = {
               ...payload,
               role: ROLE.STUDENT,
@@ -548,18 +544,15 @@ export default function AppRoutes({ user, role, studentIds }) {
               classIds: nextClassIds,
               uid: data.uid || data.id || payload.authUid || null,
           };
-          const buildUpdatedClassStatuses = (existingStatuses = {}, classIds = []) => {
-              const map = { ...existingStatuses };
+          const buildInitialClassStatusMap = (classIds = []) => {
+              const map = {};
               classIds.forEach((classId) => {
                   const key = String(classId);
-                  const prevStatus = map[key] || {};
                   map[key] = {
-                      ...prevStatus,
-                      status: '재원',
-                      endDate: null,
+                      status: '진행중',
+                      joinedAt: serverTimestamp(),
+                      endedAt: null,
                       endReason: null,
-                      updatedAt: serverTimestamp(),
-                      joinedAt: prevStatus.joinedAt || serverTimestamp(),
                   };
               });
               return map;
@@ -575,7 +568,6 @@ export default function AppRoutes({ user, role, studentIds }) {
                   : (existingStudent?.classes || []);
               const classIdsToAdd = nextClassIds.filter((id) => !prevClassIds.includes(id));
               const classIdsToRemove = prevClassIds.filter((id) => !nextClassIds.includes(id));
-              const updatedClassStatuses = buildUpdatedClassStatuses(existingStudent?.classStatuses || {}, nextClassIds);
               const batch = writeBatch(db);
 
               classIdsToAdd.forEach((classId) => {
@@ -588,24 +580,23 @@ export default function AppRoutes({ user, role, studentIds }) {
                       students: arrayRemove(studentPayload.uid),
                   });
               });
-              batch.update(doc(db, 'users', data.id), {
+              batch.set(doc(db, 'users', data.id), {
                   ...studentPayload,
-                  classStatuses: updatedClassStatuses,
                   updatedAt: serverTimestamp(),
                   updatedBy: userId,
-              });
+              }, { merge: true });
               await batch.commit();
               console.log('학생 Firestore 저장 완료', data.id);
-              setStudents(prev => prev.map(s => s.id === data.id ? { ...s, ...studentPayload, classStatuses: updatedClassStatuses } : s));
+              setStudents(prev => prev.map(s => s.id === data.id ? { ...s, ...studentPayload, classStatusMap: s.classStatusMap || s.classStatuses } : s));
           } else {
               const docRef = doc(collection(db, 'users'));
               const resolvedUid = studentPayload.uid || docRef.id;
-              const createdClassStatuses = buildUpdatedClassStatuses({}, nextClassIds);
+              const createdClassStatusMap = buildInitialClassStatusMap(nextClassIds);
               const batch = writeBatch(db);
               batch.set(docRef, {
                   ...studentPayload,
                   uid: resolvedUid,
-                  classStatuses: createdClassStatuses,
+                  classStatusMap: createdClassStatusMap,
                   createdAt: serverTimestamp(),
                   createdBy: userId,
                   updatedAt: serverTimestamp(),
@@ -620,7 +611,7 @@ export default function AppRoutes({ user, role, studentIds }) {
               }
               await batch.commit();
               console.log('학생 Firestore 저장 완료', docRef.id);
-              setStudents(prev => [...prev, { id: docRef.id, ...studentPayload, uid: resolvedUid, classStatuses: createdClassStatuses }]);
+              setStudents(prev => [...prev, { id: docRef.id, ...studentPayload, uid: resolvedUid, classStatusMap: createdClassStatusMap }]);
           }
       } catch (error) {
           console.error('[Firestore WRITE ERROR]', error);
@@ -661,27 +652,40 @@ export default function AppRoutes({ user, role, studentIds }) {
           : (Array.isArray(student.classes) ? student.classes.map(String) : []);
       let nextClassIds = [...prevClassIds];
 
+      const normalizedStatus = status === '재원' ? '진행중' : status;
+      const resolvedStatus = normalizedStatus === '퇴원'
+          ? (endReason === '전반' ? '전반' : endReason === '종강' ? '종강' : '퇴원')
+          : normalizedStatus;
+      const isWithdrawnStatus = ['퇴원', '전반', '종강'].includes(resolvedStatus);
+      const resolvedEndedAt = endDate ? Timestamp.fromDate(new Date(endDate)) : serverTimestamp();
+      const resolvedEndReason = endReason ?? null;
+
       const updates = {
           updatedAt: serverTimestamp(),
           updatedBy: userId,
       };
 
-      if (status === '퇴원') {
-          const safeDate = endDate || new Date().toISOString().slice(0, 10);
-          const safeReason = endReason || '종강';
-          updates[`classStatuses.${classIdStr}.status`] = '퇴원';
-          updates[`classStatuses.${classIdStr}.endDate`] = safeDate;
-          updates[`classStatuses.${classIdStr}.endReason`] = safeReason;
-          updates[`classStatuses.${classIdStr}.updatedAt`] = serverTimestamp();
-      } else if (status === '재원') {
+      if (isWithdrawnStatus) {
+          updates.classStatusMap = {
+              [classIdStr]: {
+                  status: resolvedStatus,
+                  endedAt: resolvedEndedAt,
+                  endReason: resolvedEndReason,
+              },
+          };
+      } else if (normalizedStatus === '진행중') {
           if (!nextClassIds.includes(classIdStr)) {
               nextClassIds = [...nextClassIds, classIdStr];
               updates.classIds = nextClassIds;
           }
-          updates[`classStatuses.${classIdStr}.status`] = '재원';
-          updates[`classStatuses.${classIdStr}.endDate`] = null;
-          updates[`classStatuses.${classIdStr}.endReason`] = null;
-          updates[`classStatuses.${classIdStr}.updatedAt`] = serverTimestamp();
+          updates.classStatusMap = {
+              [classIdStr]: {
+                  status: '진행중',
+                  joinedAt: serverTimestamp(),
+                  endedAt: null,
+                  endReason: null,
+              },
+          };
           await updateDoc(doc(db, 'classes', classIdStr), {
               students: arrayUnion(studentUid),
           });
@@ -689,23 +693,25 @@ export default function AppRoutes({ user, role, studentIds }) {
           throw new Error('알 수 없는 상태입니다.');
       }
 
-      await updateDoc(doc(db, 'users', studentId), updates);
+      await setDoc(doc(db, 'users', studentId), updates, { merge: true });
 
       setStudents((prev) => prev.map((s) => {
           if (s.id !== studentId) return s;
-          const nextStatuses = { ...(s.classStatuses || {}) };
+          const nextStatuses = { ...(s.classStatusMap || s.classStatuses || {}) };
+          const resolvedEndedAtState = endDate ? new Date(endDate) : new Date();
           nextStatuses[classIdStr] = {
               ...(nextStatuses[classIdStr] || {}),
-              status,
-              endDate: status === '퇴원' ? (endDate || new Date().toISOString().slice(0, 10)) : null,
-              endReason: status === '퇴원' ? (endReason || '종강') : null,
+              status: resolvedStatus,
+              joinedAt: normalizedStatus === '진행중' ? new Date() : nextStatuses[classIdStr]?.joinedAt,
+              endedAt: isWithdrawnStatus ? resolvedEndedAtState : null,
+              endReason: isWithdrawnStatus ? resolvedEndReason : null,
               updatedAt: new Date(),
           };
           return {
               ...s,
               classIds: nextClassIds,
               classes: nextClassIds,
-              classStatuses: nextStatuses,
+              classStatusMap: nextStatuses,
           };
       }));
   };

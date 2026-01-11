@@ -77,11 +77,11 @@ export const formatGradeScoreText = (grade = null, totalScore = null, test = {})
 };
 
 export const getStudentClassStatus = (student = {}, classId) => {
-    if (!classId) return { status: '재원' };
+    if (!classId) return { status: '진행중' };
     const key = String(classId);
-    const status = student?.classStatuses?.[key];
+    const status = student?.classStatusMap?.[key] || student?.classStatuses?.[key];
     if (status && typeof status === 'object') return status;
-    return { status: '재원' };
+    return { status: '진행중' };
 };
 
 const parseTimestampToDate = (value) => {
@@ -98,9 +98,10 @@ export const isStudentEligibleForTest = (student = {}, test = {}, classId = null
     const resolvedClassId = classId || test.classId;
     const classStatus = getStudentClassStatus(student, resolvedClassId);
     const normalizedStatus = classStatus?.status === 'withdrawn' ? '퇴원' : classStatus?.status;
-    if (normalizedStatus === '퇴원') {
+    const isWithdrawn = ['퇴원', '전반', '종강'].includes(normalizedStatus);
+    if (isWithdrawn) {
         const testDate = parseTimestampToDate(test?.date);
-        const endDate = parseTimestampToDate(classStatus.endDate || classStatus.withdrawnAt);
+        const endDate = parseTimestampToDate(classStatus.endedAt || classStatus.endDate || classStatus.withdrawnAt);
 
         if (endDate && testDate && endDate < testDate) {
             return false;

@@ -93,9 +93,11 @@ export default function ScheduleTab({
 
     const normalizeClassStatus = (value) => {
         if (value === 'withdrawn') return '퇴원';
-        if (value === 'active') return '재원';
+        if (value === 'active') return '진행중';
+        if (value === '재원') return '진행중';
         return value;
     };
+    const isWithdrawnStatus = (value) => ['퇴원', '전반', '종강'].includes(normalizeClassStatus(value));
     const toYmd = (value) => {
         if (!value) return null;
         if (typeof value === 'string') return value.slice(0, 10);
@@ -114,11 +116,12 @@ export default function ScheduleTab({
     };
     const isClassRetiredOnDate = (classId, dateValue) => {
         if (!classId) return false;
-        const classStatus = student?.classStatuses?.[String(classId)];
+        const classStatus = student?.classStatusMap?.[String(classId)] || student?.classStatuses?.[String(classId)];
         const normalizedStatus = normalizeClassStatus(classStatus?.status);
-        if (normalizedStatus !== '퇴원') return false;
-        if (!classStatus?.endDate) return false;
-        return isAfterEndDate(dateValue, classStatus.endDate);
+        if (!isWithdrawnStatus(normalizedStatus)) return false;
+        const endValue = classStatus?.endedAt || classStatus?.endDate;
+        if (!endValue) return false;
+        return isAfterEndDate(dateValue, endValue);
     };
 
     const isDateInRange = (dateObj, startDateStr, endDateStr) => {

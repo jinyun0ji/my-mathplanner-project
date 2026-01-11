@@ -1,6 +1,6 @@
 // src/pages/StudentManagement.jsx
 import React, { useEffect, useState, useMemo, useRef } from 'react';
-import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, serverTimestamp, setDoc, Timestamp } from 'firebase/firestore';
 import { Icon } from '../utils/helpers';
 import { StudentFormModal } from '../utils/modals/StudentFormModal';
 import { MemoModal } from '../utils/modals/MemoModal';
@@ -33,12 +33,42 @@ export default function StudentManagement({
     const debugLoggedRef = useRef(false);
     const normalizeClassStatus = (value) => {
         if (value === 'withdrawn') return '퇴원';
-        if (value === 'active') return '재원';
+        if (value === 'active') return '진행중';
+        if (value === '재원') return '진행중';
         return value;
     };
+    const isWithdrawnStatus = (value) => ['퇴원', '전반', '종강'].includes(normalizeClassStatus(value));
     const isInactiveStatus = (value) => Boolean(value) && value !== '재원생';
     const isActiveStatus = (value) => value === '재원생';
     const getStatusLabel = (value) => value || '상태 미정';
+    const parseDateValue = (value) => {
+        if (!value) return null;
+        if (typeof value?.toDate === 'function') return value.toDate();
+        if (value instanceof Date) return value;
+        const asDate = new Date(value);
+        return Number.isNaN(asDate.getTime()) ? null : asDate;
+    };
+    const formatDate = (date) => {
+        if (!date) return '-';
+        return date.toISOString().slice(0, 10);
+    };
+    const getClassStatusMap = (student) => {
+        if (!student) return {};
+        return student.classStatusMap || student.classStatuses || {};
+    };
+    const getWithdrawDate = (student) => {
+        const directDate = parseDateValue(student?.withdrawnAt);
+        if (directDate) return directDate;
+        const map = getClassStatusMap(student);
+        if (!map || typeof map !== 'object') return null;
+        const endedDates = Object.values(map)
+            .filter((entry) => isWithdrawnStatus(entry?.status))
+            .map((entry) => parseDateValue(entry?.endedAt || entry?.endDate))
+            .filter(Boolean);
+        if (endedDates.length === 0) return null;
+        endedDates.sort((a, b) => b - a);
+        return endedDates[0];
+    };
 
     const shortId = (value) => {
         if (!value) return '-';
@@ -198,18 +228,20 @@ export default function StudentManagement({
         if (!classId) throw new Error('retireStudentOnlyUpdate: missing classId');
 
         const safeReason = RETIRE_REASONS.includes(endReason) ? endReason : '종강';
+        const nextStatus = safeReason === '전반' ? '전반' : safeReason === '종강' ? '종강' : '퇴원';
         const safeDate = endDate || new Date().toISOString().slice(0, 10);
 
-        await updateDoc(doc(db, 'users', student.id), {
-            status: '재원생',
-            [`classStatuses.${classId}`]: {
-                status: '퇴원',
-                endDate: safeDate,
-                endReason: safeReason,
-                updatedAt: serverTimestamp(),
+        const resolvedEndedAt = safeDate ? Timestamp.fromDate(new Date(safeDate)) : serverTimestamp();
+        await setDoc(doc(db, 'users', student.id), {
+            classStatusMap: {
+                [classId]: {
+                    status: nextStatus,
+                    endedAt: resolvedEndedAt,
+                    endReason: safeReason,
+                },
             },
             updatedAt: serverTimestamp(),
-        });
+        }, { merge: true });
     };
 
     const handleRetireSave = async () => {
@@ -295,7 +327,7 @@ export default function StudentManagement({
                     <table className="min-w-full divide-y divide-gray-200">
                         <thead className="bg-gray-100">
                             <tr>
-                                {['이름', '문서ID', 'Auth UID', '학교', '학년', '상태', '연락처 (학생/학부모)', '등록일', '관리'].map(header => (
+                                {['이름', '문서ID', 'Auth UID', '학교', '학년', '상태', '퇴원일', '연락처 (학생/학부모)', '등록일', '관리'].map(header => (
                                     <th key={header} className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">{header}</th>
                                 ))}
                             </tr>
@@ -309,15 +341,16 @@ export default function StudentManagement({
                                     .map((parent) => getParentAuthUid(parent))
                                     .filter(Boolean);
 
-                                const classStatusMap = student.classStatuses || {};
+                                const classStatusMap = getClassStatusMap(student);
                                 const allClassIds = Array.isArray(student.classes)
                                     ? student.classes
                                     : (Array.isArray(student.classIds) ? student.classIds : []);
-                                const activeClassIds = allClassIds.filter((classId) => normalizeClassStatus(classStatusMap[classId]?.status) !== '퇴원');
+                                const activeClassIds = allClassIds.filter((classId) => !isWithdrawnStatus(classStatusMap[classId]?.status));
                                 const withdrawnClassIds = Object.entries(classStatusMap)
-                                    .filter(([, value]) => normalizeClassStatus(value?.status) === '퇴원')
+                                    .filter(([, value]) => isWithdrawnStatus(value?.status))
                                     .map(([id]) => id);
                                 const getClassName = (classId) => classes.find((cls) => String(cls.id) === String(classId))?.name || classId;
+                                const withdrawDate = getWithdrawDate(student);
                                 
                                 return (
                                     <tr key={student.id} className="hover:bg-indigo-50 cursor-pointer transition duration-100" onClick={() => handlePageChange('students', student.id)}>
@@ -381,8 +414,8 @@ export default function StudentManagement({
                                                 )) : <span className="text-xs text-gray-400">수강 정보 없음</span>}
                                             </div>
                                             {withdrawnClassIds.length > 0 && (
-                                                <div className="mt-2 text-xs text-gray-500 space-y-1">
-                                                    <p className="font-semibold text-gray-600">종료된 클래스</p>
+                                            <div className="mt-2 text-xs text-gray-500 space-y-1">
+                                                <p className="font-semibold text-gray-600">종료된 클래스</p>
                                                     <div className="flex flex-wrap gap-2">
                                                         {withdrawnClassIds.map((classId) => (
                                                             <div key={classId} className="flex items-center gap-1 px-2 py-1 rounded-full bg-gray-100 text-gray-700 border border-gray-200">
@@ -397,10 +430,13 @@ export default function StudentManagement({
                                                                 </button>
                                                             </div>
                                                         ))}
-                                                    </div>
                                                 </div>
-                                            )}
-                                        </td>
+                                            </div>
+                                        )}
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                        {withdrawDate ? formatDate(withdrawDate) : '-'}
+                                    </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm"><div className="flex flex-col"><span className="text-gray-900 font-medium">{student.phone}</span><span className="text-gray-400 text-xs">부모: {student.parentPhone}</span></div></td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{student.registeredDate}</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
@@ -463,11 +499,12 @@ export default function StudentManagement({
                         const allClassIds = Array.isArray(student.classes)
                             ? student.classes
                             : (Array.isArray(student.classIds) ? student.classIds : []);
-                            const activeClassIds = allClassIds.filter((classId) => normalizeClassStatus(classStatusMap[classId]?.status) !== '퇴원');
+                            const activeClassIds = allClassIds.filter((classId) => !isWithdrawnStatus(classStatusMap[classId]?.status));
                         const withdrawnClassIds = Object.entries(classStatusMap)
-                            .filter(([, value]) => normalizeClassStatus(value?.status) === '퇴원')
+                            .filter(([, value]) => isWithdrawnStatus(value?.status))
                             .map(([id]) => id);
                         const getClassName = (classId) => classes.find((cls) => String(cls.id) === String(classId))?.name || classId;
+                        const withdrawDate = getWithdrawDate(student);
                         return (
                             <div 
                                 key={student.id}
@@ -526,6 +563,7 @@ export default function StudentManagement({
                                         <div className="mt-2 space-y-1 text-xs text-gray-500">
                                             <p className="font-medium text-gray-700">학생: {student.phone}</p>
                                             <p>학부모: {student.parentPhone}</p>
+                                            <p>퇴원일 {withdrawDate ? formatDate(withdrawDate) : '-'}</p>
                                             <p className="text-gray-400">등록일 {student.registeredDate}</p>
                                             <div className="flex flex-wrap gap-2 pt-1">
                                                 <div className="flex items-center gap-1 text-[11px] text-gray-600">
