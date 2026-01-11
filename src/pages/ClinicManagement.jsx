@@ -89,6 +89,34 @@ export default function ClinicManagement({
         return Array.from(seen.values()).sort((a, b) => a.name.localeCompare(b.name, 'ko'));
     }, [clinicLogs]);
 
+    const normalizeSelectedClassId = useCallback((selected, classList) => {
+        if (!selected) return '';
+        const matchedById = classList.find(item => String(item.id) === String(selected));
+        if (matchedById) return matchedById.id;
+        const matchedByName = classList.find(item => String(item.name) === String(selected));
+        return matchedByName?.id || selected;
+    }, []);
+
+    const getItemClassId = useCallback((item, classList) => {
+        const candidates = [
+            item?.classId,
+            item?.classDocId,
+            item?.class?.id,
+            item?.class?.classId,
+            item?.class?.docId,
+            item?.class?.classDocId,
+            item?.classRef,
+            item?.class?.ref,
+        ];
+        const found = candidates.find(value => value !== undefined && value !== null && String(value) !== '');
+        if (found) return found;
+        if (item?.className) {
+            const matched = classList.find(cls => String(cls.name) === String(item.className));
+            return matched?.id || '';
+        }
+        return '';
+    }, []);
+
     const getStudentName = useCallback((log) => {
         if (log.studentName) return log.studentName;
         const student = studentById.get(log.studentId);
@@ -152,12 +180,22 @@ export default function ClinicManagement({
 
     const filteredAndSortedLogs = useMemo(() => {
         const filteredByDeletion = clinicLogs.filter(log => !log?.isDeleted);
+        const normalizedSelected = normalizeSelectedClassId(selectedClassId, classes);
+
+        console.log('[clinic] selectedClassId raw=', selectedClassId, 'normalized=', normalizedSelected);
+        console.log('[clinic] sample class keys=', clinicLogs.slice(0, 10).map(it => ({
+            id: it.id,
+            classId: it.classId,
+            classDocId: it.classDocId,
+            className: it.className,
+            ref: it.classRef,
+        })));
 
         const normalizedSearch = searchText.trim().toLowerCase();
         const filtered = filteredByDeletion.filter(log => {
-            if (selectedClassId) {
-                const itemClassId = log.classId || log.classDocId || log.class?.id || log.class?.classId || '';
-                if (String(itemClassId) !== String(selectedClassId)) return false;
+            if (normalizedSelected) {
+                const itemClassId = getItemClassId(log, classes);
+                if (String(itemClassId) !== String(normalizedSelected)) return false;
             }
             if (selectedStudentId) {
                 const studentId = log.studentId || log.student?.id || '';
@@ -202,10 +240,13 @@ export default function ClinicManagement({
         });
     }, [
         clinicLogs,
+        classes,
         selectedClassId,
         selectedStudentId,
         selectedAssistantId,
         searchText,
+        normalizeSelectedClassId,
+        getItemClassId,
         getStudentName,
         getClassName,
         getAssistantName,

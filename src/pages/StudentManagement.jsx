@@ -1,5 +1,5 @@
 // src/pages/StudentManagement.jsx
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { Icon } from '../utils/helpers';
 import { StudentFormModal } from '../utils/modals/StudentFormModal';
@@ -28,6 +28,7 @@ export default function StudentManagement({
     const [retireDate, setRetireDate] = useState(new Date().toISOString().slice(0, 10));
     const [retireReason, setRetireReason] = useState('종강');
     const todayString = useMemo(() => new Date().toISOString().slice(0, 10), []);
+    const debugLoggedRef = useRef(false);
     const normalizeClassStatus = (value) => {
         if (value === 'withdrawn') return '퇴원';
         if (value === 'active') return '재원';
@@ -53,6 +54,40 @@ export default function StudentManagement({
         }
     };
 
+    const getParentAuthUid = (parent) =>
+        parent?.authUid || parent?.authUID || parent?.uid || parent?.authId || parent?.authUidValue;
+
+    const normalizeLinkedIds = (value) => {
+        const values = Array.isArray(value) ? value : (value ? [value] : []);
+        return values.map((item) => {
+            if (!item) return null;
+            if (typeof item === 'string') return item;
+            if (typeof item === 'object') {
+                if (item.id) return item.id;
+                if (item.path) {
+                    const parts = item.path.split('/');
+                    return parts[parts.length - 1];
+                }
+            }
+            return null;
+        }).filter(Boolean);
+    };
+
+    const isLinkedParentToStudent = (parent, studentId) => {
+        if (!parent || !studentId) return false;
+        const linkFields = [
+            'studentIds',
+            'studentDocIds',
+            'students',
+            'children',
+            'childIds',
+            'linkedStudentIds',
+        ];
+        return linkFields.some((field) =>
+            normalizeLinkedIds(parent[field]).some((id) => String(id) === String(studentId)),
+        );
+    };
+
     useEffect(() => {
         if (pendingQuickAction?.page === 'students' && pendingQuickAction.action === 'openStudentModal') {
             setStudentToEdit(null);
@@ -60,6 +95,22 @@ export default function StudentManagement({
             clearPendingQuickAction?.();
         }
     }, [pendingQuickAction, clearPendingQuickAction]);
+
+    useEffect(() => {
+        if (debugLoggedRef.current) return;
+        if (!parents?.length && !students?.length) return;
+        debugLoggedRef.current = true;
+        console.log('[staff] parents count=', parents?.length, 'sample=', parents?.slice(0, 3));
+        console.log('[staff] student id sample=', students?.[0]?.id);
+        if (students?.[0]?.id) {
+            console.log(
+                '[staff] matched parents for first student=',
+                parents
+                    .filter((parent) => isLinkedParentToStudent(parent, students[0].id))
+                    .map((parent) => getParentAuthUid(parent)),
+            );
+        }
+    }, [parents, students]);
 
     const filteredStudents = useMemo(() => {
         return students.filter(student => {
@@ -178,8 +229,8 @@ export default function StudentManagement({
                                 // ✅ [추가] 해당 학생의 타학원 스케줄 존재 여부 확인
                                 const hasExternal = externalSchedules?.some(s => s.studentId === student.id);
                                 const parentAuthUids = parents
-                                    .filter((parent) => Array.isArray(parent.studentIds) && parent.studentIds.includes(student.id))
-                                    .map((parent) => parent.authUid)
+                                    .filter((parent) => isLinkedParentToStudent(parent, student.id))
+                                    .map((parent) => getParentAuthUid(parent))
                                     .filter(Boolean);
 
                                 const classStatusMap = student.classStatuses || {};
@@ -329,8 +380,8 @@ export default function StudentManagement({
                     {filteredStudents.map(student => {
                         const hasExternal = externalSchedules?.some(s => s.studentId === student.id);
                         const parentAuthUids = parents
-                            .filter((parent) => Array.isArray(parent.studentIds) && parent.studentIds.includes(student.id))
-                            .map((parent) => parent.authUid)
+                            .filter((parent) => isLinkedParentToStudent(parent, student.id))
+                            .map((parent) => getParentAuthUid(parent))
                             .filter(Boolean);
                         const classStatusMap = student.classStatuses || {};
                         const allClassIds = Array.isArray(student.classes)

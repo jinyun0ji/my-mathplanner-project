@@ -195,13 +195,27 @@ export const loadStaffDataOnce = async ({
         }
 
         if (setParents) {
-            await fetchList(
-                db,
-                'users',
-                setParents,
-                query(collection(db, 'users'), where('role', '==', ROLE.PARENT), limit(500)),
-                () => false,
-            );
+            const parentRoles = [ROLE.PARENT, '학부모'];
+            try {
+                await fetchList(
+                    db,
+                    'users',
+                    setParents,
+                    query(collection(db, 'users'), where('role', 'in', parentRoles), limit(500)),
+                    () => false,
+                );
+            } catch (error) {
+                console.warn('[staff] parent role in query failed, fallback to client filter', error);
+                const users = await fetchList(
+                    db,
+                    'users',
+                    () => {},
+                    query(collection(db, 'users'), limit(500)),
+                    () => false,
+                );
+                const roleSet = new Set(parentRoles);
+                setParents(users.filter((user) => roleSet.has(user?.role)));
+            }
         }
 
         if (setClasses) {
