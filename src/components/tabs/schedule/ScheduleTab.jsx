@@ -1,11 +1,11 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Icon, getWeekOfMonth } from '../../../utils/helpers';
 import ModalPortal from '../../common/ModalPortal';
 import { useParentContext } from '../../../parent';
 
 export default function ScheduleTab({
     myClasses, externalSchedules, attendanceLogs, clinicLogs, studentId, student,
-    onSaveExternalSchedule, onDeleteExternalSchedule
+    onSaveExternalSchedule, onDeleteExternalSchedule, childClassExitMap
 }) {
     const { activeStudentId } = useParentContext();
     const resolvedStudentId = studentId ?? activeStudentId;
@@ -97,7 +97,10 @@ export default function ScheduleTab({
         if (value === '재원') return '진행중';
         return value;
     };
-    const isWithdrawnStatus = (value) => ['퇴원', '전반', '종강'].includes(normalizeClassStatus(value));
+    const isWithdrawnStatus = (value) => {
+        const normalized = normalizeClassStatus(value);
+        return ['퇴원', '중도퇴원', '전반', '전반퇴원'].includes(normalized);
+    };
     const toYmd = (value) => {
         if (!value) return null;
         if (typeof value === 'string') return value.slice(0, 10);
@@ -116,12 +119,51 @@ export default function ScheduleTab({
     };
     const isClassRetiredOnDate = (classId, dateValue) => {
         if (!classId) return false;
-        const classStatus = student?.classStatusMap?.[String(classId)] || student?.classStatuses?.[String(classId)];
-        const normalizedStatus = normalizeClassStatus(classStatus?.status);
+        const exitInfo = (() => {
+            const direct = childClassExitMap?.[String(classId)];
+            if (direct) return direct;
+            const legacy = student?.classStatusMap?.[String(classId)] || student?.classStatuses?.[String(classId)];
+            if (!legacy) return null;
+            if (typeof legacy === 'object') return legacy;
+            return { status: legacy };
+        })();
+        if (!exitInfo) return false;
+
+        const normalizedStatus = normalizeClassStatus(exitInfo?.status || exitInfo?.classStatus);
         if (!isWithdrawnStatus(normalizedStatus)) return false;
-        const endValue = classStatus?.endedAt || classStatus?.endDate;
-        if (!endValue) return false;
-        return isAfterEndDate(dateValue, endValue);
+        
+        const rawExit =
+            exitInfo?.exitAtMs
+            || exitInfo?.withdrawAt
+            || exitInfo?.withdrawDate
+            || exitInfo?.leftAt
+            || exitInfo?.leftDate
+            || exitInfo?.endedAt
+            || exitInfo?.endDate
+            || exitInfo?.updatedAt
+            || null;
+
+        const exitMs = (() => {
+            if (!rawExit) return null;
+            if (typeof rawExit?.toDate === 'function') return rawExit.toDate().getTime();
+            if (rawExit instanceof Date) return rawExit.getTime();
+            if (typeof rawExit === 'number') return rawExit;
+            const parsed = new Date(rawExit);
+            return Number.isNaN(parsed.getTime()) ? null : parsed.getTime();
+        })();
+
+        if (!exitMs) return true;
+        if (!dateValue) return false;
+
+        const dateMs = (() => {
+            if (typeof dateValue?.toDate === 'function') return dateValue.toDate().getTime();
+            if (dateValue instanceof Date) return dateValue.getTime();
+            const parsed = new Date(dateValue);
+            return Number.isNaN(parsed.getTime()) ? null : parsed.getTime();
+        })();
+
+        if (!dateMs) return false;
+        return dateMs > exitMs;
     };
 
     const isDateInRange = (dateObj, startDateStr, endDateStr) => {
@@ -294,6 +336,33 @@ export default function ScheduleTab({
 
     const safeExternalSchedules = Array.isArray(externalSchedules) ? externalSchedules : [];
 
+    const dailyClasses = useMemo(() => {
+        const dayOfWeek = weekDays[selectedDate.getDay()];
+        return myClasses
+            .filter(cls =>
+                isClassActiveOnDate(cls, selectedDate) &&
+                resolveClassSchedule(cls).days.includes(dayOfWeek) &&
+                !isClassRetiredOnDate(cls.id, selectedDate)
+            )
+            .map(cls => {
+                const { time } = resolveClassSchedule(cls);
+                return {
+                    id: `math-${cls.id}`,
+                    type: 'math',
+                    name: cls.name,
+                    teacher: cls.teacher,
+                    time: time || '시간 미정',
+                    scheduleId: cls.id,
+                };
+            });
+    }, [myClasses, selectedDate, childClassExitMap, student]);
+
+    useEffect(() => {
+        console.log('[parent] childClassExitMap=', childClassExitMap);
+        console.log('[parent] schedules size=', Array.isArray(myClasses) ? myClasses.length : 0);
+        console.log('[parent] filteredSchedules size=', dailyClasses.length);
+    }, [childClassExitMap, dailyClasses.length, myClasses]);
+
     const getDayInfo = (date) => {
         if (!date) return { hasClass: false, status: null, hasExternal: false, hasClinic: false };
 
@@ -347,23 +416,6 @@ export default function ScheduleTab({
     const renderSchedules = () => {
         const dayOfWeek = weekDays[selectedDate.getDay()];
         const dateStr = formatDate(selectedDate);
-        const dailyClasses = myClasses
-            .filter(cls =>
-                isClassActiveOnDate(cls, selectedDate) &&
-                resolveClassSchedule(cls).days.includes(dayOfWeek) &&
-                !isClassRetiredOnDate(cls.id, selectedDate)
-            )
-            .map(cls => {
-                const { time } = resolveClassSchedule(cls);
-                return {
-                    id: `math-${cls.id}`,
-                    type: 'math',
-                    name: cls.name,
-                    teacher: cls.teacher,
-                    time: time || '시간 미정',
-                    scheduleId: cls.id,
-                };
-            });
 
         // ✅ 여기 수정: 로컬 날짜 파싱 + startOfDay 비교
         const myExternal = safeExternalSchedules.filter(s => {

@@ -31,12 +31,37 @@ import AttendanceDetailModal from './parent/AttendanceDetailModal';
 
 const buildStudentClassStatusMap = (child) => {
     if (!child) return {};
-    if (child.classStatusMap && typeof child.classStatusMap === 'object') return child.classStatusMap;
-    if (child.classStatusByClassId && typeof child.classStatusByClassId === 'object') return child.classStatusByClassId;
+    const normalizeStatusValue = (value) => {
+        if (value && typeof value === 'object') {
+            return value?.status || value?.classStatus || '';
+        }
+        return value ?? '';
+    };
+
+    if (child.classStatusMap && typeof child.classStatusMap === 'object') {
+        const map = {};
+        Object.entries(child.classStatusMap).forEach(([key, value]) => {
+            const status = normalizeStatusValue(value);
+            if (status) map[String(key)] = status;
+        });
+        return map;
+    }
+
+    if (child.classStatusByClassId && typeof child.classStatusByClassId === 'object') {
+        const map = {};
+        Object.entries(child.classStatusByClassId).forEach(([key, value]) => {
+            const status = normalizeStatusValue(value);
+            if (status) map[String(key)] = status;
+        });
+        return map;
+    }
 
     const list =
         (Array.isArray(child.classStatuses) && child.classStatuses)
         || (Array.isArray(child.classes) && child.classes)
+        || (Array.isArray(child.enrollments) && child.enrollments)
+        || (Array.isArray(child.classEnrollments) && child.classEnrollments)
+        || (Array.isArray(child.classHistory) && child.classHistory)
         || [];
 
     const map = {};
@@ -44,6 +69,47 @@ const buildStudentClassStatusMap = (child) => {
         const cid = String(item?.classId || item?.id || '');
         const st = item?.status || item?.classStatus || '';
         if (cid) map[cid] = st;
+    }
+    return map;
+};
+
+const buildChildClassExitMap = (child) => {
+    if (!child) return {};
+    if (child.classExitMap && typeof child.classExitMap === 'object') return child.classExitMap;
+
+    const list =
+        (Array.isArray(child.classStatuses) && child.classStatuses)
+        || (Array.isArray(child.classes) && child.classes)
+        || (Array.isArray(child.enrollments) && child.enrollments)
+        || (Array.isArray(child.classEnrollments) && child.classEnrollments)
+        || (Array.isArray(child.classHistory) && child.classHistory)
+        || [];
+
+    const toMs = (value) => {
+        if (!value) return null;
+        if (typeof value?.toDate === 'function') return value.toDate().getTime();
+        if (value instanceof Date) return value.getTime();
+        if (typeof value === 'number') return value;
+        const date = new Date(value);
+        return Number.isNaN(date.getTime()) ? null : date.getTime();
+    };
+
+    const map = {};
+    for (const item of list) {
+        const cid = String(item?.classId || item?.id || '');
+        if (!cid) continue;
+
+        const status = String(item?.status || item?.classStatus || '').trim();
+        const raw =
+            item?.withdrawAt
+            || item?.withdrawDate
+            || item?.leftAt
+            || item?.leftDate
+            || item?.endedAt
+            || item?.updatedAt
+            || null;
+
+        map[cid] = { status, exitAtMs: toMs(raw) };
     }
     return map;
 };
@@ -250,7 +316,10 @@ export default function ParentHome({
         if (value === '재원') return '진행중';
         return value;
     };
-    const isWithdrawnStatus = (value) => ['퇴원', '전반', '종강'].includes(normalizeClassStatus(value));
+    const isWithdrawnStatus = (value) => {
+        const normalized = normalizeClassStatus(value);
+        return ['퇴원', '중도퇴원', '전반', '전반퇴원', '종강'].includes(normalized);
+    };
     const toYmd = (value) => {
         if (!value) return null;
         if (typeof value === 'string') return value.slice(0, 10);
@@ -295,6 +364,14 @@ export default function ParentHome({
         () => buildStudentClassStatusMap(activeChild),
         [activeChild],
     );
+    const childClassExitMap = useMemo(
+        () => buildChildClassExitMap(activeChild),
+        [activeChild],
+    );
+
+    useEffect(() => {
+        console.log('[parent] activeChild=', activeChild);
+    }, [activeChild]);
 
     // ✅ 변경: 진행중/종강/퇴원 분리 + 모두 사용
     const {
@@ -774,16 +851,15 @@ export default function ParentHome({
 
     const recentLessonsToShow = useMemo(() => recentLessons.slice(0, 2), [recentLessons]);
 
+    const isWithdrawn = useCallback((value) => {
+        const status = String(value || '').trim();
+        return ['퇴원', '중도퇴원', '전반', '전반퇴원'].includes(status);
+    }, []);
+
     const getClassBadge = useCallback((cls) => {
         const classId = String(cls?.id || cls?.classId || '');
         const statusValue = studentClassStatusMap?.[classId];
-        const normalized = String(statusValue || '').trim();
-
-        if (['퇴원', '중도퇴원', '전반', '전반퇴원', '종강'].includes(normalized)) {
-            if (normalized !== '종강') {
-                return '퇴원';
-            }
-        }
+        if (isWithdrawn(statusValue)) return '퇴원';
 
         const end = cls?.endDate || cls?.endAt || cls?.finishedAt;
         if (end) {
@@ -794,7 +870,7 @@ export default function ParentHome({
         }
 
         return '진행중';
-    }, [studentClassStatusMap]);
+    }, [isWithdrawn, studentClassStatusMap]);
 
     const getClassBadgeClassName = (status) => {
         if (status === '퇴원') {
@@ -1533,9 +1609,10 @@ export default function ParentHome({
 
                         {activeTab === 'schedule' && (
                             <ScheduleTab 
-                                myClasses={ongoingClasses} attendanceLogs={attendanceLogs} clinicLogs={clinicLogs} 
+                                myClasses={myClasses} attendanceLogs={attendanceLogs} clinicLogs={clinicLogs} 
                                 externalSchedules={externalSchedules} onSaveExternalSchedule={onSaveExternalSchedule} onDeleteExternalSchedule={onDeleteExternalSchedule}
                                 student={activeChild}
+                                childClassExitMap={childClassExitMap}
                             />
                         )}
 

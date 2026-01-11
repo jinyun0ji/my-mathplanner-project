@@ -501,8 +501,9 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
       .map(({ id, ...rest }) => rest)
       .filter(attachment => attachment.url && attachment.name);
 
+    const isEdit = Boolean(log?.id);
     const logData = {
-        id: log ? log.id : null,
+        id: isEdit ? log.id : null,
         classId,
         date,
         progress,
@@ -519,7 +520,7 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
     };
     
     try {
-      await onSave(logData, !!log);
+      await onSave(logData, isEdit);
     } catch (error) {
       alert('수업 일지 저장에 실패했습니다. 권한 또는 네트워크를 확인하세요.');
       setUploading(false);

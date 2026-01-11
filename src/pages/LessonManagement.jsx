@@ -75,6 +75,7 @@ export default function LessonManagement({
     const [selectedDate, setSelectedDate] = useState(null);
     const [isMobile, setIsMobile] = useState(false);
     const [activeVideoByLog, setActiveVideoByLog] = useState({});
+    const [logFormKey, setLogFormKey] = useState(0);
 
     const selectedClass = classes.find(c => String(c.id) === String(selectedClassId));;
     
@@ -183,17 +184,26 @@ export default function LessonManagement({
         );
     }, [classLogs, selectedClass, selectedDate, calculateClassSessions]);
 
+    const cloneLog = (log) => {
+        if (!log) return null;
+        if (typeof structuredClone === 'function') {
+            return structuredClone(log);
+        }
+        return JSON.parse(JSON.stringify(log));
+    };
+
     const handleEditLog = (log) => {
-        setLogToEdit(log);
+        setLogToEdit(cloneLog(log));
         setIsLogModalOpen(true);
     };
 
     const handleNewLog = () => {
         setLogToEdit(null);
+        setLogFormKey(prev => prev + 1);
         setIsLogModalOpen(true);
     };
 
-    const isCurrentDateLogged = currentLog !== undefined;
+    const isCurrentDateLogged = currentLog != null;
 
     const renderLogDetail = (log) => {
         const videos = normalizeLessonVideos(log);
@@ -455,6 +465,7 @@ export default function LessonManagement({
             </div>
 
             <LessonLogFormModal
+                key={logFormKey}
                 isOpen={isLogModalOpen}
                 onClose={() => setIsLogModalOpen(false)}
                 onSave={handleSaveLessonLog}
