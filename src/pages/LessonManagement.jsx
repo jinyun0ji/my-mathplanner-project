@@ -71,7 +71,6 @@ export default function LessonManagement({
 }) {
     const [selectedClassId, setSelectedClassId] = useState(() => getDefaultClassId(classes));
     const [isLogModalOpen, setIsLogModalOpen] = useState(false);
-    const [logToEdit, setLogToEdit] = useState(null);
     const [selectedDate, setSelectedDate] = useState(null);
     const [isMobile, setIsMobile] = useState(false);
     const [activeVideoByLog, setActiveVideoByLog] = useState({});
@@ -193,12 +192,11 @@ export default function LessonManagement({
     };
 
     const handleEditLog = (log) => {
-        setLogToEdit(cloneLog(log));
+        setSelectedDate(log.date);
         setIsLogModalOpen(true);
     };
 
     const handleNewLog = () => {
-        setLogToEdit(null);
         setLogFormKey(prev => prev + 1);
         setIsLogModalOpen(true);
     };
@@ -469,11 +467,11 @@ export default function LessonManagement({
                 isOpen={isLogModalOpen}
                 onClose={() => setIsLogModalOpen(false)}
                 onSave={handleSaveLessonLog}
-                log={logToEdit}
                 classId={selectedClassId}
                 classes={classes}
                 calculateClassSessions={calculateClassSessions}
                 defaultDate={selectedDate}
+                lessonLogs={classLogs}
                 students={students}
                 logNotification={logNotification}
                 onDirtyChange={setIsGlobalDirty}

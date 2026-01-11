@@ -93,10 +93,24 @@ const normalizeLessonDate = (value) => {
   return date.toISOString().slice(0, 10);
 };
 
+const normalizeLessonKey = (value) => {
+  if (!value) return '';
+  if (typeof value === 'string') {
+    if (/^\d{4}-\d{2}-\d{2}/.test(value)) {
+      return value.slice(0, 10);
+    }
+    return value;
+  }
+  if (value instanceof Date || typeof value?.toDate === 'function') {
+    return normalizeLessonDate(value);
+  }
+  return String(value);
+};
+
 const normalizeStorageSegment = (value) =>
   String(value || '').trim().replace(/\s+/g, '_');
 
-export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = null, classes, defaultDate = null, students, logNotification, onDirtyChange = () => {} }) => {
+export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, classes, defaultDate = null, students, logNotification, onDirtyChange = () => {}, lessonLogs = [] }) => {
   const selectedClass = classes.find(c => String(c.id) === String(classId));
   
   const sessions = useMemo(() => selectedClass ? calculateClassSessions(selectedClass) : [], [selectedClass, calculateClassSessions]);
@@ -110,19 +124,23 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
     });
   }, [students, classId]);
   
-  const [date, setDate] = useState(defaultDate || '');
-  const [progress, setProgress] = useState('');
-  const [videos, setVideos] = useState([]);
-  const [attachments, setAttachments] = useState([]);
   const [files, setFiles] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState({});
-  const [scheduleTime, setScheduleTime] = useState('');
   const [studentNotificationMap, setStudentNotificationMap] = useState({});
-  const [staffNotifyMode, setStaffNotifyMode] = useState('none');
-  const [staffNotifyTitle, setStaffNotifyTitle] = useState('');
-  const [staffNotifyBody, setStaffNotifyBody] = useState('');
-  const [staffNotifyScheduledAt, setStaffNotifyScheduledAt] = useState('');
+  const [selectedLessonKey, setSelectedLessonKey] = useState('');
+  const [editingLogId, setEditingLogId] = useState(null);
+  const [formState, setFormState] = useState({
+    date: '',
+    progress: '',
+    videos: [],
+    attachments: [],
+    scheduleTime: '',
+    staffNotifyMode: 'none',
+    staffNotifyTitle: '',
+    staffNotifyBody: '',
+    staffNotifyScheduledAt: '',
+  });
 
   const videoIdRef = useRef(0);
   const attachmentIdRef = useRef(0);
@@ -249,68 +267,69 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
     return offset.toISOString().slice(0, 16);
   };
 
-  const resetForm = useCallback(() => {
-    setDate(defaultDate || (sessions.length > 0 ? sessions[sessions.length - 1].date : ''));
-    setProgress('');
-    setVideos([]);
-    setAttachments([]);
-    setFiles([]);
-    setUploadProgress({});
-    setUploading(false);
-    setScheduleTime('');
-    setStaffNotifyMode('none');
-    setStaffNotifyTitle('');
-    setStaffNotifyBody('');
-    setStaffNotifyScheduledAt('');
+  const getEmptyForm = useCallback((lessonKey) => ({
+    date: lessonKey || '',
+    progress: '',
+    videos: [],
+    attachments: [],
+    scheduleTime: '',
+    staffNotifyMode: 'none',
+    staffNotifyTitle: '',
+    staffNotifyBody: '',
+    staffNotifyScheduledAt: '',
+  }), []);
+
+  const buildFormStateFromLog = useCallback((logItem) => {
+    const attachments = Array.isArray(logItem?.attachments)
+      ? logItem.attachments.map(item => createAttachmentEntry(item))
+      : Array.isArray(logItem?.materials)
+        ? logItem.materials.map(item => createAttachmentEntry(item))
+        : logItem?.materialUrl
+          ? [createAttachmentEntry({ name: logItem.materialUrl, url: logItem.materialUrl })]
+          : [];
+
+    const staffNotification = logItem?.notifyMode === 'staff' ? logItem?.staffNotification : null;
+
+    return {
+      date: normalizeLessonKey(logItem?.date) || logItem?.date || '',
+      progress: logItem?.progress || '',
+      videos: normalizeVideosFromLog(logItem),
+      attachments,
+      scheduleTime: logItem?.scheduleTime || '',
+      staffNotifyMode: staffNotification ? staffNotification.mode || 'immediate' : 'none',
+      staffNotifyTitle: staffNotification?.title || '',
+      staffNotifyBody: staffNotification?.body || '',
+      staffNotifyScheduledAt: staffNotification?.mode === 'scheduled'
+        ? toDatetimeLocal(staffNotification?.scheduledAt)
+        : '',
+    };
+  }, [createAttachmentEntry, normalizeVideosFromLog]);
+
+  const initialLessonKey = useMemo(() => {
+    const normalizedDefault = normalizeLessonKey(defaultDate);
+    if (normalizedDefault) return normalizedDefault;
+    const fallback = sessions.length > 0 ? normalizeLessonKey(sessions[sessions.length - 1].date) : '';
+    return fallback;
   }, [defaultDate, sessions]);
 
-  const loadExistingLesson = useCallback(() => {
-    if (!log) return;
-    setDate(log.date || '');
-    setProgress(log.progress || '');
-    setVideos(normalizeVideosFromLog(log));
-    if (Array.isArray(log.attachments)) {
-      setAttachments(log.attachments.map(item => createAttachmentEntry(item)));
-    } else if (Array.isArray(log.materials)) {
-      setAttachments(log.materials.map(item => createAttachmentEntry(item)));
-    } else if (log.materialUrl) {
-      setAttachments([createAttachmentEntry({ name: log.materialUrl, url: log.materialUrl })]);
-    } else {
-      setAttachments([]);
-    }
-    setFiles([]);
-    setUploadProgress({});
-    setUploading(false);
-    setScheduleTime(log.scheduleTime || '');
-    if (log.notifyMode === 'staff' && log.staffNotification) {
-      setStaffNotifyMode(log.staffNotification.mode || 'immediate');
-      setStaffNotifyTitle(log.staffNotification.title || '');
-      setStaffNotifyBody(log.staffNotification.body || '');
-      setStaffNotifyScheduledAt(
-        log.staffNotification.mode === 'scheduled'
-          ? toDatetimeLocal(log.staffNotification.scheduledAt)
-          : ''
-      );
-    } else {
-      setStaffNotifyMode('none');
-      setStaffNotifyTitle('');
-      setStaffNotifyBody('');
-      setStaffNotifyScheduledAt('');
-    }
-    }, [log, normalizeVideosFromLog, createAttachmentEntry]);
+  const logsByKey = useMemo(() => {
+    const map = new Map();
+    (lessonLogs || []).forEach((record) => {
+      if (classId && String(record?.classId) !== String(classId)) return;
+      const rawKey = record?.dateKey || record?.lessonDate || record?.date || record?.session || record?.lessonNo;
+      const normalizedKey = normalizeLessonKey(rawKey);
+      if (!normalizedKey || map.has(normalizedKey)) return;
+      map.set(normalizedKey, record);
+    });
+    return map;
+  }, [classId, lessonLogs]);
 
   useEffect(() => {
     if (!isOpen) return;
 
-    const isNew = !log?.id;
     videoIdRef.current = 0;
     attachmentIdRef.current = 0;
-
-    if (isNew) {
-      resetForm();
-    } else {
-      loadExistingLesson();
-    }
+    setSelectedLessonKey(initialLessonKey);
     
     // 모달이 열릴 때 알림 설정 기본값 초기화
     if (selectedClass) {
@@ -329,7 +348,29 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
     // 모달 열릴 때 dirty 상태 초기화
     setIsDirty(false);
     onDirtyChange(false);
-  }, [classStudents, isOpen, loadExistingLesson, log?.id, onDirtyChange, resetForm, selectedClass]);
+  }, [classStudents, initialLessonKey, isOpen, onDirtyChange, selectedClass]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    if (!selectedLessonKey) return;
+
+    const existingLog = logsByKey.get(selectedLessonKey);
+    if (existingLog) {
+      setEditingLogId(existingLog.id);
+      setFormState(buildFormStateFromLog(existingLog));
+    } else {
+      setEditingLogId(null);
+      setFormState(getEmptyForm(selectedLessonKey));
+    }
+
+    videoIdRef.current = 0;
+    attachmentIdRef.current = 0;
+    setFiles([]);
+    setUploadProgress({});
+    setUploading(false);
+    setIsDirty(false);
+    onDirtyChange(false);
+  }, [buildFormStateFromLog, getEmptyForm, isOpen, logsByKey, onDirtyChange, selectedLessonKey]);
 
   useEffect(() => {
     onDirtyChange(isDirty);
@@ -358,18 +399,21 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
   };
 
   const handleAddVideo = () => {
-      setVideos(prev => [...prev, createVideoEntry()]);
-      setIsDirty(true);
+    setFormState(prev => ({ ...prev, videos: [...prev.videos, createVideoEntry()] }));
+    setIsDirty(true);
   };
 
   const handleVideoChange = (id, field, value) => {
-      setVideos(prev => prev.map(video => video.id === id ? { ...video, [field]: value ?? '' } : video));
-      setIsDirty(true);
+    setFormState(prev => ({
+      ...prev,
+      videos: prev.videos.map(video => video.id === id ? { ...video, [field]: value ?? '' } : video),
+    }));
+    setIsDirty(true);
   };
 
   const handleRemoveVideo = (id) => {
-      setVideos(prev => prev.filter(video => video.id !== id));
-      setIsDirty(true);
+    setFormState(prev => ({ ...prev, videos: prev.videos.filter(video => video.id !== id) }));
+    setIsDirty(true);
   };
 
   const handleMaterialFilesChange = (event) => {
@@ -392,7 +436,7 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
   };
 
   const handleRemoveAttachment = (id) => {
-    setAttachments(prev => prev.filter(attachment => attachment.id !== id));
+    setFormState(prev => ({ ...prev, attachments: prev.attachments.filter(attachment => attachment.id !== id) }));
     setIsDirty(true);
   };
 
@@ -410,65 +454,56 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
     const { active, over } = event;
     if (!over || active.id === over.id) return;
 
-    setVideos(prev => {
-      const oldIndex = prev.findIndex(video => video.id === active.id);
-      const newIndex = prev.findIndex(video => video.id === over.id);
-      return arrayMove(prev, oldIndex, newIndex);
+    setFormState(prev => {
+      const oldIndex = prev.videos.findIndex(video => video.id === active.id);
+      const newIndex = prev.videos.findIndex(video => video.id === over.id);
+      return { ...prev, videos: arrayMove(prev.videos, oldIndex, newIndex) };
     });
     setIsDirty(true);
   };
 
-  const handleChange = (setter, value) => {
-      setter(value);
-      setIsDirty(true);
+  const handleChange = (field, value) => {
+    setFormState(prev => ({ ...prev, [field]: value }));
+    setIsDirty(true);
   };
 
   const handleStaffNotifyModeChange = (value) => {
-    setStaffNotifyMode(value);
-    if (value !== 'scheduled') {
-      setStaffNotifyScheduledAt('');
-    }
+    setFormState(prev => ({
+      ...prev,
+      staffNotifyMode: value,
+      staffNotifyScheduledAt: value !== 'scheduled' ? '' : prev.staffNotifyScheduledAt,
+    }));
     setIsDirty(true);
   };
 
-  const handleStaffNotifyTitleChange = (value) => {
-    setStaffNotifyTitle(value);
-    setIsDirty(true);
-  };
-
-  const handleStaffNotifyBodyChange = (value) => {
-    setStaffNotifyBody(value);
-    setIsDirty(true);
-  };
-
-  const handleStaffNotifyScheduledAtChange = (value) => {
-    setStaffNotifyScheduledAt(value);
-    setIsDirty(true);
-  };
+  const handleStaffNotifyTitleChange = (value) => handleChange('staffNotifyTitle', value);
+  const handleStaffNotifyBodyChange = (value) => handleChange('staffNotifyBody', value);
+  const handleStaffNotifyScheduledAtChange = (value) => handleChange('staffNotifyScheduledAt', value);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!classId || !date || !progress) return;
+    const lessonDate = selectedLessonKey || formState.date;
+    if (!classId || !lessonDate || !formState.progress) return;
 
-    if (staffNotifyMode !== 'none') {
-      if (!staffNotifyTitle.trim() || !staffNotifyBody.trim()) {
+    if (formState.staffNotifyMode !== 'none') {
+      if (!formState.staffNotifyTitle.trim() || !formState.staffNotifyBody.trim()) {
         alert('직원 알림 제목과 내용을 입력해주세요.');
         return;
       }
-      if (staffNotifyMode === 'scheduled' && !staffNotifyScheduledAt) {
+      if (formState.staffNotifyMode === 'scheduled' && !formState.staffNotifyScheduledAt) {
         alert('직원 알림 예약 시간을 선택해주세요.');
         return;
       }
     }
 
-    const staffNotification = staffNotifyMode === 'none'
+    const staffNotification = formState.staffNotifyMode === 'none'
       ? null
       : {
-        mode: staffNotifyMode,
-        title: staffNotifyTitle.trim(),
-        body: staffNotifyBody.trim(),
-        ...(staffNotifyMode === 'scheduled'
-          ? { scheduledAt: new Date(staffNotifyScheduledAt) }
+        mode: formState.staffNotifyMode,
+        title: formState.staffNotifyTitle.trim(),
+        body: formState.staffNotifyBody.trim(),
+        ...(formState.staffNotifyMode === 'scheduled'
+          ? { scheduledAt: new Date(formState.staffNotifyScheduledAt) }
           : {}),
       };
 
@@ -487,7 +522,7 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
         storage,
         files,
         className: selectedClass?.name || classId,
-        lessonDate: date,
+        lessonDate,
         uid: currentUser.uid,
       });
     } catch (error) {
@@ -497,30 +532,29 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
       return;
     }
 
-    const attachmentsForSave = [...attachments, ...uploadedFiles]
+    const attachmentsForSave = [...formState.attachments, ...uploadedFiles]
       .map(({ id, ...rest }) => rest)
       .filter(attachment => attachment.url && attachment.name);
 
-    const isEdit = Boolean(log?.id);
     const logData = {
-        id: isEdit ? log.id : null,
+        id: editingLogId,
         classId,
-        date,
-        progress,
-        videos: videos
+        date: lessonDate,
+        progress: formState.progress,
+        videos: formState.videos
             .filter(video => video.url && video.url.trim())
             .map(video => ({
                 title: video.title || '',
                 url: video.url.trim(),
             })),
         attachments: attachmentsForSave,
-        scheduleTime: scheduleTime || null,
-        notifyMode: staffNotifyMode === 'none' ? 'system' : 'staff',
+        scheduleTime: formState.scheduleTime || null,
+        notifyMode: formState.staffNotifyMode === 'none' ? 'system' : 'staff',
         staffNotification,
     };
     
     try {
-      await onSave(logData, isEdit);
+      await onSave(logData, Boolean(editingLogId));
     } catch (error) {
       alert('수업 일지 저장에 실패했습니다. 권한 또는 네트워크를 확인하세요.');
       setUploading(false);
@@ -529,10 +563,10 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
 
     setFiles([]);
     setUploadProgress({});
-    setAttachments(attachmentsForSave.map(item => createAttachmentEntry(item)));
+    setFormState(prev => ({ ...prev, attachments: attachmentsForSave.map(item => createAttachmentEntry(item)) }));
     setUploading(false);
     
-    if (scheduleTime) {
+    if (formState.scheduleTime) {
         const studentRecipients = classStudents.filter(s => {
             const prefs = studentNotificationMap[s.id];
             return prefs && (prefs.notifyParent || prefs.notifyStudent);
@@ -558,7 +592,7 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
             const recipientString = recipients.length > 0 ? recipients.join(' 및 ') : '대상 없음';
 
             logNotification('scheduled', '수업 일지 알림 예약', 
-                `[${selectedClass.name}] 수업 일지가 ${scheduleTime.replace('T', ' ')}에 ${recipientString}에게 발송되도록 예약됨. (총 ${studentRecipients.length}명 대상)`);
+                `[${selectedClass.name}] 수업 일지가 ${formState.scheduleTime.replace('T', ' ')}에 ${recipientString}에게 발송되도록 예약됨. (총 ${studentRecipients.length}명 대상)`);
         }
     }
 
@@ -570,14 +604,14 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
   if (!selectedClass) return null;
 
   return (
-    <Modal isOpen={isOpen} onClose={handleCloseWrapper} title={log ? '수업 일지 수정' : `${selectedClass.name} 수업 일지 등록`} maxWidth="max-w-4xl">
+    <Modal isOpen={isOpen} onClose={handleCloseWrapper} title={editingLogId ? '수업 일지 수정' : `${selectedClass.name} 수업 일지 등록`} maxWidth="max-w-4xl">
         <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
                 <div>
                     <label className="block text-sm font-medium text-gray-700">수업 일자*</label>
                     <select 
-                        value={date} 
-                        onChange={e => handleChange(setDate, e.target.value)} 
+                        value={selectedLessonKey} 
+                        onChange={e => setSelectedLessonKey(e.target.value)}
                         required 
                         className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border"
                     >
@@ -592,8 +626,8 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
                     <label className="block text-sm font-medium text-gray-700">알림 예약 시간 (선택)</label>
                     <input 
                         type="datetime-local" 
-                        value={scheduleTime || ''} 
-                        onChange={e => handleChange(setScheduleTime, e.target.value)} 
+                        value={formState.scheduleTime || ''} 
+                        onChange={e => handleChange('scheduleTime', e.target.value)} 
                         className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border" 
                     />
                     <p className="text-xs text-gray-500 mt-1">예약 시간을 설정하면 알림이 자동으로 전송됩니다.</p>
@@ -603,8 +637,8 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
             <div>
                 <label className="block text-sm font-medium text-gray-700">진도/주요 내용*</label>
                 <textarea 
-                    value={progress} 
-                    onChange={e => handleChange(setProgress, e.target.value)} 
+                    value={formState.progress} 
+                    onChange={e => handleChange('progress', e.target.value)} 
                     rows="3" 
                     required 
                     className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border" 
@@ -613,13 +647,13 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
             </div>
 
             <StaffNotificationFields
-                mode={staffNotifyMode}
+                mode={formState.staffNotifyMode}
                 onModeChange={handleStaffNotifyModeChange}
-                title={staffNotifyTitle}
+                title={formState.staffNotifyTitle}
                 onTitleChange={handleStaffNotifyTitleChange}
-                body={staffNotifyBody}
+                body={formState.staffNotifyBody}
                 onBodyChange={handleStaffNotifyBodyChange}
-                scheduledAt={staffNotifyScheduledAt}
+                scheduledAt={formState.staffNotifyScheduledAt}
                 onScheduledAtChange={handleStaffNotifyScheduledAtChange}
             />
 
@@ -635,14 +669,14 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
                     </button>
                 </div>
                 <div className="mt-2 space-y-3">
-                    {videos.length === 0 && (
+                    {formState.videos.length === 0 && (
                         <div className="rounded-md border border-dashed border-gray-300 bg-gray-50 p-4 text-sm text-gray-500">
                             영상 추가 버튼을 눌러 임베드 코드 또는 URL을 입력하세요.
                         </div>
                     )}
                     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-                      <SortableContext items={videos.map(video => video.id)} strategy={verticalListSortingStrategy}>
-                        {videos.map((video, index) => (
+                      <SortableContext items={formState.videos.map(video => video.id)} strategy={verticalListSortingStrategy}>
+                        {formState.videos.map((video, index) => (
                           <SortableVideoItem
                             key={video.id}
                             video={video}
@@ -679,7 +713,7 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
                     </div>
                   </div>
                   <div className="mt-2 space-y-3">
-                    {attachments.length === 0 && files.length === 0 && (
+                    {formState.attachments.length === 0 && files.length === 0 && (
                         <div className="rounded-md border border-dashed border-gray-300 bg-gray-50 p-4 text-sm text-gray-500">
                             파일 첨부 버튼을 눌러 로컬 파일을 업로드하세요.
                         </div>
@@ -712,7 +746,7 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
                         {name} ({percent}%)
                       </div>
                     ))}
-                    {attachments.map((attachment, index) => (
+                    {formState.attachments.map((attachment, index) => (
                         <div key={attachment.id} className="rounded-lg border border-gray-200 bg-gray-50 p-4 space-y-3">
                             <div className="flex items-center justify-between">
                                 <div className="text-sm font-semibold text-gray-700">자료 {index + 1}</div>
@@ -736,7 +770,7 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
                 </div>
             </div>
 
-            {scheduleTime && (
+            {formState.scheduleTime && (
                 // ✅ 흰색 배경으로 변경 (bg-white)
                 <div className="border border-gray-200 p-4 rounded-lg bg-white space-y-3">
                     <h4 className="text-sm font-bold text-gray-700 mb-2 border-b pb-2">학생별 알림 설정</h4>
@@ -797,7 +831,7 @@ export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, log = nul
                   <Icon name="save" className="w-4 h-4 mr-2" />
                     {uploading
                       ? '파일 업로드 중...'
-                      : (scheduleTime ? (log ? '일지 수정 & 예약 유지' : '일지 등록 & 알림 예약') : (log ? '수정 사항 저장' : '일지 등록'))}
+                      : (formState.scheduleTime ? (editingLogId ? '일지 수정 & 예약 유지' : '일지 등록 & 알림 예약') : (editingLogId ? '수정 사항 저장' : '일지 등록'))}
                 </button>
             </div>
         </form>
