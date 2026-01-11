@@ -238,8 +238,9 @@ const ParentDashboard = ({
             if (!isWithdrawn(exit.status)) return true;
             if (!exit.exitAtMs) return false;
 
-            const atMs = getAtMs(item);
-            return atMs <= exit.exitAtMs;
+            const itemDayMs = new Date(getAtMs(item)).setHours(0, 0, 0, 0);
+            const exitDayMs = new Date(exit.exitAtMs).setHours(0, 0, 0, 0);
+            return itemDayMs < exitDayMs;
         });
     }, [todayItems, childClassExitMap]);
 
@@ -373,7 +374,7 @@ export default function ParentHome({
     };
     const isWithdrawnStatus = (value) => {
         const normalized = normalizeClassStatus(value);
-        return ['퇴원', '중도퇴원', '전반', '전반퇴원', '종강'].includes(normalized);
+        return ['퇴원', '중도퇴원', '전반', '전반퇴원'].includes(normalized);
     };
     const toYmd = (value) => {
         if (!value) return null;
@@ -910,15 +911,10 @@ export default function ParentHome({
 
     const recentLessonsToShow = useMemo(() => recentLessons.slice(0, 2), [recentLessons]);
 
-    const isWithdrawn = useCallback((value) => {
-        const status = String(value || '').trim();
-        return ['퇴원', '중도퇴원', '전반', '전반퇴원'].includes(status);
-    }, []);
-
     const getClassBadge = useCallback((cls) => {
         const classId = String(cls?.id || cls?.classId || '');
-        const statusValue = studentClassStatusMap?.[classId];
-        if (isWithdrawn(statusValue)) return '퇴원';
+        const statusValue = normalizeClassStatus(studentClassStatusMap?.[classId]);
+        if (isWithdrawnStatus(statusValue)) return '퇴원';
 
         const end = cls?.endDate || cls?.endAt || cls?.finishedAt;
         if (end) {
@@ -929,7 +925,7 @@ export default function ParentHome({
         }
 
         return '진행중';
-    }, [isWithdrawn, studentClassStatusMap, childClassExitMap]);
+    }, [isWithdrawnStatus, normalizeClassStatus, studentClassStatusMap]);
 
     const getClassBadgeClassName = (status) => {
         if (status === '퇴원') {

@@ -576,12 +576,14 @@ export default function ScheduleTab({
             <div className="flex justify-between items-center mb-6 px-1">
                 <h2 className="text-2xl font-bold text-brand-black">수업일정</h2>
                 <div className="flex gap-2">
-                    <button
-                        onClick={handleOpenAddModal}
-                        className="bg-brand-main hover:bg-brand-dark text-white px-3 py-1 rounded-xl text-xs font-bold flex items-center gap-1 shadow-md transition-all active:scale-95"
-                    >
-                        <Icon name="plus" className="w-4 h-4" /> 일정 추가
-                    </button>
+                    {false && (
+                        <button
+                            onClick={handleOpenAddModal}
+                            className="bg-brand-main hover:bg-brand-dark text-white px-3 py-1 rounded-xl text-xs font-bold flex items-center gap-1 shadow-md transition-all active:scale-95"
+                        >
+                            <Icon name="plus" className="w-4 h-4" /> 일정 추가
+                        </button>
+                    )}
                     <div className="bg-white p-1 rounded-xl border border-brand-gray/30 shadow-sm flex h-[32px] items-center">
                         <button
                             onClick={() => setViewType('weekly')}
