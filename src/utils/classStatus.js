@@ -56,12 +56,18 @@ export const getDefaultClassId = (classes = []) => {
     return ongoing?.id ?? classes[0]?.id ?? null;
 };
 
-export const sortClassesByStatus = (classes = [], studentClassStatusMap = {}) => {
+export const sortClassesByStatus = (classes = [], studentClassStatusMap = {}, childClassExitMap = {}) => {
     const all = Array.isArray(classes) ? classes : [];
 
     const isWithdrawn = (value) => {
         const status = String(value || '').trim();
         return ['퇴원', '중도퇴원', '전반', '전반퇴원'].includes(status);
+    };
+
+    const getStatus = (classId) => {
+        const exitStatus = childClassExitMap?.[classId]?.status;
+        if (exitStatus) return exitStatus;
+        return studentClassStatusMap?.[classId];
     };
 
     const isEndedByDate = (classDoc) => {
@@ -78,7 +84,7 @@ export const sortClassesByStatus = (classes = [], studentClassStatusMap = {}) =>
 
     all.forEach((cls) => {
         const classId = String(cls?.id || cls?.classId || '');
-        const status = studentClassStatusMap?.[classId];
+        const status = getStatus(classId);
 
         if (isWithdrawn(status)) {
             withdrawn.push(cls);

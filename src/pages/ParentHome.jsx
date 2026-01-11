@@ -118,7 +118,8 @@ const buildChildClassExitMap = (child) => {
 const ParentDashboard = ({ 
     child, myClasses, attendanceLogs, homeworkStats, 
     gradeComparison, clinicLogs, unpaidPayments, 
-    setActiveTab 
+    setActiveTab,
+    childClassExitMap,
 }) => {
     const today = new Date();
     const todayStr = today.toISOString().split('T')[0];
@@ -178,23 +179,75 @@ const ParentDashboard = ({
         if (log?.checkIn || log?.plannedTime) return '예약됨';
         return '예정';
     };
-    const todayClinicSchedules = clinicLogs
-        .filter((l) => l.studentId === child.id && l.date === todayStr)
-        .map((l) => ({
-            type: 'clinic',
-            time: l.checkIn || l.plannedTime?.start || '99:99',
-            timeLabel: formatClinicTime(l),
-            title: '클리닉',
-            sub: `선생님: ${buildClinicTeacher(l)} • ${buildClinicStatus(l)}`,
-        }));
+    const isWithdrawn = (st) => {
+        const value = String(st || '').trim();
+        return ['퇴원', '중도퇴원', '전반', '전반퇴원'].includes(value);
+    };
 
-    const todaySchedules = [
-        ...myClasses.filter(c => c.schedule.days.includes(todayDayName)).map(c => ({
-            type: 'class', time: c.schedule.time, title: c.name, sub: `${c.teacher} 선생님`,
-            timeLabel: c.schedule.time,
-        })),
-        ...todayClinicSchedules,
-    ].sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+    const toMs = (value) => {
+        if (!value) return null;
+        if (typeof value?.toDate === 'function') return value.toDate().getTime();
+        if (value instanceof Date) return value.getTime();
+        if (typeof value === 'number') return value;
+        const date = new Date(value);
+        return Number.isNaN(date.getTime()) ? null : date.getTime();
+    };
+
+    const todayItems = useMemo(() => {
+        const todayClinicSchedules = clinicLogs
+            .filter((l) => l.studentId === child.id && l.date === todayStr)
+            .map((l) => ({
+                type: 'clinic',
+                time: l.checkIn || l.plannedTime?.start || '99:99',
+                timeLabel: formatClinicTime(l),
+                title: '클리닉',
+                sub: `선생님: ${buildClinicTeacher(l)} • ${buildClinicStatus(l)}`,
+                date: l.date,
+            }));
+
+        return [
+            ...myClasses.filter(c => c.schedule.days.includes(todayDayName)).map(c => ({
+                type: 'class',
+                classId: c.id,
+                time: c.schedule.time,
+                title: c.name,
+                sub: `${c.teacher} 선생님`,
+                timeLabel: c.schedule.time,
+                date: todayStr,
+            })),
+            ...todayClinicSchedules,
+        ].sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+    }, [clinicLogs, child.id, myClasses, todayDayName, todayStr]);
+
+    const filteredTodayItems = useMemo(() => {
+        const list = Array.isArray(todayItems) ? todayItems : [];
+
+        const getClassId = (item) => String(item?.classId || item?.classDocId || item?.class?.id || '');
+        const getAtMs = (item) => {
+            const raw = item?.date || item?.lessonDate || item?.startAt || item?.scheduledAt || item?.createdAt || null;
+            return toMs(raw) ?? toMs(new Date());
+        };
+
+        return list.filter((item) => {
+            const classId = getClassId(item);
+            if (!classId) return true;
+
+            const exit = childClassExitMap?.[classId];
+            if (!exit) return true;
+
+            if (!isWithdrawn(exit.status)) return true;
+            if (!exit.exitAtMs) return false;
+
+            const atMs = getAtMs(item);
+            return atMs <= exit.exitAtMs;
+        });
+    }, [todayItems, childClassExitMap]);
+
+    useEffect(() => {
+        console.log('[parent][today] childClassExitMap=', childClassExitMap);
+        console.log('[parent][today] todayItems=', todayItems);
+        console.log('[parent][today] filteredTodayItems=', filteredTodayItems);
+    }, [childClassExitMap, todayItems, filteredTodayItems]);
 
     // 3. 확인 필요 항목 (Action Items)
     const actionItems = [];
@@ -211,39 +264,41 @@ const ParentDashboard = ({
     return (
         <div className="space-y-6 pb-6 animate-fade-in-up">
             {/* 1. 상단 상태 요약 카드 */}
-            <section>
-                <h3 className="text-sm font-bold text-gray-500 mb-3 px-1">학습 상태 요약</h3>
-                <div className="grid grid-cols-3 gap-3">
-                    <div onClick={() => setActiveTab('report')} className={`p-4 rounded-2xl border flex flex-col items-center justify-center text-center shadow-sm cursor-pointer active:scale-95 transition-all ${statusData.attend.color}`}>
-                        <div className="mb-2 opacity-80"><Icon name="user" className="w-6 h-6" /></div>
-                        <span className="text-xs font-medium opacity-70 mb-0.5">최근 출결</span>
-                        <span className="text-lg font-extrabold">{statusData.attend.label}</span>
+            {false && (
+                <section>
+                    <h3 className="text-sm font-bold text-gray-500 mb-3 px-1">학습 상태 요약</h3>
+                    <div className="grid grid-cols-3 gap-3">
+                        <div onClick={() => setActiveTab('report')} className={`p-4 rounded-2xl border flex flex-col items-center justify-center text-center shadow-sm cursor-pointer active:scale-95 transition-all ${statusData.attend.color}`}>
+                            <div className="mb-2 opacity-80"><Icon name="user" className="w-6 h-6" /></div>
+                            <span className="text-xs font-medium opacity-70 mb-0.5">최근 출결</span>
+                            <span className="text-lg font-extrabold">{statusData.attend.label}</span>
+                        </div>
+                        <div onClick={() => setActiveTab('report')} className={`p-4 rounded-2xl border flex flex-col items-center justify-center text-center shadow-sm cursor-pointer active:scale-95 transition-all ${statusData.hw.color}`}>
+                            <div className="mb-2 opacity-80"><Icon name="fileText" className="w-6 h-6" /></div>
+                            <span className="text-xs font-medium opacity-70 mb-0.5">과제 수행</span>
+                            <span className="text-lg font-extrabold">{statusData.hw.label}</span>
+                        </div>
+                        <div onClick={() => setActiveTab('report')} className={`p-4 rounded-2xl border flex flex-col items-center justify-center text-center shadow-sm cursor-pointer active:scale-95 transition-all ${statusData.grade.color}`}>
+                            <div className="mb-2 opacity-80"><Icon name="trendingUp" className="w-6 h-6" /></div>
+                            <span className="text-xs font-medium opacity-70 mb-0.5">성적 추이</span>
+                            <span className="text-lg font-extrabold">{statusData.grade.label}</span>
+                        </div>
                     </div>
-                    <div onClick={() => setActiveTab('report')} className={`p-4 rounded-2xl border flex flex-col items-center justify-center text-center shadow-sm cursor-pointer active:scale-95 transition-all ${statusData.hw.color}`}>
-                        <div className="mb-2 opacity-80"><Icon name="fileText" className="w-6 h-6" /></div>
-                        <span className="text-xs font-medium opacity-70 mb-0.5">과제 수행</span>
-                        <span className="text-lg font-extrabold">{statusData.hw.label}</span>
-                    </div>
-                    <div onClick={() => setActiveTab('report')} className={`p-4 rounded-2xl border flex flex-col items-center justify-center text-center shadow-sm cursor-pointer active:scale-95 transition-all ${statusData.grade.color}`}>
-                        <div className="mb-2 opacity-80"><Icon name="trendingUp" className="w-6 h-6" /></div>
-                        <span className="text-xs font-medium opacity-70 mb-0.5">성적 추이</span>
-                        <span className="text-lg font-extrabold">{statusData.grade.label}</span>
-                    </div>
-                </div>
-            </section>
+                </section>
+            )}
 
             {/* 2. 중단 오늘의 수업 */}
             <section className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
                 <div className="bg-gray-50 px-5 py-3 border-b border-gray-100 flex justify-between items-center">
                     <h3 className="font-bold text-gray-800 flex items-center gap-2">
                         <Icon name="calendar" className="w-4 h-4 text-indigo-600" />
-                        오늘의 수업 ({todaySchedules.length})
+                        오늘의 수업 ({filteredTodayItems.length})
                     </h3>
                     <span className="text-xs text-gray-500">{today.getMonth() + 1}월 {today.getDate()}일 ({todayDayName})</span>
                 </div>
                 <div className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {todaySchedules.length > 0 ? (
-                        todaySchedules.map((item, idx) => (
+                    {filteredTodayItems.length > 0 ? (
+                        filteredTodayItems.map((item, idx) => (
                              <div key={idx} className="flex items-center gap-3 p-3 hover:bg-indigo-50 rounded-xl transition-colors border border-gray-100">
                                 <span className="text-xs font-mono font-bold text-gray-500 bg-gray-100 px-2 py-1 rounded">{item.time}</span>
                                 <div>
@@ -261,7 +316,7 @@ const ParentDashboard = ({
             </section>
 
             {/* 3. 하단 확인 필요 항목 (조건부 노출) */}
-            {actionItems.length > 0 && (
+            {false && actionItems.length > 0 && (
                 <section className="animate-fade-in">
                     <h3 className="text-sm font-bold text-red-600 mb-2 px-1 flex items-center gap-1">
                         <Icon name="alertCircle" className="w-4 h-4" /> 확인이 필요합니다
@@ -380,8 +435,8 @@ export default function ParentHome({
         withdrawn: withdrawnClasses,
         ordered: orderedClasses,
     } = useMemo(
-        () => sortClassesByStatus(myClasses, studentClassStatusMap),
-        [myClasses, studentClassStatusMap],
+        () => sortClassesByStatus(myClasses, studentClassStatusMap, childClassExitMap),
+        [myClasses, studentClassStatusMap, childClassExitMap],
     );
 
     const myHomeworkStats = useMemo(
@@ -732,6 +787,10 @@ export default function ParentHome({
     }, [filteredLessonLogs, myClasses]);
 
     const isValidNumber = (n) => typeof n === 'number' && Number.isFinite(n);
+    const formatAverage = (value) => {
+        const num = Number(value);
+        return Number.isFinite(num) ? num.toFixed(1) : null;
+    };
 
     const isAttendanceMissing = (v) =>
         v == null || String(v).trim() === '' || String(v).includes('미기록');
@@ -870,7 +929,7 @@ export default function ParentHome({
         }
 
         return '진행중';
-    }, [isWithdrawn, studentClassStatusMap]);
+    }, [isWithdrawn, studentClassStatusMap, childClassExitMap]);
 
     const getClassBadgeClassName = (status) => {
         if (status === '퇴원') {
@@ -948,7 +1007,7 @@ export default function ParentHome({
                         ? stats.count
                         : null;
                 const classAverage = Number.isFinite(stats?.average)
-                    ? Math.round(stats.average)
+                    ? stats.average
                     : (test.average ?? test.classAverage ?? null);
                 const classMax = Number.isFinite(stats?.maxScore) ? stats.maxScore : null;
                 return {
@@ -1076,7 +1135,7 @@ export default function ParentHome({
                                                         <p className="text-sm text-sky-100 mt-1">
                                                             점수 {latestGradeScore?.scoreText}
                                                             {latestGradeScore?.scoreText !== '-' && latestGradeScore?.scoreText !== '미응시' && '점'}
-                                                            {latestGrade.classAverage !== null && ` / 반 평균 ${latestGrade.classAverage}점`}
+                                                            {formatAverage(latestGrade.classAverage) !== null && ` / 반 평균 ${formatAverage(latestGrade.classAverage)}점`}
                                                         </p>
                                                         <p className="text-xs text-sky-100/80 mt-2">{latestGrade.testDate}</p>
                                                     </>
@@ -1096,10 +1155,11 @@ export default function ParentHome({
                                 <div className="grid gap-4 lg:grid-cols-3">
                                     <div className="space-y-4 lg:col-span-2">
                                         <ParentDashboard 
-                                            child={activeChild} myClasses={ongoingClasses} attendanceLogs={attendanceLogs} 
+                                            child={activeChild} myClasses={myClasses} attendanceLogs={attendanceLogs} 
                                             homeworkStats={myHomeworkStats} gradeComparison={myGradeComparison} 
                                             clinicLogs={clinicLogs} unpaidPayments={unpaidPayments}
-                                            setActiveTab={setActiveTab} 
+                                            setActiveTab={setActiveTab}
+                                            childClassExitMap={childClassExitMap}
                                         />
                                     </div>
                                     <aside className="space-y-4">
@@ -1566,14 +1626,15 @@ export default function ParentHome({
                                                         <div className="divide-y divide-gray-100">
                                                             {testsBySelectedClass.map((test) => {
                                                                 const attemptedCount = Number.isFinite(test.attemptedCount) ? test.attemptedCount : null;
-                                                                const hasValidAverage = isValidNumber(test.classAverage);
+                                                                const averageLabel = formatAverage(test.classAverage);
+                                                                const hasValidAverage = averageLabel !== null;
                                                                 const hasValidMax = isValidNumber(test.classMax);
                                                                 const statsText = (() => {
                                                                     if (!test.stats) return '통계 준비 중';
                                                                     if (attemptedCount === 0) return '반 평균 없음';
 
                                                                     const parts = [];
-                                                                    if (hasValidAverage) parts.push(`평균 ${test.classAverage}점`);
+                                                                    if (hasValidAverage) parts.push(`평균 ${averageLabel}점`);
                                                                     if (hasValidMax) parts.push(`최고 ${test.classMax}점`);
 
                                                                     return parts.length > 0 ? parts.join(' / ') : '통계 준비 중';
