@@ -685,8 +685,21 @@ export default function ParentHome({
             .slice(0, 5);
     }, [myLessonLogs, activeChildId, filteredLessonLogs, attendanceLogs, filteredHomeworkAssignments, homeworkResults, filteredTests, grades, classes]);
 
+    const resolvedSelectedClassId = String(selectedClassId || '');
+
     const attendanceHistory = useMemo(() => {
         const list = Array.isArray(recentLessons) ? recentLessons : [];
+        const cid = String(resolvedSelectedClassId || '');
+
+        const getClassId = (lesson) =>
+            String(
+                lesson?.classId
+                || lesson?.classID
+                || lesson?.classDocId
+                || lesson?.class
+                || lesson?.class?.id
+                || ''
+            );
 
         const getAttendance = (lesson) =>
             lesson?.attendance
@@ -701,18 +714,33 @@ export default function ParentHome({
             || lesson?.createdAt
             || null;
 
-        return list
+        const filtered = cid
+            ? list.filter((lesson) => getClassId(lesson) === cid)
+            : list;
+
+        const items = filtered
             .map((lesson) => ({
-                id: lesson?.id || `${getDate(lesson)}-${getAttendance(lesson)}`,
+                id: lesson?.id || `${getDate(lesson)}-${getAttendance(lesson)}-${getClassId(lesson)}`,
+                classId: getClassId(lesson),
                 date: getDate(lesson),
                 attendance: getAttendance(lesson),
                 memo: lesson?.attendanceMemo || lesson?.memo || '',
             }))
-            .filter(item => item.attendance)
-            .sort((a, b) =>
-                String(b.date || '').localeCompare(String(a.date || ''))
-            );
-    }, [recentLessons]);
+            .filter((item) => item.attendance);
+
+        items.sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+        return items;
+    }, [recentLessons, resolvedSelectedClassId]);
+
+    useEffect(() => {
+        if (!showAttendanceDetail) return;
+        console.log('[parent] selectedClassId=', resolvedSelectedClassId);
+        console.log('[parent] recentLessons size=', Array.isArray(recentLessons) ? recentLessons.length : 0);
+        console.log('[parent] attendanceHistory size=', attendanceHistory.length);
+        if (Array.isArray(recentLessons) && recentLessons.length) {
+            console.log('[parent] sample recentLessons[0]=', recentLessons[0]);
+        }
+    }, [showAttendanceDetail, resolvedSelectedClassId, recentLessons, attendanceHistory]);
 
     const recentLessonsToShow = useMemo(() => recentLessons.slice(0, 2), [recentLessons]);
 
