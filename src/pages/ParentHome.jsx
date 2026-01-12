@@ -96,7 +96,22 @@ const buildChildClassExitMap = (child) => {
 
     const map = {};
     for (const item of list) {
-        const cid = String(item?.classId || item?.id || '');
+        const rawId =
+            item?.classDocId
+            || item?.classroomId
+            || item?.classDocumentId
+            || item?.classRefId
+            || item?.id
+            || null;
+
+        const rawCode =
+            item?.classId
+            || item?.classCode
+            || item?.code
+            || item?.classKey
+            || null;
+
+        const cid = String(rawId || rawCode || '');
         if (!cid) continue;
 
         const status = String(item?.status || item?.classStatus || '').trim();
@@ -109,7 +124,11 @@ const buildChildClassExitMap = (child) => {
             || item?.updatedAt
             || null;
 
-        map[cid] = { status, exitAtMs: toMs(raw) };
+        const entry = { status, exitAtMs: toMs(raw) };
+
+        if (rawId) map[String(rawId)] = entry;
+        if (rawCode) map[String(rawCode)] = entry;
+        if (cid) map[String(cid)] = entry;
     }
     return map;
 };
@@ -209,6 +228,7 @@ const ParentDashboard = ({
             ...myClasses.filter(c => c.schedule.days.includes(todayDayName)).map(c => ({
                 type: 'class',
                 classId: c.id,
+                classCode: c.classId || c.code || c.classCode || c.key || null,
                 time: c.schedule.time,
                 title: c.name,
                 sub: `${c.teacher} 선생님`,
@@ -223,6 +243,7 @@ const ParentDashboard = ({
         const list = Array.isArray(todayItems) ? todayItems : [];
 
         const getClassId = (item) => String(item?.classId || item?.classDocId || item?.class?.id || '');
+        const getClassCode = (item) => String(item?.classCode || item?.classKey || item?.code || '');
         const getAtMs = (item) => {
             const raw = item?.date || item?.lessonDate || item?.startAt || item?.scheduledAt || item?.createdAt || null;
             return toMs(raw) ?? toMs(new Date());
@@ -230,9 +251,11 @@ const ParentDashboard = ({
 
         return list.filter((item) => {
             const classId = getClassId(item);
+            const classCode = getClassCode(item);
             if (!classId) return true;
 
-            const exit = childClassExitMap?.[classId];
+            const exit = childClassExitMap?.[classId]
+                || (classCode ? childClassExitMap?.[classCode] : null);
             if (!exit) return true;
 
             if (!isWithdrawn(exit.status)) return true;
@@ -775,10 +798,19 @@ export default function ParentHome({
     };
 
     const childAttendanceLogs = useMemo(() => {
+        const targetStudentId = String(activeChildId || '');
+        const targetStudentUid = String(activeChild?.studentUid || activeChild?.uid || '');
+        const targetAuthUid = String(activeChild?.authUid || '');
+
         return attendanceLogs
-            .filter(l => l.studentId === activeChildId)
-            .sort((a, b) => new Date(b.date) - new Date(a.date));
-    }, [attendanceLogs, activeChildId]);
+            .filter((log) => {
+                if (targetStudentId && String(log?.studentId || '') === targetStudentId) return true;
+                if (targetStudentUid && String(log?.studentUid || '') === targetStudentUid) return true;
+                if (targetAuthUid && String(log?.authUid || '') === targetAuthUid) return true;
+                return false;
+            })
+            .sort((a, b) => new Date(b.date || b.createdAt || b.updatedAt || 0) - new Date(a.date || a.createdAt || a.updatedAt || 0));
+    }, [attendanceLogs, activeChildId, activeChild?.studentUid, activeChild?.uid, activeChild?.authUid]);
 
     const myLessonLogs = useMemo(() => {
         const myClassIds = myClasses.map(c => c.id);
@@ -855,49 +887,57 @@ export default function ParentHome({
     const resolvedSelectedClassId = String(selectedClassId || '');
 
     const attendanceHistory = useMemo(() => {
-        const list = Array.isArray(recentLessons) ? recentLessons : [];
+        const list = Array.isArray(childAttendanceLogs) ? childAttendanceLogs : [];
         const cid = String(resolvedSelectedClassId || '');
 
-        const getClassId = (lesson) =>
+        const getClassId = (log) =>
             String(
-                lesson?.classId
-                || lesson?.classID
-                || lesson?.classDocId
-                || lesson?.class
-                || lesson?.class?.id
+                log?.classId
+                || log?.classID
+                || log?.classDocId
+                || log?.class
+                || log?.class?.id
                 || ''
             );
 
-        const getAttendance = (lesson) =>
-            lesson?.attendance
-            || lesson?.attendanceStatus
-            || lesson?.attendanceType
-            || lesson?.status
+        const getAttendance = (log) =>
+            log?.status
+            || log?.attendance
+            || log?.attendanceStatus
+            || log?.attendanceType
             || null;
 
-        const getDate = (lesson) =>
-            lesson?.date
-            || lesson?.lessonDate
-            || lesson?.createdAt
+        const getDate = (log) =>
+            log?.date
+            || log?.lessonDate
+            || log?.recordedAt
+            || log?.createdAt
             || null;
+
+            const getMemo = (log) =>
+            log?.reason
+            || log?.memo
+            || log?.note
+            || log?.comment
+            || '';
 
         const filtered = cid
-            ? list.filter((lesson) => getClassId(lesson) === cid)
+            ? list.filter((log) => getClassId(log) === cid)
             : list;
 
         const items = filtered
-            .map((lesson) => ({
-                id: lesson?.id || `${getDate(lesson)}-${getAttendance(lesson)}-${getClassId(lesson)}`,
-                classId: getClassId(lesson),
-                date: getDate(lesson),
-                attendance: getAttendance(lesson),
-                memo: lesson?.attendanceMemo || lesson?.memo || '',
+            .map((log) => ({
+                id: log?.id || `${getDate(log)}-${getAttendance(log)}-${getClassId(log)}`,
+                classId: getClassId(log),
+                date: getDate(log),
+                attendance: getAttendance(log),
+                memo: getMemo(log),
             }))
             .filter((item) => item.attendance);
 
         items.sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
         return items;
-    }, [recentLessons, resolvedSelectedClassId]);
+    }, [childAttendanceLogs, resolvedSelectedClassId]);
 
     useEffect(() => {
         if (!showAttendanceDetail) return;
