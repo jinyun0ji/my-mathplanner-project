@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Icon } from '../../../utils/helpers';
 
 export default function DashboardTab({
@@ -10,9 +10,11 @@ export default function DashboardTab({
     notices = [],
     setActiveTab,
     externalSchedules = [],
-    isParent = false
+    isParent = false,
+    today: todayOverride,
+    todayDayName: todayDayNameOverride,
+    filteredTodayItems: filteredTodayItemsOverride,
 }) {
-    const [isScheduleExpanded, setIsScheduleExpanded] = useState(false);
     const hasStudent = Boolean(student);
     const isDev = process.env.NODE_ENV !== 'production';
 
@@ -39,11 +41,12 @@ export default function DashboardTab({
         );
     }
 
-    const today = new Date();
+    const today = todayOverride || new Date();
     const todayStr = today.toISOString().split('T')[0];
     const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
-    const todayDayName = dayNames[today.getDay()];
+    const todayDayName = todayDayNameOverride || dayNames[today.getDay()];
     const studentId = student?.id;
+    const filteredTodayItems = Array.isArray(filteredTodayItemsOverride) ? filteredTodayItemsOverride : [];
 
     const todayClasses = myClasses.filter(cls => cls.schedule.days.includes(todayDayName)).map(cls => ({
         type: 'class', name: cls.name, time: cls.schedule.time, teacher: cls.teacher, sortTime: cls.schedule.time.split('~')[0]
@@ -58,7 +61,6 @@ export default function DashboardTab({
     const allEvents = [...todayClasses, ...todayClinics, ...todayExternal].sort((a, b) => a.sortTime.localeCompare(b.sortTime));
     const nowTimeStr = today.toTimeString().slice(0, 5); 
     let keyEvent = allEvents.find(e => { let endTime = '23:59'; if (e.time.includes('~')) endTime = e.time.split('~')[1]; return endTime >= nowTimeStr; });
-    const otherEvents = keyEvent ? allEvents.filter(e => e !== keyEvent) : allEvents;
     const pendingHomework = homeworkStats.filter(h => !h.isComplete);
     const studentLogs = studentId ? attendanceLogs.filter(l => l.studentId === studentId) : [];
     const attendanceRate = studentLogs.length > 0 ? Math.round((studentLogs.filter(l => ['출석','동영상보강'].includes(l.status)).length / studentLogs.length) * 100) : null;
@@ -113,15 +115,43 @@ export default function DashboardTab({
                 </div>
             </div>
             {attendanceAlerts.length > 0 && (<div className="space-y-2">{attendanceAlerts.map((alert, idx) => (<div key={idx} onClick={() => setActiveTab('class')} className="bg-red-50 border border-red-100 p-3 rounded-xl flex items-center gap-3 cursor-pointer active:bg-red-100 transition-colors"><div className="bg-white p-1.5 rounded-full text-red-500 shadow-sm"><Icon name="alertCircle" className="w-5 h-5" /></div><div className="flex-1"><p className="text-xs text-red-500 font-bold">{alert.class}</p><p className="text-sm font-bold text-gray-800">{alert.msg}</p></div><Icon name="chevronRight" className="w-4 h-4 text-red-300" /></div>))}</div>)}
-            <div>
-                <h3 className="text-lg font-bold text-gray-800 mb-3 px-1 flex items-center"><Icon name="calendar" className="w-5 h-5 mr-2 text-brand-main" />오늘의 수업 {allEvents.length > 0 && <span className="text-gray-500 ml-1">({allEvents.length})</span>}</h3>
-                {allEvents.length === 0 ? (<div className="bg-white p-6 rounded-2xl border border-dashed border-gray-300 text-center text-gray-500 text-sm">오늘 예정된 일정이 없어요. <br/>자율 학습을 해보는 건 어때요? 🔥</div>) : (
-                    <div className="space-y-3">
-                        {keyEvent && (<div className={`p-5 rounded-2xl border flex justify-between items-center shadow-sm ${keyEvent.type === 'class' ? 'bg-[#F0F2FD] border-[#E0E4F4]' : keyEvent.type === 'clinic' ? 'bg-teal-50 border-teal-100' : 'bg-gray-50 border-gray-200'}`}><div className="w-full"><div className="flex justify-between items-start"><span className={`text-xs font-bold px-2 py-1 rounded border mb-2 inline-block ${keyEvent.type === 'class' ? 'text-indigo-600 bg-white border-indigo-200' : keyEvent.type === 'clinic' ? 'text-teal-600 bg-white border-teal-200' : 'text-gray-600 bg-white border-gray-200'}`}>{keyEvent.type === 'class' ? '정규 수업' : keyEvent.type === 'clinic' ? '클리닉' : keyEvent.academyName}</span></div><h4 className={`font-bold text-lg mb-1 ${keyEvent.type === 'class' ? 'text-[#3D4195]' : keyEvent.type === 'clinic' ? 'text-teal-900' : 'text-gray-900'}`}>{keyEvent.type === 'class' ? keyEvent.name : keyEvent.type === 'clinic' ? keyEvent.name : keyEvent.courseName}</h4><p className={`text-sm ${keyEvent.type === 'class' ? 'text-[#6B72D3]' : keyEvent.type === 'clinic' ? 'text-teal-700' : 'text-gray-600'}`}>{keyEvent.type === 'external' ? `${keyEvent.time} | ${keyEvent.instructor} 선생님` : `${keyEvent.time} | ${keyEvent.teacher}`}</p></div></div>)}
-                        {otherEvents.length > 0 && (<div><button onClick={() => setIsScheduleExpanded(!isScheduleExpanded)} className="w-full flex items-center justify-between p-3 bg-white border border-gray-200 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-50 active:bg-gray-100 transition-colors"><span>오늘의 일정 더보기 ({otherEvents.length})</span><Icon name={isScheduleExpanded ? "chevronUp" : "chevronDown"} className="w-4 h-4 text-gray-400" /></button>{isScheduleExpanded && (<div className="mt-2 space-y-2 pl-2 border-l-2 border-gray-200 ml-2">{otherEvents.map((e, idx) => (<div key={idx} className="flex justify-between items-center p-2 rounded-lg bg-gray-50 text-sm"><div className="flex items-center gap-2"><span className={`w-1.5 h-1.5 rounded-full ${e.type === 'class' ? 'bg-indigo-400' : e.type === 'clinic' ? 'bg-teal-400' : 'bg-gray-400'}`}></span><div><span className="font-bold text-gray-700 block">{e.type === 'external' ? e.courseName : e.name}</span>{e.type === 'external' && <span className="text-xs text-gray-500">{e.academyName}</span>}</div></div><span className="text-gray-500 text-xs font-mono">{e.time}</span></div>))}</div>)}</div>)}
-                    </div>
-                )}
-            </div>
+            {/* 오늘의 수업 */}
+            <section className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+                <div className="bg-gray-50 px-5 py-3 border-b border-gray-100 flex justify-between items-center">
+                    <h3 className="font-bold text-gray-800 flex items-center gap-2">
+                        <Icon name="calendar" className="w-4 h-4 text-indigo-600" />
+                        오늘의 수업 ({filteredTodayItems.length})
+                    </h3>
+                    <span className="text-xs text-gray-500">
+                        {today.getMonth() + 1}월 {today.getDate()}일 ({todayDayName})
+                    </span>
+                </div>
+
+                <div className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {filteredTodayItems.length > 0 ? (
+                        filteredTodayItems.map((item, idx) => (
+                            <div
+                                key={idx}
+                                className="flex items-center gap-3 p-3 hover:bg-indigo-50 rounded-xl transition-colors border border-gray-100"
+                            >
+                                <span className="text-xs font-mono font-bold text-gray-500 bg-gray-100 px-2 py-1 rounded">
+                                    {item.time}
+                                </span>
+                                <div>
+                                    <div className="font-bold text-gray-900 text-sm">
+                                        {item.title} {item.timeLabel ? `(${item.timeLabel})` : ''}
+                                    </div>
+                                    <div className="text-xs text-gray-500">{item.sub}</div>
+                                </div>
+                            </div>
+                        ))
+                    ) : (
+                        <div className="py-8 text-center text-gray-400 text-xs sm:col-span-2">
+                            예정된 학원 일정이 없습니다.
+                        </div>
+                    )}
+                </div>
+            </section>
             <div><div className="flex justify-between items-end mb-3 px-1"><h3 className="text-lg font-bold text-gray-800 flex items-center"><Icon name="clipboardCheck" className="w-5 h-5 mr-2 text-brand-red" />놓치면 안 돼요!</h3><button onClick={() => setActiveTab('learning')} className="text-xs text-gray-500 underline active:text-gray-800">전체보기</button></div><div className="flex gap-3 overflow-x-auto pb-4 -mx-4 px-4 snap-x scrollbar-hide">{homeworkStats.filter(h => !h.isComplete).length > 0 ? (homeworkStats.filter(h => !h.isComplete).map(hw => {
                 const isNotStarted = (hw.checkedCount || 0) === 0;
                 const isReviewing = (hw.checkedCount || 0) >= (hw.totalQuestions || 0) && (hw.incorrectCount || 0) > 0;

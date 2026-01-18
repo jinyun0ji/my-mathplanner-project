@@ -25,6 +25,138 @@ import openNotification from '../notifications/openNotification';
 import { db } from '../firebase/client';
 import { FEATURES } from '../config/features';
 
+const normalizeClassStatus = (value) => {
+    if (value === 'withdrawn') return '퇴원';
+    if (value === 'active') return '진행중';
+    if (value === '재원') return '진행중';
+    return value;
+};
+
+const isWithdrawnStatus = (value) => {
+    const normalized = normalizeClassStatus(value);
+    return ['퇴원', '중도퇴원', '전반', '전반퇴원'].includes(normalized);
+};
+
+const toDayStartMs = (value) => {
+    const date = value ? new Date(value) : new Date();
+    const time = Number.isNaN(date.getTime()) ? new Date() : date;
+    return new Date(time.getFullYear(), time.getMonth(), time.getDate()).getTime();
+};
+
+const getItemClassId = (item) => (
+    item?.classId
+    || item?.classDocId
+    || item?.class?.id
+    || item?.class?.classId
+    || item?.class?.docId
+    || item?.class?.classDocId
+    || item?.classRef
+    || item?.class?.ref
+    || ''
+);
+
+const getItemDateRaw = (item) => (
+    item?.date
+    || item?.lessonDate
+    || item?.startAt
+    || item?.scheduledAt
+    || item?.createdAt
+    || null
+);
+
+const shouldHideTodayItemByExit = (item, exitMap) => {
+    const classId = String(getItemClassId(item) || '');
+    const classCode = String(item?.classCode || item?.classKey || item?.code || '');
+    if (!classId && !classCode) return false;
+
+    const exit = exitMap?.[classId] || (classCode ? exitMap?.[classCode] : null);
+    if (!exit) return false;
+    if (!isWithdrawnStatus(exit.status)) return false;
+    if (!exit.exitAtMs) return true;
+
+    const itemDayMs = toDayStartMs(getItemDateRaw(item) || new Date());
+    const exitDayMs = toDayStartMs(exit.exitAtMs);
+    return itemDayMs >= exitDayMs;
+};
+
+const buildChildClassExitMap = (child) => {
+    if (!child) return {};
+    if (child.classExitMap && typeof child.classExitMap === 'object') return child.classExitMap;
+
+    const list =
+        (Array.isArray(child?.classStatuses) && child.classStatuses)
+        || (Array.isArray(child?.enrollments) && child.enrollments)
+        || (Array.isArray(child?.classEnrollments) && child.classEnrollments)
+        || (Array.isArray(child?.classesMeta) && child.classesMeta)
+        || (Array.isArray(child?.classes) && child.classes)
+        || [];
+
+    const mapLike =
+        child?.classStatusMap
+        || child?.studentClassStatusMap
+        || child?.enrollmentMap
+        || null;
+
+    const listFromMap = [];
+    if (mapLike && typeof mapLike === 'object') {
+        for (const [key, value] of Object.entries(mapLike)) {
+            if (value && typeof value === 'object') listFromMap.push({ classId: key, ...value });
+            else listFromMap.push({ classId: key, status: value });
+        }
+    }
+
+    const merged = [...list, ...listFromMap];
+
+    const toMs = (value) => {
+        if (!value) return null;
+        if (typeof value?.toDate === 'function') return value.toDate().getTime();
+        if (value instanceof Date) return value.getTime();
+        if (typeof value === 'number') return value;
+        const date = new Date(value);
+        return Number.isNaN(date.getTime()) ? null : date.getTime();
+    };
+
+    const map = {};
+    for (const item of merged) {
+        const rawDocId =
+            item?.classDocId
+            || item?.classDocumentId
+            || item?.classRefId
+            || item?.docId
+            || item?.id
+            || null;
+
+        const rawCode =
+            item?.classId
+            || item?.classCode
+            || item?.code
+            || item?.classKey
+            || null;
+
+        const status = String(item?.status || item?.classStatus || '').trim();
+
+        const raw =
+            item?.withdrawAt
+            || item?.withdrawDate
+            || item?.leftAt
+            || item?.leftDate
+            || item?.exitedAt
+            || item?.exitDate
+            || item?.endedAt
+            || item?.updatedAt
+            || null;
+
+        const entry = { status, exitAtMs: toMs(raw) };
+
+        if (rawDocId) map[String(rawDocId)] = entry;
+        if (rawCode) map[String(rawCode)] = entry;
+
+        const fallback = String(rawDocId || rawCode || '');
+        if (fallback) map[fallback] = entry;
+    }
+    return map;
+};
+
 export default function StudentHome({
     student, studentId, userId, students, classes, homeworkAssignments, homeworkResults,
     attendanceLogs, lessonLogs, notices, tests, grades, classTestStats,
@@ -111,13 +243,6 @@ export default function StudentHome({
     const viewerUid = student?.authUid || userId;
     const studentDocId = studentId;
     const studentAuthUid = student?.authUid || userId;
-    const normalizeClassStatus = (value) => {
-        if (value === 'withdrawn') return '퇴원';
-        if (value === 'active') return '진행중';
-        if (value === '재원') return '진행중';
-        return value;
-    };
-    const isWithdrawnStatus = (value) => ['퇴원', '전반', '종강'].includes(normalizeClassStatus(value));
     const toYmd = (value) => {
         if (!value) return null;
         if (typeof value === 'string') return value.slice(0, 10);
@@ -159,6 +284,72 @@ export default function StudentHome({
         if (!classes || !studentId) return [];
         return classes.filter(c => (c.students || []).includes(studentId));
     }, [classes, studentId]);
+    const currentStudentProfile = student;
+    const studentClassExitMap = useMemo(
+        () => buildChildClassExitMap(currentStudentProfile),
+        [currentStudentProfile],
+    );
+    const today = new Date();
+    const todayStr = today.toISOString().split('T')[0];
+    const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
+    const todayDayName = dayNames[today.getDay()];
+    const buildClinicTeacher = (log) => log?.tutorName || log?.tutor || log?.teacherName || log?.teacher || '-';
+    const formatClinicTime = (log) => {
+        const start = log?.checkIn || log?.plannedTime?.start || '';
+        const end = log?.checkOut || log?.plannedTime?.end || '';
+        if (start && end) return `${start} ~ ${end}`;
+        if (start) return `${start} 예정`;
+        return '시간 미정';
+    };
+    const buildClinicStatus = (log) => {
+        if (log?.checkOut) return '완료';
+        if (log?.checkIn || log?.plannedTime) return '예약됨';
+        return '예정';
+    };
+    const todayItems = useMemo(() => {
+        const todayClinics = studentId
+            ? clinicLogs.filter(log => log.studentId === studentId && log.date === todayStr).map(log => ({
+                type: 'clinic',
+                time: log.checkIn || log?.plannedTime?.start || '99:99',
+                timeLabel: formatClinicTime(log),
+                title: '클리닉',
+                sub: `선생님: ${buildClinicTeacher(log)} • ${buildClinicStatus(log)}`,
+                date: log.date,
+            }))
+            : [];
+        const todayExternal = studentId
+            ? externalSchedules
+                .filter(schedule => schedule.studentId === studentId && schedule.days.includes(todayDayName) && todayStr >= schedule.startDate && (!schedule.endDate || todayStr <= schedule.endDate))
+                .map(schedule => ({
+                    type: 'external',
+                    time: `${schedule.startTime}~${schedule.endTime}`,
+                    title: schedule.courseName || schedule.academyName || '외부 일정',
+                    sub: schedule.instructor ? `${schedule.academyName} • ${schedule.instructor}` : schedule.academyName || '',
+                    timeLabel: `${schedule.startTime}~${schedule.endTime}`,
+                    date: todayStr,
+                }))
+            : [];
+
+        return [
+            ...myClasses.filter(c => c.schedule.days.includes(todayDayName)).map(c => ({
+                type: 'class',
+                classId: c.id,
+                classCode: c.classId || c.code || c.classCode || c.key || null,
+                time: c.schedule.time,
+                title: c.name,
+                sub: `${c.teacher} 선생님`,
+                timeLabel: c.schedule.time,
+                date: todayStr,
+            })),
+            ...todayClinics,
+            ...todayExternal,
+        ].sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+    }, [clinicLogs, externalSchedules, myClasses, studentId, todayDayName, todayStr]);
+    const filteredTodayItems = useMemo(() => {
+        const list = Array.isArray(todayItems) ? todayItems : [];
+        return list.filter(item => !shouldHideTodayItemByExit(item, studentClassExitMap));
+    }, [todayItems, studentClassExitMap]);
+
 
     const { notifications, hasUnread, unreadCount, lastReadAt, isLoading, isMetaLoading, setNotifications } = useNotifications(viewerUid);
 
@@ -320,6 +511,7 @@ export default function StudentHome({
                                 student={student} myClasses={ongoingClasses} pendingHomeworkCount={pendingHomeworkCount}
                                 attendanceLogs={attendanceLogs} clinicLogs={clinicLogs} homeworkStats={myHomeworkStats} notices={visibleNotices}
                                 setActiveTab={setActiveTab}
+                                today={today} todayDayName={todayDayName} todayItems={todayItems} filteredTodayItems={filteredTodayItems}
                                 externalSchedules={externalSchedules} // ✅ [추가] 타학원 일정 데이터 전달
                             />
                         )}
