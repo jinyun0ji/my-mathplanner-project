@@ -7,6 +7,7 @@ import {
     where,
     orderBy,
     limit,
+    startAfter,
     getDocs,
     doc,
     getDoc,
@@ -115,6 +116,29 @@ const fetchList = async (db, colName, setter, q, isCancelled, mapper = null) => 
     const items = mapper ? baseItems.map(mapper) : baseItems;
     if (isCancelled()) return [];
     setter(items);
+    return items;
+};
+
+const fetchAttendanceLogsWithPagination = async (db, isCancelled, pageSize = 1000) => {
+    const items = [];
+    let lastDoc = null;
+
+    while (true) {
+        if (isCancelled()) return items;
+        const constraints = [
+            orderBy('date', 'desc'),
+            limit(pageSize),
+        ];
+        if (lastDoc) {
+            constraints.push(startAfter(lastDoc));
+        }
+        const snap = await getDocs(query(collection(db, 'attendanceLogs'), ...constraints));
+        if (snap.empty) break;
+        items.push(...snap.docs.map((d) => normalizeAuthUid({ id: d.id, ...d.data() })));
+        lastDoc = snap.docs[snap.docs.length - 1];
+        if (snap.size < pageSize) break;
+    }
+
     return items;
 };
 
@@ -232,7 +256,8 @@ export const loadStaffDataOnce = async ({
         }
 
         if (setAttendanceLogs && (shouldLoad('attendance') || shouldLoad('lessons') || shouldLoad('students'))) {
-            await fetchList(db, 'attendanceLogs', setAttendanceLogs, query(collection(db, 'attendanceLogs'), orderBy('date', 'desc'), limit(150)), () => false);
+            const attendanceLogs = await fetchAttendanceLogsWithPagination(db, () => false);
+            setAttendanceLogs?.(attendanceLogs);
         }
 
         if (setClinicLogs && (shouldLoad('clinic') || shouldLoad('lessons'))) {

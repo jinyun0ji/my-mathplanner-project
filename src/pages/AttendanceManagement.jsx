@@ -50,6 +50,22 @@ export default function AttendanceManagement({
         [classStudents, selectedClassId, selectedDate]
     );
 
+    useEffect(() => {
+        if (!selectedClassId) return;
+        console.log('[출결 명단 확인]');
+        console.log('classId=', selectedClassId);
+        console.log('targetDate=', selectedDate);
+        console.log(
+            'before=',
+            classStudents.map(student => ({
+                name: student.name,
+                status: student.classStatusMap?.[selectedClassId]?.status,
+                endedAt: student.classStatusMap?.[selectedClassId]?.endedAt
+            }))
+        );
+        console.log('after=', rosterForAttendance.map(student => student.name));
+    }, [classStudents, selectedClassId, selectedDate, rosterForAttendance]);
+
     const resolveStudentAuthUid = (student) => student?.authUid ?? student?.uid ?? null;
     const findAttendanceLogForStudent = (student) => {
         const studentAuthUid = resolveStudentAuthUid(student);
