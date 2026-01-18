@@ -1,6 +1,6 @@
 // src/pages/StudentManagement.jsx
 import React, { useEffect, useState, useMemo, useRef } from 'react';
-import { doc, serverTimestamp, setDoc, Timestamp } from 'firebase/firestore';
+import { doc, serverTimestamp, setDoc, Timestamp, updateDoc, arrayRemove, arrayUnion } from 'firebase/firestore';
 import { Icon } from '../utils/helpers';
 import { StudentFormModal } from '../utils/modals/StudentFormModal';
 import { MemoModal } from '../utils/modals/MemoModal';
@@ -245,17 +245,50 @@ export default function StudentManagement({
     };
 
     const handleRetireSave = async () => {
-        if (!retireModal.student) return;
+        const { student, classId } = retireModal;
+        if (!student || !classId) return;
+
         try {
-            await retireStudentOnlyUpdate(retireModal.student, {
-                classId: retireModal.classId,
-                endDate: retireDate,
-                endReason: retireReason,
-            });
+            const safeDate = retireDate;
+            const safeReason = retireReason; // '중도퇴원' | '전반'
+
+            await setDoc(
+                doc(db, 'users', student.id),
+                {
+                    classStatusMap: {
+                        [classId]: {
+                            status: safeReason === '전반' ? '전반' : '퇴원',
+                            endedAt: Timestamp.fromDate(new Date(safeDate)),
+                            endReason: safeReason,
+                        },
+                    },
+                    updatedAt: serverTimestamp(),
+                },
+                { merge: true },
+            );
+
+            if (safeReason === '전반') {
+                await updateDoc(doc(db, 'classes', classId), {
+                    students: arrayRemove(student.id),
+                });
+
+                const nextClassIds = Array.isArray(student.classIds)
+                    ? student.classIds
+                    : (Array.isArray(student.classes) ? student.classes : []);
+                const transferTargets = nextClassIds.filter((id) => String(id) !== String(classId));
+                if (transferTargets.length > 0) {
+                    await Promise.all(
+                        transferTargets.map((targetId) => updateDoc(doc(db, 'classes', targetId), {
+                            students: arrayUnion(student.id),
+                        })),
+                    );
+                }
+            }
+
             setRetireModal({ isOpen: false, student: null, classId: null });
         } catch (error) {
-            console.error('퇴원 처리 저장 실패', error);
-            alert('저장 실패');
+            console.error('전반/퇴원 처리 실패', error);
+            alert('저장 중 오류가 발생했습니다.');
         }
     };
 
