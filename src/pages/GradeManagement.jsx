@@ -6,8 +6,9 @@ import TestResultTable from '../components/Grade/TestResultTable';
 import TestStatisticsTable from '../components/Grade/TestStatisticsTable';
 import { TestFormModal } from '../utils/modals/TestFormModal';
 import { getClassAverages, getClassTests, getTestStatistics } from '../domain/grade/grade.service';
-import { filterActiveStudentsForLesson, getDefaultClassId } from '../utils/classStatus';
+import { getDefaultClassId } from '../utils/classStatus';
 import { useClassStudents } from '../utils/useClassStudents';
+import { filterRosterByWithdrawDate } from '../utils/rosterFilter';
 
 // ----------------------------------------------------------------------
 // 메인 컴포넌트: GradeManagement
@@ -52,7 +53,7 @@ export default function GradeManagement({
     }, [tests, selectedTestId]);
 
     const rosterForTest = useMemo(
-        () => filterActiveStudentsForLesson(classStudents, selectedClassId, selectedTest?.date),
+        () => filterRosterByWithdrawDate(classStudents, selectedClassId, selectedTest?.date),
         [classStudents, selectedClassId, selectedTest?.date]
     );
 
@@ -334,7 +335,7 @@ export default function GradeManagement({
                                     <TestStatisticsTable
                                         test={selectedTest}
                                         stats={testStatistics[selectedTestId]}
-                                        currentStudents={classStudents}
+                                        currentStudents={rosterForTest}
                                     />
                                 </>
                             ) : (

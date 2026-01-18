@@ -7,6 +7,7 @@ import { HomeworkAssignmentModal } from '../utils/modals/HomeworkAssignmentModal
 import { buildAssignmentSummary, getClassAssignments, getSelectedAssignment, resolveAssignmentStudentIds, resolveAssignmentTypeLabel, resolveAssignmentType } from '../domain/homework/homework.service';
 import { getDefaultClassId } from '../utils/classStatus';
 import { useClassStudents } from '../utils/useClassStudents';
+import { filterRosterByWithdrawDate } from '../utils/rosterFilter';
 
 export default function HomeworkManagement({
     classes, homeworkAssignments, homeworkResults,
@@ -43,6 +44,11 @@ export default function HomeworkManagement({
         [classAssignments, selectedAssignmentId]
     );
 
+    const rosterForHomework = useMemo(() => {
+        const targetDate = selectedAssignment?.assignedDate || selectedAssignment?.date || checkedDate;
+        return filterRosterByWithdrawDate(classStudents, selectedClassId, targetDate);
+    }, [classStudents, selectedAssignment, selectedClassId, checkedDate]);
+
     useEffect(() => {
         if (!selectedAssignmentId) {
             setCheckedDate(new Date().toISOString().slice(0, 10));
@@ -71,10 +77,10 @@ export default function HomeworkManagement({
     const assignmentSummary = useMemo(() => {
         const assignedIds = resolveAssignmentStudentIds(selectedAssignment);
         const assignedStudents = assignedIds.length > 0
-            ? classStudents.filter(student => assignedIds.map(String).includes(String(student.id)))
-            : classStudents;
+            ? rosterForHomework.filter(student => assignedIds.map(String).includes(String(student.id)))
+            : rosterForHomework;
         return buildAssignmentSummary(selectedAssignment, assignedStudents, homeworkResults, localChanges);
-    }, [selectedAssignment, classStudents, homeworkResults, localChanges]);
+    }, [selectedAssignment, rosterForHomework, homeworkResults, localChanges]);
 
     const handleAssignmentSelect = (id) => {
         if (localChanges.length > 0) {

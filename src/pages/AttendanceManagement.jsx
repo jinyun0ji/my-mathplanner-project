@@ -3,8 +3,20 @@ import { Icon, formatGradeLabel } from '../utils/helpers';
 import ClassSelectionPanel from '../components/Shared/ClassSelectionPanel'; 
 import { AttendanceModal } from '../components/common/AttendanceModal'; 
 import { MemoModal } from '../utils/modals/MemoModal'; 
-import { filterActiveStudentsForLesson, getDefaultClassId } from '../utils/classStatus';
+import { getDefaultClassId } from '../utils/classStatus';
 import { useClassStudents } from '../utils/useClassStudents';
+import { filterRosterByWithdrawDate } from '../utils/rosterFilter';
+
+const toDateKey = (v) => {
+    if (!v) return '';
+    if (typeof v === 'object' && typeof v.toDate === 'function') {
+        return v.toDate().toISOString().slice(0, 10);
+    }
+    if (v instanceof Date) {
+        return v.toISOString().slice(0, 10);
+    }
+    return String(v).slice(0, 10);
+};
 
 export default function AttendanceManagement({ 
     classes, attendanceLogs, handleSaveAttendance,
@@ -27,18 +39,31 @@ export default function AttendanceManagement({
 
     const classAttendance = useMemo(() => {
         if (!selectedClassId || !selectedDate) return [];
-        return attendanceLogs.filter(log => log.classId === selectedClassId && log.date === selectedDate);
+        return attendanceLogs.filter(log => (
+            String(log.classId) === String(selectedClassId)
+            && toDateKey(log.date || log.lessonDate || log.dateKey) === selectedDate
+        ));
     }, [attendanceLogs, selectedClassId, selectedDate]);
 
     const rosterForAttendance = useMemo(
-        () => filterActiveStudentsForLesson(classStudents, selectedClassId, selectedDate),
+        () => filterRosterByWithdrawDate(classStudents, selectedClassId, selectedDate),
         [classStudents, selectedClassId, selectedDate]
     );
+
+    const resolveStudentAuthUid = (student) => student?.authUid ?? student?.uid ?? null;
+    const findAttendanceLogForStudent = (student) => {
+        const studentAuthUid = resolveStudentAuthUid(student);
+        return classAttendance.find(log => (
+            log.studentId === student.id
+            || log.studentDocId === student.id
+            || (studentAuthUid && log.authUid === studentAuthUid)
+        ));
+    };
 
     const attendanceSummary = useMemo(() => {
         const summary = { total: rosterForAttendance.length, 출석: 0, 지각: 0, 결석: 0, 동영상보강: 0, 미기록: 0 };
         rosterForAttendance.forEach(student => {
-            const status = classAttendance.find(log => log.studentId === student.id)?.status || '미기록';
+            const status = findAttendanceLogForStudent(student)?.status || '미기록';
             if (summary[status] !== undefined) summary[status] += 1;
             else summary.미기록 += 1;
         });
@@ -48,7 +73,7 @@ export default function AttendanceManagement({
     const initialAttendanceForModal = useMemo(() => {
         const initial = {};
         rosterForAttendance.forEach(s => {
-            const existingLog = classAttendance.find(log => log.studentId === s.id);
+            const existingLog = findAttendanceLogForStudent(s);
             initial[s.id] = existingLog || { 
                 classId: selectedClassId, 
                 date: selectedDate, 
@@ -61,10 +86,16 @@ export default function AttendanceManagement({
     
     const sessionDates = useMemo(() => {
         if (!selectedClass) return [];
-        return calculateClassSessions(selectedClass);
+        return calculateClassSessions(selectedClass).map(session => ({
+            ...session,
+            dateKey: toDateKey(session.date),
+        }));
     }, [selectedClass, calculateClassSessions]);
 
-    const currentSessionIndex = useMemo(() => sessionDates.findIndex(s => s.date === selectedDate), [sessionDates, selectedDate]);
+    const currentSessionIndex = useMemo(
+        () => sessionDates.findIndex(s => s.dateKey === selectedDate),
+        [sessionDates, selectedDate]
+    );
     const hasPrevSession = currentSessionIndex > 0;
     const hasNextSession = currentSessionIndex > -1 && currentSessionIndex < sessionDates.length - 1;
 
@@ -72,14 +103,14 @@ export default function AttendanceManagement({
         if (selectedClassId) {
             const today = new Date().toISOString().slice(0, 10);
             
-            const pastAndCurrentSessions = sessionDates.filter(s => s.date <= today);
-            const isSelectedDateValid = sessionDates.some(s => s.date === selectedDate);
+            const pastAndCurrentSessions = sessionDates.filter(s => s.dateKey <= today);
+            const isSelectedDateValid = sessionDates.some(s => s.dateKey === selectedDate);
             
             if (!isSelectedDateValid && pastAndCurrentSessions.length > 0) {
-                const mostRecentDate = pastAndCurrentSessions[pastAndCurrentSessions.length - 1].date;
+                const mostRecentDate = pastAndCurrentSessions[pastAndCurrentSessions.length - 1].dateKey;
                 setSelectedDate(mostRecentDate);
             } else if (!isSelectedDateValid && sessionDates.length > 0) {
-                 setSelectedDate(sessionDates[0].date);
+                 setSelectedDate(sessionDates[0].dateKey);
             }
         }
     }, [selectedClassId, sessionDates, selectedDate]);
@@ -90,13 +121,13 @@ export default function AttendanceManagement({
 
 
     const handleDateNavigate = (direction) => {
-        const currentIndex = sessionDates.findIndex(s => s.date === selectedDate);
+        const currentIndex = sessionDates.findIndex(s => s.dateKey === selectedDate);
         if (currentIndex === -1) return;
 
         const newIndex = currentIndex + direction;
         
         if (newIndex >= 0 && newIndex < sessionDates.length) {
-            setSelectedDate(sessionDates[newIndex].date);
+            setSelectedDate(sessionDates[newIndex].dateKey);
         }
     };
 
@@ -122,7 +153,7 @@ export default function AttendanceManagement({
     };
 
     const selectedStudent = memoModalState.studentId ? rosterForAttendance.find(s => s.id === memoModalState.studentId) : null;
-    const selectedStudentStatus = selectedStudent ? classAttendance.find(log => log.studentId === selectedStudent.id)?.status || '미기록' : null;
+    const selectedStudentStatus = selectedStudent ? findAttendanceLogForStudent(selectedStudent)?.status || '미기록' : null;
     const getMemoContent = (student) => studentMemos[student.id] ?? student.memo ?? '';
 
     return (
@@ -177,7 +208,7 @@ export default function AttendanceManagement({
                         showEditButton={true}
                         customPanelContent={null} 
                         customPanelTitle="수업 날짜 선택"
-                        onDateSelect={setSelectedDate} 
+                        onDateSelect={(date) => setSelectedDate(toDateKey(date))} 
                     />
                 </div>
 
@@ -206,7 +237,7 @@ export default function AttendanceManagement({
                                         </thead>
                                         <tbody className="bg-white divide-y divide-gray-200">
                                             {rosterForAttendance.map(student => {
-                                                const attendance = classAttendance.find(log => log.studentId === student.id);
+                                                const attendance = findAttendanceLogForStudent(student);
                                                 const status = attendance?.status || '미기록';
                                                 const memoContent = getMemoContent(student);
                                                 const badgeStyle = statusBadgeStyles[status] || statusBadgeStyles['미기록'];
@@ -242,7 +273,7 @@ export default function AttendanceManagement({
 
                                 <div className="grid gap-3 md:hidden">
                                     {rosterForAttendance.map(student => {
-                                        const attendance = classAttendance.find(log => log.studentId === student.id);
+                                        const attendance = findAttendanceLogForStudent(student);
                                         const status = attendance?.status || '미기록';
                                         const memoContent = getMemoContent(student);
                                         const phoneSuffix = student.phone ? student.phone.slice(-4) : '';

@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Modal } from '../../components/common/Modal';
 import StaffNotificationFields from '../../components/Shared/StaffNotificationFields';
-import { filterActiveStudentsForLesson } from '../classStatus';
+import { filterRosterByWithdrawDate } from '../rosterFilter';
 
 export const HomeworkAssignmentModal = ({ isOpen, onClose, onSave, classId, assignment = null, students, selectedClass }) => {
   const classStudents = useMemo(() => {
@@ -66,7 +66,7 @@ export const HomeworkAssignmentModal = ({ isOpen, onClose, onSave, classId, assi
   };
 
   const rosterForAssignment = useMemo(
-    () => filterActiveStudentsForLesson(classStudents, classId, assignedDate),
+    () => filterRosterByWithdrawDate(classStudents, classId, assignedDate),
     [classStudents, classId, assignedDate]
   );
 
@@ -78,9 +78,11 @@ export const HomeworkAssignmentModal = ({ isOpen, onClose, onSave, classId, assi
       setBook(assignment.book || '');
       const assigned = assignment.assignedStudentIds ?? assignment.students;
       if (Array.isArray(assigned) && assigned.length > 0) {
-        setAssignedStudentIds(assigned);
+        setAssignedStudentIds(
+          assigned.filter((id) => rosterForAssignment.some((student) => String(student.id) === String(id)))
+        );
       } else {
-        const initialRoster = filterActiveStudentsForLesson(classStudents, classId, initialDate);
+        const initialRoster = filterRosterByWithdrawDate(classStudents, classId, initialDate);
         setAssignedStudentIds(initialRoster.map(student => student.id));
       }
       // 기존 데이터(startQuestion, endQuestion)가 있으면 문자열로 변환, 아니면 저장된 rangeString 사용
@@ -112,7 +114,7 @@ export const HomeworkAssignmentModal = ({ isOpen, onClose, onSave, classId, assi
       }
     } else {
       const initialDate = new Date().toISOString().slice(0, 10);
-      const initialRoster = filterActiveStudentsForLesson(classStudents, classId, initialDate);
+      const initialRoster = filterRosterByWithdrawDate(classStudents, classId, initialDate);
       setAssignedDate(initialDate);
       setContent('');
       setBook('');
@@ -125,7 +127,17 @@ export const HomeworkAssignmentModal = ({ isOpen, onClose, onSave, classId, assi
       setStaffNotifyBody('');
       setStaffNotifyScheduledAt('');
     }
-  }, [assignment, classStudents, classId]);
+  }, [assignment, classStudents, classId, rosterForAssignment]);
+
+  useEffect(() => {
+    if (!rosterForAssignment.length) {
+      setAssignedStudentIds([]);
+      return;
+    }
+    setAssignedStudentIds((prev) =>
+      prev.filter((id) => rosterForAssignment.some((student) => String(student.id) === String(id)))
+    );
+  }, [rosterForAssignment]);
 
   // 범위 문자열이 변할 때마다 총 문제 수 자동 계산
   useEffect(() => {
