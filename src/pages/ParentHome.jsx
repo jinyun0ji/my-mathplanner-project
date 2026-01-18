@@ -133,12 +133,84 @@ const buildChildClassExitMap = (child) => {
     return map;
 };
 
+const buildExitMapFromClasses = (classesList, studentId) => {
+    const list = Array.isArray(classesList) ? classesList : [];
+    const sid = String(studentId || '');
+    if (!sid) return {};
+
+    const toMs = (value) => {
+        if (!value) return null;
+        if (typeof value?.toDate === 'function') return value.toDate().getTime();
+        if (value instanceof Date) return value.getTime();
+        if (typeof value === 'number') return value;
+        const date = new Date(value);
+        return Number.isNaN(date.getTime()) ? null : date.getTime();
+    };
+
+    const map = {};
+
+    const normalize = (statusValue) => String(statusValue || '').trim();
+
+    const pickEnrollment = (classItem) => {
+        const mapCandidate =
+            classItem?.studentStatusMap
+            || classItem?.studentStatusesMap
+            || classItem?.classStatusMap
+            || classItem?.enrollmentMap
+            || null;
+
+        if (mapCandidate && typeof mapCandidate === 'object') {
+            const value = mapCandidate[sid] || mapCandidate[String(sid)];
+            if (value) return value;
+        }
+
+        const listCandidate =
+            classItem?.studentStatuses
+            || classItem?.enrollments
+            || classItem?.classEnrollments
+            || classItem?.studentsMeta
+            || null;
+
+        if (Array.isArray(listCandidate)) {
+            return listCandidate.find((entry) =>
+                String(entry?.studentId || entry?.sid || entry?.id || entry?.uid || '') === sid,
+            ) || null;
+        }
+
+        return null;
+    };
+
+    for (const classItem of list) {
+        const classDocId = String(classItem?.id || classItem?.classDocId || classItem?.classDocumentId || '');
+        if (!classDocId) continue;
+
+        const enrollment = pickEnrollment(classItem);
+        if (!enrollment) continue;
+
+        const status = normalize(enrollment?.status || enrollment?.classStatus || enrollment);
+
+        const raw =
+            enrollment?.withdrawAt
+            || enrollment?.withdrawDate
+            || enrollment?.leftAt
+            || enrollment?.leftDate
+            || enrollment?.endedAt
+            || enrollment?.updatedAt
+            || null;
+
+        map[classDocId] = { status, exitAtMs: toMs(raw) };
+    }
+
+    return map;
+};
+
 // --- [컴포넌트] 학부모 전용 대시보드 ---
 const ParentDashboard = ({ 
     child, myClasses, attendanceLogs, homeworkStats, 
     gradeComparison, clinicLogs, unpaidPayments, 
     setActiveTab,
     childClassExitMap,
+    activeChildId,
 }) => {
     const today = new Date();
     const todayStr = today.toISOString().split('T')[0];
@@ -249,6 +321,8 @@ const ParentDashboard = ({
             return toMs(raw) ?? toMs(new Date());
         };
 
+        const shouldHideTodayItemByExit = (itemDayValue, exitDayValue) => itemDayValue >= exitDayValue;
+
         return list.filter((item) => {
             const classId = getClassId(item);
             const classCode = getClassCode(item);
@@ -263,16 +337,17 @@ const ParentDashboard = ({
 
             const itemDayMs = new Date(getAtMs(item)).setHours(0, 0, 0, 0);
             const exitDayMs = new Date(exit.exitAtMs).setHours(0, 0, 0, 0);
-            return itemDayMs < exitDayMs;
+            return !shouldHideTodayItemByExit(itemDayMs, exitDayMs);
         });
     }, [todayItems, childClassExitMap]);
 
     useEffect(() => {
+        console.log('[parent][today] activeChildId=', activeChildId);
         console.log('[parent][today] childClassExitMap=', childClassExitMap);
         console.log('[parent][today] childClassExitMap keys=', Object.keys(childClassExitMap || {}));
         console.log('[parent][today] todayItems=', todayItems);
         console.log('[parent][today] filteredTodayItems=', filteredTodayItems);
-    }, [childClassExitMap, todayItems, filteredTodayItems]);
+    }, [activeChildId, childClassExitMap, todayItems, filteredTodayItems]);
 
     // 3. 확인 필요 항목 (Action Items)
     const actionItems = [];
@@ -444,10 +519,14 @@ export default function ParentHome({
         () => buildStudentClassStatusMap(activeChild),
         [activeChild],
     );
-    const childClassExitMap = useMemo(
-        () => buildChildClassExitMap(activeChild),
-        [activeChild],
-    );
+    const childClassExitMap = useMemo(() => {
+        const fromChild = buildChildClassExitMap(activeChild);
+        if (fromChild && Object.keys(fromChild).length > 0) return fromChild;
+
+        const fromClasses = buildExitMapFromClasses(classes, activeChildId);
+
+        return fromClasses || {};
+    }, [activeChild, classes, activeChildId]);
 
     useEffect(() => {
         console.log('[parent] activeChild=', activeChild);
@@ -1198,6 +1277,7 @@ export default function ParentHome({
                                             clinicLogs={clinicLogs} unpaidPayments={unpaidPayments}
                                             setActiveTab={setActiveTab}
                                             childClassExitMap={childClassExitMap}
+                                            activeChildId={activeChildId}
                                         />
                                     </div>
                                     <aside className="space-y-4">

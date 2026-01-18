@@ -106,3 +106,46 @@ export const sortClassesByStatus = (classes = [], studentClassStatusMap = {}, ch
         ordered: [...ongoing, ...finished, ...withdrawn],
     };
 };
+
+export const toDateSafe = (value) => {
+    if (!value) return null;
+    if (typeof value?.toDate === 'function') return value.toDate();
+    if (value instanceof Date) return value;
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date;
+};
+
+export const normalizeYmd = (value) => {
+    const date = toDateSafe(value);
+    if (!date) return null;
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
+
+export const isStudentActiveInClassOnDate = (student, classId, lessonDate) => {
+    if (!student || !classId) return true;
+
+    const map = student.classStatusMap;
+    const statusInfo = map?.[classId];
+
+    if (!statusInfo) return true;
+
+    const status = String(statusInfo.status || '');
+    const reason = String(statusInfo.endReason || '');
+
+    if (status !== '퇴원' || reason !== '중도퇴원') return true;
+
+    const endedAt = normalizeYmd(statusInfo.endedAt);
+    const normalizedLessonDate = normalizeYmd(lessonDate);
+
+    if (!endedAt || !normalizedLessonDate) return true;
+
+    return normalizedLessonDate <= endedAt;
+};
+
+export const filterActiveStudentsForLesson = (students, classId, lessonDate) => {
+    const list = Array.isArray(students) ? students : [];
+    return list.filter((student) => isStudentActiveInClassOnDate(student, classId, lessonDate));
+};

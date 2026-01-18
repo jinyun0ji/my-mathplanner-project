@@ -6,7 +6,7 @@ import TestResultTable from '../components/Grade/TestResultTable';
 import TestStatisticsTable from '../components/Grade/TestStatisticsTable';
 import { TestFormModal } from '../utils/modals/TestFormModal';
 import { getClassAverages, getClassTests, getTestStatistics } from '../domain/grade/grade.service';
-import { getDefaultClassId } from '../utils/classStatus';
+import { filterActiveStudentsForLesson, getDefaultClassId } from '../utils/classStatus';
 import { useClassStudents } from '../utils/useClassStudents';
 
 // ----------------------------------------------------------------------
@@ -50,6 +50,11 @@ export default function GradeManagement({
     const selectedTest = useMemo(() => {
         return tests.find(t => t.id === selectedTestId);
     }, [tests, selectedTestId]);
+
+    const rosterForTest = useMemo(
+        () => filterActiveStudentsForLesson(classStudents, selectedClassId, selectedTest?.date),
+        [classStudents, selectedClassId, selectedTest?.date]
+    );
 
     const classAverages = useMemo(
         () => getClassAverages(classTests, classStudents, grades),
@@ -99,7 +104,7 @@ export default function GradeManagement({
         e.stopPropagation(); 
         
         const test = selectedTest; 
-        const studentsInClass = classStudents; 
+        const studentsInClass = rosterForTest; 
         
         const headers = ['학생명', ...Array.from({ length: test.totalQuestions }, (_, i) => `Q${i + 1} (${test.questionScores[i] || 0}점)`)];
         const sampleData = ['김철수 (예시)', ...Array(test.totalQuestions).fill('1')]; 
@@ -371,7 +376,7 @@ export default function GradeManagement({
                     isOpen={isGradeInputModalOpen} 
                     onClose={handleCloseGradeInput}
                     test={selectedTest}
-                    studentsData={classStudents}
+                    studentsData={rosterForTest}
                     handleUpdateGrade={handleUpdateGrade}
                     grades={grades}
                 />

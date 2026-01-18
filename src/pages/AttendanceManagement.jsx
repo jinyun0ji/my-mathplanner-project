@@ -3,7 +3,7 @@ import { Icon, formatGradeLabel } from '../utils/helpers';
 import ClassSelectionPanel from '../components/Shared/ClassSelectionPanel'; 
 import { AttendanceModal } from '../components/common/AttendanceModal'; 
 import { MemoModal } from '../utils/modals/MemoModal'; 
-import { getDefaultClassId } from '../utils/classStatus';
+import { filterActiveStudentsForLesson, getDefaultClassId } from '../utils/classStatus';
 import { useClassStudents } from '../utils/useClassStudents';
 
 export default function AttendanceManagement({ 
@@ -30,19 +30,24 @@ export default function AttendanceManagement({
         return attendanceLogs.filter(log => log.classId === selectedClassId && log.date === selectedDate);
     }, [attendanceLogs, selectedClassId, selectedDate]);
 
+    const rosterForAttendance = useMemo(
+        () => filterActiveStudentsForLesson(classStudents, selectedClassId, selectedDate),
+        [classStudents, selectedClassId, selectedDate]
+    );
+
     const attendanceSummary = useMemo(() => {
-        const summary = { total: classStudents.length, 출석: 0, 지각: 0, 결석: 0, 동영상보강: 0, 미기록: 0 };
-        classStudents.forEach(student => {
+        const summary = { total: rosterForAttendance.length, 출석: 0, 지각: 0, 결석: 0, 동영상보강: 0, 미기록: 0 };
+        rosterForAttendance.forEach(student => {
             const status = classAttendance.find(log => log.studentId === student.id)?.status || '미기록';
             if (summary[status] !== undefined) summary[status] += 1;
             else summary.미기록 += 1;
         });
         return summary;
-    }, [classStudents, classAttendance]);
+    }, [rosterForAttendance, classAttendance]);
 
     const initialAttendanceForModal = useMemo(() => {
         const initial = {};
-        classStudents.forEach(s => {
+        rosterForAttendance.forEach(s => {
             const existingLog = classAttendance.find(log => log.studentId === s.id);
             initial[s.id] = existingLog || { 
                 classId: selectedClassId, 
@@ -52,7 +57,7 @@ export default function AttendanceManagement({
             };
         });
         return initial;
-    }, [classStudents, classAttendance, selectedClassId, selectedDate]);
+    }, [rosterForAttendance, classAttendance, selectedClassId, selectedDate]);
     
     const sessionDates = useMemo(() => {
         if (!selectedClass) return [];
@@ -116,7 +121,7 @@ export default function AttendanceManagement({
         '미기록': 'bg-gray-50 text-gray-600 border-gray-200'
     };
 
-    const selectedStudent = memoModalState.studentId ? classStudents.find(s => s.id === memoModalState.studentId) : null;
+    const selectedStudent = memoModalState.studentId ? rosterForAttendance.find(s => s.id === memoModalState.studentId) : null;
     const selectedStudentStatus = selectedStudent ? classAttendance.find(log => log.studentId === selectedStudent.id)?.status || '미기록' : null;
     const getMemoContent = (student) => studentMemos[student.id] ?? student.memo ?? '';
 
@@ -179,7 +184,7 @@ export default function AttendanceManagement({
                 <div className="space-y-4">
                     <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
                         <div className="flex items-center justify-between gap-3 mb-4">
-                            <h4 className="text-lg font-bold text-gray-800">학생별 출결 현황 ({classStudents.length}명)</h4>
+                            <h4 className="text-lg font-bold text-gray-800">학생별 출결 현황 ({rosterForAttendance.length}명)</h4>
                         </div>
 
                         {selectedClassId === null ? (
@@ -200,7 +205,7 @@ export default function AttendanceManagement({
                                             </tr>
                                         </thead>
                                         <tbody className="bg-white divide-y divide-gray-200">
-                                            {classStudents.map(student => {
+                                            {rosterForAttendance.map(student => {
                                                 const attendance = classAttendance.find(log => log.studentId === student.id);
                                                 const status = attendance?.status || '미기록';
                                                 const memoContent = getMemoContent(student);
@@ -236,7 +241,7 @@ export default function AttendanceManagement({
                                 </div>
 
                                 <div className="grid gap-3 md:hidden">
-                                    {classStudents.map(student => {
+                                    {rosterForAttendance.map(student => {
                                         const attendance = classAttendance.find(log => log.studentId === student.id);
                                         const status = attendance?.status || '미기록';
                                         const memoContent = getMemoContent(student);
@@ -317,7 +322,7 @@ export default function AttendanceManagement({
                     <AttendanceModal
                         isOpen={isAttendanceModalOpen}
                         onClose={() => setIsAttendanceModalOpen(false)}
-                        studentsData={classStudents}
+                        studentsData={rosterForAttendance}
                         initialAttendance={initialAttendanceForModal}
                         onSave={handleSaveAttendance}
                     />

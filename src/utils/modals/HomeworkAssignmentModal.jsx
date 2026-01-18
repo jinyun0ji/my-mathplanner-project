@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Modal } from '../../components/common/Modal';
 import StaffNotificationFields from '../../components/Shared/StaffNotificationFields';
+import { filterActiveStudentsForLesson } from '../classStatus';
 
 export const HomeworkAssignmentModal = ({ isOpen, onClose, onSave, classId, assignment = null, students, selectedClass }) => {
   const classStudents = useMemo(() => {
@@ -64,16 +65,23 @@ export const HomeworkAssignmentModal = ({ isOpen, onClose, onSave, classId, assi
     }
   };
 
+  const rosterForAssignment = useMemo(
+    () => filterActiveStudentsForLesson(classStudents, classId, assignedDate),
+    [classStudents, classId, assignedDate]
+  );
+
   useEffect(() => {
     if (assignment) {
-      setAssignedDate(assignment.assignedDate || assignment.date || '');
+      const initialDate = assignment.assignedDate || assignment.date || '';
+      setAssignedDate(initialDate);
       setContent(assignment.content);
       setBook(assignment.book || '');
       const assigned = assignment.assignedStudentIds ?? assignment.students;
       if (Array.isArray(assigned) && assigned.length > 0) {
         setAssignedStudentIds(assigned);
       } else {
-        setAssignedStudentIds(classStudents.map(student => student.id));
+        const initialRoster = filterActiveStudentsForLesson(classStudents, classId, initialDate);
+        setAssignedStudentIds(initialRoster.map(student => student.id));
       }
       // 기존 데이터(startQuestion, endQuestion)가 있으면 문자열로 변환, 아니면 저장된 rangeString 사용
       if (assignment.rangeString) {
@@ -103,10 +111,12 @@ export const HomeworkAssignmentModal = ({ isOpen, onClose, onSave, classId, assi
         setStaffNotifyScheduledAt('');
       }
     } else {
-      setAssignedDate(new Date().toISOString().slice(0, 10));
+      const initialDate = new Date().toISOString().slice(0, 10);
+      const initialRoster = filterActiveStudentsForLesson(classStudents, classId, initialDate);
+      setAssignedDate(initialDate);
       setContent('');
       setBook('');
-      setAssignedStudentIds(classStudents.map(student => student.id));
+      setAssignedStudentIds(initialRoster.map(student => student.id));
       setRangeString('');
       setTotalQuestions(0);
       setIsAssignmentDate(true);
@@ -115,7 +125,7 @@ export const HomeworkAssignmentModal = ({ isOpen, onClose, onSave, classId, assi
       setStaffNotifyBody('');
       setStaffNotifyScheduledAt('');
     }
-  }, [assignment, classStudents]);
+  }, [assignment, classStudents, classId]);
 
   // 범위 문자열이 변할 때마다 총 문제 수 자동 계산
   useEffect(() => {
@@ -192,7 +202,7 @@ export const HomeworkAssignmentModal = ({ isOpen, onClose, onSave, classId, assi
   };
 
   const handleSelectAll = () => {
-    setAssignedStudentIds(classStudents.map(student => student.id));
+    setAssignedStudentIds(rosterForAssignment.map(student => student.id));
   };
 
   const handleClearAll = () => {
@@ -259,10 +269,10 @@ export const HomeworkAssignmentModal = ({ isOpen, onClose, onSave, classId, assi
             </div>
           </div>
           <div className="max-h-44 overflow-y-auto space-y-2 pr-1">
-            {classStudents.length === 0 ? (
+            {rosterForAssignment.length === 0 ? (
               <p className="text-xs text-gray-400">클래스에 등록된 학생이 없습니다.</p>
             ) : (
-              classStudents.map(student => (
+              rosterForAssignment.map(student => (
                 <label key={student.id} className="flex items-center gap-2 text-sm text-gray-700">
                   <input
                     type="checkbox"
