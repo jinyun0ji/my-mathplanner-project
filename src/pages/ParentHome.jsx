@@ -57,12 +57,28 @@ const buildStudentClassStatusMap = (child) => {
     }
 
     const list =
-        (Array.isArray(child.classStatuses) && child.classStatuses)
-        || (Array.isArray(child.classes) && child.classes)
-        || (Array.isArray(child.enrollments) && child.enrollments)
-        || (Array.isArray(child.classEnrollments) && child.classEnrollments)
-        || (Array.isArray(child.classHistory) && child.classHistory)
+        (Array.isArray(child?.classStatuses) && child.classStatuses)
+        || (Array.isArray(child?.enrollments) && child.enrollments)
+        || (Array.isArray(child?.classEnrollments) && child.classEnrollments)
+        || (Array.isArray(child?.classesMeta) && child.classesMeta)
+        || (Array.isArray(child?.classes) && child.classes)
         || [];
+
+        const mapLike =
+        child?.classStatusMap
+        || child?.studentClassStatusMap
+        || child?.enrollmentMap
+        || null;
+
+    const listFromMap = [];
+    if (mapLike && typeof mapLike === 'object') {
+        for (const [key, value] of Object.entries(mapLike)) {
+            if (value && typeof value === 'object') listFromMap.push({ classId: key, ...value });
+            else listFromMap.push({ classId: key, status: value });
+        }
+    }
+
+    const merged = [...list, ...listFromMap];
 
     const map = {};
     for (const item of list) {
@@ -78,12 +94,28 @@ const buildChildClassExitMap = (child) => {
     if (child.classExitMap && typeof child.classExitMap === 'object') return child.classExitMap;
 
     const list =
-        (Array.isArray(child.classStatuses) && child.classStatuses)
-        || (Array.isArray(child.classes) && child.classes)
-        || (Array.isArray(child.enrollments) && child.enrollments)
-        || (Array.isArray(child.classEnrollments) && child.classEnrollments)
-        || (Array.isArray(child.classHistory) && child.classHistory)
+        (Array.isArray(child?.classStatuses) && child.classStatuses)
+        || (Array.isArray(child?.enrollments) && child.enrollments)
+        || (Array.isArray(child?.classEnrollments) && child.classEnrollments)
+        || (Array.isArray(child?.classesMeta) && child.classesMeta)
+        || (Array.isArray(child?.classes) && child.classes)
         || [];
+
+    const mapLike =
+        child?.classStatusMap
+        || child?.studentClassStatusMap
+        || child?.enrollmentMap
+        || null;
+
+    const listFromMap = [];
+    if (mapLike && typeof mapLike === 'object') {
+        for (const [key, value] of Object.entries(mapLike)) {
+            if (value && typeof value === 'object') listFromMap.push({ classId: key, ...value });
+            else listFromMap.push({ classId: key, status: value });
+        }
+    }
+
+    const merged = [...list, ...listFromMap];
 
     const toMs = (value) => {
         if (!value) return null;
@@ -95,12 +127,12 @@ const buildChildClassExitMap = (child) => {
     };
 
     const map = {};
-    for (const item of list) {
-        const rawId =
+    for (const item of merged) {
+        const rawDocId =
             item?.classDocId
-            || item?.classroomId
             || item?.classDocumentId
             || item?.classRefId
+            || item?.docId
             || item?.id
             || null;
 
@@ -111,24 +143,26 @@ const buildChildClassExitMap = (child) => {
             || item?.classKey
             || null;
 
-        const cid = String(rawId || rawCode || '');
-        if (!cid) continue;
-
         const status = String(item?.status || item?.classStatus || '').trim();
+
         const raw =
             item?.withdrawAt
             || item?.withdrawDate
             || item?.leftAt
             || item?.leftDate
+            || item?.exitedAt
+            || item?.exitDate
             || item?.endedAt
             || item?.updatedAt
             || null;
 
         const entry = { status, exitAtMs: toMs(raw) };
 
-        if (rawId) map[String(rawId)] = entry;
+        if (rawDocId) map[String(rawDocId)] = entry;
         if (rawCode) map[String(rawCode)] = entry;
-        if (cid) map[String(cid)] = entry;
+
+        const fallback = String(rawDocId || rawCode || '');
+        if (fallback) map[fallback] = entry;
     }
     return map;
 };
@@ -527,6 +561,11 @@ export default function ParentHome({
 
         return fromClasses || {};
     }, [activeChild, classes, activeChildId]);
+
+    useEffect(() => {
+        console.log('[parent][today] activeChild=', activeChild);
+        console.log('[parent][today] childClassExitMap keys=', Object.keys(childClassExitMap || {}));
+    }, [activeChild, childClassExitMap]);
 
     useEffect(() => {
         console.log('[parent] activeChild=', activeChild);

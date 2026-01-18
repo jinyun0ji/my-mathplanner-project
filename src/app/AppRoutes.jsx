@@ -568,26 +568,43 @@ export default function AppRoutes({ user, role, studentIds }) {
                   : (existingStudent?.classes || []);
               const classIdsToAdd = nextClassIds.filter((id) => !prevClassIds.includes(id));
               const classIdsToRemove = prevClassIds.filter((id) => !nextClassIds.includes(id));
+              const nextClassStatusMap = { ...(existingStudent?.classStatusMap || existingStudent?.classStatuses || {}) };
+              const hasTransfer = classIdsToAdd.length > 0 && classIdsToRemove.length > 0;
+              const removalStatus = hasTransfer ? '전반' : '퇴원';
+              const removalReason = hasTransfer ? '전반' : '중도퇴원';
               const batch = writeBatch(db);
 
               classIdsToAdd.forEach((classId) => {
                   batch.update(doc(db, 'classes', classId), {
                       students: arrayUnion(studentPayload.uid),
                   });
+                  nextClassStatusMap[String(classId)] = {
+                      status: '진행중',
+                      joinedAt: serverTimestamp(),
+                      endedAt: null,
+                      endReason: null,
+                  };
               });
               classIdsToRemove.forEach((classId) => {
                   batch.update(doc(db, 'classes', classId), {
                       students: arrayRemove(studentPayload.uid),
                   });
+                  nextClassStatusMap[String(classId)] = {
+                      ...(nextClassStatusMap[String(classId)] || {}),
+                      status: removalStatus,
+                      endedAt: serverTimestamp(),
+                      endReason: removalReason,
+                  };
               });
               batch.set(doc(db, 'users', data.id), {
                   ...studentPayload,
+                  classStatusMap: nextClassStatusMap,
                   updatedAt: serverTimestamp(),
                   updatedBy: userId,
               }, { merge: true });
               await batch.commit();
               console.log('학생 Firestore 저장 완료', data.id);
-              setStudents(prev => prev.map(s => s.id === data.id ? { ...s, ...studentPayload, classStatusMap: s.classStatusMap || s.classStatuses } : s));
+              setStudents(prev => prev.map(s => s.id === data.id ? { ...s, ...studentPayload, classStatusMap: nextClassStatusMap } : s));
           } else {
               const docRef = doc(collection(db, 'users'));
               const resolvedUid = studentPayload.uid || docRef.id;
@@ -666,6 +683,10 @@ export default function AppRoutes({ user, role, studentIds }) {
       };
 
       if (isWithdrawnStatus) {
+        if (nextClassIds.includes(classIdStr)) {
+              nextClassIds = nextClassIds.filter((id) => id !== classIdStr);
+              updates.classIds = nextClassIds;
+          }
           updates.classStatusMap = {
               [classIdStr]: {
                   status: resolvedStatus,
@@ -673,6 +694,9 @@ export default function AppRoutes({ user, role, studentIds }) {
                   endReason: resolvedEndReason,
               },
           };
+          await updateDoc(doc(db, 'classes', classIdStr), {
+              students: arrayRemove(studentUid),
+          });
       } else if (normalizedStatus === '진행중') {
           if (!nextClassIds.includes(classIdStr)) {
               nextClassIds = [...nextClassIds, classIdStr];
