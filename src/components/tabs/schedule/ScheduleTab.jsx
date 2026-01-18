@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Icon, getWeekOfMonth } from '../../../utils/helpers';
+import { Icon, getClinicDisplayStatus, getWeekOfMonth } from '../../../utils/helpers';
 import ModalPortal from '../../common/ModalPortal';
 import { useParentContext } from '../../../parent';
 
@@ -447,7 +447,7 @@ export default function ScheduleTab({
                     name: '학습 클리닉',
                     teacher: log.tutor || '담당 선생님',
                     time: log.checkIn ? `${log.checkIn}~${log.checkOut || ''}` : '시간 미정',
-                    status: log.checkOut ? '완료' : '예약됨',
+                    status: getClinicDisplayStatus(log),
                     scheduleId: log.id
                 }))
             : [];
@@ -497,7 +497,11 @@ export default function ScheduleTab({
                         typeClass = 'text-brand-gray bg-brand-bg';
                     } else if (item.type === 'clinic') {
                         borderColor = 'border-teal-200';
-                        dotColor = item.status === '완료' ? 'bg-teal-500' : 'bg-teal-300';
+                        dotColor = item.status === '완료'
+                            ? 'bg-teal-500'
+                            : item.status === '미참석'
+                                ? 'bg-brand-red'
+                                : 'bg-teal-300';
                         typeLabel = '클리닉';
                         typeClass = 'text-teal-600 bg-teal-50';
                     }
@@ -543,7 +547,9 @@ export default function ScheduleTab({
                                             </p>
                                             <span className={`text-xs font-bold px-2 py-1 rounded ${item.status === '완료'
                                                 ? 'bg-teal-100 text-teal-700'
-                                                : 'bg-teal-50 text-teal-600 border border-teal-200'
+                                                : item.status === '미참석'
+                                                    ? 'bg-brand-red/10 text-brand-red'
+                                                    : 'bg-teal-50 text-teal-600 border border-teal-200'
                                                 }`}
                                             >
                                                 {item.status}

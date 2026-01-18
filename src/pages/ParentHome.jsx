@@ -15,7 +15,7 @@ import {
 } from '../components/StudentTabs';
 import ParentClassroomView from './parent/ParentClassroomView';
 import StudentHeader from '../components/StudentHeader';
-import { Icon, calculateHomeworkStats, calculateGradeComparison } from '../utils/helpers';
+import { Icon, calculateHomeworkStats, calculateGradeComparison, getClinicComment, getClinicDisplayStatus } from '../utils/helpers';
 import { formatGradeScoreText } from '../domain/grade/grade.service';
 import NotificationsIcon from '@mui/icons-material/Notifications';
 import ParentSessionReport from './parent/ParentSessionReport'; // ✅ 신규 리포트 컴포넌트
@@ -269,6 +269,7 @@ const ParentDashboard = ({
 
     useEffect(() => {
         console.log('[parent][today] childClassExitMap=', childClassExitMap);
+        console.log('[parent][today] childClassExitMap keys=', Object.keys(childClassExitMap || {}));
         console.log('[parent][today] todayItems=', todayItems);
         console.log('[parent][today] filteredTodayItems=', filteredTodayItems);
     }, [childClassExitMap, todayItems, filteredTodayItems]);
@@ -629,9 +630,7 @@ export default function ParentHome({
         log?.tutorName || log?.tutor || log?.teacherName || log?.teacher || '-'
     ), []);
 
-    const buildClinicComment = useCallback((log) => (
-        log?.comment || log?.notes || log?.memo || '코멘트가 아직 작성되지 않았습니다.'
-    ), []);
+    const buildClinicComment = useCallback((log) => getClinicComment(log), []);
 
     const myClinicLogs = useMemo(() => {
         if (!Array.isArray(clinicLogs) || !activeChildId) return [];
@@ -641,15 +640,18 @@ export default function ParentHome({
                 ...log,
                 teacherResolved: buildClinicTeacher(log),
                 commentResolved: buildClinicComment(log),
+                displayStatus: getClinicDisplayStatus(log),
             }));
     }, [clinicLogs, activeChildId, buildClinicComment, buildClinicTeacher]);
 
     const completedClinics = useMemo(() => {
         return myClinicLogs
-            .filter((log) => log?.checkOut)
+            .filter((log) => log?.displayStatus !== '예약됨')
             .sort((a, b) => {
-                const aDate = new Date(`${a?.date || ''}T${a?.checkOut || '00:00'}`);
-                const bDate = new Date(`${b?.date || ''}T${b?.checkOut || '00:00'}`);
+                const aTime = a?.checkOut || a?.checkIn || '00:00';
+                const bTime = b?.checkOut || b?.checkIn || '00:00';
+                const aDate = new Date(`${a?.date || ''}T${aTime}`);
+                const bDate = new Date(`${b?.date || ''}T${bTime}`);
                 return bDate - aDate;
             });
     }, [myClinicLogs]);
@@ -1337,33 +1339,47 @@ export default function ParentHome({
                                                 {visibleCompletedClinics.map((log) => {
                                                     const commentKey = log.id ?? `${log.date}-${log.checkIn || log.checkOut || 'clinic'}`;
                                                     const isOpen = openClinicCommentIds.has(commentKey);
+                                                    const hasComment = Boolean(log.commentResolved);
+                                                    const isNoShow = log.displayStatus === '미참석';
+                                                    const commentPreview = hasComment
+                                                        ? (log.commentResolved.length > 60 ? `${log.commentResolved.slice(0, 60)}...` : log.commentResolved)
+                                                        : '';
+                                                    const timeLabel = log.checkIn
+                                                        ? `${log.checkIn}~${log.checkOut || ''}`
+                                                        : (log.checkOut ? `~${log.checkOut}` : '시간 미정');
                                                     return (
                                                         <div key={commentKey} className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm space-y-2">
                                                             <div className="flex items-start justify-between gap-3">
                                                                 <div className="space-y-1">
-                                                                    <p className="text-[11px] text-gray-400 font-semibold">{log.date} • {log.checkIn}~{log.checkOut}</p>
+                                                                    <p className="text-[11px] text-gray-400 font-semibold">{log.date} • {timeLabel}</p>
                                                                     <h4 className="font-bold text-gray-900 text-sm">학습 클리닉</h4>
                                                                     <p className="text-xs text-gray-500">{log.teacherResolved}</p>
                                                                 </div>
-                                                                <StatusPill icon="clock" label="완료" tone="info" />
+                                                                <StatusPill
+                                                                    icon="clock"
+                                                                    label={log.displayStatus}
+                                                                    tone={log.displayStatus === '미참석' ? 'danger' : 'info'}
+                                                                />
                                                             </div>
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => {
-                                                                    setOpenClinicCommentIds((prev) => {
-                                                                        const next = new Set(prev);
-                                                                        if (next.has(commentKey)) next.delete(commentKey);
-                                                                        else next.add(commentKey);
-                                                                        return next;
-                                                                    });
-                                                                }}
-                                                                className="text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-100 px-3 py-1.5 rounded-full hover:bg-indigo-100 active:scale-95 transition"
-                                                            >
-                                                                {isOpen ? '코멘트 닫기' : '코멘트 보기'}
-                                                            </button>
+                                                            {(hasComment || !isNoShow) && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        setOpenClinicCommentIds((prev) => {
+                                                                            const next = new Set(prev);
+                                                                            if (next.has(commentKey)) next.delete(commentKey);
+                                                                            else next.add(commentKey);
+                                                                            return next;
+                                                                        });
+                                                                    }}
+                                                                    className="text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-100 px-3 py-1.5 rounded-full hover:bg-indigo-100 active:scale-95 transition"
+                                                                >
+                                                                    {isOpen ? (isNoShow ? '사유 닫기' : '코멘트 닫기') : (isNoShow ? '사유 보기' : '코멘트 보기')}
+                                                                </button>
+                                                            )}
                                                             {isOpen && (
                                                                 <div className="mt-1 text-sm text-gray-700 whitespace-pre-wrap break-words">
-                                                                    {log.commentResolved || '코멘트가 아직 작성되지 않았습니다.'}
+                                                                    {log.commentResolved || (isNoShow ? '미참석 사유가 아직 작성되지 않았습니다.' : '코멘트가 아직 작성되지 않았습니다.')}
                                                                 </div>
                                                             )}
                                                         </div>

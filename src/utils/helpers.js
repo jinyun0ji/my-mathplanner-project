@@ -353,3 +353,46 @@ export const getYouTubeId = (url) => {
     const match = url.match(regExp);
     return (match && match[2].length === 11) ? match[2] : null;
 };
+
+const normalizeClinicStatusValue = (value) => {
+    if (value === null || value === undefined) return '';
+    return String(value).trim().toLowerCase();
+};
+
+export const getClinicDisplayStatus = (item) => {
+    if (!item) return '예약됨';
+    const statusValues = [
+        item.attendanceStatus,
+        item.status,
+        item.result,
+        item.checkStatus,
+    ].map(normalizeClinicStatusValue);
+
+    const hasNoShow = Boolean(item.noShow || item.absent)
+        || statusValues.some((value) => ['noshow', 'no_show', 'no-show', 'noshowed', 'absent', '미참석'].includes(value));
+
+    if (hasNoShow) return '미참석';
+
+    const hasAttended = Boolean(item.attended || item.completed || item.checkOut)
+        || statusValues.some((value) => ['attended', 'completed', 'complete', 'done', '출석', '완료'].includes(value));
+
+    if (hasAttended) return '완료';
+
+    return '예약됨';
+};
+
+export const getClinicComment = (item) => {
+    if (!item) return '';
+    const candidates = [
+        item.comment,
+        item.note,
+        item.notes,
+        item.memo,
+        item.content,
+        item.reason,
+        item.noShowComment,
+        item.absenceComment,
+    ];
+    const resolved = candidates.find((value) => typeof value === 'string' && value.trim().length > 0);
+    return resolved ? resolved.trim() : '';
+};
