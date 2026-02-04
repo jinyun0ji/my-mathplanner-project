@@ -206,6 +206,36 @@ export const loadStaffDataOnce = async ({
     const shouldLoad = (key) => !pageKey || pageKey === key;
     const applyStudents = (items) => setStudents?.(dedupeStudentsByAuthUid(items));
 
+    const fetchHomeworkResultsWithPagination = async (db, maxDocs = 5000, pageSize = 500) => {
+        const all = [];
+        let last = null;
+
+        while (all.length < maxDocs) {
+            const q = last
+                ? query(
+                    collection(db, 'homeworkResults'),
+                    orderBy(documentId()),
+                    startAfter(last),
+                    limit(pageSize),
+                )
+                : query(
+                    collection(db, 'homeworkResults'),
+                    orderBy(documentId()),
+                    limit(pageSize),
+                );
+
+            const snap = await getDocs(q);
+            if (snap.empty) break;
+
+            all.push(...snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+            last = snap.docs[snap.docs.length - 1];
+
+            if (snap.size < pageSize) break;
+        }
+
+        return all;
+    };
+
     try {
         if (setStudents) {
             await fetchList(
@@ -316,10 +346,9 @@ export const loadStaffDataOnce = async ({
         }
 
         if (setHomeworkResults && shouldLoad('homework')) {
-            const homeworkSnap = await getDocs(query(collection(db, 'homeworkResults'), limit(500)));
+            const docs = await fetchHomeworkResultsWithPagination(db, 5000, 500);
             const mappedResults = {};
-            homeworkSnap.docs.forEach((docSnap) => {
-                const data = docSnap.data() || {};
+            docs.forEach((data) => {
                 const assignmentId = data.assignmentId || data.homeworkAssignmentId || null;
 
                 const sKey = data.authUid
@@ -333,6 +362,7 @@ export const loadStaffDataOnce = async ({
                 if (!mappedResults[sKey]) mappedResults[sKey] = {};
                 mappedResults[sKey][assignmentId] = data.results || data;
             });
+            console.log('[staff][homeworkResults] loaded docs=', docs.length, 'keys=', Object.keys(mappedResults).length);
             setHomeworkResults(mappedResults);
         }
 
