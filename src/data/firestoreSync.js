@@ -798,6 +798,95 @@ export const loadViewerDataOnce = async ({
 
         const lessonClassIds = myClasses.map(c => c.id).slice(0, 10);
 
+        /* =========================
+           closures (viewer: student/parent) ✅ 새로고침 유지 핵심
+        ========================= */
+        if (setClosures) {
+            try {
+                const closureDocs = [];
+                const seen = new Set();
+
+                const push = (docs) => {
+                    docs.forEach((d) => {
+                        if (!d?.id) return;
+                        if (seen.has(d.id)) return;
+                        seen.add(d.id);
+                        closureDocs.push({ id: d.id, ...d.data() });
+                    });
+                };
+
+                // 1) global closures
+                try {
+                    const snapGlobal = await run('closures global', () =>
+                        getDocs(
+                            query(
+                                collection(db, 'closures'),
+                                where('scope', '==', 'global'),
+                                orderBy('startDate', 'desc'),
+                                limit(200),
+                            ),
+                        ),
+                    );
+                    push(snapGlobal.docs);
+                } catch (e) {
+                    console.warn('[viewer] closures global skipped', e);
+                }
+
+                // 2) class closures (classId in)
+                const classIds = Array.isArray(myClasses)
+                    ? myClasses.map((c) => String(c?.id)).filter(Boolean)
+                    : [];
+
+                if (classIds.length > 0) {
+                    const chunks = chunkArray(classIds, 10);
+                    for (const ch of chunks) {
+                        try {
+                            const snapClass = await run(`closures class chunk(${ch.length})`, () =>
+                                getDocs(
+                                    query(
+                                        collection(db, 'closures'),
+                                        where('scope', '==', 'class'),
+                                        where('classId', 'in', ch),
+                                        orderBy('startDate', 'desc'),
+                                        limit(200),
+                                    ),
+                                ),
+                            );
+                            push(snapClass.docs);
+                        } catch (e) {
+                            console.warn('[viewer] closures class retry without orderBy', e);
+                            try {
+                                const snapClass2 = await getDocs(
+                                    query(
+                                        collection(db, 'closures'),
+                                        where('scope', '==', 'class'),
+                                        where('classId', 'in', ch),
+                                        limit(200),
+                                    ),
+                                );
+                                push(snapClass2.docs);
+                            } catch (e2) {
+                                console.warn('[viewer] closures class skipped', e2);
+                            }
+                        }
+                    }
+                }
+
+                if (!isCancelled()) {
+                    const sorted = closureDocs.sort((a, b) => {
+                        const da = String(a?.startDate || '');
+                        const dbb = String(b?.startDate || '');
+                        return dbb.localeCompare(da);
+                    });
+                    setClosures(sorted);
+                    console.log('[viewer] closures loaded =', sorted.length);
+                }
+            } catch (e) {
+                console.error('[viewer] FAIL: closures', e);
+                if (!isCancelled()) setClosures([]);
+            }
+        }
+
         if (lessonClassIds.length > 0) {
             await fetchListSafe(
                 'lessonLogs fetchList',

@@ -252,7 +252,7 @@ service cloud.firestore {
     
     match /closures/{closureId} {
       allow read: if signedIn();
-      allow write: if isStaffOrAdminOrTeacher();
+      allow create, update, delete: if isStaffOrAdminOrTeacher();
     }
 
     /* =========================
