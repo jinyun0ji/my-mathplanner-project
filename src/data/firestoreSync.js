@@ -319,10 +319,19 @@ export const loadStaffDataOnce = async ({
             const homeworkSnap = await getDocs(query(collection(db, 'homeworkResults'), limit(500)));
             const mappedResults = {};
             homeworkSnap.docs.forEach((docSnap) => {
-                const data = docSnap.data();
-                const { authUid: sId, assignmentId } = data;
-                if (!mappedResults[sId]) mappedResults[sId] = {};
-                mappedResults[sId][assignmentId] = data.results ? { ...data, results: data.results } : { results: data };
+                const data = docSnap.data() || {};
+                const assignmentId = data.assignmentId || data.homeworkAssignmentId || null;
+
+                const sKey = data.authUid
+                    || data.studentId
+                    || data.studentDocId
+                    || data.studentUid
+                    || null;
+
+                if (!sKey || !assignmentId) return;
+
+                if (!mappedResults[sKey]) mappedResults[sKey] = {};
+                mappedResults[sKey][assignmentId] = data.results || data;
             });
             setHomeworkResults(mappedResults);
         }
@@ -791,26 +800,46 @@ export const loadViewerDataOnce = async ({
            homeworkResults (직접 getDocs)
         ========================= */
         if (scopedStudentUids.length > 0) {
-            const homeworkSnap = await run('homeworkResults getDocs', () =>
+            const mapped = {};
+
+            const upsert = (data) => {
+                const assignmentId = data.assignmentId || data.homeworkAssignmentId || null;
+                const sKey = data.authUid || data.studentId || data.studentDocId || data.studentUid || null;
+                if (!sKey || !assignmentId) return;
+                if (!mapped[sKey]) mapped[sKey] = {};
+                mapped[sKey][assignmentId] = data.results || data;
+            };
+
+            if (Array.isArray(scopedStudentAuthUids) && scopedStudentAuthUids.length > 0) {
+                const snapA = await run('homeworkResults authUid in', () =>
+                    getDocs(
+                        query(
+                            collection(db, 'homeworkResults'),
+                            where('authUid', 'in', scopedStudentAuthUids),
+                            limit(200),
+                        ),
+                    ),
+                );
+            snapA.docs.forEach((d) => upsert(d.data() || {}));
+        }
+
+        if (Array.isArray(scopedStudentUids) && scopedStudentUids.length > 0) {
+            const snapB = await run('homeworkResults studentId in', () =>
                 getDocs(
                     query(
                         collection(db, 'homeworkResults'),
-                        where('authUid', 'in', scopedStudentUids),
-                        limit(80),
+                        where('studentId', 'in', scopedStudentUids),
+                        limit(200),
                     ),
                 ),
             );
+            snapB.docs.forEach((d) => upsert(d.data() || {}));
+        }
 
-            if (!isCancelled()) {
-                const mapped = {};
-                homeworkSnap.docs.forEach((docSnap) => {
-                    const data = docSnap.data();
-                    const { authUid: sId, assignmentId } = data;
-                    if (!mapped[sId]) mapped[sId] = {};
-                    mapped[sId][assignmentId] = data.results || data;
-                });
-                setHomeworkResults?.(mapped);
-            }
+        if (!isCancelled()) {
+            console.log('[viewer][homeworkResults] keys=', Object.keys(mapped));
+            setHomeworkResults?.(mapped);
+        }
         } else if (!isCancelled()) {
             setHomeworkResults?.({});
         }
