@@ -1,10 +1,12 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { collection, query, where, getDocs, limit } from 'firebase/firestore';
 import { Icon, getLastCheckedDate } from '../utils/helpers';
 import ClassSelectionPanel from '../components/Shared/ClassSelectionPanel';
 import HomeworkGradingTable from '../components/Homework/HomeworkGradingTable';
 import HomeworkStatisticsPanel from '../components/Homework/HomeworkStatisticsPanel';
 import { HomeworkAssignmentModal } from '../utils/modals/HomeworkAssignmentModal';
 import { buildAssignmentSummary, getClassAssignments, getSelectedAssignment, resolveAssignmentStudentIds, resolveAssignmentTypeLabel, resolveAssignmentType } from '../domain/homework/homework.service';
+import { db } from '../firebase/client';
 import { getDefaultClassId } from '../utils/classStatus';
 import { useClassStudents } from '../utils/useClassStudents';
 import { filterRosterByWithdrawDate } from '../utils/rosterFilter';
@@ -38,6 +40,8 @@ export default function HomeworkManagement({
     const [assignmentToEdit, setAssignmentToEdit] = useState(null);
     const [selectedAssignmentId, setSelectedAssignmentId] = useState(null);
     const { students: classStudents, isLoading: isLoadingStudents } = useClassStudents(selectedClassId);
+    const [scopedHomeworkResults, setScopedHomeworkResults] = useState(null);
+    const [isLoadingScopedResults, setIsLoadingScopedResults] = useState(false);
     
     const [checkedDate, setCheckedDate] = useState(() => new Date().toISOString().slice(0, 10));
 
@@ -67,10 +71,12 @@ export default function HomeworkManagement({
         return filterRosterByWithdrawDate(classStudents, selectedClassId, targetDate);
     }, [classStudents, selectedAssignment, selectedClassId, checkedDate]);
 
-    const normalizedHomeworkResults = useMemo(() => {
-        if (!homeworkResults) return {};
+    const effectiveHomeworkResults = scopedHomeworkResults ?? homeworkResults;
 
-        const entries = Object.entries(homeworkResults);
+    const normalizedHomeworkResults = useMemo(() => {
+        if (!effectiveHomeworkResults) return {};
+
+        const entries = Object.entries(effectiveHomeworkResults);
         const normalized = {};
 
         rosterForHomework.forEach((student) => {
@@ -95,7 +101,89 @@ export default function HomeworkManagement({
         });
 
         return normalized;
-    }, [homeworkResults, rosterForHomework]);
+    }, [effectiveHomeworkResults, rosterForHomework]);
+
+    useEffect(() => {
+        let cancelled = false;
+
+        const run = async () => {
+            if (!selectedAssignmentId) {
+                setScopedHomeworkResults(null);
+                return;
+            }
+
+            setIsLoadingScopedResults(true);
+
+            try {
+                const snapA = await getDocs(
+                    query(
+                        collection(db, 'homeworkResults'),
+                        where('assignmentId', '==', selectedAssignmentId),
+                        limit(2000)
+                    )
+                );
+
+                const snapB = await getDocs(
+                    query(
+                        collection(db, 'homeworkResults'),
+                        where('homeworkAssignmentId', '==', selectedAssignmentId),
+                        limit(2000)
+                    )
+                );
+
+                const docs = [...snapA.docs, ...snapB.docs];
+
+                const mapped = {};
+                docs.forEach((d) => {
+                    const data = d.data() || {};
+                    const assignmentId = data.assignmentId || data.homeworkAssignmentId || null;
+                    if (!assignmentId) return;
+
+                    const sKey =
+                        data.authUid ||
+                        data.studentId ||
+                        data.studentDocId ||
+                        data.studentUid ||
+                        null;
+
+                    if (!sKey) return;
+
+                    if (!mapped[sKey]) mapped[sKey] = {};
+                    mapped[sKey][assignmentId] = data.results || data;
+                });
+
+                const rosterKeySet = new Set();
+                (rosterForHomework || []).forEach((s) => {
+                    if (s?.id) rosterKeySet.add(String(s.id));
+                    if (s?.authUid) rosterKeySet.add(String(s.authUid));
+                });
+
+                const filtered = {};
+                Object.entries(mapped).forEach(([k, v]) => {
+                    if (rosterKeySet.size === 0) return;
+                    if (rosterKeySet.has(String(k))) filtered[k] = v;
+                });
+
+                if (!cancelled) {
+                    const useValue = Object.keys(filtered).length > 0 ? filtered : mapped;
+                    setScopedHomeworkResults(useValue);
+                }
+            } catch (e) {
+                console.error('[HW] FAIL: fetch scoped homeworkResults', e);
+                if (!cancelled) {
+                    setScopedHomeworkResults(null);
+                }
+            } finally {
+                if (!cancelled) setIsLoadingScopedResults(false);
+            }
+        };
+
+        run();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [selectedAssignmentId, selectedClassId, rosterForHomework]);
 
     useEffect(() => {
         if (!selectedAssignmentId) {
@@ -111,7 +199,7 @@ export default function HomeworkManagement({
         };
 
         let latestChecked = null;
-        Object.values(homeworkResults || {}).forEach((byAssignment) => {
+        Object.values(effectiveHomeworkResults || {}).forEach((byAssignment) => {
             const record = byAssignment?.[selectedAssignmentId];
             const candidate = toDateString(getLastCheckedDate(record));
             if (candidate && (!latestChecked || new Date(candidate) > new Date(latestChecked))) {
@@ -120,7 +208,7 @@ export default function HomeworkManagement({
         });
 
         setCheckedDate(latestChecked || new Date().toISOString().slice(0, 10));
-    }, [homeworkResults, selectedAssignmentId]);
+    }, [effectiveHomeworkResults, selectedAssignmentId]);
 
     const assignmentSummary = useMemo(() => {
         const assignedIds = resolveAssignmentStudentIds(selectedAssignment);
@@ -396,7 +484,11 @@ export default function HomeworkManagement({
                                 </div>
                             </div>
 
-                        <HomeworkGradingTable
+                        {isLoadingScopedResults && (
+                                <div className="text-xs text-gray-400 px-1">과제 채점 데이터를 불러오는 중...</div>
+                            )}
+
+                            <HomeworkGradingTable
                                 summary={assignmentSummary}
                                 assignment={selectedAssignment}
                                 handleUpdateResult={handleUpdateResultLocal}
