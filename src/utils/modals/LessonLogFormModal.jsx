@@ -5,7 +5,7 @@ import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } 
 import { CSS } from '@dnd-kit/utilities';
 import { getDownloadURL, ref, uploadBytesResumable } from 'firebase/storage';
 import { Modal } from '../../components/common/Modal';
-import { Icon } from '../../utils/helpers';
+import { Icon, isClosedForClass } from '../../utils/helpers';
 import StaffNotificationFields from '../../components/Shared/StaffNotificationFields';
 import { auth, storage } from '../../firebase/client';
 
@@ -122,6 +122,7 @@ export const LessonLogFormModal = ({
   logNotification,
   onDirtyChange = () => {},
   lessonLogs = [],
+  closures = [],
 }) => {
   const selectedClass = classes.find(c => String(c.id) === String(classId));
   
@@ -496,6 +497,10 @@ export const LessonLogFormModal = ({
     e.preventDefault();
     const lessonDate = selectedLessonKey || formState.date;
     if (!classId || !lessonDate || !formState.progress) return;
+    if (isClosedForClass(lessonDate, classId, closures)) {
+      alert('휴강일에는 수업일지를 입력할 수 없습니다.');
+      return;
+    }
 
     if (formState.staffNotifyMode !== 'none') {
       if (!formState.staffNotifyTitle.trim() || !formState.staffNotifyBody.trim()) {
@@ -627,11 +632,14 @@ export const LessonLogFormModal = ({
                         required 
                         className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border"
                     >
-                        {sessions.map(s => (
-                            <option key={s.date} value={s.date}>
-                                {s.date} ({s.session}회차)
-                            </option>
-                        ))}
+                        {sessions.map(s => {
+                            const isClosed = classId ? isClosedForClass(s.date, classId, closures) : false;
+                            return (
+                                <option key={s.date} value={s.date} disabled={isClosed}>
+                                    {s.date} ({s.session}회차){isClosed ? ' - 휴강' : ''}
+                                </option>
+                            );
+                        })}
                     </select>
                 </div>
                 <div>

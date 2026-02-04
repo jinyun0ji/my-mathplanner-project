@@ -1596,7 +1596,7 @@ export default function AppRoutes({ user, role, studentIds }) {
     handleSaveTest, handleDeleteTest, handleUpdateGrade, handleSaveMemo,
     handleSaveAnnouncement, handleDeleteAnnouncement, handleSaveWorkLog, handleDeleteWorkLog, handleSaveClinicLog, handleDeleteClinicLog,
     handleSavePayment, handleUpdatePayment, refreshPaymentLogs,
-    calculateClassSessions, handlePageChange, logNotification, notifications,
+    calculateClassSessions: calculateClassSessionsWithClosures, handlePageChange, logNotification, notifications,
     calculateGradeComparison, calculateHomeworkStats,
     setIsGlobalDirty, studentSearchTerm, setStudentSearchTerm, handleSendStudentNotification,
     externalSchedules, pendingQuickAction, clearPendingQuickAction: () => setPendingQuickAction(null), onQuickAction: handleQuickAction,

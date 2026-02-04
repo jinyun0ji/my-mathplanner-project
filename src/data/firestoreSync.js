@@ -382,7 +382,7 @@ export const loadStaffDataOnce = async ({
                 db,
                 'closures',
                 setClosures,
-                query(collection(db, 'closures'), orderBy('startDate', 'desc'), limit(200)),
+                query(collection(db, 'closures'), orderBy('startDate', 'desc'), limit(300)),
                 () => false,
             );
         }

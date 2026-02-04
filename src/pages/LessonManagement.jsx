@@ -67,7 +67,8 @@ const getVideoKey = (video, index) => video.id || video.url || `video-${index}`;
 
 export default function LessonManagement({ 
     students, classes, lessonLogs, handleSaveLessonLog, handleDeleteLessonLog, 
-    handleSaveClass, videoProgress, attendanceLogs, calculateClassSessions, logNotification, handleSendStudentNotification, setIsGlobalDirty
+    handleSaveClass, videoProgress, attendanceLogs, calculateClassSessions, logNotification, handleSendStudentNotification, setIsGlobalDirty,
+    closures = [],
 }) {
     const [selectedClassId, setSelectedClassId] = useState(() => getDefaultClassId(classes));
     const [isLogModalOpen, setIsLogModalOpen] = useState(false);
@@ -419,6 +420,7 @@ export default function LessonManagement({
                 students={students}
                 logNotification={logNotification}
                 onDirtyChange={setIsGlobalDirty}
+                closures={closures}
             />
         </div>
     );

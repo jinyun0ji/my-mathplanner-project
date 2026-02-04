@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { Icon } from '../utils/helpers';
+import { Icon, isClosedForClass } from '../utils/helpers';
 import ClassSelectionPanel from '../components/Shared/ClassSelectionPanel';
 import FullGradeTable from '../components/Grade/FullGradeTable';
 import TestResultTable from '../components/Grade/TestResultTable';
@@ -15,7 +15,8 @@ import { filterRosterByWithdrawDate } from '../utils/rosterFilter';
 // ----------------------------------------------------------------------
 export default function GradeManagement({ 
     classes, tests, grades, handleSaveTest, handleDeleteTest, 
-    handleUpdateGrade, handleSaveClass, calculateClassSessions 
+    handleUpdateGrade, handleSaveClass, calculateClassSessions,
+    closures = [],
 }) {
     const [selectedClassId, setSelectedClassId] = useState(() => getDefaultClassId(classes));
     const [isTestModalOpen, setIsTestModalOpen] = useState(false);
@@ -92,6 +93,11 @@ export default function GradeManagement({
 
     const handleOpenGradeInput = () => {
         if (selectedTestId) {
+            const isClosed = isClosedForClass(selectedTest?.date, selectedClassId || selectedTest?.classId, closures);
+            if (isClosed) {
+                alert('휴강일에는 성적 입력을 할 수 없습니다.');
+                return;
+            }
             setIsGradeInputModalOpen(true);
         }
     };
@@ -369,6 +375,7 @@ export default function GradeManagement({
                 test={testToEdit}
                 classes={classes}
                 calculateClassSessions={calculateClassSessions}
+                closures={closures}
             />
             
             {/* 성적 입력 모달 */}
@@ -380,6 +387,8 @@ export default function GradeManagement({
                     studentsData={rosterForTest}
                     handleUpdateGrade={handleUpdateGrade}
                     grades={grades}
+                    closures={closures}
+                    classId={selectedClassId || selectedTest?.classId}
                 />
             )}
             

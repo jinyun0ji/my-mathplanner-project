@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Icon } from '../../utils/helpers';
+import { Icon, isClosedForClass } from '../../utils/helpers';
 import { Modal } from '../../components/common/Modal'; 
 import { getTotalScore, isAbsentGrade } from '../../domain/grade/grade.service';
 
@@ -11,7 +11,7 @@ const RESULT_OPTIONS_GRADE = {
 
 const getStatusStyle = (statusKey) => RESULT_OPTIONS_GRADE[statusKey] || RESULT_OPTIONS_GRADE['미채점'];
 
-export default function TestResultTable({ isOpen, onClose, test, studentsData, handleUpdateGrade, grades }) {
+export default function TestResultTable({ isOpen, onClose, test, studentsData, handleUpdateGrade, grades, closures = [], classId = null }) {
     
     const [selectedStudentId, setSelectedStudentId] = useState(null);
     const [resultMapping, setResultMapping] = useState({});
@@ -118,6 +118,10 @@ export default function TestResultTable({ isOpen, onClose, test, studentsData, h
     
     const handleSubmit = (isNoShow = false) => {
         if (!selectedStudentId) return;
+        if (isClosedForClass(test?.date, classId || test?.classId, closures)) {
+            alert('휴강일에는 성적 입력을 할 수 없습니다.');
+            return;
+        }
         
         const finalResult = isNoShow ? '미응시' : resultMapping;
         handleUpdateGrade(selectedStudentId, test.id, finalResult, studentComment);

@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { collection, query, where, getDocs, limit } from 'firebase/firestore';
-import { Icon, getLastCheckedDate } from '../utils/helpers';
+import { Icon, getLastCheckedDate, isClosedForClass } from '../utils/helpers';
 import ClassSelectionPanel from '../components/Shared/ClassSelectionPanel';
 import HomeworkGradingTable from '../components/Homework/HomeworkGradingTable';
 import HomeworkStatisticsPanel from '../components/Homework/HomeworkStatisticsPanel';
@@ -33,7 +33,8 @@ export default function HomeworkManagement({
     classes, homeworkAssignments, homeworkResults,
     handleSaveHomeworkAssignment, handleDeleteHomeworkAssignment,
     handleUpdateHomeworkResult, handleSaveClass, calculateClassSessions,
-    setIsGlobalDirty 
+    setIsGlobalDirty,
+    closures = [],
 }) {
     const [selectedClassId, setSelectedClassId] = useState(() => getDefaultClassId(classes));
     const [isAssignmentModalOpen, setIsAssignmentModalOpen] = useState(false);
@@ -44,6 +45,14 @@ export default function HomeworkManagement({
     const [isLoadingScopedResults, setIsLoadingScopedResults] = useState(false);
     
     const [checkedDate, setCheckedDate] = useState(() => new Date().toISOString().slice(0, 10));
+    const isCheckedDateClosed = useMemo(
+        () => (
+            selectedClassId && checkedDate
+                ? isClosedForClass(checkedDate, selectedClassId, closures)
+                : false
+        ),
+        [closures, selectedClassId, checkedDate]
+    );
 
     // 로컬 변경 사항 관리
     const [localChanges, setLocalChanges] = useState([]); 
@@ -311,6 +320,10 @@ export default function HomeworkManagement({
 
     const handleSaveChanges = () => {
         if (localChanges.length === 0) return;
+        if (selectedClassId && checkedDate && isClosedForClass(checkedDate, selectedClassId, closures)) {
+            alert('휴강일에는 과제 채점을 저장할 수 없습니다.');
+            return;
+        }
         handleUpdateHomeworkResult(localChanges, checkedDate);
         setLocalChanges([]);
         setIsGlobalDirty(false);
@@ -365,9 +378,9 @@ export default function HomeworkManagement({
                     </label>
                     <button
                         onClick={handleSaveChanges}
-                        disabled={localChanges.length === 0}
+                        disabled={localChanges.length === 0 || isCheckedDateClosed}
                         className={`inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-indigo-900 hover:bg-indigo-800 rounded-lg shadow-md transition ${
-                            localChanges.length > 0
+                            localChanges.length > 0 && !isCheckedDateClosed
                                 ? 'bg-indigo-900 text-white hover:bg-indigo-800'
                                 : 'bg-gray-200 text-gray-400 cursor-not-allowed'
                         }`}
@@ -375,6 +388,9 @@ export default function HomeworkManagement({
                         <Icon name="checkSquare" className="w-5 h-5" />
                         채점 저장 ({localChanges.length})
                     </button>
+                    {isCheckedDateClosed && (
+                        <span className="text-xs text-red-500 font-semibold">휴강일에는 채점 저장이 불가합니다.</span>
+                    )}
                 </div>
             </div>
 
@@ -511,6 +527,7 @@ export default function HomeworkManagement({
                 assignment={assignmentToEdit}
                 students={classStudents}
                 selectedClass={selectedClass}
+                closures={closures}
             />
         </div>
     );

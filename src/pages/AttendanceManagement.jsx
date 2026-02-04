@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Icon, formatGradeLabel } from '../utils/helpers';
+import { Icon, formatGradeLabel, isClosedForClass } from '../utils/helpers';
 import ClassSelectionPanel from '../components/Shared/ClassSelectionPanel'; 
 import { AttendanceModal } from '../components/common/AttendanceModal'; 
 import { MemoModal } from '../utils/modals/MemoModal'; 
@@ -20,7 +20,8 @@ const toDateKey = (v) => {
 
 export default function AttendanceManagement({ 
     classes, attendanceLogs, handleSaveAttendance,
-    studentMemos, handleSaveMemo, handleSaveClass, calculateClassSessions 
+    studentMemos, handleSaveMemo, handleSaveClass, calculateClassSessions,
+    closures = [],
 }) {
     const [selectedClassId, setSelectedClassId] = useState(() => getDefaultClassId(classes));
     const [selectedDate, setSelectedDate] = useState(new Date().toISOString().slice(0, 10));
@@ -30,6 +31,14 @@ export default function AttendanceManagement({
     const { students: classStudents, isLoading: isLoadingStudents } = useClassStudents(selectedClassId);
 
     const selectedClass = classes.find(c => String(c.id) === String(selectedClassId));
+    const isSelectedDateClosed = useMemo(
+        () => (
+            selectedClassId && selectedDate
+                ? isClosedForClass(selectedDate, selectedClassId, closures)
+                : false
+        ),
+        [closures, selectedClassId, selectedDate]
+    );
 
     useEffect(() => {
         if (!classes || classes.length === 0) return;
@@ -156,6 +165,14 @@ export default function AttendanceManagement({
         });
     };
 
+    const handleAttendanceSave = (records) => {
+        if (selectedClassId && selectedDate && isClosedForClass(selectedDate, selectedClassId, closures)) {
+            alert('휴강일에는 출결을 입력할 수 없습니다.');
+            return;
+        }
+        handleSaveAttendance(records);
+    };
+
     const closeMemoModal = () => {
         setMemoModalState({ isOpen: false, studentId: null, content: '', studentName: '' });
     };
@@ -202,11 +219,19 @@ export default function AttendanceManagement({
                     <div className="flex flex-wrap gap-2 justify-end">
                         <button
                             onClick={() => setIsAttendanceModalOpen(true)}
-                            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-indigo-900 hover:bg-indigo-800 rounded-lg shadow-md transition"
+                            disabled={isSelectedDateClosed}
+                            className={`inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg shadow-md transition ${
+                                isSelectedDateClosed
+                                    ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                                    : 'text-white bg-indigo-900 hover:bg-indigo-800'
+                            }`}
                         >
                             <Icon name="checkSquare" className="w-5 h-5" />
                             출결 입력
                         </button>
+                        {isSelectedDateClosed && (
+                            <span className="text-xs text-red-500 font-semibold">휴강일에는 출결 입력이 불가합니다.</span>
+                        )}
                     </div>
                 </div>
             </div>
@@ -371,7 +396,7 @@ export default function AttendanceManagement({
                         onClose={() => setIsAttendanceModalOpen(false)}
                         studentsData={rosterForAttendance}
                         initialAttendance={initialAttendanceForModal}
-                        onSave={handleSaveAttendance}
+                        onSave={handleAttendanceSave}
                     />
                     <MemoModal
                         isOpen={memoModalState.isOpen}
