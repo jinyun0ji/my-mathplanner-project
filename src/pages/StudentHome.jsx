@@ -16,7 +16,7 @@ import {
 } from '../components/StudentTabs';
 import ClassroomView from './student/ClassroomView';
 import StudentHeader from '../components/StudentHeader';
-import { Icon, calculateHomeworkStats, calculateGradeComparison } from '../utils/helpers';
+import { Icon, calculateHomeworkStats, calculateGradeComparison, isClosedForClass } from '../utils/helpers';
 import { sortClassesByStatus } from '../utils/classStatus';
 import NotificationsIcon from '@mui/icons-material/Notifications';
 import useNotifications from '../notifications/useNotifications';
@@ -163,6 +163,7 @@ export default function StudentHome({
     videoProgress, onSaveVideoProgress, videoMemos, onAddMemo, onUpdateMemo, onDeleteMemo,
     externalSchedules, onSaveExternalSchedule, onDeleteExternalSchedule,
     clinicLogs, onUpdateStudent,
+    closures,
     onLogout
 }) {
     // ✅ URL(querystring)로 탭/상세 상태를 동기화해서 "뒤로가기"가 탭 전환/이전 화면으로 동작하게 함
@@ -347,8 +348,12 @@ export default function StudentHome({
     }, [clinicLogs, externalSchedules, myClasses, studentId, todayDayName, todayStr]);
     const filteredTodayItems = useMemo(() => {
         const list = Array.isArray(todayItems) ? todayItems : [];
-        return list.filter(item => !shouldHideTodayItemByExit(item, studentClassExitMap));
-    }, [todayItems, studentClassExitMap]);
+        return list.filter((item) => {
+            const classId = getItemClassId(item);
+            if (classId && isClosedForClass(todayStr, classId, closures)) return false;
+            return !shouldHideTodayItemByExit(item, studentClassExitMap);
+        });
+    }, [todayItems, studentClassExitMap, closures, todayStr]);
 
 
     const { notifications, hasUnread, unreadCount, lastReadAt, isLoading, isMetaLoading, setNotifications } = useNotifications(viewerUid);
@@ -520,6 +525,7 @@ export default function StudentHome({
                             <ScheduleTab
                                 myClasses={myClasses} externalSchedules={externalSchedules} attendanceLogs={attendanceLogs}
                                 studentId={studentId} student={student} onSaveExternalSchedule={onSaveExternalSchedule} onDeleteExternalSchedule={onDeleteExternalSchedule} clinicLogs={clinicLogs}
+                                closures={closures}
                             />
                         )}
                         {activeTab === 'learning' && (

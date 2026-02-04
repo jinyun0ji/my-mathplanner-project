@@ -15,6 +15,7 @@ import AttendanceManagement from '../pages/AttendanceManagement';
 import HomeworkManagement from '../pages/HomeworkManagement';
 import GradeManagement from '../pages/GradeManagement';
 import ClinicManagement from '../pages/ClinicManagement';
+import ClosureManagement from '../pages/ClosureManagement';
 import InternalCommunication from '../pages/InternalCommunication';
 import PaymentManagement from '../pages/PaymentManagement';
 import ParentHome from '../pages/ParentHome';
@@ -73,6 +74,7 @@ const PAGE_ROUTES = {
     clinic: '/clinic',
     payment: '/payment',
     communication: '/communication',
+    closures: '/closures',
 };
 
 const ADMIN_ROUTES = new Set([
@@ -170,6 +172,7 @@ export default function AppRoutes({ user, role, studentIds }) {
   const [paymentLogs, setPaymentLogs] = useState([]);
   const [isPaymentLogsLoading, setIsPaymentLogsLoading] = useState(false);
   const [externalSchedules, setExternalSchedules] = useState([]);
+  const [closures, setClosures] = useState([]);
 
   const [grades, setGrades] = useState({});
   const [classTestStats, setClassTestStats] = useState({});
@@ -212,6 +215,7 @@ export default function AppRoutes({ user, role, studentIds }) {
         setGrades,
         setHomeworkResults,
         setExternalSchedules,
+        setClosures,
     }).finally(() => {
         if (shouldLoadPayments && isActive) {
             setIsPaymentLogsLoading(false);
@@ -256,6 +260,7 @@ export default function AppRoutes({ user, role, studentIds }) {
         setExternalSchedules,
         setHomeworkResults,
         setGrades,
+        setClosures,
         setClassTestStats,
         isCancelled: () => state.cancelled,
     });
@@ -272,6 +277,11 @@ export default function AppRoutes({ user, role, studentIds }) {
       });
       setStudentMemos(memoMap);
   }, [students]);
+
+  const calculateClassSessionsWithClosures = useCallback(
+      (cls) => calculateClassSessions(cls, closures),
+      [closures],
+  );
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [hasNewNotifications, setHasNewNotifications] = useState(false);
@@ -1552,6 +1562,7 @@ export default function AppRoutes({ user, role, studentIds }) {
               onSaveExternalSchedule={handleSaveExternalSchedule}
               onDeleteExternalSchedule={handleDeleteExternalSchedule}
               clinicLogs={clinicLogs}
+              closures={closures}
               onUpdateStudent={handleSaveStudent}
               onLogout={handleLogout}
           />
@@ -1571,7 +1582,7 @@ export default function AppRoutes({ user, role, studentIds }) {
               />
           );
       }
-      return <ParentHome userId={userId} students={students} classes={classes} homeworkAssignments={homeworkAssignments} homeworkResults={homeworkResults} attendanceLogs={attendanceLogs} lessonLogs={lessonLogs} notices={announcements} tests={tests} grades={grades} classTestStats={classTestStats} clinicLogs={clinicLogs} videoProgress={videoProgress} onLogout={handleLogout} externalSchedules={externalSchedules} onSaveExternalSchedule={handleSaveExternalSchedule} onDeleteExternalSchedule={handleDeleteExternalSchedule} />;
+      return <ParentHome userId={userId} students={students} classes={classes} homeworkAssignments={homeworkAssignments} homeworkResults={homeworkResults} attendanceLogs={attendanceLogs} lessonLogs={lessonLogs} notices={announcements} tests={tests} grades={grades} classTestStats={classTestStats} clinicLogs={clinicLogs} videoProgress={videoProgress} onLogout={handleLogout} externalSchedules={externalSchedules} onSaveExternalSchedule={handleSaveExternalSchedule} onDeleteExternalSchedule={handleDeleteExternalSchedule} closures={closures} />;
 }
   
   const managementProps = {
@@ -1594,6 +1605,8 @@ export default function AppRoutes({ user, role, studentIds }) {
     handleUpdateStudentClassStatus,
     userRole: role,
     userId,
+    closures,
+    setClosures,
   };
 
   return (
@@ -1631,6 +1644,14 @@ export default function AppRoutes({ user, role, studentIds }) {
             <Route path="clinic" element={<ClinicManagement {...managementProps} />} />
             <Route path="communication" element={<InternalCommunication {...managementProps} />} />
             <Route path="payment" element={<PaymentManagement {...managementProps} />} />
+            <Route
+                path="closures"
+                element={(
+                    <StaffOrTeachingRoute>
+                        <ClosureManagement {...managementProps} />
+                    </StaffOrTeachingRoute>
+                )}
+            />
             <Route
                 path="admin/staff"
                 element={(

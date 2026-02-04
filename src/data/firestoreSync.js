@@ -198,6 +198,7 @@ export const loadStaffDataOnce = async ({
     setGrades,
     setHomeworkResults,
     setExternalSchedules,
+    setClosures,
 }) => {
     if (!isLoggedIn || !db) return;
     if (!userRole) return;
@@ -376,6 +377,16 @@ export const loadStaffDataOnce = async ({
             );
         }
 
+        if (setClosures && shouldLoad('schedule')) {
+            await fetchList(
+                db,
+                'closures',
+                setClosures,
+                query(collection(db, 'closures'), orderBy('startDate', 'desc'), limit(200)),
+                () => false,
+            );
+        }
+
     } catch (error) {
         console.error('[FirestoreSync] staff 데이터 로드 실패:', error);
     }
@@ -401,6 +412,7 @@ export const loadViewerDataOnce = async ({
     setExternalSchedules,
     setHomeworkResults,
     setGrades,
+    setClosures,
 
     // ✅ 추가: classTestStats setter (없으면 그냥 스킵)
     setClassTestStats = null,
@@ -1172,6 +1184,20 @@ export const loadViewerDataOnce = async ({
         } else if (!isCancelled()) {
             setVideoProgress?.([]);
             setExternalSchedules?.([]);
+        }
+
+        if (setClosures) {
+            try {
+                const snap = await getDocs(
+                    query(collection(db, 'closures'), orderBy('startDate', 'desc'), limit(200)),
+                );
+                if (!isCancelled()) {
+                    setClosures(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+                }
+            } catch (e) {
+                console.warn('[viewer] closures load skipped', e);
+                if (!isCancelled()) setClosures([]);
+            }
         }
 
         console.log('[viewer] COMPLETE');

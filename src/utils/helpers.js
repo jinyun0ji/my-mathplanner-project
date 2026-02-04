@@ -203,7 +203,33 @@ export const calculateGradeComparison = (studentId, classes, tests, grades, clas
     return myGrades.sort((a, b) => new Date(b.testDate) - new Date(a.testDate));
 };
 
-export const calculateClassSessions = (cls) => {
+export const toDateStr = (value) => {
+    if (!value) return '';
+    if (typeof value === 'string') return value.slice(0, 10);
+    if (typeof value?.toDate === 'function') return value.toDate().toISOString().slice(0, 10);
+    return new Date(value).toISOString().slice(0, 10);
+};
+
+export const isDateInRange = (d, s, e) => {
+    const dd = String(d);
+    const ss = String(s);
+    const ee = String(e);
+    return ss <= dd && dd <= ee;
+};
+
+export const isClosedForClass = (dateStr, classId, closures = []) => {
+    return (closures || []).some((closure) => {
+        const start = toDateStr(closure.startDate);
+        const end = toDateStr(closure.endDate);
+        if (!start || !end) return false;
+        if (!isDateInRange(dateStr, start, end)) return false;
+        if (closure.scope === 'global') return true;
+        if (closure.scope === 'class' && String(closure.classId) === String(classId)) return true;
+        return false;
+    });
+};
+
+export const calculateClassSessions = (cls, closures = []) => {
     if (!cls || !cls.schedule || !cls.schedule.days) return [];
     const sessions = [];
     const daysMap = { '일': 0, '월': 1, '화': 2, '수': 3, '목': 4, '금': 5, '토': 6 };
@@ -220,7 +246,13 @@ export const calculateClassSessions = (cls) => {
             const year = iterDate.getFullYear();
             const month = String(iterDate.getMonth() + 1).padStart(2, '0');
             const day = String(iterDate.getDate()).padStart(2, '0');
-            sessions.push({ session: sessionCount++, date: `${year}-${month}-${day}` });
+            const dateStr = `${year}-${month}-${day}`;
+            if (isClosedForClass(dateStr, cls.id, closures)) {
+                iterDate.setDate(iterDate.getDate() + 1);
+                iterations++;
+                continue;
+            }
+            sessions.push({ session: sessionCount++, date: dateStr });
         }
         iterDate.setDate(iterDate.getDate() + 1);
         iterations++;

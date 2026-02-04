@@ -20,6 +20,7 @@ export default function Sidebar({ page, setPage, onLogout, isOpen, onClose }) {
         { name: '성적 관리', key: 'grades', icon: 'barChart' },
         { name: '과제 관리', key: 'homework', icon: 'clipboardCheck' },
         { name: '클리닉 관리', key: 'clinic', icon: 'clock' },
+        { name: '휴강 관리', key: 'closures', icon: 'calendarPlus' },
         { name: '교재/수납', key: 'payment', icon: 'wallet' },
         { name: '내부 소통', key: 'communication', icon: 'messageSquare' },
     ];

@@ -1,11 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Icon, getClinicDisplayStatus, getWeekOfMonth } from '../../../utils/helpers';
+import { Icon, getClinicDisplayStatus, getWeekOfMonth, isClosedForClass } from '../../../utils/helpers';
 import ModalPortal from '../../common/ModalPortal';
 import { useParentContext } from '../../../parent';
 
 export default function ScheduleTab({
     myClasses, externalSchedules, attendanceLogs, clinicLogs, studentId, student,
-    onSaveExternalSchedule, onDeleteExternalSchedule, childClassExitMap
+    onSaveExternalSchedule, onDeleteExternalSchedule, childClassExitMap, closures
 }) {
     const { activeStudentId } = useParentContext();
     const resolvedStudentId = studentId ?? activeStudentId;
@@ -338,11 +338,13 @@ export default function ScheduleTab({
 
     const dailyClasses = useMemo(() => {
         const dayOfWeek = weekDays[selectedDate.getDay()];
+        const dateStr = formatDate(selectedDate);
         return myClasses
             .filter(cls =>
                 isClassActiveOnDate(cls, selectedDate) &&
                 resolveClassSchedule(cls).days.includes(dayOfWeek) &&
-                !isClassRetiredOnDate(cls.id, selectedDate)
+                !isClassRetiredOnDate(cls.id, selectedDate) &&
+                !isClosedForClass(dateStr, cls.id, closures)
             )
             .map(cls => {
                 const { time } = resolveClassSchedule(cls);
@@ -355,7 +357,7 @@ export default function ScheduleTab({
                     scheduleId: cls.id,
                 };
             });
-    }, [myClasses, selectedDate, childClassExitMap, student]);
+    }, [myClasses, selectedDate, childClassExitMap, student, closures]);
 
     useEffect(() => {
         console.log('[parent] childClassExitMap=', childClassExitMap);
@@ -372,7 +374,8 @@ export default function ScheduleTab({
         const dayClasses = myClasses.filter(cls =>
             isClassActiveOnDate(cls, date) &&
             resolveClassSchedule(cls).days.includes(dayOfWeek) &&
-            !isClassRetiredOnDate(cls.id, date)
+            !isClassRetiredOnDate(cls.id, date) &&
+            !isClosedForClass(dateStr, cls.id, closures)
         );
 
         // ✅ 여기 수정: 로컬 날짜 파싱 + startOfDay 비교

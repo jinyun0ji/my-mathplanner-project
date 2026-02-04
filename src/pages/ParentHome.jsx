@@ -15,7 +15,7 @@ import {
 } from '../components/StudentTabs';
 import ParentClassroomView from './parent/ParentClassroomView';
 import StudentHeader from '../components/StudentHeader';
-import { Icon, calculateHomeworkStats, calculateGradeComparison, getClinicComment, getClinicDisplayStatus } from '../utils/helpers';
+import { Icon, calculateHomeworkStats, calculateGradeComparison, getClinicComment, getClinicDisplayStatus, isClosedForClass } from '../utils/helpers';
 import { formatGradeScoreText } from '../domain/grade/grade.service';
 import NotificationsIcon from '@mui/icons-material/Notifications';
 import ParentSessionReport from './parent/ParentSessionReport'; // ✅ 신규 리포트 컴포넌트
@@ -245,6 +245,7 @@ const ParentDashboard = ({
     setActiveTab,
     childClassExitMap,
     activeChildId,
+    closures,
 }) => {
     const today = new Date();
     const todayStr = today.toISOString().split('T')[0];
@@ -362,6 +363,8 @@ const ParentDashboard = ({
             const classCode = getClassCode(item);
             if (!classId) return true;
 
+            if (isClosedForClass(todayStr, classId, closures)) return false;
+
             const exit = childClassExitMap?.[classId]
                 || (classCode ? childClassExitMap?.[classCode] : null);
             if (!exit) return true;
@@ -373,7 +376,7 @@ const ParentDashboard = ({
             const exitDayMs = new Date(exit.exitAtMs).setHours(0, 0, 0, 0);
             return !shouldHideTodayItemByExit(itemDayMs, exitDayMs);
         });
-    }, [todayItems, childClassExitMap]);
+    }, [todayItems, childClassExitMap, closures, todayStr]);
 
     useEffect(() => {
         console.log('[parent][today] activeChildId=', activeChildId);
@@ -484,7 +487,8 @@ export default function ParentHome({
     userId, students, classes, homeworkAssignments, homeworkResults,
     attendanceLogs, lessonLogs, notices, tests, grades, classTestStats,
     videoProgress, clinicLogs, onLogout,
-    externalSchedules, onSaveExternalSchedule, onDeleteExternalSchedule
+    externalSchedules, onSaveExternalSchedule, onDeleteExternalSchedule,
+    closures,
 }) {
     const todayStr = useMemo(() => {
         const today = new Date();
@@ -1317,6 +1321,7 @@ export default function ParentHome({
                                             setActiveTab={setActiveTab}
                                             childClassExitMap={childClassExitMap}
                                             activeChildId={activeChildId}
+                                            closures={closures}
                                         />
                                     </div>
                                     <aside className="space-y-4">
@@ -1845,6 +1850,7 @@ export default function ParentHome({
                                 externalSchedules={externalSchedules} onSaveExternalSchedule={onSaveExternalSchedule} onDeleteExternalSchedule={onDeleteExternalSchedule}
                                 student={activeChild}
                                 childClassExitMap={childClassExitMap}
+                                closures={closures}
                             />
                         )}
 

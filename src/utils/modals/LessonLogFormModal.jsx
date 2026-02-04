@@ -5,7 +5,7 @@ import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } 
 import { CSS } from '@dnd-kit/utilities';
 import { getDownloadURL, ref, uploadBytesResumable } from 'firebase/storage';
 import { Modal } from '../../components/common/Modal';
-import { Icon, calculateClassSessions } from '../../utils/helpers';
+import { Icon } from '../../utils/helpers';
 import StaffNotificationFields from '../../components/Shared/StaffNotificationFields';
 import { auth, storage } from '../../firebase/client';
 
@@ -110,7 +110,19 @@ const normalizeLessonKey = (value) => {
 const normalizeStorageSegment = (value) =>
   String(value || '').trim().replace(/\s+/g, '_');
 
-export const LessonLogFormModal = ({ isOpen, onClose, onSave, classId, classes, defaultDate = null, students, logNotification, onDirtyChange = () => {}, lessonLogs = [] }) => {
+export const LessonLogFormModal = ({
+  isOpen,
+  onClose,
+  onSave,
+  classId,
+  classes,
+  calculateClassSessions,
+  defaultDate = null,
+  students,
+  logNotification,
+  onDirtyChange = () => {},
+  lessonLogs = [],
+}) => {
   const selectedClass = classes.find(c => String(c.id) === String(classId));
   
   const sessions = useMemo(() => selectedClass ? calculateClassSessions(selectedClass) : [], [selectedClass, calculateClassSessions]);

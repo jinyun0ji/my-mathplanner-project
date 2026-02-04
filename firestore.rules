@@ -249,6 +249,11 @@ service cloud.firestore {
         ));
       allow write: if isAdminOrStaff();
     }
+    
+    match /closures/{closureId} {
+      allow read: if signedIn();
+      allow write: if isStaffOrAdminOrTeacher();
+    }
 
     /* =========================
        tests / lessonLogs / homeworkAssignments 등
