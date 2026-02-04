@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { Modal } from './Modal';
 import { Icon, formatGradeLabel } from '../../utils/helpers';
 
-export const AttendanceModal = ({ isOpen, onClose, studentsData, initialAttendance, onSave }) => {
+export const AttendanceModal = ({ isOpen, onClose, studentsData, initialAttendance, onSave, isReadOnly = false }) => {
     const [attendance, setAttendance] = useState({});
 
     useEffect(() => {
@@ -11,6 +11,7 @@ export const AttendanceModal = ({ isOpen, onClose, studentsData, initialAttendan
     }, [initialAttendance, isOpen]);
 
     const handleStatusChange = (studentId, status) => {
+        if (isReadOnly) return;
         setAttendance(prev => {
             const currentStatus = prev[studentId]?.status;
             const nextStatus = currentStatus === status ? null : status;
@@ -23,6 +24,7 @@ export const AttendanceModal = ({ isOpen, onClose, studentsData, initialAttendan
     
     const handleSubmit = (e) => {
         e.preventDefault();
+        if (isReadOnly) return;
         // ✅ [수정] status가 null인(미입력) 항목은 저장하지 않고 필터링
         const validRecords = Object.values(attendance).filter(record => record.status);
         onSave(validRecords);
@@ -34,6 +36,11 @@ export const AttendanceModal = ({ isOpen, onClose, studentsData, initialAttendan
     return (
         <Modal isOpen={isOpen} onClose={onClose} title="출결 현황 기록" maxWidth="max-w-3xl">
             <form onSubmit={handleSubmit} className="space-y-4">
+                {isReadOnly && (
+                    <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+                        휴강일에는 출결을 수정/저장할 수 없습니다.
+                    </div>
+                )}
                 <div className="max-h-[60vh] overflow-y-auto">
                     <table className="min-w-full divide-y divide-gray-200">
                         <thead className="bg-gray-50 sticky top-0">
@@ -55,11 +62,12 @@ export const AttendanceModal = ({ isOpen, onClose, studentsData, initialAttendan
                                                     type="button"
                                                     key={status}
                                                     onClick={() => handleStatusChange(student.id, status)}
+                                                    disabled={isReadOnly}
                                                     className={`px-3 py-1 rounded-full border transition duration-150 min-w-[72px] ${
                                                         attendance[student.id]?.status === status
                                                             ? 'bg-blue-600 text-white border-blue-700 shadow-md'
                                                             : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-100'
-                                                    }`}
+                                                    } ${isReadOnly ? 'cursor-not-allowed opacity-60 hover:bg-white' : ''}`}
                                                 >
                                                     {status}
                                                 </button>
@@ -77,7 +85,15 @@ export const AttendanceModal = ({ isOpen, onClose, studentsData, initialAttendan
                         <Icon name="info" className="w-4 h-4 mr-1 text-blue-500"/>
                         미기록 학생은 자동으로 '결석' 처리되지 않습니다.
                     </p>
-                    <button type="submit" className="px-6 py-2 text-sm font-medium rounded-lg text-white bg-blue-600 hover:bg-blue-700 transition duration-150 shadow-md">
+                    <button
+                        type="submit"
+                        disabled={isReadOnly}
+                        className={`px-6 py-2 text-sm font-medium rounded-lg transition duration-150 shadow-md ${
+                            isReadOnly
+                                ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                                : 'text-white bg-blue-600 hover:bg-blue-700'
+                        }`}
+                    >
                         출결 기록 저장
                     </button>
                 </div>

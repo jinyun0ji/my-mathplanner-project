@@ -6,7 +6,7 @@ const RESULT_OPTIONS_HOMEWORK = {
     '고침': 'text-blue-600 bg-blue-100' 
 };
 
-export default function HomeworkGradingTable({ summary, assignment, handleUpdateResult }) {
+export default function HomeworkGradingTable({ summary, assignment, handleUpdateResult, isReadOnly = false }) {
     
     // 셀 포커스 이동을 위한 Refs 저장소
     const cellRefs = useRef({});
@@ -113,7 +113,7 @@ export default function HomeworkGradingTable({ summary, assignment, handleUpdate
     };
 
     return (
-        <div className="bg-white p-6 rounded-xl shadow-md overflow-x-auto">
+        <div className={`bg-white p-6 rounded-xl shadow-md overflow-x-auto ${isReadOnly ? 'opacity-75' : ''}`}>
             <h4 className="text-lg font-bold mb-4 border-b pb-2">과제 채점 현황 (키보드 1, 2, 3 입력 및 방향키 이동 가능)</h4>
             <div className='max-h-[60vh] overflow-y-auto'>
                 <table className="min-w-full divide-y divide-gray-200 text-xs table-fixed">
@@ -143,11 +143,17 @@ export default function HomeworkGradingTable({ summary, assignment, handleUpdate
                                             tabIndex={0}
                                             ref={el => cellRefs.current[`${s.studentId}-${q}`] = el}
                                             onClick={(e) => {
+                                                if (isReadOnly) return;
                                                 handleCellClick(s.studentId, q); 
                                                 e.currentTarget.focus(); 
                                             }}
-                                            onKeyDown={(e) => handleKeyDown(e, s.studentId, q, sIndex, qIndex)}
-                                            className={`w-8 p-1 text-center cursor-pointer transition duration-100 ${statusClass} border-l focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:z-20`}
+                                            onKeyDown={(e) => {
+                                                if (isReadOnly) return;
+                                                handleKeyDown(e, s.studentId, q, sIndex, qIndex);
+                                            }}
+                                            className={`w-8 p-1 text-center transition duration-100 ${statusClass} border-l focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:z-20 ${
+                                                isReadOnly ? 'cursor-not-allowed' : 'cursor-pointer'
+                                            }`}
                                         >
                                             {status ? status[0] : '-'}
                                         </td>

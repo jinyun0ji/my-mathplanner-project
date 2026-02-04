@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Icon, formatGradeLabel, isClosedForClass } from '../utils/helpers';
+import { Icon, formatGradeLabel } from '../utils/helpers';
+import { isClosedForClassOn } from '../utils/closures';
 import ClassSelectionPanel from '../components/Shared/ClassSelectionPanel'; 
 import { AttendanceModal } from '../components/common/AttendanceModal'; 
 import { MemoModal } from '../utils/modals/MemoModal'; 
@@ -34,7 +35,7 @@ export default function AttendanceManagement({
     const isSelectedDateClosed = useMemo(
         () => (
             selectedClassId && selectedDate
-                ? isClosedForClass(selectedDate, selectedClassId, closures)
+                ? isClosedForClassOn(closures, selectedClassId, selectedDate)
                 : false
         ),
         [closures, selectedClassId, selectedDate]
@@ -166,7 +167,7 @@ export default function AttendanceManagement({
     };
 
     const handleAttendanceSave = (records) => {
-        if (selectedClassId && selectedDate && isClosedForClass(selectedDate, selectedClassId, closures)) {
+        if (selectedClassId && selectedDate && isClosedForClassOn(closures, selectedClassId, selectedDate)) {
             alert('휴강일에는 출결을 입력할 수 없습니다.');
             return;
         }
@@ -201,6 +202,11 @@ export default function AttendanceManagement({
                         <div className="flex items-center gap-2 text-xs text-gray-600">
                             <Icon name="clock" className="w-4 h-4 text-indigo-800" />
                             <span className="font-semibold text-gray-700">{selectedDate || '날짜 선택'}</span>
+                            {isSelectedDateClosed && (
+                                <span className="rounded-full bg-red-100 text-red-700 px-2 py-0.5 text-[11px] font-semibold">
+                                    휴강
+                                </span>
+                            )}
                         </div>
                         <div className="flex flex-wrap gap-2 text-xs">
                             {[
@@ -397,6 +403,7 @@ export default function AttendanceManagement({
                         studentsData={rosterForAttendance}
                         initialAttendance={initialAttendanceForModal}
                         onSave={handleAttendanceSave}
+                        isReadOnly={isSelectedDateClosed}
                     />
                     <MemoModal
                         isOpen={memoModalState.isOpen}

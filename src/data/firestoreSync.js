@@ -237,6 +237,66 @@ export const loadStaffDataOnce = async ({
         return all;
     };
 
+    let staffClasses = [];
+
+    const fetchClosuresForStaff = async (classes = []) => {
+        const merged = new Map();
+
+        try {
+            const globalSnap = await getDocs(
+                query(
+                    collection(db, 'closures'),
+                    where('scope', '==', 'global'),
+                    orderBy('startDate', 'desc'),
+                    limit(500),
+                ),
+            );
+            globalSnap.docs.forEach((d) => merged.set(d.id, { id: d.id, ...d.data() }));
+        } catch (e) {
+            console.warn('[staff] closures global load failed', e);
+        }
+
+        const classIds = Array.isArray(classes)
+            ? classes.map((c) => String(c?.id)).filter(Boolean)
+            : [];
+
+        if (classIds.length > 0) {
+            const chunks = chunkArray(classIds, 10);
+            for (const ch of chunks) {
+                try {
+                    const snap = await getDocs(
+                        query(
+                            collection(db, 'closures'),
+                            where('scope', '==', 'class'),
+                            where('classId', 'in', ch),
+                            orderBy('startDate', 'desc'),
+                            limit(500),
+                        ),
+                    );
+                    snap.docs.forEach((d) => merged.set(d.id, { id: d.id, ...d.data() }));
+                } catch (e) {
+                    try {
+                        const snap2 = await getDocs(
+                            query(
+                                collection(db, 'closures'),
+                                where('scope', '==', 'class'),
+                                where('classId', 'in', ch),
+                                limit(500),
+                            ),
+                        );
+                        snap2.docs.forEach((d) => merged.set(d.id, { id: d.id, ...d.data() }));
+                    } catch (e2) {
+                        console.warn('[staff] closures class load failed', e2);
+                    }
+                }
+            }
+        }
+
+        return Array.from(merged.values()).sort((a, b) =>
+            String(b?.startDate || '').localeCompare(String(a?.startDate || '')),
+        );
+    };
+
     try {
         if (setStudents) {
             await fetchList(
@@ -274,7 +334,13 @@ export const loadStaffDataOnce = async ({
         }
 
         if (setClasses) {
-            await fetchList(db, 'classes', setClasses, query(collection(db, 'classes'), orderBy('name')), () => false);
+            staffClasses = await fetchList(
+                db,
+                'classes',
+                setClasses,
+                query(collection(db, 'classes'), orderBy('name')),
+                () => false,
+            );
         }
 
         if (setTests && (shouldLoad('grades') || shouldLoad('lessons'))) {
@@ -377,14 +443,9 @@ export const loadStaffDataOnce = async ({
             );
         }
 
-        if (setClosures && shouldLoad('schedule')) {
-            await fetchList(
-                db,
-                'closures',
-                setClosures,
-                query(collection(db, 'closures'), orderBy('startDate', 'desc'), limit(300)),
-                () => false,
-            );
+        if (setClosures) {
+            const closures = await fetchClosuresForStaff(staffClasses);
+            setClosures(closures);
         }
 
     } catch (error) {
