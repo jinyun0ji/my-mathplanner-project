@@ -9,6 +9,24 @@ import { getDefaultClassId } from '../utils/classStatus';
 import { useClassStudents } from '../utils/useClassStudents';
 import { filterRosterByWithdrawDate } from '../utils/rosterFilter';
 
+const isSameStudent = (result, student) => {
+    if (!result || !student) return false;
+
+    const resultStudentIds = [
+        result.studentId,
+        result.studentDocId,
+        result.studentUid,
+        result.authUid,
+    ].filter(Boolean).map(String);
+
+    const studentIds = [
+        student.id,
+        student.authUid,
+    ].filter(Boolean).map(String);
+
+    return resultStudentIds.some(rid => studentIds.includes(rid));
+};
+
 export default function HomeworkManagement({
     classes, homeworkAssignments, homeworkResults,
     handleSaveHomeworkAssignment, handleDeleteHomeworkAssignment,
@@ -49,6 +67,36 @@ export default function HomeworkManagement({
         return filterRosterByWithdrawDate(classStudents, selectedClassId, targetDate);
     }, [classStudents, selectedAssignment, selectedClassId, checkedDate]);
 
+    const normalizedHomeworkResults = useMemo(() => {
+        if (!homeworkResults) return {};
+
+        const entries = Object.entries(homeworkResults);
+        const normalized = {};
+
+        rosterForHomework.forEach((student) => {
+            const matches = entries.filter(([key, value]) => {
+                if (isSameStudent({ studentId: key }, student)) return true;
+                if (value && typeof value === 'object') {
+                    const sample = Object.values(value).find(Boolean);
+                    return isSameStudent(sample, student);
+                }
+                return false;
+            });
+
+            if (matches.length > 0) {
+                normalized[student.id] = matches[0][1];
+            }
+
+            console.log(
+                '[HW][match]',
+                student.name,
+                matches.map(([, value]) => value)
+            );
+        });
+
+        return normalized;
+    }, [homeworkResults, rosterForHomework]);
+
     useEffect(() => {
         if (!selectedAssignmentId) {
             setCheckedDate(new Date().toISOString().slice(0, 10));
@@ -76,11 +124,15 @@ export default function HomeworkManagement({
 
     const assignmentSummary = useMemo(() => {
         const assignedIds = resolveAssignmentStudentIds(selectedAssignment);
-        const assignedStudents = assignedIds.length > 0
-            ? rosterForHomework.filter(student => assignedIds.map(String).includes(String(student.id)))
+        const assignedSet = new Set((resolveAssignmentStudentIds(selectedAssignment) || []).map(String));
+
+        const assignedStudents = assignedSet.size > 0
+            ? rosterForHomework.filter(student =>
+                assignedSet.has(String(student.id)) || assignedSet.has(String(student.authUid))
+                )
             : rosterForHomework;
-        return buildAssignmentSummary(selectedAssignment, assignedStudents, homeworkResults, localChanges);
-    }, [selectedAssignment, rosterForHomework, homeworkResults, localChanges]);
+        return buildAssignmentSummary(selectedAssignment, assignedStudents, normalizedHomeworkResults, localChanges);
+    }, [selectedAssignment, rosterForHomework, normalizedHomeworkResults, localChanges]);
 
     const handleAssignmentSelect = (id) => {
         if (localChanges.length > 0) {
