@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Icon, formatGradeLabel } from '../utils/helpers';
-import { assertNotClosedOrThrow, isClosedForClassOn } from '../utils/closures';
+import { isClosedDate, normalizeDateToYMD } from '../utils/closures';
 import ClassSelectionPanel from '../components/Shared/ClassSelectionPanel'; 
 import { AttendanceModal } from '../components/common/AttendanceModal'; 
 import { MemoModal } from '../utils/modals/MemoModal'; 
@@ -35,7 +35,7 @@ export default function AttendanceManagement({
     const isSelectedDateClosed = useMemo(
         () => (
             selectedClassId && selectedDate
-                ? isClosedForClassOn(closures, selectedClassId, selectedDate)
+                ? isClosedDate({ date: normalizeDateToYMD(selectedDate), classId: selectedClassId, closures })
                 : false
         ),
         [closures, selectedClassId, selectedDate]
@@ -118,44 +118,52 @@ export default function AttendanceManagement({
         }));
     }, [selectedClass, calculateClassSessions]);
 
-    const currentSessionIndex = useMemo(
-        () => sessionDates.findIndex(s => s.dateKey === selectedDate),
-        [sessionDates, selectedDate]
-    );
-    const hasPrevSession = currentSessionIndex > 0;
-    const hasNextSession = currentSessionIndex > -1 && currentSessionIndex < sessionDates.length - 1;
+    const attendanceDateSet = useMemo(() => {
+        const set = new Set();
+        if (!selectedClassId) return set;
+        (attendanceLogs || []).forEach((log) => {
+            if (String(log.classId) !== String(selectedClassId)) return;
+            const dateKey = toDateKey(log.date || log.lessonDate || log.dateKey);
+            if (dateKey) set.add(dateKey);
+        });
+        return set;
+    }, [attendanceLogs, selectedClassId]);
+
+    const availableSessions = useMemo(() => {
+        if (!selectedClass) return [];
+        return sessionDates.filter((session) => {
+            const dateKey = toDateKey(session.date || session.sessionDate || session.day);
+            if (!dateKey) return false;
+            if (!selectedClassId) return true;
+            const isClosed = isClosedDate({
+                date: normalizeDateToYMD(dateKey),
+                classId: selectedClassId,
+                closures,
+            });
+            if (!isClosed) return true;
+            return attendanceDateSet.has(dateKey);
+        });
+    }, [attendanceDateSet, closures, selectedClass, selectedClassId, sessionDates]);
 
     useEffect(() => {
         if (selectedClassId) {
             const today = new Date().toISOString().slice(0, 10);
             
-            const pastAndCurrentSessions = sessionDates.filter(s => s.dateKey <= today);
-            const isSelectedDateValid = sessionDates.some(s => s.dateKey === selectedDate);
+            const pastAndCurrentSessions = availableSessions.filter(s => s.dateKey <= today);
+            const isSelectedDateValid = availableSessions.some(s => s.dateKey === selectedDate);
             
             if (!isSelectedDateValid && pastAndCurrentSessions.length > 0) {
                 const mostRecentDate = pastAndCurrentSessions[pastAndCurrentSessions.length - 1].dateKey;
                 setSelectedDate(mostRecentDate);
-            } else if (!isSelectedDateValid && sessionDates.length > 0) {
-                 setSelectedDate(sessionDates[0].dateKey);
+            } else if (!isSelectedDateValid && availableSessions.length > 0) {
+                 setSelectedDate(availableSessions[0].dateKey);
             }
         }
-    }, [selectedClassId, sessionDates, selectedDate]);
+    }, [availableSessions, selectedClassId, selectedDate]);
 
     useEffect(() => {
         if (!selectedClassId) setMobileView('class');
     }, [selectedClassId]);
-
-
-    const handleDateNavigate = (direction) => {
-        const currentIndex = sessionDates.findIndex(s => s.dateKey === selectedDate);
-        if (currentIndex === -1) return;
-
-        const newIndex = currentIndex + direction;
-        
-        if (newIndex >= 0 && newIndex < sessionDates.length) {
-            setSelectedDate(sessionDates[newIndex].dateKey);
-        }
-    };
 
     const openMemoModal = (student) => {
         setMemoModalState({
@@ -167,18 +175,6 @@ export default function AttendanceManagement({
     };
 
     const handleAttendanceSave = (records) => {
-        if (selectedClassId && selectedDate) {
-            const closureCheck = assertNotClosedOrThrow({
-                date: selectedDate,
-                classId: selectedClassId,
-                closures,
-                label: '출결 날짜',
-            });
-            if (!closureCheck.ok) {
-                alert(closureCheck.message || '휴강 기간에는 해당 날짜로 출결을 등록할 수 없습니다.');
-                return;
-            }
-        }
         handleSaveAttendance(records);
     };
 
@@ -233,19 +229,11 @@ export default function AttendanceManagement({
                     <div className="flex flex-wrap gap-2 justify-end">
                         <button
                             onClick={() => setIsAttendanceModalOpen(true)}
-                            disabled={isSelectedDateClosed}
-                            className={`inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg shadow-md transition ${
-                                isSelectedDateClosed
-                                    ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                                    : 'text-white bg-indigo-900 hover:bg-indigo-800'
-                            }`}
+                            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg shadow-md transition text-white bg-indigo-900 hover:bg-indigo-800"
                         >
                             <Icon name="checkSquare" className="w-5 h-5" />
                             출결 입력
                         </button>
-                        {isSelectedDateClosed && (
-                            <span className="text-xs text-red-500 font-semibold">휴강일에는 출결 입력이 불가합니다.</span>
-                        )}
                     </div>
                 </div>
             </div>
@@ -261,7 +249,33 @@ export default function AttendanceManagement({
                         showSessions={true}
                         selectedDate={selectedDate}
                         showEditButton={true}
-                        customPanelContent={null} 
+                        customPanelContent={(
+                            <ul className="space-y-1 max-h-48 overflow-y-auto pr-2 text-sm">
+                                {availableSessions.length === 0 ? (
+                                    <li className="text-xs text-gray-500 py-2">
+                                        선택 가능한 수업 회차가 없습니다(휴강 기간).
+                                    </li>
+                                ) : (
+                                    [...availableSessions].reverse().map(session => {
+                                        const isSelected = session.dateKey === selectedDate;
+                                        return (
+                                            <li 
+                                                key={session.dateKey} 
+                                                onClick={() => setSelectedDate(session.dateKey)}
+                                                className={`p-2 rounded-lg transition ${
+                                                    isSelected 
+                                                        ? 'bg-blue-100 font-bold text-blue-700' 
+                                                        : 'text-gray-600 hover:bg-gray-50'
+                                                } cursor-pointer`}
+                                            >
+                                                <span className="font-mono text-xs mr-2">{session.dateKey}</span>
+                                                {session.session}회차
+                                            </li>
+                                        );
+                                    })
+                                )}
+                            </ul>
+                        )} 
                         customPanelTitle="수업 날짜 선택"
                         onDateSelect={(date) => setSelectedDate(toDateKey(date))} 
                     />
@@ -411,7 +425,6 @@ export default function AttendanceManagement({
                         studentsData={rosterForAttendance}
                         initialAttendance={initialAttendanceForModal}
                         onSave={handleAttendanceSave}
-                        isReadOnly={isSelectedDateClosed}
                     />
                     <MemoModal
                         isOpen={memoModalState.isOpen}

@@ -1,7 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { collection, query, where, getDocs, limit } from 'firebase/firestore';
 import { Icon, getLastCheckedDate } from '../utils/helpers';
-import { isClosedForClassOn, toDateStr } from '../utils/closures';
 import ClassSelectionPanel from '../components/Shared/ClassSelectionPanel';
 import HomeworkGradingTable from '../components/Homework/HomeworkGradingTable';
 import HomeworkStatisticsPanel from '../components/Homework/HomeworkStatisticsPanel';
@@ -35,7 +34,6 @@ export default function HomeworkManagement({
     handleSaveHomeworkAssignment, handleDeleteHomeworkAssignment,
     handleUpdateHomeworkResult, handleSaveClass, calculateClassSessions,
     setIsGlobalDirty,
-    closures = [],
 }) {
     const [selectedClassId, setSelectedClassId] = useState(() => getDefaultClassId(classes));
     const [isAssignmentModalOpen, setIsAssignmentModalOpen] = useState(false);
@@ -46,14 +44,6 @@ export default function HomeworkManagement({
     const [isLoadingScopedResults, setIsLoadingScopedResults] = useState(false);
     
     const [checkedDate, setCheckedDate] = useState(() => new Date().toISOString().slice(0, 10));
-    const isCheckedDateClosed = useMemo(
-        () => (
-            selectedClassId && checkedDate
-                ? isClosedForClassOn(closures, selectedClassId, checkedDate)
-                : false
-        ),
-        [closures, selectedClassId, checkedDate]
-    );
 
     // 로컬 변경 사항 관리
     const [localChanges, setLocalChanges] = useState([]); 
@@ -308,20 +298,7 @@ export default function HomeworkManagement({
         setIsAssignmentModalOpen(true);
     };
 
-    const assignmentDateKey = toDateStr(selectedAssignment?.assignedDate || selectedAssignment?.date);
-    const isAssignmentDateClosed = useMemo(
-        () => (
-            selectedClassId && assignmentDateKey
-                ? isClosedForClassOn(closures, selectedClassId, assignmentDateKey)
-                : false
-        ),
-        [closures, selectedClassId, assignmentDateKey]
-    );
-
-    const isHomeworkInputLocked = isCheckedDateClosed || isAssignmentDateClosed;
-
     const handleUpdateResultLocal = (studentId, qNum, status) => {
-        if (isHomeworkInputLocked) return;
         if (!selectedAssignmentId) return;
         
         setLocalChanges(prev => {
@@ -334,10 +311,6 @@ export default function HomeworkManagement({
 
     const handleSaveChanges = () => {
         if (localChanges.length === 0) return;
-        if (selectedClassId && checkedDate && isHomeworkInputLocked) {
-            alert('휴강일에는 과제 채점을 저장할 수 없습니다.');
-            return;
-        }
         handleUpdateHomeworkResult(localChanges, checkedDate);
         setLocalChanges([]);
         setIsGlobalDirty(false);
@@ -367,11 +340,6 @@ export default function HomeworkManagement({
                         <span>{selectedAssignment?.book || '과제 미선택'}</span>
                         <span className="text-gray-400">|</span>
                         <span>{selectedAssignment?.assignedDate || selectedAssignment?.date || '날짜 없음'}</span>
-                        {isAssignmentDateClosed && (
-                            <span className="rounded-full bg-red-100 text-red-700 px-2 py-0.5 text-[11px] font-semibold">
-                                휴강
-                            </span>
-                        )}
                         {localChanges.length > 0 && (
                             <span className="ml-1 text-[11px] bg-red-100 text-red-600 px-2 py-0.5 rounded-full">저장되지 않음</span>
                         )}
@@ -397,9 +365,9 @@ export default function HomeworkManagement({
                     </label>
                     <button
                         onClick={handleSaveChanges}
-                        disabled={localChanges.length === 0 || isHomeworkInputLocked}
+                        disabled={localChanges.length === 0}
                         className={`inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-indigo-900 hover:bg-indigo-800 rounded-lg shadow-md transition ${
-                            localChanges.length > 0 && !isHomeworkInputLocked
+                            localChanges.length > 0
                                 ? 'bg-indigo-900 text-white hover:bg-indigo-800'
                                 : 'bg-gray-200 text-gray-400 cursor-not-allowed'
                         }`}
@@ -407,9 +375,6 @@ export default function HomeworkManagement({
                         <Icon name="checkSquare" className="w-5 h-5" />
                         채점 저장 ({localChanges.length})
                     </button>
-                    {isHomeworkInputLocked && (
-                        <span className="text-xs text-red-500 font-semibold">휴강일에는 채점 저장이 불가합니다.</span>
-                    )}
                 </div>
             </div>
 
@@ -469,23 +434,13 @@ export default function HomeworkManagement({
                                     <div className='flex flex-wrap gap-2 items-center lg:justify-end'>
                                         <button
                                             onClick={() => handleEditAssignment(selectedAssignment)}
-                                            disabled={isAssignmentDateClosed}
-                                            className={`text-gray-500 p-1 rounded-full transition-colors ${
-                                                isAssignmentDateClosed
-                                                    ? 'cursor-not-allowed opacity-50'
-                                                    : 'hover:text-indigo-900 hover:bg-indigo-50'
-                                            }`}
+                                            className="text-gray-500 p-1 rounded-full transition-colors hover:text-indigo-900 hover:bg-indigo-50"
                                         >
                                             <Icon name="edit" className="w-5 h-5" />
                                         </button>
                                         <button
                                             onClick={() => { if(window.confirm('정말 이 과제 기록을 삭제하시겠습니까?')) handleDeleteHomeworkAssignment(selectedAssignment.id); }}
-                                            disabled={isAssignmentDateClosed}
-                                            className={`text-gray-500 p-1 rounded-full transition-colors ${
-                                                isAssignmentDateClosed
-                                                    ? 'cursor-not-allowed opacity-50'
-                                                    : 'hover:text-red-600 hover:bg-red-50'
-                                            }`}
+                                            className="text-gray-500 p-1 rounded-full transition-colors hover:text-red-600 hover:bg-red-50"
                                         >
                                             <Icon name="trash" className="w-5 h-5" />
                                         </button>
@@ -537,7 +492,7 @@ export default function HomeworkManagement({
                                 summary={assignmentSummary}
                                 assignment={selectedAssignment}
                                 handleUpdateResult={handleUpdateResultLocal}
-                                isReadOnly={isHomeworkInputLocked}
+                                isReadOnly={false}
                             />
 
                             <HomeworkStatisticsPanel
@@ -557,7 +512,6 @@ export default function HomeworkManagement({
                 assignment={assignmentToEdit}
                 students={classStudents}
                 selectedClass={selectedClass}
-                closures={closures}
             />
         </div>
     );

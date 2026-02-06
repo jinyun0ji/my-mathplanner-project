@@ -6,7 +6,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { getDownloadURL, ref, uploadBytesResumable } from 'firebase/storage';
 import { Modal } from '../../components/common/Modal';
 import { Icon } from '../../utils/helpers';
-import { assertNotClosedOrThrow, isClosedDate } from '../../utils/closures';
+import { isClosedDate, normalizeDateToYMD } from '../../utils/closures';
 import StaffNotificationFields from '../../components/Shared/StaffNotificationFields';
 import { auth, storage } from '../../firebase/client';
 
@@ -319,13 +319,6 @@ export const LessonLogFormModal = ({
     };
   }, [createAttachmentEntry, normalizeVideosFromLog]);
 
-  const initialLessonKey = useMemo(() => {
-    const normalizedDefault = normalizeLessonKey(defaultDate);
-    if (normalizedDefault) return normalizedDefault;
-    const fallback = sessions.length > 0 ? normalizeLessonKey(sessions[sessions.length - 1].date) : '';
-    return fallback;
-  }, [defaultDate, sessions]);
-
   const logsByKey = useMemo(() => {
     const map = new Map();
     (lessonLogs || []).forEach((record) => {
@@ -337,6 +330,32 @@ export const LessonLogFormModal = ({
     });
     return map;
   }, [classId, lessonLogs]);
+
+  const filteredSessions = useMemo(() => {
+    if (!selectedClass) return [];
+    return sessions.filter((session) => {
+      const sessionDate = normalizeDateToYMD(session.date || session.sessionDate || session.day);
+      if (!sessionDate) return false;
+      if (!classId) return true;
+      const isClosed = isClosedDate({ date: sessionDate, classId, closures });
+      if (!isClosed) return true;
+      return logsByKey.has(normalizeLessonKey(sessionDate));
+    });
+  }, [classId, closures, logsByKey, selectedClass, sessions]);
+
+  const initialLessonKey = useMemo(() => {
+    const normalizedDefault = normalizeLessonKey(defaultDate);
+    if (normalizedDefault) {
+      const isAvailable = filteredSessions.some(
+        (session) => normalizeLessonKey(session.date) === normalizedDefault
+      );
+      if (isAvailable) return normalizedDefault;
+    }
+    const fallback = filteredSessions.length > 0
+      ? normalizeLessonKey(filteredSessions[filteredSessions.length - 1].date)
+      : '';
+    return fallback;
+  }, [defaultDate, filteredSessions]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -498,16 +517,6 @@ export const LessonLogFormModal = ({
     e.preventDefault();
     const lessonDate = selectedLessonKey || formState.date;
     if (!classId || !lessonDate || !formState.progress) return;
-    const closureCheck = assertNotClosedOrThrow({
-      date: lessonDate,
-      classId,
-      closures,
-      label: '수업일지 날짜',
-    });
-    if (!closureCheck.ok) {
-      alert(closureCheck.message || '휴강 기간에는 해당 날짜로 수업일지를 등록할 수 없습니다.');
-      return;
-    }
 
     if (formState.staffNotifyMode !== 'none') {
       if (!formState.staffNotifyTitle.trim() || !formState.staffNotifyBody.trim()) {
@@ -636,20 +645,26 @@ export const LessonLogFormModal = ({
                     <select 
                         value={selectedLessonKey} 
                         onChange={e => setSelectedLessonKey(e.target.value)}
-                        required 
+                        required
+                        disabled={filteredSessions.length === 0}
                         className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border"
                     >
-                        {sessions.map(s => {
-                            const isClosed = classId
-                              ? isClosedDate({ date: s.date, classId, closures })
-                              : false;
-                            return (
-                                <option key={s.date} value={s.date} disabled={isClosed}>
-                                    {s.date} ({s.session}회차){isClosed ? ' - 휴강' : ''}
-                                </option>
-                            );
-                        })}
+                        {filteredSessions.length === 0 && (
+                            <option value="" disabled>
+                                선택 가능한 수업 회차가 없습니다(휴강 기간).
+                            </option>
+                        )}
+                        {filteredSessions.map(s => (
+                            <option key={s.date} value={s.date}>
+                                {s.date} ({s.session}회차)
+                            </option>
+                        ))}
                     </select>
+                    {filteredSessions.length === 0 && (
+                      <p className="mt-1 text-xs text-gray-500">
+                        선택 가능한 수업 회차가 없습니다(휴강 기간).
+                      </p>
+                    )}
                 </div>
                 <div>
                     <label className="block text-sm font-medium text-gray-700">알림 예약 시간 (선택)</label>

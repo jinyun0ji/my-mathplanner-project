@@ -3,9 +3,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Modal } from '../../components/common/Modal';
 import StaffNotificationFields from '../../components/Shared/StaffNotificationFields';
 import { filterRosterByWithdrawDate } from '../rosterFilter';
-import { assertNotClosedOrThrow } from '../closures';
 
-export const HomeworkAssignmentModal = ({ isOpen, onClose, onSave, classId, assignment = null, students, selectedClass, closures = [] }) => {
+export const HomeworkAssignmentModal = ({ isOpen, onClose, onSave, classId, assignment = null, students, selectedClass }) => {
   const classStudents = useMemo(() => {
     if (!classId) return [];
     return students.filter((student) => {
@@ -149,16 +148,6 @@ export const HomeworkAssignmentModal = ({ isOpen, onClose, onSave, classId, assi
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!classId || !assignedDate || !content || totalQuestions <= 0) return;
-    const closureCheck = assertNotClosedOrThrow({
-      date: assignedDate,
-      classId,
-      closures,
-      label: '과제 날짜',
-    });
-    if (!closureCheck.ok) {
-      alert(closureCheck.message || '휴강 기간에는 해당 날짜로 과제를 등록할 수 없습니다.');
-      return;
-    }
     if (assignedStudentIds.length === 0) {
       alert('과제를 배정할 학생을 최소 1명 선택해주세요.');
       return;

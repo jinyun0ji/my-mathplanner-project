@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { Icon, isClosedForClass } from '../utils/helpers';
+import { Icon } from '../utils/helpers';
 import ClassSelectionPanel from '../components/Shared/ClassSelectionPanel';
 import FullGradeTable from '../components/Grade/FullGradeTable';
 import TestResultTable from '../components/Grade/TestResultTable';
@@ -93,11 +93,6 @@ export default function GradeManagement({
 
     const handleOpenGradeInput = () => {
         if (selectedTestId) {
-            const isClosed = isClosedForClass(selectedTest?.date, selectedClassId || selectedTest?.classId, closures);
-            if (isClosed) {
-                alert('휴강일에는 성적 입력을 할 수 없습니다.');
-                return;
-            }
             setIsGradeInputModalOpen(true);
         }
     };
