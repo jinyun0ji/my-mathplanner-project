@@ -5,7 +5,8 @@ import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } 
 import { CSS } from '@dnd-kit/utilities';
 import { getDownloadURL, ref, uploadBytesResumable } from 'firebase/storage';
 import { Modal } from '../../components/common/Modal';
-import { Icon, isClosedForClass } from '../../utils/helpers';
+import { Icon } from '../../utils/helpers';
+import { assertNotClosedOrThrow, isClosedDate } from '../../utils/closures';
 import StaffNotificationFields from '../../components/Shared/StaffNotificationFields';
 import { auth, storage } from '../../firebase/client';
 
@@ -497,8 +498,14 @@ export const LessonLogFormModal = ({
     e.preventDefault();
     const lessonDate = selectedLessonKey || formState.date;
     if (!classId || !lessonDate || !formState.progress) return;
-    if (isClosedForClass(lessonDate, classId, closures)) {
-      alert('휴강일에는 수업일지를 입력할 수 없습니다.');
+    const closureCheck = assertNotClosedOrThrow({
+      date: lessonDate,
+      classId,
+      closures,
+      label: '수업일지 날짜',
+    });
+    if (!closureCheck.ok) {
+      alert(closureCheck.message || '휴강 기간에는 해당 날짜로 수업일지를 등록할 수 없습니다.');
       return;
     }
 
@@ -633,7 +640,9 @@ export const LessonLogFormModal = ({
                         className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border"
                     >
                         {sessions.map(s => {
-                            const isClosed = classId ? isClosedForClass(s.date, classId, closures) : false;
+                            const isClosed = classId
+                              ? isClosedDate({ date: s.date, classId, closures })
+                              : false;
                             return (
                                 <option key={s.date} value={s.date} disabled={isClosed}>
                                     {s.date} ({s.session}회차){isClosed ? ' - 휴강' : ''}

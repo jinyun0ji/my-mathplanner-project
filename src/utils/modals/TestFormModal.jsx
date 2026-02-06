@@ -1,7 +1,8 @@
 // src/utils/modals/TestFormModal.jsx
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Modal } from '../../components/common/Modal';
-import { Icon, isClosedForClass } from '../../utils/helpers';
+import { Icon } from '../../utils/helpers';
+import { assertNotClosedOrThrow } from '../../utils/closures';
 import StaffNotificationFields from '../../components/Shared/StaffNotificationFields';
 
 const DIFFICULTY_OPTIONS = ['하', '중', '상', '최상'];
@@ -247,9 +248,17 @@ export const TestFormModal = ({
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!name || !date || Number(maxScore) < 0 || Number(totalQuestions) <= 0) return;
-    if (classId && date && isClosedForClass(date, classId, closures)) {
-      alert('휴강일에는 시험을 등록할 수 없습니다.');
-      return;
+    if (classId && date) {
+      const closureCheck = assertNotClosedOrThrow({
+        date,
+        classId,
+        closures,
+        label: '시험 날짜',
+      });
+      if (!closureCheck.ok) {
+        alert(closureCheck.message || '휴강 기간에는 해당 날짜로 시험을 등록할 수 없습니다.');
+        return;
+      }
     }
 
     if (staffNotifyMode !== 'none') {

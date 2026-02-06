@@ -1,6 +1,7 @@
 // src/utils/helpers.js
 import React from 'react';
 import { computeHomeworkProgress, isAssignmentAssignedToStudent } from '../domain/homework/homework.service';
+import { isClosedDate, normalizeDateToYMD } from './closures';
 import { getTotalScore, isAbsentGrade } from '../domain/grade/grade.service';
 import { 
     Home, Calendar, Clipboard, BarChart2, Menu, 
@@ -203,12 +204,7 @@ export const calculateGradeComparison = (studentId, classes, tests, grades, clas
     return myGrades.sort((a, b) => new Date(b.testDate) - new Date(a.testDate));
 };
 
-export const toDateStr = (value) => {
-    if (!value) return '';
-    if (typeof value === 'string') return value.slice(0, 10);
-    if (typeof value?.toDate === 'function') return value.toDate().toISOString().slice(0, 10);
-    return new Date(value).toISOString().slice(0, 10);
-};
+export const toDateStr = (value) => normalizeDateToYMD(value);
 
 export const isDateInRange = (d, s, e) => {
     const dd = String(d);
@@ -218,15 +214,7 @@ export const isDateInRange = (d, s, e) => {
 };
 
 export const isClosedForClass = (dateStr, classId, closures = []) => {
-    return (closures || []).some((closure) => {
-        const start = toDateStr(closure.startDate);
-        const end = toDateStr(closure.endDate);
-        if (!start || !end) return false;
-        if (!isDateInRange(dateStr, start, end)) return false;
-        if (closure.scope === 'global') return true;
-        if (closure.scope === 'class' && String(closure.classId) === String(classId)) return true;
-        return false;
-    });
+    return isClosedDate({ date: dateStr, classId, closures });
 };
 
 export const calculateClassSessions = (cls, closures = []) => {

@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Icon, formatGradeLabel } from '../utils/helpers';
-import { isClosedForClassOn } from '../utils/closures';
+import { assertNotClosedOrThrow, isClosedForClassOn } from '../utils/closures';
 import ClassSelectionPanel from '../components/Shared/ClassSelectionPanel'; 
 import { AttendanceModal } from '../components/common/AttendanceModal'; 
 import { MemoModal } from '../utils/modals/MemoModal'; 
@@ -167,9 +167,17 @@ export default function AttendanceManagement({
     };
 
     const handleAttendanceSave = (records) => {
-        if (selectedClassId && selectedDate && isClosedForClassOn(closures, selectedClassId, selectedDate)) {
-            alert('휴강일에는 출결을 입력할 수 없습니다.');
-            return;
+        if (selectedClassId && selectedDate) {
+            const closureCheck = assertNotClosedOrThrow({
+                date: selectedDate,
+                classId: selectedClassId,
+                closures,
+                label: '출결 날짜',
+            });
+            if (!closureCheck.ok) {
+                alert(closureCheck.message || '휴강 기간에는 해당 날짜로 출결을 등록할 수 없습니다.');
+                return;
+            }
         }
         handleSaveAttendance(records);
     };
