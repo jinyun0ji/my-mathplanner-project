@@ -218,6 +218,10 @@ export const ClinicCommentModal = ({ isOpen, onClose, onSave, log, students, def
                         placeholder="오늘 진행한 학습 내용과 학생의 특이사항을 기록해주세요."
                         className="w-full border rounded-md p-2"
                     ></textarea>
+                    <div className="mt-2 text-xs text-gray-500 space-y-1">
+                        <p>수식 입력: \(a^2+b^2=c^2\) (인라인), $$\frac{1}{2}$$ (블록)</p>
+                        <p>줄바꿈은 그대로 저장/표시됩니다.</p>
+                    </div>
                 </div>
 
                 <div>

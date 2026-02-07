@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import MathText from '../../common/MathText';
 
 export default function ClinicReportCard({ log }) {
     const [isExpanded, setIsExpanded] = useState(false);
@@ -50,9 +51,11 @@ export default function ClinicReportCard({ log }) {
                     <h4 className="text-sm font-bold text-gray-800 mb-1">선생님 코멘트</h4>
                     {hasComment ? (
                         <div className="bg-gray-50 rounded-xl p-3.5">
-                            <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
-                                {displayComment}
-                            </p>
+                            <MathText
+                                text={displayComment}
+                                className="text-sm text-gray-700 leading-relaxed"
+                                inlineTextClassName="text-sm text-gray-700 leading-relaxed"
+                            />
                             {isLongComment && (
                                 <button 
                                     onClick={(e) => { e.stopPropagation(); setIsExpanded(!isExpanded); }}

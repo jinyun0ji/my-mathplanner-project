@@ -28,6 +28,7 @@ import { sortClassesByStatus } from '../utils/classStatus';
 import { db } from '../firebase/client';
 import { FEATURES } from '../config/features';
 import AttendanceDetailModal from './parent/AttendanceDetailModal';
+import MathText from '../components/common/MathText';
 
 const buildStudentClassStatusMap = (child) => {
     if (!child) return {};
@@ -1502,9 +1503,11 @@ export default function ParentHome({
                                                                 </button>
                                                             )}
                                                             {isOpen && (
-                                                                <div className="mt-1 text-sm text-gray-700 whitespace-pre-wrap break-words">
-                                                                    {log.commentResolved || (isNoShow ? '미참석 사유가 아직 작성되지 않았습니다.' : '코멘트가 아직 작성되지 않았습니다.')}
-                                                                </div>
+                                                                <MathText
+                                                                    text={log.commentResolved || (isNoShow ? '미참석 사유가 아직 작성되지 않았습니다.' : '코멘트가 아직 작성되지 않았습니다.')}
+                                                                    className="mt-1 text-sm text-gray-700 break-words"
+                                                                    inlineTextClassName="text-sm text-gray-700 break-words"
+                                                                />
                                                             )}
                                                         </div>
                                                         );
