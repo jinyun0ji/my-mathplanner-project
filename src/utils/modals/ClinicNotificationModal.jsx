@@ -1,6 +1,7 @@
 // src/utils/modals/ClinicNotificationModal.jsx
 import React, { useState, useEffect } from 'react';
 import { Modal } from '../../components/common/Modal';
+import MathText from '../../components/common/MathText';
 import { Icon } from '../../utils/helpers';
 
 export const ClinicNotificationModal = ({ isOpen, onClose, log, students, logNotification, onSent, notificationType }) => {
@@ -31,6 +32,8 @@ export const ClinicNotificationModal = ({ isOpen, onClose, log, students, logNot
 ${log.comment || ''}`;
     };
 
+    const messageText = getMessageText();
+
     const handleSend = () => {
         if (notificationType === 'comment' && !log.comment) {
             alert("작성된 코멘트가 없습니다. 알림을 발송할 수 없습니다.");
@@ -39,7 +42,7 @@ ${log.comment || ''}`;
         
         const actionType = scheduleTime ? 'scheduled' : 'sent';
         const scheduleText = scheduleTime ? `${scheduleTime.replace('T', ' ')}에 예약됨` : '즉시 발송됨';
-        const message = getMessageText();
+        const message = messageText;
         
         const title = notificationType === 'no-show' ? '클리닉 미참석 알림' : '클리닉 리포트 알림';
 
@@ -73,18 +76,10 @@ ${log.comment || ''}`;
                         <Icon name="bell" className="w-4 h-4 mr-2" />
                         발송될 메시지 미리보기
                     </h4>
-                    <div className="text-sm text-gray-700 whitespace-pre-wrap">
-                        {notificationType === 'no-show' ? (
-                            <>
-                                <span className="font-bold">[클리닉 알림]</span><br/>
-                                학생: {log.studentName}<br/>
-                                {/* ✅ 미참석 시 빨간색 글씨로 표시 */}
-                                <span className="text-red-600 font-bold">클리닉 미참석하였습니다.</span>
-                            </>
-                        ) : (
-                            getMessageText()
-                        )}
-                    </div>
+                    <MathText
+                        text={messageText}
+                        className="text-sm text-gray-700"
+                    />
                 </div>
 
                 <div className="text-sm text-gray-600">

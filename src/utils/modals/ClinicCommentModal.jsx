@@ -1,5 +1,7 @@
 // src/utils/modals/ClinicCommentModal.jsx
 import React, { useState, useEffect, useMemo } from 'react';
+import LatexGuide from '../../components/common/LatexGuide';
+import MathText from '../../components/common/MathText';
 import { Modal } from '../../components/common/Modal';
 import { Icon } from '../../utils/helpers';
 
@@ -14,6 +16,7 @@ export const ClinicCommentModal = ({ isOpen, onClose, onSave, log, students, def
     const [tutor, setTutor] = useState(log?.tutor || ''); 
     const [status, setStatus] = useState(log?.status || (log?.checkIn ? 'attended' : 'pending')); 
     const [isDirty, setIsDirty] = useState(false);
+    const [isCommentPreviewOpen, setIsCommentPreviewOpen] = useState(false);
 
     const currentStudent = useMemo(() => students.find(s => s.id === studentId), [studentId, students]);
     
@@ -52,7 +55,10 @@ export const ClinicCommentModal = ({ isOpen, onClose, onSave, log, students, def
             setDate(defaultDate || new Date().toISOString().slice(0, 10));
             setStatus('attended');
         }
-        if (isOpen) setIsDirty(false);
+        if (isOpen) {
+            setIsDirty(false);
+            setIsCommentPreviewOpen(false);
+        }
     }, [log, isOpen, defaultDate]);
 
     const handleChange = (setter, value) => {
@@ -221,6 +227,32 @@ export const ClinicCommentModal = ({ isOpen, onClose, onSave, log, students, def
                     <div className="mt-2 text-xs text-gray-500 space-y-1">
                         <p>수식 입력: \(a^2+b^2=c^2\) (인라인), $$\frac{1}{2}$$ (블록)</p>
                         <p>줄바꿈은 그대로 저장/표시됩니다.</p>
+                    </div>
+                    <LatexGuide className="mt-2" />
+                    <div className="mt-3">
+                        <button
+                            type="button"
+                            onClick={() => setIsCommentPreviewOpen((prev) => !prev)}
+                            className="text-xs font-semibold text-indigo-700 hover:text-indigo-900 inline-flex items-center gap-2"
+                        >
+                            <span>
+                                {isCommentPreviewOpen ? '▼' : '▶'} 코멘트 미리보기
+                            </span>
+                        </button>
+                        {isCommentPreviewOpen && (
+                            <div className="mt-2 rounded-xl border border-gray-200 bg-gray-50 p-3">
+                                {comment?.trim() ? (
+                                    <MathText
+                                        text={comment}
+                                        className="text-sm text-gray-800"
+                                    />
+                                ) : (
+                                    <p className="text-xs text-gray-500">
+                                        코멘트가 아직 작성되지 않았습니다.
+                                    </p>
+                                )}
+                            </div>
+                        )}
                     </div>
                 </div>
 
