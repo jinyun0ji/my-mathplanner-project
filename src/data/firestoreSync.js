@@ -142,6 +142,37 @@ const fetchAttendanceLogsWithPagination = async (db, isCancelled, pageSize = 100
     return items;
 };
 
+// staff 전용: grades 전체 페이지네이션 로드
+const fetchGradesWithPagination = async (db, maxDocs = 5000, pageSize = 500) => {
+    const all = [];
+    let last = null;
+
+    while (all.length < maxDocs) {
+        const q = last
+            ? query(
+                collection(db, 'grades'),
+                orderBy(documentId()),
+                startAfter(last),
+                limit(pageSize),
+            )
+            : query(
+                collection(db, 'grades'),
+                orderBy(documentId()),
+                limit(pageSize),
+            );
+
+        const snap = await getDocs(q);
+        if (snap.empty) break;
+
+        all.push(...snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+        last = snap.docs[snap.docs.length - 1];
+
+        if (snap.size < pageSize) break;
+    }
+
+    return all;
+};
+
 const warnOnQuestionScores = (tests = [], context = 'viewer') => {
     tests.forEach((test) => {
         const totalQuestions = Number(test?.totalQuestions) || 0;
@@ -393,11 +424,10 @@ export const loadStaffDataOnce = async ({
         }
 
         if (setGrades && shouldLoad('grades')) {
-            const gradesSnap = await getDocs(query(collection(db, 'grades'), limit(500)));
             const mappedGrades = {};
+            const grades = await fetchGradesWithPagination(db, 5000, 500);
 
-            gradesSnap.docs.forEach((docSnap) => {
-                const raw = docSnap.data() || {};
+            grades.forEach((raw) => {
                 const data = normalizeAuthUid(raw); // ✅ authUid/studentUid → studentId로 정규화
 
                 const sId = data.studentId; // ✅ 이제 항상 studentId를 키로 사용
