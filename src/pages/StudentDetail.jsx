@@ -21,6 +21,7 @@ import useAuth from '../auth/useAuth';
 import { ROLE } from '../constants/roles';
 import { formatGradeLabel, Icon } from '../utils/helpers';
 import { formatGradeScoreText } from '../domain/grade/grade.service';
+import { getLinkedParentAuthUids } from '../utils/parentLinking';
 
 const COL = {
     USERS: 'users',
@@ -88,21 +89,6 @@ const sortByDateDesc = (items, keys) => {
         return bDate.getTime() - aDate.getTime();
     });
     return sorted;
-};
-
-const resolveParentAuthUids = (studentData) => {
-    if (!studentData) return [];
-    const rawValues = [
-        studentData.parentAuthUid,
-        studentData.parentAuthUID,
-        studentData.parentUid,
-        studentData.parentUID,
-        ...(Array.isArray(studentData.parentAuthUids) ? studentData.parentAuthUids : []),
-    ];
-    return rawValues
-        .flatMap((value) => (Array.isArray(value) ? value : [value]))
-        .filter(Boolean)
-        .map((value) => String(value));
 };
 
 const getStudentClassIds = (studentData) => {
@@ -179,11 +165,13 @@ export default function StudentDetail() {
     const [clinicLogs, setClinicLogs] = useState([]);
     const [classes, setClasses] = useState([]);
     const [tests, setTests] = useState([]);
+    const [parents, setParents] = useState([]);
     const [staffMemos, setStaffMemos] = useState([]);
     const [memoDraft, setMemoDraft] = useState('');
     const [memoSaving, setMemoSaving] = useState(false);
     const [memoError, setMemoError] = useState(null);
     const [studentAuthUid, setStudentAuthUid] = useState(null);
+    const [parentsLoading, setParentsLoading] = useState(false);
     const [editingMemoId, setEditingMemoId] = useState(null);
     const [editingMemoDraft, setEditingMemoDraft] = useState('');
     const [memoActionId, setMemoActionId] = useState(null);
@@ -206,11 +194,14 @@ export default function StudentDetail() {
             setClinicLogs([]);
             setClasses([]);
             setTests([]);
+            setParents([]);
             setStudentAuthUid(null);
+            setParentsLoading(true);
 
             if (!studentDocId) {
                 if (isMounted) {
                     setError('학생 UID를 찾을 수 없습니다.');
+                    setParentsLoading(false);
                     setLoading(false);
                 }
                 return;
@@ -225,6 +216,7 @@ export default function StudentDetail() {
                 if (!studentSnap.exists()) {
                     setError('학생 정보를 찾을 수 없습니다.');
                     setStudent(null);
+                    setParentsLoading(false);
                     setLoading(false);
                     return;
                 }
@@ -233,6 +225,7 @@ export default function StudentDetail() {
                 if (studentData?.role && studentData.role !== 'student') {
                     setError('학생 역할의 문서가 아닙니다.');
                     setStudent(null);
+                    setParentsLoading(false);
                     setLoading(false);
                     return;
                 }
@@ -286,6 +279,31 @@ export default function StudentDetail() {
                     200,
                 );
 
+                const parentsPromise = (async () => {
+                    const parentRoles = [ROLE.PARENT, '학부모'];
+                    try {
+                        const parentSnapshot = await getDocs(
+                            query(collection(db, COL.USERS), where('role', 'in', parentRoles), limit(500)),
+                        );
+                        if (!isMounted) return;
+                        setParents(parentSnapshot.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })));
+                    } catch (fetchError) {
+                        console.warn('[student detail] parent role in query failed, fallback to client filter', fetchError);
+                        const fallbackSnapshot = await getDocs(query(collection(db, COL.USERS), limit(500)));
+                        if (!isMounted) return;
+                        const roleSet = new Set(parentRoles);
+                        setParents(
+                            fallbackSnapshot.docs
+                                .map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }))
+                                .filter((user) => roleSet.has(user?.role)),
+                        );
+                    } finally {
+                        if (isMounted) {
+                            setParentsLoading(false);
+                        }
+                    }
+                })();
+
                 const [attendanceItems, clinicItems, homeworkItems, gradeItems] = await Promise.all([
                     attendancePromise,
                     clinicPromise,
@@ -316,6 +334,8 @@ export default function StudentDetail() {
 
                 if (!isMounted) return;
 
+                await parentsPromise;
+
                 setAttendances(attendanceItems);
                 setClinicLogs(clinicItems);
                 setHomeworks(homeworkItems);
@@ -326,6 +346,7 @@ export default function StudentDetail() {
                 console.error('상세 에러 로그:', fetchError);
                 if (isMounted) {
                     setError('학생 정보를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.');
+                    setParentsLoading(false);
                 }
                 } finally {
                 if (isMounted) {
@@ -458,7 +479,10 @@ export default function StudentDetail() {
         const clinicItems = Array.isArray(clinicLogs) ? clinicLogs : [];
         const classItems = Array.isArray(classes) ? classes : [];
         const accountLinked = Boolean(studentAuthUid);
-        const parentAuthUids = resolveParentAuthUids(student);
+        const parentAuthUids = getLinkedParentAuthUids(student, parents);
+        const parentAuthUidLabel = parentsLoading
+            ? '로딩...'
+            : (parentAuthUids.length > 0 ? parentAuthUids.join(', ') : '연결 없음');
         const classStatusMap = student.classStatusMap || student.classStatuses || {};
         const classIds = getStudentClassIds(student);
         const classBadges = classIds.map((classId) => {
@@ -504,7 +528,7 @@ export default function StudentDetail() {
                                 <p>학생 authUid: <span className="font-medium text-gray-800">{studentAuthUid || '연결 없음'}</span></p>
                                 <p>
                                     학부모 authUid: <span className="font-medium text-gray-800">
-                                        {parentAuthUids.length > 0 ? parentAuthUids.join(', ') : '연결 없음'}
+                                        {parentAuthUidLabel}
                                     </span>
                                 </p>
                             </div>

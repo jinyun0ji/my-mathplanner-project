@@ -6,6 +6,7 @@ import { StudentFormModal } from '../utils/modals/StudentFormModal';
 import { MemoModal } from '../utils/modals/MemoModal';
 import { Modal } from '../components/common/Modal'; 
 import { db } from '../firebase/client';
+import { getLinkedParentAuthUids } from '../utils/parentLinking';
 
 const RETIRE_REASONS = ['중도퇴원', '전반'];
 
@@ -86,40 +87,6 @@ export default function StudentManagement({
         }
     };
 
-    const getParentAuthUid = (parent) =>
-        parent?.authUid || parent?.authUID || parent?.uid || parent?.authId || parent?.authUidValue;
-
-    const normalizeLinkedIds = (value) => {
-        const values = Array.isArray(value) ? value : (value ? [value] : []);
-        return values.map((item) => {
-            if (!item) return null;
-            if (typeof item === 'string') return item;
-            if (typeof item === 'object') {
-                if (item.id) return item.id;
-                if (item.path) {
-                    const parts = item.path.split('/');
-                    return parts[parts.length - 1];
-                }
-            }
-            return null;
-        }).filter(Boolean);
-    };
-
-    const isLinkedParentToStudent = (parent, studentId) => {
-        if (!parent || !studentId) return false;
-        const linkFields = [
-            'studentIds',
-            'studentDocIds',
-            'students',
-            'children',
-            'childIds',
-            'linkedStudentIds',
-        ];
-        return linkFields.some((field) =>
-            normalizeLinkedIds(parent[field]).some((id) => String(id) === String(studentId)),
-        );
-    };
-
     useEffect(() => {
         if (pendingQuickAction?.page === 'students' && pendingQuickAction.action === 'openStudentModal') {
             setStudentToEdit(null);
@@ -137,9 +104,7 @@ export default function StudentManagement({
         if (students?.[0]?.id) {
             console.log(
                 '[staff] matched parents for first student=',
-                parents
-                    .filter((parent) => isLinkedParentToStudent(parent, students[0].id))
-                    .map((parent) => getParentAuthUid(parent)),
+                getLinkedParentAuthUids(students[0], parents),
             );
         }
     }, [parents, students]);
@@ -369,10 +334,7 @@ export default function StudentManagement({
                             {filteredStudents.map(student => {
                                 // ✅ [추가] 해당 학생의 타학원 스케줄 존재 여부 확인
                                 const hasExternal = externalSchedules?.some(s => s.studentId === student.id);
-                                const parentAuthUids = parents
-                                    .filter((parent) => isLinkedParentToStudent(parent, student.id))
-                                    .map((parent) => getParentAuthUid(parent))
-                                    .filter(Boolean);
+                                const parentAuthUids = getLinkedParentAuthUids(student, parents);
 
                                 const classStatusMap = getClassStatusMap(student);
                                 const allClassIds = Array.isArray(student.classes)
@@ -524,10 +486,7 @@ export default function StudentManagement({
                 <div className="grid gap-3 md:hidden">
                     {filteredStudents.map(student => {
                         const hasExternal = externalSchedules?.some(s => s.studentId === student.id);
-                        const parentAuthUids = parents
-                            .filter((parent) => isLinkedParentToStudent(parent, student.id))
-                            .map((parent) => getParentAuthUid(parent))
-                            .filter(Boolean);
+                        const parentAuthUids = getLinkedParentAuthUids(student, parents);
                         const classStatusMap = student.classStatuses || {};
                         const allClassIds = Array.isArray(student.classes)
                             ? student.classes
