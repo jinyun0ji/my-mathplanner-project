@@ -1,37 +1,39 @@
-export const getStudentKeyCandidates = (obj) => {
-  if (!obj) return [];
-  const keys = [
-    obj.studentId,
-    obj.studentUid,
-    obj.studentDocId,
-    obj.authUid,
-    obj.uid,
-    obj.id,
-  ]
-    .filter(Boolean)
-    .map(String);
+export const getStudentKeyCandidates = (studentOrRowLike) => {
+  if (!studentOrRowLike) return [];
+  const raw = [];
+  if (Array.isArray(studentOrRowLike)) {
+    raw.push(...studentOrRowLike);
+  } else if (typeof studentOrRowLike === 'object') {
+    raw.push(
+      studentOrRowLike.id,
+      studentOrRowLike.uid,
+      studentOrRowLike.authUid,
+      studentOrRowLike.studentId,
+      studentOrRowLike.studentUid,
+      studentOrRowLike.studentDocId,
+      studentOrRowLike.studentDocIds,
+      studentOrRowLike.studentKey,
+      studentOrRowLike.userId,
+      studentOrRowLike.parentUid,
+      studentOrRowLike.parentId,
+      studentOrRowLike.parentAuthUid,
+    );
+  } else {
+    raw.push(studentOrRowLike);
+  }
 
-  // 중복 제거
-  return Array.from(new Set(keys));
+  const flattened = raw.flatMap((value) => (Array.isArray(value) ? value : [value]));
+  const normalized = flattened
+    .filter((value) => value !== null && value !== undefined && value !== '')
+    .map((value) => String(value));
+  return Array.from(new Set(normalized));
 };
 
-export const getStudentCandidatesFromStudent = (student) => {
-  if (!student) return [];
-  const keys = [
-    student.id,
-    student.authUid,
-    ...(Array.isArray(student.classIds) ? [] : []),
-  ]
-    .filter(Boolean)
-    .map(String);
-  return Array.from(new Set(keys));
-};
-
-export const isSameStudentByAnyKey = (rowLike, studentLike) => {
-  const a = getStudentKeyCandidates(rowLike);
-  const b = getStudentCandidatesFromStudent(studentLike);
-  if (a.length === 0 || b.length === 0) return false;
-  return a.some((x) => b.includes(String(x)));
+export const isSameStudentByAnyKey = (a, b) => {
+  const aKeys = getStudentKeyCandidates(a);
+  const bKeys = getStudentKeyCandidates(b);
+  if (aKeys.length === 0 || bKeys.length === 0) return false;
+  return aKeys.some((key) => bKeys.includes(String(key)));
 };
 
 export const normalizeStudentIdOnRow = (row, authUidToDocIdMap = null) => {
