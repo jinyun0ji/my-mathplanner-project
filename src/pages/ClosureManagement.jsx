@@ -4,6 +4,7 @@ import {
     collection,
     deleteDoc,
     doc,
+    deleteField,
     serverTimestamp,
     updateDoc,
 } from 'firebase/firestore';
@@ -85,17 +86,20 @@ export default function ClosureManagement({ closures = [], setClosures, classes 
                 startDate: form.startDate,
                 endDate: form.endDate,
                 scope: form.scope,
-                classId: form.scope === 'class' ? form.classId : null,
+                ...(form.scope === 'class' ? { classId: form.classId } : {}),
                 title: form.title || '휴강',
                 reason: form.reason || '',
                 updatedAt: serverTimestamp(),
             };
 
             if (editingId) {
-                await updateDoc(doc(db, 'closures', editingId), payload);
+                const updatePayload = payload.scope === 'global'
+                    ? { ...payload, classId: deleteField() }
+                    : payload;
+                await updateDoc(doc(db, 'closures', editingId), updatePayload);
                 setClosures?.((prev) => prev.map((item) => (
                     item.id === editingId
-                        ? { ...item, ...payload, classId: payload.classId }
+                        ? { ...item, ...payload, ...(payload.scope === 'global' ? { classId: undefined } : {}) }
                         : item
                 )));
             } else {

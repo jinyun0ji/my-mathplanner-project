@@ -17,17 +17,19 @@ export const buildClosuresIndex = (closures = []) => {
 
     (closures || []).forEach((closure) => {
         if (!closure) return;
-        const scope = closure.scope || '';
-        if (scope === 'global') {
+        const scope = String(closure.scope || '').trim();
+        const classKey = String(closure.classId || '').trim();
+        const isLegacyGlobal = !scope && (!classKey || classKey === 'all' || classKey === 'global');
+
+        if (scope === 'global' || classKey === 'all' || classKey === 'global' || isLegacyGlobal) {
             globals.push(closure);
             return;
         }
         if (scope === 'class') {
-            const key = String(closure.classId || '');
-            if (!key) return;
-            const list = byClassId.get(key) || [];
+            if (!classKey) return;
+            const list = byClassId.get(classKey) || [];
             list.push(closure);
-            byClassId.set(key, list);
+            byClassId.set(classKey, list);
         }
     });
 

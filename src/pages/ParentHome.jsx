@@ -693,7 +693,8 @@ export default function ParentHome({
     const classStatusRef = useRef(null);
 
     const [attendanceDetailTarget, setAttendanceDetailTarget] = useState(null);
-    const [clinicShowAll, setClinicShowAll] = useState(false);
+    const [clinicPageSize, setClinicPageSize] = useState(100);
+    const [lessonPageSize, setLessonPageSize] = useState(15);
     const [openClinicCommentIds, setOpenClinicCommentIds] = useState(() => new Set());
 
 
@@ -733,6 +734,8 @@ export default function ParentHome({
         setReportViewMode('overview');
         setClassFilter('ongoing');
         setActiveTab('home', { replace: true });
+        setClinicPageSize(100);
+        setLessonPageSize(15);
     }, [activeStudentId]);
 
     useEffect(() => {
@@ -740,6 +743,7 @@ export default function ParentHome({
             setReportViewMode('overview');
             setSelectedClassId(null);
             setExpandedSections({ homework: false, grades: false });
+            setLessonPageSize(15);
         }
     }, [activeTab]);
 
@@ -779,10 +783,13 @@ export default function ParentHome({
             });
     }, [myClinicLogs]);
 
-    const completedClinicsToShow = useMemo(() => completedClinics.slice(0, 2), [completedClinics]);
+    const completedClinicsToShow = useMemo(
+        () => completedClinics.slice(0, clinicPageSize),
+        [completedClinics, clinicPageSize],
+    );
     const visibleCompletedClinics = useMemo(
-        () => (clinicShowAll ? completedClinics : completedClinicsToShow),
-        [clinicShowAll, completedClinics, completedClinicsToShow]
+        () => completedClinicsToShow,
+        [completedClinicsToShow],
     );
 
     useEffect(() => {
@@ -1005,8 +1012,7 @@ export default function ParentHome({
                     })(),
                 };
             })
-            .sort((a, b) => new Date(b.date) - new Date(a.date))
-            .slice(0, 5);
+            .sort((a, b) => new Date(b.date) - new Date(a.date));
     }, [myLessonLogs, activeChildId, filteredLessonLogs, attendanceLogs, filteredHomeworkAssignments, homeworkResults, filteredTests, grades, classes]);
 
     const resolvedSelectedClassId = String(selectedClassId || '');
@@ -1074,7 +1080,10 @@ export default function ParentHome({
         }
     }, [showAttendanceDetail, resolvedSelectedClassId, recentLessons, attendanceHistory]);
 
-    const recentLessonsToShow = useMemo(() => recentLessons.slice(0, 2), [recentLessons]);
+    const recentLessonsToShow = useMemo(
+        () => recentLessons.slice(0, lessonPageSize),
+        [recentLessons, lessonPageSize],
+    );
 
     const getClassBadge = useCallback((cls) => {
         const classId = String(cls?.id || cls?.classId || '');
@@ -1417,6 +1426,9 @@ export default function ParentHome({
                                                         <Icon name="clipboard" className="w-5 h-5 text-indigo-600" />
                                                         최근 수업 리포트
                                                     </h3>
+                                                    <span className="text-xs text-gray-400 font-semibold">
+                                                        {Math.min(recentLessonsToShow.length, recentLessons.length)} / {recentLessons.length}
+                                                    </span>
                                                 </div>
                                                 <div className="space-y-3">
                                                     {recentLessonsToShow.map((lesson) => (
@@ -1448,6 +1460,17 @@ export default function ParentHome({
                                                             아직 작성된 수업 리포트가 없습니다.
                                                         </div>
                                                     )}
+                                                    {recentLessonsToShow.length < recentLessons.length && (
+                                                        <div className="px-1">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setLessonPageSize((v) => v + 15)}
+                                                                className="text-xs font-semibold text-gray-700 bg-gray-100 px-3 py-1.5 rounded-full border border-gray-200 hover:bg-gray-200 active:scale-95 transition"
+                                                            >
+                                                                더 보기
+                                                            </button>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             </div>
                                         </section>
@@ -1458,7 +1481,7 @@ export default function ParentHome({
                                                     <Icon name="activity" className="w-5 h-5 text-indigo-600" />
                                                     클리닉 리포트
                                                 </h3>
-                                                <span className="text-xs text-gray-400 font-semibold">{clinicShowAll ? '전체 보기' : '최근 2개'}</span>
+                                                <span className="text-xs text-gray-400 font-semibold">{Math.min(visibleCompletedClinics.length, completedClinics.length)} / {completedClinics.length}</span>
                                             </div>
                                             <div className="space-y-3">
                                                 {visibleCompletedClinics.map((log) => {
@@ -1518,14 +1541,14 @@ export default function ParentHome({
                                                     </div>
                                                 )}
                                             </div>
-                                            {completedClinics.length > 2 && (
+                                            {visibleCompletedClinics.length < completedClinics.length && (
                                                 <div className="px-1">
                                                     <button
                                                         type="button"
-                                                        onClick={() => setClinicShowAll((v) => !v)}
+                                                        onClick={() => setClinicPageSize((v) => v + 100)}
                                                         className="text-xs font-semibold text-gray-700 bg-gray-100 px-3 py-1.5 rounded-full border border-gray-200 hover:bg-gray-200 active:scale-95 transition"
                                                     >
-                                                        {clinicShowAll ? '접기' : '더 보기'}
+                                                        더 보기
                                                     </button>
                                                 </div>
                                             )}

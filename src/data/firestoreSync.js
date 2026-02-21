@@ -762,7 +762,7 @@ export const loadViewerDataOnce = async ({
                     collection(db, 'clinicLogs'),
                     where('studentId', 'in', scopedStudentUids),
                     orderBy('date', 'desc'),
-                    limit(30),
+                    limit(100),
                 ),
                 isCancelled,
                 normalizeClinicLog,
@@ -778,7 +778,7 @@ export const loadViewerDataOnce = async ({
                     collection(db, 'clinicLogs'),
                     where('authUid', 'in', scopedStudentUids),
                     orderBy('date', 'desc'),
-                    limit(30),
+                    limit(100),
                 ),
                 isCancelled,
             );
@@ -813,7 +813,7 @@ export const loadViewerDataOnce = async ({
                     return bd.localeCompare(ad);
                 });
 
-                setClinicLogs?.(merged.slice(0, 50));
+                setClinicLogs?.(merged);
             }
         } else if (!isCancelled()) {
             setClinicLogs?.([]);
@@ -929,7 +929,7 @@ export const loadViewerDataOnce = async ({
                     collection(db, 'lessonLogs'),
                     where('classId', 'in', lessonClassIds),
                     orderBy('date', 'desc'),
-                    limit(30),
+                    limit(100),
                 ),
                 isCancelled,
             );
@@ -941,7 +941,7 @@ export const loadViewerDataOnce = async ({
                         collection(db, 'tests'),
                         where('classId', 'in', lessonClassIds),
                         orderBy('date', 'desc'),
-                        limit(30),
+                        limit(100),
                     ),
                 ),
             );
