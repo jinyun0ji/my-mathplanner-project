@@ -10,6 +10,7 @@ import { db } from '../firebase/client';
 import { getDefaultClassId } from '../utils/classStatus';
 import { useClassStudents } from '../utils/useClassStudents';
 import { filterRosterByWithdrawDate } from '../utils/rosterFilter';
+import { buildStudentParentPhoneLast4Map, formatStudentNameWithParentLast4 } from '../utils/parentPhone';
 
 const isSameStudent = (result, student) => {
     if (!result || !student) return false;
@@ -34,6 +35,8 @@ export default function HomeworkManagement({
     handleSaveHomeworkAssignment, handleDeleteHomeworkAssignment,
     handleUpdateHomeworkResult, handleSaveClass, calculateClassSessions,
     setIsGlobalDirty,
+    students = [],
+    parents = [],
 }) {
     const [selectedClassId, setSelectedClassId] = useState(() => getDefaultClassId(classes));
     const [isAssignmentModalOpen, setIsAssignmentModalOpen] = useState(false);
@@ -44,6 +47,11 @@ export default function HomeworkManagement({
     const [isLoadingScopedResults, setIsLoadingScopedResults] = useState(false);
     
     const [checkedDate, setCheckedDate] = useState(() => new Date().toISOString().slice(0, 10));
+
+    const parentLast4Map = useMemo(
+        () => buildStudentParentPhoneLast4Map(students, parents),
+        [students, parents],
+    );
 
     // 로컬 변경 사항 관리
     const [localChanges, setLocalChanges] = useState([]); 
@@ -219,8 +227,15 @@ export default function HomeworkManagement({
                 assignedSet.has(String(student.id)) || assignedSet.has(String(student.authUid))
                 )
             : rosterForHomework;
-        return buildAssignmentSummary(selectedAssignment, assignedStudents, normalizedHomeworkResults, localChanges);
-    }, [selectedAssignment, rosterForHomework, normalizedHomeworkResults, localChanges]);
+        return buildAssignmentSummary(selectedAssignment, assignedStudents, normalizedHomeworkResults, localChanges)
+            .map((item) => ({
+                ...item,
+                studentName: formatStudentNameWithParentLast4(
+                    assignedStudents.find((s) => String(s.id) === String(item.studentId)),
+                    parentLast4Map,
+                ) || item.studentName,
+            }));
+    }, [selectedAssignment, rosterForHomework, normalizedHomeworkResults, localChanges, parentLast4Map]);
 
     const handleAssignmentSelect = (id) => {
         if (localChanges.length > 0) {

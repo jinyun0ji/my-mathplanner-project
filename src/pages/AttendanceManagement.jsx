@@ -7,6 +7,7 @@ import { MemoModal } from '../utils/modals/MemoModal';
 import { getDefaultClassId } from '../utils/classStatus';
 import { useClassStudents } from '../utils/useClassStudents';
 import { filterRosterByWithdrawDate } from '../utils/rosterFilter';
+import { buildStudentParentPhoneLast4Map, formatStudentNameWithParentLast4 } from '../utils/parentPhone';
 
 const toDateKey = (v) => {
     if (!v) return '';
@@ -23,6 +24,8 @@ export default function AttendanceManagement({
     classes, attendanceLogs, handleSaveAttendance,
     studentMemos, handleSaveMemo, handleSaveClass, calculateClassSessions,
     closures = [],
+    students = [],
+    parents = [],
 }) {
     const [selectedClassId, setSelectedClassId] = useState(() => getDefaultClassId(classes));
     const [selectedDate, setSelectedDate] = useState(new Date().toISOString().slice(0, 10));
@@ -32,6 +35,11 @@ export default function AttendanceManagement({
     const { students: classStudents, isLoading: isLoadingStudents } = useClassStudents(selectedClassId);
 
     const selectedClass = classes.find(c => String(c.id) === String(selectedClassId));
+
+    const parentLast4Map = useMemo(
+        () => buildStudentParentPhoneLast4Map(students, parents),
+        [students, parents],
+    );
     const isSelectedDateClosed = useMemo(
         () => (
             selectedClassId && selectedDate
@@ -313,7 +321,7 @@ export default function AttendanceManagement({
 
                                                 return (
                                                     <tr key={student.id} className="hover:bg-indigo-50 transition-colors">
-                                                        <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">{student.name}</td>
+                                                        <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">{formatStudentNameWithParentLast4(student, parentLast4Map)}</td>
                                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{formatGradeLabel(student.grade)} / {student.school}</td>
                                                         <td className="px-6 py-4 whitespace-nowrap text-sm">
                                                             <span className={`inline-flex items-center px-3 py-1 rounded-full border text-xs font-semibold ${badgeStyle}`}>
@@ -345,7 +353,7 @@ export default function AttendanceManagement({
                                         const attendance = findAttendanceLogForStudent(student);
                                         const status = attendance?.status || '미기록';
                                         const memoContent = getMemoContent(student);
-                                        const phoneSuffix = student.phone ? student.phone.slice(-4) : '';
+                                        const phoneSuffix = parentLast4Map[String(student.id)] || '';
 
                                         const badgeStyle = statusBadgeStyles[status] || statusBadgeStyles['미기록'];
                                         const memoStyle = memoContent ? 'bg-amber-100 text-amber-700 border-amber-200' : 'bg-gray-50 text-gray-500 border-gray-200';
@@ -354,7 +362,7 @@ export default function AttendanceManagement({
                                             <div key={student.id} className="p-4 border border-gray-200 rounded-xl shadow-sm bg-white space-y-3">
                                                 <div className="flex items-start justify-between gap-3">
                                                     <div className="min-w-0">
-                                                        <p className="text-base font-bold text-gray-900 leading-snug">{student.name}</p>
+                                                        <p className="text-base font-bold text-gray-900 leading-snug">{formatStudentNameWithParentLast4(student, parentLast4Map)}</p>
                                                         <p className="text-xs text-gray-500 mt-0.5 truncate">{formatGradeLabel(student.grade)} · {student.school}{phoneSuffix ? ` · ${phoneSuffix}` : ''}</p>
                                                     </div>
                                                     <div className="flex items-center gap-2">
@@ -362,7 +370,7 @@ export default function AttendanceManagement({
                                                             onClick={() => openMemoModal(student)}
                                                             className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-semibold border transition ${memoStyle} hover:border-indigo-300 hover:bg-indigo-50`}
                                                             title={memoContent ? '메모 있음' : '메모 작성'}
-                                                            aria-label={memoContent ? `${student.name} 메모 확인` : `${student.name} 메모 작성`}
+                                                            aria-label={memoContent ? `${formatStudentNameWithParentLast4(student, parentLast4Map)} 메모 확인` : `${formatStudentNameWithParentLast4(student, parentLast4Map)} 메모 작성`}
                                                         >
                                                             <Icon name="fileText" className="w-4 h-4" />
                                                         </button>
@@ -393,7 +401,7 @@ export default function AttendanceManagement({
                             <div className="flex items-center justify-between">
                                 <div>
                                     <p className="text-sm text-gray-500">선택된 학생</p>
-                                    <h3 className="text-xl font-bold text-gray-900">{selectedStudent.name}</h3>
+                                    <h3 className="text-xl font-bold text-gray-900">{formatStudentNameWithParentLast4(selectedStudent, parentLast4Map)}</h3>
                                     <p className="text-sm text-gray-600">{formatGradeLabel(selectedStudent.grade)} · {selectedStudent.school}</p>
                                 </div>
                                 <span className={`inline-flex items-center px-3 py-1 rounded-full border text-sm font-semibold ${selectedStudentStatus ? (statusBadgeStyles[selectedStudentStatus] || statusBadgeStyles['미기록']) : statusBadgeStyles['미기록']}`}>
@@ -420,6 +428,7 @@ export default function AttendanceManagement({
                     ) : null}
 
                     <AttendanceModal
+                        parentLast4Map={parentLast4Map}
                         isOpen={isAttendanceModalOpen}
                         onClose={() => setIsAttendanceModalOpen(false)}
                         studentsData={rosterForAttendance}

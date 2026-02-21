@@ -4,9 +4,10 @@ import { ClinicScheduleModal } from '../utils/modals/ClinicScheduleModal';
 import { ClinicCommentModal } from '../utils/modals/ClinicCommentModal';
 import { ClinicNotificationModal } from '../utils/modals/ClinicNotificationModal';
 import { ClinicBulkNotificationModal } from '../utils/modals/ClinicBulkNotificationModal';
+import { buildStudentParentPhoneLast4Map, formatStudentNameWithParentLast4 } from '../utils/parentPhone';
 
 export default function ClinicManagement({ 
-    students, classes, clinicLogs, handleSaveClinicLog, handleDeleteClinicLog, 
+    students, parents = [], classes, clinicLogs, handleSaveClinicLog, handleDeleteClinicLog,
     logNotification 
 }) {
     const [filterDate, setFilterDate] = useState(new Date().toISOString().slice(0, 10));
@@ -46,6 +47,11 @@ export default function ClinicManagement({
         return new Map(students.map(student => [student.id, student]));
     }, [students]);
 
+    const parentLast4Map = useMemo(
+        () => buildStudentParentPhoneLast4Map(students, parents),
+        [students, parents],
+    );
+
     const classById = useMemo(() => {
         return new Map(classes.map(item => [item.id, item]));
     }, [classes]);
@@ -60,7 +66,7 @@ export default function ClinicManagement({
     const studentOptions = useMemo(() => {
         if (students.length > 0) {
             return students
-                .map(student => ({ id: student.id, name: student.name }))
+                .map(student => ({ id: student.id, name: formatStudentNameWithParentLast4(student, parentLast4Map) }))
                 .filter(student => student.id && student.name)
                 .sort((a, b) => a.name.localeCompare(b.name, 'ko'));
         }
@@ -72,7 +78,7 @@ export default function ClinicManagement({
             }
         });
         return Array.from(fromLogs.values()).sort((a, b) => a.name.localeCompare(b.name, 'ko'));
-    }, [students, clinicLogs]);
+    }, [students, clinicLogs, parentLast4Map]);
 
     const assistantOptions = useMemo(() => {
         const seen = new Map();
@@ -135,26 +141,9 @@ export default function ClinicManagement({
 
     const getParentPhoneLast4 = useCallback((log) => {
         const student = studentById.get(log.studentId);
-        const candidates = [
-            log.parentPhone,
-            log.studentParentPhone,
-            log.parentPhoneNumber,
-            log.student?.parentPhone,
-            log.student?.parentPhoneNumber,
-            log.parent?.phone,
-            log.parent?.phoneNumber,
-            student?.parentPhone,
-            student?.parentPhoneNumber,
-            student?.parent?.phone,
-            student?.parent?.phoneNumber,
-        ];
-
-        const digits = candidates
-            .map(value => String(value || '').replace(/\D/g, ''))
-            .find(value => value.length > 0) || '';
-
-        return digits.length >= 4 ? digits.slice(-4) : '';
-    }, [studentById]);
+        if (!student) return '';
+        return parentLast4Map[String(student.id)] || '';
+    }, [studentById, parentLast4Map]);
 
     const resetFilters = () => {
         setSelectedClassId('');
@@ -754,8 +743,8 @@ export default function ClinicManagement({
                 </div>
             </div>
 
-            <ClinicScheduleModal isOpen={isScheduleModalOpen} onClose={() => setIsScheduleModalOpen(false)} onSave={handleSaveClinicLog} students={students} defaultDate={filterDate} clinicLogs={clinicLogs} classes={classes} />
-            <ClinicCommentModal isOpen={isCommentModalOpen} onClose={() => setIsCommentModalOpen(false)} onSave={handleSaveClinicLog} log={selectedLog} students={students} defaultDate={filterDate} classes={classes} />
+            <ClinicScheduleModal isOpen={isScheduleModalOpen} onClose={() => setIsScheduleModalOpen(false)} onSave={handleSaveClinicLog} students={students} parents={parents} defaultDate={filterDate} clinicLogs={clinicLogs} classes={classes} />
+            <ClinicCommentModal isOpen={isCommentModalOpen} onClose={() => setIsCommentModalOpen(false)} onSave={handleSaveClinicLog} log={selectedLog} students={students} parents={parents} clinicLogs={clinicLogs} defaultDate={filterDate} classes={classes} />
             <ClinicNotificationModal isOpen={isNotifyModalOpen} onClose={() => setIsNotifyModalOpen(false)} log={selectedLog} students={students} logNotification={logNotification} onSent={handleNotificationSent} notificationType={selectedNotificationType} />
             <ClinicBulkNotificationModal isOpen={isBulkNotifyModalOpen} onClose={() => setIsBulkNotifyModalOpen(false)} selectedLogs={visibleLogs.filter(log => selectedLogIds.includes(log.id))} students={students} logNotification={logNotification} onSent={handleNotificationSent} />
         </div>

@@ -4,8 +4,9 @@ import LatexGuide from '../../components/common/LatexGuide';
 import MathText from '../../components/common/MathText';
 import { Modal } from '../../components/common/Modal';
 import { Icon } from '../../utils/helpers';
+import { buildStudentParentPhoneLast4Map, formatStudentNameWithParentLast4 } from '../parentPhone';
 
-export const ClinicCommentModal = ({ isOpen, onClose, onSave, log, students, defaultDate, classes }) => {
+export const ClinicCommentModal = ({ isOpen, onClose, onSave, log, students, parents = [], clinicLogs = [], defaultDate, classes }) => {
     const isNewLog = log === null;
     
     const [studentId, setStudentId] = useState(log?.studentId || '');
@@ -19,6 +20,11 @@ export const ClinicCommentModal = ({ isOpen, onClose, onSave, log, students, def
     const [isCommentPreviewOpen, setIsCommentPreviewOpen] = useState(false);
 
     const currentStudent = useMemo(() => students.find(s => s.id === studentId), [studentId, students]);
+
+    const parentLast4Map = useMemo(
+        () => buildStudentParentPhoneLast4Map(students, parents),
+        [students, parents],
+    );
     
     // ✅ [수정] 학생 정보 텍스트에 전화번호 추가
     const studentInfoText = useMemo(() => {
@@ -32,10 +38,10 @@ export const ClinicCommentModal = ({ isOpen, onClose, onSave, log, students, def
             if (classNames.length > 0) className = classNames.join(', ');
         }
         
-        const phone = currentStudent.phone ? currentStudent.phone.slice(-4) : '----';
+        const phone = parentLast4Map[String(currentStudent.id)] || '----';
         
-        return `${currentStudent.school || '학교 미정'} / ${className} (번호: ${phone})`;
-    }, [currentStudent, classes]);
+        return `${currentStudent.school || '학교 미정'} / ${className} (학부모: ${phone})`;
+    }, [currentStudent, classes, parentLast4Map]);
 
     useEffect(() => {
         if (log) {
@@ -97,6 +103,17 @@ export const ClinicCommentModal = ({ isOpen, onClose, onSave, log, students, def
             alert("학생을 선택해야 합니다.");
             return;
         }
+
+        const hasReservationSameDate = (clinicLogs || []).some((r) => {
+            const rStatus = String(r?.status || '').toLowerCase();
+            return String(r?.studentId) === String(studentId)
+                && String(r?.date) === String(date)
+                && ['reserved', 'booked', 'pending'].includes(rStatus);
+        });
+        if (isNewLog && ['attended', 'no-show'].includes(status) && hasReservationSameDate) {
+            alert('이미 해당 날짜에 예약이 있어 “미예약학생”으로 입력할 수 없습니다. 예약 취소 후 진행해주세요.');
+            return;
+        }
         
         let finalCheckIn = checkIn;
         let finalCheckOut = checkOut;
@@ -133,7 +150,7 @@ export const ClinicCommentModal = ({ isOpen, onClose, onSave, log, students, def
                     <Icon name="user" className="w-5 h-5 mr-3 text-indigo-600"/>
                     <div>
                         <h3 className="text-lg font-bold text-indigo-800">
-                            {log?.studentName || currentStudent?.name || '신규 학생'}
+                            {(currentStudent && formatStudentNameWithParentLast4(currentStudent, parentLast4Map)) || log?.studentName || '신규 학생'}
                         </h3>
                         <p className="text-sm text-indigo-700">{studentInfoText}</p>
                     </div>
@@ -151,7 +168,7 @@ export const ClinicCommentModal = ({ isOpen, onClose, onSave, log, students, def
                             >
                                 <option value="">학생을 선택하세요</option>
                                 {students.map(s => (
-                                    <option key={s.id} value={s.id}>{s.name} ({s.school} / {s.class})</option>
+                                    <option key={s.id} value={s.id}>{formatStudentNameWithParentLast4(s, parentLast4Map)} ({s.school} / {s.class})</option>
                                 ))}
                             </select>
                         </div>

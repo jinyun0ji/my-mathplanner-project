@@ -17,6 +17,7 @@ const { onChatMessageCreated } = require('./triggers/chatMessages');
 const { normalizeAnnouncementOnWrite } = require('./triggers/announcements');
 const { resolveInviteCode } = require('./resolveInviteCode');
 const { acceptInviteAndCreateProfile } = require('./acceptInviteAndCreateProfile');
+const { createClinicReservation } = require('./clinic/createClinicReservation');
 
 exports.api = api;
 exports.createStaffUser = createStaffUser;
@@ -37,3 +38,4 @@ exports.onGradeWritten = onGradeWritten;
 exports.normalizeAnnouncementOnWrite = normalizeAnnouncementOnWrite;
 exports.resolveInviteCode = resolveInviteCode;
 exports.acceptInviteAndCreateProfile = acceptInviteAndCreateProfile;
+exports.createClinicReservation = createClinicReservation;

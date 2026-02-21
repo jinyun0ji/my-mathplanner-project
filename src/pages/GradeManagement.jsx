@@ -9,6 +9,7 @@ import { getClassAverages, getClassTests, getTestStatistics } from '../domain/gr
 import { getDefaultClassId } from '../utils/classStatus';
 import { useClassStudents } from '../utils/useClassStudents';
 import { filterRosterByWithdrawDate } from '../utils/rosterFilter';
+import { buildStudentParentPhoneLast4Map, formatStudentNameWithParentLast4 } from '../utils/parentPhone';
 
 // ----------------------------------------------------------------------
 // 메인 컴포넌트: GradeManagement
@@ -17,6 +18,8 @@ export default function GradeManagement({
     classes, tests, grades, handleSaveTest, handleDeleteTest, 
     handleUpdateGrade, handleSaveClass, calculateClassSessions,
     closures = [],
+    students = [],
+    parents = [],
 }) {
     const [selectedClassId, setSelectedClassId] = useState(() => getDefaultClassId(classes));
     const [isTestModalOpen, setIsTestModalOpen] = useState(false);
@@ -29,6 +32,11 @@ export default function GradeManagement({
     const fileInputRef = useRef(null);
     
     const selectedClass = classes.find(c => String(c.id) === String(selectedClassId));
+
+    const parentLast4Map = useMemo(
+        () => buildStudentParentPhoneLast4Map(students, parents),
+        [students, parents],
+    );
 
     useEffect(() => {
         if (!classes || classes.length === 0) return;
@@ -58,14 +66,24 @@ export default function GradeManagement({
         [classStudents, selectedClassId, selectedTest?.date]
     );
 
+    const displayClassStudents = useMemo(() => classStudents.map((student) => ({
+        ...student,
+        name: formatStudentNameWithParentLast4(student, parentLast4Map),
+    })), [classStudents, parentLast4Map]);
+
+    const displayRosterForTest = useMemo(() => rosterForTest.map((student) => ({
+        ...student,
+        name: formatStudentNameWithParentLast4(student, parentLast4Map),
+    })), [rosterForTest, parentLast4Map]);
+
     const classAverages = useMemo(
-        () => getClassAverages(classTests, classStudents, grades),
-        [classTests, classStudents, grades]
+        () => getClassAverages(classTests, displayClassStudents, grades),
+        [classTests, displayClassStudents, grades]
     );
 
     const testStatistics = useMemo(
-        () => getTestStatistics(classTests, classStudents, grades, classAverages),
-        [classTests, classStudents, grades, classAverages]
+        () => getTestStatistics(classTests, displayClassStudents, grades, classAverages),
+        [classTests, displayClassStudents, grades, classAverages]
     ); 
 
     useEffect(() => {
@@ -106,7 +124,7 @@ export default function GradeManagement({
         e.stopPropagation(); 
         
         const test = selectedTest; 
-        const studentsInClass = rosterForTest; 
+        const studentsInClass = displayRosterForTest; 
         
         const headers = ['학생명', ...Array.from({ length: test.totalQuestions }, (_, i) => `Q${i + 1} (${test.questionScores[i] || 0}점)`)];
         const sampleData = ['김철수 (예시)', ...Array(test.totalQuestions).fill('1')]; 
@@ -336,7 +354,7 @@ export default function GradeManagement({
                                     <TestStatisticsTable
                                         test={selectedTest}
                                         stats={testStatistics[selectedTestId]}
-                                        currentStudents={rosterForTest}
+                                        currentStudents={displayRosterForTest}
                                     />
                                 </>
                             ) : (
@@ -347,7 +365,7 @@ export default function GradeManagement({
                                         <p className="text-sm text-gray-600 mt-1">총 {classTests.length}개의 시험이 등록되어 있습니다. 성적 입력은 **시험 목록에서 시험을 선택**하여 진행하세요.</p>
                                     </div>
                                     <FullGradeTable
-                                        classStudents={classStudents}
+                                        classStudents={displayClassStudents}
                                         classTests={classTests}
                                         grades={grades}
                                         classAverages={classAverages}
@@ -379,7 +397,7 @@ export default function GradeManagement({
                     isOpen={isGradeInputModalOpen} 
                     onClose={handleCloseGradeInput}
                     test={selectedTest}
-                    studentsData={rosterForTest}
+                    studentsData={displayRosterForTest}
                     handleUpdateGrade={handleUpdateGrade}
                     grades={grades}
                     closures={closures}

@@ -2,8 +2,9 @@
 import React, { useState, useEffect } from 'react';
 import { Modal } from './Modal';
 import { Icon, formatGradeLabel } from '../../utils/helpers';
+import { formatStudentNameWithParentLast4 } from '../../utils/parentPhone';
 
-export const AttendanceModal = ({ isOpen, onClose, studentsData, initialAttendance, onSave, isReadOnly = false }) => {
+export const AttendanceModal = ({ isOpen, onClose, studentsData, initialAttendance, onSave, isReadOnly = false, parentLast4Map = {} }) => {
     const [attendance, setAttendance] = useState({});
 
     useEffect(() => {
@@ -53,7 +54,7 @@ export const AttendanceModal = ({ isOpen, onClose, studentsData, initialAttendan
                             {studentList.map(student => (
                                 <tr key={student.id}>
                                     <td className="px-6 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
-                                        {student.name} <span className="text-xs text-gray-500">({formatGradeLabel(student.grade) || '학년 정보 없음'})</span>
+                                        {formatStudentNameWithParentLast4(student, parentLast4Map)} <span className="text-xs text-gray-500">({formatGradeLabel(student.grade) || '학년 정보 없음'})</span>
                                     </td>
                                     <td className="px-6 py-3 whitespace-nowrap">
                                         <div className="flex flex-wrap justify-center gap-2 text-xs sm:text-sm">

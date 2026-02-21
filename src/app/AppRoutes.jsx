@@ -38,7 +38,7 @@ import {
     isStaffOrTeachingRole,
     isViewerGroupRole,
 } from '../constants/roles';
-import { db } from '../firebase/client';
+import { db, functions } from '../firebase/client';
 import { loadStaffDataOnce, loadViewerDataOnce } from '../data/firestoreSync';
 import { createLinkCode, createStaffUser } from '../admin/staffService';
 import { claimStudentLinkCode } from '../parent/linkCodeService';
@@ -63,6 +63,7 @@ import {
     updateDoc,
     writeBatch,
 } from 'firebase/firestore';
+import { httpsCallable } from 'firebase/functions';
 
 const PAGE_ROUTES = {
     home: '/home',
@@ -1131,17 +1132,47 @@ export default function AppRoutes({ user, role, studentIds }) {
               const normalized = normalizeClinicLog({ id: data.id, ...payload });
               setClinicLogs(prev => prev.map(l => l.id === data.id ? { ...l, ...normalized } : l));
           } else {
-              const docRef = await addDoc(collection(db, 'clinicLogs'), {
-                  ...payload,
-                  createdAt: serverTimestamp(),
-                  createdBy: userId,
-                  updatedAt: serverTimestamp(),
-                  updatedBy: userId,
+              const hasReservationSameDate = clinicLogs.some((r) => {
+                  const status = String(r?.status || '').toLowerCase();
+                  return String(r?.studentId) === String(payload?.studentId)
+                      && String(r?.date) === String(payload?.date)
+                      && ['reserved', 'booked', 'pending'].includes(status);
               });
-              const normalized = normalizeClinicLog({ id: docRef.id, ...payload });
-              setClinicLogs(prev => [...prev, normalized]);
+
+              const isUnreservedEntry = !payload?.plannedTime && ['attended', 'no-show'].includes(String(payload?.status || ''));
+              if (isUnreservedEntry && hasReservationSameDate) {
+                  alert('이미 해당 날짜에 예약이 있어 “미예약학생”으로 입력할 수 없습니다. 예약 취소 후 진행해주세요.');
+                  return;
+              }
+
+              const isReservationCreate = Boolean(payload?.plannedTime) && String(payload?.status || 'pending') === 'pending';
+              if (isReservationCreate) {
+                  const createReservation = httpsCallable(functions, 'createClinicReservation');
+                  const res = await createReservation({
+                      ...payload,
+                      classId: payload?.classId || payload?.classDocId || '',
+                      timeSlot: payload?.plannedTime || '',
+                  });
+                  const reservationId = res?.data?.id || `local-${Date.now()}`;
+                  const normalized = normalizeClinicLog({ id: reservationId, ...payload });
+                  setClinicLogs(prev => [...prev, normalized]);
+              } else {
+                  const docRef = await addDoc(collection(db, 'clinicLogs'), {
+                      ...payload,
+                      createdAt: serverTimestamp(),
+                      createdBy: userId,
+                      updatedAt: serverTimestamp(),
+                      updatedBy: userId,
+                  });
+                  const normalized = normalizeClinicLog({ id: docRef.id, ...payload });
+                  setClinicLogs(prev => [...prev, normalized]);
+              }
           }
       } catch (error) {
+        if (error?.code === 'already-exists' || error?.message?.includes('already-exists')) {
+            alert('이미 해당 날짜에 예약이 있습니다. 시간 변경은 기존 예약을 취소 후 진행하세요.');
+            return;
+        }
           console.error('[Firestore WRITE ERROR]', error);
           alert('클리닉 기록 저장에 실패했습니다. 권한 또는 네트워크를 확인하세요.');
       }

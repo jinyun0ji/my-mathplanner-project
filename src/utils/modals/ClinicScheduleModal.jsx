@@ -1,9 +1,9 @@
 // src/utils/modals/ClinicScheduleModal.jsx
 import React, { useState, useEffect, useMemo } from 'react';
 import { Modal } from '../../components/common/Modal';
-import { Icon } from '../../utils/helpers';
+import { buildStudentParentPhoneLast4Map, formatStudentNameWithParentLast4 } from '../parentPhone';
 
-export const ClinicScheduleModal = ({ isOpen, onClose, onSave, students, defaultDate, clinicLogs, classes }) => {
+export const ClinicScheduleModal = ({ isOpen, onClose, onSave, students, parents = [], defaultDate, clinicLogs, classes }) => {
     const [date, setDate] = useState(defaultDate);
     const [selectedStudentIds, setSelectedStudentIds] = useState([]); 
     const [reservationMode, setReservationMode] = useState('byDate');
@@ -12,6 +12,7 @@ export const ClinicScheduleModal = ({ isOpen, onClose, onSave, students, default
     const [plannedTime, setPlannedTime] = useState('14:00');
     const [slotDate, setSlotDate] = useState(defaultDate);
     const [slotTime, setSlotTime] = useState('14:00');
+    const [studentQuery, setStudentQuery] = useState('');
 
     useEffect(() => {
         if (isOpen) {
@@ -23,8 +24,14 @@ export const ClinicScheduleModal = ({ isOpen, onClose, onSave, students, default
             setSelectedSlots({});
             setSlotDate(defaultDate);
             setSlotTime('14:00');
+            setStudentQuery('');
         }
     }, [isOpen, defaultDate]);
+
+    const parentLast4Map = useMemo(
+        () => buildStudentParentPhoneLast4Map(students, parents),
+        [students, parents],
+    );
 
     const normalizedClinicLogs = useMemo(
         () => Array.isArray(clinicLogs) ? clinicLogs : [],
@@ -54,23 +61,35 @@ export const ClinicScheduleModal = ({ isOpen, onClose, onSave, students, default
 
     // ✅ [수정] 그룹핑 기준: 클래스명만 사용
     const groupedStudents = useMemo(() => {
+        const q = studentQuery.trim().toLowerCase();
+        const filteredStudents = q
+            ? students.filter((s) => String(s?.name || '').toLowerCase().includes(q))
+            : students;
+
         const classList = Array.isArray(classes) ? classes : [];
         const classGroups = classList.map((cls) => {
-            const groupStudents = students.filter((student) => getStudentClassIds(student).includes(String(cls.id)));
+            const groupStudents = filteredStudents.filter((student) => getStudentClassIds(student).includes(String(cls.id)));
             return {
                 key: String(cls.id),
                 name: cls.name,
                 students: sortByNameKo(groupStudents),
             };
         }).filter((group) => group.students.length > 0);
-        const noClassStudents = sortByNameKo(students.filter((student) => getStudentClassIds(student).length === 0));
+        const noClassStudents = sortByNameKo(filteredStudents.filter((student) => getStudentClassIds(student).length === 0));
         return [
             ...classGroups,
             ...(noClassStudents.length > 0
                 ? [{ key: 'no-class', name: '수강 없음', students: noClassStudents }]
                 : []),
         ];
-    }, [students, classes]);
+    }, [students, classes, studentQuery]);
+
+    const hasReservationSameDate = (sid, targetDate) => normalizedClinicLogs.some((r) => {
+        const status = String(r?.status || '').toLowerCase();
+        return String(r?.studentId) === String(sid)
+            && String(r?.date) === String(targetDate)
+            && ['reserved', 'booked', 'pending'].includes(status);
+    });
 
     const handleStudentToggle = (id) => {
         setSelectedStudentIds(prev => 
@@ -127,7 +146,7 @@ export const ClinicScheduleModal = ({ isOpen, onClose, onSave, students, default
             const uniqueStudentIds = [];
 
             selectedStudentIds.forEach(sId => {
-                const isDuplicate = normalizedClinicLogs.some(log => log.date === date && log.studentId === sId && !!log.plannedTime);
+                const isDuplicate = hasReservationSameDate(sId, date);
                 if (isDuplicate) {
                     const student = students.find(s => s.id === sId);
                     const className = getClassNameString(student);
@@ -184,12 +203,7 @@ export const ClinicScheduleModal = ({ isOpen, onClose, onSave, students, default
 
         pickedSlots.forEach((slotKey) => {
             const [slotDateValue, slotTimeValue] = slotKey.split('_');
-            const isDuplicate = normalizedClinicLogs.some((log) => {
-                const logTime = log?.plannedTime || log?.checkIn;
-                return log?.date === slotDateValue
-                    && String(log?.studentId) === String(selectedStudentId)
-                    && logTime === slotTimeValue;
-            });
+            const isDuplicate = hasReservationSameDate(selectedStudentId, slotDateValue);
             if (isDuplicate) {
                 duplicates.push(`${slotDateValue} ${slotTimeValue}`);
             } else {
@@ -339,6 +353,12 @@ export const ClinicScheduleModal = ({ isOpen, onClose, onSave, students, default
                 
                 <div>
                     <label className="block text-sm font-bold text-gray-700 mb-2">클리닉 참석 학생 선택* (총 {students.length}명)</label>
+                    <input
+                        value={studentQuery}
+                        onChange={(e) => setStudentQuery(e.target.value)}
+                        className="mb-2 w-full border rounded-md p-2"
+                        placeholder="학생 이름 검색"
+                    />
                     <div className="border rounded-md p-3 max-h-80 overflow-y-auto bg-gray-50">
                         {groupedStudents.map((group) => (
                             <div key={group.key} className="mb-4 border-b pb-3 last:border-b-0">
@@ -347,14 +367,20 @@ export const ClinicScheduleModal = ({ isOpen, onClose, onSave, students, default
                                 </h5>
                                 <div className="grid grid-cols-3 gap-2">
                                     {group.students.map(s => (
+                                        (() => {
+                                            const duplicateForDate = reservationMode === 'byDate' && date
+                                                ? hasReservationSameDate(s.id, date)
+                                                : false;
+                                            return (
                                         <div 
                                             key={s.id} 
-                                            className={`flex items-start p-2 rounded-lg cursor-pointer transition border ${
+                                            className={`flex items-start p-2 rounded-lg transition border ${duplicateForDate ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'} ${
                                                 reservationMode === 'byDate'
                                                     ? (selectedStudentIds.includes(s.id) ? 'bg-indigo-100 border-indigo-500 shadow-sm' : 'bg-white hover:bg-gray-100')
                                                     : (String(selectedStudentId) === String(s.id) ? 'bg-indigo-100 border-indigo-500 shadow-sm' : 'bg-white hover:bg-gray-100')
                                             }`}
                                             onClick={() => {
+                                                if (duplicateForDate) return;
                                                 if (reservationMode === 'byDate') {
                                                     handleStudentToggle(s.id);
                                                 } else {
@@ -378,12 +404,14 @@ export const ClinicScheduleModal = ({ isOpen, onClose, onSave, students, default
                                                 />
                                             )}
                                             <div className='flex flex-col text-sm'>
-                                                {/* ✅ [수정] 이름 뒤에 번호 뒤4자리 추가 */}
                                                 <span className="font-bold text-gray-900">
-                                                    {s.name} <span className="text-gray-500 font-normal text-xs">({s.phone ? s.phone.slice(-4) : '----'})</span>
+                                                    {formatStudentNameWithParentLast4(s, parentLast4Map)}
                                                 </span>
+                                                {duplicateForDate && <span className="text-[11px] text-red-500">같은 날짜 예약 있음</span>}
                                             </div>
                                         </div>
+                                        );
+                                        })()
                                     ))}
                                 </div>
                             </div>
