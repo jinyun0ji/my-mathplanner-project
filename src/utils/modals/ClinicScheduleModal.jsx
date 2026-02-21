@@ -1,7 +1,8 @@
 // src/utils/modals/ClinicScheduleModal.jsx
 import React, { useState, useEffect, useMemo } from 'react';
 import { Modal } from '../../components/common/Modal';
-import { buildStudentParentPhoneLast4Map, formatStudentNameWithParentLast4 } from '../parentPhone';
+import { buildStudentParentPhoneLast4Map } from '../parentPhone';
+import StudentNameWithParentLast4 from '../../components/common/StudentNameWithParentLast4';
 
 export const ClinicScheduleModal = ({ isOpen, onClose, onSave, students, parents = [], defaultDate, clinicLogs, classes }) => {
     const [date, setDate] = useState(defaultDate);
@@ -404,9 +405,11 @@ export const ClinicScheduleModal = ({ isOpen, onClose, onSave, students, parents
                                                 />
                                             )}
                                             <div className='flex flex-col text-sm'>
-                                                <span className="font-bold text-gray-900">
-                                                    {formatStudentNameWithParentLast4(s, parentLast4Map)}
-                                                </span>
+                                                <StudentNameWithParentLast4
+                                                    student={s}
+                                                    parentLast4Map={parentLast4Map}
+                                                    className="font-bold text-gray-900"
+                                                />
                                                 {duplicateForDate && <span className="text-[11px] text-red-500">같은 날짜 예약 있음</span>}
                                             </div>
                                         </div>

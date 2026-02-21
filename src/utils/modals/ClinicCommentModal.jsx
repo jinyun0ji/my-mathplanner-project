@@ -5,6 +5,7 @@ import MathText from '../../components/common/MathText';
 import { Modal } from '../../components/common/Modal';
 import { Icon } from '../../utils/helpers';
 import { buildStudentParentPhoneLast4Map, formatStudentNameWithParentLast4 } from '../parentPhone';
+import StudentNameWithParentLast4 from '../../components/common/StudentNameWithParentLast4';
 
 export const ClinicCommentModal = ({ isOpen, onClose, onSave, log, students, parents = [], clinicLogs = [], defaultDate, classes }) => {
     const isNewLog = log === null;
@@ -150,7 +151,21 @@ export const ClinicCommentModal = ({ isOpen, onClose, onSave, log, students, par
                     <Icon name="user" className="w-5 h-5 mr-3 text-indigo-600"/>
                     <div>
                         <h3 className="text-lg font-bold text-indigo-800">
-                            {(currentStudent && formatStudentNameWithParentLast4(currentStudent, parentLast4Map)) || log?.studentName || '신규 학생'}
+                            {currentStudent ? (
+                                <StudentNameWithParentLast4
+                                    student={currentStudent}
+                                    parentLast4Map={parentLast4Map}
+                                    className="text-lg font-bold text-indigo-800"
+                                    suffixClassName="text-[11px] text-gray-400 ml-1"
+                                />
+                            ) : (
+                                <StudentNameWithParentLast4
+                                    student={{ id: log?.studentId, name: log?.studentName || '신규 학생' }}
+                                    parentLast4Map={parentLast4Map}
+                                    className="text-lg font-bold text-indigo-800"
+                                    suffixClassName="text-[11px] text-gray-400 ml-1"
+                                />
+                            )}
                         </h3>
                         <p className="text-sm text-indigo-700">{studentInfoText}</p>
                     </div>

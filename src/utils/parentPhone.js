@@ -40,8 +40,8 @@ export const buildStudentParentPhoneLast4Map = (students = [], parents = []) => 
   return map;
 };
 
-export const formatStudentNameWithParentLast4 = (student, parentLast4Map = {}) => {
+export const formatStudentNameWithParentLast4 = (student, parentLast4Map = {}, fallback = '----') => {
   const name = student?.name || '';
   const last4 = parentLast4Map[String(student?.id || '')] || '';
-  return last4 ? `${name} (${last4})` : name;
+  return `${name} (${last4 || fallback})`;
 };

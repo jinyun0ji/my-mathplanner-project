@@ -5,6 +5,7 @@ import { ClinicCommentModal } from '../utils/modals/ClinicCommentModal';
 import { ClinicNotificationModal } from '../utils/modals/ClinicNotificationModal';
 import { ClinicBulkNotificationModal } from '../utils/modals/ClinicBulkNotificationModal';
 import { buildStudentParentPhoneLast4Map, formatStudentNameWithParentLast4 } from '../utils/parentPhone';
+import StudentNameWithParentLast4 from '../components/common/StudentNameWithParentLast4';
 
 export default function ClinicManagement({ 
     students, parents = [], classes, clinicLogs, handleSaveClinicLog, handleDeleteClinicLog,
@@ -556,12 +557,11 @@ export default function ClinicManagement({
                                                     </td>
                                                 )}
                                                 <td className="px-4 py-4 whitespace-nowrap">
-                                                    <div className="text-sm font-bold text-gray-900">
-                                                        {getStudentName(log)}
-                                                        {getParentPhoneLast4(log) && (
-                                                            <span className="ml-1 text-xs font-normal text-gray-400">({getParentPhoneLast4(log)})</span>
-                                                        )}
-                                                    </div>
+                                                    <StudentNameWithParentLast4
+                                                        student={studentById.get(log.studentId) || { id: log.studentId, name: getStudentName(log) }}
+                                                        parentLast4Map={parentLast4Map}
+                                                        className="text-sm font-bold text-gray-900"
+                                                    />
                                                 </td>
                                                 <td className="px-4 py-4 whitespace-nowrap text-center">
                                                     {isUnscheduled ? <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">미예약</span> : <span className="text-sm font-medium text-gray-700 font-mono">{log.plannedTime}</span>}
@@ -650,19 +650,18 @@ export default function ClinicManagement({
                             const isUnscheduled = !log.plannedTime;
                             const isSent = log.notificationSent;
                             const isSelected = selectedLogIds.includes(log.id);
-                            const status = log.status || (log.checkIn ? 'attended' : 'pending');
                             const dateText = log.effectiveDate || log.date || '';
 
                             return (
                                 <div key={log.id} className={`bg-white border rounded-xl shadow-sm p-4 space-y-3 ${isSelected ? 'ring-1 ring-indigo-200' : ''}`}>
                                     <div className="flex items-start justify-between gap-2">
                                         <div>
-                                            <p className="text-base font-bold text-gray-900">
-                                                {getStudentName(log)}
-                                                {getParentPhoneLast4(log) && (
-                                                    <span className="ml-1 text-xs font-normal text-gray-400">({getParentPhoneLast4(log)})</span>
-                                                )}
-                                            </p>
+                                            <StudentNameWithParentLast4
+                                                student={studentById.get(log.studentId) || { id: log.studentId, name: getStudentName(log) }}
+                                                parentLast4Map={parentLast4Map}
+                                                className="text-base font-bold text-gray-900"
+                                                suffixClassName="text-xs font-normal text-gray-400 ml-1"
+                                            />
                                             {filterMode === 'all' && dateText && (
                                                 <p className="mt-0.5 text-xs font-mono text-gray-500">{dateText}</p>
                                             )}
