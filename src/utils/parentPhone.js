@@ -1,5 +1,4 @@
 const digitsOnly = (v) => String(v || '').replace(/[^\d]/g, '');
-
 const last4 = (v) => {
   const d = digitsOnly(v);
   return d ? d.slice(-4) : '';
@@ -7,7 +6,6 @@ const last4 = (v) => {
 
 const pickPhone = (p) => {
   if (!p) return '';
-  // 학부모 전화 필드명 다양성 커버
   return (
     p.parentPhone ||
     p.phone ||
@@ -17,39 +15,34 @@ const pickPhone = (p) => {
     p.contactPhone ||
     p.contact?.phone ||
     p.contact?.mobile ||
-    p.parentContactPhone ||
-    p.guardianPhone ||
-    p.guardian?.phone ||
     ''
   );
 };
 
-// 내부 helper: map에 여러 키로 동일 값 주입
-const put = (map, keys, value) => {
-  const v = String(value || '');
-  if (!v) return;
-  (keys || [])
-    .filter(Boolean)
-    .map((k) => String(k))
-    .forEach((k) => {
-      if (!k) return;
-      if (!map[k]) map[k] = v;
-    });
+const getStudentKeyCandidates = (s) => {
+  const out = [];
+  if (!s) return out;
+  if (s.id) out.push(String(s.id));
+  if (s.uid) out.push(String(s.uid));
+  if (s.authUid) out.push(String(s.authUid));
+  return Array.from(new Set(out.filter(Boolean)));
 };
 
-/**
- * ✅ 학생 배열(students), 학부모 배열(parents)로
- *    { [학생식별자]: "1234" } 형태 맵을 만든다
- *
- * "학생식별자"는 아래를 모두 포함하도록 만든다:
- * - student.id (학생 users 문서 id)
- * - student.authUid (학생 auth uid)
- * - student.uid / student.studentUid / student.studentId (레거시)
- */
+const setMapForStudent = (map, student, v) => {
+  if (!v) return;
+  const keys = getStudentKeyCandidates(student);
+  keys.forEach((k) => {
+    if (!k) return;
+    map[k] = v;
+  });
+};
+
+// ✅ 학생 배열(students), 학부모 배열(parents)로
+//    "어떤 키로 조회해도" last4가 나오도록 맵을 만든다.
+//    - studentDocId / student.uid / student.authUid 모두 같은 값으로 매핑
 export const buildStudentParentPhoneLast4Map = (students = [], parents = []) => {
   const map = {};
 
-  // parent 인덱스(문서id / authUid 모두)
   const byParentDocId = new Map();
   const byParentAuthUid = new Map();
 
@@ -60,22 +53,23 @@ export const buildStudentParentPhoneLast4Map = (students = [], parents = []) => 
     if (authUid) byParentAuthUid.set(authUid, p);
   });
 
-  // 1) 학생 문서에 부모 연결 키가 있는 케이스
+  // student를 id/uid/authUid 어떤 키로도 찾을 수 있게 인덱스 구축
+  const studentByAnyKey = new Map();
   (students || []).forEach((s) => {
-    const sid = s?.id ? String(s.id) : '';
-    const sAuth = s?.authUid ? String(s.authUid) : '';
-    const sUid = s?.uid ? String(s.uid) : '';
-    const sStudentUid = s?.studentUid ? String(s.studentUid) : '';
-    const sStudentId = s?.studentId ? String(s.studentId) : '';
+    getStudentKeyCandidates(s).forEach((k) => {
+      if (!studentByAnyKey.has(k)) studentByAnyKey.set(k, s);
+    });
+  });
 
+  // 1) 학생 문서에 부모 연결 키가 있는 케이스(정방향)
+  (students || []).forEach((s) => {
     const parentKeyCandidates = [
-      s.parentAuthUid,
-      s.parentUid,
-      s.parentId,
-      s.parentDocId,
-      s.parentUserId,
-      s.parentUserUid,
-      s.parentAuthId,
+      s?.parentAuthUid,
+      s?.parentUid,
+      s?.parentId,
+      s?.parentDocId,
+      s?.parentUserId,
+      s?.parentUserUid,
     ]
       .filter(Boolean)
       .map(String);
@@ -88,68 +82,37 @@ export const buildStudentParentPhoneLast4Map = (students = [], parents = []) => 
 
     if (parent) {
       const v = last4(pickPhone(parent));
-      if (v) {
-        put(map, [sid, sAuth, sUid, sStudentUid, sStudentId].filter(Boolean), v);
-      }
+      if (v) setMapForStudent(map, s, v);
     }
   });
 
-  // 2) 학부모 문서가 학생 배열을 들고있는 케이스(역방향)
+  // 2) 학부모 문서가 studentIds 배열을 들고있는 케이스(역방향)
   (parents || []).forEach((p) => {
+    const ids = Array.isArray(p?.studentIds) ? p.studentIds : [];
+    if (ids.length === 0) return;
     const v = last4(pickPhone(p));
     if (!v) return;
 
-    // 학부모 문서에서 학생 연결 키가 다양한 경우를 커버
-    const candidateArrays = [
-      p.studentIds,          // 학생 docId 배열 (가장 흔함)
-      p.students,            // 레거시
-      p.childIds,
-      p.childrenIds,
-      p.studentDocIds,
-      p.studentUids,         // (혹시) 학생 authUid/uid 배열
-      p.childUids,
-      p.childrenUids,
-      p.studentAuthUids,
-      p.childAuthUids,
-    ];
+    ids.map(String).forEach((rawKey) => {
+      if (!rawKey) return;
 
-    candidateArrays.forEach((arr) => {
-      const ids = Array.isArray(arr) ? arr : [];
-      ids
-        .filter(Boolean)
-        .map(String)
-        .forEach((key) => {
-          if (!key) return;
-          if (!map[key]) map[key] = v;
-        });
+      // rawKey가 studentDocId일 수도, student.authUid일 수도 있으니 둘 다 커버
+      if (!map[rawKey]) map[rawKey] = v;
+
+      const st = studentByAnyKey.get(rawKey) || null;
+      if (st) setMapForStudent(map, st, v);
     });
   });
 
   return map;
 };
 
-/**
- * ✅ 화면에 표시할 문자열
- * - student.id로 실패하면 student.authUid/uid 등으로도 재시도
- */
 export const formatStudentNameWithParentLast4 = (student, parentLast4Map = {}, fallback = '----') => {
   const name = student?.name || '';
-  
-  const keys = [
-    student?.id,
-    student?.authUid,
-    student?.uid,
-    student?.studentUid,
-    student?.studentId,
-  ]
-    .filter(Boolean)
-    .map(String);
+  const keys = getStudentKeyCandidates(student);
 
-  let v = '';
-  for (const k of keys) {
-    v = parentLast4Map[k] || '';
-    if (v) break;
-  }
+  const found =
+    keys.map((k) => parentLast4Map[String(k)] || '').find(Boolean) || '';
 
-  return `${name} (${v || fallback})`;
+  return `${name} (${found || fallback})`;
 };

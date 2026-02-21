@@ -1,30 +1,25 @@
 import React from 'react';
-
-const digitsOnly = (v) => String(v || '').replace(/[^\d]/g, '');
-const last4 = (v) => {
-  const d = digitsOnly(v);
-  return d ? d.slice(-4) : '';
-};
+import { formatStudentNameWithParentLast4 } from '../../utils/parentPhone';
 
 export default function StudentNameWithParentLast4({
   student,
-  parentLast4Map = {},
-  fallback = '----',
+  parentLast4Map,
   className = '',
-  suffixClassName = 'text-[11px] text-gray-400 ml-1',
+  suffixClassName = 'text-xs font-normal text-gray-400 ml-1',
+  fallback = '----',
 }) {
-  const name = student?.name || '';
-  const key = String(student?.id || '');
-  const v = parentLast4Map?.[key] || '';
-  const shown = v || fallback;
+  const text = formatStudentNameWithParentLast4(student, parentLast4Map, fallback);
+
+  const match = text.match(/^(.*)\s\((.*)\)$/);
+  if (!match) return <span className={className}>{text}</span>;
+
+  const name = match[1];
+  const last4 = match[2];
 
   return (
     <span className={className}>
-      <span>{name}</span>
-      <span className={suffixClassName}>({shown})</span>
+      {name}
+      <span className={suffixClassName}>({last4})</span>
     </span>
   );
 }
-
-// (필요 시) parentLast4Map 없이도 직접 phone으로 쓰는 곳이 있다면 이 함수로 대체 가능
-export const phoneLast4 = (phone, fallback = '----') => last4(phone) || fallback;
