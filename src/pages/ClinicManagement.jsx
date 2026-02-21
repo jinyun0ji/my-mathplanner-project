@@ -53,6 +53,13 @@ export default function ClinicManagement({
         [students, parents],
     );
 
+    useEffect(() => {
+        console.log('[clinic] students=', (students || []).length, 'parents=', (parents || []).length);
+        console.log('[clinic] sample student keys=', (students || [])[0] ? Object.keys((students || [])[0]) : null);
+        console.log('[clinic] sample parent keys=', (parents || [])[0] ? Object.keys((parents || [])[0]) : null);
+    }, [students, parents]);
+
+
     const classById = useMemo(() => {
         return new Map(classes.map(item => [item.id, item]));
     }, [classes]);
