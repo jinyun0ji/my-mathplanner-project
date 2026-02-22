@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { Icon } from '../utils/helpers';
 import { ClinicScheduleModal } from '../utils/modals/ClinicScheduleModal';
 import { ClinicCommentModal } from '../utils/modals/ClinicCommentModal';
@@ -31,6 +31,14 @@ export default function ClinicManagement({
     const [selectedLogIds, setSelectedLogIds] = useState([]);
     const [selectedNotificationType, setSelectedNotificationType] = useState('comment'); 
 
+    const debugSampleLoggedRef = useRef(false);
+
+    useEffect(() => {
+        console.log('[DEBUG] students =', students?.slice(0, 3));
+        console.log('[DEBUG] parents =', parents?.slice(0, 3));
+        console.log('[DEBUG] clinicLogs =', clinicLogs?.slice(0, 3));
+    }, [students, parents, clinicLogs]);
+
     useEffect(() => {
         console.log('[clinic management] clinicLogs loaded =', clinicLogs.length);
         if (clinicLogs.length > 0) {
@@ -44,8 +52,14 @@ export default function ClinicManagement({
         }
     }, [clinicLogs]);
 
-    const studentById = useMemo(() => {
-        return new Map(students.map(student => [student.id, student]));
+    const studentIndex = useMemo(() => {
+        const m = new Map();
+        (students || []).forEach((s) => {
+            if (!s) return;
+            const keys = [s.id, s.uid, s.authUid].filter(Boolean).map(String);
+            keys.forEach((k) => { if (!m.has(k)) m.set(k, s); });
+        });
+        return m;
     }, [students]);
 
     const parentLast4Map = useMemo(
@@ -131,11 +145,38 @@ export default function ClinicManagement({
         return '';
     }, []);
 
+    const resolveStudentFromLog = useCallback((log) => {
+        const candidates = [
+            log?.studentId,
+            log?.studentUid,
+            log?.authUid,
+            log?.student?.id,
+            log?.student?.uid,
+            log?.student?.authUid,
+        ].filter(Boolean).map(String);
+
+        for (const k of candidates) {
+            const found = studentIndex.get(k);
+            if (found) return found;
+        }
+        return null;
+    }, [studentIndex]);
+
+    const getParentLast4ForStudent = useCallback((student) => {
+        if (!student) return '';
+        const keys = [student.id, student.uid, student.authUid].filter(Boolean).map(String);
+        for (const k of keys) {
+            const v = parentLast4Map[String(k)] || '';
+            if (v) return v;
+        }
+        return '';
+    }, [parentLast4Map]);
+
     const getStudentName = useCallback((log) => {
-        if (log.studentName) return log.studentName;
-        const student = studentById.get(log.studentId);
-        return student?.name || '';
-    }, [studentById]);
+        if (log?.studentName) return log.studentName;
+        const st = resolveStudentFromLog(log);
+        return st?.name || '';
+    }, [resolveStudentFromLog]);
 
     const getClassName = useCallback((log) => {
         if (log.className) return log.className;
@@ -148,10 +189,28 @@ export default function ClinicManagement({
     }, []);
 
     const getParentPhoneLast4 = useCallback((log) => {
-        const student = studentById.get(log.studentId);
-        if (!student) return '';
-        return parentLast4Map[String(student.id)] || '';
-    }, [studentById, parentLast4Map]);
+        const st = resolveStudentFromLog(log);
+        return getParentLast4ForStudent(st);
+    }, [resolveStudentFromLog, getParentLast4ForStudent]);
+
+
+    useEffect(() => {
+        if (debugSampleLoggedRef.current) return;
+        if (!(clinicLogs || []).length) return;
+
+        const sample = (clinicLogs || []).slice(0, 5).map((l) => ({
+            id: l?.id,
+            studentId: l?.studentId,
+            studentUid: l?.studentUid,
+            authUid: l?.authUid,
+            resolvedStudent: resolveStudentFromLog(l)?.id,
+            resolvedAuthUid: resolveStudentFromLog(l)?.authUid,
+            resolvedUid: resolveStudentFromLog(l)?.uid,
+            last4: getParentPhoneLast4(l),
+        }));
+        console.log('[clinic][debug] student key mapping sample', sample);
+        debugSampleLoggedRef.current = true;
+    }, [clinicLogs, resolveStudentFromLog, getParentPhoneLast4]);
 
     const resetFilters = () => {
         setSelectedClassId('');
@@ -564,11 +623,17 @@ export default function ClinicManagement({
                                                     </td>
                                                 )}
                                                 <td className="px-4 py-4 whitespace-nowrap">
-                                                    <StudentNameWithParentLast4
-                                                        student={studentById.get(log.studentId) || { id: log.studentId, name: getStudentName(log) }}
-                                                        parentLast4Map={parentLast4Map}
-                                                        className="text-sm font-bold text-gray-900"
-                                                    />
+                                                    {(() => {
+                                                        const resolved = resolveStudentFromLog(log);
+                                                        const fallback = { id: String(log?.studentId || log?.studentUid || log?.authUid || ''), name: getStudentName(log) };
+                                                        return (
+                                                            <StudentNameWithParentLast4
+                                                                student={resolved || fallback}
+                                                                parentLast4Map={parentLast4Map}
+                                                                className="text-sm font-bold text-gray-900"
+                                                            />
+                                                        );
+                                                    })()}
                                                 </td>
                                                 <td className="px-4 py-4 whitespace-nowrap text-center">
                                                     {isUnscheduled ? <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">미예약</span> : <span className="text-sm font-medium text-gray-700 font-mono">{log.plannedTime}</span>}
@@ -663,12 +728,18 @@ export default function ClinicManagement({
                                 <div key={log.id} className={`bg-white border rounded-xl shadow-sm p-4 space-y-3 ${isSelected ? 'ring-1 ring-indigo-200' : ''}`}>
                                     <div className="flex items-start justify-between gap-2">
                                         <div>
-                                            <StudentNameWithParentLast4
-                                                student={studentById.get(log.studentId) || { id: log.studentId, name: getStudentName(log) }}
-                                                parentLast4Map={parentLast4Map}
-                                                className="text-base font-bold text-gray-900"
-                                                suffixClassName="text-xs font-normal text-gray-400 ml-1"
-                                            />
+                                            {(() => {
+                                                const resolved = resolveStudentFromLog(log);
+                                                const fallback = { id: String(log?.studentId || log?.studentUid || log?.authUid || ''), name: getStudentName(log) };
+                                                return (
+                                                    <StudentNameWithParentLast4
+                                                        student={resolved || fallback}
+                                                        parentLast4Map={parentLast4Map}
+                                                        className="text-base font-bold text-gray-900"
+                                                        suffixClassName="text-xs font-normal text-gray-400 ml-1"
+                                                    />
+                                                );
+                                            })()}
                                             {filterMode === 'all' && dateText && (
                                                 <p className="mt-0.5 text-xs font-mono text-gray-500">{dateText}</p>
                                             )}
