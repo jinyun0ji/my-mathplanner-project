@@ -104,7 +104,6 @@ service cloud.firestore {
           || (isParent() && listContainsAny(get(/databases/$(database)/documents/classes/$(classId)).data.students, parentStudentUids()))
           // (레거시) authUid 기반이 남아있을 경우도 허용
           || uid() in get(/databases/$(database)/documents/classes/$(classId)).data.students
-          || (myStudentDocId() != null && myStudentDocId() in get(/databases/$(database)/documents/classes/$(classId)).data.students)
         );
     }
     
@@ -201,9 +200,9 @@ service cloud.firestore {
       allow create: if isStaffOrAdminOrTeacher()
         || (
           isSignedIn()
-          && isSelf(userId)
           && request.resource.data.active == true
-          && (isRequestRole('student') || isRequestRole('parent'))
+          && (request.resource.data.role == 'student' || request.resource.data.role == 'parent')
+          && request.resource.data.authUid == uid()
           && hasValidInvite(request.resource.data.inviteId, request.resource.data.role)
         );
 
@@ -223,8 +222,7 @@ service cloud.firestore {
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['authUid', 'email', 'hasAccount', 'updatedAt'])
         );
 
-      allow delete: if isStaffOrAdminOrTeacher()
-        || (signedIn() && uid() == userId);
+      allow delete: if isStaffOrAdminOrTeacher();
     }
     
     match /users/{studentId}/staffMemos/{memoId} {
@@ -237,6 +235,8 @@ service cloud.firestore {
     /* =========================
        classes
     ========================= */
+    // 정책: classes.students에는 studentDocId(users 문서ID)만 저장을 권장.
+    // 레거시(authUid) 조회는 당분간 유지하지만, 데이터는 점진적으로 정리한다.
     match /classes/{docId} {
       allow get, read, list: if isAdminOrStaff()
         || (isSignedIn() && (
