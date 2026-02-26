@@ -1119,6 +1119,27 @@ export default function AppRoutes({ user, role, studentIds }) {
   };
 
   const handleSaveClinicLog = async (data, isEdit) => {
+    const resolveClassIdForStudentFlexible = (studentDocIdOrAuthUid) => {
+          if (!studentDocIdOrAuthUid) return null;
+
+          // 1) classes.students 기반(기존)
+          const fromClasses = resolveDefaultClassIdForStudent(studentDocIdOrAuthUid);
+          if (fromClasses) return fromClasses;
+
+          // 2) students 상태에서 classIds/classes 기반
+          const st =
+              students.find((s) => String(s?.id) === String(studentDocIdOrAuthUid))
+              || students.find((s) => String(s?.authUid) === String(studentDocIdOrAuthUid))
+              || null;
+
+          const ids = Array.isArray(st?.classIds) ? st.classIds
+              : Array.isArray(st?.classes) ? st.classes
+                  : [];
+
+          const first = ids.map(String).filter(Boolean)[0] || null;
+          return first;
+      };
+
       ensureFirestoreContext();
       try {
           const { effectiveDate, ...payload } = stripId(data);
@@ -1162,6 +1183,7 @@ export default function AppRoutes({ user, role, studentIds }) {
                         payload?.classId
                         || payload?.classDocId
                         || payload?.classUid
+                        || resolveClassIdForStudentFlexible(studentId)
                         || '';
 
                       const date =
@@ -1183,7 +1205,7 @@ export default function AppRoutes({ user, role, studentIds }) {
                           alert(
                             `클리닉 예약 저장 실패(필수 값 누락)\n`
                             + `누락: ${missing.join(', ')}\n\n`
-                            + '※ 직원 입력 화면에서 student/class/date/time을 확인해주세요.'
+                            + '※ classId가 누락된 경우: 학생이 반에 등록되어 있지 않거나, 예약 입력에서 반 선택이 필요합니다.'
                           );
                           return;
                       }
