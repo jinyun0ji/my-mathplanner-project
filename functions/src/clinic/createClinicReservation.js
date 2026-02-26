@@ -21,8 +21,14 @@ const createClinicReservation = functions
     const timeSlot = String(data?.timeSlot || data?.plannedTime || '').trim();
     const studentId = String(data?.studentId || '').trim();
 
-    if (!classId || !date || !timeSlot || !studentId) {
-        throw new functions.https.HttpsError('invalid-argument', '필수 값 누락');
+    const missing = [];
+    if (!studentId) missing.push('studentId');
+    if (!classId) missing.push('classId');
+    if (!date) missing.push('date');
+    if (!timeSlot) missing.push('timeSlot');
+
+    if (missing.length > 0) {
+        throw new functions.https.HttpsError('invalid-argument', '필수 값 누락', { missing });
     }
 
     const col = db.collection('clinicLogs');
