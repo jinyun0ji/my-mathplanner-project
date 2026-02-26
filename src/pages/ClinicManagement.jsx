@@ -132,7 +132,7 @@ export default function ClinicManagement({
         const m = new Map();
         (students || []).forEach((s) => {
             if (!s) return;
-            const keys = [s.id, s.uid, s.authUid].filter(Boolean).map(String);
+            const keys = [s.id, s.uid, s.authUid, s.studentDocId].filter(Boolean).map(String);
             keys.forEach((k) => { if (!m.has(k)) m.set(k, s); });
         });
         return m;
@@ -171,8 +171,9 @@ export default function ClinicManagement({
 
         const fromLogs = new Map();
         activeClinicLogs.forEach(log => {
-            if (log.studentId && log.studentName) {
-                fromLogs.set(log.studentId, { id: log.studentId, name: log.studentName });
+            const fallbackStudentDocId = log.studentDocId || log.studentId;
+            if (fallbackStudentDocId && log.studentName) {
+                fromLogs.set(fallbackStudentDocId, { id: fallbackStudentDocId, name: log.studentName });
             }
         });
         return Array.from(fromLogs.values()).sort((a, b) => a.name.localeCompare(b.name, 'ko'));
@@ -223,6 +224,7 @@ export default function ClinicManagement({
 
     const resolveStudentFromLog = useCallback((log) => {
         const candidates = [
+            log?.studentDocId,
             log?.studentId,
             log?.studentUid,
             log?.authUid,
@@ -240,7 +242,7 @@ export default function ClinicManagement({
 
     const getParentLast4ForStudent = useCallback((student) => {
         if (!student) return '';
-        const keys = [student.id, student.uid, student.authUid].filter(Boolean).map(String);
+        const keys = [student.id, student.uid, student.authUid, student.studentDocId].filter(Boolean).map(String);
         for (const k of keys) {
             const v = parentLast4Map[String(k)] || '';
             if (v) return v;
@@ -330,8 +332,8 @@ export default function ClinicManagement({
                 if (String(itemClassId) !== String(normalizedSelected)) return false;
             }
             if (selectedStudentId) {
-                const studentId = log.studentId || log.student?.id || '';
-                if (studentId !== selectedStudentId) return false;
+                const studentDocId = log.studentDocId || log.studentId || log.student?.studentDocId || log.student?.id || '';
+                if (studentDocId !== selectedStudentId) return false;
             }
             if (selectedAssistantId) {
                 const assistantId = log.assistantId || log.tutorId || log.assistant?.id || '';
@@ -704,7 +706,7 @@ export default function ClinicManagement({
                                                 <td className="px-4 py-4 whitespace-nowrap">
                                                     {(() => {
                                                         const resolved = resolveStudentFromLog(log);
-                                                        const fallback = { id: String(log?.studentId || log?.studentUid || log?.authUid || ''), name: getStudentName(log) };
+                                                        const fallback = { id: String(log?.studentDocId || log?.studentId || log?.studentUid || log?.authUid || ''), name: getStudentName(log) };
                                                         return (
                                                             <StudentNameWithParentLast4
                                                                 student={resolved || fallback}
@@ -809,7 +811,7 @@ export default function ClinicManagement({
                                         <div>
                                             {(() => {
                                                 const resolved = resolveStudentFromLog(log);
-                                                const fallback = { id: String(log?.studentId || log?.studentUid || log?.authUid || ''), name: getStudentName(log) };
+                                                const fallback = { id: String(log?.studentDocId || log?.studentId || log?.studentUid || log?.authUid || ''), name: getStudentName(log) };
                                                 return (
                                                     <StudentNameWithParentLast4
                                                         student={resolved || fallback}

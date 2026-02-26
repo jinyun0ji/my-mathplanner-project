@@ -92,6 +92,33 @@ const normalizeClinicLog = (log) => {
     };
 };
 
+const normalizeMergedClinicItem = (item, source = 'clinicLogs') => {
+    const normalized = normalizeClinicLog(item);
+    const studentDocId = String(
+        normalized?.studentDocId
+        || normalized?.studentId
+        || normalized?.studentUid
+        || normalized?.authUid
+        || '',
+    ).trim();
+    const classId = String(normalized?.classId || normalized?.classDocId || '').trim();
+    const date = normalizeClinicDateString(normalized?.date || normalized?.clinicDate || '');
+    const plannedTime = String(normalized?.plannedTime || normalized?.timeSlot || '').trim();
+    const status = String(normalized?.status || (source === 'clinicReservations' ? 'pending' : '')).trim();
+
+    return {
+        ...normalized,
+        source,
+        studentDocId,
+        studentId: studentDocId,
+        classId,
+        date,
+        plannedTime,
+        status,
+        effectiveDate: date || normalized?.effectiveDate || '',
+    };
+};
+
 const normalizePaymentLog = (log) => {
     const base = normalizeAuthUid(log);
     const firstItem = Array.isArray(base.items) ? base.items[0] : null;
@@ -193,68 +220,60 @@ export const fetchClinicLogsDeepForStaff = async ({
     maxDocs = 5000,
     isCancelled = () => false,
 }) => {
-    const tryQuery = async (constraints, tag) => {
+    const normalizedStudentId = String(studentId || '').trim();
+
+    const buildConstraints = ({ supportsStudentDocId = true, withOrderBy = true } = {}) => {
+        const constraints = [];
+        if (classId) constraints.push(where('classId', '==', classId));
+        if (date) constraints.push(where('date', '==', date));
+        if (normalizedStudentId && supportsStudentDocId) {
+            constraints.push(where('studentDocId', '==', normalizedStudentId));
+        } else if (normalizedStudentId) {
+            constraints.push(where('studentId', '==', normalizedStudentId));
+        }
+        if (withOrderBy) constraints.push(orderBy('date', 'desc'));
+        return constraints;
+    };
+
+    const runFetch = async ({ colName, supportsStudentDocId, source }) => {
         try {
             const items = await fetchPaged({
                 db,
-                colName: 'clinicLogs',
-                constraints,
+                colName,
+                constraints: buildConstraints({ supportsStudentDocId }),
                 pageSize,
                 maxDocs,
                 isCancelled,
-                mapper: normalizeClinicLog,
+                mapper: (row) => normalizeMergedClinicItem(row, source),
             });
-            return { ok: true, items, tag };
+            return items;
         } catch (error) {
-            console.warn('[staff] fetchClinicLogsDeepForStaff FAIL:', tag, error);
-            return { ok: false, items: [], tag, error };
+            console.warn('[staff] fetchClinicLogsDeepForStaff FAIL:', colName, error);
+            try {
+                const fallbackConstraints = buildConstraints({ supportsStudentDocId, withOrderBy: false });
+                const fallbackItems = await fetchPaged({
+                    db,
+                    colName,
+                    constraints: fallbackConstraints,
+                    pageSize,
+                    maxDocs,
+                    isCancelled,
+                    mapper: (row) => normalizeMergedClinicItem(row, source),
+                });
+                return fallbackItems;
+            } catch (fallbackError) {
+                console.warn('[staff] fetchClinicLogsDeepForStaff fallback FAIL:', colName, fallbackError);
+                return [];
+            }
         }
     };
 
-    if (date) {
-        const res = await tryQuery([
-            where('date', '==', date),
-            orderBy('date', 'desc'),
-        ], 'date==');
-        if (res.ok && res.items.length > 0) return res.items;
+    const [logs, reservations] = await Promise.all([
+        runFetch({ colName: 'clinicLogs', supportsStudentDocId: false, source: 'clinicLogs' }),
+        runFetch({ colName: 'clinicReservations', supportsStudentDocId: true, source: 'clinicReservations' }),
+    ]);
 
-        const res2 = await tryQuery([where('date', '==', date)], 'date== (no orderBy)');
-        if (res2.ok) {
-            return res2.items.sort((a, b) => String(b?.date || '').localeCompare(String(a?.date || '')));
-        }
-    }
-
-    if (studentId) {
-        const res = await tryQuery([
-            where('studentId', '==', studentId),
-            orderBy('date', 'desc'),
-        ], 'studentId==');
-        if (res.ok && res.items.length > 0) return res.items;
-
-        const res2 = await tryQuery([where('studentId', '==', studentId)], 'studentId== (no orderBy)');
-        if (res2.ok) return res2.items;
-    }
-
-    if (classId) {
-        const res = await tryQuery([
-            where('classId', '==', classId),
-            orderBy('date', 'desc'),
-        ], 'classId==');
-        if (res.ok && res.items.length > 0) return res.items;
-
-        const res2 = await tryQuery([where('classId', '==', classId)], 'classId== (no orderBy)');
-        if (res2.ok) return res2.items;
-    }
-
-    return fetchPaged({
-        db,
-        colName: 'clinicLogs',
-        constraints: [orderBy('date', 'desc')],
-        pageSize,
-        maxDocs,
-        isCancelled,
-        mapper: normalizeClinicLog,
-    });
+    return [...logs, ...reservations];
 };
 
 // staff 전용: grades 전체 페이지네이션 로드

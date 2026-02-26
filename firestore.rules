@@ -307,6 +307,23 @@ service cloud.firestore {
         );
       allow write: if isStaffOrAdminOrTeacher();
     }
+    
+    match /clinicReservations/{docId} {
+      allow read, get, list: if isStaffOrAdminOrTeacher()
+        || (isSignedIn() && isMyStudentUid(resource.data.studentDocId));
+      allow write: if isStaffOrAdminOrTeacher();
+    }
+
+    match /clinicSessions/{docId} {
+      allow read, get, list: if isStaffOrAdminOrTeacher()
+        || (isSignedIn() && isMyStudentUid(resource.data.studentDocId));
+      allow write: if isStaffOrAdminOrTeacher();
+    }
+
+    match /clinicNotifications/{docId} {
+      allow read, get, list: if isStaffOrAdminOrTeacher();
+      allow write: if isStaffOrAdminOrTeacher();
+    }
 
     match /workLogs/{docId} {
       allow read, list: if isStaffOrAdminOrTeacher();

@@ -1193,7 +1193,7 @@ export default function AppRoutes({ user, role, studentIds }) {
           } else {
               const hasReservationSameDate = clinicLogs.some((r) => {
                   const status = String(r?.status || '').toLowerCase();
-                  return String(r?.studentId) === String(payload?.studentId)
+                  return String(r?.studentDocId || r?.studentId) === String(payload?.studentDocId || payload?.studentId)
                       && String(r?.date) === String(payload?.date)
                       && ['reserved', 'booked', 'pending'].includes(status);
               });
@@ -1211,13 +1211,15 @@ export default function AppRoutes({ user, role, studentIds }) {
               if (isReservationCreate) {
                   try {
                       const normalizedClassId = resolveClassIdForClinicPayload(payload, classes)
-                        || resolveClassIdForStudentFlexible(payload?.studentId || payload?.studentUid || payload?.authUid || '');
-                      const normalizedStudentId = String(payload?.studentId || payload?.studentUid || payload?.authUid || '').trim();
+                        || resolveClassIdForStudentFlexible(payload?.studentDocId || payload?.studentId || payload?.studentUid || payload?.authUid || '');
+                      const normalizedStudentDocId = String(
+                        payload?.studentDocId || payload?.studentId || payload?.studentUid || payload?.authUid || '',
+                      ).trim();
                       const normalizedDate = String(payload?.date || payload?.clinicDate || '').trim();
                       const normalizedTimeSlot = normalizedPlanned;
 
                       const missing = [];
-                      if (!normalizedStudentId) missing.push('studentId');
+                      if (!normalizedStudentDocId) missing.push('studentDocId');
                       if (!normalizedClassId) missing.push('classId');
                       if (!normalizedDate) missing.push('date');
                       if (!normalizedTimeSlot) missing.push('timeSlot');
@@ -1230,7 +1232,8 @@ export default function AppRoutes({ user, role, studentIds }) {
                       const createReservation = httpsCallable(functions, 'createClinicReservation');
                       const res = await createReservation({
                           ...payload,
-                          studentId: normalizedStudentId,
+                          studentDocId: normalizedStudentDocId,
+                          studentId: normalizedStudentDocId,
                           classId: normalizedClassId,
                           date: normalizedDate,
                           timeSlot: normalizedTimeSlot,
@@ -1241,7 +1244,8 @@ export default function AppRoutes({ user, role, studentIds }) {
                       const normalized = normalizeClinicLog({
                           id: reservationId,
                           ...payload,
-                          studentId: normalizedStudentId,
+                          studentId: normalizedStudentDocId,
+                          studentDocId: normalizedStudentDocId,
                           classId: normalizedClassId,
                           date: normalizedDate,
                           plannedTime: normalizedTimeSlot,

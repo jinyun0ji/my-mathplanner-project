@@ -1,6 +1,12 @@
 const functions = require('firebase-functions');
 const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 const { ROLE, isStaffGroupRole } = require('../_utils/roles');
+const {
+    requireString,
+    assertRequired,
+    normalizeStudentDocId,
+    normalizeClassId,
+} = require('../_utils/ids');
 
 const createClinicReservation = functions
     .region('us-central1')
@@ -49,28 +55,26 @@ const createClinicReservation = functions
         throw new functions.https.HttpsError('permission-denied', '직원/조교만 예약을 생성할 수 있습니다.');
     }
 
-    const classId = String(data?.classId || '').trim();
-    const date = String(data?.date || '').trim();
-    const timeSlot = String(data?.timeSlot || data?.plannedTime || '').trim();
-    const studentId = String(data?.studentId || '').trim();
+    const studentDocId = normalizeStudentDocId(data);
+    const classId = normalizeClassId(data);
+    const date = requireString(data, 'date');
+    const timeSlot = requireString(data, 'timeSlot') || requireString(data, 'plannedTime');
 
     const missing = [];
-    if (!studentId) missing.push('studentId');
+    if (!studentDocId) missing.push('studentDocId');
     if (!classId) missing.push('classId');
     if (!date) missing.push('date');
     if (!timeSlot) missing.push('timeSlot');
 
-    if (missing.length > 0) {
-        throw new functions.https.HttpsError('invalid-argument', '필수 값 누락', { missing });
-    }
+    assertRequired(missing);
 
-    const col = db.collection('clinicLogs');
+    const col = db.collection('clinicReservations');
 
     let reservationId = '';
     await db.runTransaction(async (tx) => {
         const dupQ = await tx.get(
             col
-                .where('studentId', '==', studentId)
+                .where('studentDocId', '==', studentDocId)
                 .where('date', '==', date)
                 .where('status', 'in', ['reserved', 'booked', 'pending'])
                 .limit(1)
@@ -83,12 +87,12 @@ const createClinicReservation = functions
         const ref = col.doc();
         reservationId = ref.id;
         tx.set(ref, {
-            ...data,
+            studentDocId,
             classId,
-            studentId,
             date,
             plannedTime: timeSlot,
             status: 'pending',
+            legacyPayload: data,
             createdAt: FieldValue.serverTimestamp(),
             updatedAt: FieldValue.serverTimestamp(),
             createdBy: context.auth.uid,
