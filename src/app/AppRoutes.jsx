@@ -1140,6 +1140,44 @@ export default function AppRoutes({ user, role, studentIds }) {
           return first;
       };
 
+      const resolveClassIdForClinicPayload = (p, classesList) => {
+          const candidates = [
+              p?.classId,
+              p?.classDocId,
+              p?.class?.id,
+              p?.class?.classId,
+              p?.classRef?.id,
+              p?.classRef,
+          ]
+              .filter((v) => v !== undefined && v !== null)
+              .map((v) => String(v).trim())
+              .filter(Boolean);
+
+          if (candidates.length > 0) return candidates[0];
+
+          const name = String(p?.className || p?.class?.name || '').trim();
+          if (name && Array.isArray(classesList)) {
+              const found = classesList.find((c) => String(c?.name || '').trim() === name);
+              if (found?.id) return String(found.id);
+          }
+
+          return '';
+      };
+
+      const resolveTimeSlotForClinicPayload = (p) => {
+          const candidates = [
+              p?.timeSlot,
+              p?.plannedTime,
+              p?.time,
+              p?.slot,
+          ]
+              .filter((v) => v !== undefined && v !== null)
+              .map((v) => String(v).trim())
+              .filter(Boolean);
+
+          return candidates[0] || '';
+      };
+
       ensureFirestoreContext();
       try {
           const { effectiveDate, ...payload } = stripId(data);
@@ -1166,75 +1204,49 @@ export default function AppRoutes({ user, role, studentIds }) {
                   return;
               }
 
+              const normalizedPlanned = resolveTimeSlotForClinicPayload(payload);
               const isReservationCreate =
-                Boolean(payload?.plannedTime) && String(payload?.status || 'pending') === 'pending';
+                Boolean(normalizedPlanned) && String(payload?.status || 'pending') === 'pending';
 
               if (isReservationCreate) {
                   try {
-                      // ✅ 서버가 보통 요구하는 최소 필수값을 확실히 구성
-                      const studentId =
-                        payload?.studentId
-                        || payload?.studentUid
-                        || payload?.studentDocId
-                        || payload?.authUid
-                        || '';
+                      const normalizedClassId = resolveClassIdForClinicPayload(payload, classes)
+                        || resolveClassIdForStudentFlexible(payload?.studentId || payload?.studentUid || payload?.authUid || '');
+                      const normalizedStudentId = String(payload?.studentId || payload?.studentUid || payload?.authUid || '').trim();
+                      const normalizedDate = String(payload?.date || payload?.clinicDate || '').trim();
+                      const normalizedTimeSlot = normalizedPlanned;
 
-                      const classId =
-                        payload?.classId
-                        || payload?.classDocId
-                        || payload?.classUid
-                        || resolveClassIdForStudentFlexible(studentId)
-                        || '';
-
-                      const date =
-                        (typeof payload?.date === 'string' ? payload.date.slice(0, 10) : '')
-                        || (typeof payload?.clinicDate === 'string' ? payload.clinicDate.slice(0, 10) : '')
-                        || '';
-
-                      const timeSlot = String(payload?.plannedTime || payload?.timeSlot || '').trim();
-
-                      // ✅ 호출 전에 누락 필드 체크 (서버 invalid-argument 방지)
                       const missing = [];
-                      if (!studentId) missing.push('studentId');
-                      if (!classId) missing.push('classId');
-                      if (!date) missing.push('date');
-                      if (!timeSlot) missing.push('timeSlot');
+                      if (!normalizedStudentId) missing.push('studentId');
+                      if (!normalizedClassId) missing.push('classId');
+                      if (!normalizedDate) missing.push('date');
+                      if (!normalizedTimeSlot) missing.push('timeSlot');
 
                       if (missing.length > 0) {
-                          console.error('[clinic] missing required fields', { missing, payload });
-                          alert(
-                            `클리닉 예약 저장 실패(필수 값 누락)\n`
-                            + `누락: ${missing.join(', ')}\n\n`
-                            + '※ classId가 누락된 경우: 학생이 반에 등록되어 있지 않거나, 예약 입력에서 반 선택이 필요합니다.'
-                          );
+                          alert(`클리닉 예약 저장 실패(필수 값 누락)\n누락: ${missing.join(', ')}\n\n*직원 입력 화면에서 student/class/date/time을 확인해주세요`);
                           return;
                       }
 
-                      const reservationPayload = {
-                          // ✅ 서버가 기대하는 키를 우선으로 보장
-                          studentId,
-                          classId,
-                          date,
-                          timeSlot,
-
-                          // ✅ 기존 정보도 함께 전달(서버에서 필요할 수도 있음)
-                          status: 'pending',
-                          plannedTime: timeSlot,
-                          teacherUid: userId || null,
-                          createdBy: userId || null,
-                          note: payload?.note || payload?.memo || '',
-                          studentName: payload?.studentName || '',
-                          className: payload?.className || '',
-                          // 원본 payload도 남겨두고 싶으면:
-                          // raw: payload,
-                      };
-
-                      console.log('[clinic] createClinicReservation payload=', reservationPayload);
                       const createReservation = httpsCallable(functions, 'createClinicReservation');
-                      const res = await createReservation(reservationPayload);
+                      const res = await createReservation({
+                          ...payload,
+                          studentId: normalizedStudentId,
+                          classId: normalizedClassId,
+                          date: normalizedDate,
+                          timeSlot: normalizedTimeSlot,
+                          plannedTime: normalizedTimeSlot,
+                      });
 
                       const reservationId = res?.data?.id || `local-${Date.now()}`;
-                      const normalized = normalizeClinicLog({ id: reservationId, ...payload, ...reservationPayload });
+                      const normalized = normalizeClinicLog({
+                          id: reservationId,
+                          ...payload,
+                          studentId: normalizedStudentId,
+                          classId: normalizedClassId,
+                          date: normalizedDate,
+                          plannedTime: normalizedTimeSlot,
+                          status: 'pending',
+                      });
                       setClinicLogs((prev) => [...prev, normalized]);
                       return;
                   } catch (error) {
