@@ -26,6 +26,13 @@ export const ClinicCommentModal = ({ isOpen, onClose, onSave, log, students, par
         () => buildStudentParentPhoneLast4Map(students, parents),
         [students, parents],
     );
+
+    const sortedStudentOptions = useMemo(() => {
+        const list = Array.isArray(students) ? [...students] : [];
+        return list
+            .filter((s) => s?.id && s?.name)
+            .sort((a, b) => String(a.name).localeCompare(String(b.name), 'ko'));
+    }, [students]);
     
     // ✅ [수정] 학생 정보 텍스트에 전화번호 추가
     const studentInfoText = useMemo(() => {
@@ -182,7 +189,7 @@ export const ClinicCommentModal = ({ isOpen, onClose, onSave, log, students, par
                                 className="w-full border rounded-md p-2"
                             >
                                 <option value="">학생을 선택하세요</option>
-                                {students.map(s => (
+                                {sortedStudentOptions.map((s) => (
                                     <option key={s.id} value={s.id}>{formatStudentNameWithParentLast4(s, parentLast4Map)} ({s.school} / {s.class})</option>
                                 ))}
                             </select>

@@ -142,6 +142,121 @@ const fetchAttendanceLogsWithPagination = async (db, isCancelled, pageSize = 100
     return items;
 };
 
+const fetchPaged = async ({
+    db,
+    colName,
+    constraints = [],
+    pageSize = 500,
+    maxDocs = 5000,
+    isCancelled = () => false,
+    mapper = (x) => x,
+}) => {
+    const items = [];
+    let lastDoc = null;
+
+    while (items.length < maxDocs) {
+        if (isCancelled()) return items;
+
+        const cons = [...constraints, limit(pageSize)];
+        if (lastDoc) cons.push(startAfter(lastDoc));
+
+        const snap = await getDocs(query(collection(db, colName), ...cons));
+        if (snap.empty) break;
+
+        items.push(...snap.docs.map((d) => mapper({ id: d.id, ...d.data() })));
+
+        lastDoc = snap.docs[snap.docs.length - 1];
+        if (snap.size < pageSize) break;
+    }
+
+    return items;
+};
+
+const fetchClinicLogsLight = async (db, isCancelled, lightLimit = 300) => {
+    const snap = await getDocs(
+        query(
+            collection(db, 'clinicLogs'),
+            orderBy('date', 'desc'),
+            limit(lightLimit),
+        ),
+    );
+    if (isCancelled()) return [];
+    return snap.docs.map((d) => normalizeClinicLog({ id: d.id, ...d.data() }));
+};
+
+export const fetchClinicLogsDeepForStaff = async ({
+    db,
+    classId = '',
+    studentId = '',
+    date = '',
+    pageSize = 500,
+    maxDocs = 5000,
+    isCancelled = () => false,
+}) => {
+    const tryQuery = async (constraints, tag) => {
+        try {
+            const items = await fetchPaged({
+                db,
+                colName: 'clinicLogs',
+                constraints,
+                pageSize,
+                maxDocs,
+                isCancelled,
+                mapper: normalizeClinicLog,
+            });
+            return { ok: true, items, tag };
+        } catch (error) {
+            console.warn('[staff] fetchClinicLogsDeepForStaff FAIL:', tag, error);
+            return { ok: false, items: [], tag, error };
+        }
+    };
+
+    if (date) {
+        const res = await tryQuery([
+            where('date', '==', date),
+            orderBy('date', 'desc'),
+        ], 'date==');
+        if (res.ok && res.items.length > 0) return res.items;
+
+        const res2 = await tryQuery([where('date', '==', date)], 'date== (no orderBy)');
+        if (res2.ok) {
+            return res2.items.sort((a, b) => String(b?.date || '').localeCompare(String(a?.date || '')));
+        }
+    }
+
+    if (studentId) {
+        const res = await tryQuery([
+            where('studentId', '==', studentId),
+            orderBy('date', 'desc'),
+        ], 'studentId==');
+        if (res.ok && res.items.length > 0) return res.items;
+
+        const res2 = await tryQuery([where('studentId', '==', studentId)], 'studentId== (no orderBy)');
+        if (res2.ok) return res2.items;
+    }
+
+    if (classId) {
+        const res = await tryQuery([
+            where('classId', '==', classId),
+            orderBy('date', 'desc'),
+        ], 'classId==');
+        if (res.ok && res.items.length > 0) return res.items;
+
+        const res2 = await tryQuery([where('classId', '==', classId)], 'classId== (no orderBy)');
+        if (res2.ok) return res2.items;
+    }
+
+    return fetchPaged({
+        db,
+        colName: 'clinicLogs',
+        constraints: [orderBy('date', 'desc')],
+        pageSize,
+        maxDocs,
+        isCancelled,
+        mapper: normalizeClinicLog,
+    });
+};
+
 // staff 전용: grades 전체 페이지네이션 로드
 const fetchGradesWithPagination = async (db, maxDocs = 5000, pageSize = 500) => {
     const all = [];
@@ -389,15 +504,9 @@ export const loadStaffDataOnce = async ({
         }
 
         if (setClinicLogs && (shouldLoad('clinic') || shouldLoad('lessons'))) {
-            const clinicDocs = await fetchList(
-                db,
-                'clinicLogs',
-                setClinicLogs,
-                query(collection(db, 'clinicLogs'), orderBy('date', 'desc'), limit(300)),
-                () => false,
-                normalizeClinicLog,
-            );
-            console.log('[staff] clinicLogs loaded =', clinicDocs.length);
+            const light = await fetchClinicLogsLight(db, () => false, 300);
+            setClinicLogs?.(light);
+            console.log('[staff] clinicLogs loaded (light)=', light.length);
         }
 
         if (setWorkLogs && shouldLoad('communication')) {

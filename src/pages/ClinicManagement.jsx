@@ -1,5 +1,7 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { Icon } from '../utils/helpers';
+import { db } from '../firebase/client';
+import { fetchClinicLogsDeepForStaff } from '../data/firestoreSync';
 import { ClinicScheduleModal } from '../utils/modals/ClinicScheduleModal';
 import { ClinicCommentModal } from '../utils/modals/ClinicCommentModal';
 import { ClinicNotificationModal } from '../utils/modals/ClinicNotificationModal';
@@ -30,6 +32,9 @@ export default function ClinicManagement({
     const [selectedLog, setSelectedLog] = useState(null);
     const [selectedLogIds, setSelectedLogIds] = useState([]);
     const [selectedNotificationType, setSelectedNotificationType] = useState('comment'); 
+    const [isClinicDeepLoading, setIsClinicDeepLoading] = useState(false);
+    const [clinicDeepLoaded, setClinicDeepLoaded] = useState(false);
+    const [deepClinicLogs, setDeepClinicLogs] = useState([]);
 
     const debugSampleLoggedRef = useRef(false);
 
@@ -51,6 +56,77 @@ export default function ClinicManagement({
             })));
         }
     }, [clinicLogs]);
+
+    const needsDeepLoad = useMemo(() => {
+        if (filterMode === 'all') {
+            return Boolean(
+                (selectedClassId && String(selectedClassId).trim())
+                || (selectedStudentId && String(selectedStudentId).trim())
+                || (searchText && searchText.trim().length >= 1),
+            );
+        }
+
+        if (filterMode === 'date') {
+            return Boolean(filterDate);
+        }
+
+        return false;
+    }, [filterMode, selectedClassId, selectedStudentId, searchText, filterDate]);
+
+    const deepKey = useMemo(() => {
+        const st = (searchText || '').trim();
+        const stKey = st.length >= 2 ? st : '';
+        const clsKey = selectedClassId ? String(selectedClassId) : '';
+        const stuKey = selectedStudentId ? String(selectedStudentId) : '';
+        const dateKey = filterMode === 'date' ? String(filterDate || '') : '';
+        const modeKey = String(filterMode || '');
+        return `${modeKey}|c:${clsKey}|s:${stuKey}|d:${dateKey}|q:${stKey}`;
+    }, [filterMode, selectedClassId, selectedStudentId, filterDate, searchText]);
+
+    useEffect(() => {
+        let cancelled = false;
+
+        const run = async () => {
+            if (!needsDeepLoad) {
+                setClinicDeepLoaded(false);
+                setDeepClinicLogs([]);
+                return;
+            }
+
+            setIsClinicDeepLoading(true);
+            try {
+                const dateParam = filterMode === 'date' ? (filterDate || '') : '';
+                const deep = await fetchClinicLogsDeepForStaff({
+                    db,
+                    classId: selectedClassId || '',
+                    studentId: selectedStudentId || '',
+                    date: dateParam,
+                    pageSize: 500,
+                    maxDocs: 5000,
+                    isCancelled: () => cancelled,
+                });
+
+                if (cancelled) return;
+
+                setDeepClinicLogs(deep);
+                setClinicDeepLoaded(true);
+
+                console.log('[clinic] deep clinicLogs loaded =', deep.length, 'key=', deepKey);
+            } catch (error) {
+                console.warn('[clinic] deep load failed, keep existing clinicLogs', error);
+            } finally {
+                if (!cancelled) setIsClinicDeepLoading(false);
+            }
+        };
+
+        run();
+        return () => { cancelled = true; };
+    }, [needsDeepLoad, deepKey, selectedClassId, selectedStudentId, filterDate, filterMode]);
+
+    const activeClinicLogs = useMemo(() => {
+        if (needsDeepLoad && clinicDeepLoaded) return deepClinicLogs;
+        return clinicLogs;
+    }, [needsDeepLoad, clinicDeepLoaded, deepClinicLogs, clinicLogs]);
 
     const studentIndex = useMemo(() => {
         const m = new Map();
@@ -94,13 +170,13 @@ export default function ClinicManagement({
         }
 
         const fromLogs = new Map();
-        clinicLogs.forEach(log => {
+        activeClinicLogs.forEach(log => {
             if (log.studentId && log.studentName) {
                 fromLogs.set(log.studentId, { id: log.studentId, name: log.studentName });
             }
         });
         return Array.from(fromLogs.values()).sort((a, b) => a.name.localeCompare(b.name, 'ko'));
-    }, [students, clinicLogs, parentLast4Map]);
+    }, [students, activeClinicLogs, parentLast4Map]);
 
     const assistantOptions = useMemo(() => {
         const seen = new Map();
@@ -115,7 +191,7 @@ export default function ClinicManagement({
         });
 
         return Array.from(seen.values()).sort((a, b) => a.name.localeCompare(b.name, 'ko'));
-    }, [clinicLogs]);
+    }, [activeClinicLogs]);
 
     const normalizeSelectedClassId = useCallback((selected, classList) => {
         if (!selected) return '';
@@ -196,9 +272,9 @@ export default function ClinicManagement({
 
     useEffect(() => {
         if (debugSampleLoggedRef.current) return;
-        if (!(clinicLogs || []).length) return;
+        if (!(activeClinicLogs || []).length) return;
 
-        const sample = (clinicLogs || []).slice(0, 5).map((l) => ({
+        const sample = (activeClinicLogs || []).slice(0, 5).map((l) => ({
             id: l?.id,
             studentId: l?.studentId,
             studentUid: l?.studentUid,
@@ -210,7 +286,7 @@ export default function ClinicManagement({
         }));
         console.log('[clinic][debug] student key mapping sample', sample);
         debugSampleLoggedRef.current = true;
-    }, [clinicLogs, resolveStudentFromLog, getParentPhoneLast4]);
+    }, [activeClinicLogs, resolveStudentFromLog, getParentPhoneLast4]);
 
     const resetFilters = () => {
         setSelectedClassId('');
@@ -221,7 +297,7 @@ export default function ClinicManagement({
 
     // 날짜별 로그 필터링
     const dateLogs = useMemo(() => {
-        const filteredByDeletion = clinicLogs.filter(log => !log?.isDeleted);
+        const filteredByDeletion = activeClinicLogs.filter(log => !log?.isDeleted);
         if (filterMode === 'date') {
             const filtered = filteredByDeletion.filter(log => log.effectiveDate === filterDate);
             return [...filtered].sort((a, b) => {
@@ -232,14 +308,14 @@ export default function ClinicManagement({
         }
 
         return [];
-    }, [clinicLogs, filterDate, filterMode, getStudentName]);
+    }, [activeClinicLogs, filterDate, filterMode, getStudentName]);
 
     const filteredAndSortedLogs = useMemo(() => {
-        const filteredByDeletion = clinicLogs.filter(log => !log?.isDeleted);
+        const filteredByDeletion = activeClinicLogs.filter(log => !log?.isDeleted);
         const normalizedSelected = normalizeSelectedClassId(selectedClassId, classes);
 
         console.log('[clinic] selectedClassId raw=', selectedClassId, 'normalized=', normalizedSelected);
-        console.log('[clinic] sample class keys=', clinicLogs.slice(0, 10).map(it => ({
+        console.log('[clinic] sample class keys=', activeClinicLogs.slice(0, 10).map(it => ({
             id: it.id,
             classId: it.classId,
             classDocId: it.classDocId,
@@ -295,7 +371,7 @@ export default function ClinicManagement({
             return String(a.id).localeCompare(String(b.id));
         });
     }, [
-        clinicLogs,
+        activeClinicLogs,
         classes,
         selectedClassId,
         selectedStudentId,
@@ -380,7 +456,7 @@ export default function ClinicManagement({
     };
 
     const handleNotificationSent = (logId, scheduleTime) => {
-        const log = clinicLogs.find(l => l.id === logId);
+        const log = activeClinicLogs.find(l => l.id === logId);
         if (log) {
             handleSaveClinicLog({ 
                 ...log, 
@@ -474,6 +550,9 @@ export default function ClinicManagement({
                         <span className="text-gray-500 text-sm font-medium">
                             {filterMode === 'all' ? filteredAndSortedLogs.length : dateLogs.length}건의 일정
                         </span>
+                        {isClinicDeepLoading && (
+                            <span className="ml-2 text-xs font-semibold text-indigo-700">과거 이력 불러오는 중…</span>
+                        )}
                     </div>
                     <div className='flex flex-wrap gap-2 justify-start md:justify-end'>
                         {/* 조교 모드 버튼 */}
@@ -820,8 +899,8 @@ export default function ClinicManagement({
                 </div>
             </div>
 
-            <ClinicScheduleModal isOpen={isScheduleModalOpen} onClose={() => setIsScheduleModalOpen(false)} onSave={handleSaveClinicLog} students={students} parents={parents} defaultDate={filterDate} clinicLogs={clinicLogs} classes={classes} />
-            <ClinicCommentModal isOpen={isCommentModalOpen} onClose={() => setIsCommentModalOpen(false)} onSave={handleSaveClinicLog} log={selectedLog} students={students} parents={parents} clinicLogs={clinicLogs} defaultDate={filterDate} classes={classes} />
+            <ClinicScheduleModal isOpen={isScheduleModalOpen} onClose={() => setIsScheduleModalOpen(false)} onSave={handleSaveClinicLog} students={students} parents={parents} defaultDate={filterDate} clinicLogs={activeClinicLogs} classes={classes} />
+            <ClinicCommentModal isOpen={isCommentModalOpen} onClose={() => setIsCommentModalOpen(false)} onSave={handleSaveClinicLog} log={selectedLog} students={students} parents={parents} clinicLogs={activeClinicLogs} defaultDate={filterDate} classes={classes} />
             <ClinicNotificationModal isOpen={isNotifyModalOpen} onClose={() => setIsNotifyModalOpen(false)} log={selectedLog} students={students} logNotification={logNotification} onSent={handleNotificationSent} notificationType={selectedNotificationType} />
             <ClinicBulkNotificationModal isOpen={isBulkNotifyModalOpen} onClose={() => setIsBulkNotifyModalOpen(false)} selectedLogs={visibleLogs.filter(log => selectedLogIds.includes(log.id))} students={students} logNotification={logNotification} onSent={handleNotificationSent} />
         </div>

@@ -1,27 +1,41 @@
-// src/components/common/StudentNameWithParentLast4.jsx
 import React, { useMemo } from 'react';
-import { formatStudentNameWithParentLast4 } from '../../utils/parentPhone';
+import { last4 } from '../../utils/parentPhone';
+
+const pickParentPhoneFromStudentDoc = (s) => {
+  if (!s) return '';
+  return (
+    s.parentPhone ||
+    s.parentPhoneNumber ||
+    s.parentMobile ||
+    s.parentTel ||
+    s.guardianPhone ||
+    s.guardianPhoneNumber ||
+    s.contactParentPhone ||
+    s.contact?.parentPhone ||
+    s.contact?.guardianPhone ||
+    ''
+  );
+};
 
 export default function StudentNameWithParentLast4({
   student,
-  parentLast4Map,
+  parentLast4Map = {},
   className = '',
-  suffixClassName = '',
   fallback = '----',
 }) {
-  const text = useMemo(() => {
-    return formatStudentNameWithParentLast4(student, parentLast4Map, fallback);
-  }, [student, parentLast4Map, fallback]);
+  const name = student?.name || '';
 
-  const match = String(text).match(/^(.*)\s\((.*)\)$/);
-  const name = match ? match[1] : (student?.name || '');
-  const last4 = match ? match[2] : fallback;
+  const parentLast4 = useMemo(() => {
+    const direct = last4(pickParentPhoneFromStudentDoc(student));
+    const mapped = parentLast4Map[String(student?.id || '')] || '';
+    return direct || mapped || fallback;
+  }, [student, parentLast4Map, fallback]);
 
   return (
     <span className={className}>
-      {name}
-      <span className={suffixClassName || 'text-xs font-normal text-gray-400 ml-1'}>
-        ({last4 || fallback})
+      <span className="font-medium">{name}</span>
+      <span className="ml-1 text-xs text-gray-400 font-normal">
+        ({parentLast4})
       </span>
     </span>
   );
