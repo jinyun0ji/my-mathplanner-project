@@ -1145,17 +1145,39 @@ export default function AppRoutes({ user, role, studentIds }) {
                   return;
               }
 
-              const isReservationCreate = Boolean(payload?.plannedTime) && String(payload?.status || 'pending') === 'pending';
+              const isReservationCreate =
+                  Boolean(payload?.plannedTime) && String(payload?.status || 'pending') === 'pending';
+
               if (isReservationCreate) {
-                  const createReservation = httpsCallable(functions, 'createClinicReservation');
-                  const res = await createReservation({
-                      ...payload,
-                      classId: payload?.classId || payload?.classDocId || '',
-                      timeSlot: payload?.plannedTime || '',
-                  });
-                  const reservationId = res?.data?.id || `local-${Date.now()}`;
-                  const normalized = normalizeClinicLog({ id: reservationId, ...payload });
-                  setClinicLogs(prev => [...prev, normalized]);
+                  try {
+                      const createReservation = httpsCallable(functions, 'createClinicReservation');
+                      const res = await createReservation({
+                          ...payload,
+                          classId: payload?.classId || payload?.classDocId || '',
+                          timeSlot: payload?.plannedTime || '',
+                      });
+
+                      const reservationId = res?.data?.id || `local-${Date.now()}`;
+                      const normalized = normalizeClinicLog({ id: reservationId, ...payload });
+                      setClinicLogs((prev) => [...prev, normalized]);
+                      return;
+                  } catch (error) {
+                      console.error('[clinic] createClinicReservation FAIL', error);
+
+                      const code = error?.code || '';
+                      const msg = error?.message || '';
+                      const details = error?.details ? JSON.stringify(error.details) : '';
+
+                      alert(
+                          `클리닉 예약 저장 실패\n`
+                          + (code ? `code: ${code}\n` : '')
+                          + (msg ? `message: ${msg}\n` : '')
+                          + (details ? `details: ${details}\n` : '')
+                          + `\n- 주 원인: Functions 리전(us-central1) 불일치 또는 함수 미배포/이름 불일치`
+                      );
+
+                      throw error;
+                  }
               } else {
                   const docRef = await addDoc(collection(db, 'clinicLogs'), {
                       ...payload,

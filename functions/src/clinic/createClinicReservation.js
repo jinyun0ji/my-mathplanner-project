@@ -2,7 +2,9 @@ const functions = require('firebase-functions');
 const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 const { ROLE, isStaffGroupRole } = require('../_utils/roles');
 
-const createClinicReservation = functions.https.onCall(async (data, context) => {
+const createClinicReservation = functions
+    .region('us-central1')
+    .https.onCall(async (data, context) => {
     if (!context?.auth?.uid) {
         throw new functions.https.HttpsError('unauthenticated', '로그인이 필요합니다.');
     }
