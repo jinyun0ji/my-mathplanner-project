@@ -329,6 +329,36 @@ service cloud.firestore {
       allow read, list: if isStaffOrAdminOrTeacher();
       allow write: if isStaffOrAdminOrTeacher();
     }
+    
+    match /auditLogs/{docId} {
+      allow read, list: if isStaffOrAdminOrTeacher();
+      allow create, update, delete: if false;
+    }
+
+    match /errorLogs/{docId} {
+      allow read, list: if isStaffOrAdminOrTeacher();
+
+      allow create: if signedIn()
+        && request.resource.data.createdBy == uid()
+        && request.resource.data.createdAt is string
+        && request.resource.data.level in ['error', 'warn']
+        && request.resource.data.diff({}).affectedKeys().hasOnly([
+          'level',
+          'scope',
+          'action',
+          'message',
+          'code',
+          'context',
+          'createdBy',
+          'createdAt',
+          'app',
+          'route',
+          'build',
+          'userRole'
+        ]);
+
+      allow update, delete: if false;
+    }
 
     match /announcements/{docId} {
       allow read: if isAdminOrStaff()

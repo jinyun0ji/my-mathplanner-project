@@ -30,6 +30,7 @@ export default function Sidebar({ page, setPage, onLogout, isOpen, onClose }) {
     const adminMenuItems = [
         { name: '직원 관리', key: '/admin/staff', icon: 'users' },
         { name: '알림 로그', key: '/admin/notifications', icon: 'bell' },
+        { name: '운영 로그', key: '/admin/logs', icon: 'activity' },
         { name: '결제 관리', key: '/admin/payments', icon: 'creditCard' },
         { name: '시스템 설정', key: '/admin/settings', icon: 'settings' },
     ];

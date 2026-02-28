@@ -719,6 +719,10 @@ video {
   top: 1rem;
 }
 
+.top-2\.5{
+  top: 0.625rem;
+}
+
 .z-10{
   z-index: 10;
 }
@@ -1297,6 +1301,10 @@ video {
 
 .w-full{
   width: 100%;
+}
+
+.w-\[260px\]{
+  width: 260px;
 }
 
 .min-w-0{

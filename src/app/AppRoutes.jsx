@@ -25,6 +25,7 @@ import StaffManagement from '../pages/admin/StaffManagement';
 import AdminNotificationsPage from '../pages/admin/AdminNotificationsPage';
 import AdminPaymentsPage from '../pages/admin/AdminPaymentsPage';
 import AdminSettingsPage from '../pages/admin/AdminSettingsPage';
+import AdminLogsPage from '../pages/admin/AdminLogsPage';
 import InviteManagementPage from '../pages/admin/InviteManagementPage';
 import AdminRoute from '../routes/AdminRoute';
 import StaffOrTeachingRoute from '../routes/StaffOrTeachingRoute';
@@ -43,6 +44,7 @@ import { loadStaffDataOnce, loadViewerDataOnce } from '../data/firestoreSync';
 import { createLinkCode, createStaffUser } from '../admin/staffService';
 import { claimStudentLinkCode } from '../parent/linkCodeService';
 import { useParentContext } from '../parent';
+import { logClientError } from '../utils/errorLogger';
 import { addVideoMemo, deleteVideoMemo, updateVideoMemo } from '../domain/memo/videoMemo.service';
 import {
     addDoc,
@@ -84,6 +86,7 @@ const ADMIN_ROUTES = new Set([
     '/admin/notifications',
     '/admin/payments',
     '/admin/settings',
+    '/admin/logs',
     '/staff/invites',
 ]);
 
@@ -145,6 +148,7 @@ const AppShellLayout = ({
 export default function AppRoutes({ user, role, studentIds }) {
   const navigate = useNavigate();
   const location = useLocation();
+  const routePath = location?.pathname || '';
   const page = useMemo(() => getPageKeyFromPath(location.pathname), [location.pathname]);
   const [notifications, setNotifications] = useState([]);
   const [isGlobalDirty, setIsGlobalDirty] = useState(false);
@@ -505,6 +509,21 @@ export default function AppRoutes({ user, role, studentIds }) {
           logNotification('success', '결제 기록 저장', `${paymentData.studentName || '학생'} 결제 완료`);
           return { success: true, id: docRef.id };
       } catch (error) {
+        await logClientError({
+              scope: 'payment',
+              action: 'createPayment',
+              message: error?.message || 'unknown payment write error',
+              code: error?.code || '',
+              context: {
+                  studentId,
+                  classId,
+                  amount: Number.isFinite(paymentData?.amount) ? paymentData.amount : Number(paymentData?.amount) || 0,
+              },
+              userId,
+              userRole: role,
+              route: routePath,
+              app: 'staff',
+          });
           console.error('[Firestore WRITE ERROR]', error);
           alert('결제 기록 저장에 실패했습니다. 권한 또는 네트워크를 확인하세요.');
           return { success: false, error };
@@ -522,6 +541,20 @@ export default function AppRoutes({ user, role, studentIds }) {
           await refreshPaymentLogs();
           logNotification('success', '결제 기록 수정', '결제 정보가 업데이트되었습니다.');
       } catch (error) {
+        await logClientError({
+              scope: 'payment',
+              action: 'updatePayment',
+              message: error?.message || 'unknown payment update error',
+              code: error?.code || '',
+              context: {
+                  paymentId: String(paymentId || ''),
+                  updateKeys: Object.keys(updates || {}),
+              },
+              userId,
+              userRole: role,
+              route: routePath,
+              app: 'staff',
+          });
           console.error('[Firestore WRITE ERROR]', error);
           alert('결제 기록 수정에 실패했습니다. 권한 또는 네트워크를 확인하세요.');
       }
@@ -857,6 +890,20 @@ export default function AppRoutes({ user, role, studentIds }) {
               setLessonLogs(prev => [{ id: docRef.id, ...payloadWithoutFile }, ...prev]);
           }
       } catch (error) {
+        await logClientError({
+              scope: 'lessons',
+              action: isEdit ? 'updateLessonLog' : 'createLessonLog',
+              message: error?.message || 'unknown lesson log write error',
+              code: error?.code || '',
+              context: {
+                  classId: data?.classId ? String(data.classId) : '',
+                  date: data?.date ? String(data.date) : '',
+              },
+              userId,
+              userRole: role,
+              route: routePath,
+              app: 'staff',
+          });
           console.error('[Firestore WRITE ERROR]', error);
           throw error;
       }
@@ -897,6 +944,21 @@ export default function AppRoutes({ user, role, studentIds }) {
           setAttendanceLogs(nextLogs);
           logNotification('success', '출결 저장', '출결 기록이 저장되었습니다.');
       } catch (error) {
+        await logClientError({
+              scope: 'attendance',
+              action: 'saveAttendance',
+              message: error?.message || 'unknown attendance write error',
+              code: error?.code || '',
+              context: {
+                  recordCount: Array.isArray(records) ? records.length : 0,
+                  classId: Array.isArray(records) && records[0]?.classId ? String(records[0].classId) : '',
+                  date: Array.isArray(records) && records[0]?.date ? String(records[0].date) : '',
+              },
+              userId,
+              userRole: role,
+              route: routePath,
+              app: 'staff',
+          });
           console.error('[Firestore WRITE ERROR]', error);
           alert('출결 저장에 실패했습니다. 권한 또는 네트워크를 확인하세요.');
       }
@@ -925,6 +987,20 @@ export default function AppRoutes({ user, role, studentIds }) {
               setHomeworkAssignments(prev => [{ id: docRef.id, ...payload }, ...prev]);
           }
       } catch (error) {
+        await logClientError({
+              scope: 'homework',
+              action: isEdit ? 'updateHomeworkAssignment' : 'createHomeworkAssignment',
+              message: error?.message || 'unknown homework assignment write error',
+              code: error?.code || '',
+              context: {
+                  classId: data?.classId ? String(data.classId) : '',
+                  dueDate: data?.dueDate ? String(data.dueDate) : '',
+              },
+              userId,
+              userRole: role,
+              route: routePath,
+              app: 'staff',
+          });
           console.error('[Firestore WRITE ERROR]', error);
           throw error;
       }
@@ -999,6 +1075,20 @@ export default function AppRoutes({ user, role, studentIds }) {
 
           setHomeworkResults(nextResults);
       } catch (error) {
+        await logClientError({
+              scope: 'homework',
+              action: 'updateHomeworkResult',
+              message: error?.message || 'unknown homework result write error',
+              code: error?.code || '',
+              context: {
+                  updateCount: Array.isArray(updates) ? updates.length : 0,
+                  checkedDate: checkedDateInput || '',
+              },
+              userId,
+              userRole: role,
+              route: routePath,
+              app: 'staff',
+          });
           console.error('[Firestore WRITE ERROR]', error);
           alert('과제 채점 결과 저장에 실패했습니다. 권한 또는 네트워크를 확인하세요.');
       }
@@ -1027,6 +1117,20 @@ export default function AppRoutes({ user, role, studentIds }) {
               setTests(prev => [...prev, { id: docRef.id, ...payload }]);
           }
       } catch (error) {
+        await logClientError({
+              scope: 'grades',
+              action: isEdit ? 'updateTest' : 'createTest',
+              message: error?.message || 'unknown test write error',
+              code: error?.code || '',
+              context: {
+                  classId: data?.classId ? String(data.classId) : '',
+                  date: data?.date ? String(data.date) : '',
+              },
+              userId,
+              userRole: role,
+              route: routePath,
+              app: 'staff',
+          });
           console.error('[Firestore WRITE ERROR]', error);
           throw error;
       }
@@ -1113,6 +1217,20 @@ export default function AppRoutes({ user, role, studentIds }) {
               [studentId]: { ...prev[studentId], [testId]: payload },
           }));
       } catch (error) {
+        await logClientError({
+              scope: 'grades',
+              action: 'updateGrade',
+              message: error?.message || 'unknown grade write error',
+              code: error?.code || '',
+              context: {
+                  studentId: String(studentId || ''),
+                  testId: String(testId || ''),
+              },
+              userId,
+              userRole: role,
+              route: routePath,
+              app: 'staff',
+          });
           console.error('[Firestore WRITE ERROR]', error);
           alert('성적 저장에 실패했습니다. 권한 또는 네트워크를 확인하세요.');
       }
@@ -1254,6 +1372,22 @@ export default function AppRoutes({ user, role, studentIds }) {
                       setClinicLogs((prev) => [...prev, normalized]);
                       return;
                   } catch (error) {
+                    await logClientError({
+                          scope: 'clinic',
+                          action: 'createClinicReservation',
+                          message: error?.message || 'unknown clinic reservation error',
+                          code: error?.code || '',
+                          context: {
+                              studentId: payload?.studentDocId || payload?.studentId || '',
+                              classId: payload?.classId || payload?.classDocId || '',
+                              date: payload?.date || '',
+                              plannedTime: payload?.plannedTime || payload?.timeSlot || '',
+                          },
+                          userId,
+                          userRole: role,
+                          route: routePath,
+                          app: 'staff',
+                      });
                       console.error('[clinic] createClinicReservation FAIL', error);
 
                       const code = error?.code || '';
@@ -1286,6 +1420,22 @@ export default function AppRoutes({ user, role, studentIds }) {
             alert('이미 해당 날짜에 예약이 있습니다. 시간 변경은 기존 예약을 취소 후 진행하세요.');
             return;
         }
+        await logClientError({
+              scope: 'clinic',
+              action: isEdit ? 'updateClinicLog' : 'createClinicLog',
+              message: error?.message || 'unknown clinic write error',
+              code: error?.code || '',
+              context: {
+                  studentId: data?.studentDocId || data?.studentId || '',
+                  classId: data?.classId || data?.classDocId || '',
+                  date: data?.date || data?.clinicDate || '',
+                  plannedTime: data?.plannedTime || data?.timeSlot || '',
+              },
+              userId,
+              userRole: role,
+              route: routePath,
+              app: 'staff',
+          });
           console.error('[Firestore WRITE ERROR]', error);
           alert('클리닉 기록 저장에 실패했습니다. 권한 또는 네트워크를 확인하세요.');
       }
@@ -1841,6 +1991,15 @@ export default function AppRoutes({ user, role, studentIds }) {
                 element={(
                     <AdminRoute>
                         <AdminSettingsPage />
+                    </AdminRoute>
+                )}
+            />
+            
+            <Route
+                path="admin/logs"
+                element={(
+                    <AdminRoute>
+                        <AdminLogsPage />
                     </AdminRoute>
                 )}
             />
