@@ -195,6 +195,16 @@ export default function ScheduleTab({
         return Boolean(log?.checkIn || log?.checkOut || isReservation || log?.plannedTime);
     };
 
+    const resolveClinicPlannedStart = (log) => {
+        if (typeof log?.plannedTime === 'string') return log.plannedTime;
+        return log?.plannedTime?.start || '';
+    };
+
+    const resolveClinicPlannedEnd = (log) => {
+        if (typeof log?.plannedTime === 'string') return '';
+        return log?.plannedTime?.end || '';
+    };
+
     const handleOpenAddModal = () => {
         setNewSchedule({
             academyName: '',
@@ -468,8 +478,8 @@ export default function ScheduleTab({
                     teacher: log.tutorName || log.tutor || log.teacherName || log.teacher || '담당 선생님',
                     time: log.checkIn
                         ? `${log.checkIn}~${log.checkOut || ''}`
-                        : (log.plannedTime?.start
-                            ? `${log.plannedTime.start}~${log.plannedTime?.end || ''}`
+                        : (resolveClinicPlannedStart(log)
+                            ? `${resolveClinicPlannedStart(log)}~${resolveClinicPlannedEnd(log)}`
                             : '시간 미정'),
                     status: getClinicDisplayStatus(log),
                     scheduleId: log.id

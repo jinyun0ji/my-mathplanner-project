@@ -29,6 +29,7 @@ const chunkArray = (items, size = 10) => {
 
 const normalizeAuthUid = (item) => {
     if (item?.studentId) return item;
+    if (item?.studentDocId) return { ...item, studentId: item.studentDocId };
     if (item?.authUid) return { ...item, studentId: item.authUid };
     if (item?.studentUid) return { ...item, studentId: item.studentUid };
     return item;
@@ -963,6 +964,20 @@ export const loadViewerDataOnce = async ({
                 normalizeClinicLog,
             );
             await fetchListSafe(
+                'clinicLogs studentDocId',
+                db,
+                'clinicLogs',
+                (items) => clinicDocs.push(...items),
+                query(
+                    collection(db, 'clinicLogs'),
+                    where('studentDocId', 'in', scopedStudentUids),
+                    orderBy('date', 'desc'),
+                    limit(100),
+                ),
+                isCancelled,
+                normalizeClinicLog,
+            );
+            await fetchListSafe(
                 'clinicLogs authUid',
                 db,
                 'clinicLogs',
@@ -1000,6 +1015,20 @@ export const loadViewerDataOnce = async ({
                 query(
                     collection(db, 'clinicReservations'),
                     where('studentId', 'in', scopedStudentUids),
+                    orderBy('date', 'desc'),
+                    limit(100),
+                ),
+                isCancelled,
+                normalizeClinicReservation,
+            );
+            await fetchListSafe(
+                'clinicReservations studentDocId',
+                db,
+                'clinicReservations',
+                (items) => reservationDocs.push(...items),
+                query(
+                    collection(db, 'clinicReservations'),
+                    where('studentDocId', 'in', scopedStudentUids),
                     orderBy('date', 'desc'),
                     limit(100),
                 ),

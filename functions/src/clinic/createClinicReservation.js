@@ -88,6 +88,9 @@ const createClinicReservation = functions
         reservationId = ref.id;
         tx.set(ref, {
             studentDocId,
+            studentId: studentDocId,
+            authUid: data?.authUid ? String(data.authUid).trim() : null,
+            studentUid: data?.studentUid ? String(data.studentUid).trim() : null,
             classId,
             date,
             plannedTime: timeSlot,

@@ -323,8 +323,10 @@ export default function StudentHome({
     const todayDayName = dayNames[today.getDay()];
     const buildClinicTeacher = (log) => log?.tutorName || log?.tutor || log?.teacherName || log?.teacher || '-';
     const formatClinicTime = (log) => {
-        const start = log?.checkIn || log?.plannedTime?.start || '';
-        const end = log?.checkOut || log?.plannedTime?.end || '';
+        const plannedStart = typeof log?.plannedTime === 'string' ? log.plannedTime : log?.plannedTime?.start;
+        const plannedEnd = typeof log?.plannedTime === 'string' ? '' : log?.plannedTime?.end;
+        const start = log?.checkIn || plannedStart || '';
+        const end = log?.checkOut || plannedEnd || '';
         if (start && end) return `${start} ~ ${end}`;
         if (start) return `${start} 예정`;
         return '시간 미정';
@@ -344,7 +346,7 @@ export default function StudentHome({
         const todayClinics = studentId
             ? clinicLogs.filter(log => log.studentId === studentId && log.date === todayStr).map(log => ({
                 type: 'clinic',
-                time: log.checkIn || log?.plannedTime?.start || '99:99',
+                time: log.checkIn || (typeof log?.plannedTime === 'string' ? log.plannedTime : log?.plannedTime?.start) || '99:99',
                 timeLabel: formatClinicTime(log),
                 title: '클리닉',
                 sub: `선생님: ${buildClinicTeacher(log)} • ${buildClinicStatus(log)}`,
