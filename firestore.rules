@@ -310,17 +310,17 @@ service cloud.firestore {
       allow write: if isStaffOrAdminOrTeacher();
     }
     
+    // clinicReservations: 학생/부모는 본인 예약 read, 직원은 전체
     match /clinicReservations/{docId} {
-      allow get, read, list: if isStaffOrAdminOrTeacher()
+      allow read: if isStaffOrAdminOrTeacher()
         || (isSignedIn()
           && (
-            ('authUid' in resource.data && isMyStudentUid(resource.data.authUid))
-            || ('studentId' in resource.data && isMyStudentUid(resource.data.studentId))
+            ('studentId' in resource.data && isMyStudentUid(resource.data.studentId))
+            || ('authUid' in resource.data && isMyStudentUid(resource.data.authUid))
             || ('studentUid' in resource.data && isMyStudentUid(resource.data.studentUid))
-            || ('studentDocId' in resource.data && isMyStudentUid(resource.data.studentDocId))
           )
         );
-      allow create, update, delete: if isStaffOrAdminOrTeacher();
+      allow write: if isStaffOrAdminOrTeacher();
     }
 
     match /clinicSessions/{docId} {

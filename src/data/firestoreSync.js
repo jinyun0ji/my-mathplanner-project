@@ -27,6 +27,11 @@ const chunkArray = (items, size = 10) => {
     return chunks;
 };
 
+// ✅ Firestore 'in' / 'array-contains-any' 는 빈 배열이면 Invalid Query 발생
+export function safeNonEmptyArray(arr) {
+    return Array.isArray(arr) ? arr.map(String).filter(Boolean) : [];
+}
+
 const normalizeAuthUid = (item) => {
     if (item?.studentId) return item;
     if (item?.studentDocId) return { ...item, studentId: item.studentDocId };
@@ -803,15 +808,16 @@ export const loadViewerDataOnce = async ({
         return;
     }
 
-    const linkedStudentIds = Array.isArray(studentIds) ? studentIds.filter(Boolean) : [];
+    const linkedStudentIds = safeNonEmptyArray(studentIds);
 
     // ✅ 학생은 authUid(userId) 섞지 않고 studentDocId만 사용
-    const viewerStudentUids = (userRole === 'student'
+    const viewerStudentUids = safeNonEmptyArray(userRole === 'student'
         ? linkedStudentIds
         : activeStudentId
             ? [activeStudentId]
             : linkedStudentIds
-    ).filter(Boolean).slice(0, 10);
+    ).slice(0, 10);
+    const activeOnly = safeNonEmptyArray(activeStudentId ? [activeStudentId] : []);
 
     console.log('[viewer] viewerStudentUids =', viewerStudentUids);
 
@@ -843,17 +849,17 @@ export const loadViewerDataOnce = async ({
 
         console.log('[viewer] myStudents ids =', myStudents.map((s) => s.id));
 
-        const scopedStudentUids = Array.from(new Set([
+        const scopedStudentUids = safeNonEmptyArray(Array.from(new Set([
             ...viewerStudentUids,
             ...myStudents.map((s) => s.id).filter(Boolean),
-        ])).slice(0, 10);
+        ])).slice(0, 10));
 
         console.log('[viewer] scopedStudentUids =', scopedStudentUids);
 
-        const scopedStudentAuthUids = Array.from(new Set([
+        const scopedStudentAuthUids = safeNonEmptyArray(Array.from(new Set([
             ...(userRole === 'student' ? [userId] : []),
             ...myStudents.map((s) => s.authUid).filter(Boolean),
-        ].filter(Boolean))).slice(0, 10);
+        ].filter(Boolean))).slice(0, 10));
 
         console.log('[viewer] scopedStudentAuthUids =', scopedStudentAuthUids);
         const nonEmpty = (arr) => Array.isArray(arr) && arr.length > 0;
@@ -1022,64 +1028,86 @@ export const loadViewerDataOnce = async ({
         if (scopedStudentUids.length > 0) {
             const clinicDocs = [];
             const reservationDocs = [];
-            const viewerStudentDocId = activeStudentId || scopedStudentUids[0] || null;
+            const viewerStudentDocId = activeOnly[0] || scopedStudentUids[0] || null;
             const viewerAuthUid = userId || scopedStudentAuthUids[0] || null;
 
-            const fetchedClinicLogs = await run('clinicLogs viewer', async () => {
-                return fetchClinicLogsForViewer({
-                    db,
-                    studentDocId: viewerStudentDocId,
-                    authUid: viewerAuthUid,
-                    pageSize: 200,
-                    maxDocs: 2000,
-                    isCancelled,
+            try {
+                const fetchedClinicLogs = await run('clinicLogs viewer', async () => {
+                    return fetchClinicLogsForViewer({
+                        db,
+                        studentDocId: viewerStudentDocId,
+                        authUid: viewerAuthUid,
+                        pageSize: 200,
+                        maxDocs: 2000,
+                        isCancelled,
+                    });
                 });
-            });
-            clinicDocs.push(...fetchedClinicLogs);
+                clinicDocs.push(...fetchedClinicLogs);
+            } catch (e) {
+                console.warn('[viewer] clinicLogs load failed', e);
+            }
 
             // clinicReservations
-            await fetchListSafe(
-                'clinicReservations studentId',
-                db,
-                'clinicReservations',
-                (items) => reservationDocs.push(...items),
-                query(
-                    collection(db, 'clinicReservations'),
-                    where('studentId', 'in', scopedStudentUids),
-                    orderBy('date', 'desc'),
-                    limit(100),
-                ),
-                isCancelled,
-                normalizeClinicReservation,
-            );
-            await fetchListSafe(
-                'clinicReservations authUid',
-                db,
-                'clinicReservations',
-                (items) => reservationDocs.push(...items),
-                query(
-                    collection(db, 'clinicReservations'),
-                    where('authUid', 'in', scopedStudentAuthUids),
-                    orderBy('date', 'desc'),
-                    limit(100),
-                ),
-                isCancelled,
-                normalizeClinicReservation,
-            );
-            await fetchListSafe(
-                'clinicReservations studentUid',
-                db,
-                'clinicReservations',
-                (items) => reservationDocs.push(...items),
-                query(
-                    collection(db, 'clinicReservations'),
-                    where('studentUid', 'in', scopedStudentUids),
-                    orderBy('date', 'desc'),
-                    limit(30),
-                ),
-                isCancelled,
-                normalizeClinicReservation,
-            );
+            if (scopedStudentUids.length > 0) {
+                try {
+                    await fetchListSafe(
+                        'clinicReservations studentId',
+                        db,
+                        'clinicReservations',
+                        (items) => reservationDocs.push(...items),
+                        query(
+                            collection(db, 'clinicReservations'),
+                            where('studentId', 'in', scopedStudentUids),
+                            orderBy('date', 'desc'),
+                            limit(100),
+                        ),
+                        isCancelled,
+                        normalizeClinicReservation,
+                    );
+                } catch (e) {
+                    console.warn('[viewer] clinicReservations studentId load failed', e);
+                }
+            }
+            if (scopedStudentAuthUids.length > 0) {
+                try {
+                    await fetchListSafe(
+                        'clinicReservations authUid',
+                        db,
+                        'clinicReservations',
+                        (items) => reservationDocs.push(...items),
+                        query(
+                            collection(db, 'clinicReservations'),
+                            where('authUid', 'in', scopedStudentAuthUids),
+                            orderBy('date', 'desc'),
+                            limit(100),
+                        ),
+                        isCancelled,
+                        normalizeClinicReservation,
+                    );
+                } catch (e) {
+                    console.warn('[viewer] clinicReservations authUid load failed', e);
+                }
+            }
+            if (scopedStudentUids.length > 0) {
+                try {
+                    await fetchListSafe(
+                        'clinicReservations studentUid',
+                        db,
+                        'clinicReservations',
+                        (items) => reservationDocs.push(...items),
+                        query(
+                            collection(db, 'clinicReservations'),
+                            where('studentUid', 'in', scopedStudentUids),
+                            orderBy('date', 'desc'),
+                            limit(30),
+                        ),
+                        isCancelled,
+                        normalizeClinicReservation,
+                    );
+                } catch (e) {
+                    console.warn('[viewer] clinicReservations studentUid load failed', e);
+                }
+            }
 
                 if (!isCancelled()) {
                 setClinicLogs?.(mergeClinicDocs(clinicDocs, reservationDocs));
@@ -1095,7 +1123,7 @@ export const loadViewerDataOnce = async ({
         let filteredTests = [];
         let allowedTestIds = null;
 
-        const lessonClassIds = myClasses.map(c => c.id).slice(0, 10);
+        const lessonClassIds = safeNonEmptyArray(myClasses.map((c) => c.id)).slice(0, 10);
 
         /* =========================
            closures (viewer: student/parent) ✅ 새로고침 유지 핵심
@@ -1187,39 +1215,47 @@ export const loadViewerDataOnce = async ({
         }
 
         if (lessonClassIds.length > 0) {
-            await fetchListSafe(
-                'lessonLogs fetchList',
-                db,
-                'lessonLogs',
-                (items) => {
-                    setLessonLogs?.(items);
-                },
-                query(
-                    collection(db, 'lessonLogs'),
-                    where('classId', 'in', lessonClassIds),
-                    orderBy('date', 'desc'),
-                    limit(100),
-                ),
-                isCancelled,
-            );
-
-            // ✅ tests 로딩 + 로컬 변수에 저장
-            const testSnap = await run('tests getDocs', () =>
-                getDocs(
+            try {
+                await fetchListSafe(
+                    'lessonLogs fetchList',
+                    db,
+                    'lessonLogs',
+                    (items) => {
+                        setLessonLogs?.(items);
+                    },
                     query(
-                        collection(db, 'tests'),
+                        collection(db, 'lessonLogs'),
                         where('classId', 'in', lessonClassIds),
                         orderBy('date', 'desc'),
                         limit(100),
                     ),
-                ),
-            );
+                    isCancelled,
+                );
 
-            viewerTests = testSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-            filteredTests = viewerTests;
-            setTests?.(filteredTests);
-            warnOnQuestionScores(filteredTests, 'viewer');
-            allowedTestIds = null;
+                // ✅ tests 로딩 + 로컬 변수에 저장
+                const testSnap = await run('tests getDocs', () =>
+                    getDocs(
+                        query(
+                            collection(db, 'tests'),
+                            where('classId', 'in', lessonClassIds),
+                            orderBy('date', 'desc'),
+                            limit(100),
+                        ),
+                    ),
+                );
+
+                viewerTests = testSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+                filteredTests = viewerTests;
+                setTests?.(filteredTests);
+                warnOnQuestionScores(filteredTests, 'viewer');
+                allowedTestIds = null;
+            } catch (e) {
+                console.warn('[viewer] lessonLogs/tests load failed', e);
+                if (!isCancelled()) {
+                    setLessonLogs?.([]);
+                    setTests?.([]);
+                }
+            }
 
              /* =========================
                classTestStats (viewer: student/parent)
@@ -1257,31 +1293,36 @@ export const loadViewerDataOnce = async ({
         grades (viewer: 학생/부모)
         ⚠️ 반 전체 조회 금지
         ========================= */
-        if (scopedStudentUids.length > 0) {
-            const gradeSnap = await run('grades getDocs', () =>
-                getDocs(
-                    query(
-                        collection(db, 'grades'),
-                        where('authUid', 'in', scopedStudentAuthUids),
-                        limit(100),
+        if (scopedStudentAuthUids.length > 0) {
+            try {
+                const gradeSnap = await run('grades getDocs', () =>
+                    getDocs(
+                        query(
+                            collection(db, 'grades'),
+                            where('authUid', 'in', scopedStudentAuthUids),
+                            limit(100),
+                        ),
                     ),
-                ),
-            );
+                );
 
-            if (!isCancelled()) {
-                const mappedGrades = {};
-                gradeSnap.docs.forEach((docSnap) => {
-                    const data = docSnap.data();
-                    const { authUid: sId, testId } = data;
+                if (!isCancelled()) {
+                    const mappedGrades = {};
+                    gradeSnap.docs.forEach((docSnap) => {
+                        const data = docSnap.data();
+                        const { authUid: sId, testId } = data;
 
-                    if (!sId || !testId) return;
-                    if (allowedTestIds && !allowedTestIds.has(testId)) return;
+                        if (!sId || !testId) return;
+                        if (allowedTestIds && !allowedTestIds.has(testId)) return;
 
-                    if (!mappedGrades[sId]) mappedGrades[sId] = {};
-                    mappedGrades[sId][testId] = data;
-                });
+                        if (!mappedGrades[sId]) mappedGrades[sId] = {};
+                        mappedGrades[sId][testId] = data;
+                    });
 
-                setGrades?.(mappedGrades);
+                    setGrades?.(mappedGrades);
+                }
+            } catch (e) {
+                console.warn('[viewer] grades load failed', e);
+                if (!isCancelled()) setGrades?.({});
             }
         } else if (!isCancelled()) {
             setGrades?.({});
@@ -1290,57 +1331,62 @@ export const loadViewerDataOnce = async ({
         /* =========================
            homeworkResults (직접 getDocs)
         ========================= */
-        if (scopedStudentUids.length > 0) {
-            const mapped = {};
-            const authUidToStudentDocId = new Map(
-                myStudents
-                    .filter((student) => student?.authUid && student?.id)
-                    .map((student) => [String(student.authUid), String(student.id)]),
-            );
+        try {
+            if (scopedStudentUids.length > 0) {
+                const mapped = {};
+                const authUidToStudentDocId = new Map(
+                    myStudents
+                        .filter((student) => student?.authUid && student?.id)
+                        .map((student) => [String(student.authUid), String(student.id)]),
+                );
 
             const upsert = (data) => {
-                const assignmentId = data.assignmentId || data.homeworkAssignmentId || null;
-                const rawKey = data.studentId || data.studentDocId || data.authUid || data.studentUid || null;
-                const sKey = rawKey && authUidToStudentDocId.get(String(rawKey))
-                    ? authUidToStudentDocId.get(String(rawKey))
-                    : rawKey;
-                if (!sKey || !assignmentId) return;
-                if (!mapped[sKey]) mapped[sKey] = {};
-                mapped[sKey][assignmentId] = data.results || data;
-            };
+                    const assignmentId = data.assignmentId || data.homeworkAssignmentId || null;
+                    const rawKey = data.studentId || data.studentDocId || data.authUid || data.studentUid || null;
+                    const sKey = rawKey && authUidToStudentDocId.get(String(rawKey))
+                        ? authUidToStudentDocId.get(String(rawKey))
+                        : rawKey;
+                    if (!sKey || !assignmentId) return;
+                    if (!mapped[sKey]) mapped[sKey] = {};
+                    mapped[sKey][assignmentId] = data.results || data;
+                };
 
-            if (Array.isArray(scopedStudentAuthUids) && scopedStudentAuthUids.length > 0) {
-                const snapA = await run('homeworkResults authUid in', () =>
+                if (Array.isArray(scopedStudentAuthUids) && scopedStudentAuthUids.length > 0) {
+                    const snapA = await run('homeworkResults authUid in', () =>
+                        getDocs(
+                            query(
+                                collection(db, 'homeworkResults'),
+                                where('authUid', 'in', scopedStudentAuthUids),
+                                limit(200),
+                            ),
+                        ),
+                    );
+                snapA.docs.forEach((d) => upsert(d.data() || {}));
+            }
+
+            if (Array.isArray(scopedStudentUids) && scopedStudentUids.length > 0) {
+                const snapB = await run('homeworkResults studentId in', () =>
                     getDocs(
                         query(
                             collection(db, 'homeworkResults'),
-                            where('authUid', 'in', scopedStudentAuthUids),
+                            where('studentId', 'in', scopedStudentUids),
                             limit(200),
                         ),
                     ),
                 );
-            snapA.docs.forEach((d) => upsert(d.data() || {}));
-        }
-
-        if (Array.isArray(scopedStudentUids) && scopedStudentUids.length > 0) {
-            const snapB = await run('homeworkResults studentId in', () =>
-                getDocs(
-                    query(
-                        collection(db, 'homeworkResults'),
-                        where('studentId', 'in', scopedStudentUids),
-                        limit(200),
-                    ),
-                ),
-            );
             snapB.docs.forEach((d) => upsert(d.data() || {}));
-        }
+            }
 
-        if (!isCancelled()) {
-            console.log('[viewer][homeworkResults] keys=', Object.keys(mapped));
-            setHomeworkResults?.(mapped);
-        }
-        } else if (!isCancelled()) {
-            setHomeworkResults?.({});
+            if (!isCancelled()) {
+                console.log('[viewer][homeworkResults] keys=', Object.keys(mapped));
+                setHomeworkResults?.(mapped);
+            }
+            } else if (!isCancelled()) {
+                setHomeworkResults?.({});
+            }
+        } catch (e) {
+            console.warn('[viewer] homeworkResults load failed', e);
+            if (!isCancelled()) setHomeworkResults?.({});
         }
 
         /* =========================

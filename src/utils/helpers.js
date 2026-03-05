@@ -251,7 +251,10 @@ export const normalizeClassSchedule = (cls) => {
         if (Object.keys(out).length) return out;
     }
 
-    const legacyDays = Array.isArray(cls?.weekdays) ? cls.weekdays
+    const legacyDays = Array.isArray(cls?.scheduleDays)
+        ? cls.scheduleDays.map((d) => Number(d?.day ?? d?.weekday)).filter(Number.isFinite)
+        : Array.isArray(cls?.daysOfWeek) ? cls.daysOfWeek
+        : Array.isArray(cls?.weekdays) ? cls.weekdays
         : Array.isArray(cls?.days) ? cls.days
         : cls?.dayOfWeek ? [cls.dayOfWeek]
         : cls?.weekday ? [cls.weekday]
@@ -260,8 +263,22 @@ export const normalizeClassSchedule = (cls) => {
 
     const start = String(cls?.startTime || cls?.start || '').trim();
     const end = String(cls?.endTime || cls?.end || '').trim();
+    const scheduleDayMap = Array.isArray(cls?.scheduleDays)
+        ? cls.scheduleDays.reduce((acc, item) => {
+            const key = toWeekdayKey(item?.day ?? item?.weekday);
+            const sTime = String(item?.startTime || item?.start || '').trim();
+            const eTime = String(item?.endTime || item?.end || '').trim();
+            if (!key || !isValidTimeHHmm(sTime) || !isValidTimeHHmm(eTime)) return acc;
+            acc[key] = { start: sTime, end: eTime };
+            return acc;
+        }, {})
+        : {};
     const out = {};
     legacyDays.map(toWeekdayKey).filter(Boolean).forEach((k) => {
+        if (scheduleDayMap[k]) {
+            out[k] = scheduleDayMap[k];
+            return;
+        }
         if (isValidTimeHHmm(start) && isValidTimeHHmm(end)) out[k] = { start, end };
     });
 
@@ -312,9 +329,11 @@ export const calculateClassSessions = (cls, closures = []) => {
     if (!scheduleDays.length) return [];
     const sessions = [];
     const targetDayIndexes = scheduleDays.map((d) => (WEEKDAY_KEYS.indexOf(d) + 1) % 7);
-    const currentDate = cls.startDate ? new Date(cls.startDate) : new Date();
-    const endDate = cls.endDate ? new Date(cls.endDate) : new Date(currentDate);
-    if (!cls.endDate) endDate.setMonth(endDate.getMonth() + 3);
+    const startDateValue = cls?.startDate || cls?.openDate || cls?.beginDate || null;
+    const endDateValue = cls?.endDate || cls?.closeDate || cls?.finishDate || null;
+    const currentDate = startDateValue ? new Date(startDateValue) : new Date();
+    const endDate = endDateValue ? new Date(endDateValue) : new Date(currentDate);
+    if (!endDateValue) endDate.setMonth(endDate.getMonth() + 3);
     let sessionCount = 1;
     const maxIterations = 365;
     let iterations = 0;
@@ -337,7 +356,23 @@ export const calculateClassSessions = (cls, closures = []) => {
         iterDate.setDate(iterDate.getDate() + 1);
         iterations++;
     }
-    return sessions;
+    const toYmd = (d) => {
+        if (!d) return null;
+        if (typeof d === 'string') return d.slice(0, 10);
+        if (typeof d?.toDate === 'function') return d.toDate().toISOString().slice(0, 10);
+        try { return new Date(d).toISOString().slice(0, 10); } catch { return null; }
+    };
+
+    const start = toYmd(startDateValue);
+    const end = toYmd(endDateValue);
+
+    return sessions.filter((session) => {
+        const ymd = toYmd(session?.date || session?.ymd || session?.sessionDate || session);
+        if (!ymd) return true;
+        if (start && ymd < start) return false;
+        if (end && ymd > end) return false;
+        return true;
+    });
 };
 
 const toDateString = (v) => {
