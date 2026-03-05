@@ -34,6 +34,17 @@ export function safeNonEmptyArray(arr) {
 
 const nonEmpty = (arr) => Array.isArray(arr) && arr.filter(Boolean).length > 0;
 const uniq = (arr) => Array.from(new Set((arr || []).filter(Boolean).map(String)));
+const safeArray = (v) => (Array.isArray(v) ? v.filter(Boolean) : []);
+const uniqById = (arr) => {
+    const m = new Map();
+    (arr || []).forEach((x) => {
+        if (!x) return;
+        const id = x.id || x._id || null;
+        if (!id) return;
+        if (!m.has(id)) m.set(id, x);
+    });
+    return Array.from(m.values());
+};
 
 
 export const safeIn = (arr, max = 10) => safeNonEmptyArray(arr).slice(0, max);
@@ -235,101 +246,16 @@ const fetchClinicReservationsLight = async (db, isCancelled, lightLimit = 500) =
     return snap.docs.map((d) => normalizeClinicReservation({ id: d.id, ...d.data() }));
 };
 
-const fetchClinicLogsForViewer = async ({
-    db,
-    studentDocId,
-    authUid,
-    pageSize = 200,
-    maxDocs = 2000,
-    isCancelled = () => false,
-}) => {
-    const col = collection(db, 'clinicLogs');
-
-    const runByField = async (field, value) => {
-        const output = [];
-        let lastDoc = null;
-        let guard = 0;
-
-        while (guard < 50 && output.length < maxDocs) {
-            if (isCancelled()) break;
-
-            const constraints = [
-                where(field, '==', String(value)),
-                orderBy('date', 'desc'),
-                orderBy('name', 'desc'),
-                limit(pageSize),
-            ];
-            if (lastDoc) constraints.push(startAfter(lastDoc));
-
-            const snap = await getDocs(query(col, ...constraints));
-            if (snap.empty) break;
-
-            snap.docs.forEach((d) => {
-                output.push(normalizeAuthUid({ id: d.id, ...d.data() }));
-            });
-
-            lastDoc = snap.docs[snap.docs.length - 1];
-            if (snap.docs.length < pageSize) break;
-            guard += 1;
-        }
-
-        return output;
-    };
-
-    const merged = new Map();
-    const errors = [];
-
-    const execute = async (queryType, field, value) => {
-        if (!value) return;
-        try {
-            const docs = await runByField(field, value);
-            docs.forEach((item) => {
-                if (item?.id) merged.set(item.id, item);
-            });
-        } catch (error) {
-            console.warn('[viewer] clinicLogs query failed', {
-                queryType,
-                field,
-                studentDocId: studentDocId || null,
-                authUid: authUid || null,
-                code: error?.code || '',
-                message: error?.message || '',
-            });
-            errors.push(error);
-        }
-    };
-
-    await execute('studentId', 'studentId', studentDocId);
-    await execute('authUid', 'authUid', authUid);
-    await execute('studentUid', 'studentUid', studentDocId);
-
-    if (merged.size === 0 && errors.length > 0) {
-        throw errors[0];
-    }
-
-    return Array.from(merged.values()).map(normalizeClinicLog);
-};
-
-
 const fetchClinicForViewer = async ({
     db,
     studentIds,
     studentAuthUids,
-    studentDocId,
-    authUid,
     isCancelled = () => false,
 }) => {
     const results = [];
 
     try {
-        const logs = await fetchClinicLogsForViewer({
-            db,
-            studentDocId,
-            authUid,
-            pageSize: 200,
-            maxDocs: 2000,
-            isCancelled,
-        });
+        const logs = await loadClinicLogsForViewer(db, safeArray(studentIds), isCancelled);
         results.push(...(logs || []));
     } catch (e) {
         console.warn('[viewer] clinicLogs FAIL', e);
@@ -1227,13 +1153,21 @@ export const loadViewerDataOnce = async ({
         clinicLogs / grades / homeworkAssignments (viewer 병렬 로딩)
         ========================= */
         const [clinicList, gradeList, hwAssignList] = await Promise.all([
-            loadClinicLogsForViewer(db, scopedStudentUids, isCancelled),
+            fetchClinicForViewer({
+                db,
+                studentIds: scopedStudentUids,
+                studentAuthUids: scopedStudentAuthUids,
+                isCancelled,
+            }),
             loadGradesForViewer(db, scopedStudentUids, isCancelled),
             loadHomeworkAssignmentsForViewer(db, scopedStudentUids, isCancelled),
         ]);
 
         if (!isCancelled()) {
-            setClinicLogs?.(clinicList.map((log) => normalizeClinicLog(log)).filter((log) => Boolean(log?.studentId)));
+            const mergedClinic = uniqById([
+                ...safeArray(clinicList).map((log) => normalizeClinicLog(log)),
+            ]);
+            setClinicLogs?.(mergedClinic.filter((log) => Boolean(log?.studentId)));
             const mappedGrades = buildGradesMap(gradeList);
             setGrades?.(mappedGrades);
             viewerDetailCache.grades.set(detailCacheKey, mappedGrades);
@@ -1751,5 +1685,10 @@ export const loadViewerDataOnce = async ({
 
     } catch (error) {
         console.error('[viewer] loadViewerDataOnce FAILED (top-level)', error);
+        if (String(error?.code || '').includes('permission-denied')
+            || String(error?.message || '').includes('Missing or insufficient permissions')) {
+            return;
+        }
+        throw error;
     }
 };

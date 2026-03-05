@@ -10,7 +10,8 @@ import { getDefaultClassId } from '../utils/classStatus';
 import { useClassStudents } from '../utils/useClassStudents';
 import { filterRosterByWithdrawDate } from '../utils/rosterFilter';
 import { buildStudentParentPhoneLast4Map, formatStudentNameWithParentLast4 } from '../utils/parentPhone';
-import TestResultPrintPage from '../components/Grade/TestResultPrintPage';
+import GradePrintDocument from '../components/Grade/GradePrintDocument';
+import { getTotalScore } from '../domain/grade/grade.service';
 
 
 function useReactToPrint({ content, documentTitle, removeAfterPrint, onBeforeGetContent }) {
@@ -62,6 +63,79 @@ function useReactToPrint({ content, documentTitle, removeAfterPrint, onBeforeGet
             iframe.onload = runPrint;
         }
     }, [content, documentTitle, onBeforeGetContent, removeAfterPrint]);
+}
+
+
+const asNumber = (value) => (Number.isFinite(value) ? value : Number(value));
+
+const formatDateText = (value) => {
+    if (!value) return '-';
+    const candidate = typeof value?.toDate === 'function' ? value.toDate() : new Date(value);
+    if (Number.isNaN(candidate.getTime())) return String(value);
+    return candidate.toISOString().slice(0, 10);
+};
+
+const calculateMedian = (values) => {
+    if (!values.length) return null;
+    const sorted = [...values].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+};
+
+const calculateStdDev = (values) => {
+    if (!values.length) return null;
+    const average = values.reduce((sum, value) => sum + value, 0) / values.length;
+    const variance = values.reduce((sum, value) => sum + ((value - average) ** 2), 0) / values.length;
+    return Math.sqrt(variance);
+};
+
+const isCorrectForPrint = (value) => (
+    value === true || value === 1 || value === '1' || value === 'O' || value === 'o' || value === '맞음' || value === '고침'
+);
+
+function buildRawScoreBins(scores = [], maxScore, binCount = 10) {
+    const max = Number(maxScore);
+    if (!Number.isFinite(max) || max <= 0) return { bins: [] };
+
+    const step = max / binCount;
+    const bins = Array.from({ length: binCount }, (_, index) => {
+        const start = index * step;
+        const end = index === binCount - 1 ? max : (index + 1) * step;
+        return {
+            label: `${Math.round(start * 10) / 10}–${Math.round(end * 10) / 10}`,
+            count: 0,
+        };
+    });
+
+    scores.forEach((score) => {
+        const raw = Number(score);
+        if (!Number.isFinite(raw)) return;
+        const idx = Math.min(binCount - 1, Math.max(0, Math.floor(raw / step)));
+        bins[idx].count += 1;
+    });
+
+    return { bins };
+}
+
+function buildQuestionStats(rows = [], totalQuestions = 0) {
+    const questionCount = Number(totalQuestions) || 0;
+    if (questionCount <= 0) return [];
+
+    const total = rows.length;
+    return Array.from({ length: questionCount }, (_, offset) => {
+        const q = offset + 1;
+        const correct = rows.reduce((count, row) => {
+            const value = row.answerMap?.[q] ?? row.answerMap?.[String(q)];
+            return count + (isCorrectForPrint(value) ? 1 : 0);
+        }, 0);
+
+        return {
+            q,
+            correct,
+            total,
+            rate: total > 0 ? (correct / total) * 100 : 0,
+        };
+    });
 }
 
 // ----------------------------------------------------------------------
@@ -140,7 +214,58 @@ export default function GradeManagement({
     const testStatistics = useMemo(
         () => getTestStatistics(classTests, displayClassStudents, grades, classAverages),
         [classTests, displayClassStudents, grades, classAverages]
-    ); 
+    );
+
+    const printPayload = useMemo(() => {
+        if (!selectedTest) {
+            return {
+                classNameText: selectedClass?.name || '-',
+                testTitle: '-',
+                testDateText: '-',
+                stats: { count: 0, avg: null, median: null, stddev: null, top5: [], bottom5: [] },
+                chart: { bins: [] },
+                questionStats: [],
+            };
+        }
+
+        const attemptedRows = (displayRosterForTest || []).map((student) => {
+            const grade = grades?.[student.id]?.[selectedTest.id] || null;
+            const score = grade ? getTotalScore(grade, selectedTest) : null;
+            const noShow = String(grade?.score || '').trim() === '미응시';
+            const attempted = Boolean(grade?.attempted === true || Number.isFinite(score)) && !noShow;
+            const answerMap = grade?.answers || grade?.correctCount || {};
+
+            return {
+                studentId: student.id,
+                studentName: student.name,
+                score: Number.isFinite(score) ? Number(score) : null,
+                attempted,
+                answerMap,
+            };
+        }).filter((row) => row.attempted && Number.isFinite(row.score));
+
+        const scores = attemptedRows.map((row) => row.score);
+        const ordered = [...attemptedRows].sort((a, b) => b.score - a.score);
+
+        return {
+            classNameText: selectedClass?.name || '-',
+            testTitle: selectedTest?.name || selectedTest?.title || '-',
+            testDateText: formatDateText(selectedTest?.date || selectedTest?.createdAt || selectedTest?.updatedAt),
+            stats: {
+                count: attemptedRows.length,
+                avg: scores.length ? scores.reduce((sum, value) => sum + value, 0) / scores.length : null,
+                median: calculateMedian(scores),
+                stddev: calculateStdDev(scores),
+                top5: ordered.slice(0, 5).map((row) => ({ name: row.studentName, score: row.score })),
+                bottom5: [...ordered].reverse().slice(0, 5).map((row) => ({ name: row.studentName, score: row.score })),
+            },
+            chart: buildRawScoreBins(scores, asNumber(selectedTest?.maxScore), 10),
+            questionStats: buildQuestionStats(
+                attemptedRows,
+                Number(selectedTest?.totalQuestions) || (Array.isArray(selectedTest?.questionScores) ? selectedTest.questionScores.length : 0),
+            ),
+        };
+    }, [displayRosterForTest, grades, selectedClass?.name, selectedTest]);
 
     useEffect(() => {
         setSelectedTestId(null); 
@@ -509,32 +634,16 @@ export default function GradeManagement({
                                 <button className="px-3 py-1.5 text-sm border rounded" onClick={() => setIsStatsModalOpen(false)}>닫기</button>
                             </div>
                         </div>
-                        <div ref={printRef} className={`grade-print-root ${compactPrint ? 'is-shrink' : ''}`}>
-                            <style>{`
-                                @page { size: A4 landscape; margin: 10mm; }
-                                @media print {
-                                  html, body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-                                  body * { visibility: hidden; }
-                                  .grade-print-root, .grade-print-root * { visibility: visible; }
-                                  .grade-print-root { position: absolute; left: 0; top: 0; width: 100%; }
-                                  .no-print { display: none !important; }
-                                  .grade-print-grid { display: flex; gap: 10mm; align-items: flex-start; }
-                                  .grade-print-left { flex: 0 0 46%; }
-                                  .grade-print-right { flex: 1 1 auto; min-width: 0; }
-                                  .avoid-break { break-inside: avoid; page-break-inside: avoid; }
-                                  .grade-print-table { width: 100%; border-collapse: collapse; }
-                                  .grade-print-table th, .grade-print-table td { border: 1px solid #ddd; padding: 4px 6px; font-size: 10.5px; color: #111; }
-                                  .print-title { font-size: 18px; font-weight: 800; margin: 0 0 6px 0; color: #111; }
-                                  .print-subtitle { font-size: 12px; color: #333; margin: 0 0 10px 0; }
-                                  .grade-print-root.is-shrink { zoom: 0.9; }
-                                }
-                            `}</style>
-                            <TestResultPrintPage
-                                classInfo={selectedClass}
-                                test={selectedTest}
-                                students={displayRosterForTest}
-                                gradesMap={grades}
-                                compact={compactPrint}
+                        <div className="mt-3 border rounded-lg p-2 bg-white overflow-auto" style={{ maxHeight: '75vh' }}>
+                            <GradePrintDocument
+                                ref={printRef}
+                                classNameText={printPayload.classNameText}
+                                testTitle={printPayload.testTitle}
+                                testDateText={printPayload.testDateText}
+                                stats={printPayload.stats}
+                                chart={printPayload.chart}
+                                questionStats={printPayload.questionStats}
+                                printScale={compactPrint ? 0.92 : 1}
                             />
                         </div>
                     </div>
