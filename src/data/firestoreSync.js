@@ -92,33 +92,6 @@ const normalizeClinicLog = (log) => {
     };
 };
 
-const normalizeMergedClinicItem = (item, source = 'clinicLogs') => {
-    const normalized = normalizeClinicLog(item);
-    const studentDocId = String(
-        normalized?.studentDocId
-        || normalized?.studentId
-        || normalized?.studentUid
-        || normalized?.authUid
-        || '',
-    ).trim();
-    const classId = String(normalized?.classId || normalized?.classDocId || '').trim();
-    const date = normalizeClinicDateString(normalized?.date || normalized?.clinicDate || '');
-    const plannedTime = String(normalized?.plannedTime || normalized?.timeSlot || '').trim();
-    const status = String(normalized?.status || (source === 'clinicReservations' ? 'pending' : '')).trim();
-
-    return {
-        ...normalized,
-        source,
-        studentDocId,
-        studentId: studentDocId,
-        classId,
-        date,
-        plannedTime,
-        status,
-        effectiveDate: date || normalized?.effectiveDate || '',
-    };
-};
-
 const normalizePaymentLog = (log) => {
     const base = normalizeAuthUid(log);
     const firstItem = Array.isArray(base.items) ? base.items[0] : null;
@@ -169,36 +142,6 @@ const fetchAttendanceLogsWithPagination = async (db, isCancelled, pageSize = 100
     return items;
 };
 
-const fetchPaged = async ({
-    db,
-    colName,
-    constraints = [],
-    pageSize = 500,
-    maxDocs = 5000,
-    isCancelled = () => false,
-    mapper = (x) => x,
-}) => {
-    const items = [];
-    let lastDoc = null;
-
-    while (items.length < maxDocs) {
-        if (isCancelled()) return items;
-
-        const cons = [...constraints, limit(pageSize)];
-        if (lastDoc) cons.push(startAfter(lastDoc));
-
-        const snap = await getDocs(query(collection(db, colName), ...cons));
-        if (snap.empty) break;
-
-        items.push(...snap.docs.map((d) => mapper({ id: d.id, ...d.data() })));
-
-        lastDoc = snap.docs[snap.docs.length - 1];
-        if (snap.size < pageSize) break;
-    }
-
-    return items;
-};
-
 const fetchClinicLogsLight = async (db, isCancelled, lightLimit = 300) => {
     const snap = await getDocs(
         query(
@@ -211,70 +154,34 @@ const fetchClinicLogsLight = async (db, isCancelled, lightLimit = 300) => {
     return snap.docs.map((d) => normalizeClinicLog({ id: d.id, ...d.data() }));
 };
 
-export const fetchClinicLogsDeepForStaff = async ({
+export async function fetchClinicLogsPaged({
     db,
-    classId = '',
-    studentId = '',
-    date = '',
-    pageSize = 500,
-    maxDocs = 5000,
-    isCancelled = () => false,
-}) => {
-    const normalizedStudentId = String(studentId || '').trim();
+    lastDoc = null,
+    pageSize = 50,
+    fromDate = null,
+}) {
+    const col = collection(db, 'clinicLogs');
+    const constraints = [];
 
-    const buildConstraints = ({ supportsStudentDocId = true, withOrderBy = true } = {}) => {
-        const constraints = [];
-        if (classId) constraints.push(where('classId', '==', classId));
-        if (date) constraints.push(where('date', '==', date));
-        if (normalizedStudentId && supportsStudentDocId) {
-            constraints.push(where('studentDocId', '==', normalizedStudentId));
-        } else if (normalizedStudentId) {
-            constraints.push(where('studentId', '==', normalizedStudentId));
-        }
-        if (withOrderBy) constraints.push(orderBy('date', 'desc'));
-        return constraints;
+    if (fromDate) {
+        constraints.push(where('date', '>=', fromDate));
+    }
+
+    constraints.push(orderBy('date', 'desc'));
+    constraints.push(limit(pageSize));
+
+    if (lastDoc) {
+        constraints.push(startAfter(lastDoc));
+    }
+
+    const q = query(col, ...constraints);
+    const snap = await getDocs(q);
+
+    return {
+        docs: snap.docs.map((d) => normalizeClinicLog({ id: d.id, ...d.data() })),
+        lastDoc: snap.docs[snap.docs.length - 1] || null,
     };
-
-    const runFetch = async ({ colName, supportsStudentDocId, source }) => {
-        try {
-            const items = await fetchPaged({
-                db,
-                colName,
-                constraints: buildConstraints({ supportsStudentDocId }),
-                pageSize,
-                maxDocs,
-                isCancelled,
-                mapper: (row) => normalizeMergedClinicItem(row, source),
-            });
-            return items;
-        } catch (error) {
-            console.warn('[staff] fetchClinicLogsDeepForStaff FAIL:', colName, error);
-            try {
-                const fallbackConstraints = buildConstraints({ supportsStudentDocId, withOrderBy: false });
-                const fallbackItems = await fetchPaged({
-                    db,
-                    colName,
-                    constraints: fallbackConstraints,
-                    pageSize,
-                    maxDocs,
-                    isCancelled,
-                    mapper: (row) => normalizeMergedClinicItem(row, source),
-                });
-                return fallbackItems;
-            } catch (fallbackError) {
-                console.warn('[staff] fetchClinicLogsDeepForStaff fallback FAIL:', colName, fallbackError);
-                return [];
-            }
-        }
-    };
-
-    const [logs, reservations] = await Promise.all([
-        runFetch({ colName: 'clinicLogs', supportsStudentDocId: false, source: 'clinicLogs' }),
-        runFetch({ colName: 'clinicReservations', supportsStudentDocId: true, source: 'clinicReservations' }),
-    ]);
-
-    return [...logs, ...reservations];
-};
+}
 
 // staff 전용: grades 전체 페이지네이션 로드
 const fetchGradesWithPagination = async (db, maxDocs = 5000, pageSize = 500) => {

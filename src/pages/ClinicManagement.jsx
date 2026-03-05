@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { Icon } from '../utils/helpers';
 import { db } from '../firebase/client';
-import { fetchClinicLogsDeepForStaff } from '../data/firestoreSync';
+import { fetchClinicLogsPaged } from '../data/firestoreSync';
 import { ClinicScheduleModal } from '../utils/modals/ClinicScheduleModal';
 import { ClinicCommentModal } from '../utils/modals/ClinicCommentModal';
 import { ClinicNotificationModal } from '../utils/modals/ClinicNotificationModal';
@@ -10,7 +10,7 @@ import { buildStudentParentPhoneLast4Map, formatStudentNameWithParentLast4 } fro
 import StudentNameWithParentLast4 from '../components/common/StudentNameWithParentLast4';
 
 export default function ClinicManagement({ 
-    students, parents = [], classes, clinicLogs, handleSaveClinicLog, handleDeleteClinicLog,
+    students, parents = [], classes, handleSaveClinicLog, handleDeleteClinicLog,
     logNotification 
 }) {
     const [filterDate, setFilterDate] = useState(new Date().toISOString().slice(0, 10));
@@ -32,22 +32,23 @@ export default function ClinicManagement({
     const [selectedLog, setSelectedLog] = useState(null);
     const [selectedLogIds, setSelectedLogIds] = useState([]);
     const [selectedNotificationType, setSelectedNotificationType] = useState('comment'); 
-    const [isClinicDeepLoading, setIsClinicDeepLoading] = useState(false);
-    const [clinicDeepLoaded, setClinicDeepLoaded] = useState(false);
-    const [deepClinicLogs, setDeepClinicLogs] = useState([]);
+    const [pagedLogs, setPagedLogs] = useState([]);
+    const [lastDoc, setLastDoc] = useState(null);
+    const [hasMore, setHasMore] = useState(true);
+    const FETCH_PAGE_SIZE = 50;
 
     const debugSampleLoggedRef = useRef(false);
 
     useEffect(() => {
         console.log('[DEBUG] students =', students?.slice(0, 3));
         console.log('[DEBUG] parents =', parents?.slice(0, 3));
-        console.log('[DEBUG] clinicLogs =', clinicLogs?.slice(0, 3));
-    }, [students, parents, clinicLogs]);
+        console.log('[DEBUG] pagedLogs =', pagedLogs?.slice(0, 3));
+    }, [students, parents, pagedLogs]);
 
     useEffect(() => {
-        console.log('[clinic management] clinicLogs loaded =', clinicLogs.length);
-        if (clinicLogs.length > 0) {
-            console.log('[clinic management] effectiveDate sample', clinicLogs.slice(0, 30).map((log) => ({
+        console.log('[clinic management] pagedLogs loaded =', pagedLogs.length);
+        if (pagedLogs.length > 0) {
+            console.log('[clinic management] effectiveDate sample', pagedLogs.slice(0, 30).map((log) => ({
                 id: log.id,
                 effectiveDate: log.effectiveDate,
                 date: log.date,
@@ -55,78 +56,50 @@ export default function ClinicManagement({
                 createdAt: log.createdAt,
             })));
         }
-    }, [clinicLogs]);
-
-    const needsDeepLoad = useMemo(() => {
-        if (filterMode === 'all') {
-            return Boolean(
-                (selectedClassId && String(selectedClassId).trim())
-                || (selectedStudentId && String(selectedStudentId).trim())
-                || (searchText && searchText.trim().length >= 1),
-            );
-        }
-
-        if (filterMode === 'date') {
-            return Boolean(filterDate);
-        }
-
-        return false;
-    }, [filterMode, selectedClassId, selectedStudentId, searchText, filterDate]);
-
-    const deepKey = useMemo(() => {
-        const st = (searchText || '').trim();
-        const stKey = st.length >= 2 ? st : '';
-        const clsKey = selectedClassId ? String(selectedClassId) : '';
-        const stuKey = selectedStudentId ? String(selectedStudentId) : '';
-        const dateKey = filterMode === 'date' ? String(filterDate || '') : '';
-        const modeKey = String(filterMode || '');
-        return `${modeKey}|c:${clsKey}|s:${stuKey}|d:${dateKey}|q:${stKey}`;
-    }, [filterMode, selectedClassId, selectedStudentId, filterDate, searchText]);
+    }, [pagedLogs]);
 
     useEffect(() => {
         let cancelled = false;
 
-        const run = async () => {
-            if (!needsDeepLoad) {
-                setClinicDeepLoaded(false);
-                setDeepClinicLogs([]);
-                return;
-            }
+        const load = async () => {
+            const today = new Date();
+            const before90 = new Date();
+            before90.setDate(today.getDate() - 90);
 
-            setIsClinicDeepLoading(true);
-            try {
-                const dateParam = filterMode === 'date' ? (filterDate || '') : '';
-                const deep = await fetchClinicLogsDeepForStaff({
-                    db,
-                    classId: selectedClassId || '',
-                    studentId: selectedStudentId || '',
-                    date: dateParam,
-                    pageSize: 500,
-                    maxDocs: 5000,
-                    isCancelled: () => cancelled,
-                });
+            const fromDate = before90.toISOString().slice(0, 10);
 
-                if (cancelled) return;
+            const { docs, lastDoc: initialLastDoc } = await fetchClinicLogsPaged({
+                db,
+                pageSize: FETCH_PAGE_SIZE,
+                fromDate,
+            });
 
-                setDeepClinicLogs(deep);
-                setClinicDeepLoaded(true);
+            if (cancelled) return;
 
-                console.log('[clinic] deep clinicLogs loaded =', deep.length, 'key=', deepKey);
-            } catch (error) {
-                console.warn('[clinic] deep load failed, keep existing clinicLogs', error);
-            } finally {
-                if (!cancelled) setIsClinicDeepLoading(false);
-            }
+            setPagedLogs(docs);
+            setLastDoc(initialLastDoc);
+            setHasMore(docs.length === FETCH_PAGE_SIZE);
         };
 
-        run();
+        load();
         return () => { cancelled = true; };
-    }, [needsDeepLoad, deepKey, selectedClassId, selectedStudentId, filterDate, filterMode]);
+    }, []);
 
-    const activeClinicLogs = useMemo(() => {
-        if (needsDeepLoad && clinicDeepLoaded) return deepClinicLogs;
-        return clinicLogs;
-    }, [needsDeepLoad, clinicDeepLoaded, deepClinicLogs, clinicLogs]);
+    const handleLoadMore = useCallback(async () => {
+        if (!hasMore || !lastDoc) return;
+
+        const { docs, lastDoc: newLast } = await fetchClinicLogsPaged({
+            db,
+            pageSize: FETCH_PAGE_SIZE,
+            lastDoc,
+        });
+
+        setPagedLogs(prev => [...prev, ...docs]);
+        setLastDoc(newLast);
+        setHasMore(docs.length === FETCH_PAGE_SIZE);
+    }, [hasMore, lastDoc]);
+
+    const activeClinicLogs = pagedLogs;
 
     const studentIndex = useMemo(() => {
         const m = new Map();
@@ -181,7 +154,7 @@ export default function ClinicManagement({
 
     const assistantOptions = useMemo(() => {
         const seen = new Map();
-        clinicLogs.forEach(log => {
+        activeClinicLogs.forEach(log => {
             const id = log.assistantId || log.tutorId || '';
             const name = log.tutor || log.assistantName || log.assistant?.name || '';
             const key = id || name;
@@ -398,13 +371,13 @@ export default function ClinicManagement({
         }
     }, [page, totalPages, filterMode]);
 
-    const pagedLogs = useMemo(() => {
+    const pageLogs = useMemo(() => {
         if (filterMode !== 'all') return [];
         const startIndex = (page - 1) * PAGE_SIZE;
         return filteredAndSortedLogs.slice(startIndex, startIndex + PAGE_SIZE);
     }, [filteredAndSortedLogs, page, filterMode]);
 
-    const visibleLogs = filterMode === 'date' ? dateLogs : pagedLogs;
+    const visibleLogs = filterMode === 'date' ? dateLogs : pageLogs;
 
     useEffect(() => {
         setSelectedLogIds([]);
@@ -552,9 +525,6 @@ export default function ClinicManagement({
                         <span className="text-gray-500 text-sm font-medium">
                             {filterMode === 'all' ? filteredAndSortedLogs.length : dateLogs.length}건의 일정
                         </span>
-                        {isClinicDeepLoading && (
-                            <span className="ml-2 text-xs font-semibold text-indigo-700">과거 이력 불러오는 중…</span>
-                        )}
                     </div>
                     <div className='flex flex-wrap gap-2 justify-start md:justify-end'>
                         {/* 조교 모드 버튼 */}
@@ -797,7 +767,18 @@ export default function ClinicManagement({
                             </div>
                         </div>
                     )}
-                    
+
+
+                    {hasMore && (
+                        <div className="p-4 text-center">
+                            <button
+                                onClick={handleLoadMore}
+                                className="bg-indigo-900 text-white px-4 py-2 rounded-lg"
+                            >
+                                더 보기
+                            </button>
+                        </div>
+                    )}
                     <div className="md:hidden p-3 space-y-3 overflow-y-auto">
                         {visibleLogs.length > 0 ? visibleLogs.map(log => {
                             const isUnscheduled = !log.plannedTime;
