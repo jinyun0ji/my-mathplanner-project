@@ -200,6 +200,62 @@ service cloud.firestore {
       return isParent() && (userId in parentStudentUids());
     }
     
+    function asList(v) {
+      return (v is list) ? v : [];
+    }
+
+    function myUserDoc() {
+      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        ? get(/databases/$(database)/documents/users/$(request.auth.uid))
+        : null;
+    }
+
+    function myRole() {
+      return userRole();
+    }
+
+    // student / parent 가 "내 학생 키들"을 최대 10개로 만든다.
+    function viewerStudentKeys() {
+      // 내 auth uid
+      let u = request.auth.uid;
+      let me = myUserDoc();
+
+      // 학생 본인: 내 users 문서 id, 내 uid(필드), 내 auth uid 를 모두 후보로
+      let studentKeys = [
+        u,
+        ((me != null) ? me.id : null),
+        ((me != null && ('uid' in me.data)) ? me.data.uid : null),
+        ((me != null && ('authUid' in me.data)) ? me.data.authUid : null)
+      ];
+
+      // 학부모: 내 users 문서의 studentIds (학생 문서ID 배열)
+      let childIds = (me != null) ? asList(me.data.studentIds) : [];
+
+      // role이 parent면 childIds를 쓰고, 아니면 studentKeys를 쓴다.
+      // (여기서 null 제거는 rules에서 직접 못하니 아래 contains 검사에서 방어)
+      return (myRole() == 'parent') ? childIds.slice(0, 10) : studentKeys.slice(0, 10);
+    }
+
+    function anyViewerKeyInList(keys, listField) {
+      return (listField is list) && (
+        (keys.size() > 0 && keys[0] != null && keys[0] in listField) ||
+        (keys.size() > 1 && keys[1] != null && keys[1] in listField) ||
+        (keys.size() > 2 && keys[2] != null && keys[2] in listField) ||
+        (keys.size() > 3 && keys[3] != null && keys[3] in listField) ||
+        (keys.size() > 4 && keys[4] != null && keys[4] in listField) ||
+        (keys.size() > 5 && keys[5] != null && keys[5] in listField) ||
+        (keys.size() > 6 && keys[6] != null && keys[6] in listField) ||
+        (keys.size() > 7 && keys[7] != null && keys[7] in listField) ||
+        (keys.size() > 8 && keys[8] != null && keys[8] in listField) ||
+        (keys.size() > 9 && keys[9] != null && keys[9] in listField)
+      );
+    }
+
+    function isViewerClassMember() {
+      let keys = viewerStudentKeys();
+      return anyViewerKeyInList(keys, resource.data.students);
+    }
+    
     function myStudentDocId() {
       return isSignedIn()
         && exists(/databases/$(database)/documents/userAuthIndex/$(uid()))
@@ -264,17 +320,9 @@ service cloud.firestore {
     ========================= */
     // 정책: classes.students에는 studentDocId(users 문서ID)만 저장을 권장.
     // 레거시(authUid) 조회는 당분간 유지하지만, 데이터는 점진적으로 정리한다.
-    match /classes/{docId} {
-      allow get, read, list: if isAdminOrStaff()
-        || (isSignedIn() && (
-          (isStudent() && (docId in myClassIds()))
-          || (isParent() && parentHasClassId(docId))
-          // ✅ 보조: classes.students 기반
-          || (uid() in resource.data.students)
-          || (myProfileDocId() in resource.data.students)
-          || (myStudentDocId() != null && myStudentDocId() in resource.data.students)
-          || (isParent() && listContainsAny(resource.data.students, parentStudentUids()))
-        ));
+    match /classes/{classId} {
+      allow read: if request.auth != null
+        && (isStaffOrAdminOrTeacher() || isViewerClassMember());
       allow write: if isAdminOrStaff();
     }
     
