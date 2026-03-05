@@ -7,7 +7,7 @@ import { Icon } from '../../utils/helpers';
 import { buildStudentParentPhoneLast4Map, formatStudentNameWithParentLast4 } from '../parentPhone';
 import StudentNameWithParentLast4 from '../../components/common/StudentNameWithParentLast4';
 
-export const ClinicCommentModal = ({ isOpen, onClose, onSave, log, students, parents = [], clinicLogs = [], defaultDate, classes }) => {
+export const ClinicCommentModal = ({ isOpen, onClose, onSave, log, students, parents = [], clinicLogs = [], defaultDate, classes, studentOptions = [] }) => {
     const isNewLog = log === null;
     
     const [studentId, setStudentId] = useState(log?.studentId || '');
@@ -19,6 +19,7 @@ export const ClinicCommentModal = ({ isOpen, onClose, onSave, log, students, par
     const [status, setStatus] = useState(log?.status || (log?.checkIn ? 'attended' : 'pending')); 
     const [isDirty, setIsDirty] = useState(false);
     const [isCommentPreviewOpen, setIsCommentPreviewOpen] = useState(false);
+    const [studentSearch, setStudentSearch] = useState('');
 
     const currentStudent = useMemo(() => students.find(s => s.id === studentId), [studentId, students]);
 
@@ -28,11 +29,35 @@ export const ClinicCommentModal = ({ isOpen, onClose, onSave, log, students, par
     );
 
     const sortedStudentOptions = useMemo(() => {
+        const fromProps = Array.isArray(studentOptions) ? studentOptions : [];
+        if (fromProps.length > 0) {
+            return [...fromProps]
+                .filter((s) => s?.id && (s?.label || s?.name))
+                .sort((a, b) => String(a.name || a.label).localeCompare(String(b.name || b.label), 'ko'));
+        }
         const list = Array.isArray(students) ? [...students] : [];
         return list
             .filter((s) => s?.id && s?.name)
+            .map((s) => ({
+                ...s,
+                label: `${formatStudentNameWithParentLast4(s, parentLast4Map)} (${s.school || '학교 미정'})`,
+            }))
             .sort((a, b) => String(a.name).localeCompare(String(b.name), 'ko'));
-    }, [students]);
+    }, [studentOptions, students, parentLast4Map]);
+
+    const searchedStudentOptions = useMemo(() => {
+        const keyword = studentSearch.trim().toLowerCase();
+        if (keyword.length < 2) return [];
+        return sortedStudentOptions
+            .filter((option) => {
+                const pool = [option.name, option.label, option.parentLast4]
+                    .filter(Boolean)
+                    .join(' ')
+                    .toLowerCase();
+                return pool.includes(keyword);
+            })
+            .slice(0, 10);
+    }, [sortedStudentOptions, studentSearch]);
     
     // ✅ [수정] 학생 정보 텍스트에 전화번호 추가
     const studentInfoText = useMemo(() => {
@@ -72,6 +97,7 @@ export const ClinicCommentModal = ({ isOpen, onClose, onSave, log, students, par
         if (isOpen) {
             setIsDirty(false);
             setIsCommentPreviewOpen(false);
+            setStudentSearch('');
         }
     }, [log, isOpen, defaultDate]);
 
@@ -182,7 +208,32 @@ export const ClinicCommentModal = ({ isOpen, onClose, onSave, log, students, par
                     {isNewLog && (
                         <div>
                             <label className="block text-sm font-bold text-gray-700 mb-1">학생 선택*</label>
-                            <select 
+                            <input
+                                type="text"
+                                value={studentSearch}
+                                onChange={(e) => setStudentSearch(e.target.value)}
+                                placeholder="학생 이름/번호4자리 검색"
+                                className="w-full border rounded-md p-2 mb-2"
+                            />
+                            {studentSearch.trim().length >= 2 && (
+                                <div className="mb-2 max-h-40 overflow-y-auto rounded-md border bg-white">
+                                    {searchedStudentOptions.length > 0 ? (
+                                        searchedStudentOptions.map((option) => (
+                                            <button
+                                                key={option.id}
+                                                type="button"
+                                                onClick={() => handleChange(setStudentId, option.id)}
+                                                className="w-full border-b last:border-b-0 px-3 py-2 text-left text-sm hover:bg-indigo-50"
+                                            >
+                                                {option.label || option.name}
+                                            </button>
+                                        ))
+                                    ) : (
+                                        <p className="px-3 py-2 text-xs text-gray-500">검색 결과가 없습니다.</p>
+                                    )}
+                                </div>
+                            )}
+                            {/* <select 
                                 value={studentId} 
                                 onChange={(e) => handleChange(setStudentId, e.target.value)} 
                                 required
@@ -190,9 +241,12 @@ export const ClinicCommentModal = ({ isOpen, onClose, onSave, log, students, par
                             >
                                 <option value="">학생을 선택하세요</option>
                                 {sortedStudentOptions.map((s) => (
-                                    <option key={s.id} value={s.id}>{formatStudentNameWithParentLast4(s, parentLast4Map)} ({s.school} / {s.class})</option>
+                                    <option key={s.id} value={s.id}>{s.label || formatStudentNameWithParentLast4(s, parentLast4Map)}</option>
                                 ))}
-                            </select>
+                            </select> */}
+                            {studentId && (
+                                <p className="mt-1 text-xs text-indigo-700">선택됨: {sortedStudentOptions.find((s) => String(s.id) === String(studentId))?.label || currentStudent?.name}</p>
+                            )}
                         </div>
                     )}
                     <div>

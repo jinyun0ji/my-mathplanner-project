@@ -1151,6 +1151,10 @@ video {
   max-height: 4rem;
 }
 
+.max-h-40{
+  max-height: 10rem;
+}
+
 .min-h-0{
   min-height: 0px;
 }
@@ -4784,6 +4788,10 @@ body{
 
   .lg\:grid-cols-\[420px\2c 1fr\]{
     grid-template-columns: 420px 1fr;
+  }
+
+  .lg\:grid-cols-5{
+    grid-template-columns: repeat(5, minmax(0, 1fr));
   }
 
   .lg\:flex-row{

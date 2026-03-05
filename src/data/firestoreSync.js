@@ -189,6 +189,8 @@ export async function fetchClinicLogsDeepForStaff({
     className,
     studentId,
     date,
+    from,
+    to,
     pageSize = 500,
     maxDocs = 5000,
     isCancelled = () => false,
@@ -222,6 +224,27 @@ export async function fetchClinicLogsDeepForStaff({
         pushSnap(snap);
         return docs;
     }
+
+    const fromDate = String(from || '').trim();
+    const toDate = String(to || '').trim();
+
+    if (fromDate || toDate) {
+        const clauses = [];
+        if (fromDate) {
+            clauses.push(where('date', '>=', fromDate));
+        }
+        if (toDate) {
+            clauses.push(where('date', '<=', toDate));
+        }
+        clauses.push(orderBy('date', 'desc'));
+        clauses.push(limit(safeMaxDocs));
+
+        const snap = await getDocs(query(col, ...clauses));
+        if (isCancelled?.()) return [];
+        pushSnap(snap);
+        return docs;
+    }
+
 
     const q = query(
         col,
