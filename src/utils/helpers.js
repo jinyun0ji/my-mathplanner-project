@@ -324,6 +324,61 @@ export function inDateRange(ymd, startYmd, endYmd) {
     return true;
 }
 
+
+const DOW_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+
+export function isClassActiveOnDate(cls, ymd) {
+    if (!cls) return false;
+    const d = new Date(`${ymd}T00:00:00`);
+    if (Number.isNaN(d.getTime())) return false;
+
+    const start = cls.startDate ? new Date(`${String(cls.startDate).slice(0, 10)}T00:00:00`) : null;
+    const end = cls.endDate ? new Date(`${String(cls.endDate).slice(0, 10)}T23:59:59`) : null;
+
+    if (start && d < start) return false;
+    if (end && d > end) return false;
+
+    if (cls.status && String(cls.status).includes('종강')) return false;
+    if (cls.active === false) return false;
+
+    return true;
+}
+
+export function getClassTimeOnDate(cls, ymd) {
+    if (!cls) return null;
+    const d = new Date(`${ymd}T00:00:00`);
+    if (Number.isNaN(d.getTime())) return null;
+    const dowKey = DOW_KEYS[d.getDay()];
+
+    const ws = cls.weeklySchedule || cls.scheduleByDay || cls.weeklyTimes || null;
+    if (ws && ws[dowKey]) {
+        const v = ws[dowKey];
+        if (typeof v === 'string') return v;
+        const s = v.start || v.startTime;
+        const e = v.end || v.endTime;
+        if (s && e) return `${s}~${e}`;
+        if (v.time) return v.time;
+    }
+
+    const schedule = normalizeClassSchedule(cls);
+    if (schedule?.[dowKey]?.start && schedule?.[dowKey]?.end) {
+        return `${schedule[dowKey].start}~${schedule[dowKey].end}`;
+    }
+
+    const days = Array.isArray(cls.days) ? cls.days : Array.isArray(cls.weekdays) ? cls.weekdays : [];
+    const dayMatch = days.map(String).includes(dowKey) || days.map(String).includes(String(d.getDay()));
+    if (!dayMatch) return null;
+
+    if (cls.time) return cls.time;
+    if (cls.startTime && cls.endTime) return `${cls.startTime}~${cls.endTime}`;
+    return null;
+}
+
+export function hasClassOnDate(cls, ymd) {
+    if (!isClassActiveOnDate(cls, ymd)) return false;
+    return Boolean(getClassTimeOnDate(cls, ymd));
+}
+
 export const getWeekdayKeyFromDate = (dateInput = new Date()) => {
     const date = dateInput instanceof Date ? dateInput : new Date(dateInput);
     const safeDate = Number.isNaN(date.getTime()) ? new Date() : date;

@@ -21,10 +21,10 @@ import {
     calculateHomeworkStats,
     calculateGradeComparison,
     isClosedForClass,
-    getWeekdayKeyFromDate,
     isClassActiveForStudent,
-    normalizeClassSchedule,
     formatClassScheduleKo,
+    hasClassOnDate,
+    getClassTimeOnDate,
 } from '../utils/helpers';
 import { sortClassesByStatus } from '../utils/classStatus';
 import NotificationsIcon from '@mui/icons-material/Notifications';
@@ -305,7 +305,6 @@ export default function StudentHome({
     const todayStr = today.toISOString().split('T')[0];
     const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
     const todayDayName = dayNames[today.getDay()];
-    const todayWeekdayKey = getWeekdayKeyFromDate(today);
     const buildClinicTeacher = (log) => log?.tutorName || log?.tutor || log?.teacherName || log?.teacher || '-';
     const formatClinicTime = (log) => {
         const plannedStart = typeof log?.plannedTime === 'string' ? log.plannedTime : log?.plannedTime?.start;
@@ -351,30 +350,31 @@ export default function StudentHome({
                 }))
             : [];
 
+            const todaysClasses = visibleTodayClasses
+            .filter((c) => hasClassOnDate(c, todayStr))
+            .map((c) => {
+                const todayTime = getClassTimeOnDate(c, todayStr);
+                const startTime = String(todayTime || '').split('~')[0] || '99:99';
+                return {
+                    type: 'class',
+                    classId: c.id,
+                    classCode: c.classId || c.code || c.classCode || c.key || null,
+                    time: startTime,
+                    title: c.name,
+                    sub: `${c.teacher} 선생님`,
+                    timeLabel: todayTime,
+                    todayTime,
+                    scheduleLabel: formatClassScheduleKo(c),
+                    date: todayStr,
+                };
+            });
+
         return [
-            ...visibleTodayClasses
-                .map((c) => {
-                    const schedule = normalizeClassSchedule(c);
-                    const todaySchedule = schedule[todayWeekdayKey];
-                    if (!todaySchedule) return null;
-                    const timeLabel = `${todaySchedule.start}~${todaySchedule.end}`;
-                    return {
-                        type: 'class',
-                        classId: c.id,
-                        classCode: c.classId || c.code || c.classCode || c.key || null,
-                        time: todaySchedule.start,
-                        title: c.name,
-                        sub: `${c.teacher} 선생님`,
-                        timeLabel,
-                        scheduleLabel: formatClassScheduleKo(c),
-                        date: todayStr,
-                    };
-                })
-                .filter(Boolean),
+            ...todaysClasses,
             ...todayClinics,
             ...todayExternal,
-        ].sort((a, b) => (a.time || '').localeCompare(b.time || ''));
-    }, [clinicLogs, externalSchedules, myClasses, student, studentId, todayDayName, todayStr, todayWeekdayKey]);
+        ].sort((a, b) => String(a.time || '').localeCompare(String(b.time || '')));
+    }, [clinicLogs, externalSchedules, myClasses, student, studentId, todayDayName, todayStr]);
     const filteredTodayItems = useMemo(() => {
         const list = Array.isArray(todayItems) ? todayItems : [];
         return list.filter((item) => {

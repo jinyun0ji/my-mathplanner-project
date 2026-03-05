@@ -32,6 +32,9 @@ export function safeNonEmptyArray(arr) {
     return Array.isArray(arr) ? arr.map(String).filter(Boolean) : [];
 }
 
+const nonEmpty = (arr) => Array.isArray(arr) && arr.filter(Boolean).length > 0;
+const uniq = (arr) => Array.from(new Set((arr || []).filter(Boolean).map(String)));
+
 
 export const safeIn = (arr, max = 10) => safeNonEmptyArray(arr).slice(0, max);
 
@@ -39,6 +42,14 @@ export function buildInQueryOrNull(values, max = 10) {
     const v = safeIn(values, max);
     return v.length > 0 ? v : null;
 }
+
+const fetchListSafe = async (q, isCancelled = () => false, mapper = null) => {
+    if (!q) return [];
+    const snap = await getDocs(q);
+    if (isCancelled()) return [];
+    const baseItems = snap.docs.map((d) => normalizeAuthUid({ id: d.id, ...d.data() }));
+    return mapper ? baseItems.map(mapper) : baseItems;
+};
 
 const viewerDetailCache = {
     lessonLogs: new Map(),
@@ -365,6 +376,95 @@ const fetchClinicForViewer = async ({
     }
 
     return results.map((x) => normalizeClinicLog(x));
+};
+
+async function loadClinicLogsForViewer(db, viewerStudentDocIds, isCancelled = () => false) {
+    if (!nonEmpty(viewerStudentDocIds)) return [];
+    const targetIds = uniq(viewerStudentDocIds);
+
+    if (targetIds.length === 1) {
+        const q = query(
+            collection(db, 'clinicLogs'),
+            where('studentId', '==', targetIds[0]),
+            orderBy('date', 'desc'),
+            limit(200),
+        );
+        return fetchListSafe(q, isCancelled, normalizeClinicLog);
+    }
+
+    const results = [];
+    const chunks = chunkArray(targetIds, 10);
+    for (const chunk of chunks) {
+        if (!nonEmpty(chunk)) continue;
+        const q = query(
+            collection(db, 'clinicLogs'),
+            where('studentId', 'in', chunk),
+            orderBy('date', 'desc'),
+            limit(200),
+        );
+        results.push(...(await fetchListSafe(q, isCancelled, normalizeClinicLog)));
+    }
+    return results;
+}
+
+async function loadGradesForViewer(db, viewerStudentDocIds, isCancelled = () => false) {
+    if (!nonEmpty(viewerStudentDocIds)) return [];
+    const ids = uniq(viewerStudentDocIds);
+
+    if (ids.length === 1) {
+        const q = query(collection(db, 'grades'), where('authUid', '==', ids[0]), limit(500));
+        return fetchListSafe(q, isCancelled);
+    }
+
+    const out = [];
+    const chunks = chunkArray(ids, 10);
+    for (const chunk of chunks) {
+        if (!nonEmpty(chunk)) continue;
+        const q = query(collection(db, 'grades'), where('authUid', 'in', chunk), limit(500));
+        out.push(...(await fetchListSafe(q, isCancelled)));
+    }
+    return out;
+}
+
+async function loadHomeworkAssignmentsForViewer(db, viewerStudentDocIds, isCancelled = () => false) {
+    if (!nonEmpty(viewerStudentDocIds)) return [];
+    const ids = uniq(viewerStudentDocIds);
+
+    if (ids.length === 1) {
+        const q = query(
+            collection(db, 'homeworkAssignments'),
+            where('targetStudents', 'array-contains', ids[0]),
+            orderBy('assignedDate', 'desc'),
+            limit(200),
+        );
+        return fetchListSafe(q, isCancelled);
+    }
+
+    const out = [];
+    const chunks = chunkArray(ids, 10);
+    for (const chunk of chunks) {
+        if (!nonEmpty(chunk)) continue;
+        const q = query(
+            collection(db, 'homeworkAssignments'),
+            where('targetStudents', 'array-contains-any', chunk),
+            orderBy('assignedDate', 'desc'),
+            limit(200),
+        );
+        out.push(...(await fetchListSafe(q, isCancelled)));
+    }
+    return out;
+}
+
+const buildGradesMap = (gradeList = []) => {
+    const mapped = {};
+    gradeList.forEach((item) => {
+        const studentId = item?.authUid;
+        const testId = item?.testId;
+        if (!studentId || !testId) return;
+        if (!mapped[studentId]) mapped[studentId] = {};
+        mapped[studentId][testId] = item;
+    });
+    return mapped;
 };
 
 export async function fetchClinicLogsPaged({
@@ -900,20 +1000,14 @@ export const loadViewerDataOnce = async ({
         return;
     }
 
-    const linkedStudentIds = safeNonEmptyArray(studentIds);
-
-    // ✅ 학생은 authUid(userId) 섞지 않고 studentDocId만 사용
-    const viewerStudentUids = safeNonEmptyArray(userRole === 'student'
-        ? linkedStudentIds
-        : activeStudentId
-            ? [activeStudentId]
-            : linkedStudentIds
+    const viewerStudentDocIds = uniq(
+        (activeStudentId ? [activeStudentId] : []).concat(Array.isArray(studentIds) ? studentIds : []),
     ).slice(0, 10);
     const activeOnly = safeNonEmptyArray(activeStudentId ? [activeStudentId] : []);
 
-    console.log('[viewer] viewerStudentUids =', viewerStudentUids);
+    console.log('[viewer] viewerStudentDocIds =', viewerStudentDocIds);
 
-    if (viewerStudentUids.length === 0) {
+    if (!nonEmpty(viewerStudentDocIds)) {
         console.log('[viewer] skip: no student ids');
         return;
     }
@@ -924,7 +1018,7 @@ export const loadViewerDataOnce = async ({
         ========================= */
         const studentSnaps = await run('users getDoc batch', async () => {
             return Promise.all(
-                viewerStudentUids.map((sid) =>
+                viewerStudentDocIds.map((sid) =>
                     run(`users getDoc ${sid}`, () => getDoc(doc(db, 'users', sid))),
                 ),
             );
@@ -942,7 +1036,7 @@ export const loadViewerDataOnce = async ({
         console.log('[viewer] myStudents ids =', myStudents.map((s) => s.id));
 
         const scopedStudentUids = safeNonEmptyArray(Array.from(new Set([
-            ...viewerStudentUids,
+            ...viewerStudentDocIds,
             ...myStudents.map((s) => s.id).filter(Boolean),
         ])).slice(0, 10));
 
@@ -954,7 +1048,6 @@ export const loadViewerDataOnce = async ({
         ].filter(Boolean))).slice(0, 10));
 
         console.log('[viewer] scopedStudentAuthUids =', scopedStudentAuthUids);
-        const nonEmpty = (arr) => Array.isArray(arr) && arr.length > 0;
 
         /* =========================
            classes (학생 id별 array-contains)
@@ -1131,26 +1224,25 @@ export const loadViewerDataOnce = async ({
         }
 
         /* =========================
-        clinicLogs + clinicReservations (권한 실패 허용)
+        clinicLogs / grades / homeworkAssignments (viewer 병렬 로딩)
         ========================= */
-        if (scopedStudentUids.length > 0) {
-            const viewerStudentDocId = activeOnly[0] || scopedStudentUids[0] || null;
-            const viewerAuthUid = userId || scopedStudentAuthUids[0] || null;
+        const [clinicList, gradeList, hwAssignList] = await Promise.all([
+            loadClinicLogsForViewer(db, scopedStudentUids, isCancelled),
+            loadGradesForViewer(db, scopedStudentUids, isCancelled),
+            loadHomeworkAssignmentsForViewer(db, scopedStudentUids, isCancelled),
+        ]);
 
-            const clinicItems = await fetchClinicForViewer({
-                db,
-                studentIds: scopedStudentUids,
-                studentAuthUids: scopedStudentAuthUids,
-                studentDocId: viewerStudentDocId,
-                authUid: viewerAuthUid,
-                isCancelled,
+        if (!isCancelled()) {
+            setClinicLogs?.(clinicList.map((log) => normalizeClinicLog(log)).filter((log) => Boolean(log?.studentId)));
+            const mappedGrades = buildGradesMap(gradeList);
+            setGrades?.(mappedGrades);
+            viewerDetailCache.grades.set(detailCacheKey, mappedGrades);
+            const sortedHomework = hwAssignList.sort((a, b) => {
+                const da = a.date || a.assignedDate || a.createdAt?.toDate?.() || a.createdAt;
+                const dbb = b.date || b.assignedDate || b.createdAt?.toDate?.() || b.createdAt;
+                return new Date(dbb || 0) - new Date(da || 0);
             });
-
-            if (!isCancelled()) {
-                setClinicLogs?.(mergeClinicDocs(clinicItems, []));
-            }
-        } else if (!isCancelled()) {
-            setClinicLogs?.([]);
+            setHomeworkAssignments?.(sortedHomework);
         }
 
         /* =========================
@@ -1326,47 +1418,9 @@ export const loadViewerDataOnce = async ({
         }
 
         /* =========================
-        grades (viewer: 학생/부모)
-        ⚠️ 반 전체 조회 금지
+        grades (viewer): 병렬 로딩 결과 사용
         ========================= */
-        if (!hasDetailCache && scopedStudentAuthUids.length > 0) {
-            try {
-                const gradeSnap = await run('grades getDocs', () =>
-                    getDocs(
-                        query(
-                            collection(db, 'grades'),
-                            where('authUid', 'in', scopedStudentAuthUids),
-                            limit(100),
-                        ),
-                    ),
-                );
-
-                if (!isCancelled()) {
-                    const mappedGrades = {};
-                    gradeSnap.docs.forEach((docSnap) => {
-                        const data = docSnap.data();
-                        const { authUid: sId, testId } = data;
-
-                        if (!sId || !testId) return;
-                        if (allowedTestIds && !allowedTestIds.has(testId)) return;
-
-                        if (!mappedGrades[sId]) mappedGrades[sId] = {};
-                        mappedGrades[sId][testId] = data;
-                    });
-
-                    setGrades?.(mappedGrades);
-                    viewerDetailCache.grades.set(detailCacheKey, mappedGrades);
-                }
-            } catch (e) {
-                console.warn('[viewer] grades load failed', e);
-                if (!isCancelled()) setGrades?.({});
-                viewerDetailCache.grades.set(detailCacheKey, {});
-            }
-        } else if (!isCancelled() && !hasDetailCache) {
-            setGrades?.({});
-            viewerDetailCache.grades.set(detailCacheKey, {});
-        }
-
+        
         /* =========================
            homeworkResults (직접 getDocs)
         ========================= */
@@ -1590,61 +1644,9 @@ export const loadViewerDataOnce = async ({
         console.log('[viewer] fetch announcements done');
 
         /* =========================
-           homeworkAssignments
+           homeworkAssignments: 병렬 로딩 결과 사용
         ========================= */
-        const homeworkDocs = [];
-        const pushedHomeworkIds = new Set();
-        const pushHomeworkDocs = (docs) => {
-            docs.forEach((d) => {
-                if (!pushedHomeworkIds.has(d.id)) {
-                    pushedHomeworkIds.add(d.id);
-                    homeworkDocs.push({ id: d.id, ...d.data() });
-                }
-            });
-        };
-
-        if (lessonClassIds.length > 0) {
-            try {
-                const snap = await run('homeworkAssignments by class', () =>
-                    getDocs(
-                        query(
-                            collection(db, 'homeworkAssignments'),
-                            where('classId', 'in', lessonClassIds),
-                            orderBy('date', 'desc'),
-                            limit(30),
-                        ),
-                    ),
-                );
-                pushHomeworkDocs(snap.docs);
-            } catch (e) {
-                console.warn('[viewer] homeworkAssignments class load skipped', e);
-            }
-        }
-
-        if (scopedStudentUids.length > 0) {
-            try {
-                const directDocs = await getDocs(
-                    query(
-                        collection(db, 'homeworkAssignments'),
-                        where('targetStudents', 'array-contains-any', scopedStudentUids.slice(0, 10)),
-                        limit(30),
-                    ),
-                );
-                pushHomeworkDocs(directDocs.docs);
-            } catch (e) {
-                console.warn('[viewer] homeworkAssignments targetStudents load skipped', e);
-            }
-        }
-
-        if (!isCancelled()) {
-            const sortedHomework = homeworkDocs.sort((a, b) => {
-                const da = a.date || a.assignedDate || a.createdAt?.toDate?.() || a.createdAt;
-                const dbb = b.date || b.assignedDate || b.createdAt?.toDate?.() || b.createdAt;
-                return new Date(dbb || 0) - new Date(da || 0);
-            });
-            setHomeworkAssignments?.(sortedHomework);
-        }
-
+        
         /* =========================
         videoProgress / externalSchedules  (✅ authUid 기준으로 조회)
         ========================= */

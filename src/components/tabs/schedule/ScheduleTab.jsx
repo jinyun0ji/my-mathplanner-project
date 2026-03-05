@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Icon, getClinicDisplayStatus, getWeekOfMonth, isClosedForClass } from '../../../utils/helpers';
+import { Icon, getClinicDisplayStatus, getWeekOfMonth, isClosedForClass, hasClassOnDate, getClassTimeOnDate } from '../../../utils/helpers';
 import ModalPortal from '../../common/ModalPortal';
 import { useParentContext } from '../../../parent';
 
@@ -44,38 +44,6 @@ export default function ScheduleTab({
             .filter(Boolean);
         }
         return [];
-    };
-
-    const isClassActiveOnDate = (cls, date) => {
-        if (!cls) return false;
-
-        const start = cls?.startDate
-            ? (typeof cls.startDate?.toDate === 'function'
-                ? cls.startDate.toDate()
-                : new Date(cls.startDate))
-            : null;
-        const end = cls?.endDate
-            ? (typeof cls.endDate?.toDate === 'function'
-                ? cls.endDate.toDate()
-                : new Date(cls.endDate))
-            : null;
-
-        const day = new Date(date);
-        day.setHours(0, 0, 0, 0);
-
-        if (start) {
-            const startDay = new Date(start);
-            startDay.setHours(0, 0, 0, 0);
-            if (day < startDay) return false;
-        }
-
-        if (end) {
-            const endDay = new Date(end);
-            endDay.setHours(0, 0, 0, 0);
-            if (day > endDay) return false;
-        }
-
-        return true;
     };
 
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -376,26 +344,21 @@ export default function ScheduleTab({
     const safeExternalSchedules = Array.isArray(externalSchedules) ? externalSchedules : [];
 
     const dailyClasses = useMemo(() => {
-        const dayOfWeek = weekDays[selectedDate.getDay()];
         const dateStr = formatDate(selectedDate);
         return myClasses
             .filter(cls =>
-                isClassActiveOnDate(cls, selectedDate) &&
-                resolveClassSchedule(cls).days.includes(dayOfWeek) &&
+                hasClassOnDate(cls, dateStr) &&
                 !isClassRetiredOnDate(cls.id, selectedDate) &&
                 !isClosedForClass(dateStr, cls.id, closures)
             )
-            .map(cls => {
-                const { time } = resolveClassSchedule(cls);
-                return {
-                    id: `math-${cls.id}`,
-                    type: 'math',
-                    name: cls.name,
-                    teacher: cls.teacher,
-                    time: time || '시간 미정',
-                    scheduleId: cls.id,
-                };
-            });
+            .map(cls => ({
+                id: `math-${cls.id}`,
+                type: 'math',
+                name: cls.name,
+                teacher: cls.teacher,
+                time: getClassTimeOnDate(cls, dateStr) || resolveClassSchedule(cls).time || '시간 미정',
+                scheduleId: cls.id,
+            }));
     }, [myClasses, selectedDate, childClassExitMap, student, closures]);
 
     useEffect(() => {
@@ -411,8 +374,7 @@ export default function ScheduleTab({
         const dayOfWeek = weekDays[date.getDay()];
 
         const dayClasses = myClasses.filter(cls =>
-            isClassActiveOnDate(cls, date) &&
-            resolveClassSchedule(cls).days.includes(dayOfWeek) &&
+            hasClassOnDate(cls, dateStr) &&
             !isClassRetiredOnDate(cls.id, date) &&
             !isClosedForClass(dateStr, cls.id, closures)
         );
