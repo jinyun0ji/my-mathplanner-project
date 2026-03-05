@@ -309,15 +309,19 @@ export default function GradeManagement({
     });
 
     const handlePrintClick = useCallback(() => {
-        if (!printRef.current) {
-            alert('인쇄할 내용이 아직 준비되지 않았습니다. 잠시 후 다시 시도해주세요.');
-            return;
-        }
-        try {
-            handlePrint();
-        } catch (error) {
-            console.warn('[print] blocked', error);
-        }
+        const run = () => {
+            if (!printRef.current) {
+                alert('인쇄할 내용이 아직 준비되지 않았습니다. 잠시 후 다시 시도해주세요.');
+                return;
+            }
+            try {
+                handlePrint();
+            } catch (error) {
+                console.warn('[print] blocked', error);
+            }
+        };
+
+        requestAnimationFrame(() => requestAnimationFrame(run));
     }, [handlePrint]);
 
     // 엑셀 양식 다운로드

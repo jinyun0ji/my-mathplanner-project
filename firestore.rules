@@ -63,40 +63,6 @@ service cloud.firestore {
         ? userDoc().data.studentIds
         : [];
     }
-    
-    function myClassIds() {
-      return isSignedIn() && userDoc() != null && userDoc().data.classIds is list
-        ? userDoc().data.classIds
-        : [];
-    }
-
-    function parentHasClassId(classId) {
-      if (!(isSignedIn() && isParent())) return false;
-      let ids = parentStudentUids();
-
-      return (
-        (ids.size() > 0
-          && exists(/databases/$(database)/documents/users/$(ids[0]))
-          && (get(/databases/$(database)/documents/users/$(ids[0])).data.classIds is list)
-          && (classId in get(/databases/$(database)/documents/users/$(ids[0])).data.classIds))
-        || (ids.size() > 1
-          && exists(/databases/$(database)/documents/users/$(ids[1]))
-          && (get(/databases/$(database)/documents/users/$(ids[1])).data.classIds is list)
-          && (classId in get(/databases/$(database)/documents/users/$(ids[1])).data.classIds))
-        || (ids.size() > 2
-          && exists(/databases/$(database)/documents/users/$(ids[2]))
-          && (get(/databases/$(database)/documents/users/$(ids[2])).data.classIds is list)
-          && (classId in get(/databases/$(database)/documents/users/$(ids[2])).data.classIds))
-        || (ids.size() > 3
-          && exists(/databases/$(database)/documents/users/$(ids[3]))
-          && (get(/databases/$(database)/documents/users/$(ids[3])).data.classIds is list)
-          && (classId in get(/databases/$(database)/documents/users/$(ids[3])).data.classIds))
-        || (ids.size() > 4
-          && exists(/databases/$(database)/documents/users/$(ids[4]))
-          && (get(/databases/$(database)/documents/users/$(ids[4])).data.classIds is list)
-          && (classId in get(/databases/$(database)/documents/users/$(ids[4])).data.classIds))
-      );
-    }
 
     function listContainsAny(list, candidates) {
       return (candidates.size() > 0 && candidates[0] in list)
@@ -127,20 +93,17 @@ service cloud.firestore {
       );
     }
 
-    /** ✅ 클래스 멤버 체크: classIds 우선 + 레거시 students 보조 */
+    /** ✅ 클래스 멤버 체크: authUid / studentDocId / 부모 studentIds 대응 */
     function isClassMember(classId) {
       return isSignedIn()
         && classId is string
+        && exists(/databases/$(database)/documents/classes/$(classId))
         && (
-          (isStudent() && (classId in myClassIds()))
-          || (isParent() && parentHasClassId(classId))
-          || (
-            exists(/databases/$(database)/documents/classes/$(classId))
-            && (
-              (uid() in get(/databases/$(database)/documents/classes/$(classId)).data.students)
-              || (myStudentDocId() != null && myStudentDocId() in get(/databases/$(database)/documents/classes/$(classId)).data.students)
-            )
-          )
+          // staff/admin은 별도로 처리하지만, 여기선 학생/부모용만
+          (isStudent() && getMyStudentId() in get(/databases/$(database)/documents/classes/$(classId)).data.students)
+          || (isParent() && listContainsAny(get(/databases/$(database)/documents/classes/$(classId)).data.students, parentStudentUids()))
+          // (레거시) authUid 기반이 남아있을 경우도 허용
+          || uid() in get(/databases/$(database)/documents/classes/$(classId)).data.students
         );
     }
     
@@ -277,8 +240,10 @@ service cloud.firestore {
     match /classes/{docId} {
       allow get, read, list: if isAdminOrStaff()
         || (isSignedIn() && (
-          (isStudent() && (docId in myClassIds()))
-          || (isParent() && parentHasClassId(docId))
+          // 학생: studentDocId 기준
+          (isStudent() && getMyStudentId() in resource.data.students)
+          // 부모: studentIds 기준
+          || (isParent() && listContainsAny(resource.data.students, parentStudentUids()))
           // 레거시 authUid
           || (uid() in resource.data.students)
         ));
@@ -351,6 +316,7 @@ service cloud.firestore {
         || (isSignedIn()
           && (
             ('studentId' in resource.data && isMyStudentUid(resource.data.studentId))
+            || ('studentDocId' in resource.data && isMyStudentUid(resource.data.studentDocId))   // ✅ 추가
             || ('authUid' in resource.data && isMyStudentUid(resource.data.authUid))
             || ('studentUid' in resource.data && isMyStudentUid(resource.data.studentUid))
           )
