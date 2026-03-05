@@ -1,10 +1,10 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { collection, query, where, getDocs, limit } from 'firebase/firestore';
 import { Icon, getLastCheckedDate } from '../utils/helpers';
 import ClassSelectionPanel from '../components/Shared/ClassSelectionPanel';
-import HomeworkGradingTable from '../components/Homework/HomeworkGradingTable';
 import HomeworkStatisticsPanel from '../components/Homework/HomeworkStatisticsPanel';
 import { HomeworkAssignmentModal } from '../utils/modals/HomeworkAssignmentModal';
+import HomeworkResultEntryModal from '../utils/modals/HomeworkResultEntryModal';
 import { buildAssignmentSummary, getClassAssignments, getSelectedAssignment, resolveAssignmentStudentIds, resolveAssignmentTypeLabel, resolveAssignmentType } from '../domain/homework/homework.service';
 import { db } from '../firebase/client';
 import { getDefaultClassId } from '../utils/classStatus';
@@ -42,6 +42,9 @@ export default function HomeworkManagement({
     const [isAssignmentModalOpen, setIsAssignmentModalOpen] = useState(false);
     const [assignmentToEdit, setAssignmentToEdit] = useState(null);
     const [selectedAssignmentId, setSelectedAssignmentId] = useState(null);
+    const [isResultModalOpen, setIsResultModalOpen] = useState(false);
+    const [resultModalStudent, setResultModalStudent] = useState(null);
+    const [resultModalAssignment, setResultModalAssignment] = useState(null);
     const { students: classStudents, isLoading: isLoadingStudents } = useClassStudents(selectedClassId);
     const [scopedHomeworkResults, setScopedHomeworkResults] = useState(null);
     const [isLoadingScopedResults, setIsLoadingScopedResults] = useState(false);
@@ -52,9 +55,6 @@ export default function HomeworkManagement({
         () => buildStudentParentPhoneLast4Map(students, parents),
         [students, parents],
     );
-
-    // 로컬 변경 사항 관리
-    const [localChanges, setLocalChanges] = useState([]); 
 
     useEffect(() => {
         if (!classes || classes.length === 0) return;
@@ -100,12 +100,6 @@ export default function HomeworkManagement({
             if (matches.length > 0) {
                 normalized[student.id] = matches[0][1];
             }
-
-            console.log(
-                '[HW][match]',
-                student.name,
-                matches.map(([, value]) => value)
-            );
         });
 
         return normalized;
@@ -144,54 +138,37 @@ export default function HomeworkManagement({
                 const mapped = {};
                 docs.forEach((d) => {
                     const data = d.data() || {};
-                    const assignmentId = data.assignmentId || data.homeworkAssignmentId || null;
-                    if (!assignmentId) return;
+                    const assignmentId = data.assignmentId || data.homeworkAssignmentId;
+                    if (!assignmentId || String(assignmentId) !== String(selectedAssignmentId)) return;
 
-                    const sKey =
-                        data.authUid ||
-                        data.studentId ||
-                        data.studentDocId ||
-                        data.studentUid ||
-                        null;
+                    const studentId = data.authUid || data.studentId || data.studentDocId || data.studentUid;
+                    if (!studentId) return;
 
-                    if (!sKey) return;
-
-                    if (!mapped[sKey]) mapped[sKey] = {};
-                    mapped[sKey][assignmentId] = data.results || data;
-                });
-
-                const rosterKeySet = new Set();
-                (rosterForHomework || []).forEach((s) => {
-                    if (s?.id) rosterKeySet.add(String(s.id));
-                    if (s?.authUid) rosterKeySet.add(String(s.authUid));
-                });
-
-                const filtered = {};
-                Object.entries(mapped).forEach(([k, v]) => {
-                    if (rosterKeySet.size === 0) return;
-                    if (rosterKeySet.has(String(k))) filtered[k] = v;
+                    if (!mapped[studentId]) mapped[studentId] = {};
+                    mapped[studentId][assignmentId] = {
+                        ...data,
+                        results: data.results || {},
+                    };
                 });
 
                 if (!cancelled) {
-                    const useValue = Object.keys(filtered).length > 0 ? filtered : mapped;
-                    setScopedHomeworkResults(useValue);
+                    setScopedHomeworkResults(mapped);
                 }
-            } catch (e) {
-                console.error('[HW] FAIL: fetch scoped homeworkResults', e);
+            } catch (error) {
+                console.error('Failed to load scoped homework results', error);
                 if (!cancelled) {
                     setScopedHomeworkResults(null);
                 }
             } finally {
-                if (!cancelled) setIsLoadingScopedResults(false);
+                if (!cancelled) {
+                    setIsLoadingScopedResults(false);
+                }
             }
         };
 
         run();
-
-        return () => {
-            cancelled = true;
-        };
-    }, [selectedAssignmentId, selectedClassId, rosterForHomework]);
+        return () => { cancelled = true; };
+    }, [selectedAssignmentId]);
 
     useEffect(() => {
         if (!selectedAssignmentId) {
@@ -219,15 +196,14 @@ export default function HomeworkManagement({
     }, [effectiveHomeworkResults, selectedAssignmentId]);
 
     const assignmentSummary = useMemo(() => {
-        const assignedIds = resolveAssignmentStudentIds(selectedAssignment);
         const assignedSet = new Set((resolveAssignmentStudentIds(selectedAssignment) || []).map(String));
 
         const assignedStudents = assignedSet.size > 0
             ? rosterForHomework.filter(student =>
                 assignedSet.has(String(student.id)) || assignedSet.has(String(student.authUid))
-                )
+            )
             : rosterForHomework;
-        return buildAssignmentSummary(selectedAssignment, assignedStudents, normalizedHomeworkResults, localChanges)
+        return buildAssignmentSummary(selectedAssignment, assignedStudents, normalizedHomeworkResults, [])
             .map((item) => ({
                 ...item,
                 studentName: formatStudentNameWithParentLast4(
@@ -235,30 +211,40 @@ export default function HomeworkManagement({
                     parentLast4Map,
                 ) || item.studentName,
             }));
-    }, [selectedAssignment, rosterForHomework, normalizedHomeworkResults, localChanges, parentLast4Map]);
+    }, [selectedAssignment, rosterForHomework, normalizedHomeworkResults, parentLast4Map]);
 
-    const handleAssignmentSelect = (id) => {
-        if (localChanges.length > 0) {
-            if (!window.confirm('저장하지 않은 채점 결과가 있습니다. 다른 과제로 이동하시겠습니까?\n(이동 시 변경사항은 사라집니다)')) {
-                return;
-            }
-            setLocalChanges([]); 
-            setIsGlobalDirty(false);
-        }
+    const completionRateByStudentId = useMemo(() => {
+        return assignmentSummary.reduce((acc, student) => {
+            acc[student.studentId] = {
+                percent: student.completionRate,
+                done: student.checkedCount,
+                total: student.total,
+            };
+            return acc;
+        }, {});
+    }, [assignmentSummary]);
+
+    const statusSummary = useMemo(() => {
+        if (!assignmentSummary || assignmentSummary.length === 0) return { inProgress: 0, notStarted: 0, graded: 0, needsReview: 0 };
+
+        const graded = assignmentSummary.filter(s => s.checkedCount >= s.total && s.incorrectCount === 0).length;
+        const inProgress = assignmentSummary.filter(s => s.checkedCount > 0 && s.checkedCount < s.total).length;
+        const needsReview = assignmentSummary.filter(s => s.checkedCount >= s.total && s.incorrectCount > 0).length;
+        const notStarted = Math.max(assignmentSummary.length - graded - inProgress - needsReview, 0);
+
+        return { inProgress, notStarted, graded, needsReview };
+    }, [assignmentSummary]);
+
+    const handleAssignmentSelect = useCallback((id) => {
         setSelectedAssignmentId(id);
-    };
+        setIsGlobalDirty(false);
+    }, [setIsGlobalDirty]);
 
-    const handleClassSelectWrapper = (id) => {
-        if (localChanges.length > 0) {
-            if (!window.confirm('저장하지 않은 채점 결과가 있습니다. 다른 클래스로 이동하시겠습니까?')) {
-                return;
-            }
-            setLocalChanges([]);
-            setIsGlobalDirty(false);
-        }
+    const handleClassSelectWrapper = useCallback((id) => {
         setSelectedClassId(id);
         setSelectedAssignmentId(null);
-    }
+        setIsGlobalDirty(false);
+    }, [setIsGlobalDirty]);
     
     const assignmentPanelContent = useMemo(() => {
         if (!selectedClass) return <p className="text-sm text-gray-500">클래스를 선택해주세요.</p>;
@@ -279,10 +265,9 @@ export default function HomeworkManagement({
                         <div
                             key={assignment.id}
                             onClick={() => handleAssignmentSelect(assignment.id)}
-                            // [색상 변경] 선택 시: bg-indigo-50 border-indigo-200
                             className={`p-3 mb-2 rounded-lg cursor-pointer border transition duration-150 ${
-                                assignment.id === selectedAssignmentId 
-                                    ? 'bg-indigo-50 border-indigo-200 shadow-sm' 
+                                assignment.id === selectedAssignmentId
+                                    ? 'bg-indigo-50 border-indigo-200 shadow-sm'
                                     : 'bg-white border-gray-200 hover:bg-gray-50'
                             }`}
                         >
@@ -301,7 +286,7 @@ export default function HomeworkManagement({
                 {classAssignments.length === 0 && <p className="text-sm text-gray-500 mt-2">배정된 과제가 없습니다.</p>}
             </div>
         );
-    }, [classAssignments, selectedClassId, selectedAssignmentId, selectedClass, localChanges]);
+    }, [classAssignments, selectedAssignmentId, selectedClass, handleAssignmentSelect]);
 
     const handleEditAssignment = (assignment) => {
         setAssignmentToEdit(assignment);
@@ -313,35 +298,29 @@ export default function HomeworkManagement({
         setIsAssignmentModalOpen(true);
     };
 
-    const handleUpdateResultLocal = (studentId, qNum, status) => {
-        if (!selectedAssignmentId) return;
-        
-        setLocalChanges(prev => {
-            const filtered = prev.filter(c => !(c.studentId === studentId && c.assignmentId === selectedAssignmentId && c.questionId === qNum));
-            return [...filtered, { studentId, assignmentId: selectedAssignmentId, questionId: qNum, status }];
-        });
-        
-        setIsGlobalDirty(true);
+    const openResultModal = (student) => {
+        setResultModalStudent(student);
+        setResultModalAssignment(selectedAssignment);
+        setIsResultModalOpen(true);
     };
 
-    const handleSaveChanges = () => {
-        if (localChanges.length === 0) return;
-        handleUpdateHomeworkResult(localChanges, checkedDate);
-        setLocalChanges([]);
-        setIsGlobalDirty(false);
-        alert('채점 결과가 저장되었습니다.');
+    const handleSaveResultFromModal = async ({ studentId, assignmentId, results }) => {
+        const existingRecord = normalizedHomeworkResults[studentId]?.[assignmentId];
+        const existingMap = existingRecord?.results || existingRecord || {};
+        const keys = new Set([...Object.keys(existingMap), ...Object.keys(results || {})]);
+        const updates = Array.from(keys).map((questionId) => ({
+            studentId,
+            assignmentId,
+            questionId,
+            status: results?.[questionId] ?? null,
+        }));
+
+        if (updates.length === 0) {
+            return;
+        }
+
+        await handleUpdateHomeworkResult(updates, checkedDate);
     };
-
-    const statusSummary = useMemo(() => {
-        if (!assignmentSummary || assignmentSummary.length === 0) return { inProgress: 0, notStarted: 0, graded: 0, needsReview: 0 };
-
-        const graded = assignmentSummary.filter(s => s.checkedCount >= s.total && s.incorrectCount === 0).length;
-        const inProgress = assignmentSummary.filter(s => s.checkedCount > 0 && s.checkedCount < s.total).length;
-        const needsReview = assignmentSummary.filter(s => s.checkedCount >= s.total && s.incorrectCount > 0).length;
-        const notStarted = Math.max(assignmentSummary.length - graded - inProgress - needsReview, 0);
-        
-        return { inProgress, notStarted, graded, needsReview };
-    }, [assignmentSummary]);
 
     return (
         <div className="space-y-4 h-full">
@@ -355,17 +334,7 @@ export default function HomeworkManagement({
                         <span>{selectedAssignment?.book || '과제 미선택'}</span>
                         <span className="text-gray-400">|</span>
                         <span>{selectedAssignment?.assignedDate || selectedAssignment?.date || '날짜 없음'}</span>
-                        {localChanges.length > 0 && (
-                            <span className="ml-1 text-[11px] bg-red-100 text-red-600 px-2 py-0.5 rounded-full">저장되지 않음</span>
-                        )}
                     </div>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-2 text-xs lg:text-sm">
-                    <span className="px-3 py-1 rounded-full bg-gray-100 text-gray-600 font-semibold">검사 전 {statusSummary.notStarted}명</span>
-                    <span className="px-3 py-1 rounded-full bg-indigo-50 text-indigo-700 font-semibold">검사 진행 {statusSummary.inProgress}명</span>
-                    <span className="px-3 py-1 rounded-full bg-yellow-50 text-yellow-700 font-semibold">오답 정리 {statusSummary.needsReview}명</span>
-                    <span className="px-3 py-1 rounded-full bg-green-50 text-green-700 font-semibold">검사 완료 {statusSummary.graded}명</span>
                 </div>
 
                 <div className="flex flex-wrap gap-3 items-center justify-end">
@@ -378,18 +347,6 @@ export default function HomeworkManagement({
                             className="border rounded-md px-2 py-1 text-xs"
                         />
                     </label>
-                    <button
-                        onClick={handleSaveChanges}
-                        disabled={localChanges.length === 0}
-                        className={`inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-indigo-900 hover:bg-indigo-800 rounded-lg shadow-md transition ${
-                            localChanges.length > 0
-                                ? 'bg-indigo-900 text-white hover:bg-indigo-800'
-                                : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                        }`}
-                    >
-                        <Icon name="checkSquare" className="w-5 h-5" />
-                        채점 저장 ({localChanges.length})
-                    </button>
                 </div>
             </div>
 
@@ -424,26 +381,23 @@ export default function HomeworkManagement({
                 </div>
 
                 <div className="space-y-4">
-                    {!selectedAssignment ? (
-                        <div className="p-6 bg-white rounded-xl shadow-md border border-gray-200">
-                            <p className="text-gray-500">클래스를 선택하고 왼쪽에서 과제를 선택하세요.</p>
+                    {!selectedAssignment && (
+                        <div className="bg-white rounded-xl border border-dashed border-gray-300 p-8 text-center text-gray-500">
+                            과제를 선택하면 채점 및 통계를 확인할 수 있습니다.
                         </div>
-                    ) : (
-                        <div className="space-y-6">
-                            <div className="bg-white p-6 rounded-xl shadow-md border-l-4 border-indigo-900 border border-gray-200">
-                                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                                    <div className="space-y-1">
-                                        <h3 className="text-xl font-bold text-gray-800 flex items-center">
-                                            {selectedAssignment.book || selectedAssignment.title || '과제'}
-                                            <span className="ml-2 text-[11px] font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-700 border border-gray-200">
-                                                {resolveAssignmentTypeLabel(selectedAssignment)}
-                                            </span>
-                                        </h3>
+                    )}
+
+                    {selectedAssignment && (
+                        <div className="space-y-4">
+                            <div className="bg-white p-4 rounded-xl shadow-md border border-gray-200">
+                                <div className='flex justify-between items-start gap-3'>
+                                    <div>
+                                        <h4 className="text-lg font-bold text-gray-800">{selectedAssignment.book || '과제 상세'}</h4>
                                         <p className="text-sm text-gray-600 mt-1">
                                             {selectedAssignment.assignedDate || selectedAssignment.date} | {selectedAssignment.content}
                                             {resolveAssignmentType(selectedAssignment) === 'video_makeup'
                                                 ? ''
-                                                : ` (${selectedAssignment.rangeString || `${selectedAssignment.startQuestion || '?' }~${selectedAssignment.endQuestion || '?'}`} 총 ${selectedAssignment.totalQuestions}문항)`}
+                                                : ` (${selectedAssignment.rangeString || `${selectedAssignment.startQuestion || '?'}~${selectedAssignment.endQuestion || '?'}`} 총 ${selectedAssignment.totalQuestions}문항)`}
                                         </p>
                                     </div>
                                     <div className='flex flex-wrap gap-2 items-center lg:justify-end'>
@@ -454,7 +408,7 @@ export default function HomeworkManagement({
                                             <Icon name="edit" className="w-5 h-5" />
                                         </button>
                                         <button
-                                            onClick={() => { if(window.confirm('정말 이 과제 기록을 삭제하시겠습니까?')) handleDeleteHomeworkAssignment(selectedAssignment.id); }}
+                                            onClick={() => { if (window.confirm('정말 이 과제 기록을 삭제하시겠습니까?')) handleDeleteHomeworkAssignment(selectedAssignment.id); }}
                                             className="text-gray-500 p-1 rounded-full transition-colors hover:text-red-600 hover:bg-red-50"
                                         >
                                             <Icon name="trash" className="w-5 h-5" />
@@ -463,56 +417,39 @@ export default function HomeworkManagement({
                                 </div>
                             </div>
 
-                            <div className="bg-white p-4 rounded-xl shadow-md border border-gray-200">
-                                <div className="flex items-center justify-between mb-3">
-                                    <h4 className="text-sm font-bold text-gray-700">학생 제출/채점 상태</h4>
-                                    <div className="flex items-center gap-2 text-[11px]">
-                                        <span className="px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 font-semibold">제출</span>
-                                        <span className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 font-semibold">미제출</span>
-                                        <span className="px-2 py-0.5 rounded-full bg-green-50 text-green-700 font-semibold">채점완료</span>
-                                    </div>
-                                </div>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                                    {assignmentSummary.map((s) => {
-                                        const statusChip = s.checkedCount >= s.total && s.incorrectCount === 0
-                                            ? 'bg-green-100 text-green-700'
-                                            : s.checkedCount >= s.total
-                                                ? 'bg-yellow-100 text-yellow-700'
-                                                : s.checkedCount > 0
-                                                    ? 'bg-indigo-100 text-indigo-700'
-                                                    : 'bg-gray-100 text-gray-600';
+                            {isLoadingScopedResults && (
+                                <div className="text-xs text-gray-400 px-1">과제 채점 데이터를 불러오는 중...</div>
+                            )}
 
-                                        const statusLabel = (() => {
-                                            if (s.checkedCount >= s.total && s.incorrectCount === 0) return '검사 완료';
-                                            if (s.checkedCount >= s.total && s.incorrectCount > 0) return '오답 정리';
-                                            if (s.checkedCount > 0) return '검사 진행';
-                                            return '검사 전';
-                                        })();
+                            <div className="bg-white p-4 rounded-xl shadow-md border border-gray-200">
+                                <h4 className="text-lg font-bold text-gray-800 border-b pb-2 mb-3">과제 결과 입력</h4>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                    {assignmentSummary.map((student) => {
+                                        const completion = completionRateByStudentId[student.studentId];
 
                                         return (
-                                            <div key={s.studentId} className="flex items-center justify-between rounded-lg border border-gray-200 px-3 py-2 bg-gray-50">
-                                                <span className="text-sm font-semibold text-gray-800 truncate">{s.studentName}</span>
-                                                <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${statusChip}`}>{statusLabel}</span>
+                                            <div key={student.studentId} className="flex items-center justify-between rounded-lg border border-gray-200 px-3 py-2 bg-gray-50">
+                                                <div>
+                                                    <p className="text-sm font-semibold text-gray-800">{student.studentName}</p>
+                                                    <p className="text-xs text-gray-500">
+                                                        {completion?.total > 0 ? `${completion.percent}% (${completion.done}/${completion.total})` : '-'}
+                                                    </p>
+                                                </div>
+                                                <button
+                                                    onClick={() => openResultModal(student)}
+                                                    className="px-3 py-1.5 text-xs font-semibold rounded-md bg-indigo-600 text-white hover:bg-indigo-700"
+                                                >
+                                                    결과 입력/수정
+                                                </button>
                                             </div>
                                         );
                                     })}
                                 </div>
                             </div>
-
-                        {isLoadingScopedResults && (
-                                <div className="text-xs text-gray-400 px-1">과제 채점 데이터를 불러오는 중...</div>
-                            )}
-
-                            <HomeworkGradingTable
-                                summary={assignmentSummary}
-                                assignment={selectedAssignment}
-                                handleUpdateResult={handleUpdateResultLocal}
-                                isReadOnly={false}
-                            />
-
                             <HomeworkStatisticsPanel
-                                assignment={selectedAssignment}
                                 summary={assignmentSummary}
+                                statusSummary={statusSummary}
+                                completionRateByStudentId={completionRateByStudentId}
                             />
                         </div>
                     )}
@@ -528,6 +465,20 @@ export default function HomeworkManagement({
                 students={classStudents}
                 selectedClass={selectedClass}
             />
+
+            <HomeworkResultEntryModal
+                isOpen={isResultModalOpen}
+                onClose={() => setIsResultModalOpen(false)}
+                student={resultModalStudent}
+                assignment={resultModalAssignment}
+                initialResult={resultModalStudent && resultModalAssignment
+                    ? normalizedHomeworkResults[resultModalStudent.studentId]?.[resultModalAssignment.id] || normalizedHomeworkResults[resultModalStudent.id]?.[resultModalAssignment.id] || null
+                    : null}
+                onSave={handleSaveResultFromModal}
+            />
         </div>
     );
 }
+
+// changed: src/pages/HomeworkManagement.jsx
+// added: src/utils/modals/HomeworkResultEntryModal.jsx

@@ -2,7 +2,7 @@
 import React, { useMemo } from 'react';
 import { Icon } from '../../utils/helpers';
 
-export default function HomeworkStatisticsPanel({ assignment, summary }) {
+export default function HomeworkStatisticsPanel({ summary, statusSummary, completionRateByStudentId = {} }) {
     // 통계 계산
     const stats = useMemo(() => {
         if (!summary || summary.length === 0) return null;
@@ -77,6 +77,13 @@ export default function HomeworkStatisticsPanel({ assignment, summary }) {
                 <Icon name="clipboardCheck" className="w-5 h-5 mr-2 text-blue-600" />
                 과제 결과 통계
             </h2>
+
+            <div className="flex flex-wrap items-center gap-2 text-xs lg:text-sm">
+                <span className="px-3 py-1 rounded-full bg-gray-100 text-gray-600 font-semibold">검사 전 {statusSummary?.notStarted || 0}명</span>
+                <span className="px-3 py-1 rounded-full bg-indigo-50 text-indigo-700 font-semibold">검사 진행 {statusSummary?.inProgress || 0}명</span>
+                <span className="px-3 py-1 rounded-full bg-yellow-50 text-yellow-700 font-semibold">오답 정리 {statusSummary?.needsReview || 0}명</span>
+                <span className="px-3 py-1 rounded-full bg-green-50 text-green-700 font-semibold">검사 완료 {statusSummary?.graded || 0}명</span>
+            </div>
             
             {/* 요약 그리드 */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center border p-3 rounded-lg bg-gray-50">
@@ -139,21 +146,17 @@ export default function HomeworkStatisticsPanel({ assignment, summary }) {
                             <thead className="bg-gray-50 sticky top-0">
                                 <tr>
                                     <th className="px-3 py-2 text-left font-bold text-gray-600">학생명</th>
-                                    <th className="px-3 py-2 text-center font-bold text-gray-600">상태</th>
-                                    <th className="px-3 py-2 text-center font-bold text-gray-600">수행률</th>
+                                    <th className="px-3 py-2 text-center font-bold text-gray-600">완료율</th>
                                 </tr>
                             </thead>
                             <tbody className="bg-white divide-y divide-gray-200">
                                 {stats.sortedStudents.map((student) => (
                                     <tr key={student.studentId} className="hover:bg-gray-50">
                                         <td className="px-3 py-2 font-medium text-gray-900">{student.studentName}</td>
-                                        <td className="px-3 py-2 text-center">
-                                            <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${student.isCompleted ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                                                {student.isCompleted ? '완료' : '미완료'}
-                                            </span>
-                                        </td>
                                         <td className={`px-3 py-2 text-center font-bold ${student.completionRate === 100 ? 'text-green-600' : 'text-blue-600'}`}>
-                                            {student.completionRate}%
+                                            {completionRateByStudentId[student.studentId]?.total > 0
+                                                ? `${completionRateByStudentId[student.studentId].percent}% (${completionRateByStudentId[student.studentId].done}/${completionRateByStudentId[student.studentId].total})`
+                                                : '-'}
                                         </td>
                                     </tr>
                                 ))}
