@@ -4,7 +4,7 @@ import { Icon, getLastCheckedDate } from '../utils/helpers';
 import ClassSelectionPanel from '../components/Shared/ClassSelectionPanel';
 import HomeworkStatisticsPanel from '../components/Homework/HomeworkStatisticsPanel';
 import { HomeworkAssignmentModal } from '../utils/modals/HomeworkAssignmentModal';
-import HomeworkResultEntryModal from '../utils/modals/HomeworkResultEntryModal';
+import HomeworkResultsModal from '../utils/modals/HomeworkResultsModal';
 import { buildAssignmentSummary, getClassAssignments, getSelectedAssignment, resolveAssignmentStudentIds, resolveAssignmentTypeLabel, resolveAssignmentType } from '../domain/homework/homework.service';
 import { db } from '../firebase/client';
 import { getDefaultClassId } from '../utils/classStatus';
@@ -30,6 +30,10 @@ const isSameStudent = (result, student) => {
     return resultStudentIds.some(rid => studentIds.includes(rid));
 };
 
+const isWrong = (value) => ['2', 'x', '틀림'].includes(String(value ?? '').trim().toLowerCase());
+
+const isAnswered = (value) => ['1', '2', '3', 'o', 'x', '맞음', '틀림', '고침'].includes(String(value ?? '').trim().toLowerCase());
+
 export default function HomeworkManagement({
     classes, homeworkAssignments, homeworkResults,
     handleSaveHomeworkAssignment, handleDeleteHomeworkAssignment,
@@ -42,9 +46,9 @@ export default function HomeworkManagement({
     const [isAssignmentModalOpen, setIsAssignmentModalOpen] = useState(false);
     const [assignmentToEdit, setAssignmentToEdit] = useState(null);
     const [selectedAssignmentId, setSelectedAssignmentId] = useState(null);
-    const [isResultModalOpen, setIsResultModalOpen] = useState(false);
-    const [resultModalStudent, setResultModalStudent] = useState(null);
-    const [resultModalAssignment, setResultModalAssignment] = useState(null);
+    const [isHomeworkResultsModalOpen, setIsHomeworkResultsModalOpen] = useState(false);
+    const [activeStudentId, setActiveStudentId] = useState(null);
+    const [activeAssignment, setActiveAssignment] = useState(null);
     const { students: classStudents, isLoading: isLoadingStudents } = useClassStudents(selectedClassId);
     const [scopedHomeworkResults, setScopedHomeworkResults] = useState(null);
     const [isLoadingScopedResults, setIsLoadingScopedResults] = useState(false);
@@ -214,26 +218,29 @@ export default function HomeworkManagement({
     }, [selectedAssignment, rosterForHomework, normalizedHomeworkResults, parentLast4Map]);
 
     const completionRateByStudentId = useMemo(() => {
+        const totalQuestions = Number(selectedAssignment?.totalQuestions) || 0;
+
         return assignmentSummary.reduce((acc, student) => {
+            const resultMap = student.resultMap || {};
+            const answeredCount = Object.values(resultMap).filter((value) => isAnswered(value)).length;
+            const completionPercentRaw = totalQuestions > 0 ? Math.round((answeredCount / totalQuestions) * 100) : 0;
+            const hasWrong = Object.values(resultMap).some((value) => isWrong(value));
+            const wrongProgress = completionPercentRaw === 100 && hasWrong;
+            const completed = completionPercentRaw === 100 && !hasWrong;
+            const completionPercentDisplay = completed ? 100 : (wrongProgress ? 99 : completionPercentRaw);
+
             acc[student.studentId] = {
-                percent: student.completionRate,
-                done: student.checkedCount,
-                total: student.total,
+                raw: completionPercentRaw,
+                display: completionPercentDisplay,
+                done: answeredCount,
+                total: totalQuestions,
+                hasWrong,
+                wrongProgress,
+                completed,
             };
             return acc;
         }, {});
-    }, [assignmentSummary]);
-
-    const statusSummary = useMemo(() => {
-        if (!assignmentSummary || assignmentSummary.length === 0) return { inProgress: 0, notStarted: 0, graded: 0, needsReview: 0 };
-
-        const graded = assignmentSummary.filter(s => s.checkedCount >= s.total && s.incorrectCount === 0).length;
-        const inProgress = assignmentSummary.filter(s => s.checkedCount > 0 && s.checkedCount < s.total).length;
-        const needsReview = assignmentSummary.filter(s => s.checkedCount >= s.total && s.incorrectCount > 0).length;
-        const notStarted = Math.max(assignmentSummary.length - graded - inProgress - needsReview, 0);
-
-        return { inProgress, notStarted, graded, needsReview };
-    }, [assignmentSummary]);
+    }, [assignmentSummary, selectedAssignment]);
 
     const handleAssignmentSelect = useCallback((id) => {
         setSelectedAssignmentId(id);
@@ -298,21 +305,21 @@ export default function HomeworkManagement({
         setIsAssignmentModalOpen(true);
     };
 
-    const openResultModal = (student) => {
-        setResultModalStudent(student);
-        setResultModalAssignment(selectedAssignment);
-        setIsResultModalOpen(true);
+    const openResultModal = (studentId = null) => {
+        setActiveStudentId(studentId);
+        setActiveAssignment(selectedAssignment);
+        setIsHomeworkResultsModalOpen(true);
     };
 
-    const handleSaveResultFromModal = async ({ studentId, assignmentId, results }) => {
+    const handleSaveResultFromModal = async ({ studentId, assignmentId, resultsMap }) => {
         const existingRecord = normalizedHomeworkResults[studentId]?.[assignmentId];
         const existingMap = existingRecord?.results || existingRecord || {};
-        const keys = new Set([...Object.keys(existingMap), ...Object.keys(results || {})]);
+        const keys = new Set([...Object.keys(existingMap), ...Object.keys(resultsMap || {})]);
         const updates = Array.from(keys).map((questionId) => ({
             studentId,
             assignmentId,
             questionId,
-            status: results?.[questionId] ?? null,
+            status: resultsMap?.[questionId] ?? null,
         }));
 
         if (updates.length === 0) {
@@ -432,11 +439,11 @@ export default function HomeworkManagement({
                                                 <div>
                                                     <p className="text-sm font-semibold text-gray-800">{student.studentName}</p>
                                                     <p className="text-xs text-gray-500">
-                                                        {completion?.total > 0 ? `${completion.percent}% (${completion.done}/${completion.total})` : '-'}
+                                                        {completion?.total > 0 ? `${completion.display}% (${completion.done}/${completion.total})` : '-'}
                                                     </p>
                                                 </div>
                                                 <button
-                                                    onClick={() => openResultModal(student)}
+                                                    onClick={() => openResultModal(student.studentId)}
                                                     className="px-3 py-1.5 text-xs font-semibold rounded-md bg-indigo-600 text-white hover:bg-indigo-700"
                                                 >
                                                     결과 입력/수정
@@ -445,10 +452,17 @@ export default function HomeworkManagement({
                                         );
                                     })}
                                 </div>
+                                <div className="mt-3">
+                                    <button
+                                        onClick={() => openResultModal()}
+                                        className="px-3 py-1.5 text-xs font-semibold rounded-md bg-emerald-600 text-white hover:bg-emerald-700"
+                                    >
+                                        결과 입력/수정 (모달)
+                                    </button>
+                                </div>
                             </div>
                             <HomeworkStatisticsPanel
                                 summary={assignmentSummary}
-                                statusSummary={statusSummary}
                                 completionRateByStudentId={completionRateByStudentId}
                             />
                         </div>
@@ -466,19 +480,19 @@ export default function HomeworkManagement({
                 selectedClass={selectedClass}
             />
 
-            <HomeworkResultEntryModal
-                isOpen={isResultModalOpen}
-                onClose={() => setIsResultModalOpen(false)}
-                student={resultModalStudent}
-                assignment={resultModalAssignment}
-                initialResult={resultModalStudent && resultModalAssignment
-                    ? normalizedHomeworkResults[resultModalStudent.studentId]?.[resultModalAssignment.id] || normalizedHomeworkResults[resultModalStudent.id]?.[resultModalAssignment.id] || null
-                    : null}
-                onSave={handleSaveResultFromModal}
+            <HomeworkResultsModal
+                isOpen={isHomeworkResultsModalOpen}
+                onClose={() => setIsHomeworkResultsModalOpen(false)}
+                students={assignmentSummary}
+                assignment={activeAssignment}
+                homeworkResults={normalizedHomeworkResults}
+                activeStudentId={activeStudentId}
+                completionRateByStudentId={completionRateByStudentId}
+                onSaveStudentResult={handleSaveResultFromModal}
             />
         </div>
     );
 }
 
 // changed: src/pages/HomeworkManagement.jsx
-// added: src/utils/modals/HomeworkResultEntryModal.jsx
+// added: src/utils/modals/HomeworkResultsModal.jsx
