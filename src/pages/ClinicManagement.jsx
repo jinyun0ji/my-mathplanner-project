@@ -6,18 +6,22 @@ import { ClinicScheduleModal } from '../utils/modals/ClinicScheduleModal';
 import { ClinicCommentModal } from '../utils/modals/ClinicCommentModal';
 import { ClinicNotificationModal } from '../utils/modals/ClinicNotificationModal';
 import { ClinicBulkNotificationModal } from '../utils/modals/ClinicBulkNotificationModal';
-import { buildStudentParentPhoneLast4Map, formatStudentNameWithParentLast4 } from '../utils/parentPhone';
+import { buildStudentParentPhoneLast4Map } from '../utils/parentPhone';
 import StudentNameWithParentLast4 from '../components/common/StudentNameWithParentLast4';
 
 export default function ClinicManagement({ 
     students, parents = [], classes, handleSaveClinicLog, handleDeleteClinicLog,
     logNotification 
 }) {
-    const [filterDate, setFilterDate] = useState(new Date().toISOString().slice(0, 10));
-    const [filterMode, setFilterMode] = useState('all'); // all | date
+    const [filterMode, setFilterMode] = useState('all'); // all | range
+    const [rangeStart, setRangeStart] = useState(() => {
+        const d = new Date();
+        d.setDate(d.getDate() - 30);
+        return d.toISOString().slice(0, 10);
+    });
+    const [rangeEnd, setRangeEnd] = useState(() => new Date().toISOString().slice(0, 10));
     const [viewMode, setViewMode] = useState('staff'); // staff | tutor
     const [selectedClassId, setSelectedClassId] = useState('');
-    const [selectedStudentId, setSelectedStudentId] = useState('');
     const [selectedAssistantId, setSelectedAssistantId] = useState('');
     const [searchText, setSearchText] = useState('');
     const [page, setPage] = useState(1);
@@ -134,24 +138,6 @@ export default function ClinicManagement({
             .sort((a, b) => a.name.localeCompare(b.name, 'ko'));
     }, [classes]);
 
-    const studentOptions = useMemo(() => {
-        if (students.length > 0) {
-            return students
-                .map(student => ({ id: student.id, name: formatStudentNameWithParentLast4(student, parentLast4Map) }))
-                .filter(student => student.id && student.name)
-                .sort((a, b) => a.name.localeCompare(b.name, 'ko'));
-        }
-
-        const fromLogs = new Map();
-        activeClinicLogs.forEach(log => {
-            const fallbackStudentDocId = log.studentDocId || log.studentId;
-            if (fallbackStudentDocId && log.studentName) {
-                fromLogs.set(fallbackStudentDocId, { id: fallbackStudentDocId, name: log.studentName });
-            }
-        });
-        return Array.from(fromLogs.values()).sort((a, b) => a.name.localeCompare(b.name, 'ko'));
-    }, [students, activeClinicLogs, parentLast4Map]);
-
     const assistantOptions = useMemo(() => {
         const seen = new Map();
         activeClinicLogs.forEach(log => {
@@ -167,12 +153,24 @@ export default function ClinicManagement({
         return Array.from(seen.values()).sort((a, b) => a.name.localeCompare(b.name, 'ko'));
     }, [activeClinicLogs]);
 
+    const normalizeClassId = useCallback((value) => {
+        if (!value) return '';
+        if (typeof value === 'string') return value.trim();
+        if (typeof value === 'number') return String(value);
+        if (value?.id) return String(value.id);
+        if (value?.path && typeof value.path === 'string') {
+            const parts = value.path.split('/');
+            return parts[parts.length - 1] || '';
+        }
+        return String(value).trim();
+    }, []);
+
     const normalizeSelectedClassId = useCallback((selected, classList) => {
         if (!selected) return '';
         const matchedById = classList.find(item => String(item.id) === String(selected));
-        if (matchedById) return matchedById.id;
+        if (matchedById) return String(matchedById.id);
         const matchedByName = classList.find(item => String(item.name) === String(selected));
-        return matchedByName?.id || selected;
+        return matchedByName ? String(matchedByName.id) : String(selected);
     }, []);
 
     const getItemClassId = useCallback((item, classList) => {
@@ -186,14 +184,18 @@ export default function ClinicManagement({
             item?.classRef,
             item?.class?.ref,
         ];
-        const found = candidates.find(value => value !== undefined && value !== null && String(value) !== '');
-        if (found) return found;
+
+        for (const candidate of candidates) {
+            const value = normalizeClassId(candidate);
+            if (value) return value;
+        }
+
         if (item?.className) {
             const matched = classList.find(cls => String(cls.name) === String(item.className));
-            return matched?.id || '';
+            return matched ? String(matched.id) : '';
         }
         return '';
-    }, []);
+    }, [normalizeClassId]);
 
     const resolveStudentFromLog = useCallback((log) => {
         const candidates = [
@@ -265,25 +267,33 @@ export default function ClinicManagement({
 
     const resetFilters = () => {
         setSelectedClassId('');
-        setSelectedStudentId('');
         setSelectedAssistantId('');
         setSearchText('');
     };
 
-    // 날짜별 로그 필터링
-    const dateLogs = useMemo(() => {
-        const filteredByDeletion = activeClinicLogs.filter(log => !log?.isDeleted);
-        if (filterMode === 'date') {
-            const filtered = filteredByDeletion.filter(log => log.effectiveDate === filterDate);
-            return [...filtered].sort((a, b) => {
-                const nameCompare = getStudentName(a).localeCompare(getStudentName(b), 'ko');
-                if (nameCompare !== 0) return nameCompare;
-                return String(a.id).localeCompare(String(b.id));
-            });
-        }
+    const rangeLogs = useMemo(() => {
+        if (filterMode !== 'range') return [];
+        const start = (rangeStart || '').trim();
+        const end = (rangeEnd || '').trim();
+        if (!start || !end) return [];
 
-        return [];
-    }, [activeClinicLogs, filterDate, filterMode, getStudentName]);
+        const filteredByDeletion = activeClinicLogs.filter(log => !log?.isDeleted);
+        const filtered = filteredByDeletion.filter(log => {
+            const d = String(log.effectiveDate || log.date || '').slice(0, 10);
+            if (!d) return false;
+            return d >= start && d <= end;
+        });
+
+        return [...filtered].sort((a, b) => {
+            const dA = String(a.effectiveDate || a.date || '');
+            const dB = String(b.effectiveDate || b.date || '');
+            const dateCompare = dB.localeCompare(dA);
+            if (dateCompare !== 0) return dateCompare;
+            const nameCompare = getStudentName(a).localeCompare(getStudentName(b), 'ko');
+            if (nameCompare !== 0) return nameCompare;
+            return String(a.id).localeCompare(String(b.id));
+        });
+    }, [filterMode, rangeStart, rangeEnd, activeClinicLogs, getStudentName]);
 
     const filteredAndSortedLogs = useMemo(() => {
         const filteredByDeletion = activeClinicLogs.filter(log => !log?.isDeleted);
@@ -302,11 +312,8 @@ export default function ClinicManagement({
         const filtered = filteredByDeletion.filter(log => {
             if (normalizedSelected) {
                 const itemClassId = getItemClassId(log, classes);
+                if (!itemClassId) return false;
                 if (String(itemClassId) !== String(normalizedSelected)) return false;
-            }
-            if (selectedStudentId) {
-                const studentDocId = log.studentDocId || log.studentId || log.student?.studentDocId || log.student?.id || '';
-                if (studentDocId !== selectedStudentId) return false;
             }
             if (selectedAssistantId) {
                 const assistantId = log.assistantId || log.tutorId || log.assistant?.id || '';
@@ -349,7 +356,6 @@ export default function ClinicManagement({
         activeClinicLogs,
         classes,
         selectedClassId,
-        selectedStudentId,
         selectedAssistantId,
         searchText,
         normalizeSelectedClassId,
@@ -377,17 +383,17 @@ export default function ClinicManagement({
         return filteredAndSortedLogs.slice(startIndex, startIndex + PAGE_SIZE);
     }, [filteredAndSortedLogs, page, filterMode]);
 
-    const visibleLogs = filterMode === 'date' ? dateLogs : pageLogs;
+    const visibleLogs = filterMode === 'range' ? rangeLogs : pageLogs;
 
     useEffect(() => {
         setSelectedLogIds([]);
-    }, [filterDate, filterMode]);
+    }, [filterMode, rangeStart, rangeEnd]);
 
     useEffect(() => {
         if (filterMode === 'all') {
             setPage(1);
         }
-    }, [filterMode, selectedClassId, selectedStudentId, selectedAssistantId, searchText]);
+    }, [filterMode, selectedClassId, selectedAssistantId, searchText]);
 
     // 핸들러
     const openScheduleModal = () => setIsScheduleModalOpen(true);
@@ -507,23 +513,31 @@ export default function ClinicManagement({
                                 전체
                             </button>
                             <button
-                                onClick={() => setFilterMode('date')}
-                                className={`px-3 py-1.5 rounded-md text-sm font-bold transition ${filterMode === 'date' ? 'bg-indigo-900 text-white' : 'bg-gray-100 text-gray-600 hover:text-gray-800'}`}
+                                onClick={() => setFilterMode('range')}
+                                className={`px-3 py-1.5 rounded-md text-sm font-bold transition ${filterMode === 'range' ? 'bg-indigo-900 text-white' : 'bg-gray-100 text-gray-600 hover:text-gray-800'}`}
                             >
-                                날짜별
+                                기간
                             </button>
-                            {filterMode === 'date' && (
-                                <input
-                                    type="date"
-                                    value={filterDate}
-                                    onChange={(e) => setFilterDate(e.target.value)}
-                                    // [색상 변경] focus:ring-indigo-500 -> focus:ring-indigo-900
-                                    className="p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-900 focus:border-indigo-900 text-sm font-medium text-gray-700"
-                                />
+                            {filterMode === 'range' && (
+                                <div className="flex items-center gap-2">
+                                    <input
+                                        type="date"
+                                        value={rangeStart}
+                                        onChange={(e) => setRangeStart(e.target.value)}
+                                        className="p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-900 focus:border-indigo-900 text-sm font-medium text-gray-700"
+                                    />
+                                    <span className="text-xs font-semibold text-gray-500">~</span>
+                                    <input
+                                        type="date"
+                                        value={rangeEnd}
+                                        onChange={(e) => setRangeEnd(e.target.value)}
+                                        className="p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-900 focus:border-indigo-900 text-sm font-medium text-gray-700"
+                                    />
+                                </div>
                             )}
                         </div>
                         <span className="text-gray-500 text-sm font-medium">
-                            {filterMode === 'all' ? filteredAndSortedLogs.length : dateLogs.length}건의 일정
+                            {filterMode === 'all' ? filteredAndSortedLogs.length : rangeLogs.length}건의 일정
                         </span>
                     </div>
                     <div className='flex flex-wrap gap-2 justify-start md:justify-end'>
@@ -548,7 +562,7 @@ export default function ClinicManagement({
                 {filterMode === 'all' && (
                     <div className="mb-4 rounded-lg border border-gray-200 bg-gray-50 p-4">
                         <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
-                            <div className="grid w-full grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                            <div className="grid w-full grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                                 <label className="text-xs font-semibold text-gray-600">
                                     클래스
                                     <select
@@ -558,21 +572,6 @@ export default function ClinicManagement({
                                     >
                                         <option value="">전체</option>
                                         {classOptions.map(option => (
-                                            <option key={option.id} value={option.id}>
-                                                {option.name}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </label>
-                                <label className="text-xs font-semibold text-gray-600">
-                                    학생
-                                    <select
-                                        value={selectedStudentId}
-                                        onChange={(e) => setSelectedStudentId(e.target.value)}
-                                        className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:border-indigo-900 focus:outline-none focus:ring-2 focus:ring-indigo-200"
-                                    >
-                                        <option value="">전체</option>
-                                        {studentOptions.map(option => (
                                             <option key={option.id} value={option.id}>
                                                 {option.name}
                                             </option>
@@ -875,15 +874,15 @@ export default function ClinicManagement({
                             );
                         }) : (
                             <div className="text-center text-gray-500 text-sm py-8">
-                                {filterMode === 'date' ? '선택한 날짜에 일정이 없습니다.' : '등록된 일정이 없습니다.'}
+                                {filterMode === 'range' ? '선택한 기간에 일정이 없습니다.' : '등록된 일정이 없습니다.'}
                             </div>
                         )}
                     </div>
                 </div>
             </div>
 
-            <ClinicScheduleModal isOpen={isScheduleModalOpen} onClose={() => setIsScheduleModalOpen(false)} onSave={handleSaveClinicLog} students={students} parents={parents} defaultDate={filterDate} clinicLogs={activeClinicLogs} classes={classes} />
-            <ClinicCommentModal isOpen={isCommentModalOpen} onClose={() => setIsCommentModalOpen(false)} onSave={handleSaveClinicLog} log={selectedLog} students={students} parents={parents} clinicLogs={activeClinicLogs} defaultDate={filterDate} classes={classes} />
+            <ClinicScheduleModal isOpen={isScheduleModalOpen} onClose={() => setIsScheduleModalOpen(false)} onSave={handleSaveClinicLog} students={students} parents={parents} defaultDate={rangeEnd} clinicLogs={activeClinicLogs} classes={classes} />
+            <ClinicCommentModal isOpen={isCommentModalOpen} onClose={() => setIsCommentModalOpen(false)} onSave={handleSaveClinicLog} log={selectedLog} students={students} parents={parents} clinicLogs={activeClinicLogs} defaultDate={rangeEnd} classes={classes} />
             <ClinicNotificationModal isOpen={isNotifyModalOpen} onClose={() => setIsNotifyModalOpen(false)} log={selectedLog} students={students} logNotification={logNotification} onSent={handleNotificationSent} notificationType={selectedNotificationType} />
             <ClinicBulkNotificationModal isOpen={isBulkNotifyModalOpen} onClose={() => setIsBulkNotifyModalOpen(false)} selectedLogs={visibleLogs.filter(log => selectedLogIds.includes(log.id))} students={students} logNotification={logNotification} onSent={handleNotificationSent} />
         </div>
