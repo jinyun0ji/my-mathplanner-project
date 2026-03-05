@@ -931,6 +931,68 @@ export const loadViewerDataOnce = async ({
     ).slice(0, 10);
     const activeOnly = safeNonEmptyArray(activeStudentId ? [activeStudentId] : []);
 
+    async function fetchClinicReservationsForViewer({ db, studentDocIds = [], studentAuthUids = [], isCancelled = () => false }) {
+        const results = [];
+        const seen = new Set();
+
+        const push = (snap) => {
+            snap?.docs?.forEach((d) => {
+                if (!d?.id) return;
+                if (seen.has(d.id)) return;
+                seen.add(d.id);
+                results.push({ id: d.id, ...d.data() });
+            });
+        };
+
+        if (Array.isArray(studentDocIds) && studentDocIds.length > 0) {
+            try {
+                const snap = await getDocs(
+                    query(
+                        collection(db, 'clinicReservations'),
+                        where('studentDocId', 'in', studentDocIds.slice(0, 10)),
+                        limit(500),
+                    ),
+                );
+                push(snap);
+                console.log('[viewer] ok: clinicReservations studentDocId in', snap.size);
+            } catch (e) {
+                console.warn('[viewer] clinicReservations studentDocId in skipped', e);
+            }
+
+            try {
+                const snap = await getDocs(
+                    query(
+                        collection(db, 'clinicReservations'),
+                        where('studentId', 'in', studentDocIds.slice(0, 10)),
+                        limit(500),
+                    ),
+                );
+                push(snap);
+                console.log('[viewer] ok: clinicReservations studentId in', snap.size);
+            } catch (e) {
+                console.warn('[viewer] clinicReservations studentId in skipped', e);
+            }
+        }
+
+        if (Array.isArray(studentAuthUids) && studentAuthUids.length > 0) {
+            try {
+                const snap = await getDocs(
+                    query(
+                        collection(db, 'clinicReservations'),
+                        where('authUid', 'in', studentAuthUids.slice(0, 10)),
+                        limit(500),
+                    ),
+                );
+                push(snap);
+                console.log('[viewer] ok: clinicReservations authUid in', snap.size);
+            } catch (e) {
+                console.warn('[viewer] clinicReservations authUid in skipped', e);
+            }
+        }
+
+        return results;
+    }
+
     console.log('[viewer] viewerStudentDocIds =', viewerStudentDocIds);
 
     if (!nonEmpty(viewerStudentDocIds)) {
@@ -1152,7 +1214,7 @@ export const loadViewerDataOnce = async ({
         /* =========================
         clinicLogs / grades / homeworkAssignments (viewer 병렬 로딩)
         ========================= */
-        const [clinicList, gradeList, hwAssignList] = await Promise.all([
+        const settled = await Promise.allSettled([
             fetchClinicForViewer({
                 db,
                 studentIds: scopedStudentUids,
@@ -1163,9 +1225,31 @@ export const loadViewerDataOnce = async ({
             loadHomeworkAssignmentsForViewer(db, scopedStudentUids, isCancelled),
         ]);
 
+        const clinicList = settled[0].status === 'fulfilled' ? settled[0].value : [];
+        if (settled[0].status === 'rejected') console.warn('[viewer] clinicForViewer failed (continue)', settled[0].reason);
+
+        const gradeList = settled[1].status === 'fulfilled' ? settled[1].value : [];
+        if (settled[1].status === 'rejected') console.warn('[viewer] gradesForViewer failed (continue)', settled[1].reason);
+
+        const hwAssignList = settled[2].status === 'fulfilled' ? settled[2].value : [];
+        if (settled[2].status === 'rejected') console.warn('[viewer] homeworkAssignmentsForViewer failed (continue)', settled[2].reason);
+
+        let clinicReservationsList = [];
+        try {
+            clinicReservationsList = await fetchClinicReservationsForViewer({
+                db,
+                studentDocIds: scopedStudentUids,
+                studentAuthUids: scopedStudentAuthUids,
+                isCancelled,
+            });
+        } catch (e) {
+            console.warn('[viewer] clinicReservations fetch failed (continue)', e);
+        }
+
         if (!isCancelled()) {
             const mergedClinic = uniqById([
                 ...safeArray(clinicList).map((log) => normalizeClinicLog(log)),
+                ...safeArray(clinicReservationsList).map((log) => normalizeClinicLog(log)),
             ]);
             setClinicLogs?.(mergedClinic.filter((log) => Boolean(log?.studentId)));
             const mappedGrades = buildGradesMap(gradeList);
