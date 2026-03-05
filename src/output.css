@@ -1613,6 +1613,10 @@ video {
   grid-template-columns: repeat(7, minmax(0, 1fr));
 }
 
+.grid-cols-\[auto\2c 1fr\2c 1fr\]{
+  grid-template-columns: auto 1fr 1fr;
+}
+
 .flex-col{
   flex-direction: column;
 }

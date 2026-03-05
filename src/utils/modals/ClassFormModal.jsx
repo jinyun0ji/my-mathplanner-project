@@ -1,9 +1,14 @@
 // src/utils/modals/ClassFormModal.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Modal } from '../../components/common/Modal';
-import { Icon } from '../../utils/helpers';
+import {
+  WEEKDAY_KEYS,
+  formatWeekdayKo,
+  isValidTimeHHmm,
+  normalizeClassSchedule,
+} from '../../utils/helpers';
 
-const daysOfWeek = ['월', '화', '수', '목', '금', '토', '일'];
+const DEFAULT_TIME = { start: '19:00', end: '21:00' };
 
 export const ClassFormModal = ({ isOpen, onClose, onSave, classToEdit = null }) => {
   const [name, setName] = useState('');
@@ -12,19 +17,17 @@ export const ClassFormModal = ({ isOpen, onClose, onSave, classToEdit = null }) 
   const [schoolType, setSchoolType] = useState('고등학교');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
-  const [selectedDays, setSelectedDays] = useState([]);
-  const [time, setTime] = useState('');
+  const [schedule, setSchedule] = useState({});
 
   useEffect(() => {
     if (classToEdit) {
-      setName(classToEdit.name);
-      setTeacher(classToEdit.teacher);
-      setGrade(classToEdit.grade);
-      setSchoolType(classToEdit.schoolType);
-      setStartDate(classToEdit.startDate);
-      setEndDate(classToEdit.endDate);
-      setSelectedDays(classToEdit.schedule.days);
-      setTime(classToEdit.schedule.time);
+      setName(classToEdit.name || '');
+      setTeacher(classToEdit.teacher || '');
+      setGrade(classToEdit.grade || 2);
+      setSchoolType(classToEdit.schoolType || '고등학교');
+      setStartDate(classToEdit.startDate || '');
+      setEndDate(classToEdit.endDate || '');
+      setSchedule(normalizeClassSchedule(classToEdit));
     } else {
       setName('');
       setTeacher('');
@@ -32,22 +35,48 @@ export const ClassFormModal = ({ isOpen, onClose, onSave, classToEdit = null }) 
       setSchoolType('고등학교');
       setStartDate(new Date().toISOString().slice(0, 10));
       setEndDate('');
-      setSelectedDays([]);
-      setTime('19:00~21:00');
+      setSchedule({});
     }
-}, [classToEdit]);
+  }, [classToEdit]);
 
-const handleDayToggle = (day) => {
-    setSelectedDays(prev => 
-      prev.includes(day) 
-        ? prev.filter(d => d !== day)
-        : [...prev, day].sort((a, b) => daysOfWeek.indexOf(a) - daysOfWeek.indexOf(b))
-    );
+  const selectedDays = useMemo(() => WEEKDAY_KEYS.filter((k) => schedule[k]), [schedule]);
+  const hasInvalidTime = useMemo(
+    () => selectedDays.some((k) => !isValidTimeHHmm(schedule[k]?.start) || !isValidTimeHHmm(schedule[k]?.end)),
+    [schedule, selectedDays],
+  );
+
+  const handleDayToggle = (dayKey) => {
+    setSchedule((prev) => {
+      if (prev[dayKey]) {
+        const next = { ...prev };
+        delete next[dayKey];
+        return next;
+      }
+      return {
+        ...prev,
+        [dayKey]: prev[dayKey] || { ...DEFAULT_TIME },
+      };
+    });
+  };
+
+  const handleTimeChange = (dayKey, field, value) => {
+    setSchedule((prev) => ({
+      ...prev,
+      [dayKey]: {
+        ...(prev[dayKey] || DEFAULT_TIME),
+        [field]: value,
+      },
+    }));
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!name || !teacher || !startDate || selectedDays.length === 0 || !time) return;
+    if (!name || !teacher || !startDate || selectedDays.length === 0 || hasInvalidTime) return;
+
+    const weekdays = selectedDays;
+    const first = weekdays[0];
+    const legacyStart = first ? schedule[first]?.start : '';
+    const legacyEnd = first ? schedule[first]?.end : '';
 
     const classData = {
       id: classToEdit ? classToEdit.id : null,
@@ -58,7 +87,12 @@ const handleDayToggle = (day) => {
       startDate,
       endDate,
       students: classToEdit ? classToEdit.students : [],
-      schedule: { days: selectedDays, time },
+      schedule,
+      weekdays,
+      dayOfWeek: first || '',
+      time: (legacyStart && legacyEnd) ? `${legacyStart}~${legacyEnd}` : '',
+      startTime: legacyStart || '',
+      endTime: legacyEnd || '',
     };
     try {
       await onSave(classData, !!classToEdit);
@@ -87,29 +121,43 @@ const handleDayToggle = (day) => {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700">수업 시간 (예: 19:00~21:00)*</label>
-              <input type="text" value={time} onChange={e => setTime(e.target.value)} required className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border" />
+              <label className="block text-sm font-medium text-gray-700">학교 구분</label>
+              <input type="text" value={schoolType} onChange={e => setSchoolType(e.target.value)} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border" />
             </div>
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700">수업 요일*</label>
-          <div className="mt-1 flex flex-wrap gap-2">
-            {daysOfWeek.map(day => (
-              <button
-                key={day}
-                type="button"
-                onClick={() => handleDayToggle(day)}
-                className={`px-4 py-2 text-sm rounded-lg transition duration-150 ${
-                  selectedDays.includes(day) 
-                    ? 'bg-indigo-600 text-white shadow-md'
-                    : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-100'
-                }`}
-              >
-                {day}
-              </button>
-            ))}
+          <label className="block text-sm font-medium text-gray-700">수업 요일/시간*</label>
+          <div className="mt-2 space-y-2">
+            {WEEKDAY_KEYS.map(dayKey => {
+              const checked = Boolean(schedule[dayKey]);
+              return (
+                <div key={dayKey} className="grid grid-cols-[auto,1fr,1fr] gap-2 items-center">
+                  <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                    <input type="checkbox" checked={checked} onChange={() => handleDayToggle(dayKey)} />
+                    {formatWeekdayKo(dayKey)}
+                  </label>
+                  <input
+                    type="time"
+                    step="60"
+                    value={schedule[dayKey]?.start || ''}
+                    onChange={(e) => handleTimeChange(dayKey, 'start', e.target.value)}
+                    disabled={!checked}
+                    className="rounded-md border-gray-300 shadow-sm p-2 border disabled:bg-gray-100"
+                  />
+                  <input
+                    type="time"
+                    step="60"
+                    value={schedule[dayKey]?.end || ''}
+                    onChange={(e) => handleTimeChange(dayKey, 'end', e.target.value)}
+                    disabled={!checked}
+                    className="rounded-md border-gray-300 shadow-sm p-2 border disabled:bg-gray-100"
+                  />
+                </div>
+              );
+            })}
           </div>
+          {hasInvalidTime && <p className="text-xs text-red-600 mt-1">시간 형식은 HH:mm 이어야 합니다.</p>}
         </div>
 
         <div className="grid grid-cols-2 gap-4">
@@ -127,7 +175,7 @@ const handleDayToggle = (day) => {
           <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium rounded-lg text-gray-700 bg-gray-200 hover:bg-gray-300 transition duration-150">
             취소
           </button>
-          <button type="submit" className="px-4 py-2 text-sm font-medium rounded-lg text-white bg-indigo-600 hover:bg-indigo-700 transition duration-150 shadow-md">
+          <button type="submit" disabled={selectedDays.length === 0 || hasInvalidTime} className="px-4 py-2 text-sm font-medium rounded-lg text-white bg-indigo-600 hover:bg-indigo-700 transition duration-150 shadow-md disabled:opacity-50">
             {classToEdit ? '수정 사항 저장' : '등록하기'}
           </button>
         </div>

@@ -15,7 +15,18 @@ import {
 } from '../components/StudentTabs';
 import ParentClassroomView from './parent/ParentClassroomView';
 import StudentHeader from '../components/StudentHeader';
-import { Icon, calculateHomeworkStats, calculateGradeComparison, getClinicComment, getClinicDisplayStatus, isClosedForClass } from '../utils/helpers';
+import {
+    Icon,
+    calculateHomeworkStats,
+    calculateGradeComparison,
+    getClinicComment,
+    getClinicDisplayStatus,
+    isClosedForClass,
+    getWeekdayKeyFromDate,
+    normalizeClassSchedule,
+    isClassActiveForStudent,
+    formatClassScheduleKo,
+} from '../utils/helpers';
 import { formatGradeScoreText } from '../domain/grade/grade.service';
 import NotificationsIcon from '@mui/icons-material/Notifications';
 import ParentSessionReport from './parent/ParentSessionReport'; // ✅ 신규 리포트 컴포넌트
@@ -353,7 +364,7 @@ const ParentDashboard = ({
     const todayItems = useMemo(() => {
         const visibleTodayClasses = myClasses.filter((cls) => {
             if (!cls?.id) return false;
-            if (!isClassActiveForToday(cls, child)) return false;
+            if (!isClassActiveForStudent({ cls, student: child, todayYmd: todayStr })) return false;
             return true;
         });
 
@@ -368,17 +379,27 @@ const ParentDashboard = ({
                 date: l.date,
             }));
 
+        const todayWeekdayKey = getWeekdayKeyFromDate(new Date(todayStr));
         return [
-            ...visibleTodayClasses.filter(c => c.schedule.days.includes(todayDayName)).map(c => ({
-                type: 'class',
-                classId: c.id,
-                classCode: c.classId || c.code || c.classCode || c.key || null,
-                time: c.schedule.time,
-                title: c.name,
-                sub: `${c.teacher} 선생님`,
-                timeLabel: c.schedule.time,
-                date: todayStr,
-            })),
+            ...visibleTodayClasses
+                .map((c) => {
+                    const schedule = normalizeClassSchedule(c);
+                    const todaySchedule = schedule[todayWeekdayKey];
+                    if (!todaySchedule) return null;
+                    const timeLabel = `${todaySchedule.start}~${todaySchedule.end}`;
+                    return {
+                        type: 'class',
+                        classId: c.id,
+                        classCode: c.classId || c.code || c.classCode || c.key || null,
+                        time: todaySchedule.start,
+                        title: c.name,
+                        sub: `${c.teacher} 선생님`,
+                        timeLabel,
+                        scheduleLabel: formatClassScheduleKo(c),
+                        date: todayStr,
+                    };
+                })
+                .filter(Boolean),
             ...todayClinicSchedules,
         ].sort((a, b) => (a.time || '').localeCompare(b.time || ''));
     }, [child, clinicLogs, myClasses, todayDayName, todayStr]);
@@ -873,7 +894,12 @@ export default function ParentHome({
 
     const nextClass = useMemo(() => {
         if (!ongoingClasses || ongoingClasses.length === 0) return null;
-        const sorted = [...ongoingClasses].sort((a, b) => a.schedule.time.localeCompare(b.schedule.time));
+        const getFirstStart = (cls) => {
+            const schedule = normalizeClassSchedule(cls);
+            const first = Object.keys(schedule).sort((x, y) => ['mon','tue','wed','thu','fri','sat','sun'].indexOf(x) - ['mon','tue','wed','thu','fri','sat','sun'].indexOf(y))[0];
+            return first ? schedule[first].start : '99:99';
+        };
+        const sorted = [...ongoingClasses].sort((a, b) => getFirstStart(a).localeCompare(getFirstStart(b)));
         return sorted[0];
     }, [ongoingClasses]);
 
@@ -1326,7 +1352,7 @@ export default function ParentHome({
                                                 {nextClass ? (
                                                     <>
                                                         <p className="text-lg font-bold text-white">{nextClass.name}</p>
-                                                        <p className="text-sm text-sky-100 mt-1">{nextClass.schedule.days.join(', ')} {nextClass.schedule.time}</p>
+                                                        <p className="text-sm text-sky-100 mt-1">{formatClassScheduleKo(nextClass) || '시간 미정'}</p>
                                                         <p className="text-xs text-sky-100/80 mt-2">{nextClass.teacher} 선생님</p>
                                                     </>
                                                 ) : (

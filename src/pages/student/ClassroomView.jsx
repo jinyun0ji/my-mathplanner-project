@@ -1,6 +1,6 @@
 // src/pages/student/ClassroomView.jsx
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Icon, formatTime } from '../../utils/helpers';
+import { Icon, formatTime, formatClassScheduleKo } from '../../utils/helpers';
 import YouTubePlayer from '../../components/YouTubePlayer';
 import PlayCircleFilledWhiteIcon from '@mui/icons-material/PlayCircleFilledWhite';
 import { calculateVideoProgress, getCurrentLessonByDate, getSortedLessonLogs, normalizeLessonVideos } from '../../domain/lesson/lesson.service';
@@ -310,7 +310,7 @@ export default function ClassroomView({
                     </button>
                     <div>
                         <h2 className="text-xl font-bold text-gray-900">{selectedClass?.name}</h2>
-                        <p className="text-xs text-gray-500">{selectedClass?.schedule.days.join(', ')} {selectedClass?.schedule.time}</p>
+                        <p className="text-xs text-gray-500">{formatClassScheduleKo(selectedClass) || '시간 미정'}</p>
                     </div>
                 </div>
 

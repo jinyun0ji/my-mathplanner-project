@@ -217,11 +217,101 @@ export const isClosedForClass = (dateStr, classId, closures = []) => {
     return isClosedDate({ date: dateStr, classId, closures });
 };
 
+export const WEEKDAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+
+export const toWeekdayKey = (input) => {
+    const v = String(input || '').trim().toLowerCase();
+    const map = {
+        '월': 'mon', mon: 'mon', monday: 'mon',
+        '화': 'tue', tue: 'tue', tuesday: 'tue',
+        '수': 'wed', wed: 'wed', wednesday: 'wed',
+        '목': 'thu', thu: 'thu', thursday: 'thu',
+        '금': 'fri', fri: 'fri', friday: 'fri',
+        '토': 'sat', sat: 'sat', saturday: 'sat',
+        '일': 'sun', sun: 'sun', sunday: 'sun',
+    };
+    return map[v] || '';
+};
+
+export const formatWeekdayKo = (key) => ({ mon: '월', tue: '화', wed: '수', thu: '목', fri: '금', sat: '토', sun: '일' }[key] || key);
+
+export const isValidTimeHHmm = (t) => /^([01]\d|2[0-3]):[0-5]\d$/.test(String(t || '').trim());
+
+export const normalizeClassSchedule = (cls) => {
+    const schedule = cls?.schedule && typeof cls.schedule === 'object' ? cls.schedule : null;
+    if (schedule) {
+        const out = {};
+        Object.keys(schedule).forEach((kRaw) => {
+            const k = toWeekdayKey(kRaw);
+            const start = String(schedule[kRaw]?.start || '').trim();
+            const end = String(schedule[kRaw]?.end || '').trim();
+            if (!k || !isValidTimeHHmm(start) || !isValidTimeHHmm(end)) return;
+            out[k] = { start, end };
+        });
+        if (Object.keys(out).length) return out;
+    }
+
+    const legacyDays = Array.isArray(cls?.weekdays) ? cls.weekdays
+        : Array.isArray(cls?.days) ? cls.days
+        : cls?.dayOfWeek ? [cls.dayOfWeek]
+        : cls?.weekday ? [cls.weekday]
+        : Array.isArray(cls?.schedule?.days) ? cls.schedule.days
+        : [];
+
+    const start = String(cls?.startTime || cls?.start || '').trim();
+    const end = String(cls?.endTime || cls?.end || '').trim();
+    const out = {};
+    legacyDays.map(toWeekdayKey).filter(Boolean).forEach((k) => {
+        if (isValidTimeHHmm(start) && isValidTimeHHmm(end)) out[k] = { start, end };
+    });
+
+    if (!Object.keys(out).length) {
+        const time = String(cls?.time || cls?.schedule?.time || '').trim();
+        const m = time.match(/([01]\d|2[0-3]):[0-5]\d\s*[~-]\s*([01]\d|2[0-3]):[0-5]\d/);
+        if (m) {
+            const [s2, e2] = time.split(/[~-]/).map((v) => v.trim());
+            legacyDays.map(toWeekdayKey).filter(Boolean).forEach((k) => {
+                out[k] = { start: s2, end: e2 };
+            });
+        }
+    }
+
+    return Object.keys(out).length ? out : {};
+};
+
+export const getClassWeekdays = (cls) => Object.keys(normalizeClassSchedule(cls))
+    .sort((a, b) => WEEKDAY_KEYS.indexOf(a) - WEEKDAY_KEYS.indexOf(b));
+
+export const formatClassScheduleKo = (cls) => {
+    const schedule = normalizeClassSchedule(cls);
+    const days = getClassWeekdays(cls);
+    if (!days.length) return '';
+    return days.map((d) => `${formatWeekdayKo(d)} ${schedule[d].start}~${schedule[d].end}`).join(', ');
+};
+
+export const getWeekdayKeyFromDate = (dateInput = new Date()) => {
+    const date = dateInput instanceof Date ? dateInput : new Date(dateInput);
+    const safeDate = Number.isNaN(date.getTime()) ? new Date() : date;
+    return WEEKDAY_KEYS[(safeDate.getDay() + 6) % 7];
+};
+
+export const isClassActiveForStudent = ({ cls, student, todayYmd }) => {
+    if (!cls?.id) return false;
+    const withdrawnStatuses = ['종강', '퇴원', '전반', '전반퇴원', '중도퇴원'];
+    const classStatus = student?.classStatusMap?.[cls.id]?.status || student?.classStatuses?.[cls.id];
+    if (withdrawnStatuses.includes(String(classStatus || '').trim())) return false;
+
+    if (cls?.endDate && todayYmd && String(cls.endDate).slice(0, 10) < String(todayYmd)) return false;
+    return true;
+};
+
 export const calculateClassSessions = (cls, closures = []) => {
-    if (!cls || !cls.schedule || !cls.schedule.days) return [];
+    if (!cls) return [];
+    const normalizedSchedule = normalizeClassSchedule(cls);
+    const scheduleDays = Object.keys(normalizedSchedule);
+    if (!scheduleDays.length) return [];
     const sessions = [];
-    const daysMap = { '일': 0, '월': 1, '화': 2, '수': 3, '목': 4, '금': 5, '토': 6 };
-    const targetDayIndexes = cls.schedule.days.map(d => daysMap[d]);
+    const targetDayIndexes = scheduleDays.map((d) => (WEEKDAY_KEYS.indexOf(d) + 1) % 7);
     const currentDate = cls.startDate ? new Date(cls.startDate) : new Date();
     const endDate = cls.endDate ? new Date(cls.endDate) : new Date(currentDate);
     if (!cls.endDate) endDate.setMonth(endDate.getMonth() + 3);
@@ -240,7 +330,9 @@ export const calculateClassSessions = (cls, closures = []) => {
                 iterations++;
                 continue;
             }
-            sessions.push({ session: sessionCount++, date: dateStr });
+            const weekdayKey = WEEKDAY_KEYS[(iterDate.getDay() + 6) % 7];
+            const daySchedule = normalizedSchedule[weekdayKey] || null;
+            sessions.push({ session: sessionCount++, date: dateStr, startTime: daySchedule?.start || '', endTime: daySchedule?.end || '' });
         }
         iterDate.setDate(iterDate.getDate() + 1);
         iterations++;

@@ -16,7 +16,16 @@ import {
 } from '../components/StudentTabs';
 import ClassroomView from './student/ClassroomView';
 import StudentHeader from '../components/StudentHeader';
-import { Icon, calculateHomeworkStats, calculateGradeComparison, isClosedForClass } from '../utils/helpers';
+import {
+    Icon,
+    calculateHomeworkStats,
+    calculateGradeComparison,
+    isClosedForClass,
+    getWeekdayKeyFromDate,
+    isClassActiveForStudent,
+    normalizeClassSchedule,
+    formatClassScheduleKo,
+} from '../utils/helpers';
 import { sortClassesByStatus } from '../utils/classStatus';
 import NotificationsIcon from '@mui/icons-material/Notifications';
 import useNotifications from '../notifications/useNotifications';
@@ -65,31 +74,6 @@ const getItemDateRaw = (item) => (
 );
 
 
-
-const isClassActiveForToday = (cls, student) => {
-    if (!cls) return false;
-
-    const classStatus = String(cls.status || '').trim();
-    if (['종강', '전반', '퇴원', '종료', 'ended', 'inactive'].includes(classStatus)) return false;
-
-    const map = student?.classStatusMap || student?.classStatuses || {};
-    const entry = map?.[String(cls.id)] || null;
-    const entryStatus = String(entry?.status || '').trim();
-    if (['종강', '전반', '퇴원'].includes(entryStatus)) return false;
-
-    const toYmd = (v) => {
-        if (!v) return null;
-        if (typeof v === 'string') return v.slice(0, 10);
-        if (typeof v?.toDate === 'function') return v.toDate().toISOString().slice(0, 10);
-        try { return new Date(v).toISOString().slice(0, 10); } catch { return null; }
-    };
-
-    const today = new Date().toISOString().slice(0, 10);
-    const endedYmd = toYmd(entry?.endedAt || entry?.endDate || cls.endedAt || cls.endDate);
-    if (endedYmd && endedYmd <= today) return false;
-
-    return true;
-};
 
 const shouldHideTodayItemByExit = (item, exitMap) => {
     const classId = String(getItemClassId(item) || '');
@@ -321,6 +305,7 @@ export default function StudentHome({
     const todayStr = today.toISOString().split('T')[0];
     const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
     const todayDayName = dayNames[today.getDay()];
+    const todayWeekdayKey = getWeekdayKeyFromDate(today);
     const buildClinicTeacher = (log) => log?.tutorName || log?.tutor || log?.teacherName || log?.teacher || '-';
     const formatClinicTime = (log) => {
         const plannedStart = typeof log?.plannedTime === 'string' ? log.plannedTime : log?.plannedTime?.start;
@@ -339,7 +324,7 @@ export default function StudentHome({
     const todayItems = useMemo(() => {
         const visibleTodayClasses = myClasses.filter((cls) => {
             if (!cls?.id) return false;
-            if (!isClassActiveForToday(cls, student)) return false;
+            if (!isClassActiveForStudent({ cls, student, todayYmd: todayStr })) return false;
             return true;
         });
 
@@ -367,20 +352,29 @@ export default function StudentHome({
             : [];
 
         return [
-            ...visibleTodayClasses.filter(c => c.schedule.days.includes(todayDayName)).map(c => ({
-                type: 'class',
-                classId: c.id,
-                classCode: c.classId || c.code || c.classCode || c.key || null,
-                time: c.schedule.time,
-                title: c.name,
-                sub: `${c.teacher} 선생님`,
-                timeLabel: c.schedule.time,
-                date: todayStr,
-            })),
+            ...visibleTodayClasses
+                .map((c) => {
+                    const schedule = normalizeClassSchedule(c);
+                    const todaySchedule = schedule[todayWeekdayKey];
+                    if (!todaySchedule) return null;
+                    const timeLabel = `${todaySchedule.start}~${todaySchedule.end}`;
+                    return {
+                        type: 'class',
+                        classId: c.id,
+                        classCode: c.classId || c.code || c.classCode || c.key || null,
+                        time: todaySchedule.start,
+                        title: c.name,
+                        sub: `${c.teacher} 선생님`,
+                        timeLabel,
+                        scheduleLabel: formatClassScheduleKo(c),
+                        date: todayStr,
+                    };
+                })
+                .filter(Boolean),
             ...todayClinics,
             ...todayExternal,
         ].sort((a, b) => (a.time || '').localeCompare(b.time || ''));
-    }, [clinicLogs, externalSchedules, myClasses, student, studentId, todayDayName, todayStr]);
+    }, [clinicLogs, externalSchedules, myClasses, student, studentId, todayDayName, todayStr, todayWeekdayKey]);
     const filteredTodayItems = useMemo(() => {
         const list = Array.isArray(todayItems) ? todayItems : [];
         return list.filter((item) => {

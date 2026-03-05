@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { Icon, formatGradeLabel } from '../../utils/helpers';
+import { Icon, formatGradeLabel, formatClassScheduleKo } from '../../utils/helpers';
 import { ClassFormModal } from '../../utils/modals/ClassFormModal';
 import { isClassFinished, sortClassesByStatus } from '../../utils/classStatus';
 
@@ -61,7 +61,7 @@ export default function ClassSelectionPanel({
 
             {selectedClass && (
                 <div className="border p-3 rounded-lg bg-indigo-50 space-y-2">
-                    <p className="text-sm font-semibold text-indigo-700">{selectedClassGrade || '학년 미정'} | {selectedClass.schedule.days.join(', ')} ({selectedClass.schedule.time})</p>
+                    <p className="text-sm font-semibold text-indigo-700">{selectedClassGrade || '학년 미정'} | {formatClassScheduleKo(selectedClass) || '시간 미정'}</p>
                     <p className="text-xs text-indigo-600">총 학생: {selectedStudentCount}명</p>
                     {showEditButton && (
                         <button 

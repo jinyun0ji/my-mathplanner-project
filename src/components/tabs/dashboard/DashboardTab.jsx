@@ -1,5 +1,5 @@
 import React from 'react';
-import { Icon } from '../../../utils/helpers';
+import { Icon, normalizeClassSchedule, getWeekdayKeyFromDate } from '../../../utils/helpers';
 
 export default function DashboardTab({
     student,
@@ -48,9 +48,18 @@ export default function DashboardTab({
     const studentId = student?.id;
     const filteredTodayItems = Array.isArray(filteredTodayItemsOverride) ? filteredTodayItemsOverride : [];
 
-    const todayClasses = myClasses.filter(cls => cls.schedule.days.includes(todayDayName)).map(cls => ({
-        type: 'class', name: cls.name, time: cls.schedule.time, teacher: cls.teacher, sortTime: cls.schedule.time.split('~')[0]
-    }));
+    const todayWeekdayKey = getWeekdayKeyFromDate(today);
+    const todayClasses = myClasses
+        .map((cls) => {
+            const schedule = normalizeClassSchedule(cls);
+            const todaySchedule = schedule[todayWeekdayKey];
+            if (!todaySchedule) return null;
+            const time = `${todaySchedule.start}~${todaySchedule.end}`;
+            return {
+                type: 'class', name: cls.name, time, teacher: cls.teacher, sortTime: todaySchedule.start,
+            };
+        })
+        .filter(Boolean);
     const todayClinics = studentId ? clinicLogs.filter(log => log.studentId === studentId && log.date === todayStr && !log.checkOut).map(log => ({
         type: 'clinic', name: '학습 클리닉', time: `${log.checkIn} 입실`, teacher: log.tutor || '담당 선생님', sortTime: log.checkIn
     })) : [];

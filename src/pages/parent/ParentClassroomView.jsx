@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Icon } from '../../utils/helpers';
+import { Icon, formatClassScheduleKo } from '../../utils/helpers';
 import { isAssignmentAssignedToStudent } from '../../domain/homework/homework.service';
 import { useParentContext } from '../../parent';
 import { canAccessLessonContent } from '../../utils/attendanceAccess';
@@ -227,7 +227,7 @@ export default function ParentClassroomView({
                     </button>
                     <div>
                         <h2 className="text-lg font-bold text-gray-900">{selectedClass?.name}</h2>
-                        <p className="text-xs text-gray-500">{selectedClass?.schedule.days.join(', ')} {selectedClass?.schedule.time}</p>
+                        <p className="text-xs text-gray-500">{formatClassScheduleKo(selectedClass) || '시간 미정'}</p>
                     </div>
                 </div>
                 <button
