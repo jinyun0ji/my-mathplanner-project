@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { Icon } from '../utils/helpers';
 import { db } from '../firebase/client';
-import { fetchClinicLogsPaged } from '../data/firestoreSync';
+import { fetchClinicLogsDeepForStaff, fetchClinicLogsPaged } from '../data/firestoreSync';
 import { ClinicScheduleModal } from '../utils/modals/ClinicScheduleModal';
 import { ClinicCommentModal } from '../utils/modals/ClinicCommentModal';
 import { ClinicNotificationModal } from '../utils/modals/ClinicNotificationModal';
@@ -37,6 +37,7 @@ export default function ClinicManagement({
     const [selectedLogIds, setSelectedLogIds] = useState([]);
     const [selectedNotificationType, setSelectedNotificationType] = useState('comment'); 
     const [pagedLogs, setPagedLogs] = useState([]);
+    const [deepLogs, setDeepLogs] = useState([]);
     const [lastDoc, setLastDoc] = useState(null);
     const [hasMore, setHasMore] = useState(true);
     const FETCH_PAGE_SIZE = 50;
@@ -89,6 +90,39 @@ export default function ClinicManagement({
         return () => { cancelled = true; };
     }, []);
 
+    useEffect(() => {
+        let cancelled = false;
+
+        const loadDeep = async () => {
+            if (!selectedClassId) {
+                setDeepLogs([]);
+                return;
+            }
+
+            const selectedClassName = selectedClassId
+                ? (classes.find(c => String(c.id) === String(selectedClassId))?.name || '')
+                : '';
+
+            const deep = await fetchClinicLogsDeepForStaff({
+                db,
+                classId: selectedClassId || '',
+                className: selectedClassName,
+                studentId: '',
+                date: '',
+                pageSize: 500,
+                maxDocs: 5000,
+                isCancelled: () => cancelled,
+            });
+
+            if (cancelled) return;
+            console.log('[clinic] deep clinicLogs loaded =', deep.length);
+            setDeepLogs(deep);
+        };
+
+        loadDeep();
+        return () => { cancelled = true; };
+    }, [selectedClassId, classes]);
+
     const handleLoadMore = useCallback(async () => {
         if (!hasMore || !lastDoc) return;
 
@@ -103,7 +137,7 @@ export default function ClinicManagement({
         setHasMore(docs.length === FETCH_PAGE_SIZE);
     }, [hasMore, lastDoc]);
 
-    const activeClinicLogs = pagedLogs;
+    const activeClinicLogs = selectedClassId ? deepLogs : pagedLogs;
 
     const studentIndex = useMemo(() => {
         const m = new Map();

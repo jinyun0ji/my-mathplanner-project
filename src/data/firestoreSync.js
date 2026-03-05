@@ -183,6 +183,59 @@ export async function fetchClinicLogsPaged({
     };
 }
 
+export async function fetchClinicLogsDeepForStaff({
+    db,
+    classId,
+    className,
+    studentId,
+    date,
+    pageSize = 500,
+    maxDocs = 5000,
+    isCancelled = () => false,
+}) {
+    const col = collection(db, 'clinicLogs');
+    const docs = [];
+
+    // 서버 쿼리에는 사용하지 않지만 호출부 시그니처 호환 및 클라이언트 필터 의도를 유지한다.
+    void classId;
+    void className;
+    void studentId;
+    void pageSize;
+
+    const pushSnap = (snap) => {
+        snap.forEach((d) => {
+            docs.push(normalizeClinicLog({ id: d.id, ...d.data() }));
+        });
+    };
+
+    const safeMaxDocs = Math.min(Number(maxDocs) || 5000, 5000);
+
+    if (date && String(date).trim()) {
+        const q = query(
+            col,
+            where('date', '==', String(date).trim()),
+            orderBy(documentId()),
+            limit(safeMaxDocs),
+        );
+        const snap = await getDocs(q);
+        if (isCancelled?.()) return [];
+        pushSnap(snap);
+        return docs;
+    }
+
+    const q = query(
+        col,
+        orderBy('date', 'desc'),
+        limit(safeMaxDocs),
+    );
+
+    const snap = await getDocs(q);
+    if (isCancelled?.()) return [];
+    pushSnap(snap);
+
+    return docs;
+}
+
 // staff 전용: grades 전체 페이지네이션 로드
 const fetchGradesWithPagination = async (db, maxDocs = 5000, pageSize = 500) => {
     const all = [];
