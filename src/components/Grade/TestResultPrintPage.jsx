@@ -6,6 +6,34 @@ const BOTTOM_COUNT = 5;
 
 const asNumber = (value) => (Number.isFinite(value) ? value : Number(value) || 0);
 
+const toPercent = (score, total) => {
+    if (!Number.isFinite(score) || !Number.isFinite(total) || total <= 0) return null;
+    return Math.round((score / total) * 100);
+};
+
+const buildHistogramByPercent = (scores, total, step = 10) => {
+    const bins = [];
+    for (let start = 0; start < 100; start += step) {
+        const end = Math.min(100, start + step);
+        bins.push({
+            key: `${start}-${end}`,
+            label: `${start}–${end}%`,
+            start,
+            end,
+            count: 0,
+        });
+    }
+
+    for (const score of scores) {
+        const percent = toPercent(score, total);
+        if (percent == null) continue;
+        const index = percent === 100 ? bins.length - 1 : Math.floor(percent / step);
+        if (bins[index]) bins[index].count += 1;
+    }
+
+    return bins;
+};
+
 const formatScore = (score, maxScore) => {
     const parsedScore = asNumber(score);
     const parsedMax = asNumber(maxScore);
@@ -27,22 +55,6 @@ const formatDate = (value) => {
     return candidate.toISOString().slice(0, 10);
 };
 
-const percentileBins = (attemptedRows) => {
-    const bins = Array.from({ length: 10 }, (_, idx) => ({
-        label: idx === 9 ? '90-100' : `${idx * 10}-${idx * 10 + 9}`,
-        count: 0,
-    }));
-
-    attemptedRows.forEach((row) => {
-        if (!Number.isFinite(row.percent)) return;
-        const percent = Math.max(0, Math.min(100, row.percent));
-        const binIndex = percent === 100 ? 9 : Math.floor(percent / 10);
-        bins[binIndex].count += 1;
-    });
-
-    return bins;
-};
-
 const calculateMedian = (values) => {
     if (!values.length) return null;
     const sorted = [...values].sort((a, b) => a - b);
@@ -58,29 +70,50 @@ const calculateStdDev = (values) => {
 };
 
 function ScoreHistogram({ bins = [] }) {
-    const svgHeight = 160;
-    const innerWidth = 100;
+    const width = 520;
+    const height = 240;
+    const chartLeft = 48;
+    const chartRight = 10;
+    const chartTop = 20;
+    const chartBottom = 46;
+    const plotWidth = width - chartLeft - chartRight;
+    const plotHeight = height - chartTop - chartBottom;
     const maxCount = Math.max(1, ...bins.map((bin) => bin.count));
-    const barWidth = innerWidth / bins.length;
+    const barWidth = bins.length ? plotWidth / bins.length : plotWidth;
 
     return (
-        <svg className="histogram-svg" viewBox={`0 0 ${innerWidth} ${svgHeight}`} preserveAspectRatio="none" role="img" aria-label="점수분포 그래프">
-            {bins.map((bin, index) => {
-                const barHeight = (bin.count / maxCount) * 110;
-                const x = index * barWidth + 1;
-                const y = 120 - barHeight;
-                const showLabel = index % 2 === 0 || index === bins.length - 1;
+        <svg className="histogram-svg" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="점수분포 그래프(인원수)">
+            {[0, 0.25, 0.5, 0.75, 1].map((step) => {
+                const y = chartTop + (1 - step) * plotHeight;
+                const value = Math.round(maxCount * step);
                 return (
-                    <g key={bin.label}>
-                        <rect x={x} y={y} width={barWidth - 2} height={barHeight} fill="#4f46e5" opacity="0.85" />
-                        <text x={x + ((barWidth - 2) / 2)} y={118 - barHeight} textAnchor="middle" className="bar-count">{bin.count}</text>
-                        {showLabel && (
-                            <text x={x + ((barWidth - 2) / 2)} y={138} textAnchor="middle" className="bar-label">{bin.label}</text>
-                        )}
+                    <g key={`tick-${step}`}>
+                        <line x1={chartLeft} y1={y} x2={width - chartRight} y2={y} stroke="#d1d5db" strokeWidth="1" />
+                        <text x={chartLeft - 8} y={y + 4} textAnchor="end" className="axis-text">{value}</text>
                     </g>
                 );
             })}
-            <line x1="0" y1="121" x2="100" y2="121" stroke="#6b7280" strokeWidth="0.6" />
+
+            <line x1={chartLeft} y1={chartTop} x2={chartLeft} y2={chartTop + plotHeight} stroke="#111" strokeWidth="1.2" />
+            <line x1={chartLeft} y1={chartTop + plotHeight} x2={width - chartRight} y2={chartTop + plotHeight} stroke="#111" strokeWidth="1.2" />
+            
+            {bins.map((bin, index) => {
+                const barHeight = maxCount > 0 ? (bin.count / maxCount) * plotHeight : 0;
+                const x = chartLeft + index * barWidth + 4;
+                const y = chartTop + plotHeight - barHeight;
+                const actualBarWidth = Math.max(10, barWidth - 8);
+                return (
+                    <g key={bin.key}>
+                        <rect x={x} y={y} width={actualBarWidth} height={barHeight} fill="#4338ca" opacity="0.92" />
+                        <text x={x + (actualBarWidth / 2)} y={Math.max(chartTop + 12, y - 6)} textAnchor="middle" className="bar-count">
+                            {bin.count}
+                        </text>
+                        <text x={x + (actualBarWidth / 2)} y={height - 18} textAnchor="middle" className="axis-text x-axis-label">
+                            {bin.label}
+                        </text>
+                    </g>
+                );
+            })}
         </svg>
     );
 }
@@ -101,11 +134,6 @@ export default function TestResultPrintPage({ classInfo, test, students = [], gr
 
                 const hasNoShowText = String(grade?.score || '').trim() === '미응시';
                 const attempted = Boolean(isAttempted) && !hasNoShowText;
-
-                const percent = attempted && Number.isFinite(maxScore) && maxScore > 0 && Number.isFinite(score)
-                    ? (score / maxScore) * 100
-                    : null;
-
                 const answerMap = grade?.answers || grade?.correctCount || {};
 
                 return {
@@ -113,7 +141,6 @@ export default function TestResultPrintPage({ classInfo, test, students = [], gr
                     studentName: student.name,
                     score,
                     attempted,
-                    percent,
                     answerMap,
                 };
             })
@@ -145,7 +172,7 @@ export default function TestResultPrintPage({ classInfo, test, students = [], gr
 
         return {
             attemptedRows,
-            bins: percentileBins(attemptedRows),
+            bins: buildHistogramByPercent(scores, maxScore, 10),
             averageRawScore,
             medianRawScore: calculateMedian(scores),
             stdDevRawScore: calculateStdDev(scores),
@@ -158,40 +185,29 @@ export default function TestResultPrintPage({ classInfo, test, students = [], gr
     const denseTableClass = prepared.totalQuestions >= 40 ? 'dense' : '';
 
     return (
-        <div className="print-page-wrap">
+        <div>
             <style>{`
-                .print-page-wrap { font-family: 'Noto Sans KR', sans-serif; color: #111827; background: #fff; }
-                .print-header { margin-bottom: 8px; border-bottom: 1px solid #d1d5db; padding-bottom: 6px; }
-                .print-header .class-name { font-size: 20px; font-weight: 700; margin: 0; }
-                .print-header .test-meta { font-size: 13px; margin-top: 4px; color: #374151; }
-                .section-title { font-size: 13px; font-weight: 700; margin: 0 0 6px; }
                 .summary-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; font-size: 11px; margin-bottom: 10px; }
                 .summary-card { border: 1px solid #d1d5db; border-radius: 4px; padding: 5px; }
                 .histogram-box { border: 1px solid #d1d5db; border-radius: 4px; padding: 8px; margin-bottom: 10px; }
-                .histogram-chart-wrap { width: 100%; height: 260px; }
-                .histogram-svg { width: 100%; height: 100%; }
-                .bar-label { font-size: 3.2px; fill: #374151; }
-                .bar-count { font-size: 3.4px; fill: #111827; }
+                .histogram-chart-wrap { width: 100%; min-height: 240px; }
+                .histogram-svg { width: 100%; height: 240px; }
+                .axis-text { font-size: 11px; fill: #111827; font-weight: 500; }
+                .x-axis-label { font-size: 10.5px; }
+                .bar-count { font-size: 12px; fill: #111827; font-weight: 700; }
                 .rank-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
                 .rank-box { border: 1px solid #d1d5db; border-radius: 4px; padding: 6px; min-height: 100px; }
                 .rank-box ul { margin: 0; padding-left: 18px; font-size: 11px; line-height: 1.45; }
-                .answer-table-wrap { border: 1px solid #d1d5db; border-radius: 4px; padding: 6px; }
-                .answer-table { width: 100%; border-collapse: collapse; font-size: 10px; table-layout: fixed; }
-                .answer-table.dense { font-size: 9px; }
-                .answer-table thead { display: table-header-group; }
-                .answer-table tr { page-break-inside: avoid; }
-                .answer-table th, .answer-table td { border: 1px solid #d1d5db; padding: 2px 3px; text-align: center; }
-                .answer-table th.student-col, .answer-table td.student-col { text-align: left; width: 82px; min-width: 82px; }
-                .answer-table th.q-col { font-family: 'Courier New', monospace; width: 22px; min-width: 22px; }
+                .section-title { font-size: 13px; font-weight: 700; margin: 0 0 6px; color: #111827; }
             `}</style>
 
-            <header className="print-header">
-                <h1 className="class-name">{classInfo?.name || '-'}</h1>
-                <p className="test-meta">{test?.name || test?.title || '-'} · {resolvedDate}</p>
+            <header>
+                <h1 className="print-title">{classInfo?.name || '-'}</h1>
+                <p className="print-subtitle">{test?.name || test?.title || '-'} · {resolvedDate}</p>
             </header>
 
-            <div className={`print-grid ${compact ? 'print-scale-tight' : 'print-scale'}`}>
-                <section className="avoid-break">
+            <div className={`grade-print-grid ${compact ? 'print-scale-tight' : ''}`}>
+                <section className="grade-print-left avoid-break">
                     <h2 className="section-title">시험 요약</h2>
                     <div className="summary-grid">
                         <div className="summary-card">응시자 수: <b>{prepared.attemptedRows.length}</b></div>
@@ -227,21 +243,21 @@ export default function TestResultPrintPage({ classInfo, test, students = [], gr
                     </div>
                 </section>
 
-                <section className="answer-table-wrap no-print-scroll">
+                <section className="grade-print-right avoid-break">
                     <h2 className="section-title">정오표(응시자)</h2>
-                    <table className={`answer-table ${denseTableClass}`}>
+                    <table className={`grade-print-table ${denseTableClass}`}>
                         <thead>
                             <tr>
-                                <th className="student-col">학생</th>
+                                <th>학생</th>
                                 {Array.from({ length: prepared.totalQuestions }, (_, idx) => (
-                                    <th key={`head-${idx + 1}`} className="q-col">{idx + 1}</th>
+                                    <th key={`head-${idx + 1}`}>{idx + 1}</th>
                                 ))}
                             </tr>
                         </thead>
                         <tbody>
                             {prepared.attemptedRows.map((row) => (
                                 <tr key={row.studentId}>
-                                    <td className="student-col">{row.studentName}</td>
+                                    <td>{row.studentName}</td>
                                     {Array.from({ length: prepared.totalQuestions }, (_, idx) => {
                                         const key = String(idx + 1);
                                         return <td key={`${row.studentId}-${key}`}>{normalizeAnswerStatus(row.answerMap?.[key])}</td>;

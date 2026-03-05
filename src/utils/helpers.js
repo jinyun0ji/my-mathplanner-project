@@ -306,6 +306,24 @@ export const formatClassScheduleKo = (cls) => {
     return days.map((d) => `${formatWeekdayKo(d)} ${schedule[d].start}~${schedule[d].end}`).join(', ');
 };
 
+
+const toYmdSafe = (value) => {
+    if (!value) return null;
+    if (typeof value === 'string') return value.slice(0, 10);
+    if (typeof value?.toDate === 'function') return value.toDate().toISOString().slice(0, 10);
+    try { return new Date(value).toISOString().slice(0, 10); } catch { return null; }
+};
+
+export function inDateRange(ymd, startYmd, endYmd) {
+    const d = toYmdSafe(ymd);
+    if (!d) return false;
+    const s = toYmdSafe(startYmd);
+    const e = toYmdSafe(endYmd);
+    if (s && d < s) return false;
+    if (e && d > e) return false;
+    return true;
+}
+
 export const getWeekdayKeyFromDate = (dateInput = new Date()) => {
     const date = dateInput instanceof Date ? dateInput : new Date(dateInput);
     const safeDate = Number.isNaN(date.getTime()) ? new Date() : date;
@@ -318,7 +336,9 @@ export const isClassActiveForStudent = ({ cls, student, todayYmd }) => {
     const classStatus = student?.classStatusMap?.[cls.id]?.status || student?.classStatuses?.[cls.id];
     if (withdrawnStatuses.includes(String(classStatus || '').trim())) return false;
 
-    if (cls?.endDate && todayYmd && String(cls.endDate).slice(0, 10) < String(todayYmd)) return false;
+    const start = cls?.startDate || cls?.openDate || cls?.beginDate || null;
+    const end = cls?.endDate || cls?.closeDate || cls?.finishDate || null;
+    if (todayYmd && !inDateRange(todayYmd, start, end)) return false;
     return true;
 };
 
@@ -356,23 +376,10 @@ export const calculateClassSessions = (cls, closures = []) => {
         iterDate.setDate(iterDate.getDate() + 1);
         iterations++;
     }
-    const toYmd = (d) => {
-        if (!d) return null;
-        if (typeof d === 'string') return d.slice(0, 10);
-        if (typeof d?.toDate === 'function') return d.toDate().toISOString().slice(0, 10);
-        try { return new Date(d).toISOString().slice(0, 10); } catch { return null; }
-    };
+    const start = toYmdSafe(startDateValue);
+    const end = toYmdSafe(endDateValue);
 
-    const start = toYmd(startDateValue);
-    const end = toYmd(endDateValue);
-
-    return sessions.filter((session) => {
-        const ymd = toYmd(session?.date || session?.ymd || session?.sessionDate || session);
-        if (!ymd) return true;
-        if (start && ymd < start) return false;
-        if (end && ymd > end) return false;
-        return true;
-    });
+    return sessions.filter((session) => inDateRange(session?.date || session?.ymd || session?.sessionDate || session, start, end));
 };
 
 const toDateString = (v) => {

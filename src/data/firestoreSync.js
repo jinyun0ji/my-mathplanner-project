@@ -32,6 +32,26 @@ export function safeNonEmptyArray(arr) {
     return Array.isArray(arr) ? arr.map(String).filter(Boolean) : [];
 }
 
+
+export const safeIn = (arr, max = 10) => safeNonEmptyArray(arr).slice(0, max);
+
+export function buildInQueryOrNull(values, max = 10) {
+    const v = safeIn(values, max);
+    return v.length > 0 ? v : null;
+}
+
+const viewerDetailCache = {
+    lessonLogs: new Map(),
+    attendance: new Map(),
+    homeworkResults: new Map(),
+    grades: new Map(),
+};
+
+const viewerDetailCacheKey = (classIds = [], studentId = '') => {
+    const classKey = safeNonEmptyArray(classIds).sort().join(',');
+    return `${classKey}|${String(studentId || '')}`;
+};
+
 const normalizeAuthUid = (item) => {
     if (item?.studentId) return item;
     if (item?.studentDocId) return { ...item, studentId: item.studentDocId };
@@ -145,6 +165,10 @@ const normalizePaymentLog = (log) => {
 };
 
 const fetchList = async (db, colName, setter, q, isCancelled, mapper = null) => {
+    if (q === null) {
+        if (!isCancelled()) setter([]);
+        return [];
+    }
     const snap = await getDocs(q || collection(db, colName));
     const baseItems = snap.docs.map((d) => normalizeAuthUid({ id: d.id, ...d.data() }));
     const items = mapper ? baseItems.map(mapper) : baseItems;
@@ -273,6 +297,74 @@ const fetchClinicLogsForViewer = async ({
     }
 
     return Array.from(merged.values()).map(normalizeClinicLog);
+};
+
+
+const fetchClinicForViewer = async ({
+    db,
+    studentIds,
+    studentAuthUids,
+    studentDocId,
+    authUid,
+    isCancelled = () => false,
+}) => {
+    const results = [];
+
+    try {
+        const logs = await fetchClinicLogsForViewer({
+            db,
+            studentDocId,
+            authUid,
+            pageSize: 200,
+            maxDocs: 2000,
+            isCancelled,
+        });
+        results.push(...(logs || []));
+    } catch (e) {
+        console.warn('[viewer] clinicLogs FAIL', e);
+    }
+
+    const tryReservationsByField = async (field, values, maxDocs = 200) => {
+        const chunks = chunkArray(values, 10);
+        for (const ch of chunks) {
+            if (!ch.length) continue;
+            try {
+                const docs = await fetchList(
+                    db,
+                    'clinicReservations',
+                    () => {},
+                    query(
+                        collection(db, 'clinicReservations'),
+                        where(field, 'in', ch),
+                        orderBy('date', 'desc'),
+                        limit(maxDocs),
+                    ),
+                    isCancelled,
+                    normalizeClinicReservation,
+                );
+                results.push(...(docs || []));
+            } catch (e) {
+                console.warn(`[viewer] clinicReservations FAIL (${field})`, e);
+            }
+        }
+    };
+
+    try {
+        const studentIdValues = safeIn(studentIds, 50);
+        await tryReservationsByField('studentId', studentIdValues, 200);
+        await tryReservationsByField('studentUid', studentIdValues, 100);
+    } catch (e) {
+        console.warn('[viewer] clinicReservations FAIL (student ids)', e);
+    }
+
+    try {
+        const authValues = safeIn(studentAuthUids, 50);
+        await tryReservationsByField('authUid', authValues, 200);
+    } catch (e) {
+        console.warn('[viewer] clinicReservations FAIL (authUid)', e);
+    }
+
+    return results.map((x) => normalizeClinicLog(x));
 };
 
 export async function fetchClinicLogsPaged({
@@ -928,10 +1020,25 @@ export const loadViewerDataOnce = async ({
         const viewerClassIds = myClasses.map((c) => String(c.id)).filter(Boolean).slice(0, 10);
         console.log('[viewer] viewerClassIds =', viewerClassIds);
 
+        const lessonClassIds = safeIn(myClasses.map((c) => c.id), 10);
+        const detailCacheKey = viewerDetailCacheKey(lessonClassIds, activeOnly[0] || scopedStudentUids[0] || '');
+        const hasDetailCache = viewerDetailCache.lessonLogs.has(detailCacheKey)
+            && viewerDetailCache.attendance.has(detailCacheKey)
+            && viewerDetailCache.homeworkResults.has(detailCacheKey)
+            && viewerDetailCache.grades.has(detailCacheKey);
+
+        if (hasDetailCache && !isCancelled()) {
+            setLessonLogs?.(viewerDetailCache.lessonLogs.get(detailCacheKey) || []);
+            setAttendanceLogs?.(viewerDetailCache.attendance.get(detailCacheKey) || []);
+            setHomeworkResults?.(viewerDetailCache.homeworkResults.get(detailCacheKey) || {});
+            setGrades?.(viewerDetailCache.grades.get(detailCacheKey) || {});
+            console.log('[viewer] detail cache hit', detailCacheKey);
+        }
+
         /* =========================
            attendanceLogs (fetchList)
         ========================= */
-        if (nonEmpty(scopedStudentUids) || nonEmpty(scopedStudentAuthUids)) {
+        if (!hasDetailCache && (nonEmpty(scopedStudentUids) || nonEmpty(scopedStudentAuthUids))) {
             const attendanceDocs = [];
 
             if (nonEmpty(scopedStudentUids)) {
@@ -1017,100 +1124,30 @@ export const loadViewerDataOnce = async ({
                 });
 
                 setAttendanceLogs?.(normalizedLogs);
+                viewerDetailCache.attendance.set(detailCacheKey, normalizedLogs);
             }
-        } else if (!isCancelled()) {
+        } else if (!isCancelled() && !hasDetailCache) {
             setAttendanceLogs?.([]);
         }
 
         /* =========================
-        clinicLogs + clinicReservations (fetchList)
+        clinicLogs + clinicReservations (권한 실패 허용)
         ========================= */
         if (scopedStudentUids.length > 0) {
-            const clinicDocs = [];
-            const reservationDocs = [];
             const viewerStudentDocId = activeOnly[0] || scopedStudentUids[0] || null;
             const viewerAuthUid = userId || scopedStudentAuthUids[0] || null;
 
-            try {
-                const fetchedClinicLogs = await run('clinicLogs viewer', async () => {
-                    return fetchClinicLogsForViewer({
-                        db,
-                        studentDocId: viewerStudentDocId,
-                        authUid: viewerAuthUid,
-                        pageSize: 200,
-                        maxDocs: 2000,
-                        isCancelled,
-                    });
-                });
-                clinicDocs.push(...fetchedClinicLogs);
-            } catch (e) {
-                console.warn('[viewer] clinicLogs load failed', e);
-            }
+            const clinicItems = await fetchClinicForViewer({
+                db,
+                studentIds: scopedStudentUids,
+                studentAuthUids: scopedStudentAuthUids,
+                studentDocId: viewerStudentDocId,
+                authUid: viewerAuthUid,
+                isCancelled,
+            });
 
-            // clinicReservations
-            if (scopedStudentUids.length > 0) {
-                try {
-                    await fetchListSafe(
-                        'clinicReservations studentId',
-                        db,
-                        'clinicReservations',
-                        (items) => reservationDocs.push(...items),
-                        query(
-                            collection(db, 'clinicReservations'),
-                            where('studentId', 'in', scopedStudentUids),
-                            orderBy('date', 'desc'),
-                            limit(100),
-                        ),
-                        isCancelled,
-                        normalizeClinicReservation,
-                    );
-                } catch (e) {
-                    console.warn('[viewer] clinicReservations studentId load failed', e);
-                }
-            }
-            if (scopedStudentAuthUids.length > 0) {
-                try {
-                    await fetchListSafe(
-                        'clinicReservations authUid',
-                        db,
-                        'clinicReservations',
-                        (items) => reservationDocs.push(...items),
-                        query(
-                            collection(db, 'clinicReservations'),
-                            where('authUid', 'in', scopedStudentAuthUids),
-                            orderBy('date', 'desc'),
-                            limit(100),
-                        ),
-                        isCancelled,
-                        normalizeClinicReservation,
-                    );
-                } catch (e) {
-                    console.warn('[viewer] clinicReservations authUid load failed', e);
-                }
-            }
-            if (scopedStudentUids.length > 0) {
-                try {
-                    await fetchListSafe(
-                        'clinicReservations studentUid',
-                        db,
-                        'clinicReservations',
-                        (items) => reservationDocs.push(...items),
-                        query(
-                            collection(db, 'clinicReservations'),
-                            where('studentUid', 'in', scopedStudentUids),
-                            orderBy('date', 'desc'),
-                            limit(30),
-                        ),
-                        isCancelled,
-                        normalizeClinicReservation,
-                    );
-                } catch (e) {
-                    console.warn('[viewer] clinicReservations studentUid load failed', e);
-                }
-            }
-
-                if (!isCancelled()) {
-                setClinicLogs?.(mergeClinicDocs(clinicDocs, reservationDocs));
+            if (!isCancelled()) {
+                setClinicLogs?.(mergeClinicDocs(clinicItems, []));
             }
         } else if (!isCancelled()) {
             setClinicLogs?.([]);
@@ -1122,8 +1159,6 @@ export const loadViewerDataOnce = async ({
         let viewerTests = [];
         let filteredTests = [];
         let allowedTestIds = null;
-
-        const lessonClassIds = safeNonEmptyArray(myClasses.map((c) => c.id)).slice(0, 10);
 
         /* =========================
            closures (viewer: student/parent) ✅ 새로고침 유지 핵심
@@ -1214,7 +1249,7 @@ export const loadViewerDataOnce = async ({
             }
         }
 
-        if (lessonClassIds.length > 0) {
+        if (!hasDetailCache && lessonClassIds.length > 0) {
             try {
                 await fetchListSafe(
                     'lessonLogs fetchList',
@@ -1222,6 +1257,7 @@ export const loadViewerDataOnce = async ({
                     'lessonLogs',
                     (items) => {
                         setLessonLogs?.(items);
+                        viewerDetailCache.lessonLogs.set(detailCacheKey, items);
                     },
                     query(
                         collection(db, 'lessonLogs'),
@@ -1283,7 +1319,7 @@ export const loadViewerDataOnce = async ({
                     if (!isCancelled()) setClassTestStats({});
                 }
             }
-        } else if (!isCancelled()) {
+        } else if (!isCancelled() && !hasDetailCache) {
             setLessonLogs?.([]);
             setTests?.([]);
             setClassTestStats?.({});
@@ -1293,7 +1329,7 @@ export const loadViewerDataOnce = async ({
         grades (viewer: 학생/부모)
         ⚠️ 반 전체 조회 금지
         ========================= */
-        if (scopedStudentAuthUids.length > 0) {
+        if (!hasDetailCache && scopedStudentAuthUids.length > 0) {
             try {
                 const gradeSnap = await run('grades getDocs', () =>
                     getDocs(
@@ -1319,20 +1355,23 @@ export const loadViewerDataOnce = async ({
                     });
 
                     setGrades?.(mappedGrades);
+                    viewerDetailCache.grades.set(detailCacheKey, mappedGrades);
                 }
             } catch (e) {
                 console.warn('[viewer] grades load failed', e);
                 if (!isCancelled()) setGrades?.({});
+                viewerDetailCache.grades.set(detailCacheKey, {});
             }
-        } else if (!isCancelled()) {
+        } else if (!isCancelled() && !hasDetailCache) {
             setGrades?.({});
+            viewerDetailCache.grades.set(detailCacheKey, {});
         }
 
         /* =========================
            homeworkResults (직접 getDocs)
         ========================= */
         try {
-            if (scopedStudentUids.length > 0) {
+            if (!hasDetailCache && scopedStudentUids.length > 0) {
                 const mapped = {};
                 const authUidToStudentDocId = new Map(
                     myStudents
@@ -1380,13 +1419,16 @@ export const loadViewerDataOnce = async ({
             if (!isCancelled()) {
                 console.log('[viewer][homeworkResults] keys=', Object.keys(mapped));
                 setHomeworkResults?.(mapped);
+                viewerDetailCache.homeworkResults.set(detailCacheKey, mapped);
             }
-            } else if (!isCancelled()) {
+            } else if (!isCancelled() && !hasDetailCache) {
                 setHomeworkResults?.({});
+                viewerDetailCache.homeworkResults.set(detailCacheKey, {});
             }
         } catch (e) {
             console.warn('[viewer] homeworkResults load failed', e);
             if (!isCancelled()) setHomeworkResults?.({});
+                viewerDetailCache.homeworkResults.set(detailCacheKey, {});
         }
 
         /* =========================

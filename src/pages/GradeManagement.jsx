@@ -1,5 +1,4 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { useReactToPrint } from 'react-to-print';
 import { Icon } from '../utils/helpers';
 import ClassSelectionPanel from '../components/Shared/ClassSelectionPanel';
 import FullGradeTable from '../components/Grade/FullGradeTable';
@@ -12,6 +11,58 @@ import { useClassStudents } from '../utils/useClassStudents';
 import { filterRosterByWithdrawDate } from '../utils/rosterFilter';
 import { buildStudentParentPhoneLast4Map, formatStudentNameWithParentLast4 } from '../utils/parentPhone';
 import TestResultPrintPage from '../components/Grade/TestResultPrintPage';
+
+
+function useReactToPrint({ content, documentTitle, removeAfterPrint, onBeforeGetContent }) {
+    return useCallback(() => {
+        if (typeof onBeforeGetContent === 'function') onBeforeGetContent();
+
+        const node = typeof content === 'function' ? content() : null;
+        if (!node) {
+            throw new Error('There is nothing to print');
+        }
+
+        const iframe = document.createElement('iframe');
+        iframe.style.position = 'fixed';
+        iframe.style.right = '0';
+        iframe.style.bottom = '0';
+        iframe.style.width = '0';
+        iframe.style.height = '0';
+        iframe.style.border = '0';
+        document.body.appendChild(iframe);
+
+        const printWindow = iframe.contentWindow;
+        const printDoc = printWindow?.document;
+        if (!printDoc || !printWindow) {
+            if (removeAfterPrint) document.body.removeChild(iframe);
+            throw new Error('PRINT_WINDOW_UNAVAILABLE');
+        }
+
+        const styles = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]'))
+            .map((el) => el.outerHTML)
+            .join('');
+
+        printDoc.open();
+        printDoc.write(`<!doctype html><html><head><title>${documentTitle || 'print'}</title>${styles}</head><body>${node.outerHTML}</body></html>`);
+        printDoc.close();
+
+        const runPrint = () => {
+            printWindow.focus();
+            printWindow.print();
+            if (removeAfterPrint) {
+                setTimeout(() => {
+                    if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
+                }, 300);
+            }
+        };
+
+        if (printDoc.readyState === 'complete') {
+            runPrint();
+        } else {
+            iframe.onload = runPrint;
+        }
+    }, [content, documentTitle, onBeforeGetContent, removeAfterPrint]);
+}
 
 // ----------------------------------------------------------------------
 // 메인 컴포넌트: GradeManagement
@@ -124,18 +175,24 @@ export default function GradeManagement({
         content: () => printRef.current,
         documentTitle: selectedTest?.name ? `${selectedTest.name}-시험결과` : '시험결과',
         removeAfterPrint: true,
-        pageStyle: `
-          @page { size: A4 landscape; margin: 10mm; }
-          html, body { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-        `,
+        onBeforeGetContent: () => {
+            if (!printRef.current) {
+                console.warn('[print] ref is null - nothing to print');
+                throw new Error('PRINT_REF_NULL');
+            }
+        },
     });
 
     const handlePrintClick = useCallback(() => {
-        requestAnimationFrame(() => {
-            requestAnimationFrame(() => {
-                handlePrint();
-            });
-        });
+        if (!printRef.current) {
+            alert('인쇄할 내용이 아직 준비되지 않았습니다. 잠시 후 다시 시도해주세요.');
+            return;
+        }
+        try {
+            handlePrint();
+        } catch (error) {
+            console.warn('[print] blocked', error);
+        }
     }, [handlePrint]);
 
     // 엑셀 양식 다운로드
@@ -452,7 +509,26 @@ export default function GradeManagement({
                                 <button className="px-3 py-1.5 text-sm border rounded" onClick={() => setIsStatsModalOpen(false)}>닫기</button>
                             </div>
                         </div>
-                        <div ref={printRef} className="print-root">
+                        <div ref={printRef} className={`grade-print-root ${compactPrint ? 'is-shrink' : ''}`}>
+                            <style>{`
+                                @page { size: A4 landscape; margin: 10mm; }
+                                @media print {
+                                  html, body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+                                  body * { visibility: hidden; }
+                                  .grade-print-root, .grade-print-root * { visibility: visible; }
+                                  .grade-print-root { position: absolute; left: 0; top: 0; width: 100%; }
+                                  .no-print { display: none !important; }
+                                  .grade-print-grid { display: flex; gap: 10mm; align-items: flex-start; }
+                                  .grade-print-left { flex: 0 0 46%; }
+                                  .grade-print-right { flex: 1 1 auto; min-width: 0; }
+                                  .avoid-break { break-inside: avoid; page-break-inside: avoid; }
+                                  .grade-print-table { width: 100%; border-collapse: collapse; }
+                                  .grade-print-table th, .grade-print-table td { border: 1px solid #ddd; padding: 4px 6px; font-size: 10.5px; color: #111; }
+                                  .print-title { font-size: 18px; font-weight: 800; margin: 0 0 6px 0; color: #111; }
+                                  .print-subtitle { font-size: 12px; color: #333; margin: 0 0 10px 0; }
+                                  .grade-print-root.is-shrink { zoom: 0.9; }
+                                }
+                            `}</style>
                             <TestResultPrintPage
                                 classInfo={selectedClass}
                                 test={selectedTest}

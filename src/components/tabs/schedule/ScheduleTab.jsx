@@ -49,21 +49,33 @@ export default function ScheduleTab({
     const isClassActiveOnDate = (cls, date) => {
         if (!cls) return false;
 
+        const start = cls?.startDate
+            ? (typeof cls.startDate?.toDate === 'function'
+                ? cls.startDate.toDate()
+                : new Date(cls.startDate))
+            : null;
         const end = cls?.endDate
             ? (typeof cls.endDate?.toDate === 'function'
                 ? cls.endDate.toDate()
                 : new Date(cls.endDate))
             : null;
 
-        if (!end) return true; // 종강일 없으면 항상 유효
-
         const day = new Date(date);
         day.setHours(0, 0, 0, 0);
 
-        const endDay = new Date(end);
-        endDay.setHours(0, 0, 0, 0);
+        if (start) {
+            const startDay = new Date(start);
+            startDay.setHours(0, 0, 0, 0);
+            if (day < startDay) return false;
+        }
 
-        return day <= endDay;
+        if (end) {
+            const endDay = new Date(end);
+            endDay.setHours(0, 0, 0, 0);
+            if (day > endDay) return false;
+        }
+
+        return true;
     };
 
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
