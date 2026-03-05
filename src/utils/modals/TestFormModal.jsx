@@ -188,7 +188,14 @@ export const TestFormModal = ({
 
     if (questionCount <= 0 || totalScore <= 0 || !shouldAutoScore) return;
 
-    setQuestionScores(distributeScores(questionCount, totalScore));
+    const nextScores = distributeScores(questionCount, totalScore);
+    const isSame =
+      Array.isArray(questionScores) &&
+      questionScores.length === nextScores.length &&
+      questionScores.every((score, index) => Number(score) === Number(nextScores[index]));
+
+    if (isSame) return;
+    setQuestionScores(nextScores);
   }, [autoScoreMode, maxScore, questionScores, totalQuestions, distributeScores]);
 
   const questionScoreSum = useMemo(

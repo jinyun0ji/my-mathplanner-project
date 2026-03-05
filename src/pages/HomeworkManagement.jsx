@@ -5,7 +5,7 @@ import ClassSelectionPanel from '../components/Shared/ClassSelectionPanel';
 import HomeworkStatisticsPanel from '../components/Homework/HomeworkStatisticsPanel';
 import { HomeworkAssignmentModal } from '../utils/modals/HomeworkAssignmentModal';
 import HomeworkResultsModal from '../utils/modals/HomeworkResultsModal';
-import { buildAssignmentSummary, getClassAssignments, getSelectedAssignment, resolveAssignmentStudentIds, resolveAssignmentTypeLabel, resolveAssignmentType } from '../domain/homework/homework.service';
+import { buildAssignmentSummary, computeHomeworkProgress, getClassAssignments, getSelectedAssignment, resolveAssignmentStudentIds, resolveAssignmentTypeLabel, resolveAssignmentType } from '../domain/homework/homework.service';
 import { db } from '../firebase/client';
 import { getDefaultClassId } from '../utils/classStatus';
 import { useClassStudents } from '../utils/useClassStudents';
@@ -30,10 +30,6 @@ const isSameStudent = (result, student) => {
     return resultStudentIds.some(rid => studentIds.includes(rid));
 };
 
-const isWrong = (value) => ['2', 'x', '틀림'].includes(String(value ?? '').trim().toLowerCase());
-
-const isAnswered = (value) => ['1', '2', '3', 'o', 'x', '맞음', '틀림', '고침'].includes(String(value ?? '').trim().toLowerCase());
-
 export default function HomeworkManagement({
     classes, homeworkAssignments, homeworkResults,
     handleSaveHomeworkAssignment, handleDeleteHomeworkAssignment,
@@ -52,6 +48,7 @@ export default function HomeworkManagement({
     const { students: classStudents, isLoading: isLoadingStudents } = useClassStudents(selectedClassId);
     const [scopedHomeworkResults, setScopedHomeworkResults] = useState(null);
     const [isLoadingScopedResults, setIsLoadingScopedResults] = useState(false);
+    const [draftHomeworkOverlay, setDraftHomeworkOverlay] = useState({});
     
     const [checkedDate, setCheckedDate] = useState(() => new Date().toISOString().slice(0, 10));
 
@@ -221,13 +218,19 @@ export default function HomeworkManagement({
         const totalQuestions = Number(selectedAssignment?.totalQuestions) || 0;
 
         return assignmentSummary.reduce((acc, student) => {
-            const resultMap = student.resultMap || {};
-            const answeredCount = Object.values(resultMap).filter((value) => isAnswered(value)).length;
-            const completionPercentRaw = totalQuestions > 0 ? Math.round((answeredCount / totalQuestions) * 100) : 0;
-            const hasWrong = Object.values(resultMap).some((value) => isWrong(value));
-            const wrongProgress = completionPercentRaw === 100 && hasWrong;
-            const completed = completionPercentRaw === 100 && !hasWrong;
-            const completionPercentDisplay = completed ? 100 : (wrongProgress ? 99 : completionPercentRaw);
+            const sid = String(student.studentId);
+            const aid = String(selectedAssignment?.id || '');
+            const overlay = draftHomeworkOverlay?.[sid]?.[aid];
+            const resultMap = overlay?.results || student.resultMap || {};
+            const progress = computeHomeworkProgress(resultMap, totalQuestions);
+            const answeredCount = progress.checkedCount;
+            const completionPercentRaw = progress.completionRate;
+            const hasWrong = progress.incorrectCount > 0;
+            const wrongProgress = completionPercentRaw === 99;
+            const completed = completionPercentRaw === 100;
+            const completionPercentDisplay = overlay && typeof overlay.completionRate === 'number'
+                ? overlay.completionRate
+                : completionPercentRaw;
 
             acc[student.studentId] = {
                 raw: completionPercentRaw,
@@ -240,7 +243,29 @@ export default function HomeworkManagement({
             };
             return acc;
         }, {});
-    }, [assignmentSummary, selectedAssignment]);
+    }, [assignmentSummary, selectedAssignment, draftHomeworkOverlay]);
+
+    const clearDraftOverlayFor = useCallback((studentId, assignmentId) => {
+        const sid = String(studentId);
+        const aid = String(assignmentId);
+
+        setDraftHomeworkOverlay((prev) => {
+            const studentOverlay = prev?.[sid];
+            if (!studentOverlay?.[aid]) return prev;
+
+            const nextStudentOverlay = { ...studentOverlay };
+            delete nextStudentOverlay[aid];
+
+            const next = { ...prev };
+            if (Object.keys(nextStudentOverlay).length === 0) {
+                delete next[sid];
+            } else {
+                next[sid] = nextStudentOverlay;
+            }
+
+            return next;
+        });
+    }, []);
 
     const handleAssignmentSelect = useCallback((id) => {
         setSelectedAssignmentId(id);
@@ -489,6 +514,21 @@ export default function HomeworkManagement({
                 activeStudentId={activeStudentId}
                 completionRateByStudentId={completionRateByStudentId}
                 onSaveStudentResult={handleSaveResultFromModal}
+                onDraftChange={(studentId, assignmentId, results, completionRate) => {
+                    const sid = String(studentId);
+                    const aid = String(assignmentId);
+                    setDraftHomeworkOverlay((prev) => ({
+                        ...prev,
+                        [sid]: {
+                            ...(prev[sid] || {}),
+                            [aid]: {
+                                results,
+                                completionRate,
+                            },
+                        },
+                    }));
+                }}
+                onDraftClear={clearDraftOverlayFor}
             />
         </div>
     );

@@ -1,8 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Modal } from '../../components/common/Modal';
+import { computeHomeworkProgress } from '../../domain/homework/homework.service';
 
-const isWrong = (value) => ['2', 'x', '틀림'].includes(String(value ?? '').trim().toLowerCase());
-const isAnswered = (value) => ['1', '2', '3', 'o', 'x', '맞음', '틀림', '고침'].includes(String(value ?? '').trim().toLowerCase());
 
 const toStatus = (value) => {
     const normalized = String(value ?? '').trim().toLowerCase();
@@ -20,12 +19,15 @@ export default function HomeworkResultsModal({
     homeworkResults,
     activeStudentId,
     onSaveStudentResult,
+    onDraftChange,
+    onDraftClear,
 }) {
     const [search, setSearch] = useState('');
     const [selectedStudentId, setSelectedStudentId] = useState(null);
     const [resultMap, setResultMap] = useState({});
     const [activeQIndex, setActiveQIndex] = useState(0);
     const [isSaving, setIsSaving] = useState(false);
+    const [isDirty, setIsDirty] = useState(false);
     const containerRef = useRef(null);
 
     const totalQuestions = Number(assignment?.totalQuestions) || 0;
@@ -35,12 +37,12 @@ export default function HomeworkResultsModal({
         return students.reduce((acc, student) => {
             const record = homeworkResults?.[student.studentId]?.[assignment?.id];
             const studentResultsMap = record?.results || record || {};
-            const answeredCount = Object.values(studentResultsMap).filter((value) => isAnswered(value)).length;
-            const completionPercentRaw = totalQuestions > 0 ? Math.round((answeredCount / totalQuestions) * 100) : 0;
-            const hasWrong = Object.values(studentResultsMap).some((value) => isWrong(value));
-            const wrongProgress = completionPercentRaw === 100 && hasWrong;
-            const completed = completionPercentRaw === 100 && !hasWrong;
-            const completionPercentDisplay = completed ? 100 : (wrongProgress ? 99 : completionPercentRaw);
+            const progress = computeHomeworkProgress(studentResultsMap, totalQuestions);
+            const answeredCount = progress.checkedCount;
+            const completionPercentRaw = progress.completionRate;
+            const hasWrong = progress.incorrectCount > 0;
+            const wrongProgress = completionPercentRaw === 99;
+            const completionPercentDisplay = completionPercentRaw;
             acc[student.studentId] = {
                 completionPercentRaw,
                 completionPercentDisplay,
@@ -78,7 +80,14 @@ export default function HomeworkResultsModal({
         const map = record?.results || record || {};
         setResultMap(map);
         setActiveQIndex(0);
+        setIsDirty(false);
     }, [selectedStudentId, assignment, homeworkResults]);
+
+    useEffect(() => {
+        if (!isOpen || !selectedStudentId || !assignment?.id) return;
+        const completionRate = computeHomeworkProgress(resultMap, totalQuestions).completionRate;
+        onDraftChange?.(selectedStudentId, assignment.id, resultMap, completionRate);
+    }, [isOpen, selectedStudentId, assignment, resultMap, totalQuestions, onDraftChange]);
 
     useEffect(() => {
         if (!isOpen) return;
@@ -86,6 +95,33 @@ export default function HomeworkResultsModal({
     }, [isOpen, selectedStudentId]);
 
     if (!isOpen || !assignment) return null;
+
+    const requestClose = () => {
+        if (isDirty) {
+            const ok = window.confirm('저장되지 않은 변경사항이 있습니다. 저장하지 않고 닫을까요?');
+            if (!ok) return;
+            if (selectedStudentId) {
+                onDraftClear?.(selectedStudentId, assignment.id);
+            }
+        }
+
+        setIsDirty(false);
+        onClose();
+    };
+
+    const requestChangeStudent = (nextStudentId) => {
+        if (String(nextStudentId) === String(selectedStudentId)) return;
+        if (isDirty) {
+            const ok = window.confirm('저장되지 않은 변경사항이 있습니다. 저장하지 않고 이동할까요?');
+            if (!ok) return;
+            if (selectedStudentId) {
+                onDraftClear?.(selectedStudentId, assignment.id);
+            }
+        }
+
+        setIsDirty(false);
+        setSelectedStudentId(nextStudentId);
+    };
 
     const setQuestionStatus = (questionNumber, statusValue, moveToNext = true) => {
         const key = String(questionNumber);
@@ -96,6 +132,7 @@ export default function HomeworkResultsModal({
             else next[key] = nextStatus;
             return next;
         });
+        setIsDirty(true);
         if (!moveToNext || totalQuestions <= 0) return;
         setActiveQIndex((prev) => Math.min(prev + 1, totalQuestions - 1));
     };
@@ -108,6 +145,7 @@ export default function HomeworkResultsModal({
             delete next[qNum];
             return next;
         });
+        setIsDirty(true);
     };
 
     const handleKeyDown = (e) => {
@@ -165,6 +203,8 @@ export default function HomeworkResultsModal({
                 assignmentId: assignment.id,
                 resultsMap: resultMap,
             });
+            setIsDirty(false);
+            onDraftClear?.(selectedStudent.studentId, assignment.id);
         } catch (error) {
             alert('과제 결과 저장에 실패했습니다. 잠시 후 다시 시도해주세요.');
         } finally {
@@ -175,7 +215,7 @@ export default function HomeworkResultsModal({
     const selectedProgress = selectedStudent ? progressByStudentId[selectedStudent.studentId] : null;
 
     return (
-        <Modal isOpen={isOpen} onClose={onClose} title="과제 결과 입력/수정" maxWidth="max-w-6xl">
+        <Modal isOpen={isOpen} onClose={requestClose} title="과제 결과 입력/수정" maxWidth="max-w-6xl">
             <div className="grid grid-cols-1 lg:grid-cols-[280px,1fr] gap-4 min-h-[60vh]">
                 <div className="border rounded-lg p-3 space-y-3 bg-gray-50">
                     <input
@@ -193,7 +233,7 @@ export default function HomeworkResultsModal({
                                 <button
                                     type="button"
                                     key={student.studentId}
-                                    onClick={() => setSelectedStudentId(student.studentId)}
+                                    onClick={() => requestChangeStudent(student.studentId)}
                                     className={`w-full text-left rounded-md border px-3 py-2 ${isActive ? 'bg-indigo-50 border-indigo-300' : 'bg-white border-gray-200 hover:bg-gray-100'}`}
                                 >
                                     <p className="text-sm font-semibold text-gray-800">{student.studentName}</p>
