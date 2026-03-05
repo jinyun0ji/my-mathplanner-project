@@ -64,15 +64,31 @@ const getItemDateRaw = (item) => (
     || null
 );
 
-const getClassStatusFor = (student, classId) => {
-    const map = student?.classStatusMap || student?.classStatuses || {};
-    const entry = map?.[String(classId)] || map?.[classId] || null;
-    return String(entry?.status || '').trim();
-};
 
-const isEndedClassForStudent = (student, classId) => {
-    const status = getClassStatusFor(student, classId);
-    return ['종강', '퇴원', '전반'].includes(status);
+
+const isClassActiveForToday = (cls, student) => {
+    if (!cls) return false;
+
+    const classStatus = String(cls.status || '').trim();
+    if (['종강', '전반', '퇴원', '종료', 'ended', 'inactive'].includes(classStatus)) return false;
+
+    const map = student?.classStatusMap || student?.classStatuses || {};
+    const entry = map?.[String(cls.id)] || null;
+    const entryStatus = String(entry?.status || '').trim();
+    if (['종강', '전반', '퇴원'].includes(entryStatus)) return false;
+
+    const toYmd = (v) => {
+        if (!v) return null;
+        if (typeof v === 'string') return v.slice(0, 10);
+        if (typeof v?.toDate === 'function') return v.toDate().toISOString().slice(0, 10);
+        try { return new Date(v).toISOString().slice(0, 10); } catch { return null; }
+    };
+
+    const today = new Date().toISOString().slice(0, 10);
+    const endedYmd = toYmd(entry?.endedAt || entry?.endDate || cls.endedAt || cls.endDate);
+    if (endedYmd && endedYmd <= today) return false;
+
+    return true;
 };
 
 const shouldHideTodayItemByExit = (item, exitMap) => {
@@ -321,7 +337,7 @@ export default function StudentHome({
     const todayItems = useMemo(() => {
         const visibleTodayClasses = myClasses.filter((cls) => {
             if (!cls?.id) return false;
-            if (isEndedClassForStudent(student, cls.id)) return false;
+            if (!isClassActiveForToday(cls, student)) return false;
             return true;
         });
 

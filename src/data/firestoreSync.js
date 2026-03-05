@@ -451,6 +451,7 @@ export const loadStaffDataOnce = async ({
     };
 
     let staffClasses = [];
+    let staffStudents = [];
 
     const fetchClosuresForStaff = async (classes = []) => {
         const merged = new Map();
@@ -512,7 +513,7 @@ export const loadStaffDataOnce = async ({
 
     try {
         if (setStudents) {
-            await fetchList(
+            staffStudents = await fetchList(
                 db,
                 'users',
                 applyStudents,
@@ -629,14 +630,23 @@ export const loadStaffDataOnce = async ({
         if (setHomeworkResults && shouldLoad('homework')) {
             const docs = await fetchHomeworkResultsWithPagination(db, 5000, 500);
             const mappedResults = {};
+            const authUidToStudentDocId = new Map(
+                (staffStudents || [])
+                    .filter((student) => student?.authUid && student?.id)
+                    .map((student) => [String(student.authUid), String(student.id)]),
+            );
             docs.forEach((data) => {
                 const assignmentId = data.assignmentId || data.homeworkAssignmentId || null;
 
-                const sKey = data.authUid
-                    || data.studentId
+                const rawKey = data.studentId
                     || data.studentDocId
+                    || data.authUid
                     || data.studentUid
                     || null;
+                
+                const sKey = rawKey && authUidToStudentDocId.get(String(rawKey))
+                ? authUidToStudentDocId.get(String(rawKey))
+                : rawKey;
 
                 if (!sKey || !assignmentId) return;
 
@@ -959,7 +969,7 @@ export const loadViewerDataOnce = async ({
                 (items) => clinicDocs.push(...items),
                 query(
                     collection(db, 'clinicLogs'),
-                    where('authUid', 'in', scopedStudentUids),
+                    where('authUid', 'in', scopedStudentAuthUids),
                     orderBy('date', 'desc'),
                     limit(100),
                 ),
@@ -1003,7 +1013,7 @@ export const loadViewerDataOnce = async ({
                 (items) => reservationDocs.push(...items),
                 query(
                     collection(db, 'clinicReservations'),
-                    where('authUid', 'in', scopedStudentUids),
+                    where('authUid', 'in', scopedStudentAuthUids),
                     orderBy('date', 'desc'),
                     limit(100),
                 ),
@@ -1206,7 +1216,7 @@ export const loadViewerDataOnce = async ({
                 getDocs(
                     query(
                         collection(db, 'grades'),
-                        where('authUid', 'in', scopedStudentUids),
+                        where('authUid', 'in', scopedStudentAuthUids),
                         limit(100),
                     ),
                 ),
@@ -1236,10 +1246,18 @@ export const loadViewerDataOnce = async ({
         ========================= */
         if (scopedStudentUids.length > 0) {
             const mapped = {};
+            const authUidToStudentDocId = new Map(
+                myStudents
+                    .filter((student) => student?.authUid && student?.id)
+                    .map((student) => [String(student.authUid), String(student.id)]),
+            );
 
             const upsert = (data) => {
                 const assignmentId = data.assignmentId || data.homeworkAssignmentId || null;
-                const sKey = data.authUid || data.studentId || data.studentDocId || data.studentUid || null;
+                const rawKey = data.studentId || data.studentDocId || data.authUid || data.studentUid || null;
+                const sKey = rawKey && authUidToStudentDocId.get(String(rawKey))
+                    ? authUidToStudentDocId.get(String(rawKey))
+                    : rawKey;
                 if (!sKey || !assignmentId) return;
                 if (!mapped[sKey]) mapped[sKey] = {};
                 mapped[sKey][assignmentId] = data.results || data;

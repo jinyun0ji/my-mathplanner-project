@@ -1020,6 +1020,12 @@ export default function AppRoutes({ user, role, studentIds }) {
   const handleUpdateHomeworkResult = async (updates, checkedDateInput = null) => {
       ensureFirestoreContext();
       try {
+        const studentAuthUidByDocId = new Map(
+              (students || [])
+                  .filter(Boolean)
+                  .map((s) => [String(s.id), s.authUid ? String(s.authUid) : '']),
+          );
+
           const grouped = new Map();
           updates.forEach(({ studentId, assignmentId, questionId, status }) => {
               const key = `${studentId}_${assignmentId}`;
@@ -1050,12 +1056,15 @@ export default function AppRoutes({ user, role, studentIds }) {
                   }
               });
               const docId = `${studentId}_${assignmentId}`;
+              const studentDocId = String(studentId);
+              const mappedAuthUid = studentAuthUidByDocId.get(studentDocId) || null;
 
               const existingHistory = Array.isArray(existing?.checkHistory) ? existing.checkHistory : [];
               const nextHistory = [...existingHistory, { checkedDate, checkedBy: userId }];
 
               await setDoc(doc(db, 'homeworkResults', docId), {
-                  authUid: studentId,
+                  studentId: studentDocId,
+                  authUid: mappedAuthUid || studentDocId,
                   assignmentId,
                   results: mergedResults,
                   lastCheckedDate: checkedDate,
@@ -1487,7 +1496,7 @@ export default function AppRoutes({ user, role, studentIds }) {
                   deleteDoc(doc(db, 'clinicReservations', id)),
               ]);
           }
-          
+
           setClinicLogs(prev => prev.filter(l => l.id !== id));
       } catch (error) {
           console.error('[Firestore WRITE ERROR]', error);

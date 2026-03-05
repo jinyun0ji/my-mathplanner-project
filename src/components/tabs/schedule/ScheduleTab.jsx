@@ -177,6 +177,23 @@ export default function ScheduleTab({
     };
 
     const normalizeId = (v) => (v === null || v === undefined ? '' : String(v));
+    const getClinicDateYmd = (log) => {
+        const raw = log?.date || log?.effectiveDate || log?.scheduledDate || null;
+        if (!raw) return null;
+        if (typeof raw === 'string') return raw.slice(0, 10);
+        if (typeof raw?.toDate === 'function') return raw.toDate().toISOString().slice(0, 10);
+        try { return new Date(raw).toISOString().slice(0, 10); } catch (error) { return null; }
+    };
+    const isClinicScheduleVisible = (log, dateStr) => {
+        if (!log) return false;
+        if (normalizeId(log.studentId) !== normalizeId(resolvedStudentId)) return false;
+        const ymd = getClinicDateYmd(log);
+        if (!ymd || ymd !== dateStr) return false;
+
+        const status = String(log?.status || '').toLowerCase();
+        const isReservation = Boolean(log?.plannedTime) && ['pending', 'reserved', 'booked'].includes(status);
+        return Boolean(log?.checkIn || log?.checkOut || isReservation || log?.plannedTime);
+    };
 
     const handleOpenAddModal = () => {
         setNewSchedule({
@@ -390,7 +407,7 @@ export default function ScheduleTab({
         });
 
         const myClinics = clinicLogs
-            ? clinicLogs.filter(log => normalizeId(log.studentId) === normalizeId(resolvedStudentId) && log.date === dateStr)
+            ? clinicLogs.filter(log => isClinicScheduleVisible(log, dateStr))
             : [];
 
         const logs = attendanceLogs
@@ -443,13 +460,17 @@ export default function ScheduleTab({
 
         const myClinics = clinicLogs
             ? clinicLogs
-                .filter(log => normalizeId(log.studentId) === normalizeId(resolvedStudentId) && log.date === dateStr)
+                .filter(log => isClinicScheduleVisible(log, dateStr))
                 .map(log => ({
                     id: `clinic-${log.id}`,
                     type: 'clinic',
                     name: '학습 클리닉',
-                    teacher: log.tutor || '담당 선생님',
-                    time: log.checkIn ? `${log.checkIn}~${log.checkOut || ''}` : '시간 미정',
+                    teacher: log.tutorName || log.tutor || log.teacherName || log.teacher || '담당 선생님',
+                    time: log.checkIn
+                        ? `${log.checkIn}~${log.checkOut || ''}`
+                        : (log.plannedTime?.start
+                            ? `${log.plannedTime.start}~${log.plannedTime?.end || ''}`
+                            : '시간 미정'),
                     status: getClinicDisplayStatus(log),
                     scheduleId: log.id
                 }))
