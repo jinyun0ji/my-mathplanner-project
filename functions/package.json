@@ -10,5 +10,8 @@
     "firebase-admin": "^12.6.0",
     "firebase-functions": "^4.8.0",
     "node-fetch": "^2.7.0"
+  },
+  "scripts": {
+    "normalize:clinic": "node ./scripts/normalizeClinicLogs.js"
   }
 }
