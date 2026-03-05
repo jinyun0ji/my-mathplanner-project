@@ -300,7 +300,7 @@ export default function AppRoutes({ user, role, studentIds }) {
 
   useEffect(() => {
       if (!announcements || announcements.length === 0) return;
-      if (!isViewerGroupRole(role)) return;
+      if (!(isViewerGroupRole(role) || isStudentRole(role))) return;
 
       const processed = processedAnnouncementIdsRef.current;
       const newMessages = [];

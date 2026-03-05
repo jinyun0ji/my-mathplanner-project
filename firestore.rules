@@ -93,17 +93,34 @@ service cloud.firestore {
       );
     }
 
-    /** ✅ 클래스 멤버 체크: authUid / studentDocId / 부모 studentIds 대응 */
+    /** ✅ 클래스 멤버 체크: classIds 우선 + classes.students 보조(복원) */
     function isClassMember(classId) {
       return isSignedIn()
         && classId is string
-        && exists(/databases/$(database)/documents/classes/$(classId))
         && (
-          // staff/admin은 별도로 처리하지만, 여기선 학생/부모용만
-          (isStudent() && getMyStudentId() in get(/databases/$(database)/documents/classes/$(classId)).data.students)
-          || (isParent() && listContainsAny(get(/databases/$(database)/documents/classes/$(classId)).data.students, parentStudentUids()))
-          // (레거시) authUid 기반이 남아있을 경우도 허용
-          || uid() in get(/databases/$(database)/documents/classes/$(classId)).data.students
+          // 1) 학생: 내 users 문서의 classIds (신규)
+          (isStudent() && (classId in myClassIds()))
+
+          // 2) 부모: 자녀 users 문서의 classIds (신규)
+          || (isParent() && parentHasClassId(classId))
+
+          // 3) 보조(레거시/안전망): classes/{classId}.students 배열 기준
+          || (
+            exists(/databases/$(database)/documents/classes/$(classId))
+            && (
+              // 레거시: authUid가 students에 남아있던 경우
+              (uid() in get(/databases/$(database)/documents/classes/$(classId)).data.students)
+              // 신규 권장: studentDocId(users 문서ID)
+              || (myProfileDocId() in get(/databases/$(database)/documents/classes/$(classId)).data.students)
+              // 기존에 쓰던 userAuthIndex 기반(혹시 값이 다를 때)
+              || (myStudentDocId() != null && myStudentDocId() in get(/databases/$(database)/documents/classes/$(classId)).data.students)
+              // 부모: 자녀들 중 하나라도 students에 들어있으면 OK
+              || (isParent() && listContainsAny(
+                  get(/databases/$(database)/documents/classes/$(classId)).data.students,
+                  parentStudentUids()
+              ))
+            )
+          )
         );
     }
     
@@ -117,6 +134,11 @@ service cloud.firestore {
           || (data.targetClasses.size() > 2 && isClassMember(data.targetClasses[2]))
           || (data.targetClasses.size() > 3 && isClassMember(data.targetClasses[3]))
           || (data.targetClasses.size() > 4 && isClassMember(data.targetClasses[4]))
+          || (data.targetClasses.size() > 5 && isClassMember(data.targetClasses[5]))
+          || (data.targetClasses.size() > 6 && isClassMember(data.targetClasses[6]))
+          || (data.targetClasses.size() > 7 && isClassMember(data.targetClasses[7]))
+          || (data.targetClasses.size() > 8 && isClassMember(data.targetClasses[8]))
+          || (data.targetClasses.size() > 9 && isClassMember(data.targetClasses[9]))
         );
     }
 
@@ -130,6 +152,11 @@ service cloud.firestore {
           || (data.targetStudents.size() > 2 && isMyStudentUid(data.targetStudents[2]))
           || (data.targetStudents.size() > 3 && isMyStudentUid(data.targetStudents[3]))
           || (data.targetStudents.size() > 4 && isMyStudentUid(data.targetStudents[4]))
+          || (data.targetStudents.size() > 5 && isMyStudentUid(data.targetStudents[5]))
+          || (data.targetStudents.size() > 6 && isMyStudentUid(data.targetStudents[6]))
+          || (data.targetStudents.size() > 7 && isMyStudentUid(data.targetStudents[7]))
+          || (data.targetStudents.size() > 8 && isMyStudentUid(data.targetStudents[8]))
+          || (data.targetStudents.size() > 9 && isMyStudentUid(data.targetStudents[9]))
         );
     }
 
@@ -240,12 +267,13 @@ service cloud.firestore {
     match /classes/{docId} {
       allow get, read, list: if isAdminOrStaff()
         || (isSignedIn() && (
-          // 학생: studentDocId 기준
-          (isStudent() && getMyStudentId() in resource.data.students)
-          // 부모: studentIds 기준
-          || (isParent() && listContainsAny(resource.data.students, parentStudentUids()))
-          // 레거시 authUid
+          (isStudent() && (docId in myClassIds()))
+          || (isParent() && parentHasClassId(docId))
+          // ✅ 보조: classes.students 기반
           || (uid() in resource.data.students)
+          || (myProfileDocId() in resource.data.students)
+          || (myStudentDocId() != null && myStudentDocId() in resource.data.students)
+          || (isParent() && listContainsAny(resource.data.students, parentStudentUids()))
         ));
       allow write: if isAdminOrStaff();
     }
