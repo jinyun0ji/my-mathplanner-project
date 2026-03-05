@@ -64,6 +64,17 @@ const getItemDateRaw = (item) => (
     || null
 );
 
+const getClassStatusFor = (student, classId) => {
+    const map = student?.classStatusMap || student?.classStatuses || {};
+    const entry = map?.[String(classId)] || map?.[classId] || null;
+    return String(entry?.status || '').trim();
+};
+
+const isEndedClassForStudent = (student, classId) => {
+    const status = getClassStatusFor(student, classId);
+    return ['종강', '퇴원', '전반'].includes(status);
+};
+
 const shouldHideTodayItemByExit = (item, exitMap) => {
     const classId = String(getItemClassId(item) || '');
     const classCode = String(item?.classCode || item?.classKey || item?.code || '');
@@ -308,6 +319,12 @@ export default function StudentHome({
         return '예정';
     };
     const todayItems = useMemo(() => {
+        const visibleTodayClasses = myClasses.filter((cls) => {
+            if (!cls?.id) return false;
+            if (isEndedClassForStudent(student, cls.id)) return false;
+            return true;
+        });
+
         const todayClinics = studentId
             ? clinicLogs.filter(log => log.studentId === studentId && log.date === todayStr).map(log => ({
                 type: 'clinic',
@@ -332,7 +349,7 @@ export default function StudentHome({
             : [];
 
         return [
-            ...myClasses.filter(c => c.schedule.days.includes(todayDayName)).map(c => ({
+            ...visibleTodayClasses.filter(c => c.schedule.days.includes(todayDayName)).map(c => ({
                 type: 'class',
                 classId: c.id,
                 classCode: c.classId || c.code || c.classCode || c.key || null,
@@ -345,7 +362,7 @@ export default function StudentHome({
             ...todayClinics,
             ...todayExternal,
         ].sort((a, b) => (a.time || '').localeCompare(b.time || ''));
-    }, [clinicLogs, externalSchedules, myClasses, studentId, todayDayName, todayStr]);
+    }, [clinicLogs, externalSchedules, myClasses, student, studentId, todayDayName, todayStr]);
     const filteredTodayItems = useMemo(() => {
         const list = Array.isArray(todayItems) ? todayItems : [];
         return list.filter((item) => {
@@ -596,3 +613,5 @@ export default function StudentHome({
         </div>
     );
 }
+
+// changed: hide ended classes in today’s lessons

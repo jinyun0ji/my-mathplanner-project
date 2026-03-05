@@ -239,6 +239,18 @@ const buildExitMapFromClasses = (classesList, studentId) => {
     return map;
 };
 
+
+const getClassStatusFor = (studentValue, classId) => {
+    const map = studentValue?.classStatusMap || studentValue?.classStatuses || {};
+    const entry = map?.[String(classId)] || map?.[classId] || null;
+    return String(entry?.status || '').trim();
+};
+
+const isEndedClassForStudent = (studentValue, classId) => {
+    const status = getClassStatusFor(studentValue, classId);
+    return ['종강', '퇴원', '전반'].includes(status);
+};
+
 // --- [컴포넌트] 학부모 전용 대시보드 ---
 const ParentDashboard = ({ 
     child, myClasses, attendanceLogs, homeworkStats, 
@@ -321,6 +333,12 @@ const ParentDashboard = ({
     };
 
     const todayItems = useMemo(() => {
+        const visibleTodayClasses = myClasses.filter((cls) => {
+            if (!cls?.id) return false;
+            if (isEndedClassForStudent(child, cls.id)) return false;
+            return true;
+        });
+
         const todayClinicSchedules = clinicLogs
             .filter((l) => l.studentId === child.id && l.date === todayStr)
             .map((l) => ({
@@ -333,7 +351,7 @@ const ParentDashboard = ({
             }));
 
         return [
-            ...myClasses.filter(c => c.schedule.days.includes(todayDayName)).map(c => ({
+            ...visibleTodayClasses.filter(c => c.schedule.days.includes(todayDayName)).map(c => ({
                 type: 'class',
                 classId: c.id,
                 classCode: c.classId || c.code || c.classCode || c.key || null,
@@ -345,7 +363,7 @@ const ParentDashboard = ({
             })),
             ...todayClinicSchedules,
         ].sort((a, b) => (a.time || '').localeCompare(b.time || ''));
-    }, [clinicLogs, child.id, myClasses, todayDayName, todayStr]);
+    }, [child, clinicLogs, myClasses, todayDayName, todayStr]);
 
     const filteredTodayItems = useMemo(() => {
         const list = Array.isArray(todayItems) ? todayItems : [];
@@ -1977,3 +1995,5 @@ const StatusPill = ({ icon, label, tone = 'default' }) => {
         </span>
     );
 };
+
+// changed: hide ended classes in today’s lessons

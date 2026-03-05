@@ -24,7 +24,7 @@ export default function HomeworkResultsModal({
     const [search, setSearch] = useState('');
     const [selectedStudentId, setSelectedStudentId] = useState(null);
     const [resultMap, setResultMap] = useState({});
-    const [activeQ, setActiveQ] = useState(1);
+    const [activeQIndex, setActiveQIndex] = useState(0);
     const [isSaving, setIsSaving] = useState(false);
     const containerRef = useRef(null);
 
@@ -77,13 +77,17 @@ export default function HomeworkResultsModal({
         const record = homeworkResults?.[selectedStudentId]?.[assignment.id];
         const map = record?.results || record || {};
         setResultMap(map);
-        setActiveQ(1);
-        setTimeout(() => containerRef.current?.focus(), 0);
+        setActiveQIndex(0);
     }, [selectedStudentId, assignment, homeworkResults]);
+
+    useEffect(() => {
+        if (!isOpen) return;
+        setTimeout(() => containerRef.current?.focus(), 0);
+    }, [isOpen, selectedStudentId]);
 
     if (!isOpen || !assignment) return null;
 
-    const setQuestionStatus = (questionNumber, statusValue) => {
+    const setQuestionStatus = (questionNumber, statusValue, moveToNext = true) => {
         const key = String(questionNumber);
         const nextStatus = toStatus(statusValue);
         setResultMap((prev) => {
@@ -92,19 +96,63 @@ export default function HomeworkResultsModal({
             else next[key] = nextStatus;
             return next;
         });
-        setActiveQ((prev) => Math.min((prev === questionNumber ? prev + 1 : questionNumber + 1), totalQuestions || prev));
+        if (!moveToNext || totalQuestions <= 0) return;
+        setActiveQIndex((prev) => Math.min(prev + 1, totalQuestions - 1));
+    };
+
+    const clearActiveQuestion = () => {
+        if (totalQuestions <= 0) return;
+        const qNum = String(activeQIndex + 1);
+        setResultMap((prev) => {
+            const next = { ...(prev || {}) };
+            delete next[qNum];
+            return next;
+        });
     };
 
     const handleKeyDown = (e) => {
         if (!selectedStudent) return;
+        if (totalQuestions <= 0) return;
+
+        if (e.key === 'ArrowLeft') {
+            e.preventDefault();
+            setActiveQIndex((prev) => Math.max(0, prev - 1));
+            return;
+        }
+        if (e.key === 'ArrowRight') {
+            e.preventDefault();
+            setActiveQIndex((prev) => Math.min(totalQuestions - 1, prev + 1));
+            return;
+        }
+        if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            setActiveQIndex((prev) => Math.max(0, prev - 10));
+            return;
+        }
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            setActiveQIndex((prev) => Math.min(totalQuestions - 1, prev + 10));
+            return;
+        }
+        if (e.key === 'Home') {
+            e.preventDefault();
+            setActiveQIndex(0);
+            return;
+        }
+        if (e.key === 'End') {
+            e.preventDefault();
+            setActiveQIndex(totalQuestions - 1);
+            return;
+        }
+
         if (['1', '2', '3'].includes(e.key)) {
             e.preventDefault();
-            setQuestionStatus(activeQ, e.key);
+            setQuestionStatus(activeQIndex + 1, e.key, true);
             return;
         }
         if (e.key === 'Backspace' || e.key === 'Delete') {
             e.preventDefault();
-            setQuestionStatus(activeQ, null);
+            clearActiveQuestion();
         }
     };
 
@@ -177,17 +225,18 @@ export default function HomeworkResultsModal({
                             <div className="grid grid-cols-10 gap-2">
                                 {questions.map((questionNumber) => {
                                     const status = resultMap[String(questionNumber)] || null;
-                                    const isActiveQ = activeQ === questionNumber;
+                                    const questionIndex = questionNumber - 1;
+                                    const isActiveQ = activeQIndex === questionIndex;
                                     return (
                                         <button
                                             key={questionNumber}
                                             type="button"
                                             onClick={() => {
-                                                setActiveQ(questionNumber);
+                                                setActiveQIndex(questionIndex);
                                                 const sequence = ['맞음', '틀림', '고침', null];
                                                 const currentIndex = sequence.indexOf(status);
                                                 const nextStatus = sequence[(currentIndex + 1) % sequence.length];
-                                                setQuestionStatus(questionNumber, nextStatus);
+                                                setQuestionStatus(questionNumber, nextStatus, false);
                                             }}
                                             className={`border rounded-md py-2 text-xs font-semibold ${isActiveQ ? 'ring-2 ring-indigo-400' : ''} ${status === '맞음' ? 'bg-green-100 text-green-700 border-green-200' : status === '틀림' ? 'bg-red-100 text-red-700 border-red-200' : status === '고침' ? 'bg-blue-100 text-blue-700 border-blue-200' : 'bg-white text-gray-600 border-gray-200'}`}
                                         >
@@ -218,5 +267,4 @@ export default function HomeworkResultsModal({
     );
 }
 
-// changed: src/utils/modals/HomeworkResultsModal.jsx
-// added: src/utils/modals/HomeworkResultsModal.jsx
+// changed: arrow key nav + delete fix
