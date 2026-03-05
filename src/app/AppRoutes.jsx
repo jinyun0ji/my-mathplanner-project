@@ -452,6 +452,7 @@ export default function AppRoutes({ user, role, studentIds }) {
       return {
           ...log,
           effectiveDate: resolveClinicEffectiveDate(log),
+          __source: log.__source || 'clinicLogs',
       };
   };
 
@@ -1301,12 +1302,33 @@ export default function AppRoutes({ user, role, studentIds }) {
           const { effectiveDate, ...payload } = stripId(data);
           if (isEdit) {
               if (!data.id) throw new Error('클리닉 로그 ID가 없습니다.');
-              await updateDoc(doc(db, 'clinicLogs', data.id), {
-                  ...payload,
-                  updatedAt: serverTimestamp(),
-                  updatedBy: userId,
-              });
-              const normalized = normalizeClinicLog({ id: data.id, ...payload });
+              
+              const current = clinicLogs.find((item) => item?.id === data.id);
+              const source = data?.__source || current?.__source || 'clinicLogs';
+              const targetCollections = source === 'clinicReservations'
+                  ? ['clinicReservations', 'clinicLogs']
+                  : ['clinicLogs', 'clinicReservations'];
+
+              let didUpdate = false;
+              for (const colName of targetCollections) {
+                  const targetRef = doc(db, colName, data.id);
+                  const targetSnap = await getDoc(targetRef);
+                  if (!targetSnap.exists()) continue;
+
+                  await updateDoc(targetRef, {
+                      ...payload,
+                      updatedAt: serverTimestamp(),
+                      updatedBy: userId,
+                  });
+                  didUpdate = true;
+                  break;
+              }
+
+              if (!didUpdate) {
+                  throw new Error('수정할 클리닉 문서를 찾을 수 없습니다.');
+              }
+
+              const normalized = normalizeClinicLog({ id: data.id, ...payload, __source: source });
               setClinicLogs(prev => prev.map(l => l.id === data.id ? { ...l, ...normalized } : l));
           } else {
               const hasReservationSameDate = clinicLogs.some((r) => {
@@ -1443,7 +1465,29 @@ export default function AppRoutes({ user, role, studentIds }) {
   const handleDeleteClinicLog = async (id) => {
       ensureFirestoreContext();
       try {
-          await deleteDoc(doc(db, 'clinicLogs', id));
+        const current = clinicLogs.find((item) => item?.id === id);
+          const source = current?.__source || 'clinicLogs';
+          const targetCollections = source === 'clinicReservations'
+              ? ['clinicReservations', 'clinicLogs']
+              : ['clinicLogs', 'clinicReservations'];
+
+          let didDelete = false;
+          for (const colName of targetCollections) {
+              const targetRef = doc(db, colName, id);
+              const targetSnap = await getDoc(targetRef);
+              if (!targetSnap.exists()) continue;
+              await deleteDoc(targetRef);
+              didDelete = true;
+              break;
+          }
+
+          if (!didDelete) {
+              await Promise.allSettled([
+                  deleteDoc(doc(db, 'clinicLogs', id)),
+                  deleteDoc(doc(db, 'clinicReservations', id)),
+              ]);
+          }
+          
           setClinicLogs(prev => prev.filter(l => l.id !== id));
       } catch (error) {
           console.error('[Firestore WRITE ERROR]', error);
@@ -1994,7 +2038,7 @@ export default function AppRoutes({ user, role, studentIds }) {
                     </AdminRoute>
                 )}
             />
-            
+
             <Route
                 path="admin/logs"
                 element={(

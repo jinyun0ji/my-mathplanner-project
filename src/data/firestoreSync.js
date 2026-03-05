@@ -89,7 +89,35 @@ const normalizeClinicLog = (log) => {
     return {
         ...log,
         effectiveDate: resolveClinicEffectiveDate(log),
+        __source: log.__source || 'clinicLogs',
     };
+};
+
+const normalizeClinicReservation = (log) => {
+    if (!log) return log;
+    const base = normalizeAuthUid(log);
+    const timeSlot = base.timeSlot || base.plannedTime || '';
+    return normalizeClinicLog({
+        ...base,
+        plannedTime: base.plannedTime || timeSlot,
+        status: base.status || 'pending',
+        __source: 'clinicReservations',
+    });
+};
+
+const mergeClinicDocs = (clinicLogs = [], reservations = []) => {
+    const mergedMap = new Map();
+    [...clinicLogs, ...reservations].forEach((item) => {
+        if (item?.id && !mergedMap.has(item.id)) {
+            mergedMap.set(item.id, item);
+        }
+    });
+
+    return Array.from(mergedMap.values()).sort((a, b) => {
+        const effectiveDateCompare = String(b?.effectiveDate || '').localeCompare(String(a?.effectiveDate || ''));
+        if (effectiveDateCompare !== 0) return effectiveDateCompare;
+        return String(b?.plannedTime || '').localeCompare(String(a?.plannedTime || ''));
+    });
 };
 
 const normalizePaymentLog = (log) => {
@@ -154,6 +182,18 @@ const fetchClinicLogsLight = async (db, isCancelled, lightLimit = 300) => {
     return snap.docs.map((d) => normalizeClinicLog({ id: d.id, ...d.data() }));
 };
 
+const fetchClinicReservationsLight = async (db, isCancelled, lightLimit = 500) => {
+    const snap = await getDocs(
+        query(
+            collection(db, 'clinicReservations'),
+            orderBy('date', 'desc'),
+            limit(lightLimit),
+        ),
+    );
+    if (isCancelled()) return [];
+    return snap.docs.map((d) => normalizeClinicReservation({ id: d.id, ...d.data() }));
+};
+
 export async function fetchClinicLogsPaged({
     db,
     lastDoc = null,
@@ -195,8 +235,10 @@ export async function fetchClinicLogsDeepForStaff({
     maxDocs = 5000,
     isCancelled = () => false,
 }) {
-    const col = collection(db, 'clinicLogs');
-    const docs = [];
+    const logsCol = collection(db, 'clinicLogs');
+    const reservationsCol = collection(db, 'clinicReservations');
+    const clinicLogs = [];
+    const reservations = [];
 
     // 서버 쿼리에는 사용하지 않지만 호출부 시그니처 호환 및 클라이언트 필터 의도를 유지한다.
     void classId;
@@ -204,25 +246,41 @@ export async function fetchClinicLogsDeepForStaff({
     void studentId;
     void pageSize;
 
-    const pushSnap = (snap) => {
+    const pushClinicLogSnap = (snap) => {
         snap.forEach((d) => {
-            docs.push(normalizeClinicLog({ id: d.id, ...d.data() }));
+            clinicLogs.push(normalizeClinicLog({ id: d.id, ...d.data() }));
+        });
+    };
+
+    const pushReservationSnap = (snap) => {
+        snap.forEach((d) => {
+            reservations.push(normalizeClinicReservation({ id: d.id, ...d.data() }));
         });
     };
 
     const safeMaxDocs = Math.min(Number(maxDocs) || 5000, 5000);
 
     if (date && String(date).trim()) {
-        const q = query(
-            col,
+        const logsQ = query(
+            logsCol,
             where('date', '==', String(date).trim()),
             orderBy(documentId()),
             limit(safeMaxDocs),
         );
-        const snap = await getDocs(q);
+        const reservationsQ = query(
+            reservationsCol,
+            where('date', '==', String(date).trim()),
+            orderBy(documentId()),
+            limit(safeMaxDocs),
+        );
+        const [logsSnap, reservationsSnap] = await Promise.all([
+            getDocs(logsQ),
+            getDocs(reservationsQ),
+        ]);
         if (isCancelled?.()) return [];
-        pushSnap(snap);
-        return docs;
+        pushClinicLogSnap(logsSnap);
+        pushReservationSnap(reservationsSnap);
+        return mergeClinicDocs(clinicLogs, reservations);
     }
 
     const fromDate = String(from || '').trim();
@@ -239,24 +297,31 @@ export async function fetchClinicLogsDeepForStaff({
         clauses.push(orderBy('date', 'desc'));
         clauses.push(limit(safeMaxDocs));
 
-        const snap = await getDocs(query(col, ...clauses));
+        const [logsSnap, reservationsSnap] = await Promise.all([
+            getDocs(query(logsCol, ...clauses)),
+            getDocs(query(reservationsCol, ...clauses)),
+        ]);
         if (isCancelled?.()) return [];
-        pushSnap(snap);
-        return docs;
+        pushClinicLogSnap(logsSnap);
+        pushReservationSnap(reservationsSnap);
+        return mergeClinicDocs(clinicLogs, reservations);
     }
 
 
-    const q = query(
-        col,
+    const clauses = [
         orderBy('date', 'desc'),
         limit(safeMaxDocs),
-    );
+    ];
 
-    const snap = await getDocs(q);
+    const [logsSnap, reservationsSnap] = await Promise.all([
+        getDocs(query(logsCol, ...clauses)),
+        getDocs(query(reservationsCol, ...clauses)),
+    ]);
     if (isCancelled?.()) return [];
-    pushSnap(snap);
+    pushClinicLogSnap(logsSnap);
+    pushReservationSnap(reservationsSnap);
 
-    return docs;
+    return mergeClinicDocs(clinicLogs, reservations);
 }
 
 // staff 전용: grades 전체 페이지네이션 로드
@@ -506,9 +571,17 @@ export const loadStaffDataOnce = async ({
         }
 
         if (setClinicLogs && (shouldLoad('clinic') || shouldLoad('lessons'))) {
-            const light = await fetchClinicLogsLight(db, () => false, 300);
-            setClinicLogs?.(light);
-            console.log('[staff] clinicLogs loaded (light)=', light.length);
+            const [lightLogs, lightReservations] = await Promise.all([
+                fetchClinicLogsLight(db, () => false, 300),
+                fetchClinicReservationsLight(db, () => false, 500),
+            ]);
+            const mergedClinicDocs = mergeClinicDocs(lightLogs, lightReservations);
+            setClinicLogs?.(mergedClinicDocs);
+            console.log('[staff] clinic logs loaded (merged)=', {
+                clinicLogs: lightLogs.length,
+                clinicReservations: lightReservations.length,
+                merged: mergedClinicDocs.length,
+            });
         }
 
         if (setWorkLogs && shouldLoad('communication')) {
@@ -858,12 +931,13 @@ export const loadViewerDataOnce = async ({
         }
 
         /* =========================
-        clinicLogs (fetchList)
+        clinicLogs + clinicReservations (fetchList)
         ========================= */
         if (scopedStudentUids.length > 0) {
             const clinicDocs = [];
+            const reservationDocs = [];
 
-            // 1) studentId 기준 (studentDocId가 들어있는 케이스)
+            // clinicLogs
             await fetchListSafe(
                 'clinicLogs studentId',
                 db,
@@ -878,8 +952,6 @@ export const loadViewerDataOnce = async ({
                 isCancelled,
                 normalizeClinicLog,
             );
-
-            // 2) authUid 기준 (학생 authUid가 들어있는 케이스)
             await fetchListSafe(
                 'clinicLogs authUid',
                 db,
@@ -892,9 +964,8 @@ export const loadViewerDataOnce = async ({
                     limit(100),
                 ),
                 isCancelled,
+                normalizeClinicLog,
             );
-
-            // 3) studentUid 기준 (옛 필드가 남아있는 케이스)
             await fetchListSafe(
                 'clinicLogs studentUid',
                 db,
@@ -910,21 +981,52 @@ export const loadViewerDataOnce = async ({
                 normalizeClinicLog,
             );
 
-            // ✅ 중복 제거 + 정렬
-            if (!isCancelled()) {
-                const map = new Map();
-                clinicDocs.forEach((x) => {
-                    if (!x?.id) return;
-                    if (!map.has(x.id)) map.set(x.id, x);
-                });
+            // clinicReservations
+            await fetchListSafe(
+                'clinicReservations studentId',
+                db,
+                'clinicReservations',
+                (items) => reservationDocs.push(...items),
+                query(
+                    collection(db, 'clinicReservations'),
+                    where('studentId', 'in', scopedStudentUids),
+                    orderBy('date', 'desc'),
+                    limit(100),
+                ),
+                isCancelled,
+                normalizeClinicReservation,
+            );
+            await fetchListSafe(
+                'clinicReservations authUid',
+                db,
+                'clinicReservations',
+                (items) => reservationDocs.push(...items),
+                query(
+                    collection(db, 'clinicReservations'),
+                    where('authUid', 'in', scopedStudentUids),
+                    orderBy('date', 'desc'),
+                    limit(100),
+                ),
+                isCancelled,
+                normalizeClinicReservation,
+            );
+            await fetchListSafe(
+                'clinicReservations studentUid',
+                db,
+                'clinicReservations',
+                (items) => reservationDocs.push(...items),
+                query(
+                    collection(db, 'clinicReservations'),
+                    where('studentUid', 'in', scopedStudentUids),
+                    orderBy('date', 'desc'),
+                    limit(30),
+                ),
+                isCancelled,
+                normalizeClinicReservation,
+            );
 
-                const merged = Array.from(map.values()).sort((a, b) => {
-                    const ad = String(a?.effectiveDate || '');
-                    const bd = String(b?.effectiveDate || '');
-                    return bd.localeCompare(ad);
-                });
-
-                setClinicLogs?.(merged);
+                if (!isCancelled()) {
+                setClinicLogs?.(mergeClinicDocs(clinicDocs, reservationDocs));
             }
         } else if (!isCancelled()) {
             setClinicLogs?.([]);

@@ -309,9 +309,15 @@ service cloud.firestore {
     }
     
     match /clinicReservations/{docId} {
-      allow read, get, list: if isStaffOrAdminOrTeacher()
-        || (isSignedIn() && isMyStudentUid(resource.data.studentDocId));
-      allow write: if isStaffOrAdminOrTeacher();
+      allow get, read, list: if isStaffOrAdminOrTeacher()
+        || (isSignedIn()
+          && (
+            ('authUid' in resource.data && isMyStudentUid(resource.data.authUid))
+            || ('studentId' in resource.data && isMyStudentUid(resource.data.studentId))
+            || ('studentUid' in resource.data && isMyStudentUid(resource.data.studentUid))
+          )
+        );
+      allow create, update, delete: if isStaffOrAdminOrTeacher();
     }
 
     match /clinicSessions/{docId} {
