@@ -1,0 +1,58 @@
+.print-only { display: none; }
+
+@media print {
+  body * { visibility: hidden !important; }
+  .print-root, .print-root * { visibility: visible !important; }
+
+  .print-root {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+  }
+
+  .print-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10mm;
+    align-items: start;
+  }
+
+  .avoid-break {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  thead { display: table-header-group; }
+  tfoot { display: table-footer-group; }
+  tr, td, th {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .no-print-scroll {
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  .print-scale {
+    transform-origin: top left;
+    transform: scale(0.95);
+  }
+
+  .print-scale-tight {
+    transform-origin: top left;
+    transform: scale(0.90);
+  }
+
+  svg text,
+  .recharts-text,
+  .recharts-cartesian-axis-tick-value {
+    fill: #111 !important;
+  }
+}

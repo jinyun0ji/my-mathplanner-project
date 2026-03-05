@@ -4,6 +4,15 @@ import { getTotalScore } from '../../domain/grade/grade.service';
 const TOP_COUNT = 5;
 const BOTTOM_COUNT = 5;
 
+const asNumber = (value) => (Number.isFinite(value) ? value : Number(value) || 0);
+
+const formatScore = (score, maxScore) => {
+    const parsedScore = asNumber(score);
+    const parsedMax = asNumber(maxScore);
+    if (parsedMax > 0) return `${parsedScore.toFixed(1)} / ${parsedMax}`;
+    return `${parsedScore.toFixed(1)}`;
+};
+
 const normalizeAnswerStatus = (value) => {
     if (value === true || value === 1 || value === '1' || value === 'O' || value === 'o' || value === '맞음') return 'O';
     if (value === false || value === 2 || value === '2' || value === 'X' || value === 'x' || value === '틀림') return 'X';
@@ -76,7 +85,7 @@ function ScoreHistogram({ bins = [] }) {
     );
 }
 
-export default function TestResultPrintPage({ classInfo, test, students = [], gradesMap = {} }) {
+export default function TestResultPrintPage({ classInfo, test, students = [], gradesMap = {}, compact = false }) {
     const resolvedDate = formatDate(test?.date || test?.createdAt || test?.updatedAt);
 
     const prepared = useMemo(() => {
@@ -110,21 +119,17 @@ export default function TestResultPrintPage({ classInfo, test, students = [], gr
             })
             .filter((row) => row.attempted);
 
-        const percents = attemptedRows
-            .map((row) => row.percent)
+        const scores = attemptedRows
+            .map((row) => row.score)
             .filter(Number.isFinite);
 
-        const averagePercent = percents.length
-            ? percents.reduce((sum, value) => sum + value, 0) / percents.length
+        const averageRawScore = scores.length
+            ? scores.reduce((sum, value) => sum + value, 0) / scores.length
             : null;
 
-        const averageRawScore = attemptedRows.length
-            ? attemptedRows.reduce((sum, row) => sum + (Number.isFinite(row.score) ? row.score : 0), 0) / attemptedRows.length
-            : null;
-
-        const orderedByPercent = attemptedRows
-            .filter((row) => Number.isFinite(row.percent))
-            .sort((a, b) => b.percent - a.percent);
+        const orderedByScore = attemptedRows
+            .filter((row) => Number.isFinite(row.score))
+            .sort((a, b) => b.score - a.score);
 
         const maxQuestionFromAnswers = attemptedRows.reduce((max, row) => {
             const maxFromRow = Object.keys(row.answerMap || {}).reduce((innerMax, key) => {
@@ -141,12 +146,11 @@ export default function TestResultPrintPage({ classInfo, test, students = [], gr
         return {
             attemptedRows,
             bins: percentileBins(attemptedRows),
-            averagePercent,
             averageRawScore,
-            medianPercent: calculateMedian(percents),
-            stdDevPercent: calculateStdDev(percents),
-            topStudents: orderedByPercent.slice(0, TOP_COUNT),
-            bottomStudents: [...orderedByPercent].reverse().slice(0, BOTTOM_COUNT),
+            medianRawScore: calculateMedian(scores),
+            stdDevRawScore: calculateStdDev(scores),
+            topStudents: orderedByScore.slice(0, TOP_COUNT),
+            bottomStudents: [...orderedByScore].reverse().slice(0, BOTTOM_COUNT),
             totalQuestions,
         };
     }, [gradesMap, students, test]);
@@ -156,22 +160,16 @@ export default function TestResultPrintPage({ classInfo, test, students = [], gr
     return (
         <div className="print-page-wrap">
             <style>{`
-                @page { size: A4 landscape; margin: 10mm; }
-                @media print {
-                    body { margin: 0; background: #fff; }
-                    .print-modal-actions { display: none !important; }
-                    .print-page-wrap { padding: 0; }
-                }
                 .print-page-wrap { font-family: 'Noto Sans KR', sans-serif; color: #111827; background: #fff; }
                 .print-header { margin-bottom: 8px; border-bottom: 1px solid #d1d5db; padding-bottom: 6px; }
                 .print-header .class-name { font-size: 20px; font-weight: 700; margin: 0; }
                 .print-header .test-meta { font-size: 13px; margin-top: 4px; color: #374151; }
-                .print-grid { display: grid; grid-template-columns: 0.95fr 1.05fr; column-gap: 10mm; align-items: start; }
                 .section-title { font-size: 13px; font-weight: 700; margin: 0 0 6px; }
                 .summary-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; font-size: 11px; margin-bottom: 10px; }
                 .summary-card { border: 1px solid #d1d5db; border-radius: 4px; padding: 5px; }
                 .histogram-box { border: 1px solid #d1d5db; border-radius: 4px; padding: 8px; margin-bottom: 10px; }
-                .histogram-svg { width: 100%; height: 160px; }
+                .histogram-chart-wrap { width: 100%; height: 260px; }
+                .histogram-svg { width: 100%; height: 100%; }
                 .bar-label { font-size: 3.2px; fill: #374151; }
                 .bar-count { font-size: 3.4px; fill: #111827; }
                 .rank-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
@@ -192,20 +190,21 @@ export default function TestResultPrintPage({ classInfo, test, students = [], gr
                 <p className="test-meta">{test?.name || test?.title || '-'} · {resolvedDate}</p>
             </header>
 
-            <div className="print-grid">
-                <section>
+            <div className={`print-grid ${compact ? 'print-scale-tight' : 'print-scale'}`}>
+                <section className="avoid-break">
                     <h2 className="section-title">시험 요약</h2>
                     <div className="summary-grid">
                         <div className="summary-card">응시자 수: <b>{prepared.attemptedRows.length}</b></div>
-                        <div className="summary-card">평균(%): <b>{Number.isFinite(prepared.averagePercent) ? `${prepared.averagePercent.toFixed(1)}%` : '-'}</b></div>
-                        <div className="summary-card">중앙값(%): <b>{Number.isFinite(prepared.medianPercent) ? `${prepared.medianPercent.toFixed(1)}%` : '-'}</b></div>
-                        <div className="summary-card">표준편차(%): <b>{Number.isFinite(prepared.stdDevPercent) ? prepared.stdDevPercent.toFixed(1) : '-'}</b></div>
-                        <div className="summary-card">평균(원점수/총점): <b>{Number.isFinite(prepared.averageRawScore) ? `${prepared.averageRawScore.toFixed(1)} / ${test?.maxScore || '-'}` : '-'}</b></div>
+                        <div className="summary-card">평균: <b>{Number.isFinite(prepared.averageRawScore) ? formatScore(prepared.averageRawScore, test?.maxScore) : '-'}</b></div>
+                        <div className="summary-card">중앙값: <b>{Number.isFinite(prepared.medianRawScore) ? formatScore(prepared.medianRawScore, test?.maxScore) : '-'}</b></div>
+                        <div className="summary-card">표준편차(원점수): <b>{Number.isFinite(prepared.stdDevRawScore) ? prepared.stdDevRawScore.toFixed(1) : '-'}</b></div>
                     </div>
 
-                    <div className="histogram-box">
+                    <div className="histogram-box avoid-break">
                         <h3 className="section-title">점수분포 그래프(%)</h3>
-                        <ScoreHistogram bins={prepared.bins} />
+                        <div className="histogram-chart-wrap">
+                            <ScoreHistogram bins={prepared.bins} />
+                        </div>
                     </div>
 
                     <div className="rank-grid">
@@ -213,7 +212,7 @@ export default function TestResultPrintPage({ classInfo, test, students = [], gr
                             <h3 className="section-title">최고점 Top {TOP_COUNT}</h3>
                             <ul>
                                 {prepared.topStudents.map((row, index) => (
-                                    <li key={`${row.studentId}-top`}>{index + 1}. {row.studentName} ({row.percent.toFixed(1)}%)</li>
+                                    <li key={`${row.studentId}-top`}>{index + 1}. {row.studentName} ({formatScore(row.score, test?.maxScore)})</li>
                                 ))}
                             </ul>
                         </div>
@@ -221,14 +220,14 @@ export default function TestResultPrintPage({ classInfo, test, students = [], gr
                             <h3 className="section-title">최저점 Bottom {BOTTOM_COUNT}</h3>
                             <ul>
                                 {prepared.bottomStudents.map((row, index) => (
-                                    <li key={`${row.studentId}-bottom`}>{index + 1}. {row.studentName} ({row.percent.toFixed(1)}%)</li>
+                                    <li key={`${row.studentId}-bottom`}>{index + 1}. {row.studentName} ({formatScore(row.score, test?.maxScore)})</li>
                                 ))}
                             </ul>
                         </div>
                     </div>
                 </section>
 
-                <section className="answer-table-wrap">
+                <section className="answer-table-wrap no-print-scroll">
                     <h2 className="section-title">정오표(응시자)</h2>
                     <table className={`answer-table ${denseTableClass}`}>
                         <thead>

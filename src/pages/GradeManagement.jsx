@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import { useReactToPrint } from 'react-to-print';
 import { Icon } from '../utils/helpers';
 import ClassSelectionPanel from '../components/Shared/ClassSelectionPanel';
 import FullGradeTable from '../components/Grade/FullGradeTable';
@@ -28,10 +29,12 @@ export default function GradeManagement({
     const [selectedTestId, setSelectedTestId] = useState(null);
     const [isGradeInputModalOpen, setIsGradeInputModalOpen] = useState(false);
     const [isStatsModalOpen, setIsStatsModalOpen] = useState(false);
+    const [compactPrint, setCompactPrint] = useState(true);
     const { students: classStudents, isLoading: isLoadingStudents } = useClassStudents(selectedClassId);
     
     // 엑셀 파일 입력을 위한 Ref
     const fileInputRef = useRef(null);
+    const printRef = useRef(null);
     
     const selectedClass = classes.find(c => String(c.id) === String(selectedClassId));
 
@@ -116,6 +119,24 @@ export default function GradeManagement({
             setIsGradeInputModalOpen(true);
         }
     };
+
+    const handlePrint = useReactToPrint({
+        content: () => printRef.current,
+        documentTitle: selectedTest?.name ? `${selectedTest.name}-시험결과` : '시험결과',
+        removeAfterPrint: true,
+        pageStyle: `
+          @page { size: A4 landscape; margin: 10mm; }
+          html, body { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+        `,
+    });
+
+    const handlePrintClick = useCallback(() => {
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                handlePrint();
+            });
+        });
+    }, [handlePrint]);
 
     // 엑셀 양식 다운로드
     const handleDownloadExcelForm = (e) => {
@@ -419,16 +440,27 @@ export default function GradeManagement({
                         <div className="flex items-center justify-between mb-4">
                             <h3 className="text-lg font-bold">{selectedTest.name} 시험결과 인쇄</h3>
                             <div className="flex gap-2 print-modal-actions">
-                                <button className="px-3 py-1.5 text-sm border rounded" onClick={() => window.print()}>인쇄</button>
+                               <label className="flex items-center gap-1 text-sm">
+                                    <input
+                                        type="checkbox"
+                                        checked={compactPrint}
+                                        onChange={(event) => setCompactPrint(event.target.checked)}
+                                    />
+                                    축소 인쇄
+                                </label>
+                                <button className="px-3 py-1.5 text-sm border rounded" onClick={handlePrintClick}>인쇄</button>
                                 <button className="px-3 py-1.5 text-sm border rounded" onClick={() => setIsStatsModalOpen(false)}>닫기</button>
                             </div>
                         </div>
-                        <TestResultPrintPage
-                            classInfo={selectedClass}
-                            test={selectedTest}
-                            students={displayRosterForTest}
-                            gradesMap={grades}
-                        />
+                        <div ref={printRef} className="print-root">
+                            <TestResultPrintPage
+                                classInfo={selectedClass}
+                                test={selectedTest}
+                                students={displayRosterForTest}
+                                gradesMap={grades}
+                                compact={compactPrint}
+                            />
+                        </div>
                     </div>
                 </div>
             )}
