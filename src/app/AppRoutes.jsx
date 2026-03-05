@@ -1306,6 +1306,21 @@ export default function AppRoutes({ user, role, studentIds }) {
           return candidates[0] || '';
       };
 
+      const resolveStudentAuthUidForClinicPayload = (p) => {
+          const direct = String(p?.authUid || '').trim();
+          if (direct) return direct;
+
+          const studentDocId = String(
+              p?.studentDocId || p?.studentId || p?.studentUid || '',
+          ).trim();
+          if (!studentDocId) return '';
+
+          const matchedStudent = (students || []).find(
+              (s) => String(s?.id) === studentDocId,
+          );
+          return String(matchedStudent?.authUid || '').trim();
+      };
+
       ensureFirestoreContext();
       try {
           const { effectiveDate, ...payload } = stripId(data);
@@ -1366,6 +1381,7 @@ export default function AppRoutes({ user, role, studentIds }) {
                       ).trim();
                       const normalizedDate = String(payload?.date || payload?.clinicDate || '').trim();
                       const normalizedTimeSlot = normalizedPlanned;
+                      const normalizedAuthUid = resolveStudentAuthUidForClinicPayload(payload);
 
                       const missing = [];
                       if (!normalizedStudentDocId) missing.push('studentDocId');
@@ -1387,6 +1403,7 @@ export default function AppRoutes({ user, role, studentIds }) {
                           date: normalizedDate,
                           timeSlot: normalizedTimeSlot,
                           plannedTime: normalizedTimeSlot,
+                          authUid: normalizedAuthUid || null,
                       });
 
                       const reservationId = res?.data?.id || `local-${Date.now()}`;
@@ -1398,6 +1415,7 @@ export default function AppRoutes({ user, role, studentIds }) {
                           classId: normalizedClassId,
                           date: normalizedDate,
                           plannedTime: normalizedTimeSlot,
+                          authUid: normalizedAuthUid || null,
                           status: 'pending',
                       });
                       setClinicLogs((prev) => [...prev, normalized]);
@@ -1435,14 +1453,22 @@ export default function AppRoutes({ user, role, studentIds }) {
                       return;
                   }
               } else {
+                const normalizedAuthUid = resolveStudentAuthUidForClinicPayload(payload);
                   const docRef = await addDoc(collection(db, 'clinicLogs'), {
                       ...payload,
+                      authUid: normalizedAuthUid || null,
+                      studentId: payload?.studentDocId || payload?.studentId || payload?.studentUid || '',
                       createdAt: serverTimestamp(),
                       createdBy: userId,
                       updatedAt: serverTimestamp(),
                       updatedBy: userId,
                   });
-                  const normalized = normalizeClinicLog({ id: docRef.id, ...payload });
+                  const normalized = normalizeClinicLog({
+                      id: docRef.id,
+                      ...payload,
+                      authUid: normalizedAuthUid || null,
+                      studentId: payload?.studentDocId || payload?.studentId || payload?.studentUid || '',
+                  });
                   setClinicLogs(prev => [...prev, normalized]);
               }
           }

@@ -10,7 +10,7 @@ import { getDefaultClassId } from '../utils/classStatus';
 import { useClassStudents } from '../utils/useClassStudents';
 import { filterRosterByWithdrawDate } from '../utils/rosterFilter';
 import { buildStudentParentPhoneLast4Map, formatStudentNameWithParentLast4 } from '../utils/parentPhone';
-import { buildTestStats } from '../utils/gradeStats';
+import TestResultPrintPage from '../components/Grade/TestResultPrintPage';
 
 // ----------------------------------------------------------------------
 // 메인 컴포넌트: GradeManagement
@@ -116,15 +116,6 @@ export default function GradeManagement({
             setIsGradeInputModalOpen(true);
         }
     };
-
-    const printableStats = useMemo(() => {
-        if (!selectedTest) return null;
-        return buildTestStats({
-            test: selectedTest,
-            students: displayRosterForTest,
-            gradesByStudent: grades,
-        });
-    }, [selectedTest, displayRosterForTest, grades]);
 
     // 엑셀 양식 다운로드
     const handleDownloadExcelForm = (e) => {
@@ -422,50 +413,22 @@ export default function GradeManagement({
                 />
             )}
 
-            {selectedTest && isStatsModalOpen && printableStats && (
+            {selectedTest && isStatsModalOpen && (
                 <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => setIsStatsModalOpen(false)}>
-                    <div className="bg-white rounded-xl shadow-xl w-full max-w-3xl max-h-[85vh] overflow-y-auto p-5" onClick={(e) => e.stopPropagation()}>
+                    <div className="bg-white rounded-xl shadow-xl w-full max-w-[1400px] max-h-[95vh] overflow-y-auto p-5" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-between mb-4">
-                            <h3 className="text-lg font-bold">{selectedTest.name} 시험 결과 통계</h3>
-                            <div className="flex gap-2">
+                            <h3 className="text-lg font-bold">{selectedTest.name} 시험결과 인쇄</h3>
+                            <div className="flex gap-2 print-modal-actions">
                                 <button className="px-3 py-1.5 text-sm border rounded" onClick={() => window.print()}>인쇄</button>
                                 <button className="px-3 py-1.5 text-sm border rounded" onClick={() => setIsStatsModalOpen(false)}>닫기</button>
                             </div>
                         </div>
-                        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-sm mb-4">
-                            <div className="border rounded p-2">응시: <b>{printableStats.attemptedCount}</b></div>
-                            <div className="border rounded p-2">미응시: <b>{printableStats.noShowCount}</b></div>
-                            <div className="border rounded p-2">평균: <b>{printableStats.average?.toFixed(1) ?? '-'}</b></div>
-                            <div className="border rounded p-2">최고: <b>{printableStats.max?.toFixed(1) ?? '-'}</b></div>
-                            <div className="border rounded p-2">최저: <b>{printableStats.min?.toFixed(1) ?? '-'}</b></div>
-                        </div>
-                        <h4 className="font-semibold mb-2">점수 분포</h4>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4 text-sm">
-                            {printableStats.distribution.map((bin) => (
-                                <div key={bin.label} className="border rounded p-2 flex justify-between"><span>{bin.label}</span><b>{bin.count}</b></div>
-                            ))}
-                        </div>
-                        <h4 className="font-semibold mb-2">문항별 정답률</h4>
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-sm border-collapse">
-                                <thead>
-                                    <tr className="bg-gray-50">
-                                        <th className="border px-2 py-1">문항</th>
-                                        <th className="border px-2 py-1">정답/응시</th>
-                                        <th className="border px-2 py-1">정답률</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {printableStats.questionRates.map((q) => (
-                                        <tr key={q.question}>
-                                            <td className="border px-2 py-1 text-center">{q.question}</td>
-                                            <td className="border px-2 py-1 text-center">{q.correct}/{q.attempted}</td>
-                                            <td className="border px-2 py-1 text-center">{(q.rate * 100).toFixed(1)}%</td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
+                        <TestResultPrintPage
+                            classInfo={selectedClass}
+                            test={selectedTest}
+                            students={displayRosterForTest}
+                            gradesMap={grades}
+                        />
                     </div>
                 </div>
             )}

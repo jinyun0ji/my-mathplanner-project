@@ -68,6 +68,21 @@ const createClinicReservation = functions
 
     assertRequired(missing);
 
+    let resolvedStudentAuthUid = data?.authUid ? String(data.authUid).trim() : '';
+    if (!resolvedStudentAuthUid) {
+        try {
+            const studentSnap = await db.collection('users').doc(studentDocId).get();
+            if (studentSnap.exists) {
+                resolvedStudentAuthUid = String(studentSnap.data()?.authUid || '').trim();
+            }
+        } catch (e) {
+            console.warn('[createClinicReservation] users/{studentDocId} authUid lookup failed', {
+                studentDocId,
+                message: e?.message || e,
+            });
+        }
+    }
+
     const col = db.collection('clinicReservations');
 
     let reservationId = '';
@@ -88,7 +103,7 @@ const createClinicReservation = functions
         reservationId = ref.id;
         tx.set(ref, {
             studentDocId,
-            studentId: studentDocId,
+            authUid: resolvedStudentAuthUid || null,
             authUid: data?.authUid ? String(data.authUid).trim() : null,
             studentUid: data?.studentUid ? String(data.studentUid).trim() : null,
             classId,

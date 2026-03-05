@@ -303,6 +303,8 @@ service cloud.firestore {
             || ('studentId' in resource.data && isMyStudentUid(resource.data.studentId))
             // 혹시 studentUid 필드가 남아있는 문서도 커버
             || ('studentUid' in resource.data && isMyStudentUid(resource.data.studentUid))
+            // studentDocId 필드로 저장된 레거시 문서 커버
+            || ('studentDocId' in resource.data && isMyStudentUid(resource.data.studentDocId))
           )
         );
       allow write: if isStaffOrAdminOrTeacher();
@@ -315,6 +317,7 @@ service cloud.firestore {
             ('authUid' in resource.data && isMyStudentUid(resource.data.authUid))
             || ('studentId' in resource.data && isMyStudentUid(resource.data.studentId))
             || ('studentUid' in resource.data && isMyStudentUid(resource.data.studentUid))
+            || ('studentDocId' in resource.data && isMyStudentUid(resource.data.studentDocId))
           )
         );
       allow create, update, delete: if isStaffOrAdminOrTeacher();

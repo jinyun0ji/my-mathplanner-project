@@ -195,6 +195,81 @@ const fetchClinicReservationsLight = async (db, isCancelled, lightLimit = 500) =
     return snap.docs.map((d) => normalizeClinicReservation({ id: d.id, ...d.data() }));
 };
 
+const fetchClinicLogsForViewer = async ({
+    db,
+    studentDocId,
+    authUid,
+    pageSize = 200,
+    maxDocs = 2000,
+    isCancelled = () => false,
+}) => {
+    const col = collection(db, 'clinicLogs');
+
+    const runByField = async (field, value) => {
+        const output = [];
+        let lastDoc = null;
+        let guard = 0;
+
+        while (guard < 50 && output.length < maxDocs) {
+            if (isCancelled()) break;
+
+            const constraints = [
+                where(field, '==', String(value)),
+                orderBy('date', 'desc'),
+                orderBy('name', 'desc'),
+                limit(pageSize),
+            ];
+            if (lastDoc) constraints.push(startAfter(lastDoc));
+
+            const snap = await getDocs(query(col, ...constraints));
+            if (snap.empty) break;
+
+            snap.docs.forEach((d) => {
+                output.push(normalizeAuthUid({ id: d.id, ...d.data() }));
+            });
+
+            lastDoc = snap.docs[snap.docs.length - 1];
+            if (snap.docs.length < pageSize) break;
+            guard += 1;
+        }
+
+        return output;
+    };
+
+    const merged = new Map();
+    const errors = [];
+
+    const execute = async (queryType, field, value) => {
+        if (!value) return;
+        try {
+            const docs = await runByField(field, value);
+            docs.forEach((item) => {
+                if (item?.id) merged.set(item.id, item);
+            });
+        } catch (error) {
+            console.warn('[viewer] clinicLogs query failed', {
+                queryType,
+                field,
+                studentDocId: studentDocId || null,
+                authUid: authUid || null,
+                code: error?.code || '',
+                message: error?.message || '',
+            });
+            errors.push(error);
+        }
+    };
+
+    await execute('studentId', 'studentId', studentDocId);
+    await execute('authUid', 'authUid', authUid);
+    await execute('studentUid', 'studentUid', studentDocId);
+
+    if (merged.size === 0 && errors.length > 0) {
+        throw errors[0];
+    }
+
+    return Array.from(merged.values()).map(normalizeClinicLog);
+};
+
 export async function fetchClinicLogsPaged({
     db,
     lastDoc = null,
@@ -947,64 +1022,20 @@ export const loadViewerDataOnce = async ({
         if (scopedStudentUids.length > 0) {
             const clinicDocs = [];
             const reservationDocs = [];
+            const viewerStudentDocId = activeStudentId || scopedStudentUids[0] || null;
+            const viewerAuthUid = userId || scopedStudentAuthUids[0] || null;
 
-            // clinicLogs
-            await fetchListSafe(
-                'clinicLogs studentId',
-                db,
-                'clinicLogs',
-                (items) => clinicDocs.push(...items),
-                query(
-                    collection(db, 'clinicLogs'),
-                    where('studentId', 'in', scopedStudentUids),
-                    orderBy('date', 'desc'),
-                    limit(100),
-                ),
-                isCancelled,
-                normalizeClinicLog,
-            );
-            await fetchListSafe(
-                'clinicLogs studentDocId',
-                db,
-                'clinicLogs',
-                (items) => clinicDocs.push(...items),
-                query(
-                    collection(db, 'clinicLogs'),
-                    where('studentDocId', 'in', scopedStudentUids),
-                    orderBy('date', 'desc'),
-                    limit(100),
-                ),
-                isCancelled,
-                normalizeClinicLog,
-            );
-            await fetchListSafe(
-                'clinicLogs authUid',
-                db,
-                'clinicLogs',
-                (items) => clinicDocs.push(...items),
-                query(
-                    collection(db, 'clinicLogs'),
-                    where('authUid', 'in', scopedStudentAuthUids),
-                    orderBy('date', 'desc'),
-                    limit(100),
-                ),
-                isCancelled,
-                normalizeClinicLog,
-            );
-            await fetchListSafe(
-                'clinicLogs studentUid',
-                db,
-                'clinicLogs',
-                (items) => clinicDocs.push(...items),
-                query(
-                    collection(db, 'clinicLogs'),
-                    where('studentUid', 'in', scopedStudentUids),
-                    orderBy('date', 'desc'),
-                    limit(30),
-                ),
-                isCancelled,
-                normalizeClinicLog,
-            );
+            const fetchedClinicLogs = await run('clinicLogs viewer', async () => {
+                return fetchClinicLogsForViewer({
+                    db,
+                    studentDocId: viewerStudentDocId,
+                    authUid: viewerAuthUid,
+                    pageSize: 200,
+                    maxDocs: 2000,
+                    isCancelled,
+                });
+            });
+            clinicDocs.push(...fetchedClinicLogs);
 
             // clinicReservations
             await fetchListSafe(
@@ -1015,20 +1046,6 @@ export const loadViewerDataOnce = async ({
                 query(
                     collection(db, 'clinicReservations'),
                     where('studentId', 'in', scopedStudentUids),
-                    orderBy('date', 'desc'),
-                    limit(100),
-                ),
-                isCancelled,
-                normalizeClinicReservation,
-            );
-            await fetchListSafe(
-                'clinicReservations studentDocId',
-                db,
-                'clinicReservations',
-                (items) => reservationDocs.push(...items),
-                query(
-                    collection(db, 'clinicReservations'),
-                    where('studentDocId', 'in', scopedStudentUids),
                     orderBy('date', 'desc'),
                     limit(100),
                 ),
