@@ -302,20 +302,9 @@ service cloud.firestore {
       allow write: if isStaffOrAdminOrTeacher();
     }
     
-    match /classTestStats/{docId} {
-
-      // docId format: "{classId}_{testId}"
-      function statClassId() {
-        return docId.split('_')[0];
-      }
-
-      allow get: if isAdminOrStaff()
-        || (isSignedIn() && isClassMember(statClassId()));
-
-      allow list: if false;
-
-      // write는 (직원 앱이 쓰는 경우만) 허용. Cloud Functions(Admin SDK)은 rules 무시함.
-      allow write: if isStaffOrAdminOrTeacher();
+    match /classTestStats/{id} {
+      allow read: if request.auth != null;
+      allow write: if isStaff();
     }
 
     match /lessonLogs/{docId} {

@@ -134,11 +134,18 @@ const resolveClinicEffectiveDate = (log) => {
 
 const normalizeClinicLog = (log) => {
     if (!log) return log;
-    return {
+    const normalized = {
         ...log,
         effectiveDate: resolveClinicEffectiveDate(log),
         __source: log.__source || 'clinicLogs',
     };
+
+    // 예약 문서에서 studentDocId만 있는 경우 viewer에서 사용할 studentId 보정
+    if (!normalized.studentId && normalized.studentDocId) {
+        normalized.studentId = String(normalized.studentDocId);
+    }
+
+    return normalized;
 };
 
 const normalizeClinicReservation = (log) => {
@@ -983,7 +990,17 @@ export const loadViewerDataOnce = async ({
                 if (!d?.id) return;
                 if (seen.has(d.id)) return;
                 seen.add(d.id);
-                results.push({ id: d.id, ...d.data() });
+                const raw = { id: d.id, ...d.data() };
+
+                // 예약 문서는 studentDocId만 있는 경우가 있으므로
+                // viewer 기준으로 studentId를 studentDocId로 통일
+                const normalized = normalizeClinicReservation(raw);
+
+                const fixed = normalized?.studentDocId
+                    ? { ...normalized, studentId: String(normalized.studentDocId) }
+                    : normalized;
+
+                results.push(fixed);
             });
         };
 
@@ -1306,7 +1323,11 @@ export const loadViewerDataOnce = async ({
                 ...safeArray(clinicList).map((log) => normalizeClinicLog(log)),
                 ...safeArray(clinicReservationsList).map((log) => normalizeClinicLog(log)),
             ]);
-            setClinicLogs?.(mergedClinic.filter((log) => Boolean(log?.studentId)));
+            setClinicLogs?.(
+                mergedClinic.filter(
+                    (log) => Boolean(log?.studentId || log?.studentDocId),
+                ),
+            );
             const mappedGrades = buildGradesMap(gradeList);
             setGrades?.(mappedGrades);
             viewerDetailCache.grades.set(detailCacheKey, mappedGrades);
