@@ -67,7 +67,7 @@ export default function DashboardTab({
         type: 'external', academyName: s.academyName, courseName: s.courseName, instructor: s.instructor, time: `${s.startTime}~${s.endTime}`, sortTime: s.startTime
     })) : [];
 
-    const allEvents = [...todayClasses, ...todayClinics, ...todayExternal].sort((a, b) => a.sortTime.localeCompare(b.sortTime));
+    const allEvents = [...todayClasses, ...todayClinics, ...todayExternal].sort((a, b) => String(a?.sortTime || '').localeCompare(String(b?.sortTime || '')));
     const nowTimeStr = today.toTimeString().slice(0, 5); 
     let keyEvent = allEvents.find(e => { let endTime = '23:59'; if (e.time.includes('~')) endTime = e.time.split('~')[1]; return endTime >= nowTimeStr; });
     const pendingHomework = homeworkStats.filter(h => !h.isComplete);

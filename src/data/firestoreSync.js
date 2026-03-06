@@ -134,9 +134,14 @@ const resolveClinicEffectiveDate = (log) => {
 
 const normalizeClinicLog = (log) => {
     if (!log) return log;
+    const effectiveDate = resolveClinicEffectiveDate(log) || '';
+    const plannedTimeRaw = log?.plannedTime ?? log?.timeSlot ?? log?.time ?? log?.slot ?? '';
+    const plannedTime = String(plannedTimeRaw || '').trim();
+
     const normalized = {
         ...log,
-        effectiveDate: resolveClinicEffectiveDate(log),
+        effectiveDate: String(effectiveDate || ''),
+        plannedTime,
         __source: log.__source || 'clinicLogs',
     };
 
@@ -151,10 +156,10 @@ const normalizeClinicLog = (log) => {
 const normalizeClinicReservation = (log) => {
     if (!log) return log;
     const base = normalizeAuthUid(log);
-    const timeSlot = base.timeSlot || base.plannedTime || '';
+    const timeSlot = base.timeSlot || base.plannedTime || base.time || base.slot || '';
     return normalizeClinicLog({
         ...base,
-        plannedTime: base.plannedTime || timeSlot,
+        plannedTime: String(base.plannedTime || timeSlot || '').trim(),
         status: base.status || 'pending',
         __source: 'clinicReservations',
     });
