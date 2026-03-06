@@ -352,33 +352,76 @@ async function loadGradesForViewer(db, viewerStudentDocIds, isCancelled = () => 
     return out;
 }
 
-async function loadHomeworkAssignmentsForViewer(db, viewerStudentDocIds, isCancelled = () => false) {
-    if (!nonEmpty(viewerStudentDocIds)) return [];
+async function loadHomeworkAssignmentsForViewer(
+    db,
+    viewerStudentDocIds,
+    isCancelled = () => false,
+    viewerClassIds = [],
+) {
+    const results = [];
+    const seen = new Set();
+
+    const push = (items) => {
+        (items || []).forEach((item) => {
+            if (!item?.id) return;
+            if (seen.has(item.id)) return;
+            seen.add(item.id);
+            results.push(item);
+        });
+    };
+
     const ids = uniq(viewerStudentDocIds);
+    const classIds = uniq(viewerClassIds);
 
+    // 1) 학생 직접 지정 과제
     if (ids.length === 1) {
-        const q = query(
-            collection(db, 'homeworkAssignments'),
-            where('targetStudents', 'array-contains', ids[0]),
-            orderBy('assignedDate', 'desc'),
-            limit(200),
-        );
-        return fetchListSafe(q, isCancelled);
+        try {
+            const q = query(
+                collection(db, 'homeworkAssignments'),
+                where('targetStudents', 'array-contains', ids[0]),
+                orderBy('assignedDate', 'desc'),
+                limit(200),
+            );
+            push(await fetchListSafe(q, isCancelled));
+        } catch (e) {
+            console.warn('[viewer] homeworkAssignments targetStudents(single) skipped', e);
+        }
+    } else if (ids.length > 1) {
+        const chunks = chunkArray(ids, 10);
+        for (const chunk of chunks) {
+            try {
+                const q = query(
+                    collection(db, 'homeworkAssignments'),
+                    where('targetStudents', 'array-contains-any', chunk),
+                    orderBy('assignedDate', 'desc'),
+                    limit(200),
+                );
+                push(await fetchListSafe(q, isCancelled));
+            } catch (e) {
+                console.warn('[viewer] homeworkAssignments targetStudents(any) skipped', e);
+            }
+        }
     }
 
-    const out = [];
-    const chunks = chunkArray(ids, 10);
-    for (const chunk of chunks) {
-        if (!nonEmpty(chunk)) continue;
-        const q = query(
-            collection(db, 'homeworkAssignments'),
-            where('targetStudents', 'array-contains-any', chunk),
-            orderBy('assignedDate', 'desc'),
-            limit(200),
-        );
-        out.push(...(await fetchListSafe(q, isCancelled)));
+    // 2) classId 기반 과제
+    if (classIds.length > 0) {
+        const chunks = chunkArray(classIds, 10);
+        for (const chunk of chunks) {
+            try {
+                const q = query(
+                    collection(db, 'homeworkAssignments'),
+                    where('classId', 'in', chunk),
+                    orderBy('assignedDate', 'desc'),
+                    limit(200),
+                );
+                push(await fetchListSafe(q, isCancelled));
+            } catch (e) {
+                console.warn('[viewer] homeworkAssignments classId skipped', e);
+            }
+        }
     }
-    return out;
+
+    return results;
 }
 
 const buildGradesMap = (gradeList = []) => {
@@ -1038,50 +1081,36 @@ export const loadViewerDataOnce = async ({
         console.log('[viewer] scopedStudentAuthUids =', scopedStudentAuthUids);
 
         /* =========================
-           classes (학생 id별 array-contains)
+           classes (student.classIds 우선, classes.students는 fallback)
         ========================= */
         const myClassesMap = new Map();
 
-        const classSnaps = await run('classes getDocs (per-student)', async () => {
-            return Promise.all(
-                scopedStudentUids.map(async (sId) => {
-                    return run(`classes for student ${sId}`, async () => {
-                        const q = query(
-                            collection(db, 'classes'),
-                            where('students', 'array-contains', sId),
-                        );
-                        return getDocs(q);
-                    });
-                }),
-            );
-        });
-
-        classSnaps.forEach((snap) => {
-            snap.docs.forEach((docSnap) => {
-                myClassesMap.set(docSnap.id, { id: docSnap.id, ...docSnap.data() });
-            });
-        });
-
-        // ✅ (추가) student 문서의 classIds 기반으로 클래스도 합쳐서 로드한다
-        // - 퇴원 처리 과정에서 classes.students에서 학생을 빼버린 경우에도 과거 반을 유지하기 위함
+        // 1) student 문서의 classIds / classes를 최우선으로 사용
         const classIdsFromStudents = Array.from(new Set(
             myStudents
-                .flatMap((s) => Array.isArray(s?.classIds) ? s.classIds : (Array.isArray(s?.classes) ? s.classes : []))
+                .flatMap((s) => Array.isArray(s?.classIds)
+                    ? s.classIds
+                    : (Array.isArray(s?.classes) ? s.classes : []))
                 .filter(Boolean)
                 .map(String),
         ));
 
+        console.log('[viewer] classIdsFromStudents =', classIdsFromStudents);
+
+        // 2) classIds로 직접 classes 문서를 읽는다 (이 경로가 메인)
         if (classIdsFromStudents.length > 0) {
             const chunks = chunkArray(classIdsFromStudents, 10);
 
             for (const ch of chunks) {
                 try {
-                    const snap = await getDocs(
-                        query(
-                            collection(db, 'classes'),
-                            where(documentId(), 'in', ch),
-                        ),
-                    );
+                    const snap = await run(`classes by classIds chunk(${ch.length})`, () =>
+                        getDocs(
+                            query(
+                                collection(db, 'classes'),
+                                where(documentId(), 'in', ch),
+                            ),
+                        ));
+
                     snap.docs.forEach((docSnap) => {
                         myClassesMap.set(docSnap.id, { id: docSnap.id, ...docSnap.data() });
                     });
@@ -1091,7 +1120,33 @@ export const loadViewerDataOnce = async ({
             }
         }
 
+        // 3) fallback: classes.students array-contains 조회
+        // - 예전 데이터 호환용
+        // - 실패해도 전체 로딩을 죽이지 않는다
+        if (myClassesMap.size === 0 && scopedStudentUids.length > 0) {
+            for (const sId of scopedStudentUids) {
+                try {
+                    const snap = await run(`classes fallback for student ${sId}`, () =>
+                        getDocs(
+                            query(
+                                collection(db, 'classes'),
+                                where('students', 'array-contains', sId),
+                            ),
+                        ));
+
+                    snap.docs.forEach((docSnap) => {
+                        myClassesMap.set(docSnap.id, { id: docSnap.id, ...docSnap.data() });
+                    });
+                } catch (e) {
+                    console.warn(`[viewer] classes fallback skipped for ${sId}`, e);
+                }
+            }
+        }
+
         const myClasses = Array.from(myClassesMap.values());
+        if (!myClasses.length) {
+            console.warn('[viewer] no classes resolved from student.classIds or fallback students array');
+        }
         if (!isCancelled()) {
             setClasses?.(myClasses);
         }
@@ -1222,7 +1277,7 @@ export const loadViewerDataOnce = async ({
                 isCancelled,
             }),
             loadGradesForViewer(db, scopedStudentUids, isCancelled),
-            loadHomeworkAssignmentsForViewer(db, scopedStudentUids, isCancelled),
+            loadHomeworkAssignmentsForViewer(db, scopedStudentUids, isCancelled, lessonClassIds),
         ]);
 
         const clinicList = settled[0].status === 'fulfilled' ? settled[0].value : [];
