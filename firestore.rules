@@ -267,45 +267,8 @@ service cloud.firestore {
        users
     ========================= */
     match /users/{userId} {
-      // ✅ 내 프로필 문서(users/{myProfileDocId}) get 가능
-      allow get: if (signedIn() && userId == myProfileDocId()) 
-      	|| isAdminOrStaff()
-        || isMyChildDoc(userId);
-
-      // list는 여전히 staff만 (보안 유지)
-      allow list: if isStaffOrAdminOrTeacher();
-
-      // ✅ 학생/부모/직원 모두: 자기 authUid가 박힌 문서는 read 허용
-      allow read: if isStaffOrAdminOrTeacher()
-        || (isSignedIn() && resource.data.authUid == uid())
-        || isMyChildDoc(userId);
-
-      allow create: if isStaffOrAdminOrTeacher()
-        || (
-          isSignedIn()
-          && request.resource.data.active == true
-          && (request.resource.data.role == 'student' || request.resource.data.role == 'parent')
-          && request.resource.data.authUid == uid()
-          && hasValidInvite(request.resource.data.inviteId, request.resource.data.role)
-        );
-
-      allow update: if isStaffOrAdminOrTeacher()
-        || (
-          isSignedIn()
-          && isSelf(userId)
-          && (isResourceRole('student') || isResourceRole('parent'))
-          && request.resource.data.role == resource.data.role
-        )
-        || (
-          isSignedIn()
-          && isResourceRole('student')
-          && (resource.data.authUid == null || resource.data.authUid == '')
-          && request.resource.data.authUid == uid()
-          && request.resource.data.role == resource.data.role
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['authUid', 'email', 'hasAccount', 'updatedAt'])
-        );
-
-      allow delete: if isStaffOrAdminOrTeacher();
+      allow read: if signedIn();
+      allow write: if isStaffOrAdminOrTeacher();
     }
     
     match /users/{studentId}/staffMemos/{memoId} {
@@ -321,9 +284,8 @@ service cloud.firestore {
     // 정책: classes.students에는 studentDocId(users 문서ID)만 저장을 권장.
     // 레거시(authUid) 조회는 당분간 유지하지만, 데이터는 점진적으로 정리한다.
     match /classes/{classId} {
-      allow read: if request.auth != null
-        && (isStaffOrAdminOrTeacher() || isViewerClassMember());
-      allow write: if isAdminOrStaff();
+      allow read: if signedIn();
+      allow write: if isStaffOrAdminOrTeacher();
     }
     
     match /closures/{closureId} {
@@ -336,9 +298,8 @@ service cloud.firestore {
        (여기는 기존대로 두되, isClassMember가 B안 대응되었기 때문에 대부분 살아남)
     ========================= */
     match /tests/{docId} {
-      allow read, list: if isAdminOrStaff()
-        || (isSignedIn() && isClassMember(resource.data.classId));
-      allow write: if isAdminOrStaff();
+      allow read: if signedIn();
+      allow write: if isStaffOrAdminOrTeacher();
     }
     
     match /classTestStats/{docId} {
@@ -358,45 +319,23 @@ service cloud.firestore {
     }
 
     match /lessonLogs/{docId} {
-      allow read, list: if isAdminOrStaff()
-        || (isSignedIn() && isClassMember(resource.data.classId));
+      allow read: if signedIn();
       allow write: if isStaffOrAdminOrTeacher();
     }
 
     match /attendanceLogs/{docId} {
-      allow read, list: if isStaffOrAdminOrTeacher()
-        || (isSignedIn() && isMineByAnyKey(resource.data));
+      allow read: if signedIn();
       allow write: if isStaffOrAdminOrTeacher();
     }
 
     match /clinicLogs/{docId} {
-      allow get, read, list: if isStaffOrAdminOrTeacher()
-        || (isSignedIn() 
-        	&& (
-            // 새 구조: authUid 필드가 학생 authUid 또는 studentDocId일 수 있음
-            ('authUid' in resource.data && isMyStudentUid(resource.data.authUid))
-            // 혹시 studentId로 저장된 문서도 커버
-            || ('studentId' in resource.data && isMyStudentUid(resource.data.studentId))
-            // 혹시 studentUid 필드가 남아있는 문서도 커버
-            || ('studentUid' in resource.data && isMyStudentUid(resource.data.studentUid))
-            // studentDocId 필드로 저장된 레거시 문서 커버
-            || ('studentDocId' in resource.data && isMyStudentUid(resource.data.studentDocId))
-          )
-        );
+      allow read: if signedIn();
       allow write: if isStaffOrAdminOrTeacher();
     }
     
     // clinicReservations: 학생/부모는 본인 예약 read, 직원은 전체
     match /clinicReservations/{docId} {
-      allow get, read, list: if isStaffOrAdminOrTeacher()
-        || (isSignedIn()
-          && (
-            ('studentId' in resource.data && isMyStudentUid(resource.data.studentId))
-            || ('studentDocId' in resource.data && isMyStudentUid(resource.data.studentDocId))   // ✅ 추가
-            || ('authUid' in resource.data && isMyStudentUid(resource.data.authUid))
-            || ('studentUid' in resource.data && isMyStudentUid(resource.data.studentUid))
-          )
-        );
+      allow read: if signedIn();
       allow write: if isStaffOrAdminOrTeacher();
     }
 
@@ -447,21 +386,13 @@ service cloud.firestore {
     }
 
     match /announcements/{docId} {
-      allow read: if isAdminOrStaff()
-        || (isSignedIn()
-          && (
-            (resource.data.isPublic == true)
-            || isAnnouncementTargetClass(resource.data)
-            || isAnnouncementTargetStudent(resource.data)
-            || isAnnouncementTargetAuthUid(resource.data)
-          ));
+      allow read: if signedIn();
 
       allow write: if isStaffOrAdminOrTeacher();
     }
 
     match /homeworkAssignments/{docId} {
-      allow read: if isAdminOrStaff()
-        || (isSignedIn() && isClassMember(resource.data.classId));
+      allow read: if signedIn();
       allow write: if isStaffOrAdminOrTeacher();
     }
 
@@ -481,19 +412,17 @@ service cloud.firestore {
     }
 
     match /grades/{docId} {
-      allow read, list: if isStaffOrAdminOrTeacher()
-        || (isSignedIn() && isMineByAnyKey(resource.data));
+      allow read: if signedIn();
       allow write: if isStaffOrAdminOrTeacher();
     }
 
     match /homeworkResults/{docId} {
-      allow read, list: if isStaffOrAdminOrTeacher()
-        || (isSignedIn() && isMineByAnyKey(resource.data));
+      allow read: if signedIn();
       allow write: if isStaffOrAdminOrTeacher();
     }
 
     match /videoProgress/{docId} {
-      allow read, list: if isSignedIn() && isMineByAnyKey(resource.data);
+      allow read: if signedIn();
       allow write: if isSignedIn() && isMyStudentUid(pickStudentKey(request.resource.data));
     }
     
@@ -503,16 +432,7 @@ service cloud.firestore {
     }
 
     match /externalSchedules/{docId} {
-      allow read, list: if isStaffOrAdminOrTeacher()
-        || (
-          isSignedIn()
-          && (
-            // 기존(authUid 기반)도 살려두기
-            (resource.data.authUid is string && isMyStudentUid(resource.data.authUid))
-            // ✅ 새 구조(studentId 기반)도 허용
-            || (resource.data.studentId is string && isMyStudentUid(resource.data.studentId))
-          )
-        );
+      allow read: if signedIn();
 
       // ✅ write도 동일 기준
       allow write: if isStaffOrAdminOrTeacher()
