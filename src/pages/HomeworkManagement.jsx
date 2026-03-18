@@ -6,11 +6,13 @@ import HomeworkStatisticsPanel from '../components/Homework/HomeworkStatisticsPa
 import { HomeworkAssignmentModal } from '../utils/modals/HomeworkAssignmentModal';
 import HomeworkResultsModal from '../utils/modals/HomeworkResultsModal';
 import { buildAssignmentSummary, computeHomeworkProgress, getClassAssignments, getSelectedAssignment, resolveAssignmentStudentIds, resolveAssignmentTypeLabel, resolveAssignmentType } from '../domain/homework/homework.service';
+import { buildHomeworkWrongNoteText } from '../domain/homework/homeworkWrongNote.service';
 import { db } from '../firebase/client';
 import { getDefaultClassId } from '../utils/classStatus';
 import { useClassStudents } from '../utils/useClassStudents';
 import { filterRosterByWithdrawDate } from '../utils/rosterFilter';
 import { buildStudentParentPhoneLast4Map, formatStudentNameWithParentLast4 } from '../utils/parentPhone';
+import { Modal } from '../components/common/Modal';
 
 const isSameStudent = (result, student) => {
     if (!result || !student) return false;
@@ -49,6 +51,8 @@ export default function HomeworkManagement({
     const [scopedHomeworkResults, setScopedHomeworkResults] = useState(null);
     const [isLoadingScopedResults, setIsLoadingScopedResults] = useState(false);
     const [draftHomeworkOverlay, setDraftHomeworkOverlay] = useState({});
+    const [isWrongNoteModalOpen, setIsWrongNoteModalOpen] = useState(false);
+    const [wrongNoteText, setWrongNoteText] = useState('');
     
     const [checkedDate, setCheckedDate] = useState(() => new Date().toISOString().slice(0, 10));
 
@@ -354,6 +358,38 @@ export default function HomeworkManagement({
         await handleUpdateHomeworkResult(updates, checkedDate);
     };
 
+    const handleOpenWrongNoteModal = useCallback(() => {
+        const baseAssignment = selectedAssignment || activeAssignment;
+
+        if (!baseAssignment) {
+            alert('과제를 먼저 선택해주세요.');
+            return;
+        }
+
+        const nextWrongNoteText = buildHomeworkWrongNoteText({
+            assignment: baseAssignment,
+            students: rosterForHomework,
+            homeworkResults: normalizedHomeworkResults,
+        });
+
+        setWrongNoteText(nextWrongNoteText);
+        setIsWrongNoteModalOpen(true);
+    }, [selectedAssignment, activeAssignment, rosterForHomework, normalizedHomeworkResults]);
+
+    const handleCopyWrongNoteText = useCallback(async () => {
+        if (!wrongNoteText) {
+            alert('추출할 오답 문항이 없습니다.');
+            return;
+        }
+
+        try {
+            await navigator.clipboard.writeText(wrongNoteText);
+            alert('복사되었습니다.');
+        } catch (error) {
+            alert('복사에 실패했습니다. 다시 시도해주세요.');
+        }
+    }, [wrongNoteText]);
+
     return (
         <div className="space-y-4 h-full">
             <div className="sticky top-0 z-10 bg-white/90 backdrop-blur border-b border-gray-200 px-4 py-3 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
@@ -370,6 +406,14 @@ export default function HomeworkManagement({
                 </div>
 
                 <div className="flex flex-wrap gap-3 items-center justify-end">
+                    <button
+                        type="button"
+                        onClick={handleOpenWrongNoteModal}
+                        disabled={!selectedAssignment && !activeAssignment}
+                        className="px-3 py-1.5 text-xs font-semibold rounded-md bg-amber-600 text-white hover:bg-amber-700 disabled:bg-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed"
+                    >
+                        오답노트 텍스트 추출
+                    </button>
                     <label className="text-xs font-semibold text-gray-700 flex items-center gap-2">
                         <span>검사일</span>
                         <input
@@ -530,9 +574,44 @@ export default function HomeworkManagement({
                 }}
                 onDraftClear={clearDraftOverlayFor}
             />
+            <Modal
+                isOpen={isWrongNoteModalOpen}
+                onClose={() => setIsWrongNoteModalOpen(false)}
+                title="오답노트 추출 결과"
+                maxWidth="max-w-3xl"
+            >
+                <div className="space-y-4">
+                    <p className="text-sm text-gray-600">한글 매크로 입력용 형식입니다.</p>
+                    {wrongNoteText ? (
+                        <textarea
+                            readOnly
+                            value={wrongNoteText}
+                            className="w-full min-h-[320px] rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono text-gray-800 bg-gray-50"
+                        />
+                    ) : (
+                        <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 px-4 py-8 text-center text-sm text-gray-500">
+                            추출할 오답 문항이 없습니다.
+                        </div>
+                    )}
+                    <div className="flex justify-end gap-2">
+                        <button
+                            type="button"
+                            onClick={handleCopyWrongNoteText}
+                            disabled={!wrongNoteText}
+                            className="px-4 py-2 text-sm font-semibold rounded-md bg-indigo-600 text-white hover:bg-indigo-700 disabled:bg-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed"
+                        >
+                            복사
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setIsWrongNoteModalOpen(false)}
+                            className="px-4 py-2 text-sm font-semibold rounded-md bg-gray-100 text-gray-700 hover:bg-gray-200"
+                        >
+                            닫기
+                        </button>
+                    </div>
+                </div>
+            </Modal>
         </div>
     );
 }
-
-// changed: src/pages/HomeworkManagement.jsx
-// added: src/utils/modals/HomeworkResultsModal.jsx
