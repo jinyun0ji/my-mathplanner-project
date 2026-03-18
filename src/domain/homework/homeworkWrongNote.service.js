@@ -15,7 +15,13 @@ const resolveAssignmentId = (assignment) => {
 };
 
 const resolveAssignmentTitle = (assignment) => {
-    return assignment?.title || assignment?.name || assignment?.content || '과제';
+    return assignment?.title ?? assignment?.name ?? assignment?.content ?? '과제';
+};
+
+export const normalizeHomeworkTitleForWrongNote = (title) => {
+    if (typeof title !== 'string') return '';
+
+    return title.replace(/\s+/g, '').trim();
 };
 
 const resolveStudentName = (student) => {
@@ -89,7 +95,7 @@ export const buildHomeworkWrongNoteText = ({
     includeStudentsWithoutWrong = false,
 }) => {
     const assignmentId = resolveAssignmentId(assignment);
-    const assignmentTitle = resolveAssignmentTitle(assignment);
+    const assignmentTitle = normalizeHomeworkTitleForWrongNote(resolveAssignmentTitle(assignment));
 
     return students
         .map((student) => {

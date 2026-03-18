@@ -2,9 +2,17 @@ import {
     isWrongOrCorrectedAnswer,
     extractWrongQuestionNumbers,
     buildHomeworkWrongNoteText,
+    normalizeHomeworkTitleForWrongNote,
 } from './homeworkWrongNote.service';
 
 describe('homeworkWrongNote.service', () => {
+  test('normalizeHomeworkTitleForWrongNote removes whitespace only from homework titles', () => {
+        expect(normalizeHomeworkTitleForWrongNote('(대수) 워크북')).toBe('(대수)워크북');
+        expect(normalizeHomeworkTitleForWrongNote('리파인 (미적분) 1강')).toBe('리파인(미적분)1강');
+        expect(normalizeHomeworkTitleForWrongNote(null)).toBe('');
+        expect(normalizeHomeworkTitleForWrongNote(123)).toBe('');
+    });
+
     test('isWrongOrCorrectedAnswer identifies supported wrong statuses', () => {
         expect(isWrongOrCorrectedAnswer('틀림')).toBe(true);
         expect(isWrongOrCorrectedAnswer('고침')).toBe(true);
@@ -33,7 +41,7 @@ describe('homeworkWrongNote.service', () => {
         const text = buildHomeworkWrongNoteText({
             assignment: {
                 id: 'assignment-1',
-                title: '리파인(미적분)_1강',
+                title: '리파인 (미적분) 1강',
             },
             students: [
                 { id: 'student-1', name: '김현준' },
@@ -60,6 +68,6 @@ describe('homeworkWrongNote.service', () => {
             },
         });
 
-        expect(text).toBe('김현준_리파인(미적분)_1강,7,9,10');
+        expect(text).toBe('김현준_리파인(미적분)1강,7,9,10');
     });
 });
