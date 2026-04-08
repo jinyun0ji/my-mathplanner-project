@@ -61,6 +61,93 @@ const normalizeQuestionNumberArray = (questionNumbers) => {
     return normalized;
 };
 
+const buildRange = (start, end) => {
+    const startNumber = Number(start);
+    const endNumber = Number(end);
+
+    if (!Number.isInteger(startNumber) || !Number.isInteger(endNumber) || startNumber <= 0 || endNumber <= 0 || startNumber > endNumber) {
+        return null;
+    }
+
+    return Array.from({ length: endNumber - startNumber + 1 }, (_, index) => startNumber + index);
+};
+
+const parseRangeString = (input) => {
+    if (typeof input !== 'string') {
+        return null;
+    }
+
+    const tokens = input
+        .split(',')
+        .map((token) => token.trim())
+        .filter(Boolean);
+
+    if (tokens.length === 0) {
+        return null;
+    }
+
+    const collected = [];
+
+    for (const token of tokens) {
+        const rangeMatch = token.match(/^(\d+)\s*[-~]\s*(\d+)$/);
+        if (rangeMatch) {
+            const expanded = buildRange(Number(rangeMatch[1]), Number(rangeMatch[2]));
+            if (!expanded) {
+                continue;
+            }
+            collected.push(...expanded);
+            continue;
+        }
+
+        if (/^\d+$/.test(token)) {
+            const numberValue = Number(token);
+            if (numberValue > 0) {
+                collected.push(numberValue);
+            }
+        }
+    }
+
+    const normalized = [...new Set(collected.filter((num) => Number.isInteger(num) && num > 0))].sort((a, b) => a - b);
+
+    return normalized.length > 0 ? normalized : null;
+};
+
+const resolveAssignmentQuestionNumbers = (data) => {
+    const questionNumbers = normalizeQuestionNumberArray(data?.questionNumbers);
+    if (questionNumbers) {
+        return questionNumbers;
+    }
+
+    const rangeFields = ['rangeString', 'questionRange', 'problemRange', 'range', 'problemNumbers', 'questions'];
+    for (const fieldName of rangeFields) {
+        const rangeValue = data?.[fieldName];
+        const normalized = normalizeQuestionNumberArray(rangeValue);
+        if (normalized) {
+            return normalized;
+        }
+
+        const parsed = parseRangeString(rangeValue);
+        if (parsed) {
+            return parsed;
+        }
+    }
+
+    const startCandidate = data?.startNumber ?? data?.start;
+    const endCandidate = data?.endNumber ?? data?.end;
+    const startEndRange = buildRange(startCandidate, endCandidate);
+    if (startEndRange) {
+        return startEndRange;
+    }
+
+    const startNumber = Number(startCandidate);
+    const totalQuestions = Number(data?.totalQuestions);
+    if (Number.isInteger(startNumber) && startNumber > 0 && Number.isInteger(totalQuestions) && totalQuestions > 0) {
+        return Array.from({ length: totalQuestions }, (_, index) => startNumber + index);
+    }
+
+    return null;
+};
+
 const shouldMigrateResultKeys = (resultsKeys, questionNumbers) => {
     if (!Array.isArray(resultsKeys) || resultsKeys.length === 0) {
         return { shouldMigrate: false, reason: 'missing-or-empty-result-keys' };
@@ -147,7 +234,7 @@ const run = async () => {
         assignmentMap.set(docSnap.id, {
             id: docSnap.id,
             ...data,
-            questionNumbers: normalizeQuestionNumberArray(data.questionNumbers),
+            questionNumbers: resolveAssignmentQuestionNumbers(data),
         });
     });
 
@@ -186,7 +273,20 @@ const run = async () => {
         const normalizedQuestionNumbers = assignment.questionNumbers;
         if (!normalizedQuestionNumbers) {
             summary.manualReviewCount += 1;
-            manualReview.push({ docId: docSnap.id, assignmentId: String(assignmentId), reason: 'invalid-assignment-question-numbers' });
+            manualReview.push({
+                docId: docSnap.id,
+                assignmentId: String(assignmentId),
+                reason: 'invalid-assignment-question-numbers',
+                assignmentShape: {
+                    rangeString: assignment?.rangeString || null,
+                    questionRange: assignment?.questionRange || null,
+                    problemRange: assignment?.problemRange || null,
+                    range: assignment?.range || null,
+                    startNumber: assignment?.startNumber || null,
+                    endNumber: assignment?.endNumber || null,
+                    totalQuestions: assignment?.totalQuestions || null,
+                },
+            });
             continue;
         }
 
@@ -279,7 +379,19 @@ const run = async () => {
     console.log(`[migration] done mode=${isWriteMode ? 'WRITE' : 'DRY-RUN'}`);
 };
 
-run().catch((error) => {
-    console.error('[migration] failed', error);
-    process.exitCode = 1;
-});
+if (require.main === module) {
+    run().catch((error) => {
+        console.error('[migration] failed', error);
+        process.exitCode = 1;
+    });
+}
+
+module.exports = {
+    buildRange,
+    parseRangeString,
+    normalizeQuestionNumberArray,
+    resolveAssignmentQuestionNumbers,
+    shouldMigrateResultKeys,
+    remapSequentialResultKeysToQuestionNumbers,
+    getKeyRangeLabel,
+};
