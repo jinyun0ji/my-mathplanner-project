@@ -1,6 +1,6 @@
 // src/utils/helpers.js
 import React from 'react';
-import { computeHomeworkProgress, isAssignmentAssignedToStudent } from '../domain/homework/homework.service';
+import { computeHomeworkProgress, getAssignmentQuestionNumbers, isAssignmentAssignedToStudent } from '../domain/homework/homework.service';
 import { isClosedDate, normalizeDateToYMD } from './closures';
 import { getTotalScore, isAbsentGrade } from '../domain/grade/grade.service';
 import { 
@@ -504,8 +504,9 @@ export const calculateHomeworkStats = (studentId, assignments, results, options 
         .map(hw => {
         const rawResult = findHomeworkResult(results, studentKeys, hw.id);
             const studentResults = rawResult?.results || rawResult || {};
-            const totalQuestions = hw.totalQuestions;
-            const progress = computeHomeworkProgress(studentResults, totalQuestions);
+            const questionNumbers = getAssignmentQuestionNumbers(hw);
+            const totalQuestions = questionNumbers.length;
+            const progress = computeHomeworkProgress(studentResults, questionNumbers);
             const assignmentType = hw.type || 'homework';
 
             const statusLabel = assignmentType === 'video_makeup'

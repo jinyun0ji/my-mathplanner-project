@@ -1,4 +1,5 @@
 import React, { useMemo, useRef } from 'react';
+import { getAssignmentQuestionNumbers } from '../../domain/homework/homework.service';
 
 const RESULT_OPTIONS_HOMEWORK = { 
     '맞음': 'text-green-600 bg-green-100', 
@@ -12,36 +13,7 @@ export default function HomeworkGradingTable({ summary, assignment, handleUpdate
     const cellRefs = useRef({});
 
     // 문제 번호 배열 생성
-    const questions = useMemo(() => {
-        if (assignment.rangeString) {
-            try {
-                const parts = assignment.rangeString.split(',').map(s => s.trim()).filter(s => s !== '');
-                const nums = new Set();
-                parts.forEach(part => {
-                    if (part.includes('-') || part.includes('~')) {
-                        const [start, end] = part.split(/-|~/).map(Number);
-                        if (!isNaN(start) && !isNaN(end)) {
-                            for (let i = start; i <= end; i++) nums.add(i);
-                        }
-                    } else {
-                        const num = Number(part);
-                        if (!isNaN(num)) nums.add(num);
-                    }
-                });
-                return Array.from(nums).sort((a, b) => a - b);
-            } catch (e) {
-                return Array.from({ length: assignment.totalQuestions }, (_, i) => i + 1);
-            }
-        } else if (assignment.startQuestion && assignment.endQuestion) {
-            const list = [];
-            for (let i = assignment.startQuestion; i <= assignment.endQuestion; i++) {
-                list.push(i);
-            }
-            return list;
-        } else {
-            return Array.from({ length: assignment.totalQuestions }, (_, i) => i + 1);
-        }
-    }, [assignment]);
+    const questions = useMemo(() => getAssignmentQuestionNumbers(assignment), [assignment]);
 
     // 클릭 시 상태를 토글하고 업데이트하는 함수
     const handleCellClick = (studentId, qNum) => {

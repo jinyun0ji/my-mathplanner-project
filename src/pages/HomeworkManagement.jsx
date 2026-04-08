@@ -5,7 +5,7 @@ import ClassSelectionPanel from '../components/Shared/ClassSelectionPanel';
 import HomeworkStatisticsPanel from '../components/Homework/HomeworkStatisticsPanel';
 import { HomeworkAssignmentModal } from '../utils/modals/HomeworkAssignmentModal';
 import HomeworkResultsModal from '../utils/modals/HomeworkResultsModal';
-import { buildAssignmentSummary, computeHomeworkProgress, getClassAssignments, getSelectedAssignment, resolveAssignmentStudentIds, resolveAssignmentTypeLabel, resolveAssignmentType } from '../domain/homework/homework.service';
+import { buildAssignmentSummary, computeHomeworkProgress, getAssignmentQuestionNumbers, getClassAssignments, getSelectedAssignment, resolveAssignmentStudentIds, resolveAssignmentTypeLabel, resolveAssignmentType } from '../domain/homework/homework.service';
 import { buildHomeworkWrongNoteText } from '../domain/homework/homeworkWrongNote.service';
 import { db } from '../firebase/client';
 import { getDefaultClassId } from '../utils/classStatus';
@@ -219,14 +219,15 @@ export default function HomeworkManagement({
     }, [selectedAssignment, rosterForHomework, normalizedHomeworkResults, parentLast4Map]);
 
     const completionRateByStudentId = useMemo(() => {
-        const totalQuestions = Number(selectedAssignment?.totalQuestions) || 0;
+        const questionNumbers = getAssignmentQuestionNumbers(selectedAssignment);
+        const totalQuestions = questionNumbers.length;
 
         return assignmentSummary.reduce((acc, student) => {
             const sid = String(student.studentId);
             const aid = String(selectedAssignment?.id || '');
             const overlay = draftHomeworkOverlay?.[sid]?.[aid];
             const resultMap = overlay?.results || student.resultMap || {};
-            const progress = computeHomeworkProgress(resultMap, totalQuestions);
+            const progress = computeHomeworkProgress(resultMap, questionNumbers);
             const answeredCount = progress.checkedCount;
             const completionPercentRaw = progress.completionRate;
             const hasWrong = progress.incorrectCount > 0;
@@ -341,9 +342,15 @@ export default function HomeworkManagement({
     };
 
     const handleSaveResultFromModal = async ({ studentId, assignmentId, resultsMap }) => {
+        const assignment = classAssignments.find((item) => String(item.id) === String(assignmentId));
+        const questionNumbers = getAssignmentQuestionNumbers(assignment);
+        const allowedKeys = new Set(questionNumbers.map((q) => String(q)));
         const existingRecord = normalizedHomeworkResults[studentId]?.[assignmentId];
         const existingMap = existingRecord?.results || existingRecord || {};
-        const keys = new Set([...Object.keys(existingMap), ...Object.keys(resultsMap || {})]);
+        const keys = new Set(
+            [...Object.keys(existingMap), ...Object.keys(resultsMap || {})]
+                .filter((key) => allowedKeys.has(String(key)))
+        );
         const updates = Array.from(keys).map((questionId) => ({
             studentId,
             assignmentId,

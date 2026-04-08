@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Modal } from '../../components/common/Modal';
-import { computeHomeworkProgress } from '../../domain/homework/homework.service';
+import { computeHomeworkProgress, getAssignmentQuestionNumbers } from '../../domain/homework/homework.service';
 
 
 const toStatus = (value) => {
@@ -30,14 +30,14 @@ export default function HomeworkResultsModal({
     const [isDirty, setIsDirty] = useState(false);
     const containerRef = useRef(null);
 
-    const totalQuestions = Number(assignment?.totalQuestions) || 0;
-    const questions = useMemo(() => Array.from({ length: totalQuestions }, (_, i) => i + 1), [totalQuestions]);
+    const questions = useMemo(() => getAssignmentQuestionNumbers(assignment), [assignment]);
+    const totalQuestions = questions.length;
 
     const progressByStudentId = useMemo(() => {
         return students.reduce((acc, student) => {
             const record = homeworkResults?.[student.studentId]?.[assignment?.id];
             const studentResultsMap = record?.results || record || {};
-            const progress = computeHomeworkProgress(studentResultsMap, totalQuestions);
+            const progress = computeHomeworkProgress(studentResultsMap, questions);
             const answeredCount = progress.checkedCount;
             const completionPercentRaw = progress.completionRate;
             const hasWrong = progress.incorrectCount > 0;
@@ -52,7 +52,7 @@ export default function HomeworkResultsModal({
             };
             return acc;
         }, {});
-    }, [students, homeworkResults, assignment, totalQuestions]);
+    }, [students, homeworkResults, assignment, questions]);
 
     const filteredStudents = useMemo(() => {
         const keyword = search.trim().toLowerCase();
@@ -85,9 +85,9 @@ export default function HomeworkResultsModal({
 
     useEffect(() => {
         if (!isOpen || !selectedStudentId || !assignment?.id) return;
-        const completionRate = computeHomeworkProgress(resultMap, totalQuestions).completionRate;
+        const completionRate = computeHomeworkProgress(resultMap, questions).completionRate;
         onDraftChange?.(selectedStudentId, assignment.id, resultMap, completionRate);
-    }, [isOpen, selectedStudentId, assignment, resultMap, totalQuestions, onDraftChange]);
+    }, [isOpen, selectedStudentId, assignment, resultMap, questions, onDraftChange]);
 
     useEffect(() => {
         if (!isOpen) return;
@@ -139,7 +139,7 @@ export default function HomeworkResultsModal({
 
     const clearActiveQuestion = () => {
         if (totalQuestions <= 0) return;
-        const qNum = String(activeQIndex + 1);
+        const qNum = String(questions[activeQIndex]);
         setResultMap((prev) => {
             const next = { ...(prev || {}) };
             delete next[qNum];
@@ -185,7 +185,7 @@ export default function HomeworkResultsModal({
 
         if (['1', '2', '3'].includes(e.key)) {
             e.preventDefault();
-            setQuestionStatus(activeQIndex + 1, e.key, true);
+            setQuestionStatus(questions[activeQIndex], e.key, true);
             return;
         }
         if (e.key === 'Backspace' || e.key === 'Delete') {
@@ -263,9 +263,8 @@ export default function HomeworkResultsModal({
                             </div>
 
                             <div className="grid grid-cols-10 gap-2">
-                                {questions.map((questionNumber) => {
+                                {questions.map((questionNumber, questionIndex) => {
                                     const status = resultMap[String(questionNumber)] || null;
-                                    const questionIndex = questionNumber - 1;
                                     const isActiveQ = activeQIndex === questionIndex;
                                     return (
                                         <button

@@ -32,7 +32,9 @@
     "build": "react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject",
-    "migrate:memos": "node functions/scripts/migrateStudentMemosToStaffMemos.js"
+    "migrate:memos": "node functions/scripts/migrateStudentMemosToStaffMemos.js",
+    "migrate:homework-question-keys:dry": "node functions/scripts/migrateHomeworkResultQuestionNumbers.js",
+    "migrate:homework-question-keys:write": "node functions/scripts/migrateHomeworkResultQuestionNumbers.js --write"
   },
   "eslintConfig": {
     "extends": [

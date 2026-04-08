@@ -3,6 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Modal } from '../../components/common/Modal';
 import StaffNotificationFields from '../../components/Shared/StaffNotificationFields';
 import { filterRosterByWithdrawDate } from '../rosterFilter';
+import { parseQuestionRange } from '../../domain/homework/homework.service';
 
 export const HomeworkAssignmentModal = ({ isOpen, onClose, onSave, classId, assignment = null, students, selectedClass }) => {
   const classStudents = useMemo(() => {
@@ -41,30 +42,6 @@ export const HomeworkAssignmentModal = ({ isOpen, onClose, onSave, classId, assi
     return offset.toISOString().slice(0, 16);
   };
 
-  // 범위 문자열 파싱 함수 (예: "1-5, 8, 10-12" -> [1,2,3,4,5,8,10,11,12])
-  const parseRangeString = (str) => {
-    if (!str) return [];
-    try {
-        const parts = str.split(',').map(s => s.trim()).filter(s => s !== '');
-        const numbers = new Set();
-        
-        parts.forEach(part => {
-            if (part.includes('-') || part.includes('~')) {
-                const [start, end] = part.split(/-|~/).map(Number);
-                if (!isNaN(start) && !isNaN(end)) {
-                    for (let i = start; i <= end; i++) numbers.add(i);
-                }
-            } else {
-                const num = Number(part);
-                if (!isNaN(num)) numbers.add(num);
-            }
-        });
-        return Array.from(numbers).sort((a, b) => a - b);
-    } catch (e) {
-        return [];
-    }
-  };
-
   const rosterForAssignment = useMemo(
     () => filterRosterByWithdrawDate(classStudents, classId, assignedDate),
     [classStudents, classId, assignedDate]
@@ -88,7 +65,10 @@ export const HomeworkAssignmentModal = ({ isOpen, onClose, onSave, classId, assi
       // 기존 데이터(startQuestion, endQuestion)가 있으면 문자열로 변환, 아니면 저장된 rangeString 사용
       if (assignment.rangeString) {
           setRangeString(assignment.rangeString);
-          setTotalQuestions(assignment.totalQuestions);
+          const parsed = Array.isArray(assignment.questionNumbers) && assignment.questionNumbers.length > 0
+            ? assignment.questionNumbers
+            : parseQuestionRange(assignment.rangeString);
+          setTotalQuestions(parsed.length || assignment.totalQuestions || 0);
       } else if (assignment.startQuestion && assignment.endQuestion) {
           setRangeString(`${assignment.startQuestion}-${assignment.endQuestion}`);
           setTotalQuestions(assignment.totalQuestions || (assignment.endQuestion - assignment.startQuestion + 1));
@@ -141,7 +121,7 @@ export const HomeworkAssignmentModal = ({ isOpen, onClose, onSave, classId, assi
 
   // 범위 문자열이 변할 때마다 총 문제 수 자동 계산
   useEffect(() => {
-    const questions = parseRangeString(rangeString);
+    const questions = parseQuestionRange(rangeString);
     setTotalQuestions(questions.length);
   }, [rangeString]);
 
@@ -175,6 +155,8 @@ export const HomeworkAssignmentModal = ({ isOpen, onClose, onSave, classId, assi
           : {}),
       };
 
+    const questionNumbers = parseQuestionRange(rangeString);
+
     const assignmentData = {
       id: assignment ? assignment.id : null,
       classId,
@@ -184,7 +166,8 @@ export const HomeworkAssignmentModal = ({ isOpen, onClose, onSave, classId, assi
       content,
       book,
       rangeString, // ✅ 저장: 입력한 범위 문자열
-      totalQuestions,
+      totalQuestions: questionNumbers.length,
+      questionNumbers,
       assignedStudentIds,
       isAssignmentDate,
       notifyMode: staffNotifyMode === 'none' ? 'system' : 'staff',

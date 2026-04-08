@@ -81,6 +81,55 @@ const resolveResultMap = (resultData) => {
     return null;
 };
 
+export const parseQuestionRange = (input) => {
+    if (typeof input !== 'string') return [];
+
+    const values = new Set();
+    input
+        .split(',')
+        .map((token) => token.trim())
+        .filter(Boolean)
+        .forEach((token) => {
+            const [left, right] = token.split(/[-~]/).map((v) => Number(v?.trim()));
+            if (Number.isFinite(left) && Number.isFinite(right)) {
+                const start = Math.min(left, right);
+                const end = Math.max(left, right);
+                for (let q = start; q <= end; q += 1) values.add(q);
+                return;
+            }
+            const single = Number(token);
+            if (Number.isFinite(single)) values.add(single);
+        });
+
+    return Array.from(values).sort((a, b) => a - b);
+};
+
+export const getAssignmentQuestionNumbers = (assignment) => {
+    if (!assignment || typeof assignment !== 'object') return [];
+
+    const rawNumbers = Array.isArray(assignment.questionNumbers) && assignment.questionNumbers.length > 0
+        ? assignment.questionNumbers
+        : (assignment.rangeString ? parseQuestionRange(assignment.rangeString) : []);
+
+    const fromRaw = rawNumbers
+        .map((value) => Number(value))
+        .filter((value) => Number.isFinite(value));
+
+    if (fromRaw.length > 0) {
+        return Array.from(new Set(fromRaw)).sort((a, b) => a - b);
+    }
+
+    const fallbackCount = Number(assignment.totalQuestions) || 0;
+    return Array.from({ length: fallbackCount }, (_, i) => i + 1);
+};
+
+const normalizeResultsByQuestions = (resultData, questionNumbers = []) => {
+    const map = resolveResultMap(resultData) || {};
+    if (!Array.isArray(questionNumbers) || questionNumbers.length === 0) return map;
+    const allowed = new Set(questionNumbers.map((q) => String(q)));
+    return Object.fromEntries(Object.entries(map).filter(([key]) => allowed.has(String(key))));
+};
+
 export const hasWrongRemaining = (resultData) => {
     if (!resultData) return false;
 
@@ -100,9 +149,14 @@ export const hasWrongRemaining = (resultData) => {
     return false;
 };
 
-export const computeHomeworkProgress = (resultData, totalQuestions) => {
-    const total = Number(totalQuestions) > 0 ? Number(totalQuestions) : 0;
-    const resultMap = resolveResultMap(resultData) || {};
+export const computeHomeworkProgress = (resultData, questionNumbersOrTotal) => {
+    const questionNumbers = Array.isArray(questionNumbersOrTotal)
+        ? questionNumbersOrTotal
+        : null;
+    const total = questionNumbers
+        ? questionNumbers.length
+        : (Number(questionNumbersOrTotal) > 0 ? Number(questionNumbersOrTotal) : 0);
+    const resultMap = normalizeResultsByQuestions(resultData, questionNumbers || []);
     const statuses = Object.values(resultMap);
 
     const checkedCount = statuses.filter((status) => ['맞음', '틀림', '고침'].includes(status)).length;
@@ -159,10 +213,11 @@ export const buildAssignmentSummary = (selectedAssignment, classStudents = [], h
             }
         });
 
-        const result = savedResult;
-        const total = selectedAssignment.totalQuestions;
+        const questionNumbers = getAssignmentQuestionNumbers(selectedAssignment);
+        const result = normalizeResultsByQuestions(savedResult, questionNumbers);
+        const total = questionNumbers.length;
 
-        const progress = computeHomeworkProgress(result, total);
+        const progress = computeHomeworkProgress(result, questionNumbers);
 
         return {
             studentId: student.id,

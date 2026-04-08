@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Modal } from '../../components/common/Modal';
+import { getAssignmentQuestionNumbers } from '../../domain/homework/homework.service';
 
 const STATUS_ORDER = [null, '맞음', '틀림', '고침'];
 const STATUS_STYLE = {
@@ -8,35 +9,7 @@ const STATUS_STYLE = {
     고침: 'bg-blue-100 text-blue-700 border-blue-200',
 };
 
-const buildQuestionList = (assignment) => {
-    if (!assignment) return [];
-
-    if (assignment.rangeString) {
-        const parts = assignment.rangeString.split(',').map((s) => s.trim()).filter(Boolean);
-        const nums = new Set();
-        parts.forEach((part) => {
-            if (part.includes('-') || part.includes('~')) {
-                const [start, end] = part.split(/-|~/).map(Number);
-                if (!Number.isNaN(start) && !Number.isNaN(end)) {
-                    for (let i = start; i <= end; i += 1) nums.add(i);
-                }
-            } else {
-                const num = Number(part);
-                if (!Number.isNaN(num)) nums.add(num);
-            }
-        });
-        return Array.from(nums).sort((a, b) => a - b);
-    }
-
-    if (assignment.startQuestion && assignment.endQuestion) {
-        return Array.from(
-            { length: assignment.endQuestion - assignment.startQuestion + 1 },
-            (_, i) => assignment.startQuestion + i
-        );
-    }
-
-    return Array.from({ length: assignment.totalQuestions || 0 }, (_, i) => i + 1);
-};
+const buildQuestionList = (assignment) => getAssignmentQuestionNumbers(assignment);
 
 export default function HomeworkResultEntryModal({
     isOpen,
