@@ -70,4 +70,29 @@ describe('homeworkWrongNote.service', () => {
 
         expect(text).toBe('김현준_리파인(미적분)1강,7,9,10');
     });
+
+    test('buildHomeworkWrongNoteText normalizes legacy partial sequential keys', () => {
+        const text = buildHomeworkWrongNoteText({
+            assignment: {
+                id: 'assignment-2',
+                title: '워크북',
+                questionNumbers: [281, 282, 283, 284],
+            },
+            students: [
+                { id: 'student-1', name: '김현준' },
+            ],
+            homeworkResults: {
+                'student-1': {
+                    'assignment-2': {
+                        results: {
+                            1: '틀림',
+                            2: '고침',
+                        },
+                    },
+                },
+            },
+        });
+
+        expect(text).toBe('김현준_워크북,281,282');
+    });
 });

@@ -1,3 +1,5 @@
+import { getAssignmentQuestionNumbers, normalizeHomeworkResultMapForDisplay } from './homework.service';
+
 export const isWrongOrCorrectedAnswer = (value) => {
     return value === '틀림'
         || value === '고침'
@@ -80,8 +82,14 @@ const resolveStudentRecord = (homeworkResults, student, assignmentId) => {
     return null;
 };
 
-export const extractWrongQuestionNumbers = (resultMap) => {
-    return Object.entries(unwrapResultMap(resultMap))
+export const extractWrongQuestionNumbers = (resultMap, assignmentQuestionNumbers = [], options = {}) => {
+    const rawMap = unwrapResultMap(resultMap);
+    const hasAssignmentQuestions = Array.isArray(assignmentQuestionNumbers) && assignmentQuestionNumbers.length > 0;
+    const normalizedMap = hasAssignmentQuestions
+        ? normalizeHomeworkResultMapForDisplay(rawMap, assignmentQuestionNumbers, options)
+        : rawMap;
+
+    return Object.entries(normalizedMap)
         .filter(([, value]) => isWrongOrCorrectedAnswer(value))
         .map(([key]) => Number(key))
         .filter((value) => Number.isFinite(value))
@@ -96,12 +104,16 @@ export const buildHomeworkWrongNoteText = ({
 }) => {
     const assignmentId = resolveAssignmentId(assignment);
     const assignmentTitle = normalizeHomeworkTitleForWrongNote(resolveAssignmentTitle(assignment));
+    const assignmentQuestionNumbers = getAssignmentQuestionNumbers(assignment);
 
     return students
         .map((student) => {
             const studentName = resolveStudentName(student);
             const record = resolveStudentRecord(homeworkResults, student, assignmentId);
-            const wrongNumbers = extractWrongQuestionNumbers(record);
+            const wrongNumbers = extractWrongQuestionNumbers(record, assignmentQuestionNumbers, {
+                assignmentId,
+                studentId: student?.id || student?.studentId || student?.authUid,
+            });
 
             if (wrongNumbers.length === 0 && !includeStudentsWithoutWrong) {
                 return null;

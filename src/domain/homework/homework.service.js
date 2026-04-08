@@ -75,7 +75,7 @@ const resolveResultMap = (resultData) => {
     const mapFromKey = resultData.results;
     if (mapFromKey && typeof mapFromKey === 'object' && !Array.isArray(mapFromKey)) return mapFromKey;
 
-    const numericEntries = Object.entries(resultData).filter(([k, v]) => /^\d+$/.test(k) && typeof v === 'string');
+    const numericEntries = Object.entries(resultData).filter(([k]) => /^\d+$/.test(k));
     if (numericEntries.length > 0) return Object.fromEntries(numericEntries);
 
     return null;
@@ -123,8 +123,66 @@ export const getAssignmentQuestionNumbers = (assignment) => {
     return Array.from({ length: fallbackCount }, (_, i) => i + 1);
 };
 
+export const classifyHomeworkResultKeyMode = (resultMap, assignmentQuestionNumbers = []) => {
+    if (!resultMap || typeof resultMap !== 'object' || Array.isArray(resultMap)) return 'raw_unknown';
+
+    const rawKeys = Object.keys(resultMap)
+        .map((key) => Number(key))
+        .filter((key) => Number.isFinite(key));
+
+    if (rawKeys.length === 0) return 'raw_unknown';
+
+    const normalizedAssignmentNumbers = Array.isArray(assignmentQuestionNumbers)
+        ? assignmentQuestionNumbers.map(Number).filter((value) => Number.isFinite(value))
+        : [];
+
+    if (normalizedAssignmentNumbers.length > 0) {
+        const assignmentSet = new Set(normalizedAssignmentNumbers);
+        const isSubsetOfActualNumbers = rawKeys.every((key) => assignmentSet.has(key));
+        if (isSubsetOfActualNumbers) return 'actual_question_numbers';
+    }
+
+    const uniqueSortedKeys = Array.from(new Set(rawKeys)).sort((a, b) => a - b);
+    const isSequential = uniqueSortedKeys.every((value, index) => value === index + 1);
+    const maxSequential = uniqueSortedKeys[uniqueSortedKeys.length - 1] || 0;
+    if (isSequential && maxSequential <= normalizedAssignmentNumbers.length) {
+        return 'partial_sequential';
+    }
+
+    return 'raw_unknown';
+};
+
+export const normalizeHomeworkResultMapForDisplay = (resultData, assignmentQuestionNumbers = [], options = {}) => {
+    const baseMap = resolveResultMap(resultData) || {};
+    const mode = classifyHomeworkResultKeyMode(baseMap, assignmentQuestionNumbers);
+
+    if (mode === 'actual_question_numbers') {
+        return baseMap;
+    }
+
+    if (mode === 'partial_sequential') {
+        const mapped = {};
+        Object.entries(baseMap).forEach(([key, value]) => {
+            const sequentialIndex = Number(key) - 1;
+            const mappedQuestionNumber = assignmentQuestionNumbers[sequentialIndex];
+            if (!Number.isFinite(mappedQuestionNumber)) return;
+            mapped[String(mappedQuestionNumber)] = value;
+        });
+        return mapped;
+    }
+
+    if (Object.keys(baseMap).length > 0) {
+        console.warn('[homework] unknown result key mode', {
+            assignmentId: options.assignmentId,
+            studentId: options.studentId,
+            resultKeys: Object.keys(baseMap),
+        });
+    }
+    return baseMap;
+};
+
 const normalizeResultsByQuestions = (resultData, questionNumbers = []) => {
-    const map = resolveResultMap(resultData) || {};
+    const map = normalizeHomeworkResultMapForDisplay(resultData, questionNumbers);
     if (!Array.isArray(questionNumbers) || questionNumbers.length === 0) return map;
     const allowed = new Set(questionNumbers.map((q) => String(q)));
     return Object.fromEntries(Object.entries(map).filter(([key]) => allowed.has(String(key))));
@@ -202,19 +260,24 @@ export const isAssignmentAssignedToStudent = (assignment, studentId, extraStuden
 export const buildAssignmentSummary = (selectedAssignment, classStudents = [], homeworkResults = {}, localChanges = []) => {
     if (!selectedAssignment) return [];
 
+    const questionNumbers = getAssignmentQuestionNumbers(selectedAssignment);
+
     return classStudents.map(student => {
         const rawResult = homeworkResults[student.id]?.[selectedAssignment.id];
-        const savedResult = { ...(rawResult?.results || rawResult || {}) };
+        const savedResult = normalizeHomeworkResultMapForDisplay(rawResult, questionNumbers, {
+            assignmentId: selectedAssignment.id,
+            studentId: student.id,
+        });
+        const patchedResult = { ...(savedResult || {}) };
 
         localChanges.forEach(change => {
             if (change.studentId === student.id && change.assignmentId === selectedAssignment.id) {
-                if (change.status === null) delete savedResult[change.questionId];
-                else savedResult[change.questionId] = change.status;
+                if (change.status === null) delete patchedResult[change.questionId];
+                else patchedResult[change.questionId] = change.status;
             }
         });
 
-        const questionNumbers = getAssignmentQuestionNumbers(selectedAssignment);
-        const result = normalizeResultsByQuestions(savedResult, questionNumbers);
+        const result = normalizeResultsByQuestions(patchedResult, questionNumbers);
         const total = questionNumbers.length;
 
         const progress = computeHomeworkProgress(result, questionNumbers);

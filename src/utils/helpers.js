@@ -1,6 +1,6 @@
 // src/utils/helpers.js
 import React from 'react';
-import { computeHomeworkProgress, getAssignmentQuestionNumbers, isAssignmentAssignedToStudent } from '../domain/homework/homework.service';
+import { computeHomeworkProgress, getAssignmentQuestionNumbers, isAssignmentAssignedToStudent, normalizeHomeworkResultMapForDisplay } from '../domain/homework/homework.service';
 import { isClosedDate, normalizeDateToYMD } from './closures';
 import { getTotalScore, isAbsentGrade } from '../domain/grade/grade.service';
 import { 
@@ -503,8 +503,11 @@ export const calculateHomeworkStats = (studentId, assignments, results, options 
         .filter(hw => isAssignmentAssignedToStudent(hw, studentId, studentKeys))
         .map(hw => {
         const rawResult = findHomeworkResult(results, studentKeys, hw.id);
-            const studentResults = rawResult?.results || rawResult || {};
             const questionNumbers = getAssignmentQuestionNumbers(hw);
+            const studentResults = normalizeHomeworkResultMapForDisplay(rawResult, questionNumbers, {
+                assignmentId: hw.id,
+                studentId,
+            });
             const totalQuestions = questionNumbers.length;
             const progress = computeHomeworkProgress(studentResults, questionNumbers);
             const assignmentType = hw.type || 'homework';

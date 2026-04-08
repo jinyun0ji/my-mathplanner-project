@@ -5,7 +5,7 @@ import ClassSelectionPanel from '../components/Shared/ClassSelectionPanel';
 import HomeworkStatisticsPanel from '../components/Homework/HomeworkStatisticsPanel';
 import { HomeworkAssignmentModal } from '../utils/modals/HomeworkAssignmentModal';
 import HomeworkResultsModal from '../utils/modals/HomeworkResultsModal';
-import { buildAssignmentSummary, computeHomeworkProgress, getAssignmentQuestionNumbers, getClassAssignments, getSelectedAssignment, resolveAssignmentStudentIds, resolveAssignmentTypeLabel, resolveAssignmentType } from '../domain/homework/homework.service';
+import { buildAssignmentSummary, computeHomeworkProgress, getAssignmentQuestionNumbers, getClassAssignments, getSelectedAssignment, normalizeHomeworkResultMapForDisplay, resolveAssignmentStudentIds, resolveAssignmentTypeLabel, resolveAssignmentType } from '../domain/homework/homework.service';
 import { buildHomeworkWrongNoteText } from '../domain/homework/homeworkWrongNote.service';
 import { db } from '../firebase/client';
 import { getDefaultClassId } from '../utils/classStatus';
@@ -346,7 +346,10 @@ export default function HomeworkManagement({
         const questionNumbers = getAssignmentQuestionNumbers(assignment);
         const allowedKeys = new Set(questionNumbers.map((q) => String(q)));
         const existingRecord = normalizedHomeworkResults[studentId]?.[assignmentId];
-        const existingMap = existingRecord?.results || existingRecord || {};
+        const existingMap = normalizeHomeworkResultMapForDisplay(existingRecord, questionNumbers, {
+            assignmentId,
+            studentId,
+        });
         const keys = new Set(
             [...Object.keys(existingMap), ...Object.keys(resultsMap || {})]
                 .filter((key) => allowedKeys.has(String(key)))

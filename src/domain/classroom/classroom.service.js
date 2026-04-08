@@ -1,4 +1,4 @@
-import { isAssignmentAssignedToStudent } from '../homework/homework.service';
+import { getAssignmentQuestionNumbers, isAssignmentAssignedToStudent, normalizeHomeworkResultMapForDisplay } from '../homework/homework.service';
 
 export const buildClassroomStats = ({
   attendanceLogs = [],
@@ -37,14 +37,22 @@ export const buildClassroomStats = ({
 
   const unsubmittedCount = classHomeworks.filter((h) => {
     const result = homeworkResults?.[studentAuthUid]?.[h.id];
-    const resultMap = result?.results || result || {};
+    const questionNumbers = getAssignmentQuestionNumbers(h);
+    const resultMap = normalizeHomeworkResultMapForDisplay(result, questionNumbers, {
+      assignmentId: h.id,
+      studentId: studentAuthUid || studentDocId,
+    });
     return !result || Object.keys(resultMap).length === 0;
   }).length;
 
   let unresolvedCount = 0;
   classHomeworks.forEach((hw) => {
     const result = homeworkResults?.[studentAuthUid]?.[hw.id];
-    const resultMap = result?.results || result || {};
+    const questionNumbers = getAssignmentQuestionNumbers(hw);
+    const resultMap = normalizeHomeworkResultMapForDisplay(result, questionNumbers, {
+      assignmentId: hw.id,
+      studentId: studentAuthUid || studentDocId,
+    });
     if (result) unresolvedCount += Object.values(resultMap).filter((status) => status === '틀림').length;
   });
 

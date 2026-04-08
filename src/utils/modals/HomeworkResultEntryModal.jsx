@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Modal } from '../../components/common/Modal';
-import { getAssignmentQuestionNumbers } from '../../domain/homework/homework.service';
+import { getAssignmentQuestionNumbers, normalizeHomeworkResultMapForDisplay } from '../../domain/homework/homework.service';
 
 const STATUS_ORDER = [null, '맞음', '틀림', '고침'];
 const STATUS_STYLE = {
@@ -26,9 +26,12 @@ export default function HomeworkResultEntryModal({
 
     useEffect(() => {
         if (!isOpen) return;
-        const initialMap = initialResult?.results || initialResult || {};
+        const initialMap = normalizeHomeworkResultMapForDisplay(initialResult, questions, {
+            assignmentId: assignment?.id,
+            studentId: student?.studentId || student?.id,
+        });
         setResultMap(initialMap);
-    }, [isOpen, initialResult]);
+    }, [isOpen, initialResult, questions, assignment, student]);
 
     if (!isOpen || !student || !assignment) return null;
 

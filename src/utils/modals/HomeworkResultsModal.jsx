@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Modal } from '../../components/common/Modal';
-import { computeHomeworkProgress, getAssignmentQuestionNumbers } from '../../domain/homework/homework.service';
+import { computeHomeworkProgress, getAssignmentQuestionNumbers, normalizeHomeworkResultMapForDisplay } from '../../domain/homework/homework.service';
 
 
 const toStatus = (value) => {
@@ -36,7 +36,10 @@ export default function HomeworkResultsModal({
     const progressByStudentId = useMemo(() => {
         return students.reduce((acc, student) => {
             const record = homeworkResults?.[student.studentId]?.[assignment?.id];
-            const studentResultsMap = record?.results || record || {};
+            const studentResultsMap = normalizeHomeworkResultMapForDisplay(record, questions, {
+                assignmentId: assignment?.id,
+                studentId: student.studentId,
+            });
             const progress = computeHomeworkProgress(studentResultsMap, questions);
             const answeredCount = progress.checkedCount;
             const completionPercentRaw = progress.completionRate;
@@ -77,7 +80,10 @@ export default function HomeworkResultsModal({
             return;
         }
         const record = homeworkResults?.[selectedStudentId]?.[assignment.id];
-        const map = record?.results || record || {};
+        const map = normalizeHomeworkResultMapForDisplay(record, questions, {
+            assignmentId: assignment.id,
+            studentId: selectedStudentId,
+        });
         setResultMap(map);
         setActiveQIndex(0);
         setIsDirty(false);
