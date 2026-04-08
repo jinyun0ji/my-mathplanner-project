@@ -46,7 +46,7 @@ import { claimStudentLinkCode } from '../parent/linkCodeService';
 import { useParentContext } from '../parent';
 import { logClientError } from '../utils/errorLogger';
 import { addVideoMemo, deleteVideoMemo, updateVideoMemo } from '../domain/memo/videoMemo.service';
-import { getAssignmentQuestionNumbers } from '../domain/homework/homework.service';
+import { getAssignmentQuestionNumbers, normalizeHomeworkResultMapForDisplay } from '../domain/homework/homework.service';
 import {
     addDoc,
     arrayRemove,
@@ -1049,9 +1049,12 @@ export default function AppRoutes({ user, role, studentIds }) {
 
           for (const { studentId, assignmentId, results } of grouped.values()) {
               const existing = nextResults[studentId]?.[assignmentId];
-              const existingMap = existing?.results || existing || {};
               const assignment = (homeworkAssignments || []).find((item) => String(item.id) === String(assignmentId));
               const questionNumbers = getAssignmentQuestionNumbers(assignment);
+              const existingMap = normalizeHomeworkResultMapForDisplay(existing, questionNumbers, {
+                  assignmentId,
+                  studentId,
+              });
               const allowedKeys = new Set(questionNumbers.map((q) => String(q)));
               const mergedResults = { ...existingMap, ...results };
               const cleanedResults = {};

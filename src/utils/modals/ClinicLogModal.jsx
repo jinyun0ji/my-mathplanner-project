@@ -11,7 +11,7 @@ export const ClinicLogModal = ({ isOpen, onClose, onSave, logToEdit = null, stud
     const [tutor, setTutor] = useState('');
     const [comment, setComment] = useState('');
 
-    const activeStudents = useMemo(() => students.filter(s => s.status === '재원생').sort((a, b) => a.name.localeCompare(b.name)), [students]);
+    const activeStudents = useMemo(() => students.filter(s => s.status === '재원생').sort((a, b) => String(a?.name || '').localeCompare(String(b?.name || ''))), [students]);
     
     const selectedStudent = useMemo(() => activeStudents.find(s => s.id === studentId), [activeStudents, studentId]);
     const studentClassNames = useMemo(() => {

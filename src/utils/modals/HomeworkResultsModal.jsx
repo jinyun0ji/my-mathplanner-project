@@ -87,12 +87,16 @@ export default function HomeworkResultsModal({
         setResultMap(map);
         setActiveQIndex(0);
         setIsDirty(false);
-    }, [selectedStudentId, assignment, homeworkResults]);
+    }, [selectedStudentId, assignment, homeworkResults, questions]);
 
     useEffect(() => {
         if (!isOpen || !selectedStudentId || !assignment?.id) return;
-        const completionRate = computeHomeworkProgress(resultMap, questions).completionRate;
-        onDraftChange?.(selectedStudentId, assignment.id, resultMap, completionRate);
+        const normalizedResultMap = normalizeHomeworkResultMapForDisplay(resultMap, questions, {
+            assignmentId: assignment.id,
+            studentId: selectedStudentId,
+        });
+        const completionRate = computeHomeworkProgress(normalizedResultMap, questions).completionRate;
+        onDraftChange?.(selectedStudentId, assignment.id, normalizedResultMap, completionRate);
     }, [isOpen, selectedStudentId, assignment, resultMap, questions, onDraftChange]);
 
     useEffect(() => {
@@ -207,7 +211,10 @@ export default function HomeworkResultsModal({
             await onSaveStudentResult({
                 studentId: selectedStudent.studentId,
                 assignmentId: assignment.id,
-                resultsMap: resultMap,
+                resultsMap: normalizeHomeworkResultMapForDisplay(resultMap, questions, {
+                    assignmentId: assignment.id,
+                    studentId: selectedStudent.studentId,
+                }),
             });
             setIsDirty(false);
             onDraftClear?.(selectedStudent.studentId, assignment.id);

@@ -1,9 +1,11 @@
 import React, { useMemo } from 'react';
 import { Icon } from '../../utils/helpers';
+import { getAssignmentQuestionNumbers, normalizeHomeworkResultMapForDisplay } from '../../domain/homework/homework.service';
 
-export default function HomeworkStatisticsPanel({ summary, completionRateByStudentId = {} }) {
+export default function HomeworkStatisticsPanel({ summary, assignment, completionRateByStudentId = {} }) {
     const stats = useMemo(() => {
         if (!summary || summary.length === 0) return null;
+        const assignmentQuestionNumbers = getAssignmentQuestionNumbers(assignment);
 
         const totalStudents = summary.length;
         const completionValues = summary.map((student) => completionRateByStudentId[student.studentId]?.display ?? 0);
@@ -17,7 +19,11 @@ export default function HomeworkStatisticsPanel({ summary, completionRateByStude
 
         const questionStats = {};
         summary.forEach((student) => {
-            Object.entries(student.resultMap || {}).forEach(([qNum, status]) => {
+            const normalizedResultMap = normalizeHomeworkResultMapForDisplay(student.resultMap || {}, assignmentQuestionNumbers, {
+                assignmentId: assignment?.id,
+                studentId: student.studentId,
+            });
+            Object.entries(normalizedResultMap).forEach(([qNum, status]) => {
                 if (!status) return;
                 if (!questionStats[qNum]) questionStats[qNum] = { correct: 0, incorrect: 0, corrected: 0 };
                 if (status === '맞음') questionStats[qNum].correct += 1;
@@ -45,7 +51,7 @@ export default function HomeworkStatisticsPanel({ summary, completionRateByStude
             totalStudents,
             sortedStudents: [...summary].sort((a, b) => (completionRateByStudentId[a.studentId]?.display ?? 0) - (completionRateByStudentId[b.studentId]?.display ?? 0)),
         };
-    }, [summary, completionRateByStudentId]);
+    }, [summary, assignment, completionRateByStudentId]);
 
     if (!stats) return null;
 

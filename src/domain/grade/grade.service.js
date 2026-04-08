@@ -202,7 +202,7 @@ export const getClassStudents = (students = [], selectedClass) => {
                 : (student.classes || []);
             return classIds.map(String).includes(classId);
         })
-        .sort((a, b) => a.name.localeCompare(b.name));
+        .sort((a, b) => String(a?.name || '').localeCompare(String(b?.name || '')));
 };
 
 export const getClassTests = (tests = [], classId) => {

@@ -20,8 +20,13 @@ export default function HomeworkGradingTable({ summary, assignment, handleUpdate
         const studentSummary = summary.find(s => s.studentId === studentId);
         if (!studentSummary) return;
 
+        const assignmentQuestionNumbers = getAssignmentQuestionNumbers(assignment);
+        const normalizedResultMap = normalizeHomeworkResultMapForDisplay(studentSummary.resultMap || {}, assignmentQuestionNumbers, {
+            assignmentId: assignment?.id,
+            studentId,
+        });
         const qNumStr = qNum.toString();
-        const currentStatus = studentSummary.resultMap[qNumStr];
+        const currentStatus = normalizedResultMap[qNumStr];
         
         let newStatus;
         if (currentStatus === '맞음') newStatus = '틀림';
@@ -106,7 +111,12 @@ export default function HomeworkGradingTable({ summary, assignment, handleUpdate
                                     {s.completionRate}%
                                 </td>
                                 {questions.map((q, qIndex) => {
-                                    const status = s.resultMap[q.toString()];
+                                    const assignmentQuestionNumbers = getAssignmentQuestionNumbers(assignment);
+                                    const normalizedResultMap = normalizeHomeworkResultMapForDisplay(s.resultMap || {}, assignmentQuestionNumbers, {
+                                        assignmentId: assignment?.id,
+                                        studentId: s.studentId,
+                                    });
+                                    const status = normalizedResultMap[q.toString()];
                                     const statusClass = status ? RESULT_OPTIONS_HOMEWORK[status] : 'bg-gray-200 text-gray-500';
                                     
                                     return (

@@ -899,7 +899,7 @@ export default function ParentHome({
             const first = Object.keys(schedule).sort((x, y) => ['mon','tue','wed','thu','fri','sat','sun'].indexOf(x) - ['mon','tue','wed','thu','fri','sat','sun'].indexOf(y))[0];
             return first ? schedule[first].start : '99:99';
         };
-        const sorted = [...ongoingClasses].sort((a, b) => getFirstStart(a).localeCompare(getFirstStart(b)));
+        const sorted = [...ongoingClasses].sort((a, b) => String(getFirstStart(a) || '').localeCompare(String(getFirstStart(b) || '')));
         return sorted[0];
     }, [ongoingClasses]);
 

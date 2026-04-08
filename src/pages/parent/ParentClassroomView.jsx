@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Icon, formatClassScheduleKo } from '../../utils/helpers';
-import { isAssignmentAssignedToStudent } from '../../domain/homework/homework.service';
+import { getAssignmentQuestionNumbers, isAssignmentAssignedToStudent, normalizeHomeworkResultMapForDisplay } from '../../domain/homework/homework.service';
 import { useParentContext } from '../../parent';
 import { canAccessLessonContent } from '../../utils/attendanceAccess';
 
@@ -81,8 +81,12 @@ export default function ParentClassroomView({
         );
         const unsubmittedCount = classHomeworks.filter(h => {
              const result = homeworkResults?.[progressStudentUid]?.[h.id];
-             const resultMap = result?.results || result || {};
-             return !result || Object.keys(resultMap).length === 0;
+             const assignmentQuestionNumbers = getAssignmentQuestionNumbers(h);
+             const normalizedResultMap = normalizeHomeworkResultMapForDisplay(result, assignmentQuestionNumbers, {
+                 assignmentId: h.id,
+                 studentId: progressStudentUid,
+             });
+             return !result || Object.keys(normalizedResultMap).length === 0;
         }).length;
 
         // 3. 성적 추이

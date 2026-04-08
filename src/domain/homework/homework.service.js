@@ -34,7 +34,7 @@ export const getClassStudents = (students = [], selectedClass) => {
                 : (student.classes || []);
             return classIds.map(String).includes(classId);
         })
-        .sort((a, b) => a.name.localeCompare(b.name));
+        .sort((a, b) => String(a?.name || '').localeCompare(String(b?.name || '')));
 };
 
 export const resolveAssignmentType = (assignment) => {
@@ -155,9 +155,19 @@ export const classifyHomeworkResultKeyMode = (resultMap, assignmentQuestionNumbe
 export const normalizeHomeworkResultMapForDisplay = (resultData, assignmentQuestionNumbers = [], options = {}) => {
     const baseMap = resolveResultMap(resultData) || {};
     const mode = classifyHomeworkResultKeyMode(baseMap, assignmentQuestionNumbers);
+    const isDev = typeof window !== 'undefined' && typeof window.__DEV__ !== 'undefined'
+        ? window.__DEV__
+        : process.env.NODE_ENV !== 'production';
 
     if (mode === 'actual_question_numbers') {
-        return baseMap;
+        const normalizedResultMap = baseMap;
+        if (isDev && baseMap !== normalizedResultMap) {
+            console.log('[homework normalize applied]', {
+                originalKeys: Object.keys(baseMap),
+                normalizedKeys: Object.keys(normalizedResultMap),
+            });
+        }
+        return normalizedResultMap;
     }
 
     if (mode === 'partial_sequential') {
@@ -168,7 +178,14 @@ export const normalizeHomeworkResultMapForDisplay = (resultData, assignmentQuest
             if (!Number.isFinite(mappedQuestionNumber)) return;
             mapped[String(mappedQuestionNumber)] = value;
         });
-        return mapped;
+        const normalizedResultMap = mapped;
+        if (isDev && baseMap !== normalizedResultMap) {
+            console.log('[homework normalize applied]', {
+                originalKeys: Object.keys(baseMap),
+                normalizedKeys: Object.keys(normalizedResultMap),
+            });
+        }
+        return normalizedResultMap;
     }
 
     if (Object.keys(baseMap).length > 0) {
@@ -178,7 +195,14 @@ export const normalizeHomeworkResultMapForDisplay = (resultData, assignmentQuest
             resultKeys: Object.keys(baseMap),
         });
     }
-    return baseMap;
+    const normalizedResultMap = baseMap;
+    if (isDev && baseMap !== normalizedResultMap) {
+        console.log('[homework normalize applied]', {
+            originalKeys: Object.keys(baseMap),
+            normalizedKeys: Object.keys(normalizedResultMap),
+        });
+    }
+    return normalizedResultMap;
 };
 
 const normalizeResultsByQuestions = (resultData, questionNumbers = []) => {

@@ -188,7 +188,7 @@ export default function ClinicManagement({
         return classes
             .map(item => ({ id: item.id, name: item.name }))
             .filter(item => item.id && item.name)
-            .sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+            .sort((a, b) => String(a?.name || '').localeCompare(String(b?.name || ''), 'ko'));
     }, [classes]);
 
     const assistantOptions = useMemo(() => {
@@ -203,7 +203,7 @@ export default function ClinicManagement({
             }
         });
 
-        return Array.from(seen.values()).sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+        return Array.from(seen.values()).sort((a, b) => String(a?.name || '').localeCompare(String(b?.name || ''), 'ko'));
     }, [activeClinicLogs]);
 
     const studentOptions = useMemo(() => {
@@ -221,7 +221,7 @@ export default function ClinicManagement({
                     className,
                 };
             })
-            .sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+            .sort((a, b) => String(a?.name || '').localeCompare(String(b?.name || ''), 'ko'));
     }, [students, classes, parentLast4Map]);
 
     const normalizeClassId = useCallback((value) => {
@@ -359,7 +359,7 @@ export default function ClinicManagement({
             const dB = String(b.effectiveDate || b.date || '');
             const dateCompare = dB.localeCompare(dA);
             if (dateCompare !== 0) return dateCompare;
-            const nameCompare = getStudentName(a).localeCompare(getStudentName(b), 'ko');
+            const nameCompare = String(getStudentName(a) || '').localeCompare(String(getStudentName(b) || ''), 'ko');
             if (nameCompare !== 0) return nameCompare;
             return String(a.id).localeCompare(String(b.id));
         });
@@ -422,7 +422,7 @@ export default function ClinicManagement({
             const dB = String(b.effectiveDate || b.date || '');
             const dateCompare = dB.localeCompare(dA);
             if (dateCompare !== 0) return dateCompare;
-            const nameCompare = getStudentName(a).localeCompare(getStudentName(b), 'ko');
+            const nameCompare = String(getStudentName(a) || '').localeCompare(String(getStudentName(b) || ''), 'ko');
             if (nameCompare !== 0) return nameCompare;
             return String(a.id).localeCompare(String(b.id));
         });

@@ -226,8 +226,12 @@ export default function HomeworkManagement({
             const sid = String(student.studentId);
             const aid = String(selectedAssignment?.id || '');
             const overlay = draftHomeworkOverlay?.[sid]?.[aid];
-            const resultMap = overlay?.results || student.resultMap || {};
-            const progress = computeHomeworkProgress(resultMap, questionNumbers);
+            const mergedResultMap = overlay?.results || student.resultMap || {};
+            const normalizedResultMap = normalizeHomeworkResultMapForDisplay(mergedResultMap, questionNumbers, {
+                assignmentId: selectedAssignment?.id,
+                studentId: student.studentId,
+            });
+            const progress = computeHomeworkProgress(normalizedResultMap, questionNumbers);
             const answeredCount = progress.checkedCount;
             const completionPercentRaw = progress.completionRate;
             const hasWrong = progress.incorrectCount > 0;
@@ -542,6 +546,7 @@ export default function HomeworkManagement({
                             </div>
                             <HomeworkStatisticsPanel
                                 summary={assignmentSummary}
+                                assignment={selectedAssignment}
                                 completionRateByStudentId={completionRateByStudentId}
                             />
                         </div>

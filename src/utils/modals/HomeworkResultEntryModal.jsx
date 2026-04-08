@@ -58,7 +58,10 @@ export default function HomeworkResultEntryModal({
             await onSave({
                 studentId: student.studentId || student.id,
                 assignmentId: assignment.id,
-                results: resultMap,
+                results: normalizeHomeworkResultMapForDisplay(resultMap, questions, {
+                    assignmentId: assignment.id,
+                    studentId: student.studentId || student.id,
+                }),
             });
             onClose();
         } catch (error) {
