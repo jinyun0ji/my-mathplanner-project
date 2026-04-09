@@ -5,7 +5,7 @@ import ClassSelectionPanel from '../components/Shared/ClassSelectionPanel';
 import HomeworkStatisticsPanel from '../components/Homework/HomeworkStatisticsPanel';
 import { HomeworkAssignmentModal } from '../utils/modals/HomeworkAssignmentModal';
 import HomeworkResultsModal from '../utils/modals/HomeworkResultsModal';
-import { buildAssignmentSummary, computeHomeworkProgress, getAssignmentQuestionNumbers, getClassAssignments, getSelectedAssignment, normalizeHomeworkResultMapForDisplay, resolveAssignmentStudentIds, resolveAssignmentTypeLabel, resolveAssignmentType } from '../domain/homework/homework.service';
+import { buildAssignmentSummary, classifyHomeworkResultKeyMode, computeHomeworkProgress, getAssignmentQuestionNumbers, getClassAssignments, getSelectedAssignment, normalizeHomeworkResultMapForDisplay, resolveAssignmentStudentIds, resolveAssignmentTypeLabel, resolveAssignmentType } from '../domain/homework/homework.service';
 import { buildHomeworkWrongNoteText } from '../domain/homework/homeworkWrongNote.service';
 import { db } from '../firebase/client';
 import { getDefaultClassId } from '../utils/classStatus';
@@ -221,6 +221,9 @@ export default function HomeworkManagement({
     const completionRateByStudentId = useMemo(() => {
         const questionNumbers = getAssignmentQuestionNumbers(selectedAssignment);
         const totalQuestions = questionNumbers.length;
+        const isDev = (typeof window !== 'undefined' && typeof window.__DEV__ !== 'undefined')
+            ? window.__DEV__
+            : process.env.NODE_ENV !== 'production';
 
         return assignmentSummary.reduce((acc, student) => {
             const sid = String(student.studentId);
@@ -231,6 +234,18 @@ export default function HomeworkManagement({
                 assignmentId: selectedAssignment?.id,
                 studentId: student.studentId,
             });
+
+            if (isDev) {
+                console.log('[homework completion debug]', {
+                    assignmentId: selectedAssignment?.id,
+                    title: selectedAssignment?.title || selectedAssignment?.book || selectedAssignment?.content,
+                    questionNumbers,
+                    rawKeys: Object.keys(mergedResultMap || {}),
+                    normalizedKeys: Object.keys(normalizedResultMap || {}),
+                    mode: classifyHomeworkResultKeyMode(mergedResultMap, questionNumbers),
+                });
+            }
+            
             const progress = computeHomeworkProgress(normalizedResultMap, questionNumbers);
             const answeredCount = progress.checkedCount;
             const completionPercentRaw = progress.completionRate;

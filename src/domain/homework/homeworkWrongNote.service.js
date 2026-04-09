@@ -1,4 +1,8 @@
-import { getAssignmentQuestionNumbers, normalizeHomeworkResultMapForDisplay } from './homework.service';
+import {
+    classifyHomeworkResultKeyMode,
+    getAssignmentQuestionNumbers,
+    normalizeHomeworkResultMapForDisplay,
+} from './homework.service';
 
 export const isWrongOrCorrectedAnswer = (value) => {
     return value === '틀림'
@@ -29,6 +33,11 @@ export const normalizeHomeworkTitleForWrongNote = (title) => {
 const resolveStudentName = (student) => {
     return student?.name || student?.studentName || '이름없음';
 };
+
+const isDevEnvironment = () => (
+    (typeof window !== 'undefined' && typeof window.__DEV__ !== 'undefined' && window.__DEV__)
+    || process.env.NODE_ENV !== 'production'
+);
 
 const unwrapResultMap = (value) => {
     if (!isPlainObject(value)) return {};
@@ -84,10 +93,7 @@ const resolveStudentRecord = (homeworkResults, student, assignmentId) => {
 
 export const extractWrongQuestionNumbers = (resultMap, assignmentQuestionNumbers = [], options = {}) => {
     const rawMap = unwrapResultMap(resultMap);
-    const hasAssignmentQuestions = Array.isArray(assignmentQuestionNumbers) && assignmentQuestionNumbers.length > 0;
-    const normalizedMap = hasAssignmentQuestions
-        ? normalizeHomeworkResultMapForDisplay(rawMap, assignmentQuestionNumbers, options)
-        : rawMap;
+    const normalizedMap = normalizeHomeworkResultMapForDisplay(rawMap, assignmentQuestionNumbers, options);
 
     return Object.entries(normalizedMap)
         .filter(([, value]) => isWrongOrCorrectedAnswer(value))
@@ -110,7 +116,23 @@ export const buildHomeworkWrongNoteText = ({
         .map((student) => {
             const studentName = resolveStudentName(student);
             const record = resolveStudentRecord(homeworkResults, student, assignmentId);
-            const wrongNumbers = extractWrongQuestionNumbers(record, assignmentQuestionNumbers, {
+            const rawResultMap = unwrapResultMap(record);
+            const normalizedResultMap = normalizeHomeworkResultMapForDisplay(rawResultMap, assignmentQuestionNumbers, {
+                assignmentId,
+                studentId: student?.id || student?.studentId || student?.authUid,
+            });
+
+            if (isDevEnvironment()) {
+                console.log('[homework wrong-note debug]', {
+                    studentName,
+                    assignmentId,
+                    rawKeys: Object.keys(rawResultMap || {}),
+                    normalizedKeys: Object.keys(normalizedResultMap || {}),
+                    mode: classifyHomeworkResultKeyMode(rawResultMap, assignmentQuestionNumbers),
+                });
+            }
+
+            const wrongNumbers = extractWrongQuestionNumbers(normalizedResultMap, assignmentQuestionNumbers, {
                 assignmentId,
                 studentId: student?.id || student?.studentId || student?.authUid,
             });

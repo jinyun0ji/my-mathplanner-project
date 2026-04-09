@@ -143,9 +143,9 @@ export const classifyHomeworkResultKeyMode = (resultMap, assignmentQuestionNumbe
     }
 
     const uniqueSortedKeys = Array.from(new Set(rawKeys)).sort((a, b) => a - b);
-    const isSequential = uniqueSortedKeys.every((value, index) => value === index + 1);
     const maxSequential = uniqueSortedKeys[uniqueSortedKeys.length - 1] || 0;
-    if (isSequential && maxSequential <= normalizedAssignmentNumbers.length) {
+    const isSequentialWindow = uniqueSortedKeys.every((value) => value >= 1 && value <= normalizedAssignmentNumbers.length);
+    if (isSequentialWindow && maxSequential <= normalizedAssignmentNumbers.length) {
         return 'partial_sequential';
     }
 

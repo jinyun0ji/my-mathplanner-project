@@ -1,5 +1,5 @@
 import React, { useMemo, useRef } from 'react';
-import { getAssignmentQuestionNumbers } from '../../domain/homework/homework.service';
+import { getAssignmentQuestionNumbers, normalizeHomeworkResultMapForDisplay } from '../../domain/homework/homework.service';
 
 const RESULT_OPTIONS_HOMEWORK = { 
     '맞음': 'text-green-600 bg-green-100', 

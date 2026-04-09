@@ -95,4 +95,29 @@ describe('homeworkWrongNote.service', () => {
 
         expect(text).toBe('김현준_워크북,281,282');
     });
+
+    test('buildHomeworkWrongNoteText supports sparse legacy sequential keys', () => {
+        const text = buildHomeworkWrongNoteText({
+            assignment: {
+                id: 'assignment-3',
+                title: '워크북2',
+                questionNumbers: [10, 11, 12, 13],
+            },
+            students: [
+                { id: 'student-1', name: '김현준' },
+            ],
+            homeworkResults: {
+                'student-1': {
+                    'assignment-3': {
+                        results: {
+                            1: '틀림',
+                            3: '고침',
+                        },
+                    },
+                },
+            },
+        });
+
+        expect(text).toBe('김현준_워크북2,10,12');
+    });
 });

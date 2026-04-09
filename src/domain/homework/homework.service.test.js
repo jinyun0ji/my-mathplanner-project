@@ -29,6 +29,16 @@ describe('homework.service legacy result map normalization', () => {
         });
     });
 
+    test('classifies sparse sequential keys as partial sequential', () => {
+        const questions = getAssignmentQuestionNumbers(assignment);
+        const raw = { 1: '맞음', 3: '틀림' };
+        expect(classifyHomeworkResultKeyMode(raw, questions)).toBe('partial_sequential');
+        expect(normalizeHomeworkResultMapForDisplay(raw, questions)).toEqual({
+            281: '맞음',
+            283: '틀림',
+        });
+    });
+
     test('computeHomeworkProgress uses normalized sequential fallback', () => {
         const questions = getAssignmentQuestionNumbers(assignment);
         const progress = computeHomeworkProgress({ 1: '맞음', 2: '틀림' }, questions);
