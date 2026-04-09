@@ -1,14 +1,15 @@
 import React from 'react';
-import { Icon } from '../../utils/helpers';
+import { FEATURES } from '../../config/features';
+import InternalMessengerPanel from '../messenger/InternalMessengerPanel';
 
-export default function Messenger() {
-    return (
-        <div className="bg-white p-6 rounded-xl shadow-md h-[70vh] flex items-center justify-center">
-            <div className='text-center space-y-2'>
-                <Icon name="send" className="w-8 h-8 mx-auto text-gray-400"/>
-                <p className="text-lg text-gray-500 font-semibold">내부 메신저</p>
-                <p className='text-sm text-gray-500'>교직원 간 1:1 채팅 및 그룹 채팅 기능은 곧 추가될 예정입니다.</p>
+export default function Messenger({ userId, userRole, students = [], parents = [] }) {
+    if (!FEATURES.ENABLE_INTERNAL_MESSENGER) {
+        return (
+            <div className="bg-white p-6 rounded-xl shadow-md h-[70vh] flex items-center justify-center">
+                <p className="text-sm text-gray-500">내부 메신저 기능이 비활성화되어 있습니다.</p>
             </div>
-        </div>
-    );
-};
+        );
+    }
+
+    return <InternalMessengerPanel userId={userId} userRole={userRole} students={students} parents={parents} />;
+}

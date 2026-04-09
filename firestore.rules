@@ -262,6 +262,31 @@ service cloud.firestore {
         ? get(/databases/$(database)/documents/userAuthIndex/$(uid())).data.userDocId
         : null;
     }
+    
+    function resourceParticipantIds() {
+      return resource != null && resource.data.participantIds is list
+        ? resource.data.participantIds
+        : [];
+    }
+    function isChatParticipantFromResource() {
+      return isSignedIn() && (uid() in resourceParticipantIds());
+    }
+
+    function canAccessChatRoomDoc() {
+      return isSignedIn() && (
+        isStaffOrAdminOrTeacher()
+        || isChatParticipantFromResource()
+      );
+    }
+
+    function canAccessChatRoomById(roomId) {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/chatRooms/$(roomId))
+        && (
+          isStaffOrAdminOrTeacher()
+          || (uid() in get(/databases/$(database)/documents/chatRooms/$(roomId)).data.participantIds)
+        );
+    }
 
     /* =========================
        users
@@ -489,6 +514,48 @@ service cloud.firestore {
     match /notifications/{userUid}/meta/{metaId} {
       allow read, write: if signedIn()
         && (uid() == userUid || isStaffOrAdminOrTeacher());
+    }
+    
+    
+    match /chatRooms/{roomId} {
+      allow read: if canAccessChatRoomDoc();
+
+      allow create: if isSignedIn()
+        && isStaffOrAdminOrTeacher()
+        && request.resource.data.type == 'individual'
+        && request.resource.data.participantIds is list
+        && request.resource.data.participantIds.size() == 2
+        && request.resource.data.internalOnly == true;
+
+      allow update: if isSignedIn() && (
+        isStaffOrAdminOrTeacher()
+        || (
+          isChatParticipantFromResource()
+          && request.resource.data.participantIds == resource.data.participantIds
+          && request.resource.data.participantRoles == resource.data.participantRoles
+          && request.resource.data.internalOnly == resource.data.internalOnly
+          && request.resource.data.diff(resource.data).changedKeys()
+              .hasOnly(['updatedAt', 'updatedBy', 'lastMessageText', 'lastMessageAt', 'lastMessageSenderId', 'unreadCountByUser', 'status'])
+        )
+      );
+
+      allow delete: if isStaffOrAdminOrTeacher();
+    }
+
+    match /chatRooms/{roomId}/messages/{messageId} {
+      allow read: if canAccessChatRoomById(roomId);
+
+      allow create: if canAccessChatRoomById(roomId)
+        && request.resource.data.roomId == roomId
+        && request.resource.data.senderId == uid()
+        && request.resource.data.internalOnly == true;
+
+      allow update: if isStaffOrAdminOrTeacher();
+      allow delete: if false;
+    }
+
+    match /chatBroadcastLogs/{broadcastId} {
+      allow read, write: if isStaffOrAdminOrTeacher();
     }
 
     match /{document=**} {

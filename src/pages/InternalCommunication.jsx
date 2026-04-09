@@ -3,8 +3,8 @@ import Announcement from '../components/Communication/Announcement'; // 경로 �
 import WorkLogs from '../components/Communication/WorkLogs'; // 경로 수정
 import Messenger from '../components/Communication/Messenger'; // 경로 수정
 
-export default function InternalCommunication({ announcements, handleSaveAnnouncement, handleDeleteAnnouncement, students, classes, workLogs, handleSaveWorkLog, handleDeleteWorkLog }) { 
-       
+export default function InternalCommunication({ announcements, handleSaveAnnouncement, handleDeleteAnnouncement, students, parents, classes, workLogs, handleSaveWorkLog, handleDeleteWorkLog, userRole, userId }) { 
+
     const [activeTab, setActiveTab] = useState('announcements');
     
     return (
@@ -19,7 +19,7 @@ export default function InternalCommunication({ announcements, handleSaveAnnounc
                             activeTab === tab ? 'text-green-600 bg-green-50 border border-green-200' : 'text-gray-500 hover:text-gray-700 bg-white border border-transparent'
                         }`}
                     >
-                        {tab === 'announcements' ? '전체 공지사항' : tab === 'worklogs' ? '교직원 근무 일지' : '내부 메신저 (미구현)'}
+                        {tab === 'announcements' ? '전체 공지사항' : tab === 'worklogs' ? '교직원 근무 일지' : '내부 메신저'}
                     </button>
                 ))}
             </div>
@@ -40,7 +40,7 @@ export default function InternalCommunication({ announcements, handleSaveAnnounc
                     handleDeleteLog={handleDeleteWorkLog}
                 />
             )}
-            {activeTab === 'messenger' && <Messenger />}
+            {activeTab === 'messenger' && <Messenger userId={userId} userRole={userRole} students={students} parents={parents} />}
         </div>
     );
 };

@@ -1091,6 +1091,10 @@ video {
   height: 100vh;
 }
 
+.h-\[420px\]{
+  height: 420px;
+}
+
 .max-h-0{
   max-height: 0px;
 }
@@ -1177,6 +1181,10 @@ video {
 
 .max-h-\[95vh\]{
   max-height: 95vh;
+}
+
+.max-h-\[420px\]{
+  max-height: 420px;
 }
 
 .min-h-0{
@@ -1377,6 +1385,10 @@ video {
 
 .min-w-\[90px\]{
   min-width: 90px;
+}
+
+.min-w-\[260px\]{
+  min-width: 260px;
 }
 
 .max-w-2xl{
@@ -4840,6 +4852,10 @@ body{
 @media (min-width: 1024px){
   .lg\:col-span-2{
     grid-column: span 2 / span 2;
+  }
+
+  .lg\:col-span-1{
+    grid-column: span 1 / span 1;
   }
 
   .lg\:block{
