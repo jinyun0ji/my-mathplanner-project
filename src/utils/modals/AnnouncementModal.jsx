@@ -1,5 +1,17 @@
 // src/utils/modals/AnnouncementModal.jsx
 import React, { useState, useEffect, useRef } from 'react';
+import {
+    AlignCenter,
+    AlignLeft,
+    AlignRight,
+    Bold,
+    ImagePlus,
+    Italic,
+    Link2,
+    Palette,
+    Paperclip,
+    Underline,
+} from 'lucide-react';
 import { Modal } from '../../components/common/Modal';
 import { Icon } from '../../utils/helpers';
 import StaffNotificationFields from '../../components/Shared/StaffNotificationFields';
@@ -127,9 +139,16 @@ export const AnnouncementModal = ({ isOpen, onClose, onSave, announcementToEdit 
     };
 
     const handleImageInsertion = () => {
-        const url = prompt("삽입할 이미지의 URL을 입력하세요:");
+        const url = prompt('삽입할 이미지의 URL을 입력하세요:');
         if (url) {
             applyFormat('insertImage', url);
+        }
+    };
+
+    const handleLinkInsertion = () => {
+        const url = prompt('삽입할 링크 URL을 입력하세요:');
+        if (url) {
+            applyFormat('createLink', url);
         }
     };
 
@@ -255,6 +274,8 @@ export const AnnouncementModal = ({ isOpen, onClose, onSave, announcementToEdit 
         { value: 7, label: '7 (가장 크게)' },
     ];
 
+    const toolbarButtonClass = 'inline-flex h-8 w-8 items-center justify-center rounded-md text-gray-700 hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500';
+
     return (
         <Modal isOpen={isOpen} onClose={onClose} title={announcementToEdit ? '공지사항 수정' : '새 공지사항 등록'} maxWidth="max-w-4xl">
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -279,51 +300,68 @@ export const AnnouncementModal = ({ isOpen, onClose, onSave, announcementToEdit 
                     <label className="block text-sm font-medium text-gray-700 mb-1">내용*</label>
                     
                     {/* 서식 툴바 */}
-                    <div className="flex space-x-2 mb-1 p-2 bg-gray-100 border border-gray-300 rounded-t-md flex-wrap items-center">
-                        {/* ✅ onMouseDown={(e) => e.preventDefault()} 추가로 포커스 유지 */}
-                        <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => applyFormat('bold')} className="p-1.5 hover:bg-gray-200 rounded text-sm font-bold w-8 text-center text-gray-700" title="굵게">B</button>
-                        <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => applyFormat('italic')} className="p-1.5 hover:bg-gray-200 rounded text-sm italic w-8 text-center text-gray-700" title="기울임">I</button>
-                        <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => applyFormat('underline')} className="p-1.5 hover:bg-gray-200 rounded text-sm underline w-8 text-center text-gray-700" title="밑줄">U</button>
-                        
-                        <div className="flex border-l border-gray-300 pl-2 space-x-1">
-                            <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => applyFormat('justifyLeft')} title="왼쪽 정렬" className="p-1.5 hover:bg-gray-200 rounded text-gray-700"><Icon name="alignLeft" className="w-5 h-5"/></button>
-                            <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => applyFormat('justifyCenter')} title="가운데 정렬" className="p-1.5 hover:bg-gray-200 rounded text-gray-700"><Icon name="alignCenter" className="w-5 h-5"/></button>
-                            <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => applyFormat('justifyRight')} title="오른쪽 정렬" className="p-1.5 hover:bg-gray-200 rounded text-gray-700"><Icon name="alignRight" className="w-5 h-5"/></button>
-                        </div>
+                    <div className="mb-1 flex flex-wrap items-center gap-1 rounded-t-md border border-gray-300 bg-gray-100 p-2">
+                        <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => applyFormat('bold')} className={toolbarButtonClass} title="굵게" aria-label="굵게">
+                            <Bold className="h-4 w-4" />
+                        </button>
+                        <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => applyFormat('italic')} className={toolbarButtonClass} title="기울임" aria-label="기울임">
+                            <Italic className="h-4 w-4" />
+                        </button>
+                        <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => applyFormat('underline')} className={toolbarButtonClass} title="밑줄" aria-label="밑줄">
+                            <Underline className="h-4 w-4" />
+                        </button>
 
-                        <div className="flex border-l border-gray-300 pl-2 space-x-2 items-center">
-                            <label className="flex items-center space-x-1" title="글씨 색상">
-                                <input 
-                                    type="color" 
-                                    onInput={(e) => applyFormat('foreColor', e.target.value)} 
-                                    className="w-6 h-6 p-0 border-0 cursor-pointer rounded"
-                                />
-                            </label>
+                        <div className="mx-1 h-6 w-px bg-gray-300" aria-hidden="true" />
+
+                        <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => applyFormat('justifyLeft')} title="왼쪽 정렬" aria-label="왼쪽 정렬" className={toolbarButtonClass}>
+                            <AlignLeft className="h-4 w-4" />
+                        </button>
+                        <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => applyFormat('justifyCenter')} title="가운데 정렬" aria-label="가운데 정렬" className={toolbarButtonClass}>
+                            <AlignCenter className="h-4 w-4" />
+                        </button>
+                        <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => applyFormat('justifyRight')} title="오른쪽 정렬" aria-label="오른쪽 정렬" className={toolbarButtonClass}>
+                            <AlignRight className="h-4 w-4" />
+                        </button>
+
+                        <div className="mx-1 h-6 w-px bg-gray-300" aria-hidden="true" />
+
+                        <label className="relative inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-md text-gray-700 hover:bg-gray-200" title="글씨 색상" aria-label="글씨 색상">
+                            <Palette className="h-4 w-4" />
+                            <input 
+                                type="color" 
+                                onInput={(e) => applyFormat('foreColor', e.target.value)} 
+                                className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                                aria-label="글씨 색상 선택"
+                            />
+                        </label>
                             
-                            <select 
-                                onChange={(e) => applyFormat('fontSize', e.target.value)} 
-                                className="text-sm p-1 rounded border border-gray-300 bg-white text-gray-700 focus:ring-blue-500 focus:border-blue-500 w-24" 
-                                title="글씨 크기"
-                            >
-                                <option value="">글자 크기</option>
-                                {fontSizeOptions.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
-                            </select>
-                        </div>
+                        <select 
+                            onChange={(e) => applyFormat('fontSize', e.target.value)} 
+                            className="h-8 w-28 rounded border border-gray-300 bg-white px-1 text-sm text-gray-700 focus:border-blue-500 focus:ring-blue-500" 
+                            title="글씨 크기"
+                            aria-label="글씨 크기"
+                        >
+                            <option value="">글자 크기</option>
+                            {fontSizeOptions.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+                        </select>
 
-                        <div className="flex border-l border-gray-300 pl-2 space-x-1">
-                            <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={handleImageInsertion} title="이미지 삽입 (URL)" className="p-1.5 hover:bg-gray-200 rounded text-gray-700">
-                                <Icon name="image" className="w-5 h-5"/>
-                            </button>
-                        </div>
+                        <div className="mx-1 h-6 w-px bg-gray-300" aria-hidden="true" />
+
+                        <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={handleLinkInsertion} title="링크 삽입" aria-label="링크 삽입" className={toolbarButtonClass}>
+                            <Link2 className="h-4 w-4" />
+                        </button>
+                        <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={handleImageInsertion} title="이미지 삽입 (URL)" aria-label="이미지 삽입" className={toolbarButtonClass}>
+                            <ImagePlus className="h-4 w-4" />
+                        </button>
 
                         {selectedImage && (
-                            <div className="flex border-l border-gray-300 pl-2 space-x-1 items-center animate-fade-in bg-blue-50 px-2 rounded">
-                                <span className="text-xs text-blue-600 font-bold mr-1">사진 크기:</span>
-                                <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => handleResizeImage('25%')} className="text-xs px-2 py-1 bg-white border border-gray-300 rounded hover:bg-blue-100 text-gray-700">25%</button>
-                                <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => handleResizeImage('50%')} className="text-xs px-2 py-1 bg-white border border-gray-300 rounded hover:bg-blue-100 text-gray-700">50%</button>
-                                <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => handleResizeImage('75%')} className="text-xs px-2 py-1 bg-white border border-gray-300 rounded hover:bg-blue-100 text-gray-700">75%</button>
-                                <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => handleResizeImage('100%')} className="text-xs px-2 py-1 bg-white border border-gray-300 rounded hover:bg-blue-100 text-gray-700">100%</button>
-                                <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => handleResizeImage('auto')} className="text-xs px-2 py-1 bg-white border border-gray-300 rounded hover:bg-blue-100 text-gray-700">원본</button>
+                            <div className="ml-2 flex items-center gap-1 rounded bg-blue-50 px-2 py-1 animate-fade-in">
+                                <span className="mr-1 text-xs font-bold text-blue-600">사진 크기:</span>
+                                <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => handleResizeImage('25%')} className="rounded border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700 hover:bg-blue-100">25%</button>
+                                <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => handleResizeImage('50%')} className="rounded border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700 hover:bg-blue-100">50%</button>
+                                <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => handleResizeImage('75%')} className="rounded border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700 hover:bg-blue-100">75%</button>
+                                <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => handleResizeImage('100%')} className="rounded border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700 hover:bg-blue-100">100%</button>
+                                <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => handleResizeImage('auto')} className="rounded border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700 hover:bg-blue-100">원본</button>
                             </div>
                         )}
                     </div>
@@ -367,8 +405,10 @@ export const AnnouncementModal = ({ isOpen, onClose, onSave, announcementToEdit 
                             type="button" 
                             onClick={() => fileInputRef.current.click()}
                             className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition-colors border border-gray-300"
+                            title="첨부파일 추가"
+                            aria-label="첨부파일 추가"
                         >
-                            <Icon name="plus" className="w-4 h-4" />
+                            <Paperclip className="h-4 w-4" />
                             파일 추가
                         </button>
                         <span className="text-xs text-gray-400">PDF, HWP, JPG 등 업로드 가능</span>
