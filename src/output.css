@@ -4785,6 +4785,10 @@ body{
     grid-template-columns: repeat(5, minmax(0, 1fr));
   }
 
+  .md\:grid-cols-\[1fr\2c 1fr\2c 1fr\2c 1fr\]{
+    grid-template-columns: 1fr 1fr 1fr 1fr;
+  }
+
   .md\:flex-row{
     flex-direction: row;
   }

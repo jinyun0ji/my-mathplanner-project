@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Icon, formatGradeLabel, formatClassScheduleKo } from '../../utils/helpers';
 import { ClassFormModal } from '../../utils/modals/ClassFormModal';
-import { isClassFinished, sortClassesByStatus } from '../../utils/classStatus';
+import { isClosedClass, sortClassesWithClosedLast, formatClassLabel } from '../../utils/classStatus';
 
 export default function ClassSelectionPanel({ 
     classes, selectedClassId, setSelectedClassId, handleClassSave, calculateClassSessions, 
@@ -11,8 +11,9 @@ export default function ClassSelectionPanel({
 }) {
     const [isClassModalOpen, setIsClassModalOpen] = useState(false);
     const [isEditMode, setIsEditMode] = useState(false); // ✅ [추가] 편집 모드 상태 관리
-    const { ordered: orderedClasses } = useMemo(() => sortClassesByStatus(classes), [classes]);
+    const orderedClasses = useMemo(() => sortClassesWithClosedLast(classes), [classes]);
     const selectedClass = classes.find(c => String(c.id) === String(selectedClassId));
+    const isSelectedClassClosed = isClosedClass(selectedClass);
     const selectedClassGrade = selectedClass ? formatGradeLabel(selectedClass.grade) : '';
     const selectedStudentCount = selectedClass
         ? (selectedClass.students?.length ?? 0)
@@ -54,20 +55,25 @@ export default function ClassSelectionPanel({
                 <option value="" disabled>클래스를 선택하세요</option>
                 {orderedClasses.map(cls => (
                     <option key={cls.id} value={cls.id}>
-                        {cls.name} ({cls.teacher}){isClassFinished(cls) ? ' · 종강' : ''}
+                        {formatClassLabel(cls, { includeClosedBadge: true })}
                     </option>
                 ))}
             </select>
 
             {selectedClass && (
-                <div className="border p-3 rounded-lg bg-indigo-50 space-y-2">
-                    <p className="text-sm font-semibold text-indigo-700">{selectedClassGrade || '학년 미정'} | {formatClassScheduleKo(selectedClass) || '시간 미정'}</p>
-                    <p className="text-xs text-indigo-600">총 학생: {selectedStudentCount}명</p>
+                <div className={`border p-3 rounded-lg space-y-2 ${isSelectedClassClosed ? 'bg-gray-100 border-gray-300' : 'bg-indigo-50 border-indigo-100'}`}>
+                    <p className={`text-sm font-semibold ${isSelectedClassClosed ? 'text-gray-700' : 'text-indigo-700'}`}>
+                        {selectedClassGrade || '학년 미정'} | {formatClassScheduleKo(selectedClass) || '시간 미정'}
+                    </p>
+                    <p className={`text-xs ${isSelectedClassClosed ? 'text-gray-600' : 'text-indigo-600'}`}>
+                        총 학생: {selectedStudentCount}명
+                        {isSelectedClassClosed ? ' · 종강 클래스' : ''}
+                    </p>
                     {showEditButton && (
                         <button 
                             // ✅ [수정] 수정 버튼: 편집 모드 켜고 모달 열기
                             onClick={() => { setIsEditMode(true); setIsClassModalOpen(true); }}
-                            className="text-xs text-indigo-500 hover:text-indigo-700 font-medium flex items-center"
+                            className={`text-xs font-medium flex items-center ${isSelectedClassClosed ? 'text-gray-500 hover:text-gray-700' : 'text-indigo-500 hover:text-indigo-700'}`}
                         >
                             <Icon name="edit" className="w-4 h-4 mr-1" />
                             클래스 정보 수정

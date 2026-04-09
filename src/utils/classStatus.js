@@ -39,16 +39,72 @@ const normalizeEndDate = (classDoc) => {
 
 const getTodayStart = () => getLocalStartOfDay(new Date());
 
-export const isClassOngoing = (classDoc) => {
+const CLOSED_STATUS_SET = new Set([
+    '종강',
+    '종료',
+    '마감',
+    'closed',
+    'close',
+    'completed',
+    'complete',
+    'finished',
+    'inactive',
+]);
+
+const normalizeStatusText = (value) => String(value || '').trim().toLowerCase();
+
+const readClassStatus = (classDoc = {}) => (
+    classDoc.status
+    || classDoc.classStatus
+    || classDoc.state
+    || classDoc.lifecycleStatus
+    || ''
+);
+
+const compareClassNameKo = (a, b) => {
+    const left = String(a?.name || '');
+    const right = String(b?.name || '');
+    return left.localeCompare(right, 'ko');
+};
+
+export const isClosedClass = (classDoc) => {
+    if (!classDoc) return false;
+
+    const status = normalizeStatusText(readClassStatus(classDoc));
+    if (status && CLOSED_STATUS_SET.has(status)) return true;
+
     const endDate = normalizeEndDate(classDoc);
-    if (!endDate) return true;
-    return endDate.getTime() >= getTodayStart().getTime();
+    if (!endDate) return false;
+
+    const isOperating = Boolean(classDoc?.isOperating ?? classDoc?.operating ?? classDoc?.isActive);
+    if (isOperating) return false;
+
+    return endDate.getTime() < getTodayStart().getTime();
+};
+
+export const sortClassesWithClosedLast = (classes = []) => {
+    const list = Array.isArray(classes) ? [...classes] : [];
+    return list.sort((a, b) => {
+        const aClosed = isClosedClass(a);
+        const bClosed = isClosedClass(b);
+        if (aClosed !== bClosed) return aClosed ? 1 : -1;
+        return compareClassNameKo(a, b);
+    });
+};
+
+export const formatClassLabel = (classDoc, { includeClosedBadge = true } = {}) => {
+    if (!classDoc) return '';
+    const teacher = classDoc.teacher ? ` (${classDoc.teacher})` : '';
+    const closedSuffix = includeClosedBadge && isClosedClass(classDoc) ? ' [종강]' : '';
+    return `${classDoc.name || '이름 없음'}${teacher}${closedSuffix}`;
+};
+
+export const isClassOngoing = (classDoc) => {
+    return !isClosedClass(classDoc);
 };
 
 export const isClassFinished = (classDoc) => {
-    const endDate = normalizeEndDate(classDoc);
-    if (!endDate) return false;
-    return endDate.getTime() < getTodayStart().getTime();
+    return isClosedClass(classDoc);
 };
 
 export const getDefaultClassId = (classes = []) => {
@@ -91,19 +147,25 @@ export const sortClassesByStatus = (classes = [], studentClassStatusMap = {}, ch
             return;
         }
 
-        if (isEndedByDate(cls)) {
+        if (isEndedByDate(cls) || isClosedClass(cls)) {
             finished.push(cls);
             return;
         }
 
         ongoing.push(cls);
     });
+    const ordered = [
+        ...ongoing.sort(compareClassNameKo),
+        ...finished.sort(compareClassNameKo),
+        ...withdrawn.sort(compareClassNameKo),
+    ];
+
     return {
         all,
-        ongoing,
-        finished,
-        withdrawn,
-        ordered: [...ongoing, ...finished, ...withdrawn],
+        ongoing: ongoing.sort(compareClassNameKo),
+        finished: finished.sort(compareClassNameKo),
+        withdrawn: withdrawn.sort(compareClassNameKo),
+        ordered,
     };
 };
 
