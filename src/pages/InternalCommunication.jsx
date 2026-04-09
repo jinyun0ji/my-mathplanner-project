@@ -40,7 +40,7 @@ export default function InternalCommunication({ announcements, handleSaveAnnounc
                     handleDeleteLog={handleDeleteWorkLog}
                 />
             )}
-            {activeTab === 'messenger' && <Messenger userId={userId} userRole={userRole} students={students} parents={parents} />}
+            {activeTab === 'messenger' && <Messenger userId={userId} userRole={userRole} students={students} parents={parents} classes={classes} />}
         </div>
     );
 };

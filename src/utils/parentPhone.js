@@ -105,14 +105,27 @@ export const buildStudentParentPhoneLast4Map = (students = [], parents = []) => 
   return map;
 };
 
+const resolveStudentParentLast4 = (student, parentLast4Map = {}) => {
+  const direct = last4(pickParentPhoneFromStudentDoc(student));
+  const mapped = parentLast4Map[String(student?.id || '')] || '';
+  return direct || mapped || '';
+};
+
 export const formatStudentNameWithParentLast4 = (
   student,
   parentLast4Map = {},
   fallback = '----'
 ) => {
   const name = student?.name || '';
-  const direct = last4(pickParentPhoneFromStudentDoc(student));
-  const mapped = parentLast4Map[String(student?.id || '')] || '';
-  const v = direct || mapped || '';
+  const v = resolveStudentParentLast4(student, parentLast4Map);
   return `${name} (${v || fallback})`;
+};
+
+export const formatStudentNameWithOptionalParentLast4 = (
+  student,
+  parentLast4Map = {}
+) => {
+  const name = student?.name || student?.studentName || '';
+  const v = resolveStudentParentLast4(student, parentLast4Map);
+  return v ? `${name} (${v})` : name;
 };

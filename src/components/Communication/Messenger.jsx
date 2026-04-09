@@ -2,7 +2,7 @@ import React from 'react';
 import { FEATURES } from '../../config/features';
 import InternalMessengerPanel from '../messenger/InternalMessengerPanel';
 
-export default function Messenger({ userId, userRole, students = [], parents = [] }) {
+export default function Messenger({ userId, userRole, students = [], parents = [], classes = [] }) {
     if (!FEATURES.ENABLE_INTERNAL_MESSENGER) {
         return (
             <div className="bg-white p-6 rounded-xl shadow-md h-[70vh] flex items-center justify-center">
@@ -11,5 +11,5 @@ export default function Messenger({ userId, userRole, students = [], parents = [
         );
     }
 
-    return <InternalMessengerPanel userId={userId} userRole={userRole} students={students} parents={parents} />;
+    return <InternalMessengerPanel userId={userId} userRole={userRole} students={students} parents={parents} classes={classes} />;
 }

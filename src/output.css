@@ -1187,6 +1187,10 @@ video {
   max-height: 420px;
 }
 
+.max-h-\[260px\]{
+  max-height: 260px;
+}
+
 .min-h-0{
   min-height: 0px;
 }
@@ -1389,6 +1393,10 @@ video {
 
 .min-w-\[260px\]{
   min-width: 260px;
+}
+
+.min-w-\[220px\]{
+  min-width: 220px;
 }
 
 .max-w-2xl{
@@ -1602,6 +1610,10 @@ video {
 .select-none{
   -webkit-user-select: none;
           user-select: none;
+}
+
+.resize-y{
+  resize: vertical;
 }
 
 .snap-x{
@@ -3930,6 +3942,10 @@ body{
 
 .animate-fade-in {
   animation: fadeIn 0.3s ease-out forwards;
+}
+
+.first\:border-t-0:first-child{
+  border-top-width: 0px;
 }
 
 .last\:border-b-0:last-child{

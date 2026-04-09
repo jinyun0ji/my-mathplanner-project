@@ -18,12 +18,23 @@ export default function ChatMessagePane({ room, messages = [], myUid, onSend }) 
         });
     }, [messages]);
 
-    const submit = async (event) => {
-        event.preventDefault();
+    const submitText = async () => {
         const text = draft.trim();
         if (!text || !room?.id) return;
         await onSend(text);
         setDraft('');
+    };
+
+    const submit = async (event) => {
+        event.preventDefault();
+        await submitText();
+    };
+
+    const handleKeyDown = async (event) => {
+        if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+            event.preventDefault();
+            await submitText();
+        }
     };
 
     if (!room) {
@@ -40,19 +51,21 @@ export default function ChatMessagePane({ room, messages = [], myUid, onSend }) 
                     return (
                         <div key={message.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
                             <div className={`max-w-[75%] rounded-lg px-3 py-2 text-sm ${mine ? 'bg-green-100 text-gray-800' : 'bg-gray-100 text-gray-700'}`}>
-                                <p>{message.text || ''}</p>
+                                <p className="whitespace-pre-wrap break-words">{message.text || ''}</p>
                                 <p className="text-[10px] text-gray-400 mt-1 text-right">{formatTime(message.createdAt)}</p>
                             </div>
                         </div>
                     );
                 })}
             </div>
-            <form onSubmit={submit} className="border-t p-2 flex gap-2">
-                <input
+            <form onSubmit={submit} className="border-t p-2 flex gap-2 items-end">
+                <textarea
                     value={draft}
                     onChange={(event) => setDraft(event.target.value)}
-                    placeholder="메시지 입력"
-                    className="flex-1 border rounded px-3 py-2 text-sm"
+                    onKeyDown={handleKeyDown}
+                    placeholder="메시지 입력 (Enter 줄바꿈 / Ctrl+Enter 또는 Cmd+Enter 전송)"
+                    rows={2}
+                    className="flex-1 border rounded px-3 py-2 text-sm resize-y"
                 />
                 <button type="submit" className="px-3 py-2 rounded bg-green-600 text-white text-sm">전송</button>
             </form>
