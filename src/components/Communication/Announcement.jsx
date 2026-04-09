@@ -33,7 +33,12 @@ export default function Announcement({ announcements, handleSaveAnnouncement, ha
     };
     
     const getClassNames = (classIds) => {
-        return classIds.map(id => allClasses.find(c => c.id === id)?.name).join(', ') || '전체';
+        const ids = Array.isArray(classIds) ? classIds.map((id) => String(id)) : [];
+        if (ids.length === 0) return '전체';
+        return ids
+            .map((id) => allClasses.find((c) => String(c.id) === id)?.name)
+            .filter(Boolean)
+            .join(', ') || '전체';
     };
 
     return (

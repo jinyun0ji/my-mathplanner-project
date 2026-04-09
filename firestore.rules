@@ -375,7 +375,16 @@ service cloud.firestore {
     }
 
     match /announcements/{docId} {
-      allow read: if signedIn();
+      allow read: if isStaffOrAdminOrTeacher()
+        || (
+          signedIn()
+          && (
+            resource.data.isPublic == true
+            || isAnnouncementTargetClass(resource.data)
+            || isAnnouncementTargetStudent(resource.data)
+            || isAnnouncementTargetAuthUid(resource.data)
+          )
+        );
 
       allow write: if isStaffOrAdminOrTeacher();
     }
