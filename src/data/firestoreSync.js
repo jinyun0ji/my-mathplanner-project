@@ -1719,13 +1719,41 @@ export const loadViewerDataOnce = async ({
             const merged = announcementDocs
                 .map((d) => ({ id: d.id, ...d.data() }))
                 .filter((notice) => {
-                    const hasClassTargets = Array.isArray(notice?.targetClasses)
-                        && notice.targetClasses.length > 0;
-                    if (!hasClassTargets) return true;
-                    if (notice?.isPublic === true) return true;
-                    const noticeTargets = Array.isArray(notice?.targetStudents) ? notice.targetStudents.map(String) : [];
-                    const isPersonalTarget = noticeTargets.some((key) => targetStudentKeys.includes(String(key)));
-                    return isPersonalTarget;
+                    const noticeClassTargets = Array.isArray(notice?.targetClasses)
+                        ? notice.targetClasses.map(String)
+                        : [];
+                    const noticeStudentTargets = Array.isArray(notice?.targetStudents)
+                        ? notice.targetStudents.map(String)
+                        : [];
+                    const noticeAuthTargets = Array.isArray(notice?.targetAuthUids)
+                        ? notice.targetAuthUids.map(String)
+                        : [];
+                    const hasClassTargets = noticeClassTargets.length > 0;
+                    const hasStudentTargets = noticeStudentTargets.length > 0;
+                    const hasAuthTargets = noticeAuthTargets.length > 0;
+                    const matchesClassTarget = hasClassTargets
+                        && noticeClassTargets.some((classId) => targetClassKeys.includes(classId));
+                    const matchesStudentTarget = hasStudentTargets
+                        && noticeStudentTargets.some((key) => targetStudentKeys.includes(String(key)));
+                    const matchesAuthTarget = hasAuthTargets
+                        && activeViewerAuthUid
+                        && noticeAuthTargets.includes(String(activeViewerAuthUid));
+                    const allow = notice?.isPublic === true
+                        || matchesClassTarget
+                        || matchesStudentTarget
+                        || matchesAuthTarget
+                        || (!hasClassTargets && !hasStudentTargets && !hasAuthTargets);
+                    console.log('[viewer] announcement match', {
+                        id: notice?.id,
+                        isPublic: notice?.isPublic,
+                        noticeClassTargets,
+                        targetClassKeys,
+                        matchesClassTarget,
+                        matchesStudentTarget,
+                        matchesAuthTarget,
+                        allow,
+                    });
+                    return allow;
                 })
                 .sort((a, b) => {
                     // date가 "YYYY-MM-DD" string인 경우 우선, 없으면 createdAt/updatedAt fallback

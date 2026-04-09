@@ -1569,17 +1569,20 @@ export default function AppRoutes({ user, role, studentIds }) {
           : Array.isArray(base.targetClassIds)
               ? base.targetClassIds
               : [];
-      const targetClasses = targetClassesFromPayload.map((id) => String(id));
+      const targetClasses = Array.from(new Set(targetClassesFromPayload.map((id) => String(id))));
       const targetStudents = Array.isArray(base.targetStudents)
-          ? base.targetStudents.map((id) => String(id))
+          ? Array.from(new Set(base.targetStudents.map((id) => String(id))))
+          : [];
+      const targetAuthUids = Array.isArray(base.targetAuthUids)
+          ? Array.from(new Set(base.targetAuthUids.map((id) => String(id))))
           : [];
       const isPublic = targetClasses.length === 0;
 
       return {
           ...base,
           targetClasses,
-          targetClassIds: targetClasses,
-          targetStudents,
+          targetStudents: isPublic ? [] : targetStudents,
+          targetAuthUids: isPublic ? [] : targetAuthUids,
           isPublic,
       };
   };

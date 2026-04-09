@@ -12,11 +12,16 @@ import {
     Paperclip,
     Underline,
 } from 'lucide-react';
+import { getDownloadURL, ref, uploadBytesResumable } from 'firebase/storage';
 import { Modal } from '../../components/common/Modal';
 import { Icon } from '../../utils/helpers';
 import StaffNotificationFields from '../../components/Shared/StaffNotificationFields';
+import { storage } from '../../firebase/client';
 
 export const AnnouncementModal = ({ isOpen, onClose, onSave, announcementToEdit = null, allClasses, allStudents }) => {
+    const MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024;
+    const ALLOWED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
+
     const [title, setTitle] = useState('');
     const [content, setContent] = useState('');
     const [isPinned, setIsPinned] = useState(false);
@@ -35,6 +40,9 @@ export const AnnouncementModal = ({ isOpen, onClose, onSave, announcementToEdit 
     // ✅ [수정] 파일 업로드 관련 상태
     const [attachments, setAttachments] = useState([]);
     const fileInputRef = useRef(null);
+    const imageFileInputRef = useRef(null);
+    const selectionRangeRef = useRef(null);
+    const [isImageUploading, setIsImageUploading] = useState(false);
 
     const editorRef = useRef(null);
 
@@ -58,7 +66,7 @@ export const AnnouncementModal = ({ isOpen, onClose, onSave, announcementToEdit 
                 setIsPinned(announcementToEdit.isPinned);
                 setScheduleTime(announcementToEdit.scheduleTime || '');
                 setAttachments(announcementToEdit.attachments || []);
-                setTargetClasses(announcementToEdit.targetClasses || []);
+                setTargetClasses(Array.isArray(announcementToEdit.targetClasses) ? announcementToEdit.targetClasses.map((id) => String(id)) : []);
                 setTargetStudents(announcementToEdit.targetStudents || []);
                 if (editorRef.current) {
                     editorRef.current.innerHTML = announcementToEdit.content;
@@ -95,6 +103,7 @@ export const AnnouncementModal = ({ isOpen, onClose, onSave, announcementToEdit 
                 setStaffNotifyScheduledAt('');
             }
             setSelectedImage(null); 
+            setIsImageUploading(false);
         }
     }, [isOpen, announcementToEdit]);
 
@@ -123,10 +132,11 @@ export const AnnouncementModal = ({ isOpen, onClose, onSave, announcementToEdit 
     };
 
     const handleTargetClassToggle = (classId) => {
+        const classKey = String(classId);
         setTargetClasses(prev => 
-            prev.includes(classId) 
-                ? prev.filter(id => id !== classId)
-                : [...prev, classId]
+            prev.includes(classKey) 
+                ? prev.filter(id => id !== classKey)
+                : [...prev, classKey]
         );
     };
 
@@ -138,10 +148,75 @@ export const AnnouncementModal = ({ isOpen, onClose, onSave, announcementToEdit 
         }
     };
 
+    const saveSelectionRange = () => {
+        const selection = window.getSelection();
+        if (!selection || selection.rangeCount === 0) return;
+        selectionRangeRef.current = selection.getRangeAt(0).cloneRange();
+    };
+
+    const restoreSelectionRange = () => {
+        if (!selectionRangeRef.current) return;
+        const selection = window.getSelection();
+        if (!selection) return;
+        selection.removeAllRanges();
+        selection.addRange(selectionRangeRef.current);
+    };
+
+    const insertImageAtCursor = (url) => {
+        if (!editorRef.current) return;
+        editorRef.current.focus();
+        restoreSelectionRange();
+        document.execCommand('insertImage', false, url);
+        setContent(editorRef.current.innerHTML);
+    };
+
+    const sanitizeFileName = (fileName) =>
+        String(fileName || '')
+            .trim()
+            .replace(/\s+/g, '_')
+            .replace(/[^\w.-]/g, '');
+
     const handleImageInsertion = () => {
-        const url = prompt('삽입할 이미지의 URL을 입력하세요:');
-        if (url) {
-            applyFormat('insertImage', url);
+        if (isImageUploading) return;
+        saveSelectionRange();
+        imageFileInputRef.current?.click();
+    };
+
+    const handleImageFileChange = async (e) => {
+        const file = e.target.files?.[0];
+        e.target.value = '';
+        if (!file) return;
+
+        if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+            alert('PNG/JPEG/WEBP/GIF 이미지 파일만 업로드할 수 있습니다.');
+            return;
+        }
+
+        if (file.size > MAX_IMAGE_SIZE_BYTES) {
+            alert('이미지 용량은 최대 10MB까지 업로드할 수 있습니다.');
+            return;
+        }
+
+        try {
+            setIsImageUploading(true);
+            const safeFileName = sanitizeFileName(file.name) || 'image';
+            const filePath = `announcements/images/${Date.now()}_${safeFileName}`;
+            const storageRef = ref(storage, filePath);
+            const uploadTask = uploadBytesResumable(storageRef, file, {
+                contentType: file.type || 'application/octet-stream',
+            });
+
+            await new Promise((resolve, reject) => {
+                uploadTask.on('state_changed', undefined, reject, resolve);
+            });
+
+            const downloadUrl = await getDownloadURL(uploadTask.snapshot.ref);
+            insertImageAtCursor(downloadUrl);
+        } catch (error) {
+            console.error('[announcement] image upload failed', error);
+            alert('이미지 업로드에 실패했습니다. 잠시 후 다시 시도해주세요.');
+        } finally {
+            setIsImageUploading(false);
         }
     };
 
@@ -241,7 +316,6 @@ export const AnnouncementModal = ({ isOpen, onClose, onSave, announcementToEdit 
             scheduleTime: scheduleTime || null,
             attachments,
             isPublic,
-            targetClassIds: selectedClassIds,
             targetClasses: selectedClassIds,
             targetAuthUids: isPublic ? [] : targetAuthUids,
             targetStudents: isPublic ? [] : filteredTargetStudents,
@@ -350,9 +424,30 @@ export const AnnouncementModal = ({ isOpen, onClose, onSave, announcementToEdit 
                         <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={handleLinkInsertion} title="링크 삽입" aria-label="링크 삽입" className={toolbarButtonClass}>
                             <Link2 className="h-4 w-4" />
                         </button>
-                        <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={handleImageInsertion} title="이미지 삽입 (URL)" aria-label="이미지 삽입" className={toolbarButtonClass}>
+                        <button
+                            type="button"
+                            onMouseDown={(e) => {
+                                e.preventDefault();
+                                saveSelectionRange();
+                            }}
+                            onClick={handleImageInsertion}
+                            title={isImageUploading ? '이미지 업로드 중...' : '이미지 삽입'}
+                            aria-label="이미지 삽입"
+                            className={toolbarButtonClass}
+                            disabled={isImageUploading}
+                        >
                             <ImagePlus className="h-4 w-4" />
                         </button>
+                        <input
+                            ref={imageFileInputRef}
+                            type="file"
+                            accept={ALLOWED_IMAGE_TYPES.join(',')}
+                            className="hidden"
+                            onChange={handleImageFileChange}
+                        />
+                        {isImageUploading && (
+                            <span className="text-xs text-blue-600 font-medium">업로드 중...</span>
+                        )}
 
                         {selectedImage && (
                             <div className="ml-2 flex items-center gap-1 rounded bg-blue-50 px-2 py-1 animate-fade-in">
@@ -371,6 +466,8 @@ export const AnnouncementModal = ({ isOpen, onClose, onSave, announcementToEdit 
                         ref={editorRef}
                         contentEditable
                         onInput={handleInput}
+                        onMouseUp={saveSelectionRange}
+                        onKeyUp={saveSelectionRange}
                         onClick={handleEditorClick} 
                         // ✅ [&_img]:inline-block 클래스 추가: 이미지를 인라인 블록으로 처리하여 텍스트 정렬(text-align)의 영향을 받도록 함
                         className="block w-full rounded-b-md border border-gray-300 border-t-0 shadow-sm p-3 min-h-[300px] max-h-[500px] overflow-y-auto focus:ring-1 focus:ring-blue-500 focus:border-blue-500 bg-white prose max-w-none [&_img]:inline-block [&_img]:align-middle"
@@ -446,7 +543,7 @@ export const AnnouncementModal = ({ isOpen, onClose, onSave, announcementToEdit 
                                 type="button"
                                 onClick={() => handleTargetClassToggle(cls.id)}
                                 className={`px-3 py-1 text-xs rounded-full border transition duration-150 ${
-                                    targetClasses.includes(cls.id) 
+                                    targetClasses.includes(String(cls.id)) 
                                         ? 'bg-orange-500 text-white border-orange-600 shadow-sm'
                                         : 'bg-white text-gray-700 border-gray-300 hover:bg-orange-50'
                                 }`}
