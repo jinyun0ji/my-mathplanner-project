@@ -8,7 +8,7 @@ import HomeworkResultsModal from '../utils/modals/HomeworkResultsModal';
 import { buildAssignmentSummary, classifyHomeworkResultKeyMode, computeHomeworkProgress, getAssignmentQuestionNumbers, getClassAssignments, getSelectedAssignment, normalizeHomeworkResultMapForDisplay, resolveAssignmentStudentIds, resolveAssignmentTypeLabel, resolveAssignmentType } from '../domain/homework/homework.service';
 import { buildHomeworkWrongNoteText } from '../domain/homework/homeworkWrongNote.service';
 import { db } from '../firebase/client';
-import { formatClassLabel, getDefaultClassId, sortClassesWithClosedLast } from '../utils/classStatus';
+import { getDefaultClassId } from '../utils/classStatus';
 import { useClassStudents } from '../utils/useClassStudents';
 import { filterRosterByWithdrawDate } from '../utils/rosterFilter';
 import { buildStudentParentPhoneLast4Map, formatStudentNameWithParentLast4 } from '../utils/parentPhone';
@@ -62,6 +62,13 @@ const compareByDateDescThenName = (a, b) => {
     return titleA.localeCompare(titleB, 'ko');
 };
 
+const normalizeSearchText = (value) => String(value || '').trim().toLowerCase().replace(/\s+/g, '');
+
+const getHomeworkDisplayTitle = (assignment) => {
+    const title = assignment?.title || assignment?.book || '';
+    return String(title).trim() || '과제';
+};
+
 export default function HomeworkManagement({
     classes, homeworkAssignments, homeworkResults,
     handleSaveHomeworkAssignment, handleDeleteHomeworkAssignment,
@@ -84,12 +91,6 @@ export default function HomeworkManagement({
     const [isWrongNoteModalOpen, setIsWrongNoteModalOpen] = useState(false);
     const [wrongNoteText, setWrongNoteText] = useState('');
     const [searchTerm, setSearchTerm] = useState('');
-    const [classFilter, setClassFilter] = useState('current');
-    const [statusFilter, setStatusFilter] = useState('all');
-    const [dateFilter, setDateFilter] = useState('all');
-    const [dateFrom, setDateFrom] = useState('');
-    const [dateTo, setDateTo] = useState('');
-    const [typeFilter, setTypeFilter] = useState('all');
     
     const [checkedDate, setCheckedDate] = useState(() => new Date().toISOString().slice(0, 10));
 
@@ -105,8 +106,6 @@ export default function HomeworkManagement({
     }, [classes, selectedClassId]);
 
     const selectedClass = classes.find(c => String(c.id) === String(selectedClassId));
-    const orderedClasses = useMemo(() => sortClassesWithClosedLast(classes), [classes]);
-    
     const classAssignments = useMemo(
         () => getClassAssignments(homeworkAssignments, selectedClassId),
         [homeworkAssignments, selectedClassId]
@@ -348,62 +347,17 @@ export default function HomeworkManagement({
         return summaryByAssignment;
     }, [allAssignments, normalizedHomeworkResults]);
 
-    const assignmentTypeOptions = useMemo(() => {
-        const values = new Set();
-        allAssignments.forEach((assignment) => {
-            const type = resolveAssignmentType(assignment);
-            if (type) values.add(type);
-        });
-        return ['all', ...Array.from(values)];
-    }, [allAssignments]);
-
     const filteredAssignments = useMemo(() => {
-        const now = new Date();
-        const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        const text = searchTerm.trim().toLowerCase();
-
-        const getDateRange = () => {
-            if (dateFilter === '7d') return { from: new Date(startOfToday.getTime() - (6 * 24 * 60 * 60 * 1000)), to: now };
-            if (dateFilter === '30d') return { from: new Date(startOfToday.getTime() - (29 * 24 * 60 * 60 * 1000)), to: now };
-            if (dateFilter === 'custom') {
-                return {
-                    from: dateFrom ? new Date(`${dateFrom}T00:00:00`) : null,
-                    to: dateTo ? new Date(`${dateTo}T23:59:59`) : null,
-                };
-            }
-            return { from: null, to: null };
-        };
-
-        const { from, to } = getDateRange();
+        const text = normalizeSearchText(searchTerm);
 
         return allAssignments
             .filter((assignment) => {
-                const targetClassId = String(assignment.classId || '');
-                if (classFilter === 'current' && String(selectedClassId || '') !== targetClassId) return false;
-                if (classFilter !== 'all' && classFilter !== 'current' && classFilter !== targetClassId) return false;
+                if (String(selectedClassId || '') !== String(assignment.classId || '')) return false;
 
                 if (text) {
-                    const candidate = [
-                        assignment.book,
-                        assignment.content,
-                        assignment.title,
-                    ].filter(Boolean).join(' ').toLowerCase();
+                    const candidate = normalizeSearchText(getHomeworkDisplayTitle(assignment));
                     if (!candidate.includes(text)) return false;
                 }
-
-                if (statusFilter !== 'all') {
-                    const mappedStatus = assignmentStatusById[String(assignment.id)] || '미완료';
-                    if (statusFilter !== mappedStatus) return false;
-                }
-
-                if (typeFilter !== 'all') {
-                    if (resolveAssignmentType(assignment) !== typeFilter) return false;
-                }
-
-                const assignmentDate = toDateSafe(assignment.assignedDate || assignment.date);
-                if ((from || to) && !assignmentDate) return false;
-                if (from && assignmentDate < from) return false;
-                if (to && assignmentDate > to) return false;
 
                 return true;
             })
@@ -412,7 +366,7 @@ export default function HomeworkManagement({
                 if (byDate !== 0) return byDate;
                 return a.__index - b.__index;
             });
-    }, [allAssignments, searchTerm, classFilter, selectedClassId, statusFilter, typeFilter, dateFilter, dateFrom, dateTo, assignmentStatusById]);
+    }, [allAssignments, searchTerm, selectedClassId]);
 
     const clearDraftOverlayFor = useCallback((studentId, assignmentId) => {
         const sid = String(studentId);
@@ -447,20 +401,9 @@ export default function HomeworkManagement({
 
     const handleClassSelectWrapper = useCallback((id) => {
         setSelectedClassId(id);
-        setClassFilter('current');
         setSelectedAssignmentId(null);
         setIsGlobalDirty(false);
     }, [setIsGlobalDirty]);
-
-    const resetFilters = useCallback(() => {
-        setSearchTerm('');
-        setClassFilter('current');
-        setStatusFilter('all');
-        setDateFilter('all');
-        setDateFrom('');
-        setDateTo('');
-        setTypeFilter('all');
-    }, []);
     
     const assignmentPanelContent = useMemo(() => {
         if (!selectedClass) return <p className="text-sm text-gray-500">클래스를 선택해주세요.</p>;
@@ -488,7 +431,7 @@ export default function HomeworkManagement({
                             }`}
                         >
                             <div className="flex items-center gap-2">
-                                <p className="text-sm font-bold text-gray-800">{assignment.book || assignment.title || '과제'}</p>
+                                <p className="text-sm font-bold text-gray-800">{getHomeworkDisplayTitle(assignment)}</p>
                                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-700 border border-gray-200">{typeLabel}</span>
                                 <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-100">
                                     {assignmentStatusById[String(assignment.id)] || '미완료'}
@@ -651,82 +594,13 @@ export default function HomeworkManagement({
                             </button>
                         </div>
                         <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 space-y-2">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                                <input
-                                    type="text"
-                                    value={searchTerm}
-                                    onChange={(e) => setSearchTerm(e.target.value)}
-                                    placeholder="과제명 / book / content 검색"
-                                    className="w-full border border-gray-300 rounded-md px-2 py-1.5 text-sm"
-                                />
-                                <select
-                                    value={classFilter}
-                                    onChange={(e) => setClassFilter(e.target.value)}
-                                    className="w-full border border-gray-300 rounded-md px-2 py-1.5 text-sm bg-white"
-                                >
-                                    <option value="current">현재 선택 클래스</option>
-                                    <option value="all">전체 클래스</option>
-                                    {orderedClasses.map((cls) => (
-                                        <option key={cls.id} value={String(cls.id)}>
-                                            {formatClassLabel(cls, { includeClosedBadge: true })}
-                                        </option>
-                                    ))}
-                                </select>
-                                <select
-                                    value={statusFilter}
-                                    onChange={(e) => setStatusFilter(e.target.value)}
-                                    className="w-full border border-gray-300 rounded-md px-2 py-1.5 text-sm bg-white"
-                                >
-                                    <option value="all">상태: 전체</option>
-                                    <option value="진행 중">진행 중</option>
-                                    <option value="완료">완료</option>
-                                    <option value="미완료">미완료</option>
-                                    <option value="오답 진행">오답 진행</option>
-                                </select>
-                                <select
-                                    value={typeFilter}
-                                    onChange={(e) => setTypeFilter(e.target.value)}
-                                    className="w-full border border-gray-300 rounded-md px-2 py-1.5 text-sm bg-white"
-                                >
-                                    <option value="all">유형: 전체</option>
-                                    {assignmentTypeOptions.filter((value) => value !== 'all').map((value) => (
-                                        <option key={value} value={value}>{value}</option>
-                                    ))}
-                                </select>
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-[1fr,1fr,1fr,1fr] gap-2 items-center">
-                                <select
-                                    value={dateFilter}
-                                    onChange={(e) => setDateFilter(e.target.value)}
-                                    className="w-full border border-gray-300 rounded-md px-2 py-1.5 text-sm bg-white"
-                                >
-                                    <option value="all">날짜: 전체</option>
-                                    <option value="7d">최근 7일</option>
-                                    <option value="30d">최근 30일</option>
-                                    <option value="custom">직접 기간 선택</option>
-                                </select>
-                                <input
-                                    type="date"
-                                    value={dateFrom}
-                                    onChange={(e) => setDateFrom(e.target.value)}
-                                    disabled={dateFilter !== 'custom'}
-                                    className="w-full border border-gray-300 rounded-md px-2 py-1.5 text-sm disabled:bg-gray-100"
-                                />
-                                <input
-                                    type="date"
-                                    value={dateTo}
-                                    onChange={(e) => setDateTo(e.target.value)}
-                                    disabled={dateFilter !== 'custom'}
-                                    className="w-full border border-gray-300 rounded-md px-2 py-1.5 text-sm disabled:bg-gray-100"
-                                />
-                                <button
-                                    type="button"
-                                    onClick={resetFilters}
-                                    className="w-full border border-gray-300 rounded-md px-2 py-1.5 text-sm font-semibold bg-white hover:bg-gray-100"
-                                >
-                                    필터 초기화
-                                </button>
-                            </div>
+                            <input
+                                type="text"
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                placeholder="과제명 검색"
+                                className="block w-full max-w-full border border-gray-300 rounded-md px-2 py-1.5 text-sm"
+                            />
                             <p className="text-xs text-gray-600">
                                 결과 {filteredAssignments.length}건
                                 {filteredAssignments[0] ? ` · 최신 ${toYmd(filteredAssignments[0].assignedDate || filteredAssignments[0].date)}` : ''}
