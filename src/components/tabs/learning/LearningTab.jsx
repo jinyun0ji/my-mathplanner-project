@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react';
 import HomeworkTab from './HomeworkTab';
 import GradesTab from './GradesTab';
 import ClinicTab from './ClinicTab';
+import LessonReportList from '../../Shared/LessonReportList';
 
-export default function LearningTab({ studentId, myHomeworkStats, myGradeComparison, clinicLogs, students, classes, initialTab = 'homework', isParent = false }) {
+export default function LearningTab({ studentId, myHomeworkStats, myGradeComparison, clinicLogs, students, classes, lessonReports = [], initialTab = 'homework', isParent = false }) {
     const [subTab, setSubTab] = useState(initialTab); 
     
     useEffect(() => {
@@ -17,11 +18,13 @@ export default function LearningTab({ studentId, myHomeworkStats, myGradeCompari
                 <button onClick={() => setSubTab('homework')} className={`flex-1 py-2.5 text-sm font-bold rounded-lg transition-all ${subTab === 'homework' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-400'}`}>과제</button>
                 <button onClick={() => setSubTab('grades')} className={`flex-1 py-2.5 text-sm font-bold rounded-lg transition-all ${subTab === 'grades' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-400'}`}>성적</button>
                 <button onClick={() => setSubTab('clinic')} className={`flex-1 py-2.5 text-sm font-bold rounded-lg transition-all ${subTab === 'clinic' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-400'}`}>클리닉</button>
+                <button onClick={() => setSubTab('reports')} className={`flex-1 py-2.5 text-sm font-bold rounded-lg transition-all ${subTab === 'reports' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-400'}`}>수업리포트</button>
             </div>
             <div className="flex-1">
                 {subTab === 'homework' && <HomeworkTab myHomeworkStats={myHomeworkStats} />}
                 {subTab === 'grades' && <GradesTab myGradeComparison={myGradeComparison} />}
                 {subTab === 'clinic' && <ClinicTab studentId={studentId} clinicLogs={clinicLogs} students={students} classes={classes} isParent={isParent} />}
+                {subTab === 'reports' && <LessonReportList reports={lessonReports} />}
             </div>
         </div>
     );

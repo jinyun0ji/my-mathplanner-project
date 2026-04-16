@@ -666,6 +666,7 @@ export const loadStaffDataOnce = async ({
     setHomeworkResults,
     setExternalSchedules,
     setClosures,
+    setLessonReports,
 }) => {
     if (!isLoggedIn || !db) return;
     if (!userRole) return;
@@ -819,6 +820,10 @@ export const loadStaffDataOnce = async ({
         if (setLessonLogs && shouldLoad('lessons')) {
             await fetchList(db, 'lessonLogs', setLessonLogs, query(collection(db, 'lessonLogs'), orderBy('date', 'desc'), limit(150)), () => false);
         }
+        if (setLessonReports && (shouldLoad('lessons') || shouldLoad('students'))) {
+            await fetchList(db, 'lessonReports', setLessonReports, query(collection(db, 'lessonReports'), orderBy('lessonDate', 'desc'), limit(300)), () => false);
+        }
+
 
         if (setAttendanceLogs && (shouldLoad('attendance') || shouldLoad('lessons') || shouldLoad('students'))) {
             const attendanceLogs = await fetchAttendanceLogsWithPagination(db, () => false);
@@ -955,6 +960,7 @@ export const loadViewerDataOnce = async ({
 
     // ✅ 추가: classTestStats setter (없으면 그냥 스킵)
     setClassTestStats = null,
+    setLessonReports,
 
     isCancelled = () => false,
 }) => {
@@ -1343,6 +1349,27 @@ export const loadViewerDataOnce = async ({
             });
             setHomeworkAssignments?.(sortedHomework);
         }
+
+        try {
+            if (setLessonReports && nonEmpty(scopedStudentUids)) {
+                const reportSnap = await run('lessonReports getDocs', () =>
+                    getDocs(
+                        query(
+                            collection(db, 'lessonReports'),
+                            where('studentId', 'in', scopedStudentUids.slice(0, 10)),
+                            where('status', '==', 'sent'),
+                            orderBy('lessonDate', 'desc'),
+                            limit(200),
+                        ),
+                    ),
+                );
+                if (!isCancelled()) setLessonReports(reportSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
+            }
+        } catch (e) {
+            console.warn('[viewer] lessonReports load skipped', e);
+            if (!isCancelled()) setLessonReports?.([]);
+        }
+        
 
         /* =========================
         lessonLogs / tests

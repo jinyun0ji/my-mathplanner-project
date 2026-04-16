@@ -1124,6 +1124,14 @@ export default function StudentDetail() {
                                         <Icon name="arrow-left" className="h-4 w-4" />
                                         학생 목록
                                     </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => navigate(`/students/${student.id}/lesson-reports`)}
+                                        className="inline-flex items-center gap-2 text-xs font-semibold text-indigo-600 hover:text-indigo-800"
+                                    >
+                                        <Icon name="clipboardCheck" className="h-4 w-4" />
+                                        수업 리포트 관리
+                                    </button>
                                 </div>
                             </div>
                             <div className="mt-6 grid gap-4 lg:grid-cols-3">

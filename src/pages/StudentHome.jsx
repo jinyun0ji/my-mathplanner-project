@@ -175,6 +175,7 @@ export default function StudentHome({
     externalSchedules, onSaveExternalSchedule, onDeleteExternalSchedule,
     clinicLogs, onUpdateStudent,
     closures,
+    lessonReports = [],
     onLogout
 }) {
     // ✅ URL(querystring)로 탭/상세 상태를 동기화해서 "뒤로가기"가 탭 전환/이전 화면으로 동작하게 함
@@ -483,6 +484,12 @@ export default function StudentHome({
         );
     };
 
+
+    const sentLessonReports = useMemo(() => (Array.isArray(lessonReports) ? lessonReports : [])
+        .filter((report) => report?.status === 'sent' && String(report?.studentId || '') === String(studentId || ''))
+        .map((report) => ({ ...report, className: classes.find((c) => String(c.id) === String(report.classId))?.name || report.classId }))
+        .sort((a, b) => String(b.lessonDate || '').localeCompare(String(a.lessonDate || ''))), [lessonReports, studentId, classes]);
+
     const navItems = [
         { id: 'home', icon: 'home', label: '홈' },
         { id: 'class', icon: 'fileText', label: '클래스' },
@@ -562,6 +569,7 @@ export default function StudentHome({
                                 studentId={studentId} myHomeworkStats={myHomeworkStats} myGradeComparison={myGradeComparison}
                                 clinicLogs={clinicLogs} students={students} classes={classes}
                                 initialTab={initialLearningTab}
+                                lessonReports={sentLessonReports}
                             />
                         )}
                         {activeTab === 'board' && <BoardTab notices={visibleNotices} />}

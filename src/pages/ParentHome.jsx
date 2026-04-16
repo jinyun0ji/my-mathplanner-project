@@ -544,7 +544,7 @@ const ParentDashboard = ({
 export default function ParentHome({
     userId, students, classes, homeworkAssignments, homeworkResults,
     attendanceLogs, lessonLogs, notices, tests, grades, classTestStats,
-    videoProgress, clinicLogs, onLogout,
+    videoProgress, clinicLogs, lessonReports = [], onLogout,
     externalSchedules, onSaveExternalSchedule, onDeleteExternalSchedule,
     closures,
 }) {
@@ -1263,6 +1263,11 @@ export default function ParentHome({
         return generateSessionReport(selectedReportId, activeChildId, contextData);
     }, [selectedReportId, activeChildId, filteredLessonLogs, attendanceLogs, filteredHomeworkAssignments, homeworkResults, filteredTests, grades, classes]);
 
+    const sentLessonReports = useMemo(() => (Array.isArray(lessonReports) ? lessonReports : [])
+        .filter((report) => report?.status === 'sent' && String(report?.studentId || '') === String(activeChildId || ''))
+        .map((report) => ({ ...report, className: classes.find((c) => String(c.id) === String(report.classId))?.name || report.classId }))
+        .sort((a, b) => String(b.lessonDate || '').localeCompare(String(a.lessonDate || ''))), [lessonReports, activeChildId, classes]);
+
     const navItems = [
         { id: 'home', icon: 'home', label: '홈' },
         { id: 'report', icon: 'clipboardCheck', label: '학습리포트' },
@@ -1462,6 +1467,32 @@ export default function ParentHome({
                             <div className="space-y-6">
                                 {reportViewMode === 'overview' && (
                                     <>
+                                    <section className="space-y-3">
+                                            <div className="flex items-center justify-between px-1">
+                                                <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                                                    <Icon name="clipboardCheck" className="w-5 h-5 text-indigo-600" />
+                                                    발송된 회차별 수업 리포트
+                                                </h3>
+                                                <span className="text-xs text-gray-400 font-semibold">총 {sentLessonReports.length}건</span>
+                                            </div>
+                                            <div className="space-y-3">
+                                                {sentLessonReports.map((report) => (
+                                                    <div key={report.id} className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm space-y-2">
+                                                        <p className="text-[11px] text-gray-400 font-semibold">{report.lessonDate} • {report.className}</p>
+                                                        {report.learnedTopics && <p className="text-sm text-gray-700">오늘 배운 내용: {report.learnedTopics}</p>}
+                                                        {report.attendanceStatus && <p className="text-sm text-gray-700">출결: {report.attendanceStatus}</p>}
+                                                        {Array.isArray(report?.homeworkSummary?.text) && report.homeworkSummary.text.length > 0 && <p className="text-sm text-gray-700">과제 수행: {report.homeworkSummary.text.join(' · ')}</p>}
+                                                        {Array.isArray(report?.testSummary?.text) && report.testSummary.text.length > 0 && <p className="text-sm text-gray-700">시험 결과: {report.testSummary.text.join(' · ')}</p>}
+                                                        {report.comment && <p className="text-sm text-indigo-700">코멘트: {report.comment}</p>}
+                                                    </div>
+                                                ))}
+                                                {sentLessonReports.length === 0 && (
+                                                    <div className="p-6 text-center bg-white border border-dashed border-gray-200 rounded-2xl text-sm text-gray-400">
+                                                        발송된 수업 리포트가 아직 없습니다.
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </section>
                                         <section className="bg-white rounded-3xl border border-gray-100 shadow-sm p-5 md:p-6 space-y-4">
                                             <div className="flex items-center justify-between gap-3">
                                                 <div>

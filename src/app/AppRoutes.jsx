@@ -10,6 +10,7 @@ import StudentHome from '../pages/StudentHome';
 import Home from '../pages/Home';
 import StudentManagement from '../pages/StudentManagement';
 import StudentDetail from '../pages/StudentDetail';
+import LessonReportManagement from '../pages/LessonReportManagement';
 import LessonManagement from '../pages/LessonManagement';
 import AttendanceManagement from '../pages/AttendanceManagement';
 import HomeworkManagement from '../pages/HomeworkManagement';
@@ -185,6 +186,7 @@ export default function AppRoutes({ user, role, studentIds }) {
   const [isPaymentLogsLoading, setIsPaymentLogsLoading] = useState(false);
   const [externalSchedules, setExternalSchedules] = useState([]);
   const [closures, setClosures] = useState([]);
+  const [lessonReports, setLessonReports] = useState([]);
 
   const [grades, setGrades] = useState({});
   const [classTestStats, setClassTestStats] = useState({});
@@ -228,6 +230,7 @@ export default function AppRoutes({ user, role, studentIds }) {
         setHomeworkResults,
         setExternalSchedules,
         setClosures,
+        setLessonReports,
     }).finally(() => {
         if (shouldLoadPayments && isActive) {
             setIsPaymentLogsLoading(false);
@@ -274,6 +277,7 @@ export default function AppRoutes({ user, role, studentIds }) {
         setGrades,
         setClosures,
         setClassTestStats,
+        setLessonReports,
         isCancelled: () => state.cancelled,
     });
 
@@ -1975,6 +1979,7 @@ export default function AppRoutes({ user, role, studentIds }) {
               onDeleteExternalSchedule={handleDeleteExternalSchedule}
               clinicLogs={clinicLogs}
               closures={closures}
+              lessonReports={lessonReports}
               onUpdateStudent={handleSaveStudent}
               onLogout={handleLogout}
           />
@@ -1994,7 +1999,7 @@ export default function AppRoutes({ user, role, studentIds }) {
               />
           );
       }
-      return <ParentHome userId={userId} students={students} classes={classes} homeworkAssignments={homeworkAssignments} homeworkResults={homeworkResults} attendanceLogs={attendanceLogs} lessonLogs={lessonLogs} notices={announcements} tests={tests} grades={grades} classTestStats={classTestStats} clinicLogs={clinicLogs} videoProgress={videoProgress} onLogout={handleLogout} externalSchedules={externalSchedules} onSaveExternalSchedule={handleSaveExternalSchedule} onDeleteExternalSchedule={handleDeleteExternalSchedule} closures={closures} />;
+    return <ParentHome userId={userId} students={students} classes={classes} homeworkAssignments={homeworkAssignments} homeworkResults={homeworkResults} attendanceLogs={attendanceLogs} lessonLogs={lessonLogs} notices={announcements} tests={tests} grades={grades} classTestStats={classTestStats} clinicLogs={clinicLogs} videoProgress={videoProgress} lessonReports={lessonReports} onLogout={handleLogout} externalSchedules={externalSchedules} onSaveExternalSchedule={handleSaveExternalSchedule} onDeleteExternalSchedule={handleDeleteExternalSchedule} closures={closures} />;
 }
   
   const managementProps = {
@@ -2017,6 +2022,7 @@ export default function AppRoutes({ user, role, studentIds }) {
     handleUpdateStudentClassStatus,
     userRole: role,
     userId,
+    lessonReports,
     closures,
     setClosures,
   };
@@ -2054,6 +2060,7 @@ export default function AppRoutes({ user, role, studentIds }) {
             <Route path="attendance" element={<AttendanceManagement {...managementProps} />} />
             <Route path="students" element={<StudentManagement {...managementProps} />} />
             <Route path="students/:studentId" element={<StudentDetail />} />
+            <Route path="students/:studentId/lesson-reports" element={<LessonReportManagement />} />
             <Route path="grades" element={<GradeManagement {...managementProps} />} />
             <Route path="homework" element={<HomeworkManagement {...managementProps} />} />
             <Route path="clinic" element={<ClinicManagement {...managementProps} />} />
