@@ -152,9 +152,15 @@ export default function StudentManagement({
         }
 
         return (
-            <div className="flex flex-col gap-1 text-xs leading-relaxed whitespace-normal break-all">
-                <span className="text-gray-700">학생: {studentEmail || '미등록'}</span>
-                <span className="text-gray-500">학부모: {parentEmails.length > 0 ? parentEmails.join(', ') : '미등록'}</span>
+            <div className="space-y-1 text-xs leading-tight whitespace-normal break-words">
+                <div className="block text-gray-700">
+                    <span className="font-semibold mr-1">학생:</span>
+                    <span>{studentEmail || '미등록'}</span>
+                </div>
+                <div className="block text-gray-500">
+                    <span className="font-semibold mr-1">학부모:</span>
+                    <span>{parentEmails.length > 0 ? parentEmails.join(', ') : '미등록'}</span>
+                </div>
             </div>
         );
     };
@@ -408,11 +414,23 @@ export default function StudentManagement({
                 </div>
                 
                 <div className="overflow-x-auto rounded-lg border border-gray-200 hidden md:block">
-                    <table className="min-w-full divide-y divide-gray-200">
+                    <table className="min-w-[1280px] w-full table-fixed divide-y divide-gray-200">
+                        <colgroup>
+                            <col className="w-[12%] min-w-[140px]" />
+                            <col className="w-[10%] min-w-[120px]" />
+                            <col className="w-[22%] min-w-[280px]" />
+                            <col className="w-[10%] min-w-[120px]" />
+                            <col className="w-[7%] min-w-[90px]" />
+                            <col className="w-[14%] min-w-[180px]" />
+                            <col className="w-[8%] min-w-[110px]" />
+                            <col className="w-[10%] min-w-[140px]" />
+                            <col className="w-[7%] min-w-[100px]" />
+                            <col className="w-[130px]" />
+                        </colgroup>
                         <thead className="bg-gray-100">
                             <tr>
                                 {['이름', '문서ID', '계정 이메일', '학교', '학년', '상태', '퇴원일', '연락처 (학생/학부모)', '등록일', '관리'].map(header => (
-                                    <th key={header} className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">{header}</th>
+                                    <th key={header} className="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">{header}</th>
                                 ))}
                             </tr>
                         </thead>
@@ -434,7 +452,7 @@ export default function StudentManagement({
                                 
                                 return (
                                     <tr key={student.id} className="hover:bg-indigo-50 cursor-pointer transition duration-100" onClick={() => handlePageChange('students', student.id)}>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">
+                                        <td className="px-4 py-4 whitespace-nowrap text-sm font-bold text-gray-900">
                                             <div className="flex items-center gap-2">
                                                 <span>{getStudentDisplayName(student)}</span>
                                                 {student.hasAccount && (
@@ -444,7 +462,7 @@ export default function StudentManagement({
                                                 )}
                                             </div>
                                         </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-xs text-gray-600">
+                                        <td className="px-4 py-4 whitespace-nowrap text-xs text-gray-600">
                                             {student.id ? (
                                                 <button
                                                     type="button"
@@ -456,13 +474,13 @@ export default function StudentManagement({
                                                 </button>
                                             ) : '-'}
                                         </td>
-                                        <td className="px-6 py-4 text-xs text-gray-600 align-top">
+                                        <td className="px-4 py-4 text-xs text-gray-600 align-top">
                                             {renderAccountEmails(student)}
                                         </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{student.school}</td>
+                                        <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-600">{student.school}</td>
                                         {/* 학년 표시 수정 */}
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{student.grade}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                                        <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-600">{student.grade}</td>
+                                        <td className="px-4 py-4 text-sm text-gray-600">
                                             <div className="flex flex-wrap gap-2">
                                                 {activeClassIds.length > 0 ? activeClassIds.map((classId) => (
                                                     <div key={classId} className="flex items-center gap-1 px-2 py-1 rounded-full bg-indigo-50 text-indigo-700 text-xs font-semibold border border-indigo-100">
@@ -498,12 +516,12 @@ export default function StudentManagement({
                                             </div>
                                         )}
                                     </td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
                                         {withdrawDate ? formatDate(withdrawDate) : '-'}
                                     </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm"><div className="flex flex-col"><span className="text-gray-900 font-medium">{student.phone}</span><span className="text-gray-400 text-xs">부모: {student.parentPhone}</span></div></td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{student.registeredDate}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                                        <td className="px-4 py-4 whitespace-nowrap text-sm"><div className="flex flex-col"><span className="text-gray-900 font-medium">{student.phone}</span><span className="text-gray-400 text-xs">부모: {student.parentPhone}</span></div></td>
+                                        <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">{student.registeredDate}</td>
+                                        <td className="px-4 py-4 whitespace-nowrap text-sm font-medium">
                                             <div className="flex space-x-2">
                                                 {/* ✅ [수정] 타학원 버튼: 데이터 있으면 녹색/인디고, 없으면 회색 */}
                                                 <button 
