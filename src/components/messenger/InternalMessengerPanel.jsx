@@ -25,6 +25,7 @@ export default function InternalMessengerPanel({
     const [rooms, setRooms] = useState([]);
     const [selectedRoom, setSelectedRoom] = useState(null);
     const [messages, setMessages] = useState([]);
+    const [, setOptimisticByRoom] = useState({});
     const [targetUid, setTargetUid] = useState('');
     const [broadcastText, setBroadcastText] = useState('');
     const [statusMessage, setStatusMessage] = useState('');
@@ -77,7 +78,31 @@ export default function InternalMessengerPanel({
             return () => {};
         }
 
-        return subscribeChatMessages(selectedRoom.id, setMessages, (error) => {
+        return subscribeChatMessages(selectedRoom.id, (serverMessages) => {
+            const roomId = selectedRoom.id;
+            let mergedMessages = serverMessages;
+            setOptimisticByRoom((prev) => {
+                const optimisticMessages = Array.isArray(prev[roomId]) ? prev[roomId] : [];
+                const unresolved = optimisticMessages.filter((tempMessage) => {
+                    if (tempMessage.failed) return true;
+                    return !serverMessages.some((serverMessage) => (
+                        serverMessage?.clientTempId
+                            ? serverMessage.clientTempId === tempMessage.id
+                            : (
+                                serverMessage?.senderId === tempMessage.senderId
+                                && String(serverMessage?.text || '') === String(tempMessage.text || '')
+                            )
+                    ));
+                });
+                mergedMessages = [...serverMessages, ...unresolved];
+                if (unresolved.length === optimisticMessages.length) return prev;
+                return {
+                    ...prev,
+                    [roomId]: unresolved,
+                };
+            });
+            setMessages(mergedMessages);
+        }, (error) => {
             console.error('[internal-messenger] message subscribe failed', error);
         });
     }, [selectedRoom?.id]);
@@ -111,7 +136,131 @@ export default function InternalMessengerPanel({
 
     const handleSendMessage = async (text) => {
         if (!selectedRoom?.id) return;
-        await sendChatMessage({ roomId: selectedRoom.id, text });
+        const roomId = selectedRoom.id;
+        const clickAt = Date.now();
+        const tempId = `temp-${clickAt}-${userId}`;
+        const optimisticAt = Date.now();
+        const tempMessage = {
+            id: tempId,
+            roomId,
+            senderId: userId,
+            senderRole: userRole,
+            senderName: '나',
+            text,
+            createdAt: new Date(),
+            localOnly: true,
+            sending: true,
+            failed: false,
+        };
+
+        setOptimisticByRoom((prev) => {
+            const current = Array.isArray(prev[roomId]) ? prev[roomId] : [];
+            return {
+                ...prev,
+                [roomId]: [...current, tempMessage],
+            };
+        });
+        setMessages((prev) => [...prev, tempMessage]);
+        setRooms((prev) => {
+            const next = prev.map((room) => (
+                room.id === roomId
+                    ? { ...room, lastMessageText: text, lastMessageAt: new Date(), updatedAt: new Date() }
+                    : room
+            ));
+            next.sort((a, b) => {
+                const aTime = new Date(a.lastMessageAt || a.updatedAt || 0).getTime() || 0;
+                const bTime = new Date(b.lastMessageAt || b.updatedAt || 0).getTime() || 0;
+                return bTime - aTime;
+            });
+            return next;
+        });
+
+        if (process.env.NODE_ENV === 'development') {
+            console.log('[messenger send timing]', {
+                roomId,
+                clickAt,
+                optimisticAt,
+                optimisticElapsedMs: optimisticAt - clickAt,
+            });
+        }
+
+        try {
+            const response = await sendChatMessage({
+                roomId,
+                text,
+                clientTempId: tempId,
+            });
+            const responseAt = Date.now();
+            setOptimisticByRoom((prev) => {
+                const current = Array.isArray(prev[roomId]) ? prev[roomId] : [];
+                return {
+                    ...prev,
+                    [roomId]: current.map((item) => (
+                        item.id === tempId
+                            ? { ...item, sending: false, failed: false, messageId: response?.messageId || null }
+                            : item
+                    )),
+                };
+            });
+            setRooms((prev) => {
+                const next = prev.map((room) => (
+                    room.id === roomId
+                        ? {
+                            ...room,
+                            lastMessageText: response?.lastMessageText || text,
+                            lastMessageSenderId: response?.lastMessageSenderId || userId,
+                            lastMessageAt: new Date(response?.acceptedAt || Date.now()),
+                            updatedAt: new Date(response?.acceptedAt || Date.now()),
+                        }
+                        : room
+                ));
+                next.sort((a, b) => {
+                    const aTime = new Date(a.lastMessageAt || a.updatedAt || 0).getTime() || 0;
+                    const bTime = new Date(b.lastMessageAt || b.updatedAt || 0).getTime() || 0;
+                    return bTime - aTime;
+                });
+                return next;
+            });
+            if (process.env.NODE_ENV === 'development') {
+                console.log('[messenger send timing]', {
+                    roomId,
+                    clickAt,
+                    optimisticAt,
+                    responseAt,
+                    finalAt: Date.now(),
+                    elapsedMs: responseAt - clickAt,
+                });
+            }
+        } catch (error) {
+            setOptimisticByRoom((prev) => {
+                const current = Array.isArray(prev[roomId]) ? prev[roomId] : [];
+                return {
+                    ...prev,
+                    [roomId]: current.map((item) => (
+                        item.id === tempId
+                            ? { ...item, sending: false, failed: true, errorMessage: error.message }
+                            : item
+                    )),
+                };
+            });
+            setMessages((prev) => prev.map((item) => (
+                item.id === tempId ? { ...item, sending: false, failed: true, errorMessage: error.message } : item
+            )));
+        }
+    };
+
+    const handleRetryMessage = async (message) => {
+        if (!message?.id || !message?.failed || !message?.text) return;
+        setOptimisticByRoom((prev) => {
+            const roomId = message.roomId;
+            const current = Array.isArray(prev[roomId]) ? prev[roomId] : [];
+            return {
+                ...prev,
+                [roomId]: current.filter((item) => item.id !== message.id),
+            };
+        });
+        setMessages((prev) => prev.filter((item) => item.id !== message.id));
+        await handleSendMessage(message.text);
     };
 
     const toggleTargetSelection = (authUid) => {
@@ -300,7 +449,13 @@ export default function InternalMessengerPanel({
                     <ChatRoomList rooms={rooms} selectedRoomId={selectedRoom?.id || null} onSelectRoom={setSelectedRoom} myUid={userId} />
                 </div>
                 <div className="lg:col-span-2">
-                    <ChatMessagePane room={selectedRoom} messages={messages} myUid={userId} onSend={handleSendMessage} />
+                    <ChatMessagePane
+                        room={selectedRoom}
+                        messages={messages}
+                        myUid={userId}
+                        onSend={handleSendMessage}
+                        onRetryMessage={handleRetryMessage}
+                    />
                 </div>
             </div>
         </div>

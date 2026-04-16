@@ -30,9 +30,20 @@ const sendChatMessage = functions.https.onCall(async (data, context) => {
         throw new functions.https.HttpsError('permission-denied', '참여자만 메시지를 전송할 수 있습니다.');
     }
 
-    const sender = await getUserProfileByAuthUid(senderUid);
-    if (!sender) {
-        throw new functions.https.HttpsError('not-found', '발신자 프로필을 찾을 수 없습니다.');
+    const hintedSenderRole = roomData?.participantRoles?.[senderUid] || null;
+    const hintedSenderName = roomData?.participantNames?.[senderUid] || null;
+    let sender = {
+        authUid: senderUid,
+        role: hintedSenderRole,
+        name: hintedSenderName || senderUid,
+    };
+
+    if (!hintedSenderRole || !hintedSenderName) {
+        const senderProfile = await getUserProfileByAuthUid(senderUid);
+        if (!senderProfile) {
+            throw new functions.https.HttpsError('not-found', '발신자 프로필을 찾을 수 없습니다.');
+        }
+        sender = senderProfile;
     }
 
     const messageId = await writeMessageAndRoomState({
@@ -45,12 +56,17 @@ const sendChatMessage = functions.https.onCall(async (data, context) => {
             attachments: data?.attachments || [],
             isBroadcastCopy: Boolean(data?.isBroadcastCopy),
             broadcastId: data?.broadcastId || null,
+            clientTempId: data?.clientTempId || null,
         },
     });
 
     return {
         roomId,
         messageId,
+        lastMessageText: text,
+        lastMessageSenderId: senderUid,
+        acceptedAt: Date.now(),
+        clientTempId: data?.clientTempId || null,
         status: 'ok',
     };
 });

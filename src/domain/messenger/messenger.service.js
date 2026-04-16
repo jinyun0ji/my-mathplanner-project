@@ -50,6 +50,7 @@ export const sendChatMessage = async ({
     attachments = [],
     isBroadcastCopy = false,
     broadcastId = null,
+    clientTempId = null,
 }) => {
     const result = await sendChatMessageCallable({
         roomId,
@@ -58,6 +59,7 @@ export const sendChatMessage = async ({
         attachments,
         isBroadcastCopy,
         broadcastId,
+        clientTempId,
     });
 
     return result?.data || null;

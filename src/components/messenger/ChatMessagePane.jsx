@@ -43,7 +43,7 @@ const formatTime = (value) => {
     return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
 };
 
-export default function ChatMessagePane({ room, messages = [], myUid, onSend }) {
+export default function ChatMessagePane({ room, messages = [], myUid, onSend, onRetryMessage }) {
     const [draft, setDraft] = useState('');
 
     const sortedMessages = useMemo(() => {
@@ -79,8 +79,8 @@ export default function ChatMessagePane({ room, messages = [], myUid, onSend }) 
     const submitText = async () => {
         const text = draft.trim();
         if (!text || !room?.id) return;
-        await onSend(text);
         setDraft('');
+        await onSend(text);
     };
 
     const submit = async (event) => {
@@ -117,10 +117,25 @@ export default function ChatMessagePane({ room, messages = [], myUid, onSend }) 
 
                     const message = item.message;
                     const mine = message.senderId === myUid;
+                    const isSending = Boolean(message?.sending);
+                    const isFailed = Boolean(message?.failed);
                     return (
                         <div key={item.key} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
-                            <div className={`max-w-[75%] rounded-lg px-3 py-2 text-sm ${mine ? 'bg-green-100 text-gray-800' : 'bg-gray-100 text-gray-700'}`}>
+                            <div className={`max-w-[75%] rounded-lg px-3 py-2 text-sm ${mine ? 'bg-green-100 text-gray-800' : 'bg-gray-100 text-gray-700'} ${isSending ? 'opacity-70' : ''} ${isFailed ? 'border border-red-300 bg-red-50 text-red-700' : ''}`}>
                                 <p className="whitespace-pre-wrap break-words">{message.text || ''}</p>
+                                {isSending && <p className="text-[10px] text-gray-500 mt-1">전송 중…</p>}
+                                {isFailed && (
+                                    <div className="mt-1 flex items-center justify-end gap-2">
+                                        <p className="text-[10px] text-red-500">전송 실패</p>
+                                        <button
+                                            type="button"
+                                            onClick={() => onRetryMessage?.(message)}
+                                            className="text-[10px] px-1.5 py-0.5 rounded border border-red-300 text-red-600"
+                                        >
+                                            재시도
+                                        </button>
+                                    </div>
+                                )}
                                 <p className="text-[10px] text-gray-400 mt-1 text-right">{formatTime(message.createdAt)}</p>
                             </div>
                         </div>

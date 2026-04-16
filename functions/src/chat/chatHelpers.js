@@ -134,8 +134,11 @@ const writeMessageAndRoomState = async ({ roomId, roomData, sender, messagePaylo
             : FieldValue.increment(1);
     });
 
-    const messageRef = db.collection('chatRooms').doc(roomId).collection('messages').doc();
-    await messageRef.set({
+    const roomRef = db.collection('chatRooms').doc(roomId);
+    const messageRef = roomRef.collection('messages').doc();
+    const batch = db.batch();
+
+    batch.set(messageRef, {
         roomId,
         senderId: sender.authUid,
         senderRole: normalizeRole(sender.role),
@@ -143,6 +146,7 @@ const writeMessageAndRoomState = async ({ roomId, roomData, sender, messagePaylo
         messageType: messagePayload.messageType || 'text',
         text: messagePayload.text || '',
         attachments: Array.isArray(messagePayload.attachments) ? messagePayload.attachments : [],
+        clientTempId: typeof messagePayload.clientTempId === 'string' ? messagePayload.clientTempId : null,
         createdAt: now,
         editedAt: null,
         deletedAt: null,
@@ -154,7 +158,7 @@ const writeMessageAndRoomState = async ({ roomId, roomData, sender, messagePaylo
         internalOnly: true,
     });
 
-    await db.collection('chatRooms').doc(roomId).set({
+    batch.set(roomRef, {
         lastMessageText: messagePayload.text || '',
         lastMessageAt: now,
         lastMessageSenderId: sender.authUid,
@@ -162,6 +166,8 @@ const writeMessageAndRoomState = async ({ roomId, roomData, sender, messagePaylo
         updatedBy: sender.authUid,
         ...unreadPatch,
     }, { merge: true });
+
+    await batch.commit();
 
     return messageRef.id;
 };
