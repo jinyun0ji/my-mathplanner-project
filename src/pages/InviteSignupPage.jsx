@@ -143,7 +143,7 @@ export default function InviteSignupPage() {
                         />
                     </label>
 
-                    <label className="block text-left space-y-1">
+                    {/* <label className="block text-left space-y-1">
                         <span className="text-sm font-semibold text-gray-700">이름</span>
                         <input
                             type="text"
@@ -152,7 +152,7 @@ export default function InviteSignupPage() {
                             className="w-full rounded-xl border border-gray-200 px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                             placeholder="초대 문서에 이름이 없으면 입력해주세요."
                         />
-                    </label>
+                    </label> */}
 
                     <button
                         type="submit"

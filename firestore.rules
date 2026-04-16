@@ -288,6 +288,57 @@ service cloud.firestore {
         );
     }
 
+    function isAllowedChatRoomUpdateFieldSet() {
+      return request.resource.data.diff(resource.data).changedKeys()
+        .hasOnly(['updatedAt', 'updatedBy', 'lastMessageText', 'lastMessageAt', 'lastMessageSenderId', 'unreadCountByUser', 'status']);
+    }
+
+    function isValidDirectChatRoomPatch() {
+      return isAllowedChatRoomUpdateFieldSet()
+        && request.resource.data.participantIds == resource.data.participantIds
+        && request.resource.data.participantRoles == resource.data.participantRoles
+        && request.resource.data.internalOnly == resource.data.internalOnly
+        && request.resource.data.updatedBy == uid()
+        && request.resource.data.lastMessageSenderId == uid();
+    }
+
+    function isAllowedChatMessageCreateFields() {
+      return request.resource.data.keys().hasOnly([
+        'roomId',
+        'senderId',
+        'senderRole',
+        'senderName',
+        'messageType',
+        'text',
+        'attachments',
+        'createdAt',
+        'internalOnly',
+        'clientTempId',
+        'readBy',
+        'isBroadcastCopy',
+        'broadcastId',
+        'editedAt',
+        'deletedAt'
+      ]);
+    }
+
+    function isValidDirectChatMessageCreate(roomId) {
+      return canAccessChatRoomById(roomId)
+        && request.resource.data.roomId == roomId
+        && request.resource.data.senderId == uid()
+        && request.resource.data.messageType == 'text'
+        && request.resource.data.text is string
+        && request.resource.data.text.size() > 0
+        && request.resource.data.text.size() <= 4000
+        && request.resource.data.internalOnly == true
+        && (!('attachments' in request.resource.data) || request.resource.data.attachments is list)
+        && (!('senderRole' in request.resource.data) || request.resource.data.senderRole is string || request.resource.data.senderRole == null)
+        && (!('senderName' in request.resource.data) || request.resource.data.senderName is string || request.resource.data.senderName == null)
+        && (!('clientTempId' in request.resource.data) || request.resource.data.clientTempId is string || request.resource.data.clientTempId == null)
+        && (!('isBroadcastCopy' in request.resource.data) || request.resource.data.isBroadcastCopy == false || request.resource.data.isBroadcastCopy == null)
+        && (!('broadcastId' in request.resource.data) || request.resource.data.broadcastId == null);
+    }
+
     /* =========================
        users
     ========================= */
@@ -531,11 +582,7 @@ service cloud.firestore {
         isStaffOrAdminOrTeacher()
         || (
           isChatParticipantFromResource()
-          && request.resource.data.participantIds == resource.data.participantIds
-          && request.resource.data.participantRoles == resource.data.participantRoles
-          && request.resource.data.internalOnly == resource.data.internalOnly
-          && request.resource.data.diff(resource.data).changedKeys()
-              .hasOnly(['updatedAt', 'updatedBy', 'lastMessageText', 'lastMessageAt', 'lastMessageSenderId', 'unreadCountByUser', 'status'])
+          && isValidDirectChatRoomPatch()
         )
       );
 
@@ -545,10 +592,8 @@ service cloud.firestore {
     match /chatRooms/{roomId}/messages/{messageId} {
       allow read: if canAccessChatRoomById(roomId);
 
-      allow create: if canAccessChatRoomById(roomId)
-        && request.resource.data.roomId == roomId
-        && request.resource.data.senderId == uid()
-        && request.resource.data.internalOnly == true;
+      allow create: if isAllowedChatMessageCreateFields()
+        && isValidDirectChatMessageCreate(roomId);
 
       allow update: if isStaffOrAdminOrTeacher();
       allow delete: if false;

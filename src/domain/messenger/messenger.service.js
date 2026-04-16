@@ -1,16 +1,18 @@
 import {
     collection,
+    doc,
     limit,
     onSnapshot,
     orderBy,
     query,
+    serverTimestamp,
     where,
+    writeBatch,
 } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../../firebase/client';
 
 const createOrGetChatRoomCallable = httpsCallable(functions, 'createOrGetChatRoom');
-const sendChatMessageCallable = httpsCallable(functions, 'sendChatMessage');
 const broadcastChatMessageCallable = httpsCallable(functions, 'broadcastChatMessage');
 
 const normalizeRoom = (docSnapshot) => ({
@@ -43,26 +45,73 @@ export const createOrGetChatRoom = async ({
     return result?.data || null;
 };
 
-export const sendChatMessage = async ({
+export const createOrOpenRoom = async ({
+    roomId = null,
+    targetAuthUid,
+    targetUserDocId = null,
+    targetRole = null,
+    targetName = null,
+    studentId = null,
+    parentId = null,
+}) => {
+    if (roomId) return { roomId, status: 'existing' };
+
+    return createOrGetChatRoom({
+        targetAuthUid,
+        targetUserDocId,
+        targetRole,
+        targetName,
+        studentId,
+        parentId,
+    });
+};
+
+export const sendMessageDirect = async ({
     roomId,
     text,
     messageType = 'text',
     attachments = [],
-    isBroadcastCopy = false,
-    broadcastId = null,
+    senderMeta = {},
     clientTempId = null,
 }) => {
-    const result = await sendChatMessageCallable({
+    const now = Date.now();
+    const roomRef = doc(db, 'chatRooms', roomId);
+    const messagePayload = {
         roomId,
-        text,
+        senderId: senderMeta?.senderId || null,
+        senderRole: senderMeta?.senderRole || null,
+        senderName: senderMeta?.senderName || null,
         messageType,
+        text,
         attachments,
-        isBroadcastCopy,
-        broadcastId,
+        createdAt: serverTimestamp(),
+        internalOnly: true,
         clientTempId,
-    });
+    };
 
-    return result?.data || null;
+    const roomPatch = {
+        lastMessageText: text,
+        lastMessageAt: serverTimestamp(),
+        lastMessageSenderId: senderMeta?.senderId || null,
+        updatedAt: serverTimestamp(),
+        updatedBy: senderMeta?.senderId || null,
+        // TODO: unreadCountByUser 업데이트는 후속 단계에서 최소 비용 방식으로 재설계
+    };
+
+    const batch = writeBatch(db);
+    const messageRef = doc(collection(db, 'chatRooms', roomId, 'messages'));
+    batch.set(messageRef, messagePayload);
+    batch.update(roomRef, roomPatch);
+
+    await batch.commit();
+
+    return {
+        roomId,
+        messageId: messageRef.id,
+        acceptedAt: now,
+        lastMessageText: text,
+        lastMessageSenderId: senderMeta?.senderId || null,
+    };
 };
 
 export const broadcastChatMessage = async ({

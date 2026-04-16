@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
     broadcastChatMessage,
-    createOrGetChatRoom,
-    sendChatMessage,
+    createOrOpenRoom,
+    sendMessageDirect,
     subscribeChatMessages,
     subscribeInternalChatRooms,
 } from '../../domain/messenger/messenger.service';
@@ -80,6 +80,7 @@ export default function InternalMessengerPanel({
 
         return subscribeChatMessages(selectedRoom.id, (serverMessages) => {
             const roomId = selectedRoom.id;
+            const snapshotAt = Date.now();
             let mergedMessages = serverMessages;
             setOptimisticByRoom((prev) => {
                 const optimisticMessages = Array.isArray(prev[roomId]) ? prev[roomId] : [];
@@ -91,10 +92,32 @@ export default function InternalMessengerPanel({
                             : (
                                 serverMessage?.senderId === tempMessage.senderId
                                 && String(serverMessage?.text || '') === String(tempMessage.text || '')
+                                && Math.abs(
+                                    new Date(serverMessage?.createdAt?.toDate?.() || serverMessage?.createdAt || 0).getTime()
+                                    - new Date(tempMessage?.createdAt || 0).getTime(),
+                                ) <= 15_000
                             )
                     ));
                 });
                 mergedMessages = [...serverMessages, ...unresolved];
+                if (process.env.NODE_ENV === 'development') {
+                    const latestResolved = optimisticMessages.find((tempMessage) => (
+                        !unresolved.some((candidate) => candidate.id === tempMessage.id)
+                        && tempMessage?.optimisticAt
+                    ));
+                    if (latestResolved) {
+                        console.log('[messenger direct-send timing]', {
+                            roomId,
+                            optimisticAt: latestResolved.optimisticAt,
+                            writeDoneAt: latestResolved.writeDoneAt || null,
+                            snapshotAt,
+                            elapsedWriteMs: latestResolved.writeDoneAt
+                                ? latestResolved.writeDoneAt - latestResolved.optimisticAt
+                                : null,
+                            elapsedSnapshotMs: snapshotAt - latestResolved.optimisticAt,
+                        });
+                    }
+                }
                 if (unresolved.length === optimisticMessages.length) return prev;
                 return {
                     ...prev,
@@ -114,7 +137,7 @@ export default function InternalMessengerPanel({
         if (!target) return;
 
         try {
-            const result = await createOrGetChatRoom({
+            const result = await createOrOpenRoom({
                 targetAuthUid: target.authUid,
                 targetUserDocId: target.userDocId,
                 targetRole: target.role,
@@ -135,8 +158,24 @@ export default function InternalMessengerPanel({
     };
 
     const handleSendMessage = async (text) => {
-        if (!selectedRoom?.id) return;
-        const roomId = selectedRoom.id;
+       const target = targetOptions.find((option) => option.authUid === targetUid) || null;
+        let roomId = selectedRoom?.id || null;
+        if (!roomId && !target) return;
+
+        if (!roomId) {
+            const created = await createOrOpenRoom({
+                targetAuthUid: target?.authUid,
+                targetUserDocId: target?.userDocId || null,
+                targetRole: target?.role || null,
+                targetName: target?.displayName || null,
+                studentId: target?.studentId || null,
+                parentId: target?.parentId || null,
+            });
+            roomId = created?.roomId || null;
+            if (!roomId) throw new Error('채팅방 생성에 실패했습니다.');
+            setSelectedRoom((prev) => (prev?.id === roomId ? prev : { id: roomId }));
+        }
+
         const clickAt = Date.now();
         const tempId = `temp-${clickAt}-${userId}`;
         const optimisticAt = Date.now();
@@ -151,6 +190,7 @@ export default function InternalMessengerPanel({
             localOnly: true,
             sending: true,
             failed: false,
+            optimisticAt,
         };
 
         setOptimisticByRoom((prev) => {
@@ -176,7 +216,7 @@ export default function InternalMessengerPanel({
         });
 
         if (process.env.NODE_ENV === 'development') {
-            console.log('[messenger send timing]', {
+            console.log('[messenger direct-send timing]', {
                 roomId,
                 clickAt,
                 optimisticAt,
@@ -185,19 +225,32 @@ export default function InternalMessengerPanel({
         }
 
         try {
-            const response = await sendChatMessage({
+            const response = await sendMessageDirect({
                 roomId,
                 text,
+                senderMeta: {
+                    senderId: userId,
+                    senderRole: userRole,
+                    senderName: '나',
+                },
                 clientTempId: tempId,
             });
-            const responseAt = Date.now();
+            const writeDoneAt = Date.now();
             setOptimisticByRoom((prev) => {
                 const current = Array.isArray(prev[roomId]) ? prev[roomId] : [];
                 return {
                     ...prev,
                     [roomId]: current.map((item) => (
                         item.id === tempId
-                            ? { ...item, sending: false, failed: false, messageId: response?.messageId || null }
+                            ? {
+                                ...item,
+                                sending: false,
+                                failed: false,
+                                messageId: response?.messageId || null,
+                                roomId,
+                                clientTempId: tempId,
+                                writeDoneAt,
+                            }
                             : item
                     )),
                 };
@@ -222,13 +275,11 @@ export default function InternalMessengerPanel({
                 return next;
             });
             if (process.env.NODE_ENV === 'development') {
-                console.log('[messenger send timing]', {
+                console.log('[messenger direct-send timing]', {
                     roomId,
-                    clickAt,
                     optimisticAt,
-                    responseAt,
-                    finalAt: Date.now(),
-                    elapsedMs: responseAt - clickAt,
+                    writeDoneAt,
+                    elapsedWriteMs: writeDoneAt - optimisticAt,
                 });
             }
         } catch (error) {
