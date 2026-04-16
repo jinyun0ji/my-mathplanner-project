@@ -6,7 +6,6 @@ import { StudentFormModal } from '../utils/modals/StudentFormModal';
 import { MemoModal } from '../utils/modals/MemoModal';
 import { Modal } from '../components/common/Modal'; 
 import { db } from '../firebase/client';
-import { getLinkedParentAuthUids } from '../utils/parentLinking';
 import { buildStudentParentPhoneLast4Map, formatStudentNameWithParentLast4 } from '../utils/parentPhone';
 
 const RETIRE_REASONS = ['중도퇴원', '전반'];
@@ -88,6 +87,78 @@ export default function StudentManagement({
         }
     };
 
+    const normalizeLinkedIds = (value) => {
+        const values = Array.isArray(value) ? value : (value ? [value] : []);
+        return values
+            .map((item) => {
+                if (!item) return null;
+                if (typeof item === 'string') return item;
+                if (typeof item === 'object') {
+                    if (item.id) return item.id;
+                    if (item.path) {
+                        const parts = item.path.split('/');
+                        return parts[parts.length - 1];
+                    }
+                }
+                return null;
+            })
+            .filter(Boolean)
+            .map(String);
+    };
+
+    const getLinkedParents = (student) => {
+        if (!student?.id) return [];
+        const studentId = String(student.id);
+        const linkedIdKeys = ['studentIds', 'childrenIds', 'studentDocIds', 'students', 'childIds', 'linkedStudentIds'];
+
+        return (Array.isArray(parents) ? parents : []).filter((parent) => linkedIdKeys.some((key) => {
+            const linkedIds = normalizeLinkedIds(parent?.[key]);
+            return linkedIds.includes(studentId);
+        }));
+    };
+
+    const pickFirstNonEmptyValue = (values) => values
+        .map((value) => (typeof value === 'string' ? value.trim() : ''))
+        .find(Boolean) || '';
+
+    const getStudentEmail = (student) => pickFirstNonEmptyValue([
+        student?.email,
+        student?.studentEmail,
+        student?.accountEmail,
+        student?.googleEmail,
+    ]);
+
+    const getParentEmails = (student) => {
+        const matchedParents = getLinkedParents(student);
+        const emails = matchedParents
+            .map((parent) => pickFirstNonEmptyValue([
+                parent?.email,
+                parent?.parentEmail,
+                parent?.accountEmail,
+                parent?.googleEmail,
+            ]))
+            .filter(Boolean);
+
+        return Array.from(new Set(emails));
+    };
+
+    const renderAccountEmails = (student) => {
+        const studentEmail = getStudentEmail(student);
+        const parentEmails = getParentEmails(student);
+        const hasAnyEmail = Boolean(studentEmail) || parentEmails.length > 0;
+
+        if (!hasAnyEmail) {
+            return <span className="text-gray-400">미등록</span>;
+        }
+
+        return (
+            <div className="flex flex-col gap-1 text-xs leading-relaxed whitespace-normal break-all">
+                <span className="text-gray-700">학생: {studentEmail || '미등록'}</span>
+                <span className="text-gray-500">학부모: {parentEmails.length > 0 ? parentEmails.join(', ') : '미등록'}</span>
+            </div>
+        );
+    };
+
     useEffect(() => {
         if (pendingQuickAction?.page === 'students' && pendingQuickAction.action === 'openStudentModal') {
             setStudentToEdit(null);
@@ -103,9 +174,15 @@ export default function StudentManagement({
         console.log('[staff] parents count=', parents?.length, 'sample=', parents?.slice(0, 3));
         console.log('[staff] student id sample=', students?.[0]?.id);
         if (students?.[0]?.id) {
+            const firstStudentId = String(students[0].id);
+            const linkedIdKeys = ['studentIds', 'childrenIds', 'studentDocIds', 'students', 'childIds', 'linkedStudentIds'];
+            const linkedParentsForFirstStudent = (Array.isArray(parents) ? parents : []).filter((parent) => linkedIdKeys.some((key) => {
+                const linkedIds = normalizeLinkedIds(parent?.[key]);
+                return linkedIds.includes(firstStudentId);
+            }));
             console.log(
                 '[staff] matched parents for first student=',
-                getLinkedParentAuthUids(students[0], parents),
+                linkedParentsForFirstStudent,
             );
         }
     }, [parents, students]);
@@ -334,7 +411,7 @@ export default function StudentManagement({
                     <table className="min-w-full divide-y divide-gray-200">
                         <thead className="bg-gray-100">
                             <tr>
-                                {['이름', '문서ID', 'Auth UID', '학교', '학년', '상태', '퇴원일', '연락처 (학생/학부모)', '등록일', '관리'].map(header => (
+                                {['이름', '문서ID', '계정 이메일', '학교', '학년', '상태', '퇴원일', '연락처 (학생/학부모)', '등록일', '관리'].map(header => (
                                     <th key={header} className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">{header}</th>
                                 ))}
                             </tr>
@@ -343,7 +420,6 @@ export default function StudentManagement({
                             {filteredStudents.map(student => {
                                 // ✅ [추가] 해당 학생의 타학원 스케줄 존재 여부 확인
                                 const hasExternal = externalSchedules?.some(s => s.studentId === student.id);
-                                const parentAuthUids = getLinkedParentAuthUids(student, parents);
 
                                 const classStatusMap = getClassStatusMap(student);
                                 const allClassIds = Array.isArray(student.classes)
@@ -380,24 +456,8 @@ export default function StudentManagement({
                                                 </button>
                                             ) : '-'}
                                         </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-xs text-gray-600">
-                                            <div className="flex flex-col gap-1">
-                                                <span className="text-gray-700">
-                                                    학생: {student.authUid ? (
-                                                        <button
-                                                            type="button"
-                                                            className="hover:underline"
-                                                            title={student.authUid}
-                                                            onClick={(e) => { e.stopPropagation(); copyToClipboard(student.authUid); }}
-                                                        >
-                                                            {shortId(student.authUid)}
-                                                        </button>
-                                                    ) : '-'}
-                                                </span>
-                                                <span className="text-gray-500">
-                                                    학부모: {parentAuthUids.length > 0 ? parentAuthUids.join(', ') : '-'}
-                                                </span>
-                                            </div>
+                                        <td className="px-6 py-4 text-xs text-gray-600 align-top">
+                                            {renderAccountEmails(student)}
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{student.school}</td>
                                         {/* 학년 표시 수정 */}
@@ -495,7 +555,6 @@ export default function StudentManagement({
                 <div className="grid gap-3 md:hidden">
                     {filteredStudents.map(student => {
                         const hasExternal = externalSchedules?.some(s => s.studentId === student.id);
-                        const parentAuthUids = getLinkedParentAuthUids(student, parents);
                         const classStatusMap = student.classStatuses || {};
                         const allClassIds = Array.isArray(student.classes)
                             ? student.classes
@@ -581,24 +640,8 @@ export default function StudentManagement({
                                                     ) : '-'}
                                                 </div>
                                                 <div className="flex items-center gap-1 text-[11px] text-gray-600">
-                                                    <span className="font-semibold">Auth UID</span>
-                                                    <div className="flex flex-col gap-0.5">
-                                                        <span>
-                                                            학생: {student.authUid ? (
-                                                                <button
-                                                                    type="button"
-                                                                    className="hover:underline"
-                                                                    title={student.authUid}
-                                                                    onClick={(e) => { e.stopPropagation(); copyToClipboard(student.authUid); }}
-                                                                >
-                                                                    {shortId(student.authUid)}
-                                                                </button>
-                                                            ) : '-'}
-                                                        </span>
-                                                        <span className="text-gray-500">
-                                                            학부모: {parentAuthUids.length > 0 ? parentAuthUids.join(', ') : '-'}
-                                                        </span>
-                                                    </div>
+                                                    <span className="font-semibold">계정 이메일</span>
+                                                    {renderAccountEmails(student)}
                                                 </div>
                                             </div>
                                         </div>
