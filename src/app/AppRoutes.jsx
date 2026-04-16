@@ -72,6 +72,7 @@ import { httpsCallable } from 'firebase/functions';
 const PAGE_ROUTES = {
     home: '/home',
     lessons: '/lessons',
+    lessonReports: '/lesson-reports',
     students: '/students',
     attendance: '/attendance',
     grades: '/grades',
@@ -93,6 +94,7 @@ const ADMIN_ROUTES = new Set([
 ]);
 
 const getPageKeyFromPath = (pathname) => {
+    if (pathname === '/lesson-reports' || pathname.startsWith('/lesson-reports/')) return 'lessonReports';
     if (pathname.startsWith('/students/')) return 'students';
     if (ADMIN_ROUTES.has(pathname)) return pathname;
     const entry = Object.entries(PAGE_ROUTES).find(([, path]) => path === pathname);
@@ -2060,7 +2062,8 @@ export default function AppRoutes({ user, role, studentIds }) {
             <Route path="attendance" element={<AttendanceManagement {...managementProps} />} />
             <Route path="students" element={<StudentManagement {...managementProps} />} />
             <Route path="students/:studentId" element={<StudentDetail />} />
-            <Route path="students/:studentId/lesson-reports" element={<LessonReportManagement />} />
+            <Route path="lesson-reports" element={<LessonReportManagement {...managementProps} />} />
+            <Route path="students/:studentId/lesson-reports" element={<LessonReportManagement {...managementProps} />} />
             <Route path="grades" element={<GradeManagement {...managementProps} />} />
             <Route path="homework" element={<HomeworkManagement {...managementProps} />} />
             <Route path="clinic" element={<ClinicManagement {...managementProps} />} />

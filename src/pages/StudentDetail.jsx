@@ -1126,7 +1126,7 @@ export default function StudentDetail() {
                                     </button>
                                     <button
                                         type="button"
-                                        onClick={() => navigate(`/students/${student.id}/lesson-reports`)}
+                                        onClick={() => navigate(`/lesson-reports?studentId=${student.id}`)}
                                         className="inline-flex items-center gap-2 text-xs font-semibold text-indigo-600 hover:text-indigo-800"
                                     >
                                         <Icon name="clipboardCheck" className="h-4 w-4" />

@@ -16,6 +16,7 @@ export default function Sidebar({ page, setPage, onLogout, isOpen, onClose }) {
         { name: '대시보드', key: 'home', icon: 'dashboard' },
         { name: '수업 관리', key: 'lessons', icon: 'fileText' },
         { name: '학생 관리', key: 'students', icon: 'users' },
+        { name: '수업 리포트 관리', key: 'lessonReports', icon: 'clipboardCheck' },
         { name: '출결 관리', key: 'attendance', icon: 'calendar' },
         { name: '성적 관리', key: 'grades', icon: 'barChart' },
         { name: '과제 관리', key: 'homework', icon: 'clipboardCheck' },
