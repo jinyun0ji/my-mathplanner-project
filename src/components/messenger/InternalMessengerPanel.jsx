@@ -12,6 +12,7 @@ import ChatMessagePane from './ChatMessagePane';
 import {
     buildMessengerTargets,
     groupStudentTargetsByClass,
+    splitStudentTargetsByStatus,
 } from './messengerTargets';
 
 export default function InternalMessengerPanel({
@@ -48,15 +49,19 @@ export default function InternalMessengerPanel({
             return target.searchText.includes(normalizedStudentQuery);
         });
         }, [normalizedStudentQuery, targetOptions]);
+        
+        const { active: activeStudentTargets, withdrawn: withdrawnStudentTargets } = useMemo(() => (
+        splitStudentTargetsByStatus(filteredTargets)
+    ), [filteredTargets]);
 
     const studentSections = useMemo(() => (
-        groupStudentTargetsByClass(filteredTargets, classes)
-    ), [filteredTargets, classes]);
+        groupStudentTargetsByClass(activeStudentTargets, classes)
+    ), [activeStudentTargets, classes]);
 
     const parentTargets = useMemo(() => (
         filteredTargets
             .filter((target) => target.role === 'parent')
-            .sort((left, right) => String(right.displayName || '').localeCompare(String(left.displayName || ''), 'ko'))
+            .sort((left, right) => String(left.displayName || '').localeCompare(String(right.displayName || ''), 'ko'))
     ), [filteredTargets]);
 
     useEffect(() => {
@@ -210,6 +215,39 @@ export default function InternalMessengerPanel({
                             })}
                         </div>
                     ))}
+
+                    {withdrawnStudentTargets.length > 0 && (
+                        <div className="border-b last:border-b-0">
+                            <div className="px-3 py-2 bg-gray-50 text-xs font-semibold text-gray-500">[퇴원생]</div>
+                            {withdrawnStudentTargets.map((target) => {
+                                const checked = selectedTargetUids.includes(target.authUid);
+                                const isFocused = targetUid === target.authUid;
+                                return (
+                                    <label key={target.authUid} className={`px-3 py-2 flex items-center gap-2 text-sm border-t first:border-t-0 ${isFocused ? 'bg-green-50' : ''}`}>
+                                        <input
+                                            type="checkbox"
+                                            checked={checked}
+                                            onChange={() => toggleTargetSelection(target.authUid)}
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => setTargetUid(target.authUid)}
+                                            className="text-left flex-1 text-gray-400 truncate"
+                                        >
+                                            {target.displayName} <span className="text-gray-400">(퇴원)</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => handleCreateOrOpenRoom(target.authUid)}
+                                            className="px-2 py-1 text-xs rounded border border-gray-300 shrink-0"
+                                        >
+                                            1:1 열기
+                                        </button>
+                                    </label>
+                                );
+                            })}
+                        </div>
+                    )}
 
                     {parentTargets.length > 0 && (
                         <div>

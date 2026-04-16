@@ -6,6 +6,25 @@ import {
 
 const normalizeText = (value) => String(value || '').trim();
 const lower = (value) => normalizeText(value).toLowerCase();
+const compareDisplayNameAsc = (left, right) => (
+    String(left?.displayName || '').localeCompare(String(right?.displayName || ''), 'ko')
+);
+
+const ENDED_STATUS_KEYWORDS = [
+    '퇴원',
+    '전반',
+    '종강',
+    'inactive',
+    'withdraw',
+    'ended',
+    '종료',
+];
+
+const isEndedStatus = (value) => {
+    const text = lower(value);
+    if (!text) return false;
+    return ENDED_STATUS_KEYWORDS.some((keyword) => text.includes(keyword));
+};
 
 const getStudentClassIds = (student) => {
     if (Array.isArray(student?.classIds)) return student.classIds.map(String);
@@ -77,8 +96,25 @@ export const sortMessengerTargets = (targets = []) => {
         const roleDiff = rank(left?.role) - rank(right?.role);
         if (roleDiff !== 0) return roleDiff;
 
-        return String(right?.displayName || '').localeCompare(String(left?.displayName || ''), 'ko');
+        return compareDisplayNameAsc(left, right);
     });
+};
+
+export const isWithdrawnStudent = (student = {}) => {
+    if (isEndedStatus(student?.status)) return true;
+
+    const classStatusMap = student?.classStatusMap || {};
+    const mapStatuses = Object.values(classStatusMap)
+        .map((entry) => entry?.status || entry)
+        .filter(Boolean);
+
+    const classStatuses = student?.classStatuses || {};
+    const classStatusesValues = Object.values(classStatuses).filter(Boolean);
+
+    const mergedStatuses = [...mapStatuses, ...classStatusesValues];
+    if (!mergedStatuses.length) return false;
+
+    return mergedStatuses.every((status) => isEndedStatus(status));
 };
 
 export const buildMessengerTargets = ({ students = [], parents = [], classes = [] }) => {
@@ -116,6 +152,7 @@ export const buildMessengerTargets = ({ students = [], parents = [], classes = [
                 userDocId: student?.id ? String(student.id) : null,
                 studentId: student?.id ? String(student.id) : null,
                 parentId: null,
+                isWithdrawn: isWithdrawnStudent(student),
             };
         });
 
@@ -176,9 +213,7 @@ export const groupStudentTargetsByClass = (targets = [], classes = []) => {
 
     const sections = Array.from(grouped.values());
     sections.forEach((section) => {
-        section.items = section.items.sort((left, right) => (
-            String(right?.displayName || '').localeCompare(String(left?.displayName || ''), 'ko')
-        ));
+        section.items = section.items.sort(compareDisplayNameAsc);
     });
 
     return sections.sort((left, right) => {
@@ -191,4 +226,24 @@ export const groupStudentTargetsByClass = (targets = [], classes = []) => {
 
         return String(left.title || '').localeCompare(String(right.title || ''), 'ko');
     });
+};
+
+export const splitStudentTargetsByStatus = (targets = []) => {
+    const safeTargets = Array.isArray(targets) ? targets : [];
+    const active = [];
+    const withdrawn = [];
+
+    safeTargets.forEach((target) => {
+        if (target?.role !== 'student') return;
+        if (target?.isWithdrawn) {
+            withdrawn.push(target);
+            return;
+        }
+        active.push(target);
+    });
+
+    return {
+        active: active.sort(compareDisplayNameAsc),
+        withdrawn: withdrawn.sort(compareDisplayNameAsc),
+    };
 };
