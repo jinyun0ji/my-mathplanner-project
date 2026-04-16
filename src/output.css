@@ -924,6 +924,10 @@ video {
   margin-top: auto;
 }
 
+.mr-\[28rem\]{
+  margin-right: 28rem;
+}
+
 .line-clamp-2{
   overflow: hidden;
   display: -webkit-box;
@@ -1393,6 +1397,10 @@ video {
 
 .w-\[8\%\]{
   width: 8%;
+}
+
+.w-\[28rem\]{
+  width: 28rem;
 }
 
 .min-w-0{

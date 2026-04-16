@@ -1,13 +1,13 @@
 import React from 'react';
+import { getChatRoomDisplayTitle } from './messengerTargets';
 
-const getRoomCounterpartName = (room, myUid) => {
-    const names = room?.participantNames || {};
-    const ids = Array.isArray(room?.participantIds) ? room.participantIds : [];
-    const counterpartId = ids.find((id) => id !== myUid) || ids[0];
-    return names[counterpartId] || counterpartId || 'Unknown';
-};
-
-export default function ChatRoomList({ rooms = [], selectedRoomId = null, onSelectRoom, myUid }) {
+export default function ChatRoomList({
+    rooms = [],
+    selectedRoomId = null,
+    onSelectRoom,
+    myUid,
+    contextData = {},
+}) {
     return (
         <div className="border rounded-lg overflow-hidden bg-white">
             <div className="px-3 py-2 border-b text-sm font-semibold text-gray-600">상담 채팅방</div>
@@ -17,7 +17,7 @@ export default function ChatRoomList({ rooms = [], selectedRoomId = null, onSele
                 )}
                 {rooms.map((room) => {
                     const active = room.id === selectedRoomId;
-                    const counterpartName = getRoomCounterpartName(room, myUid);
+                    const counterpartName = getChatRoomDisplayTitle(room, myUid, contextData);
                     return (
                         <li key={room.id}>
                             <button

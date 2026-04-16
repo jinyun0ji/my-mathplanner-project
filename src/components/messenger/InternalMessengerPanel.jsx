@@ -65,6 +65,13 @@ export default function InternalMessengerPanel({
             .sort((left, right) => String(left.displayName || '').localeCompare(String(right.displayName || ''), 'ko'))
     ), [filteredTargets]);
 
+    const roomDisplayContext = useMemo(() => ({ students, parents }), [students, parents]);
+
+    const selectedRoomResolved = useMemo(() => {
+        if (!selectedRoom?.id) return null;
+        return rooms.find((room) => room.id === selectedRoom.id) || selectedRoom;
+    }, [rooms, selectedRoom]);
+
     useEffect(() => {
         if (!isStaffOrTeachingRole(userRole) || !userId) return () => {};
         return subscribeInternalChatRooms(userId, setRooms, (error) => {
@@ -147,7 +154,7 @@ export default function InternalMessengerPanel({
             });
 
             setTargetUid(resolvedTargetUid);
-            setStatusMessage(`채팅방 준비 완료: ${result?.roomId || ''}`);
+            setStatusMessage('채팅방 준비 완료');
             if (result?.roomId) {
                 setSelectedRoom((prev) => (prev?.id === result.roomId ? prev : { id: result.roomId }));
             }
@@ -497,15 +504,22 @@ export default function InternalMessengerPanel({
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                 <div className="lg:col-span-1">
-                    <ChatRoomList rooms={rooms} selectedRoomId={selectedRoom?.id || null} onSelectRoom={setSelectedRoom} myUid={userId} />
+                    <ChatRoomList
+                        rooms={rooms}
+                        selectedRoomId={selectedRoom?.id || null}
+                        onSelectRoom={setSelectedRoom}
+                        myUid={userId}
+                        contextData={roomDisplayContext}
+                    />
                 </div>
                 <div className="lg:col-span-2">
                     <ChatMessagePane
-                        room={selectedRoom}
+                        room={selectedRoomResolved}
                         messages={messages}
                         myUid={userId}
                         onSend={handleSendMessage}
                         onRetryMessage={handleRetryMessage}
+                        contextData={roomDisplayContext}
                     />
                 </div>
             </div>

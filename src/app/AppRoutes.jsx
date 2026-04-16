@@ -110,7 +110,10 @@ const AppShellLayout = ({
     page,
     notifications,
     students,
+    parents,
     classes,
+    userId,
+    userRole,
     isSidebarOpen,
     isMessengerOpen,
     hasNewNotifications,
@@ -128,7 +131,10 @@ const AppShellLayout = ({
         page={page}
         notifications={notifications}
         students={students}
+        parents={parents}
         classes={classes}
+        userId={userId}
+        userRole={userRole}
         isSidebarOpen={isSidebarOpen}
         isMessengerOpen={isMessengerOpen}
         hasNewNotifications={hasNewNotifications}
@@ -293,7 +299,6 @@ export default function AppRoutes({ user, role, studentIds }) {
   const [hasNewNotifications, setHasNewNotifications] = useState(false);
   const [isMessengerOpen, setIsMessengerOpen] = useState(false);
   const [hasNewMessages, setHasNewMessages] = useState(true);
-  const [studentMessages, setStudentMessages] = useState([]);
   const [pendingQuickAction, setPendingQuickAction] = useState(null);
 
   const toggleSidebar = () => { setIsSidebarOpen(prev => !prev); if (!isSidebarOpen) { setHasNewNotifications(false); setIsMessengerOpen(false); } };
@@ -363,7 +368,6 @@ export default function AppRoutes({ user, role, studentIds }) {
       });
 
       if (newMessages.length > 0) {
-          setStudentMessages((prev) => [...prev, ...newMessages]);
           setHasNewMessages(true);
       }
   }, [announcements, role, userId, studentIds, students]);
@@ -2025,7 +2029,10 @@ export default function AppRoutes({ user, role, studentIds }) {
                     page={page}
                     notifications={notifications}
                     students={students}
+                    parents={parents}
                     classes={classes}
+                    userId={userId}
+                    userRole={role}
                     isSidebarOpen={isSidebarOpen}
                     isMessengerOpen={isMessengerOpen}
                     hasNewNotifications={hasNewNotifications}

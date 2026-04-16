@@ -9,6 +9,12 @@ const lower = (value) => normalizeText(value).toLowerCase();
 const compareDisplayNameAsc = (left, right) => (
     String(left?.displayName || '').localeCompare(String(right?.displayName || ''), 'ko')
 );
+const STAFF_ROLE_LABEL_MAP = {
+    admin: '운영자',
+    staff: '운영자',
+    teacher: '강사',
+    teaching: '강사',
+};
 
 const ENDED_STATUS_KEYWORDS = [
     '퇴원',
@@ -46,6 +52,44 @@ const pickRepresentativeClass = (student, classMap) => {
     return ongoing || linkedClasses[0] || null;
 };
 
+const appendParentSuffix = (name) => {
+    const normalized = normalizeText(name);
+    if (!normalized) return '';
+    return normalized.endsWith('학부모') ? normalized : `${normalized} 학부모`;
+};
+
+const buildUserLookups = ({ students = [], parents = [] }) => {
+    const safeStudents = Array.isArray(students) ? students : [];
+    const safeParents = Array.isArray(parents) ? parents : [];
+    const studentById = new Map(safeStudents.map((student) => [String(student?.id), student]));
+    const studentByAuthUid = new Map(
+        safeStudents
+            .filter((student) => student?.authUid)
+            .map((student) => [String(student.authUid), student]),
+    );
+    const parentById = new Map(safeParents.map((parent) => [String(parent?.id), parent]));
+    const parentByAuthUid = new Map(
+        safeParents
+            .filter((parent) => parent?.authUid)
+            .map((parent) => [String(parent.authUid), parent]),
+    );
+    const parentLast4Map = buildStudentParentPhoneLast4Map(safeStudents, safeParents);
+
+    return {
+        studentById,
+        studentByAuthUid,
+        parentById,
+        parentByAuthUid,
+        parentLast4Map,
+    };
+};
+
+const resolveCounterpartyUid = (room, currentUserId) => {
+    const participantIds = Array.isArray(room?.participantIds) ? room.participantIds.map(String) : [];
+    if (!participantIds.length) return null;
+    return participantIds.find((uid) => uid !== String(currentUserId || '')) || participantIds[0] || null;
+};
+
 export const getMessengerTargetDisplayName = ({
     user,
     role,
@@ -55,11 +99,10 @@ export const getMessengerTargetDisplayName = ({
     if (!user) return '';
 
     if (role === 'student') {
-        return formatStudentNameWithOptionalParentLast4(user, parentLast4Map)
-            || normalizeText(user?.name)
-            || normalizeText(user?.studentName)
-            || normalizeText(user?.id)
-            || normalizeText(user?.authUid);
+        return normalizeText(user?.name)
+            || normalizeText(user?.displayName)
+            || formatStudentNameWithOptionalParentLast4(user, parentLast4Map)
+            || '이름 미등록 학생';
     }
 
     const directName =
@@ -67,6 +110,7 @@ export const getMessengerTargetDisplayName = ({
         || normalizeText(user?.displayName)
         || normalizeText(user?.parentName);
 
+    if (role === 'parent' && directName) return appendParentSuffix(directName);
     if (directName) return directName;
 
     const linkedStudentIds = Array.isArray(user?.studentIds) ? user.studentIds.map(String) : [];
@@ -78,15 +122,119 @@ export const getMessengerTargetDisplayName = ({
         const baseName = normalizeText(linkedStudent?.name)
             || normalizeText(linkedStudent?.studentName)
             || normalizeText(linkedStudent?.id);
-        if (baseName) return `${baseName} 학부모`;
+        if (baseName) return appendParentSuffix(baseName);
     }
 
-    const fallback = normalizeText(user?.id) || normalizeText(user?.authUid) || 'Unknown parent';
-    console.warn('[internal-messenger] parent display name fallback id exposed', {
-        parentId: user?.id || null,
-        authUid: user?.authUid || null,
-    });
-    return fallback;
+    if (role === 'parent') {
+        if (process.env.NODE_ENV === 'development') {
+            console.warn('[internal-messenger] parent display name fallback', {
+                parentId: user?.id || null,
+                authUid: user?.authUid || null,
+            });
+        }
+        return '이름 미등록 학부모';
+    }
+
+    return '이름 미등록 사용자';
+};
+
+export const getChatRoomCounterparty = (
+    room,
+    currentUserId,
+    students = [],
+    parents = [],
+) => {
+    const counterpartyUid = resolveCounterpartyUid(room, currentUserId);
+    if (!counterpartyUid) return null;
+
+    const {
+        studentById,
+        studentByAuthUid,
+        parentById,
+        parentByAuthUid,
+        parentLast4Map,
+    } = buildUserLookups({ students, parents });
+
+    const participantRoles = room?.participantRoles || {};
+    const participantUserDocIds = room?.participantUserDocIds || {};
+    const roleHint = normalizeText(participantRoles[counterpartyUid]).toLowerCase();
+    const userDocIdHint = normalizeText(participantUserDocIds[counterpartyUid]);
+
+    const student =
+        studentByAuthUid.get(counterpartyUid)
+        || (userDocIdHint ? studentById.get(userDocIdHint) : null)
+        || (room?.studentId ? studentById.get(String(room.studentId)) : null);
+
+    if (student) {
+        return {
+            uid: counterpartyUid,
+            role: 'student',
+            user: student,
+            displayName: getMessengerTargetDisplayName({
+                user: student,
+                role: 'student',
+                studentById,
+                parentLast4Map,
+            }),
+        };
+    }
+
+    const parent =
+        parentByAuthUid.get(counterpartyUid)
+        || (userDocIdHint ? parentById.get(userDocIdHint) : null)
+        || (room?.parentId ? parentById.get(String(room.parentId)) : null);
+
+    if (parent) {
+        return {
+            uid: counterpartyUid,
+            role: 'parent',
+            user: parent,
+            displayName: getMessengerTargetDisplayName({
+                user: parent,
+                role: 'parent',
+                studentById,
+                parentLast4Map,
+            }),
+        };
+    }
+
+    const hintedName = normalizeText(room?.participantNames?.[counterpartyUid]);
+    const resolvedRole = roleHint || 'staff';
+    const roleLabel = STAFF_ROLE_LABEL_MAP[resolvedRole] || '담당자';
+    if (process.env.NODE_ENV === 'development') {
+        console.warn('[internal-messenger] counterparty profile unresolved', {
+            roomId: room?.id || null,
+            counterpartyUid,
+            roleHint: roleHint || null,
+            userDocIdHint: userDocIdHint || null,
+        });
+    }
+
+    return {
+        uid: counterpartyUid,
+        role: resolvedRole,
+        user: null,
+        displayName: hintedName || roleLabel,
+    };
+};
+
+export const getChatRoomDisplayTitle = (room, currentUserId, contextData = {}) => {
+    const counterparty = getChatRoomCounterparty(
+        room,
+        currentUserId,
+        contextData.students || [],
+        contextData.parents || [],
+    );
+
+    if (counterparty?.displayName) return counterparty.displayName;
+
+    if (process.env.NODE_ENV === 'development') {
+        console.warn('[internal-messenger] chat room title fallback used', {
+            roomId: room?.id || null,
+            currentUserId: currentUserId || null,
+        });
+    }
+    return '대화 상대 미확인';
 };
 
 export const sortMessengerTargets = (targets = []) => {

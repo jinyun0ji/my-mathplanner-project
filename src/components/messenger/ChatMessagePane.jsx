@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { getChatRoomDisplayTitle } from './messengerTargets';
 
 const normalizeMessageDate = (value) => {
     if (!value) return null;
@@ -43,7 +44,14 @@ const formatTime = (value) => {
     return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
 };
 
-export default function ChatMessagePane({ room, messages = [], myUid, onSend, onRetryMessage }) {
+export default function ChatMessagePane({
+    room,
+    messages = [],
+    myUid,
+    onSend,
+    onRetryMessage,
+    contextData = {},
+}) {
     const [draft, setDraft] = useState('');
 
     const sortedMessages = useMemo(() => {
@@ -101,7 +109,9 @@ export default function ChatMessagePane({ room, messages = [], myUid, onSend, on
 
     return (
         <div className="border rounded-lg bg-white h-[420px] flex flex-col">
-            <div className="px-3 py-2 border-b text-sm font-semibold text-gray-700">Room: {room.id}</div>
+            <div className="px-3 py-2 border-b text-sm font-semibold text-gray-700">
+                {getChatRoomDisplayTitle(room, myUid, contextData)}
+            </div>
             <div className="flex-1 overflow-y-auto p-3 space-y-2">
                 {sortedMessages.length === 0 && <p className="text-xs text-gray-400">아직 메시지가 없습니다.</p>}
                 {renderItems.map((item) => {

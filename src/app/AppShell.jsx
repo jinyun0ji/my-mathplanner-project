@@ -11,6 +11,9 @@ export default function AppShell({
   notifications,
   students,
   classes,
+  parents,
+  userId,
+  userRole,
   isSidebarOpen,
   isMessengerOpen,
   hasNewNotifications,
@@ -57,7 +60,7 @@ export default function AppShell({
       {/* ✅ FIX: Sidebar가 md에서 static으로 레이아웃 폭을 차지하므로 md:ml-64 제거 */}
       <div
         className={`flex-1 flex flex-col overflow-hidden min-w-0 transition-all duration-300 ${
-          isSidebarOpen || isMessengerOpen ? 'mr-80' : 'mr-0'
+          isSidebarOpen || isMessengerOpen ? 'mr-[28rem]' : 'mr-0'
         }`}
       >
         <Header page={page} />
@@ -81,7 +84,10 @@ export default function AppShell({
         setHasNewMessages={setHasNewMessages}
         isSidebarOpen={isSidebarOpen}
         students={students}
+        parents={parents}
         classes={classes}
+        userId={userId}
+        userRole={userRole}
       />
     </div>
   );
