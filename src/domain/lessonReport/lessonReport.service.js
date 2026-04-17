@@ -11,6 +11,12 @@ export const LESSON_REPORT_STATUS = {
     SENT: 'sent',
 };
 
+export const LESSON_REPORT_SEND_STATUS = {
+    DRAFT: 'draft',
+    SCHEDULED: 'scheduled',
+    SENT: 'sent',
+};
+
 export const buildLessonReportId = ({ studentId, classId, lessonDate }) => {
     const s = String(studentId || '').trim();
     const c = String(classId || '').trim();

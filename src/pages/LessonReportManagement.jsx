@@ -5,6 +5,7 @@ import { db } from '../firebase/client';
 import useAuth from '../auth/useAuth';
 import {
   buildLessonReportId,
+  LESSON_REPORT_SEND_STATUS,
   LESSON_REPORT_STATUS,
   getGradeForLessonReportStudent,
   summarizeAssignedHomework,
@@ -38,14 +39,16 @@ const resolveHomeworkDate = (item) => toYmd(item?.date || item?.assignedDate || 
 const resolveTestDate = (item) => toYmd(item?.date || item?.testDate || item?.lessonDate || item?.createdAt || item?.updatedAt);
 const resolveLessonLogProgress = (log) => String(log?.progress || log?.learnedTopics || log?.lessonSummary || log?.topic || '');
 
-const statusLabel = (status) => {
-  if (status === LESSON_REPORT_STATUS.SENT) return '발송 완료';
+const statusLabel = (status, sendStatus, scheduledSendAt) => {
+  if (status === LESSON_REPORT_STATUS.SENT) return '발송완료';
+  if (sendStatus === LESSON_REPORT_SEND_STATUS.SCHEDULED || Boolean(scheduledSendAt)) return '예약됨';
   if (status === LESSON_REPORT_STATUS.DRAFT) return '초안';
   return '미생성';
 };
 
-const statusClassName = (status) => {
+const statusClassName = (status, sendStatus, scheduledSendAt) => {
   if (status === LESSON_REPORT_STATUS.SENT) return 'bg-green-100 text-green-700';
+  if (sendStatus === LESSON_REPORT_SEND_STATUS.SCHEDULED || Boolean(scheduledSendAt)) return 'bg-yellow-100 text-yellow-700';
   if (status === LESSON_REPORT_STATUS.DRAFT) return 'bg-amber-100 text-amber-700';
   return 'bg-gray-100 text-gray-600';
 };
@@ -82,6 +85,10 @@ export default function LessonReportManagement({
   const [draftError, setDraftError] = useState('');
   const [reportSaving, setReportSaving] = useState(false);
   const [activeTab, setActiveTab] = useState('edit');
+  const [selectedStudentIdsForBulk, setSelectedStudentIdsForBulk] = useState([]);
+  const [sendMode, setSendMode] = useState('now');
+  const [scheduledSendAt, setScheduledSendAt] = useState('');
+  const [localReportMap, setLocalReportMap] = useState({});
 
   const availableClasses = useMemo(
     () => (Array.isArray(classes) ? classes.filter((item) => item?.id) : []),
@@ -130,7 +137,11 @@ export default function LessonReportManagement({
     setSelectedStudentId(String(classStudents[0].id));
   }, [classStudents, selectedStudentId]);
 
-  const reportMap = useMemo(() => {
+  useEffect(() => {
+    setSelectedStudentIdsForBulk([]);
+  }, [selectedClassId, selectedDate]);
+
+  const baseReportMap = useMemo(() => {
     const map = new Map();
     lessonReports.forEach((report) => {
       const key = buildLessonReportId({
@@ -142,6 +153,19 @@ export default function LessonReportManagement({
     });
     return map;
   }, [lessonReports]);
+
+  const reportMap = useMemo(() => {
+    const merged = new Map(baseReportMap);
+    Object.values(localReportMap || {}).forEach((report) => {
+      const key = buildLessonReportId({
+        studentId: report?.studentId,
+        classId: report?.classId,
+        lessonDate: toYmd(report?.lessonDate),
+      });
+      if (key) merged.set(key, report);
+    });
+    return merged;
+  }, [baseReportMap, localReportMap]);
 
   const selectedLessonDate = toYmd(draft?.lessonDate || selectedDate || '');
   const selectedDraftClassId = String(draft?.classId || selectedClassId || '');
@@ -409,6 +433,9 @@ export default function LessonReportManagement({
         selectedTestIds: existingReport?.selectedTestIds || [],
         comment: existingReport?.comment || '',
         status: existingReport?.status || LESSON_REPORT_STATUS.DRAFT,
+        sendStatus: existingReport?.sendStatus || LESSON_REPORT_SEND_STATUS.DRAFT,
+        sendMode: existingReport?.sendMode || 'now',
+        scheduledSendAt: existingReport?.scheduledSendAt || null,
         studentNotificationSent: Boolean(existingReport?.studentNotificationSent),
         parentNotificationSent: Boolean(existingReport?.parentNotificationSent),
       });
@@ -450,6 +477,13 @@ export default function LessonReportManagement({
         ...prev,
         ...changes,
         id: nextId,
+        studentId: nextStudentId,
+        classId: nextClassId,
+        lessonDate: nextLessonDate,
+        status: LESSON_REPORT_STATUS.DRAFT,
+        sendStatus: LESSON_REPORT_SEND_STATUS.DRAFT,
+        sendMode: 'now',
+        scheduledSendAt: null,
         attendanceStatus: changes.attendanceStatus ?? prev.attendanceStatus ?? attendance?.attendance ?? attendance?.status ?? '미기록',
         lessonLogId: lessonLog?.id || null,
         autoFilledLearnedTopics: resolveLessonLogProgress(lessonLog),
@@ -458,93 +492,131 @@ export default function LessonReportManagement({
     });
   };
 
-  const saveReport = async (send = false) => {
+  const toDraftForSend = (report) => ({
+    ...report,
+    status: report?.status || LESSON_REPORT_STATUS.DRAFT,
+    sendStatus: report?.sendStatus || LESSON_REPORT_SEND_STATUS.DRAFT,
+  });
+
+  const buildPayload = ({ reportDraft, previous, action }) => {
+    const student = students.find((item) => String(item.id) === String(reportDraft.studentId));
+    const now = serverTimestamp();
+    const isScheduled = action === 'schedule';
+    const isSendNow = action === 'send';
+    const isFirstSend = isSendNow && previous?.status !== LESSON_REPORT_STATUS.SENT;
+
+    const homeworkSummary = summarizeHomework({
+      selectedHomeworkProgressIds: reportDraft.selectedHomeworkProgressIds || reportDraft.selectedHomeworkIds,
+      homeworkAssignments,
+      homeworkResults,
+      studentId: reportDraft.studentId,
+      student,
+    });
+    const assignedHomeworkSummary = summarizeAssignedHomework({
+      selectedAssignedHomeworkIds: reportDraft.selectedAssignedHomeworkIds || reportDraft.selectedHomeworkIds,
+      homeworkAssignments,
+    });
+    const testSummary = summarizeTests({
+      selectedTestIds: reportDraft.selectedTestIds,
+      tests,
+      grades,
+      studentId: reportDraft.studentId,
+      student,
+    });
+
+    const payload = {
+      ...reportDraft,
+      selectedHomeworkProgressIds: reportDraft.selectedHomeworkProgressIds || reportDraft.selectedHomeworkIds || [],
+      selectedAssignedHomeworkIds: reportDraft.selectedAssignedHomeworkIds || reportDraft.selectedHomeworkIds || [],
+      selectedHomeworkIds: Array.from(new Set([
+        ...(reportDraft.selectedHomeworkProgressIds || []),
+        ...(reportDraft.selectedAssignedHomeworkIds || []),
+        ...(reportDraft.selectedHomeworkIds || []),
+      ])),
+      homeworkSummary,
+      assignedHomeworkSummary,
+      testSummary,
+      status: isSendNow ? LESSON_REPORT_STATUS.SENT : (previous?.status || LESSON_REPORT_STATUS.DRAFT),
+      sendStatus: isSendNow
+        ? LESSON_REPORT_SEND_STATUS.SENT
+        : (isScheduled ? LESSON_REPORT_SEND_STATUS.SCHEDULED : LESSON_REPORT_SEND_STATUS.DRAFT),
+      sendMode: isScheduled ? 'scheduled' : 'now',
+      scheduledSendAt: isScheduled ? new Date(scheduledSendAt) : null,
+      scheduledBy: isScheduled ? (profileDocId || 'staff') : null,
+      updatedAt: now,
+      updatedBy: profileDocId || 'staff',
+      createdAt: previous?.createdAt || now,
+      createdBy: previous?.createdBy || profileDocId || 'staff',
+      sentAt: previous?.sentAt || (isFirstSend ? now : null),
+      sentBy: previous?.sentBy || (isFirstSend ? (profileDocId || 'staff') : null),
+      lastEditedAfterSentAt: previous?.status === LESSON_REPORT_STATUS.SENT ? now : null,
+    };
+
+    delete payload.autoFilledLearnedTopics;
+    delete payload.isLearnedTopicsManuallyEdited;
+    return { payload, student, isFirstSend };
+  };
+
+  const notifyForFirstSend = async ({ reportDraft, student }) => {
+    const parentAuthUids = await getLinkedParentAuthUids(reportDraft.studentId, student?.parentAuthUids || []);
+    const targetAuthUids = [student?.authUid, ...parentAuthUids].filter(Boolean);
+    await Promise.all(targetAuthUids.map((uid) => addDoc(collection(db, 'notifications', uid, 'items'), {
+      type: 'lesson_report',
+      title: '새 수업 리포트가 도착했습니다.',
+      body: `${student?.name || '학생'} 학생의 수업 리포트가 도착했습니다.`,
+      isRead: false,
+      createdAt: serverTimestamp(),
+      payload: {
+        reportId: reportDraft.id,
+        studentId: reportDraft.studentId,
+        classId: reportDraft.classId,
+        lessonDate: reportDraft.lessonDate,
+        type: 'lesson_report',
+      },
+    })));
+
+    await setDoc(
+      doc(db, 'lessonReports', reportDraft.id),
+      {
+        studentNotificationSent: Boolean(student?.authUid),
+        parentNotificationSent: parentAuthUids.length > 0,
+      },
+      { merge: true },
+    );
+  };
+
+  const persistReport = async ({ reportDraft, action, closeDraft = true }) => {
+    if (!reportDraft?.id) throw new Error('리포트 ID가 없어 저장할 수 없습니다.');
+    const previous = reportMap.get(reportDraft.id);
+    const isCreate = !previous;
+    console.log('[lesson-report save] click', { action, reportId: reportDraft.id, isCreate, reportDraft });
+    const { payload, student, isFirstSend } = buildPayload({ reportDraft, previous, action });
+    console.log('[lesson-report save] payload', payload);
+    console.log('[lesson-report save] branch', { isCreate, action, reportId: reportDraft.id });
+
+    await setDoc(doc(db, 'lessonReports', reportDraft.id), payload, { merge: true });
+    console.log('[lesson-report save] doc persisted', { reportId: reportDraft.id });
+
+    if (isFirstSend && action === 'send') {
+      await notifyForFirstSend({ reportDraft, student });
+    }
+
+    setLocalReportMap((prev) => ({ ...prev, [payload.id]: payload }));
+    console.log('[lesson-report save] ui state updated', { reportId: reportDraft.id, nextStatus: payload.status, nextSendStatus: payload.sendStatus });
+
+    if (closeDraft) {
+      setDraft(null);
+    } else {
+      setDraft(payload);
+    }
+    setDraftError('');
+  };
+
+  const saveReport = async () => {
     if (!draft) return;
     setReportSaving(true);
-
     try {
-    const now = serverTimestamp();
-      const student = students.find((item) => String(item.id) === String(draft.studentId));
-      const previous = reportMap.get(draft.id);
-      const isFirstSend = send && !previous?.sentAt;
-
-      const homeworkSummary = summarizeHomework({
-        selectedHomeworkProgressIds: draft.selectedHomeworkProgressIds || draft.selectedHomeworkIds,
-        homeworkAssignments,
-        homeworkResults,
-        studentId: draft.studentId,
-        student,
-      });
-      const assignedHomeworkSummary = summarizeAssignedHomework({
-        selectedAssignedHomeworkIds: draft.selectedAssignedHomeworkIds || draft.selectedHomeworkIds,
-        homeworkAssignments,
-      });
-      const targetStudent = students.find((item) => String(item.id) === String(draft.studentId)) || null;
-      const testSummary = summarizeTests({
-        selectedTestIds: draft.selectedTestIds,
-        tests,
-        grades,
-        studentId: draft.studentId,
-        student: targetStudent,
-      });
-
-      const payload = {
-        ...draft,
-        selectedHomeworkProgressIds: draft.selectedHomeworkProgressIds || draft.selectedHomeworkIds || [],
-        selectedAssignedHomeworkIds: draft.selectedAssignedHomeworkIds || draft.selectedHomeworkIds || [],
-        selectedHomeworkIds: Array.from(new Set([
-          ...(draft.selectedHomeworkProgressIds || []),
-          ...(draft.selectedAssignedHomeworkIds || []),
-          ...(draft.selectedHomeworkIds || []),
-        ])),
-        homeworkSummary,
-        assignedHomeworkSummary,
-        testSummary,
-        status: send ? LESSON_REPORT_STATUS.SENT : (previous?.status || LESSON_REPORT_STATUS.DRAFT),
-        updatedAt: now,
-        updatedBy: profileDocId || 'staff',
-        createdAt: previous?.createdAt || now,
-        createdBy: previous?.createdBy || profileDocId || 'staff',
-        sentAt: previous?.sentAt || (isFirstSend ? now : null),
-        sentBy: previous?.sentBy || (isFirstSend ? (profileDocId || 'staff') : null),
-        lastEditedAfterSentAt: previous?.sentAt ? now : null,
-      };
-
-      delete payload.autoFilledLearnedTopics;
-      delete payload.isLearnedTopicsManuallyEdited;
-
-      await setDoc(doc(db, 'lessonReports', draft.id), payload, { merge: true });
-
-      if (isFirstSend) {
-        const parentAuthUids = await getLinkedParentAuthUids(draft.studentId, student?.parentAuthUids || []);
-        const targetAuthUids = [student?.authUid, ...parentAuthUids].filter(Boolean);
-        await Promise.all(targetAuthUids.map((uid) => addDoc(collection(db, 'notifications', uid, 'items'), {
-          type: 'lesson_report',
-          title: '새 수업 리포트가 도착했습니다.',
-          body: `${student?.name || '학생'} 학생의 수업 리포트가 도착했습니다.`,
-          isRead: false,
-          createdAt: serverTimestamp(),
-          payload: {
-            reportId: draft.id,
-            studentId: draft.studentId,
-            classId: draft.classId,
-            lessonDate: draft.lessonDate,
-            type: 'lesson_report',
-          },
-        })));
-
-        await setDoc(
-          doc(db, 'lessonReports', draft.id),
-          {
-            studentNotificationSent: Boolean(student?.authUid),
-            parentNotificationSent: parentAuthUids.length > 0,
-          },
-          { merge: true },
-        );
-      }
-
-      setDraft(null);
-      setDraftError('');
+      await persistReport({ reportDraft: draft, action: 'save', closeDraft: false });
     } catch (error) {
       setDraftError(error?.message || '수업 리포트 저장에 실패했습니다. 다시 시도해 주세요.');
     } finally {
@@ -552,7 +624,66 @@ export default function LessonReportManagement({
     }
   };
 
+  const sendReport = async ({ reportDraft, closeDraft = true }) => {
+    if (!reportDraft) return;
+    const action = sendMode === 'scheduled' ? 'schedule' : 'send';
+    if (action === 'schedule' && !scheduledSendAt) {
+      throw new Error('예약 전송 시간을 입력해 주세요.');
+    }
+    await persistReport({ reportDraft, action, closeDraft });
+  };
+
   const selectedClassName = availableClasses.find((item) => String(item.id) === String(draft?.classId || selectedClassId))?.name || '';
+  const isScheduledMode = sendMode === 'scheduled';
+
+  const canSelectForBulkSend = (report) => Boolean(report) && report?.status !== LESSON_REPORT_STATUS.SENT;
+
+  const toggleStudentForBulk = (studentId) => {
+    setSelectedStudentIdsForBulk((prev) => (
+      prev.includes(studentId)
+        ? prev.filter((id) => id !== studentId)
+        : [...prev, studentId]
+    ));
+  };
+
+  const handleBulkSend = async () => {
+    if (selectedStudentIdsForBulk.length === 0) {
+      setDraftError('일괄 전송할 학생을 선택해 주세요.');
+      return;
+    }
+    if (isScheduledMode && !scheduledSendAt) {
+      setDraftError('예약 전송 시간을 입력해 주세요.');
+      return;
+    }
+
+    setReportSaving(true);
+    setDraftError('');
+
+    try {
+      const failures = [];
+      for (const studentId of selectedStudentIdsForBulk) {
+        const reportId = buildLessonReportId({ studentId, classId: selectedClassId, lessonDate: selectedDate });
+        const report = reportMap.get(reportId);
+        if (!report) {
+          failures.push(`${studentId}: 초안 없음`);
+          continue;
+        }
+        if (report.status === LESSON_REPORT_STATUS.SENT) {
+          continue;
+        }
+        await sendReport({ reportDraft: toDraftForSend(report), closeDraft: false });
+      }
+
+      if (failures.length > 0) {
+        setDraftError(`일부 전송 실패 - ${failures.join(', ')}`);
+      }
+      setSelectedStudentIdsForBulk([]);
+    } catch (error) {
+      setDraftError(error?.message || '일괄 전송 중 오류가 발생했습니다.');
+    } finally {
+      setReportSaving(false);
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -575,6 +706,27 @@ export default function LessonReportManagement({
           <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value || todayYmd())} className="border rounded p-2 text-sm" />
           <div className="text-sm text-gray-600 flex items-center">총 {classStudents.length}명</div>
         </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <select value={sendMode} onChange={(e) => setSendMode(e.target.value)} className="border rounded p-2 text-sm">
+            <option value="now">즉시 전송</option>
+            <option value="scheduled">예약 전송</option>
+          </select>
+          {isScheduledMode && (
+            <input
+              type="datetime-local"
+              value={scheduledSendAt}
+              onChange={(e) => setScheduledSendAt(e.target.value)}
+              className="border rounded p-2 text-sm"
+            />
+          )}
+          <button
+            className="px-3 py-2 rounded bg-indigo-600 text-white text-sm disabled:opacity-50"
+            onClick={handleBulkSend}
+            disabled={reportSaving || selectedStudentIdsForBulk.length === 0}
+          >
+            선택한 리포트 전송 ({selectedStudentIdsForBulk.length})
+          </button>
+        </div>
         {!isSelectedDateLessonDay && selectedClassId && (
           <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded px-3 py-2">
             선택한 날짜는 이 클래스의 수업일이 아닙니다.
@@ -590,6 +742,7 @@ export default function LessonReportManagement({
           <table className="w-full text-sm">
             <thead className="bg-gray-50 text-gray-600">
               <tr>
+                <th className="text-left px-3 py-2">선택</th>
                 <th className="text-left px-3 py-2">학생명</th>
                 <th className="text-left px-3 py-2">상태</th>
                 <th className="text-left px-3 py-2">발송 여부</th>
@@ -602,13 +755,21 @@ export default function LessonReportManagement({
                 const report = reportMap.get(reportId);
                 return (
                   <tr key={student.id} className="border-t">
+                    <td className="px-3 py-2">
+                      <input
+                        type="checkbox"
+                        checked={selectedStudentIdsForBulk.includes(student.id)}
+                        onChange={() => toggleStudentForBulk(student.id)}
+                        disabled={!canSelectForBulkSend(report) || reportSaving}
+                      />
+                    </td>
                     <td className="px-3 py-2 font-medium text-gray-800">{student.name || student.id}</td>
                     <td className="px-3 py-2">
-                      <span className={`px-2 py-1 rounded-full text-xs font-semibold ${statusClassName(report?.status)}`}>
-                        {statusLabel(report?.status)}
+                      <span className={`px-2 py-1 rounded-full text-xs font-semibold ${statusClassName(report?.status, report?.sendStatus, report?.scheduledSendAt)}`}>
+                        {statusLabel(report?.status, report?.sendStatus, report?.scheduledSendAt)}
                       </span>
                     </td>
-                    <td className="px-3 py-2 text-xs text-gray-600">{report?.status === LESSON_REPORT_STATUS.SENT ? '발송됨' : '미발송'}</td>
+                    <td className="px-3 py-2 text-xs text-gray-600">{report?.status === LESSON_REPORT_STATUS.SENT ? '발송됨' : (report?.sendStatus === LESSON_REPORT_SEND_STATUS.SCHEDULED ? '예약됨' : '미발송')}</td>
                     <td className="px-3 py-2 text-right">
                       <button
                         className="px-3 py-1.5 rounded bg-indigo-600 text-white text-xs"
@@ -622,7 +783,7 @@ export default function LessonReportManagement({
               })}
               {classStudents.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="px-3 py-8 text-center text-sm text-gray-500">
+                  <td colSpan={5} className="px-3 py-8 text-center text-sm text-gray-500">
                     {selectedClassId && !isSelectedDateLessonDay
                       ? '선택한 날짜는 수업일이 아니어서 학생 목록을 표시하지 않습니다.'
                       : '클래스를 선택하면 학생 목록이 표시됩니다.'}
@@ -747,8 +908,23 @@ export default function LessonReportManagement({
 
                 <div className="flex justify-end gap-2">
                   <button className="px-3 py-2 rounded bg-gray-100" onClick={() => setDraft(null)} disabled={reportSaving}>닫기</button>
-                  <button className="px-3 py-2 rounded bg-indigo-100 text-indigo-700" onClick={() => saveReport(false)} disabled={reportSaving}>저장</button>
-                  <button className="px-3 py-2 rounded bg-indigo-600 text-white" onClick={() => saveReport(true)} disabled={reportSaving}>발송</button>
+                  <button className="px-3 py-2 rounded bg-indigo-100 text-indigo-700" onClick={saveReport} disabled={reportSaving}>저장</button>
+                  <button
+                    className="px-3 py-2 rounded bg-indigo-600 text-white"
+                    onClick={async () => {
+                      setReportSaving(true);
+                      try {
+                        await sendReport({ reportDraft: draft, closeDraft: false });
+                      } catch (error) {
+                        setDraftError(error?.message || '리포트 전송에 실패했습니다.');
+                      } finally {
+                        setReportSaving(false);
+                      }
+                    }}
+                    disabled={reportSaving}
+                  >
+                    {isScheduledMode ? '예약 전송' : '발송'}
+                  </button>
                 </div>
               </>
             ) : (

@@ -213,6 +213,7 @@ export default function StudentDetail() {
     const [clinicLogs, setClinicLogs] = useState([]);
     const [classes, setClasses] = useState([]);
     const [tests, setTests] = useState([]);
+    const [lessonReports, setLessonReports] = useState([]);
     const [parents, setParents] = useState([]);
     const [staffMemos, setStaffMemos] = useState([]);
     const [memoDraft, setMemoDraft] = useState('');
@@ -245,6 +246,7 @@ export default function StudentDetail() {
             setClinicLogs([]);
             setClasses([]);
             setTests([]);
+            setLessonReports([]);
             setParents([]);
             setStudentAuthUid(null);
             setParentsLoading(true);
@@ -330,6 +332,15 @@ export default function StudentDetail() {
                     200,
                 );
 
+                const lessonReportsPromise = fetchByFields(
+                    'lessonReports',
+                    [
+                        { key: 'studentId', value: studentDocId },
+                        { key: 'studentDocId', value: studentDocId },
+                    ],
+                    300,
+                );
+
                 const parentsPromise = (async () => {
                     const parentRoles = [ROLE.PARENT, '학부모'];
                     try {
@@ -355,11 +366,12 @@ export default function StudentDetail() {
                     }
                 })();
 
-                const [attendanceItems, clinicItems, homeworkItems, gradeItems] = await Promise.all([
+                const [attendanceItems, clinicItems, homeworkItems, gradeItems, lessonReportItems] = await Promise.all([
                     attendancePromise,
                     clinicPromise,
                     homeworkPromise,
                     gradesPromise,
+                    lessonReportsPromise,
                 ]);
 
                 if (!isMounted) return;
@@ -398,6 +410,18 @@ export default function StudentDetail() {
                 setTests(testDocs);
                 setClasses(classDocs);
                 setHomeworkAssignments(assignmentDocs);
+                setLessonReports(
+                    (lessonReportItems || [])
+                        .filter((item) => item?.status === 'sent')
+                        .sort((a, b) => {
+                            const aDate = toSortableDate(a?.sentAt || a?.lessonDate || a?.updatedAt);
+                            const bDate = toSortableDate(b?.sentAt || b?.lessonDate || b?.updatedAt);
+                            if (!aDate && !bDate) return 0;
+                            if (!aDate) return 1;
+                            if (!bDate) return -1;
+                            return bDate.getTime() - aDate.getTime();
+                        }),
+                );
             } catch (fetchError) {
                 console.error('상세 에러 로그:', fetchError);
                 if (isMounted) {
@@ -464,6 +488,24 @@ export default function StudentDetail() {
     const testsById = useMemo(
         () => new Map((Array.isArray(tests) ? tests : []).map((item) => [String(item.id), item])),
         [tests],
+    );
+
+    const sentLessonReports = useMemo(
+        () => (Array.isArray(lessonReports) ? lessonReports : [])
+            .filter((item) => item?.status === 'sent')
+            .map((item) => ({
+                ...item,
+                className: classNameById.get(String(item?.classId || item?.classDocId || '')) || item?.className || item?.classId || '-',
+            }))
+            .sort((a, b) => {
+                const aDate = toSortableDate(a?.sentAt || a?.lessonDate || a?.updatedAt);
+                const bDate = toSortableDate(b?.sentAt || b?.lessonDate || b?.updatedAt);
+                if (!aDate && !bDate) return 0;
+                if (!aDate) return 1;
+                if (!bDate) return -1;
+                return bDate.getTime() - aDate.getTime();
+            }),
+        [classNameById, lessonReports],
     );
 
     const classTests = useMemo(() => {
@@ -1126,11 +1168,11 @@ export default function StudentDetail() {
                                     </button>
                                     <button
                                         type="button"
-                                        onClick={() => navigate(`/lesson-reports?studentId=${student.id}`)}
+                                        onClick={() => document.getElementById('student-sent-lesson-reports')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
                                         className="inline-flex items-center gap-2 text-xs font-semibold text-indigo-600 hover:text-indigo-800"
                                     >
                                         <Icon name="clipboardCheck" className="h-4 w-4" />
-                                        수업 리포트 관리
+                                        수업 리포트 보기
                                     </button>
                                 </div>
                             </div>
@@ -1174,6 +1216,42 @@ export default function StudentDetail() {
                                             <span className="text-xs text-gray-400">등록된 클래스가 없습니다.</span>
                                         )}
                                     </div>
+                                </div>
+                            </div>
+                            <div id="student-sent-lesson-reports" className="mt-6 rounded-xl border border-gray-100 bg-gray-50 p-4">
+                                <div className="flex items-center justify-between gap-2">
+                                    <p className="text-sm font-semibold text-gray-700">수업 리포트 보기 (발송본)</p>
+                                    <button
+                                        type="button"
+                                        onClick={() => navigate(`/lesson-reports?studentId=${student.id}`)}
+                                        className="text-xs font-semibold text-gray-500 hover:text-gray-700"
+                                    >
+                                        관리 화면으로 이동
+                                    </button>
+                                </div>
+                                <div className="mt-3 space-y-2">
+                                    {sentLessonReports.slice(0, 5).map((report) => (
+                                        <details key={report.id} className="rounded-lg border border-gray-200 bg-white p-3">
+                                            <summary className="cursor-pointer text-sm font-semibold text-gray-700">
+                                                {formatDate(report?.lessonDate)} · {report.className}
+                                            </summary>
+                                            <div className="mt-2 space-y-1 text-xs text-gray-600">
+                                                {report.learnedTopics && <p>진도: {report.learnedTopics}</p>}
+                                                {report.attendanceStatus && <p>출결: {report.attendanceStatus}</p>}
+                                                {Array.isArray(report?.homeworkSummary?.text) && report.homeworkSummary.text.length > 0 && (
+                                                    <p>과제 수행: {report.homeworkSummary.text.join(' · ')}</p>
+                                                )}
+                                                {Array.isArray(report?.testSummary?.text) && report.testSummary.text.length > 0 && (
+                                                    <p>시험: {report.testSummary.text.join(' · ')}</p>
+                                                )}
+                                                {report.comment && <p className="text-indigo-700">코멘트: {report.comment}</p>}
+                                                <p className="text-[11px] text-gray-400">발송 시각: {formatDateTime(report?.sentAt || report?.updatedAt)}</p>
+                                            </div>
+                                        </details>
+                                    ))}
+                                    {sentLessonReports.length === 0 && (
+                                        <p className="text-xs text-gray-500">해당 학생에게 발송된 수업 리포트가 없습니다.</p>
+                                    )}
                                 </div>
                             </div>
                         </div>
