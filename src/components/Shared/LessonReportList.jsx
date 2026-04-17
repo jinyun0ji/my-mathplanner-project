@@ -30,7 +30,14 @@ export default function LessonReportList({ reports = [] }) {
                         {report.learnedTopics && <p className="text-sm text-gray-700">진도: {report.learnedTopics}</p>}
                         {report.attendanceStatus && <p className="text-sm text-gray-700">출결: {report.attendanceStatus}</p>}
                         {homeworkLines.length > 0 && <p className="text-sm text-gray-700">과제 수행: {homeworkLines.join(' · ')}</p>}
-                        {testLines.length > 0 && <p className="text-sm text-gray-700">시험 결과: {testLines.join(' · ')}</p>}
+                        {testLines.length > 0 && (
+                            <div className="text-sm text-gray-700">
+                                <p className="font-semibold">시험</p>
+                                <ul className="list-disc pl-5">
+                                    {testLines.map((line, index) => <li key={`test-line-${report.id}-${index}`}>{line}</li>)}
+                                </ul>
+                            </div>
+                        )}
                         {assignedHomework.length > 0 && (
                             <p className="text-sm text-gray-700">이번 수업 숙제: {assignedHomework.map((item) => item.title).join(', ')}</p>
                         )}

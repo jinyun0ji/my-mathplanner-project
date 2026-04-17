@@ -1,3 +1,5 @@
+import { getTotalScore } from '../grade/grade.service';
+
 export const LESSON_REPORT_STATUS = {
     DRAFT: 'draft',
     SENT: 'sent',
@@ -18,6 +20,14 @@ const toYmd = (value) => {
     try { return new Date(value).toISOString().slice(0, 10); } catch { return ''; }
 };
 
+const toKoreanDateTag = (value) => {
+    const ymd = toYmd(value);
+    if (!ymd) return '';
+    const [year, month, day] = ymd.split('-').map((part) => Number(part));
+    if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return '';
+    return `[${month}월 ${day}일]`;
+};
+
 const normalizeResult = (result) => {
     if (!result) return null;
     if (typeof result === 'number') return { completionRate: result };
@@ -27,6 +37,67 @@ const normalizeResult = (result) => {
         return { status: result };
     }
     return result;
+};
+
+const toFiniteNumber = (value) => {
+    if (Number.isFinite(value)) return value;
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? numeric : null;
+};
+
+const toCandidateStudentKeys = ({ student = null, studentId = '' }) => {
+    const keys = [
+        studentId,
+        student?.id,
+        student?.studentId,
+        student?.studentDocId,
+        student?.authUid,
+        student?.studentUid,
+        student?.uid,
+    ]
+        .filter((value) => value !== null && value !== undefined)
+        .map((value) => String(value).trim())
+        .filter(Boolean);
+
+    return Array.from(new Set(keys));
+};
+
+export const getGradeForLessonReportStudent = ({ student = null, studentId = '', grades = {}, testId }) => {
+    if (!testId || !grades || typeof grades !== 'object') return null;
+
+    const keys = toCandidateStudentKeys({ student, studentId });
+    for (const key of keys) {
+        const byKey = grades?.[key]?.[testId];
+        if (byKey) return byKey;
+    }
+
+    const keySet = new Set(keys);
+    for (const studentGrades of Object.values(grades)) {
+        if (!studentGrades || typeof studentGrades !== 'object') continue;
+        const byTest = studentGrades?.[testId];
+        if (!byTest) continue;
+        const refIds = [
+            byTest?.studentId,
+            byTest?.studentDocId,
+            byTest?.authUid,
+            byTest?.studentUid,
+            byTest?.uid,
+        ]
+            .filter((value) => value !== null && value !== undefined)
+            .map((value) => String(value));
+
+        if (refIds.some((refId) => keySet.has(refId))) {
+            return byTest;
+        }
+    }
+
+    return null;
+};
+
+const buildTestTitle = (test = {}) => {
+    const dateTag = toKoreanDateTag(test?.date || test?.testDate || test?.lessonDate || test?.createdAt || test?.updatedAt);
+    const name = String(test?.name || '시험');
+    return dateTag ? `${dateTag} ${name}` : name;
 };
 
 export const summarizeHomework = ({ selectedHomeworkIds = [], homeworkAssignments = [], homeworkResults = {}, studentId }) => {
@@ -55,19 +126,50 @@ export const summarizeAssignedHomework = ({ selectedHomeworkIds = [], homeworkAs
     })),
 });
 
-export const summarizeTests = ({ selectedTestIds = [], tests = [], grades = {}, studentId }) => {
-    const items = selectedTestIds.map((id) => tests.find((test) => String(test.id) === String(id))).filter(Boolean).map((test) => {
-        const grade = grades?.[studentId]?.[test.id] || grades?.[String(studentId)]?.[test.id] || null;
-        const score = Number.isFinite(grade?.score) ? grade.score : (Number.isFinite(grade?.result) ? grade.result : null);
-        const totalQuestions = Number.isFinite(grade?.questionCount) ? grade.questionCount : null;
-        const correctCount = Number.isFinite(grade?.correctCount) ? grade.correctCount : null;
-        const summary = Number.isFinite(score)
-            ? `${test.name || '시험'} ${score}점`
-            : (Number.isFinite(totalQuestions) && Number.isFinite(correctCount)
-                ? `${test.name || '시험'} 응시 / ${totalQuestions}문항 중 ${correctCount}문항 정답`
-                : `${test.name || '시험'} 결과 미입력`);
-        return { testId: test.id, name: test.name || '시험', score, totalQuestions, correctCount, summary };
-    });
+export const summarizeTests = ({ selectedTestIds = [], tests = [], grades = {}, studentId, student = null }) => {
+    const items = selectedTestIds
+        .map((id) => tests.find((test) => String(test.id) === String(id)))
+        .filter(Boolean)
+        .map((test) => {
+            const grade = getGradeForLessonReportStudent({ student, studentId, grades, testId: test.id });
+            const title = buildTestTitle(test);
+
+            const attempted = grade?.attempted === true;
+            const scoreFromResult = toFiniteNumber(grade?.result);
+            const scoreFromScore = toFiniteNumber(grade?.score);
+            const scoreFromTotal = toFiniteNumber(grade?.totalScore);
+            const resolvedScore = attempted
+                ? (scoreFromScore ?? scoreFromTotal ?? scoreFromResult)
+                : (scoreFromScore ?? scoreFromTotal ?? scoreFromResult);
+
+            const maxScore = toFiniteNumber(test?.maxScore);
+            const computedScore = Number.isFinite(resolvedScore) ? resolvedScore : getTotalScore(grade, test);
+
+            const questionCount = toFiniteNumber(grade?.questionCount) ?? toFiniteNumber(test?.totalQuestions);
+            const correctCount = toFiniteNumber(grade?.correctCount);
+
+            let summary = `${title} 결과 미입력`;
+            if (Number.isFinite(computedScore)) {
+                summary = Number.isFinite(maxScore)
+                    ? `${title} ${computedScore}점 / ${maxScore}점`
+                    : `${title} ${computedScore}점`;
+            } else if (Number.isFinite(questionCount) && Number.isFinite(correctCount)) {
+                summary = `${title} ${questionCount}문항 중 ${correctCount}문항 정답`;
+            }
+
+            return {
+                testId: test.id,
+                name: test.name || '시험',
+                title,
+                grade,
+                attempted,
+                score: Number.isFinite(computedScore) ? computedScore : null,
+                maxScore: Number.isFinite(maxScore) ? maxScore : null,
+                totalQuestions: Number.isFinite(questionCount) ? questionCount : null,
+                correctCount: Number.isFinite(correctCount) ? correctCount : null,
+                summary,
+            };
+        });
 
     return { items, text: items.map((item) => item.summary) };
 };

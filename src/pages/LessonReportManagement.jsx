@@ -6,6 +6,7 @@ import useAuth from '../auth/useAuth';
 import {
   buildLessonReportId,
   LESSON_REPORT_STATUS,
+  getGradeForLessonReportStudent,
   summarizeAssignedHomework,
   summarizeHomework,
   summarizeTests,
@@ -197,7 +198,13 @@ export default function LessonReportManagement({
     return (tests || [])
       .filter((item) => resolveClassId(item) === selectedDraftClassId)
       .map((item) => {
-        const grade = grades?.[selectedDraftStudentId]?.[item.id] || grades?.[String(selectedDraftStudentId)]?.[item.id] || null;
+        const selectedStudent = students.find((student) => String(student.id) === selectedDraftStudentId) || null;
+        const grade = getGradeForLessonReportStudent({
+          student: selectedStudent,
+          studentId: selectedDraftStudentId,
+          grades,
+          testId: item.id,
+        });
         return {
           ...item,
           __sort_hasGrade: Boolean(grade),
@@ -209,7 +216,7 @@ export default function LessonReportManagement({
         if (a.__sort_distance !== b.__sort_distance) return a.__sort_distance - b.__sort_distance;
         return String(resolveTestDate(b) || '').localeCompare(String(resolveTestDate(a) || ''));
       });
-  }, [selectedDraftClassId, selectedDraftStudentId, selectedLessonDate, grades, tests]);
+  }, [grades, selectedDraftClassId, selectedDraftStudentId, selectedLessonDate, students, tests]);
 
   const selectableTests = candidateTests;
 
@@ -281,9 +288,43 @@ export default function LessonReportManagement({
       tests,
       grades,
       studentId: draft?.studentId,
+      student: students.find((item) => String(item.id) === String(draft?.studentId || '')) || null,
     }),
-    [draft?.selectedTestIds, draft?.studentId, tests, grades],
+    [draft?.selectedTestIds, draft?.studentId, grades, students, tests],
   );
+
+
+  useEffect(() => {
+    const selectedTests = (draft?.selectedTestIds || [])
+      .map((id) => tests.find((test) => String(test.id) === String(id)))
+      .filter(Boolean);
+    const selectedStudent = students.find((item) => String(item.id) === String(draft?.studentId || '')) || null;
+
+    console.log('[lesson-report debug:test-summary]', {
+      selectedStudentId: draft?.studentId || '',
+      selectedTestIds: draft?.selectedTestIds || [],
+      gradeKeysForStudent: (() => {
+        const studentKeyCandidates = [
+          draft?.studentId,
+          selectedStudent?.id,
+          selectedStudent?.authUid,
+          selectedStudent?.studentDocId,
+        ].filter(Boolean).map(String);
+        const key = studentKeyCandidates.find((candidate) => grades?.[candidate]);
+        return key ? Object.keys(grades[key]) : [];
+      })(),
+      matchedTests: selectedTests,
+      matchedGrades: selectedTests.map((test) => ({
+        testId: test.id,
+        gradeByStudentId: getGradeForLessonReportStudent({
+          student: selectedStudent,
+          studentId: draft?.studentId,
+          grades,
+          testId: test.id,
+        }),
+      })),
+    });
+  }, [draft?.selectedTestIds, draft?.studentId, grades, students, tests]);
 
   useEffect(() => {
     setDraft((prev) => {
@@ -416,11 +457,13 @@ export default function LessonReportManagement({
         selectedHomeworkIds: draft.selectedHomeworkIds,
         homeworkAssignments,
       });
+      const targetStudent = students.find((item) => String(item.id) === String(draft.studentId)) || null;
       const testSummary = summarizeTests({
         selectedTestIds: draft.selectedTestIds,
         tests,
         grades,
         studentId: draft.studentId,
+        student: targetStudent,
       });
 
       const payload = {
@@ -659,7 +702,16 @@ export default function LessonReportManagement({
                 {draft.learnedTopics && <p><span className="font-semibold">진도:</span> {draft.learnedTopics}</p>}
                 {draft.attendanceStatus && <p><span className="font-semibold">출결:</span> {draft.attendanceStatus}</p>}
                 {previewHomeworkSummary.text?.length > 0 && <p><span className="font-semibold">과제 수행 정도:</span> {previewHomeworkSummary.text.join(', ')}</p>}
-                {previewTestSummary.text?.length > 0 && <p><span className="font-semibold">시험 결과:</span> {previewTestSummary.text.join(', ')}</p>}
+                {previewTestSummary.text?.length > 0 && (
+                  <div>
+                    <p className="font-semibold">시험</p>
+                    <ul className="list-disc pl-5">
+                      {previewTestSummary.text.map((line, index) => (
+                        <li key={`preview-test-${index}`}>{line}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
                 {previewAssignedHomeworkSummary.items?.length > 0 && <p><span className="font-semibold">이번 수업 숙제:</span> {previewAssignedHomeworkSummary.items.map((item) => item.title).join(', ')}</p>}
                 {draft.comment && <p><span className="font-semibold">코멘트:</span> {draft.comment}</p>}
                 {!draft.comment && !draft.learnedTopics && !draft.attendanceStatus && previewHomeworkSummary.text?.length === 0 && previewTestSummary.text?.length === 0 && (

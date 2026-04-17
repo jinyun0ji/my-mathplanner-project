@@ -1529,7 +1529,16 @@ export default function ParentHome({
                                                         {report.learnedTopics && <p className="text-sm text-gray-700">진도: {report.learnedTopics}</p>}
                                                         {report.attendanceStatus && <p className="text-sm text-gray-700">출결: {report.attendanceStatus}</p>}
                                                         {Array.isArray(report?.homeworkSummary?.text) && report.homeworkSummary.text.length > 0 && <p className="text-sm text-gray-700">과제 수행: {report.homeworkSummary.text.join(' · ')}</p>}
-                                                        {Array.isArray(report?.testSummary?.text) && report.testSummary.text.length > 0 && <p className="text-sm text-gray-700">시험 결과: {report.testSummary.text.join(' · ')}</p>}
+                                                        {Array.isArray(report?.testSummary?.text) && report.testSummary.text.length > 0 && (
+                                                            <div className="text-sm text-gray-700">
+                                                                <p className="font-semibold">시험</p>
+                                                                <ul className="list-disc pl-5">
+                                                                    {report.testSummary.text.map((line, index) => (
+                                                                        <li key={`report-test-${report.id}-${index}`}>{line}</li>
+                                                                    ))}
+                                                                </ul>
+                                                            </div>
+                                                        )}
                                                         {report.comment && <p className="text-sm text-indigo-700">코멘트: {report.comment}</p>}
                                                     </div>
                                                 ))}
@@ -1867,7 +1876,16 @@ export default function ParentHome({
                                                                 {report.learnedTopics && <p className="text-sm text-gray-700">진도: {report.learnedTopics}</p>}
                                                                 {report.attendanceStatus && <p className="text-sm text-gray-700">출결: {report.attendanceStatus}</p>}
                                                                 {Array.isArray(report?.homeworkSummary?.text) && report.homeworkSummary.text.length > 0 && <p className="text-sm text-gray-700">과제 수행: {report.homeworkSummary.text.join(' · ')}</p>}
-                                                                {Array.isArray(report?.testSummary?.text) && report.testSummary.text.length > 0 && <p className="text-sm text-gray-700">시험 결과: {report.testSummary.text.join(' · ')}</p>}
+                                                                {Array.isArray(report?.testSummary?.text) && report.testSummary.text.length > 0 && (
+                                                            <div className="text-sm text-gray-700">
+                                                                <p className="font-semibold">시험</p>
+                                                                <ul className="list-disc pl-5">
+                                                                    {report.testSummary.text.map((line, index) => (
+                                                                        <li key={`report-test-${report.id}-${index}`}>{line}</li>
+                                                                    ))}
+                                                                </ul>
+                                                            </div>
+                                                        )}
                                                                 {report.comment && <p className="text-sm text-indigo-700">코멘트: {report.comment}</p>}
                                                             </div>
                                                         ))}
