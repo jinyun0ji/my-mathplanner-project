@@ -14,18 +14,28 @@ import { getLinkedParentAuthUids } from '../utils/parentLinking';
 import { filterRosterByWithdrawDate } from '../utils/rosterFilter';
 import { hasClassOnDate, isClosedForClass } from '../utils/helpers';
 
+const pad2 = (value) => String(value).padStart(2, '0');
+
 const toYmd = (value) => {
   if (!value) return '';
-  if (typeof value === 'string') return value.slice(0, 10);
-  if (typeof value?.toDate === 'function') return value.toDate().toISOString().slice(0, 10);
-  try {
-    return new Date(value).toISOString().slice(0, 10);
-  } catch {
-    return '';
+  if (typeof value === 'string') {
+    const match = value.match(/\d{4}-\d{2}-\d{2}/);
+    if (match) return match[0];
   }
+
+  const dateValue = typeof value?.toDate === 'function' ? value.toDate() : value;
+  const parsed = new Date(dateValue);
+  if (Number.isNaN(parsed.getTime())) return '';
+  return `${parsed.getFullYear()}-${pad2(parsed.getMonth() + 1)}-${pad2(parsed.getDate())}`;
 };
 
-const todayYmd = () => new Date().toISOString().slice(0, 10);
+const todayYmd = () => toYmd(new Date());
+const resolveClassId = (item) => String(item?.classId || item?.classDocId || item?.class?.id || '');
+const resolveLessonLogDate = (item) => toYmd(item?.date || item?.lessonDate || item?.dateKey || item?.createdAt || item?.updatedAt);
+const resolveAttendanceDate = (item) => toYmd(item?.date || item?.lessonDate || item?.dateKey || item?.createdAt || item?.updatedAt);
+const resolveHomeworkDate = (item) => toYmd(item?.date || item?.assignedDate || item?.lessonDate || item?.createdAt || item?.updatedAt);
+const resolveTestDate = (item) => toYmd(item?.date || item?.testDate || item?.lessonDate || item?.createdAt || item?.updatedAt);
+const resolveLessonLogProgress = (log) => String(log?.progress || log?.learnedTopics || log?.lessonSummary || log?.topic || '');
 
 const statusLabel = (status) => {
   if (status === LESSON_REPORT_STATUS.SENT) return '발송 완료';
@@ -132,57 +142,123 @@ export default function LessonReportManagement({
     return map;
   }, [lessonReports]);
 
-  const currentLessonLog = useMemo(() => lessonLogs.find((log) => (
-    String(log.classId || log.classDocId || '') === String(draft?.classId || selectedClassId)
-    && toYmd(log.date) === String(draft?.lessonDate || selectedDate)
-  )), [draft?.classId, draft?.lessonDate, lessonLogs, selectedClassId, selectedDate]);
+  const selectedLessonDate = toYmd(draft?.lessonDate || selectedDate || '');
+  const selectedDraftClassId = String(draft?.classId || selectedClassId || '');
+  const selectedDraftStudentId = String(draft?.studentId || selectedStudentId || '');
+
+  const toDateDistance = (a, b) => {
+    if (!a || !b) return Number.MAX_SAFE_INTEGER;
+    const aTime = new Date(`${a}T00:00:00`).getTime();
+    const bTime = new Date(`${b}T00:00:00`).getTime();
+    if (Number.isNaN(aTime) || Number.isNaN(bTime)) return Number.MAX_SAFE_INTEGER;
+    return Math.abs(aTime - bTime);
+  };
+
+  const candidateLessonLogs = useMemo(() => (lessonLogs || []).filter((log) => (
+    resolveClassId(log) === selectedDraftClassId
+    && resolveLessonLogDate(log) === selectedLessonDate
+  )), [lessonLogs, selectedDraftClassId, selectedLessonDate]);
+
+  const currentLessonLog = useMemo(
+    () => candidateLessonLogs[0] || null,
+    [candidateLessonLogs],
+  );
 
   const currentAutoFilledLearnedTopics = useMemo(
-    () => currentLessonLog?.progress || '',
+    () => resolveLessonLogProgress(currentLessonLog),
     [currentLessonLog],
   );
 
-  const selectableHomework = useMemo(() => (homeworkAssignments || []).filter((item) => {
-    if (String(item.classId || item.classDocId || '') !== String(draft?.classId || '')) return false;
-    const targets = [
-      ...(Array.isArray(item.targetStudents) ? item.targetStudents : []),
-      ...(Array.isArray(item.assignedStudentIds) ? item.assignedStudentIds : []),
-    ].map(String);
-    return targets.length === 0 || targets.includes(String(draft?.studentId || ''));
-  }), [homeworkAssignments, draft?.classId, draft?.studentId]);
+  const candidateHomeworkAssignments = useMemo(() => (homeworkAssignments || [])
+    .filter((item) => resolveClassId(item) === selectedDraftClassId)
+    .map((item) => {
+      const targets = [
+        ...(Array.isArray(item.targetStudents) ? item.targetStudents : []),
+        ...(Array.isArray(item.assignedStudentIds) ? item.assignedStudentIds : []),
+        ...(Array.isArray(item.students) ? item.students : []),
+      ].map(String);
+      const isTargeted = targets.length === 0 || targets.includes(selectedDraftStudentId);
+      return {
+        ...item,
+        __candidate_isTargeted: isTargeted,
+        __candidate_distance: toDateDistance(resolveHomeworkDate(item), selectedLessonDate),
+      };
+    })
+    .filter((item) => item.__candidate_isTargeted)
+    .sort((a, b) => {
+      if (a.__candidate_distance !== b.__candidate_distance) return a.__candidate_distance - b.__candidate_distance;
+      return String(resolveHomeworkDate(b) || '').localeCompare(String(resolveHomeworkDate(a) || ''));
+    }), [homeworkAssignments, selectedDraftClassId, selectedDraftStudentId, selectedLessonDate]);
 
-  const selectableTests = useMemo(() => {
-    const currentClassId = String(draft?.classId || '');
-    const currentStudentId = String(draft?.studentId || '');
-    const currentDate = toYmd(draft?.lessonDate || '');
-    if (!currentClassId) return [];
+  const selectableHomework = candidateHomeworkAssignments;
 
-    const resolveClassId = (item) => String(item?.classId || item?.classDocId || item?.class?.id || '');
-    const resolveTestDate = (item) => toYmd(item?.date || item?.testDate || item?.createdAt || item?.updatedAt);
-    const toDateDistance = (a, b) => {
-      if (!a || !b) return Number.MAX_SAFE_INTEGER;
-      const aTime = new Date(`${a}T00:00:00`).getTime();
-      const bTime = new Date(`${b}T00:00:00`).getTime();
-      if (Number.isNaN(aTime) || Number.isNaN(bTime)) return Number.MAX_SAFE_INTEGER;
-      return Math.abs(aTime - bTime);
-    };
-
+  const candidateTests = useMemo(() => {
+    if (!selectedDraftClassId) return [];
     return (tests || [])
-      .filter((item) => resolveClassId(item) === currentClassId)
+      .filter((item) => resolveClassId(item) === selectedDraftClassId)
       .map((item) => {
-        const grade = grades?.[currentStudentId]?.[item.id] || grades?.[String(currentStudentId)]?.[item.id] || null;
+        const grade = grades?.[selectedDraftStudentId]?.[item.id] || grades?.[String(selectedDraftStudentId)]?.[item.id] || null;
         return {
           ...item,
           __sort_hasGrade: Boolean(grade),
-          __sort_distance: toDateDistance(resolveTestDate(item), currentDate),
+          __sort_distance: toDateDistance(resolveTestDate(item), selectedLessonDate),
         };
       })
       .sort((a, b) => {
         if (a.__sort_hasGrade !== b.__sort_hasGrade) return a.__sort_hasGrade ? -1 : 1;
         if (a.__sort_distance !== b.__sort_distance) return a.__sort_distance - b.__sort_distance;
-        return String(b.date || '').localeCompare(String(a.date || ''));
+        return String(resolveTestDate(b) || '').localeCompare(String(resolveTestDate(a) || ''));
       });
-  }, [draft?.classId, draft?.lessonDate, draft?.studentId, grades, tests]);
+  }, [selectedDraftClassId, selectedDraftStudentId, selectedLessonDate, grades, tests]);
+
+  const selectableTests = candidateTests;
+
+  useEffect(() => {
+    console.log('[lesson-report debug:data-sources]', {
+      selectedStudentId: selectedDraftStudentId,
+      selectedClassId: selectedDraftClassId,
+      selectedDate: selectedLessonDate,
+      lessonLogsCount: Array.isArray(lessonLogs) ? lessonLogs.length : null,
+      homeworkAssignmentsCount: Array.isArray(homeworkAssignments) ? homeworkAssignments.length : null,
+      testsCount: Array.isArray(tests) ? tests.length : null,
+      attendanceLogsCount: Array.isArray(attendanceLogs) ? attendanceLogs.length : null,
+      lessonLogsSample: lessonLogs?.slice?.(0, 3),
+      homeworkAssignmentsSample: homeworkAssignments?.slice?.(0, 3),
+      testsSample: tests?.slice?.(0, 3),
+      candidateLessonLogsCount: candidateLessonLogs.length,
+      candidateLessonLogsSample: candidateLessonLogs.slice(0, 3),
+    });
+  }, [
+    attendanceLogs,
+    candidateLessonLogs,
+    homeworkAssignments,
+    lessonLogs,
+    selectedDraftClassId,
+    selectedDraftStudentId,
+    selectedLessonDate,
+    tests,
+  ]);
+
+  useEffect(() => {
+    console.log('[lesson-report debug:homework-candidates]', {
+      selectedStudentId: selectedDraftStudentId,
+      selectedClassId: selectedDraftClassId,
+      selectedDate: selectedLessonDate,
+      totalAssignments: homeworkAssignments?.length,
+      candidateAssignments: candidateHomeworkAssignments,
+    });
+  }, [candidateHomeworkAssignments, homeworkAssignments?.length, selectedDraftClassId, selectedDraftStudentId, selectedLessonDate]);
+
+  useEffect(() => {
+    console.log('[lesson-report debug:test-candidates]', {
+      selectedStudentId: selectedDraftStudentId,
+      selectedClassId: selectedDraftClassId,
+      selectedDate: selectedLessonDate,
+      totalTests: tests?.length,
+      candidateTests,
+    });
+  }, [candidateTests, selectedDraftClassId, selectedDraftStudentId, selectedLessonDate, tests?.length]);
+
   const previewHomeworkSummary = useMemo(
     () => summarizeHomework({
       selectedHomeworkIds: draft?.selectedHomeworkIds || [],
@@ -251,10 +327,10 @@ export default function LessonReportManagement({
         setDraftError('리포트 ID 생성에 실패했습니다. 클래스/학생/날짜 선택을 확인해 주세요.');
         return;
       }
-      const lessonLog = lessonLogs.find((log) => String(log.classId || log.classDocId || '') === classId && toYmd(log.date) === lessonDate);
+      const lessonLog = (lessonLogs || []).find((log) => resolveClassId(log) === classId && resolveLessonLogDate(log) === lessonDate);
       const attendance = attendanceLogs.find((item) => String(item.studentId) === String(targetStudentId)
-        && String(item.classId || item.classDocId || '') === classId
-        && toYmd(item.date) === lessonDate);
+        && resolveClassId(item) === classId
+        && resolveAttendanceDate(item) === lessonDate);
 
       setSelectedStudentId(String(targetStudentId));
       setActiveTab('edit');
@@ -266,8 +342,8 @@ export default function LessonReportManagement({
         lessonDate,
         lessonLogId: existingReport?.lessonLogId || lessonLog?.id || null,
         attendanceStatus: existingReport?.attendanceStatus || attendance?.attendance || attendance?.status || '미기록',
-        learnedTopics: existingReport?.learnedTopics ?? (lessonLog?.progress || ''),
-        autoFilledLearnedTopics: lessonLog?.progress || '',
+        learnedTopics: existingReport?.learnedTopics ?? resolveLessonLogProgress(lessonLog),
+        autoFilledLearnedTopics: resolveLessonLogProgress(lessonLog),
         isLearnedTopicsManuallyEdited: false,
         selectedHomeworkIds: existingReport?.selectedHomeworkIds || [],
         selectedTestIds: existingReport?.selectedTestIds || [],
@@ -290,9 +366,9 @@ export default function LessonReportManagement({
       const nextId = buildLessonReportId({ studentId: nextStudentId, classId: nextClassId, lessonDate: nextLessonDate });
       const existing = reportMap.get(nextId);
       const attendance = attendanceLogs.find((item) => String(item.studentId) === nextStudentId
-        && String(item.classId || item.classDocId || '') === nextClassId
-        && toYmd(item.date) === nextLessonDate);
-        const lessonLog = lessonLogs.find((log) => String(log.classId || log.classDocId || '') === nextClassId && toYmd(log.date) === nextLessonDate);
+        && resolveClassId(item) === nextClassId
+        && resolveAttendanceDate(item) === nextLessonDate);
+      const lessonLog = (lessonLogs || []).find((log) => resolveClassId(log) === nextClassId && resolveLessonLogDate(log) === nextLessonDate);
       if (existing) {
         return {
           ...prev,
@@ -303,7 +379,7 @@ export default function LessonReportManagement({
           classId: nextClassId,
           lessonDate: nextLessonDate,
           attendanceStatus: changes.attendanceStatus ?? existing.attendanceStatus ?? attendance?.attendance ?? attendance?.status ?? '미기록',
-          autoFilledLearnedTopics: lessonLog?.progress || '',
+          autoFilledLearnedTopics: resolveLessonLogProgress(lessonLog),
           isLearnedTopicsManuallyEdited: false,
         };
       }
@@ -314,8 +390,8 @@ export default function LessonReportManagement({
         id: nextId,
         attendanceStatus: changes.attendanceStatus ?? prev.attendanceStatus ?? attendance?.attendance ?? attendance?.status ?? '미기록',
         lessonLogId: lessonLog?.id || null,
-        autoFilledLearnedTopics: lessonLog?.progress || '',
-        learnedTopics: prev.isLearnedTopicsManuallyEdited ? prev.learnedTopics : (lessonLog?.progress || prev.learnedTopics || ''),
+        autoFilledLearnedTopics: resolveLessonLogProgress(lessonLog),
+        learnedTopics: prev.isLearnedTopicsManuallyEdited ? prev.learnedTopics : (resolveLessonLogProgress(lessonLog) || prev.learnedTopics || ''),
       };
     });
   };
