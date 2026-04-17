@@ -1,4 +1,10 @@
 import { getTotalScore } from '../grade/grade.service';
+import {
+    computeHomeworkProgress,
+    getAssignmentQuestionNumbers,
+    normalizeHomeworkResultMapForDisplay,
+} from '../homework/homework.service';
+import { formatRoundedPercent, formatRoundedScore } from '../../utils/numberFormat';
 
 export const LESSON_REPORT_STATUS = {
     DRAFT: 'draft',
@@ -96,29 +102,101 @@ export const getGradeForLessonReportStudent = ({ student = null, studentId = '',
 
 const buildTestTitle = (test = {}) => {
     const dateTag = toKoreanDateTag(test?.date || test?.testDate || test?.lessonDate || test?.createdAt || test?.updatedAt);
-    const name = String(test?.name || '시험');
+    const rawName = String(test?.name || '시험');
+    const name = dateTag && rawName.startsWith(dateTag)
+        ? rawName.slice(dateTag.length).trim()
+        : rawName;
     return dateTag ? `${dateTag} ${name}` : name;
 };
 
-export const summarizeHomework = ({ selectedHomeworkIds = [], homeworkAssignments = [], homeworkResults = {}, studentId }) => {
-    const items = selectedHomeworkIds.map((id) => homeworkAssignments.find((hw) => String(hw.id) === String(id))).filter(Boolean).map((assignment) => {
-        const raw = homeworkResults?.[studentId]?.[assignment.id] || homeworkResults?.[String(studentId)]?.[assignment.id] || null;
-        const normalized = normalizeResult(raw);
-        const completionRate = Number.isFinite(normalized?.completionRate) ? Math.max(0, Math.min(100, Math.round(normalized.completionRate))) : null;
-        const status = normalized?.status || (completionRate === 100 ? '완료' : (completionRate === null ? '미제출' : null));
-        return { homeworkId: assignment.id, title: assignment.title || assignment.content || assignment.book || '숙제', completionRate, status };
-    });
+const getHomeworkResultByStudent = ({ homeworkResults = {}, assignmentId, studentId = '', student = null }) => {
+    const candidateKeys = toCandidateStudentKeys({ student, studentId });
+    for (const key of candidateKeys) {
+        const byCandidate = homeworkResults?.[key]?.[assignmentId];
+        if (byCandidate !== undefined && byCandidate !== null) return byCandidate;
+    }
+
+    const keySet = new Set(candidateKeys);
+    for (const perStudentResults of Object.values(homeworkResults || {})) {
+        if (!perStudentResults || typeof perStudentResults !== 'object') continue;
+        const byAssignment = perStudentResults?.[assignmentId];
+        if (!byAssignment || typeof byAssignment !== 'object') continue;
+        const refs = [
+            byAssignment?.studentId,
+            byAssignment?.studentDocId,
+            byAssignment?.authUid,
+            byAssignment?.studentUid,
+            byAssignment?.uid,
+        ].filter(Boolean).map(String);
+        if (refs.some((ref) => keySet.has(ref))) return byAssignment;
+    }
+
+    return null;
+};
+
+export const summarizeHomework = ({
+    selectedHomeworkProgressIds = [],
+    selectedHomeworkIds = [],
+    homeworkAssignments = [],
+    homeworkResults = {},
+    studentId,
+    student = null,
+}) => {
+    const targetHomeworkIds = selectedHomeworkProgressIds.length > 0
+        ? selectedHomeworkProgressIds
+        : selectedHomeworkIds;
+    const items = targetHomeworkIds
+        .map((id) => homeworkAssignments.find((hw) => String(hw.id) === String(id)))
+        .filter(Boolean)
+        .map((assignment) => {
+            const rawResult = getHomeworkResultByStudent({
+                homeworkResults,
+                assignmentId: assignment.id,
+                studentId,
+                student,
+            });
+            const questionNumbers = getAssignmentQuestionNumbers(assignment);
+            const normalizedMap = normalizeHomeworkResultMapForDisplay(rawResult, questionNumbers, {
+                assignmentId: assignment.id,
+                studentId,
+            });
+            const progress = computeHomeworkProgress({ results: normalizedMap }, questionNumbers);
+            const completionRate = Number.isFinite(progress?.completionRate)
+                ? Math.max(0, Math.min(100, progress.completionRate))
+                : null;
+            const fallbackNormalized = normalizeResult(rawResult);
+            const fallbackRate = Number.isFinite(fallbackNormalized?.completionRate)
+                ? Math.max(0, Math.min(100, fallbackNormalized.completionRate))
+                : null;
+            const resolvedRate = Number.isFinite(completionRate) && Object.keys(normalizedMap || {}).length > 0
+                ? completionRate
+                : fallbackRate;
+            const completionText = Number.isFinite(resolvedRate) ? formatRoundedPercent(resolvedRate) : null;
+
+            return {
+                homeworkId: assignment.id,
+                title: assignment.title || assignment.content || assignment.book || '숙제',
+                completionRate: Number.isFinite(resolvedRate) ? Math.round(resolvedRate) : null,
+                status: completionText ? null : '미제출',
+                summary: completionText ? `${assignment.title || assignment.content || assignment.book || '숙제'} ${completionText}` : `${assignment.title || assignment.content || assignment.book || '숙제'} 미제출`,
+            };
+        });
 
     return {
         items,
-        text: items.map((item) => Number.isFinite(item.completionRate)
-            ? `${item.title} ${item.completionRate}% 완료`
-            : `${item.title} ${item.status || '진행도 미입력'}`),
+        text: items.map((item) => item.summary),
     };
 };
 
-export const summarizeAssignedHomework = ({ selectedHomeworkIds = [], homeworkAssignments = [] }) => ({
-    items: selectedHomeworkIds.map((id) => homeworkAssignments.find((hw) => String(hw.id) === String(id))).filter(Boolean).map((assignment) => ({
+export const summarizeAssignedHomework = ({
+    selectedAssignedHomeworkIds = [],
+    selectedHomeworkIds = [],
+    homeworkAssignments = [],
+}) => ({
+    items: (selectedAssignedHomeworkIds.length > 0 ? selectedAssignedHomeworkIds : selectedHomeworkIds)
+        .map((id) => homeworkAssignments.find((hw) => String(hw.id) === String(id)))
+        .filter(Boolean)
+        .map((assignment) => ({
         homeworkId: assignment.id,
         title: assignment.title || assignment.content || assignment.book || '숙제',
         assignedDate: toYmd(assignment.assignedDate || assignment.date || assignment.createdAt),
@@ -150,9 +228,10 @@ export const summarizeTests = ({ selectedTestIds = [], tests = [], grades = {}, 
 
             let summary = `${title} 결과 미입력`;
             if (Number.isFinite(computedScore)) {
+                const scoreText = formatRoundedScore(computedScore, 1, '점');
                 summary = Number.isFinite(maxScore)
-                    ? `${title} ${computedScore}점 / ${maxScore}점`
-                    : `${title} ${computedScore}점`;
+                    ? `${title} ${scoreText} / ${formatRoundedScore(maxScore, 1, '점')}`
+                    : `${title} ${scoreText}`;
             } else if (Number.isFinite(questionCount) && Number.isFinite(correctCount)) {
                 summary = `${title} ${questionCount}문항 중 ${correctCount}문항 정답`;
             }

@@ -1,3 +1,5 @@
+import { formatRoundedScore } from '../../utils/numberFormat';
+
 const isCorrectAnswer = (value) => {
     return value === true || value === 1 || value === '맞음' || value === '고침';
 };
@@ -70,7 +72,7 @@ export const formatGradeScoreText = (grade = null, totalScore = null, test = {})
     if (isNoShow) {
         scoreText = '미응시';
     } else if (Number.isFinite(resolvedTotalScore)) {
-        scoreText = resolvedTotalScore.toFixed(1);
+        scoreText = formatRoundedScore(resolvedTotalScore, 1);
     }
 
     return { scoreText, isNoShow, totalScore: resolvedTotalScore };

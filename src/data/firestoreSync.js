@@ -812,20 +812,20 @@ export const loadStaffDataOnce = async ({
             );
         }
 
-        if (setTests && (shouldLoad('grades') || shouldLoad('lessons'))) {
+        if (setTests && (shouldLoad('grades') || shouldLoad('lessons') || shouldLoad('lessonReports'))) {
             const tests = await fetchList(db, 'tests', setTests, query(collection(db, 'tests'), orderBy('date', 'desc'), limit(200)), () => false);
             warnOnQuestionScores(tests, 'staff');
         }
 
-        if (setLessonLogs && shouldLoad('lessons')) {
+        if (setLessonLogs && (shouldLoad('lessons') || shouldLoad('lessonReports'))) {
             await fetchList(db, 'lessonLogs', setLessonLogs, query(collection(db, 'lessonLogs'), orderBy('date', 'desc'), limit(150)), () => false);
         }
-        if (setLessonReports && (shouldLoad('lessons') || shouldLoad('students'))) {
+        if (setLessonReports && (shouldLoad('lessons') || shouldLoad('students') || shouldLoad('lessonReports'))) {
             await fetchList(db, 'lessonReports', setLessonReports, query(collection(db, 'lessonReports'), orderBy('lessonDate', 'desc'), limit(300)), () => false);
         }
 
 
-        if (setAttendanceLogs && (shouldLoad('attendance') || shouldLoad('lessons') || shouldLoad('students'))) {
+        if (setAttendanceLogs && (shouldLoad('attendance') || shouldLoad('lessons') || shouldLoad('students') || shouldLoad('lessonReports'))) {
             const attendanceLogs = await fetchAttendanceLogsWithPagination(db, () => false);
             setAttendanceLogs?.(attendanceLogs);
         }
@@ -852,7 +852,7 @@ export const loadStaffDataOnce = async ({
             await fetchList(db, 'announcements', setAnnouncements, query(collection(db, 'announcements'), orderBy('date', 'desc'), limit(150)), () => false);
         }
 
-        if (setHomeworkAssignments && shouldLoad('homework')) {
+        if (setHomeworkAssignments && (shouldLoad('homework') || shouldLoad('lessonReports'))) {
             await fetchList(db, 'homeworkAssignments', setHomeworkAssignments, query(collection(db, 'homeworkAssignments'), orderBy('date', 'desc'), limit(150)), () => false);
         }
 
@@ -867,7 +867,7 @@ export const loadStaffDataOnce = async ({
             );
         }
 
-        if (setGrades && shouldLoad('grades')) {
+        if (setGrades && (shouldLoad('grades') || shouldLoad('lessonReports'))) {
             const mappedGrades = {};
             const grades = await fetchGradesWithPagination(db, 5000, 500);
 
@@ -886,7 +886,7 @@ export const loadStaffDataOnce = async ({
             setGrades(mappedGrades);
         }
 
-        if (setHomeworkResults && shouldLoad('homework')) {
+        if (setHomeworkResults && (shouldLoad('homework') || shouldLoad('lessonReports'))) {
             const docs = await fetchHomeworkResultsWithPagination(db, 5000, 500);
             const mappedResults = {};
             const authUidToStudentDocId = new Map(

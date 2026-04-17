@@ -191,7 +191,23 @@ export default function LessonReportManagement({
       return String(resolveHomeworkDate(b) || '').localeCompare(String(resolveHomeworkDate(a) || ''));
     }), [homeworkAssignments, selectedDraftClassId, selectedDraftStudentId, selectedLessonDate]);
 
-  const selectableHomework = candidateHomeworkAssignments;
+  const selectableHomeworkProgress = useMemo(
+    () => candidateHomeworkAssignments.filter((item) => {
+      const assignmentDate = resolveHomeworkDate(item);
+      if (!assignmentDate || !selectedLessonDate) return true;
+      return assignmentDate < selectedLessonDate;
+    }),
+    [candidateHomeworkAssignments, selectedLessonDate],
+  );
+
+  const selectableAssignedHomework = useMemo(
+    () => candidateHomeworkAssignments.filter((item) => {
+      const assignmentDate = resolveHomeworkDate(item);
+      if (!assignmentDate || !selectedLessonDate) return true;
+      return assignmentDate >= selectedLessonDate;
+    }),
+    [candidateHomeworkAssignments, selectedLessonDate],
+  );
 
   const candidateTests = useMemo(() => {
     if (!selectedDraftClassId) return [];
@@ -268,19 +284,20 @@ export default function LessonReportManagement({
 
   const previewHomeworkSummary = useMemo(
     () => summarizeHomework({
-      selectedHomeworkIds: draft?.selectedHomeworkIds || [],
+      selectedHomeworkProgressIds: draft?.selectedHomeworkProgressIds || draft?.selectedHomeworkIds || [],
       homeworkAssignments,
       homeworkResults,
       studentId: draft?.studentId,
+      student: students.find((item) => String(item.id) === String(draft?.studentId || '')) || null,
     }),
-    [draft?.selectedHomeworkIds, draft?.studentId, homeworkAssignments, homeworkResults],
+    [draft?.selectedHomeworkIds, draft?.selectedHomeworkProgressIds, draft?.studentId, homeworkAssignments, homeworkResults, students],
   );
   const previewAssignedHomeworkSummary = useMemo(
     () => summarizeAssignedHomework({
-      selectedHomeworkIds: draft?.selectedHomeworkIds || [],
+      selectedAssignedHomeworkIds: draft?.selectedAssignedHomeworkIds || draft?.selectedHomeworkIds || [],
       homeworkAssignments,
     }),
-    [draft?.selectedHomeworkIds, homeworkAssignments],
+    [draft?.selectedAssignedHomeworkIds, draft?.selectedHomeworkIds, homeworkAssignments],
   );
   const previewTestSummary = useMemo(
     () => summarizeTests({
@@ -387,6 +404,8 @@ export default function LessonReportManagement({
         autoFilledLearnedTopics: resolveLessonLogProgress(lessonLog),
         isLearnedTopicsManuallyEdited: false,
         selectedHomeworkIds: existingReport?.selectedHomeworkIds || [],
+        selectedHomeworkProgressIds: existingReport?.selectedHomeworkProgressIds || existingReport?.selectedHomeworkIds || [],
+        selectedAssignedHomeworkIds: existingReport?.selectedAssignedHomeworkIds || existingReport?.selectedHomeworkIds || [],
         selectedTestIds: existingReport?.selectedTestIds || [],
         comment: existingReport?.comment || '',
         status: existingReport?.status || LESSON_REPORT_STATUS.DRAFT,
@@ -420,6 +439,8 @@ export default function LessonReportManagement({
           classId: nextClassId,
           lessonDate: nextLessonDate,
           attendanceStatus: changes.attendanceStatus ?? existing.attendanceStatus ?? attendance?.attendance ?? attendance?.status ?? '미기록',
+          selectedHomeworkProgressIds: existing.selectedHomeworkProgressIds || existing.selectedHomeworkIds || [],
+          selectedAssignedHomeworkIds: existing.selectedAssignedHomeworkIds || existing.selectedHomeworkIds || [],
           autoFilledLearnedTopics: resolveLessonLogProgress(lessonLog),
           isLearnedTopicsManuallyEdited: false,
         };
@@ -448,13 +469,14 @@ export default function LessonReportManagement({
       const isFirstSend = send && !previous?.sentAt;
 
       const homeworkSummary = summarizeHomework({
-        selectedHomeworkIds: draft.selectedHomeworkIds,
+        selectedHomeworkProgressIds: draft.selectedHomeworkProgressIds || draft.selectedHomeworkIds,
         homeworkAssignments,
         homeworkResults,
         studentId: draft.studentId,
+        student,
       });
       const assignedHomeworkSummary = summarizeAssignedHomework({
-        selectedHomeworkIds: draft.selectedHomeworkIds,
+        selectedAssignedHomeworkIds: draft.selectedAssignedHomeworkIds || draft.selectedHomeworkIds,
         homeworkAssignments,
       });
       const targetStudent = students.find((item) => String(item.id) === String(draft.studentId)) || null;
@@ -468,6 +490,13 @@ export default function LessonReportManagement({
 
       const payload = {
         ...draft,
+        selectedHomeworkProgressIds: draft.selectedHomeworkProgressIds || draft.selectedHomeworkIds || [],
+        selectedAssignedHomeworkIds: draft.selectedAssignedHomeworkIds || draft.selectedHomeworkIds || [],
+        selectedHomeworkIds: Array.from(new Set([
+          ...(draft.selectedHomeworkProgressIds || []),
+          ...(draft.selectedAssignedHomeworkIds || []),
+          ...(draft.selectedHomeworkIds || []),
+        ])),
         homeworkSummary,
         assignedHomeworkSummary,
         testSummary,
@@ -643,23 +672,50 @@ export default function LessonReportManagement({
                 <p className="text-xs text-gray-500">자동 채움 기준: {draft.classId} · {draft.lessonDate} · {draft.studentId}</p>
 
                 <div>
-                  <p className="text-sm font-semibold mb-1">숙제 선택</p>
+                  <p className="text-sm font-semibold mb-1">과제 수행 정도 선택</p>
                   <div className="space-y-1 max-h-32 overflow-auto">
-                    {selectableHomework.map((hw) => (
+                    {selectableHomeworkProgress.map((hw) => (
                       <label key={hw.id} className="flex items-center gap-2 text-sm">
                         <input
                           type="checkbox"
-                          checked={(draft.selectedHomeworkIds || []).includes(hw.id)}
+                          checked={(draft.selectedHomeworkProgressIds || []).includes(hw.id)}
                           onChange={(e) => setDraft((prev) => ({
                             ...prev,
-                            selectedHomeworkIds: e.target.checked
-                              ? [...(prev.selectedHomeworkIds || []), hw.id]
-                              : (prev.selectedHomeworkIds || []).filter((id) => id !== hw.id),
+                            selectedHomeworkProgressIds: e.target.checked
+                              ? [...(prev.selectedHomeworkProgressIds || []), hw.id]
+                              : (prev.selectedHomeworkProgressIds || []).filter((id) => id !== hw.id),
                           }))}
                         />
                         {hw.title || hw.content || '숙제'}
                       </label>
                     ))}
+                    {selectableHomeworkProgress.length === 0 && (
+                      <p className="text-xs text-gray-500">선택 가능한 과제 수행 항목 없음</p>
+                    )}
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-sm font-semibold mb-1">이번 수업 숙제 선택</p>
+                  <div className="space-y-1 max-h-32 overflow-auto">
+                    {selectableAssignedHomework.map((hw) => (
+                      <label key={`assigned-${hw.id}`} className="flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={(draft.selectedAssignedHomeworkIds || []).includes(hw.id)}
+                          onChange={(e) => setDraft((prev) => ({
+                            ...prev,
+                            selectedAssignedHomeworkIds: e.target.checked
+                              ? [...(prev.selectedAssignedHomeworkIds || []), hw.id]
+                              : (prev.selectedAssignedHomeworkIds || []).filter((id) => id !== hw.id),
+                          }))}
+                        />
+                        {hw.title || hw.content || '숙제'}
+                      </label>
+                    ))}
+                    {selectableAssignedHomework.length === 0 && (
+                      <p className="text-xs text-gray-500">선택 가능한 숙제 항목 없음</p>
+                    )}
                   </div>
                 </div>
 
