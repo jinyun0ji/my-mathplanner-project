@@ -11,6 +11,8 @@ import {
   summarizeTests,
 } from '../domain/lessonReport/lessonReport.service';
 import { getLinkedParentAuthUids } from '../utils/parentLinking';
+import { filterRosterByWithdrawDate } from '../utils/rosterFilter';
+import { hasClassOnDate, isClosedForClass } from '../utils/helpers';
 
 const toYmd = (value) => {
   if (!value) return '';
@@ -54,6 +56,7 @@ export default function LessonReportManagement({
   homeworkResults = {},
   grades = {},
   lessonReports = [],
+  closures = [],
 }) {
   const { studentId: routeStudentId } = useParams();
   const [searchParams] = useSearchParams();
@@ -65,6 +68,7 @@ export default function LessonReportManagement({
   const [selectedDate, setSelectedDate] = useState(todayYmd);
   const [selectedStudentId, setSelectedStudentId] = useState(preselectedStudentId);
   const [draft, setDraft] = useState(null);
+  const [draftError, setDraftError] = useState('');
   const [reportSaving, setReportSaving] = useState(false);
   const [activeTab, setActiveTab] = useState('edit');
 
@@ -82,18 +86,37 @@ export default function LessonReportManagement({
     setSelectedClassId(String(preferredClassId || availableClasses[0].id));
   }, [availableClasses, preselectedStudentId, selectedClassId, students]);
 
+  const selectedClass = useMemo(
+    () => availableClasses.find((item) => String(item.id) === String(selectedClassId)) || null,
+    [availableClasses, selectedClassId],
+  );
+
+  const isSelectedDateLessonDay = useMemo(() => {
+    if (!selectedClass || !selectedDate) return true;
+    if (!hasClassOnDate(selectedClass, selectedDate)) return false;
+    if (isClosedForClass(selectedDate, selectedClass.id, closures)) return false;
+    return true;
+  }, [closures, selectedClass, selectedDate]);
+
   const classStudents = useMemo(() => {
     if (!selectedClassId) return [];
-    return students
-      .filter((student) => getStudentClassIds(student).includes(String(selectedClassId)))
+    if (!isSelectedDateLessonDay) return [];
+    const baseStudents = students
+      .filter((student) => getStudentClassIds(student).includes(String(selectedClassId)));
+    return filterRosterByWithdrawDate(baseStudents, selectedClassId, selectedDate)
       .sort((a, b) => String(a?.name || '').localeCompare(String(b?.name || ''), 'ko'));
-  }, [selectedClassId, students]);
+  }, [isSelectedDateLessonDay, selectedClassId, selectedDate, students]);
 
   useEffect(() => {
     if (!selectedStudentId) return;
     if (!classStudents.some((student) => String(student.id) === String(selectedStudentId))) {
       setSelectedStudentId('');
     }
+  }, [classStudents, selectedStudentId]);
+
+  useEffect(() => {
+    if (selectedStudentId || classStudents.length === 0) return;
+    setSelectedStudentId(String(classStudents[0].id));
   }, [classStudents, selectedStudentId]);
 
   const reportMap = useMemo(() => {
@@ -128,10 +151,38 @@ export default function LessonReportManagement({
     return targets.length === 0 || targets.includes(String(draft?.studentId || ''));
   }), [homeworkAssignments, draft?.classId, draft?.studentId]);
 
-  const selectableTests = useMemo(
-    () => (tests || []).filter((item) => String(item.classId || '') === String(draft?.classId || '')),
-    [tests, draft?.classId],
-  );
+  const selectableTests = useMemo(() => {
+    const currentClassId = String(draft?.classId || '');
+    const currentStudentId = String(draft?.studentId || '');
+    const currentDate = toYmd(draft?.lessonDate || '');
+    if (!currentClassId) return [];
+
+    const resolveClassId = (item) => String(item?.classId || item?.classDocId || item?.class?.id || '');
+    const resolveTestDate = (item) => toYmd(item?.date || item?.testDate || item?.createdAt || item?.updatedAt);
+    const toDateDistance = (a, b) => {
+      if (!a || !b) return Number.MAX_SAFE_INTEGER;
+      const aTime = new Date(`${a}T00:00:00`).getTime();
+      const bTime = new Date(`${b}T00:00:00`).getTime();
+      if (Number.isNaN(aTime) || Number.isNaN(bTime)) return Number.MAX_SAFE_INTEGER;
+      return Math.abs(aTime - bTime);
+    };
+
+    return (tests || [])
+      .filter((item) => resolveClassId(item) === currentClassId)
+      .map((item) => {
+        const grade = grades?.[currentStudentId]?.[item.id] || grades?.[String(currentStudentId)]?.[item.id] || null;
+        return {
+          ...item,
+          __sort_hasGrade: Boolean(grade),
+          __sort_distance: toDateDistance(resolveTestDate(item), currentDate),
+        };
+      })
+      .sort((a, b) => {
+        if (a.__sort_hasGrade !== b.__sort_hasGrade) return a.__sort_hasGrade ? -1 : 1;
+        if (a.__sort_distance !== b.__sort_distance) return a.__sort_distance - b.__sort_distance;
+        return String(b.date || '').localeCompare(String(a.date || ''));
+      });
+  }, [draft?.classId, draft?.lessonDate, draft?.studentId, grades, tests]);
   const previewHomeworkSummary = useMemo(
     () => summarizeHomework({
       selectedHomeworkIds: draft?.selectedHomeworkIds || [],
@@ -181,41 +232,53 @@ export default function LessonReportManagement({
   }, [currentAutoFilledLearnedTopics, currentLessonLog?.id, draft?.classId, draft?.lessonDate, draft?.studentId]);
 
   const openDraftForStudent = (targetStudentId, existingReport = null) => {
-    const student = students.find((item) => String(item.id) === String(targetStudentId));
-    if (!student) return;
+    try {
+      setDraftError('');
+      const student = students.find((item) => String(item.id) === String(targetStudentId));
+      if (!student) {
+        setDraftError('학생 정보를 찾을 수 없습니다. 페이지를 새로고침 후 다시 시도해 주세요.');
+        return;
+      }
 
-    const classId = String(selectedClassId || getStudentClassIds(student)[0] || '');
-    const lessonDate = existingReport ? toYmd(existingReport.lessonDate) : String(selectedDate || todayYmd());
-    const reportId = existingReport?.id || buildLessonReportId({
-      studentId: targetStudentId,
-      classId,
-      lessonDate,
-    });
-    const lessonLog = lessonLogs.find((log) => String(log.classId || log.classDocId || '') === classId && toYmd(log.date) === lessonDate);
-    const attendance = attendanceLogs.find((item) => String(item.studentId) === String(targetStudentId)
-      && String(item.classId || item.classDocId || '') === classId
-      && toYmd(item.date) === lessonDate);
+      const classId = String(selectedClassId || getStudentClassIds(student)[0] || '');
+      const lessonDate = existingReport ? toYmd(existingReport.lessonDate) : String(selectedDate || todayYmd());
+      const reportId = existingReport?.id || buildLessonReportId({
+        studentId: targetStudentId,
+        classId,
+        lessonDate,
+      });
+      if (!reportId) {
+        setDraftError('리포트 ID 생성에 실패했습니다. 클래스/학생/날짜 선택을 확인해 주세요.');
+        return;
+      }
+      const lessonLog = lessonLogs.find((log) => String(log.classId || log.classDocId || '') === classId && toYmd(log.date) === lessonDate);
+      const attendance = attendanceLogs.find((item) => String(item.studentId) === String(targetStudentId)
+        && String(item.classId || item.classDocId || '') === classId
+        && toYmd(item.date) === lessonDate);
 
-    setSelectedStudentId(String(targetStudentId));
-    setActiveTab('edit');
-    setDraft({
-      ...(existingReport || {}),
-      id: reportId,
-      studentId: String(targetStudentId),
-      classId,
-      lessonDate,
-      lessonLogId: existingReport?.lessonLogId || lessonLog?.id || null,
-      attendanceStatus: existingReport?.attendanceStatus || attendance?.attendance || attendance?.status || '미기록',
-      learnedTopics: existingReport?.learnedTopics ?? (lessonLog?.progress || ''),
-      autoFilledLearnedTopics: lessonLog?.progress || '',
-      isLearnedTopicsManuallyEdited: false,
-      selectedHomeworkIds: existingReport?.selectedHomeworkIds || [],
-      selectedTestIds: existingReport?.selectedTestIds || [],
-      comment: existingReport?.comment || '',
-      status: existingReport?.status || LESSON_REPORT_STATUS.DRAFT,
-      studentNotificationSent: Boolean(existingReport?.studentNotificationSent),
-      parentNotificationSent: Boolean(existingReport?.parentNotificationSent),
-    });
+      setSelectedStudentId(String(targetStudentId));
+      setActiveTab('edit');
+      setDraft({
+        ...(existingReport || {}),
+        id: reportId,
+        studentId: String(targetStudentId),
+        classId,
+        lessonDate,
+        lessonLogId: existingReport?.lessonLogId || lessonLog?.id || null,
+        attendanceStatus: existingReport?.attendanceStatus || attendance?.attendance || attendance?.status || '미기록',
+        learnedTopics: existingReport?.learnedTopics ?? (lessonLog?.progress || ''),
+        autoFilledLearnedTopics: lessonLog?.progress || '',
+        isLearnedTopicsManuallyEdited: false,
+        selectedHomeworkIds: existingReport?.selectedHomeworkIds || [],
+        selectedTestIds: existingReport?.selectedTestIds || [],
+        comment: existingReport?.comment || '',
+        status: existingReport?.status || LESSON_REPORT_STATUS.DRAFT,
+        studentNotificationSent: Boolean(existingReport?.studentNotificationSent),
+        parentNotificationSent: Boolean(existingReport?.parentNotificationSent),
+      });
+    } catch (error) {
+      setDraftError(error?.message || '리포트 초안 생성 중 오류가 발생했습니다.');
+    }
   };
 
   const handleDraftSelectionChange = (changes) => {
@@ -225,15 +288,34 @@ export default function LessonReportManagement({
       const nextLessonDate = String(changes.lessonDate ?? prev.lessonDate);
       const nextStudentId = String(changes.studentId ?? prev.studentId);
       const nextId = buildLessonReportId({ studentId: nextStudentId, classId: nextClassId, lessonDate: nextLessonDate });
+      const existing = reportMap.get(nextId);
       const attendance = attendanceLogs.find((item) => String(item.studentId) === nextStudentId
         && String(item.classId || item.classDocId || '') === nextClassId
         && toYmd(item.date) === nextLessonDate);
+        const lessonLog = lessonLogs.find((log) => String(log.classId || log.classDocId || '') === nextClassId && toYmd(log.date) === nextLessonDate);
+      if (existing) {
+        return {
+          ...prev,
+          ...existing,
+          ...changes,
+          id: nextId,
+          studentId: nextStudentId,
+          classId: nextClassId,
+          lessonDate: nextLessonDate,
+          attendanceStatus: changes.attendanceStatus ?? existing.attendanceStatus ?? attendance?.attendance ?? attendance?.status ?? '미기록',
+          autoFilledLearnedTopics: lessonLog?.progress || '',
+          isLearnedTopicsManuallyEdited: false,
+        };
+      }
 
         return {
         ...prev,
         ...changes,
         id: nextId,
         attendanceStatus: changes.attendanceStatus ?? prev.attendanceStatus ?? attendance?.attendance ?? attendance?.status ?? '미기록',
+        lessonLogId: lessonLog?.id || null,
+        autoFilledLearnedTopics: lessonLog?.progress || '',
+        learnedTopics: prev.isLearnedTopicsManuallyEdited ? prev.learnedTopics : (lessonLog?.progress || prev.learnedTopics || ''),
       };
     });
   };
@@ -314,12 +396,15 @@ export default function LessonReportManagement({
       }
 
       setDraft(null);
+      setDraftError('');
+    } catch (error) {
+      setDraftError(error?.message || '수업 리포트 저장에 실패했습니다. 다시 시도해 주세요.');
     } finally {
       setReportSaving(false);
     }
   };
 
-  const selectedClassName = availableClasses.find((item) => String(item.id) === String(selectedClassId))?.name || '';
+  const selectedClassName = availableClasses.find((item) => String(item.id) === String(draft?.classId || selectedClassId))?.name || '';
 
   return (
     <div className="space-y-4">
@@ -342,6 +427,16 @@ export default function LessonReportManagement({
           <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value || todayYmd())} className="border rounded p-2 text-sm" />
           <div className="text-sm text-gray-600 flex items-center">총 {classStudents.length}명</div>
         </div>
+        {!isSelectedDateLessonDay && selectedClassId && (
+          <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded px-3 py-2">
+            선택한 날짜는 이 클래스의 수업일이 아닙니다.
+          </p>
+        )}
+        {draftError && (
+          <p className="text-xs text-red-700 bg-red-50 border border-red-100 rounded px-3 py-2">
+            {draftError}
+          </p>
+        )}
 
         <div className="border rounded overflow-hidden">
           <table className="w-full text-sm">
@@ -379,7 +474,11 @@ export default function LessonReportManagement({
               })}
               {classStudents.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="px-3 py-8 text-center text-sm text-gray-500">클래스를 선택하면 학생 목록이 표시됩니다.</td>
+                  <td colSpan={4} className="px-3 py-8 text-center text-sm text-gray-500">
+                    {selectedClassId && !isSelectedDateLessonDay
+                      ? '선택한 날짜는 수업일이 아니어서 학생 목록을 표시하지 않습니다.'
+                      : '클래스를 선택하면 학생 목록이 표시됩니다.'}
+                  </td>
                 </tr>
               )}
             </tbody>
@@ -420,7 +519,7 @@ export default function LessonReportManagement({
                   onChange={(e) => setDraft((prev) => ({ ...prev, learnedTopics: e.target.value, isLearnedTopicsManuallyEdited: true }))}
                   className="border rounded p-2 text-sm w-full"
                   rows={4}
-                  placeholder="오늘 배운 내용"
+                  placeholder="진도"
                 />
                 <p className="text-xs text-gray-500">자동 채움 기준: {draft.classId} · {draft.lessonDate} · {draft.studentId}</p>
 
@@ -463,6 +562,9 @@ export default function LessonReportManagement({
                         {test.name}
                       </label>
                     ))}
+                    {selectableTests.length === 0 && (
+                      <p className="text-xs text-gray-500">선택 가능한 시험 없음</p>
+                    )}
                   </div>
                 </div>
 
@@ -478,7 +580,7 @@ export default function LessonReportManagement({
               <div className="rounded-xl border bg-gray-50 p-4 space-y-3 text-sm">
                 <h3 className="font-semibold text-base">수업 리포트 미리보기</h3>
                 <p><span className="font-semibold">수업일 / 클래스:</span> {draft.lessonDate} / {availableClasses.find((item) => String(item.id) === String(draft.classId))?.name || draft.classId}</p>
-                {draft.learnedTopics && <p><span className="font-semibold">오늘 배운 내용:</span> {draft.learnedTopics}</p>}
+                {draft.learnedTopics && <p><span className="font-semibold">진도:</span> {draft.learnedTopics}</p>}
                 {draft.attendanceStatus && <p><span className="font-semibold">출결:</span> {draft.attendanceStatus}</p>}
                 {previewHomeworkSummary.text?.length > 0 && <p><span className="font-semibold">과제 수행 정도:</span> {previewHomeworkSummary.text.join(', ')}</p>}
                 {previewTestSummary.text?.length > 0 && <p><span className="font-semibold">시험 결과:</span> {previewTestSummary.text.join(', ')}</p>}

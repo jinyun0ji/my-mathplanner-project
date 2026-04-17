@@ -27,7 +27,7 @@ export default function LessonReportList({ reports = [] }) {
                             <p className="text-xs font-semibold text-gray-500">{report.lessonDate} · {report.className || report.classId}</p>
                             <span className="text-[11px] px-2 py-1 rounded-full bg-emerald-50 text-emerald-700 font-semibold">발송됨</span>
                         </div>
-                        {report.learnedTopics && <p className="text-sm text-gray-700">오늘 배운 내용: {report.learnedTopics}</p>}
+                        {report.learnedTopics && <p className="text-sm text-gray-700">진도: {report.learnedTopics}</p>}
                         {report.attendanceStatus && <p className="text-sm text-gray-700">출결: {report.attendanceStatus}</p>}
                         {homeworkLines.length > 0 && <p className="text-sm text-gray-700">과제 수행: {homeworkLines.join(' · ')}</p>}
                         {testLines.length > 0 && <p className="text-sm text-gray-700">시험 결과: {testLines.join(' · ')}</p>}

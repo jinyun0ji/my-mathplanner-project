@@ -752,6 +752,8 @@ export default function ParentHome({
     const [attendanceDetailTarget, setAttendanceDetailTarget] = useState(null);
     const [clinicPageSize, setClinicPageSize] = useState(100);
     const [lessonPageSize, setLessonPageSize] = useState(15);
+    const [lessonReportClassFilter, setLessonReportClassFilter] = useState('all');
+    const [showAllLessonReports, setShowAllLessonReports] = useState(false);
     const [openClinicCommentIds, setOpenClinicCommentIds] = useState(() => new Set());
 
 
@@ -1205,11 +1207,6 @@ export default function ParentHome({
         return classList.filter((cls) => filteredIds.has(String(cls?.id || '')));
     }, [classList, filteredClasses]);
 
-    const lessonsBySelectedClass = useMemo(() => {
-        if (!selectedClassId) return [];
-        return recentLessons.filter((lesson) => String(lesson.classId) === String(selectedClassId));
-    }, [recentLessons, selectedClassId]);
-
     const homeworkBySelectedClass = useMemo(() => {
         if (!selectedClassId) return [];
         return myHomeworkStats
@@ -1267,10 +1264,31 @@ export default function ParentHome({
         .filter((report) => report?.status === 'sent' && String(report?.studentId || '') === String(activeChildId || ''))
         .map((report) => ({ ...report, className: classes.find((c) => String(c.id) === String(report.classId))?.name || report.classId }))
         .sort((a, b) => String(b.lessonDate || '').localeCompare(String(a.lessonDate || ''))), [lessonReports, activeChildId, classes]);
+    const lessonReportsBySelectedClass = useMemo(() => {
+        if (!selectedClassId) return [];
+        return sentLessonReports.filter((report) => String(report.classId) === String(selectedClassId));
+    }, [selectedClassId, sentLessonReports]);
+    const lessonReportClassOptions = useMemo(() => {
+        const map = new Map();
+        sentLessonReports.forEach((report) => {
+            const classId = String(report.classId || '');
+            if (!classId) return;
+            map.set(classId, report.className || classId);
+        });
+        return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
+    }, [sentLessonReports]);
+    const filteredLessonReports = useMemo(() => {
+        if (lessonReportClassFilter === 'all') return sentLessonReports;
+        return sentLessonReports.filter((report) => String(report.classId || '') === String(lessonReportClassFilter));
+    }, [lessonReportClassFilter, sentLessonReports]);
+    const visibleLessonReports = useMemo(
+        () => (showAllLessonReports ? filteredLessonReports : filteredLessonReports.slice(0, 3)),
+        [filteredLessonReports, showAllLessonReports],
+    );
 
     const navItems = [
         { id: 'home', icon: 'home', label: '홈' },
-        { id: 'report', icon: 'clipboardCheck', label: '학습리포트' },
+        { id: 'report', icon: 'clipboardCheck', label: '수업리포트' },
         { id: 'schedule', icon: 'calendar', label: '일정' },
         { id: 'payment', icon: 'creditCard', label: '결제' },
         { id: 'menu', icon: 'menu', label: '전체' },
@@ -1383,7 +1401,7 @@ export default function ParentHome({
                                         </div>
                                     </div>
                                     <div className="flex flex-wrap gap-2 mt-6">
-                                        <button onClick={() => setActiveTab('report')} className="bg-white text-sky-950 px-4 py-2 rounded-xl font-bold text-sm shadow-md hover:-translate-y-0.5 transition-transform">학습 리포트 보기</button>
+                                        <button onClick={() => setActiveTab('report')} className="bg-white text-sky-950 px-4 py-2 rounded-xl font-bold text-sm shadow-md hover:-translate-y-0.5 transition-transform">수업 리포트 보기</button>
                                         <button onClick={() => setActiveTab('schedule')} className="bg-blue-900/70 border border-white/20 text-white px-4 py-2 rounded-xl font-bold text-sm hover:bg-blue-800/80 transition-colors">일정 확인</button>
                                         <button onClick={() => setActiveTab('payment')} className="bg-blue-900/70 border border-white/20 text-white px-4 py-2 rounded-xl font-bold text-sm hover:bg-blue-800/80 transition-colors">결제 현황</button>
                                     </div>
@@ -1471,24 +1489,64 @@ export default function ParentHome({
                                             <div className="flex items-center justify-between px-1">
                                                 <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
                                                     <Icon name="clipboardCheck" className="w-5 h-5 text-indigo-600" />
-                                                    발송된 회차별 수업 리포트
+                                                    발송된 수업 리포트
                                                 </h3>
-                                                <span className="text-xs text-gray-400 font-semibold">총 {sentLessonReports.length}건</span>
+                                                <span className="text-xs text-gray-400 font-semibold">총 {filteredLessonReports.length}건</span>
+                                            </div>
+                                            <div className="flex flex-wrap gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setLessonReportClassFilter('all');
+                                                        setShowAllLessonReports(false);
+                                                    }}
+                                                    className={lessonReportClassFilter === 'all'
+                                                        ? 'text-xs font-semibold text-indigo-700 bg-indigo-50 px-3 py-1.5 rounded-full border border-indigo-100'
+                                                        : 'text-xs font-semibold text-gray-500 bg-gray-50 px-3 py-1.5 rounded-full border border-gray-200'}
+                                                >
+                                                    전체 클래스
+                                                </button>
+                                                {lessonReportClassOptions.map((option) => (
+                                                    <button
+                                                        key={option.id}
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setLessonReportClassFilter(option.id);
+                                                            setShowAllLessonReports(false);
+                                                        }}
+                                                        className={lessonReportClassFilter === option.id
+                                                            ? 'text-xs font-semibold text-indigo-700 bg-indigo-50 px-3 py-1.5 rounded-full border border-indigo-100'
+                                                            : 'text-xs font-semibold text-gray-500 bg-gray-50 px-3 py-1.5 rounded-full border border-gray-200'}
+                                                    >
+                                                        {option.name}
+                                                    </button>
+                                                ))}
                                             </div>
                                             <div className="space-y-3">
-                                                {sentLessonReports.map((report) => (
+                                                {visibleLessonReports.map((report) => (
                                                     <div key={report.id} className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm space-y-2">
                                                         <p className="text-[11px] text-gray-400 font-semibold">{report.lessonDate} • {report.className}</p>
-                                                        {report.learnedTopics && <p className="text-sm text-gray-700">오늘 배운 내용: {report.learnedTopics}</p>}
+                                                        {report.learnedTopics && <p className="text-sm text-gray-700">진도: {report.learnedTopics}</p>}
                                                         {report.attendanceStatus && <p className="text-sm text-gray-700">출결: {report.attendanceStatus}</p>}
                                                         {Array.isArray(report?.homeworkSummary?.text) && report.homeworkSummary.text.length > 0 && <p className="text-sm text-gray-700">과제 수행: {report.homeworkSummary.text.join(' · ')}</p>}
                                                         {Array.isArray(report?.testSummary?.text) && report.testSummary.text.length > 0 && <p className="text-sm text-gray-700">시험 결과: {report.testSummary.text.join(' · ')}</p>}
                                                         {report.comment && <p className="text-sm text-indigo-700">코멘트: {report.comment}</p>}
                                                     </div>
                                                 ))}
-                                                {sentLessonReports.length === 0 && (
+                                                {filteredLessonReports.length === 0 && (
                                                     <div className="p-6 text-center bg-white border border-dashed border-gray-200 rounded-2xl text-sm text-gray-400">
                                                         발송된 수업 리포트가 아직 없습니다.
+                                                    </div>
+                                                )}
+                                                {filteredLessonReports.length > 3 && (
+                                                    <div className="px-1">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setShowAllLessonReports((prev) => !prev)}
+                                                            className="text-xs font-semibold text-gray-700 bg-gray-100 px-3 py-1.5 rounded-full border border-gray-200 hover:bg-gray-200 active:scale-95 transition"
+                                                        >
+                                                            {showAllLessonReports ? '접기' : '이전 리포트 더보기'}
+                                                        </button>
                                                     </div>
                                                 )}
                                             </div>
@@ -1496,7 +1554,7 @@ export default function ParentHome({
                                         <section className="bg-white rounded-3xl border border-gray-100 shadow-sm p-5 md:p-6 space-y-4">
                                             <div className="flex items-center justify-between gap-3">
                                                 <div>
-                                                    <p className="text-[11px] font-semibold text-indigo-600 uppercase tracking-[0.2em]">학습 리포트</p>
+                                                    <p className="text-[11px] font-semibold text-indigo-600 uppercase tracking-[0.2em]">수업 리포트</p>
                                                     <h2 className="text-2xl font-extrabold text-gray-900">{activeChildName} 리포트 요약</h2>
                                                     <p className="text-sm text-gray-600">최근 기록 위주로 빠르게 확인하세요.</p>
                                                 </div>
@@ -1705,7 +1763,7 @@ export default function ParentHome({
                                                         }}
                                                         className="text-xs text-gray-500 underline"
                                                     >
-                                                        학습리포트로 돌아가기
+                                                        수업 리포트로 돌아가기
                                                     </button>
                                                 </div>
                                                 <div className="flex gap-2 mb-4">
@@ -1792,7 +1850,7 @@ export default function ParentHome({
                                                             }}
                                                             className="text-xs text-gray-400 underline"
                                                         >
-                                                            학습리포트로 돌아가기
+                                                            수업 리포트로 돌아가기
                                                         </button>
                                                     </div>
                                                 </div>
@@ -1800,36 +1858,22 @@ export default function ParentHome({
                                                 <div className="space-y-3">
                                                     <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
                                                         <Icon name="clipboard" className="w-5 h-5 text-indigo-600" />
-                                                        최근 수업 기록
+                                                        클래스 수업 리포트
                                                     </h3>
                                                     <div className="space-y-3">
-                                                        {lessonsBySelectedClass.map((lesson) => (
-                                                            <div key={lesson.id} className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm flex flex-col gap-2">
-                                                                <div className="flex items-start justify-between gap-3">
-                                                                    <div className="space-y-1 min-w-0">
-                                                                        <p className="text-[11px] text-gray-400 font-semibold">{lesson.date} • {lesson.className}</p>
-                                                                        <p className="text-sm text-gray-500">{lesson.teacher} 선생님</p>
-                                                                        <p className="text-base font-bold text-gray-900 line-clamp-2">{lesson.comment}</p>
-                                                                    </div>
-                                                                </div>
-                                                                <div className="flex flex-wrap gap-2 mt-1">
-                                                                    <StatusPill icon="user" label={lesson.attendance} tone={['결석', '지각'].includes(lesson.attendance) ? 'warning' : 'info'} />
-                                                                    <StatusPill
-                                                                        icon="fileText"
-                                                                        label={shouldShowHomework(lesson.attendance) ? (lesson.homeworkStatus ?? '과제 정보 없음') : '과제 없음'}
-                                                                        tone={shouldShowHomework(lesson.attendance) && ['미제출', '숙제 출제'].includes(lesson.homeworkStatus) ? 'warning' : 'default'}
-                                                                    />
-                                                                    <StatusPill
-                                                                        icon="edit"
-                                                                        label={shouldShowTest(lesson.attendance) ? (lesson.testStatus ?? '시험 정보 없음') : '시험 없음'}
-                                                                        tone={shouldShowTest(lesson.attendance) && lesson.testStatus === '미응시' ? 'warning' : 'default'}
-                                                                    />
-                                                                </div>
+                                                        {lessonReportsBySelectedClass.map((report) => (
+                                                            <div key={report.id} className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm space-y-2">
+                                                                <p className="text-[11px] text-gray-400 font-semibold">{report.lessonDate} • {report.className}</p>
+                                                                {report.learnedTopics && <p className="text-sm text-gray-700">진도: {report.learnedTopics}</p>}
+                                                                {report.attendanceStatus && <p className="text-sm text-gray-700">출결: {report.attendanceStatus}</p>}
+                                                                {Array.isArray(report?.homeworkSummary?.text) && report.homeworkSummary.text.length > 0 && <p className="text-sm text-gray-700">과제 수행: {report.homeworkSummary.text.join(' · ')}</p>}
+                                                                {Array.isArray(report?.testSummary?.text) && report.testSummary.text.length > 0 && <p className="text-sm text-gray-700">시험 결과: {report.testSummary.text.join(' · ')}</p>}
+                                                                {report.comment && <p className="text-sm text-indigo-700">코멘트: {report.comment}</p>}
                                                             </div>
                                                         ))}
-                                                        {lessonsBySelectedClass.length === 0 && (
+                                                        {lessonReportsBySelectedClass.length === 0 && (
                                                             <div className="p-6 text-center bg-white border border-dashed border-gray-200 rounded-2xl text-sm text-gray-400">
-                                                                이 반의 수업 기록이 없습니다.
+                                                                이 반의 수업 리포트가 없습니다.
                                                             </div>
                                                         )}
                                                     </div>
