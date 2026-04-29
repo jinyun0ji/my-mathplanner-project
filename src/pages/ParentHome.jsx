@@ -814,7 +814,15 @@ export default function ParentHome({
     const { notifications, hasUnread, unreadCount, lastReadAt, isLoading, isMetaLoading, setNotifications } = useNotifications(viewerUid);
 
     const buildClinicTeacher = useCallback((log) => (
-        log?.tutorName || log?.tutor || log?.teacherName || log?.teacher || '-'
+        log?.tutorName
+        || log?.tutor
+        || log?.assistantName
+        || log?.assistant
+        || log?.teacherName
+        || log?.teacher
+        || log?.updatedByName
+        || log?.createdByName
+        || '-'
     ), []);
 
     const buildClinicComment = useCallback((log) => getClinicComment(log), []);
@@ -1014,6 +1022,11 @@ export default function ParentHome({
         const num = Number(value);
         return Number.isFinite(num) ? num.toFixed(1) : null;
     };
+    const formatScoreDisplay = useCallback((value) => {
+        if (typeof value === 'string') return value;
+        if (!Number.isFinite(Number(value))) return '-';
+        return formatGradeScoreText(null, Number(value)).scoreText;
+    }, []);
 
     const isAttendanceMissing = (v) =>
         v == null || String(v).trim() === '' || String(v).includes('미기록');
@@ -2009,16 +2022,18 @@ export default function ParentHome({
                                                         <div className="divide-y divide-gray-100">
                                                             {testsBySelectedClass.map((test) => {
                                                                 const attemptedCount = Number.isFinite(test.attemptedCount) ? test.attemptedCount : null;
-                                                                const averageLabel = formatAverage(test.classAverage);
-                                                                const hasValidAverage = averageLabel !== null;
-                                                                const hasValidMax = isValidNumber(test.classMax);
+                                                                const averageLabel = formatScoreDisplay(test.classAverage);
+                                                                const maxLabel = formatScoreDisplay(test.classMax);
+                                                                const hasValidAverage = averageLabel !== '-';
+                                                                const hasValidMax = maxLabel !== '-';
+                                                                const studentScoreLabel = formatScoreDisplay(test.studentScore);
                                                                 const statsText = (() => {
                                                                     if (!test.stats) return '통계 준비 중';
                                                                     if (attemptedCount === 0) return '반 평균 없음';
 
                                                                     const parts = [];
                                                                     if (hasValidAverage) parts.push(`평균 ${averageLabel}점`);
-                                                                    if (hasValidMax) parts.push(`최고 ${test.classMax}점`);
+                                                                    if (hasValidMax) parts.push(`최고 ${maxLabel}점`);
 
                                                                     return parts.length > 0 ? parts.join(' / ') : '통계 준비 중';
                                                                 })();
@@ -2029,7 +2044,7 @@ export default function ParentHome({
                                                                                 <p className="text-sm font-bold text-gray-900">{test.name}</p>
                                                                                 <p className="text-xs text-gray-500">{test.date}</p>
                                                                             </div>
-                                                                            <span className="text-xs font-bold text-indigo-700 bg-indigo-50 px-3 py-1 rounded-full border border-indigo-100">{test.studentScore ?? '미응시'}</span>
+                                                                            <span className="text-xs font-bold text-indigo-700 bg-indigo-50 px-3 py-1 rounded-full border border-indigo-100">{studentScoreLabel}</span>
                                                                         </div>
                                                                         <div className="flex items-center justify-between text-xs text-gray-600">
                                                                             <span></span>
@@ -2099,12 +2114,16 @@ export default function ParentHome({
                                                         correct: Number(hw.correctCount ?? hw.correct ?? 0),
                                                         wrong: Number(hw.wrongCount ?? hw.incorrectCount ?? hw.wrong ?? 0),
                                                         fixed: Number(hw.fixedCount ?? hw.revisedCount ?? hw.fixed ?? 0),
-                                                        remaining: Number(hw.remainingCount ?? hw.unsolvedCount ?? hw.remaining ?? 0),
-                                                    };
-                                                    const total = Object.values(counts).reduce((sum, value) => sum + (Number.isFinite(value) ? value : 0), 0);
+                                                        };
+                                                    const completedCount = counts.correct + counts.wrong + counts.fixed;
+                                                    const totalCount = Number(hw.totalCount ?? hw.totalQuestions ?? hw.questionNumbers?.length ?? 0);
+                                                    counts.remaining = Math.max(totalCount - completedCount, 0);
+                                                    const total = Number.isFinite(totalCount) && totalCount > 0
+                                                        ? totalCount
+                                                        : Object.values(counts).reduce((sum, value) => sum + (Number.isFinite(value) ? value : 0), 0);
                                                     const width = (value) => (total > 0 ? `${(value / total) * 100}%` : '0%');
                                                     const detailKey = `${section.classId}-${hw.id}`;
-                                                    const questionDetail = hw.questionNumbers || hw.questionDetail || hw.items || hw.detailText || null;
+                                                    const questionDetail = hw.questionNumbers || hw.rangeString || hw.totalQuestions || hw.questionDetail || hw.items || hw.detailText || null;
                                                     const questionText = Array.isArray(questionDetail)
                                                         ? questionDetail.join(', ')
                                                         : (typeof questionDetail === 'string' ? questionDetail : null);
@@ -2128,7 +2147,7 @@ export default function ParentHome({
                                                                 <span>고침 {counts.fixed}</span>
                                                                 <span>남음 {counts.remaining}</span>
                                                             </div>
-                                                            {questionText && (
+                                                            {/* {questionText && (
                                                                 <>
                                                                     <button type="button" onClick={() => toggleHomeworkDetail(detailKey)} className="text-xs font-semibold text-indigo-700">
                                                                         문항 번호 {expandedHomeworkDetails[detailKey] ? '숨기기' : '보기'}
@@ -2137,7 +2156,7 @@ export default function ParentHome({
                                                                         <p className="text-xs text-gray-600 bg-gray-50 rounded-lg p-2">문항: {questionText}</p>
                                                                     )}
                                                                 </>
-                                                            )}
+                                                            )} */}
                                                         </article>
                                                     );
                                                 })}
@@ -2155,16 +2174,19 @@ export default function ParentHome({
                                                     <p className="text-sm text-gray-500">시험 기록이 없습니다.</p>
                                                 ) : section.grades.map((test) => {
                                                     const stats = classTestStats?.[test.id] || classTestStats?.[`${test.classId}_${test.id}`] || {};
-                                                    const average = Number.isFinite(stats?.average) ? stats.average : test.average ?? test.classAverage ?? '-';
-                                                    const maxScore = Number.isFinite(stats?.maxScore) ? stats.maxScore : (test.maxScore ?? '-');
+                                                    const averageRaw = Number.isFinite(stats?.average) ? stats.average : test.average ?? test.classAverage ?? null;
+                                                    const maxScoreRaw = Number.isFinite(stats?.maxScore) ? stats.maxScore : (test.maxScore ?? test.classMax ?? null);
+                                                    const studentScoreLabel = formatScoreDisplay(test.studentScore);
+                                                    const averageLabel = formatScoreDisplay(averageRaw);
+                                                    const maxScoreLabel = formatScoreDisplay(maxScoreRaw);
                                                     return (
                                                         <article key={test.id} className="rounded-xl border border-gray-200 p-3 space-y-1 text-sm text-gray-700">
                                                             <p className="font-bold text-gray-900">{test.name || '시험'}</p>
                                                             <p className="text-xs text-gray-500">{test.date || '-'}</p>
                                                             <div className="grid grid-cols-3 gap-2 text-xs mt-2">
-                                                                <span>학생 점수: <strong>{test.studentScore ?? '미응시'}</strong></span>
-                                                                <span>평균: <strong>{average}</strong></span>
-                                                                <span>최고점: <strong>{maxScore}</strong></span>
+                                                                <span>학생 점수: <strong>{studentScoreLabel}</strong></span>
+                                                                <span>평균: <strong>{averageLabel}</strong></span>
+                                                                <span>최고점: <strong>{maxScoreLabel}</strong></span>
                                                             </div>
                                                         </article>
                                                     );
@@ -2188,7 +2210,7 @@ export default function ParentHome({
                                                         <article key={att.id} className="rounded-xl border border-gray-200 p-3 space-y-1">
                                                             <p className="text-sm font-bold text-gray-900">{att.date || '-'}</p>
                                                             <p className="text-xs text-gray-700">상태: {att.attendance || '-'}</p>
-                                                            <p className="text-xs text-gray-500">메모/사유: {att.memo || '-'}</p>
+                                                            {/* <p className="text-xs text-gray-500">메모/사유: {att.memo || '-'}</p> */}
                                                         </article>
                                                     ))}
                                             </section>
@@ -2201,15 +2223,44 @@ export default function ParentHome({
                                         <h3 className="text-base font-bold text-gray-900">클리닉</h3>
                                         {visibleCompletedClinics.length === 0 ? (
                                             <p className="text-sm text-gray-500">클리닉 기록이 없습니다.</p>
-                                        ) : visibleCompletedClinics.slice(0, 20).map((log) => (
-                                            <article key={log.id || `${log.date}-${log.checkIn || ''}`} className="rounded-xl border border-gray-200 p-3 space-y-1 text-xs text-gray-700">
-                                                <p><strong>날짜:</strong> {log.date || '-'}</p>
-                                                <p><strong>시간:</strong> {log.checkIn || '-'} {log.checkOut ? `~ ${log.checkOut}` : ''}</p>
-                                                <p><strong>상태:</strong> {log.displayStatus || '-'}</p>
-                                                <p><strong>선생님:</strong> {log.teacherName || log.teacher || '-'}</p>
-                                                <p><strong>코멘트:</strong> {log.commentResolved || '-'}</p>
-                                            </article>
-                                        ))}
+                                        ) : (
+                                            <div className="space-y-3">
+                                                <h4 className="text-sm font-bold text-gray-900 px-1">클리닉 코멘트</h4>
+                                                {visibleCompletedClinics.slice(0, 20).map((log) => {
+                                                    const commentKey = log.id ?? `${log.date}-${log.checkIn || log.checkOut || 'clinic'}`;
+                                                    const isExpanded = !!expandedHomeworkDetails[`clinic-comment-${commentKey}`];
+                                                    const commentText = String(log.commentResolved || '-');
+                                                    const isLongComment = commentText.length > 90;
+                                                    const displayedComment = isExpanded || !isLongComment
+                                                        ? commentText
+                                                        : `${commentText.slice(0, 90)}...`;
+                                                    return (
+                                                        <article key={commentKey} className="rounded-2xl border border-gray-200 bg-white p-4 space-y-2">
+                                                            <div className="flex items-start justify-between gap-3">
+                                                                <div>
+                                                                    <p className="text-xs text-gray-500">{log.date || '-'}</p>
+                                                                    <p className="text-sm font-bold text-gray-900">{log.checkIn || '-'}{log.checkOut ? ` ~ ${log.checkOut}` : ''}</p>
+                                                                </div>
+                                                                <span className="text-xs font-bold text-indigo-700 bg-indigo-50 border border-indigo-100 rounded-full px-2 py-1">
+                                                                    {getClinicDisplayStatus(log)}
+                                                                </span>
+                                                            </div>
+                                                            <p className="text-xs text-gray-600">작성자/담당 조교: {buildClinicTeacher(log)}</p>
+                                                            <p className="text-xs text-gray-700 leading-5">{displayedComment}</p>
+                                                            {isLongComment && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => toggleHomeworkDetail(`clinic-comment-${commentKey}`)}
+                                                                    className="text-xs font-semibold text-indigo-700"
+                                                                >
+                                                                    {isExpanded ? '접기' : '더보기'}
+                                                                </button>
+                                                            )}
+                                                        </article>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
                                     </section>
                                 )}
                             </div>
