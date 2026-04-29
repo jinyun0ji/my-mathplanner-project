@@ -30,6 +30,7 @@ import { formatGradeScoreText } from '../domain/grade/grade.service';
 import NotificationsIcon from '@mui/icons-material/Notifications';
 import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
 import ParentSessionReport from './parent/ParentSessionReport'; // ✅ 신규 리포트 컴포넌트
+import Messenger from '../components/Communication/Messenger';
 import { generateSessionReport } from '../utils/reportHelper'; // ✅ 리포트 데이터 생성 헬퍼
 import useNotifications from '../notifications/useNotifications';
 import NotificationList from '../notifications/NotificationList';
@@ -538,7 +539,7 @@ const ParentDashboard = ({
 
 // --- 메인 페이지 컴포넌트 ---
 export default function ParentHome({
-    userId, students, classes, homeworkAssignments, homeworkResults,
+    userId, students, parents = [], classes, homeworkAssignments, homeworkResults,
     attendanceLogs, lessonLogs, notices, tests, grades, classTestStats,
     videoProgress, clinicLogs, lessonReports = [], onLogout,
     externalSchedules, onSaveExternalSchedule, onDeleteExternalSchedule,
@@ -667,6 +668,7 @@ export default function ParentHome({
 // ✅ 리포트 뷰 상태
     const [reportViewMode, setReportViewMode] = useState('overview'); // 'overview' | 'byClass'
     const [learningSubTab, setLearningSubTab] = useState('homework');
+    const [isMessengerOpen, setIsMessengerOpen] = useState(false);
     const [selectedClassId, setSelectedClassId] = useState(null);
     const [classFilter, setClassFilter] = useState('ongoing'); // 기본: 진행중
     const [expandedSections, setExpandedSections] = useState({ homework: false, grades: false });
@@ -745,6 +747,7 @@ export default function ParentHome({
     const lessonSectionRef = useRef(null);
     const clinicSectionRef = useRef(null);
     const classStatusRef = useRef(null);
+    const learningSectionRefs = useRef({ homework: null, grades: null, attendance: null, clinic: null });
 
     const [attendanceDetailTarget, setAttendanceDetailTarget] = useState(null);
     const [clinicPageSize, setClinicPageSize] = useState(100);
@@ -1276,6 +1279,54 @@ export default function ParentHome({
         [filteredLessonReports, showAllLessonReports],
     );
 
+
+    const learningDataByClass = useMemo(() => {
+        const classMap = new Map(myClasses.map((cls) => [String(cls.id), cls]));
+        const homeworkMap = new Map();
+        myHomeworkStats.forEach((hw) => {
+            const classId = String(hw.classId || '');
+            if (!classId) return;
+            if (!homeworkMap.has(classId)) homeworkMap.set(classId, []);
+            homeworkMap.get(classId).push(hw);
+        });
+
+        const gradesMap = new Map();
+        (filteredTests || []).forEach((test) => {
+            const classId = String(test.classId || '');
+            if (!classId) return;
+            if (!gradesMap.has(classId)) gradesMap.set(classId, []);
+            gradesMap.get(classId).push(test);
+        });
+
+        const attendanceMap = new Map();
+        attendanceHistory.forEach((item) => {
+            const classId = String(item.classId || '');
+            if (!classId) return;
+            if (!attendanceMap.has(classId)) attendanceMap.set(classId, []);
+            attendanceMap.get(classId).push(item);
+        });
+
+        return orderedClasses.map((cls) => ({
+            classId: String(cls.id),
+            classInfo: classMap.get(String(cls.id)) || cls,
+            homework: homeworkMap.get(String(cls.id)) || [],
+            grades: (gradesMap.get(String(cls.id)) || []).map((test) => {
+                const studentRecord = grades?.[activeChildId]?.[test.id] || {};
+                return {
+                    ...test,
+                    studentScore: studentRecord.score ?? studentRecord.result ?? '미응시',
+                };
+            }).sort((a,b)=>String(b.date||'').localeCompare(String(a.date||''))),
+            attendance: (attendanceMap.get(String(cls.id)) || []).slice(0, 10),
+        }));
+    }, [myClasses, myHomeworkStats, filteredTests, attendanceHistory, orderedClasses, grades, activeChildId]);
+
+    useEffect(() => {
+        if (activeTab !== 'learning') return;
+        const target = learningSectionRefs.current?.[learningSubTab];
+        if (target?.scrollIntoView) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, [activeTab, learningSubTab]);
+
     const navItems = [
         { id: 'home', icon: 'home', label: '홈' },
         { id: 'report', icon: 'clipboardCheck', label: '수업리포트' },
@@ -1313,7 +1364,7 @@ export default function ParentHome({
                             <NotificationsIcon style={{ fontSize: 20 }} />
                             {hasUnread && <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />}
                         </button>
-                        <button type="button" onClick={() => setActiveTab('more')} className="relative p-2 rounded-lg border border-gray-200 text-gray-600">
+                        <button type="button" onClick={() => setIsMessengerOpen(true)} className="relative p-2 rounded-lg border border-gray-200 text-gray-600">
                             <ChatBubbleOutlineIcon style={{ fontSize: 20 }} />
                         </button>
                     </div>
@@ -2005,7 +2056,33 @@ export default function ParentHome({
                             />
                         )}
 
-                        {activeTab === 'learning' && <div className="text-sm text-gray-600">학습관리 화면 ({learningSubTab})</div>}
+                        {activeTab === 'learning' && (
+                            <div className="space-y-4">
+                                {learningDataByClass.map((section) => (
+                                    <section key={section.classId} className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm space-y-3">
+                                        <h3 className="text-base font-bold text-gray-900">{section.classInfo?.name || section.classId}</h3>
+                                        <div ref={(el) => { learningSectionRefs.current.homework = learningSectionRefs.current.homework || el; }} className="space-y-2">
+                                            <p className="text-xs font-semibold text-gray-500">과제</p>
+                                            {section.homework.slice(0, 5).map((hw) => <div key={hw.id} className="text-sm text-gray-700">• {hw.content || hw.title || '과제'} ({hw.status || '상태 미정'})</div>)}
+                                        </div>
+                                        <div ref={(el) => { learningSectionRefs.current.grades = learningSectionRefs.current.grades || el; }} className="space-y-2">
+                                            <p className="text-xs font-semibold text-gray-500">성적</p>
+                                            {section.grades.slice(0, 5).map((test) => <div key={test.id} className="text-sm text-gray-700">• {test.name || '시험'}: {test.studentScore}</div>)}
+                                        </div>
+                                        <div ref={(el) => { learningSectionRefs.current.attendance = learningSectionRefs.current.attendance || el; }} className="space-y-2">
+                                            <p className="text-xs font-semibold text-gray-500">출결</p>
+                                            {section.attendance.slice(0, 5).map((att) => <div key={att.id} className="text-sm text-gray-700">• {att.date} {att.attendance}</div>)}
+                                        </div>
+                                    </section>
+                                ))}
+                                <section ref={(el) => { learningSectionRefs.current.clinic = el; }} className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm space-y-2">
+                                    <h3 className="text-base font-bold text-gray-900">클리닉</h3>
+                                    {visibleCompletedClinics.slice(0, 10).map((log) => (
+                                        <div key={log.id || `${log.date}-${log.checkIn || ''}`} className="text-sm text-gray-700">• {log.date} {log.displayStatus} {log.commentResolved ? `- ${log.commentResolved}` : ''}</div>
+                                    ))}
+                                </section>
+                            </div>
+                        )}
 
                         {activeTab === 'more' && (
                             <MenuTab student={activeChild} onUpdateStudent={() => {}} onLogout={onLogout} videoMemos={{}} lessonLogs={[]} onLinkToMemo={() => {}} notices={visibleNotices} setActiveTab={setActiveTab} isParent={true} />
@@ -2053,6 +2130,18 @@ export default function ParentHome({
                     attendanceLogs={attendanceLogs}
                     studentId={activeChildId}
                 />
+            )}
+
+            {isMessengerOpen && (
+                <div className="fixed inset-0 z-[80] bg-black/40 p-4 flex items-center justify-center" onClick={() => setIsMessengerOpen(false)}>
+                    <div className="w-full max-w-4xl max-h-[90vh] overflow-y-auto bg-white rounded-2xl p-4" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center justify-between mb-3">
+                            <h3 className="text-base font-bold text-gray-900">메신저</h3>
+                            <button type="button" onClick={() => setIsMessengerOpen(false)} className="text-sm text-gray-500">닫기</button>
+                        </div>
+                        <Messenger userId={userId} userRole="parent" students={students} parents={parents} classes={classes} />
+                    </div>
+                </div>
             )}
 
             <NotificationList
