@@ -279,6 +279,51 @@ export const getHomeworkStats = (results, questionNumbers = []) => {
     return { correctCount, wrongCount, fixedCount, remainingCount, completionRate };
 };
 
+export const buildHomeworkQuestionStats = ({ assignment, result }) => {
+    const questionNumbers = getAssignmentQuestionNumbers(assignment);
+    const totalCount = questionNumbers.length;
+    const normalized = normalizeHomeworkResultMapForDisplay(result, questionNumbers, {
+        assignmentId: assignment?.id,
+    });
+    const allowed = new Set(questionNumbers.map((q) => String(q)));
+    const filteredEntries = Object.entries(normalized).filter(([key]) => allowed.has(String(key)));
+    const statusByQuestion = new Map(filteredEntries.map(([key, value]) => [Number(key), String(value)]));
+
+    const correctQuestionNumbers = [];
+    const wrongQuestionNumbers = [];
+    const fixedQuestionNumbers = [];
+    const remainingQuestionNumbers = [];
+
+    questionNumbers.forEach((questionNumber) => {
+        const status = statusByQuestion.get(Number(questionNumber));
+        if (status === '맞음') correctQuestionNumbers.push(questionNumber);
+        else if (status === '틀림') wrongQuestionNumbers.push(questionNumber);
+        else if (status === '고침') fixedQuestionNumbers.push(questionNumber);
+        else remainingQuestionNumbers.push(questionNumber);
+    });
+
+    const correctCount = correctQuestionNumbers.length;
+    const wrongCount = wrongQuestionNumbers.length;
+    const fixedCount = fixedQuestionNumbers.length;
+    const completedCount = correctCount + wrongCount + fixedCount;
+    const remainingCount = remainingQuestionNumbers.length;
+    const completionRate = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
+
+    return {
+        totalCount,
+        completedCount,
+        correctCount,
+        wrongCount,
+        fixedCount,
+        remainingCount,
+        completionRate,
+        correctQuestionNumbers,
+        wrongQuestionNumbers,
+        fixedQuestionNumbers,
+        remainingQuestionNumbers,
+    };
+};
+
 export const applyHomeworkProgressCap = (progressPercent = 0, resultData, totalQuestions = null) => {
     const safeProgress = Number.isFinite(progressPercent) ? progressPercent : 0;
     const progress = computeHomeworkProgress(resultData, totalQuestions);

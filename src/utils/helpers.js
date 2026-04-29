@@ -1,6 +1,6 @@
 // src/utils/helpers.js
 import React from 'react';
-import { computeHomeworkProgress, getAssignmentQuestionNumbers, isAssignmentAssignedToStudent, normalizeHomeworkResultMapForDisplay } from '../domain/homework/homework.service';
+import { buildHomeworkQuestionStats, computeHomeworkProgress, getAssignmentQuestionNumbers, isAssignmentAssignedToStudent, normalizeHomeworkResultMapForDisplay } from '../domain/homework/homework.service';
 import { isClosedDate, normalizeDateToYMD } from './closures';
 import { getTotalScore, isAbsentGrade } from '../domain/grade/grade.service';
 import { 
@@ -510,16 +510,12 @@ export const calculateHomeworkStats = (studentId, assignments, results, options 
             });
             const totalQuestions = questionNumbers.length;
             const progress = computeHomeworkProgress(studentResults, questionNumbers);
+            const questionStats = buildHomeworkQuestionStats({ assignment: hw, result: rawResult });
             const assignmentType = hw.type || 'homework';
 
             const statusLabel = assignmentType === 'video_makeup'
                 ? '출제됨'
                 : progress.status;
-
-            const incorrectQuestionList = Object.keys(studentResults)
-                .filter(qNum => studentResults[qNum] === '틀림')
-                .map(Number)
-                .sort((a, b) => a - b);
 
             const resolvedCheckedDate = getLastCheckedDate(rawResult) ?? rawResult?.updatedAt ?? null;
 
@@ -530,11 +526,16 @@ export const calculateHomeworkStats = (studentId, assignments, results, options 
                 completionRate: progress.completionRate,
                 status: statusLabel,
                 checkedCount: progress.checkedCount,
-                completedCount: progress.checkedCount,
-                incorrectCount: progress.incorrectCount,
-                uncheckedCount: progress.uncheckedCount,
+                completedCount: questionStats.completedCount,
+                correctCount: questionStats.correctCount,
+                incorrectCount: questionStats.wrongCount,
+                uncheckedCount: questionStats.remainingCount,
+                fixedCount: questionStats.fixedCount,
                 isComplete: progress.checkedCount >= totalQuestions && progress.incorrectCount === 0,
-                incorrectQuestionList,
+                correctQuestionNumbers: questionStats.correctQuestionNumbers,
+                wrongQuestionNumbers: questionStats.wrongQuestionNumbers,
+                fixedQuestionNumbers: questionStats.fixedQuestionNumbers,
+                remainingQuestionNumbers: questionStats.remainingQuestionNumbers,
             };
         });
 };

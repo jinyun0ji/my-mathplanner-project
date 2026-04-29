@@ -10,9 +10,7 @@ import {
     doc,
     serverTimestamp,
 } from 'firebase/firestore';
-import {
-    ScheduleTab, MenuTab, BoardTab
-} from '../components/StudentTabs';
+import { ScheduleTab, MenuTab } from '../components/StudentTabs';
 import ParentClassroomView from './parent/ParentClassroomView';
 import StudentHeader from '../components/StudentHeader';
 import {
@@ -447,9 +445,6 @@ const ParentDashboard = ({
 
     // 3. 확인 필요 항목 (Action Items)
     const actionItems = [];
-    if (unpaidPayments.length > 0) {
-        actionItems.push({ id: 'pay', type: 'danger', text: `미납된 수업료/교재비가 ${unpaidPayments.length}건 있습니다.`, link: 'payment' });
-    }
     if (statusData.attend.label !== '정상') {
         actionItems.push({ id: 'att', type: 'warning', text: '최근 출결 상태 확인이 필요합니다.', link: 'report' });
     }
@@ -857,13 +852,6 @@ export default function ParentHome({
         if (!activeChild) return;
         let combinedNotices = Array.isArray(notices) ? [...notices] : [];
 
-        if (unpaidPayments.length > 0) {
-            combinedNotices.unshift({
-                id: `payment-alert-${activeChildId}`, title: '🚨 수업료/교재비 미납 안내',
-                content: `${activeChildName} 학생의 미납 내역이 ${unpaidPayments.length}건 있습니다.`,
-                author: '행정실', date: todayStr, isPinned: true
-            });
-        }
         setVisibleNotices(combinedNotices);
         }, [notices, activeChildId, unpaidPayments.length, activeChildName, activeChild]);
 
@@ -1360,16 +1348,13 @@ export default function ParentHome({
                                         <div className="space-y-3">
                                             <p className="text-xs uppercase tracking-[0.2em] text-sky-200 font-semibold">학부모 홈</p>
                                             <h2 className="text-2xl md:text-3xl font-extrabold tracking-tight">{activeChildName} 학습 현황</h2>
-                                            <p className="text-sm text-sky-100">오늘 바로 확인해야 할 과제, 일정, 결제 정보를 한눈에 모았습니다.</p>
+                                            <p className="text-sm text-sky-100">오늘 바로 확인해야 할 과제와 일정 정보를 한눈에 모았습니다.</p>
                                             <div className="flex flex-wrap gap-2">
                                                 <span className="bg-white/10 border border-white/20 text-sky-50 px-3 py-1.5 rounded-full text-xs font-semibold">
                                                     {attendanceHistory[0] ? `최근 출결: ${attendanceHistory[0].attendance} (${attendanceHistory[0].date})` : '출결 기록 준비 중'}
                                                 </span>
                                                 <span className="bg-white/10 border border-white/20 text-sky-50 px-3 py-1.5 rounded-full text-xs font-semibold">
                                                     미제출 과제 {pendingHomeworkCount}건
-                                                </span>
-                                                <span className={`px-3 py-1.5 rounded-full text-xs font-semibold border ${unpaidPayments.length > 0 ? 'bg-red-500/20 border-red-200 text-white' : 'bg-white/10 border-white/20 text-sky-50'}`}>
-                                                    미납 {unpaidPayments.length}건
                                                 </span>
                                             </div>
                                         </div>
@@ -1442,13 +1427,13 @@ export default function ParentHome({
                                                     <Icon name="bell" className="w-4 h-4 text-indigo-600" />
                                                     공지사항
                                                 </h3>
-                                                <button onClick={() => setActiveTab('board')} className="text-xs text-indigo-600 font-semibold hover:underline">전체 보기</button>
+                                                <button onClick={() => setActiveTab('more')} className="text-xs text-indigo-600 font-semibold hover:underline">전체 보기</button>
                                             </div>
                                             <div className="space-y-2">
                                                 {noticePreview.length > 0 ? noticePreview.map(notice => (
                                                     <button 
                                                         key={notice.id} 
-                                                        onClick={() => setActiveTab('board')}
+                                                        onClick={() => setActiveTab('more')}
                                                         className="w-full text-left p-3 rounded-xl border border-gray-100 hover:border-indigo-200 hover:bg-indigo-50 transition-colors"
                                                     >
                                                         <p className="text-sm font-bold text-gray-900">{notice.title}</p>
@@ -1549,7 +1534,7 @@ export default function ParentHome({
                                             <div className="flex items-center justify-between gap-3">
                                                 <div>
                                                     <p className="text-[11px] font-semibold text-indigo-600 uppercase tracking-[0.2em]">수업 리포트</p>
-                                                    <h2 className="text-2xl font-extrabold text-gray-900">{activeChildName} 리포트 요약</h2>
+                                                    <h2 className="text-2xl font-extrabold text-gray-900">{activeChildName} 리포트</h2>
                                                     <p className="text-sm text-gray-600">최근 기록 위주로 빠르게 확인하세요.</p>
                                                 </div>
                                                 <button
@@ -2025,7 +2010,6 @@ export default function ParentHome({
                         {activeTab === 'more' && (
                             <MenuTab student={activeChild} onUpdateStudent={() => {}} onLogout={onLogout} videoMemos={{}} lessonLogs={[]} onLinkToMemo={() => {}} notices={visibleNotices} setActiveTab={setActiveTab} isParent={true} />
                         )}
-                        {activeTab === 'board' && <BoardTab notices={visibleNotices} />}
                     </div>
                 )}
             </main>
@@ -2037,7 +2021,7 @@ export default function ParentHome({
                             <button 
                                 key={item.id} 
                                 onClick={() => setActiveTab(item.id)} 
-                                className={`flex flex-col items-center justify-center w-full h-full transition-all duration-200 active:scale-95 ${activeTab === item.id || (item.id === 'menu' && activeTab === 'board') ? 'text-indigo-900' : 'text-gray-400 hover:text-gray-600'}`}
+                                className={`flex flex-col items-center justify-center w-full h-full transition-all duration-200 active:scale-95 ${activeTab === item.id ? 'text-indigo-900' : 'text-gray-400 hover:text-gray-600'}`}
                             >
                                 <div className={`mb-1 transition-transform duration-200 ${activeTab === item.id ? '-translate-y-0.5' : ''}`}>
                                     <Icon name={item.icon} className={`w-6 h-6 ${activeTab === item.id ? 'fill-current' : ''}`} strokeWidth={activeTab === item.id ? 2.5 : 2} />

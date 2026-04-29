@@ -38,18 +38,18 @@ export default function HomeworkTab({ myHomeworkStats }) {
                                 : `${hw.book || '교재 미정'} (총 ${hw.totalQuestions}문제)`}
                         </p>
                         <div className="w-full bg-gray-100 rounded-full h-2 mb-2 overflow-hidden flex">
-                            <div className="bg-green-500 h-2" style={{ width: `${(hw.completedCount / Math.max(hw.totalQuestions || 0, 1)) * 100}%` }} />
-                            <div className="bg-red-500 h-2" style={{ width: `${(hw.incorrectCount / Math.max(hw.totalQuestions || 0, 1)) * 100}%` }} />
+                            <div className="bg-green-500 h-2" style={{ width: `${((hw.correctCount || 0) / Math.max(hw.totalQuestions || 0, 1)) * 100}%` }} />
+                            <div className="bg-red-500 h-2" style={{ width: `${((hw.incorrectCount || 0) / Math.max(hw.totalQuestions || 0, 1)) * 100}%` }} />
                             <div className="bg-blue-500 h-2" style={{ width: `${((hw.fixedCount || 0) / Math.max(hw.totalQuestions || 0, 1)) * 100}%` }} />
-                            <div className="bg-gray-300 h-2" style={{ width: `${(hw.uncheckedCount / Math.max(hw.totalQuestions || 0, 1)) * 100}%` }} />
+                            <div className="bg-gray-300 h-2" style={{ width: `${((hw.uncheckedCount || 0) / Math.max(hw.totalQuestions || 0, 1)) * 100}%` }} />
                         </div>
-                        <p className="text-xs text-gray-500 mb-2">맞음 {hw.completedCount || 0} / 틀림 {hw.incorrectCount || 0} / 고침 {hw.fixedCount || 0} / 남음 {hw.uncheckedCount || 0}</p>
+                        <p className="text-xs text-gray-500 mb-2">맞음 {hw.correctCount || 0} / 틀림 {hw.incorrectCount || 0} / 고침 {hw.fixedCount || 0} / 남음 {hw.uncheckedCount || 0}</p>
                         {selectedHwId === hw.id && (
                             <div className="mt-4 pt-4 border-t border-gray-100 animate-fade-in-down">
                                 <div className="flex justify-around mb-4 text-center">
                                     <div>
                                         <p className="text-xs text-gray-500">맞음</p>
-                                        <p className="font-bold text-green-600">{hw.completedCount}</p>
+                                        <p className="font-bold text-green-600">{hw.correctCount || 0}</p>
                                     </div>
                                     <div>
                                         <p className="text-xs text-gray-500">틀림</p>
@@ -64,16 +64,19 @@ export default function HomeworkTab({ myHomeworkStats }) {
                                         <p className="font-bold text-blue-600">{hw.fixedCount || 0}</p>
                                     </div>
                                 </div>
-                                {hw.incorrectQuestionList && hw.incorrectQuestionList.length > 0 ? (
-                                    <div className="bg-red-50 p-3 rounded-xl">
-                                        <p className="text-xs font-bold text-red-600 mb-2">오답 노트</p>
-                                        <div className="flex flex-wrap gap-2">
-                                            {hw.incorrectQuestionList.map(q => (
-                                                <span key={q} className="bg-white text-red-600 text-xs font-bold px-2 py-1 rounded border border-red-100">{q}번</span>
-                                            ))}
-                                        </div>
+                                {[
+                                    { label: '맞음 문항 번호', items: hw.correctQuestionNumbers, tone: 'green' },
+                                    { label: '틀림 문항 번호', items: hw.wrongQuestionNumbers, tone: 'red' },
+                                    { label: '고침 문항 번호', items: hw.fixedQuestionNumbers, tone: 'blue' },
+                                    { label: '남음 문항 번호', items: hw.remainingQuestionNumbers, tone: 'gray' },
+                                ].map((section) => (
+                                    <div key={section.label} className="rounded-xl border border-gray-100 p-3">
+                                        <p className="text-xs font-bold text-gray-700 mb-2">{section.label}</p>
+                                        <p className="text-xs text-gray-600">
+                                            {Array.isArray(section.items) && section.items.length > 0 ? section.items.join(', ') : '없음'}
+                                        </p>
                                     </div>
-                                ) : null}
+                                ))}
                             </div>
                         )}
                     </div>
