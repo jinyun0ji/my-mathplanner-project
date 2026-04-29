@@ -249,12 +249,12 @@ export const computeHomeworkProgress = (resultData, questionNumbersOrTotal) => {
     if (checkedCount >= total && incorrectCount > 0) completionRate = 99;
     if (checkedCount >= total && incorrectCount === 0 && completionRate < 100) completionRate = 100;
 
-    let status = '검사 전';
-    if (checkedCount > 0 && checkedCount < total) status = '검사 진행 중';
-    else if (checkedCount >= total) {
-        status = incorrectCount > 0
-            ? '문제 풀이를 마치고, 꼼꼼하게 오답을 정리하고 있어요 🧐'
-            : '오답 확인까지 완벽하게 숙제를 마쳤어요! 💯';
+    let status = '미검사';
+
+    if (checkedCount > 0 && checkedCount < total) {
+    status = '진행중';
+    } else if (checkedCount >= total) {
+    status = '완료';
     }
 
     return {
@@ -264,6 +264,19 @@ export const computeHomeworkProgress = (resultData, questionNumbersOrTotal) => {
         uncheckedCount: unchecked,
         status,
     };
+};
+
+export const getHomeworkStats = (results, questionNumbers = []) => {
+    const normalized = normalizeHomeworkResultMapForDisplay(results, questionNumbers);
+    const totalQuestions = Array.isArray(questionNumbers) ? questionNumbers.length : 0;
+    const values = Object.values(normalized);
+    const correctCount = values.filter((s) => s === '맞음').length;
+    const wrongCount = values.filter((s) => s === '틀림').length;
+    const fixedCount = values.filter((s) => s === '고침').length;
+    const checkedCount = correctCount + wrongCount + fixedCount;
+    const remainingCount = Math.max(totalQuestions - checkedCount, 0);
+    const completionRate = totalQuestions > 0 ? Math.round((checkedCount / totalQuestions) * 100) : 0;
+    return { correctCount, wrongCount, fixedCount, remainingCount, completionRate };
 };
 
 export const applyHomeworkProgressCap = (progressPercent = 0, resultData, totalQuestions = null) => {

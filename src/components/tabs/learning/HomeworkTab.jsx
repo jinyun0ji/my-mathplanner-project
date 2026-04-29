@@ -37,9 +37,13 @@ export default function HomeworkTab({ myHomeworkStats }) {
                                 ? (hw.book || '동영상 과제')
                                 : `${hw.book || '교재 미정'} (총 ${hw.totalQuestions}문제)`}
                         </p>
-                        <div className="w-full bg-gray-100 rounded-full h-1.5 mb-2">
-                            <div className="bg-brand-main h-1.5 rounded-full transition-all" style={{ width: `${hw.completionRate}%` }}></div>
+                        <div className="w-full bg-gray-100 rounded-full h-2 mb-2 overflow-hidden flex">
+                            <div className="bg-green-500 h-2" style={{ width: `${(hw.completedCount / Math.max(hw.totalQuestions || 0, 1)) * 100}%` }} />
+                            <div className="bg-red-500 h-2" style={{ width: `${(hw.incorrectCount / Math.max(hw.totalQuestions || 0, 1)) * 100}%` }} />
+                            <div className="bg-blue-500 h-2" style={{ width: `${((hw.fixedCount || 0) / Math.max(hw.totalQuestions || 0, 1)) * 100}%` }} />
+                            <div className="bg-gray-300 h-2" style={{ width: `${(hw.uncheckedCount / Math.max(hw.totalQuestions || 0, 1)) * 100}%` }} />
                         </div>
+                        <p className="text-xs text-gray-500 mb-2">맞음 {hw.completedCount || 0} / 틀림 {hw.incorrectCount || 0} / 고침 {hw.fixedCount || 0} / 남음 {hw.uncheckedCount || 0}</p>
                         {selectedHwId === hw.id && (
                             <div className="mt-4 pt-4 border-t border-gray-100 animate-fade-in-down">
                                 <div className="flex justify-around mb-4 text-center">
@@ -55,6 +59,10 @@ export default function HomeworkTab({ myHomeworkStats }) {
                                         <p className="text-xs text-gray-500">남음</p>
                                         <p className="font-bold text-gray-800">{hw.uncheckedCount}</p>
                                     </div>
+                                    <div>
+                                        <p className="text-xs text-gray-500">고침</p>
+                                        <p className="font-bold text-blue-600">{hw.fixedCount || 0}</p>
+                                    </div>
                                 </div>
                                 {hw.incorrectQuestionList && hw.incorrectQuestionList.length > 0 ? (
                                     <div className="bg-red-50 p-3 rounded-xl">
@@ -65,9 +73,7 @@ export default function HomeworkTab({ myHomeworkStats }) {
                                             ))}
                                         </div>
                                     </div>
-                                ) : (
-                                    <p className="text-center text-xs text-gray-400 mt-2">오답이 없습니다. 훌륭해요! 🎉</p>
-                                )}
+                                ) : null}
                             </div>
                         )}
                     </div>

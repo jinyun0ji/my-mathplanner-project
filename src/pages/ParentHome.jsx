@@ -30,6 +30,7 @@ import {
 } from '../utils/helpers';
 import { formatGradeScoreText } from '../domain/grade/grade.service';
 import NotificationsIcon from '@mui/icons-material/Notifications';
+import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
 import ParentSessionReport from './parent/ParentSessionReport'; // ✅ 신규 리포트 컴포넌트
 import { generateSessionReport } from '../utils/reportHelper'; // ✅ 리포트 데이터 생성 헬퍼
 import useNotifications from '../notifications/useNotifications';
@@ -670,6 +671,7 @@ export default function ParentHome({
     const [selectedClassroomId, _setSelectedClassroomId] = useState(readClassroomFromUrl());
 // ✅ 리포트 뷰 상태
     const [reportViewMode, setReportViewMode] = useState('overview'); // 'overview' | 'byClass'
+    const [learningSubTab, setLearningSubTab] = useState('homework');
     const [selectedClassId, setSelectedClassId] = useState(null);
     const [classFilter, setClassFilter] = useState('ongoing'); // 기본: 진행중
     const [expandedSections, setExpandedSections] = useState({ homework: false, grades: false });
@@ -1289,9 +1291,9 @@ export default function ParentHome({
     const navItems = [
         { id: 'home', icon: 'home', label: '홈' },
         { id: 'report', icon: 'clipboardCheck', label: '수업리포트' },
+        { id: 'learning', icon: 'bookOpen', label: '학습관리' },
         { id: 'schedule', icon: 'calendar', label: '일정' },
-        { id: 'payment', icon: 'creditCard', label: '결제' },
-        { id: 'menu', icon: 'menu', label: '전체' },
+        { id: 'more', icon: 'menu', label: '전체' },
     ];
 
     if (!activeChild) {
@@ -1318,13 +1320,15 @@ export default function ParentHome({
                             {activeChildName}
                         </span>
                     </div>
-                    <button
-                        type="button"
-                        disabled
-                        className="text-xs font-semibold text-gray-400 border border-gray-200 px-3 py-1.5 rounded-full cursor-not-allowed"
-                    >
-                        자녀 전환 준비 중
-                    </button>
+                    <div className="flex items-center gap-2">
+                        <button type="button" onClick={() => setIsNotificationOpen(true)} className="relative p-2 rounded-lg border border-gray-200 text-gray-600">
+                            <NotificationsIcon style={{ fontSize: 20 }} />
+                            {hasUnread && <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />}
+                        </button>
+                        <button type="button" onClick={() => setActiveTab('more')} className="relative p-2 rounded-lg border border-gray-200 text-gray-600">
+                            <ChatBubbleOutlineIcon style={{ fontSize: 20 }} />
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -1403,8 +1407,20 @@ export default function ParentHome({
                                     <div className="flex flex-wrap gap-2 mt-6">
                                         <button onClick={() => setActiveTab('report')} className="bg-white text-sky-950 px-4 py-2 rounded-xl font-bold text-sm shadow-md hover:-translate-y-0.5 transition-transform">수업 리포트 보기</button>
                                         <button onClick={() => setActiveTab('schedule')} className="bg-blue-900/70 border border-white/20 text-white px-4 py-2 rounded-xl font-bold text-sm hover:bg-blue-800/80 transition-colors">일정 확인</button>
-                                        <button onClick={() => setActiveTab('payment')} className="bg-blue-900/70 border border-white/20 text-white px-4 py-2 rounded-xl font-bold text-sm hover:bg-blue-800/80 transition-colors">결제 현황</button>
+                                        <button onClick={() => setActiveTab('learning')} className="bg-blue-900/70 border border-white/20 text-white px-4 py-2 rounded-xl font-bold text-sm hover:bg-blue-800/80 transition-colors">학습 관리</button>
                                     </div>
+                                </section>
+                                <section className="grid grid-cols-2 gap-3">
+                                    {[
+                                        { label: '출결 상세보기', subTab: 'attendance' },
+                                        { label: '과제 상세보기', subTab: 'homework' },
+                                        { label: '성적 상세보기', subTab: 'grades' },
+                                        { label: '클리닉 상세보기', subTab: 'clinic' },
+                                    ].map((item) => (
+                                        <button key={item.label} onClick={() => { setLearningSubTab(item.subTab); setActiveTab('learning'); }} className="bg-white border border-gray-200 rounded-2xl p-4 text-sm font-bold text-gray-800 text-left">
+                                            {item.label}
+                                        </button>
+                                    ))}
                                 </section>
 
                                 <div className="grid gap-4 lg:grid-cols-3">
@@ -1445,37 +1461,6 @@ export default function ParentHome({
                                             </div>
                                         </div>
 
-                                        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4 space-y-3">
-                                            <div className="flex items-center justify-between">
-                                                <h3 className="text-sm font-bold text-gray-800 flex items-center gap-2">
-                                                    <Icon name="creditCard" className="w-4 h-4 text-indigo-600" />
-                                                    결제 요약
-                                                </h3>
-                                                <span className={`text-[11px] font-bold px-2 py-1 rounded-full ${isPaymentFeatureLocked ? 'bg-gray-100 text-gray-500 ring-1 ring-gray-200' : (unpaidPayments.length > 0 ? 'bg-red-50 text-red-700 ring-1 ring-red-100' : 'bg-green-50 text-green-700 ring-1 ring-green-100')}`}>
-                                                    {isPaymentFeatureLocked ? '추후 제공 예정' : (unpaidPayments.length > 0 ? `미납 ${unpaidPayments.length}건` : '모두 납부 완료')}
-                                                </span>
-                                            </div>
-                                            {isPaymentFeatureLocked ? (
-                                                <div className="p-3 rounded-xl bg-gray-50 border border-dashed border-gray-200 text-xs text-gray-500">
-                                                    결제 기능은 모바일 앱에서 제공될 예정입니다.
-                                                </div>
-                                            ) : myPayments.length > 0 ? (
-                                                <div className="p-3 rounded-xl bg-gray-50 border border-gray-100">
-                                                    <p className="text-xs text-gray-500 mb-1">최근 결제</p>
-                                                    <p className="text-sm font-bold text-gray-900">{myPayments[0].bookName || `${myPayments[0].month} 수강료`}</p>
-                                                    <p className="text-xs text-gray-500 mt-1">{myPayments[0].date} • {myPayments[0].method}</p>
-                                                    <p className="text-lg font-extrabold text-indigo-900 mt-1">{myPayments[0].amount.toLocaleString()}원</p>
-                                                </div>
-                                            ) : (
-                                                <p className="text-xs text-gray-500">결제 내역이 없습니다.</p>
-                                            )}
-                                            <button 
-                                                onClick={() => setActiveTab('payment')} 
-                                                className="w-full py-2 rounded-lg text-sm font-bold bg-indigo-50 text-indigo-900 hover:bg-indigo-100 transition-colors"
-                                            >
-                                                결제 내역 전체 보기
-                                            </button>
-                                        </div>
                                     </aside>
                                 </div>
                             </div>
@@ -2006,7 +1991,7 @@ export default function ParentHome({
                                                                             <span className="text-xs font-bold text-indigo-700 bg-indigo-50 px-3 py-1 rounded-full border border-indigo-100">{test.studentScore ?? '미응시'}</span>
                                                                         </div>
                                                                         <div className="flex items-center justify-between text-xs text-gray-600">
-                                                                            <span>반 평균</span>
+                                                                            <span></span>
                                                                             <span>{statsText}</span>
                                                                         </div>
                                                                     </div>
@@ -2035,26 +2020,9 @@ export default function ParentHome({
                             />
                         )}
 
-                        {activeTab === 'payment' && (
-                            <div className="space-y-4">
-                                <h2 className="text-2xl font-bold text-gray-900 px-1">결제 내역</h2>
-                                <div className="relative overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-                                    <div className="p-6 space-y-4 blur-sm select-none">
-                                        <div className="h-16 rounded-xl bg-gray-100" />
-                                        <div className="h-16 rounded-xl bg-gray-100" />
-                                        <div className="h-16 rounded-xl bg-gray-100" />
-                                    </div>
-                                    <div className="absolute inset-0 flex items-center justify-center bg-white/70 backdrop-blur-sm">
-                                        <div className="text-center px-6">
-                                            <p className="text-lg font-bold text-gray-800">결제 기능은 준비 중입니다</p>
-                                            <p className="text-sm text-gray-500 mt-2">추후 모바일 앱에서 수납 기능을 제공할 예정입니다.</p>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
+                        {activeTab === 'learning' && <div className="text-sm text-gray-600">학습관리 화면 ({learningSubTab})</div>}
 
-                        {activeTab === 'menu' && (
+                        {activeTab === 'more' && (
                             <MenuTab student={activeChild} onUpdateStudent={() => {}} onLogout={onLogout} videoMemos={{}} lessonLogs={[]} onLinkToMemo={() => {}} notices={visibleNotices} setActiveTab={setActiveTab} isParent={true} />
                         )}
                         {activeTab === 'board' && <BoardTab notices={visibleNotices} />}
