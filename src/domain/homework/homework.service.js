@@ -249,7 +249,7 @@ export const computeHomeworkProgress = (resultData, questionNumbersOrTotal) => {
     if (checkedCount >= total && incorrectCount > 0) completionRate = 99;
     if (checkedCount >= total && incorrectCount === 0 && completionRate < 100) completionRate = 100;
 
-    let status = '미검사';
+    let status = '진행중';
 
     if (checkedCount > 0 && checkedCount < total) {
     status = '진행중';

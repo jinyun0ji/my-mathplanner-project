@@ -65,10 +65,10 @@ export default function HomeworkTab({ myHomeworkStats }) {
                                     </div>
                                 </div>
                                 {[
-                                    { label: '맞음 문항 번호', items: hw.correctQuestionNumbers, tone: 'green' },
-                                    { label: '틀림 문항 번호', items: hw.wrongQuestionNumbers, tone: 'red' },
-                                    { label: '고침 문항 번호', items: hw.fixedQuestionNumbers, tone: 'blue' },
-                                    { label: '남음 문항 번호', items: hw.remainingQuestionNumbers, tone: 'gray' },
+                                    { label: '맞은 문항 번호', items: hw.correctQuestionNumbers, tone: 'green' },
+                                    { label: '틀린 문항 번호', items: hw.wrongQuestionNumbers, tone: 'red' },
+                                    { label: '고친 문항 번호', items: hw.fixedQuestionNumbers, tone: 'blue' },
+                                    { label: '남은 문항 번호', items: hw.remainingQuestionNumbers, tone: 'gray' },
                                 ].map((section) => (
                                     <div key={section.label} className="rounded-xl border border-gray-100 p-3">
                                         <p className="text-xs font-bold text-gray-700 mb-2">{section.label}</p>

@@ -668,6 +668,7 @@ export default function ParentHome({
 // ✅ 리포트 뷰 상태
     const [reportViewMode, setReportViewMode] = useState('overview'); // 'overview' | 'byClass'
     const [learningSubTab, setLearningSubTab] = useState('homework');
+    const [expandedHomeworkDetails, setExpandedHomeworkDetails] = useState({});
     const [isMessengerOpen, setIsMessengerOpen] = useState(false);
     const [selectedClassId, setSelectedClassId] = useState(null);
     const [classFilter, setClassFilter] = useState('ongoing'); // 기본: 진행중
@@ -1320,6 +1321,10 @@ export default function ParentHome({
             attendance: (attendanceMap.get(String(cls.id)) || []).slice(0, 10),
         }));
     }, [myClasses, myHomeworkStats, filteredTests, attendanceHistory, orderedClasses, grades, activeChildId]);
+
+    const toggleHomeworkDetail = useCallback((homeworkId) => {
+        setExpandedHomeworkDetails((prev) => ({ ...prev, [homeworkId]: !prev[homeworkId] }));
+    }, []);
 
     useEffect(() => {
         if (activeTab !== 'learning') return;
@@ -2058,29 +2063,155 @@ export default function ParentHome({
 
                         {activeTab === 'learning' && (
                             <div className="space-y-4">
-                                {learningDataByClass.map((section) => (
-                                    <section key={section.classId} className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm space-y-3">
-                                        <h3 className="text-base font-bold text-gray-900">{section.classInfo?.name || section.classId}</h3>
-                                        <div ref={(el) => { learningSectionRefs.current.homework = learningSectionRefs.current.homework || el; }} className="space-y-2">
-                                            <p className="text-xs font-semibold text-gray-500">과제</p>
-                                            {section.homework.slice(0, 5).map((hw) => <div key={hw.id} className="text-sm text-gray-700">• {hw.content || hw.title || '과제'} ({hw.status || '상태 미정'})</div>)}
-                                        </div>
-                                        <div ref={(el) => { learningSectionRefs.current.grades = learningSectionRefs.current.grades || el; }} className="space-y-2">
-                                            <p className="text-xs font-semibold text-gray-500">성적</p>
-                                            {section.grades.slice(0, 5).map((test) => <div key={test.id} className="text-sm text-gray-700">• {test.name || '시험'}: {test.studentScore}</div>)}
-                                        </div>
-                                        <div ref={(el) => { learningSectionRefs.current.attendance = learningSectionRefs.current.attendance || el; }} className="space-y-2">
-                                            <p className="text-xs font-semibold text-gray-500">출결</p>
-                                            {section.attendance.slice(0, 5).map((att) => <div key={att.id} className="text-sm text-gray-700">• {att.date} {att.attendance}</div>)}
-                                        </div>
-                                    </section>
-                                ))}
-                                <section ref={(el) => { learningSectionRefs.current.clinic = el; }} className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm space-y-2">
-                                    <h3 className="text-base font-bold text-gray-900">클리닉</h3>
-                                    {visibleCompletedClinics.slice(0, 10).map((log) => (
-                                        <div key={log.id || `${log.date}-${log.checkIn || ''}`} className="text-sm text-gray-700">• {log.date} {log.displayStatus} {log.commentResolved ? `- ${log.commentResolved}` : ''}</div>
-                                    ))}
+                                <section className="bg-white rounded-2xl border border-gray-100 p-2 shadow-sm">
+                                    <div className="grid grid-cols-4 gap-2">
+                                        {[
+                                            { id: 'homework', label: '과제' },
+                                            { id: 'grades', label: '성적' },
+                                            { id: 'attendance', label: '출결' },
+                                            { id: 'clinic', label: '클리닉' },
+                                        ].map((tab) => (
+                                            <button
+                                                key={tab.id}
+                                                type="button"
+                                                onClick={() => setLearningSubTab(tab.id)}
+                                                className={`rounded-xl px-2 py-2 text-xs font-bold transition-colors ${
+                                                    learningSubTab === tab.id
+                                                        ? 'bg-indigo-600 text-white'
+                                                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                                }`}
+                                            >
+                                                {tab.label}
+                                            </button>
+                                        ))}
+                                    </div>
                                 </section>
+
+                                {learningSubTab === 'homework' && (
+                                    <div ref={(el) => { learningSectionRefs.current.homework = el; }} className="space-y-4">
+                                        {learningDataByClass.map((section) => (
+                                            <section key={section.classId} className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm space-y-3">
+                                                <h3 className="text-base font-bold text-gray-900">{section.classInfo?.name || section.classId}</h3>
+                                                {section.homework.length === 0 ? (
+                                                    <p className="text-sm text-gray-500">과제 기록이 없습니다.</p>
+                                                ) : section.homework.map((hw) => {
+                                                    const counts = {
+                                                        correct: Number(hw.correctCount ?? hw.correct ?? 0),
+                                                        wrong: Number(hw.wrongCount ?? hw.incorrectCount ?? hw.wrong ?? 0),
+                                                        fixed: Number(hw.fixedCount ?? hw.revisedCount ?? hw.fixed ?? 0),
+                                                        remaining: Number(hw.remainingCount ?? hw.unsolvedCount ?? hw.remaining ?? 0),
+                                                    };
+                                                    const total = Object.values(counts).reduce((sum, value) => sum + (Number.isFinite(value) ? value : 0), 0);
+                                                    const width = (value) => (total > 0 ? `${(value / total) * 100}%` : '0%');
+                                                    const detailKey = `${section.classId}-${hw.id}`;
+                                                    const questionDetail = hw.questionNumbers || hw.questionDetail || hw.items || hw.detailText || null;
+                                                    const questionText = Array.isArray(questionDetail)
+                                                        ? questionDetail.join(', ')
+                                                        : (typeof questionDetail === 'string' ? questionDetail : null);
+                                                    return (
+                                                        <article key={hw.id} className="rounded-xl border border-gray-200 p-3 space-y-2">
+                                                            <div className="flex items-start justify-between gap-2">
+                                                                <p className="text-sm font-bold text-gray-900">{hw.content || hw.title || '과제'}</p>
+                                                                <span className="text-xs font-bold text-indigo-700 bg-indigo-50 border border-indigo-100 rounded-full px-2 py-1">
+                                                                    완성률 {hw.completionRate ?? 0}%
+                                                                </span>
+                                                            </div>
+                                                            <div className="w-full h-2 rounded-full overflow-hidden bg-gray-100 flex">
+                                                                <div className="bg-emerald-500" style={{ width: width(counts.correct) }} />
+                                                                <div className="bg-rose-500" style={{ width: width(counts.wrong) }} />
+                                                                <div className="bg-amber-500" style={{ width: width(counts.fixed) }} />
+                                                                <div className="bg-slate-400" style={{ width: width(counts.remaining) }} />
+                                                            </div>
+                                                            <div className="grid grid-cols-2 gap-2 text-xs text-gray-600">
+                                                                <span>맞음 {counts.correct}</span>
+                                                                <span>틀림 {counts.wrong}</span>
+                                                                <span>고침 {counts.fixed}</span>
+                                                                <span>남음 {counts.remaining}</span>
+                                                            </div>
+                                                            {questionText && (
+                                                                <>
+                                                                    <button type="button" onClick={() => toggleHomeworkDetail(detailKey)} className="text-xs font-semibold text-indigo-700">
+                                                                        문항 번호 {expandedHomeworkDetails[detailKey] ? '숨기기' : '보기'}
+                                                                    </button>
+                                                                    {expandedHomeworkDetails[detailKey] && (
+                                                                        <p className="text-xs text-gray-600 bg-gray-50 rounded-lg p-2">문항: {questionText}</p>
+                                                                    )}
+                                                                </>
+                                                            )}
+                                                        </article>
+                                                    );
+                                                })}
+                                            </section>
+                                        ))}
+                                    </div>
+                                )}
+
+                                {learningSubTab === 'grades' && (
+                                    <div ref={(el) => { learningSectionRefs.current.grades = el; }} className="space-y-4">
+                                        {learningDataByClass.map((section) => (
+                                            <section key={section.classId} className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm space-y-3">
+                                                <h3 className="text-base font-bold text-gray-900">{section.classInfo?.name || section.classId}</h3>
+                                                {section.grades.length === 0 ? (
+                                                    <p className="text-sm text-gray-500">시험 기록이 없습니다.</p>
+                                                ) : section.grades.map((test) => {
+                                                    const stats = classTestStats?.[test.id] || classTestStats?.[`${test.classId}_${test.id}`] || {};
+                                                    const average = Number.isFinite(stats?.average) ? stats.average : test.average ?? test.classAverage ?? '-';
+                                                    const maxScore = Number.isFinite(stats?.maxScore) ? stats.maxScore : (test.maxScore ?? '-');
+                                                    return (
+                                                        <article key={test.id} className="rounded-xl border border-gray-200 p-3 space-y-1 text-sm text-gray-700">
+                                                            <p className="font-bold text-gray-900">{test.name || '시험'}</p>
+                                                            <p className="text-xs text-gray-500">{test.date || '-'}</p>
+                                                            <div className="grid grid-cols-3 gap-2 text-xs mt-2">
+                                                                <span>학생 점수: <strong>{test.studentScore ?? '미응시'}</strong></span>
+                                                                <span>평균: <strong>{average}</strong></span>
+                                                                <span>최고점: <strong>{maxScore}</strong></span>
+                                                            </div>
+                                                        </article>
+                                                    );
+                                                })}
+                                            </section>
+                                        ))}
+                                    </div>
+                                )}
+
+                                {learningSubTab === 'attendance' && (
+                                    <div ref={(el) => { learningSectionRefs.current.attendance = el; }} className="space-y-4">
+                                        {learningDataByClass.map((section) => (
+                                            <section key={section.classId} className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm space-y-3">
+                                                <h3 className="text-base font-bold text-gray-900">{section.classInfo?.name || section.classId}</h3>
+                                                {section.attendance.length === 0 ? (
+                                                    <p className="text-sm text-gray-500">출결 기록이 없습니다.</p>
+                                                ) : section.attendance
+                                                    .slice()
+                                                    .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')))
+                                                    .map((att) => (
+                                                        <article key={att.id} className="rounded-xl border border-gray-200 p-3 space-y-1">
+                                                            <p className="text-sm font-bold text-gray-900">{att.date || '-'}</p>
+                                                            <p className="text-xs text-gray-700">상태: {att.attendance || '-'}</p>
+                                                            <p className="text-xs text-gray-500">메모/사유: {att.memo || '-'}</p>
+                                                        </article>
+                                                    ))}
+                                            </section>
+                                        ))}
+                                    </div>
+                                )}
+
+                                {learningSubTab === 'clinic' && (
+                                    <section ref={(el) => { learningSectionRefs.current.clinic = el; }} className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm space-y-3">
+                                        <h3 className="text-base font-bold text-gray-900">클리닉</h3>
+                                        {visibleCompletedClinics.length === 0 ? (
+                                            <p className="text-sm text-gray-500">클리닉 기록이 없습니다.</p>
+                                        ) : visibleCompletedClinics.slice(0, 20).map((log) => (
+                                            <article key={log.id || `${log.date}-${log.checkIn || ''}`} className="rounded-xl border border-gray-200 p-3 space-y-1 text-xs text-gray-700">
+                                                <p><strong>날짜:</strong> {log.date || '-'}</p>
+                                                <p><strong>시간:</strong> {log.checkIn || '-'} {log.checkOut ? `~ ${log.checkOut}` : ''}</p>
+                                                <p><strong>상태:</strong> {log.displayStatus || '-'}</p>
+                                                <p><strong>선생님:</strong> {log.teacherName || log.teacher || '-'}</p>
+                                                <p><strong>코멘트:</strong> {log.commentResolved || '-'}</p>
+                                            </article>
+                                        ))}
+                                    </section>
+                                )}
                             </div>
                         )}
 
