@@ -1017,16 +1017,28 @@ export default function ParentHome({
             .sort((a, b) => new Date(b.date) - new Date(a.date));
     }, [filteredLessonLogs, myClasses]);
 
-    const isValidNumber = (n) => typeof n === 'number' && Number.isFinite(n);
-    const formatAverage = (value) => {
+    const isScoreEmptyValue = (value) =>
+        value === null
+        || value === undefined
+        || value === ''
+        || value === '미응시'
+        || value === '미입력';
+    const toFiniteScoreNumber = (value) => {
+        if (isScoreEmptyValue(value)) return null;
         const num = Number(value);
-        return Number.isFinite(num) ? num.toFixed(1) : null;
+        return Number.isFinite(num) ? num : null;
     };
+    const formatOneDecimal = (value, fallback = '-') => {
+        const num = toFiniteScoreNumber(value);
+        if (num === null) return fallback;
+        return num.toFixed(1);
+    };
+    const isValidNumber = (n) => toFiniteScoreNumber(n) !== null;
+    const formatAverage = (value) => formatOneDecimal(value, null);
     const formatScoreDisplay = useCallback((value) => {
-        if (typeof value === 'string') return value;
-        if (!Number.isFinite(Number(value))) return '-';
-        return formatGradeScoreText(null, Number(value)).scoreText;
+        return formatOneDecimal(value, '미응시');
     }, []);
+    const formatStatDisplay = useCallback((value) => formatOneDecimal(value, '통계 준비 중'), []);
 
     const isAttendanceMissing = (v) =>
         v == null || String(v).trim() === '' || String(v).includes('미기록');
@@ -2022,10 +2034,10 @@ export default function ParentHome({
                                                         <div className="divide-y divide-gray-100">
                                                             {testsBySelectedClass.map((test) => {
                                                                 const attemptedCount = Number.isFinite(test.attemptedCount) ? test.attemptedCount : null;
-                                                                const averageLabel = formatScoreDisplay(test.classAverage);
-                                                                const maxLabel = formatScoreDisplay(test.classMax);
-                                                                const hasValidAverage = averageLabel !== '-';
-                                                                const hasValidMax = maxLabel !== '-';
+                                                                const averageLabel = formatStatDisplay(test.classAverage);
+                                                                const maxLabel = formatStatDisplay(test.classMax);
+                                                                const hasValidAverage = averageLabel !== '통계 준비 중';
+                                                                const hasValidMax = maxLabel !== '통계 준비 중';
                                                                 const studentScoreLabel = formatScoreDisplay(test.studentScore);
                                                                 const statsText = (() => {
                                                                     if (!test.stats) return '통계 준비 중';
@@ -2136,16 +2148,16 @@ export default function ParentHome({
                                                                 </span>
                                                             </div>
                                                             <div className="w-full h-2 rounded-full overflow-hidden bg-gray-100 flex">
-                                                                <div className="bg-emerald-500" style={{ width: width(counts.correct) }} />
-                                                                <div className="bg-rose-500" style={{ width: width(counts.wrong) }} />
-                                                                <div className="bg-amber-500" style={{ width: width(counts.fixed) }} />
-                                                                <div className="bg-slate-400" style={{ width: width(counts.remaining) }} />
+                                                                <div className="bg-emerald-400" style={{ width: width(counts.correct) }} />
+                                                                <div className="bg-rose-400" style={{ width: width(counts.wrong) }} />
+                                                                <div className="bg-sky-400" style={{ width: width(counts.fixed) }} />
+                                                                <div className="bg-slate-300" style={{ width: width(counts.remaining) }} />
                                                             </div>
-                                                            <div className="grid grid-cols-2 gap-2 text-xs text-gray-600">
-                                                                <span>맞음 {counts.correct}</span>
-                                                                <span>틀림 {counts.wrong}</span>
-                                                                <span>고침 {counts.fixed}</span>
-                                                                <span>남음 {counts.remaining}</span>
+                                                            <div className="grid grid-cols-2 gap-2 text-xs">
+                                                                <span className="text-emerald-700 bg-emerald-100 rounded-md px-2 py-1">맞음 {counts.correct}</span>
+                                                                <span className="text-rose-700 bg-rose-100 rounded-md px-2 py-1">틀림 {counts.wrong}</span>
+                                                                <span className="text-sky-700 bg-sky-100 rounded-md px-2 py-1">고침 {counts.fixed}</span>
+                                                                <span className="text-slate-500 bg-slate-100 rounded-md px-2 py-1">남음 {counts.remaining}</span>
                                                             </div>
                                                             {/* {questionText && (
                                                                 <>
@@ -2177,8 +2189,8 @@ export default function ParentHome({
                                                     const averageRaw = Number.isFinite(stats?.average) ? stats.average : test.average ?? test.classAverage ?? null;
                                                     const maxScoreRaw = Number.isFinite(stats?.maxScore) ? stats.maxScore : (test.maxScore ?? test.classMax ?? null);
                                                     const studentScoreLabel = formatScoreDisplay(test.studentScore);
-                                                    const averageLabel = formatScoreDisplay(averageRaw);
-                                                    const maxScoreLabel = formatScoreDisplay(maxScoreRaw);
+                                                    const averageLabel = formatStatDisplay(averageRaw);
+                                                    const maxScoreLabel = formatStatDisplay(maxScoreRaw);
                                                     return (
                                                         <article key={test.id} className="rounded-xl border border-gray-200 p-3 space-y-1 text-sm text-gray-700">
                                                             <p className="font-bold text-gray-900">{test.name || '시험'}</p>
@@ -2203,16 +2215,33 @@ export default function ParentHome({
                                                 <h3 className="text-base font-bold text-gray-900">{section.classInfo?.name || section.classId}</h3>
                                                 {section.attendance.length === 0 ? (
                                                     <p className="text-sm text-gray-500">출결 기록이 없습니다.</p>
-                                                ) : section.attendance
-                                                    .slice()
-                                                    .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')))
-                                                    .map((att) => (
-                                                        <article key={att.id} className="rounded-xl border border-gray-200 p-3 space-y-1">
-                                                            <p className="text-sm font-bold text-gray-900">{att.date || '-'}</p>
-                                                            <p className="text-xs text-gray-700">상태: {att.attendance || '-'}</p>
-                                                            {/* <p className="text-xs text-gray-500">메모/사유: {att.memo || '-'}</p> */}
-                                                        </article>
-                                                    ))}
+                                                ) : (
+                                                    <div className="rounded-xl border border-gray-200 overflow-hidden">
+                                                        {section.attendance
+                                                            .slice()
+                                                            .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')))
+                                                            .map((att) => {
+                                                                const status = String(att.attendance || '미기록').trim() || '미기록';
+                                                                const badgeClass =
+                                                                    status === '출석'
+                                                                        ? 'bg-indigo-100 text-indigo-700'
+                                                                        : status === '지각'
+                                                                            ? 'bg-amber-100 text-amber-700'
+                                                                            : status === '결석'
+                                                                                ? 'bg-rose-100 text-rose-700'
+                                                                                : status === '동영상보강'
+                                                                                    ? 'bg-blue-100 text-blue-700'
+                                                                                    : 'bg-gray-100 text-gray-600';
+
+                                                                return (
+                                                                    <div key={att.id} className="flex items-center justify-between px-3 py-2.5 border-b border-gray-100 last:border-b-0 bg-white">
+                                                                        <span className="text-sm font-medium text-gray-700">{att.date || '-'}</span>
+                                                                        <span className={`text-xs font-bold px-2 py-1 rounded-full ${badgeClass}`}>{status}</span>
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                    </div>
+                                                )}
                                             </section>
                                         ))}
                                     </div>
