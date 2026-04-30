@@ -19,6 +19,8 @@ import {
     calculateGradeComparison,
     getClinicComment,
     getClinicDisplayStatus,
+    calculateDurationMinutes,
+    formatDuration,
     isClosedForClass,
     normalizeClassSchedule,
     isClassActiveForStudent,
@@ -691,6 +693,10 @@ export default function ParentHome({
     // ✅ state -> URL (앱 내부 동작은 아래 래퍼 함수를 통해서만 변경)
     const setActiveTab = useCallback((tab, { replace = false } = {}) => {
         _setActiveTab(tab);
+        requestAnimationFrame(() => {
+            mainScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        });
         setSearchParams(prev => {
             const next = new URLSearchParams(prev);
             next.set('tab', tab);
@@ -748,6 +754,7 @@ export default function ParentHome({
     const lessonSectionRef = useRef(null);
     const clinicSectionRef = useRef(null);
     const classStatusRef = useRef(null);
+    const mainScrollRef = useRef(null);
     const learningSectionRefs = useRef({ homework: null, grades: null, attendance: null, clinic: null });
 
     const [attendanceDetailTarget, setAttendanceDetailTarget] = useState(null);
@@ -827,6 +834,25 @@ export default function ParentHome({
 
     const buildClinicComment = useCallback((log) => getClinicComment(log), []);
 
+    const getParentClinicStatusStyle = useCallback((status) => {
+        if (status === '미참석') return 'bg-rose-50 text-rose-700 border-rose-200';
+        if (status === '완료' || status === '참석') return 'bg-teal-50 text-teal-700 border-teal-200';
+        if (status === '예약됨' || status === '입실 예정') return 'bg-sky-50 text-sky-700 border-sky-200';
+        return 'bg-slate-50 text-slate-600 border-slate-200';
+    }, []);
+
+    const formatClinicTimeLabel = useCallback((log) => {
+        const plannedStart = typeof log?.plannedTime === 'string' ? log?.plannedTime : log?.plannedTime?.start;
+        const plannedEnd = typeof log?.plannedTime === 'object' ? log?.plannedTime?.end : '';
+        const start = log?.checkIn || plannedStart || '';
+        const end = log?.checkOut || plannedEnd || '';
+        if (start && end) return `${start} ~ ${end}`;
+        if (start) return `${start}`;
+        if (log?.timeSlot) return String(log.timeSlot);
+        if (typeof log?.plannedTime === 'string' && log?.plannedTime) return log.plannedTime;
+        return '시간 미정';
+    }, []);
+
     const myClinicLogs = useMemo(() => {
         if (!Array.isArray(clinicLogs) || !activeChildId) return [];
         return clinicLogs
@@ -859,6 +885,18 @@ export default function ParentHome({
         () => completedClinicsToShow,
         [completedClinicsToShow],
     );
+
+    const totalClinicMinutes = useMemo(() => completedClinics.reduce((acc, log) => {
+        if (getClinicDisplayStatus(log) === '미참석') return acc;
+        const duration = Number(log?.durationMinutes);
+        if (Number.isFinite(duration) && duration > 0) return acc + duration;
+        if (log?.checkIn && log?.checkOut) return acc + Math.max(0, calculateDurationMinutes(log.checkIn, log.checkOut));
+        return acc;
+    }, 0), [completedClinics]);
+
+    const reservedClinics = useMemo(() => myClinicLogs
+        .filter((log) => ['예약됨', '입실 예정'].includes(getClinicDisplayStatus(log)))
+        .sort((a, b) => new Date(`${a?.date || ''}T00:00:00`) - new Date(`${b?.date || ''}T00:00:00`)), [myClinicLogs]);
 
     useEffect(() => {
         if (!activeChild) return;
@@ -1401,7 +1439,7 @@ export default function ParentHome({
                 </div>
             </div>
 
-            <main className="flex-1 w-full max-w-md mx-auto p-4 pb-24 overflow-y-auto custom-scrollbar md:max-w-7xl">
+            <main ref={mainScrollRef} className="flex-1 w-full max-w-md mx-auto p-4 pb-24 overflow-y-auto custom-scrollbar md:max-w-7xl">
                 {/* [라우팅 분기 1] 리포트 상세 화면 */}
                 {selectedReportId ? (
                     <ParentSessionReport
@@ -2248,50 +2286,64 @@ export default function ParentHome({
                                 )}
 
                                 {learningSubTab === 'clinic' && (
-                                    <section ref={(el) => { learningSectionRefs.current.clinic = el; }} className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm space-y-3">
-                                        <h3 className="text-base font-bold text-gray-900">클리닉</h3>
-                                        {visibleCompletedClinics.length === 0 ? (
-                                            <p className="text-sm text-gray-500">클리닉 기록이 없습니다.</p>
-                                        ) : (
-                                            <div className="space-y-3">
-                                                <h4 className="text-sm font-bold text-gray-900 px-1">클리닉 코멘트</h4>
-                                                {visibleCompletedClinics.slice(0, 20).map((log) => {
+                                    <section ref={(el) => { learningSectionRefs.current.clinic = el; }} className="space-y-4"> 
+                                        <article className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm space-y-3">
+                                            <div className="flex items-center justify-between">
+                                                <h3 className="text-base font-bold text-gray-900">누적 클리닉 시간</h3>
+                                                <span className="text-sm font-semibold text-teal-700">{formatDuration(totalClinicMinutes)}</span>
+                                            </div>
+                                            <div className="w-full h-2.5 bg-gray-100 rounded-full overflow-hidden">
+                                                    <div className="h-full bg-teal-500 rounded-full" style={{ width: `${Math.min(100, (totalClinicMinutes / 600) * 100)}%` }} />
+                                                </div>
+                                            </article>
+
+                                            <article className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm space-y-3">
+                                                <h3 className="text-base font-bold text-gray-900">예약된 일정</h3>
+                                                {reservedClinics.length === 0 ? (
+                                                    <p className="text-sm text-gray-500">예약된 클리닉이 없습니다.</p>
+                                                ) : reservedClinics.slice(0, 20).map((log, idx) => (
+                                                    <div key={log.id || `${log.date}-${idx}`} className="rounded-2xl border border-sky-100 bg-sky-50/30 p-3 space-y-1">
+                                                        <p className="text-xs text-gray-500">{log.date || '-'} · {formatClinicTimeLabel(log)}</p>
+                                                        <div className="flex items-center justify-between">
+                                                            <p className="text-sm font-bold text-gray-900">입실 예정</p>
+                                                            <span className={`text-xs font-bold px-2 py-1 rounded-full border ${getParentClinicStatusStyle(log.displayStatus)}`}>{log.displayStatus}</span>
+                                                        </div>
+                                                        <p className="text-xs text-gray-600">담당 조교: {log.teacherResolved}</p>
+                                                    </div>
+                                                ))}
+                                            </article>
+
+                                            <article className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm space-y-3">
+                                                <h3 className="text-base font-bold text-gray-900">클리닉 코멘트</h3>
+                                                {visibleCompletedClinics.length === 0 ? (
+                                                    <p className="text-sm text-gray-500">클리닉 기록이 없습니다.</p>
+                                                ) : visibleCompletedClinics.slice(0, 20).map((log) => {
                                                     const commentKey = log.id ?? `${log.date}-${log.checkIn || log.checkOut || 'clinic'}`;
                                                     const isExpanded = !!expandedHomeworkDetails[`clinic-comment-${commentKey}`];
                                                     const commentText = String(log.commentResolved || '-');
                                                     const isLongComment = commentText.length > 90;
-                                                    const displayedComment = isExpanded || !isLongComment
-                                                        ? commentText
-                                                        : `${commentText.slice(0, 90)}...`;
+                                                    const displayedComment = isExpanded || !isLongComment ? commentText : `${commentText.slice(0, 90)}...`;
                                                     return (
                                                         <article key={commentKey} className="rounded-2xl border border-gray-200 bg-white p-4 space-y-2">
                                                             <div className="flex items-start justify-between gap-3">
                                                                 <div>
-                                                                    <p className="text-xs text-gray-500">{log.date || '-'}</p>
-                                                                    <p className="text-sm font-bold text-gray-900">{log.checkIn || '-'}{log.checkOut ? ` ~ ${log.checkOut}` : ''}</p>
+                                                                    <p className="text-xs text-gray-500">{log.date || '-'} · {formatClinicTimeLabel(log)}</p>
+                                                                    <p className="text-xs text-gray-600">담당 조교: {buildClinicTeacher(log)}</p>
                                                                 </div>
-                                                                <span className="text-xs font-bold text-indigo-700 bg-indigo-50 border border-indigo-100 rounded-full px-2 py-1">
+                                                                <span className={`text-xs font-bold rounded-full px-2 py-1 border ${getParentClinicStatusStyle(getClinicDisplayStatus(log))}`}>
                                                                     {getClinicDisplayStatus(log)}
                                                                 </span>
                                                             </div>
-                                                            <p className="text-xs text-gray-600">작성자/담당 조교: {buildClinicTeacher(log)}</p>
-                                                            <p className="text-xs text-gray-700 leading-5">{displayedComment}</p>
+                                                            <MathText text={displayedComment} className="text-xs text-gray-700 leading-5" inlineTextClassName="text-xs text-gray-700 leading-5" />
                                                             {isLongComment && (
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => toggleHomeworkDetail(`clinic-comment-${commentKey}`)}
-                                                                    className="text-xs font-semibold text-indigo-700"
-                                                                >
-                                                                    {isExpanded ? '접기' : '더보기'}
-                                                                </button>
+                                                                <button type="button" onClick={() => toggleHomeworkDetail(`clinic-comment-${commentKey}`)} className="text-xs font-semibold text-indigo-700">{isExpanded ? '접기' : '더보기'}</button>
                                                             )}
                                                         </article>
                                                     );
                                                 })}
-                                            </div>
-                                        )}
-                                    </section>
-                                )}
+                                            </article>
+                                        </section>
+                                    )}
                             </div>
                         )}
 

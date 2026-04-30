@@ -575,22 +575,26 @@ const normalizeClinicStatusValue = (value) => {
 
 export const getClinicDisplayStatus = (item) => {
     if (!item) return '예약됨';
-    const statusValues = [
-        item.attendanceStatus,
-        item.status,
-        item.result,
-        item.checkStatus,
-    ].map(normalizeClinicStatusValue);
 
-    const hasNoShow = Boolean(item.noShow || item.absent)
-        || statusValues.some((value) => ['noshow', 'no_show', 'no-show', 'noshowed', 'absent', '미참석'].includes(value));
+    const noShowKeywords = ['noshow', 'no_show', 'no-show', 'noshowed', 'missed', 'absent', '미참석'];
+    const reservedKeywords = ['reserved', 'booked', 'pending', 'scheduled', '예약', '예약됨', '입실 예정'];
 
-    if (hasNoShow) return '미참석';
+    const statusValue = normalizeClinicStatusValue(item.status);
+    const attendanceValue = normalizeClinicStatusValue(item.attendanceStatus);
+    const resultValue = normalizeClinicStatusValue(item.result);
+    const checkStatusValue = normalizeClinicStatusValue(item.checkStatus);
 
-    const hasAttended = Boolean(item.attended || item.completed || item.checkOut)
-        || statusValues.some((value) => ['attended', 'completed', 'complete', 'done', '출석', '완료'].includes(value));
+    if (noShowKeywords.includes(statusValue)) return '미참석';
+    if (noShowKeywords.includes(attendanceValue)) return '미참석';
+    if (Boolean(item.noShow)) return '미참석';
 
-    if (hasAttended) return '완료';
+    if (item.checkOut) return '완료';
+    if (item.checkIn) return '입실 중';
+
+    const hasPlannedTime = Boolean(item?.plannedTime || item?.timeSlot || item?.date);
+    const isReserved = [statusValue, attendanceValue, resultValue, checkStatusValue].some((value) => reservedKeywords.includes(value));
+    if (hasPlannedTime && isReserved) return '예약됨';
+    if (hasPlannedTime) return '입실 예정';
 
     return '예약됨';
 };
