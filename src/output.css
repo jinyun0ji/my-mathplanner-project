@@ -3721,6 +3721,11 @@ video {
   color: rgb(71 85 105 / var(--tw-text-opacity, 1));
 }
 
+.text-sky-500{
+  --tw-text-opacity: 1;
+  color: rgb(14 165 233 / var(--tw-text-opacity, 1));
+}
+
 .underline{
   -webkit-text-decoration-line: underline;
           text-decoration-line: underline;

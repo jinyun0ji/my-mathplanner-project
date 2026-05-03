@@ -12,7 +12,6 @@ import {
 } from 'firebase/firestore';
 import { ScheduleTab, MenuTab } from '../components/StudentTabs';
 import ParentClassroomView from './parent/ParentClassroomView';
-import StudentHeader from '../components/StudentHeader';
 import {
     Icon,
     calculateHomeworkStats,
@@ -758,7 +757,7 @@ export default function ParentHome({
     const learningSectionRefs = useRef({ homework: null, grades: null, attendance: null, clinic: null });
 
     const [attendanceDetailTarget, setAttendanceDetailTarget] = useState(null);
-    const [clinicPageSize, setClinicPageSize] = useState(100);
+    const [clinicPageSize, setClinicPageSize] = useState(3);
     const [lessonPageSize, setLessonPageSize] = useState(15);
     const [lessonReportClassFilter, setLessonReportClassFilter] = useState('all');
     const [showAllLessonReports, setShowAllLessonReports] = useState(false);
@@ -801,7 +800,7 @@ export default function ParentHome({
         setReportViewMode('overview');
         setClassFilter('ongoing');
         setActiveTab('home', { replace: true });
-        setClinicPageSize(100);
+        setClinicPageSize(3);
         setLessonPageSize(15);
     }, [activeStudentId]);
 
@@ -1389,11 +1388,23 @@ export default function ParentHome({
         setExpandedHomeworkDetails((prev) => ({ ...prev, [homeworkId]: !prev[homeworkId] }));
     }, []);
 
+    const learningClassOptions = useMemo(() => {
+        const ongoing = ongoingClasses.map((cls) => ({ id: String(cls.id), name: cls.name || String(cls.id), isClosed: false }));
+        const closed = [...finishedClasses, ...withdrawnClasses]
+            .map((cls) => ({ id: String(cls.id), name: cls.name || String(cls.id), isClosed: true }));
+        return [{ id: 'all', name: '전체', isClosed: false }, ...ongoing, ...closed];
+    }, [ongoingClasses, finishedClasses, withdrawnClasses]);
+
     useEffect(() => {
-        if (activeTab !== 'learning') return;
-        const target = learningSectionRefs.current?.[learningSubTab];
-        if (target?.scrollIntoView) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, [activeTab, learningSubTab]);
+        const firstOngoing = ongoingClasses[0] ? String(ongoingClasses[0].id) : 'all';
+        if (!classFilter || classFilter === 'ongoing') {
+            setClassFilter(firstOngoing);
+            return;
+        }
+        if (classFilter !== 'all' && !learningClassOptions.some((item) => item.id === classFilter)) {
+            setClassFilter(firstOngoing);
+        }
+    }, [ongoingClasses, classFilter, learningClassOptions]);
 
     const navItems = [
         { id: 'home', icon: 'home', label: '홈' },
@@ -1415,17 +1426,10 @@ export default function ParentHome({
         <div className="bg-gray-50 min-h-screen flex flex-col relative font-sans">
             {/* 헤더 & 자녀 선택 */}
             <div className="bg-white sticky top-0 z-30 shadow-sm">
-                <div className="bg-[radial-gradient(circle_at_15%_30%,rgba(56,189,248,0.18),transparent_35%),linear-gradient(135deg,#0f172a,#1e3a8a)] text-white px-4 py-2 flex justify-between items-center text-xs font-bold">
-                    <span>학부모 전용</span>
-                    <span className="opacity-80">{activeChildSchool} {activeChildGrade}</span>
-                </div>
-                <StudentHeader />
-                <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-white">
-                    <div className="flex items-center gap-2 text-sm font-semibold text-gray-700">
-                        <span className="text-xs text-gray-400">현재 자녀</span>
-                        <span className="px-2 py-1 rounded-full bg-indigo-50 text-indigo-700 text-xs font-bold">
-                            {activeChildName}
-                        </span>
+                <div className="flex items-center justify-between px-4 py-2 border-b border-gray-100 bg-white">
+                    <div className="min-w-0">
+                        <p className="text-base font-bold text-gray-900 truncate">채수용 수학</p>
+                        <p className="text-xs text-gray-500 truncate">{activeChildName} · {activeChildSchool} {activeChildGrade}</p>
                     </div>
                     <div className="flex items-center gap-2">
                         <button type="button" onClick={() => setIsNotificationOpen(true)} className="relative p-2 rounded-lg border border-gray-200 text-gray-600">
@@ -1794,7 +1798,7 @@ export default function ParentHome({
                                                 <div className="px-1">
                                                     <button
                                                         type="button"
-                                                        onClick={() => setClinicPageSize((v) => v + 100)}
+                                                        onClick={() => setClinicPageSize((v) => v + 3)}
                                                         className="text-xs font-semibold text-gray-700 bg-gray-100 px-3 py-1.5 rounded-full border border-gray-200 hover:bg-gray-200 active:scale-95 transition"
                                                     >
                                                         더 보기
@@ -2128,6 +2132,20 @@ export default function ParentHome({
 
                         {activeTab === 'learning' && (
                             <div className="space-y-4">
+                                <section className="bg-white rounded-2xl border border-gray-100 p-3 shadow-sm">
+                                    <label className="block text-xs font-semibold text-gray-500 mb-2">클래스 필터</label>
+                                    <select
+                                        value={classFilter}
+                                        onChange={(e) => setClassFilter(e.target.value)}
+                                        className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                                    >
+                                        {learningClassOptions.map((option) => (
+                                            <option key={option.id} value={option.id}>
+                                                {option.name}{option.isClosed ? ' (종강/퇴원)' : ''}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </section>
                                 <section className="bg-white rounded-2xl border border-gray-100 p-2 shadow-sm">
                                     <div className="grid grid-cols-4 gap-2">
                                         {[
@@ -2154,7 +2172,7 @@ export default function ParentHome({
 
                                 {learningSubTab === 'homework' && (
                                     <div ref={(el) => { learningSectionRefs.current.homework = el; }} className="space-y-4">
-                                        {learningDataByClass.map((section) => (
+                                        {(classFilter === 'all' ? learningDataByClass : learningDataByClass.filter((section) => section.classId === classFilter)).map((section) => (
                                             <section key={section.classId} className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm space-y-3">
                                                 <h3 className="text-base font-bold text-gray-900">{section.classInfo?.name || section.classId}</h3>
                                                 {section.homework.length === 0 ? (
@@ -2191,11 +2209,11 @@ export default function ParentHome({
                                                                 <div className="bg-sky-400" style={{ width: width(counts.fixed) }} />
                                                                 <div className="bg-slate-300" style={{ width: width(counts.remaining) }} />
                                                             </div>
-                                                            <div className="grid grid-cols-2 gap-2 text-xs">
-                                                                <span className="text-emerald-700 bg-emerald-100 rounded-md px-2 py-1">맞음 {counts.correct}</span>
-                                                                <span className="text-rose-700 bg-rose-100 rounded-md px-2 py-1">틀림 {counts.wrong}</span>
-                                                                <span className="text-sky-700 bg-sky-100 rounded-md px-2 py-1">고침 {counts.fixed}</span>
-                                                                <span className="text-slate-500 bg-slate-100 rounded-md px-2 py-1">남음 {counts.remaining}</span>
+                                                           <div className="grid grid-cols-4 gap-2 text-xs font-semibold">
+                                                                <span className="text-emerald-600 text-center">맞음 <strong>{counts.correct}</strong></span>
+                                                                <span className="text-red-500 text-center">틀림 <strong>{counts.wrong}</strong></span>
+                                                                <span className="text-sky-500 text-center">고침 <strong>{counts.fixed}</strong></span>
+                                                                <span className="text-gray-400 text-center">남음 <strong>{counts.remaining}</strong></span>
                                                             </div>
                                                             {/* {questionText && (
                                                                 <>
@@ -2217,7 +2235,7 @@ export default function ParentHome({
 
                                 {learningSubTab === 'grades' && (
                                     <div ref={(el) => { learningSectionRefs.current.grades = el; }} className="space-y-4">
-                                        {learningDataByClass.map((section) => (
+                                        {(classFilter === 'all' ? learningDataByClass : learningDataByClass.filter((section) => section.classId === classFilter)).map((section) => (
                                             <section key={section.classId} className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm space-y-3">
                                                 <h3 className="text-base font-bold text-gray-900">{section.classInfo?.name || section.classId}</h3>
                                                 {section.grades.length === 0 ? (
@@ -2231,13 +2249,16 @@ export default function ParentHome({
                                                     const maxScoreLabel = formatStatDisplay(maxScoreRaw);
                                                     return (
                                                         <article key={test.id} className="rounded-xl border border-gray-200 p-3 space-y-1 text-sm text-gray-700">
+                                                            <div className="flex items-start justify-between gap-2">
                                                             <p className="font-bold text-gray-900">{test.name || '시험'}</p>
-                                                            <p className="text-xs text-gray-500">{test.date || '-'}</p>
-                                                            <div className="grid grid-cols-3 gap-2 text-xs mt-2">
-                                                                <span>학생 점수: <strong>{studentScoreLabel}</strong></span>
-                                                                <span>평균: <strong>{averageLabel}</strong></span>
-                                                                <span>최고점: <strong>{maxScoreLabel}</strong></span>
+                                                            <span className="text-xs font-bold text-indigo-700 bg-indigo-50 border border-indigo-100 rounded-full px-2 py-1">점수 {studentScoreLabel}</span>
                                                             </div>
+                                                            <p className="text-xs text-gray-500">{test.date || '-'}</p>
+                                                            <p className="text-xs text-gray-500 mt-2">
+                                                                {averageLabel === '통계 준비 중' || maxScoreLabel === '통계 준비 중'
+                                                                    ? '통계 준비 중'
+                                                                    : `평균 ${averageLabel}점 · 최고 ${maxScoreLabel}점`}
+                                                            </p>
                                                         </article>
                                                     );
                                                 })}
@@ -2248,7 +2269,7 @@ export default function ParentHome({
 
                                 {learningSubTab === 'attendance' && (
                                     <div ref={(el) => { learningSectionRefs.current.attendance = el; }} className="space-y-4">
-                                        {learningDataByClass.map((section) => (
+                                        {(classFilter === 'all' ? learningDataByClass : learningDataByClass.filter((section) => section.classId === classFilter)).map((section) => (
                                             <section key={section.classId} className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm space-y-3">
                                                 <h3 className="text-base font-bold text-gray-900">{section.classInfo?.name || section.classId}</h3>
                                                 {section.attendance.length === 0 ? (
@@ -2341,6 +2362,15 @@ export default function ParentHome({
                                                         </article>
                                                     );
                                                 })}
+                                                {visibleCompletedClinics.length < completedClinics.length && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setClinicPageSize((v) => v + 3)}
+                                                        className="w-full text-xs font-semibold text-indigo-700 border border-indigo-100 bg-indigo-50 rounded-xl py-2"
+                                                    >
+                                                        코멘트 3개 더보기
+                                                    </button>
+                                                )}
                                             </article>
                                         </section>
                                     )}
