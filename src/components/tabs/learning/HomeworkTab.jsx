@@ -27,15 +27,15 @@ export default function HomeworkTab({ myHomeworkStats }) {
                             <span className="text-xs text-gray-500 font-semibold">출제일: {issuedDate || '-'}</span>
                         </div>
                         <div className="flex items-center gap-2 mb-1">
-                            <h4 className="font-bold text-gray-900">{hw.content || hw.title || '과제'}</h4>
+                            <h4 className="font-bold text-gray-900">{hw.book || hw.title || hw.name || hw.bookName || hw.content || '과제'}</h4>
                             <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-700 border border-gray-200">
                                 {typeLabel}
                             </span>
                         </div>
                         <p className="text-xs text-gray-500 mb-4">
                             {assignmentType === 'video_makeup'
-                                ? (hw.book || '동영상 과제')
-                                : `${hw.book || '교재 미정'} (총 ${hw.totalQuestions}문제)`}
+                                ? (hw.content || '동영상 과제')
+                                : `${hw.content || '과제 내용 없음'} (총 ${hw.totalQuestions}문제)`}
                         </p>
                         <div className="w-full bg-gray-100 rounded-full h-2 mb-2 overflow-hidden flex">
                             <div className="bg-green-500 h-2" style={{ width: `${((hw.correctCount || 0) / Math.max(hw.totalQuestions || 0, 1)) * 100}%` }} />

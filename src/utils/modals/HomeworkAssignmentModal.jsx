@@ -213,7 +213,7 @@ export const HomeworkAssignmentModal = ({ isOpen, onClose, onSave, classId, assi
             <input type="date" value={assignedDate} onChange={e => setAssignedDate(e.target.value)} required className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border" />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700">교재명 (선택)</label>
+            <label className="block text-sm font-medium text-gray-700">과제명</label>
             <input type="text" value={book} onChange={e => setBook(e.target.value)} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border" placeholder="예: RPM 수학(상)" />
           </div>
         </div>

@@ -1466,7 +1466,7 @@ export default function ParentHome({
                     /* [라우팅 분기 3] 메인 */
                     <div className="animate-fade-in space-y-4">
                         {activeTab === 'home' && (
-                            <div className="space-y-4">
+                            <div className="space-y-3">
                                 <section className="bg-[radial-gradient(ellipse_at_18%_25%,rgba(56,189,248,0.28),transparent_40%),radial-gradient(ellipse_at_82%_20%,rgba(45,212,191,0.24),transparent_40%),linear-gradient(135deg,#0a1434,#1d4ed8,#0d9488)] text-white rounded-3xl p-6 md:p-8 shadow-lg border border-sky-900/40">
                                     <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
                                         <div className="space-y-3">
@@ -1546,7 +1546,7 @@ export default function ParentHome({
                                             closures={closures}
                                         />
                                     </div>
-                                    <aside className="space-y-4">
+                                    <aside className="space-y-3">
                                         <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4">
                                             <div className="flex items-center justify-between mb-2">
                                                 <h3 className="text-sm font-bold text-gray-800 flex items-center gap-2">
@@ -1933,7 +1933,7 @@ export default function ParentHome({
                                         )}
 
                                         {selectedClassId && (
-                                            <section className="space-y-4">
+                                            <section className="space-y-3">
                                                 <div className="flex flex-wrap items-center justify-between gap-3">
                                                     <div className="flex items-center gap-2">
                                                         <button
@@ -2134,7 +2134,7 @@ export default function ParentHome({
                         )}
 
                         {activeTab === 'learning' && (
-                            <div className="space-y-4">
+                            <div className="space-y-3">
                                 <section className="bg-white rounded-2xl border border-gray-100 p-2 shadow-sm">
                                     <div className="grid grid-cols-2 gap-2">
                                         {[
@@ -2199,10 +2199,10 @@ export default function ParentHome({
                                 )}
 
                                 {learningMode === 'regular' && learningSubTab === 'homework' && (
-                                    <div ref={(el) => { learningSectionRefs.current.homework = el; }} className="space-y-4">
+                                    <div ref={(el) => { learningSectionRefs.current.homework = el; }} className="space-y-3">
                                         {(classFilter === 'all' ? learningDataByClass : learningDataByClass.filter((section) => section.classId === classFilter)).map((section) => (
-                                            <section key={section.classId} className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm space-y-3">
-                                                <h3 className="text-base font-bold text-gray-900">{section.classInfo?.name || section.classId}</h3>
+                                            <section key={section.classId} className="bg-white rounded-xl border border-gray-100 p-3 shadow-sm space-y-2">
+                                                <h3 className="text-sm font-semibold text-gray-900">{section.classInfo?.name || section.classId}</h3>
                                                 {section.homework.length === 0 ? (
                                                     <p className="text-sm text-gray-500">과제 기록이 없습니다.</p>
                                                 ) : section.homework.map((hw) => {
@@ -2224,25 +2224,23 @@ export default function ParentHome({
                                                         ? questionDetail.join(', ')
                                                         : (typeof questionDetail === 'string' ? questionDetail : null);
                                                     return (
-                                                        <article key={hw.id} className="rounded-xl border border-gray-200 p-3 space-y-2">
+                                                        <article key={hw.id} className="rounded-xl border border-gray-200 p-2.5 space-y-2">
                                                             <div className="flex items-start justify-between gap-2">
-                                                                <p className="text-sm font-bold text-gray-900">{hw.content || hw.title || '과제'}</p>
-                                                                <span className="text-xs font-bold text-indigo-700 bg-indigo-50 border border-indigo-100 rounded-full px-2 py-1">
+                                                                <p className="text-sm font-semibold text-gray-900">{hw.book || hw.title || hw.name || hw.bookName || hw.content || '과제'}</p>
+                                                                <span className="text-[11px] font-semibold text-indigo-700 bg-indigo-50 border border-indigo-100 rounded-full px-2 py-0.5">
                                                                     완성률 {hw.completionRate ?? 0}%
                                                                 </span>
                                                             </div>
+                                                            <p className="text-xs text-gray-500">출제일 {hw.date || hw.assignedDate || "-"}</p>
                                                             <div className="w-full h-2 rounded-full overflow-hidden bg-gray-100 flex">
                                                                 <div className="bg-emerald-400" style={{ width: width(counts.correct) }} />
                                                                 <div className="bg-rose-400" style={{ width: width(counts.wrong) }} />
                                                                 <div className="bg-sky-400" style={{ width: width(counts.fixed) }} />
                                                                 <div className="bg-slate-300" style={{ width: width(counts.remaining) }} />
                                                             </div>
-                                                           <div className="grid grid-cols-4 gap-2 text-xs font-semibold">
-                                                                <span className="text-emerald-600 text-center">맞음 <strong>{counts.correct}</strong></span>
-                                                                <span className="text-red-500 text-center">틀림 <strong>{counts.wrong}</strong></span>
-                                                                <span className="text-sky-500 text-center">고침 <strong>{counts.fixed}</strong></span>
-                                                                <span className="text-gray-400 text-center">남음 <strong>{counts.remaining}</strong></span>
-                                                            </div>
+                                                           <p className="text-xs font-semibold">
+                                                                <span className="text-emerald-600">맞음 {counts.correct}</span> / <span className="text-red-500">틀림 {counts.wrong}</span> / <span className="text-sky-500">고침 {counts.fixed}</span> / <span className="text-gray-400">남음 {counts.remaining}</span>
+                                                            </p>
                                                             {/* {questionText && (
                                                                 <>
                                                                     <button type="button" onClick={() => toggleHomeworkDetail(detailKey)} className="text-xs font-semibold text-indigo-700">
@@ -2262,10 +2260,10 @@ export default function ParentHome({
                                 )}
 
                                 {learningMode === 'regular' && learningSubTab === 'grades' && (
-                                    <div ref={(el) => { learningSectionRefs.current.grades = el; }} className="space-y-4">
+                                    <div ref={(el) => { learningSectionRefs.current.grades = el; }} className="space-y-3">
                                         {(classFilter === 'all' ? learningDataByClass : learningDataByClass.filter((section) => section.classId === classFilter)).map((section) => (
-                                            <section key={section.classId} className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm space-y-3">
-                                                <h3 className="text-base font-bold text-gray-900">{section.classInfo?.name || section.classId}</h3>
+                                            <section key={section.classId} className="bg-white rounded-xl border border-gray-100 p-3 shadow-sm space-y-2">
+                                                <h3 className="text-sm font-semibold text-gray-900">{section.classInfo?.name || section.classId}</h3>
                                                 {section.grades.length === 0 ? (
                                                     <p className="text-sm text-gray-500">시험 기록이 없습니다.</p>
                                                 ) : section.grades.map((test) => {
@@ -2279,7 +2277,7 @@ export default function ParentHome({
                                                         <article key={test.id} className="rounded-xl border border-gray-200 p-3 space-y-1 text-sm text-gray-700">
                                                             <div className="flex items-start justify-between gap-2">
                                                             <p className="font-bold text-gray-900">{test.name || '시험'}</p>
-                                                            <span className="text-xs font-bold text-indigo-700 bg-indigo-50 border border-indigo-100 rounded-full px-2 py-1">점수 {studentScoreLabel}</span>
+                                                            <span className="text-[11px] font-semibold text-indigo-700 bg-indigo-50 border border-indigo-100 rounded-full px-2 py-0.5">점수 {studentScoreLabel}</span>
                                                             </div>
                                                             <p className="text-xs text-gray-500">{test.date || '-'}</p>
                                                             <p className="text-xs text-gray-500 mt-2">
@@ -2296,10 +2294,10 @@ export default function ParentHome({
                                 )}
 
                                 {learningMode === 'regular' && learningSubTab === 'attendance' && (
-                                    <div ref={(el) => { learningSectionRefs.current.attendance = el; }} className="space-y-4">
+                                    <div ref={(el) => { learningSectionRefs.current.attendance = el; }} className="space-y-3">
                                         {(classFilter === 'all' ? learningDataByClass : learningDataByClass.filter((section) => section.classId === classFilter)).map((section) => (
-                                            <section key={section.classId} className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm space-y-3">
-                                                <h3 className="text-base font-bold text-gray-900">{section.classInfo?.name || section.classId}</h3>
+                                            <section key={section.classId} className="bg-white rounded-xl border border-gray-100 p-3 shadow-sm space-y-2">
+                                                <h3 className="text-sm font-semibold text-gray-900">{section.classInfo?.name || section.classId}</h3>
                                                 {section.attendance.length === 0 ? (
                                                     <p className="text-sm text-gray-500">출결 기록이 없습니다.</p>
                                                 ) : (
@@ -2321,7 +2319,7 @@ export default function ParentHome({
                                                                                     : 'bg-gray-100 text-gray-600';
 
                                                                 return (
-                                                                    <div key={att.id} className="flex items-center justify-between px-3 py-2.5 border-b border-gray-100 last:border-b-0 bg-white">
+                                                                    <div key={att.id} className="flex items-center justify-between px-3 py-2 border-b border-gray-100 last:border-b-0 bg-white">
                                                                         <span className="text-sm font-medium text-gray-700">{att.date || '-'}</span>
                                                                         <span className={`text-xs font-bold px-2 py-1 rounded-full ${badgeClass}`}>{status}</span>
                                                                     </div>
@@ -2335,10 +2333,10 @@ export default function ParentHome({
                                 )}
 
                                 {learningMode === 'clinic' && (
-                                    <section ref={(el) => { learningSectionRefs.current.clinic = el; }} className="space-y-4"> 
-                                        <article className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm space-y-3">
+                                    <section ref={(el) => { learningSectionRefs.current.clinic = el; }} className="space-y-3"> 
+                                        <article className="bg-white rounded-xl border border-gray-100 p-3 shadow-sm space-y-2">
                                             <div className="flex items-center justify-between">
-                                                <h3 className="text-base font-bold text-gray-900">누적 클리닉 시간</h3>
+                                                <h3 className="text-sm font-semibold text-gray-900">누적 클리닉 시간</h3>
                                                 <span className="text-sm font-semibold text-teal-700">{formatDuration(totalClinicMinutes)}</span>
                                             </div>
                                             <div className="w-full h-2.5 bg-gray-100 rounded-full overflow-hidden">
@@ -2346,8 +2344,8 @@ export default function ParentHome({
                                                 </div>
                                             </article>
 
-                                            <article className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm space-y-3">
-                                                <h3 className="text-base font-bold text-gray-900">예약된 일정</h3>
+                                            <article className="bg-white rounded-xl border border-gray-100 p-3 shadow-sm space-y-2">
+                                                <h3 className="text-sm font-semibold text-gray-900">예약된 일정</h3>
                                                 {reservedClinics.length === 0 ? (
                                                     <p className="text-sm text-gray-500">예약된 클리닉이 없습니다.</p>
                                                 ) : reservedClinics.slice(0, 20).map((log, idx) => (
@@ -2362,8 +2360,8 @@ export default function ParentHome({
                                                 ))}
                                             </article>
 
-                                            <article className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm space-y-3">
-                                                <h3 className="text-base font-bold text-gray-900">클리닉 코멘트</h3>
+                                            <article className="bg-white rounded-xl border border-gray-100 p-3 shadow-sm space-y-2">
+                                                <h3 className="text-sm font-semibold text-gray-900">클리닉 코멘트</h3>
                                                 {visibleCompletedClinics.length === 0 ? (
                                                     <p className="text-sm text-gray-500">클리닉 기록이 없습니다.</p>
                                                 ) : visibleCompletedClinics.slice(0, 20).map((log) => {
@@ -2457,7 +2455,7 @@ export default function ParentHome({
                 <div className="fixed inset-0 z-[80] bg-black/40 p-4 flex items-center justify-center" onClick={() => setIsMessengerOpen(false)}>
                     <div className="w-full max-w-4xl max-h-[90vh] overflow-y-auto bg-white rounded-2xl p-4" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-between mb-3">
-                            <h3 className="text-base font-bold text-gray-900">메신저</h3>
+                            <h3 className="text-sm font-semibold text-gray-900">메신저</h3>
                             <button type="button" onClick={() => setIsMessengerOpen(false)} className="text-sm text-gray-500">닫기</button>
                         </div>
                         <Messenger userId={userId} userRole="parent" students={students} parents={parents} classes={classes} />
