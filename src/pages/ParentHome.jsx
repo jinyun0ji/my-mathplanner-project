@@ -10,7 +10,8 @@ import {
     doc,
     serverTimestamp,
 } from 'firebase/firestore';
-import { ScheduleTab, MenuTab } from '../components/StudentTabs';
+import { ScheduleTab } from '../components/StudentTabs';
+import { httpsCallable } from 'firebase/functions';
 import ParentClassroomView from './parent/ParentClassroomView';
 import {
     Icon,
@@ -31,14 +32,14 @@ import { formatGradeScoreText } from '../domain/grade/grade.service';
 import NotificationsIcon from '@mui/icons-material/Notifications';
 import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
 import ParentSessionReport from './parent/ParentSessionReport'; // ✅ 신규 리포트 컴포넌트
-import Messenger from '../components/Communication/Messenger';
+import StudentMessenger from '../components/StudentMessenger';
 import { generateSessionReport } from '../utils/reportHelper'; // ✅ 리포트 데이터 생성 헬퍼
 import useNotifications from '../notifications/useNotifications';
 import NotificationList from '../notifications/NotificationList';
 import openNotification from '../notifications/openNotification';
 import { useParentContext } from '../parent';
 import { sortClassesByStatus } from '../utils/classStatus';
-import { db } from '../firebase/client';
+import { db, functions } from '../firebase/client';
 import { FEATURES } from '../config/features';
 import AttendanceDetailModal from './parent/AttendanceDetailModal';
 import MathText from '../components/common/MathText';
@@ -665,13 +666,14 @@ export default function ParentHome({
     const readReportFromUrl = () => searchParams.get('reportId');
 
     const [activeTab, _setActiveTab] = useState(readTabFromUrl());
+    const [, setReportViewMode] = useState('overview');
     const [selectedClassroomId, _setSelectedClassroomId] = useState(readClassroomFromUrl());
-// ✅ 리포트 뷰 상태
-    const [reportViewMode, setReportViewMode] = useState('overview'); // 'overview' | 'byClass'
+    // ✅ 리포트 뷰 상태
     const [learningMode, setLearningMode] = useState('regular'); // 'regular' | 'clinic'
     const [learningSubTab, setLearningSubTab] = useState('homework');
     const [expandedHomeworkDetails, setExpandedHomeworkDetails] = useState({});
     const [isMessengerOpen, setIsMessengerOpen] = useState(false);
+    const [parentMessages, setParentMessages] = useState([]);
     const [selectedClassId, setSelectedClassId] = useState(null);
     const [classFilter, setClassFilter] = useState('ongoing'); // 기본: 진행중
     const [expandedSections, setExpandedSections] = useState({ homework: false, grades: false });
@@ -994,42 +996,18 @@ export default function ParentHome({
 
     const handleMarkAllRead = async () => {
         console.log('[notifications] markAllRead clicked');
-
         if (!viewerUid) {
             console.warn('[notifications] no viewerUid');
             return;
         }
-
         try {
-            const q = query(
-                collection(db, 'notifications', viewerUid, 'items'),
-                where('isRead', '==', false)
-            );
-
-            const snap = await getDocs(q);
-            console.log('[notifications] unread docs =', snap.size);
-
-            if (snap.empty) return;
-
-            const batch = writeBatch(db);
-            snap.docs.forEach((d) => {
-                batch.update(doc(db, 'notifications', viewerUid, 'items', d.id), {
-                    isRead: true,
-                    readAt: serverTimestamp(),
-                    updatedAt: serverTimestamp(),
-                });
-            });
-
-            await batch.commit();
-            console.log('[notifications] markAllRead committed');
-
-            // UI 즉시 반영
-            setNotifications((prev) =>
-                prev.map((n) => ({ ...n, isRead: true, readAt: n.readAt || new Date() }))
-            );
+            const callable = httpsCallable(functions, 'markAllNotificationsRead');
+            await callable({ viewerUid });
+            const now = new Date();
+            setNotifications((prev) => prev.map((item) => ({ ...item, isRead: true, readAt: now })));
+            console.log('[notifications] markAllRead completed by callable');
         } catch (e) {
             console.error('[notifications] FAIL: markAllRead', e);
-            // ✅ 권한 문제여도 페이지 전체가 깨지지 않게 함
         }
     };
 
@@ -1467,11 +1445,11 @@ export default function ParentHome({
                     <div className="animate-fade-in space-y-4">
                         {activeTab === 'home' && (
                             <div className="space-y-3">
-                                <section className="bg-[radial-gradient(ellipse_at_18%_25%,rgba(56,189,248,0.28),transparent_40%),radial-gradient(ellipse_at_82%_20%,rgba(45,212,191,0.24),transparent_40%),linear-gradient(135deg,#0a1434,#1d4ed8,#0d9488)] text-white rounded-3xl p-6 md:p-8 shadow-lg border border-sky-900/40">
+                                <section className="bg-white border border-gray-100 rounded-xl p-3 shadow-sm">
                                     <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
                                         <div className="space-y-3">
                                             <p className="text-xs uppercase tracking-[0.2em] text-sky-200 font-semibold">학부모 홈</p>
-                                            <h2 className="text-2xl md:text-3xl font-extrabold tracking-tight">{activeChildName} 학습 현황</h2>
+                                            <h2 className="text-2xl md:text-3xl font-extrabold tracking-tight">{activeChildName} 오늘의 수업</h2>
                                             <p className="text-sm text-sky-100">오늘 바로 확인해야 할 과제와 일정 정보를 한눈에 모았습니다.</p>
                                             <div className="flex flex-wrap gap-2">
                                                 <span className="bg-white/10 border border-white/20 text-sky-50 px-3 py-1.5 rounded-full text-xs font-semibold">
@@ -1579,8 +1557,7 @@ export default function ParentHome({
 
                         {activeTab === 'report' && (
                             <div className="space-y-6">
-                                {reportViewMode === 'overview' && (
-                                    <>
+                                
                                     <section className="space-y-3">
                                             <div className="flex items-center justify-between px-1">
                                                 <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
@@ -1849,87 +1826,6 @@ export default function ParentHome({
                                                 )}
                                             </div>
                                         </section>
-                                    </>
-                                )}
-                                {reportViewMode === 'byClass' && (
-                                    <>
-                                        {!selectedClassId && (
-                                            <section className="space-y-3">
-                                                <div className="flex items-center justify-between px-1">
-                                                    <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                                                        <Icon name="barChart" className="w-5 h-5 text-indigo-600" />
-                                                        클래스별 기록 보기
-                                                    </h3>
-                                                    <button
-                                                        onClick={() => {
-                                                            setReportViewMode('overview');
-                                                            setExpandedSections({ homework: false, grades: false });
-                                                            setShowAttendanceDetail(false);
-                                                        }}
-                                                        className="text-xs text-gray-500 underline"
-                                                    >
-                                                        수업 리포트로 돌아가기
-                                                    </button>
-                                                </div>
-                                                <div className="flex gap-2 mb-4">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setClassFilter('ongoing')}
-                                                        className={classFilter === 'ongoing'
-                                                            ? 'text-xs font-semibold text-indigo-700 bg-indigo-50 px-3 py-1.5 rounded-full border border-indigo-100'
-                                                            : 'text-xs font-semibold text-gray-500 bg-gray-50 px-3 py-1.5 rounded-full border border-gray-200'}
-                                                    >
-                                                        진행중
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setClassFilter('withdrawn')}
-                                                        className={classFilter === 'withdrawn'
-                                                            ? 'text-xs font-semibold text-indigo-700 bg-indigo-50 px-3 py-1.5 rounded-full border border-indigo-100'
-                                                            : 'text-xs font-semibold text-gray-500 bg-gray-50 px-3 py-1.5 rounded-full border border-gray-200'}
-                                                    >
-                                                        퇴원
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setClassFilter('finished')}
-                                                        className={classFilter === 'finished'
-                                                            ? 'text-xs font-semibold text-indigo-700 bg-indigo-50 px-3 py-1.5 rounded-full border border-indigo-100'
-                                                            : 'text-xs font-semibold text-gray-500 bg-gray-50 px-3 py-1.5 rounded-full border border-gray-200'}
-                                                    >
-                                                        종강
-                                                    </button>
-                                                </div>
-                                                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-                                                    {filteredClassList.map((cls) => (
-                                                        <button
-                                                            key={cls.id}
-                                                            onClick={() => {
-                                                                setSelectedClassId(cls.id);
-                                                                setExpandedSections({ homework: false, grades: false });
-                                                                setShowAttendanceDetail(false);
-                                                            }}
-                                                            className="text-left bg-white border border-gray-100 rounded-2xl p-4 shadow-sm space-y-3 hover:border-indigo-200 transition"
-                                                        >
-                                                            <div className="flex items-start justify-between gap-3">
-                                                                <div className="space-y-1">
-                                                                    <p className="text-[11px] text-gray-400 font-semibold">{cls.latestLessonDate}</p>
-                                                                    <h4 className="font-bold text-gray-900">{cls.name}</h4>
-                                                                    <p className="text-xs text-gray-500">{cls.teacher} 선생님</p>
-                                                                </div>
-                                                                <span className={`text-[11px] font-bold px-2 py-1 rounded-full ${getClassBadgeClassName(cls.status)}`}>
-                                                                    {cls.status}
-                                                                </span>
-                                                            </div>
-                                                        </button>
-                                                    ))}
-                                                    {filteredClassList.length === 0 && (
-                                                        <div className="p-6 text-center bg-white border border-dashed border-gray-200 rounded-2xl text-sm text-gray-400 md:col-span-2 xl:col-span-3">
-                                                            선택한 상태의 클래스가 없습니다.
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            </section>
                                         )}
 
                                         {selectedClassId && (
@@ -2118,19 +2014,18 @@ export default function ParentHome({
                                                 </div>
                                             </section>
                                         )}
-                                    </>
-                                )}
+                                    
                             </div>
                         )}
 
                         {activeTab === 'schedule' && (
-                            <ScheduleTab 
+                            <div className="space-y-3"><div className="bg-white border border-gray-100 rounded-xl p-3 shadow-sm"><h3 className="text-sm font-semibold text-gray-900 mb-1">오늘/이번 주 일정</h3><p className="text-xs text-gray-500">일정을 간결한 리스트로 확인하세요.</p></div><div className="bg-white border border-gray-100 rounded-xl p-2 shadow-sm"><ScheduleTab 
                                 myClasses={myClasses} attendanceLogs={attendanceLogs} clinicLogs={clinicLogs} 
                                 externalSchedules={externalSchedules} onSaveExternalSchedule={onSaveExternalSchedule} onDeleteExternalSchedule={onDeleteExternalSchedule}
                                 student={activeChild}
                                 childClassExitMap={childClassExitMap}
                                 closures={closures}
-                            />
+                            /></div></div>
                         )}
 
                         {activeTab === 'learning' && (
@@ -2195,8 +2090,7 @@ export default function ParentHome({
                                                 ))}
                                             </div>
                                         </section>
-                                    </>
-                                )}
+                                    
 
                                 {learningMode === 'regular' && learningSubTab === 'homework' && (
                                     <div ref={(el) => { learningSectionRefs.current.homework = el; }} className="space-y-3">
@@ -2332,6 +2226,8 @@ export default function ParentHome({
                                     </div>
                                 )}
 
+                                </>
+                            )}
                                 {learningMode === 'clinic' && (
                                     <section ref={(el) => { learningSectionRefs.current.clinic = el; }} className="space-y-3"> 
                                         <article className="bg-white rounded-xl border border-gray-100 p-3 shadow-sm space-y-2">
@@ -2404,7 +2300,7 @@ export default function ParentHome({
                         )}
 
                         {activeTab === 'more' && (
-                            <MenuTab student={activeChild} onUpdateStudent={() => {}} onLogout={onLogout} videoMemos={{}} lessonLogs={[]} onLinkToMemo={() => {}} notices={visibleNotices} setActiveTab={setActiveTab} isParent={true} />
+                            <ParentMoreMenu notices={visibleNotices} onOpenNotice={() => setActiveTab('home')} onOpenNotifications={() => setIsNotificationOpen(true)} onOpenMessages={() => setIsMessengerOpen(true)} onLogout={onLogout} />
                         )}
                     </div>
                 )}
@@ -2458,7 +2354,7 @@ export default function ParentHome({
                             <h3 className="text-sm font-semibold text-gray-900">메신저</h3>
                             <button type="button" onClick={() => setIsMessengerOpen(false)} className="text-sm text-gray-500">닫기</button>
                         </div>
-                        <Messenger userId={userId} userRole="parent" students={students} parents={parents} classes={classes} />
+                        <StudentMessenger studentId={activeChildId} teacherName="학원 운영팀" messages={parentMessages} onSendMessage={(text, roomId) => setParentMessages((prev)=>[...prev,{id:`local-${Date.now()}`,roomId,text,isMe:true,date:new Date().toISOString().slice(0,10),time:new Date().toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'})}])} isFloating={false} />
                     </div>
                 </div>
             )}
@@ -2494,3 +2390,26 @@ const StatusPill = ({ icon, label, tone = 'default' }) => {
 };
 
 // changed: hide ended classes in today’s lessons
+
+const ParentMoreMenu = ({ notices = [], onOpenNotice, onOpenNotifications, onOpenMessages, onLogout }) => {
+  const rows = [
+    { key: 'notice', label: `공지사항 (${notices.length})`, onClick: onOpenNotice },
+    { key: 'noti', label: '알림센터', onClick: onOpenNotifications },
+    { key: 'msg', label: '메시지', onClick: onOpenMessages },
+    { key: 'account', label: '계정 정보' },
+    { key: 'terms', label: '이용약관' },
+    { key: 'privacy', label: '개인정보처리방침' },
+  ];
+  return (
+    <section className="bg-white border border-gray-100 rounded-xl shadow-sm overflow-hidden">
+      {rows.map((row) => (
+        <button key={row.key} type="button" onClick={row.onClick} className="w-full px-3 py-3 text-sm text-gray-800 border-b border-gray-100 last:border-b-0 flex items-center justify-between">
+          <span>{row.label}</span><span className="text-gray-400">›</span>
+        </button>
+      ))}
+      <div className="p-3 bg-gray-50">
+        <button type="button" onClick={onLogout} className="w-full rounded-xl border border-rose-100 text-rose-600 text-sm font-semibold py-2">로그아웃</button>
+      </div>
+    </section>
+  );
+};

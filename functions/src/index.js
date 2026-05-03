@@ -21,6 +21,7 @@ const { normalizeAnnouncementOnWrite } = require('./triggers/announcements');
 const { resolveInviteCode } = require('./resolveInviteCode');
 const { acceptInviteAndCreateProfile } = require('./acceptInviteAndCreateProfile');
 const { createClinicReservation } = require('./clinic/createClinicReservation');
+const { markAllNotificationsRead } = require('./notify/markAllNotificationsRead');
 const auditLogs = require('./auditLogs');
 
 exports.api = api;
@@ -51,3 +52,4 @@ exports.auditAttendanceLogs = auditLogs.auditAttendanceLogs;
 exports.auditHomeworkResults = auditLogs.auditHomeworkResults;
 exports.auditGrades = auditLogs.auditGrades;
 exports.auditPayments = auditLogs.auditPayments;
+exports.markAllNotificationsRead = markAllNotificationsRead;
