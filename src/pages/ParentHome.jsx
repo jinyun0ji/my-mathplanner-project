@@ -668,6 +668,7 @@ export default function ParentHome({
     const [selectedClassroomId, _setSelectedClassroomId] = useState(readClassroomFromUrl());
 // ✅ 리포트 뷰 상태
     const [reportViewMode, setReportViewMode] = useState('overview'); // 'overview' | 'byClass'
+    const [learningMode, setLearningMode] = useState('regular'); // 'regular' | 'clinic'
     const [learningSubTab, setLearningSubTab] = useState('homework');
     const [expandedHomeworkDetails, setExpandedHomeworkDetails] = useState({});
     const [isMessengerOpen, setIsMessengerOpen] = useState(false);
@@ -1523,12 +1524,14 @@ export default function ParentHome({
                                         { label: '출결 상세보기', subTab: 'attendance' },
                                         { label: '과제 상세보기', subTab: 'homework' },
                                         { label: '성적 상세보기', subTab: 'grades' },
-                                        { label: '클리닉 상세보기', subTab: 'clinic' },
-                                    ].map((item) => (
-                                        <button key={item.label} onClick={() => { setLearningSubTab(item.subTab); setActiveTab('learning'); }} className="bg-white border border-gray-200 rounded-2xl p-4 text-sm font-bold text-gray-800 text-left">
+                                        ].map((item) => (
+                                        <button key={item.label} onClick={() => { setLearningMode('regular'); setLearningSubTab(item.subTab); setActiveTab('learning'); }} className="bg-white border border-gray-200 rounded-2xl p-4 text-sm font-bold text-gray-800 text-left">
                                             {item.label}
                                         </button>
                                     ))}
+                                    <button onClick={() => { setLearningMode('clinic'); setActiveTab('learning'); }} className="bg-white border border-gray-200 rounded-2xl p-4 text-sm font-bold text-gray-800 text-left">
+                                        클리닉 상세보기
+                                    </button>
                                 </section>
 
                                 <div className="grid gap-4 lg:grid-cols-3">
@@ -2132,45 +2135,70 @@ export default function ParentHome({
 
                         {activeTab === 'learning' && (
                             <div className="space-y-4">
-                                <section className="bg-white rounded-2xl border border-gray-100 p-3 shadow-sm">
-                                    <label className="block text-xs font-semibold text-gray-500 mb-2">클래스 필터</label>
-                                    <select
-                                        value={classFilter}
-                                        onChange={(e) => setClassFilter(e.target.value)}
-                                        className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-200"
-                                    >
-                                        {learningClassOptions.map((option) => (
-                                            <option key={option.id} value={option.id}>
-                                                {option.name}{option.isClosed ? ' (종강/퇴원)' : ''}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </section>
                                 <section className="bg-white rounded-2xl border border-gray-100 p-2 shadow-sm">
-                                    <div className="grid grid-cols-4 gap-2">
+                                    <div className="grid grid-cols-2 gap-2">
                                         {[
-                                            { id: 'homework', label: '과제' },
-                                            { id: 'grades', label: '성적' },
-                                            { id: 'attendance', label: '출결' },
+                                            { id: 'regular', label: '정규 수업' },
                                             { id: 'clinic', label: '클리닉' },
-                                        ].map((tab) => (
+                                        ].map((mode) => (
                                             <button
-                                                key={tab.id}
+                                                key={mode.id}
                                                 type="button"
-                                                onClick={() => setLearningSubTab(tab.id)}
-                                                className={`rounded-xl px-2 py-2 text-xs font-bold transition-colors ${
-                                                    learningSubTab === tab.id
+                                                onClick={() => setLearningMode(mode.id)}
+                                                className={`rounded-xl px-3 py-2 text-sm font-bold transition-colors ${
+                                                    learningMode === mode.id
                                                         ? 'bg-indigo-600 text-white'
-                                                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                                        : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
                                                 }`}
                                             >
-                                                {tab.label}
+                                                {mode.label}
                                             </button>
                                         ))}
                                     </div>
                                 </section>
 
-                                {learningSubTab === 'homework' && (
+                                {learningMode === 'regular' && (
+                                    <>
+                                        <section className="bg-white rounded-2xl border border-gray-100 p-3 shadow-sm">
+                                            <label className="block text-xs font-semibold text-gray-500 mb-2">클래스 필터</label>
+                                            <select
+                                                value={classFilter}
+                                                onChange={(e) => setClassFilter(e.target.value)}
+                                                className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                                            >
+                                                {learningClassOptions.map((option) => (
+                                                    <option key={option.id} value={option.id}>
+                                                        {option.name}{option.isClosed ? ' (종강/퇴원)' : ''}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </section>
+                                        <section className="bg-white rounded-2xl border border-gray-100 p-2 shadow-sm">
+                                            <div className="grid grid-cols-3 gap-2">
+                                                {[
+                                                    { id: 'homework', label: '과제' },
+                                                    { id: 'grades', label: '성적' },
+                                                    { id: 'attendance', label: '출결' },
+                                                ].map((tab) => (
+                                                    <button
+                                                        key={tab.id}
+                                                        type="button"
+                                                        onClick={() => setLearningSubTab(tab.id)}
+                                                        className={`rounded-xl px-2 py-2 text-xs font-bold transition-colors ${
+                                                            learningSubTab === tab.id
+                                                                ? 'bg-indigo-600 text-white'
+                                                                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                                        }`}
+                                                    >
+                                                        {tab.label}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </section>
+                                    </>
+                                )}
+
+                                {learningMode === 'regular' && learningSubTab === 'homework' && (
                                     <div ref={(el) => { learningSectionRefs.current.homework = el; }} className="space-y-4">
                                         {(classFilter === 'all' ? learningDataByClass : learningDataByClass.filter((section) => section.classId === classFilter)).map((section) => (
                                             <section key={section.classId} className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm space-y-3">
@@ -2233,7 +2261,7 @@ export default function ParentHome({
                                     </div>
                                 )}
 
-                                {learningSubTab === 'grades' && (
+                                {learningMode === 'regular' && learningSubTab === 'grades' && (
                                     <div ref={(el) => { learningSectionRefs.current.grades = el; }} className="space-y-4">
                                         {(classFilter === 'all' ? learningDataByClass : learningDataByClass.filter((section) => section.classId === classFilter)).map((section) => (
                                             <section key={section.classId} className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm space-y-3">
@@ -2267,7 +2295,7 @@ export default function ParentHome({
                                     </div>
                                 )}
 
-                                {learningSubTab === 'attendance' && (
+                                {learningMode === 'regular' && learningSubTab === 'attendance' && (
                                     <div ref={(el) => { learningSectionRefs.current.attendance = el; }} className="space-y-4">
                                         {(classFilter === 'all' ? learningDataByClass : learningDataByClass.filter((section) => section.classId === classFilter)).map((section) => (
                                             <section key={section.classId} className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm space-y-3">
@@ -2306,7 +2334,7 @@ export default function ParentHome({
                                     </div>
                                 )}
 
-                                {learningSubTab === 'clinic' && (
+                                {learningMode === 'clinic' && (
                                     <section ref={(el) => { learningSectionRefs.current.clinic = el; }} className="space-y-4"> 
                                         <article className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm space-y-3">
                                             <div className="flex items-center justify-between">
