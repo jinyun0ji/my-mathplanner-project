@@ -1251,6 +1251,14 @@ video {
   min-height: 320px;
 }
 
+.min-h-\[420px\]{
+  min-height: 420px;
+}
+
+.min-h-\[calc\(100vh-150px\)\]{
+  min-height: calc(100vh - 150px);
+}
+
 .w-0{
   width: 0px;
 }
@@ -4587,6 +4595,11 @@ body{
 .focus\:ring-indigo-400:focus{
   --tw-ring-opacity: 1;
   --tw-ring-color: rgb(129 140 248 / var(--tw-ring-opacity, 1));
+}
+
+.focus\:ring-gray-300:focus{
+  --tw-ring-opacity: 1;
+  --tw-ring-color: rgb(209 213 219 / var(--tw-ring-opacity, 1));
 }
 
 .focus\:ring-offset-2:focus{
