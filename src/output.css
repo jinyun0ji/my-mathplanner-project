@@ -936,6 +936,10 @@ video {
   margin-right: 28rem;
 }
 
+.-mt-4{
+  margin-top: -1rem;
+}
+
 .line-clamp-2{
   overflow: hidden;
   display: -webkit-box;
@@ -1257,6 +1261,10 @@ video {
 
 .min-h-\[calc\(100vh-150px\)\]{
   min-height: calc(100vh - 150px);
+}
+
+.min-h-\[calc\(100vh-120px\)\]{
+  min-height: calc(100vh - 120px);
 }
 
 .w-0{

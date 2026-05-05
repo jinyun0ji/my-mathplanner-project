@@ -15,7 +15,7 @@ import {
 } from 'firebase/firestore';
 import { auth, db } from '../firebase/client';
 
-const CANDIDATE_ROOM_IDS = (studentId) => [String(studentId || ''), `parent-student-${studentId}`].filter(Boolean);
+const CANDIDATE_ROOM_IDS = (studentId) => [String(studentId || '')].filter(Boolean);
 
 const normalizeMessage = (id, data, viewerUid) => {
     const createdAtDate = data?.createdAt?.toDate?.() || (data?.createdAt ? new Date(data.createdAt) : null) || new Date();
@@ -33,33 +33,33 @@ const normalizeMessage = (id, data, viewerUid) => {
     };
 };
 
-async function resolveRoomId(studentId) {
+async function resolveRoomId(studentId, studentAuthUid = '') {
     const sid = String(studentId || '');
-    if (!sid) return null;
+    const suid = String(studentAuthUid || '');
+    if (!sid && !suid) return null;
 
     const chatsRef = collection(db, 'chats');
 
     const checks = [
         async () => {
+            if (!sid) return null;
             const snap = await getDocs(query(chatsRef, where('studentId', '==', sid), limit(1)));
             return snap.empty ? null : snap.docs[0].id;
         },
         async () => {
-            const snap = await getDocs(query(chatsRef, where('participants', 'array-contains', sid), limit(1)));
+            if (!suid) return null;
+            const snap = await getDocs(query(chatsRef, where('participants', 'array-contains', suid), limit(1)));
             return snap.empty ? null : snap.docs[0].id;
         },
         async () => {
-            const snap = await getDocs(query(chatsRef, where('participantIds', 'array-contains', sid), limit(1)));
+            if (!suid) return null;
+            const snap = await getDocs(query(chatsRef, where('participantIds', 'array-contains', suid), limit(1)));
             return snap.empty ? null : snap.docs[0].id;
         },
         async () => {
+            if (!sid) return null;
             const direct = await getDoc(doc(db, 'chats', sid));
             return direct.exists() ? sid : null;
-        },
-        async () => {
-            const fallbackId = `parent-student-${sid}`;
-            const fallback = await getDoc(doc(db, 'chats', fallbackId));
-            return fallback.exists() ? fallbackId : null;
         },
     ];
 
@@ -68,10 +68,10 @@ async function resolveRoomId(studentId) {
         if (roomId) return roomId;
     }
 
-    return `parent-student-${sid}`;
+    return null;
 }
 
-export default function StudentMessenger({ studentId, teacherName = '학원 운영팀', userRole = 'parent', isFloating = false }) {
+export default function StudentMessenger({ studentId, studentAuthUid = '', teacherName = '학원 운영팀', userRole = 'parent', isFloating = false }) {
     const [roomId, setRoomId] = useState(null);
     const [messages, setMessages] = useState([]);
     const [inputText, setInputText] = useState('');
@@ -82,14 +82,14 @@ export default function StudentMessenger({ studentId, teacherName = '학원 운�
         setRoomId(null);
         setMessages([]);
 
-        resolveRoomId(studentId).then((resolved) => {
+        resolveRoomId(studentId, studentAuthUid).then((resolved) => {
             if (mounted) setRoomId(resolved);
         });
 
         return () => {
             mounted = false;
         };
-    }, [studentId]);
+    }, [studentId, studentAuthUid]);
 
     useEffect(() => {
         if (!roomId) return undefined;
@@ -112,7 +112,7 @@ export default function StudentMessenger({ studentId, teacherName = '학원 운�
         const text = inputText.trim();
         if (!text || !studentId) return;
 
-        const resolvedRoomId = roomId || (await resolveRoomId(studentId));
+        const resolvedRoomId = roomId || (await resolveRoomId(studentId, studentAuthUid));
         if (!resolvedRoomId) return;
 
         const viewerUid = auth.currentUser?.uid || 'parent-anonymous';

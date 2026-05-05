@@ -1350,7 +1350,6 @@ export default function ParentHome({
         { id: 'report', icon: 'clipboardCheck', label: '수업리포트' },
         { id: 'learning', icon: 'bookOpen', label: '학습관리' },
         { id: 'schedule', icon: 'calendar', label: '일정' },
-        { id: 'messenger', icon: 'messageSquare', label: '메신저' },
         { id: 'more', icon: 'menu', label: '전체' },
     ];
 
@@ -2208,14 +2207,16 @@ export default function ParentHome({
                             </div>
                         )}
                         {activeTab === 'messenger' && (
-                            <section className="bg-white border border-gray-100 rounded-xl shadow-sm overflow-hidden min-h-[calc(100vh-150px)]">
-                                <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
-                                    <div>
-                                        <h2 className="text-base font-bold text-gray-900">메시지</h2>
-                                        <p className="text-xs text-gray-500">학원 운영팀과의 대화</p>
-                                    </div>
+                            <section className="bg-white min-h-[calc(100vh-120px)] -mx-4 -mt-4">
+                                <div className="px-4 py-3 border-b border-gray-100">
+                                    <h2 className="text-base font-bold text-gray-900">메시지</h2>
                                 </div>
-                                <StudentMessenger studentId={activeChildId} userRole="parent" teacherName="학원 운영팀" isFloating={false} />
+                                <StudentMessenger
+                                    studentId={activeChildId}
+                                    studentAuthUid={activeChild?.authUid || activeChild?.studentUid || activeChild?.uid || ''}
+                                    userRole="parent"
+                                    isFloating={false}
+                                />
                             </section>
                         )}
 
