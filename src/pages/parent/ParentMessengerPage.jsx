@@ -46,6 +46,7 @@ export default function ParentMessengerPage({ studentId, student, onBack }) {
         };
 
         const q1 = query(chatsRef, where('studentId', '==', String(studentId)), orderBy('updatedAt', 'desc'), limit(30));
+        console.log('[parent messenger] query path', 'chats', { where: ['studentId', '==', String(studentId)], orderBy: ['updatedAt', 'desc'], limit: 30 });
         unsubscribers.push(onSnapshot(q1, (snap) => {
             setError('');
             upsertRooms(snap);
@@ -57,12 +58,14 @@ export default function ParentMessengerPage({ studentId, student, onBack }) {
         const participantCandidates = [...studentKeys, viewerUid].filter(Boolean);
         participantCandidates.slice(0, 5).forEach((candidate) => {
             const qByParticipantIds = query(chatsRef, where('participantIds', 'array-contains', candidate), orderBy('updatedAt', 'desc'), limit(30));
+            console.log('[parent messenger] query path', 'chats', { where: ['participantIds', 'array-contains', candidate], orderBy: ['updatedAt', 'desc'], limit: 30 });
             unsubscribers.push(onSnapshot(qByParticipantIds, upsertRooms, (snapshotError) => {
                 console.error('[parent messenger] permission error', snapshotError);
                 setError('메시지를 불러올 권한이 없습니다. 관리자에게 문의해주세요.');
             }));
 
             const qByParticipants = query(chatsRef, where('participants', 'array-contains', candidate), orderBy('updatedAt', 'desc'), limit(30));
+            console.log('[parent messenger] query path', 'chats', { where: ['participants', 'array-contains', candidate], orderBy: ['updatedAt', 'desc'], limit: 30 });
             unsubscribers.push(onSnapshot(qByParticipants, upsertRooms, (snapshotError) => {
                 console.error('[parent messenger] permission error', snapshotError);
                 setError('메시지를 불러올 권한이 없습니다. 관리자에게 문의해주세요.');

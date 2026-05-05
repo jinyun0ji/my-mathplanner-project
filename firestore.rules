@@ -64,6 +64,20 @@ service cloud.firestore {
         : [];
     }
 
+    function parentStudentIds() {
+      return isParent() && userDoc() != null && userDoc().data.studentId is string
+        ? [userDoc().data.studentId]
+        : [];
+    }
+
+    function parentHasStudentAccess(studentId) {
+      return studentId is string && (
+        studentId in parentStudentUids()
+        || studentId in parentStudentIds()
+        || studentId == getMyStudentId()
+      );
+    }
+
     function listContainsAny(list, candidates) {
       return (candidates.size() > 0 && candidates[0] in list)
         || (candidates.size() > 1 && candidates[1] in list)
@@ -614,21 +628,20 @@ service cloud.firestore {
     match /chats/{roomId} {
       allow read: if isSignedIn() && (
         isStaffOrAdminOrTeacher()
+        || (resource.data.participantUids is list && uid() in resource.data.participantUids)
         || (resource.data.participantIds is list && uid() in resource.data.participantIds)
         || (resource.data.participants is list && uid() in resource.data.participants)
-        || (resource.data.studentId is string && resource.data.studentId in parentStudentUids())
+        || parentHasStudentAccess(resource.data.studentId)
       );
 
-      allow create, update: if isSignedIn() && (
+      allow create: if isSignedIn();
+
+      allow update: if isSignedIn() && (
         isStaffOrAdminOrTeacher()
-        || (
-          isParent()
-          && (
-            (request.resource.data.studentId is string && request.resource.data.studentId in parentStudentUids())
-            || (request.resource.data.participantIds is list && uid() in request.resource.data.participantIds)
-            || (request.resource.data.participants is list && uid() in request.resource.data.participants)
-          )
-        )
+        || (resource.data.participantUids is list && uid() in resource.data.participantUids)
+        || (resource.data.participantIds is list && uid() in resource.data.participantIds)
+        || (resource.data.participants is list && uid() in resource.data.participants)
+        || parentHasStudentAccess(resource.data.studentId)
       );
       allow delete: if isStaffOrAdminOrTeacher();
     }
@@ -636,21 +649,18 @@ service cloud.firestore {
     match /chats/{roomId}/messages/{messageId} {
       allow read: if isSignedIn() && (
         isStaffOrAdminOrTeacher()
+        || (get(/databases/$(database)/documents/chats/$(roomId)).data.participantUids is list && uid() in get(/databases/$(database)/documents/chats/$(roomId)).data.participantUids)
         || (get(/databases/$(database)/documents/chats/$(roomId)).data.participantIds is list && uid() in get(/databases/$(database)/documents/chats/$(roomId)).data.participantIds)
         || (get(/databases/$(database)/documents/chats/$(roomId)).data.participants is list && uid() in get(/databases/$(database)/documents/chats/$(roomId)).data.participants)
-        || (get(/databases/$(database)/documents/chats/$(roomId)).data.studentId is string && get(/databases/$(database)/documents/chats/$(roomId)).data.studentId in parentStudentUids())
+        || parentHasStudentAccess(get(/databases/$(database)/documents/chats/$(roomId)).data.studentId)
       );
 
       allow create: if isSignedIn() && (
         isStaffOrAdminOrTeacher()
-        || (
-          isParent()
-          && (
-            (get(/databases/$(database)/documents/chats/$(roomId)).data.studentId is string && get(/databases/$(database)/documents/chats/$(roomId)).data.studentId in parentStudentUids())
-            || (get(/databases/$(database)/documents/chats/$(roomId)).data.participantIds is list && uid() in get(/databases/$(database)/documents/chats/$(roomId)).data.participantIds)
-            || (get(/databases/$(database)/documents/chats/$(roomId)).data.participants is list && uid() in get(/databases/$(database)/documents/chats/$(roomId)).data.participants)
-          )
-        )
+        || (get(/databases/$(database)/documents/chats/$(roomId)).data.participantUids is list && uid() in get(/databases/$(database)/documents/chats/$(roomId)).data.participantUids)
+        || (get(/databases/$(database)/documents/chats/$(roomId)).data.participantIds is list && uid() in get(/databases/$(database)/documents/chats/$(roomId)).data.participantIds)
+        || (get(/databases/$(database)/documents/chats/$(roomId)).data.participants is list && uid() in get(/databases/$(database)/documents/chats/$(roomId)).data.participants)
+        || parentHasStudentAccess(get(/databases/$(database)/documents/chats/$(roomId)).data.studentId)
       );
 
       allow update, delete: if isStaffOrAdminOrTeacher();
