@@ -71,13 +71,18 @@ async function resolveRoomId(studentId, studentAuthUid = '') {
     return null;
 }
 
-export default function StudentMessenger({ studentId, studentAuthUid = '', teacherName = '학원 운영팀', userRole = 'parent', isFloating = false }) {
+export default function StudentMessenger({ studentId, studentAuthUid = '', selectedRoomId = '', teacherName = '학원 운영팀', userRole = 'parent', isFloating = false }) {
     const [roomId, setRoomId] = useState(null);
     const [messages, setMessages] = useState([]);
     const [inputText, setInputText] = useState('');
+    const [error, setError] = useState('');
     const messagesEndRef = useRef(null);
 
     useEffect(() => {
+        if (selectedRoomId) {
+            setRoomId(String(selectedRoomId));
+            return undefined;
+        }
         let mounted = true;
         setRoomId(null);
         setMessages([]);
@@ -89,14 +94,18 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', teach
         return () => {
             mounted = false;
         };
-    }, [studentId, studentAuthUid]);
+    }, [studentId, studentAuthUid, selectedRoomId]);
 
     useEffect(() => {
         if (!roomId) return undefined;
         const q = query(collection(db, 'chats', roomId, 'messages'), orderBy('createdAt', 'asc'));
         const unsub = onSnapshot(q, (snap) => {
             const viewerUid = auth.currentUser?.uid || '';
+            setError('');
             setMessages(snap.docs.map((item) => normalizeMessage(item.id, item.data(), viewerUid)).filter((item) => item.text));
+        }, (snapshotError) => {
+            console.error('[parent messenger] permission error', snapshotError);
+            setError('메시지를 불러올 권한이 없습니다. 관리자에게 문의해주세요.');
         });
         return unsub;
     }, [roomId]);
@@ -117,28 +126,35 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', teach
 
         const viewerUid = auth.currentUser?.uid || 'parent-anonymous';
         const roomRef = doc(db, 'chats', resolvedRoomId);
-        await setDoc(roomRef, {
-            studentId: String(studentId),
-            participants: [String(studentId), String(viewerUid)],
-            participantIds: [String(studentId), String(viewerUid)],
-            updatedAt: serverTimestamp(),
-            lastMessage: text,
-        }, { merge: true });
+        try {
+            await setDoc(roomRef, {
+                studentId: String(studentId),
+                participants: [String(studentId), String(viewerUid)],
+                participantIds: [String(studentId), String(viewerUid)],
+                updatedAt: serverTimestamp(),
+                lastMessage: text,
+            }, { merge: true });
 
-        await addDoc(collection(db, 'chats', resolvedRoomId, 'messages'), {
-            text,
-            senderId: viewerUid,
-            senderRole: userRole,
-            senderName: '학부모',
-            createdAt: serverTimestamp(),
-        });
-        setRoomId(resolvedRoomId);
-        setInputText('');
+            await addDoc(collection(db, 'chats', resolvedRoomId, 'messages'), {
+                text,
+                senderId: viewerUid,
+                senderRole: userRole,
+                senderName: '학부모',
+                createdAt: serverTimestamp(),
+            });
+            setError('');
+            setRoomId(resolvedRoomId);
+            setInputText('');
+        } catch (sendError) {
+            console.error('[parent messenger] permission error', sendError);
+            setError('메시지를 보낼 권한이 없습니다. 관리자에게 문의해주세요.');
+        }
     };
 
     return (
         <div className={`${isFloating ? 'fixed bottom-24 right-5' : ''} bg-white h-full flex flex-col`}>
             <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-50 custom-scrollbar min-h-[420px]">
+                {error && <div className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{error}</div>}
                 {messages.length > 0 ? messages.map((msg) => (
                     <div key={msg.id} className={`flex ${msg.isMe ? 'justify-end' : 'justify-start'}`}>
                         <div className={`max-w-[75%] px-3 py-2 rounded-2xl text-sm ${msg.isMe ? 'bg-gray-900 text-white' : 'bg-white text-gray-900 border border-gray-100'}`}>

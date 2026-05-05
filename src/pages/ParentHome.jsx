@@ -21,7 +21,7 @@ import {
 import NotificationsIcon from '@mui/icons-material/Notifications';
 import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
 import ParentSessionReport from './parent/ParentSessionReport'; // ✅ 신규 리포트 컴포넌트
-import StudentMessenger from '../components/StudentMessenger';
+import ParentMessengerPage from './parent/ParentMessengerPage';
 import { generateSessionReport } from '../utils/reportHelper'; // ✅ 리포트 데이터 생성 헬퍼
 import useNotifications from '../notifications/useNotifications';
 import NotificationList from '../notifications/NotificationList';
@@ -805,6 +805,7 @@ export default function ParentHome({
 
     // 알림 관련
     const [isNotificationOpen, setIsNotificationOpen] = useState(false);
+    const [isMessengerPage, setIsMessengerPage] = useState(false);
     const [visibleNotices, setVisibleNotices] = useState([]); 
     const viewerUid = activeChild?.authUid || userId;
     const { notifications, hasUnread, unreadCount, lastReadAt, isLoading, isMetaLoading, setNotifications } = useNotifications(viewerUid);
@@ -947,7 +948,7 @@ export default function ParentHome({
                 }
 
                 if (refCollection === 'chats') {
-                    setActiveTab('messenger');
+                    setIsMessengerPage(true);
                     return;
                 }
             },
@@ -1361,6 +1362,16 @@ export default function ParentHome({
         );
     }
 
+    if (isMessengerPage) {
+        return (
+            <ParentMessengerPage
+                studentId={activeChildId}
+                student={activeChild}
+                onBack={() => setIsMessengerPage(false)}
+            />
+        );
+    }
+
     return (
         <div className="bg-gray-50 min-h-screen flex flex-col relative font-sans">
             {/* 헤더 & 자녀 선택 */}
@@ -1375,7 +1386,7 @@ export default function ParentHome({
                             <NotificationsIcon style={{ fontSize: 20 }} />
                             {hasUnread && <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />}
                         </button>
-                        <button type="button" onClick={() => setActiveTab('messenger')} className="relative p-2 rounded-lg border border-gray-200 text-gray-600">
+                        <button type="button" onClick={() => setIsMessengerPage(true)} className="relative p-2 rounded-lg border border-gray-200 text-gray-600">
                             <ChatBubbleOutlineIcon style={{ fontSize: 20 }} />
                         </button>
                     </div>
@@ -2206,22 +2217,8 @@ export default function ParentHome({
                                     )}
                             </div>
                         )}
-                        {activeTab === 'messenger' && (
-                            <section className="bg-white min-h-[calc(100vh-120px)] -mx-4 -mt-4">
-                                <div className="px-4 py-3 border-b border-gray-100">
-                                    <h2 className="text-base font-bold text-gray-900">메시지</h2>
-                                </div>
-                                <StudentMessenger
-                                    studentId={activeChildId}
-                                    studentAuthUid={activeChild?.authUid || activeChild?.studentUid || activeChild?.uid || ''}
-                                    userRole="parent"
-                                    isFloating={false}
-                                />
-                            </section>
-                        )}
-
                         {activeTab === 'more' && (
-                            <ParentMoreMenu notices={visibleNotices} onOpenNotice={() => setActiveTab('home')} onOpenNotifications={() => setIsNotificationOpen(true)} onOpenMessages={() => setActiveTab('messenger')} onLogout={onLogout} />
+                            <ParentMoreMenu notices={visibleNotices} onOpenNotice={() => setActiveTab('home')} onOpenNotifications={() => setIsNotificationOpen(true)} onOpenMessages={() => setIsMessengerPage(true)} onLogout={onLogout} />
                         )}
                     </div>
                 )}

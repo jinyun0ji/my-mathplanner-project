@@ -611,6 +611,51 @@ service cloud.firestore {
       allow read, write: if isStaffOrAdminOrTeacher();
     }
 
+    match /chats/{roomId} {
+      allow read: if isSignedIn() && (
+        isStaffOrAdminOrTeacher()
+        || (resource.data.participantIds is list && uid() in resource.data.participantIds)
+        || (resource.data.participants is list && uid() in resource.data.participants)
+        || (resource.data.studentId is string && resource.data.studentId in parentStudentUids())
+      );
+
+      allow create, update: if isSignedIn() && (
+        isStaffOrAdminOrTeacher()
+        || (
+          isParent()
+          && (
+            (request.resource.data.studentId is string && request.resource.data.studentId in parentStudentUids())
+            || (request.resource.data.participantIds is list && uid() in request.resource.data.participantIds)
+            || (request.resource.data.participants is list && uid() in request.resource.data.participants)
+          )
+        )
+      );
+      allow delete: if isStaffOrAdminOrTeacher();
+    }
+
+    match /chats/{roomId}/messages/{messageId} {
+      allow read: if isSignedIn() && (
+        isStaffOrAdminOrTeacher()
+        || (get(/databases/$(database)/documents/chats/$(roomId)).data.participantIds is list && uid() in get(/databases/$(database)/documents/chats/$(roomId)).data.participantIds)
+        || (get(/databases/$(database)/documents/chats/$(roomId)).data.participants is list && uid() in get(/databases/$(database)/documents/chats/$(roomId)).data.participants)
+        || (get(/databases/$(database)/documents/chats/$(roomId)).data.studentId is string && get(/databases/$(database)/documents/chats/$(roomId)).data.studentId in parentStudentUids())
+      );
+
+      allow create: if isSignedIn() && (
+        isStaffOrAdminOrTeacher()
+        || (
+          isParent()
+          && (
+            (get(/databases/$(database)/documents/chats/$(roomId)).data.studentId is string && get(/databases/$(database)/documents/chats/$(roomId)).data.studentId in parentStudentUids())
+            || (get(/databases/$(database)/documents/chats/$(roomId)).data.participantIds is list && uid() in get(/databases/$(database)/documents/chats/$(roomId)).data.participantIds)
+            || (get(/databases/$(database)/documents/chats/$(roomId)).data.participants is list && uid() in get(/databases/$(database)/documents/chats/$(roomId)).data.participants)
+          )
+        )
+      );
+
+      allow update, delete: if isStaffOrAdminOrTeacher();
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }
