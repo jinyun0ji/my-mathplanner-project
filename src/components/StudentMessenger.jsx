@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
     collection,
     addDoc,
+    arrayUnion,
     doc,
     getDoc,
     getDocs,
@@ -10,7 +11,7 @@ import {
     orderBy,
     query,
     serverTimestamp,
-    setDoc,
+    updateDoc,
     where,
 } from 'firebase/firestore';
 import { auth, db } from '../firebase/client';
@@ -119,7 +120,7 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
     const handleSend = async (e) => {
         e.preventDefault();
         const text = inputText.trim();
-        if (!text || !studentId) return;
+        if (!text) return;
 
         const resolvedRoomId = roomId || (await resolveRoomId(studentId, studentAuthUid));
         if (!resolvedRoomId) return;
@@ -127,13 +128,18 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
         const viewerUid = auth.currentUser?.uid || 'parent-anonymous';
         const roomRef = doc(db, 'chats', resolvedRoomId);
         try {
-            await setDoc(roomRef, {
-                studentId: String(studentId),
-                participants: [String(studentId), String(viewerUid)],
-                participantIds: [String(studentId), String(viewerUid)],
+            const roomPatch = {
+                participantIds: arrayUnion(String(viewerUid)),
+                parentUid: String(viewerUid),
+                parentUids: arrayUnion(String(viewerUid)),
                 updatedAt: serverTimestamp(),
+                lastMessageAt: serverTimestamp(),
                 lastMessage: text,
-            }, { merge: true });
+            };
+            if (studentId) {
+                roomPatch.studentId = String(studentId);
+            }
+            await updateDoc(roomRef, roomPatch);
 
             await addDoc(collection(db, 'chats', resolvedRoomId, 'messages'), {
                 text,

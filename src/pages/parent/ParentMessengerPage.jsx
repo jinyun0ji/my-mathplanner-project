@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import ArrowBackIosNewIcon from '@mui/icons-material/ArrowBackIosNew';
 import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import StudentMessenger from '../../components/StudentMessenger';
@@ -26,10 +26,8 @@ export default function ParentMessengerPage({ studentId, student, onBack }) {
     const [selectedRoomId, setSelectedRoomId] = useState('');
 
     const viewerUid = String(auth.currentUser?.uid || '');
-    const hasStudentContext = useMemo(() => !!(studentId || student?.authUid || student?.studentUid || student?.uid), [studentId, student]);
-
     useEffect(() => {
-        if (!viewerUid || !hasStudentContext) return undefined;
+        if (!viewerUid) return undefined;
 
         const chatsRef = collection(db, 'chats');
         const q = query(chatsRef, where('participantIds', 'array-contains', viewerUid));
@@ -45,13 +43,18 @@ export default function ParentMessengerPage({ studentId, student, onBack }) {
                 });
             setRooms(nextRooms);
         }, (snapshotError) => {
-            console.error('[parent messenger] permission error', snapshotError);
+            console.error('[parent messenger] failed to load chats', {
+                code: snapshotError?.code,
+                message: snapshotError?.message,
+                details: snapshotError,
+                query: { collection: 'chats', participantIdsArrayContains: viewerUid },
+            });
             setRooms([]);
-            setError('일부 대화를 불러오지 못했습니다.');
+            setError('대화 목록을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.');
         });
 
         return () => unsub && unsub();
-    }, [hasStudentContext, viewerUid]);
+    }, [viewerUid]);
 
     if (selectedRoomId) {
         return (
@@ -83,8 +86,8 @@ export default function ParentMessengerPage({ studentId, student, onBack }) {
                 <h1 className="text-base font-semibold text-gray-900">메시지</h1>
             </header>
             <section className="py-2">
-                {error && <div className="mx-4 mb-2 text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{error}</div>}
-                {rooms.length === 0 && !error && <div className="mx-4 mt-4 text-xs text-gray-500">대화 내역이 없습니다.</div>}
+                {error && <div className="mx-4 mb-2 text-xs text-gray-500 bg-white border border-gray-100 rounded-lg px-3 py-2">{error}</div>}
+                {rooms.length === 0 && !error && <div className="mx-4 mt-4 text-xs text-gray-500">아직 대화 내역이 없습니다.</div>}
                 {rooms.map((room) => (
                     <button key={room.id} type="button" onClick={() => setSelectedRoomId(room.id)} className="h-16 w-full px-4 bg-white border-b border-gray-100 flex items-center gap-3 text-left">
                         <div className="w-10 h-10 rounded-full bg-gray-200" />

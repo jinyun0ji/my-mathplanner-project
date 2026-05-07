@@ -286,14 +286,20 @@ service cloud.firestore {
       return isSignedIn() && (uid() in resourceParticipantIds());
     }
 
+    function isLegacyChatParticipantData(data) {
+      return isSignedIn() && data != null && (
+        (data.participantIds is list && uid() in data.participantIds)
+        || (data.participants is list && uid() in data.participants)
+        || (data.participantUids is list && uid() in data.participantUids)
+        || (data.parentUid is string && data.parentUid == uid())
+        || (data.parentUids is list && uid() in data.parentUids)
+      );
+    }
+
     function canAccessLegacyChatData(data) {
       return isSignedIn() && data != null && (
         isStaffOrAdminOrTeacher()
-        || (data.parentUid is string && data.parentUid == uid())
-        || (data.parentUids is list && uid() in data.parentUids)
-        || (data.participantUids is list && uid() in data.participantUids)
-        || (data.participantIds is list && uid() in data.participantIds)
-        || (data.participants is list && uid() in data.participants)
+        || isLegacyChatParticipantData(data)
         || parentHasStudentAccess(data.studentId)
       );
     }
@@ -638,7 +644,8 @@ service cloud.firestore {
     }
 
     match /chats/{roomId} {
-      allow read: if canAccessLegacyChatData(resource.data);
+      allow get: if canAccessLegacyChatData(resource.data);
+      allow list: if isStaffOrAdminOrTeacher() || isLegacyChatParticipantData(resource.data);
 
       allow create: if isSignedIn();
 

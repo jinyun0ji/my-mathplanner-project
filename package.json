@@ -34,7 +34,9 @@
     "eject": "react-scripts eject",
     "migrate:memos": "node functions/scripts/migrateStudentMemosToStaffMemos.js",
     "migrate:homework-question-keys:dry": "node functions/scripts/migrateHomeworkResultQuestionNumbers.js",
-    "migrate:homework-question-keys:write": "node functions/scripts/migrateHomeworkResultQuestionNumbers.js --write"
+    "migrate:homework-question-keys:write": "node functions/scripts/migrateHomeworkResultQuestionNumbers.js --write",
+    "backfill:chat-parent-participants:dry": "node functions/scripts/backfillChatParticipantIdsForParents.js",
+    "backfill:chat-parent-participants:write": "node functions/scripts/backfillChatParticipantIdsForParents.js --write"
   },
   "eslintConfig": {
     "extends": [
