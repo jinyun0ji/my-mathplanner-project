@@ -47,7 +47,10 @@ export default function ParentMessengerPage({ studentId, student, onBack }) {
                 code: snapshotError?.code,
                 message: snapshotError?.message,
                 details: snapshotError,
-                query: { collection: 'chats', participantIdsArrayContains: viewerUid },
+                query: {
+                    collection: 'chats',
+                    where: ['participantIds', 'array-contains', viewerUid],
+                },
             });
             setRooms([]);
             setError('대화 목록을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.');

@@ -644,19 +644,49 @@ service cloud.firestore {
     }
 
     match /chats/{roomId} {
-      allow get: if canAccessLegacyChatData(resource.data);
-      allow list: if isStaffOrAdminOrTeacher() || isLegacyChatParticipantData(resource.data);
+      
+      function chatParticipantIds() {
+        return resource.data.participantIds is list
+          ? resource.data.participantIds
+          : [];
+      }
+
+      function canReadChat() {
+        return isSignedIn() && (
+          isStaffOrAdminOrTeacher()
+          || uid() in chatParticipantIds()
+        );
+      }
+
+      allow get, list: if canReadChat();
 
       allow create: if isSignedIn();
 
-      allow update: if canAccessLegacyChatData(resource.data);
+      allow update: if canReadChat();
+
       allow delete: if isStaffOrAdminOrTeacher();
     }
 
     match /chats/{roomId}/messages/{messageId} {
-      allow read: if canAccessLegacyChatData(get(/databases/$(database)/documents/chats/$(roomId)).data);
 
-      allow create: if canAccessLegacyChatData(get(/databases/$(database)/documents/chats/$(roomId)).data);
+      function roomDoc() {
+        return get(/databases/$(database)/documents/chats/$(roomId));
+      }
+
+      function roomParticipantIds() {
+        return roomDoc().data.participantIds is list
+          ? roomDoc().data.participantIds
+          : [];
+      }
+
+      function canReadMessages() {
+        return isSignedIn() && (
+          isStaffOrAdminOrTeacher()
+          || uid() in roomParticipantIds()
+        );
+      }
+
+      allow read, create: if canReadMessages();
 
       allow update, delete: if isStaffOrAdminOrTeacher();
     }
