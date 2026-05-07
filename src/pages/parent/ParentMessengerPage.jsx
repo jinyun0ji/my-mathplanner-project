@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import ArrowBackIosNewIcon from '@mui/icons-material/ArrowBackIosNew';
-import { collection, limit, onSnapshot, orderBy, query, where } from 'firebase/firestore';
+import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import StudentMessenger from '../../components/StudentMessenger';
 import { auth, db } from '../../firebase/client';
 
@@ -13,8 +13,11 @@ const toDate = (value) => {
 
 const roomDisplayName = (room) => {
     if (room?.name) return String(room.name);
-    if (room?.type === 'staff' || room?.channel === 'institute') return '연구소/운영팀';
-    return '강사';
+    if (room?.title) return String(room.title);
+    if (room?.displayName) return String(room.displayName);
+    if (room?.teacherName) return String(room.teacherName);
+    if (room?.staffName) return String(room.staffName);
+    return '메시지';
 };
 
 export default function ParentMessengerPage({ studentId, student, onBack }) {
@@ -23,57 +26,32 @@ export default function ParentMessengerPage({ studentId, student, onBack }) {
     const [selectedRoomId, setSelectedRoomId] = useState('');
 
     const viewerUid = String(auth.currentUser?.uid || '');
-    const studentKeys = useMemo(() => ([
-        String(studentId || ''),
-        String(student?.authUid || ''),
-        String(student?.studentUid || ''),
-        String(student?.uid || ''),
-    ].filter(Boolean)), [studentId, student]);
+    const hasStudentContext = useMemo(() => !!(studentId || student?.authUid || student?.studentUid || student?.uid), [studentId, student]);
 
     useEffect(() => {
-        if (!studentId && studentKeys.length === 0) return undefined;
+        if (!viewerUid || !hasStudentContext) return undefined;
 
         const chatsRef = collection(db, 'chats');
-        const unsubscribers = [];
-        const map = new Map();
-        const upsertRooms = (snap) => {
-            snap.docs.forEach((docSnap) => map.set(docSnap.id, { id: docSnap.id, ...docSnap.data() }));
-            setRooms(Array.from(map.values()).sort((a, b) => {
-                const aAt = toDate(a?.updatedAt || a?.lastMessageAt)?.getTime() || 0;
-                const bAt = toDate(b?.updatedAt || b?.lastMessageAt)?.getTime() || 0;
-                return bAt - aAt;
-            }));
-        };
-
-        const q1 = query(chatsRef, where('studentId', '==', String(studentId)), orderBy('updatedAt', 'desc'), limit(30));
-        console.log('[parent messenger] query path', 'chats', { where: ['studentId', '==', String(studentId)], orderBy: ['updatedAt', 'desc'], limit: 30 });
-        unsubscribers.push(onSnapshot(q1, (snap) => {
+        const q = query(chatsRef, where('participantIds', 'array-contains', viewerUid));
+        console.log('[parent messenger] query path', 'chats', { where: ['participantIds', 'array-contains', viewerUid] });
+        const unsub = onSnapshot(q, (snap) => {
             setError('');
-            upsertRooms(snap);
+            const nextRooms = snap.docs
+                .map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }))
+                .sort((a, b) => {
+                    const aAt = toDate(a?.updatedAt || a?.lastMessageAt)?.getTime() || 0;
+                    const bAt = toDate(b?.updatedAt || b?.lastMessageAt)?.getTime() || 0;
+                    return bAt - aAt;
+                });
+            setRooms(nextRooms);
         }, (snapshotError) => {
             console.error('[parent messenger] permission error', snapshotError);
-            setError('메시지를 불러올 권한이 없습니다. 관리자에게 문의해주세요.');
-        }));
-
-        const participantCandidates = [...studentKeys, viewerUid].filter(Boolean);
-        participantCandidates.slice(0, 5).forEach((candidate) => {
-            const qByParticipantIds = query(chatsRef, where('participantIds', 'array-contains', candidate), orderBy('updatedAt', 'desc'), limit(30));
-            console.log('[parent messenger] query path', 'chats', { where: ['participantIds', 'array-contains', candidate], orderBy: ['updatedAt', 'desc'], limit: 30 });
-            unsubscribers.push(onSnapshot(qByParticipantIds, upsertRooms, (snapshotError) => {
-                console.error('[parent messenger] permission error', snapshotError);
-                setError('메시지를 불러올 권한이 없습니다. 관리자에게 문의해주세요.');
-            }));
-
-            const qByParticipants = query(chatsRef, where('participants', 'array-contains', candidate), orderBy('updatedAt', 'desc'), limit(30));
-            console.log('[parent messenger] query path', 'chats', { where: ['participants', 'array-contains', candidate], orderBy: ['updatedAt', 'desc'], limit: 30 });
-            unsubscribers.push(onSnapshot(qByParticipants, upsertRooms, (snapshotError) => {
-                console.error('[parent messenger] permission error', snapshotError);
-                setError('메시지를 불러올 권한이 없습니다. 관리자에게 문의해주세요.');
-            }));
+            setRooms([]);
+            setError('일부 대화를 불러오지 못했습니다.');
         });
 
-        return () => unsubscribers.forEach((unsub) => unsub && unsub());
-    }, [studentId, studentKeys, viewerUid]);
+        return () => unsub && unsub();
+    }, [hasStudentContext, viewerUid]);
 
     if (selectedRoomId) {
         return (
@@ -106,6 +84,7 @@ export default function ParentMessengerPage({ studentId, student, onBack }) {
             </header>
             <section className="py-2">
                 {error && <div className="mx-4 mb-2 text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{error}</div>}
+                {rooms.length === 0 && !error && <div className="mx-4 mt-4 text-xs text-gray-500">대화 내역이 없습니다.</div>}
                 {rooms.map((room) => (
                     <button key={room.id} type="button" onClick={() => setSelectedRoomId(room.id)} className="h-16 w-full px-4 bg-white border-b border-gray-100 flex items-center gap-3 text-left">
                         <div className="w-10 h-10 rounded-full bg-gray-200" />

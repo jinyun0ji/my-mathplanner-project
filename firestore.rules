@@ -286,6 +286,18 @@ service cloud.firestore {
       return isSignedIn() && (uid() in resourceParticipantIds());
     }
 
+    function canAccessLegacyChatData(data) {
+      return isSignedIn() && data != null && (
+        isStaffOrAdminOrTeacher()
+        || (data.parentUid is string && data.parentUid == uid())
+        || (data.parentUids is list && uid() in data.parentUids)
+        || (data.participantUids is list && uid() in data.participantUids)
+        || (data.participantIds is list && uid() in data.participantIds)
+        || (data.participants is list && uid() in data.participants)
+        || parentHasStudentAccess(data.studentId)
+      );
+    }
+
     function canAccessChatRoomDoc() {
       return isSignedIn() && (
         isStaffOrAdminOrTeacher()
@@ -626,42 +638,18 @@ service cloud.firestore {
     }
 
     match /chats/{roomId} {
-      allow read: if isSignedIn() && (
-        isStaffOrAdminOrTeacher()
-        || (resource.data.participantUids is list && uid() in resource.data.participantUids)
-        || (resource.data.participantIds is list && uid() in resource.data.participantIds)
-        || (resource.data.participants is list && uid() in resource.data.participants)
-        || parentHasStudentAccess(resource.data.studentId)
-      );
+      allow read: if canAccessLegacyChatData(resource.data);
 
       allow create: if isSignedIn();
 
-      allow update: if isSignedIn() && (
-        isStaffOrAdminOrTeacher()
-        || (resource.data.participantUids is list && uid() in resource.data.participantUids)
-        || (resource.data.participantIds is list && uid() in resource.data.participantIds)
-        || (resource.data.participants is list && uid() in resource.data.participants)
-        || parentHasStudentAccess(resource.data.studentId)
-      );
+      allow update: if canAccessLegacyChatData(resource.data);
       allow delete: if isStaffOrAdminOrTeacher();
     }
 
     match /chats/{roomId}/messages/{messageId} {
-      allow read: if isSignedIn() && (
-        isStaffOrAdminOrTeacher()
-        || (get(/databases/$(database)/documents/chats/$(roomId)).data.participantUids is list && uid() in get(/databases/$(database)/documents/chats/$(roomId)).data.participantUids)
-        || (get(/databases/$(database)/documents/chats/$(roomId)).data.participantIds is list && uid() in get(/databases/$(database)/documents/chats/$(roomId)).data.participantIds)
-        || (get(/databases/$(database)/documents/chats/$(roomId)).data.participants is list && uid() in get(/databases/$(database)/documents/chats/$(roomId)).data.participants)
-        || parentHasStudentAccess(get(/databases/$(database)/documents/chats/$(roomId)).data.studentId)
-      );
+      allow read: if canAccessLegacyChatData(get(/databases/$(database)/documents/chats/$(roomId)).data);
 
-      allow create: if isSignedIn() && (
-        isStaffOrAdminOrTeacher()
-        || (get(/databases/$(database)/documents/chats/$(roomId)).data.participantUids is list && uid() in get(/databases/$(database)/documents/chats/$(roomId)).data.participantUids)
-        || (get(/databases/$(database)/documents/chats/$(roomId)).data.participantIds is list && uid() in get(/databases/$(database)/documents/chats/$(roomId)).data.participantIds)
-        || (get(/databases/$(database)/documents/chats/$(roomId)).data.participants is list && uid() in get(/databases/$(database)/documents/chats/$(roomId)).data.participants)
-        || parentHasStudentAccess(get(/databases/$(database)/documents/chats/$(roomId)).data.studentId)
-      );
+      allow create: if canAccessLegacyChatData(get(/databases/$(database)/documents/chats/$(roomId)).data);
 
       allow update, delete: if isStaffOrAdminOrTeacher();
     }
