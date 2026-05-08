@@ -336,20 +336,40 @@ service cloud.firestore {
       );
     }
 
-    function canAccessChatRoomDoc() {
-      return isSignedIn() && (
-        isStaffOrAdminOrTeacher()
-        || isChatParticipantFromResource()
+    function myParticipantKeys() {
+      return [
+        uid(),
+        myProfileDocId()
+      ];
+    }
+
+    function hasMyParticipantKey(listField) {
+      return listField is list && (
+        uid() in listField
+        || myProfileDocId() in listField
       );
+    }
+
+    function canAccessChatRoomData(data) {
+      return isSignedIn()
+        && data != null
+        && (
+          isStaffOrAdminOrTeacher()
+          || hasMyParticipantKey(data.participantIds)
+          || (data.parentId is string && data.parentId == myProfileDocId())
+          || (data.parentUid is string && data.parentUid == uid())
+          || (data.parentUids is list && uid() in data.parentUids)
+        );
+    }
+
+    function canAccessChatRoomDoc() {
+      return canAccessChatRoomData(resource.data);
     }
 
     function canAccessChatRoomById(roomId) {
       return isSignedIn()
         && exists(/databases/$(database)/documents/chatRooms/$(roomId))
-        && (
-          isStaffOrAdminOrTeacher()
-          || (uid() in get(/databases/$(database)/documents/chatRooms/$(roomId)).data.participantIds)
-        );
+        && canAccessChatRoomData(get(/databases/$(database)/documents/chatRooms/$(roomId)).data);
     }
 
     function isAllowedChatRoomUpdateFieldSet() {
@@ -641,19 +661,19 @@ service cloud.firestore {
     
     
     match /chatRooms/{roomId} {
-      allow read: if canAccessChatRoomDoc();
+      allow get, list: if canAccessChatRoomData(resource.data);
 
       allow create: if isSignedIn()
         && isStaffOrAdminOrTeacher()
         && request.resource.data.type == 'individual'
         && request.resource.data.participantIds is list
-        && request.resource.data.participantIds.size() == 2
+        && request.resource.data.participantIds.size() >= 2
         && request.resource.data.internalOnly == true;
 
       allow update: if isSignedIn() && (
         isStaffOrAdminOrTeacher()
         || (
-          isChatParticipantFromResource()
+          canAccessChatRoomData(resource.data)
           && isValidDirectChatRoomPatch()
         )
       );
@@ -662,10 +682,23 @@ service cloud.firestore {
     }
 
     match /chatRooms/{roomId}/messages/{messageId} {
-      allow read: if canAccessChatRoomById(roomId);
+      function roomDoc() {
+        return get(/databases/$(database)/documents/chatRooms/$(roomId));
+      }
 
-      allow create: if isAllowedChatMessageCreateFields()
-        && isValidDirectChatMessageCreate(roomId);
+      function canAccessRoomMessages() {
+        return canAccessChatRoomData(roomDoc().data);
+      }
+
+      allow read: if canAccessRoomMessages();
+
+      allow create: if canAccessRoomMessages()
+        && request.resource.data.senderId in [uid(), myProfileDocId()]
+        && request.resource.data.messageType == 'text'
+        && request.resource.data.text is string
+        && request.resource.data.text.size() > 0
+        && request.resource.data.text.size() <= 4000
+        && request.resource.data.internalOnly == true;
 
       allow update: if isStaffOrAdminOrTeacher();
       allow delete: if false;

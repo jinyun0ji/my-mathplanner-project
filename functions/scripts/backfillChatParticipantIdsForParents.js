@@ -164,6 +164,19 @@ const getParentAuthUid = (docSnap) => {
     );
 };
 
+
+const getUserAuthUid = (docSnap) => {
+    const data = docSnap.data() || {};
+    return getFirstString(
+        data.authUid,
+        data.authUID,
+        data.userAuthUid,
+        data.parentAuthUid,
+        data.uid,
+        data.userUid,
+    );
+};
+
 const getLinkedStudentIdsFromParent = (parent) => uniqueStrings([
     parent.studentId,
     parent.studentDocId,
@@ -262,7 +275,7 @@ const buildPatch = (chatData, parentAuthUid = '') => {
 
     if (!needsParticipantIdUpdate && !needsParentUid && !needsParentUids) return null;
     if (sanitized.afterParticipantIds.length === 0) return { sanitized, patch: null };
-    
+
     const patch = {
         participantIds: uniqueStrings(sanitized.afterParticipantIds),
         participantIdsSanitizedAt: FieldValue.serverTimestamp(),
@@ -319,6 +332,81 @@ const inspectChatRows = async () => {
         afterParticipantIds: sanitized.afterParticipantIds,
         detectedIssues: sanitized.detectedIssues,
     }));
+};
+
+
+const runChatRoomsParentAuthUidRepair = async () => {
+    console.log(`[repair] chatRooms parent auth uid repair start (${dryRun ? 'dry-run' : 'write'})`);
+    const chatRoomsSnapshot = await db.collection('chatRooms').get();
+    const parentDocCache = new Map();
+    const pendingWrites = [];
+    let scannedRooms = 0;
+    let updatedRooms = 0;
+    let skippedRooms = 0;
+
+    for (const roomDoc of chatRoomsSnapshot.docs) {
+        scannedRooms += 1;
+        const room = roomDoc.data() || {};
+        const parentId = getFirstString(room.parentId);
+        if (!parentId) {
+            skippedRooms += 1;
+            continue;
+        }
+
+        if (!parentDocCache.has(parentId)) {
+            parentDocCache.set(parentId, await db.collection('users').doc(parentId).get());
+        }
+
+        const parentDoc = parentDocCache.get(parentId);
+        if (!parentDoc.exists) {
+            skippedRooms += 1;
+            console.warn(`[repair] skip chatRoom ${roomDoc.id}: users/${parentId} not found`);
+            continue;
+        }
+
+        const parentAuthUid = getUserAuthUid(parentDoc);
+        if (!parentAuthUid) {
+            skippedRooms += 1;
+            console.warn(`[repair] skip chatRoom ${roomDoc.id}: auth uid not found in users/${parentId}`);
+            continue;
+        }
+
+        const participantIds = collectStringValues(room.participantIds);
+        const parentUids = collectStringValues(room.parentUids);
+        const needsParticipantId = !participantIds.includes(parentAuthUid);
+        const needsParentUids = !parentUids.includes(parentAuthUid);
+
+        if (!needsParticipantId && !needsParentUids) continue;
+
+        updatedRooms += 1;
+        console.log(JSON.stringify({
+            roomId: roomDoc.id,
+            parentId,
+            parentAuthUid,
+            participantIdsBefore: serializableValue(room.participantIds),
+            parentUidsBefore: serializableValue(room.parentUids),
+            addToParticipantIds: needsParticipantId,
+            addToParentUids: needsParentUids,
+        }));
+        console.log(`[repair] ${dryRun ? 'would update' : 'update'} chatRoom ${roomDoc.id} for parent auth uid ${parentAuthUid}`);
+
+        if (!dryRun) {
+            pendingWrites.push(roomDoc.ref.set({
+                participantIds: FieldValue.arrayUnion(parentAuthUid),
+                parentUids: FieldValue.arrayUnion(parentAuthUid),
+                backfilledParentAuthUidAt: FieldValue.serverTimestamp(),
+            }, { merge: true }));
+            if (pendingWrites.length >= 400) {
+                await Promise.all(pendingWrites.splice(0));
+            }
+        }
+    }
+
+    if (!dryRun && pendingWrites.length) {
+        await Promise.all(pendingWrites);
+    }
+
+    console.log(`[repair] chatRooms complete. scannedRooms=${scannedRooms}, ${dryRun ? 'wouldUpdate' : 'updated'}=${updatedRooms}, skippedRooms=${skippedRooms}`);
 };
 
 const runParentBackfill = async () => {
@@ -429,6 +517,7 @@ const run = async () => {
     }
 
     await runParentBackfill();
+    await runChatRoomsParentAuthUidRepair();
 };
 
 run().catch((error) => {

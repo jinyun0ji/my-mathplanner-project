@@ -51,7 +51,7 @@ const normalizeMessage = (id, data, viewerUid) => {
         text: data?.text || data?.message || '',
         isMe: !!viewerUid && senderId === String(viewerUid),
         senderRole,
-        senderName: data?.senderName || (senderRole === 'parent' ? '학부모' : '학원 운영팀'),
+        senderName: data?.senderName || (senderRole === 'parent' ? '학부모' : '메시지'),
         createdAt: createdAtDate,
         date: createdAtDate.toISOString().slice(0, 10),
         time: createdAtDate.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }),
@@ -117,7 +117,7 @@ async function resolveRoomId(studentId, studentAuthUid = '') {
     return null;
 }
 
-export default function StudentMessenger({ studentId, studentAuthUid = '', selectedRoomId = '', teacherName = '학원 운영팀', userRole = 'parent', isFloating = false }) {
+export default function StudentMessenger({ studentId, studentAuthUid = '', selectedRoomId = '', teacherName = '메시지', userRole = 'parent', isFloating = false }) {
     const [roomId, setRoomId] = useState(null);
     const [messages, setMessages] = useState([]);
     const [inputText, setInputText] = useState('');
