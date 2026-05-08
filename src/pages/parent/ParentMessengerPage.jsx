@@ -17,8 +17,23 @@ const roomDisplayName = (room) => {
     if (room?.displayName) return String(room.displayName);
     if (room?.teacherName) return String(room.teacherName);
     if (room?.staffName) return String(room.staffName);
+    if (room?.type === 'individual') return '메시지';
     return '메시지';
 };
+
+const getRoomSortTime = (room) => (
+    toDate(room?.lastMessageAt)?.getTime()
+    || toDate(room?.updatedAt)?.getTime()
+    || toDate(room?.createdAt)?.getTime()
+    || 0
+);
+
+const getLastMessagePreview = (room) => (
+    room?.lastMessageText
+    || room?.lastMessage
+    || room?.message
+    || '대화 내역이 없습니다.'
+);
 
 export default function ParentMessengerPage({ studentId, student, onBack }) {
     const [rooms, setRooms] = useState([]);
@@ -31,11 +46,11 @@ export default function ParentMessengerPage({ studentId, student, onBack }) {
 
         console.log('[parent messenger] viewerUid', viewerUid);
         const q = query(
-            collection(db, 'chats'),
+            collection(db, 'chatRooms'),
             where('participantIds', 'array-contains', viewerUid)
         );
         console.log('[parent messenger] query', {
-            collection: 'chats',
+            collection: 'chatRooms',
             where: ['participantIds', 'array-contains', viewerUid],
         });
         const unsub = onSnapshot(q, (snap) => {
@@ -43,20 +58,18 @@ export default function ParentMessengerPage({ studentId, student, onBack }) {
             const nextRooms = snap.docs
                 .map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }))
                 .sort((a, b) => {
-                    const aAt = toDate(a?.updatedAt || a?.lastMessageAt)?.getTime() || 0;
-                    const bAt = toDate(b?.updatedAt || b?.lastMessageAt)?.getTime() || 0;
-                    return bAt - aAt;
+                    if (a?.internalOnly === true && b?.internalOnly !== true) return -1;
+                    if (a?.internalOnly !== true && b?.internalOnly === true) return 1;
+                    return getRoomSortTime(b) - getRoomSortTime(a);
                 });
             setRooms(nextRooms);
         }, (snapshotError) => {
-            console.error('[parent messenger] failed to load chats', {
+            console.error('[parent messenger] failed to load chatRooms', {
+                collection: 'chatRooms',
+                where: ['participantIds', 'array-contains', viewerUid],
                 code: snapshotError?.code,
                 message: snapshotError?.message,
                 details: snapshotError,
-                query: {
-                    collection: 'chats',
-                    where: ['participantIds', 'array-contains', viewerUid],
-                },
             });
             setRooms([]);
             setError('대화 목록을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.');
@@ -67,14 +80,14 @@ export default function ParentMessengerPage({ studentId, student, onBack }) {
 
     if (selectedRoomId) {
         return (
-            <div className="min-h-screen bg-gray-50 flex flex-col">
+            <div className="h-screen min-h-screen bg-gray-50 flex flex-col overflow-hidden">
                 <header className="h-14 bg-white border-b border-gray-100 px-4 flex items-center gap-3">
                     <button type="button" onClick={() => setSelectedRoomId('')} className="text-gray-700">
                         <ArrowBackIosNewIcon style={{ fontSize: 18 }} />
                     </button>
                     <h1 className="text-base font-semibold text-gray-900">메시지</h1>
                 </header>
-                <div className="flex-1">
+                <div className="flex-1 min-h-0">
                     <StudentMessenger
                         studentId={studentId}
                         studentAuthUid={student?.authUid || student?.studentUid || student?.uid || ''}
@@ -87,7 +100,7 @@ export default function ParentMessengerPage({ studentId, student, onBack }) {
     }
 
     return (
-        <div className="min-h-screen bg-gray-50">
+        <div className="h-screen min-h-screen bg-gray-50 overflow-y-auto">
             <header className="h-14 bg-white border-b border-gray-100 px-4 flex items-center gap-3 sticky top-0">
                 <button type="button" onClick={onBack} className="text-gray-700">
                     <ArrowBackIosNewIcon style={{ fontSize: 18 }} />
@@ -102,10 +115,10 @@ export default function ParentMessengerPage({ studentId, student, onBack }) {
                         <div className="w-10 h-10 rounded-full bg-gray-200" />
                         <div className="flex-1 min-w-0">
                             <p className="text-sm font-semibold text-gray-900 truncate">{roomDisplayName(room)}</p>
-                            <p className="text-xs text-gray-500 truncate">{String(room?.lastMessage || '대화 내역이 없습니다.')}</p>
+                            <p className="text-xs text-gray-500 truncate">{String(getLastMessagePreview(room))}</p>
                         </div>
                         <div className="text-[11px] text-gray-400">
-                            {toDate(room?.updatedAt || room?.lastMessageAt)?.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }) || ''}
+                            {toDate(room?.lastMessageAt || room?.updatedAt || room?.createdAt)?.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }) || ''}
                         </div>
                     </button>
                 ))}

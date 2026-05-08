@@ -18,6 +18,21 @@ import { auth, db } from '../firebase/client';
 
 const CANDIDATE_ROOM_IDS = (studentId) => [String(studentId || '')].filter(Boolean);
 
+const getMessageSortTime = (message) => {
+    const value = message?.createdAt;
+    if (!value) return 0;
+    if (typeof value?.toDate === 'function') return value.toDate().getTime();
+    if (value instanceof Date) return value.getTime();
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? 0 : parsed.getTime();
+};
+
+const buildSenderName = () => (
+    auth.currentUser?.displayName
+    || auth.currentUser?.email
+    || '학부모'
+);
+
 const logFirestoreQueryFailure = (context, error, queryShape) => {
     console.error(`[student messenger] ${context} failed`, {
         code: error?.code,
@@ -111,6 +126,7 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
 
     useEffect(() => {
         if (selectedRoomId) {
+            setMessages([]);
             setRoomId(String(selectedRoomId));
             return undefined;
         }
@@ -135,19 +151,46 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
 
     useEffect(() => {
         if (!roomId) return undefined;
-        const queryShape = { collection: `chats/${roomId}/messages`, orderBy: ['createdAt', 'asc'] };
-        console.log('[student messenger] subscribe messages query', queryShape);
-        const q = query(collection(db, 'chats', roomId, 'messages'), orderBy('createdAt', 'asc'));
-        const unsub = onSnapshot(q, (snap) => {
+        
+        const isChatRoomMode = !!selectedRoomId;
+        const collectionPath = isChatRoomMode ? `chatRooms/${roomId}/messages` : `chats/${roomId}/messages`;
+        const collectionArgs = isChatRoomMode ? ['chatRooms', roomId, 'messages'] : ['chats', roomId, 'messages'];
+        let fallbackUnsub = null;
+
+        const applySnapshot = (snap) => {
             const viewerUid = auth.currentUser?.uid || '';
             setError('');
-            setMessages(snap.docs.map((item) => normalizeMessage(item.id, item.data(), viewerUid)).filter((item) => item.text));
-        }, (snapshotError) => {
-            logFirestoreQueryFailure('subscribe messages', snapshotError, queryShape);
-            setError('메시지를 불러올 권한이 없습니다. 관리자에게 문의해주세요.');
-        });
-        return unsub;
-    }, [roomId]);
+            setMessages(snap.docs
+                .map((item) => ({ id: item.id, raw: item.data() }))
+                .sort((a, b) => getMessageSortTime(a.raw) - getMessageSortTime(b.raw))
+                .map((item) => normalizeMessage(item.id, item.raw, viewerUid))
+                .filter((item) => item.text));
+        };
+
+        const subscribe = (withOrderBy) => {
+            const queryShape = withOrderBy
+                ? { collection: collectionPath, orderBy: ['createdAt', 'asc'] }
+                : { collection: collectionPath, orderBy: null, clientSort: ['createdAt', 'asc'] };
+            console.log('[student messenger] subscribe messages query', queryShape);
+            const messagesRef = collection(db, ...collectionArgs);
+            const messagesQuery = withOrderBy ? query(messagesRef, orderBy('createdAt', 'asc')) : query(messagesRef);
+
+            return onSnapshot(messagesQuery, applySnapshot, (snapshotError) => {
+                logFirestoreQueryFailure('subscribe messages', snapshotError, queryShape);
+                if (withOrderBy) {
+                    fallbackUnsub = subscribe(false);
+                    return;
+                }
+                setError('메시지를 불러올 권한이 없습니다. 관리자에게 문의해주세요.');
+            });
+        };
+
+        const unsub = subscribe(true);
+        return () => {
+            unsub && unsub();
+            fallbackUnsub && fallbackUnsub();
+        };
+    }, [roomId, selectedRoomId]);
 
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -160,37 +203,64 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
         const text = inputText.trim();
         if (!text) return;
 
-        const resolvedRoomId = roomId || (await resolveRoomId(studentId, studentAuthUid));
+        const resolvedRoomId = selectedRoomId ? String(selectedRoomId) : roomId || (await resolveRoomId(studentId, studentAuthUid));
         if (!resolvedRoomId) return;
 
         const viewerUid = auth.currentUser?.uid || 'parent-anonymous';
-        const roomRef = doc(db, 'chats', resolvedRoomId);
+        const isChatRoomMode = !!selectedRoomId;
         try {
-            const roomPatch = {
-                participantIds: arrayUnion(String(viewerUid)),
-                parentUid: String(viewerUid),
-                parentUids: arrayUnion(String(viewerUid)),
-                updatedAt: serverTimestamp(),
-                lastMessageAt: serverTimestamp(),
-                lastMessage: text,
-            };
-            if (studentId) {
-                roomPatch.studentId = String(studentId);
-            }
-            await updateDoc(roomRef, roomPatch);
+            if (isChatRoomMode) {
+                await addDoc(collection(db, 'chatRooms', resolvedRoomId, 'messages'), {
+                    roomId: resolvedRoomId,
+                    senderId: viewerUid,
+                    senderRole: 'parent',
+                    senderName: buildSenderName(),
+                    messageType: 'text',
+                    text,
+                    attachments: [],
+                    createdAt: serverTimestamp(),
+                    internalOnly: true,
+                    readBy: [viewerUid],
+                });
 
-            await addDoc(collection(db, 'chats', resolvedRoomId, 'messages'), {
-                text,
-                senderId: viewerUid,
-                senderRole: userRole,
-                senderName: '학부모',
-                createdAt: serverTimestamp(),
-            });
+                await updateDoc(doc(db, 'chatRooms', resolvedRoomId), {
+                    lastMessageText: text,
+                    lastMessageAt: serverTimestamp(),
+                    lastMessageSenderId: viewerUid,
+                    updatedAt: serverTimestamp(),
+                    updatedBy: viewerUid,
+                });
+            } else {
+                const roomRef = doc(db, 'chats', resolvedRoomId);
+                const roomPatch = {
+                    participantIds: arrayUnion(String(viewerUid)),
+                    parentUid: String(viewerUid),
+                    parentUids: arrayUnion(String(viewerUid)),
+                    updatedAt: serverTimestamp(),
+                    lastMessageAt: serverTimestamp(),
+                    lastMessage: text,
+                };
+                if (studentId) {
+                    roomPatch.studentId = String(studentId);
+                }
+                await updateDoc(roomRef, roomPatch);
+
+                await addDoc(collection(db, 'chats', resolvedRoomId, 'messages'), {
+                    text,
+                    senderId: viewerUid,
+                    senderRole: userRole,
+                    senderName: '학부모',
+                    createdAt: serverTimestamp(),
+                });
+            }
             setError('');
             setRoomId(resolvedRoomId);
             setInputText('');
         } catch (sendError) {
-            logFirestoreQueryFailure('send message', sendError, {
+            logFirestoreQueryFailure('send message', sendError, isChatRoomMode ? {
+                addDoc: { collection: `chatRooms/${resolvedRoomId}/messages`, fields: ['roomId', 'senderId', 'senderRole', 'senderName', 'messageType', 'text', 'attachments', 'createdAt', 'internalOnly', 'readBy'] },
+                updateDoc: { doc: ['chatRooms', resolvedRoomId], fields: ['lastMessageText', 'lastMessageAt', 'lastMessageSenderId', 'updatedAt', 'updatedBy'] },
+            } : {
                 updateDoc: { doc: ['chats', resolvedRoomId], fields: ['participantIds', 'parentUid', 'parentUids', 'updatedAt', 'lastMessageAt', 'lastMessage', ...(studentId ? ['studentId'] : [])] },
                 addDoc: { collection: `chats/${resolvedRoomId}/messages`, fields: ['text', 'senderId', 'senderRole', 'senderName', 'createdAt'] },
             });
@@ -200,7 +270,7 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
 
     return (
         <div className={`${isFloating ? 'fixed bottom-24 right-5' : ''} bg-white h-full flex flex-col`}>
-            <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-50 custom-scrollbar min-h-[420px]">
+            <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3 bg-gray-50 custom-scrollbar">
                 {error && <div className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{error}</div>}
                 {messages.length > 0 ? messages.map((msg) => (
                     <div key={msg.id} className={`flex ${msg.isMe ? 'justify-end' : 'justify-start'}`}>
