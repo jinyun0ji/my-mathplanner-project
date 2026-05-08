@@ -396,6 +396,7 @@ service cloud.firestore {
         'text',
         'attachments',
         'createdAt',
+        'localCreatedAtMs',
         'internalOnly',
         'clientTempId',
         'readBy',
@@ -419,6 +420,7 @@ service cloud.firestore {
         && (!('senderRole' in request.resource.data) || request.resource.data.senderRole is string || request.resource.data.senderRole == null)
         && (!('senderName' in request.resource.data) || request.resource.data.senderName is string || request.resource.data.senderName == null)
         && (!('clientTempId' in request.resource.data) || request.resource.data.clientTempId is string || request.resource.data.clientTempId == null)
+        && (!('localCreatedAtMs' in request.resource.data) || request.resource.data.localCreatedAtMs is int || request.resource.data.localCreatedAtMs is float || request.resource.data.localCreatedAtMs == null)
         && (!('isBroadcastCopy' in request.resource.data) || request.resource.data.isBroadcastCopy == false || request.resource.data.isBroadcastCopy == null)
         && (!('broadcastId' in request.resource.data) || request.resource.data.broadcastId == null);
     }

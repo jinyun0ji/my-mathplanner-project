@@ -18,14 +18,70 @@ import { auth, db } from '../firebase/client';
 
 const CANDIDATE_ROOM_IDS = (studentId) => [String(studentId || '')].filter(Boolean);
 
-const getMessageSortTime = (message) => {
-    const value = message?.createdAt;
-    if (!value) return 0;
-    if (typeof value?.toDate === 'function') return value.toDate().getTime();
-    if (value instanceof Date) return value.getTime();
-    const parsed = new Date(value);
-    return Number.isNaN(parsed.getTime()) ? 0 : parsed.getTime();
+const parseClientTempIdTime = (clientTempId) => {
+    const match = String(clientTempId || '').match(/(\d{12,})/);
+    if (!match) return 0;
+    const parsed = Number(match[1]);
+    return Number.isFinite(parsed) ? parsed : 0;
 };
+
+const getCreatedAtTime = (createdAt) => {
+    if (createdAt && typeof createdAt?.toDate === 'function') {
+        const time = createdAt.toDate().getTime();
+        if (Number.isFinite(time)) return time;
+    }
+    if (createdAt instanceof Date) {
+        const time = createdAt.getTime();
+        if (Number.isFinite(time)) return time;
+    }
+    if (typeof createdAt === 'number' && Number.isFinite(createdAt)) return createdAt;
+    return 0;
+};
+
+const getMessageSortTime = (message) => {
+    const createdAtTime = getCreatedAtTime(message?.createdAt);
+    if (createdAtTime) return createdAtTime;
+
+    const localCreatedAtMs = Number(message?.localCreatedAtMs || 0);
+    if (Number.isFinite(localCreatedAtMs) && localCreatedAtMs > 0) return localCreatedAtMs;
+
+    const clientTempIdTime = parseClientTempIdTime(message?.clientTempId || message?.id);
+    return clientTempIdTime || Date.now();
+};
+
+const getMessageCreatedAtDate = (message) => new Date(getMessageSortTime(message));
+
+const isSameLogicalMessage = (left, right) => {
+    if (!left || !right) return false;
+    if (left.clientTempId && right.clientTempId && left.clientTempId === right.clientTempId) return true;
+
+    const canUseFuzzyMatch = Boolean(left.clientTempId || right.clientTempId || left.pending || right.pending);
+    if (!canUseFuzzyMatch) return false;
+
+    const leftText = String(left.text || left.message || '').trim();
+    const rightText = String(right.text || right.message || '').trim();
+    if (!leftText || leftText !== rightText) return false;
+    if (String(left.senderId || '') !== String(right.senderId || '')) return false;
+
+    return Math.abs(getMessageSortTime(left) - getMessageSortTime(right)) <= 15_000;
+};
+
+const dedupeMessages = (items) => items.reduce((acc, item) => {
+    const existingIndex = acc.findIndex((candidate) => isSameLogicalMessage(candidate.raw, item.raw));
+    if (existingIndex === -1) return [...acc, item];
+
+    const existing = acc[existingIndex];
+    const existingPending = Boolean(existing.raw?.pending);
+    const itemPending = Boolean(item.raw?.pending);
+    if (existingPending && !itemPending) {
+        const next = [...acc];
+        next[existingIndex] = item;
+        return next;
+    }
+    return acc;
+}, []);
+
+const sortMessageItems = (items) => [...items].sort((a, b) => getMessageSortTime(a.raw) - getMessageSortTime(b.raw));
 
 const buildSenderName = () => (
     auth.currentUser?.displayName
@@ -66,7 +122,7 @@ const formatMessageTime = (date) => {
 };
 
 const normalizeMessage = (id, data, myIds, fallbackSenderName = '메시지') => {
-    const createdAtDate = data?.createdAt?.toDate?.() || (data?.createdAt ? new Date(data.createdAt) : null) || new Date();
+    const createdAtDate = getMessageCreatedAtDate(data);
     const senderId = String(data?.senderId || '');
     const senderRole = String(data?.senderRole || 'staff');
     const isMe = senderId ? myIds.has(senderId) : false;
@@ -81,6 +137,9 @@ const normalizeMessage = (id, data, myIds, fallbackSenderName = '메시지') => 
         date: formatDateKey(createdAtDate),
         dateLabel: formatDateDivider(createdAtDate),
         time: formatMessageTime(createdAtDate),
+        clientTempId: data?.clientTempId || '',
+        localCreatedAtMs: data?.localCreatedAtMs || null,
+        pending: Boolean(data?.pending),
     };
 };
 
@@ -146,10 +205,16 @@ async function resolveRoomId(studentId, studentAuthUid = '') {
 export default function StudentMessenger({ studentId, studentAuthUid = '', selectedRoomId = '', teacherName = '메시지', userRole = 'parent', isFloating = false, allowLegacyResolve = true, emptyMessage = '아직 대화 내역이 없습니다.' }) {
     const [roomId, setRoomId] = useState(null);
     const [messages, setMessages] = useState([]);
+    const [optimisticMessages, setOptimisticMessages] = useState([]);
+    const optimisticMessagesRef = useRef([]);
     const [inputText, setInputText] = useState('');
     const [error, setError] = useState('');
     const [myProfileDocId, setMyProfileDocId] = useState('');
     const messagesEndRef = useRef(null);
+
+    useEffect(() => {
+        optimisticMessagesRef.current = optimisticMessages;
+    }, [optimisticMessages]);
 
     useEffect(() => {
         const authUid = auth.currentUser?.uid || '';
@@ -175,18 +240,21 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
     useEffect(() => {
         if (selectedRoomId) {
             setMessages([]);
+            setOptimisticMessages([]);
             setRoomId(String(selectedRoomId));
             return undefined;
         }
         if (!allowLegacyResolve) {
             setRoomId(null);
             setMessages([]);
+            setOptimisticMessages([]);
             setError('');
             return undefined;
         }
         let mounted = true;
         setRoomId(null);
         setMessages([]);
+        setOptimisticMessages([]);
 
         resolveRoomId(studentId, studentAuthUid).then((resolved) => {
             if (mounted) setRoomId(resolved);
@@ -215,9 +283,29 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
             const myIds = new Set([auth.currentUser?.uid, myProfileDocId].filter(Boolean).map(String));
             const fallbackSenderName = teacherName || '메시지';
             setError('');
-            setMessages(snap.docs
-                .map((item) => ({ id: item.id, raw: item.data() }))
-                .sort((a, b) => getMessageSortTime(a.raw) - getMessageSortTime(b.raw))
+            const snapshotItems = snap.docs.map((item) => ({
+                id: item.id,
+                raw: {
+                    ...item.data(),
+                    pending: item.metadata?.hasPendingWrites || Boolean(item.data()?.pending),
+                },
+            }));
+            const unresolvedOptimisticItems = optimisticMessagesRef.current
+                .filter((item) => String(item.roomId || '') === String(roomId))
+                .filter((optimistic) => !snapshotItems.some((serverItem) => isSameLogicalMessage(serverItem.raw, optimistic)))
+                .map((item) => ({ id: item.id, raw: item }));
+            const mergedItems = sortMessageItems(dedupeMessages([...snapshotItems, ...unresolvedOptimisticItems]));
+
+            setOptimisticMessages((prev) => {
+                const next = prev.filter((optimistic) => (
+                    String(optimistic.roomId || '') !== String(roomId)
+                    || !snapshotItems.some((serverItem) => isSameLogicalMessage(serverItem.raw, optimistic))
+                ));
+                if (next.length === prev.length) return prev;
+                optimisticMessagesRef.current = next;
+                return next;
+            });
+            setMessages(mergedItems
                 .map((item) => normalizeMessage(item.id, item.raw, myIds, fallbackSenderName))
                 .filter((item) => item.text));
         };
@@ -263,6 +351,35 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
 
         const viewerUid = auth.currentUser?.uid || 'parent-anonymous';
         const isChatRoomMode = !!selectedRoomId;
+        const localCreatedAtMs = Date.now();
+        const clientTempId = `client-${localCreatedAtMs}-${Math.random().toString(36).slice(2, 10)}`;
+        const optimisticMessage = {
+            id: clientTempId,
+            roomId: resolvedRoomId,
+            text,
+            senderId: viewerUid,
+            senderRole: isChatRoomMode ? 'parent' : userRole,
+            senderName: buildSenderName(),
+            createdAt: new Date(localCreatedAtMs),
+            localCreatedAtMs,
+            pending: true,
+            clientTempId,
+        };
+        const myIds = new Set([auth.currentUser?.uid, myProfileDocId].filter(Boolean).map(String));
+        setOptimisticMessages((prev) => {
+            const next = sortMessageItems(dedupeMessages([
+                ...prev.map((item) => ({ id: item.id, raw: item })),
+                { id: optimisticMessage.id, raw: optimisticMessage },
+            ])).map((item) => item.raw);
+            optimisticMessagesRef.current = next;
+            return next;
+        });
+        setMessages((prev) => sortMessageItems(dedupeMessages([
+            ...prev.map((item) => ({ id: item.id, raw: item })),
+            { id: optimisticMessage.id, raw: optimisticMessage },
+        ])).map((item) => normalizeMessage(item.id, item.raw, myIds, teacherName || '메시지')).filter((item) => item.text));
+        setInputText('');
+
         try {
             if (isChatRoomMode) {
                 await addDoc(collection(db, 'chatRooms', resolvedRoomId, 'messages'), {
@@ -274,6 +391,8 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
                     text,
                     attachments: [],
                     createdAt: serverTimestamp(),
+                    localCreatedAtMs,
+                    clientTempId,
                     internalOnly: true,
                     readBy: [viewerUid],
                 });
@@ -306,18 +425,26 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
                     senderRole: userRole,
                     senderName: '학부모',
                     createdAt: serverTimestamp(),
+                    localCreatedAtMs,
+                    clientTempId,
                 });
             }
             setError('');
             setRoomId(resolvedRoomId);
-            setInputText('');
         } catch (sendError) {
+            setOptimisticMessages((prev) => {
+                const next = prev.filter((item) => item.clientTempId !== clientTempId);
+                optimisticMessagesRef.current = next;
+                return next;
+            });
+            setMessages((prev) => prev.filter((item) => item.clientTempId !== clientTempId));
+            setInputText(text);
             logFirestoreQueryFailure('send message', sendError, isChatRoomMode ? {
-                addDoc: { collection: `chatRooms/${resolvedRoomId}/messages`, fields: ['roomId', 'senderId', 'senderRole', 'senderName', 'messageType', 'text', 'attachments', 'createdAt', 'internalOnly', 'readBy'] },
+                addDoc: { collection: `chatRooms/${resolvedRoomId}/messages`, fields: ['roomId', 'senderId', 'senderRole', 'senderName', 'messageType', 'text', 'attachments', 'createdAt', 'localCreatedAtMs', 'clientTempId', 'internalOnly', 'readBy'] },
                 updateDoc: { doc: ['chatRooms', resolvedRoomId], fields: ['lastMessageText', 'lastMessageAt', 'lastMessageSenderId', 'updatedAt', 'updatedBy'] },
             } : {
                 updateDoc: { doc: ['chats', resolvedRoomId], fields: ['participantIds', 'parentUid', 'parentUids', 'updatedAt', 'lastMessageAt', 'lastMessage', ...(studentId ? ['studentId'] : [])] },
-                addDoc: { collection: `chats/${resolvedRoomId}/messages`, fields: ['text', 'senderId', 'senderRole', 'senderName', 'createdAt'] },
+                addDoc: { collection: `chats/${resolvedRoomId}/messages`, fields: ['text', 'senderId', 'senderRole', 'senderName', 'createdAt', 'localCreatedAtMs', 'clientTempId'] },
             });
             setError('메시지를 보낼 권한이 없습니다. 관리자에게 문의해주세요.');
         }
