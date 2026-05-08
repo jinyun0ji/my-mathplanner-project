@@ -1449,6 +1449,10 @@ video {
   max-width: 20rem;
 }
 
+.max-w-\[72\%\]{
+  max-width: 72%;
+}
+
 .flex-1{
   flex: 1 1 0%;
 }
@@ -1824,6 +1828,10 @@ video {
 .divide-gray-800 > :not([hidden]) ~ :not([hidden]){
   --tw-divide-opacity: 1;
   border-color: rgb(31 41 55 / var(--tw-divide-opacity, 1));
+}
+
+.self-end{
+  align-self: flex-end;
 }
 
 .overflow-auto{

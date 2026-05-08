@@ -16,17 +16,18 @@ const uniqueStrings = (values) => Array.from(new Set(
 ));
 
 const roomDisplayName = (room) => {
-    if (room?.teacherName) return String(room.teacherName);
-    if (room?.staffName) return String(room.staffName);
     if (room?.name) return String(room.name);
     if (room?.title) return String(room.title);
     if (room?.displayName) return String(room.displayName);
+    if (room?.teacherName) return String(room.teacherName);
+    if (room?.staffName) return String(room.staffName);
+    if (room?.counterpartName) return String(room.counterpartName);
     return '메시지';
 };
 
 const getRoomSortTime = (room) => (
-    toDate(room?.updatedAt)?.getTime()
-    || toDate(room?.lastMessageAt)?.getTime()
+    toDate(room?.lastMessageAt)?.getTime()
+    || toDate(room?.updatedAt)?.getTime()
     || toDate(room?.createdAt)?.getTime()
     || 0
 );
@@ -38,11 +39,7 @@ const getLastMessagePreview = (room) => (
     || '대화 내역이 없습니다.'
 );
 
-const sortRooms = (roomList) => roomList.sort((a, b) => {
-    if (a?.internalOnly === true && b?.internalOnly !== true) return -1;
-    if (a?.internalOnly !== true && b?.internalOnly === true) return 1;
-    return getRoomSortTime(b) - getRoomSortTime(a);
-});
+const sortRooms = (roomList) => roomList.sort((a, b) => getRoomSortTime(b) - getRoomSortTime(a));
 
 const buildRoomQueries = ({ authUid, parentDocId, studentId, student }) => {
     const parentDocCandidates = uniqueStrings([
@@ -73,7 +70,10 @@ const buildRoomQueries = ({ authUid, parentDocId, studentId, student }) => {
     parentUidCandidates.forEach((candidate) => addDescriptor('participantIds', 'array-contains', candidate));
     parentDocCandidates.forEach((candidate) => addDescriptor('parentId', '==', candidate));
     parentUidCandidates.forEach((candidate) => addDescriptor('parentUid', '==', candidate));
-    if (studentId) addDescriptor('studentId', '==', String(studentId));
+    if (studentId) {
+        addDescriptor('studentId', '==', String(studentId));
+        addDescriptor('studentIds', 'array-contains', String(studentId));
+    }
 
     return descriptors;
 };
@@ -88,7 +88,8 @@ export default function ParentMessengerPage({ studentId, student, onBack }) {
         parentId: student?.parentId || '',
         parentDocId: student?.parentDocId || '',
         parentUid: student?.parentUid || '',
-    }), [student?.parentId, student?.parentDocId, student?.parentUid]);
+        id: student?.id || student?.studentId || '',
+    }), [student?.id, student?.studentId, student?.parentId, student?.parentDocId, student?.parentUid]);
 
     useEffect(() => {
         if (!authUid) return undefined;
@@ -133,7 +134,8 @@ export default function ParentMessengerPage({ studentId, student, onBack }) {
             if (!isMounted) return;
             console.log('[parent messenger] participant keys', { authUid, parentDocId });
 
-            const descriptors = buildRoomQueries({ authUid, parentDocId, studentId, student: studentQueryFields });
+            const activeChildId = String(studentId || studentQueryFields.id || '');
+            const descriptors = buildRoomQueries({ authUid, parentDocId, studentId: activeChildId, student: studentQueryFields });
             totalQueries = descriptors.length;
             if (!totalQueries) return;
 
@@ -145,6 +147,12 @@ export default function ParentMessengerPage({ studentId, student, onBack }) {
                 });
                 const unsubscribe = onSnapshot(descriptor.ref, (snap) => {
                     failedQueries.delete(descriptor.key);
+                    console.log('[parent messenger] query success', {
+                        authUid,
+                        parentDocId,
+                        queryShape: descriptor.queryShape,
+                        count: snap.size,
+                    });
                     snap.docs.forEach((docSnap) => roomMap.set(docSnap.id, { id: docSnap.id, ...docSnap.data() }));
                     applyRooms();
                 }, (snapshotError) => {
@@ -180,6 +188,7 @@ export default function ParentMessengerPage({ studentId, student, onBack }) {
                         studentId={studentId}
                         studentAuthUid={student?.authUid || student?.studentUid || student?.uid || ''}
                         selectedRoomId={selectedRoomId}
+                        teacherName={roomDisplayName(rooms.find((room) => room.id === selectedRoomId) || {})}
                         userRole="parent"
                     />
                 </div>

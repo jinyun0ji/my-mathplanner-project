@@ -33,7 +33,7 @@ const formatMessageDateDivider = (message) => {
         year: 'numeric',
         month: 'long',
         day: 'numeric',
-        weekday: 'short',
+        weekday: 'long',
     }).format(date);
 };
 
@@ -119,34 +119,42 @@ export default function ChatMessagePane({
                         return (
                             <div key={item.key} className="flex items-center gap-3 py-1">
                                 <div className="flex-1 h-px bg-gray-200" />
-                                <p className="text-[11px] text-gray-400">{item.label}</p>
+                                <p className="text-xs text-gray-400">{item.label}</p>
                                 <div className="flex-1 h-px bg-gray-200" />
                             </div>
                         );
                     }
 
                     const message = item.message;
-                    const mine = message.senderId === myUid;
+                    const mine = String(message.senderId || message.createdBy || '') === String(myUid || '');
                     const isSending = Boolean(message?.sending);
                     const isFailed = Boolean(message?.failed);
+                    const senderName = message?.senderName && message.senderName !== '나' ? message.senderName : '메시지';
+                    const timeLabel = formatTime(message.createdAt);
                     return (
-                        <div key={item.key} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
-                            <div className={`max-w-[75%] rounded-lg px-3 py-2 text-sm ${mine ? 'bg-green-100 text-gray-800' : 'bg-gray-100 text-gray-700'} ${isSending ? 'opacity-70' : ''} ${isFailed ? 'border border-red-300 bg-red-50 text-red-700' : ''}`}>
-                                <p className="whitespace-pre-wrap break-words">{message.text || ''}</p>
-                                {isSending && <p className="text-[10px] text-gray-500 mt-1">전송 중…</p>}
-                                {isFailed && (
-                                    <div className="mt-1 flex items-center justify-end gap-2">
-                                        <p className="text-[10px] text-red-500">전송 실패</p>
-                                        <button
-                                            type="button"
-                                            onClick={() => onRetryMessage?.(message)}
-                                            className="text-[10px] px-1.5 py-0.5 rounded border border-red-300 text-red-600"
-                                        >
-                                            재시도
-                                        </button>
-                                    </div>
-                                )}
-                                <p className="text-[10px] text-gray-400 mt-1 text-right">{formatTime(message.createdAt)}</p>
+                        <div key={item.key}>
+                            {!mine && senderName && (
+                                <p className="mb-1 text-xs font-semibold text-gray-500">{senderName}</p>
+                            )}
+                            <div className={`flex items-end gap-1.5 ${mine ? 'justify-end' : 'justify-start'}`}>
+                                {mine && <span className="text-xs text-gray-400 whitespace-nowrap self-end mb-1">{timeLabel}</span>}
+                                <div className={`max-w-[72%] rounded-2xl px-3 py-2 text-sm ${mine ? 'bg-indigo-600 text-white' : 'bg-white border border-gray-100 text-gray-900'} ${isSending ? 'opacity-70' : ''} ${isFailed ? 'border border-red-300 bg-red-50 text-red-700' : ''}`}>
+                                    <p className="whitespace-pre-wrap break-words">{message.text || ''}</p>
+                                    {isSending && <p className="text-[10px] text-gray-500 mt-1">전송 중…</p>}
+                                    {isFailed && (
+                                        <div className="mt-1 flex items-center justify-end gap-2">
+                                            <p className="text-[10px] text-red-500">전송 실패</p>
+                                            <button
+                                                type="button"
+                                                onClick={() => onRetryMessage?.(message)}
+                                                className="text-[10px] px-1.5 py-0.5 rounded border border-red-300 text-red-600"
+                                            >
+                                                재시도
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                                {!mine && <span className="text-xs text-gray-400 whitespace-nowrap self-end mb-1">{timeLabel}</span>}
                             </div>
                         </div>
                     );
@@ -157,7 +165,7 @@ export default function ChatMessagePane({
                     value={draft}
                     onChange={(event) => setDraft(event.target.value)}
                     onKeyDown={handleKeyDown}
-                    placeholder="메시지 입력 (Enter 줄바꿈 / Ctrl+Enter 또는 Cmd+Enter 전송)"
+                    placeholder="메시지 입력"
                     rows={2}
                     className="flex-1 border rounded px-3 py-2 text-sm resize-y"
                 />

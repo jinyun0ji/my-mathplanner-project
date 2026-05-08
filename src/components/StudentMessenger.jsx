@@ -42,19 +42,45 @@ const logFirestoreQueryFailure = (context, error, queryShape) => {
     });
 };
 
-const normalizeMessage = (id, data, viewerUid) => {
+const formatDateKey = (date) => {
+    if (!(date instanceof Date) || Number.isNaN(date.getTime())) return 'unknown-date';
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
+
+const formatDateDivider = (date) => {
+    if (!(date instanceof Date) || Number.isNaN(date.getTime())) return '날짜 정보 없음';
+    return new Intl.DateTimeFormat('ko-KR', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        weekday: 'long',
+    }).format(date);
+};
+
+const formatMessageTime = (date) => {
+    if (!(date instanceof Date) || Number.isNaN(date.getTime())) return '';
+    return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+};
+
+const normalizeMessage = (id, data, myIds, fallbackSenderName = '메시지') => {
     const createdAtDate = data?.createdAt?.toDate?.() || (data?.createdAt ? new Date(data.createdAt) : null) || new Date();
-    const senderId = String(data?.senderId || data?.senderUid || '');
+    const senderId = String(data?.senderId || data?.createdBy || data?.senderUid || '');
     const senderRole = String(data?.senderRole || 'staff');
+    const isMe = myIds.has(senderId);
     return {
         id,
         text: data?.text || data?.message || '',
-        isMe: !!viewerUid && senderId === String(viewerUid),
+        isMe,
+        senderId,
         senderRole,
-        senderName: data?.senderName || (senderRole === 'parent' ? '학부모' : '메시지'),
+        senderName: isMe ? '나' : (data?.senderName || fallbackSenderName || '메시지'),
         createdAt: createdAtDate,
-        date: createdAtDate.toISOString().slice(0, 10),
-        time: createdAtDate.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }),
+        date: formatDateKey(createdAtDate),
+        dateLabel: formatDateDivider(createdAtDate),
+        time: formatMessageTime(createdAtDate),
     };
 };
 
@@ -122,7 +148,29 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
     const [messages, setMessages] = useState([]);
     const [inputText, setInputText] = useState('');
     const [error, setError] = useState('');
+    const [myProfileDocId, setMyProfileDocId] = useState('');
     const messagesEndRef = useRef(null);
+
+    useEffect(() => {
+        const authUid = auth.currentUser?.uid || '';
+        if (!authUid) {
+            setMyProfileDocId('');
+            return undefined;
+        }
+
+        let mounted = true;
+        getDoc(doc(db, 'userAuthIndex', authUid)).then((indexSnap) => {
+            if (!mounted) return;
+            setMyProfileDocId(indexSnap.exists() ? String(indexSnap.data()?.userDocId || '') : '');
+        }).catch((indexError) => {
+            logFirestoreQueryFailure('load userAuthIndex', indexError, { doc: ['userAuthIndex', authUid] });
+            if (mounted) setMyProfileDocId('');
+        });
+
+        return () => {
+            mounted = false;
+        };
+    }, []);
 
     useEffect(() => {
         if (selectedRoomId) {
@@ -158,12 +206,13 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
         let fallbackUnsub = null;
 
         const applySnapshot = (snap) => {
-            const viewerUid = auth.currentUser?.uid || '';
+            const myIds = new Set([auth.currentUser?.uid, myProfileDocId].filter(Boolean).map(String));
+            const fallbackSenderName = teacherName || '메시지';
             setError('');
             setMessages(snap.docs
                 .map((item) => ({ id: item.id, raw: item.data() }))
                 .sort((a, b) => getMessageSortTime(a.raw) - getMessageSortTime(b.raw))
-                .map((item) => normalizeMessage(item.id, item.raw, viewerUid))
+                .map((item) => normalizeMessage(item.id, item.raw, myIds, fallbackSenderName))
                 .filter((item) => item.text));
         };
 
@@ -190,13 +239,13 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
             unsub && unsub();
             fallbackUnsub && fallbackUnsub();
         };
-    }, [roomId, selectedRoomId]);
+    }, [roomId, selectedRoomId, myProfileDocId, teacherName]);
 
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages]);
 
-    const placeholder = useMemo(() => `${teacherName}에게 메시지 보내기...`, [teacherName]);
+    const placeholder = useMemo(() => (userRole === 'parent' ? '메시지 보내기...' : '메시지 입력'), [userRole]);
 
     const handleSend = async (e) => {
         e.preventDefault();
@@ -272,15 +321,31 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
         <div className={`${isFloating ? 'fixed bottom-24 right-5' : ''} bg-white h-full flex flex-col`}>
             <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3 bg-gray-50 custom-scrollbar">
                 {error && <div className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{error}</div>}
-                {messages.length > 0 ? messages.map((msg) => (
-                    <div key={msg.id} className={`flex ${msg.isMe ? 'justify-end' : 'justify-start'}`}>
-                        <div className={`max-w-[75%] px-3 py-2 rounded-2xl text-sm ${msg.isMe ? 'bg-gray-900 text-white' : 'bg-white text-gray-900 border border-gray-100'}`}>
-                            {!msg.isMe && <p className="text-[10px] text-gray-500 mb-1">{msg.senderName}</p>}
-                            <p>{msg.text}</p>
-                            <p className={`text-[10px] mt-1 text-right ${msg.isMe ? 'text-gray-300' : 'text-gray-400'}`}>{msg.time}</p>
-                        </div>
-                    </div>
-                )) : (
+                {messages.length > 0 ? messages.map((msg, index) => {
+                    const previous = messages[index - 1];
+                    const showDateDivider = !previous || previous.date !== msg.date;
+                    return (
+                        <React.Fragment key={msg.id}>
+                            {showDateDivider && (
+                                <div className="flex items-center gap-3 py-1">
+                                    <div className="flex-1 h-px bg-gray-200" />
+                                    <p className="text-xs text-gray-400 whitespace-nowrap">{msg.dateLabel}</p>
+                                    <div className="flex-1 h-px bg-gray-200" />
+                                </div>
+                            )}
+                            {!msg.isMe && msg.senderName && (
+                                <p className="ml-1 mb-1 text-xs font-semibold text-gray-500">{msg.senderName}</p>
+                            )}
+                            <div className={`flex items-end gap-1.5 ${msg.isMe ? 'justify-end' : 'justify-start'}`}>
+                                {msg.isMe && <span className="text-[11px] text-gray-400 whitespace-nowrap self-end mb-1">{msg.time}</span>}
+                                <div className={`max-w-[72%] px-3 py-2 rounded-2xl text-sm ${msg.isMe ? 'bg-indigo-600 text-white' : 'bg-white text-gray-900 border border-gray-100'}`}>
+                                    <p className="whitespace-pre-wrap break-words">{msg.text}</p>
+                                </div>
+                                {!msg.isMe && <span className="text-[11px] text-gray-400 whitespace-nowrap self-end mb-1">{msg.time}</span>}
+                            </div>
+                        </React.Fragment>
+                    );
+                }) : (
                     <div className="text-center py-10 text-xs text-gray-500">대화 내역이 없습니다.</div>
                 )}
                 <div ref={messagesEndRef} />
