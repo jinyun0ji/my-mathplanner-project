@@ -4,6 +4,10 @@ import { collection, doc, getDoc, onSnapshot, query, where } from 'firebase/fire
 import StudentMessenger from '../../components/StudentMessenger';
 import { auth, db } from '../../firebase/client';
 
+const INSTITUTE_SLOT = 'institute';
+const TEACHER_SLOT = 'teacher';
+const INSTITUTE_NAME = '채수용 수학 연구소';
+
 const toDate = (value) => {
     if (!value) return null;
     if (typeof value?.toDate === 'function') return value.toDate();
@@ -11,19 +15,12 @@ const toDate = (value) => {
     return Number.isNaN(parsed.getTime()) ? null : parsed;
 };
 
+const normalizeText = (value) => String(value || '').trim();
+const normalizeLower = (value) => normalizeText(value).toLowerCase();
+
 const uniqueStrings = (values) => Array.from(new Set(
     values.flat(Infinity).filter((value) => typeof value === 'string' && value.trim()).map((value) => value.trim())
 ));
-
-const roomDisplayName = (room) => {
-    if (room?.name) return String(room.name);
-    if (room?.title) return String(room.title);
-    if (room?.displayName) return String(room.displayName);
-    if (room?.teacherName) return String(room.teacherName);
-    if (room?.staffName) return String(room.staffName);
-    if (room?.counterpartName) return String(room.counterpartName);
-    return '메시지';
-};
 
 const getRoomSortTime = (room) => (
     toDate(room?.lastMessageAt)?.getTime()
@@ -40,6 +37,145 @@ const getLastMessagePreview = (room) => (
 );
 
 const sortRooms = (roomList) => roomList.sort((a, b) => getRoomSortTime(b) - getRoomSortTime(a));
+
+const getRoomTextFields = (room) => uniqueStrings([
+    room?.type,
+    room?.channel,
+    room?.staffName,
+    room?.name,
+    room?.title,
+    room?.displayName,
+    room?.counterpartName,
+    room?.teacherName,
+    room?.participantName,
+    room?.participantNames && Object.values(room.participantNames),
+]);
+
+const getRoomIdFields = (room) => uniqueStrings([
+    room?.staffId,
+    room?.staffUid,
+    room?.staffAuthUid,
+    room?.teacherId,
+    room?.teacherUid,
+    room?.teacherAuthUid,
+    room?.createdBy,
+    room?.updatedBy,
+    room?.participantIds,
+    room?.participantUserDocIds && Object.values(room.participantUserDocIds),
+]);
+
+const hasAnyKeyword = (values, keywords) => values.some((value) => {
+    const lower = normalizeLower(value);
+    return keywords.some((keyword) => lower.includes(keyword));
+});
+
+const roomDisplayName = (slot, teacherName = '') => {
+    if (slot === INSTITUTE_SLOT) return INSTITUTE_NAME;
+    const normalizedTeacherName = normalizeText(teacherName);
+    if (normalizedTeacherName) return `${normalizedTeacherName} 선생님`;
+    return '담당 강사';
+};
+
+const getTeacherCandidates = (classes = []) => {
+    const candidates = [];
+    classes.forEach((classInfo) => {
+        const name = normalizeText(
+            classInfo?.teacherName
+            || classInfo?.teacher
+            || classInfo?.instructorName
+            || classInfo?.instructor
+            || classInfo?.tutorName
+            || classInfo?.tutor
+        );
+        const ids = uniqueStrings([
+            classInfo?.teacherAuthUid,
+            classInfo?.teacherUid,
+            classInfo?.teacherId,
+            classInfo?.teacherUserDocId,
+            classInfo?.instructorAuthUid,
+            classInfo?.instructorUid,
+            classInfo?.instructorId,
+            classInfo?.staffAuthUid,
+            classInfo?.staffUid,
+            classInfo?.staffId,
+        ]);
+        if (!name && ids.length === 0) return;
+        candidates.push({ name, ids });
+    });
+
+    return candidates;
+};
+
+const getTeacherNameForDisplay = (teacherCandidates, teacherRoom = null) => {
+    const roomName = normalizeText(
+        teacherRoom?.teacherName
+        || teacherRoom?.staffName
+        || teacherRoom?.counterpartName
+        || teacherRoom?.name
+        || teacherRoom?.title
+        || teacherRoom?.displayName
+    );
+    if (roomName && !roomName.includes('연구소') && !roomName.includes('채수용 수학')) return roomName.replace(/\s*선생님$/, '');
+    return normalizeText(teacherCandidates.find((candidate) => candidate.name)?.name || '');
+};
+
+const isTeacherRoom = (room, teacherCandidates) => {
+    if (!room || teacherCandidates.length === 0) return false;
+    const roomTexts = getRoomTextFields(room);
+    const roomIds = new Set(getRoomIdFields(room));
+
+    return teacherCandidates.some((candidate) => {
+        const idsMatch = candidate.ids.some((id) => roomIds.has(id));
+        const nameMatch = candidate.name && roomTexts.some((text) => normalizeText(text).includes(candidate.name));
+        return idsMatch || nameMatch;
+    });
+};
+
+const isExplicitInstituteRoom = (room) => {
+    const roomTexts = getRoomTextFields(room);
+    return hasAnyKeyword(roomTexts, ['연구소', '채수용', 'institute', 'academy', 'lab', 'center', '운영', '관리자']);
+};
+
+const isStaffDirectRoom = (room) => {
+    const type = normalizeLower(room?.type);
+    const channel = normalizeLower(room?.channel);
+    const participantRoles = room?.participantRoles && typeof room.participantRoles === 'object'
+        ? Object.values(room.participantRoles).map(normalizeLower)
+        : [];
+    return type.includes('direct')
+        || type.includes('individual')
+        || channel.includes('direct')
+        || Boolean(room?.staffId || room?.staffUid || room?.staffAuthUid)
+        || participantRoles.some((role) => ['admin', 'staff', 'operator', 'teacher', 'teaching'].includes(role));
+};
+
+const buildMessengerSlots = (rooms, teacherCandidates) => {
+    const sortedRooms = sortRooms([...rooms]);
+    const teacherCandidatesRooms = sortedRooms.filter((room) => isTeacherRoom(room, teacherCandidates));
+    const teacherRoom = teacherCandidatesRooms[0] || null;
+
+    const explicitInstituteRoom = sortedRooms.find((room) => room.id !== teacherRoom?.id && isExplicitInstituteRoom(room));
+    const fallbackInstituteRoom = sortedRooms.find((room) => room.id !== teacherRoom?.id && isStaffDirectRoom(room));
+    const instituteRoom = explicitInstituteRoom || fallbackInstituteRoom || null;
+
+    const teacherName = getTeacherNameForDisplay(teacherCandidates, teacherRoom);
+
+    return [
+        {
+            slot: INSTITUTE_SLOT,
+            room: instituteRoom,
+            id: instituteRoom?.id || `${INSTITUTE_SLOT}-placeholder`,
+            title: roomDisplayName(INSTITUTE_SLOT),
+        },
+        {
+            slot: TEACHER_SLOT,
+            room: teacherRoom,
+            id: teacherRoom?.id || `${TEACHER_SLOT}-placeholder`,
+            title: roomDisplayName(TEACHER_SLOT, teacherName),
+            teacherName,
+        },
+    ];
+};
 
 const buildRoomQueries = ({ authUid, parentDocId, studentId, student }) => {
     const parentDocCandidates = uniqueStrings([
@@ -78,10 +214,10 @@ const buildRoomQueries = ({ authUid, parentDocId, studentId, student }) => {
     return descriptors;
 };
 
-export default function ParentMessengerPage({ studentId, student, onBack }) {
+export default function ParentMessengerPage({ studentId, student, ongoingClasses = [], onBack }) {
     const [rooms, setRooms] = useState([]);
     const [error, setError] = useState('');
-    const [selectedRoomId, setSelectedRoomId] = useState('');
+    const [selectedSlot, setSelectedSlot] = useState(null);
 
     const authUid = String(auth.currentUser?.uid || '');
     const studentQueryFields = useMemo(() => ({
@@ -90,6 +226,12 @@ export default function ParentMessengerPage({ studentId, student, onBack }) {
         parentUid: student?.parentUid || '',
         id: student?.id || student?.studentId || '',
     }), [student?.id, student?.studentId, student?.parentId, student?.parentDocId, student?.parentUid]);
+
+    const teacherCandidates = useMemo(() => getTeacherCandidates(ongoingClasses), [ongoingClasses]);
+    const messengerSlots = useMemo(() => buildMessengerSlots(rooms, teacherCandidates), [rooms, teacherCandidates]);
+    const currentSlot = selectedSlot ? messengerSlots.find((slot) => slot.slot === selectedSlot.slot) || selectedSlot : null;
+    const selectedRoomId = currentSlot?.room?.id || '';
+    const currentRoomDisplayName = currentSlot?.title || '';
 
     useEffect(() => {
         if (!authUid) return undefined;
@@ -174,22 +316,24 @@ export default function ParentMessengerPage({ studentId, student, onBack }) {
         };
     }, [authUid, studentId, studentQueryFields]);
 
-    if (selectedRoomId) {
+    if (currentSlot) {
         return (
             <div className="h-screen min-h-screen bg-gray-50 flex flex-col overflow-hidden">
                 <header className="h-14 bg-white border-b border-gray-100 px-4 flex items-center gap-3">
-                    <button type="button" onClick={() => setSelectedRoomId('')} className="text-gray-700">
+                    <button type="button" onClick={() => setSelectedSlot(null)} className="text-gray-700">
                         <ArrowBackIosNewIcon style={{ fontSize: 18 }} />
                     </button>
-                    <h1 className="text-base font-semibold text-gray-900">메시지</h1>
+                    <h1 className="text-base font-semibold text-gray-900 truncate">{currentRoomDisplayName}</h1>
                 </header>
                 <div className="flex-1 min-h-0">
                     <StudentMessenger
                         studentId={studentId}
                         studentAuthUid={student?.authUid || student?.studentUid || student?.uid || ''}
                         selectedRoomId={selectedRoomId}
-                        teacherName={roomDisplayName(rooms.find((room) => room.id === selectedRoomId) || {})}
+                        teacherName={currentRoomDisplayName}
                         userRole="parent"
+                        allowLegacyResolve={false}
+                        emptyMessage="아직 대화 내역이 없습니다."
                     />
                 </div>
             </div>
@@ -202,20 +346,19 @@ export default function ParentMessengerPage({ studentId, student, onBack }) {
                 <button type="button" onClick={onBack} className="text-gray-700">
                     <ArrowBackIosNewIcon style={{ fontSize: 18 }} />
                 </button>
-                <h1 className="text-base font-semibold text-gray-900">메시지</h1>
+                <h1 className="text-base font-semibold text-gray-900">메신저</h1>
             </header>
             <section className="py-2">
                 {error && <div className="mx-4 mb-2 text-xs text-gray-500 bg-white border border-gray-100 rounded-lg px-3 py-2">{error}</div>}
-                {rooms.length === 0 && !error && <div className="mx-4 mt-4 text-xs text-gray-500">아직 대화 내역이 없습니다.</div>}
-                {rooms.map((room) => (
-                    <button key={room.id} type="button" onClick={() => setSelectedRoomId(room.id)} className="h-16 w-full px-4 bg-white border-b border-gray-100 flex items-center gap-3 text-left">
+                {messengerSlots.map((slot) => (
+                    <button key={slot.id} type="button" onClick={() => setSelectedSlot(slot)} className="h-16 w-full px-4 bg-white border-b border-gray-100 flex items-center gap-3 text-left">
                         <div className="w-10 h-10 rounded-full bg-gray-200" />
                         <div className="flex-1 min-w-0">
-                            <p className="text-sm font-semibold text-gray-900 truncate">{roomDisplayName(room)}</p>
-                            <p className="text-xs text-gray-500 truncate">{String(getLastMessagePreview(room))}</p>
+                            <p className="text-sm font-semibold text-gray-900 truncate">{slot.title}</p>
+                            <p className="text-xs text-gray-500 truncate">{String(getLastMessagePreview(slot.room))}</p>
                         </div>
                         <div className="text-[11px] text-gray-400">
-                            {toDate(room?.lastMessageAt || room?.updatedAt || room?.createdAt)?.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }) || ''}
+                            {toDate(slot.room?.lastMessageAt || slot.room?.updatedAt || slot.room?.createdAt)?.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }) || ''}
                         </div>
                     </button>
                 ))}

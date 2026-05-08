@@ -1367,6 +1367,7 @@ export default function ParentHome({
             <ParentMessengerPage
                 studentId={activeChildId}
                 student={activeChild}
+                ongoingClasses={ongoingClasses}
                 onBack={() => setIsMessengerPage(false)}
             />
         );

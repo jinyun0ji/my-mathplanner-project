@@ -67,9 +67,9 @@ const formatMessageTime = (date) => {
 
 const normalizeMessage = (id, data, myIds, fallbackSenderName = '메시지') => {
     const createdAtDate = data?.createdAt?.toDate?.() || (data?.createdAt ? new Date(data.createdAt) : null) || new Date();
-    const senderId = String(data?.senderId || data?.createdBy || data?.senderUid || '');
+    const senderId = String(data?.senderId || '');
     const senderRole = String(data?.senderRole || 'staff');
-    const isMe = myIds.has(senderId);
+    const isMe = senderId ? myIds.has(senderId) : false;
     return {
         id,
         text: data?.text || data?.message || '',
@@ -143,7 +143,7 @@ async function resolveRoomId(studentId, studentAuthUid = '') {
     return null;
 }
 
-export default function StudentMessenger({ studentId, studentAuthUid = '', selectedRoomId = '', teacherName = '메시지', userRole = 'parent', isFloating = false }) {
+export default function StudentMessenger({ studentId, studentAuthUid = '', selectedRoomId = '', teacherName = '메시지', userRole = 'parent', isFloating = false, allowLegacyResolve = true, emptyMessage = '아직 대화 내역이 없습니다.' }) {
     const [roomId, setRoomId] = useState(null);
     const [messages, setMessages] = useState([]);
     const [inputText, setInputText] = useState('');
@@ -178,6 +178,12 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
             setRoomId(String(selectedRoomId));
             return undefined;
         }
+        if (!allowLegacyResolve) {
+            setRoomId(null);
+            setMessages([]);
+            setError('');
+            return undefined;
+        }
         let mounted = true;
         setRoomId(null);
         setMessages([]);
@@ -195,7 +201,7 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
         return () => {
             mounted = false;
         };
-    }, [studentId, studentAuthUid, selectedRoomId]);
+    }, [studentId, studentAuthUid, selectedRoomId, allowLegacyResolve]);
 
     useEffect(() => {
         if (!roomId) return undefined;
@@ -252,7 +258,7 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
         const text = inputText.trim();
         if (!text) return;
 
-        const resolvedRoomId = selectedRoomId ? String(selectedRoomId) : roomId || (await resolveRoomId(studentId, studentAuthUid));
+        const resolvedRoomId = selectedRoomId ? String(selectedRoomId) : roomId || (allowLegacyResolve ? await resolveRoomId(studentId, studentAuthUid) : null);
         if (!resolvedRoomId) return;
 
         const viewerUid = auth.currentUser?.uid || 'parent-anonymous';
@@ -333,7 +339,7 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
                                     <div className="flex-1 h-px bg-gray-200" />
                                 </div>
                             )}
-                            {!msg.isMe && msg.senderName && (
+                            {userRole !== 'parent' && !msg.isMe && msg.senderName && (
                                 <p className="ml-1 mb-1 text-xs font-semibold text-gray-500">{msg.senderName}</p>
                             )}
                             <div className={`flex items-end gap-1.5 ${msg.isMe ? 'justify-end' : 'justify-start'}`}>
@@ -346,7 +352,7 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
                         </React.Fragment>
                     );
                 }) : (
-                    <div className="text-center py-10 text-xs text-gray-500">대화 내역이 없습니다.</div>
+                    <div className="text-center py-10 text-xs text-gray-500">{emptyMessage}</div>
                 )}
                 <div ref={messagesEndRef} />
             </div>
