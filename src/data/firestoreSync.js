@@ -1659,21 +1659,39 @@ export const loadViewerDataOnce = async ({
             new Set((Array.isArray(lessonClassIds) ? lessonClassIds : []).filter(Boolean).map(String))
         );
 
+        console.log('[viewer] announcements target keys', {
+            targetClassKeys,
+            targetStudentKeys,
+            activeViewerAuthUid: activeViewerAuthUid || '',
+        });
+
         // helper: 인덱스 없으면 orderBy 없이 재시도
-        async function safeGetDocsWithOptionalOrderBy(buildQueryWithOrderBy, buildQueryNoOrderBy, tag) {
+        async function safeGetDocsWithOptionalOrderBy(buildQueryWithOrderBy, buildQueryNoOrderBy, tag, queryShape) {
+            console.log(`[viewer] announcements ${tag} query (orderBy)`, queryShape?.withOrderBy);
             try {
                 const snap = await getDocs(buildQueryWithOrderBy());
                 console.log(`[viewer] announcements ${tag} ok (orderBy) size=`, snap.size);
                 return snap.docs;
             } catch (e) {
                 // 인덱스 필요 / 권한 문제 등 -> orderBy 제거 재시도 (권한 문제면 이것도 실패할 수 있음)
-                console.warn(`[viewer] announcements ${tag} retry without orderBy`, e);
+                console.warn(`[viewer] announcements ${tag} retry without orderBy`, {
+                    code: e?.code,
+                    message: e?.message,
+                    query: queryShape?.withOrderBy,
+                    error: e,
+                });
                 try {
+                    console.log(`[viewer] announcements ${tag} query (no orderBy)`, queryShape?.withoutOrderBy);
                     const snap2 = await getDocs(buildQueryNoOrderBy());
                     console.log(`[viewer] announcements ${tag} ok (no orderBy) size=`, snap2.size);
                     return snap2.docs;
                 } catch (e2) {
-                    console.warn(`[viewer] announcements ${tag} FAIL`, e2);
+                    console.warn(`[viewer] announcements ${tag} FAIL`, {
+                        code: e2?.code,
+                        message: e2?.message,
+                        query: queryShape?.withoutOrderBy,
+                        error: e2,
+                    });
                     return [];
                 }
             }
@@ -1694,7 +1712,11 @@ export const loadViewerDataOnce = async ({
                     where('isPublic', '==', true),
                     limit(50),
                 ),
-            'public'
+            'public',
+            {
+                withOrderBy: { collection: 'announcements', where: ['isPublic', '==', true], orderBy: ['date', 'desc'], limit: 50 },
+                withoutOrderBy: { collection: 'announcements', where: ['isPublic', '==', true], limit: 50 },
+            }
         );
         pushDocs(publicDocs);
 
@@ -1714,7 +1736,11 @@ export const loadViewerDataOnce = async ({
                         where('targetClasses', 'array-contains-any', targetClassKeys.slice(0, 10)),
                         limit(50),
                     ),
-                'targetClasses'
+                'targetClasses',
+                {
+                    withOrderBy: { collection: 'announcements', where: ['targetClasses', 'array-contains-any', targetClassKeys.slice(0, 10)], orderBy: ['date', 'desc'], limit: 50 },
+                    withoutOrderBy: { collection: 'announcements', where: ['targetClasses', 'array-contains-any', targetClassKeys.slice(0, 10)], limit: 50 },
+                }
             );
             pushDocs(classDocs);
         }
@@ -1736,7 +1762,11 @@ export const loadViewerDataOnce = async ({
                         where('targetStudents', 'array-contains-any', targetStudentKeys.slice(0, 10)),
                         limit(50),
                     ),
-                'targetStudents'
+                'targetStudents',
+                {
+                    withOrderBy: { collection: 'announcements', where: ['targetStudents', 'array-contains-any', targetStudentKeys.slice(0, 10)], orderBy: ['date', 'desc'], limit: 50 },
+                    withoutOrderBy: { collection: 'announcements', where: ['targetStudents', 'array-contains-any', targetStudentKeys.slice(0, 10)], limit: 50 },
+                }
             );
             pushDocs(studentDocs);
         }

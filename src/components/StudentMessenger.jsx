@@ -18,6 +18,15 @@ import { auth, db } from '../firebase/client';
 
 const CANDIDATE_ROOM_IDS = (studentId) => [String(studentId || '')].filter(Boolean);
 
+const logFirestoreQueryFailure = (context, error, queryShape) => {
+    console.error(`[student messenger] ${context} failed`, {
+        code: error?.code,
+        message: error?.message,
+        query: queryShape,
+        error,
+    });
+};
+
 const normalizeMessage = (id, data, viewerUid) => {
     const createdAtDate = data?.createdAt?.toDate?.() || (data?.createdAt ? new Date(data.createdAt) : null) || new Date();
     const senderId = String(data?.senderId || data?.senderUid || '');
@@ -42,31 +51,52 @@ async function resolveRoomId(studentId, studentAuthUid = '') {
     const chatsRef = collection(db, 'chats');
 
     const checks = [
-        async () => {
-            if (!sid) return null;
-            const snap = await getDocs(query(chatsRef, where('studentId', '==', sid), limit(1)));
-            return snap.empty ? null : snap.docs[0].id;
+        {
+            label: 'chats by studentId',
+            shape: { collection: 'chats', where: ['studentId', '==', sid], limit: 1 },
+            run: async () => {
+                if (!sid) return null;
+                const snap = await getDocs(query(chatsRef, where('studentId', '==', sid), limit(1)));
+                return snap.empty ? null : snap.docs[0].id;
+            },
         },
-        async () => {
-            if (!suid) return null;
-            const snap = await getDocs(query(chatsRef, where('participants', 'array-contains', suid), limit(1)));
-            return snap.empty ? null : snap.docs[0].id;
+        {
+            label: 'chats by participants',
+            shape: { collection: 'chats', where: ['participants', 'array-contains', suid], limit: 1 },
+            run: async () => {
+                if (!suid) return null;
+                const snap = await getDocs(query(chatsRef, where('participants', 'array-contains', suid), limit(1)));
+                return snap.empty ? null : snap.docs[0].id;
+            },
         },
-        async () => {
-            if (!suid) return null;
-            const snap = await getDocs(query(chatsRef, where('participantIds', 'array-contains', suid), limit(1)));
-            return snap.empty ? null : snap.docs[0].id;
+        {
+            label: 'chats by participantIds',
+            shape: { collection: 'chats', where: ['participantIds', 'array-contains', suid], limit: 1 },
+            run: async () => {
+                if (!suid) return null;
+                const snap = await getDocs(query(chatsRef, where('participantIds', 'array-contains', suid), limit(1)));
+                return snap.empty ? null : snap.docs[0].id;
+            },
         },
-        async () => {
-            if (!sid) return null;
-            const direct = await getDoc(doc(db, 'chats', sid));
-            return direct.exists() ? sid : null;
+        {
+            label: 'direct chat document',
+            shape: { doc: ['chats', sid] },
+            run: async () => {
+                if (!sid) return null;
+                const direct = await getDoc(doc(db, 'chats', sid));
+                return direct.exists() ? sid : null;
+            },
         },
     ];
 
     for (const check of checks) {
-        const roomId = await check();
-        if (roomId) return roomId;
+        try {
+            console.log('[student messenger] resolve room query', check.shape);
+            const roomId = await check.run();
+            if (roomId) return roomId;
+        } catch (error) {
+            logFirestoreQueryFailure(check.label, error, check.shape);
+        }
     }
 
     return null;
@@ -90,6 +120,12 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
 
         resolveRoomId(studentId, studentAuthUid).then((resolved) => {
             if (mounted) setRoomId(resolved);
+        }).catch((resolveError) => {
+            logFirestoreQueryFailure('resolve room', resolveError, {
+                studentId: String(studentId || ''),
+                studentAuthUid: String(studentAuthUid || ''),
+            });
+            if (mounted) setError('대화방을 찾는 중 권한 오류가 발생했습니다. 관리자에게 문의해주세요.');
         });
 
         return () => {
@@ -99,13 +135,15 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
 
     useEffect(() => {
         if (!roomId) return undefined;
+        const queryShape = { collection: `chats/${roomId}/messages`, orderBy: ['createdAt', 'asc'] };
+        console.log('[student messenger] subscribe messages query', queryShape);
         const q = query(collection(db, 'chats', roomId, 'messages'), orderBy('createdAt', 'asc'));
         const unsub = onSnapshot(q, (snap) => {
             const viewerUid = auth.currentUser?.uid || '';
             setError('');
             setMessages(snap.docs.map((item) => normalizeMessage(item.id, item.data(), viewerUid)).filter((item) => item.text));
         }, (snapshotError) => {
-            console.error('[parent messenger] permission error', snapshotError);
+            logFirestoreQueryFailure('subscribe messages', snapshotError, queryShape);
             setError('메시지를 불러올 권한이 없습니다. 관리자에게 문의해주세요.');
         });
         return unsub;
@@ -152,7 +190,10 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
             setRoomId(resolvedRoomId);
             setInputText('');
         } catch (sendError) {
-            console.error('[parent messenger] permission error', sendError);
+            logFirestoreQueryFailure('send message', sendError, {
+                updateDoc: { doc: ['chats', resolvedRoomId], fields: ['participantIds', 'parentUid', 'parentUids', 'updatedAt', 'lastMessageAt', 'lastMessage', ...(studentId ? ['studentId'] : [])] },
+                addDoc: { collection: `chats/${resolvedRoomId}/messages`, fields: ['text', 'senderId', 'senderRole', 'senderName', 'createdAt'] },
+            });
             setError('메시지를 보낼 권한이 없습니다. 관리자에게 문의해주세요.');
         }
     };
