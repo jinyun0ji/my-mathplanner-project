@@ -64,6 +64,38 @@ service cloud.firestore {
         : [];
     }
 
+    function myClassIds() {
+      return userDoc() != null && userDoc().data.classIds is list
+        ? userDoc().data.classIds
+        : [];
+    }
+
+    function childHasClassId(studentId, classId) {
+      return studentId is string
+        && classId is string
+        && exists(/databases/$(database)/documents/users/$(studentId))
+        && get(/databases/$(database)/documents/users/$(studentId)).data.classIds is list
+        && classId in get(/databases/$(database)/documents/users/$(studentId)).data.classIds;
+    }
+
+    function parentHasClassId(classId) {
+      let ids = parentStudentUids();
+      return isParent()
+        && classId is string
+        && (
+          (ids.size() > 0 && childHasClassId(ids[0], classId))
+          || (ids.size() > 1 && childHasClassId(ids[1], classId))
+          || (ids.size() > 2 && childHasClassId(ids[2], classId))
+          || (ids.size() > 3 && childHasClassId(ids[3], classId))
+          || (ids.size() > 4 && childHasClassId(ids[4], classId))
+          || (ids.size() > 5 && childHasClassId(ids[5], classId))
+          || (ids.size() > 6 && childHasClassId(ids[6], classId))
+          || (ids.size() > 7 && childHasClassId(ids[7], classId))
+          || (ids.size() > 8 && childHasClassId(ids[8], classId))
+          || (ids.size() > 9 && childHasClassId(ids[9], classId))
+        );
+    }
+
     function parentStudentIds() {
       return isParent() && userDoc() != null && userDoc().data.studentId is string
         ? [userDoc().data.studentId]
@@ -644,26 +676,20 @@ service cloud.firestore {
     }
 
     match /chats/{roomId} {
-      
-      function chatParticipantIds() {
-        return resource.data.participantIds is list
-          ? resource.data.participantIds
-          : [];
-      }
+      allow get: if canAccessLegacyChatData(resource.data);
 
-      function canReadChat() {
-        return isSignedIn() && (
+      allow list: if isSignedIn()
+        && (
           isStaffOrAdminOrTeacher()
-          || uid() in chatParticipantIds()
+          || (
+            resource.data.participantIds is list
+            && uid() in resource.data.participantIds
+          )
         );
-      }
-
-      allow get, list: if canReadChat();
 
       allow create: if isSignedIn();
 
-      allow update: if canReadChat();
-
+      allow update: if canAccessLegacyChatData(resource.data);
       allow delete: if isStaffOrAdminOrTeacher();
     }
 

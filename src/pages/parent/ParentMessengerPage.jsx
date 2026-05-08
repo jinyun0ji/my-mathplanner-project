@@ -29,9 +29,12 @@ export default function ParentMessengerPage({ studentId, student, onBack }) {
     useEffect(() => {
         if (!viewerUid) return undefined;
 
-        const chatsRef = collection(db, 'chats');
-        const q = query(chatsRef, where('participantIds', 'array-contains', viewerUid));
-        console.log('[parent messenger] query path', 'chats', { where: ['participantIds', 'array-contains', viewerUid] });
+        console.log('[parent messenger] auth.uid', auth.currentUser.uid);
+        const q = query(
+            collection(db, 'chats'),
+            where('participantIds', 'array-contains', auth.currentUser.uid)
+        );
+        console.log('[parent messenger] query path', 'chats', { where: ['participantIds', 'array-contains', auth.currentUser.uid] });
         const unsub = onSnapshot(q, (snap) => {
             setError('');
             const nextRooms = snap.docs
