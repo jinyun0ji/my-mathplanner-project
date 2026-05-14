@@ -30,7 +30,6 @@ import { useParentContext } from '../parent';
 import { sortClassesByStatus } from '../utils/classStatus';
 import { functions } from '../firebase/client';
 import { FEATURES } from '../config/features';
-import AttendanceDetailModal from './parent/AttendanceDetailModal';
 import MathText from '../components/common/MathText';
 
 const buildStudentClassStatusMap = (child) => {
@@ -85,7 +84,7 @@ const buildStudentClassStatusMap = (child) => {
     const merged = [...list, ...listFromMap];
 
     const map = {};
-    for (const item of list) {
+    for (const item of merged) {
         const cid = String(item?.classId || item?.id || '');
         const st = item?.status || item?.classStatus || '';
         if (cid) map[cid] = st;
@@ -242,33 +241,6 @@ const buildExitMapFromClasses = (classesList, studentId) => {
     return map;
 };
 
-
-
-
-const isClassActiveForToday = (cls, student) => {
-    if (!cls) return false;
-
-    const classStatus = String(cls.status || '').trim();
-    if (['종강', '전반', '퇴원', '종료', 'ended', 'inactive'].includes(classStatus)) return false;
-
-    const map = student?.classStatusMap || student?.classStatuses || {};
-    const entry = map?.[String(cls.id)] || null;
-    const entryStatus = String(entry?.status || '').trim();
-    if (['종강', '전반', '퇴원'].includes(entryStatus)) return false;
-
-    const toYmd = (v) => {
-        if (!v) return null;
-        if (typeof v === 'string') return v.slice(0, 10);
-        if (typeof v?.toDate === 'function') return v.toDate().toISOString().slice(0, 10);
-        try { return new Date(v).toISOString().slice(0, 10); } catch { return null; }
-    };
-
-    const today = new Date().toISOString().slice(0, 10);
-    const endedYmd = toYmd(entry?.endedAt || entry?.endDate || cls.endedAt || cls.endDate);
-    if (endedYmd && endedYmd <= today) return false;
-
-    return true;
-};
 
 // --- [컴포넌트] 학부모 전용 대시보드 ---
 const ParentDashboard = ({ 
@@ -536,10 +508,6 @@ export default function ParentHome({
     externalSchedules, onSaveExternalSchedule, onDeleteExternalSchedule,
     closures,
 }) {
-    const todayStr = useMemo(() => {
-        const today = new Date();
-        return today.toISOString().split('T')[0];
-    }, []);
     const { activeStudentId, studentIds, setActiveStudentId } = useParentContext();
     // 1. 자녀 데이터 및 선택 로직
     const initialStudent = students.find(s => s.id === activeStudentId);
@@ -642,8 +610,6 @@ export default function ParentHome({
         [activeChild?.authUid, activeChildId, filteredHomeworkAssignments, homeworkResults, students],
     );
     const myGradeComparison = useMemo(() => calculateGradeComparison(activeChildId, classes, filteredTests, grades, classTestStats), [activeChildId, classes, filteredTests, grades, classTestStats]);
-    const isPaymentFeatureLocked = true;
-    const myPayments = useMemo(() => [], []);
     const unpaidPayments = [];
 
     // 3. 상태 관리
@@ -655,16 +621,12 @@ export default function ParentHome({
     const readReportFromUrl = () => searchParams.get('reportId');
 
     const [activeTab, _setActiveTab] = useState(readTabFromUrl());
-    const [, setReportViewMode] = useState('overview');
     const [selectedClassroomId, _setSelectedClassroomId] = useState(readClassroomFromUrl());
     // ✅ 리포트 뷰 상태
     const [learningMode, setLearningMode] = useState('regular'); // 'regular' | 'clinic'
     const [learningSubTab, setLearningSubTab] = useState('homework');
     const [expandedHomeworkDetails, setExpandedHomeworkDetails] = useState({});
-    const [selectedClassId, setSelectedClassId] = useState(null);
     const [classFilter, setClassFilter] = useState('ongoing'); // 기본: 진행중
-    const [expandedSections, setExpandedSections] = useState({ homework: false, grades: false });
-    const [showAttendanceDetail, setShowAttendanceDetail] = useState(false);
     const [selectedReportId, _setSelectedReportId] = useState(readReportFromUrl());
 
     // ✅ URL -> state (브라우저 뒤로/앞으로로 URL이 바뀌면 화면도 따라감)
@@ -737,21 +699,13 @@ export default function ParentHome({
         }, { replace });
     }, [setSearchParams]);
 
-
-    const isParent = true;
-
-    const lessonSectionRef = useRef(null);
-    const clinicSectionRef = useRef(null);
-    const classStatusRef = useRef(null);
+    
     const mainScrollRef = useRef(null);
     const learningSectionRefs = useRef({ homework: null, grades: null, attendance: null, clinic: null });
 
-    const [attendanceDetailTarget, setAttendanceDetailTarget] = useState(null);
     const [clinicPageSize, setClinicPageSize] = useState(3);
-    const [lessonPageSize, setLessonPageSize] = useState(15);
     const [lessonReportClassFilter, setLessonReportClassFilter] = useState('all');
     const [showAllLessonReports, setShowAllLessonReports] = useState(false);
-    const [openClinicCommentIds, setOpenClinicCommentIds] = useState(() => new Set());
 
 
     const waitForActiveStudentSwitch = useCallback((studentId) => {
@@ -774,34 +728,14 @@ export default function ParentHome({
         pendingStudentSwitchRef.current = null;
     }, [activeStudentId]);
 
-    const scrollToSection = (ref) => {
-        if (ref?.current) {
-            ref.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }
-    };
-
     useEffect(() => {
         setActiveChildId(activeStudentId);
         setSelectedClassroomId(null, { replace: true });
-        setSelectedClassId(null);
         setSelectedReportId(null, { replace: true });
-        setExpandedSections({ homework: false, grades: false });
-        setShowAttendanceDetail(false);
-        setReportViewMode('overview');
         setClassFilter('ongoing');
         setActiveTab('home', { replace: true });
         setClinicPageSize(3);
-        setLessonPageSize(15);
     }, [activeStudentId]);
-
-    useEffect(() => {
-        if (activeTab === 'report') {
-            setReportViewMode('overview');
-            setSelectedClassId(null);
-            setExpandedSections({ homework: false, grades: false });
-            setLessonPageSize(15);
-        }
-    }, [activeTab]);
 
     // 알림 관련
     const [isNotificationOpen, setIsNotificationOpen] = useState(false);
@@ -895,19 +829,6 @@ export default function ParentHome({
         setVisibleNotices(combinedNotices);
         }, [notices, activeChildId, unpaidPayments.length, activeChildName, activeChild]);
 
-    const toDateValue = (value) => {
-        if (!value) return null;
-        if (typeof value?.toDate === 'function') return value.toDate();
-        if (value instanceof Date) return value;
-        const parsed = new Date(value);
-        return Number.isNaN(parsed.getTime()) ? null : parsed;
-    };
-
-    const formatAssignedDate = (value) => {
-        const date = toDateValue(value);
-        return date ? date.toISOString().slice(0, 10) : null;
-    };
-
     const noticePreview = useMemo(() => visibleNotices.slice(0, 3), [visibleNotices]);
 
     const handleNotificationClick = async (notification) => {
@@ -925,7 +846,6 @@ export default function ParentHome({
         await openNotification({
             notification,
             onNavigate: ({ refCollection, refId }) => {
-                setSelectedClassId(null);
                 if (refCollection === 'lessonLogs') {
                     setSelectedReportId(refId);
                     setActiveTab('report');
@@ -988,13 +908,6 @@ export default function ParentHome({
             .sort((a, b) => new Date(b.date || b.createdAt || b.updatedAt || 0) - new Date(a.date || a.createdAt || a.updatedAt || 0));
     }, [attendanceLogs, activeChildId, activeChild?.studentUid, activeChild?.uid, activeChild?.authUid]);
 
-    const myLessonLogs = useMemo(() => {
-        const myClassIds = myClasses.map(c => c.id);
-        return filteredLessonLogs
-            .filter(log => myClassIds.includes(log.classId))
-            .sort((a, b) => new Date(b.date) - new Date(a.date));
-    }, [filteredLessonLogs, myClasses]);
-
     const isScoreEmptyValue = (value) =>
         value === null
         || value === undefined
@@ -1011,75 +924,13 @@ export default function ParentHome({
         if (num === null) return fallback;
         return num.toFixed(1);
     };
-    const isValidNumber = (n) => toFiniteScoreNumber(n) !== null;
     const formatScoreDisplay = useCallback((value) => {
         return formatOneDecimal(value, '미응시');
     }, []);
     const formatStatDisplay = useCallback((value) => formatOneDecimal(value, '통계 준비 중'), []);
 
-    const isAttendanceMissing = (v) =>
-        v == null || String(v).trim() === '' || String(v).includes('미기록');
-
-    const isAbsent = (v) => ['결석', '미출석'].includes(String(v || '').trim());
-
-    const shouldShowHomework = (attendance) => {
-        if (isAttendanceMissing(attendance)) return false;
-        if (isAbsent(attendance)) return false;
-        return true;
-    };
-
-    const shouldShowTest = (attendance) => {
-        if (isAttendanceMissing(attendance)) return false;
-        if (isAbsent(attendance)) return false;
-        return true;
-    };
-
-    const recentLessons = useMemo(() => {
-        const contextData = { lessonLogs: filteredLessonLogs, attendanceLogs, homeworkAssignments: filteredHomeworkAssignments, homeworkResults, tests: filteredTests, grades, classes };
-        return myLessonLogs
-            .map((log) => {
-                const report = generateSessionReport(log.id, activeChildId, contextData);
-                const classInfo = classes.find((c) => String(c.id) === String(log.classId));
-                return {
-                    id: log.id,
-                    classId: log.classId,
-                    date: log.date,
-                    className: classInfo?.name || '수업',
-                    teacher: classInfo?.teacher || '담당 선생님',
-                    comment: report?.learningComment || report?.progressTopic || log.progress || '수업 기록을 준비 중입니다.',
-                    attendance: report?.attendance || '기록 없음',
-                    homeworkStatus: report?.homeworkStatus || '과제 없음',
-                    testStatus: (() => {
-                        const v = report?.testScore;
-
-                        // 1) 테스트 데이터 자체가 없는 경우
-                        if (v === null || v === undefined || v === '') {
-                            return '테스트 없음';
-                        }
-
-                        // 2) 문자열로 'null점' / 'null' 이 들어오는 케이스 방어
-                        if (typeof v === 'string' && v.includes('null')) {
-                            return '미응시';
-                        }
-
-                        // 3) report에 미응시 여부가 명시적으로 있는 경우
-                        if (report?.testAttempted === false || report?.testStatus === '미응시') {
-                            return '미응시';
-                        }
-
-                        // 4) 정상 점수
-                        return v;
-                    })(),
-                };
-            })
-            .sort((a, b) => new Date(b.date) - new Date(a.date));
-    }, [myLessonLogs, activeChildId, filteredLessonLogs, attendanceLogs, filteredHomeworkAssignments, homeworkResults, filteredTests, grades, classes]);
-
-    const resolvedSelectedClassId = String(selectedClassId || '');
-
     const attendanceHistory = useMemo(() => {
         const list = Array.isArray(childAttendanceLogs) ? childAttendanceLogs : [];
-        const cid = String(resolvedSelectedClassId || '');
 
         const getClassId = (log) =>
             String(
@@ -1105,18 +956,14 @@ export default function ParentHome({
             || log?.createdAt
             || null;
 
-            const getMemo = (log) =>
+        const getMemo = (log) =>
             log?.reason
             || log?.memo
             || log?.note
             || log?.comment
             || '';
 
-        const filtered = cid
-            ? list.filter((log) => getClassId(log) === cid)
-            : list;
-
-        const items = filtered
+        const items = list
             .map((log) => ({
                 id: log?.id || `${getDate(log)}-${getAttendance(log)}-${getClassId(log)}`,
                 classId: getClassId(log),
@@ -1128,126 +975,7 @@ export default function ParentHome({
 
         items.sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
         return items;
-    }, [childAttendanceLogs, resolvedSelectedClassId]);
-
-    useEffect(() => {
-        if (!showAttendanceDetail) return;
-        console.log('[parent] selectedClassId=', resolvedSelectedClassId);
-        console.log('[parent] recentLessons size=', Array.isArray(recentLessons) ? recentLessons.length : 0);
-        console.log('[parent] attendanceHistory size=', attendanceHistory.length);
-        if (Array.isArray(recentLessons) && recentLessons.length) {
-            console.log('[parent] sample recentLessons[0]=', recentLessons[0]);
-        }
-    }, [showAttendanceDetail, resolvedSelectedClassId, recentLessons, attendanceHistory]);
-
-    const recentLessonsToShow = useMemo(
-        () => recentLessons.slice(0, lessonPageSize),
-        [recentLessons, lessonPageSize],
-    );
-
-    const getClassBadge = useCallback((cls) => {
-        const classId = String(cls?.id || cls?.classId || '');
-        const statusValue = normalizeClassStatus(studentClassStatusMap?.[classId]);
-        if (isWithdrawnStatus(statusValue)) return '퇴원';
-
-        const end = cls?.endDate || cls?.endAt || cls?.finishedAt;
-        if (end) {
-            const date = typeof end === 'string'
-                ? new Date(end)
-                : (typeof end?.toDate === 'function' ? end.toDate() : new Date(end));
-            if (!Number.isNaN(date.getTime()) && date.getTime() < Date.now()) return '종강';
-        }
-
-        return '진행중';
-    }, [isWithdrawnStatus, normalizeClassStatus, studentClassStatusMap]);
-
-    const getClassBadgeClassName = (status) => {
-        if (status === '퇴원') {
-            return 'bg-red-50 text-red-700 border border-red-100';
-        }
-        if (status === '종강') {
-            return 'bg-gray-50 text-gray-600 border border-gray-200';
-        }
-        return 'bg-indigo-50 text-indigo-700 border border-indigo-100';
-    };
-
-    const filteredClasses = useMemo(() => {
-        if (classFilter === 'withdrawn') return withdrawnClasses;
-        if (classFilter === 'finished') return finishedClasses;
-        return ongoingClasses;
-    }, [classFilter, ongoingClasses, withdrawnClasses, finishedClasses]);
-
-    const classList = useMemo(() => {
-        const lessonsByClass = recentLessons.reduce((acc, cur) => {
-            acc[cur.classId] = acc[cur.classId] || [];
-            acc[cur.classId].push(cur.date);
-            return acc;
-        }, {});
-
-        const build = (cls) => {
-            const latestLessonDate = myLessonLogs.find((log) => log.classId === cls.id)?.date || lessonsByClass[cls.id]?.[0];
-            return {
-                id: cls.id,
-                name: cls.name,
-                teacher: cls.teacher,
-                status: getClassBadge(cls),
-                latestLessonDate: latestLessonDate || '기록 없음',
-            };
-        };
-
-        return orderedClasses.map((cls) => build(cls));
-    }, [orderedClasses, recentLessons, myLessonLogs, getClassBadge]);
-
-    const filteredClassList = useMemo(() => {
-        const filteredIds = new Set(filteredClasses.map((cls) => String(cls?.id || cls?.classId || '')));
-        return classList.filter((cls) => filteredIds.has(String(cls?.id || '')));
-    }, [classList, filteredClasses]);
-
-    const homeworkBySelectedClass = useMemo(() => {
-        if (!selectedClassId) return [];
-        return myHomeworkStats
-            .filter((hw) => String(hw.classId) === String(selectedClassId))
-            .map((hw) => ({
-                id: hw.id,
-                title: hw.content || hw.title || '과제',
-                completionRate: hw.completionRate,
-                status: hw.status,
-                classAverage: hw.classAverage,
-                assignedDate: formatAssignedDate(hw.assignedDate || hw.assignedAt || hw.date || hw.createdAt),
-                lastCheckedDate: formatAssignedDate(hw.lastCheckedDate),
-            }));
-    }, [myHomeworkStats, selectedClassId]);
-
-    const testsBySelectedClass = useMemo(() => {
-        if (!selectedClassId) return [];
-        return (filteredTests || [])
-            .filter((test) => String(test.classId) === String(selectedClassId))
-            .map((test) => {
-                const studentRecord = grades?.[activeChildId]?.[test.id] || {};
-                const studentScore = studentRecord.score ?? studentRecord.result ?? null;
-                const stats = classTestStats?.[test.id] || classTestStats?.[`${test.classId}_${test.id}`] || null;
-                const attemptedCount = Number.isFinite(stats?.attemptedCount)
-                    ? stats.attemptedCount
-                    : Number.isFinite(stats?.count)
-                        ? stats.count
-                        : null;
-                const classAverage = Number.isFinite(stats?.average)
-                    ? stats.average
-                    : (test.average ?? test.classAverage ?? null);
-                const classMax = Number.isFinite(stats?.maxScore) ? stats.maxScore : null;
-                return {
-                    id: test.id,
-                    name: test.name || '시험',
-                    date: test.date,
-                    studentScore,
-                    classAverage,
-                    classMax,
-                    attemptedCount,
-                    stats,
-                };
-            })
-            .sort((a, b) => new Date(b.date) - new Date(a.date));
-    }, [filteredTests, grades, activeChildId, selectedClassId, classTestStats]);
+    }, [childAttendanceLogs]);
 
     // ✅ 리포트 데이터 생성 (현재 선택된 리포트 ID가 있을 때만)
     const activeReport = useMemo(() => {
@@ -1260,10 +988,6 @@ export default function ParentHome({
         .filter((report) => report?.status === 'sent' && String(report?.studentId || '') === String(activeChildId || ''))
         .map((report) => ({ ...report, className: classes.find((c) => String(c.id) === String(report.classId))?.name || report.classId }))
         .sort((a, b) => String(b.lessonDate || '').localeCompare(String(a.lessonDate || ''))), [lessonReports, activeChildId, classes]);
-    const lessonReportsBySelectedClass = useMemo(() => {
-        if (!selectedClassId) return [];
-        return sentLessonReports.filter((report) => String(report.classId) === String(selectedClassId));
-    }, [selectedClassId, sentLessonReports]);
     const lessonReportClassOptions = useMemo(() => {
         const map = new Map();
         sentLessonReports.forEach((report) => {
@@ -1477,464 +1201,81 @@ export default function ParentHome({
 
                         {activeTab === 'report' && (
                             <div className="space-y-6">
-                                
                                     <section className="space-y-3">
-                                            <div className="flex items-center justify-between px-1">
-                                                <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                                                    <Icon name="clipboardCheck" className="w-5 h-5 text-indigo-600" />
-                                                    발송된 수업 리포트
-                                                </h3>
-                                                <span className="text-xs text-gray-400 font-semibold">총 {filteredLessonReports.length}건</span>
+                                    <div className="flex items-center justify-between px-1">
+                                        <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                                            <Icon name="clipboardCheck" className="w-5 h-5 text-indigo-600" />
+                                            발송된 수업 리포트
+                                        </h3>
+                                        <span className="text-xs text-gray-400 font-semibold">총 {filteredLessonReports.length}건</span>
+                                    </div>
+                                    <div className="flex flex-wrap gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setLessonReportClassFilter('all');
+                                                setShowAllLessonReports(false);
+                                            }}
+                                            className={lessonReportClassFilter === 'all'
+                                                ? 'text-xs font-semibold text-indigo-700 bg-indigo-50 px-3 py-1.5 rounded-full border border-indigo-100'
+                                                : 'text-xs font-semibold text-gray-500 bg-gray-50 px-3 py-1.5 rounded-full border border-gray-200'}
+                                        >
+                                            전체 클래스
+                                        </button>
+                                        {lessonReportClassOptions.map((option) => (
+                                            <button
+                                                key={option.id}
+                                                type="button"
+                                                onClick={() => {
+                                                    setLessonReportClassFilter(option.id);
+                                                    setShowAllLessonReports(false);
+                                                }}
+                                                className={lessonReportClassFilter === option.id
+                                                    ? 'text-xs font-semibold text-indigo-700 bg-indigo-50 px-3 py-1.5 rounded-full border border-indigo-100'
+                                                    : 'text-xs font-semibold text-gray-500 bg-gray-50 px-3 py-1.5 rounded-full border border-gray-200'}
+                                            >
+                                                {option.name}
+                                            </button>
+                                        ))}
+                                    </div>
+                                    <div className="space-y-3">
+                                        {visibleLessonReports.map((report) => (
+                                            <div key={report.id} className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm space-y-2">
+                                                <p className="text-[11px] text-gray-400 font-semibold">{report.lessonDate} • {report.className}</p>
+                                                {report.learnedTopics && <p className="text-sm text-gray-700">진도: {report.learnedTopics}</p>}
+                                                {report.attendanceStatus && <p className="text-sm text-gray-700">출결: {report.attendanceStatus}</p>}
+                                                {Array.isArray(report?.homeworkSummary?.text) && report.homeworkSummary.text.length > 0 && <p className="text-sm text-gray-700">과제 수행: {report.homeworkSummary.text.join(' · ')}</p>}
+                                                {Array.isArray(report?.testSummary?.text) && report.testSummary.text.length > 0 && (
+                                                    <div className="text-sm text-gray-700">
+                                                        <p className="font-semibold">시험</p>
+                                                        <ul className="list-disc pl-5">
+                                                            {report.testSummary.text.map((line, index) => (
+                                                                <li key={`report-test-${report.id}-${index}`}>{line}</li>
+                                                            ))}
+                                                        </ul>
+                                                    </div>
+                                                )}
+                                                {report.comment && <p className="text-sm text-indigo-700">코멘트: {report.comment}</p>}
                                             </div>
-                                            <div className="flex flex-wrap gap-2">
+                                        ))}
+                                        {filteredLessonReports.length === 0 && (
+                                            <div className="p-6 text-center bg-white border border-dashed border-gray-200 rounded-2xl text-sm text-gray-400">
+                                                발송된 수업 리포트가 아직 없습니다.
+                                            </div>
+                                        )}
+                                        {filteredLessonReports.length > 3 && (
+                                            <div className="px-1">
                                                 <button
                                                     type="button"
-                                                    onClick={() => {
-                                                        setLessonReportClassFilter('all');
-                                                        setShowAllLessonReports(false);
-                                                    }}
-                                                    className={lessonReportClassFilter === 'all'
-                                                        ? 'text-xs font-semibold text-indigo-700 bg-indigo-50 px-3 py-1.5 rounded-full border border-indigo-100'
-                                                        : 'text-xs font-semibold text-gray-500 bg-gray-50 px-3 py-1.5 rounded-full border border-gray-200'}
+                                                    onClick={() => setShowAllLessonReports((prev) => !prev)}
+                                                    className="text-xs font-semibold text-gray-700 bg-gray-100 px-3 py-1.5 rounded-full border border-gray-200 hover:bg-gray-200 active:scale-95 transition"
                                                 >
-                                                    전체 클래스
-                                                </button>
-                                                {lessonReportClassOptions.map((option) => (
-                                                    <button
-                                                        key={option.id}
-                                                        type="button"
-                                                        onClick={() => {
-                                                            setLessonReportClassFilter(option.id);
-                                                            setShowAllLessonReports(false);
-                                                        }}
-                                                        className={lessonReportClassFilter === option.id
-                                                            ? 'text-xs font-semibold text-indigo-700 bg-indigo-50 px-3 py-1.5 rounded-full border border-indigo-100'
-                                                            : 'text-xs font-semibold text-gray-500 bg-gray-50 px-3 py-1.5 rounded-full border border-gray-200'}
-                                                    >
-                                                        {option.name}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                            <div className="space-y-3">
-                                                {visibleLessonReports.map((report) => (
-                                                    <div key={report.id} className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm space-y-2">
-                                                        <p className="text-[11px] text-gray-400 font-semibold">{report.lessonDate} • {report.className}</p>
-                                                        {report.learnedTopics && <p className="text-sm text-gray-700">진도: {report.learnedTopics}</p>}
-                                                        {report.attendanceStatus && <p className="text-sm text-gray-700">출결: {report.attendanceStatus}</p>}
-                                                        {Array.isArray(report?.homeworkSummary?.text) && report.homeworkSummary.text.length > 0 && <p className="text-sm text-gray-700">과제 수행: {report.homeworkSummary.text.join(' · ')}</p>}
-                                                        {Array.isArray(report?.testSummary?.text) && report.testSummary.text.length > 0 && (
-                                                            <div className="text-sm text-gray-700">
-                                                                <p className="font-semibold">시험</p>
-                                                                <ul className="list-disc pl-5">
-                                                                    {report.testSummary.text.map((line, index) => (
-                                                                        <li key={`report-test-${report.id}-${index}`}>{line}</li>
-                                                                    ))}
-                                                                </ul>
-                                                            </div>
-                                                        )}
-                                                        {report.comment && <p className="text-sm text-indigo-700">코멘트: {report.comment}</p>}
-                                                    </div>
-                                                ))}
-                                                {filteredLessonReports.length === 0 && (
-                                                    <div className="p-6 text-center bg-white border border-dashed border-gray-200 rounded-2xl text-sm text-gray-400">
-                                                        발송된 수업 리포트가 아직 없습니다.
-                                                    </div>
-                                                )}
-                                                {filteredLessonReports.length > 3 && (
-                                                    <div className="px-1">
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => setShowAllLessonReports((prev) => !prev)}
-                                                            className="text-xs font-semibold text-gray-700 bg-gray-100 px-3 py-1.5 rounded-full border border-gray-200 hover:bg-gray-200 active:scale-95 transition"
-                                                        >
-                                                            {showAllLessonReports ? '접기' : '이전 리포트 더보기'}
-                                                        </button>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </section>
-                                        <section className="bg-white rounded-3xl border border-gray-100 shadow-sm p-5 md:p-6 space-y-4">
-                                            <div className="flex items-center justify-between gap-3">
-                                                <div>
-                                                    <p className="text-[11px] font-semibold text-indigo-600 uppercase tracking-[0.2em]">수업 리포트</p>
-                                                    <h2 className="text-2xl font-extrabold text-gray-900">{activeChildName} 리포트</h2>
-                                                    <p className="text-sm text-gray-600">최근 기록 위주로 빠르게 확인하세요.</p>
-                                                </div>
-                                                <button
-                                                    onClick={() => {
-                                                        setReportViewMode('byClass');
-                                                        setSelectedClassId(null);
-                                                        setExpandedSections({ homework: false, grades: false });
-                                                        setShowAttendanceDetail(false);
-                                                    }}
-
-                                                    className="text-xs font-bold text-indigo-700 bg-indigo-50 px-3 py-1.5 rounded-full border border-indigo-100 hover:bg-indigo-100"
-                                                >
-                                                    클래스별 기록 보기
+                                                    {showAllLessonReports ? '접기' : '이전 리포트 더보기'}
                                                 </button>
                                             </div>
-                                        <div className="space-y-3" ref={lessonSectionRef}>
-                                                <div className="flex items-center justify-between">
-                                                    <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                                                        <Icon name="clipboard" className="w-5 h-5 text-indigo-600" />
-                                                        최근 수업 리포트
-                                                    </h3>
-                                                    <span className="text-xs text-gray-400 font-semibold">
-                                                        {Math.min(recentLessonsToShow.length, recentLessons.length)} / {recentLessons.length}
-                                                    </span>
-                                                </div>
-                                                <div className="space-y-3">
-                                                    {recentLessonsToShow.map((lesson) => (
-                                                        <div key={lesson.id} className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm flex flex-col gap-2">
-                                                            <div className="flex items-start justify-between gap-3">
-                                                                <div className="space-y-1 min-w-0">
-                                                                    <p className="text-[11px] text-gray-400 font-semibold">{lesson.date} • {lesson.className}</p>
-                                                                    <p className="text-sm text-gray-500">{lesson.teacher} 선생님</p>
-                                                                    <p className="text-base font-bold text-gray-900 line-clamp-2">{lesson.comment}</p>
-                                                                </div>
-                                                            </div>
-                                                            <div className="flex flex-wrap gap-2 mt-1">
-                                                                <StatusPill icon="user" label={lesson.attendance} tone={['결석', '지각'].includes(lesson.attendance) ? 'warning' : 'info'} />
-                                                                <StatusPill
-                                                                    icon="fileText"
-                                                                    label={shouldShowHomework(lesson.attendance) ? (lesson.homeworkStatus ?? '과제 정보 없음') : '과제 없음'}
-                                                                    tone={shouldShowHomework(lesson.attendance) && ['미제출', '숙제 출제'].includes(lesson.homeworkStatus) ? 'warning' : 'default'}
-                                                                />
-                                                                <StatusPill
-                                                                    icon="edit"
-                                                                    label={shouldShowTest(lesson.attendance) ? (lesson.testStatus ?? '시험 정보 없음') : '시험 없음'}
-                                                                    tone={shouldShowTest(lesson.attendance) && lesson.testStatus === '미응시' ? 'warning' : 'default'}
-                                                                />
-                                                            </div>
-                                                        </div>
-                                                    ))}
-                                                    {recentLessons.length === 0 && (
-                                                        <div className="p-6 text-center bg-white border border-dashed border-gray-200 rounded-2xl text-sm text-gray-400">
-                                                            아직 작성된 수업 리포트가 없습니다.
-                                                        </div>
-                                                    )}
-                                                    {recentLessonsToShow.length < recentLessons.length && (
-                                                        <div className="px-1">
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => setLessonPageSize((v) => v + 15)}
-                                                                className="text-xs font-semibold text-gray-700 bg-gray-100 px-3 py-1.5 rounded-full border border-gray-200 hover:bg-gray-200 active:scale-95 transition"
-                                                            >
-                                                                더 보기
-                                                            </button>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        </section>
-
-                                        <section ref={clinicSectionRef} className="space-y-3">
-                                            <div className="flex items-center justify-between px-1">
-                                                <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                                                    <Icon name="activity" className="w-5 h-5 text-indigo-600" />
-                                                    클리닉 리포트
-                                                </h3>
-                                                <span className="text-xs text-gray-400 font-semibold">{Math.min(visibleCompletedClinics.length, completedClinics.length)} / {completedClinics.length}</span>
-                                            </div>
-                                            <div className="space-y-3">
-                                                {visibleCompletedClinics.map((log) => {
-                                                    const commentKey = log.id ?? `${log.date}-${log.checkIn || log.checkOut || 'clinic'}`;
-                                                    const isOpen = openClinicCommentIds.has(commentKey);
-                                                    const hasComment = Boolean(log.commentResolved);
-                                                    const isNoShow = log.displayStatus === '미참석';
-                                                    const commentPreview = hasComment
-                                                        ? (log.commentResolved.length > 60 ? `${log.commentResolved.slice(0, 60)}...` : log.commentResolved)
-                                                        : '';
-                                                    const timeLabel = log.checkIn
-                                                        ? `${log.checkIn}~${log.checkOut || ''}`
-                                                        : (log.checkOut ? `~${log.checkOut}` : '시간 미정');
-                                                    return (
-                                                        <div key={commentKey} className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm space-y-2">
-                                                            <div className="flex items-start justify-between gap-3">
-                                                                <div className="space-y-1">
-                                                                    <p className="text-[11px] text-gray-400 font-semibold">{log.date} • {timeLabel}</p>
-                                                                    <h4 className="font-bold text-gray-900 text-sm">학습 클리닉</h4>
-                                                                    <p className="text-xs text-gray-500">{log.teacherResolved}</p>
-                                                                </div>
-                                                                <StatusPill
-                                                                    icon="clock"
-                                                                    label={log.displayStatus}
-                                                                    tone={log.displayStatus === '미참석' ? 'danger' : 'info'}
-                                                                />
-                                                            </div>
-                                                            {(hasComment || !isNoShow) && (
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => {
-                                                                        setOpenClinicCommentIds((prev) => {
-                                                                            const next = new Set(prev);
-                                                                            if (next.has(commentKey)) next.delete(commentKey);
-                                                                            else next.add(commentKey);
-                                                                            return next;
-                                                                        });
-                                                                    }}
-                                                                    className="text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-100 px-3 py-1.5 rounded-full hover:bg-indigo-100 active:scale-95 transition"
-                                                                >
-                                                                    {isOpen ? (isNoShow ? '사유 닫기' : '코멘트 닫기') : (isNoShow ? '사유 보기' : '코멘트 보기')}
-                                                                </button>
-                                                            )}
-                                                            {isOpen && (
-                                                                <MathText
-                                                                    text={log.commentResolved || (isNoShow ? '미참석 사유가 아직 작성되지 않았습니다.' : '코멘트가 아직 작성되지 않았습니다.')}
-                                                                    className="mt-1 text-sm text-gray-700 break-words"
-                                                                    inlineTextClassName="text-sm text-gray-700 break-words"
-                                                                />
-                                                            )}
-                                                        </div>
-                                                        );
-                                                })}
-                                                {completedClinics.length === 0 && (
-                                                    <div className="p-6 text-center bg-white border border-dashed border-gray-200 rounded-2xl text-sm text-gray-400">
-                                                        아직 클리닉 기록이 없습니다.
-                                                    </div>
-                                                )}
-                                            </div>
-                                            {visibleCompletedClinics.length < completedClinics.length && (
-                                                <div className="px-1">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setClinicPageSize((v) => v + 3)}
-                                                        className="text-xs font-semibold text-gray-700 bg-gray-100 px-3 py-1.5 rounded-full border border-gray-200 hover:bg-gray-200 active:scale-95 transition"
-                                                    >
-                                                        더 보기
-                                                    </button>
-                                                </div>
-                                            )}
-                                            </section>
-
-                                        <section ref={classStatusRef} className="space-y-3">
-                                            <div className="flex items-center justify-between px-1">
-                                                <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                                                    <Icon name="barChart" className="w-5 h-5 text-indigo-600" />
-                                                    클래스 목록
-                                                </h3>
-                                                <span className="text-xs text-gray-400 font-semibold">총 {classList.length}개 반</span>
-                                            </div>
-                                            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-                                                {classList.map((cls) => (
-                                                    <button
-                                                        key={cls.id}
-                                                        onClick={() => {
-                                                            setReportViewMode('byClass');
-                                                            setSelectedClassId(cls.id);
-                                                            setExpandedSections({ homework: false, grades: false });
-                                                            setShowAttendanceDetail(false);
-                                                        }}
-                                                        className="text-left bg-white border border-gray-100 rounded-2xl p-4 shadow-sm space-y-3 hover:border-indigo-200 transition"
-                                                    >
-                                                        <div className="flex items-start justify-between gap-3">
-                                                            <div className="space-y-1">
-                                                                <p className="text-[11px] text-gray-400 font-semibold">{cls.latestLessonDate}</p>
-                                                                <h4 className="font-bold text-gray-900">{cls.name}</h4>
-                                                                <p className="text-xs text-gray-500">{cls.teacher} 선생님</p>
-                                                            </div>
-                                                            <span className={`text-[11px] font-bold px-2 py-1 rounded-full ${getClassBadgeClassName(cls.status)}`}>
-                                                                {cls.status}
-                                                            </span>
-                                                        </div>
-                                                    </button>
-                                                ))}
-                                                {classList.length === 0 && (
-                                                    <div className="p-6 text-center bg-white border border-dashed border-gray-200 rounded-2xl text-sm text-gray-400">
-                                                        등록된 반이 없습니다.
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </section>
-                                        )
-
-                                        {selectedClassId && (
-                                            <section className="space-y-3">
-                                                <div className="flex flex-wrap items-center justify-between gap-3">
-                                                    <div className="flex items-center gap-2">
-                                                        <button
-                                                            onClick={() => {
-                                                                setSelectedClassId(null);
-                                                                setExpandedSections({ homework: false, grades: false });
-                                                                setShowAttendanceDetail(false);
-                                                            }}
-                                                            className="text-xs text-gray-600 hover:underline flex items-center gap-1"
-                                                        >
-                                                            <Icon name="chevronLeft" className="w-4 h-4" /> 전체 반 목록으로 돌아가기
-                                                        </button>
-                                                        <button
-                                                            onClick={() => {
-                                                                setReportViewMode('overview');
-                                                                setSelectedClassId(null);
-                                                                setExpandedSections({ homework: false, grades: false });
-                                                                setShowAttendanceDetail(false);
-                                                            }}
-                                                            className="text-xs text-gray-400 underline"
-                                                        >
-                                                            수업 리포트로 돌아가기
-                                                        </button>
-                                                    </div>
-                                                </div>
-
-                                                <div className="space-y-3">
-                                                    <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                                                        <Icon name="clipboard" className="w-5 h-5 text-indigo-600" />
-                                                        클래스 수업 리포트
-                                                    </h3>
-                                                    <div className="space-y-3">
-                                                        {lessonReportsBySelectedClass.map((report) => (
-                                                            <div key={report.id} className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm space-y-2">
-                                                                <p className="text-[11px] text-gray-400 font-semibold">{report.lessonDate} • {report.className}</p>
-                                                                {report.learnedTopics && <p className="text-sm text-gray-700">진도: {report.learnedTopics}</p>}
-                                                                {report.attendanceStatus && <p className="text-sm text-gray-700">출결: {report.attendanceStatus}</p>}
-                                                                {Array.isArray(report?.homeworkSummary?.text) && report.homeworkSummary.text.length > 0 && <p className="text-sm text-gray-700">과제 수행: {report.homeworkSummary.text.join(' · ')}</p>}
-                                                                {Array.isArray(report?.testSummary?.text) && report.testSummary.text.length > 0 && (
-                                                            <div className="text-sm text-gray-700">
-                                                                <p className="font-semibold">시험</p>
-                                                                <ul className="list-disc pl-5">
-                                                                    {report.testSummary.text.map((line, index) => (
-                                                                        <li key={`report-test-${report.id}-${index}`}>{line}</li>
-                                                                    ))}
-                                                                </ul>
-                                                            </div>
-                                                        )}
-                                                                {report.comment && <p className="text-sm text-indigo-700">코멘트: {report.comment}</p>}
-                                                            </div>
-                                                        ))}
-                                                        {lessonReportsBySelectedClass.length === 0 && (
-                                                            <div className="p-6 text-center bg-white border border-dashed border-gray-200 rounded-2xl text-sm text-gray-400">
-                                                                이 반의 수업 리포트가 없습니다.
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                </div>
-
-                                                <div className="bg-white border border-gray-100 rounded-2xl shadow-sm">
-                                                    <button
-                                                        className="w-full flex items-center justify-between px-4 py-3 text-left"
-                                                        onClick={() => setShowAttendanceDetail((v) => !v)}
-                                                    >
-                                                        <span className="text-sm font-bold text-gray-900">출결 상세</span>
-                                                        <Icon name={showAttendanceDetail ? 'chevronUp' : 'chevronDown'} className="w-4 h-4 text-gray-500" />
-                                                    </button>
-                                                    {showAttendanceDetail && (
-                                                        <div className="p-4">
-                                                            <div className="mt-3 space-y-2">
-                                                                {attendanceHistory.length === 0 ? (
-                                                                    <div className="text-sm text-gray-500">
-                                                                        출결 기록이 없습니다.
-                                                                    </div>
-                                                                ) : (
-                                                                    attendanceHistory.map(item => (
-                                                                        <div
-                                                                            key={item.id}
-                                                                            className="rounded-lg border border-gray-200 bg-gray-50 p-3"
-                                                                        >
-                                                                            <div className="text-sm font-semibold text-gray-800">
-                                                                                {item.date || '(날짜 없음)'} · {item.attendance}
-                                                                            </div>
-
-                                                                            {item.memo && (
-                                                                                <div className="mt-1 text-sm text-gray-600 whitespace-pre-wrap">
-                                                                                    {item.memo}
-                                                                                </div>
-                                                                            )}
-                                                                        </div>
-                                                                    ))
-                                                                )}
-                                                            </div>
-                                                        </div>
-                                                    )}
-                                                </div>
-
-                                                <div className="bg-white border border-gray-100 rounded-2xl shadow-sm">
-                                                    <button
-                                                        className="w-full flex items-center justify-between px-4 py-3 text-left"
-                                                        onClick={() => setExpandedSections((prev) => ({ ...prev, homework: !prev.homework }))}
-                                                    >
-                                                        <span className="text-sm font-bold text-gray-900">과제 상세</span>
-                                                        <Icon name={expandedSections.homework ? 'chevronUp' : 'chevronDown'} className="w-4 h-4 text-gray-500" />
-                                                    </button>
-                                                    {expandedSections.homework && (
-                                                        <div className="divide-y divide-gray-100">
-                                                            {homeworkBySelectedClass.map((hw) => {
-                                                                const hasValidAverage = isValidNumber(hw.classAverage);
-                                                                if (!hasValidAverage) {
-                                                                    console.error('[ParentReport] homework class average missing', { classId: selectedClassId, assignmentId: hw.id });
-                                                                }
-                                                                return (
-                                                                    <div key={hw.id} className="p-4 space-y-2">
-                                                                        <div className="flex items-center justify-between">
-                                                                            <div>
-                                                                                <p className="text-sm font-bold text-gray-900">{hw.title}</p>
-                                                                                <p className="text-xs text-gray-500">{hw.status}</p>
-                                                                                <p className="text-[11px] text-gray-400">출제일: {hw.assignedDate || '-'}</p>
-                                                                                <p className="text-[11px] text-gray-400">최근 검사일: {hw.lastCheckedDate || '-'}</p>
-                                                                            </div>
-                                                                            <span className="text-xs font-bold text-indigo-700 bg-indigo-50 px-3 py-1 rounded-full border border-indigo-100">{hw.completionRate}%</span>
-                                                                        </div>
-                                                                    </div>
-                                                                );
-                                                            })}
-                                                            {homeworkBySelectedClass.length === 0 && (
-                                                                <div className="p-4 text-sm text-gray-500">과제 기록이 없습니다.</div>
-                                                            )}
-                                                        </div>
-                                                    )}
-                                                </div>
-
-                                                <div className="bg-white border border-gray-100 rounded-2xl shadow-sm">
-                                                    <button
-                                                        className="w-full flex items-center justify-between px-4 py-3 text-left"
-                                                        onClick={() => setExpandedSections((prev) => ({ ...prev, grades: !prev.grades }))}
-                                                    >
-                                                        <span className="text-sm font-bold text-gray-900">성적 상세</span>
-                                                        <Icon name={expandedSections.grades ? 'chevronUp' : 'chevronDown'} className="w-4 h-4 text-gray-500" />
-                                                    </button>
-                                                    {expandedSections.grades && (
-                                                        <div className="divide-y divide-gray-100">
-                                                            {testsBySelectedClass.map((test) => {
-                                                                const attemptedCount = Number.isFinite(test.attemptedCount) ? test.attemptedCount : null;
-                                                                const averageLabel = formatStatDisplay(test.classAverage);
-                                                                const maxLabel = formatStatDisplay(test.classMax);
-                                                                const hasValidAverage = averageLabel !== '통계 준비 중';
-                                                                const hasValidMax = maxLabel !== '통계 준비 중';
-                                                                const studentScoreLabel = formatScoreDisplay(test.studentScore);
-                                                                const statsText = (() => {
-                                                                    if (!test.stats) return '통계 준비 중';
-                                                                    if (attemptedCount === 0) return '반 평균 없음';
-
-                                                                    const parts = [];
-                                                                    if (hasValidAverage) parts.push(`평균 ${averageLabel}점`);
-                                                                    if (hasValidMax) parts.push(`최고 ${maxLabel}점`);
-
-                                                                    return parts.length > 0 ? parts.join(' / ') : '통계 준비 중';
-                                                                })();
-                                                                return (
-                                                                    <div key={test.id} className="p-4 space-y-2">
-                                                                        <div className="flex items-center justify-between">
-                                                                            <div>
-                                                                                <p className="text-sm font-bold text-gray-900">{test.name}</p>
-                                                                                <p className="text-xs text-gray-500">{test.date}</p>
-                                                                            </div>
-                                                                            <span className="text-xs font-bold text-indigo-700 bg-indigo-50 px-3 py-1 rounded-full border border-indigo-100">{studentScoreLabel}</span>
-                                                                        </div>
-                                                                        <div className="flex items-center justify-between text-xs text-gray-600">
-                                                                            <span></span>
-                                                                            <span>{statsText}</span>
-                                                                        </div>
-                                                                    </div>
-                                                                );
-                                                            })}
-                                                            {testsBySelectedClass.length === 0 && (
-                                                                <div className="p-4 text-sm text-gray-500">시험 기록이 없습니다.</div>
-                                                            )}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            </section>
                                         )}
-                                    
+                                    </div>
+                                </section>
                             </div>
                         )}
 
@@ -2032,11 +1373,6 @@ export default function ParentHome({
                                                         ? totalCount
                                                         : Object.values(counts).reduce((sum, value) => sum + (Number.isFinite(value) ? value : 0), 0);
                                                     const width = (value) => (total > 0 ? `${(value / total) * 100}%` : '0%');
-                                                    const detailKey = `${section.classId}-${hw.id}`;
-                                                    const questionDetail = hw.questionNumbers || hw.rangeString || hw.totalQuestions || hw.questionDetail || hw.items || hw.detailText || null;
-                                                    const questionText = Array.isArray(questionDetail)
-                                                        ? questionDetail.join(', ')
-                                                        : (typeof questionDetail === 'string' ? questionDetail : null);
                                                     return (
                                                         <article key={hw.id} className="rounded-xl border border-gray-200 p-2.5 space-y-2">
                                                             <div className="flex items-start justify-between gap-2">
@@ -2055,16 +1391,6 @@ export default function ParentHome({
                                                            <p className="text-xs font-semibold">
                                                                 <span className="text-emerald-600">맞음 {counts.correct}</span> / <span className="text-red-500">틀림 {counts.wrong}</span> / <span className="text-sky-500">고침 {counts.fixed}</span> / <span className="text-gray-400">남음 {counts.remaining}</span>
                                                             </p>
-                                                            {/* {questionText && (
-                                                                <>
-                                                                    <button type="button" onClick={() => toggleHomeworkDetail(detailKey)} className="text-xs font-semibold text-indigo-700">
-                                                                        문항 번호 {expandedHomeworkDetails[detailKey] ? '숨기기' : '보기'}
-                                                                    </button>
-                                                                    {expandedHomeworkDetails[detailKey] && (
-                                                                        <p className="text-xs text-gray-600 bg-gray-50 rounded-lg p-2">문항: {questionText}</p>
-                                                                    )}
-                                                                </>
-                                                            )} */}
                                                         </article>
                                                     );
                                                 })}
@@ -2225,7 +1551,7 @@ export default function ParentHome({
                 )}
             </main>
 
-            {!selectedClassId && !selectedReportId && (
+            {!selectedReportId && (
                 <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 z-40 pb-safe shadow-[0_-4px_10px_rgba(0,0,0,0.03)] h-[calc(60px+env(safe-area-inset-bottom))]">
                     <div className="max-w-md mx-auto flex justify-around items-center h-[60px] md:max-w-7xl">
                         {navItems.map(item => (
@@ -2256,16 +1582,6 @@ export default function ParentHome({
                 </div>
             )}
 
-            {attendanceDetailTarget && (
-                <AttendanceDetailModal
-                    isOpen
-                    onClose={() => setAttendanceDetailTarget(null)}
-                    lesson={attendanceDetailTarget}
-                    attendanceLogs={attendanceLogs}
-                    studentId={activeChildId}
-                />
-            )}
-
             <NotificationList
                 isOpen={isNotificationOpen}
                 onClose={() => setIsNotificationOpen(false)}
@@ -2279,22 +1595,6 @@ export default function ParentHome({
         </div>
     );
 }
-
-const StatusPill = ({ icon, label, tone = 'default' }) => {
-    const styles = {
-        default: 'bg-gray-50 text-gray-700 border-gray-200',
-        info: 'bg-indigo-50 text-indigo-700 border-indigo-100',
-        warning: 'bg-orange-50 text-orange-700 border-orange-100',
-        danger: 'bg-red-50 text-red-700 border-red-100'
-    };
-    const style = styles[tone] || styles.default;
-    return (
-        <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold border ${style}`}>
-            {icon && <Icon name={icon} className="w-3.5 h-3.5" />}
-            {label}
-        </span>
-    );
-};
 
 // changed: hide ended classes in today’s lessons
 
