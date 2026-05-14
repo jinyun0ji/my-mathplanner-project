@@ -25,6 +25,10 @@ const SortableVideoItem = React.memo(({ video, index, onRemove, onChange }) => {
     transition,
   };
 
+  const videoDomId = getVideoDomId(video.id);
+  const titleInputId = `video-title-${videoDomId}`;
+  const urlInputId = `video-url-${videoDomId}`;
+
   return (
     <div
       ref={setNodeRef}
@@ -53,8 +57,10 @@ const SortableVideoItem = React.memo(({ video, index, onRemove, onChange }) => {
         </button>
       </div>
       <div>
-        <label className="block text-xs font-medium text-gray-600">영상 제목</label>
+        <label htmlFor={titleInputId} className="block text-xs font-medium text-gray-600">영상 제목</label>
         <input
+          id={titleInputId}
+          name={titleInputId}
           type="text"
           value={video.title ?? ''}
           onChange={e => onChange(video.id, 'title', e.target.value)}
@@ -66,8 +72,10 @@ const SortableVideoItem = React.memo(({ video, index, onRemove, onChange }) => {
         />
       </div>
       <div>
-        <label className="block text-xs font-medium text-gray-600">iframe 코드 또는 URL</label>
+        <label htmlFor={urlInputId} className="block text-xs font-medium text-gray-600">iframe 코드 또는 URL</label>
         <textarea
+          id={urlInputId}
+          name={urlInputId}
           value={video.url}
           onChange={e => onChange(video.id, 'url', e.target.value)}
           onPointerDown={e => e.stopPropagation()}
@@ -81,6 +89,18 @@ const SortableVideoItem = React.memo(({ video, index, onRemove, onChange }) => {
     </div>
   );
 });
+
+let videoEntrySequence = 0;
+
+const makeVideoId = () => {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return `video-${crypto.randomUUID()}`;
+  }
+  videoEntrySequence += 1;
+  return `video-${Date.now()}-${videoEntrySequence}-${Math.random().toString(36).slice(2, 8)}`;
+};
+
+const getVideoDomId = (videoId) => String(videoId || 'unknown-video').replace(/[^A-Za-z0-9_-]/g, '-');
 
 const normalizeLessonDate = (value) => {
   if (!value) return '';
@@ -156,15 +176,23 @@ export const LessonLogFormModal = ({
     staffNotifyScheduledAt: '',
   });
 
-  const videoIdRef = useRef(0);
   const attachmentIdRef = useRef(0);
   const materialFileInputRef = useRef(null);
 
-  const createVideoEntry = useCallback((video = {}) => ({
-    id: video.id || `video-${videoIdRef.current++}`,
-    title: video.title || '',
-    url: video.url || '',
-  }), []);
+  const createVideoEntry = useCallback((video = {}, usedIds = new Set()) => {
+    let id = video.id || makeVideoId();
+    while (usedIds.has(id)) {
+      id = makeVideoId();
+    }
+    usedIds.add(id);
+
+    return {
+      ...video,
+      id,
+      title: video.title || '',
+      url: video.url || video.videoUrl || video.iframeCode || video.embedCode || '',
+    };
+  }, []);
 
   const createAttachmentEntry = useCallback((material = {}) => ({
     id: material.id || `attachment-${attachmentIdRef.current++}`,
@@ -179,7 +207,8 @@ export const LessonLogFormModal = ({
 
   const normalizeVideosFromLog = useCallback((logItem) => {
     if (logItem?.videos && Array.isArray(logItem.videos)) {
-      return logItem.videos.map(v => createVideoEntry(v));
+      const usedIds = new Set();
+      return logItem.videos.map(video => createVideoEntry(video, usedIds));
     }
 
     const fallbackUrl = logItem?.iframeCode || logItem?.videoUrl;
@@ -360,7 +389,6 @@ export const LessonLogFormModal = ({
   useEffect(() => {
     if (!isOpen) return;
 
-    videoIdRef.current = 0;
     attachmentIdRef.current = 0;
     setSelectedLessonKey(initialLessonKey);
     
@@ -396,7 +424,6 @@ export const LessonLogFormModal = ({
       setFormState(getEmptyForm(selectedLessonKey));
     }
 
-    videoIdRef.current = 0;
     attachmentIdRef.current = 0;
     setFiles([]);
     setUploadProgress({});
