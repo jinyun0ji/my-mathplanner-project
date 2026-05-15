@@ -257,31 +257,6 @@ export default function StudentHome({
     const viewerUid = student?.authUid || userId;
     const studentDocId = studentId;
     const studentAuthUid = student?.authUid || userId;
-    const toYmd = (value) => {
-        if (!value) return null;
-        if (typeof value === 'string') return value.slice(0, 10);
-        if (typeof value?.toDate === 'function') return value.toDate().toISOString().slice(0, 10);
-        try {
-            return new Date(value).toISOString().slice(0, 10);
-        } catch (error) {
-            return null;
-        }
-    };
-    const isAfterEndDate = useCallback((dateValue, endDateValue) => {
-        const date = toYmd(dateValue);
-        const endDate = toYmd(endDateValue);
-        if (!date || !endDate) return false;
-        return date > endDate;
-    }, []);
-    const isLogAfterClassEndDate = useCallback((classId, dateValue) => {
-        if (!classId) return false;
-        const classStatus = student?.classStatusMap?.[String(classId)] || student?.classStatuses?.[String(classId)];
-        const normalizedStatus = normalizeClassStatus(classStatus?.status);
-        if (!isWithdrawnStatus(normalizedStatus)) return false;
-        const endValue = classStatus?.endedAt || classStatus?.endDate;
-        if (!endValue) return false;
-        return isAfterEndDate(dateValue, endValue);
-    }, [student?.classStatusMap, student?.classStatuses, isAfterEndDate]);
     const rawMyClasses = useMemo(() => {
         if (!Array.isArray(classes) || !studentId) return [];
         const studentClassIds = new Set([
@@ -305,16 +280,16 @@ export default function StudentHome({
     }, [visibleClassIdSet]);
     const filteredLessonLogs = useMemo(() => {
         if (!Array.isArray(lessonLogs)) return [];
-        return lessonLogs.filter((log) => isVisibleClassItem(log) && !isLogAfterClassEndDate(log?.classId, log?.date));
-    }, [lessonLogs, isVisibleClassItem, isLogAfterClassEndDate]);
+        return lessonLogs.filter((log) => isVisibleClassItem(log));
+    }, [lessonLogs, isVisibleClassItem]);
     const filteredTests = useMemo(() => {
         if (!Array.isArray(tests)) return [];
-        return tests.filter((test) => isVisibleClassItem(test) && !isLogAfterClassEndDate(test?.classId, test?.date));
-    }, [tests, isVisibleClassItem, isLogAfterClassEndDate]);
+        return tests.filter((test) => isVisibleClassItem(test));
+    }, [tests, isVisibleClassItem]);
     const filteredHomeworkAssignments = useMemo(() => {
         if (!Array.isArray(homeworkAssignments)) return [];
-        return homeworkAssignments.filter((assignment) => isVisibleClassItem(assignment) && !isLogAfterClassEndDate(assignment?.classId, assignment?.assignedDate || assignment?.date));
-    }, [homeworkAssignments, isVisibleClassItem, isLogAfterClassEndDate]);
+        return homeworkAssignments.filter((assignment) => isVisibleClassItem(assignment));
+    }, [homeworkAssignments, isVisibleClassItem]);
     const filteredAttendanceLogs = useMemo(() => {
         if (!Array.isArray(attendanceLogs)) return [];
         return attendanceLogs.filter((log) => isVisibleClassItem(log));

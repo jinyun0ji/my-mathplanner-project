@@ -3104,6 +3104,10 @@ video {
   line-height: 1.5rem;
 }
 
+.leading-7{
+  line-height: 1.75rem;
+}
+
 .tracking-\[0\.2em\]{
   letter-spacing: 0.2em;
 }

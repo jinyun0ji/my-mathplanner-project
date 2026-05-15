@@ -22,6 +22,7 @@ import NotificationsIcon from '@mui/icons-material/Notifications';
 import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
 import ParentSessionReport from './parent/ParentSessionReport'; // ✅ 신규 리포트 컴포넌트
 import ParentMessengerPage from './parent/ParentMessengerPage';
+import ParentBoardPage from './parent/ParentBoardPage';
 import { generateSessionReport } from '../utils/reportHelper'; // ✅ 리포트 데이터 생성 헬퍼
 import useNotifications from '../notifications/useNotifications';
 import NotificationList from '../notifications/NotificationList';
@@ -531,41 +532,6 @@ export default function ParentHome({
     const activeChildName = activeChild?.name || '학생';
     const activeChildSchool = activeChild?.school || '학교 정보 없음';
     const activeChildGrade = activeChild?.grade || '학년 정보 없음';
-    const normalizeClassStatus = useCallback((value) => {
-        if (value === 'withdrawn') return '퇴원';
-        if (value === 'active') return '진행중';
-        if (value === '재원') return '진행중';
-        return value;
-    }, []);
-    const isWithdrawnStatus = useCallback((value) => {
-        const normalized = normalizeClassStatus(value);
-        return ['퇴원', '중도퇴원', '전반', '전반퇴원'].includes(normalized);
-    }, [normalizeClassStatus]);
-    const toYmd = useCallback((value) => {
-        if (!value) return null;
-        if (typeof value === 'string') return value.slice(0, 10);
-        if (typeof value?.toDate === 'function') return value.toDate().toISOString().slice(0, 10);
-        try {
-            return new Date(value).toISOString().slice(0, 10);
-        } catch (error) {
-            return null;
-        }
-    }, []);
-    const isAfterEndDate = useCallback((dateValue, endDateValue) => {
-        const date = toYmd(dateValue);
-        const endDate = toYmd(endDateValue);
-        if (!date || !endDate) return false;
-        return date > endDate;
-    }, [toYmd]);
-    const isLogAfterClassEndDate = useCallback((classId, dateValue) => {
-        if (!classId) return false;
-        const classStatus = activeChild?.classStatusMap?.[String(classId)] || activeChild?.classStatuses?.[String(classId)];
-        const normalizedStatus = normalizeClassStatus(classStatus?.status);
-        if (!isWithdrawnStatus(normalizedStatus)) return false;
-        const endValue = classStatus?.endedAt || classStatus?.endDate;
-        if (!endValue) return false;
-        return isAfterEndDate(dateValue, endValue);
-    }, [activeChild?.classStatusMap, activeChild?.classStatuses, isAfterEndDate, isWithdrawnStatus, normalizeClassStatus]);
     // 2. 데이터 필터링
     const rawMyClasses = useMemo(() => {
         if (!Array.isArray(classes) || !activeChildId) return [];
@@ -590,16 +556,16 @@ export default function ParentHome({
     }, [visibleClassIdSet]);
     const filteredLessonLogs = useMemo(() => {
         if (!Array.isArray(lessonLogs)) return [];
-        return lessonLogs.filter((log) => isVisibleClassItem(log) && !isLogAfterClassEndDate(log?.classId, log?.date));
-    }, [lessonLogs, isVisibleClassItem, isLogAfterClassEndDate]);
+        return lessonLogs.filter((log) => isVisibleClassItem(log));
+    }, [lessonLogs, isVisibleClassItem]);
     const filteredTests = useMemo(() => {
         if (!Array.isArray(tests)) return [];
-        return tests.filter((test) => isVisibleClassItem(test) && !isLogAfterClassEndDate(test?.classId, test?.date));
-    }, [tests, isVisibleClassItem, isLogAfterClassEndDate]);
+        return tests.filter((test) => isVisibleClassItem(test));
+    }, [tests, isVisibleClassItem]);
     const filteredHomeworkAssignments = useMemo(() => {
         if (!Array.isArray(homeworkAssignments)) return [];
-        return homeworkAssignments.filter((assignment) => isVisibleClassItem(assignment) && !isLogAfterClassEndDate(assignment?.classId, assignment?.assignedDate || assignment?.date));
-    }, [homeworkAssignments, isVisibleClassItem, isLogAfterClassEndDate]);
+        return homeworkAssignments.filter((assignment) => isVisibleClassItem(assignment));
+    }, [homeworkAssignments, isVisibleClassItem]);
     const filteredAttendanceLogs = useMemo(() => {
         if (!Array.isArray(attendanceLogs)) return [];
         return attendanceLogs.filter((log) => isVisibleClassItem(log));
@@ -670,6 +636,7 @@ export default function ParentHome({
     const [expandedHomeworkDetails, setExpandedHomeworkDetails] = useState({});
     const [classFilter, setClassFilter] = useState('ongoing'); // 기본: 진행중
     const [selectedReportId, _setSelectedReportId] = useState(readReportFromUrl());
+    const [boardBackTab, setBoardBackTab] = useState('home');
 
     // ✅ URL -> state (브라우저 뒤로/앞으로로 URL이 바뀌면 화면도 따라감)
     useEffect(() => {
@@ -881,8 +848,6 @@ export default function ParentHome({
         .filter((log) => ['예약됨', '입실 예정'].includes(getClinicDisplayStatus(log)))
         .sort((a, b) => new Date(`${a?.date || ''}T00:00:00`) - new Date(`${b?.date || ''}T00:00:00`)), [myClinicLogs]);
 
-    const visibleNotices = useMemo(() => (Array.isArray(notices) ? [...notices] : []), [notices]);
-
     const currentParent = useMemo(() => {
         const currentUser = auth.currentUser;
         const identifiers = [userId, currentUser?.uid, currentUser?.email]
@@ -901,6 +866,31 @@ export default function ParentHome({
             return parentIdentifiers.some((value) => identifiers.includes(value));
         }) || null;
     }, [parents, userId]);
+
+    const parentAuthUid = auth.currentUser?.uid || currentParent?.authUid || currentParent?.uid || userId || '';
+
+    const visibleNotices = useMemo(() => {
+        const visibleClassIdSetForNotice = new Set((visibleClassIds || []).map(String));
+        const childId = String(activeChildId || '');
+        const authUid = String(parentAuthUid || '');
+
+        return (Array.isArray(notices) ? [...notices] : []).filter((notice) => {
+            if (notice?.isPublic === true) return true;
+
+            const targetClasses = Array.isArray(notice?.targetClasses) ? notice.targetClasses.map(String) : [];
+            const targetStudents = Array.isArray(notice?.targetStudents) ? notice.targetStudents.map(String) : [];
+            const targetAuthUids = Array.isArray(notice?.targetAuthUids) ? notice.targetAuthUids.map(String) : [];
+
+            return targetClasses.some((classId) => visibleClassIdSetForNotice.has(classId))
+                || (childId && targetStudents.includes(childId))
+                || (authUid && targetAuthUids.includes(authUid));
+        });
+    }, [notices, visibleClassIds, activeChildId, parentAuthUid]);
+
+    const openBoardTab = useCallback(() => {
+        setBoardBackTab(activeTab === 'more' ? 'more' : 'home');
+        setActiveTab('board');
+    }, [activeTab, setActiveTab]);
 
     const accountInfo = useMemo(() => ({
         parentEmail:
@@ -956,7 +946,8 @@ export default function ParentHome({
                 }
 
                 if (refCollection === 'announcements' || refCollection === 'posts') {
-                    setActiveTab('home');
+                    setBoardBackTab('home');
+                    setActiveTab('board');
                     return;
                 }
 
@@ -1268,13 +1259,13 @@ export default function ParentHome({
                                                     <Icon name="bell" className="w-4 h-4 text-indigo-600" />
                                                     공지사항
                                                 </h3>
-                                                <button onClick={() => setActiveTab('more')} className="text-xs text-indigo-600 font-semibold hover:underline">전체 보기</button>
+                                                <button onClick={openBoardTab} className="text-xs text-indigo-600 font-semibold hover:underline">전체 보기</button>
                                             </div>
                                             <div className="space-y-2">
                                                 {noticePreview.length > 0 ? noticePreview.map(notice => (
                                                     <button 
                                                         key={notice.id} 
-                                                        onClick={() => setActiveTab('more')}
+                                                        onClick={openBoardTab}
                                                         className="w-full text-left p-3 rounded-xl border border-gray-100 hover:border-indigo-200 hover:bg-indigo-50 transition-colors"
                                                     >
                                                         <p className="text-sm font-bold text-gray-900">{notice.title}</p>
@@ -1637,8 +1628,8 @@ export default function ParentHome({
                                     )}
                             </div>
                         )}
-                        {activeTab === 'notices' && (
-                            <ParentNoticeList notices={visibleNotices} onBack={() => setActiveTab('more')} />
+                        {(activeTab === 'board' || activeTab === 'notices') && (
+                            <ParentBoardPage notices={visibleNotices} onBack={() => setActiveTab(boardBackTab || 'home')} />
                         )}
                         {activeTab === 'account' && (
                             <ParentAccountInfo
@@ -1649,7 +1640,7 @@ export default function ParentHome({
                             />
                         )}
                         {activeTab === 'more' && (
-                            <ParentMoreMenu notices={visibleNotices} onOpenNotice={() => setActiveTab('notices')} onOpenNotifications={() => setIsNotificationOpen(true)} onOpenMessages={() => setIsMessengerPage(true)} onOpenAccount={() => setActiveTab('account')} onLogout={onLogout} />
+                            <ParentMoreMenu notices={visibleNotices} onOpenNotice={openBoardTab} onOpenNotifications={() => setIsNotificationOpen(true)} onOpenMessages={() => setIsMessengerPage(true)} onOpenAccount={() => setActiveTab('account')} onLogout={onLogout} />
                         )}
                     </div>
                 )}
@@ -1702,96 +1693,6 @@ export default function ParentHome({
 }
 
 // changed: hide ended classes in today’s lessons
-
-const getNoticeDateValue = (notice) => (
-    notice?.date
-    || notice?.createdAt
-    || notice?.updatedAt
-    || notice?.scheduleTime
-    || ''
-);
-
-const getNoticeDateMs = (value) => {
-    if (!value) return 0;
-    if (typeof value?.toDate === 'function') return value.toDate().getTime();
-    if (value instanceof Date) return value.getTime();
-    const date = new Date(value);
-    return Number.isNaN(date.getTime()) ? 0 : date.getTime();
-};
-
-const formatNoticeDate = (value) => {
-    if (!value) return '-';
-    if (typeof value === 'string') return value.slice(0, 10) || '-';
-    if (typeof value?.toDate === 'function') return value.toDate().toISOString().slice(0, 10);
-    const date = value instanceof Date ? value : new Date(value);
-    return Number.isNaN(date.getTime()) ? '-' : date.toISOString().slice(0, 10);
-};
-
-const stripHtml = (value) => String(value || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-
-const getNoticePreview = (content) => {
-    const plainText = stripHtml(content);
-    if (!plainText) return '내용이 없습니다.';
-    return plainText.length > 120 ? `${plainText.slice(0, 120)}...` : plainText;
-};
-
-const ParentNoticeList = ({ notices = [], onBack }) => {
-    const sortedNotices = [...notices].sort((a, b) => getNoticeDateMs(getNoticeDateValue(b)) - getNoticeDateMs(getNoticeDateValue(a)));
-
-    return (
-        <section className="space-y-4">
-            <div className="flex items-center gap-3">
-                <button
-                    type="button"
-                    onClick={onBack}
-                    className="w-10 h-10 rounded-full border border-gray-200 bg-white text-gray-700 shadow-sm flex items-center justify-center active:scale-95"
-                    aria-label="전체 탭으로 돌아가기"
-                >
-                    ←
-                </button>
-                <div>
-                    <h2 className="text-xl font-extrabold text-gray-900">공지사항</h2>
-                    <p className="text-xs text-gray-500">학원에서 전달한 게시글과 공지사항을 확인하세요.</p>
-                </div>
-            </div>
-
-            {sortedNotices.length > 0 ? (
-                <div className="space-y-3">
-                    {sortedNotices.map((notice, index) => (
-                        <article
-                            key={notice.id || `${notice.title || 'notice'}-${index}`}
-                            className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm space-y-2"
-                        >
-                            <div className="flex items-start justify-between gap-3">
-                                <h3 className="text-base font-bold text-gray-900 leading-6 min-w-0">
-                                    {notice.title || '제목 없음'}
-                                </h3>
-                                {notice.isPinned && (
-                                    <span className="shrink-0 rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-bold text-red-500 border border-red-100">
-                                        필독
-                                    </span>
-                                )}
-                            </div>
-                            <p className="text-sm text-gray-600 leading-6 line-clamp-3">
-                                {getNoticePreview(notice.content)}
-                            </p>
-                            <div className="flex items-center gap-2 text-xs text-gray-400 pt-1">
-                                <span className="font-medium text-gray-500">{notice.author || '채수용 수학'}</span>
-                                <span className="w-0.5 h-2 bg-gray-300" />
-                                <span>{formatNoticeDate(getNoticeDateValue(notice))}</span>
-                            </div>
-                        </article>
-                    ))}
-                </div>
-            ) : (
-                <div className="bg-white border border-dashed border-gray-200 rounded-2xl py-12 px-4 text-center text-sm text-gray-500">
-                    등록된 공지사항이 없습니다.
-                </div>
-            )}
-        </section>
-    );
-};
-
 
 const formatAccountValue = (value) => {
   if (value === null || value === undefined || value === '') return '등록된 정보가 없습니다.';

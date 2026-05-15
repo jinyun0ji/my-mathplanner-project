@@ -31,8 +31,25 @@ const parseDateValue = (value) => {
     return null;
 };
 
+const CLASS_END_DATE_FIELDS = [
+    'endDate',
+    'endedAt',
+    'finishedAt',
+    'finishDate',
+    'closeDate',
+    'closedAt',
+    'endAt',
+];
+
+const readClassEndDateRaw = (classDoc = {}) => {
+    for (const field of CLASS_END_DATE_FIELDS) {
+        if (classDoc?.[field]) return classDoc[field];
+    }
+    return null;
+};
+
 const normalizeEndDate = (classDoc) => {
-    const parsed = parseDateValue(classDoc?.endDate);
+    const parsed = parseDateValue(readClassEndDateRaw(classDoc));
     if (!parsed || !isValidDate(parsed)) return null;
     return getLocalStartOfDay(parsed);
 };
@@ -53,20 +70,15 @@ const CLOSED_STATUS_SET = new Set([
 
 const normalizeStatusText = (value) => String(value || '').trim().toLowerCase();
 
-const VIEWER_WITHDRAWN_STATUS_SET = new Set([
-    '퇴원',
-    '중도퇴원',
-    '전반',
-    '전반퇴원',
-    'withdrawn',
-]);
-
 const VIEWER_ENDED_STATUS_SET = new Set([
     '종강',
     '종료',
     'ended',
     'inactive',
     'finished',
+    'closed',
+    'completed',
+    'complete',
 ]);
 
 const VIEWER_ACTIVE_STATUS_SET = new Set([
@@ -78,78 +90,22 @@ const VIEWER_ACTIVE_STATUS_SET = new Set([
 
 const getClassIdValue = (cls = {}) => String(cls?.id || cls?.classId || cls?.classDocId || cls?.docId || '').trim();
 
-const readStudentClassMeta = (student, classId) => {
-    if (!student || !classId) return null;
-    const mapLike = student.classStatusMap
-        || student.studentClassStatusMap
-        || student.classStatusByClassId
-        || student.enrollmentMap
-        || null;
-    if (mapLike && typeof mapLike === 'object' && mapLike[classId] !== undefined) {
-        const value = mapLike[classId];
-        return value && typeof value === 'object' ? value : { status: value };
-    }
+const readViewerEndDateRaw = (cls = {}) => readClassEndDateRaw(cls);
 
-    const lists = [
-        student.classStatuses,
-        student.enrollments,
-        student.classEnrollments,
-        student.classesMeta,
-        student.classes,
-    ].filter(Array.isArray);
-
-    for (const list of lists) {
-        const found = list.find((item) => {
-            if (typeof item === 'string') return item === classId;
-            const itemClassId = String(item?.classId || item?.classDocId || item?.id || item?.docId || '').trim();
-            return itemClassId === classId;
-        });
-        if (found && typeof found === 'object') return found;
-    }
-
-    return null;
-};
-
-const readViewerStatus = (cls = {}, student = null) => {
-    const classId = getClassIdValue(cls);
-    const studentMeta = readStudentClassMeta(student, classId);
-    return studentMeta?.status
-        || studentMeta?.classStatus
-        || cls?.studentStatus
-        || readClassStatus(cls);
-};
-
-const readViewerEndDateRaw = (cls = {}, student = null) => {
-    const classId = getClassIdValue(cls);
-    const studentMeta = readStudentClassMeta(student, classId);
-    return studentMeta?.endDate
-        || studentMeta?.endedAt
-        || studentMeta?.finishedAt
-        || studentMeta?.finishDate
-        || cls?.endDate
-        || cls?.endAt
-        || cls?.endedAt
-        || cls?.finishedAt
-        || cls?.finishDate
-        || cls?.closedAt
-        || null;
-};
-
-export const getClassEndDate = (cls, student = null) => {
-    const parsed = parseDateValue(readViewerEndDateRaw(cls, student));
+export const getClassEndDate = (cls) => {
+    const parsed = parseDateValue(readViewerEndDateRaw(cls));
     if (!parsed || !isValidDate(parsed)) return null;
     return getLocalStartOfDay(parsed);
 };
 
-export const getViewerClassVisibilityReason = (cls, student = null, today = new Date()) => {
+export const getViewerClassVisibilityReason = (cls, _student = null, today = new Date()) => {
     if (!cls) return 'ended_no_date';
 
-    const status = normalizeStatusText(readViewerStatus(cls, student));
-    if (VIEWER_WITHDRAWN_STATUS_SET.has(status)) return 'withdrawn';
+    const status = normalizeStatusText(readClassStatus(cls));
 
-    const endDate = getClassEndDate(cls, student);
-    const hasEndState = VIEWER_ENDED_STATUS_SET.has(status);
-    const hasEndDateField = Boolean(readViewerEndDateRaw(cls, student));
+    const endDate = getClassEndDate(cls);
+    const hasEndState = VIEWER_ENDED_STATUS_SET.has(status) || cls?.active === false;
+    const hasEndDateField = Boolean(readViewerEndDateRaw(cls));
 
     if (endDate) {
         const todayStart = getLocalStartOfDay(today);
@@ -158,7 +114,15 @@ export const getViewerClassVisibilityReason = (cls, student = null, today = new 
         return todayStart.getTime() <= visibleUntil.getTime() ? 'visible' : 'ended_over_30_days';
     }
 
-    if (hasEndState || hasEndDateField) return 'ended_no_date';
+    if (hasEndState || hasEndDateField) {
+        if (typeof console !== 'undefined' && (typeof process === 'undefined' || process.env?.NODE_ENV !== 'production')) {
+            console.warn('[classStatus] 종료 상태 클래스에 공식 종료일이 없어 숨김 처리합니다.', {
+                classId: getClassIdValue(cls),
+                status: readClassStatus(cls),
+            });
+        }
+        return 'ended_no_date';
+    }
     if (!status || VIEWER_ACTIVE_STATUS_SET.has(status)) return 'visible';
     return 'visible';
 };
@@ -249,7 +213,7 @@ export const sortClassesByStatus = (classes = [], studentClassStatusMap = {}, ch
     };
 
     const isEndedByDate = (classDoc) => {
-        const end = classDoc?.endDate || classDoc?.endAt || classDoc?.finishedAt;
+        const end = readClassEndDateRaw(classDoc);
         if (!end) return false;
         const date = typeof end === 'string'
             ? new Date(end)
