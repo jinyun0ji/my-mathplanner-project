@@ -884,6 +884,13 @@ video {
   -webkit-line-clamp: 2;
 }
 
+.line-clamp-3{
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
 .block{
   display: block;
 }
@@ -3083,6 +3090,10 @@ video {
 
 .leading-tight{
   line-height: 1.25;
+}
+
+.leading-6{
+  line-height: 1.5rem;
 }
 
 .tracking-\[0\.2em\]{
