@@ -27,10 +27,24 @@ import useNotifications from '../notifications/useNotifications';
 import NotificationList from '../notifications/NotificationList';
 import openNotification from '../notifications/openNotification';
 import { useParentContext } from '../parent';
-import { sortClassesByStatus } from '../utils/classStatus';
+import { sortClassesByStatus, getViewerVisibleClassIds } from '../utils/classStatus';
 import { auth, functions } from '../firebase/client';
 import { FEATURES } from '../config/features';
 import MathText from '../components/common/MathText';
+
+
+const getItemClassId = (item) => (
+    item?.classId
+    || item?.classDocId
+    || item?.classID
+    || item?.class?.id
+    || item?.class?.classId
+    || item?.class?.docId
+    || item?.class?.classDocId
+    || item?.classRef
+    || item?.class?.ref
+    || ''
+);
 
 const buildStudentClassStatusMap = (child) => {
     if (!child) return {};
@@ -243,9 +257,9 @@ const buildExitMapFromClasses = (classesList, studentId) => {
 
 
 // --- [컴포넌트] 학부모 전용 대시보드 ---
-const ParentDashboard = ({ 
-    child, myClasses, attendanceLogs, homeworkStats, 
-    gradeComparison, clinicLogs, unpaidPayments, 
+const ParentDashboard = ({
+    child, myClasses, attendanceLogs, homeworkStats,
+    gradeComparison, clinicLogs, unpaidPayments,
     setActiveTab,
     childClassExitMap,
     activeChildId,
@@ -552,21 +566,49 @@ export default function ParentHome({
         if (!endValue) return false;
         return isAfterEndDate(dateValue, endValue);
     }, [activeChild?.classStatusMap, activeChild?.classStatuses, isAfterEndDate, isWithdrawnStatus, normalizeClassStatus]);
+    // 2. 데이터 필터링
+    const rawMyClasses = useMemo(() => {
+        if (!Array.isArray(classes) || !activeChildId) return [];
+        const childClassIds = new Set([
+            ...(Array.isArray(activeChild?.classIds) ? activeChild.classIds : []),
+            ...(Array.isArray(activeChild?.classes) ? activeChild.classes.filter((item) => typeof item === 'string') : []),
+        ].map(String));
+        return classes.filter((c) => {
+            const classId = String(c?.id || c?.classId || '');
+            return (c.students || []).includes(activeChildId) || childClassIds.has(classId);
+        });
+    }, [classes, activeChildId, activeChild?.classIds, activeChild?.classes]);
+    const visibleClassIds = useMemo(() => getViewerVisibleClassIds(rawMyClasses, activeChild), [rawMyClasses, activeChild]);
+    const visibleClassIdSet = useMemo(() => new Set(visibleClassIds), [visibleClassIds]);
+    const myClasses = useMemo(
+        () => rawMyClasses.filter((cls) => visibleClassIdSet.has(String(cls?.id || cls?.classId || ''))),
+        [rawMyClasses, visibleClassIdSet],
+    );
+    const isVisibleClassItem = useCallback((item) => {
+        const classId = String(getItemClassId(item) || '');
+        return Boolean(classId && visibleClassIdSet.has(classId));
+    }, [visibleClassIdSet]);
     const filteredLessonLogs = useMemo(() => {
         if (!Array.isArray(lessonLogs)) return [];
-        return lessonLogs.filter((log) => !isLogAfterClassEndDate(log?.classId, log?.date));
-    }, [lessonLogs, isLogAfterClassEndDate]);
+        return lessonLogs.filter((log) => isVisibleClassItem(log) && !isLogAfterClassEndDate(log?.classId, log?.date));
+    }, [lessonLogs, isVisibleClassItem, isLogAfterClassEndDate]);
     const filteredTests = useMemo(() => {
         if (!Array.isArray(tests)) return [];
-        return tests.filter((test) => !isLogAfterClassEndDate(test?.classId, test?.date));
-    }, [tests, isLogAfterClassEndDate]);
+        return tests.filter((test) => isVisibleClassItem(test) && !isLogAfterClassEndDate(test?.classId, test?.date));
+    }, [tests, isVisibleClassItem, isLogAfterClassEndDate]);
     const filteredHomeworkAssignments = useMemo(() => {
         if (!Array.isArray(homeworkAssignments)) return [];
-        return homeworkAssignments.filter((assignment) => !isLogAfterClassEndDate(assignment?.classId, assignment?.assignedDate || assignment?.date));
-    }, [homeworkAssignments, isLogAfterClassEndDate]);
+        return homeworkAssignments.filter((assignment) => isVisibleClassItem(assignment) && !isLogAfterClassEndDate(assignment?.classId, assignment?.assignedDate || assignment?.date));
+    }, [homeworkAssignments, isVisibleClassItem, isLogAfterClassEndDate]);
+    const filteredAttendanceLogs = useMemo(() => {
+        if (!Array.isArray(attendanceLogs)) return [];
+        return attendanceLogs.filter((log) => isVisibleClassItem(log));
+    }, [attendanceLogs, isVisibleClassItem]);
+    const filteredVideoProgress = useMemo(() => {
+        if (!Array.isArray(videoProgress)) return videoProgress;
+        return videoProgress.filter((item) => isVisibleClassItem(item));
+    }, [videoProgress, isVisibleClassItem]);
 
-    // 2. 데이터 필터링
-    const myClasses = useMemo(() => classes.filter(c => (c.students || []).includes(activeChildId)), [classes, activeChildId]);
     const studentClassStatusMap = useMemo(
         () => buildStudentClassStatusMap(activeChild),
         [activeChild],
@@ -949,7 +991,7 @@ export default function ParentHome({
         const targetStudentUid = String(activeChild?.studentUid || activeChild?.uid || '');
         const targetAuthUid = String(activeChild?.authUid || '');
 
-        return attendanceLogs
+        return filteredAttendanceLogs
             .filter((log) => {
                 if (targetStudentId && String(log?.studentId || '') === targetStudentId) return true;
                 if (targetStudentUid && String(log?.studentUid || '') === targetStudentUid) return true;
@@ -957,7 +999,7 @@ export default function ParentHome({
                 return false;
             })
             .sort((a, b) => new Date(b.date || b.createdAt || b.updatedAt || 0) - new Date(a.date || a.createdAt || a.updatedAt || 0));
-    }, [attendanceLogs, activeChildId, activeChild?.studentUid, activeChild?.uid, activeChild?.authUid]);
+    }, [filteredAttendanceLogs, activeChildId, activeChild?.studentUid, activeChild?.uid, activeChild?.authUid]);
 
     const isScoreEmptyValue = (value) =>
         value === null
@@ -1031,14 +1073,14 @@ export default function ParentHome({
     // ✅ 리포트 데이터 생성 (현재 선택된 리포트 ID가 있을 때만)
     const activeReport = useMemo(() => {
         if (!selectedReportId) return null;
-        const contextData = { lessonLogs: filteredLessonLogs, attendanceLogs, homeworkAssignments: filteredHomeworkAssignments, homeworkResults, tests: filteredTests, grades, classes };
+        const contextData = { lessonLogs: filteredLessonLogs, attendanceLogs: filteredAttendanceLogs, homeworkAssignments: filteredHomeworkAssignments, homeworkResults, tests: filteredTests, grades, classes };
         return generateSessionReport(selectedReportId, activeChildId, contextData);
-    }, [selectedReportId, activeChildId, filteredLessonLogs, attendanceLogs, filteredHomeworkAssignments, homeworkResults, filteredTests, grades, classes]);
+    }, [selectedReportId, activeChildId, filteredLessonLogs, filteredAttendanceLogs, filteredHomeworkAssignments, homeworkResults, filteredTests, grades, classes]);
 
     const sentLessonReports = useMemo(() => (Array.isArray(lessonReports) ? lessonReports : [])
-        .filter((report) => report?.status === 'sent' && String(report?.studentId || '') === String(activeChildId || ''))
+        .filter((report) => report?.status === 'sent' && String(report?.studentId || '') === String(activeChildId || '') && isVisibleClassItem(report))
         .map((report) => ({ ...report, className: classes.find((c) => String(c.id) === String(report.classId))?.name || report.classId }))
-        .sort((a, b) => String(b.lessonDate || '').localeCompare(String(a.lessonDate || ''))), [lessonReports, activeChildId, classes]);
+        .sort((a, b) => String(b.lessonDate || '').localeCompare(String(a.lessonDate || ''))), [lessonReports, activeChildId, isVisibleClassItem, classes]);
     const lessonReportClassOptions = useMemo(() => {
         const map = new Map();
         sentLessonReports.forEach((report) => {
@@ -1178,10 +1220,10 @@ export default function ParentHome({
                     />
                 ) : selectedClassroomId ? (
                     /* [라우팅 분기 2] 강의실 화면 */
-                    <ParentClassroomView 
-                        cclasses={classes} lessonLogs={filteredLessonLogs} attendanceLogs={attendanceLogs}
+                    <ParentClassroomView
+                        cclasses={classes} lessonLogs={filteredLessonLogs} attendanceLogs={filteredAttendanceLogs}
                         selectedClassId={selectedClassroomId} setSelectedClassId={setSelectedClassroomId}
-                        videoProgress={videoProgress} homeworkAssignments={filteredHomeworkAssignments} homeworkResults={homeworkResults}
+                        videoProgress={filteredVideoProgress} homeworkAssignments={filteredHomeworkAssignments} homeworkResults={homeworkResults}
                         tests={filteredTests} grades={grades}
                         onNavigateToTab={() => { setSelectedClassroomId(null); setActiveTab('report'); }}
                         onOpenReport={(sessionId) => setSelectedReportId(sessionId)}
@@ -1209,9 +1251,9 @@ export default function ParentHome({
 
                                 <div className="grid gap-4 lg:grid-cols-3">
                                     <div className="space-y-4 lg:col-span-2">
-                                        <ParentDashboard 
-                                            child={activeChild} myClasses={myClasses} attendanceLogs={attendanceLogs} 
-                                            homeworkStats={myHomeworkStats} gradeComparison={myGradeComparison} 
+                                        <ParentDashboard
+                                            child={activeChild} myClasses={myClasses} attendanceLogs={filteredAttendanceLogs}
+                                            homeworkStats={myHomeworkStats} gradeComparison={myGradeComparison}
                                             clinicLogs={clinicLogs} unpaidPayments={unpaidPayments}
                                             setActiveTab={setActiveTab}
                                             childClassExitMap={childClassExitMap}
@@ -1332,7 +1374,7 @@ export default function ParentHome({
 
                         {activeTab === 'schedule' && (
                             <div className="space-y-3"><div className="bg-white border border-gray-100 rounded-xl p-3 shadow-sm"><h3 className="text-sm font-semibold text-gray-900 mb-1">오늘/이번 주 일정</h3><p className="text-xs text-gray-500">일정을 간결한 리스트로 확인하세요.</p></div><div className="bg-white border border-gray-100 rounded-xl p-2 shadow-sm"><ScheduleTab 
-                                myClasses={myClasses} attendanceLogs={attendanceLogs} clinicLogs={clinicLogs} 
+                                myClasses={myClasses} attendanceLogs={filteredAttendanceLogs} clinicLogs={clinicLogs}
                                 externalSchedules={externalSchedules} onSaveExternalSchedule={onSaveExternalSchedule} onDeleteExternalSchedule={onDeleteExternalSchedule}
                                 student={activeChild}
                                 childClassExitMap={childClassExitMap}

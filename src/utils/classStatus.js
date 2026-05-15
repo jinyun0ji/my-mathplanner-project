@@ -53,6 +53,128 @@ const CLOSED_STATUS_SET = new Set([
 
 const normalizeStatusText = (value) => String(value || '').trim().toLowerCase();
 
+const VIEWER_WITHDRAWN_STATUS_SET = new Set([
+    '퇴원',
+    '중도퇴원',
+    '전반',
+    '전반퇴원',
+    'withdrawn',
+]);
+
+const VIEWER_ENDED_STATUS_SET = new Set([
+    '종강',
+    '종료',
+    'ended',
+    'inactive',
+    'finished',
+]);
+
+const VIEWER_ACTIVE_STATUS_SET = new Set([
+    '진행중',
+    '재원',
+    'active',
+    'ongoing',
+]);
+
+const getClassIdValue = (cls = {}) => String(cls?.id || cls?.classId || cls?.classDocId || cls?.docId || '').trim();
+
+const readStudentClassMeta = (student, classId) => {
+    if (!student || !classId) return null;
+    const mapLike = student.classStatusMap
+        || student.studentClassStatusMap
+        || student.classStatusByClassId
+        || student.enrollmentMap
+        || null;
+    if (mapLike && typeof mapLike === 'object' && mapLike[classId] !== undefined) {
+        const value = mapLike[classId];
+        return value && typeof value === 'object' ? value : { status: value };
+    }
+
+    const lists = [
+        student.classStatuses,
+        student.enrollments,
+        student.classEnrollments,
+        student.classesMeta,
+        student.classes,
+    ].filter(Array.isArray);
+
+    for (const list of lists) {
+        const found = list.find((item) => {
+            if (typeof item === 'string') return item === classId;
+            const itemClassId = String(item?.classId || item?.classDocId || item?.id || item?.docId || '').trim();
+            return itemClassId === classId;
+        });
+        if (found && typeof found === 'object') return found;
+    }
+
+    return null;
+};
+
+const readViewerStatus = (cls = {}, student = null) => {
+    const classId = getClassIdValue(cls);
+    const studentMeta = readStudentClassMeta(student, classId);
+    return studentMeta?.status
+        || studentMeta?.classStatus
+        || cls?.studentStatus
+        || readClassStatus(cls);
+};
+
+const readViewerEndDateRaw = (cls = {}, student = null) => {
+    const classId = getClassIdValue(cls);
+    const studentMeta = readStudentClassMeta(student, classId);
+    return studentMeta?.endDate
+        || studentMeta?.endedAt
+        || studentMeta?.finishedAt
+        || studentMeta?.finishDate
+        || cls?.endDate
+        || cls?.endAt
+        || cls?.endedAt
+        || cls?.finishedAt
+        || cls?.finishDate
+        || cls?.closedAt
+        || null;
+};
+
+export const getClassEndDate = (cls, student = null) => {
+    const parsed = parseDateValue(readViewerEndDateRaw(cls, student));
+    if (!parsed || !isValidDate(parsed)) return null;
+    return getLocalStartOfDay(parsed);
+};
+
+export const getViewerClassVisibilityReason = (cls, student = null, today = new Date()) => {
+    if (!cls) return 'ended_no_date';
+
+    const status = normalizeStatusText(readViewerStatus(cls, student));
+    if (VIEWER_WITHDRAWN_STATUS_SET.has(status)) return 'withdrawn';
+
+    const endDate = getClassEndDate(cls, student);
+    const hasEndState = VIEWER_ENDED_STATUS_SET.has(status);
+    const hasEndDateField = Boolean(readViewerEndDateRaw(cls, student));
+
+    if (endDate) {
+        const todayStart = getLocalStartOfDay(today);
+        const visibleUntil = new Date(endDate);
+        visibleUntil.setDate(visibleUntil.getDate() + 30);
+        return todayStart.getTime() <= visibleUntil.getTime() ? 'visible' : 'ended_over_30_days';
+    }
+
+    if (hasEndState || hasEndDateField) return 'ended_no_date';
+    if (!status || VIEWER_ACTIVE_STATUS_SET.has(status)) return 'visible';
+    return 'visible';
+};
+
+export const isViewerVisibleClass = (cls, student = null, today = new Date()) => (
+    getViewerClassVisibilityReason(cls, student, today) === 'visible'
+);
+
+export const getViewerVisibleClassIds = (classes = [], student = null, today = new Date()) => (
+    (Array.isArray(classes) ? classes : [])
+        .filter((cls) => isViewerVisibleClass(cls, student, today))
+        .map((cls) => getClassIdValue(cls))
+        .filter(Boolean)
+);
+
+
 const readClassStatus = (classDoc = {}) => (
     classDoc.status
     || classDoc.classStatus

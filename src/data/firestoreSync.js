@@ -18,6 +18,10 @@ import {
     isViewerGroupRole,
     isStudentRole,
 } from '../constants/roles';
+import {
+    getViewerVisibleClassIds,
+    getViewerClassVisibilityReason,
+} from '../utils/classStatus';
 
 const chunkArray = (items, size = 10) => {
     const chunks = [];
@@ -45,6 +49,74 @@ const uniqById = (arr) => {
     });
     return Array.from(m.values());
 };
+
+
+const isDevelopment = () => process.env.NODE_ENV !== 'production';
+const viewerDebug = (...args) => {
+    if (isDevelopment()) console.log(...args);
+};
+
+const getItemClassId = (item) => String(
+    item?.classId
+    || item?.classDocId
+    || item?.classID
+    || item?.class?.id
+    || item?.class?.classId
+    || item?.class?.classDocId
+    || '',
+).trim();
+
+const filterItemsByVisibleClassIds = (items = [], visibleClassIds = [], collectionName = '') => {
+    const visibleSet = new Set(safeNonEmptyArray(visibleClassIds));
+    if (visibleSet.size === 0) return [];
+    let warnedMissingClassId = false;
+    return (Array.isArray(items) ? items : []).filter((item) => {
+        const classId = getItemClassId(item);
+        if (!classId) {
+            if (!warnedMissingClassId && isDevelopment()) {
+                warnedMissingClassId = true;
+                console.warn('[viewer] missing class id while filtering collection', {
+                    collectionName,
+                    sampleDocId: item?.id || '',
+                });
+            }
+            return false;
+        }
+        return visibleSet.has(classId);
+    });
+};
+
+const fetchClassScopedDocs = async ({
+    db,
+    collectionName,
+    classIds = [],
+    buildQuery,
+    mapDoc = (d) => normalizeAuthUid({ id: d.id, ...d.data() }),
+    runLabel = collectionName,
+    isCancelled = () => false,
+    run = async (_label, fn) => fn(),
+}) => {
+    const ids = safeNonEmptyArray(classIds);
+    if (ids.length === 0) {
+        viewerDebug(`[viewer] ${collectionName} skipped: no visible classIds`);
+        return [];
+    }
+
+    viewerDebug(`[viewer] ${collectionName} target classIds count=`, ids.length);
+    const out = [];
+    const seen = new Set();
+    for (const ch of chunkArray(ids, 10)) {
+        if (isCancelled()) return out;
+        const snap = await run(`${runLabel} classId chunk(${ch.length})`, () => getDocs(buildQuery(ch)));
+        snap.docs.forEach((d) => {
+            if (seen.has(d.id)) return;
+            seen.add(d.id);
+            out.push(mapDoc(d));
+        });
+    }
+    return out;
+};
+
 
 
 export const safeIn = (arr, max = 10) => safeNonEmptyArray(arr).slice(0, max);
@@ -345,22 +417,37 @@ async function loadClinicLogsForViewer(db, viewerStudentDocIds, isCancelled = ()
     return results;
 }
 
-async function loadGradesForViewer(db, viewerStudentDocIds, isCancelled = () => false) {
-    if (!nonEmpty(viewerStudentDocIds)) return [];
+async function loadGradesForViewer(db, viewerStudentDocIds, isCancelled = () => false, viewerClassIds = []) {
+    if (!nonEmpty(viewerStudentDocIds) || !nonEmpty(viewerClassIds)) return [];
     const ids = uniq(viewerStudentDocIds);
-
-    if (ids.length === 1) {
-        const q = query(collection(db, 'grades'), where('authUid', '==', ids[0]), limit(500));
-        return fetchListSafe(q, isCancelled);
-    }
-
+    const classIds = uniq(viewerClassIds);
     const out = [];
-    const chunks = chunkArray(ids, 10);
-    for (const chunk of chunks) {
-        if (!nonEmpty(chunk)) continue;
-        const q = query(collection(db, 'grades'), where('authUid', 'in', chunk), limit(500));
-        out.push(...(await fetchListSafe(q, isCancelled)));
+    const seen = new Set();
+
+    const push = (items) => {
+        (items || []).forEach((item) => {
+            if (!item?.id || seen.has(item.id)) return;
+            seen.add(item.id);
+            out.push(item);
+        });
+    };
+
+    for (const studentId of ids) {
+        for (const classChunk of chunkArray(classIds, 10)) {
+            try {
+                const q = query(
+                    collection(db, 'grades'),
+                    where('authUid', '==', studentId),
+                    where('classId', 'in', classChunk),
+                    limit(500),
+                );
+                push(await fetchListSafe(q, isCancelled));
+            } catch (e) {
+                console.warn('[viewer] grades classId scoped query skipped', { studentId, classChunk, error: e });
+            }
+        }
     }
+
     return out;
 }
 
@@ -384,6 +471,7 @@ async function loadHomeworkAssignmentsForViewer(
 
     const ids = uniq(viewerStudentDocIds);
     const classIds = uniq(viewerClassIds);
+    if (classIds.length === 0) return [];
 
     // 1) 학생 직접 지정 과제
     if (ids.length === 1) {
@@ -976,10 +1064,6 @@ export const loadViewerDataOnce = async ({
         }
     };
 
-    // fetchList는 내부에서 getDocs를 실행하므로, 호출 단위를 라벨링하는 래퍼 추가
-    const fetchListSafe = async (label, ...args) => {
-        return run(label, async () => fetchList(...args));
-    };
 
     const isViewerRole = isViewerGroupRole(userRole) || isStudentRole(userRole);
     if (!isLoggedIn || !db || !isViewerRole) {
@@ -1171,20 +1255,44 @@ export const loadViewerDataOnce = async ({
             }
         }
 
-        const myClasses = Array.from(myClassesMap.values());
-        if (!myClasses.length) {
+        const allMyClasses = Array.from(myClassesMap.values());
+        if (!allMyClasses.length) {
             console.warn('[viewer] no classes resolved from student.classIds or fallback students array');
         }
+
+        const activeStudentForVisibility = myStudents.find((s) => String(s?.id || '') === String(activeOnly[0] || scopedStudentUids[0] || ''))
+            || myStudents[0]
+            || null;
+        const visibleClassIds = getViewerVisibleClassIds(allMyClasses, activeStudentForVisibility);
+        const visibleClassIdSet = new Set(visibleClassIds);
+        const myClasses = allMyClasses.filter((cls) => visibleClassIdSet.has(String(cls?.id || cls?.classId || '')));
+        const hiddenClassIds = allMyClasses
+            .map((cls) => String(cls?.id || cls?.classId || ''))
+            .filter((classId) => classId && !visibleClassIdSet.has(classId));
+
+        if (isDevelopment()) {
+            const hiddenReasons = {};
+            allMyClasses.forEach((cls) => {
+                const classId = String(cls?.id || cls?.classId || '');
+                const reason = getViewerClassVisibilityReason(cls, activeStudentForVisibility);
+                if (classId && reason !== 'visible') hiddenReasons[classId] = reason;
+            });
+            console.log('[viewer][visibility] myClasses count =', allMyClasses.length);
+            console.log('[viewer][visibility] visibleClassIds =', visibleClassIds);
+            console.log('[viewer][visibility] hiddenClassIds =', hiddenClassIds);
+            console.log('[viewer][visibility] hiddenReasons =', hiddenReasons);
+        }
+
         if (!isCancelled()) {
             setClasses?.(myClasses);
         }
 
         console.log('[viewer] myClasses ids =', myClasses.map((c) => c.id));
 
-        const viewerClassIds = myClasses.map((c) => String(c.id)).filter(Boolean).slice(0, 10);
+        const viewerClassIds = visibleClassIds;
         console.log('[viewer] viewerClassIds =', viewerClassIds);
 
-        const lessonClassIds = safeIn(myClasses.map((c) => c.id), 10);
+        const lessonClassIds = visibleClassIds;
         const detailCacheKey = viewerDetailCacheKey(lessonClassIds, activeOnly[0] || scopedStudentUids[0] || '');
         const hasDetailCache = viewerDetailCache.lessonLogs.has(detailCacheKey)
             && viewerDetailCache.attendance.has(detailCacheKey)
@@ -1202,93 +1310,60 @@ export const loadViewerDataOnce = async ({
         /* =========================
            attendanceLogs (fetchList)
         ========================= */
-        if (!hasDetailCache && (nonEmpty(scopedStudentUids) || nonEmpty(scopedStudentAuthUids))) {
-            const attendanceDocs = [];
-
-            if (nonEmpty(scopedStudentUids)) {
-                try {
-                    const snap = await run('attendanceLogs studentId', () =>
-                        getDocs(
-                            query(
-                                collection(db, 'attendanceLogs'),
-                                where('studentId', 'in', scopedStudentUids),
-                                orderBy('date', 'desc'),
-                                limit(300),
-                            ),
-                        ),
-                    );
-                    attendanceDocs.push(...snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-                } catch (e) {
-                    console.warn('[viewer] attendanceLogs studentId load skipped', e);
-                }
-            }
-
-            if (nonEmpty(scopedStudentUids)) {
-                try {
-                    const snap = await run('attendanceLogs studentUid', () =>
-                        getDocs(
-                            query(
-                                collection(db, 'attendanceLogs'),
-                                where('studentUid', 'in', scopedStudentUids),
-                                orderBy('date', 'desc'),
-                                limit(300),
-                            ),
-                        ),
-                    );
-                    attendanceDocs.push(...snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-                } catch (e) {
-                    console.warn('[viewer] attendanceLogs studentUid load skipped', e);
-                }
-            }
-
-            if (nonEmpty(scopedStudentAuthUids)) {
-                try {
-                    const snap = await run('attendanceLogs authUid', () =>
-                        getDocs(
-                            query(
-                                collection(db, 'attendanceLogs'),
-                                where('authUid', 'in', scopedStudentAuthUids),
-                                orderBy('date', 'desc'),
-                                limit(300),
-                            ),
-                        ),
-                    );
-                    attendanceDocs.push(...snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-                } catch (e) {
-                    console.warn('[viewer] attendanceLogs authUid load skipped', e);
-                }
-            }
-
-            if (!isCancelled()) {
-                const authUidToStudentDocId = new Map(
-                    myStudents.map((s) => [s?.authUid, s?.id]).filter(([authUid, id]) => authUid && id),
-                );
-                const map = new Map();
-                attendanceDocs.forEach((log) => {
-                    if (!log?.id) return;
-                    if (!map.has(log.id)) map.set(log.id, log);
+        if (!hasDetailCache && nonEmpty(lessonClassIds) && (nonEmpty(scopedStudentUids) || nonEmpty(scopedStudentAuthUids))) {
+            try {
+                const studentKeySet = new Set([...scopedStudentUids, ...scopedStudentAuthUids].map(String));
+                const attendanceDocs = await fetchClassScopedDocs({
+                    db,
+                    collectionName: 'attendanceLogs',
+                    classIds: lessonClassIds,
+                    run,
+                    isCancelled,
+                    buildQuery: (classChunk) => query(
+                        collection(db, 'attendanceLogs'),
+                        where('classId', 'in', classChunk),
+                        orderBy('date', 'desc'),
+                        limit(300),
+                    ),
+                    mapDoc: (d) => ({ id: d.id, ...d.data() }),
                 });
 
-                const normalizedLogs = Array.from(map.values()).map((log) => {
-                    const normalized = { ...log };
-                    if (!normalized.studentId && normalized.studentUid) {
-                        normalized.studentId = normalized.studentUid;
-                    }
-                    if (!normalized.studentId && normalized.authUid) {
-                        const mappedId = authUidToStudentDocId.get(normalized.authUid);
-                        if (mappedId) {
-                            normalized.studentId = mappedId;
+                if (!isCancelled()) {
+                    const authUidToStudentDocId = new Map(
+                        myStudents.map((s) => [s?.authUid, s?.id]).filter(([authUid, id]) => authUid && id),
+                    );
+                    const map = new Map();
+                    attendanceDocs.forEach((log) => {
+                        const rawStudentKeys = [log?.studentId, log?.studentUid, log?.authUid].filter(Boolean).map(String);
+                        if (!rawStudentKeys.some((key) => studentKeySet.has(key))) return;
+                        if (!log?.id) return;
+                        if (!map.has(log.id)) map.set(log.id, log);
+                    });
+
+                    const normalizedLogs = Array.from(map.values()).map((log) => {
+                        const normalized = { ...log };
+                        if (!normalized.studentId && normalized.studentUid) {
+                            normalized.studentId = normalized.studentUid;
                         }
-                    }
-                    return normalized;
-                }).sort((a, b) => {
-                    const ad = String(a?.date || '');
-                    const bd = String(b?.date || '');
-                    return bd.localeCompare(ad);
-                });
+                        if (!normalized.studentId && normalized.authUid) {
+                            const mappedId = authUidToStudentDocId.get(normalized.authUid);
+                            if (mappedId) {
+                                normalized.studentId = mappedId;
+                            }
+                        }
+                        return normalized;
+                    }).sort((a, b) => {
+                        const ad = String(a?.date || '');
+                        const bd = String(b?.date || '');
+                        return bd.localeCompare(ad);
+                    });
 
-                setAttendanceLogs?.(normalizedLogs);
-                viewerDetailCache.attendance.set(detailCacheKey, normalizedLogs);
+                    setAttendanceLogs?.(normalizedLogs);
+                    viewerDetailCache.attendance.set(detailCacheKey, normalizedLogs);
+                }
+            } catch (e) {
+                console.warn('[viewer] attendanceLogs visible class scoped load skipped', e);
+                if (!isCancelled()) setAttendanceLogs?.([]);
             }
         } else if (!isCancelled() && !hasDetailCache) {
             setAttendanceLogs?.([]);
@@ -1304,7 +1379,7 @@ export const loadViewerDataOnce = async ({
                 studentAuthUids: scopedStudentAuthUids,
                 isCancelled,
             }),
-            loadGradesForViewer(db, scopedStudentUids, isCancelled),
+            loadGradesForViewer(db, scopedStudentUids, isCancelled, lessonClassIds),
             loadHomeworkAssignmentsForViewer(db, scopedStudentUids, isCancelled, lessonClassIds),
         ]);
 
@@ -1342,7 +1417,7 @@ export const loadViewerDataOnce = async ({
             const mappedGrades = buildGradesMap(gradeList);
             setGrades?.(mappedGrades);
             viewerDetailCache.grades.set(detailCacheKey, mappedGrades);
-            const sortedHomework = hwAssignList.sort((a, b) => {
+            const sortedHomework = filterItemsByVisibleClassIds(hwAssignList, lessonClassIds, 'homeworkAssignments').sort((a, b) => {
                 const da = a.date || a.assignedDate || a.createdAt?.toDate?.() || a.createdAt;
                 const dbb = b.date || b.assignedDate || b.createdAt?.toDate?.() || b.createdAt;
                 return new Date(dbb || 0) - new Date(da || 0);
@@ -1351,19 +1426,29 @@ export const loadViewerDataOnce = async ({
         }
 
         try {
-            if (setLessonReports && nonEmpty(scopedStudentUids)) {
-                const reportSnap = await run('lessonReports getDocs', () =>
-                    getDocs(
-                        query(
-                            collection(db, 'lessonReports'),
-                            where('studentId', 'in', scopedStudentUids.slice(0, 10)),
-                            where('status', '==', 'sent'),
-                            orderBy('lessonDate', 'desc'),
-                            limit(200),
-                        ),
+            if (setLessonReports && nonEmpty(scopedStudentUids) && nonEmpty(lessonClassIds)) {
+                const studentKeySet = new Set(scopedStudentUids.map(String));
+                const reportDocs = await fetchClassScopedDocs({
+                    db,
+                    collectionName: 'lessonReports',
+                    classIds: lessonClassIds,
+                    run,
+                    isCancelled,
+                    buildQuery: (classChunk) => query(
+                        collection(db, 'lessonReports'),
+                        where('classId', 'in', classChunk),
+                        where('status', '==', 'sent'),
+                        orderBy('lessonDate', 'desc'),
+                        limit(200),
                     ),
-                );
-                if (!isCancelled()) setLessonReports(reportSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
+                mapDoc: (d) => ({ id: d.id, ...d.data() }),
+                });
+                const visibleReports = reportDocs
+                    .filter((report) => studentKeySet.has(String(report?.studentId || report?.studentDocId || report?.studentUid || '')))
+                    .sort((a, b) => String(b?.lessonDate || '').localeCompare(String(a?.lessonDate || '')));
+                if (!isCancelled()) setLessonReports(visibleReports);
+            } else if (setLessonReports && !isCancelled()) {
+                setLessonReports([]);
             }
         } catch (e) {
             console.warn('[viewer] lessonReports load skipped', e);
@@ -1376,7 +1461,6 @@ export const loadViewerDataOnce = async ({
         ========================= */
         let viewerTests = [];
         let filteredTests = [];
-        let allowedTestIds = null;
 
         /* =========================
            closures (viewer: student/parent) ✅ 새로고침 유지 핵심
@@ -1469,40 +1553,41 @@ export const loadViewerDataOnce = async ({
 
         if (!hasDetailCache && lessonClassIds.length > 0) {
             try {
-                await fetchListSafe(
-                    'lessonLogs fetchList',
+                const viewerLessonLogs = await fetchClassScopedDocs({
                     db,
-                    'lessonLogs',
-                    (items) => {
-                        setLessonLogs?.(items);
-                        viewerDetailCache.lessonLogs.set(detailCacheKey, items);
-                    },
-                    query(
+                    collectionName: 'lessonLogs',
+                    classIds: lessonClassIds,
+                    run,
+                    isCancelled,
+                    buildQuery: (classChunk) => query(
                         collection(db, 'lessonLogs'),
-                        where('classId', 'in', lessonClassIds),
+                        where('classId', 'in', classChunk),
                         orderBy('date', 'desc'),
                         limit(100),
                     ),
-                    isCancelled,
-                );
+                });
+                const sortedLessonLogs = viewerLessonLogs.sort((a, b) => String(b?.date || '').localeCompare(String(a?.date || '')));
+                setLessonLogs?.(sortedLessonLogs);
+                viewerDetailCache.lessonLogs.set(detailCacheKey, sortedLessonLogs);
 
                 // ✅ tests 로딩 + 로컬 변수에 저장
-                const testSnap = await run('tests getDocs', () =>
-                    getDocs(
-                        query(
-                            collection(db, 'tests'),
-                            where('classId', 'in', lessonClassIds),
-                            orderBy('date', 'desc'),
-                            limit(100),
-                        ),
+                viewerTests = await fetchClassScopedDocs({
+                    db,
+                    collectionName: 'tests',
+                    classIds: lessonClassIds,
+                    run,
+                    isCancelled,
+                    buildQuery: (classChunk) => query(
+                        collection(db, 'tests'),
+                        where('classId', 'in', classChunk),
+                        orderBy('date', 'desc'),
+                        limit(100),
                     ),
-                );
-
-                viewerTests = testSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-                filteredTests = viewerTests;
+                    mapDoc: (d) => ({ id: d.id, ...d.data() }),
+                });
+                filteredTests = viewerTests.sort((a, b) => String(b?.date || '').localeCompare(String(a?.date || '')));
                 setTests?.(filteredTests);
                 warnOnQuestionScores(filteredTests, 'viewer');
-                allowedTestIds = null;
             } catch (e) {
                 console.warn('[viewer] lessonLogs/tests load failed', e);
                 if (!isCancelled()) {
@@ -1570,31 +1655,34 @@ export const loadViewerDataOnce = async ({
                     mapped[sKey][assignmentId] = data.results || data;
                 };
 
-                if (Array.isArray(scopedStudentAuthUids) && scopedStudentAuthUids.length > 0) {
-                    const snapA = await run('homeworkResults authUid in', () =>
-                        getDocs(
-                            query(
+                const loadHomeworkResultsForField = async (field, values) => {
+                    for (const value of safeNonEmptyArray(values)) {
+                        const docs = await fetchClassScopedDocs({
+                            db,
+                            collectionName: 'homeworkResults',
+                            classIds: lessonClassIds,
+                            run,
+                            isCancelled,
+                            runLabel: `homeworkResults ${field}=${value}`,
+                            buildQuery: (classChunk) => query(
                                 collection(db, 'homeworkResults'),
-                                where('authUid', 'in', scopedStudentAuthUids),
+                                where(field, '==', value),
+                                where('classId', 'in', classChunk),
                                 limit(200),
                             ),
-                        ),
-                    );
-                snapA.docs.forEach((d) => upsert(d.data() || {}));
-            }
+                            mapDoc: (d) => ({ id: d.id, ...d.data() }),
+                        });
+                        docs.forEach((docData) => upsert(docData || {}));
+                    }
+                };
 
-            if (Array.isArray(scopedStudentUids) && scopedStudentUids.length > 0) {
-                const snapB = await run('homeworkResults studentId in', () =>
-                    getDocs(
-                        query(
-                            collection(db, 'homeworkResults'),
-                            where('studentId', 'in', scopedStudentUids),
-                            limit(200),
-                        ),
-                    ),
-                );
-            snapB.docs.forEach((d) => upsert(d.data() || {}));
-            }
+                if (Array.isArray(scopedStudentAuthUids) && scopedStudentAuthUids.length > 0) {
+                    await loadHomeworkResultsForField('authUid', scopedStudentAuthUids);
+                }
+
+                if (Array.isArray(scopedStudentUids) && scopedStudentUids.length > 0) {
+                    await loadHomeworkResultsForField('studentId', scopedStudentUids);
+                }
 
             if (!isCancelled()) {
                 console.log('[viewer][homeworkResults] keys=', Object.keys(mapped));
@@ -1722,27 +1810,29 @@ export const loadViewerDataOnce = async ({
 
         // 2) 반 공지: targetClasses array-contains-any (필드명이 targetClasses인 경우)
         if (targetClassKeys.length > 0) {
-            const classDocs = await safeGetDocsWithOptionalOrderBy(
-                () =>
-                    query(
-                        collection(db, 'announcements'),
-                        where('targetClasses', 'array-contains-any', targetClassKeys.slice(0, 10)),
-                        orderBy('date', 'desc'),
-                        limit(50),
-                    ),
-                () =>
-                    query(
-                        collection(db, 'announcements'),
-                        where('targetClasses', 'array-contains-any', targetClassKeys.slice(0, 10)),
-                        limit(50),
-                    ),
-                'targetClasses',
-                {
-                    withOrderBy: { collection: 'announcements', where: ['targetClasses', 'array-contains-any', targetClassKeys.slice(0, 10)], orderBy: ['date', 'desc'], limit: 50 },
-                    withoutOrderBy: { collection: 'announcements', where: ['targetClasses', 'array-contains-any', targetClassKeys.slice(0, 10)], limit: 50 },
-                }
-            );
-            pushDocs(classDocs);
+            for (const classChunk of chunkArray(targetClassKeys, 10)) {
+                const classDocs = await safeGetDocsWithOptionalOrderBy(
+                    () =>
+                        query(
+                            collection(db, 'announcements'),
+                            where('targetClasses', 'array-contains-any', classChunk),
+                            orderBy('date', 'desc'),
+                            limit(50),
+                        ),
+                    () =>
+                        query(
+                            collection(db, 'announcements'),
+                            where('targetClasses', 'array-contains-any', classChunk),
+                            limit(50),
+                        ),
+                    'targetClasses',
+                    {
+                        withOrderBy: { collection: 'announcements', where: ['targetClasses', 'array-contains-any', classChunk], orderBy: ['date', 'desc'], limit: 50 },
+                        withoutOrderBy: { collection: 'announcements', where: ['targetClasses', 'array-contains-any', classChunk], limit: 50 },
+                    }
+                );
+                pushDocs(classDocs);
+            }
         }
 
         // 3) 학생 타겟 공지: targetStudents array-contains-any (레거시 호환)
@@ -1872,18 +1962,25 @@ export const loadViewerDataOnce = async ({
 
         // ✅ 여기부터는 authUid가 있어야 조회 가능
         if (activeViewerAuthUid) {
-            await fetchListSafe(
-                'videoProgress fetchList',
-                db,
-                'videoProgress',
-                setVideoProgress,
-                query(
-                    collection(db, 'videoProgress'),
-                    where('studentId', '==', activeViewerAuthUid), // ✅ 여기 바뀜 (ullo -> 7MR)
-                    limit(50),
-                ),
-                isCancelled,
-            );
+            try {
+                const progressDocs = await fetchClassScopedDocs({
+                    db,
+                    collectionName: 'videoProgress',
+                    classIds: lessonClassIds,
+                    run,
+                    isCancelled,
+                    buildQuery: (classChunk) => query(
+                        collection(db, 'videoProgress'),
+                        where('studentId', '==', activeViewerAuthUid),
+                        where('classId', 'in', classChunk),
+                        limit(100),
+                    ),
+                });
+                if (!isCancelled()) setVideoProgress?.(progressDocs);
+            } catch (e) {
+                console.warn('[viewer] videoProgress visible class scoped load skipped', e);
+                if (!isCancelled()) setVideoProgress?.([]);
+            }
 
             console.log('[viewer] fetch externalSchedules start', { activeViewerAuthUid });
 

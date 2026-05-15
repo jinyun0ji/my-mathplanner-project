@@ -26,7 +26,7 @@ import {
     hasClassOnDate,
     getClassTimeOnDate,
 } from '../utils/helpers';
-import { sortClassesByStatus } from '../utils/classStatus';
+import { sortClassesByStatus, getViewerVisibleClassIds } from '../utils/classStatus';
 import NotificationsIcon from '@mui/icons-material/Notifications';
 import useNotifications from '../notifications/useNotifications';
 import NotificationList from '../notifications/NotificationList';
@@ -55,6 +55,7 @@ const toDayStartMs = (value) => {
 const getItemClassId = (item) => (
     item?.classId
     || item?.classDocId
+    || item?.classID
     || item?.class?.id
     || item?.class?.classId
     || item?.class?.docId
@@ -266,13 +267,13 @@ export default function StudentHome({
             return null;
         }
     };
-    const isAfterEndDate = (dateValue, endDateValue) => {
+    const isAfterEndDate = useCallback((dateValue, endDateValue) => {
         const date = toYmd(dateValue);
         const endDate = toYmd(endDateValue);
         if (!date || !endDate) return false;
         return date > endDate;
-    };
-    const isLogAfterClassEndDate = (classId, dateValue) => {
+    }, []);
+    const isLogAfterClassEndDate = useCallback((classId, dateValue) => {
         if (!classId) return false;
         const classStatus = student?.classStatusMap?.[String(classId)] || student?.classStatuses?.[String(classId)];
         const normalizedStatus = normalizeClassStatus(classStatus?.status);
@@ -280,23 +281,48 @@ export default function StudentHome({
         const endValue = classStatus?.endedAt || classStatus?.endDate;
         if (!endValue) return false;
         return isAfterEndDate(dateValue, endValue);
-    };
+    }, [student?.classStatusMap, student?.classStatuses, isAfterEndDate]);
+    const rawMyClasses = useMemo(() => {
+        if (!Array.isArray(classes) || !studentId) return [];
+        const studentClassIds = new Set([
+            ...(Array.isArray(student?.classIds) ? student.classIds : []),
+            ...(Array.isArray(student?.classes) ? student.classes.filter((item) => typeof item === 'string') : []),
+        ].map(String));
+        return classes.filter((c) => {
+            const classId = String(c?.id || c?.classId || '');
+            return (c.students || []).includes(studentId) || studentClassIds.has(classId);
+        });
+    }, [classes, studentId, student?.classIds, student?.classes]);
+    const visibleClassIds = useMemo(() => getViewerVisibleClassIds(rawMyClasses, student), [rawMyClasses, student]);
+    const visibleClassIdSet = useMemo(() => new Set(visibleClassIds), [visibleClassIds]);
+    const myClasses = useMemo(
+        () => rawMyClasses.filter((cls) => visibleClassIdSet.has(String(cls?.id || cls?.classId || ''))),
+        [rawMyClasses, visibleClassIdSet],
+    );
+    const isVisibleClassItem = useCallback((item) => {
+        const classId = String(getItemClassId(item) || '');
+        return Boolean(classId && visibleClassIdSet.has(classId));
+    }, [visibleClassIdSet]);
     const filteredLessonLogs = useMemo(() => {
         if (!Array.isArray(lessonLogs)) return [];
-        return lessonLogs.filter((log) => !isLogAfterClassEndDate(log?.classId, log?.date));
-    }, [lessonLogs, student?.classStatusMap, student?.classStatuses]);
+        return lessonLogs.filter((log) => isVisibleClassItem(log) && !isLogAfterClassEndDate(log?.classId, log?.date));
+    }, [lessonLogs, isVisibleClassItem, isLogAfterClassEndDate]);
     const filteredTests = useMemo(() => {
         if (!Array.isArray(tests)) return [];
-        return tests.filter((test) => !isLogAfterClassEndDate(test?.classId, test?.date));
-    }, [tests, student?.classStatusMap, student?.classStatuses]);
+        return tests.filter((test) => isVisibleClassItem(test) && !isLogAfterClassEndDate(test?.classId, test?.date));
+    }, [tests, isVisibleClassItem, isLogAfterClassEndDate]);
     const filteredHomeworkAssignments = useMemo(() => {
         if (!Array.isArray(homeworkAssignments)) return [];
-        return homeworkAssignments.filter((assignment) => !isLogAfterClassEndDate(assignment?.classId, assignment?.assignedDate || assignment?.date));
-    }, [homeworkAssignments, student?.classStatusMap, student?.classStatuses]);
-    const myClasses = useMemo(() => {
-        if (!classes || !studentId) return [];
-        return classes.filter(c => (c.students || []).includes(studentId));
-    }, [classes, studentId]);
+        return homeworkAssignments.filter((assignment) => isVisibleClassItem(assignment) && !isLogAfterClassEndDate(assignment?.classId, assignment?.assignedDate || assignment?.date));
+    }, [homeworkAssignments, isVisibleClassItem, isLogAfterClassEndDate]);
+    const filteredAttendanceLogs = useMemo(() => {
+        if (!Array.isArray(attendanceLogs)) return [];
+        return attendanceLogs.filter((log) => isVisibleClassItem(log));
+    }, [attendanceLogs, isVisibleClassItem]);
+    const filteredVideoProgress = useMemo(() => {
+        if (!Array.isArray(videoProgress)) return videoProgress;
+        return videoProgress.filter((item) => isVisibleClassItem(item));
+    }, [videoProgress, isVisibleClassItem]);
     const currentStudentProfile = student;
     const studentClassExitMap = useMemo(
         () => buildChildClassExitMap(currentStudentProfile),
@@ -486,9 +512,9 @@ export default function StudentHome({
 
 
     const sentLessonReports = useMemo(() => (Array.isArray(lessonReports) ? lessonReports : [])
-        .filter((report) => report?.status === 'sent' && String(report?.studentId || '') === String(studentId || ''))
+        .filter((report) => report?.status === 'sent' && String(report?.studentId || '') === String(studentId || '') && isVisibleClassItem(report))
         .map((report) => ({ ...report, className: classes.find((c) => String(c.id) === String(report.classId))?.name || report.classId }))
-        .sort((a, b) => String(b.lessonDate || '').localeCompare(String(a.lessonDate || ''))), [lessonReports, studentId, classes]);
+        .sort((a, b) => String(b.lessonDate || '').localeCompare(String(a.lessonDate || ''))), [lessonReports, studentId, isVisibleClassItem, classes]);
 
     const navItems = [
         { id: 'home', icon: 'home', label: '홈' },
@@ -518,12 +544,12 @@ export default function StudentHome({
                     <ClassroomView
                         classes={classes}
                         lessonLogs={filteredLessonLogs}
-                        attendanceLogs={attendanceLogs}
+                        attendanceLogs={filteredAttendanceLogs}
                         studentDocId={studentDocId}
                         studentAuthUid={studentAuthUid}
                         selectedClassId={selectedClassId}
                         setSelectedClassId={setSelectedClassId}
-                        videoProgress={videoProgress}
+                        videoProgress={filteredVideoProgress}
                         onSaveVideoProgress={onSaveVideoProgress}
                         videoMemos={videoMemos}
                         onAddMemo={onAddMemo}
@@ -550,7 +576,7 @@ export default function StudentHome({
                         {activeTab === 'home' && (
                             <DashboardTab
                                 student={student} myClasses={ongoingClasses} pendingHomeworkCount={pendingHomeworkCount}
-                                attendanceLogs={attendanceLogs} clinicLogs={clinicLogs} homeworkStats={myHomeworkStats} notices={visibleNotices}
+                                attendanceLogs={filteredAttendanceLogs} clinicLogs={clinicLogs} homeworkStats={myHomeworkStats} notices={visibleNotices}
                                 setActiveTab={setActiveTab}
                                 today={today} todayDayName={todayDayName} todayItems={todayItems} filteredTodayItems={filteredTodayItems}
                                 externalSchedules={externalSchedules} // ✅ [추가] 타학원 일정 데이터 전달
@@ -559,7 +585,7 @@ export default function StudentHome({
                         {activeTab === 'class' && <ClassTab myClasses={myClasses} setSelectedClassId={setSelectedClassId} />}
                         {activeTab === 'schedule' && (
                             <ScheduleTab
-                                myClasses={myClasses} externalSchedules={externalSchedules} attendanceLogs={attendanceLogs}
+                                myClasses={myClasses} externalSchedules={externalSchedules} attendanceLogs={filteredAttendanceLogs}
                                 studentId={studentId} student={student} onSaveExternalSchedule={onSaveExternalSchedule} onDeleteExternalSchedule={onDeleteExternalSchedule} clinicLogs={clinicLogs}
                                 closures={closures}
                             />
