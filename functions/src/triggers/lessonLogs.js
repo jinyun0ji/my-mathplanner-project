@@ -47,7 +47,7 @@ const onLessonLogWritten = functions.firestore
             return null;
         }
 
-        const userIds = [recipients.studentUid, ...recipients.parentUids];
+        const userIds = [recipients.studentUid];
         const refId = context.params.id;
 
         await notifyUsers({

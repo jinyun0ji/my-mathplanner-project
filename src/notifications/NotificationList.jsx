@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import { Icon } from '../utils/helpers';
 import NotificationsIcon from '@mui/icons-material/Notifications';
+import { isNotificationUnread } from './notificationFilters';
 
 const formatDate = (timestamp) => {
   if (!timestamp) return '';
@@ -19,6 +20,7 @@ export default function NotificationList({
   unreadCount = 0,
   isLoading = false,
   lastReadAt = null,
+  unreadOnly = false,
 }) {
   // ✅ Hooks는 조건 없이 항상 호출
   const panelRef = useRef(null);
@@ -36,12 +38,16 @@ export default function NotificationList({
   }, [isOpen, onClose]);
 
   const sortedNotifications = useMemo(() => {
-    return [...notifications].sort((a, b) => {
+    const visibleNotifications = unreadOnly
+      ? notifications.filter((notification) => isNotificationUnread(notification, lastReadAt))
+      : notifications;
+
+    return [...visibleNotifications].sort((a, b) => {
       const aTime = a.createdAt?.toMillis ? a.createdAt.toMillis() : 0;
       const bTime = b.createdAt?.toMillis ? b.createdAt.toMillis() : 0;
       return bTime - aTime;
     });
-  }, [notifications]);
+  }, [notifications, unreadOnly, lastReadAt]);
 
   // ✅ 렌더만 분기
   if (!isOpen) return null;
@@ -94,13 +100,7 @@ export default function NotificationList({
             </div>
           ) : sortedNotifications.length > 0 ? (
             sortedNotifications.map((notification) => {
-              const createdAt = notification.createdAt;
-              const isUnread =
-                !notification.readAt &&
-                (!lastReadAt ||
-                  (createdAt?.toMillis &&
-                    lastReadAt?.toMillis &&
-                    createdAt.toMillis() > lastReadAt.toMillis()));
+              const isUnread = isNotificationUnread(notification, lastReadAt);
 
               return (
                 <button

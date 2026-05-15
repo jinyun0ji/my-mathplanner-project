@@ -1,9 +1,13 @@
-const buildNotificationDocument = ({ type, title, body, ref, studentId }) => ({
+const buildNotificationDocument = ({ type, title, body, ref, studentId, refCollection, refId, category }) => ({
     type,
+    category: category || null,
     title,
     body,
     ref,
+    refCollection: refCollection || null,
+    refId: refId || null,
     studentId: studentId || null,
+    isRead: false,
     readAt: null,
 });
 

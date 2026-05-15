@@ -49,10 +49,16 @@ const createNotificationLog = async ({ targetCount, payload, fcmData, logData = 
 };
 
 const notifyUsers = async ({ userIds, payload, fcmData, logData }) => {
-    const { notificationIds, targetUserCount } = await createNotificationForUsers(userIds, payload);
+    const notificationPayload = {
+        ...payload,
+        refCollection: fcmData?.refCollection || payload?.refCollection || null,
+        refId: fcmData?.refId || payload?.refId || null,
+        studentId: fcmData?.studentId || payload?.studentId || payload?.authUid || null,
+    };
+    const { notificationIds, targetUserCount } = await createNotificationForUsers(userIds, notificationPayload);
     const logRef = await createNotificationLog({
         targetCount: targetUserCount,
-        payload,
+        payload: notificationPayload,
         fcmData,
         logData,
     });

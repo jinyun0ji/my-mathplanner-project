@@ -19,7 +19,9 @@ const parseNotificationRef = (ref) => {
 };
 
 export default async function openNotification({ notification, db = firestoreDb, onNavigate }) {
-    const refInfo = parseNotificationRef(notification?.ref);
+    const refInfo = parseNotificationRef(notification?.ref) || (notification?.refCollection && notification?.refId
+        ? { refCollection: notification.refCollection, refId: notification.refId }
+        : null);
 
     if (!refInfo || !db) {
         return null;

@@ -1,4 +1,8 @@
 const functions = require('firebase-functions');
+const { getRecipientsForStudent } = require('../notify/recipients');
+const { notifyUsers } = require('../notify/notifications');
+
+const TYPE = 'ANNOUNCEMENT';
 
 const normalizeAnnouncement = (data) => {
     const patch = {};
@@ -55,6 +59,61 @@ const normalizeAnnouncementOnWrite = functions.firestore
         return null;
     });
 
+    const collectTargetStudentUids = (data) => ([
+    ...(Array.isArray(data.targetAuthUids) ? data.targetAuthUids : []),
+    ...(Array.isArray(data.targetStudents) ? data.targetStudents : []),
+].map((value) => String(value || '').trim()).filter(Boolean));
+
+const onAnnouncementCreated = functions.firestore
+    .document('announcements/{docId}')
+    .onCreate(async (snapshot, context) => {
+        const data = snapshot.data() || {};
+        if (data.isPublic === true) {
+            return null;
+        }
+
+        const targetStudentUids = [...new Set(collectTargetStudentUids(data))];
+        const recipientSet = new Set();
+
+        for (const studentUid of targetStudentUids) {
+            const recipients = await getRecipientsForStudent(studentUid);
+            if (!recipients) {
+                continue;
+            }
+            if (recipients.studentUid) {
+                recipientSet.add(recipients.studentUid);
+            }
+            recipients.parentUids.forEach((parentUid) => recipientSet.add(parentUid));
+        }
+
+        const userIds = [...recipientSet];
+        const refId = context.params.docId;
+
+        await notifyUsers({
+            userIds,
+            payload: {
+                type: TYPE,
+                category: 'announcement',
+                title: data.title || '새 공지사항이 등록되었습니다.',
+                body: data.content ? String(data.content).replace(/<[^>]*>/g, '').slice(0, 120) : '공지사항을 확인해 주세요.',
+                ref: `announcements/${refId}`,
+            },
+            fcmData: {
+                type: TYPE,
+                refCollection: 'announcements',
+                refId,
+            },
+            logData: {
+                announcementId: refId,
+                targetClasses: Array.isArray(data.targetClasses) ? data.targetClasses : [],
+                targetStudentCount: targetStudentUids.length,
+            },
+        });
+
+        return null;
+    });
+
 module.exports = {
     normalizeAnnouncementOnWrite,
+    onAnnouncementCreated,
 };

@@ -365,7 +365,7 @@ const ParentDashboard = ({
             ...todaysClasses,
             ...todayClinicSchedules,
         ].sort((a, b) => String(a.time || '').localeCompare(String(b.time || '')));
-    }, [child, clinicLogs, myClasses, todayDayName, todayStr]);
+    }, [child, clinicLogs, myClasses, todayStr]);
 
     const filteredTodayItems = useMemo(() => {
         const list = Array.isArray(todayItems) ? todayItems : [];
@@ -517,17 +517,17 @@ export default function ParentHome({
     const activeChildName = activeChild?.name || '학생';
     const activeChildSchool = activeChild?.school || '학교 정보 없음';
     const activeChildGrade = activeChild?.grade || '학년 정보 없음';
-    const normalizeClassStatus = (value) => {
+    const normalizeClassStatus = useCallback((value) => {
         if (value === 'withdrawn') return '퇴원';
         if (value === 'active') return '진행중';
         if (value === '재원') return '진행중';
         return value;
-    };
-    const isWithdrawnStatus = (value) => {
+    }, []);
+    const isWithdrawnStatus = useCallback((value) => {
         const normalized = normalizeClassStatus(value);
         return ['퇴원', '중도퇴원', '전반', '전반퇴원'].includes(normalized);
-    };
-    const toYmd = (value) => {
+    }, [normalizeClassStatus]);
+    const toYmd = useCallback((value) => {
         if (!value) return null;
         if (typeof value === 'string') return value.slice(0, 10);
         if (typeof value?.toDate === 'function') return value.toDate().toISOString().slice(0, 10);
@@ -536,14 +536,14 @@ export default function ParentHome({
         } catch (error) {
             return null;
         }
-    };
-    const isAfterEndDate = (dateValue, endDateValue) => {
+    }, []);
+    const isAfterEndDate = useCallback((dateValue, endDateValue) => {
         const date = toYmd(dateValue);
         const endDate = toYmd(endDateValue);
         if (!date || !endDate) return false;
         return date > endDate;
-    };
-    const isLogAfterClassEndDate = (classId, dateValue) => {
+    }, [toYmd]);
+    const isLogAfterClassEndDate = useCallback((classId, dateValue) => {
         if (!classId) return false;
         const classStatus = activeChild?.classStatusMap?.[String(classId)] || activeChild?.classStatuses?.[String(classId)];
         const normalizedStatus = normalizeClassStatus(classStatus?.status);
@@ -551,19 +551,19 @@ export default function ParentHome({
         const endValue = classStatus?.endedAt || classStatus?.endDate;
         if (!endValue) return false;
         return isAfterEndDate(dateValue, endValue);
-    };
+    }, [activeChild?.classStatusMap, activeChild?.classStatuses, isAfterEndDate, isWithdrawnStatus, normalizeClassStatus]);
     const filteredLessonLogs = useMemo(() => {
         if (!Array.isArray(lessonLogs)) return [];
         return lessonLogs.filter((log) => !isLogAfterClassEndDate(log?.classId, log?.date));
-    }, [lessonLogs, activeChild?.classStatusMap, activeChild?.classStatuses]);
+    }, [lessonLogs, isLogAfterClassEndDate]);
     const filteredTests = useMemo(() => {
         if (!Array.isArray(tests)) return [];
         return tests.filter((test) => !isLogAfterClassEndDate(test?.classId, test?.date));
-    }, [tests, activeChild?.classStatusMap, activeChild?.classStatuses]);
+    }, [tests, isLogAfterClassEndDate]);
     const filteredHomeworkAssignments = useMemo(() => {
         if (!Array.isArray(homeworkAssignments)) return [];
         return homeworkAssignments.filter((assignment) => !isLogAfterClassEndDate(assignment?.classId, assignment?.assignedDate || assignment?.date));
-    }, [homeworkAssignments, activeChild?.classStatusMap, activeChild?.classStatuses]);
+    }, [homeworkAssignments, isLogAfterClassEndDate]);
 
     // 2. 데이터 필터링
     const myClasses = useMemo(() => classes.filter(c => (c.students || []).includes(activeChildId)), [classes, activeChildId]);
@@ -735,14 +735,17 @@ export default function ParentHome({
         setClassFilter('ongoing');
         setActiveTab('home', { replace: true });
         setClinicPageSize(3);
-    }, [activeStudentId]);
+    }, [activeStudentId, setActiveTab, setSelectedClassroomId, setSelectedReportId]);
 
     // 알림 관련
     const [isNotificationOpen, setIsNotificationOpen] = useState(false);
     const [isMessengerPage, setIsMessengerPage] = useState(false);
     const [visibleNotices, setVisibleNotices] = useState([]); 
     const viewerUid = activeChild?.authUid || userId;
-    const { notifications, hasUnread, unreadCount, lastReadAt, isLoading, isMetaLoading, setNotifications } = useNotifications(viewerUid);
+    const { notifications, hasUnread, unreadCount, lastReadAt, isLoading, isMetaLoading, setNotifications } = useNotifications(viewerUid, 20, {
+        viewerRole: 'parent',
+        unreadOnly: true,
+    });
 
     const buildClinicTeacher = useCallback((log) => (
         log?.tutorName
@@ -846,7 +849,7 @@ export default function ParentHome({
         await openNotification({
             notification,
             onNavigate: ({ refCollection, refId }) => {
-                if (refCollection === 'lessonLogs') {
+                if (refCollection === 'lessonLogs' || refCollection === 'lessonReports') {
                     setSelectedReportId(refId);
                     setActiveTab('report');
                     return;
@@ -864,6 +867,11 @@ export default function ParentHome({
 
                 if (refCollection === 'grades') {
                     setActiveTab('report');
+                    return;
+                }
+
+                if (refCollection === 'announcements' || refCollection === 'posts') {
+                    setActiveTab('home');
                     return;
                 }
 
@@ -914,20 +922,20 @@ export default function ParentHome({
         || value === ''
         || value === '미응시'
         || value === '미입력';
-    const toFiniteScoreNumber = (value) => {
+    const toFiniteScoreNumber = useCallback((value) => {
         if (isScoreEmptyValue(value)) return null;
         const num = Number(value);
         return Number.isFinite(num) ? num : null;
-    };
-    const formatOneDecimal = (value, fallback = '-') => {
+    }, []);
+    const formatOneDecimal = useCallback((value, fallback = '-') => {
         const num = toFiniteScoreNumber(value);
         if (num === null) return fallback;
         return num.toFixed(1);
-    };
+    }, [toFiniteScoreNumber]);
     const formatScoreDisplay = useCallback((value) => {
         return formatOneDecimal(value, '미응시');
-    }, []);
-    const formatStatDisplay = useCallback((value) => formatOneDecimal(value, '통계 준비 중'), []);
+    }, [formatOneDecimal]);
+    const formatStatDisplay = useCallback((value) => formatOneDecimal(value, '통계 준비 중'), [formatOneDecimal]);
 
     const attendanceHistory = useMemo(() => {
         const list = Array.isArray(childAttendanceLogs) ? childAttendanceLogs : [];
@@ -1591,6 +1599,7 @@ export default function ParentHome({
                 unreadCount={unreadCount}
                 lastReadAt={lastReadAt}
                 isLoading={isLoading || isMetaLoading}
+                unreadOnly
             />
         </div>
     );

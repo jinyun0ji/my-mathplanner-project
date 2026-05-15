@@ -562,6 +562,10 @@ export default function LessonReportManagement({
     const targetAuthUids = [student?.authUid, ...parentAuthUids].filter(Boolean);
     await Promise.all(targetAuthUids.map((uid) => addDoc(collection(db, 'notifications', uid, 'items'), {
       type: 'lesson_report',
+      category: 'lessonReport',
+      refCollection: 'lessonReports',
+      refId: reportDraft.id,
+      ref: `lessonReports/${reportDraft.id}`,
       title: '새 수업 리포트가 도착했습니다.',
       body: `${student?.name || '학생'} 학생의 수업 리포트가 도착했습니다.`,
       isRead: false,
@@ -572,6 +576,7 @@ export default function LessonReportManagement({
         classId: reportDraft.classId,
         lessonDate: reportDraft.lessonDate,
         type: 'lesson_report',
+        refCollection: 'lessonReports',
       },
     })));
 

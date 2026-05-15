@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
     collection,
     doc,
@@ -12,6 +12,7 @@ import {
     Timestamp,
 } from 'firebase/firestore';
 import { db } from '../firebase/client';
+import { filterParentNotifications, isNotificationUnread } from './notificationFilters';
 
 const DEFAULT_LIMIT = 20;
 
@@ -20,13 +21,15 @@ const mapNotification = (doc) => ({
     ...doc.data(),
 });
 
-export default function useNotifications(uid, maxItems = DEFAULT_LIMIT) {
+export default function useNotifications(uid, maxItems = DEFAULT_LIMIT, options = {}) {
+    const { viewerRole = '', unreadOnly = false } = options || {};
+    const isParentViewer = String(viewerRole).toLowerCase() === 'parent';
     const [notifications, setNotifications] = useState([]);
     const [isLoading, setIsLoading] = useState(false);
     const [lastReadAt, setLastReadAt] = useState(null);
     const [isMetaLoading, setIsMetaLoading] = useState(false);
 
-    const fetchNotifications = async () => {
+    const fetchNotifications = useCallback(async () => {
         if (!db || !uid) {
             setNotifications([]);
             setIsLoading(false);
@@ -39,7 +42,7 @@ export default function useNotifications(uid, maxItems = DEFAULT_LIMIT) {
             const notificationsQuery = query(
                 collection(db, 'notifications', uid, 'items'),
                 orderBy('createdAt', 'desc'),
-                limit(maxItems)
+                limit(isParentViewer ? Math.max(maxItems * 5, maxItems) : maxItems)
             );
 
             const snapshot = await getDocs(notificationsQuery);
@@ -49,14 +52,14 @@ export default function useNotifications(uid, maxItems = DEFAULT_LIMIT) {
         } finally {
             setIsLoading(false);
         }
-    };
+    }, [uid, maxItems, isParentViewer]);
 
     const metaRef = useMemo(() => {
         if (!uid || !db) {
             return null;
         }
         return doc(db, 'notifications', uid, 'meta', 'meta');
-    }, [uid, db]);
+    }, [uid]);
 
     useEffect(() => {
         if (!metaRef) {
@@ -94,40 +97,25 @@ export default function useNotifications(uid, maxItems = DEFAULT_LIMIT) {
 
     useEffect(() => {
         fetchNotifications();
-    }, [uid, maxItems]);
+    }, [fetchNotifications]);
+
+    const visibleNotifications = useMemo(() => {
+        if (!isParentViewer) {
+            return notifications;
+        }
+        return filterParentNotifications(notifications, lastReadAt, { unreadOnly });
+    }, [notifications, isParentViewer, lastReadAt, unreadOnly]);
 
     const hasUnread = useMemo(
-        () => {
-            if (!notifications.length) {
-                return false;
-            }
-            return notifications.some((notification) => {
-                if (notification.readAt) {
-                    return false;
-                }
-                if (!notification.createdAt || !lastReadAt) {
-                    return true;
-                }
-                return notification.createdAt.toMillis() > lastReadAt.toMillis();
-            });
-        },
-        [notifications, lastReadAt]
+        () => visibleNotifications.some((notification) => isNotificationUnread(notification, lastReadAt)),
+        [visibleNotifications, lastReadAt]
     );
 
-    const unreadCount = useMemo(() => {
-        if (!notifications.length) {
-            return 0;
-        }
-        return notifications.reduce((count, notification) => {
-            if (notification.readAt) {
-                return count;
-            }
-            if (!notification.createdAt || !lastReadAt) {
-                return count + 1;
-            }
-            return notification.createdAt.toMillis() > lastReadAt.toMillis() ? count + 1 : count;
-        }, 0);
-    }, [notifications, lastReadAt]);
+    const unreadCount = useMemo(() => (
+        visibleNotifications.reduce((count, notification) => (
+            isNotificationUnread(notification, lastReadAt) ? count + 1 : count
+        ), 0)
+    ), [visibleNotifications, lastReadAt]);
 
     const markAllRead = async () => {
         if (!metaRef) {
@@ -139,7 +127,8 @@ export default function useNotifications(uid, maxItems = DEFAULT_LIMIT) {
     };
 
     return {
-        notifications,
+        notifications: visibleNotifications,
+        rawNotifications: notifications,
         hasUnread,
         isLoading,
         isMetaLoading,
