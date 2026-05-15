@@ -728,19 +728,33 @@ export default function ParentHome({
         pendingStudentSwitchRef.current = null;
     }, [activeStudentId]);
 
+    const previousActiveStudentIdRef = useRef(activeStudentId);
+
     useEffect(() => {
+        if (previousActiveStudentIdRef.current === activeStudentId) {
+            setActiveChildId(activeStudentId);
+            return;
+        }
+
+        previousActiveStudentIdRef.current = activeStudentId;
         setActiveChildId(activeStudentId);
-        setSelectedClassroomId(null, { replace: true });
-        setSelectedReportId(null, { replace: true });
+        _setSelectedClassroomId(null);
+        _setSelectedReportId(null);
         setClassFilter('ongoing');
-        setActiveTab('home', { replace: true });
+        _setActiveTab('home');
         setClinicPageSize(3);
-    }, [activeStudentId, setActiveTab, setSelectedClassroomId, setSelectedReportId]);
+        setSearchParams((prev) => {
+            const next = new URLSearchParams(prev);
+            next.set('tab', 'home');
+            next.delete('classroomId');
+            next.delete('reportId');
+            return next;
+        }, { replace: true });
+    }, [activeStudentId, setSearchParams]);
 
     // 알림 관련
     const [isNotificationOpen, setIsNotificationOpen] = useState(false);
     const [isMessengerPage, setIsMessengerPage] = useState(false);
-    const [visibleNotices, setVisibleNotices] = useState([]); 
     const viewerUid = activeChild?.authUid || userId;
     const { notifications, hasUnread, unreadCount, lastReadAt, isLoading, isMetaLoading, setNotifications } = useNotifications(viewerUid, 20, {
         viewerRole: 'parent',
@@ -825,12 +839,7 @@ export default function ParentHome({
         .filter((log) => ['예약됨', '입실 예정'].includes(getClinicDisplayStatus(log)))
         .sort((a, b) => new Date(`${a?.date || ''}T00:00:00`) - new Date(`${b?.date || ''}T00:00:00`)), [myClinicLogs]);
 
-    useEffect(() => {
-        if (!activeChild) return;
-        let combinedNotices = Array.isArray(notices) ? [...notices] : [];
-
-        setVisibleNotices(combinedNotices);
-        }, [notices, activeChildId, unpaidPayments.length, activeChildName, activeChild]);
+    const visibleNotices = useMemo(() => (Array.isArray(notices) ? [...notices] : []), [notices]);
 
     const noticePreview = useMemo(() => visibleNotices.slice(0, 3), [visibleNotices]);
 
