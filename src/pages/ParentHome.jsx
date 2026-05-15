@@ -28,7 +28,7 @@ import NotificationList from '../notifications/NotificationList';
 import openNotification from '../notifications/openNotification';
 import { useParentContext } from '../parent';
 import { sortClassesByStatus } from '../utils/classStatus';
-import { functions } from '../firebase/client';
+import { auth, functions } from '../firebase/client';
 import { FEATURES } from '../config/features';
 import MathText from '../components/common/MathText';
 
@@ -841,6 +841,40 @@ export default function ParentHome({
 
     const visibleNotices = useMemo(() => (Array.isArray(notices) ? [...notices] : []), [notices]);
 
+    const currentParent = useMemo(() => {
+        const currentUser = auth.currentUser;
+        const identifiers = [userId, currentUser?.uid, currentUser?.email]
+            .filter(Boolean)
+            .map((value) => String(value).trim().toLowerCase())
+            .filter(Boolean);
+
+        if (!Array.isArray(parents) || identifiers.length === 0) return null;
+
+        return parents.find((parent) => {
+            const parentIdentifiers = [parent?.authUid, parent?.uid, parent?.id, parent?.email]
+                .filter(Boolean)
+                .map((value) => String(value).trim().toLowerCase())
+                .filter(Boolean);
+
+            return parentIdentifiers.some((value) => identifiers.includes(value));
+        }) || null;
+    }, [parents, userId]);
+
+    const accountInfo = useMemo(() => ({
+        parentEmail:
+            auth.currentUser?.email
+            || currentParent?.email
+            || currentParent?.googleEmail
+            || currentParent?.loginEmail
+            || '',
+        parentPhone:
+            currentParent?.phone
+            || currentParent?.parentPhone
+            || currentParent?.mobile
+            || currentParent?.contact
+            || '',
+    }), [currentParent]);
+
     const noticePreview = useMemo(() => visibleNotices.slice(0, 3), [visibleNotices]);
 
     const handleNotificationClick = async (notification) => {
@@ -1564,8 +1598,16 @@ export default function ParentHome({
                         {activeTab === 'notices' && (
                             <ParentNoticeList notices={visibleNotices} onBack={() => setActiveTab('more')} />
                         )}
+                        {activeTab === 'account' && (
+                            <ParentAccountInfo
+                                accountInfo={accountInfo}
+                                activeChild={activeChild}
+                                ongoingClasses={ongoingClasses}
+                                onBack={() => setActiveTab('more')}
+                            />
+                        )}
                         {activeTab === 'more' && (
-                            <ParentMoreMenu notices={visibleNotices} onOpenNotice={() => setActiveTab('notices')} onOpenNotifications={() => setIsNotificationOpen(true)} onOpenMessages={() => setIsMessengerPage(true)} onLogout={onLogout} />
+                            <ParentMoreMenu notices={visibleNotices} onOpenNotice={() => setActiveTab('notices')} onOpenNotifications={() => setIsNotificationOpen(true)} onOpenMessages={() => setIsMessengerPage(true)} onOpenAccount={() => setActiveTab('account')} onLogout={onLogout} />
                         )}
                     </div>
                 )}
@@ -1708,12 +1750,86 @@ const ParentNoticeList = ({ notices = [], onBack }) => {
     );
 };
 
-const ParentMoreMenu = ({ notices = [], onOpenNotice, onOpenNotifications, onOpenMessages, onLogout }) => {
+
+const formatAccountValue = (value) => {
+  if (value === null || value === undefined || value === '') return '등록된 정보가 없습니다.';
+  return String(value);
+};
+
+const getClassTeacherName = (classItem) => (
+  classItem?.teacher
+  || classItem?.teacherName
+  || classItem?.tutorName
+  || classItem?.tutor
+  || classItem?.instructorName
+  || classItem?.instructor
+  || '담당 선생님 미정'
+);
+
+const AccountInfoRow = ({ label, value }) => (
+  <div className="flex items-start justify-between gap-4 py-3 border-b border-gray-100 last:border-b-0">
+    <dt className="shrink-0 text-sm font-semibold text-gray-500">{label}</dt>
+    <dd className="text-right text-sm font-medium text-gray-900 break-all">{formatAccountValue(value)}</dd>
+  </div>
+);
+
+const ParentAccountInfo = ({ accountInfo, activeChild, ongoingClasses = [], onBack }) => (
+  <section className="space-y-4">
+    <div className="flex items-center gap-3 px-1">
+      <button
+        type="button"
+        onClick={onBack}
+        className="flex h-9 w-9 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-600 shadow-sm active:scale-95"
+        aria-label="전체 메뉴로 돌아가기"
+      >
+        <Icon name="chevronLeft" className="h-5 w-5" />
+      </button>
+      <h2 className="text-lg font-bold text-gray-900">계정 정보</h2>
+    </div>
+
+    <article className="bg-white border border-gray-100 rounded-2xl shadow-sm p-4">
+      <h3 className="text-sm font-bold text-gray-900 mb-2">학부모 정보</h3>
+      <dl>
+        <AccountInfoRow label="구글 아이디/이메일" value={accountInfo?.parentEmail} />
+        <AccountInfoRow label="전화번호" value={accountInfo?.parentPhone} />
+      </dl>
+    </article>
+
+    <article className="bg-white border border-gray-100 rounded-2xl shadow-sm p-4">
+      <h3 className="text-sm font-bold text-gray-900 mb-2">학생 정보</h3>
+      <dl>
+        <AccountInfoRow label="이름" value={activeChild?.name} />
+        <AccountInfoRow label="전화번호" value={activeChild?.phone} />
+        <AccountInfoRow label="학교" value={activeChild?.school} />
+      </dl>
+    </article>
+
+    <article className="bg-white border border-gray-100 rounded-2xl shadow-sm p-4">
+      <h3 className="text-sm font-bold text-gray-900 mb-3">현재 수강 클래스</h3>
+      {ongoingClasses.length > 0 ? (
+        <div className="space-y-2">
+          {ongoingClasses.map((classItem) => (
+            <div key={classItem?.id || classItem?.name} className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-3">
+              <p className="text-sm font-semibold text-gray-900">{classItem?.name || '클래스명 미정'}</p>
+              <p className="mt-1 text-xs text-gray-500">담당 선생님: {getClassTeacherName(classItem)}</p>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="rounded-xl border border-dashed border-gray-200 bg-gray-50 px-3 py-6 text-center text-sm text-gray-500">
+          현재 수강 중인 클래스가 없습니다.
+        </p>
+      )}
+    </article>
+  </section>
+);
+
+const ParentMoreMenu = ({ notices = [], onOpenNotice, onOpenNotifications, onOpenMessages, onOpenAccount, onLogout }) => {
   const rows = [
     { key: 'notice', label: `공지사항 (${notices.length})`, onClick: onOpenNotice },
     { key: 'noti', label: '알림센터', onClick: onOpenNotifications },
     { key: 'msg', label: '메시지', onClick: onOpenMessages },
-    { key: 'account', label: '계정 정보' },
+    { key: 'account', label: '계정 정보', onClick: onOpenAccount },
     { key: 'terms', label: '이용약관' },
     { key: 'privacy', label: '개인정보처리방침' },
   ];
