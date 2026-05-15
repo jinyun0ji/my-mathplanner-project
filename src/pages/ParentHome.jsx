@@ -23,6 +23,7 @@ import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
 import ParentSessionReport from './parent/ParentSessionReport'; // ✅ 신규 리포트 컴포넌트
 import ParentMessengerPage from './parent/ParentMessengerPage';
 import ParentBoardPage from './parent/ParentBoardPage';
+import ParentMorePage from './parent/ParentMorePage';
 import { generateSessionReport } from '../utils/reportHelper'; // ✅ 리포트 데이터 생성 헬퍼
 import useNotifications from '../notifications/useNotifications';
 import NotificationList from '../notifications/NotificationList';
@@ -637,6 +638,7 @@ export default function ParentHome({
     const [classFilter, setClassFilter] = useState('ongoing'); // 기본: 진행중
     const [selectedReportId, _setSelectedReportId] = useState(readReportFromUrl());
     const [boardBackTab, setBoardBackTab] = useState('home');
+    const [moreView, setMoreView] = useState('menu');
 
     // ✅ URL -> state (브라우저 뒤로/앞으로로 URL이 바뀌면 화면도 따라감)
     useEffect(() => {
@@ -764,6 +766,12 @@ export default function ParentHome({
     // 알림 관련
     const [isNotificationOpen, setIsNotificationOpen] = useState(false);
     const [isMessengerPage, setIsMessengerPage] = useState(false);
+
+    useEffect(() => {
+        if (activeTab === 'more') {
+            setMoreView('menu');
+        }
+    }, [activeTab]);
     const viewerUid = activeChild?.authUid || userId;
     const { notifications, hasUnread, unreadCount, lastReadAt, isLoading, isMetaLoading, setNotifications } = useNotifications(viewerUid, 20, {
         viewerRole: 'parent',
@@ -893,6 +901,12 @@ export default function ParentHome({
     }, [activeTab, setActiveTab]);
 
     const accountInfo = useMemo(() => ({
+        parentName:
+            currentParent?.name
+            || currentParent?.parentName
+            || currentParent?.displayName
+            || currentParent?.guardianName
+            || '',
         parentEmail:
             auth.currentUser?.email
             || currentParent?.email
@@ -1631,16 +1645,20 @@ export default function ParentHome({
                         {(activeTab === 'board' || activeTab === 'notices') && (
                             <ParentBoardPage notices={visibleNotices} onBack={() => setActiveTab(boardBackTab || 'home')} />
                         )}
-                        {activeTab === 'account' && (
-                            <ParentAccountInfo
-                                accountInfo={accountInfo}
-                                activeChild={activeChild}
-                                ongoingClasses={ongoingClasses}
-                                onBack={() => setActiveTab('more')}
-                            />
-                        )}
                         {activeTab === 'more' && (
-                            <ParentMoreMenu notices={visibleNotices} onOpenNotice={openBoardTab} onOpenNotifications={() => setIsNotificationOpen(true)} onOpenMessages={() => setIsMessengerPage(true)} onOpenAccount={() => setActiveTab('account')} onLogout={onLogout} />
+                            <ParentMorePage
+                                moreView={moreView}
+                                onChangeView={setMoreView}
+                                notices={visibleNotices}
+                                activeChild={activeChild}
+                                currentParent={currentParent}
+                                accountInfo={accountInfo}
+                                myClasses={myClasses}
+                                ongoingClasses={ongoingClasses}
+                                onOpenNotifications={() => setIsNotificationOpen(true)}
+                                onOpenMessages={() => setIsMessengerPage(true)}
+                                onLogout={onLogout}
+                            />
                         )}
                     </div>
                 )}
@@ -1693,99 +1711,3 @@ export default function ParentHome({
 }
 
 // changed: hide ended classes in today’s lessons
-
-const formatAccountValue = (value) => {
-  if (value === null || value === undefined || value === '') return '등록된 정보가 없습니다.';
-  return String(value);
-};
-
-const getClassTeacherName = (classItem) => (
-  classItem?.teacher
-  || classItem?.teacherName
-  || classItem?.tutorName
-  || classItem?.tutor
-  || classItem?.instructorName
-  || classItem?.instructor
-  || '담당 선생님 미정'
-);
-
-const AccountInfoRow = ({ label, value }) => (
-  <div className="flex items-start justify-between gap-4 py-3 border-b border-gray-100 last:border-b-0">
-    <dt className="shrink-0 text-sm font-semibold text-gray-500">{label}</dt>
-    <dd className="text-right text-sm font-medium text-gray-900 break-all">{formatAccountValue(value)}</dd>
-  </div>
-);
-
-const ParentAccountInfo = ({ accountInfo, activeChild, ongoingClasses = [], onBack }) => (
-  <section className="space-y-4">
-    <div className="flex items-center gap-3 px-1">
-      <button
-        type="button"
-        onClick={onBack}
-        className="flex h-9 w-9 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-600 shadow-sm active:scale-95"
-        aria-label="전체 메뉴로 돌아가기"
-      >
-        <Icon name="chevronLeft" className="h-5 w-5" />
-      </button>
-      <h2 className="text-lg font-bold text-gray-900">계정 정보</h2>
-    </div>
-
-    <article className="bg-white border border-gray-100 rounded-2xl shadow-sm p-4">
-      <h3 className="text-sm font-bold text-gray-900 mb-2">학부모 정보</h3>
-      <dl>
-        <AccountInfoRow label="구글 아이디/이메일" value={accountInfo?.parentEmail} />
-        <AccountInfoRow label="전화번호" value={accountInfo?.parentPhone} />
-      </dl>
-    </article>
-
-    <article className="bg-white border border-gray-100 rounded-2xl shadow-sm p-4">
-      <h3 className="text-sm font-bold text-gray-900 mb-2">학생 정보</h3>
-      <dl>
-        <AccountInfoRow label="이름" value={activeChild?.name} />
-        <AccountInfoRow label="전화번호" value={activeChild?.phone} />
-        <AccountInfoRow label="학교" value={activeChild?.school} />
-      </dl>
-    </article>
-
-    <article className="bg-white border border-gray-100 rounded-2xl shadow-sm p-4">
-      <h3 className="text-sm font-bold text-gray-900 mb-3">현재 수강 클래스</h3>
-      {ongoingClasses.length > 0 ? (
-        <div className="space-y-2">
-          {ongoingClasses.map((classItem) => (
-            <div key={classItem?.id || classItem?.name} className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-3">
-              <p className="text-sm font-semibold text-gray-900">{classItem?.name || '클래스명 미정'}</p>
-              <p className="mt-1 text-xs text-gray-500">담당 선생님: {getClassTeacherName(classItem)}</p>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <p className="rounded-xl border border-dashed border-gray-200 bg-gray-50 px-3 py-6 text-center text-sm text-gray-500">
-          현재 수강 중인 클래스가 없습니다.
-        </p>
-      )}
-    </article>
-  </section>
-);
-
-const ParentMoreMenu = ({ notices = [], onOpenNotice, onOpenNotifications, onOpenMessages, onOpenAccount, onLogout }) => {
-  const rows = [
-    { key: 'notice', label: `공지사항 (${notices.length})`, onClick: onOpenNotice },
-    { key: 'noti', label: '알림센터', onClick: onOpenNotifications },
-    { key: 'msg', label: '메시지', onClick: onOpenMessages },
-    { key: 'account', label: '계정 정보', onClick: onOpenAccount },
-    { key: 'terms', label: '이용약관' },
-    { key: 'privacy', label: '개인정보처리방침' },
-  ];
-  return (
-    <section className="bg-white border border-gray-100 rounded-xl shadow-sm overflow-hidden">
-      {rows.map((row) => (
-        <button key={row.key} type="button" onClick={row.onClick} className="w-full px-3 py-3 text-sm text-gray-800 border-b border-gray-100 last:border-b-0 flex items-center justify-between">
-          <span>{row.label}</span><span className="text-gray-400">›</span>
-        </button>
-      ))}
-      <div className="p-3 bg-gray-50">
-        <button type="button" onClick={onLogout} className="w-full rounded-xl border border-rose-100 text-rose-600 text-sm font-semibold py-2">로그아웃</button>
-      </div>
-    </section>
-  );
-};
