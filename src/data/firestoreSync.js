@@ -1719,14 +1719,10 @@ export const loadViewerDataOnce = async ({
         const activeStudentDocId = scopedStudentUids[0] || null;
 
         // ✅ 실제 데이터 키로 쓸 authUid(7MR...) (videoProgress/externalSchedules 조회용)
-        const activeViewerAuthUid =
-            (userRole === 'student' ? userId : null) // 학생 본인 로그인: auth.uid
-            || myStudents.find(s => s?.id === activeStudentDocId)?.authUid // parent: 학생 문서의 authUid
-            || myStudents[0]?.authUid
-            || null;
+        const activeViewerAuthUid = userId ? String(userId) : null;
 
         console.log('[viewer] activeStudentDocId =', activeStudentDocId);
-        console.log('[viewer] activeViewerAuthUid =', activeViewerAuthUid);
+        console.log('[viewer] current auth.uid =', activeViewerAuthUid);
 
         /* =========================
            announcements  (✅ public + audienceAuthUids 통합)
@@ -1764,15 +1760,17 @@ export const loadViewerDataOnce = async ({
                 });
 
             setAnnouncements?.(merged);
-            console.log('[viewer] announcements loaded', {
-                count: merged.length,
-                sample: merged.slice(0, 5).map((n) => ({
-                    id: n.id,
-                    title: n.title,
-                    isPublic: n.isPublic,
-                    audienceAuthUids: n.audienceAuthUids,
-                })),
-            });
+            const publicCount = publicSnap.docs.length;
+            const targetedCount = targetedSnap.docs.length;
+            console.log('[viewer] public announcements count =', publicCount);
+            console.log('[viewer] targeted announcements count =', targetedCount);
+            console.log('[viewer] loaded announcement sample =', merged.slice(0, 5).map((n) => ({
+                id: n.id,
+                title: n.title,
+                isPublic: n.isPublic,
+                targetClassIds: n.targetClassIds || n.targetClasses || [],
+                audienceAuthUids: n.audienceAuthUids || [],
+            })));
         }
 
         console.log('[viewer] fetch announcements done');

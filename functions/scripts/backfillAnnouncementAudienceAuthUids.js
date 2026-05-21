@@ -11,98 +11,109 @@ function uniqueStrings(values) {
     .filter(Boolean)));
 }
 
-async function loadStudentsByClassId() {
-  const out = new Map();
+async function loadReferenceMaps() {
+  const studentsByClassId = new Map();
+  const studentAuthByDocId = new Map();
+  const parentAuthByStudentId = new Map();
 
   const classSnap = await db.collection('classes').get();
-  classSnap.docs.forEach((doc) => {
-    const data = doc.data() || {};
-    const classIds = uniqueStrings([doc.id, data.id, data.classId, data.classCode]);
-    const studentIds = uniqueStrings(data.students);
-    classIds.forEach((cid) => {
-      if (!out.has(cid)) out.set(cid, new Set());
-      const bucket = out.get(cid);
-      studentIds.forEach((sid) => bucket.add(sid));
+  classSnap.docs.forEach((classDoc) => {
+    const data = classDoc.data() || {};
+    const classKeys = uniqueStrings([classDoc.id, data.id, data.classId, data.classCode]);
+    const students = uniqueStrings(data.students);
+    classKeys.forEach((classId) => {
+      if (!studentsByClassId.has(classId)) studentsByClassId.set(classId, new Set());
+      const bucket = studentsByClassId.get(classId);
+      students.forEach((studentId) => bucket.add(studentId));
     });
   });
 
   const usersSnap = await db.collection('users').get();
-  const students = [];
-  const parents = [];
-
-  usersSnap.docs.forEach((doc) => {
-    const data = doc.data() || {};
+  usersSnap.docs.forEach((userDoc) => {
+    const data = userDoc.data() || {};
     const role = String(data.role || '').toLowerCase();
-    if (role === 'parent') {
-      parents.push({ id: doc.id, authUid: data.authUid || data.uid, studentIds: uniqueStrings(data.studentIds) });
+
+    if (role === 'student') {
+      const classIds = uniqueStrings([
+        data.classId,
+        data.classDocId,
+        data.classCode,
+        ...(Array.isArray(data.classIds) ? data.classIds : []),
+      ]);
+      const studentDocId = String(userDoc.id);
+      const authUid = String(data.authUid || data.uid || '').trim();
+      if (authUid) studentAuthByDocId.set(studentDocId, authUid);
+
+      classIds.forEach((classId) => {
+        if (!studentsByClassId.has(classId)) studentsByClassId.set(classId, new Set());
+        studentsByClassId.get(classId).add(studentDocId);
+      });
       return;
     }
 
-    const classIds = uniqueStrings([data.classId, data.classDocId, ...(Array.isArray(data.classIds) ? data.classIds : [])]);
-    const studentId = String(doc.id);
-    students.push({ id: studentId, authUid: data.authUid || data.uid || null, classIds });
-    classIds.forEach((cid) => {
-      if (!out.has(cid)) out.set(cid, new Set());
-      out.get(cid).add(studentId);
-    });
+    if (role === 'parent') {
+      const parentAuthUid = String(data.authUid || data.uid || '').trim();
+      if (!parentAuthUid) return;
+      uniqueStrings(data.studentIds).forEach((studentDocId) => {
+        if (!parentAuthByStudentId.has(studentDocId)) parentAuthByStudentId.set(studentDocId, new Set());
+        parentAuthByStudentId.get(studentDocId).add(parentAuthUid);
+      });
+    }
   });
 
-  return { studentsByClassId: out, students, parents };
+  return { studentsByClassId, studentAuthByDocId, parentAuthByStudentId };
 }
 
 async function run() {
-  const { studentsByClassId, students, parents } = await loadStudentsByClassId();
-  const studentAuthByDocId = new Map(students.map((s) => [s.id, s.authUid ? String(s.authUid) : null]));
-  const parentAuthByStudentId = new Map();
+  const { studentsByClassId, studentAuthByDocId, parentAuthByStudentId } = await loadReferenceMaps();
+  const announcementSnap = await db.collection('announcements').get();
 
-  parents.forEach((p) => {
-    const authUid = p.authUid ? String(p.authUid).trim() : '';
-    if (!authUid) return;
-    p.studentIds.forEach((sid) => {
-      if (!parentAuthByStudentId.has(sid)) parentAuthByStudentId.set(sid, new Set());
-      parentAuthByStudentId.get(sid).add(authUid);
-    });
-  });
-
-  const snap = await db.collection('announcements').get();
-  console.log(`[audienceAuthUids backfill] found ${snap.size} announcement documents`);
-  console.log(`[audienceAuthUids backfill] mode: ${shouldWrite ? 'WRITE' : 'DRY-RUN'}`);
+  console.log(`[audience backfill] announcements=${announcementSnap.size}`);
+  console.log(`[audience backfill] mode=${shouldWrite ? 'WRITE' : 'DRY-RUN'}`);
 
   let touched = 0;
-  for (const doc of snap.docs) {
-    const data = doc.data() || {};
+  for (const announcementDoc of announcementSnap.docs) {
+    const data = announcementDoc.data() || {};
     const isPublic = data.isPublic === true;
-    const targetClasses = uniqueStrings(data.targetClasses);
-    const audienceSet = new Set();
+    const normalizedClassIds = uniqueStrings(
+      Array.isArray(data.targetClassIds) && data.targetClassIds.length > 0
+        ? data.targetClassIds
+        : data.targetClasses,
+    );
 
+    const audienceSet = new Set();
     if (!isPublic) {
       const studentDocIds = new Set();
-      targetClasses.forEach((cid) => {
-        (studentsByClassId.get(cid) || new Set()).forEach((sid) => studentDocIds.add(sid));
+      normalizedClassIds.forEach((classId) => {
+        (studentsByClassId.get(classId) || new Set()).forEach((studentDocId) => {
+          studentDocIds.add(studentDocId);
+        });
       });
 
-      studentDocIds.forEach((sid) => {
-        const studentAuth = studentAuthByDocId.get(sid);
-        if (studentAuth && studentAuth.trim()) audienceSet.add(studentAuth.trim());
-        (parentAuthByStudentId.get(sid) || new Set()).forEach((puid) => audienceSet.add(String(puid).trim()));
+      studentDocIds.forEach((studentDocId) => {
+        const studentAuthUid = studentAuthByDocId.get(studentDocId);
+        if (studentAuthUid) audienceSet.add(studentAuthUid);
+        (parentAuthByStudentId.get(studentDocId) || new Set()).forEach((parentAuthUid) => {
+          audienceSet.add(parentAuthUid);
+        });
       });
     }
 
-    const audienceAuthUids = uniqueStrings([...audienceSet]);
     const payload = {
-      audienceAuthUids,
-      audienceAuthUidsBackfilledAt: FieldValue.serverTimestamp(),
+      targetClassIds: normalizedClassIds,
+      audienceAuthUids: isPublic ? [] : uniqueStrings([...audienceSet]),
+      audienceBackfilledAt: FieldValue.serverTimestamp(),
     };
 
     touched += 1;
-    console.log(`[audienceAuthUids backfill] ${doc.id}`, payload);
-    if (shouldWrite) await doc.ref.set(payload, { merge: true });
+    console.log(`[audience backfill] ${announcementDoc.id}`, payload);
+    if (shouldWrite) await announcementDoc.ref.set(payload, { merge: true });
   }
 
-  console.log(`[audienceAuthUids backfill] completed. ${shouldWrite ? 'updated' : 'would update'} ${touched} docs.`);
+  console.log(`[audience backfill] complete. ${shouldWrite ? 'updated' : 'would update'}=${touched}`);
 }
 
-run().catch((err) => {
-  console.error('[audienceAuthUids backfill] failed', err);
+run().catch((error) => {
+  console.error('[audience backfill] failed', error);
   process.exit(1);
 });

@@ -66,7 +66,11 @@ export const AnnouncementModal = ({ isOpen, onClose, onSave, announcementToEdit 
                 setIsPinned(announcementToEdit.isPinned);
                 setScheduleTime(announcementToEdit.scheduleTime || '');
                 setAttachments(announcementToEdit.attachments || []);
-                setTargetClasses(Array.isArray(announcementToEdit.targetClasses) ? announcementToEdit.targetClasses.map((id) => String(id)) : []);
+                setTargetClasses(Array.isArray(announcementToEdit.targetClassIds)
+                    ? announcementToEdit.targetClassIds.map((id) => String(id))
+                    : Array.isArray(announcementToEdit.targetClasses)
+                        ? announcementToEdit.targetClasses.map((id) => String(id))
+                        : []);
                 setTargetStudents(announcementToEdit.targetStudents || []);
                 if (editorRef.current) {
                     editorRef.current.innerHTML = announcementToEdit.content;
@@ -304,7 +308,10 @@ export const AnnouncementModal = ({ isOpen, onClose, onSave, announcementToEdit 
             return keys.filter(Boolean).map((value) => String(value));
         };
 
-        const selectedStudents = (allStudents || []).filter((student) => {
+        const users = Array.isArray(allStudents) ? allStudents : [];
+
+        const selectedStudents = users.filter((student) => {
+            if (String(student?.role || '').toLowerCase() != 'student') return false;
             const classKeys = getStudentClassKeys(student);
             return selectedClassIds.some((classId) => classKeys.includes(String(classId)));
         });
@@ -319,8 +326,9 @@ export const AnnouncementModal = ({ isOpen, onClose, onSave, announcementToEdit 
             .filter(Boolean)
             .map(String);
 
-        const parentAuthUids = (allStudents || [])
+        const parentAuthUids = users
             .filter((user) => {
+                if (String(user?.role || '').toLowerCase() !== 'parent') return false;
                 const linkedStudentIds = Array.isArray(user?.studentIds) ? user.studentIds.map(String) : [];
                 return linkedStudentIds.some((sid) => filteredTargetStudents.includes(sid));
             })
@@ -332,13 +340,6 @@ export const AnnouncementModal = ({ isOpen, onClose, onSave, announcementToEdit 
         const audienceAuthUids = isPublic
             ? []
             : Array.from(new Set([...targetAuthUids, ...parentAuthUids])).filter((v) => Boolean(String(v).trim()));
-        const audienceKeys = isPublic
-            ? ['public']
-            : [
-                ...selectedClassIds.map((id) => `class:${String(id)}`),
-                ...targetAuthUids.map((uid) => `auth:${String(uid)}`),
-                ...filteredTargetStudents.map((id) => `student:${String(id)}`),
-            ];
 
         const announcementData = {
             id: announcementToEdit ? announcementToEdit.id : null,
@@ -355,7 +356,6 @@ export const AnnouncementModal = ({ isOpen, onClose, onSave, announcementToEdit 
             targetAuthUids: isPublic ? [] : targetAuthUids,
             targetStudents: isPublic ? [] : filteredTargetStudents,
             audienceAuthUids,
-            audienceKeys,
             notifyMode: staffNotifyMode === 'none' ? 'system' : 'staff',
             staffNotification,
         };
