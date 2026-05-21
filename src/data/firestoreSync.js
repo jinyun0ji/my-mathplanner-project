@@ -1790,25 +1790,25 @@ export const loadViewerDataOnce = async ({
             }
         }
 
-        // 1) 전체 공개 공지 (isPublic === true)
+        // 1) 전체 공개 공지
         const publicDocs = await safeGetDocsWithOptionalOrderBy(
             () =>
                 query(
                     collection(db, 'announcements'),
-                    where('isPublic', '==', true),
+                    where('audienceKeys', 'array-contains', 'public'),
                     orderBy('date', 'desc'),
                     limit(50),
                 ),
             () =>
                 query(
                     collection(db, 'announcements'),
-                    where('isPublic', '==', true),
+                    where('audienceKeys', 'array-contains', 'public'),
                     limit(50),
                 ),
-            'public',
+            'audienceKeys:public',
             {
-                withOrderBy: { collection: 'announcements', where: ['isPublic', '==', true], orderBy: ['date', 'desc'], limit: 50 },
-                withoutOrderBy: { collection: 'announcements', where: ['isPublic', '==', true], limit: 50 },
+                withOrderBy: { collection: 'announcements', where: ['audienceKeys', 'array-contains', 'public'], orderBy: ['date', 'desc'], limit: 50 },
+                withoutOrderBy: { collection: 'announcements', where: ['audienceKeys', 'array-contains', 'public'], limit: 50 },
             }
         );
         pushDocs(publicDocs);
@@ -1819,50 +1819,75 @@ export const loadViewerDataOnce = async ({
                 () =>
                     query(
                         collection(db, 'announcements'),
-                        where('targetAuthUids', 'array-contains', String(activeViewerAuthUid)),
+                        where('audienceKeys', 'array-contains', `auth:${String(activeViewerAuthUid)}`),
                         orderBy('date', 'desc'),
                         limit(50),
                     ),
                 () =>
                     query(
                         collection(db, 'announcements'),
-                        where('targetAuthUids', 'array-contains', String(activeViewerAuthUid)),
+                        where('audienceKeys', 'array-contains', `auth:${String(activeViewerAuthUid)}`),
                         limit(50),
                     ),
-                'targetAuthUids',
+                'audienceKeys:auth',
                 {
-                    withOrderBy: { collection: 'announcements', where: ['targetAuthUids', 'array-contains', String(activeViewerAuthUid)], orderBy: ['date', 'desc'], limit: 50 },
-                    withoutOrderBy: { collection: 'announcements', where: ['targetAuthUids', 'array-contains', String(activeViewerAuthUid)], limit: 50 },
+                    withOrderBy: { collection: 'announcements', where: ['audienceKeys', 'array-contains', `auth:${String(activeViewerAuthUid)}`], orderBy: ['date', 'desc'], limit: 50 },
+                    withoutOrderBy: { collection: 'announcements', where: ['audienceKeys', 'array-contains', `auth:${String(activeViewerAuthUid)}`], limit: 50 },
                 }
             );
             pushDocs(authDocs);
         }
 
-        // 3) 반 공지: targetClasses array-contains (classId별 안전 조회)
+        // 3) 반 공지: audienceKeys class:<classId>
         if (targetClassKeys.length > 0) {
             for (const classId of targetClassKeys) {
                 const classDocs = await safeGetDocsWithOptionalOrderBy(
                     () =>
                         query(
                             collection(db, 'announcements'),
-                            where('targetClasses', 'array-contains', String(classId)),
+                            where('audienceKeys', 'array-contains', `class:${String(classId)}`),
                             orderBy('date', 'desc'),
                             limit(50),
                         ),
                     () =>
                         query(
                             collection(db, 'announcements'),
-                            where('targetClasses', 'array-contains', String(classId)),
+                            where('audienceKeys', 'array-contains', `class:${String(classId)}`),
                             limit(50),
                         ),
-                    'targetClasses',
+                    'audienceKeys:class',
                     {
-                        withOrderBy: { collection: 'announcements', where: ['targetClasses', 'array-contains', String(classId)], orderBy: ['date', 'desc'], limit: 50 },
-                        withoutOrderBy: { collection: 'announcements', where: ['targetClasses', 'array-contains', String(classId)], limit: 50 },
+                        withOrderBy: { collection: 'announcements', where: ['audienceKeys', 'array-contains', `class:${String(classId)}`], orderBy: ['date', 'desc'], limit: 50 },
+                        withoutOrderBy: { collection: 'announcements', where: ['audienceKeys', 'array-contains', `class:${String(classId)}`], limit: 50 },
                     }
                 );
                 pushDocs(classDocs);
             }
+        }
+
+        // 4) 학생 대상 공지
+        if (activeStudentDocId) {
+            const studentDocs = await safeGetDocsWithOptionalOrderBy(
+                () =>
+                    query(
+                        collection(db, 'announcements'),
+                        where('audienceKeys', 'array-contains', `student:${String(activeStudentDocId)}`),
+                        orderBy('date', 'desc'),
+                        limit(50),
+                    ),
+                () =>
+                    query(
+                        collection(db, 'announcements'),
+                        where('audienceKeys', 'array-contains', `student:${String(activeStudentDocId)}`),
+                        limit(50),
+                    ),
+                'audienceKeys:student',
+                {
+                    withOrderBy: { collection: 'announcements', where: ['audienceKeys', 'array-contains', `student:${String(activeStudentDocId)}`], orderBy: ['date', 'desc'], limit: 50 },
+                    withoutOrderBy: { collection: 'announcements', where: ['audienceKeys', 'array-contains', `student:${String(activeStudentDocId)}`], limit: 50 },
+                }
+            );
+            pushDocs(studentDocs);
         }
 
         // 최종 merge: data로 변환 + 정렬

@@ -320,6 +320,13 @@ export const AnnouncementModal = ({ isOpen, onClose, onSave, announcementToEdit 
             .map(String);
 
         const isPublic = selectedClassIds.length === 0;
+        const audienceKeys = isPublic
+            ? ['public']
+            : [
+                ...selectedClassIds.map((id) => `class:${String(id)}`),
+                ...targetAuthUids.map((uid) => `auth:${String(uid)}`),
+                ...filteredTargetStudents.map((id) => `student:${String(id)}`),
+            ];
 
         const announcementData = {
             id: announcementToEdit ? announcementToEdit.id : null,
@@ -332,8 +339,10 @@ export const AnnouncementModal = ({ isOpen, onClose, onSave, announcementToEdit 
             attachments,
             isPublic,
             targetClasses: selectedClassIds,
+            targetClassIds: selectedClassIds,
             targetAuthUids: isPublic ? [] : targetAuthUids,
             targetStudents: isPublic ? [] : filteredTargetStudents,
+            audienceKeys,
             notifyMode: staffNotifyMode === 'none' ? 'system' : 'staff',
             staffNotification,
         };

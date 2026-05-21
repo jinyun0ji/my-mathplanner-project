@@ -213,6 +213,46 @@ service cloud.firestore {
         && (uid() in data.targetAuthUids);
     }
 
+    function hasAllowedAudienceKey(data) {
+      return data != null
+        && (data.audienceKeys is list)
+        && (
+          ('public' in data.audienceKeys)
+          || (isSignedIn() && ('auth:' + uid()) in data.audienceKeys)
+          || (isSignedIn() && ('student:' + myProfileDocId()) in data.audienceKeys)
+          || (
+            isParent()
+            && (
+              (parentStudentUids().size() > 0 && ('student:' + parentStudentUids()[0]) in data.audienceKeys)
+              || (parentStudentUids().size() > 1 && ('student:' + parentStudentUids()[1]) in data.audienceKeys)
+              || (parentStudentUids().size() > 2 && ('student:' + parentStudentUids()[2]) in data.audienceKeys)
+              || (parentStudentUids().size() > 3 && ('student:' + parentStudentUids()[3]) in data.audienceKeys)
+              || (parentStudentUids().size() > 4 && ('student:' + parentStudentUids()[4]) in data.audienceKeys)
+              || (parentStudentUids().size() > 5 && ('student:' + parentStudentUids()[5]) in data.audienceKeys)
+              || (parentStudentUids().size() > 6 && ('student:' + parentStudentUids()[6]) in data.audienceKeys)
+              || (parentStudentUids().size() > 7 && ('student:' + parentStudentUids()[7]) in data.audienceKeys)
+              || (parentStudentUids().size() > 8 && ('student:' + parentStudentUids()[8]) in data.audienceKeys)
+              || (parentStudentUids().size() > 9 && ('student:' + parentStudentUids()[9]) in data.audienceKeys)
+            )
+          )
+          || (
+            data.targetClasses is list
+            && (
+              (data.targetClasses.size() > 0 && ('class:' + data.targetClasses[0]) in data.audienceKeys && isClassMember(data.targetClasses[0]))
+              || (data.targetClasses.size() > 1 && ('class:' + data.targetClasses[1]) in data.audienceKeys && isClassMember(data.targetClasses[1]))
+              || (data.targetClasses.size() > 2 && ('class:' + data.targetClasses[2]) in data.audienceKeys && isClassMember(data.targetClasses[2]))
+              || (data.targetClasses.size() > 3 && ('class:' + data.targetClasses[3]) in data.audienceKeys && isClassMember(data.targetClasses[3]))
+              || (data.targetClasses.size() > 4 && ('class:' + data.targetClasses[4]) in data.audienceKeys && isClassMember(data.targetClasses[4]))
+              || (data.targetClasses.size() > 5 && ('class:' + data.targetClasses[5]) in data.audienceKeys && isClassMember(data.targetClasses[5]))
+              || (data.targetClasses.size() > 6 && ('class:' + data.targetClasses[6]) in data.audienceKeys && isClassMember(data.targetClasses[6]))
+              || (data.targetClasses.size() > 7 && ('class:' + data.targetClasses[7]) in data.audienceKeys && isClassMember(data.targetClasses[7]))
+              || (data.targetClasses.size() > 8 && ('class:' + data.targetClasses[8]) in data.audienceKeys && isClassMember(data.targetClasses[8]))
+              || (data.targetClasses.size() > 9 && ('class:' + data.targetClasses[9]) in data.audienceKeys && isClassMember(data.targetClasses[9]))
+            )
+          )
+        );
+    }
+
     function hasValidInvite(inviteId, role) {
       return inviteId is string
         && exists(/databases/$(database)/documents/invites/$(inviteId))
@@ -538,15 +578,7 @@ service cloud.firestore {
 
     match /announcements/{docId} {
       allow read: if isStaffOrAdminOrTeacher()
-        || (
-          signedIn()
-          && (
-            resource.data.isPublic == true
-            || isAnnouncementTargetClass(resource.data)
-            || isAnnouncementTargetStudent(resource.data)
-            || isAnnouncementTargetAuthUid(resource.data)
-          )
-        );
+        || (signedIn() && hasAllowedAudienceKey(resource.data));
 
       allow write: if isStaffOrAdminOrTeacher();
     }
