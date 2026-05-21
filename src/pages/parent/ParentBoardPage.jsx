@@ -37,7 +37,12 @@ export default function ParentBoardPage({ notices = [], onBack }) {
     const [expandedNoticeId, setExpandedNoticeId] = useState(null);
     const sortedNotices = useMemo(
         () => [...(Array.isArray(notices) ? notices : [])]
-            .sort((a, b) => getNoticeDateMs(getNoticeDateValue(b)) - getNoticeDateMs(getNoticeDateValue(a))),
+            .sort((a, b) => {
+                const pinA = a?.isPinned ? 1 : 0;
+                const pinB = b?.isPinned ? 1 : 0;
+                if (pinA !== pinB) return pinB - pinA;
+                return getNoticeDateMs(getNoticeDateValue(b)) - getNoticeDateMs(getNoticeDateValue(a));
+            }),
         [notices],
     );
 
@@ -53,8 +58,8 @@ export default function ParentBoardPage({ notices = [], onBack }) {
                     ←
                 </button>
                 <div>
-                    <h2 className="text-xl font-extrabold text-gray-900">공지사항</h2>
-                    <p className="text-xs text-gray-500">학원에서 전달한 게시글과 공지사항을 확인하세요.</p>
+                    <h2 className="text-xl font-extrabold text-gray-900">게시판</h2>
+                    <p className="text-xs text-gray-500">학원에서 전달한 안내와 공지를 확인하세요.</p>
                 </div>
             </div>
 
@@ -107,7 +112,7 @@ export default function ParentBoardPage({ notices = [], onBack }) {
                 </div>
             ) : (
                 <div className="bg-white border border-dashed border-gray-200 rounded-2xl py-12 px-4 text-center text-sm text-gray-500">
-                    등록된 공지사항이 없습니다.
+                    등록된 게시글이 없습니다.
                 </div>
             )}
         </section>

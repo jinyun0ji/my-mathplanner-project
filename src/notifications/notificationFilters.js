@@ -28,6 +28,8 @@ const PARENT_ALLOWED_TOKENS = new Set([
     'cliniccomment',
     'announcement',
     'announcements',
+    'boardpost',
+    'boardposts',
     'post',
     'posts',
     'message',

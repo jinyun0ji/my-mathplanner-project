@@ -94,13 +94,13 @@ const ParentNoticesPage = ({ notices = [] }) => (
 
 const ParentMoreMenu = ({ notices = [], onChangeView, onOpenNotifications, onOpenMessages, onLogout }) => (
   <section className="space-y-6">
-    <header className="px-1 pt-1">
+    {/* <header className="px-1 pt-1">
       <h1 className="text-2xl font-extrabold text-gray-900">전체</h1>
       <p className="mt-1 text-sm text-gray-500">필요한 메뉴와 설정을 한 곳에서 확인하세요.</p>
-    </header>
+    </header> */}
 
     <section className="grid grid-cols-3 gap-3">
-      <ShortcutCard icon="fileText" title="공지사항" description="학원에서 전달한 게시글" onClick={() => onChangeView('notices')} />
+      <ShortcutCard icon="fileText" title="게시판" description="학원에서 전달한 게시글" onClick={() => onChangeView('board')} />
       <ShortcutCard icon="bell" title="알림센터" description="읽지 않은 알림 확인" onClick={onOpenNotifications} />
       <ShortcutCard icon="messageSquare" title="메시지" description="연구소/강사와 대화" onClick={onOpenMessages} />
     </section>
@@ -133,7 +133,7 @@ const getViewTitle = (view) => {
   if (view === 'account') return '계정 정보';
   if (view === 'terms') return '이용약관';
   if (view === 'privacy') return '개인정보처리방침';
-  if (view === 'notices') return '공지사항';
+  if (view === 'board') return '게시판';
   return '전체';
 };
 
@@ -177,7 +177,7 @@ const ParentMorePage = ({
           onLogout={onLogout}
         />
       )}
-      {moreView === 'notices' && <ParentNoticesPage notices={notices} />}
+      {moreView === 'board' && <ParentNoticesPage notices={notices} />}
       {moreView === 'account' && (
         <ParentAccountPage
           activeChild={activeChild}

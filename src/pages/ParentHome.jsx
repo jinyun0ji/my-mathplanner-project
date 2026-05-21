@@ -327,20 +327,6 @@ const ParentDashboard = ({
         if (log?.checkIn || log?.plannedTime) return '예약됨';
         return '예정';
     };
-    const isWithdrawn = (st) => {
-        const value = String(st || '').trim();
-        return ['퇴원', '중도퇴원', '전반', '전반퇴원'].includes(value);
-    };
-
-    const toMs = (value) => {
-        if (!value) return null;
-        if (typeof value?.toDate === 'function') return value.toDate().getTime();
-        if (value instanceof Date) return value.getTime();
-        if (typeof value === 'number') return value;
-        const date = new Date(value);
-        return Number.isNaN(date.getTime()) ? null : date.getTime();
-    };
-
     const todayItems = useMemo(() => {
         const visibleTodayClasses = myClasses.filter((cls) => {
             if (!cls?.id) return false;
@@ -385,43 +371,13 @@ const ParentDashboard = ({
 
     const filteredTodayItems = useMemo(() => {
         const list = Array.isArray(todayItems) ? todayItems : [];
-
-        const getClassId = (item) => String(item?.classId || item?.classDocId || item?.class?.id || '');
-        const getClassCode = (item) => String(item?.classCode || item?.classKey || item?.code || '');
-        const getAtMs = (item) => {
-            const raw = item?.date || item?.lessonDate || item?.startAt || item?.scheduledAt || item?.createdAt || null;
-            return toMs(raw) ?? toMs(new Date());
-        };
-
-        const shouldHideTodayItemByExit = (itemDayValue, exitDayValue) => itemDayValue >= exitDayValue;
-
         return list.filter((item) => {
-            const classId = getClassId(item);
-            const classCode = getClassCode(item);
+            if (item?.type !== 'class') return true;
+            const classId = String(item?.classId || item?.classDocId || item?.class?.id || '');
             if (!classId) return true;
-
-            if (isClosedForClass(todayStr, classId, closures)) return false;
-
-            const exit = childClassExitMap?.[classId]
-                || (classCode ? childClassExitMap?.[classCode] : null);
-            if (!exit) return true;
-
-            if (!isWithdrawn(exit.status)) return true;
-            if (!exit.exitAtMs) return false;
-
-            const itemDayMs = new Date(getAtMs(item)).setHours(0, 0, 0, 0);
-            const exitDayMs = new Date(exit.exitAtMs).setHours(0, 0, 0, 0);
-            return !shouldHideTodayItemByExit(itemDayMs, exitDayMs);
+            return !isClosedForClass(todayStr, classId, closures);
         });
-    }, [todayItems, childClassExitMap, closures, todayStr]);
-
-    useEffect(() => {
-        console.log('[parent][today] activeChildId=', activeChildId);
-        console.log('[parent][today] childClassExitMap=', childClassExitMap);
-        console.log('[parent][today] childClassExitMap keys=', Object.keys(childClassExitMap || {}));
-        console.log('[parent][today] todayItems=', todayItems);
-        console.log('[parent][today] filteredTodayItems=', filteredTodayItems);
-    }, [activeChildId, childClassExitMap, todayItems, filteredTodayItems]);
+    }, [todayItems, closures, todayStr]);
 
     // 3. 확인 필요 항목 (Action Items)
     const actionItems = [];
@@ -797,7 +753,7 @@ export default function ParentHome({
         if (status === '완료' || status === '참석') return 'bg-teal-50 text-teal-700 border-teal-200';
         if (status === '예약됨' || status === '입실 예정') return 'bg-sky-50 text-sky-700 border-sky-200';
         return 'bg-slate-50 text-slate-600 border-slate-200';
-    }, []);
+    }, [setActiveTab]);
 
     const formatClinicTimeLabel = useCallback((log) => {
         const plannedStart = typeof log?.plannedTime === 'string' ? log?.plannedTime : log?.plannedTime?.start;
@@ -878,27 +834,54 @@ export default function ParentHome({
     const parentAuthUid = auth.currentUser?.uid || currentParent?.authUid || currentParent?.uid || userId || '';
 
     const visibleNotices = useMemo(() => {
+        const normalizeTargetValue = (value) => String(value || '').trim();
+        const normalizeTargetSet = (values = []) => new Set(
+            (Array.isArray(values) ? values : [])
+                .map(normalizeTargetValue)
+                .filter(Boolean),
+        );
         const visibleClassIdSetForNotice = new Set((visibleClassIds || []).map(String));
         const childId = String(activeChildId || '');
         const authUid = String(parentAuthUid || '');
+        const myClassIds = new Set(
+            (Array.isArray(myClasses) ? myClasses : []).flatMap((cls) => ([
+                cls?.id,
+                cls?.classId,
+                cls?.code,
+                cls?.classCode,
+                cls?.docId,
+            ].map((v) => String(v || '').trim()).filter(Boolean))),
+        );
 
         return (Array.isArray(notices) ? [...notices] : []).filter((notice) => {
             if (notice?.isPublic === true) return true;
 
-            const targetClasses = Array.isArray(notice?.targetClasses) ? notice.targetClasses.map(String) : [];
-            const targetStudents = Array.isArray(notice?.targetStudents) ? notice.targetStudents.map(String) : [];
-            const targetAuthUids = Array.isArray(notice?.targetAuthUids) ? notice.targetAuthUids.map(String) : [];
+            const targetClasses = normalizeTargetSet(notice?.targetClasses);
+            const targetStudents = normalizeTargetSet(notice?.targetStudents);
+            const targetAuthUids = normalizeTargetSet(notice?.targetAuthUids || notice?.visibleToAuthUids);
 
-            return targetClasses.some((classId) => visibleClassIdSetForNotice.has(classId))
-                || (childId && targetStudents.includes(childId))
-                || (authUid && targetAuthUids.includes(authUid));
+            const matchesClass = [...targetClasses].some((classId) =>
+                visibleClassIdSetForNotice.has(classId) || myClassIds.has(classId),
+            );
+
+            return matchesClass
+                || (childId && targetStudents.has(childId))
+                || (authUid && targetAuthUids.has(authUid));
         });
-    }, [notices, visibleClassIds, activeChildId, parentAuthUid]);
+    }, [notices, visibleClassIds, activeChildId, parentAuthUid, myClasses]);
 
     const openBoardTab = useCallback(() => {
         setBoardBackTab(activeTab === 'more' ? 'more' : 'home');
         setActiveTab('board');
     }, [activeTab, setActiveTab]);
+    const handleMoreViewChange = useCallback((nextView) => {
+        if (nextView === 'board') {
+            setBoardBackTab('more');
+            setActiveTab('board');
+            return;
+        }
+        setMoreView(nextView);
+    }, []);
 
     const accountInfo = useMemo(() => ({
         parentName:
@@ -1271,7 +1254,7 @@ export default function ParentHome({
                                             <div className="flex items-center justify-between mb-2">
                                                 <h3 className="text-sm font-bold text-gray-800 flex items-center gap-2">
                                                     <Icon name="bell" className="w-4 h-4 text-indigo-600" />
-                                                    공지사항
+                                                    게시판
                                                 </h3>
                                                 <button onClick={openBoardTab} className="text-xs text-indigo-600 font-semibold hover:underline">전체 보기</button>
                                             </div>
@@ -1287,7 +1270,7 @@ export default function ParentHome({
                                                         <p className="text-[11px] text-gray-400 mt-1">{notice.author || '채수용 수학'} • {notice.date}</p>
                                                     </button>
                                                 )) : (
-                                                    <p className="text-xs text-gray-500 py-2">새로운 알림이 없습니다.</p>
+                                                    <p className="text-xs text-gray-500 py-2">등록된 게시글이 없습니다.</p>
                                                 )}
                                             </div>
                                         </div>
@@ -1648,7 +1631,7 @@ export default function ParentHome({
                         {activeTab === 'more' && (
                             <ParentMorePage
                                 moreView={moreView}
-                                onChangeView={setMoreView}
+                                onChangeView={handleMoreViewChange}
                                 notices={visibleNotices}
                                 activeChild={activeChild}
                                 currentParent={currentParent}
