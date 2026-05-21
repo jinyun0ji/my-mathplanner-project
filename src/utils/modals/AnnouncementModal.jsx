@@ -316,7 +316,7 @@ export const AnnouncementModal = ({ isOpen, onClose, onSave, announcementToEdit 
             return selectedClassIds.some((classId) => classKeys.includes(String(classId)));
         });
 
-        const targetAuthUids = selectedStudents
+        const studentAuthUids = selectedStudents
             .map((s) => s.authUid || s.uid || s.studentAuthUid)
             .filter(Boolean)
             .map(String);
@@ -339,7 +339,7 @@ export const AnnouncementModal = ({ isOpen, onClose, onSave, announcementToEdit 
         const isPublic = selectedClassIds.length === 0;
         const audienceAuthUids = isPublic
             ? []
-            : Array.from(new Set([...targetAuthUids, ...parentAuthUids])).filter((v) => Boolean(String(v).trim()));
+            : Array.from(new Set([...studentAuthUids, ...parentAuthUids])).filter((v) => Boolean(String(v).trim()));
 
         const announcementData = {
             id: announcementToEdit ? announcementToEdit.id : null,
@@ -353,7 +353,7 @@ export const AnnouncementModal = ({ isOpen, onClose, onSave, announcementToEdit 
             isPublic,
             targetClasses: selectedClassIds,
             targetClassIds: selectedClassIds,
-            targetAuthUids: isPublic ? [] : targetAuthUids,
+            targetAuthUids: isPublic ? [] : studentAuthUids,
             targetStudents: isPublic ? [] : filteredTargetStudents,
             audienceAuthUids,
             notifyMode: staffNotifyMode === 'none' ? 'system' : 'staff',

@@ -4,3 +4,7 @@ node_modules
 firebase-debug.log
 firebase-debug.*.log
 functions/scripts/archive/**
+functions/scripts/archive
+google-cloud-sdk
+google-cloud-sdk/**
+*.log

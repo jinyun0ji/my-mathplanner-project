@@ -1725,55 +1725,74 @@ export const loadViewerDataOnce = async ({
         console.log('[viewer] current auth.uid =', activeViewerAuthUid);
 
         /* =========================
-           announcements  (✅ public + audienceAuthUids 통합)
+           announcements  (public + audienceAuthUids)
         ========================= */
-        console.log('[viewer] fetch announcements start');
+        const loadAnnouncementDocs = async () => {
+            const merged = [];
+            const seen = new Set();
+            let publicCount = 0;
+            let targetedCount = 0;
 
-        const [publicSnap, targetedSnap] = await Promise.all([
-            getDocs(query(
+            const pushSnap = (snap, type = 'public') => {
+                (snap?.docs || []).forEach((docSnap) => {
+                    if (seen.has(docSnap.id)) return;
+                    seen.add(docSnap.id);
+                    merged.push({ id: docSnap.id, ...docSnap.data() });
+                });
+                if (type === 'public') publicCount = (snap?.docs || []).length;
+                if (type === 'targeted') targetedCount = (snap?.docs || []).length;
+            };
+
+        const publicSnap = await getDocs(query(
                 collection(db, 'announcements'),
                 where('isPublic', '==', true),
                 limit(50),
-            )),
-            activeViewerAuthUid
-                ? getDocs(query(
+            ));
+            pushSnap(publicSnap, 'public');
+
+            if (activeViewerAuthUid) {
+                const targetedSnap = await getDocs(query(
                     collection(db, 'announcements'),
                     where('audienceAuthUids', 'array-contains', String(activeViewerAuthUid)),
                     limit(50),
-                ))
-                : Promise.resolve({ docs: [] }),
-        ]);
+                ));
+                pushSnap(targetedSnap, 'targeted');
+            }
 
-        if (!isCancelled()) {
-            const mergedMap = new Map();
-            [...publicSnap.docs, ...targetedSnap.docs].forEach((docSnap) => {
-                mergedMap.set(docSnap.id, { id: docSnap.id, ...docSnap.data() });
+            const sorted = merged.sort((a, b) => {
+                const pinGap = Number(Boolean(b?.isPinned)) - Number(Boolean(a?.isPinned));
+                if (pinGap !== 0) return pinGap;
+                const aTime = a?.createdAt?.toDate?.()?.getTime?.() || new Date(a?.createdAt || a?.date || 0).getTime() || 0;
+                const bTime = b?.createdAt?.toDate?.()?.getTime?.() || new Date(b?.createdAt || b?.date || 0).getTime() || 0;
+                return bTime - aTime;
             });
 
-            const merged = Array.from(mergedMap.values())
-                .sort((a, b) => {
-                    const pinGap = Number(Boolean(b?.isPinned)) - Number(Boolean(a?.isPinned));
-                    if (pinGap !== 0) return pinGap;
-                    const da = a.createdAt?.toDate?.()?.getTime?.() || new Date(a.createdAt || a.date || 0).getTime() || 0;
-                    const dbb = b.createdAt?.toDate?.()?.getTime?.() || new Date(b.createdAt || b.date || 0).getTime() || 0;
-                    return dbb - da;
+            if (isDevelopment()) {
+                console.log('[viewer] announcements loaded', {
+                    currentAuthUid: activeViewerAuthUid,
+                    publicCount,
+                    targetedCount,
+                    totalCount: sorted.length,
+                    sample: sorted.slice(0, 5).map((n) => ({
+                        id: n.id,
+                        title: n.title,
+                        isPublic: n.isPublic,
+                        targetClassIds: n.targetClassIds,
+                        audienceAuthUidsCount: Array.isArray(n.audienceAuthUids) ? n.audienceAuthUids.length : 0,
+                    })),
                 });
+            }
 
-            setAnnouncements?.(merged);
-            const publicCount = publicSnap.docs.length;
-            const targetedCount = targetedSnap.docs.length;
-            console.log('[viewer] public announcements count =', publicCount);
-            console.log('[viewer] targeted announcements count =', targetedCount);
-            console.log('[viewer] loaded announcement sample =', merged.slice(0, 5).map((n) => ({
-                id: n.id,
-                title: n.title,
-                isPublic: n.isPublic,
-                targetClassIds: n.targetClassIds || n.targetClasses || [],
-                audienceAuthUids: n.audienceAuthUids || [],
-            })));
+            return sorted;
+        };
+
+        try {
+            const loadedAnnouncements = await loadAnnouncementDocs();
+            if (!isCancelled()) setAnnouncements?.(loadedAnnouncements);
+        } catch (announcementError) {
+            console.warn('[viewer] announcements load failed', announcementError);
+            if (!isCancelled()) setAnnouncements?.([]);
         }
-
-        console.log('[viewer] fetch announcements done');
 
         /* =========================
            homeworkAssignments: 병렬 로딩 결과 사용
