@@ -325,10 +325,14 @@ service cloud.firestore {
 
 
     function announcementAudienceAuthUids() {
-      return resource.data != null
+      return (
+        resource != null
+        && resource.data != null
+        && ('audienceAuthUids' in resource.data)
         && resource.data.audienceAuthUids is list
-          ? resource.data.audienceAuthUids
-          : [];
+      )
+        ? resource.data.audienceAuthUids
+        : [];
     }
 
     function canAccessChatRoomById(roomId) {
