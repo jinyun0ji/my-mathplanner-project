@@ -1,5 +1,7 @@
 // ⚠️ 이 파일은 staff/admin/teacher 전용 Firestore 단발성 로드 로직이다
 // ⚠️ student / parent 계정에서는 절대 실행되면 안 된다
+import { httpsCallable } from 'firebase/functions';
+import { functions } from '../firebase/client';
 import {
     collection,
     documentId,
@@ -1725,72 +1727,17 @@ export const loadViewerDataOnce = async ({
         console.log('[viewer] current auth.uid =', activeViewerAuthUid);
 
         /* =========================
-           announcements  (public + audienceAuthUids)
+           announcements (callable)
         ========================= */
-        const loadAnnouncementDocs = async () => {
-            const merged = [];
-            const seen = new Set();
-            let publicCount = 0;
-            let targetedCount = 0;
-
-            const pushSnap = (snap, type = 'public') => {
-                (snap?.docs || []).forEach((docSnap) => {
-                    if (seen.has(docSnap.id)) return;
-                    seen.add(docSnap.id);
-                    merged.push({ id: docSnap.id, ...docSnap.data() });
-                });
-                if (type === 'public') publicCount = (snap?.docs || []).length;
-                if (type === 'targeted') targetedCount = (snap?.docs || []).length;
-            };
-
-        const publicSnap = await getDocs(query(
-                collection(db, 'announcements'),
-                where('isPublic', '==', true),
-                limit(50),
-            ));
-            pushSnap(publicSnap, 'public');
-
-            if (activeViewerAuthUid) {
-                const targetedSnap = await getDocs(query(
-                    collection(db, 'announcements'),
-                    where('audienceAuthUids', 'array-contains', String(activeViewerAuthUid)),
-                    limit(50),
-                ));
-                pushSnap(targetedSnap, 'targeted');
-            }
-
-            const sorted = merged.sort((a, b) => {
-                const pinGap = Number(Boolean(b?.isPinned)) - Number(Boolean(a?.isPinned));
-                if (pinGap !== 0) return pinGap;
-                const aTime = a?.createdAt?.toDate?.()?.getTime?.() || new Date(a?.createdAt || a?.date || 0).getTime() || 0;
-                const bTime = b?.createdAt?.toDate?.()?.getTime?.() || new Date(b?.createdAt || b?.date || 0).getTime() || 0;
-                return bTime - aTime;
-            });
-
-            if (isDevelopment()) {
-                console.log('[viewer] announcements loaded', {
-                    currentAuthUid: activeViewerAuthUid,
-                    publicCount,
-                    targetedCount,
-                    totalCount: sorted.length,
-                    sample: sorted.slice(0, 5).map((n) => ({
-                        id: n.id,
-                        title: n.title,
-                        isPublic: n.isPublic,
-                        targetClassIds: n.targetClassIds,
-                        audienceAuthUidsCount: Array.isArray(n.audienceAuthUids) ? n.audienceAuthUids.length : 0,
-                    })),
-                });
-            }
-
-            return sorted;
-        };
-
         try {
-            const loadedAnnouncements = await loadAnnouncementDocs();
+            const callable = httpsCallable(functions, 'getViewerAnnouncements');
+            const result = await callable();
+            const loadedAnnouncements = Array.isArray(result?.data?.announcements)
+                ? result.data.announcements
+                : [];
             if (!isCancelled()) setAnnouncements?.(loadedAnnouncements);
         } catch (announcementError) {
-            console.warn('[viewer] announcements load failed', announcementError);
+            console.warn('[viewer] announcements callable failed', announcementError);
             if (!isCancelled()) setAnnouncements?.([]);
         }
 

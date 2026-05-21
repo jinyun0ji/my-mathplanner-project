@@ -22,6 +22,7 @@ const { resolveInviteCode } = require('./resolveInviteCode');
 const { acceptInviteAndCreateProfile } = require('./acceptInviteAndCreateProfile');
 const { createClinicReservation } = require('./clinic/createClinicReservation');
 const { markAllNotificationsRead } = require('./notify/markAllNotificationsRead');
+const { getViewerAnnouncements } = require('./viewer/getViewerAnnouncements');
 const auditLogs = require('./auditLogs');
 
 exports.api = api;
@@ -54,3 +55,4 @@ exports.auditHomeworkResults = auditLogs.auditHomeworkResults;
 exports.auditGrades = auditLogs.auditGrades;
 exports.auditPayments = auditLogs.auditPayments;
 exports.markAllNotificationsRead = markAllNotificationsRead;
+exports.getViewerAnnouncements = getViewerAnnouncements;
