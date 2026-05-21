@@ -1610,6 +1610,11 @@ export default function AppRoutes({ user, role, studentIds }) {
               });
               setAnnouncements(prev => prev.map(a => a.id === data.id ? { ...a, ...payload } : a));
           } else {
+            console.log('[announcement:create:start]', {
+                  title: payload.title,
+                  targetClassIds: payload.targetClassIds || payload.targetClasses || [],
+                  isPublic: payload.isPublic,
+              });
               const docRef = await addDoc(collection(db, 'announcements'), {
                   ...payload,
                   createdAt: serverTimestamp(),
@@ -1617,6 +1622,7 @@ export default function AppRoutes({ user, role, studentIds }) {
                   updatedAt: serverTimestamp(),
                   updatedBy: userId,
               });
+              console.log('[announcement:create:done]', { announcementId: docRef.id });
               setAnnouncements(prev => [{ id: docRef.id, ...payload }, ...prev]);
           }
       } catch (error) {

@@ -43,6 +43,7 @@ export const AnnouncementModal = ({ isOpen, onClose, onSave, announcementToEdit 
     const imageFileInputRef = useRef(null);
     const selectionRangeRef = useRef(null);
     const [isImageUploading, setIsImageUploading] = useState(false);
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     const editorRef = useRef(null);
 
@@ -264,6 +265,7 @@ export const AnnouncementModal = ({ isOpen, onClose, onSave, announcementToEdit 
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+        if (isSubmitting) return;
         if (!title || !editorRef.current.textContent.trim() && !editorRef.current.querySelector('img')) return;
 
         if (staffNotifyMode !== 'none') {
@@ -360,11 +362,14 @@ export const AnnouncementModal = ({ isOpen, onClose, onSave, announcementToEdit 
             staffNotification,
         };
         console.log('[announcement] save payload', announcementData);
+        setIsSubmitting(true);
         try {
             await onSave(announcementData, !!announcementToEdit);
             onClose();
         } catch (error) {
             alert('공지사항 저장에 실패했습니다. 권한 또는 네트워크를 확인하세요.');
+        } finally {
+            setIsSubmitting(false);
         }
     };
 
@@ -595,8 +600,8 @@ export const AnnouncementModal = ({ isOpen, onClose, onSave, announcementToEdit 
                     <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium rounded-lg text-gray-700 bg-gray-200 hover:bg-gray-300 transition duration-150">
                         취소
                     </button>
-                    <button type="submit" className="px-4 py-2 text-sm font-medium rounded-lg text-white bg-blue-600 hover:bg-blue-700 transition duration-150 shadow-md">
-                        {announcementToEdit ? '수정 사항 저장' : (scheduleTime ? '예약 등록' : '즉시 게시')}
+                    <button type="submit" disabled={isSubmitting} className={`px-4 py-2 text-sm font-medium rounded-lg text-white transition duration-150 shadow-md ${isSubmitting ? 'bg-blue-300 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'}`}>
+                        {isSubmitting ? '게시 중...' : (announcementToEdit ? '수정 사항 저장' : (scheduleTime ? '예약 등록' : '즉시 게시'))}
                     </button>
                 </div>
             </form>
