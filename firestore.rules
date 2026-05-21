@@ -506,14 +506,7 @@ service cloud.firestore {
     }
 
     match /announcements/{docId} {
-      allow read: if isStaffOrAdminOrTeacher()
-        || (
-          signedIn()
-          && (
-            resource.data.isPublic == true
-            || (uid() in announcementAudienceAuthUids())
-          )
-        );
+      allow read: if signedIn();
 
       allow write: if isStaffOrAdminOrTeacher();
     }

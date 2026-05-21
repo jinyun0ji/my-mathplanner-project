@@ -1729,28 +1729,37 @@ export const loadViewerDataOnce = async ({
         ========================= */
         try {
             const currentAuthUid = String(userId || '').trim();
-            const publicSnap = await getDocs(
-                query(collection(db, 'announcements'), where('isPublic', '==', true), limit(150)),
-            );
             const mergedAnnouncements = new Map();
-            publicSnap.docs.forEach((d) => mergedAnnouncements.set(d.id, ({ id: d.id, ...d.data() })));
-
             let targetedCount = 0;
-            if (currentAuthUid) {
-                const targetedSnap = await getDocs(
-                    query(
-                        collection(db, 'announcements'),
-                        where('audienceAuthUids', 'array-contains', currentAuthUid),
-                        limit(150),
-                    ),
+
+            try {
+                const publicSnap = await getDocs(
+                    query(collection(db, 'announcements'), where('isPublic', '==', true), limit(150)),
                 );
-                targetedCount = targetedSnap.size;
-                targetedSnap.docs.forEach((d) => mergedAnnouncements.set(d.id, ({ id: d.id, ...d.data() })));
+                publicSnap.docs.forEach((d) => mergedAnnouncements.set(d.id, ({ id: d.id, ...d.data() })));
+            } catch (publicAnnouncementError) {
+                console.warn('[viewer] announcements public query failed', publicAnnouncementError);
+            }
+
+            if (currentAuthUid) {
+                try {
+                    const targetedSnap = await getDocs(
+                        query(
+                            collection(db, 'announcements'),
+                            where('audienceAuthUids', 'array-contains', currentAuthUid),
+                            limit(150),
+                        ),
+                    );
+                    targetedCount = targetedSnap.size;
+                    targetedSnap.docs.forEach((d) => mergedAnnouncements.set(d.id, ({ id: d.id, ...d.data() })));
+                } catch (targetedAnnouncementError) {
+                    console.warn('[viewer] announcements targeted query failed', targetedAnnouncementError);
+                }
             }
 
             const loadedAnnouncements = Array.from(mergedAnnouncements.values());
             if (!isCancelled()) setAnnouncements?.(loadedAnnouncements);
-        console.log('[viewer] announcements loaded', {
+            console.log('[viewer] announcements loaded', {
                 currentAuthUid,
                 targetedCount,
                 totalCount: loadedAnnouncements.length,
