@@ -323,6 +323,14 @@ service cloud.firestore {
       return canAccessChatRoomData(resource.data);
     }
 
+
+    function announcementAudienceAuthUids() {
+      return resource.data != null
+        && resource.data.audienceAuthUids is list
+          ? resource.data.audienceAuthUids
+          : [];
+    }
+
     function canAccessChatRoomById(roomId) {
       return isSignedIn()
         && exists(/databases/$(database)/documents/chatRooms/$(roomId))
@@ -499,10 +507,7 @@ service cloud.firestore {
           signedIn()
           && (
             resource.data.isPublic == true
-            || (
-              resource.data.audienceAuthUids is list
-              && uid() in resource.data.audienceAuthUids
-            )
+            || (uid() in announcementAudienceAuthUids())
           )
         );
 
