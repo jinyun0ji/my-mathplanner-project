@@ -1729,200 +1729,32 @@ export const loadViewerDataOnce = async ({
         console.log('[viewer] activeViewerAuthUid =', activeViewerAuthUid);
 
         /* =========================
-           announcements  (✅ public + 내 대상 통합)
+           announcements  (✅ public + audienceAuthUids 통합)
         ========================= */
         console.log('[viewer] fetch announcements start');
 
-        const announcementDocs = [];
-        const seen = new Set();
-
-        const pushDocs = (docs) => {
-            docs.forEach((d) => {
-                if (seen.has(d.id)) return;
-                seen.add(d.id);
-                announcementDocs.push(d);
-            });
-        };
-
-        // viewer 식별자 준비
-        // - scopedStudentUids: 학생 문서 id 배열(학부모면 여러명, 학생이면 1명) (기존 변수 사용)
-        // - activeViewerAuthUid: 학생 authUid (학부모면 선택학생 authUid, 학생이면 auth.uid) (기존 변수 사용)
-        // - lessonClassIds: viewer가 속한 classId들 (기존 변수 사용)
-        const targetClassKeys = Array.from(
-            new Set((Array.isArray(lessonClassIds) ? lessonClassIds : []).filter(Boolean).map(String))
-        );
-
-        console.log('[viewer] announcements viewer keys', {
-            activeViewerAuthUid: activeViewerAuthUid || '',
-            activeStudentId: activeStudentDocId,
-            activeStudentClassIds: targetClassKeys,
-        });
-
-        // helper: 인덱스 없으면 orderBy 없이 재시도
-        async function safeGetDocsWithOptionalOrderBy(buildQueryWithOrderBy, buildQueryNoOrderBy, tag, queryShape) {
-            console.log(`[viewer] announcements ${tag} query (orderBy)`, queryShape?.withOrderBy);
-            try {
-                const snap = await getDocs(buildQueryWithOrderBy());
-                console.log(`[viewer] announcements ${tag} ok (orderBy) size=`, snap.size);
-                return snap.docs;
-            } catch (e) {
-                // 인덱스 필요 / 권한 문제 등 -> orderBy 제거 재시도 (권한 문제면 이것도 실패할 수 있음)
-                console.warn(`[viewer] announcements ${tag} retry without orderBy`, {
-                    code: e?.code,
-                    message: e?.message,
-                    query: queryShape?.withOrderBy,
-                    error: e,
-                });
-                try {
-                    console.log(`[viewer] announcements ${tag} query (no orderBy)`, queryShape?.withoutOrderBy);
-                    const snap2 = await getDocs(buildQueryNoOrderBy());
-                    console.log(`[viewer] announcements ${tag} ok (no orderBy) size=`, snap2.size);
-                    return snap2.docs;
-                } catch (e2) {
-                    console.warn(`[viewer] announcements ${tag} FAIL`, {
-                        code: e2?.code,
-                        message: e2?.message,
-                        query: queryShape?.withoutOrderBy,
-                        error: e2,
-                    });
-                    return [];
-                }
-            }
-        }
-
-        // 1) 전체 공개 공지
-        const publicDocs = await safeGetDocsWithOptionalOrderBy(
-            () =>
-                query(
+        const [publicSnap, targetedSnap] = await Promise.all([
+            getDocs(query(
+                collection(db, 'announcements'),
+                where('isPublic', '==', true),
+                limit(50),
+            )),
+            activeViewerAuthUid
+                ? getDocs(query(
                     collection(db, 'announcements'),
-                    where('audienceKeys', 'array-contains', 'public'),
-                    orderBy('date', 'desc'),
+                    where('audienceAuthUids', 'array-contains', String(activeViewerAuthUid)),
                     limit(50),
-                ),
-            () =>
-                query(
-                    collection(db, 'announcements'),
-                    where('audienceKeys', 'array-contains', 'public'),
-                    limit(50),
-                ),
-            'audienceKeys:public',
-            {
-                withOrderBy: { collection: 'announcements', where: ['audienceKeys', 'array-contains', 'public'], orderBy: ['date', 'desc'], limit: 50 },
-                withoutOrderBy: { collection: 'announcements', where: ['audienceKeys', 'array-contains', 'public'], limit: 50 },
-            }
-        );
-        pushDocs(publicDocs);
+                ))
+                : Promise.resolve({ docs: [] }),
+        ]);
 
-        // 2) auth uid 대상 공지
-        if (activeViewerAuthUid) {
-            const authDocs = await safeGetDocsWithOptionalOrderBy(
-                () =>
-                    query(
-                        collection(db, 'announcements'),
-                        where('audienceKeys', 'array-contains', `auth:${String(activeViewerAuthUid)}`),
-                        orderBy('date', 'desc'),
-                        limit(50),
-                    ),
-                () =>
-                    query(
-                        collection(db, 'announcements'),
-                        where('audienceKeys', 'array-contains', `auth:${String(activeViewerAuthUid)}`),
-                        limit(50),
-                    ),
-                'audienceKeys:auth',
-                {
-                    withOrderBy: { collection: 'announcements', where: ['audienceKeys', 'array-contains', `auth:${String(activeViewerAuthUid)}`], orderBy: ['date', 'desc'], limit: 50 },
-                    withoutOrderBy: { collection: 'announcements', where: ['audienceKeys', 'array-contains', `auth:${String(activeViewerAuthUid)}`], limit: 50 },
-                }
-            );
-            pushDocs(authDocs);
-        }
-
-        // 3) 반 공지: audienceKeys class:<classId>
-        if (targetClassKeys.length > 0) {
-            for (const classId of targetClassKeys) {
-                const classDocs = await safeGetDocsWithOptionalOrderBy(
-                    () =>
-                        query(
-                            collection(db, 'announcements'),
-                            where('audienceKeys', 'array-contains', `class:${String(classId)}`),
-                            orderBy('date', 'desc'),
-                            limit(50),
-                        ),
-                    () =>
-                        query(
-                            collection(db, 'announcements'),
-                            where('audienceKeys', 'array-contains', `class:${String(classId)}`),
-                            limit(50),
-                        ),
-                    'audienceKeys:class',
-                    {
-                        withOrderBy: { collection: 'announcements', where: ['audienceKeys', 'array-contains', `class:${String(classId)}`], orderBy: ['date', 'desc'], limit: 50 },
-                        withoutOrderBy: { collection: 'announcements', where: ['audienceKeys', 'array-contains', `class:${String(classId)}`], limit: 50 },
-                    }
-                );
-                pushDocs(classDocs);
-            }
-        }
-
-        // 4) 학생 대상 공지
-        if (activeStudentDocId) {
-            const studentDocs = await safeGetDocsWithOptionalOrderBy(
-                () =>
-                    query(
-                        collection(db, 'announcements'),
-                        where('audienceKeys', 'array-contains', `student:${String(activeStudentDocId)}`),
-                        orderBy('date', 'desc'),
-                        limit(50),
-                    ),
-                () =>
-                    query(
-                        collection(db, 'announcements'),
-                        where('audienceKeys', 'array-contains', `student:${String(activeStudentDocId)}`),
-                        limit(50),
-                    ),
-                'audienceKeys:student',
-                {
-                    withOrderBy: { collection: 'announcements', where: ['audienceKeys', 'array-contains', `student:${String(activeStudentDocId)}`], orderBy: ['date', 'desc'], limit: 50 },
-                    withoutOrderBy: { collection: 'announcements', where: ['audienceKeys', 'array-contains', `student:${String(activeStudentDocId)}`], limit: 50 },
-                }
-            );
-            pushDocs(studentDocs);
-        }
-
-        // 최종 merge: data로 변환 + 정렬
         if (!isCancelled()) {
-            const map = new Map();
-            const addDocs = (docs) => {
-                docs.forEach((docSnap) => {
-                    map.set(docSnap.id, { id: docSnap.id, ...docSnap.data() });
-                });
-            };
-            addDocs(announcementDocs);
+            const mergedMap = new Map();
+            [...publicSnap.docs, ...targetedSnap.docs].forEach((docSnap) => {
+                mergedMap.set(docSnap.id, { id: docSnap.id, ...docSnap.data() });
+            });
 
-            const canReadAnnouncementClientSide = (notice) => {
-                if (notice?.isPublic === true) return true;
-
-                const targetClasses = Array.isArray(notice?.targetClasses)
-                    ? notice.targetClasses.map(String)
-                    : [];
-
-                const targetAuthUids = Array.isArray(notice?.targetAuthUids)
-                    ? notice.targetAuthUids.map(String)
-                    : [];
-
-                const viewerClassIds = Array.isArray(targetClassKeys)
-                    ? targetClassKeys.map(String)
-                    : [];
-
-                return (
-                    targetAuthUids.includes(String(activeViewerAuthUid || ''))
-                    || viewerClassIds.some((classId) => targetClasses.includes(classId))
-                );
-            };
-
-            const merged = Array.from(map.values())
-                .filter(canReadAnnouncementClientSide)
+            const merged = Array.from(mergedMap.values())
                 .sort((a, b) => {
                     const pinGap = Number(Boolean(b?.isPinned)) - Number(Boolean(a?.isPinned));
                     if (pinGap !== 0) return pinGap;
@@ -1938,9 +1770,7 @@ export const loadViewerDataOnce = async ({
                     id: n.id,
                     title: n.title,
                     isPublic: n.isPublic,
-                    targetClasses: n.targetClasses,
-                    targetStudents: n.targetStudents,
-                    targetAuthUids: n.targetAuthUids,
+                    audienceAuthUids: n.audienceAuthUids,
                 })),
             });
         }

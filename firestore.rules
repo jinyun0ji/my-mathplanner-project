@@ -578,7 +578,16 @@ service cloud.firestore {
 
     match /announcements/{docId} {
       allow read: if isStaffOrAdminOrTeacher()
-        || (signedIn() && hasAllowedAudienceKey(resource.data));
+        || (
+          signedIn()
+          && (
+            resource.data.isPublic == true
+            || (
+              resource.data.audienceAuthUids is list
+              && uid() in resource.data.audienceAuthUids
+            )
+          )
+        );
 
       allow write: if isStaffOrAdminOrTeacher();
     }

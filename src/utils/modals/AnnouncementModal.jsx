@@ -319,7 +319,19 @@ export const AnnouncementModal = ({ isOpen, onClose, onSave, announcementToEdit 
             .filter(Boolean)
             .map(String);
 
+        const parentAuthUids = (allStudents || [])
+            .filter((user) => {
+                const linkedStudentIds = Array.isArray(user?.studentIds) ? user.studentIds.map(String) : [];
+                return linkedStudentIds.some((sid) => filteredTargetStudents.includes(sid));
+            })
+            .map((p) => p.authUid || p.uid)
+            .filter(Boolean)
+            .map(String);
+
         const isPublic = selectedClassIds.length === 0;
+        const audienceAuthUids = isPublic
+            ? []
+            : Array.from(new Set([...targetAuthUids, ...parentAuthUids])).filter((v) => Boolean(String(v).trim()));
         const audienceKeys = isPublic
             ? ['public']
             : [
@@ -342,6 +354,7 @@ export const AnnouncementModal = ({ isOpen, onClose, onSave, announcementToEdit 
             targetClassIds: selectedClassIds,
             targetAuthUids: isPublic ? [] : targetAuthUids,
             targetStudents: isPublic ? [] : filteredTargetStudents,
+            audienceAuthUids,
             audienceKeys,
             notifyMode: staffNotifyMode === 'none' ? 'system' : 'staff',
             staffNotification,
