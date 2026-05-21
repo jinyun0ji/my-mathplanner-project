@@ -59,7 +59,7 @@ export default function ParentBoardPage({ notices = [], onBack }) {
                 </button>
                 <div>
                     <h2 className="text-xl font-extrabold text-gray-900">게시판</h2>
-                    <p className="text-xs text-gray-500">학원에서 전달한 안내와 공지를 확인하세요.</p>
+                    <p className="text-xs text-gray-500">학원에서 전달한 안내와 게시글을 확인하세요.</p>
                 </div>
             </div>
 

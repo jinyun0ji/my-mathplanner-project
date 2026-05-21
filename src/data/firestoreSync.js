@@ -1808,34 +1808,59 @@ export const loadViewerDataOnce = async ({
         );
         pushDocs(publicDocs);
 
-        // 2) 반 공지: targetClasses array-contains-any (필드명이 targetClasses인 경우)
+        // 2) auth uid 대상 공지
+        if (activeViewerAuthUid) {
+            const authDocs = await safeGetDocsWithOptionalOrderBy(
+                () =>
+                    query(
+                        collection(db, 'announcements'),
+                        where('targetAuthUids', 'array-contains', String(activeViewerAuthUid)),
+                        orderBy('date', 'desc'),
+                        limit(50),
+                    ),
+                () =>
+                    query(
+                        collection(db, 'announcements'),
+                        where('targetAuthUids', 'array-contains', String(activeViewerAuthUid)),
+                        limit(50),
+                    ),
+                'targetAuthUids',
+                {
+                    withOrderBy: { collection: 'announcements', where: ['targetAuthUids', 'array-contains', String(activeViewerAuthUid)], orderBy: ['date', 'desc'], limit: 50 },
+                    withoutOrderBy: { collection: 'announcements', where: ['targetAuthUids', 'array-contains', String(activeViewerAuthUid)], limit: 50 },
+                }
+            );
+            pushDocs(authDocs);
+        }
+
+        // 3) 반 공지: targetClasses array-contains (classId별 안전 조회)
         if (targetClassKeys.length > 0) {
-            for (const classChunk of chunkArray(targetClassKeys, 10)) {
+            for (const classId of targetClassKeys) {
                 const classDocs = await safeGetDocsWithOptionalOrderBy(
                     () =>
                         query(
                             collection(db, 'announcements'),
-                            where('targetClasses', 'array-contains-any', classChunk),
+                            where('targetClasses', 'array-contains', String(classId)),
                             orderBy('date', 'desc'),
                             limit(50),
                         ),
                     () =>
                         query(
                             collection(db, 'announcements'),
-                            where('targetClasses', 'array-contains-any', classChunk),
+                            where('targetClasses', 'array-contains', String(classId)),
                             limit(50),
                         ),
                     'targetClasses',
                     {
-                        withOrderBy: { collection: 'announcements', where: ['targetClasses', 'array-contains-any', classChunk], orderBy: ['date', 'desc'], limit: 50 },
-                        withoutOrderBy: { collection: 'announcements', where: ['targetClasses', 'array-contains-any', classChunk], limit: 50 },
+                        withOrderBy: { collection: 'announcements', where: ['targetClasses', 'array-contains', String(classId)], orderBy: ['date', 'desc'], limit: 50 },
+                        withoutOrderBy: { collection: 'announcements', where: ['targetClasses', 'array-contains', String(classId)], limit: 50 },
                     }
                 );
                 pushDocs(classDocs);
             }
         }
 
-        // 3) 학생 타겟 공지: targetStudents array-contains-any (레거시 호환)
+        // 4) 학생 타겟 공지: targetStudents array-contains-any (레거시 호환)
         // targetStudents에 학생 문서 id 또는 authUid가 들어오는 케이스 둘 다 커버
         if (targetStudentKeys.length > 0) {
             const studentDocs = await safeGetDocsWithOptionalOrderBy(
@@ -1875,21 +1900,16 @@ export const loadViewerDataOnce = async ({
                     const noticeAuthTargets = Array.isArray(notice?.targetAuthUids)
                         ? notice.targetAuthUids.map(String)
                         : [];
-                    const hasClassTargets = noticeClassTargets.length > 0;
-                    const hasStudentTargets = noticeStudentTargets.length > 0;
-                    const hasAuthTargets = noticeAuthTargets.length > 0;
-                    const matchesClassTarget = hasClassTargets
-                        && noticeClassTargets.some((classId) => targetClassKeys.includes(classId));
-                    const matchesStudentTarget = hasStudentTargets
-                        && noticeStudentTargets.some((key) => targetStudentKeys.includes(String(key)));
-                    const matchesAuthTarget = hasAuthTargets
-                        && activeViewerAuthUid
+                    const matchesClassTarget = noticeClassTargets
+                        .some((classId) => targetClassKeys.includes(classId));
+                    const matchesStudentTarget = noticeStudentTargets
+                        .some((key) => targetStudentKeys.includes(String(key)));
+                    const matchesAuthTarget = activeViewerAuthUid
                         && noticeAuthTargets.includes(String(activeViewerAuthUid));
                     const allow = notice?.isPublic === true
                         || matchesClassTarget
                         || matchesStudentTarget
-                        || matchesAuthTarget
-                        || (!hasClassTargets && !hasStudentTargets && !hasAuthTargets);
+                        || matchesAuthTarget;
                     console.log('[viewer] announcement match', {
                         id: notice?.id,
                         isPublic: notice?.isPublic,
@@ -1903,13 +1923,11 @@ export const loadViewerDataOnce = async ({
                     return allow;
                 })
                 .sort((a, b) => {
-                    // date가 "YYYY-MM-DD" string인 경우 우선, 없으면 createdAt/updatedAt fallback
-                    const da = a.date || '';
-                    const dbb = b.date || '';
-                    if (da && dbb) return dbb.localeCompare(da);
-                    const ta = a.createdAt?.toDate?.()?.getTime?.() || new Date(a.createdAt || 0).getTime() || 0;
-                    const tb = b.createdAt?.toDate?.()?.getTime?.() || new Date(b.createdAt || 0).getTime() || 0;
-                    return tb - ta;
+                    const pinGap = Number(Boolean(b?.isPinned)) - Number(Boolean(a?.isPinned));
+                    if (pinGap !== 0) return pinGap;
+                    const da = a.createdAt?.toDate?.()?.getTime?.() || new Date(a.createdAt || a.date || 0).getTime() || 0;
+                    const dbb = b.createdAt?.toDate?.()?.getTime?.() || new Date(b.createdAt || b.date || 0).getTime() || 0;
+                    return dbb - da;
                 });
 
             setAnnouncements?.(merged);

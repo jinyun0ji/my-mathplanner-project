@@ -293,16 +293,31 @@ export const AnnouncementModal = ({ isOpen, onClose, onSave, announcementToEdit 
         const finalContent = editorRef.current.innerHTML;
 
         const selectedClassIds = (targetClasses || []).map((id) => String(id));
-        const selectedStudents = (allStudents || [])
-            .filter((s) => selectedClassIds.includes(String(s.classId)));
+        const getStudentClassKeys = (student) => {
+            const keys = [
+                student?.classId,
+                student?.classDocId,
+                student?.classCode,
+                ...(Array.isArray(student?.classIds) ? student.classIds : []),
+                ...(Array.isArray(student?.classes) ? student.classes : []),
+            ];
+            return keys.filter(Boolean).map((value) => String(value));
+        };
+
+        const selectedStudents = (allStudents || []).filter((student) => {
+            const classKeys = getStudentClassKeys(student);
+            return selectedClassIds.some((classId) => classKeys.includes(String(classId)));
+        });
 
         const targetAuthUids = selectedStudents
-            .map((s) => s.authUid)
-            .filter(Boolean);
+            .map((s) => s.authUid || s.uid || s.studentAuthUid)
+            .filter(Boolean)
+            .map(String);
 
         const filteredTargetStudents = selectedStudents
-            .map((s) => String(s.id || s.authUid))
-            .filter(Boolean);
+            .map((s) => s.id || s.uid || s.authUid)
+            .filter(Boolean)
+            .map(String);
 
         const isPublic = selectedClassIds.length === 0;
 

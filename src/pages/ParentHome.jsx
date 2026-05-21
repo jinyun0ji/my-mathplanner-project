@@ -765,7 +765,7 @@ export default function ParentHome({
         if (log?.timeSlot) return String(log.timeSlot);
         if (typeof log?.plannedTime === 'string' && log?.plannedTime) return log.plannedTime;
         return '시간 미정';
-    }, []);
+    }, [setActiveTab]);
 
     const myClinicLogs = useMemo(() => {
         if (!Array.isArray(clinicLogs) || !activeChildId) return [];
@@ -905,6 +905,27 @@ export default function ParentHome({
     }), [currentParent]);
 
     const noticePreview = useMemo(() => visibleNotices.slice(0, 3), [visibleNotices]);
+
+    useEffect(() => {
+        const activeStudentClassIds = Array.from(new Set((visibleClassIds || []).map((id) => String(id)).filter(Boolean)));
+        const activeStudentId = String(activeChildId || '');
+        console.log('[parent board] viewer keys', {
+            activeViewerAuthUid: parentAuthUid,
+            activeStudentId,
+            activeStudentClassIds,
+        });
+        console.log('[parent board] loaded announcements', {
+            total: visibleNotices.length,
+            sample: visibleNotices.slice(0, 3).map((n) => ({
+                id: n.id,
+                title: n.title,
+                isPublic: n.isPublic,
+                targetClasses: n.targetClasses,
+                targetStudents: n.targetStudents,
+                targetAuthUids: n.targetAuthUids,
+            })),
+        });
+    }, [visibleClassIds, activeChildId, parentAuthUid, visibleNotices]);
 
     const handleNotificationClick = async (notification) => {
         const targetStudentId = notification?.studentId;
