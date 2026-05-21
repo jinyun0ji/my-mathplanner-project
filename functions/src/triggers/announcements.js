@@ -7,7 +7,6 @@ const TYPE = 'BOARD_POST';
 
 const collectTargetStudentUids = (data) => ([
     ...(Array.isArray(data.targetAuthUids) ? data.targetAuthUids : []),
-    ...(Array.isArray(data.targetStudents) ? data.targetStudents : []),
 ].map((value) => String(value || '').trim()).filter(Boolean));
 
 const extractClassStudentUids = async (classIds = []) => {
@@ -46,7 +45,10 @@ const onAnnouncementCreated = functions.firestore
             return null;
         }
 
-        const classTargetStudents = await extractClassStudentUids(Array.isArray(data.targetClasses) ? data.targetClasses : []);
+        const classTargets = Array.isArray(data.targetClassIds) && data.targetClassIds.length > 0
+            ? data.targetClassIds
+            : data.targetClasses;
+        const classTargetStudents = await extractClassStudentUids(Array.isArray(classTargets) ? classTargets : []);
         const targetStudentUids = [...new Set([
             ...collectTargetStudentUids(data),
             ...classTargetStudents,
@@ -65,6 +67,10 @@ const onAnnouncementCreated = functions.firestore
         }
 
         const userIds = [...recipientSet];
+        await change.after.ref.set({
+            audienceAuthUids: userIds,
+            targetClassIds: Array.isArray(classTargets) ? classTargets : [],
+        }, { merge: true });
         const refId = context.params.docId;
 
         const title = data.title || '새 게시글이 등록되었습니다.';

@@ -1586,6 +1586,9 @@ export default function AppRoutes({ user, role, studentIds }) {
       const targetAuthUids = Array.isArray(base.targetAuthUids)
           ? Array.from(new Set(base.targetAuthUids.map((id) => String(id))))
           : [];
+        const audienceAuthUids = Array.isArray(base.audienceAuthUids)
+          ? Array.from(new Set(base.audienceAuthUids.map((id) => String(id)).filter(Boolean)))
+          : [];
       const isPublic = targetClasses.length === 0;
 
       return {
@@ -1593,6 +1596,7 @@ export default function AppRoutes({ user, role, studentIds }) {
           targetClasses,
           targetStudents: isPublic ? [] : targetStudents,
           targetAuthUids: isPublic ? [] : targetAuthUids,
+          audienceAuthUids: isPublic ? [] : audienceAuthUids,
           isPublic,
       };
   };

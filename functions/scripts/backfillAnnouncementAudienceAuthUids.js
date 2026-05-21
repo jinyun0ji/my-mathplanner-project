@@ -81,7 +81,13 @@ async function run() {
         : data.targetClasses,
     );
 
+    const beforeAudienceAuthUids = uniqueStrings(data.audienceAuthUids);
     const audienceSet = new Set();
+    const addedParentAuthUids = new Set();
+    const addedStudentAuthUids = new Set();
+    const removedNonAuthIds = new Set(
+      beforeAudienceAuthUids.filter((value) => !String(value || '').includes('-') && String(value || '').length < 20),
+    );
     if (!isPublic) {
       const studentDocIds = new Set();
       normalizedClassIds.forEach((classId) => {
@@ -92,21 +98,35 @@ async function run() {
 
       studentDocIds.forEach((studentDocId) => {
         const studentAuthUid = studentAuthByDocId.get(studentDocId);
-        if (studentAuthUid) audienceSet.add(studentAuthUid);
+        if (studentAuthUid) {
+          audienceSet.add(studentAuthUid);
+          addedStudentAuthUids.add(studentAuthUid);
+        }
         (parentAuthByStudentId.get(studentDocId) || new Set()).forEach((parentAuthUid) => {
           audienceSet.add(parentAuthUid);
+          addedParentAuthUids.add(parentAuthUid);
         });
       });
     }
 
+    const afterAudienceAuthUids = isPublic ? [] : uniqueStrings([...audienceSet]);
+
     const payload = {
       targetClassIds: normalizedClassIds,
-      audienceAuthUids: isPublic ? [] : uniqueStrings([...audienceSet]),
+      audienceAuthUids: afterAudienceAuthUids,
       audienceBackfilledAt: FieldValue.serverTimestamp(),
     };
 
     touched += 1;
-    console.log(`[audience backfill] ${announcementDoc.id}`, payload);
+    console.log('[audience backfill]', {
+      announcementId: announcementDoc.id,
+      title: String(data.title || ''),
+      beforeAudienceAuthUids,
+      afterAudienceAuthUids,
+      addedParentAuthUids: uniqueStrings([...addedParentAuthUids]),
+      addedStudentAuthUids: uniqueStrings([...addedStudentAuthUids]),
+      removedNonAuthIds: uniqueStrings([...removedNonAuthIds]),
+    });
     if (shouldWrite) await announcementDoc.ref.set(payload, { merge: true });
   }
 

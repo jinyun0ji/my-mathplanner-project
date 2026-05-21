@@ -1,7 +1,5 @@
 // ⚠️ 이 파일은 staff/admin/teacher 전용 Firestore 단발성 로드 로직이다
 // ⚠️ student / parent 계정에서는 절대 실행되면 안 된다
-import { httpsCallable } from 'firebase/functions';
-import { functions } from '../firebase/client';
 import {
     collection,
     documentId,
@@ -1727,17 +1725,38 @@ export const loadViewerDataOnce = async ({
         console.log('[viewer] current auth.uid =', activeViewerAuthUid);
 
         /* =========================
-           announcements (callable)
+           announcements (rules-aligned)
         ========================= */
         try {
-            const callable = httpsCallable(functions, 'getViewerAnnouncements');
-            const result = await callable();
-            const loadedAnnouncements = Array.isArray(result?.data?.announcements)
-                ? result.data.announcements
-                : [];
+            const currentAuthUid = String(userId || '').trim();
+            const publicSnap = await getDocs(
+                query(collection(db, 'announcements'), where('isPublic', '==', true), limit(150)),
+            );
+            const mergedAnnouncements = new Map();
+            publicSnap.docs.forEach((d) => mergedAnnouncements.set(d.id, ({ id: d.id, ...d.data() })));
+
+            let targetedCount = 0;
+            if (currentAuthUid) {
+                const targetedSnap = await getDocs(
+                    query(
+                        collection(db, 'announcements'),
+                        where('audienceAuthUids', 'array-contains', currentAuthUid),
+                        limit(150),
+                    ),
+                );
+                targetedCount = targetedSnap.size;
+                targetedSnap.docs.forEach((d) => mergedAnnouncements.set(d.id, ({ id: d.id, ...d.data() })));
+            }
+
+            const loadedAnnouncements = Array.from(mergedAnnouncements.values());
             if (!isCancelled()) setAnnouncements?.(loadedAnnouncements);
+        console.log('[viewer] announcements loaded', {
+                currentAuthUid,
+                targetedCount,
+                totalCount: loadedAnnouncements.length,
+            });
         } catch (announcementError) {
-            console.warn('[viewer] announcements callable failed', announcementError);
+            console.warn('[viewer] announcements load failed', announcementError);
             if (!isCancelled()) setAnnouncements?.([]);
         }
 

@@ -840,6 +840,13 @@ export default function ParentHome({
                 .map(normalizeTargetValue)
                 .filter(Boolean),
         );
+        const viewerAudienceKeys = new Set([
+            parentAuthUid,
+            userId,
+            auth.currentUser?.uid,
+            activeChild?.authUid,
+            activeChildId,
+        ].map(normalizeTargetValue).filter(Boolean));
         const visibleClassIdSetForNotice = new Set((visibleClassIds || []).map(String));
         const childId = String(activeChildId || '');
         const authUid = String(parentAuthUid || '');
@@ -856,6 +863,9 @@ export default function ParentHome({
         return (Array.isArray(notices) ? [...notices] : []).filter((notice) => {
             if (notice?.isPublic === true) return true;
 
+            const audienceAuthUids = normalizeTargetSet(notice?.audienceAuthUids);
+            if ([...viewerAudienceKeys].some((uid) => audienceAuthUids.has(uid))) return true;
+
             const targetClasses = normalizeTargetSet(notice?.targetClasses);
             const targetStudents = normalizeTargetSet(notice?.targetStudents);
             const targetAuthUids = normalizeTargetSet(notice?.targetAuthUids || notice?.visibleToAuthUids);
@@ -868,7 +878,7 @@ export default function ParentHome({
                 || (childId && targetStudents.has(childId))
                 || (authUid && targetAuthUids.has(authUid));
         });
-    }, [notices, visibleClassIds, activeChildId, parentAuthUid, myClasses]);
+    }, [notices, visibleClassIds, activeChildId, parentAuthUid, myClasses, userId, activeChild]);
 
     const openBoardTab = useCallback(() => {
         setBoardBackTab(activeTab === 'more' ? 'more' : 'home');
@@ -920,12 +930,20 @@ export default function ParentHome({
                 id: n.id,
                 title: n.title,
                 isPublic: n.isPublic,
+                audienceAuthUidsCount: Array.isArray(n.audienceAuthUids) ? n.audienceAuthUids.length : 0,
+                viewerAudienceKeys: [
+                    parentAuthUid,
+                    userId,
+                    auth.currentUser?.uid,
+                    activeChild?.authUid,
+                    activeChildId,
+                ].map((v) => String(v || '').trim()).filter(Boolean),
                 targetClasses: n.targetClasses,
                 targetStudents: n.targetStudents,
                 targetAuthUids: n.targetAuthUids,
             })),
         });
-    }, [visibleClassIds, activeChildId, parentAuthUid, visibleNotices]);
+    }, [visibleClassIds, activeChildId, parentAuthUid, visibleNotices, userId, activeChild]);
 
     const handleNotificationClick = async (notification) => {
         const targetStudentId = notification?.studentId;
