@@ -1426,32 +1426,46 @@ export const loadViewerDataOnce = async ({
         }
 
         try {
-            if (setLessonReports && nonEmpty(scopedStudentUids) && nonEmpty(lessonClassIds)) {
-                const studentKeySet = new Set(scopedStudentUids.map(String));
-                const reportDocs = await fetchClassScopedDocs({
-                    db,
-                    collectionName: 'lessonReports',
-                    classIds: lessonClassIds,
-                    run,
-                    isCancelled,
-                    buildQuery: (classChunk) => query(
+            if (setLessonReports) {
+                const activeStudentId = scopedStudentUids[0] || null;
+                if (!activeStudentId) {
+                    console.warn('[viewer] skip lessonReports: activeStudentId missing');
+                    if (!isCancelled()) setLessonReports([]);
+                } else {
+                    const visibleClassIdSet = new Set((lessonClassIds || []).map(String));
+                    const reportsQuery = query(
                         collection(db, 'lessonReports'),
-                        where('classId', 'in', classChunk),
+                        where('studentId', '==', activeStudentId),
                         where('status', '==', 'sent'),
-                        orderBy('lessonDate', 'desc'),
-                        limit(200),
-                    ),
-                mapDoc: (d) => ({ id: d.id, ...d.data() }),
-                });
-                const visibleReports = reportDocs
-                    .filter((report) => studentKeySet.has(String(report?.studentId || report?.studentDocId || report?.studentUid || '')))
-                    .sort((a, b) => String(b?.lessonDate || '').localeCompare(String(a?.lessonDate || '')));
-                if (!isCancelled()) setLessonReports(visibleReports);
-            } else if (setLessonReports && !isCancelled()) {
-                setLessonReports([]);
+                    );
+                    const snap = await run('lessonReports by student', () => getDocs(reportsQuery));
+                    const visibleReports = snap.docs
+                        .map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }))
+                        .filter((report) => {
+                            const classId = String(report?.classId || '');
+                            if (!classId) return true;
+                            return visibleClassIdSet.has(classId);
+                        })
+                        .sort((a, b) => String(b?.lessonDate || '').localeCompare(String(a?.lessonDate || '')));
+                    if (!isCancelled()) setLessonReports(visibleReports);
+                }
             }
-        } catch (e) {
-            console.warn('[viewer] lessonReports load skipped', e);
+        } catch (error) {
+            const activeStudentId = scopedStudentUids[0] || null;
+            console.error('[viewer] lessonReports by student FAIL', {
+                code: error?.code,
+                message: error?.message,
+                query: {
+                    collection: 'lessonReports',
+                    where: [
+                        ['studentId', '==', activeStudentId],
+                        ['status', '==', 'sent'],
+                    ],
+                },
+                activeStudentId,
+                visibleClassIds: lessonClassIds,
+                error,
+            });
             if (!isCancelled()) setLessonReports?.([]);
         }
         
@@ -1734,23 +1748,14 @@ export const loadViewerDataOnce = async ({
         // - scopedStudentUids: 학생 문서 id 배열(학부모면 여러명, 학생이면 1명) (기존 변수 사용)
         // - activeViewerAuthUid: 학생 authUid (학부모면 선택학생 authUid, 학생이면 auth.uid) (기존 변수 사용)
         // - lessonClassIds: viewer가 속한 classId들 (기존 변수 사용)
-        const targetStudentKeys = Array.from(
-            new Set(
-                [
-                    ...(Array.isArray(scopedStudentUids) ? scopedStudentUids : []),
-                    ...(activeViewerAuthUid ? [activeViewerAuthUid] : []),
-                ].filter(Boolean).map(String)
-            )
-        );
-
         const targetClassKeys = Array.from(
             new Set((Array.isArray(lessonClassIds) ? lessonClassIds : []).filter(Boolean).map(String))
         );
 
-        console.log('[viewer] announcements target keys', {
-            targetClassKeys,
-            targetStudentKeys,
+        console.log('[viewer] announcements viewer keys', {
             activeViewerAuthUid: activeViewerAuthUid || '',
+            activeStudentId: activeStudentDocId,
+            activeStudentClassIds: targetClassKeys,
         });
 
         // helper: 인덱스 없으면 orderBy 없이 재시도
@@ -1860,68 +1865,39 @@ export const loadViewerDataOnce = async ({
             }
         }
 
-        // 4) 학생 타겟 공지: targetStudents array-contains-any (레거시 호환)
-        // targetStudents에 학생 문서 id 또는 authUid가 들어오는 케이스 둘 다 커버
-        if (targetStudentKeys.length > 0) {
-            const studentDocs = await safeGetDocsWithOptionalOrderBy(
-                () =>
-                    query(
-                        collection(db, 'announcements'),
-                        where('targetStudents', 'array-contains-any', targetStudentKeys.slice(0, 10)),
-                        orderBy('date', 'desc'),
-                        limit(50),
-                    ),
-                () =>
-                    query(
-                        collection(db, 'announcements'),
-                        where('targetStudents', 'array-contains-any', targetStudentKeys.slice(0, 10)),
-                        limit(50),
-                    ),
-                'targetStudents',
-                {
-                    withOrderBy: { collection: 'announcements', where: ['targetStudents', 'array-contains-any', targetStudentKeys.slice(0, 10)], orderBy: ['date', 'desc'], limit: 50 },
-                    withoutOrderBy: { collection: 'announcements', where: ['targetStudents', 'array-contains-any', targetStudentKeys.slice(0, 10)], limit: 50 },
-                }
-            );
-            pushDocs(studentDocs);
-        }
-
         // 최종 merge: data로 변환 + 정렬
         if (!isCancelled()) {
-            const merged = announcementDocs
-                .map((d) => ({ id: d.id, ...d.data() }))
-                .filter((notice) => {
-                    const noticeClassTargets = Array.isArray(notice?.targetClasses)
-                        ? notice.targetClasses.map(String)
-                        : [];
-                    const noticeStudentTargets = Array.isArray(notice?.targetStudents)
-                        ? notice.targetStudents.map(String)
-                        : [];
-                    const noticeAuthTargets = Array.isArray(notice?.targetAuthUids)
-                        ? notice.targetAuthUids.map(String)
-                        : [];
-                    const matchesClassTarget = noticeClassTargets
-                        .some((classId) => targetClassKeys.includes(classId));
-                    const matchesStudentTarget = noticeStudentTargets
-                        .some((key) => targetStudentKeys.includes(String(key)));
-                    const matchesAuthTarget = activeViewerAuthUid
-                        && noticeAuthTargets.includes(String(activeViewerAuthUid));
-                    const allow = notice?.isPublic === true
-                        || matchesClassTarget
-                        || matchesStudentTarget
-                        || matchesAuthTarget;
-                    console.log('[viewer] announcement match', {
-                        id: notice?.id,
-                        isPublic: notice?.isPublic,
-                        noticeClassTargets,
-                        targetClassKeys,
-                        matchesClassTarget,
-                        matchesStudentTarget,
-                        matchesAuthTarget,
-                        allow,
-                    });
-                    return allow;
-                })
+            const map = new Map();
+            const addDocs = (docs) => {
+                docs.forEach((docSnap) => {
+                    map.set(docSnap.id, { id: docSnap.id, ...docSnap.data() });
+                });
+            };
+            addDocs(announcementDocs);
+
+            const canReadAnnouncementClientSide = (notice) => {
+                if (notice?.isPublic === true) return true;
+
+                const targetClasses = Array.isArray(notice?.targetClasses)
+                    ? notice.targetClasses.map(String)
+                    : [];
+
+                const targetAuthUids = Array.isArray(notice?.targetAuthUids)
+                    ? notice.targetAuthUids.map(String)
+                    : [];
+
+                const viewerClassIds = Array.isArray(targetClassKeys)
+                    ? targetClassKeys.map(String)
+                    : [];
+
+                return (
+                    targetAuthUids.includes(String(activeViewerAuthUid || ''))
+                    || viewerClassIds.some((classId) => targetClasses.includes(classId))
+                );
+            };
+
+            const merged = Array.from(map.values())
+                .filter(canReadAnnouncementClientSide)
                 .sort((a, b) => {
                     const pinGap = Number(Boolean(b?.isPinned)) - Number(Boolean(a?.isPinned));
                     if (pinGap !== 0) return pinGap;
@@ -1931,6 +1907,17 @@ export const loadViewerDataOnce = async ({
                 });
 
             setAnnouncements?.(merged);
+            console.log('[viewer] announcements loaded', {
+                count: merged.length,
+                sample: merged.slice(0, 5).map((n) => ({
+                    id: n.id,
+                    title: n.title,
+                    isPublic: n.isPublic,
+                    targetClasses: n.targetClasses,
+                    targetStudents: n.targetStudents,
+                    targetAuthUids: n.targetAuthUids,
+                })),
+            });
         }
 
         console.log('[viewer] fetch announcements done');
