@@ -493,14 +493,14 @@ export default function StudentHome({
 
     const navItems = [
         { id: 'home', icon: 'home', label: '홈' },
-        { id: 'class', icon: 'fileText', label: '클래스' },
-        { id: 'schedule', icon: 'calendar', label: '수업일정' },
+        { id: 'report', icon: 'fileText', label: '수업리포트' },
         { id: 'learning', icon: 'clipboardCheck', label: '학습관리' },
-        { id: 'menu', icon: 'menu', label: '전체메뉴' },
+        { id: 'schedule', icon: 'calendar', label: '일정' },
+        { id: 'menu', icon: 'menu', label: '전체' },
     ];
 
     return (
-        <div className="bg-brand-bg min-h-screen flex flex-col relative font-sans">
+        <div className="bg-gray-50 min-h-screen flex flex-col relative font-sans">
             <StudentHeader onLogout={onLogout} />
             {/* <div style={{position:'fixed', top:10, right:10, zIndex:9999, background:'#fff', padding:6}}>
                 activeTab: {activeTab}
@@ -558,6 +558,15 @@ export default function StudentHome({
                             />
                         )}
                         {activeTab === 'class' && <ClassTab myClasses={myClasses} setSelectedClassId={setSelectedClassId} />}
+                        {activeTab === 'report' && (
+                            <LearningTab
+                                studentId={studentId} myHomeworkStats={myHomeworkStats} myGradeComparison={myGradeComparison}
+                                clinicLogs={clinicLogs} students={students} classes={classes}
+                                initialTab="reports"
+                                lessonReports={sentLessonReports}
+                                compactHeader={false}
+                            />
+                        )}
                         {activeTab === 'schedule' && (
                             <ScheduleTab
                                 myClasses={myClasses} externalSchedules={externalSchedules} attendanceLogs={filteredAttendanceLogs}

@@ -58,6 +58,55 @@ const appendParentSuffix = (name) => {
     return normalized.endsWith('학부모') ? normalized : `${normalized} 학부모`;
 };
 
+const hasParentSuffix = (value) => normalizeText(value).includes('학부모');
+
+const getArrayField = (value) => (Array.isArray(value) ? value.map(String).filter(Boolean) : []);
+
+const getRoomStudentIds = (room) => [
+    normalizeText(room?.studentId),
+    ...getArrayField(room?.studentIds),
+].filter(Boolean);
+
+const getRoomParentIds = (room) => [
+    normalizeText(room?.parentId),
+    normalizeText(room?.parentUid),
+    ...getArrayField(room?.parentUids),
+].filter(Boolean);
+
+const getStudentNameFromIds = (studentIds, studentById) => (
+    studentIds.map((studentId) => studentById.get(String(studentId))).find(Boolean)?.name
+    || ''
+);
+
+const isParentRole = (role) => ['parent', 'guardian', '학부모'].includes(lower(role));
+
+const hasParentRoomHint = (room, counterpartyUid = '') => {
+    const roleValues = room?.participantRoles && typeof room.participantRoles === 'object'
+        ? Object.values(room.participantRoles)
+        : [];
+    const counterpartyRole = counterpartyUid && room?.participantRoles
+        ? room.participantRoles[counterpartyUid]
+        : '';
+    return isParentRole(counterpartyRole)
+        || roleValues.some(isParentRole)
+        || getRoomParentIds(room).length > 0
+        || Boolean(room?.parentName);
+};
+
+const resolveParentRoomDisplayName = (room, parent, studentById) => {
+    const studentName = normalizeText(room?.studentName)
+        || getStudentNameFromIds(getRoomStudentIds(room), studentById);
+    if (studentName) return appendParentSuffix(studentName);
+
+    const parentName = normalizeText(room?.parentName)
+        || normalizeText(parent?.parentName)
+        || normalizeText(parent?.name)
+        || normalizeText(parent?.displayName);
+    if (parentName) return hasParentSuffix(parentName) ? parentName : appendParentSuffix(parentName);
+
+    return '이름 미등록 학부모';
+};
+
 const buildUserLookups = ({ students = [], parents = [] }) => {
     const safeStudents = Array.isArray(students) ? students : [];
     const safeParents = Array.isArray(parents) ? parents : [];
@@ -105,6 +154,18 @@ export const getMessengerTargetDisplayName = ({
             || '이름 미등록 학생';
     }
 
+    const linkedStudentIds = Array.isArray(user?.studentIds) ? user.studentIds.map(String) : [];
+    const linkedStudent = linkedStudentIds
+        .map((studentId) => studentById.get(studentId))
+        .find(Boolean);
+
+    if (role === 'parent' && linkedStudent) {
+        const baseName = normalizeText(linkedStudent?.name)
+            || normalizeText(linkedStudent?.studentName)
+            || normalizeText(linkedStudent?.id);
+        if (baseName) return appendParentSuffix(baseName);
+    }
+
     const directName =
         normalizeText(user?.name)
         || normalizeText(user?.displayName)
@@ -112,18 +173,6 @@ export const getMessengerTargetDisplayName = ({
 
     if (role === 'parent' && directName) return appendParentSuffix(directName);
     if (directName) return directName;
-
-    const linkedStudentIds = Array.isArray(user?.studentIds) ? user.studentIds.map(String) : [];
-    const linkedStudent = linkedStudentIds
-        .map((studentId) => studentById.get(studentId))
-        .find(Boolean);
-
-    if (linkedStudent) {
-        const baseName = normalizeText(linkedStudent?.name)
-            || normalizeText(linkedStudent?.studentName)
-            || normalizeText(linkedStudent?.id);
-        if (baseName) return appendParentSuffix(baseName);
-    }
 
     if (role === 'parent') {
         if (process.env.NODE_ENV === 'development') {
@@ -160,6 +209,21 @@ export const getChatRoomCounterparty = (
     const roleHint = normalizeText(participantRoles[counterpartyUid]).toLowerCase();
     const userDocIdHint = normalizeText(participantUserDocIds[counterpartyUid]);
 
+    const parent =
+        parentByAuthUid.get(counterpartyUid)
+        || (userDocIdHint ? parentById.get(userDocIdHint) : null)
+        || getRoomParentIds(room).map((parentId) => parentById.get(String(parentId)) || parentByAuthUid.get(String(parentId))).find(Boolean)
+        || null;
+
+    if (hasParentRoomHint(room, counterpartyUid) || parent) {
+        return {
+            uid: counterpartyUid,
+            role: 'parent',
+            user: parent,
+            displayName: resolveParentRoomDisplayName(room, parent, studentById),
+        };
+    }
+
     const student =
         studentByAuthUid.get(counterpartyUid)
         || (userDocIdHint ? studentById.get(userDocIdHint) : null)
@@ -173,25 +237,6 @@ export const getChatRoomCounterparty = (
             displayName: getMessengerTargetDisplayName({
                 user: student,
                 role: 'student',
-                studentById,
-                parentLast4Map,
-            }),
-        };
-    }
-
-    const parent =
-        parentByAuthUid.get(counterpartyUid)
-        || (userDocIdHint ? parentById.get(userDocIdHint) : null)
-        || (room?.parentId ? parentById.get(String(room.parentId)) : null);
-
-    if (parent) {
-        return {
-            uid: counterpartyUid,
-            role: 'parent',
-            user: parent,
-            displayName: getMessengerTargetDisplayName({
-                user: parent,
-                role: 'parent',
                 studentById,
                 parentLast4Map,
             }),

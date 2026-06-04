@@ -44,6 +44,14 @@ const formatTime = (value) => {
     return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
 };
 
+const getParticipantCount = (room) => {
+    const candidates = [room?.participantIds, room?.participants, room?.memberIds, room?.members];
+    const values = candidates.find((candidate) => Array.isArray(candidate));
+    return values ? values.length : 2;
+};
+
+const shouldShowSenderName = (room) => getParticipantCount(room) > 2;
+
 export default function ChatMessagePane({
     room,
     messages = [],
@@ -133,7 +141,7 @@ export default function ChatMessagePane({
                     const timeLabel = formatTime(message.createdAt);
                     return (
                         <div key={item.key}>
-                            {!mine && senderName && (
+                            {shouldShowSenderName(room) && !mine && senderName && (
                                 <p className="mb-1 text-xs font-semibold text-gray-500">{senderName}</p>
                             )}
                             <div className={`flex items-end gap-1.5 ${mine ? 'justify-end' : 'justify-start'}`}>

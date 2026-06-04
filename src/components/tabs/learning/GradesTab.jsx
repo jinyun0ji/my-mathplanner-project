@@ -131,11 +131,11 @@ export default function GradesTab({ myGradeComparison }) {
                         <h2 className="text-base font-bold text-gray-900 truncate">성적 상세 분석</h2>
                     </div>
                     <div className="flex-1 overflow-y-auto custom-scrollbar p-4">
-                        <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 mb-6 text-center">
+                        <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 mb-6 text-center">
                             <span className="text-sm text-gray-500 font-bold bg-gray-100 px-2 py-1 rounded mb-2 inline-block">{selectedTestAnalysis.testDate} 시행</span>
-                            <h3 className="text-xl font-bold text-gray-900 mb-1">{selectedTestAnalysis.testName}</h3>
+                            <h3 className="text-base font-bold text-gray-900 mb-1">{selectedTestAnalysis.testName}</h3>
                             <div className="py-4">
-                                <span className="text-5xl font-extrabold text-indigo-600">{selectedScore.scoreText}</span>
+                                <span className="text-3xl font-extrabold text-indigo-600">{selectedScore.scoreText}</span>
                                 {selectedScore.scoreText !== '-' && selectedScore.scoreText !== '미응시' && (
                                     <span className="text-gray-400 text-xl font-medium">점 / {selectedTestAnalysis.maxScore}</span>
                                 )}
@@ -158,7 +158,7 @@ export default function GradesTab({ myGradeComparison }) {
     }
 
     return (
-        <div className="space-y-4 pb-20">
+        <div className="space-y-3 pb-20">
             {/* <div 
                 className={`p-4 rounded-xl border ${getTrendStyle(trendAnalysis.trend)} cursor-pointer active:scale-[0.99] transition-all`}
                 onClick={() => trendAnalysis.trend === 'initial' && alert("성적 추이 분석을 위해서는 최소 3회 이상의 시험 기록이 필요합니다.")}
@@ -179,7 +179,7 @@ export default function GradesTab({ myGradeComparison }) {
                 myGradeComparison.map((item, idx) => {
                     const scoreInfo = resolveScoreText(item);
                     return (
-                        <div key={idx} onClick={() => setSelectedTestId(item.testId)} className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 cursor-pointer active:scale-[0.98] transition-all hover:border-indigo-200 active:bg-gray-50">
+                        <div key={idx} onClick={() => setSelectedTestId(item.testId)} className="bg-white p-3 rounded-xl shadow-sm border border-gray-100 cursor-pointer active:scale-[0.98] transition-all hover:border-indigo-200 active:bg-gray-50">
                             <div className="flex justify-between items-start mb-2">
                                 <div className="flex items-center gap-2">
                                     <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">{item.className}</span>
@@ -188,7 +188,7 @@ export default function GradesTab({ myGradeComparison }) {
                             </div>
                             <div className="flex justify-between items-end">
                                 <div>
-                                    <h3 className="text-lg font-bold text-gray-900 leading-tight mb-1">{item.testName}</h3>
+                                    <h3 className="text-sm font-bold text-gray-900 leading-tight mb-1">{item.testName}</h3>
                                     <div className="flex items-center gap-1 text-xs text-gray-500 font-medium">
                                         {item.isAboveAverage === null
                                             ? <Icon name="minus" className="w-3 h-3 text-gray-400" />
@@ -200,7 +200,7 @@ export default function GradesTab({ myGradeComparison }) {
                                     </div>
                                 </div>
                                 <div className="text-right">
-                                    <span className="text-2xl font-extrabold text-indigo-900">{scoreInfo.scoreText}</span>
+                                    <span className="text-xl font-extrabold text-indigo-900">{scoreInfo.scoreText}</span>
                                     {scoreInfo.scoreText !== '-' && scoreInfo.scoreText !== '미응시' && (
                                         <span className="text-xs text-gray-400 font-medium">점</span>
                                     )}

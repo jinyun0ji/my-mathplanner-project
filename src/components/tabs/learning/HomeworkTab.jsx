@@ -6,7 +6,7 @@ export default function HomeworkTab({ myHomeworkStats }) {
     const toggleDetails = (id) => setSelectedHwId(selectedHwId === id ? null : id);
 
     return (
-        <div className="space-y-4">
+        <div className="space-y-3">
             {myHomeworkStats.length === 0 && <div className="text-center py-10 text-gray-400 text-sm bg-white rounded-2xl border border-dashed border-gray-200">등록된 과제가 없습니다.</div>}
             {myHomeworkStats.map(hw => {
                 const assignmentType = resolveAssignmentType(hw);
@@ -21,7 +21,7 @@ export default function HomeworkTab({ myHomeworkStats }) {
                                 : '';
 
                 return (
-                    <div key={hw.id} onClick={() => toggleDetails(hw.id)} className={`bg-white p-5 rounded-2xl shadow-sm border border-gray-100 transition-all cursor-pointer ${selectedHwId === hw.id ? 'ring-2 ring-indigo-500' : ''}`}>
+                    <div key={hw.id} onClick={() => toggleDetails(hw.id)} className={`bg-white p-3 rounded-xl shadow-sm border border-gray-100 transition-all cursor-pointer ${selectedHwId === hw.id ? 'ring-2 ring-indigo-500' : ''}`}>
                         <div className="flex justify-between items-start mb-2">
                             <span className={`text-xs font-bold px-2 py-0.5 rounded ${hw.status === '완료' ? 'bg-green-100 text-green-700' : hw.status === '미시작' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'}`}>{hw.status}</span>
                             <span className="text-xs text-gray-500 font-semibold">출제일: {issuedDate || '-'}</span>

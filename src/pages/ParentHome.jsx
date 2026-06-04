@@ -405,7 +405,7 @@ const ParentDashboard = ({
     }
 
     return (
-        <div className="space-y-6 pb-6 animate-fade-in-up">
+        <div className="space-y-3 animate-fade-in-up">
             {/* 1. 상단 상태 요약 카드 */}
             {false && (
                 <section>
@@ -1285,8 +1285,8 @@ export default function ParentHome({
                                     </button>
                                 </section>
 
-                                <div className="grid gap-4 lg:grid-cols-3">
-                                    <div className="space-y-4 lg:col-span-2">
+                                <div className="grid gap-3 lg:grid-cols-3">
+                                    <div className="lg:col-span-2">
                                         <ParentDashboard
                                             child={activeChild} myClasses={myClasses} attendanceLogs={filteredAttendanceLogs}
                                             homeworkStats={myHomeworkStats} gradeComparison={myGradeComparison}
