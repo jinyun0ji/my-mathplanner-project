@@ -13,6 +13,7 @@ import { redirectToKakao, redirectToNaver } from '../auth/socialRedirect';
 import { signInWithGoogle } from '../auth/authService';
 import { initForegroundMessageListener } from '../firebase/messaging';
 import { getDefaultRouteForRole } from '../auth/authRedirects';
+import { DELETION_REQUESTED_MESSAGE } from '../accountDeletion';
 
 export default function AuthGate() {
     const navigate = useNavigate();
@@ -33,11 +34,15 @@ export default function AuthGate() {
         activeStudentId,
         loading,
         profileError,
+        userProfile,
         logout,
     } = useAuth();
 
     const needsParentOnboarding =
         isParentRole(role) && (!Array.isArray(studentIds) || studentIds.length === 0);
+
+    const isDeletionBlockedViewer = (isParentRole(role) || isStudentRole(role))
+        && Boolean(userProfile?.deletionAccessBlocked);
 
     useEffect(() => {
         let unsubscribe = null;
@@ -64,6 +69,8 @@ export default function AuthGate() {
             }
             return;
         }
+
+        if (isDeletionBlockedViewer) return;
 
         if (needsParentOnboarding && pathname !== '/onboarding') {
             navigate('/onboarding', { replace: true });
@@ -94,6 +101,7 @@ export default function AuthGate() {
         navigate,
         needsParentOnboarding,
         pathname,
+        isDeletionBlockedViewer,
         role,
         user,
     ]);
@@ -147,6 +155,27 @@ export default function AuthGate() {
         return (
             <div className="min-h-screen flex items-center justify-center text-gray-600">
                 프로필 설정 중입니다...
+            </div>
+        );
+    }
+
+
+    if (isDeletionBlockedViewer) {
+        return (
+            <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-gray-50 px-6 text-center text-gray-700">
+                <div className="max-w-sm rounded-2xl border border-rose-100 bg-white p-6 shadow-sm">
+                    <p className="text-base font-bold text-gray-900">{DELETION_REQUESTED_MESSAGE}</p>
+                    <button
+                        type="button"
+                        onClick={async () => {
+                            await logout();
+                            navigate('/login', { replace: true });
+                        }}
+                        className="mt-5 w-full rounded-xl bg-indigo-600 px-4 py-3 text-sm font-bold text-white"
+                    >
+                        로그인 화면으로 이동
+                    </button>
+                </div>
             </div>
         );
     }

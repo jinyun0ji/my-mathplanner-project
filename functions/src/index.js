@@ -23,6 +23,7 @@ const { acceptInviteAndCreateProfile } = require('./acceptInviteAndCreateProfile
 const { createClinicReservation } = require('./clinic/createClinicReservation');
 const { markAllNotificationsRead } = require('./notify/markAllNotificationsRead');
 const { getViewerAnnouncements } = require('./viewer/getViewerAnnouncements');
+const { requestAccountDeletion } = require('./requestAccountDeletion');
 const auditLogs = require('./auditLogs');
 
 exports.api = api;
@@ -55,3 +56,4 @@ exports.auditGrades = auditLogs.auditGrades;
 exports.auditPayments = auditLogs.auditPayments;
 exports.markAllNotificationsRead = markAllNotificationsRead;
 exports.getViewerAnnouncements = getViewerAnnouncements;
+exports.requestAccountDeletion = requestAccountDeletion;

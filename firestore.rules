@@ -430,12 +430,31 @@ service cloud.firestore {
         && (!('broadcastId' in request.resource.data) || request.resource.data.broadcastId == null);
     }
 
+
+    function isAccountDeletionUpdate(userId) {
+      return signedIn()
+        && userId == myProfileDocId()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status',
+          'deletionRequested',
+          'deletionRequestedAt',
+          'deletionRequestedBy',
+          'active',
+          'updatedAt'
+        ])
+        && request.resource.data.status == 'deletion_requested'
+        && request.resource.data.deletionRequested == true
+        && request.resource.data.deletionRequestedBy == uid()
+        && request.resource.data.active == false;
+    }
+
     /* =========================
        users
     ========================= */
     match /users/{userId} {
       allow read: if signedIn();
       allow write: if isStaffOrAdminOrTeacher();
+      allow update: if isAccountDeletionUpdate(userId);
     }
     
     match /users/{studentId}/staffMemos/{memoId} {

@@ -76,6 +76,8 @@ export function UserProvider({ children }) {
               role: data?.role ?? indexRole ?? null,
               active: data?.active ?? null,
               profileDocId: userSnap.id, // ✅ 학생이면 studentDocId
+              status: data?.status ?? null,
+              deletionRequested: data?.deletionRequested === true,
             });
           }
 
@@ -95,6 +97,8 @@ export function UserProvider({ children }) {
             role: data?.role ?? null,
             active: data?.active ?? null,
             profileDocId: legacySnap.id, // authUid
+            status: data?.status ?? null,
+            deletionRequested: data?.deletionRequested === true,
           });
         }
       } catch (error) {
