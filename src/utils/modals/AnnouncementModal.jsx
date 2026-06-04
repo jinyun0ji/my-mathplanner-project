@@ -318,6 +318,8 @@ export const AnnouncementModal = ({ isOpen, onClose, onSave, announcementToEdit 
             return selectedClassIds.some((classId) => classKeys.includes(String(classId)));
         });
 
+        const uniq = (values = []) => Array.from(new Set((Array.isArray(values) ? values : []).map((v) => String(v || '').trim()).filter(Boolean)));
+
         const studentAuthUids = selectedStudents
             .map((s) => s.authUid || s.uid || s.studentAuthUid)
             .filter(Boolean)
@@ -328,20 +330,22 @@ export const AnnouncementModal = ({ isOpen, onClose, onSave, announcementToEdit 
             .filter(Boolean)
             .map(String);
 
-        const parentAuthUids = users
-            .filter((user) => {
-                if (String(user?.role || '').toLowerCase() !== 'parent') return false;
-                const linkedStudentIds = Array.isArray(user?.studentIds) ? user.studentIds.map(String) : [];
-                return linkedStudentIds.some((sid) => filteredTargetStudents.includes(sid));
-            })
-            .map((p) => p.authUid || p.uid)
-            .filter(Boolean)
-            .map(String);
+        const selectedStudentKeys = uniq(selectedStudents.flatMap((s) => [s?.id, s?.uid, s?.authUid, s?.studentAuthUid]));
+
+        const linkedParents = users.filter((user) => {
+            if (String(user?.role || '').toLowerCase() !== 'parent') return false;
+            const linkedStudentIds = Array.isArray(user?.studentIds) ? user.studentIds.map(String) : [];
+            return linkedStudentIds.some((sid) => selectedStudentKeys.includes(String(sid)));
+        });
+
 
         const isPublic = selectedClassIds.length === 0;
         const audienceAuthUids = isPublic
             ? []
-            : Array.from(new Set([...studentAuthUids, ...parentAuthUids])).filter((v) => Boolean(String(v).trim()));
+            : uniq([
+                ...selectedStudents.flatMap((s) => [s?.authUid, s?.id, s?.uid, s?.studentAuthUid]),
+                ...linkedParents.flatMap((p) => [p?.authUid, p?.id, p?.uid]),
+            ]);
 
         const announcementData = {
             id: announcementToEdit ? announcementToEdit.id : null,

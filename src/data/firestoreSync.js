@@ -1728,7 +1728,19 @@ export const loadViewerDataOnce = async ({
            announcements (rules-aligned)
         ========================= */
         try {
-            const currentAuthUid = String(userId || '').trim();
+            const uniq = (values = []) => Array.from(new Set((Array.isArray(values) ? values : []).map((v) => String(v || '').trim()).filter(Boolean)));
+            const announcementAudienceUids = uniq([
+                userId,
+                activeViewerAuthUid,
+                activeStudentDocId,
+                ...scopedStudentUids,
+                ...scopedStudentAuthUids,
+                ...myStudents.map((s) => s?.id),
+                ...myStudents.map((s) => s?.uid),
+                ...myStudents.map((s) => s?.authUid),
+            ]).filter(Boolean);
+            console.log('[viewer] announcements audience uid candidates', announcementAudienceUids);
+
             const mergedAnnouncements = new Map();
             let targetedCount = 0;
 
@@ -1741,28 +1753,34 @@ export const loadViewerDataOnce = async ({
                 console.warn('[viewer] announcements public query failed', publicAnnouncementError);
             }
 
-            if (currentAuthUid) {
+            for (const uid of announcementAudienceUids) {
                 try {
                     const targetedSnap = await getDocs(
                         query(
                             collection(db, 'announcements'),
-                            where('audienceAuthUids', 'array-contains', currentAuthUid),
+                            where('audienceAuthUids', 'array-contains', uid),
                             limit(150),
                         ),
                     );
-                    targetedCount = targetedSnap.size;
+                    targetedCount += targetedSnap.size;
                     targetedSnap.docs.forEach((d) => mergedAnnouncements.set(d.id, ({ id: d.id, ...d.data() })));
                 } catch (targetedAnnouncementError) {
-                    console.warn('[viewer] announcements targeted query failed', targetedAnnouncementError);
+                    console.warn('[viewer] announcements targeted query failed', { uid, error: targetedAnnouncementError });
                 }
             }
 
             const loadedAnnouncements = Array.from(mergedAnnouncements.values());
             if (!isCancelled()) setAnnouncements?.(loadedAnnouncements);
             console.log('[viewer] announcements loaded', {
-                currentAuthUid,
+                candidates: announcementAudienceUids,
                 targetedCount,
                 totalCount: loadedAnnouncements.length,
+                sample: loadedAnnouncements.slice(0, 5).map((a) => ({
+                    id: a?.id,
+                    title: a?.title,
+                    isPublic: a?.isPublic === true,
+                    audienceAuthUidsCount: Array.isArray(a?.audienceAuthUids) ? a.audienceAuthUids.length : 0,
+                })),
             });
         } catch (announcementError) {
             console.warn('[viewer] announcements load failed', announcementError);

@@ -350,7 +350,7 @@ export function getClassTimeOnDate(cls, ymd) {
     if (Number.isNaN(d.getTime())) return null;
     const dowKey = DOW_KEYS[d.getDay()];
 
-    const ws = cls.weeklySchedule || cls.scheduleByDay || cls.weeklyTimes || null;
+    const ws = cls.weeklySchedule || cls.scheduleByDay || cls.weeklyTimes || cls.schedules || null;
     if (ws && ws[dowKey]) {
         const v = ws[dowKey];
         if (typeof v === 'string') return v;
@@ -365,11 +365,16 @@ export function getClassTimeOnDate(cls, ymd) {
         return `${schedule[dowKey].start}~${schedule[dowKey].end}`;
     }
 
-    const days = Array.isArray(cls.days) ? cls.days : Array.isArray(cls.weekdays) ? cls.weekdays : [];
-    const dayMatch = days.map(String).includes(dowKey) || days.map(String).includes(String(d.getDay()));
+    const scheduleText = String(cls?.schedule?.time || cls?.scheduleTime || cls?.time || '').trim();
+    const timeMatch = scheduleText.match(/([01]\d|2[0-3]):[0-5]\d\s*[~-]\s*([01]\d|2[0-3]):[0-5]\d/);
+    const normalizedTime = timeMatch ? `${timeMatch[1]}~${timeMatch[2]}` : '';
+
+    const days = Array.isArray(cls.days) ? cls.days : Array.isArray(cls.weekdays) ? cls.weekdays : Array.isArray(cls?.schedule?.days) ? cls.schedule.days : [];
+    const dayKeys = days.map((value) => toWeekdayKey(value)).filter(Boolean);
+    const dayMatch = dayKeys.includes(dowKey) || days.map(String).includes(String(d.getDay()));
     if (!dayMatch) return null;
 
-    if (cls.time) return cls.time;
+    if (normalizedTime) return normalizedTime;
     if (cls.startTime && cls.endTime) return `${cls.startTime}~${cls.endTime}`;
     return null;
 }

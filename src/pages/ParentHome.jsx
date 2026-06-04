@@ -334,6 +334,20 @@ const ParentDashboard = ({
             return true;
         });
 
+        console.log('[parent][today] visibleTodayClasses', visibleTodayClasses.map((c) => ({
+            id: c.id,
+            name: c.name,
+            schedule: c.schedule,
+            schedules: c.schedules,
+            days: c.days,
+            dayOfWeek: c.dayOfWeek,
+            startDate: c.startDate,
+            endDate: c.endDate,
+            todayStr,
+            hasClassToday: hasClassOnDate(c, todayStr),
+            activeForStudent: isClassActiveForStudent({ cls: c, student: child, todayYmd: todayStr }),
+        })));
+
         const todayClinicSchedules = clinicLogs
             .filter((l) => l.studentId === child.id && l.date === todayStr)
             .map((l) => ({
@@ -849,7 +863,6 @@ export default function ParentHome({
         ].map(normalizeTargetValue).filter(Boolean));
         const visibleClassIdSetForNotice = new Set((visibleClassIds || []).map(String));
         const childId = String(activeChildId || '');
-        const authUid = String(parentAuthUid || '');
         const myClassIds = new Set(
             (Array.isArray(myClasses) ? myClasses : []).flatMap((cls) => ([
                 cls?.id,
@@ -868,7 +881,19 @@ export default function ParentHome({
 
             const targetClasses = normalizeTargetSet(notice?.targetClasses);
             const targetStudents = normalizeTargetSet(notice?.targetStudents);
-            const targetAuthUids = normalizeTargetSet(notice?.targetAuthUids || notice?.visibleToAuthUids);
+            const targetAuthUids = normalizeTargetSet([
+                ...(Array.isArray(notice?.audienceAuthUids) ? notice.audienceAuthUids : []),
+                ...(Array.isArray(notice?.targetAuthUids) ? notice.targetAuthUids : []),
+                ...(Array.isArray(notice?.visibleToAuthUids) ? notice.visibleToAuthUids : []),
+            ]);
+            const viewerNoticeKeys = new Set([
+                parentAuthUid,
+                activeChildId,
+                activeChild?.id,
+                activeChild?.uid,
+                activeChild?.authUid,
+            ].map(normalizeTargetValue).filter(Boolean));
+            const matchesAuth = [...viewerNoticeKeys].some((key) => targetAuthUids.has(key));
 
             const matchesClass = [...targetClasses].some((classId) =>
                 visibleClassIdSetForNotice.has(classId) || myClassIds.has(classId),
@@ -876,7 +901,7 @@ export default function ParentHome({
 
             return matchesClass
                 || (childId && targetStudents.has(childId))
-                || (authUid && targetAuthUids.has(authUid));
+                || matchesAuth;
         });
     }, [notices, visibleClassIds, activeChildId, parentAuthUid, myClasses, userId, activeChild]);
 
