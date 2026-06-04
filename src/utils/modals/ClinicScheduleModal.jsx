@@ -6,7 +6,7 @@ import StudentNameWithParentLast4 from '../../components/common/StudentNameWithP
 
 export const ClinicScheduleModal = ({ isOpen, onClose, onSave, students, parents = [], defaultDate, clinicLogs, classes }) => {
     const [date, setDate] = useState(defaultDate);
-    const [selectedStudentIds, setSelectedStudentIds] = useState([]); 
+    const [selectedStudentIds, setSelectedStudentIds] = useState([]);
     const [reservationMode, setReservationMode] = useState('byDate');
     const [selectedStudentId, setSelectedStudentId] = useState(null);
     const [selectedSlots, setSelectedSlots] = useState({});
@@ -18,7 +18,7 @@ export const ClinicScheduleModal = ({ isOpen, onClose, onSave, students, parents
     useEffect(() => {
         if (isOpen) {
             setDate(defaultDate);
-            setSelectedStudentIds([]); 
+            setSelectedStudentIds([]);
             setPlannedTime('14:00');
             setReservationMode('byDate');
             setSelectedStudentId(null);
@@ -52,11 +52,11 @@ export const ClinicScheduleModal = ({ isOpen, onClose, onSave, students, parents
     const getClassNameString = (student) => {
         const classIds = getStudentClassIds(student);
         if (classIds.length === 0) return '클래스 미정';
-        
+
         const classNames = classIds
             .map(clsId => classes?.find(c => String(c.id) === String(clsId))?.name)
             .filter(Boolean);
-            
+
         return classNames.length > 0 ? classNames.join(', ') : '클래스 미정';
     };
 
@@ -93,9 +93,9 @@ export const ClinicScheduleModal = ({ isOpen, onClose, onSave, students, parents
     });
 
     const handleStudentToggle = (id) => {
-        setSelectedStudentIds(prev => 
-            prev.includes(id) 
-                ? prev.filter(sId => sId !== id) 
+        setSelectedStudentIds(prev =>
+            prev.includes(id)
+                ? prev.filter(sId => sId !== id)
                 : [...prev, id]
         );
     };
@@ -183,8 +183,8 @@ export const ClinicScheduleModal = ({ isOpen, onClose, onSave, students, parents
                 };
             });
 
-            newLogs.forEach(log => onSave(log, false)); 
-            
+            newLogs.forEach(log => onSave(log, false));
+
             onClose();
             return;
         }
@@ -246,14 +246,14 @@ export const ClinicScheduleModal = ({ isOpen, onClose, onSave, students, parents
                 <div className="flex gap-2 mb-2">
                     <button
                         type="button"
-                        className={`px-3 py-1 rounded-lg text-sm font-semibold border ${reservationMode === 'byDate' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-700 border-gray-200'}`}
+                        className={`px-3 py-1 rounded-lg text-sm font-semibold border ${reservationMode === 'byDate' ? 'bg-[#455fab] text-white border-[#455fab]' : 'bg-white text-gray-700 border-gray-200'}`}
                         onClick={() => setReservationMode('byDate')}
                     >
                         날짜 기준
                     </button>
                     <button
                         type="button"
-                        className={`px-3 py-1 rounded-lg text-sm font-semibold border ${reservationMode === 'byStudent' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-700 border-gray-200'}`}
+                        className={`px-3 py-1 rounded-lg text-sm font-semibold border ${reservationMode === 'byStudent' ? 'bg-[#455fab] text-white border-[#455fab]' : 'bg-white text-gray-700 border-gray-200'}`}
                         onClick={() => setReservationMode('byStudent')}
                     >
                         학생 기준
@@ -264,20 +264,20 @@ export const ClinicScheduleModal = ({ isOpen, onClose, onSave, students, parents
                     <div className="grid grid-cols-2 gap-4">
                         <div>
                             <label className="block text-sm font-bold text-gray-700 mb-1">날짜</label>
-                            <input 
-                                type="date" 
-                                value={date} 
-                                onChange={(e) => setDate(e.target.value)} 
+                            <input
+                                type="date"
+                                value={date}
+                                onChange={(e) => setDate(e.target.value)}
                                 required
                                 className="w-full border rounded-md p-2"
                             />
                         </div>
                         <div>
                             <label className="block text-sm font-bold text-gray-700 mb-1">참석 예정 시간 (선택)</label>
-                            <input 
-                                type="time" 
-                                value={plannedTime} 
-                                onChange={(e) => setPlannedTime(e.target.value)} 
+                            <input
+                                type="time"
+                                value={plannedTime}
+                                onChange={(e) => setPlannedTime(e.target.value)}
                                 className="w-full border rounded-md p-2"
                             />
                             <p className='text-xs text-gray-500 mt-1'>체크된 학생들의 기본 참석 예정 시간입니다.</p>
@@ -288,19 +288,19 @@ export const ClinicScheduleModal = ({ isOpen, onClose, onSave, students, parents
                         <div className="grid grid-cols-2 gap-4">
                             <div>
                                 <label className="block text-sm font-bold text-gray-700 mb-1">예약 날짜</label>
-                                <input 
-                                    type="date" 
+                                <input
+                                    type="date"
                                     value={slotDate || ''}
-                                    onChange={(e) => setSlotDate(e.target.value)} 
+                                    onChange={(e) => setSlotDate(e.target.value)}
                                     className="w-full border rounded-md p-2"
                                 />
                             </div>
                             <div>
                                 <label className="block text-sm font-bold text-gray-700 mb-1">예약 시간</label>
-                                <input 
-                                    type="time" 
-                                    value={slotTime} 
-                                    onChange={(e) => setSlotTime(e.target.value)} 
+                                <input
+                                    type="time"
+                                    value={slotTime}
+                                    onChange={(e) => setSlotTime(e.target.value)}
                                     className="w-full border rounded-md p-2"
                                 />
                             </div>
@@ -309,7 +309,7 @@ export const ClinicScheduleModal = ({ isOpen, onClose, onSave, students, parents
                             <button
                                 type="button"
                                 onClick={handleAddSlot}
-                                className="px-3 py-1.5 rounded-lg text-sm font-semibold bg-indigo-600 text-white hover:bg-indigo-700"
+                                className="px-3 py-1.5 rounded-lg text-sm font-semibold bg-[#455fab] text-white hover:bg-[#3b5198]"
                             >
                                 슬롯 추가
                             </button>
@@ -329,7 +329,7 @@ export const ClinicScheduleModal = ({ isOpen, onClose, onSave, students, parents
                                                         type="checkbox"
                                                         checked={Boolean(selectedSlots[slotKey])}
                                                         onChange={() => toggleSlot(slotKey)}
-                                                        className="rounded text-indigo-600 focus:ring-indigo-500"
+                                                        className="rounded text-[#455fab] focus:ring-[#455fab]"
                                                     />
                                                     <span className="font-semibold">{slotDateValue}</span>
                                                     <span className="text-gray-500 font-mono">{slotTimeValue}</span>
@@ -351,7 +351,7 @@ export const ClinicScheduleModal = ({ isOpen, onClose, onSave, students, parents
                         </div>
                     </div>
                 )}
-                
+
                 <div>
                     <label className="block text-sm font-bold text-gray-700 mb-2">클리닉 참석 학생 선택* (총 {students.length}명)</label>
                     <input
@@ -363,7 +363,7 @@ export const ClinicScheduleModal = ({ isOpen, onClose, onSave, students, parents
                     <div className="border rounded-md p-3 max-h-80 overflow-y-auto bg-gray-50">
                         {groupedStudents.map((group) => (
                             <div key={group.key} className="mb-4 border-b pb-3 last:border-b-0">
-                                <h5 className="text-sm font-bold text-indigo-700 mb-2 p-1 border-l-4 border-indigo-400 pl-2 bg-white rounded-sm shadow-sm">
+                                <h5 className="text-sm font-bold text-[#334a91] mb-2 p-1 border-l-4 border-[#455fab] pl-2 bg-white rounded-sm shadow-sm">
                                     {group.name} ({group.students.length}명)
                                 </h5>
                                 <div className="grid grid-cols-3 gap-2">
@@ -373,12 +373,12 @@ export const ClinicScheduleModal = ({ isOpen, onClose, onSave, students, parents
                                                 ? hasReservationSameDate(s.id, date)
                                                 : false;
                                             return (
-                                        <div 
-                                            key={s.id} 
+                                        <div
+                                            key={s.id}
                                             className={`flex items-start p-2 rounded-lg transition border ${duplicateForDate ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'} ${
                                                 reservationMode === 'byDate'
-                                                    ? (selectedStudentIds.includes(s.id) ? 'bg-indigo-100 border-indigo-500 shadow-sm' : 'bg-white hover:bg-gray-100')
-                                                    : (String(selectedStudentId) === String(s.id) ? 'bg-indigo-100 border-indigo-500 shadow-sm' : 'bg-white hover:bg-gray-100')
+                                                    ? (selectedStudentIds.includes(s.id) ? 'bg-[#eef2ff] border-[#455fab] shadow-sm' : 'bg-white hover:bg-gray-100')
+                                                    : (String(selectedStudentId) === String(s.id) ? 'bg-[#eef2ff] border-[#455fab] shadow-sm' : 'bg-white hover:bg-gray-100')
                                             }`}
                                             onClick={() => {
                                                 if (duplicateForDate) return;
@@ -390,18 +390,18 @@ export const ClinicScheduleModal = ({ isOpen, onClose, onSave, students, parents
                                             }}
                                         >
                                             {reservationMode === 'byDate' ? (
-                                                <input 
-                                                    type="checkbox" 
-                                                    checked={selectedStudentIds.includes(s.id)} 
-                                                    onChange={() => {}} 
-                                                    className="mt-1 rounded text-indigo-600 focus:ring-indigo-500 h-4 w-4 mr-2 flex-shrink-0" 
+                                                <input
+                                                    type="checkbox"
+                                                    checked={selectedStudentIds.includes(s.id)}
+                                                    onChange={() => {}}
+                                                    className="mt-1 rounded text-[#455fab] focus:ring-[#455fab] h-4 w-4 mr-2 flex-shrink-0"
                                                 />
                                             ) : (
                                                 <input
                                                     type="radio"
                                                     checked={String(selectedStudentId) === String(s.id)}
                                                     onChange={() => {}}
-                                                    className="mt-1 text-indigo-600 focus:ring-indigo-500 h-4 w-4 mr-2 flex-shrink-0"
+                                                    className="mt-1 text-[#455fab] focus:ring-[#455fab] h-4 w-4 mr-2 flex-shrink-0"
                                                 />
                                             )}
                                             <div className='flex flex-col text-sm'>
@@ -429,7 +429,7 @@ export const ClinicScheduleModal = ({ isOpen, onClose, onSave, students, parents
 
                 <div className="pt-4 flex justify-end space-x-2">
                     <button type="button" onClick={onClose} className="px-4 py-2 bg-gray-200 rounded-lg text-sm">취소</button>
-                    <button type="submit" className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold hover:bg-indigo-700">
+                    <button type="submit" className="px-4 py-2 bg-[#455fab] text-white rounded-lg text-sm font-bold hover:bg-[#3b5198]">
                         {reservationMode === 'byDate' ? `총 ${selectedStudentIds.length}명 예약` : `${pickedSlots.length}건 예약`}
                     </button>
                 </div>

@@ -54,8 +54,8 @@ export const PaymentNotificationModal = ({ isOpen, onClose, targets, logNotifica
         <Modal isOpen={isOpen} onClose={onClose} title={isBulk ? `교재비 안내 일괄 발송 (${targets.length}명)` : "교재비 안내 발송"} maxWidth="max-w-lg">
             <div className="space-y-4">
                 {/* 1. 발송 대상 정보 */}
-                <div className="bg-indigo-50 border border-indigo-200 p-4 rounded-lg">
-                    <h4 className="text-sm font-bold text-indigo-800 mb-2 flex items-center">
+                <div className="bg-[#f1f4ff] border border-[#cfd8ff] p-4 rounded-lg">
+                    <h4 className="text-sm font-bold text-[#334a91] mb-2 flex items-center">
                         <Icon name="users" className="w-4 h-4 mr-2" />
                         수신 대상 {isBulk ? `(총 ${targets.length}명)` : ''}
                     </h4>
@@ -108,7 +108,7 @@ export const PaymentNotificationModal = ({ isOpen, onClose, targets, logNotifica
                     <button onClick={onClose} className="px-4 py-2 bg-gray-200 rounded-lg text-sm font-medium hover:bg-gray-300 transition">취소</button>
                     <button 
                         onClick={handleSend}
-                        className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold hover:bg-indigo-700 flex items-center transition shadow-sm"
+                        className="px-4 py-2 bg-[#455fab] text-white rounded-lg text-sm font-bold hover:bg-[#3b5198] flex items-center transition shadow-sm"
                     >
                         <Icon name={scheduleTime ? 'clock' : 'send'} className="w-4 h-4 mr-2" />
                         {scheduleTime ? (isBulk ? '일괄 예약하기' : '예약하기') : (isBulk ? '일괄 발송하기' : '발송하기')}

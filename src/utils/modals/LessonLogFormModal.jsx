@@ -146,7 +146,7 @@ export const LessonLogFormModal = ({
   closures = [],
 }) => {
   const selectedClass = classes.find(c => String(c.id) === String(classId));
-  
+
   const sessions = useMemo(() => selectedClass ? calculateClassSessions(selectedClass) : [], [selectedClass, calculateClassSessions]);
   const classStudents = useMemo(() => {
     if (!classId) return [];
@@ -157,7 +157,7 @@ export const LessonLogFormModal = ({
       return classIds.map(String).includes(String(classId));
     });
   }, [students, classId]);
-  
+
   const [files, setFiles] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState({});
@@ -391,7 +391,7 @@ export const LessonLogFormModal = ({
 
     attachmentIdRef.current = 0;
     setSelectedLessonKey(initialLessonKey);
-    
+
     // 모달이 열릴 때 알림 설정 기본값 초기화
     if (selectedClass) {
         const initialMap = {};
@@ -401,11 +401,11 @@ export const LessonLogFormModal = ({
                 notifyStudent: true, // ✅ 기본값: 학생에게도 발송
             };
         });
-        setStudentNotificationMap(initialMap); 
+        setStudentNotificationMap(initialMap);
     } else {
         setStudentNotificationMap({});
     }
-    
+
     // 모달 열릴 때 dirty 상태 초기화
     setIsDirty(false);
     onDirtyChange(false);
@@ -455,7 +455,7 @@ export const LessonLogFormModal = ({
         }
     }));
     // ✅ 알림 설정 변경 시에도 경고창이 뜨도록 dirty 상태 설정
-    setIsDirty(true); 
+    setIsDirty(true);
   };
 
   const handleAddVideo = () => {
@@ -612,7 +612,7 @@ export const LessonLogFormModal = ({
         notifyMode: formState.staffNotifyMode === 'none' ? 'system' : 'staff',
         staffNotification,
     };
-    
+
     try {
       await onSave(logData, Boolean(editingLogId));
     } catch (error) {
@@ -625,7 +625,7 @@ export const LessonLogFormModal = ({
     setUploadProgress({});
     setFormState(prev => ({ ...prev, attachments: attachmentsForSave.map(item => createAttachmentEntry(item)) }));
     setUploading(false);
-    
+
     if (formState.scheduleTime) {
         const studentRecipients = classStudents.filter(s => {
             const prefs = studentNotificationMap[s.id];
@@ -651,12 +651,12 @@ export const LessonLogFormModal = ({
 
             const recipientString = recipients.length > 0 ? recipients.join(' 및 ') : '대상 없음';
 
-            logNotification('scheduled', '수업 일지 알림 예약', 
+            logNotification('scheduled', '수업 일지 알림 예약',
                 `[${selectedClass.name}] 수업 일지가 ${formState.scheduleTime.replace('T', ' ')}에 ${recipientString}에게 발송되도록 예약됨. (총 ${studentRecipients.length}명 대상)`);
         }
     }
 
-    setIsDirty(false); 
+    setIsDirty(false);
     onDirtyChange(false);
     onClose();
   };
@@ -669,8 +669,8 @@ export const LessonLogFormModal = ({
             <div className="grid grid-cols-2 gap-4">
                 <div>
                     <label className="block text-sm font-medium text-gray-700">수업 일자*</label>
-                    <select 
-                        value={selectedLessonKey} 
+                    <select
+                        value={selectedLessonKey}
                         onChange={e => setSelectedLessonKey(e.target.value)}
                         required
                         disabled={filteredSessions.length === 0}
@@ -695,24 +695,24 @@ export const LessonLogFormModal = ({
                 </div>
                 <div>
                     <label className="block text-sm font-medium text-gray-700">알림 예약 시간 (선택)</label>
-                    <input 
-                        type="datetime-local" 
-                        value={formState.scheduleTime || ''} 
-                        onChange={e => handleChange('scheduleTime', e.target.value)} 
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border" 
+                    <input
+                        type="datetime-local"
+                        value={formState.scheduleTime || ''}
+                        onChange={e => handleChange('scheduleTime', e.target.value)}
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border"
                     />
                     <p className="text-xs text-gray-500 mt-1">예약 시간을 설정하면 알림이 자동으로 전송됩니다.</p>
                 </div>
             </div>
-            
+
             <div>
                 <label className="block text-sm font-medium text-gray-700">진도/주요 내용*</label>
-                <textarea 
-                    value={formState.progress} 
-                    onChange={e => handleChange('progress', e.target.value)} 
-                    rows="3" 
-                    required 
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border" 
+                <textarea
+                    value={formState.progress}
+                    onChange={e => handleChange('progress', e.target.value)}
+                    rows="3"
+                    required
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border"
                     placeholder="예: 다항식의 연산 P.12 ~ P.18 (유형 5까지)"
                 ></textarea>
             </div>
@@ -734,7 +734,7 @@ export const LessonLogFormModal = ({
                     <button
                         type="button"
                         onClick={handleAddVideo}
-                        className="inline-flex items-center px-3 py-1.5 rounded-md text-sm font-medium bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 transition"
+                        className="inline-flex items-center px-3 py-1.5 rounded-md text-sm font-medium bg-[#f1f4ff] text-[#334a91] border border-[#cfd8ff] hover:bg-[#eef2ff] transition"
                     >
                         <Icon name="plus" className="w-4 h-4 mr-1" /> 영상 추가
                     </button>
@@ -760,7 +760,7 @@ export const LessonLogFormModal = ({
                     </DndContext>
                 </div>
             </div>
-            
+
             <div>
                 <div className="flex items-center justify-between">
                     <label className="block text-sm font-medium text-gray-700">첨부 자료</label>
@@ -777,7 +777,7 @@ export const LessonLogFormModal = ({
                             type="button"
                             onClick={() => materialFileInputRef.current?.click()}
                             disabled={uploading}
-                            className="inline-flex items-center px-3 py-1.5 rounded-md text-sm font-medium bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 transition"
+                            className="inline-flex items-center px-3 py-1.5 rounded-md text-sm font-medium bg-[#f1f4ff] text-[#334a91] border border-[#cfd8ff] hover:bg-[#eef2ff] transition"
                         >
                             <Icon name="folder" className="w-4 h-4 mr-1" /> 파일 첨부
                         </button>
@@ -807,7 +807,7 @@ export const LessonLogFormModal = ({
                         </div>
                     )}
                     {uploading && (
-                        <div className="rounded-md border border-indigo-100 bg-indigo-50 p-3 text-sm text-indigo-600 flex items-center gap-2">
+                        <div className="rounded-md border border-[#eef2ff] bg-[#f1f4ff] p-3 text-sm text-[#455fab] flex items-center gap-2">
                             <Icon name="refreshCw" className="w-4 h-4 animate-spin" />
                             <span>파일을 업로드하는 중입니다...</span>
                         </div>
@@ -832,7 +832,7 @@ export const LessonLogFormModal = ({
                             <button
                                 type="button"
                                 onClick={() => window.open(attachment.url, '_blank', 'noopener,noreferrer')}
-                                className="text-left text-sm text-indigo-600 hover:text-indigo-700"
+                                className="text-left text-sm text-[#455fab] hover:text-[#334a91]"
                             >
                                 {attachment.name || attachment.url}
                             </button>
@@ -863,19 +863,19 @@ export const LessonLogFormModal = ({
                                         <tr key={student.id} className="hover:bg-gray-50">
                                             <td className="p-2 font-medium text-gray-900">{student.name}</td>
                                             <td className="p-2 text-center">
-                                                <input 
-                                                    type="checkbox" 
-                                                    checked={prefs.notifyParent} 
+                                                <input
+                                                    type="checkbox"
+                                                    checked={prefs.notifyParent}
                                                     onChange={() => handleNotificationToggle(student.id, 'notifyParent')}
-                                                    className="rounded text-blue-600 focus:ring-blue-500 h-4 w-4 cursor-pointer" 
+                                                    className="rounded text-[#455fab] focus:ring-[#455fab] h-4 w-4 cursor-pointer"
                                                 />
                                             </td>
                                             <td className="p-2 text-center">
-                                                <input 
-                                                    type="checkbox" 
-                                                    checked={prefs.notifyStudent} 
+                                                <input
+                                                    type="checkbox"
+                                                    checked={prefs.notifyStudent}
                                                     onChange={() => handleNotificationToggle(student.id, 'notifyStudent')}
-                                                    className="rounded text-blue-600 focus:ring-blue-500 h-4 w-4 cursor-pointer" 
+                                                    className="rounded text-[#455fab] focus:ring-[#455fab] h-4 w-4 cursor-pointer"
                                                 />
                                             </td>
                                         </tr>

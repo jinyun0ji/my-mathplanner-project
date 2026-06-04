@@ -41,7 +41,7 @@ export default function LessonReportList({ reports = [] }) {
                         {assignedHomework.length > 0 && (
                             <p className="text-sm text-gray-700">이번 수업 숙제: {assignedHomework.map((item) => item.title).join(', ')}</p>
                         )}
-                        {report.comment && <p className="text-sm text-indigo-700">코멘트: {report.comment}</p>}
+                        {report.comment && <p className="text-sm text-[#334a91]">코멘트: {report.comment}</p>}
                     </article>
                 );
             })}

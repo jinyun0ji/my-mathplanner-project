@@ -132,7 +132,7 @@ export default function TestResultTable({ isOpen, onClose, test, studentsData, h
                                     if (isDirty && !window.confirm('저장하지 않은 성적이 있습니다. 이동하시겠습니까?')) return;
                                     setSelectedStudentId(student.id);
                                 }}
-                                className={`w-full text-left rounded-md border px-3 py-2 flex items-center justify-between ${isSelected ? 'bg-indigo-50 border-indigo-300' : 'bg-white border-gray-200 hover:bg-gray-100'}`}
+                                className={`w-full text-left rounded-md border px-3 py-2 flex items-center justify-between ${isSelected ? 'bg-[#f1f4ff] border-[#cfd8ff]' : 'bg-white border-gray-200 hover:bg-gray-100'}`}
                             >
                                 <span className="text-sm font-semibold text-gray-800">{student.name}</span>
                                 <span className={`text-xs font-bold ${scoreDisplay === '미응시' ? 'text-red-500' : 'text-gray-700'}`}>{scoreDisplay}</span>
@@ -141,7 +141,7 @@ export default function TestResultTable({ isOpen, onClose, test, studentsData, h
                     })}
                 </div>
                 
-                 <div className="border rounded-lg p-4 focus:outline-none focus:ring-2 focus:ring-indigo-400 flex flex-col min-h-[62vh]">
+                 <div className="border rounded-lg p-4 focus:outline-none focus:ring-2 focus:ring-[#455fab] flex flex-col min-h-[62vh]">
                     {selectedStudentId === null ? (
                         <div className="flex items-center justify-center h-full text-gray-400">학생을 선택해주세요.</div>
                     ) : (
@@ -149,7 +149,7 @@ export default function TestResultTable({ isOpen, onClose, test, studentsData, h
                             <div className="flex justify-between items-center mb-4">
                                 <div className="flex items-baseline gap-2">
                                     <h5 className="text-lg font-bold text-gray-800">{selectedStudent?.name}</h5>
-                                    <span className="text-2xl font-bold text-indigo-700">{calculateCurrentScore}</span>
+                                    <span className="text-2xl font-bold text-[#334a91]">{calculateCurrentScore}</span>
                                     <span className="text-xs text-gray-500">/ {test.maxScore}점</span>
                                 </div>
                                 {isDirty && <span className="text-xs text-red-500 font-bold">* 변경됨</span>}
@@ -170,7 +170,7 @@ export default function TestResultTable({ isOpen, onClose, test, studentsData, h
                                                 ref={(el) => {
                                                     inputRefs.current[`${selectedStudentId}-${qIndex}`] = el;
                                                 }}
-                                                className={`relative flex flex-col items-center justify-center h-12 border rounded cursor-pointer transition select-none ${getStatusStyle(status)} focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:z-10`}
+                                                className={`relative flex flex-col items-center justify-center h-12 border rounded cursor-pointer transition select-none ${getStatusStyle(status)} focus:outline-none focus:ring-2 focus:ring-[#455fab] focus:z-10`}
                                             >
                                                 <div className="text-[10px] text-gray-500 leading-none absolute top-1 left-1">{qNum}. ({score}점)</div>
                                                 <div className={`text-sm font-bold mt-2 ${status === '미채점' ? 'opacity-0' : 'opacity-100'}`}>
@@ -193,7 +193,7 @@ export default function TestResultTable({ isOpen, onClose, test, studentsData, h
                                 <button
                                     type="button"
                                     onClick={() => handleSubmit(false)}
-                                    className="px-4 py-2 text-sm font-semibold rounded-md bg-indigo-600 text-white hover:bg-indigo-700 disabled:bg-indigo-300"
+                                    className="px-4 py-2 text-sm font-semibold rounded-md bg-[#455fab] text-white hover:bg-[#3b5198] disabled:bg-[#cfd8ff]"
                                 >
                                     저장
                                 </button>

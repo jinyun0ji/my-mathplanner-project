@@ -648,7 +648,7 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
                             )}
                             <div className={`flex items-end gap-1.5 ${msg.isMe ? 'justify-end' : 'justify-start'}`}>
                                 {msg.isMe && <span className="text-[11px] text-gray-400 whitespace-nowrap self-end mb-1">{msg.time}</span>}
-                                <div className={`max-w-[72%] px-3 py-2 rounded-2xl text-sm ${msg.isMe ? 'bg-indigo-600 text-white' : 'bg-white text-gray-900 border border-gray-100'}`}>
+                                <div className={`max-w-[72%] px-3 py-2 rounded-2xl text-sm ${msg.isMe ? 'bg-[#455fab] text-white' : 'bg-white text-gray-900 border border-gray-100'}`}>
                                     <p className="whitespace-pre-wrap break-words">{msg.text}</p>
                                 </div>
                                 {!msg.isMe && <span className="text-[11px] text-gray-400 whitespace-nowrap self-end mb-1">{msg.time}</span>}

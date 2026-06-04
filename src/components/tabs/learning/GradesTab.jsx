@@ -5,7 +5,7 @@ import ModalPortal from '../../common/ModalPortal';
 
 // 로컬 헬퍼 함수
 const getTrendStyle = (t) => {
-    if (t === 'up') return 'text-indigo-600 bg-indigo-50 border-indigo-100';
+    if (t === 'up') return 'text-[#455fab] bg-[#f1f4ff] border-[#eef2ff]';
     if (t === 'down') return 'text-orange-600 bg-orange-50 border-orange-100';
     if (t === 'same') return 'text-gray-800 bg-gray-50 border-gray-100';
     return 'text-gray-400 bg-gray-100 border-gray-200';
@@ -93,7 +93,7 @@ const QuestionAnalysisList = ({ questions, classAverage, highestScore, trend, st
                         <div className="flex items-center gap-4 text-xs text-gray-500">
                             <div className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-gray-300"></span>난이도: <span className={`font-bold ${q.difficulty === '상' ? 'text-red-500' : q.difficulty === '중' ? 'text-yellow-600' : 'text-green-500'}`}>{q.difficulty}</span></div>
                             <div className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-gray-300"></span>유형: {q.type}</div>
-                            <div className="flex items-center gap-1 ml-auto">반 정답률 <span className="font-bold text-indigo-600">{statsReady && Number.isFinite(q.itemAccuracy) ? `${q.itemAccuracy}%` : '통계 준비 중'}</span></div>
+                            <div className="flex items-center gap-1 ml-auto">반 정답률 <span className="font-bold text-[#455fab]">{statsReady && Number.isFinite(q.itemAccuracy) ? `${q.itemAccuracy}%` : '통계 준비 중'}</span></div>
                         </div>
                     </div>
                 )) : (<div className="text-center py-8 text-gray-400 text-xs">{filter === 'all' ? '등록된 문항이 없습니다.' : '해당하는 문항이 없습니다.'}</div>)}
@@ -139,7 +139,7 @@ export default function GradesTab({ myGradeComparison }) {
                             <span className="text-sm text-gray-500 font-bold bg-gray-100 px-2 py-1 rounded mb-2 inline-block">{selectedTestAnalysis.testDate} 시행</span>
                             <h3 className="text-base font-bold text-gray-900 mb-1">{selectedTestAnalysis.testName}</h3>
                             <div className="py-4">
-                                <span className="text-3xl font-extrabold text-indigo-600">{selectedScore.scoreText}</span>
+                                <span className="text-3xl font-extrabold text-[#455fab]">{selectedScore.scoreText}</span>
                                 {selectedScore.scoreText !== '-' && selectedScore.scoreText !== '미응시' && (
                                     <span className="text-gray-400 text-xl font-medium">점 / {selectedTestAnalysis.maxScore}</span>
                                 )}
@@ -183,18 +183,18 @@ export default function GradesTab({ myGradeComparison }) {
                 myGradeComparison.map((item, idx) => {
                     const scoreInfo = resolveScoreText(item);
                     return (
-                        <article key={idx} onClick={() => setSelectedTestId(item.testId)} className="rounded-xl border border-gray-200 bg-white p-3 space-y-1 text-sm text-gray-700 shadow-sm cursor-pointer active:scale-[0.98] transition-all hover:border-indigo-200 active:bg-gray-50">
+                        <article key={idx} onClick={() => setSelectedTestId(item.testId)} className="rounded-xl border border-gray-200 bg-white p-3 space-y-1 text-sm text-gray-700 shadow-sm cursor-pointer active:scale-[0.98] transition-all hover:border-[#cfd8ff] active:bg-gray-50">
                             <div className="flex items-start justify-between gap-2">
                                 <div className="min-w-0">
                                     <p className="font-bold text-gray-900 truncate">{item.testName || '시험'}</p>
                                     <p className="mt-1 text-xs text-gray-500">{item.testDate || '-'}</p>
                                 </div>
-                                <span className="text-[11px] font-semibold text-indigo-700 bg-indigo-50 border border-indigo-100 rounded-full px-2 py-0.5 shrink-0">
+                                <span className="text-[11px] font-semibold text-[#334a91] bg-[#f1f4ff] border border-[#eef2ff] rounded-full px-2 py-0.5 shrink-0">
                                     {scoreInfo.scoreText === '미응시' ? '미응시' : `${scoreInfo.scoreText}점`}
                                 </span>
                             </div>
                             <div className="flex items-center gap-2 text-xs text-gray-500">
-                                <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">{item.className}</span>
+                                <span className="text-[10px] font-bold text-[#455fab] bg-[#f1f4ff] px-2 py-0.5 rounded border border-[#eef2ff]">{item.className}</span>
                                 <span>{item.statsReady && item.classAverage !== null ? `평균 ${item.classAverage}점${item.highestScore !== null && item.highestScore !== undefined ? ` · 최고 ${item.highestScore}점` : ''}` : '통계 준비 중'}</span>
                             </div>
                         </article>

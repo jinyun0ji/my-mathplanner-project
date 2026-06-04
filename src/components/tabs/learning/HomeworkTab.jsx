@@ -21,9 +21,9 @@ export default function HomeworkTab({ myHomeworkStats }) {
                                 : '';
 
                 return (
-                    <div key={hw.id} onClick={() => toggleDetails(hw.id)} className={`bg-white p-3 rounded-xl shadow-sm border border-gray-100 transition-all cursor-pointer ${selectedHwId === hw.id ? 'ring-2 ring-indigo-500' : ''}`}>
+                    <div key={hw.id} onClick={() => toggleDetails(hw.id)} className={`bg-white p-3 rounded-xl shadow-sm border border-gray-100 transition-all cursor-pointer ${selectedHwId === hw.id ? 'ring-2 ring-[#455fab]' : ''}`}>
                         <div className="flex justify-between items-start mb-2">
-                            <span className={`text-xs font-bold px-2 py-0.5 rounded ${hw.status === '완료' ? 'bg-green-100 text-green-700' : hw.status === '미시작' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'}`}>{hw.status}</span>
+                            <span className={`text-xs font-bold px-2 py-0.5 rounded ${hw.status === '완료' ? 'bg-green-100 text-green-700' : hw.status === '미시작' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-[#334a91]'}`}>{hw.status}</span>
                             <span className="text-xs text-gray-500 font-semibold">출제일: {issuedDate || '-'}</span>
                         </div>
                         <div className="flex items-center gap-2 mb-1">
@@ -61,7 +61,7 @@ export default function HomeworkTab({ myHomeworkStats }) {
                                     </div>
                                     <div>
                                         <p className="text-xs text-gray-500">고침</p>
-                                        <p className="font-bold text-blue-600">{hw.fixedCount || 0}</p>
+                                        <p className="font-bold text-[#455fab]">{hw.fixedCount || 0}</p>
                                     </div>
                                 </div>
                                 {[

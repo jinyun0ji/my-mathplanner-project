@@ -175,7 +175,7 @@ export const ClassFormModal = ({ isOpen, onClose, onSave, classToEdit = null }) 
           <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium rounded-lg text-gray-700 bg-gray-200 hover:bg-gray-300 transition duration-150">
             취소
           </button>
-          <button type="submit" disabled={selectedDays.length === 0 || hasInvalidTime} className="px-4 py-2 text-sm font-medium rounded-lg text-white bg-indigo-600 hover:bg-indigo-700 transition duration-150 shadow-md disabled:opacity-50">
+          <button type="submit" disabled={selectedDays.length === 0 || hasInvalidTime} className="px-4 py-2 text-sm font-medium rounded-lg text-white bg-[#455fab] hover:bg-[#3b5198] transition duration-150 shadow-md disabled:opacity-50">
             {classToEdit ? '수정 사항 저장' : '등록하기'}
           </button>
         </div>

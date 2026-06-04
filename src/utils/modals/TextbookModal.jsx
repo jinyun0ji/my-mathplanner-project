@@ -72,7 +72,7 @@ export const TextbookModal = ({ isOpen, onClose, onSave, textbook = null }) => {
                 </div>
                 <div className="pt-4 flex justify-end space-x-2 border-t">
                     <button type="button" onClick={onClose} className="px-4 py-2 bg-gray-200 rounded-lg text-sm">취소</button>
-                    <button type="submit" className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold hover:bg-indigo-700">저장</button>
+                    <button type="submit" className="px-4 py-2 bg-[#455fab] text-white rounded-lg text-sm font-bold hover:bg-[#3b5198]">저장</button>
                 </div>
             </form>
         </Modal>

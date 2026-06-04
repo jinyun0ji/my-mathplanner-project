@@ -1,14 +1,14 @@
 import React, { useMemo, useRef } from 'react';
 import { getAssignmentQuestionNumbers, normalizeHomeworkResultMapForDisplay } from '../../domain/homework/homework.service';
 
-const RESULT_OPTIONS_HOMEWORK = { 
-    '맞음': 'text-green-600 bg-green-100', 
-    '틀림': 'text-red-600 bg-red-100', 
-    '고침': 'text-blue-600 bg-blue-100' 
+const RESULT_OPTIONS_HOMEWORK = {
+    '맞음': 'text-green-600 bg-green-100',
+    '틀림': 'text-red-600 bg-red-100',
+    '고침': 'text-[#455fab] bg-blue-100'
 };
 
 export default function HomeworkGradingTable({ summary, assignment, handleUpdateResult, isReadOnly = false }) {
-    
+
     // 셀 포커스 이동을 위한 Refs 저장소
     const cellRefs = useRef({});
 
@@ -27,13 +27,13 @@ export default function HomeworkGradingTable({ summary, assignment, handleUpdate
         });
         const qNumStr = qNum.toString();
         const currentStatus = normalizedResultMap[qNumStr];
-        
+
         let newStatus;
         if (currentStatus === '맞음') newStatus = '틀림';
         else if (currentStatus === '틀림') newStatus = '고침';
         else if (currentStatus === '고침') newStatus = null; // 초기화
         else newStatus = '맞음'; // 미기록 -> 맞음
-        
+
         // ✅ [수정됨] 인자 순서 수정 (assignment.id 제거)
         handleUpdateResult(studentId, qNumStr, newStatus);
     };
@@ -41,36 +41,36 @@ export default function HomeworkGradingTable({ summary, assignment, handleUpdate
     // 키보드 입력 및 이동 핸들러
     const handleKeyDown = (e, studentId, qNum, sIndex, qIndex) => {
         const qNumStr = qNum.toString();
-        
+
         // 1: 맞음, 2: 틀림, 3: 고침
         if (['1', '2', '3'].includes(e.key)) {
             e.preventDefault();
-            e.stopPropagation(); 
+            e.stopPropagation();
             const statusMap = { '1': '맞음', '2': '틀림', '3': '고침' };
-            
+
             // ✅ [수정됨] 인자 순서 수정
             handleUpdateResult(studentId, qNumStr, statusMap[e.key]);
-            
+
             // 입력 후 오른쪽 칸으로 이동
             if (qIndex < questions.length - 1) {
                 const nextEl = cellRefs.current[`${studentId}-${questions[qIndex + 1]}`];
                 if (nextEl) nextEl.focus();
             }
-        } 
+        }
         // Delete 또는 Backspace: 삭제
         else if (e.key === 'Delete' || e.key === 'Backspace') {
             e.preventDefault();
             e.stopPropagation();
-            
+
             // ✅ [수정됨] 인자 순서 수정
             handleUpdateResult(studentId, qNumStr, null);
         }
-        
+
         // 방향키 이동 로직
         else if (e.key.startsWith('Arrow')) {
             e.preventDefault();
             e.stopPropagation();
-            
+
             if (e.key === 'ArrowRight' && qIndex < questions.length - 1) {
                 const nextEl = cellRefs.current[`${studentId}-${questions[qIndex + 1]}`];
                 if (nextEl) nextEl.focus();
@@ -107,7 +107,7 @@ export default function HomeworkGradingTable({ summary, assignment, handleUpdate
                         {summary.map((s, sIndex) => (
                             <tr key={s.studentId} className="hover:bg-gray-50">
                                 <td className="w-16 px-4 py-2 whitespace-nowrap font-semibold text-gray-900 sticky left-0 bg-white hover:bg-gray-50 border-r z-10">{s.studentName}</td>
-                                <td className={`w-20 px-4 py-2 whitespace-nowrap text-center font-bold ${s.completionRate === 100 ? 'text-green-600' : (s.completionRate > 0 ? 'text-blue-600' : 'text-red-500')}`}>
+                                <td className={`w-20 px-4 py-2 whitespace-nowrap text-center font-bold ${s.completionRate === 100 ? 'text-green-600' : (s.completionRate > 0 ? 'text-[#455fab]' : 'text-red-500')}`}>
                                     {s.completionRate}%
                                 </td>
                                 {questions.map((q, qIndex) => {
@@ -118,22 +118,22 @@ export default function HomeworkGradingTable({ summary, assignment, handleUpdate
                                     });
                                     const status = normalizedResultMap[q.toString()];
                                     const statusClass = status ? RESULT_OPTIONS_HOMEWORK[status] : 'bg-gray-200 text-gray-500';
-                                    
+
                                     return (
-                                        <td 
-                                            key={q} 
+                                        <td
+                                            key={q}
                                             tabIndex={0}
                                             ref={el => cellRefs.current[`${s.studentId}-${q}`] = el}
                                             onClick={(e) => {
                                                 if (isReadOnly) return;
-                                                handleCellClick(s.studentId, q); 
-                                                e.currentTarget.focus(); 
+                                                handleCellClick(s.studentId, q);
+                                                e.currentTarget.focus();
                                             }}
                                             onKeyDown={(e) => {
                                                 if (isReadOnly) return;
                                                 handleKeyDown(e, s.studentId, q, sIndex, qIndex);
                                             }}
-                                            className={`w-8 p-1 text-center transition duration-100 ${statusClass} border-l focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:z-20 ${
+                                            className={`w-8 p-1 text-center transition duration-100 ${statusClass} border-l focus:outline-none focus:ring-2 focus:ring-[#455fab] focus:z-20 ${
                                                 isReadOnly ? 'cursor-not-allowed' : 'cursor-pointer'
                                             }`}
                                         >

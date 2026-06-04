@@ -247,7 +247,7 @@ export default function HomeworkResultsModal({
                                     type="button"
                                     key={student.studentId}
                                     onClick={() => requestChangeStudent(student.studentId)}
-                                    className={`w-full text-left rounded-md border px-3 py-2 ${isActive ? 'bg-indigo-50 border-indigo-300' : 'bg-white border-gray-200 hover:bg-gray-100'}`}
+                                    className={`w-full text-left rounded-md border px-3 py-2 ${isActive ? 'bg-[#f1f4ff] border-[#cfd8ff]' : 'bg-white border-gray-200 hover:bg-gray-100'}`}
                                 >
                                     <p className="text-sm font-semibold text-gray-800">{student.studentName}</p>
                                     <p className="text-xs text-gray-500">{progress ? `${progress.completionPercentDisplay}% (${progress.answeredCount}/${totalQuestions})` : '-'}</p>
@@ -261,7 +261,7 @@ export default function HomeworkResultsModal({
                     ref={containerRef}
                     tabIndex={0}
                     onKeyDown={handleKeyDown}
-                    className="border rounded-lg p-4 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                    className="border rounded-lg p-4 focus:outline-none focus:ring-2 focus:ring-[#455fab]"
                 >
                     {selectedStudent ? (
                         <>
@@ -270,7 +270,7 @@ export default function HomeworkResultsModal({
                                     <p className="text-lg font-bold text-gray-800">{selectedStudent.studentName}</p>
                                     <p className="text-xs text-gray-500">{assignment.book || assignment.title || '과제'} · {assignment.assignedDate || assignment.date}</p>
                                 </div>
-                                <p className="text-sm font-bold text-indigo-700">
+                                <p className="text-sm font-bold text-[#334a91]">
                                     {selectedProgress ? `${selectedProgress.completionPercentDisplay}%` : '-'}
                                 </p>
                             </div>
@@ -290,7 +290,7 @@ export default function HomeworkResultsModal({
                                                 const nextStatus = sequence[(currentIndex + 1) % sequence.length];
                                                 setQuestionStatus(questionNumber, nextStatus, false);
                                             }}
-                                            className={`border rounded-md py-2 text-xs font-semibold ${isActiveQ ? 'ring-2 ring-indigo-400' : ''} ${status === '맞음' ? 'bg-green-100 text-green-700 border-green-200' : status === '틀림' ? 'bg-red-100 text-red-700 border-red-200' : status === '고침' ? 'bg-blue-100 text-blue-700 border-blue-200' : 'bg-white text-gray-600 border-gray-200'}`}
+                                            className={`border rounded-md py-2 text-xs font-semibold ${isActiveQ ? 'ring-2 ring-[#455fab]' : ''} ${status === '맞음' ? 'bg-green-100 text-green-700 border-green-200' : status === '틀림' ? 'bg-red-100 text-red-700 border-red-200' : status === '고침' ? 'bg-blue-100 text-[#334a91] border-blue-200' : 'bg-white text-gray-600 border-gray-200'}`}
                                         >
                                             <div>{questionNumber}</div>
                                             <div>{status || '-'}</div>
@@ -304,7 +304,7 @@ export default function HomeworkResultsModal({
                                     type="button"
                                     onClick={handleSave}
                                     disabled={isSaving}
-                                    className="px-4 py-2 text-sm font-semibold rounded-md bg-indigo-600 text-white hover:bg-indigo-700 disabled:bg-indigo-300"
+                                    className="px-4 py-2 text-sm font-semibold rounded-md bg-[#455fab] text-white hover:bg-[#3b5198] disabled:bg-[#cfd8ff]"
                                 >
                                     {isSaving ? '저장 중...' : '저장'}
                                 </button>

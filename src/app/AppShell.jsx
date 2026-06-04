@@ -33,7 +33,7 @@ export default function AppShell({
       <div className="md:hidden fixed top-3 left-4 z-40">
         <button
           onClick={() => setIsMobileMenuOpen(true)}
-          className="p-2 bg-white rounded-lg shadow-md text-indigo-900 hover:bg-gray-50 border border-gray-100"
+          className="p-2 bg-white rounded-lg shadow-md text-[#334a91] hover:bg-gray-50 border border-gray-100"
         >
           <Icon name="menu" className="w-6 h-6" />
         </button>

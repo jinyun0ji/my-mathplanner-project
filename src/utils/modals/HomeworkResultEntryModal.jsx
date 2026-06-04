@@ -6,7 +6,7 @@ const STATUS_ORDER = [null, '맞음', '틀림', '고침'];
 const STATUS_STYLE = {
     맞음: 'bg-green-100 text-green-700 border-green-200',
     틀림: 'bg-red-100 text-red-700 border-red-200',
-    고침: 'bg-blue-100 text-blue-700 border-blue-200',
+    고침: 'bg-blue-100 text-[#334a91] border-blue-200',
 };
 
 const buildQuestionList = (assignment) => getAssignmentQuestionNumbers(assignment);
@@ -106,7 +106,7 @@ export default function HomeworkResultEntryModal({
                         type="button"
                         onClick={handleSave}
                         disabled={isSaving}
-                        className="px-4 py-2 text-sm font-medium rounded-lg text-white bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300"
+                        className="px-4 py-2 text-sm font-medium rounded-lg text-white bg-[#455fab] hover:bg-[#3b5198] disabled:bg-[#cfd8ff]"
                     >
                         {isSaving ? '저장 중...' : '저장'}
                     </button>

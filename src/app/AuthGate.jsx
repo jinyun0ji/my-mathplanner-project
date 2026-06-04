@@ -144,7 +144,7 @@ export default function AuthGate() {
                             await logout();
                             navigate('/login', { replace: true });
                         }}
-                        className="px-4 py-2 rounded-md bg-indigo-600 text-white"
+                        className="px-4 py-2 rounded-md bg-[#455fab] text-white"
                     >
                         로그아웃
                     </button>
@@ -171,7 +171,7 @@ export default function AuthGate() {
                             await logout();
                             navigate('/login', { replace: true });
                         }}
-                        className="mt-5 w-full rounded-xl bg-indigo-600 px-4 py-3 text-sm font-bold text-white"
+                        className="mt-5 w-full rounded-xl bg-[#455fab] px-4 py-3 text-sm font-bold text-white"
                     >
                         로그인 화면으로 이동
                     </button>

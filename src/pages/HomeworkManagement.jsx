@@ -426,14 +426,14 @@ export default function HomeworkManagement({
                             onClick={() => handleAssignmentSelect(assignment.id)}
                             className={`p-3 mb-2 rounded-lg cursor-pointer border transition duration-150 ${
                                 assignment.id === selectedAssignmentId
-                                    ? 'bg-indigo-50 border-indigo-200 shadow-sm'
+                                    ? 'bg-[#f1f4ff] border-[#cfd8ff] shadow-sm'
                                     : 'bg-white border-gray-200 hover:bg-gray-50'
                             }`}
                         >
                             <div className="flex items-center gap-2">
                                 <p className="text-sm font-bold text-gray-800">{getHomeworkDisplayTitle(assignment)}</p>
                                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-700 border border-gray-200">{typeLabel}</span>
-                                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-100">
+                                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-50 text-[#334a91] border border-blue-100">
                                     {assignmentStatusById[String(assignment.id)] || '미완료'}
                                 </span>
                             </div>
@@ -539,7 +539,7 @@ export default function HomeworkManagement({
             <div className="sticky top-0 z-10 bg-white/90 backdrop-blur border-b border-gray-200 px-4 py-3 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
                 <div className="flex flex-col gap-1">
                     <div className="flex items-center gap-2 text-sm font-semibold text-gray-800">
-                        <Icon name="book" className="w-5 h-5 text-indigo-900" />
+                        <Icon name="book" className="w-5 h-5 text-[#334a91]" />
                         <span>{selectedClass?.name || '클래스 미선택'}</span>
                     </div>
                     <div className="flex flex-wrap items-center gap-2 text-xs text-gray-600">
@@ -587,7 +587,7 @@ export default function HomeworkManagement({
                             <button
                                 onClick={handleNewAssignment}
                                 disabled={!selectedClassId}
-                                className="text-indigo-900 hover:text-indigo-700 text-sm font-bold flex items-center disabled:text-gray-400"
+                                className="text-[#334a91] hover:text-[#334a91] text-sm font-bold flex items-center disabled:text-gray-400"
                             >
                                 <Icon name="plus" className="w-4 h-4 mr-1" />
                                 새 과제
@@ -636,7 +636,7 @@ export default function HomeworkManagement({
                                     <div className='flex flex-wrap gap-2 items-center lg:justify-end'>
                                         <button
                                             onClick={() => handleEditAssignment(selectedAssignment)}
-                                            className="text-gray-500 p-1 rounded-full transition-colors hover:text-indigo-900 hover:bg-indigo-50"
+                                            className="text-gray-500 p-1 rounded-full transition-colors hover:text-[#334a91] hover:bg-[#f1f4ff]"
                                         >
                                             <Icon name="edit" className="w-5 h-5" />
                                         </button>
@@ -670,7 +670,7 @@ export default function HomeworkManagement({
                                                 </div>
                                                 <button
                                                     onClick={() => openResultModal(student.studentId)}
-                                                    className="px-3 py-1.5 text-xs font-semibold rounded-md bg-indigo-600 text-white hover:bg-indigo-700"
+                                                    className="px-3 py-1.5 text-xs font-semibold rounded-md bg-[#455fab] text-white hover:bg-[#3b5198]"
                                                 >
                                                     결과 입력/수정
                                                 </button>
@@ -756,7 +756,7 @@ export default function HomeworkManagement({
                             type="button"
                             onClick={handleCopyWrongNoteText}
                             disabled={!wrongNoteText}
-                            className="px-4 py-2 text-sm font-semibold rounded-md bg-indigo-600 text-white hover:bg-indigo-700 disabled:bg-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed"
+                            className="px-4 py-2 text-sm font-semibold rounded-md bg-[#455fab] text-white hover:bg-[#3b5198] disabled:bg-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed"
                         >
                             복사
                         </button>

@@ -313,13 +313,13 @@ const ParentDashboard = ({
         const presentCount = recentLogs.filter(l => ['출석', '동영상보강'].includes(l.status)).length;
         const attendRate = recentLogs.length > 0 ? (presentCount / recentLogs.length) * 100 : 100;
         
-        let attendStatus = { color: 'bg-indigo-50 text-indigo-700 border-indigo-100', label: '정상', icon: 'check' };
+        let attendStatus = { color: 'bg-[#f1f4ff] text-[#334a91] border-[#eef2ff]', label: '정상', icon: 'check' };
         if (attendRate < 50) attendStatus = { color: 'bg-red-50 text-red-700 border-red-100', label: '주의 필요', icon: 'alertCircle' };
         else if (attendRate < 80) attendStatus = { color: 'bg-orange-50 text-orange-700 border-orange-100', label: '확인 요망', icon: 'alertCircle' };
 
         // [과제] 미제출 건수 기준
         const pendingCount = homeworkStats.filter(h => !h.isComplete).length;
-        let hwStatus = { color: 'bg-indigo-50 text-indigo-700 border-indigo-100', label: '양호' };
+        let hwStatus = { color: 'bg-[#f1f4ff] text-[#334a91] border-[#eef2ff]', label: '양호' };
         if (pendingCount >= 5) hwStatus = { color: 'bg-red-50 text-red-700 border-red-100', label: '제출 지연' };
         else if (pendingCount >= 3) hwStatus = { color: 'bg-orange-50 text-orange-700 border-orange-100', label: '확인 필요' };
 
@@ -333,7 +333,7 @@ const ParentDashboard = ({
             const prevScore = Number.isFinite(prev.studentScore) ? prev.studentScore : null;
 
             if (latestScore !== null && prevScore !== null) {
-                if (latestScore > prevScore) gradeStatus = { color: 'bg-blue-50 text-blue-700 border-blue-100', label: '상승세' };
+                if (latestScore > prevScore) gradeStatus = { color: 'bg-blue-50 text-[#334a91] border-blue-100', label: '상승세' };
                 else if (latestScore < prevScore) gradeStatus = { color: 'bg-orange-50 text-orange-700 border-orange-100', label: '하락세' };
                 else gradeStatus = { color: 'bg-gray-50 text-gray-700 border-gray-200', label: '유지' };
             }
@@ -429,7 +429,7 @@ const ParentDashboard = ({
             <section className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
                 <div className="bg-gray-50 px-5 py-3 border-b border-gray-100 flex justify-between items-center">
                     <h3 className="font-bold text-gray-800 flex items-center gap-2">
-                        <Icon name="calendar" className="w-4 h-4 text-indigo-600" />
+                        <Icon name="calendar" className="w-4 h-4 text-[#455fab]" />
                         오늘의 수업 ({filteredTodayItems.length})
                     </h3>
                     <span className="text-xs text-gray-500">{today.getMonth() + 1}월 {today.getDate()}일 ({todayDayName})</span>
@@ -437,7 +437,7 @@ const ParentDashboard = ({
                 <div className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {filteredTodayItems.length > 0 ? (
                         filteredTodayItems.map((item, idx) => (
-                             <div key={idx} className="flex items-center gap-3 p-3 hover:bg-indigo-50 rounded-xl transition-colors border border-gray-100">
+                             <div key={idx} className="flex items-center gap-3 p-3 hover:bg-[#f1f4ff] rounded-xl transition-colors border border-gray-100">
                                 <span className="text-xs font-mono font-bold text-gray-500 bg-gray-100 px-2 py-1 rounded">{item.time}</span>
                                 <div>
                                     <div className="font-bold text-gray-900 text-sm">{item.title} {item.timeLabel ? `(${item.timeLabel})` : ''}</div>
@@ -1303,17 +1303,17 @@ export default function ParentHome({
                                         <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4">
                                             <div className="flex items-center justify-between mb-2">
                                                 <h3 className="text-sm font-bold text-gray-800 flex items-center gap-2">
-                                                    <Icon name="bell" className="w-4 h-4 text-indigo-600" />
+                                                    <Icon name="bell" className="w-4 h-4 text-[#455fab]" />
                                                     게시판
                                                 </h3>
-                                                <button onClick={openBoardTab} className="text-xs text-indigo-600 font-semibold hover:underline">전체 보기</button>
+                                                <button onClick={openBoardTab} className="text-xs text-[#455fab] font-semibold hover:underline">전체 보기</button>
                                             </div>
                                             <div className="space-y-2">
                                                 {noticePreview.length > 0 ? noticePreview.map(notice => (
                                                     <button 
                                                         key={notice.id} 
                                                         onClick={openBoardTab}
-                                                        className="w-full text-left p-3 rounded-xl border border-gray-100 hover:border-indigo-200 hover:bg-indigo-50 transition-colors"
+                                                        className="w-full text-left p-3 rounded-xl border border-gray-100 hover:border-[#cfd8ff] hover:bg-[#f1f4ff] transition-colors"
                                                     >
                                                         <p className="text-sm font-bold text-gray-900">{notice.title}</p>
                                                         <p className="text-xs text-gray-500 mt-1 line-clamp-2">{getNoticePreviewText(notice.content, 80)}</p>
@@ -1335,7 +1335,7 @@ export default function ParentHome({
                                     <section className="space-y-3">
                                     <div className="flex items-center justify-between px-1">
                                         <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                                            <Icon name="clipboardCheck" className="w-5 h-5 text-indigo-600" />
+                                            <Icon name="clipboardCheck" className="w-5 h-5 text-[#455fab]" />
                                             발송된 수업 리포트
                                         </h3>
                                         <span className="text-xs text-gray-400 font-semibold">총 {filteredLessonReports.length}건</span>
@@ -1348,7 +1348,7 @@ export default function ParentHome({
                                                 setShowAllLessonReports(false);
                                             }}
                                             className={lessonReportClassFilter === 'all'
-                                                ? 'text-xs font-semibold text-indigo-700 bg-indigo-50 px-3 py-1.5 rounded-full border border-indigo-100'
+                                                ? 'text-xs font-semibold text-[#334a91] bg-[#f1f4ff] px-3 py-1.5 rounded-full border border-[#eef2ff]'
                                                 : 'text-xs font-semibold text-gray-500 bg-gray-50 px-3 py-1.5 rounded-full border border-gray-200'}
                                         >
                                             전체 클래스
@@ -1362,7 +1362,7 @@ export default function ParentHome({
                                                     setShowAllLessonReports(false);
                                                 }}
                                                 className={lessonReportClassFilter === option.id
-                                                    ? 'text-xs font-semibold text-indigo-700 bg-indigo-50 px-3 py-1.5 rounded-full border border-indigo-100'
+                                                    ? 'text-xs font-semibold text-[#334a91] bg-[#f1f4ff] px-3 py-1.5 rounded-full border border-[#eef2ff]'
                                                     : 'text-xs font-semibold text-gray-500 bg-gray-50 px-3 py-1.5 rounded-full border border-gray-200'}
                                             >
                                                 {option.name}
@@ -1386,7 +1386,7 @@ export default function ParentHome({
                                                         </ul>
                                                     </div>
                                                 )}
-                                                {report.comment && <p className="text-sm text-indigo-700">코멘트: {report.comment}</p>}
+                                                {report.comment && <p className="text-sm text-[#334a91]">코멘트: {report.comment}</p>}
                                             </div>
                                         ))}
                                         {filteredLessonReports.length === 0 && (
@@ -1434,7 +1434,7 @@ export default function ParentHome({
                                                 onClick={() => setLearningMode(mode.id)}
                                                 className={`rounded-xl px-3 py-2 text-sm font-bold transition-colors ${
                                                     learningMode === mode.id
-                                                        ? 'bg-indigo-600 text-white'
+                                                        ? 'bg-[#455fab] text-white'
                                                         : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
                                                 }`}
                                             >
@@ -1451,7 +1451,7 @@ export default function ParentHome({
                                             <select
                                                 value={classFilter}
                                                 onChange={(e) => setClassFilter(e.target.value)}
-                                                className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                                                className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#cfd8ff]"
                                             >
                                                 {learningClassOptions.map((option) => (
                                                     <option key={option.id} value={option.id}>
@@ -1473,7 +1473,7 @@ export default function ParentHome({
                                                         onClick={() => setLearningSubTab(tab.id)}
                                                         className={`rounded-xl px-2 py-2 text-xs font-bold transition-colors ${
                                                             learningSubTab === tab.id
-                                                                ? 'bg-indigo-600 text-white'
+                                                                ? 'bg-[#455fab] text-white'
                                                                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                                                         }`}
                                                     >
@@ -1508,7 +1508,7 @@ export default function ParentHome({
                                                         <article key={hw.id} className="rounded-xl border border-gray-200 p-2.5 space-y-2">
                                                             <div className="flex items-start justify-between gap-2">
                                                                 <p className="text-sm font-semibold text-gray-900">{hw.book || hw.title || hw.name || hw.bookName || hw.content || '과제'}</p>
-                                                                <span className="text-[11px] font-semibold text-indigo-700 bg-indigo-50 border border-indigo-100 rounded-full px-2 py-0.5">
+                                                                <span className="text-[11px] font-semibold text-[#334a91] bg-[#f1f4ff] border border-[#eef2ff] rounded-full px-2 py-0.5">
                                                                     완성률 {hw.completionRate ?? 0}%
                                                                 </span>
                                                             </div>
@@ -1545,7 +1545,7 @@ export default function ParentHome({
                                                         <article key={test.id} className="rounded-xl border border-gray-200 p-3 space-y-1 text-sm text-gray-700">
                                                             <div className="flex items-start justify-between gap-2">
                                                             <p className="font-bold text-gray-900">{test.name || '시험'}</p>
-                                                            <span className="text-[11px] font-semibold text-indigo-700 bg-indigo-50 border border-indigo-100 rounded-full px-2 py-0.5">{studentScoreLabel}</span>
+                                                            <span className="text-[11px] font-semibold text-[#334a91] bg-[#f1f4ff] border border-[#eef2ff] rounded-full px-2 py-0.5">{studentScoreLabel}</span>
                                                             </div>
                                                             <p className="text-xs text-gray-500">{test.date || '-'}</p>
                                                             {statsInline && (
@@ -1575,13 +1575,13 @@ export default function ParentHome({
                                                                 const status = String(att.attendance || '미기록').trim() || '미기록';
                                                                 const badgeClass =
                                                                     status === '출석'
-                                                                        ? 'bg-indigo-100 text-indigo-700'
+                                                                        ? 'bg-[#eef2ff] text-[#334a91]'
                                                                         : status === '지각'
                                                                             ? 'bg-amber-100 text-amber-700'
                                                                             : status === '결석'
                                                                                 ? 'bg-rose-100 text-rose-700'
                                                                                 : status === '동영상보강'
-                                                                                    ? 'bg-blue-100 text-blue-700'
+                                                                                    ? 'bg-blue-100 text-[#334a91]'
                                                                                     : 'bg-gray-100 text-gray-600';
 
                                                                 return (
@@ -1651,7 +1651,7 @@ export default function ParentHome({
                                                             </div>
                                                             <MathText text={displayedComment} className="text-xs text-gray-700 leading-5" inlineTextClassName="text-xs text-gray-700 leading-5" />
                                                             {isLongComment && (
-                                                                <button type="button" onClick={() => toggleHomeworkDetail(`clinic-comment-${commentKey}`)} className="text-xs font-semibold text-indigo-700">{isExpanded ? '접기' : '더보기'}</button>
+                                                                <button type="button" onClick={() => toggleHomeworkDetail(`clinic-comment-${commentKey}`)} className="text-xs font-semibold text-[#334a91]">{isExpanded ? '접기' : '더보기'}</button>
                                                             )}
                                                         </article>
                                                     );
@@ -1660,7 +1660,7 @@ export default function ParentHome({
                                                     <button
                                                         type="button"
                                                         onClick={() => setClinicPageSize((v) => v + 3)}
-                                                        className="w-full text-xs font-semibold text-indigo-700 border border-indigo-100 bg-indigo-50 rounded-xl py-2"
+                                                        className="w-full text-xs font-semibold text-[#334a91] border border-[#eef2ff] bg-[#f1f4ff] rounded-xl py-2"
                                                     >
                                                         코멘트 3개 더보기
                                                     </button>
@@ -1699,7 +1699,7 @@ export default function ParentHome({
                             <button 
                                 key={item.id} 
                                 onClick={() => setActiveTab(item.id)} 
-                                className={`flex flex-col items-center justify-center w-full h-full transition-all duration-200 active:scale-95 ${activeTab === item.id ? 'text-indigo-900' : 'text-gray-400 hover:text-gray-600'}`}
+                                className={`flex flex-col items-center justify-center w-full h-full transition-all duration-200 active:scale-95 ${activeTab === item.id ? 'text-[#334a91]' : 'text-gray-400 hover:text-gray-600'}`}
                             >
                                 <div className={`mb-1 transition-transform duration-200 ${activeTab === item.id ? '-translate-y-0.5' : ''}`}>
                                     <Icon name={item.icon} className={`w-6 h-6 ${activeTab === item.id ? 'fill-current' : ''}`} strokeWidth={activeTab === item.id ? 2.5 : 2} />
@@ -1715,7 +1715,7 @@ export default function ParentHome({
                 <div className={`fixed bottom-24 right-5 z-[60] flex flex-col gap-3 items-center`}>
                     <button
                         onClick={() => setIsNotificationOpen(true)}
-                        className="bg-white text-indigo-900 border border-indigo-200 p-3 rounded-full shadow-lg hover:bg-gray-50 active:scale-90 flex items-center justify-center relative w-12 h-12"
+                        className="bg-white text-[#334a91] border border-[#cfd8ff] p-3 rounded-full shadow-lg hover:bg-gray-50 active:scale-90 flex items-center justify-center relative w-12 h-12"
                     >
                         <NotificationsIcon style={{ fontSize: 24 }} />
                         {hasUnread && <span className="absolute top-2 right-2.5 w-2 h-2 bg-red-500 rounded-full ring-1 ring-white"></span>}

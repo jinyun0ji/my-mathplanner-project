@@ -66,7 +66,7 @@ export const AttendanceModal = ({ isOpen, onClose, studentsData, initialAttendan
                                                     disabled={isReadOnly}
                                                     className={`px-3 py-1 rounded-full border transition duration-150 min-w-[72px] ${
                                                         attendance[student.id]?.status === status
-                                                            ? 'bg-blue-600 text-white border-blue-700 shadow-md'
+                                                            ? 'bg-[#455fab] text-white border-[#3b5198] shadow-md'
                                                             : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-100'
                                                     } ${isReadOnly ? 'cursor-not-allowed opacity-60 hover:bg-white' : ''}`}
                                                 >
@@ -83,7 +83,7 @@ export const AttendanceModal = ({ isOpen, onClose, studentsData, initialAttendan
 
                 <div className="pt-4 border-t flex justify-between items-center">
                     <p className="text-sm text-gray-600 flex items-center">
-                        <Icon name="info" className="w-4 h-4 mr-1 text-blue-500"/>
+                        <Icon name="info" className="w-4 h-4 mr-1 text-[#455fab]"/>
                         미기록 학생은 자동으로 '결석' 처리되지 않습니다.
                     </p>
                     <button
@@ -92,7 +92,7 @@ export const AttendanceModal = ({ isOpen, onClose, studentsData, initialAttendan
                         className={`px-6 py-2 text-sm font-medium rounded-lg transition duration-150 shadow-md ${
                             isReadOnly
                                 ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                                : 'text-white bg-blue-600 hover:bg-blue-700'
+                                : 'text-white bg-[#455fab] hover:bg-[#3b5198]'
                         }`}
                     >
                         출결 기록 저장

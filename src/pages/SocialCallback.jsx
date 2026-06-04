@@ -91,7 +91,7 @@ const SocialCallback = () => {
                 <p className="text-sm text-gray-600">{error}</p>
                 <button
                     type="button"
-                    className="px-4 py-2 rounded-lg bg-indigo-600 text-white font-semibold"
+                    className="px-4 py-2 rounded-lg bg-[#455fab] text-white font-semibold"
                     onClick={() => navigate('/login', { replace: true })}
                 >
                     돌아가기

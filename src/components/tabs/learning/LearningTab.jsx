@@ -53,10 +53,10 @@ const getAttendanceMemo = (log) => (
 );
 
 const statusBadgeClass = (status) => {
-    if (status === '출석') return 'bg-indigo-100 text-indigo-700';
+    if (status === '출석') return 'bg-[#eef2ff] text-[#334a91]';
     if (status === '지각') return 'bg-amber-100 text-amber-700';
     if (status === '결석') return 'bg-rose-100 text-rose-700';
-    if (status === '동영상보강') return 'bg-blue-100 text-blue-700';
+    if (status === '동영상보강') return 'bg-blue-100 text-[#334a91]';
     return 'bg-gray-100 text-gray-600';
 };
 
@@ -199,7 +199,7 @@ export default function LearningTab({
                             onClick={() => setLearningMode(mode.id)}
                             className={`rounded-xl px-3 py-2 text-sm font-bold transition-colors ${
                                 learningMode === mode.id
-                                    ? 'bg-indigo-600 text-white'
+                                    ? 'bg-[#455fab] text-white'
                                     : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
                             }`}
                         >
@@ -216,7 +216,7 @@ export default function LearningTab({
                         <select
                             value={classFilter}
                             onChange={(event) => setClassFilter(event.target.value)}
-                            className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                            className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#cfd8ff]"
                         >
                             {classOptions.map((option) => (
                                 <option key={option.id} value={option.id}>{option.name}</option>
@@ -233,7 +233,7 @@ export default function LearningTab({
                                     onClick={() => setSubTab(tab.id)}
                                     className={`rounded-xl px-2 py-2 text-xs font-bold transition-colors ${
                                         activeRegularTab === tab.id
-                                            ? 'bg-indigo-600 text-white'
+                                            ? 'bg-[#455fab] text-white'
                                             : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                                     }`}
                                 >

@@ -82,7 +82,7 @@ export default function StudentLogin() {
                             type="email"
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
-                            className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                            className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-[#455fab] focus:outline-none focus:ring-1 focus:ring-[#455fab]"
                             placeholder="student@example.com"
                             required
                         />
@@ -93,7 +93,7 @@ export default function StudentLogin() {
                             type="password"
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
-                            className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                            className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-[#455fab] focus:outline-none focus:ring-1 focus:ring-[#455fab]"
                             placeholder="비밀번호를 입력하세요"
                             required
                         />
@@ -104,7 +104,7 @@ export default function StudentLogin() {
                     <button
                         type="submit"
                         disabled={pending}
-                        className="w-full flex justify-center py-2.5 px-4 border border-transparent text-sm font-semibold rounded-lg text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-60 disabled:cursor-not-allowed"
+                        className="w-full flex justify-center py-2.5 px-4 border border-transparent text-sm font-semibold rounded-lg text-white bg-[#455fab] hover:bg-[#3b5198] focus:outline-none focus:ring-2 focus:ring-[#455fab] focus:ring-offset-2 disabled:opacity-60 disabled:cursor-not-allowed"
                     >
                         {pending ? '로그인 중...' : '로그인'}
                     </button>

@@ -125,7 +125,7 @@ export default function StaffManagement() {
             <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 flex flex-col gap-5">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                        <div className="p-2.5 rounded-xl bg-indigo-50 text-indigo-900 border border-indigo-100">
+                        <div className="p-2.5 rounded-xl bg-[#f1f4ff] text-[#334a91] border border-[#eef2ff]">
                             <Icon name="shield" className="w-5 h-5" />
                         </div>
                         <div>
@@ -133,7 +133,7 @@ export default function StaffManagement() {
                             <p className="text-base font-bold text-gray-800">직원 계정 생성</p>
                         </div>
                     </div>
-                    <span className="px-3 py-1 text-xs font-semibold rounded-full bg-indigo-50 text-indigo-800 border border-indigo-100">
+                    <span className="px-3 py-1 text-xs font-semibold rounded-full bg-[#f1f4ff] text-[#334a91] border border-[#eef2ff]">
                         Allowlist 인증 필요
                     </span>
                 </div>
@@ -146,7 +146,7 @@ export default function StaffManagement() {
                             required
                             value={staffName}
                             onChange={(event) => setStaffName(event.target.value)}
-                            className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                            className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#455fab]"
                             placeholder="[조교] 홍길동"
                         />
                     </label>
@@ -157,7 +157,7 @@ export default function StaffManagement() {
                             required
                             value={staffEmail}
                             onChange={(event) => setStaffEmail(event.target.value)}
-                            className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                            className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#455fab]"
                             placeholder="staff@example.com"
                         />
                     </label>
@@ -166,7 +166,7 @@ export default function StaffManagement() {
                         <select
                             value={staffRole}
                             onChange={(event) => setStaffRole(event.target.value)}
-                            className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                            className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#455fab]"
                         >
                             <option value={ROLE.STAFF}>직원</option>
                             <option value={ROLE.ADMIN}>관리자</option>
@@ -175,7 +175,7 @@ export default function StaffManagement() {
                     <button
                         type="submit"
                         disabled={staffSubmitting}
-                        className="inline-flex items-center justify-center gap-2 rounded-lg bg-indigo-900 text-white px-4 py-2.5 text-sm font-semibold shadow hover:bg-indigo-800 disabled:opacity-60"
+                        className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#455fab] text-white px-4 py-2.5 text-sm font-semibold shadow hover:bg-[#3b5198] disabled:opacity-60"
                     >
                         <Icon name={staffSubmitting ? 'loader' : 'userPlus'} className="w-4 h-4" />
                         {staffSubmitting ? '생성 중...' : '직원 계정 생성'}
@@ -244,7 +244,7 @@ export default function StaffManagement() {
                                                         handleRoleChange(staff.uid, nextRole, staff.role);
                                                     }}
                                                     disabled={isSelf || isUpdating}
-                                                    className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-100 disabled:text-gray-400"
+                                                    className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#455fab] disabled:bg-gray-100 disabled:text-gray-400"
                                                 >
                                                     <option value={ROLE.ADMIN}>관리자</option>
                                                     <option value={ROLE.STAFF}>직원</option>

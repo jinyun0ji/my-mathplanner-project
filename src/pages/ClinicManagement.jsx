@@ -546,8 +546,8 @@ export default function ClinicManagement({
         const status = log.status || (log.checkIn ? 'attended' : 'pending');
         switch(status) {
             case 'attended':
-                // [색상 변경] 참석: bg-blue-100 -> bg-indigo-100, text-blue-700 -> text-indigo-800
-                return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-100 text-indigo-800">참석 완료</span>;
+                // [색상 변경] 참석: bg-blue-100 -> bg-[#eef2ff], text-[#334a91] -> text-[#334a91]
+                return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-[#eef2ff] text-[#334a91]">참석 완료</span>;
             case 'no-show':
                 return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-700">미참석</span>;
             case 'pending':
@@ -564,8 +564,8 @@ export default function ClinicManagement({
                 <div className="flex flex-wrap gap-2 bg-gray-100 p-1 rounded-lg w-full sm:w-fit mb-6">
                     <button
                         onClick={() => setViewMode('staff')}
-                        // [색상 변경] text-indigo-600 -> text-indigo-900
-                        className={`px-4 py-2 text-sm font-bold rounded-md transition ${viewMode === 'staff' ? 'bg-white text-indigo-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                        // [색상 변경] text-[#455fab] -> text-[#334a91]
+                        className={`px-4 py-2 text-sm font-bold rounded-md transition ${viewMode === 'staff' ? 'bg-white text-[#334a91] shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
                     >
                         <Icon name="briefcase" className="w-4 h-4 mr-2 inline-block"/>
                         관리자/직원 모드 (예약/발송)
@@ -584,13 +584,13 @@ export default function ClinicManagement({
                         <div className="flex items-center gap-2">
                             <button
                                 onClick={() => setFilterMode('all')}
-                                className={`px-3 py-1.5 rounded-md text-sm font-bold transition ${filterMode === 'all' ? 'bg-indigo-900 text-white' : 'bg-gray-100 text-gray-600 hover:text-gray-800'}`}
+                                className={`px-3 py-1.5 rounded-md text-sm font-bold transition ${filterMode === 'all' ? 'bg-[#455fab] text-white' : 'bg-gray-100 text-gray-600 hover:text-gray-800'}`}
                             >
                                 전체
                             </button>
                             <button
                                 onClick={() => setFilterMode('date')}
-                                className={`px-3 py-1.5 rounded-md text-sm font-bold transition ${filterMode === 'date' ? 'bg-indigo-900 text-white' : 'bg-gray-100 text-gray-600 hover:text-gray-800'}`}
+                                className={`px-3 py-1.5 rounded-md text-sm font-bold transition ${filterMode === 'date' ? 'bg-[#455fab] text-white' : 'bg-gray-100 text-gray-600 hover:text-gray-800'}`}
                             >
                                 날짜별
                             </button>
@@ -600,7 +600,7 @@ export default function ClinicManagement({
                                         type="date"
                                         value={selectedDate}
                                         onChange={(e) => setSelectedDate(e.target.value)}
-                                        className="p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-900 focus:border-indigo-900 text-sm font-medium text-gray-700"
+                                        className="p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#334a91] focus:border-[#334a91] text-sm font-medium text-gray-700"
                                     />
                                 </div>
                             )}
@@ -619,9 +619,9 @@ export default function ClinicManagement({
                                 미예약 학생 기록
                             </button>
                         )}
-                        {/* 관리자 모드 버튼: [색상 변경] bg-indigo-600 -> bg-indigo-900 */}
+                        {/* 관리자 모드 버튼: [색상 변경] bg-[#455fab] -> bg-[#455fab] */}
                         {viewMode === 'staff' && (
-                            <button onClick={openScheduleModal} className="bg-indigo-900 hover:bg-indigo-800 text-white text-sm font-bold py-2 px-4 rounded-lg flex items-center shadow transition">
+                            <button onClick={openScheduleModal} className="bg-[#455fab] hover:bg-[#3b5198] text-white text-sm font-bold py-2 px-4 rounded-lg flex items-center shadow transition">
                                 <Icon name="calendar" className="w-4 h-4 mr-2" /> 클리닉 예약
                             </button>
                         )}
@@ -637,7 +637,7 @@ export default function ClinicManagement({
                                     <select
                                         value={selectedClassId}
                                         onChange={(e) => setSelectedClassId(e.target.value)}
-                                        className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:border-indigo-900 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                                        className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:border-[#334a91] focus:outline-none focus:ring-2 focus:ring-[#cfd8ff]"
                                     >
                                         <option value="">전체</option>
                                         {classOptions.map(option => (
@@ -652,7 +652,7 @@ export default function ClinicManagement({
                                     <select
                                         value={selectedAssistantId}
                                         onChange={(e) => setSelectedAssistantId(e.target.value)}
-                                        className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:border-indigo-900 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                                        className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:border-[#334a91] focus:outline-none focus:ring-2 focus:ring-[#cfd8ff]"
                                     >
                                         <option value="">전체</option>
                                         {assistantOptions.map(option => (
@@ -669,7 +669,7 @@ export default function ClinicManagement({
                                         value={searchText}
                                         onChange={(e) => setSearchText(e.target.value)}
                                         placeholder="학생/클래스/담당자/메모 검색"
-                                        className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:border-indigo-900 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                                        className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:border-[#334a91] focus:outline-none focus:ring-2 focus:ring-[#cfd8ff]"
                                     />
                                 </label>
                                 <label className="text-xs font-semibold text-gray-600">
@@ -678,7 +678,7 @@ export default function ClinicManagement({
                                         type="date"
                                         value={rangeFrom}
                                         onChange={(e) => setRangeFrom(e.target.value)}
-                                        className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:border-indigo-900 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                                        className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:border-[#334a91] focus:outline-none focus:ring-2 focus:ring-[#cfd8ff]"
                                     />
                                 </label>
                                 <label className="text-xs font-semibold text-gray-600">
@@ -687,13 +687,13 @@ export default function ClinicManagement({
                                         type="date"
                                         value={rangeTo}
                                         onChange={(e) => setRangeTo(e.target.value)}
-                                        className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:border-indigo-900 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                                        className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:border-[#334a91] focus:outline-none focus:ring-2 focus:ring-[#cfd8ff]"
                                     />
                                 </label>
                             </div>
                             <button
                                 onClick={resetFilters}
-                                className="w-full rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-600 transition hover:border-indigo-200 hover:text-indigo-900 lg:w-auto"
+                                className="w-full rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-600 transition hover:border-[#cfd8ff] hover:text-[#334a91] lg:w-auto"
                             >
                                 필터 초기화
                             </button>
@@ -702,8 +702,8 @@ export default function ClinicManagement({
                 )}
 
                 {viewMode === 'staff' && selectedLogIds.length > 0 && (
-                    <div className="bg-indigo-50 border border-indigo-100 p-3 rounded-lg mb-4 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 animate-fade-in">
-                        <span className="text-sm font-bold text-indigo-900 ml-2">{selectedLogIds.length}명 선택됨</span>
+                    <div className="bg-[#f1f4ff] border border-[#eef2ff] p-3 rounded-lg mb-4 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 animate-fade-in">
+                        <span className="text-sm font-bold text-[#334a91] ml-2">{selectedLogIds.length}명 선택됨</span>
                         <div className="flex flex-wrap gap-2">
                             <button onClick={() => { if(window.confirm(`선택한 ${selectedLogIds.length}건의 일정을 정말 삭제하시겠습니까?`)) { selectedLogIds.forEach(id => handleDeleteClinicLog(id)); setSelectedLogIds([]); } }} className="bg-white border border-gray-300 text-red-600 hover:bg-red-50 text-xs font-bold py-1.5 px-3 rounded-md flex items-center transition">
                                 <Icon name="trash" className="w-3 h-3 mr-1" /> 선택 삭제
@@ -722,7 +722,7 @@ export default function ClinicManagement({
                                 <tr>
                                     {viewMode === 'staff' && (
                                         <th className="px-4 py-3 text-center w-10">
-                                            <input type="checkbox" onChange={handleSelectAll} checked={visibleLogs.length > 0 && selectedLogIds.length === visibleLogs.length} className="rounded text-indigo-900 focus:ring-indigo-900 h-4 w-4" />
+                                            <input type="checkbox" onChange={handleSelectAll} checked={visibleLogs.length > 0 && selectedLogIds.length === visibleLogs.length} className="rounded text-[#334a91] focus:ring-[#334a91] h-4 w-4" />
                                         </th>
                                     )}
                                     {filterMode === 'all' && (
@@ -747,11 +747,11 @@ export default function ClinicManagement({
                                         const status = log.status || (log.checkIn ? 'attended' : 'pending');
                                         
                                         return (
-                                            // [색상 변경] hover:bg-gray-50 -> hover:bg-indigo-50/30
-                                            <tr key={log.id} className={`hover:bg-indigo-50/30 transition ${isSelected ? 'bg-indigo-50' : ''}`}>
+                                            // [색상 변경] hover:bg-gray-50 -> hover:bg-[#f1f4ff]/30
+                                            <tr key={log.id} className={`hover:bg-[#f1f4ff]/30 transition ${isSelected ? 'bg-[#f1f4ff]' : ''}`}>
                                                 {viewMode === 'staff' && (
                                                     <td className="px-4 py-4 text-center">
-                                                        <input type="checkbox" checked={isSelected} onChange={() => handleSelectLog(log.id)} className="rounded text-indigo-900 focus:ring-indigo-900 h-4 w-4" />
+                                                        <input type="checkbox" checked={isSelected} onChange={() => handleSelectLog(log.id)} className="rounded text-[#334a91] focus:ring-[#334a91] h-4 w-4" />
                                                     </td>
                                                 )}
                                                 {filterMode === 'all' && (
@@ -777,7 +777,7 @@ export default function ClinicManagement({
                                                 </td>
                                                 <td className="px-4 py-4 whitespace-nowrap text-center">{renderStatusBadge(log)}</td>
                                                 <td className="px-4 py-4 whitespace-nowrap text-center text-sm">
-                                                    {log.checkIn ? <span className="font-mono font-bold text-indigo-700 bg-indigo-50 px-2 py-1 rounded">{log.checkIn} ~ {log.checkOut || '...'}</span> : <span className="text-gray-300">-</span>}
+                                                    {log.checkIn ? <span className="font-mono font-bold text-[#334a91] bg-[#f1f4ff] px-2 py-1 rounded">{log.checkIn} ~ {log.checkOut || '...'}</span> : <span className="text-gray-300">-</span>}
                                                 </td>
                                                 <td className="px-4 py-4 text-sm text-gray-700">
                                                     {log.comment ? <div className="line-clamp-2 text-gray-800" title={log.comment}>{log.comment}</div> : <span className="text-gray-400 text-xs italic">내용 없음</span>}
@@ -793,13 +793,13 @@ export default function ClinicManagement({
                                                 )}
                                                 <td className="px-4 py-4 whitespace-nowrap text-center text-sm font-medium">
                                                     <div className="flex justify-center space-x-1">
-                                                        <button onClick={() => openCommentModal(log)} className="text-gray-500 hover:text-indigo-900 p-1.5 rounded hover:bg-gray-100 transition" title="기록 수정"><Icon name="edit" className="w-4 h-4" /></button>
+                                                        <button onClick={() => openCommentModal(log)} className="text-gray-500 hover:text-[#334a91] p-1.5 rounded hover:bg-gray-100 transition" title="기록 수정"><Icon name="edit" className="w-4 h-4" /></button>
                                                         
                                                         {viewMode === 'staff' && (
                                                             <>
                                                                 <button 
                                                                     onClick={() => handleNotifyClick(log)}
-                                                                    className={`p-1.5 rounded hover:bg-gray-100 transition ${isSent ? 'text-green-600' : 'text-gray-400 hover:text-indigo-900'}`}
+                                                                    className={`p-1.5 rounded hover:bg-gray-100 transition ${isSent ? 'text-green-600' : 'text-gray-400 hover:text-[#334a91]'}`}
                                                                     title="알림 발송"
                                                                 >
                                                                     <Icon name="bell" className="w-4 h-4" />
@@ -835,7 +835,7 @@ export default function ClinicManagement({
                                     type="button"
                                     onClick={() => setPage(prev => Math.max(1, prev - 1))}
                                     disabled={page <= 1}
-                                    className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:border-indigo-200 hover:text-indigo-900 disabled:cursor-not-allowed disabled:opacity-50"
+                                    className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:border-[#cfd8ff] hover:text-[#334a91] disabled:cursor-not-allowed disabled:opacity-50"
                                 >
                                     이전
                                 </button>
@@ -846,7 +846,7 @@ export default function ClinicManagement({
                                     type="button"
                                     onClick={() => setPage(prev => Math.min(totalPages, prev + 1))}
                                     disabled={page >= totalPages}
-                                    className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:border-indigo-200 hover:text-indigo-900 disabled:cursor-not-allowed disabled:opacity-50"
+                                    className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:border-[#cfd8ff] hover:text-[#334a91] disabled:cursor-not-allowed disabled:opacity-50"
                                 >
                                     다음
                                 </button>
@@ -859,7 +859,7 @@ export default function ClinicManagement({
                         <div className="p-4 text-center">
                             <button
                                 onClick={handleLoadMore}
-                                className="bg-indigo-900 text-white px-4 py-2 rounded-lg"
+                                className="bg-[#455fab] text-white px-4 py-2 rounded-lg"
                             >
                                 더 보기
                             </button>
@@ -873,7 +873,7 @@ export default function ClinicManagement({
                             const dateText = log.effectiveDate || log.date || '';
 
                             return (
-                                <div key={log.id} className={`bg-white border rounded-xl shadow-sm p-4 space-y-3 ${isSelected ? 'ring-1 ring-indigo-200' : ''}`}>
+                                <div key={log.id} className={`bg-white border rounded-xl shadow-sm p-4 space-y-3 ${isSelected ? 'ring-1 ring-[#cfd8ff]' : ''}`}>
                                     <div className="flex items-start justify-between gap-2">
                                         <div>
                                             {(() => {
@@ -900,7 +900,7 @@ export default function ClinicManagement({
                                                         type="checkbox" 
                                                         checked={isSelected} 
                                                         onChange={() => handleSelectLog(log.id)} 
-                                                        className="rounded text-indigo-900 focus:ring-indigo-900 h-4 w-4"
+                                                        className="rounded text-[#334a91] focus:ring-[#334a91] h-4 w-4"
                                                     />
                                                     선택
                                                 </label>
@@ -933,7 +933,7 @@ export default function ClinicManagement({
                                     <div className="flex flex-wrap gap-2">
                                         <button 
                                             onClick={() => openCommentModal(log)} 
-                                            className="flex-1 text-sm font-semibold px-3 py-2 rounded-lg bg-gray-100 text-gray-700 hover:bg-indigo-50 hover:text-indigo-900 transition"
+                                            className="flex-1 text-sm font-semibold px-3 py-2 rounded-lg bg-gray-100 text-gray-700 hover:bg-[#f1f4ff] hover:text-[#334a91] transition"
                                         >
                                             기록/코멘트
                                         </button>
@@ -943,7 +943,7 @@ export default function ClinicManagement({
                                                 <button 
                                                     onClick={() => handleNotifyClick(log)}
                                                     className={`flex-1 text-sm font-semibold px-3 py-2 rounded-lg border transition ${
-                                                        isSent ? 'bg-green-50 text-green-700 border-green-200' : 'bg-white text-gray-700 border-gray-200 hover:border-indigo-300'
+                                                        isSent ? 'bg-green-50 text-green-700 border-green-200' : 'bg-white text-gray-700 border-gray-200 hover:border-[#cfd8ff]'
                                                     }`}
                                                 >
                                                     알림 {isSent ? '완료' : '발송'}

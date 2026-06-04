@@ -141,8 +141,8 @@ function buildQuestionStats(rows = [], totalQuestions = 0) {
 // ----------------------------------------------------------------------
 // 메인 컴포넌트: GradeManagement
 // ----------------------------------------------------------------------
-export default function GradeManagement({ 
-    classes, tests, grades, handleSaveTest, handleDeleteTest, 
+export default function GradeManagement({
+    classes, tests, grades, handleSaveTest, handleDeleteTest,
     handleUpdateGrade, handleSaveClass, calculateClassSessions,
     closures = [],
     students = [],
@@ -156,11 +156,11 @@ export default function GradeManagement({
     const [isStatsModalOpen, setIsStatsModalOpen] = useState(false);
     const [compactPrint, setCompactPrint] = useState(true);
     const { students: classStudents, isLoading: isLoadingStudents } = useClassStudents(selectedClassId);
-    
+
     // 엑셀 파일 입력을 위한 Ref
     const fileInputRef = useRef(null);
     const printRef = useRef(null);
-    
+
     const selectedClass = classes.find(c => String(c.id) === String(selectedClassId));
 
     const parentLast4Map = useMemo(
@@ -181,7 +181,7 @@ export default function GradeManagement({
     // ------------------------------------------
     // 데이터 가공 (useMemo)
     // ------------------------------------------
-    
+
     const classTests = useMemo(
         () => getClassTests(tests, selectedClassId),
         [tests, selectedClassId]
@@ -268,7 +268,7 @@ export default function GradeManagement({
     }, [displayRosterForTest, grades, selectedClass?.name, selectedTest]);
 
     useEffect(() => {
-        setSelectedTestId(null); 
+        setSelectedTestId(null);
     }, [selectedClassId]);
 
     // ------------------------------------------
@@ -330,14 +330,14 @@ export default function GradeManagement({
             alert("클래스와 시험을 선택해주세요.");
             return;
         }
-        e.stopPropagation(); 
-        
-        const test = selectedTest; 
-        const studentsInClass = displayRosterForTest; 
-        
+        e.stopPropagation();
+
+        const test = selectedTest;
+        const studentsInClass = displayRosterForTest;
+
         const headers = ['학생명', ...Array.from({ length: test.totalQuestions }, (_, i) => `Q${i + 1} (${test.questionScores[i] || 0}점)`)];
-        const sampleData = ['김철수 (예시)', ...Array(test.totalQuestions).fill('1')]; 
-        
+        const sampleData = ['김철수 (예시)', ...Array(test.totalQuestions).fill('1')];
+
         const csvContent = [
             headers.join(','),
             '// --- 입력 규칙: 1 (맞음), 2 (틀림) / 미응시 학생은 점수 칸을 비워두세요 ---',
@@ -347,7 +347,7 @@ export default function GradeManagement({
 
         const blob = new Blob(["\ufeff" + csvContent], { type: 'text/csv;charset=utf-8;' });
         const link = document.createElement('a');
-        if (link.download !== undefined) { 
+        if (link.download !== undefined) {
             const url = URL.createObjectURL(blob);
             link.setAttribute('href', url);
             link.setAttribute('download', `${test.name}_채점양식.csv`);
@@ -363,7 +363,7 @@ export default function GradeManagement({
             alert("시험을 선택해주세요.");
             return;
         }
-        e.stopPropagation(); 
+        e.stopPropagation();
         fileInputRef.current?.click();
     };
 
@@ -372,15 +372,15 @@ export default function GradeManagement({
         if (file) {
             if (!file.name.endsWith('.csv') && !file.name.endsWith('.xlsx')) {
                 alert('CSV 또는 XLSX 파일만 업로드할 수 있습니다.');
-                event.target.value = ''; 
+                event.target.value = '';
                 return;
             }
             console.log('File selected:', file.name);
             alert(`[시뮬레이션] '${file.name}' 파일을 읽었습니다.\n\n실제 구현 시:\n1. 파일을 파싱하여 학생별/문항별 점수 데이터를 추출합니다.\n2. handleUpdateGrade를 반복 호출하여 일괄 저장합니다.\n\n(현재는 시뮬레이션 메시지만 표시됩니다.)`);
-            event.target.value = ''; 
+            event.target.value = '';
         }
     };
-    
+
     // ------------------------------------------
     // UI 서브 컴포넌트
     // ------------------------------------------
@@ -392,16 +392,16 @@ export default function GradeManagement({
                     <div
                         key={test.id}
                         onClick={() => setSelectedTestId(test.id)}
-                        // [색상 변경] 선택 시: bg-indigo-50 border-indigo-200 (Navy Theme)
+                        // [색상 변경] 선택 시: bg-[#f1f4ff] border-[#cfd8ff] (Navy Theme)
                         className={`p-3 mb-2 rounded-lg cursor-pointer border transition duration-150 ${
-                            test.id === selectedTestId 
-                                ? 'bg-indigo-50 border-indigo-200 shadow-sm' 
+                            test.id === selectedTestId
+                                ? 'bg-[#f1f4ff] border-[#cfd8ff] shadow-sm'
                                 : 'bg-white border-gray-200 hover:bg-gray-50'
                         }`}
                     >
                         <div className="flex items-start justify-between gap-2">
                             <div>
-                                <p className={`text-sm font-bold ${test.id === selectedTestId ? 'text-indigo-900' : 'text-gray-800'}`}>
+                                <p className={`text-sm font-bold ${test.id === selectedTestId ? 'text-[#334a91]' : 'text-gray-800'}`}>
                                     {test.name}
                                 </p>
                                 <p className="text-xs text-gray-600 mt-1">{test.date} | 총점 {test.maxScore}점</p>
@@ -409,7 +409,7 @@ export default function GradeManagement({
                             <button
                                 type="button"
                                 onClick={(e) => { e.stopPropagation(); handleEditTest(test); }}
-                                className="text-xs font-medium text-indigo-900 hover:text-indigo-700 border border-indigo-100 bg-indigo-50 rounded px-2 py-1"
+                                className="text-xs font-medium text-[#334a91] hover:text-[#334a91] border border-[#eef2ff] bg-[#f1f4ff] rounded px-2 py-1"
                             >
                                 수정
                             </button>
@@ -423,32 +423,32 @@ export default function GradeManagement({
             </div>
         );
     }, [classTests, selectedTestId]);
-    
+
     const TestActionPanel = ({ test }) => {
         if (!test) return null;
-        
-        const questionScoresString = test.questionScores.map((score, index) => 
+
+        const questionScoresString = test.questionScores.map((score, index) =>
             `${index + 1}번: ${score}점`
         );
 
         return (
-            // [색상 변경] border-l-4 border-indigo-900 (Navy Theme)
-            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 border-l-4 border-l-indigo-900 space-y-4">
+            // [색상 변경] border-l-4 border-[#334a91] (Navy Theme)
+            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 border-l-4 border-l-[#334a91] space-y-4">
                 <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between border-b pb-3">
                     <h3 className="text-xl font-bold text-gray-800 flex items-center leading-snug">
-                        {/* [색상 변경] 아이콘: text-indigo-900 */}
-                        <Icon name="fileText" className="w-5 h-5 mr-2 text-indigo-900"/>
+                        {/* [색상 변경] 아이콘: text-[#334a91] */}
+                        <Icon name="fileText" className="w-5 h-5 mr-2 text-[#334a91]"/>
                         선택 시험 정보: {test.name}
                     </h3>
                     <p className="text-xs text-gray-500">상단 바에서 채점/엑셀 작업을 진행할 수 있습니다.</p>
                 </div>
-                
+
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
                     <p><span className="font-medium text-gray-600">시험일:</span> {test.date}</p>
                     <p><span className="font-medium text-gray-600">총점:</span> {test.maxScore}점</p>
                     <p><span className="font-medium text-gray-600">총 문항 수:</span> {test.totalQuestions}개</p>
                 </div>
-                
+
                 <p className="text-sm border-t pt-3 text-gray-700">
                     <span className="font-medium text-gray-600 block mb-2">문항당 배점:</span>
                     <span className="flex flex-wrap gap-x-3 gap-y-1 text-xs">
@@ -457,16 +457,16 @@ export default function GradeManagement({
                         ))}
                     </span>
                 </p>
-                
+
                 <div className="flex flex-wrap gap-3 border-t pt-3">
                     {/* [색상 변경] 텍스트 버튼: 회색 -> 호버시 남색 */}
-                     <button 
+                     <button
                         onClick={() => handleEditTest(test)}
-                        className="text-gray-500 hover:text-indigo-900 flex items-center text-sm font-medium transition"
+                        className="text-gray-500 hover:text-[#334a91] flex items-center text-sm font-medium transition"
                     >
                         <Icon name="edit" className="w-4 h-4 mr-1" />시험 정보 수정
                     </button>
-                     <button 
+                     <button
                         onClick={() => { if(window.confirm(`${test.name} 시험을 삭제하면 모든 학생의 성적 데이터도 삭제됩니다. 정말 삭제하시겠습니까?`)) handleDeleteTest(test.id); }}
                         className="text-gray-500 hover:text-red-600 flex items-center text-sm font-medium transition"
                     >
@@ -483,7 +483,7 @@ export default function GradeManagement({
             <div className="sticky top-0 z-10 bg-white/90 backdrop-blur border-b border-gray-200 px-4 py-3 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
                 <div className="flex flex-col gap-1">
                     <div className="flex items-center gap-2 text-sm font-semibold text-gray-800">
-                        <Icon name="calendar" className="w-5 h-5 text-indigo-900" />
+                        <Icon name="calendar" className="w-5 h-5 text-[#334a91]" />
                         <p>{selectedClass?.name || '클래스 미선택'}</p>
                     </div>
                     <div className="flex flex-wrap items-center gap-2 text-xs text-gray-600">
@@ -511,14 +511,14 @@ export default function GradeManagement({
                             </button>
                             <button
                                 onClick={handleUploadExcel}
-                                className="flex items-center justify-center px-4 py-2 rounded-lg text-sm font-semibold bg-white border border-indigo-900 text-indigo-900 hover:bg-indigo-50"
+                                className="flex items-center justify-center px-4 py-2 rounded-lg text-sm font-semibold bg-white border border-[#334a91] text-[#334a91] hover:bg-[#f1f4ff]"
                             >
                                 <Icon name="upload" className="w-4 h-4 mr-2" />
                                 엑셀로 결과 입력
                             </button>
                             <button
                                 onClick={handleOpenGradeInput}
-                                className="flex items-center justify-center px-4 py-2 rounded-lg text-sm font-semibold bg-indigo-900 text-white hover:bg-indigo-800 shadow"
+                                className="flex items-center justify-center px-4 py-2 rounded-lg text-sm font-semibold bg-[#455fab] text-white hover:bg-[#3b5198] shadow"
                             >
                                 <Icon name="edit" className="w-4 h-4 mr-2" />
                                 성적 입력/채점
@@ -575,7 +575,7 @@ export default function GradeManagement({
                             ) : (
                                 /* 선택된 시험이 없을 때 (전체 성적 테이블) 표시 */
                                 <div className="space-y-4">
-                                    <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 border-l-4 border-l-indigo-900">
+                                    <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 border-l-4 border-l-[#334a91]">
                                         <h3 className="text-lg font-bold text-gray-800">{selectedClass.name} 성적 현황</h3>
                                         <p className="text-sm text-gray-600 mt-1">총 {classTests.length}개의 시험이 등록되어 있습니다. 성적 입력은 **시험 목록에서 시험을 선택**하여 진행하세요.</p>
                                     </div>
@@ -592,7 +592,7 @@ export default function GradeManagement({
                     )}
                 </div>
             </div>
-            
+
             {/* 시험 등록/수정 모달 */}
             <TestFormModal
                 isOpen={isTestModalOpen}
@@ -605,11 +605,11 @@ export default function GradeManagement({
                 calculateClassSessions={calculateClassSessions}
                 closures={closures}
             />
-            
+
             {/* 성적 입력 모달 */}
             {selectedTest && (
-                <TestResultTable 
-                    isOpen={isGradeInputModalOpen} 
+                <TestResultTable
+                    isOpen={isGradeInputModalOpen}
                     onClose={handleCloseGradeInput}
                     test={selectedTest}
                     studentsData={displayRosterForTest}
@@ -653,7 +653,7 @@ export default function GradeManagement({
                     </div>
                 </div>
             )}
-            
+
             {/* 엑셀 파일 업로드 Input */}
             <input
                 type="file"

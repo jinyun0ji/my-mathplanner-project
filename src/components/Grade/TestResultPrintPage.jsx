@@ -104,7 +104,7 @@ function ScoreHistogram({ bins = [] }) {
                 const actualBarWidth = Math.max(10, barWidth - 8);
                 return (
                     <g key={bin.key}>
-                        <rect x={x} y={y} width={actualBarWidth} height={barHeight} fill="#4338ca" opacity="0.92" />
+                        <rect x={x} y={y} width={actualBarWidth} height={barHeight} fill="#455fab" opacity="0.92" />
                         <text x={x + (actualBarWidth / 2)} y={Math.max(chartTop + 12, y - 6)} textAnchor="middle" className="bar-count">
                             {bin.count}
                         </text>

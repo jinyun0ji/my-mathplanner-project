@@ -61,7 +61,7 @@ export default function Sidebar({ page, setPage, onLogout, isOpen, onClose }) {
             <div>
                 {/* 로고 영역 */}
                 <div className="h-16 flex items-center justify-between px-6 border-b border-gray-100">
-                    <div className="flex items-center min-w-0 text-indigo-600">
+                    <div className="flex items-center min-w-0 text-[#455fab]">
                         <img
                             src={logoHorizontal}
                             alt="채수용 수학"
@@ -90,11 +90,11 @@ export default function Sidebar({ page, setPage, onLogout, isOpen, onClose }) {
                                 onClick={() => setPage(item.key, null, true)}
                                 className={`flex items-center w-full px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 group ${
                                     isActive 
-                                        ? 'bg-indigo-50 text-indigo-700 shadow-sm ring-1 ring-indigo-200'
+                                        ? 'bg-[#f1f4ff] text-[#334a91] shadow-sm ring-1 ring-[#cfd8ff]'
                                         : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'
                                 }`}
                             >
-                                <Icon name={item.icon} className={`w-5 h-5 mr-3 transition-colors ${isActive ? 'text-indigo-600' : 'text-gray-400 group-hover:text-gray-600'}`} />
+                                <Icon name={item.icon} className={`w-5 h-5 mr-3 transition-colors ${isActive ? 'text-[#455fab]' : 'text-gray-400 group-hover:text-gray-600'}`} />
                                 {item.name}
                             </button>
                         );
@@ -111,11 +111,11 @@ export default function Sidebar({ page, setPage, onLogout, isOpen, onClose }) {
                                         onClick={() => setPage(item.key, null, true)}
                                         className={`flex items-center w-full px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 group ${
                                             isActive
-                                                ? 'bg-indigo-50 text-indigo-700 shadow-sm ring-1 ring-indigo-200'
+                                                ? 'bg-[#f1f4ff] text-[#334a91] shadow-sm ring-1 ring-[#cfd8ff]'
                                                 : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'
                                         }`}
                                     >
-                                        <Icon name={item.icon} className={`w-5 h-5 mr-3 transition-colors ${isActive ? 'text-indigo-600' : 'text-gray-400 group-hover:text-gray-600'}`} />
+                                        <Icon name={item.icon} className={`w-5 h-5 mr-3 transition-colors ${isActive ? 'text-[#455fab]' : 'text-gray-400 group-hover:text-gray-600'}`} />
                                         {item.name}
                                     </button>
                                 );

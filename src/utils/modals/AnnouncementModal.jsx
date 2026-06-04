@@ -27,13 +27,13 @@ export const AnnouncementModal = ({ isOpen, onClose, onSave, announcementToEdit 
     const [isPinned, setIsPinned] = useState(false);
     const [scheduleTime, setScheduleTime] = useState('');
     const [newAttachment, setNewAttachment] = useState('');
-    const [targetClasses, setTargetClasses] = useState([]); 
+    const [targetClasses, setTargetClasses] = useState([]);
     const [targetStudents, setTargetStudents] = useState([]);
     const [staffNotifyMode, setStaffNotifyMode] = useState('none');
     const [staffNotifyTitle, setStaffNotifyTitle] = useState('');
     const [staffNotifyBody, setStaffNotifyBody] = useState('');
     const [staffNotifyScheduledAt, setStaffNotifyScheduledAt] = useState('');
-    
+
     // 선택된 이미지 상태 관리
     const [selectedImage, setSelectedImage] = useState(null);
 
@@ -107,7 +107,7 @@ export const AnnouncementModal = ({ isOpen, onClose, onSave, announcementToEdit 
                 setStaffNotifyBody('');
                 setStaffNotifyScheduledAt('');
             }
-            setSelectedImage(null); 
+            setSelectedImage(null);
             setIsImageUploading(false);
         }
     }, [isOpen, announcementToEdit]);
@@ -138,8 +138,8 @@ export const AnnouncementModal = ({ isOpen, onClose, onSave, announcementToEdit 
 
     const handleTargetClassToggle = (classId) => {
         const classKey = String(classId);
-        setTargetClasses(prev => 
-            prev.includes(classKey) 
+        setTargetClasses(prev =>
+            prev.includes(classKey)
                 ? prev.filter(id => id !== classKey)
                 : [...prev, classKey]
         );
@@ -238,7 +238,7 @@ export const AnnouncementModal = ({ isOpen, onClose, onSave, announcementToEdit 
             setSelectedImage(e.target);
             const imgs = editorRef.current.querySelectorAll('img');
             imgs.forEach(img => img.style.outline = 'none');
-            e.target.style.outline = '2px solid #3b82f6'; 
+            e.target.style.outline = '2px solid #3b82f6';
         } else {
             setSelectedImage(null);
             if (editorRef.current) {
@@ -252,10 +252,10 @@ export const AnnouncementModal = ({ isOpen, onClose, onSave, announcementToEdit 
     const handleResizeImage = (width) => {
         if (selectedImage) {
             selectedImage.style.width = width;
-            selectedImage.style.height = 'auto'; 
+            selectedImage.style.height = 'auto';
             // 이미지 정렬을 위해 inline-block 스타일 강제 적용 (안전장치)
-            selectedImage.style.display = 'inline-block'; 
-            setContent(editorRef.current.innerHTML); 
+            selectedImage.style.display = 'inline-block';
+            setContent(editorRef.current.innerHTML);
         }
     };
 
@@ -295,7 +295,7 @@ export const AnnouncementModal = ({ isOpen, onClose, onSave, announcementToEdit 
             const imgs = editorRef.current.querySelectorAll('img');
             imgs.forEach(img => img.style.outline = 'none');
         }
-        
+
         const finalContent = editorRef.current.innerHTML;
 
         const selectedClassIds = (targetClasses || []).map((id) => String(id));
@@ -394,7 +394,7 @@ export const AnnouncementModal = ({ isOpen, onClose, onSave, announcementToEdit 
         { value: 7, label: '7 (가장 크게)' },
     ];
 
-    const toolbarButtonClass = 'inline-flex h-8 w-8 items-center justify-center rounded-md text-gray-700 hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500';
+    const toolbarButtonClass = 'inline-flex h-8 w-8 items-center justify-center rounded-md text-gray-700 hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-[#455fab]';
 
     return (
         <Modal isOpen={isOpen} onClose={onClose} title={announcementToEdit ? '공지사항 수정' : '새 공지사항 등록'} maxWidth="max-w-4xl">
@@ -410,7 +410,7 @@ export const AnnouncementModal = ({ isOpen, onClose, onSave, announcementToEdit 
                             <input type="datetime-local" value={scheduleTime || ''} onChange={e => setScheduleTime(e.target.value)} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border" />
                         </div>
                         <div className="flex items-center mb-2">
-                            <input type="checkbox" id="isPinned" checked={isPinned} onChange={e => setIsPinned(e.target.checked)} className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500" />
+                            <input type="checkbox" id="isPinned" checked={isPinned} onChange={e => setIsPinned(e.target.checked)} className="h-4 w-4 text-[#455fab] border-gray-300 rounded focus:ring-[#455fab]" />
                             <label htmlFor="isPinned" className="ml-2 block text-sm font-medium text-gray-700">상단 고정</label>
                         </div>
                     </div>
@@ -418,7 +418,7 @@ export const AnnouncementModal = ({ isOpen, onClose, onSave, announcementToEdit 
 
                 <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">내용*</label>
-                    
+
                     {/* 서식 툴바 */}
                     <div className="mb-1 flex flex-wrap items-center gap-1 rounded-t-md border border-gray-300 bg-gray-100 p-2">
                         <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => applyFormat('bold')} className={toolbarButtonClass} title="굵게" aria-label="굵게">
@@ -447,17 +447,17 @@ export const AnnouncementModal = ({ isOpen, onClose, onSave, announcementToEdit 
 
                         <label className="relative inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-md text-gray-700 hover:bg-gray-200" title="글씨 색상" aria-label="글씨 색상">
                             <Palette className="h-4 w-4" />
-                            <input 
-                                type="color" 
-                                onInput={(e) => applyFormat('foreColor', e.target.value)} 
+                            <input
+                                type="color"
+                                onInput={(e) => applyFormat('foreColor', e.target.value)}
                                 className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
                                 aria-label="글씨 색상 선택"
                             />
                         </label>
-                            
-                        <select 
-                            onChange={(e) => applyFormat('fontSize', e.target.value)} 
-                            className="h-8 w-28 rounded border border-gray-300 bg-white px-1 text-sm text-gray-700 focus:border-blue-500 focus:ring-blue-500" 
+
+                        <select
+                            onChange={(e) => applyFormat('fontSize', e.target.value)}
+                            className="h-8 w-28 rounded border border-gray-300 bg-white px-1 text-sm text-gray-700 focus:border-[#455fab] focus:ring-[#455fab]"
                             title="글씨 크기"
                             aria-label="글씨 크기"
                         >
@@ -492,12 +492,12 @@ export const AnnouncementModal = ({ isOpen, onClose, onSave, announcementToEdit 
                             onChange={handleImageFileChange}
                         />
                         {isImageUploading && (
-                            <span className="text-xs text-blue-600 font-medium">업로드 중...</span>
+                            <span className="text-xs text-[#455fab] font-medium">업로드 중...</span>
                         )}
 
                         {selectedImage && (
                             <div className="ml-2 flex items-center gap-1 rounded bg-blue-50 px-2 py-1 animate-fade-in">
-                                <span className="mr-1 text-xs font-bold text-blue-600">사진 크기:</span>
+                                <span className="mr-1 text-xs font-bold text-[#455fab]">사진 크기:</span>
                                 <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => handleResizeImage('25%')} className="rounded border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700 hover:bg-blue-100">25%</button>
                                 <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => handleResizeImage('50%')} className="rounded border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700 hover:bg-blue-100">50%</button>
                                 <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => handleResizeImage('75%')} className="rounded border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700 hover:bg-blue-100">75%</button>
@@ -508,15 +508,15 @@ export const AnnouncementModal = ({ isOpen, onClose, onSave, announcementToEdit 
                     </div>
 
                     {/* 에디터 영역 */}
-                    <div 
+                    <div
                         ref={editorRef}
                         contentEditable
                         onInput={handleInput}
                         onMouseUp={saveSelectionRange}
                         onKeyUp={saveSelectionRange}
-                        onClick={handleEditorClick} 
+                        onClick={handleEditorClick}
                         // ✅ [&_img]:inline-block 클래스 추가: 이미지를 인라인 블록으로 처리하여 텍스트 정렬(text-align)의 영향을 받도록 함
-                        className="block w-full rounded-b-md border border-gray-300 border-t-0 shadow-sm p-3 min-h-[300px] max-h-[500px] overflow-y-auto focus:ring-1 focus:ring-blue-500 focus:border-blue-500 bg-white prose max-w-none [&_img]:inline-block [&_img]:align-middle"
+                        className="block w-full rounded-b-md border border-gray-300 border-t-0 shadow-sm p-3 min-h-[300px] max-h-[500px] overflow-y-auto focus:ring-1 focus:ring-[#455fab] focus:border-[#455fab] bg-white prose max-w-none [&_img]:inline-block [&_img]:align-middle"
                         style={{ outline: 'none' }}
                         placeholder="공지 내용을 입력하세요. 텍스트를 드래그하거나 이미지를 붙여넣을 수 있습니다."
                     />
@@ -537,15 +537,15 @@ export const AnnouncementModal = ({ isOpen, onClose, onSave, announcementToEdit 
                 <div>
                     <label className="block text-sm font-bold text-gray-700 mb-2">첨부파일</label>
                     <div className="flex items-center gap-2">
-                        <input 
-                            type="file" 
-                            multiple 
-                            ref={fileInputRef} 
-                            onChange={handleFileChange} 
-                            className="hidden" 
+                        <input
+                            type="file"
+                            multiple
+                            ref={fileInputRef}
+                            onChange={handleFileChange}
+                            className="hidden"
                         />
-                        <button 
-                            type="button" 
+                        <button
+                            type="button"
                             onClick={() => fileInputRef.current.click()}
                             className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition-colors border border-gray-300"
                             title="첨부파일 추가"
@@ -561,14 +561,14 @@ export const AnnouncementModal = ({ isOpen, onClose, onSave, announcementToEdit 
                     {attachments.length > 0 && (
                         <div className="mt-3 space-y-2">
                             {attachments.map((file, index) => (
-                                <div key={index} className="flex items-center justify-between p-2 bg-indigo-50 border border-indigo-100 rounded-lg text-sm text-indigo-700">
+                                <div key={index} className="flex items-center justify-between p-2 bg-[#f1f4ff] border border-[#eef2ff] rounded-lg text-sm text-[#334a91]">
                                     <div className="flex items-center gap-2">
                                         <Icon name="fileText" className="w-4 h-4" />
                                         <span>{file}</span>
                                     </div>
-                                    <button 
-                                        type="button" 
-                                        onClick={() => removeAttachment(index)} 
+                                    <button
+                                        type="button"
+                                        onClick={() => removeAttachment(index)}
                                         className="text-gray-400 hover:text-red-500 p-1"
                                     >
                                         <Icon name="x" className="w-4 h-4" />
@@ -589,7 +589,7 @@ export const AnnouncementModal = ({ isOpen, onClose, onSave, announcementToEdit 
                                 type="button"
                                 onClick={() => handleTargetClassToggle(cls.id)}
                                 className={`px-3 py-1 text-xs rounded-full border transition duration-150 ${
-                                    targetClasses.includes(String(cls.id)) 
+                                    targetClasses.includes(String(cls.id))
                                         ? 'bg-orange-500 text-white border-orange-600 shadow-sm'
                                         : 'bg-white text-gray-700 border-gray-300 hover:bg-orange-50'
                                 }`}
@@ -604,7 +604,7 @@ export const AnnouncementModal = ({ isOpen, onClose, onSave, announcementToEdit 
                     <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium rounded-lg text-gray-700 bg-gray-200 hover:bg-gray-300 transition duration-150">
                         취소
                     </button>
-                    <button type="submit" disabled={isSubmitting} className={`px-4 py-2 text-sm font-medium rounded-lg text-white transition duration-150 shadow-md ${isSubmitting ? 'bg-blue-300 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'}`}>
+                    <button type="submit" disabled={isSubmitting} className={`px-4 py-2 text-sm font-medium rounded-lg text-white transition duration-150 shadow-md ${isSubmitting ? 'bg-blue-300 cursor-not-allowed' : 'bg-[#455fab] hover:bg-[#3b5198]'}`}>
                         {isSubmitting ? '게시 중...' : (announcementToEdit ? '수정 사항 저장' : (scheduleTime ? '예약 등록' : '즉시 게시'))}
                     </button>
                 </div>

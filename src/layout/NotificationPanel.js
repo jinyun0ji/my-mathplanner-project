@@ -11,7 +11,7 @@ export default function NotificationPanel({ notifications, isSidebarOpen, toggle
       {!isSidebarOpen && (
         <div 
           onClick={toggleSidebar} 
-          className={`fixed bottom-6 right-6 cursor-pointer p-3 rounded-full text-white transition-all duration-300 ease-in-out bg-indigo-600 hover:bg-indigo-700 shadow-xl z-50`}
+          className={`fixed bottom-6 right-6 cursor-pointer p-3 rounded-full text-white transition-all duration-300 ease-in-out bg-[#455fab] hover:bg-[#3b5198] shadow-xl z-50`}
           title="알림 패널 열기"
         >
           <div className="relative">

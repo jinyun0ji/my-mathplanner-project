@@ -45,7 +45,7 @@ export default function OnboardingPage({ onSubmitLinkCode }) {
                             required
                             value={linkCode}
                             onChange={(e) => setLinkCode(e.target.value)}
-                            className="w-full rounded-xl border border-gray-200 px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                            className="w-full rounded-xl border border-gray-200 px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-[#455fab] focus:border-[#455fab]"
                             placeholder="예: ABC123"
                             autoComplete="one-time-code"
                         />
@@ -54,15 +54,15 @@ export default function OnboardingPage({ onSubmitLinkCode }) {
                     <button
                         type="submit"
                         disabled={submitting}
-                        className="w-full flex justify-center py-3.5 px-4 border border-transparent rounded-xl shadow-lg text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all transform active:scale-[0.98] disabled:opacity-70"
+                        className="w-full flex justify-center py-3.5 px-4 border border-transparent rounded-xl shadow-lg text-sm font-bold text-white bg-[#455fab] hover:bg-[#3b5198] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#455fab] transition-all transform active:scale-[0.98] disabled:opacity-70"
                     >
                         {submitting ? '연결 중...' : '학생 계정 연결하기'}
                     </button>
                 </form>
 
-                <div className="bg-indigo-50 text-indigo-900 rounded-xl p-4 text-sm">
+                <div className="bg-[#f1f4ff] text-[#334a91] rounded-xl p-4 text-sm">
                     <p className="font-semibold">연결 코드가 없나요?</p>
-                    <p className="mt-1 text-indigo-800">담당 선생님에게 학부모 연결 코드를 요청해주세요.</p>
+                    <p className="mt-1 text-[#334a91]">담당 선생님에게 학부모 연결 코드를 요청해주세요.</p>
                 </div>
 
                 {status && (

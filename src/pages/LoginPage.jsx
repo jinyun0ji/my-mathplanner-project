@@ -58,7 +58,7 @@ export default function LoginPage({ onSocialLogin }) {
                 <div className="mt-6 text-center text-sm text-gray-500 space-y-1">
                         <div>
                             <span>처음 이용하시나요?</span>{' '}
-                            <Link to="/signup/invite" className="font-semibold text-indigo-600 hover:text-indigo-700">
+                            <Link to="/signup/invite" className="font-semibold text-[#455fab] hover:text-[#334a91]">
                                 초대 코드로 가입하기
                             </Link>
                         </div>

@@ -180,27 +180,27 @@ export const ClinicCommentModal = ({ isOpen, onClose, onSave, log, students, par
         <Modal isOpen={isOpen} onClose={handleCloseWrapper} title={isNewLog ? '미예약 학생 클리닉 기록' : '클리닉 기록/코멘트 수정'} maxWidth="max-w-lg">
             <form onSubmit={handleSubmit} className="space-y-4">
                 
-                <div className="bg-indigo-50 border border-indigo-200 p-3 rounded-lg flex items-center">
-                    <Icon name="user" className="w-5 h-5 mr-3 text-indigo-600"/>
+                <div className="bg-[#f1f4ff] border border-[#cfd8ff] p-3 rounded-lg flex items-center">
+                    <Icon name="user" className="w-5 h-5 mr-3 text-[#455fab]"/>
                     <div>
-                        <h3 className="text-lg font-bold text-indigo-800">
+                        <h3 className="text-lg font-bold text-[#334a91]">
                             {currentStudent ? (
                                 <StudentNameWithParentLast4
                                     student={currentStudent}
                                     parentLast4Map={parentLast4Map}
-                                    className="text-lg font-bold text-indigo-800"
+                                    className="text-lg font-bold text-[#334a91]"
                                     suffixClassName="text-[11px] text-gray-400 ml-1"
                                 />
                             ) : (
                                 <StudentNameWithParentLast4
                                     student={{ id: log?.studentId, name: log?.studentName || '신규 학생' }}
                                     parentLast4Map={parentLast4Map}
-                                    className="text-lg font-bold text-indigo-800"
+                                    className="text-lg font-bold text-[#334a91]"
                                     suffixClassName="text-[11px] text-gray-400 ml-1"
                                 />
                             )}
                         </h3>
-                        <p className="text-sm text-indigo-700">{studentInfoText}</p>
+                        <p className="text-sm text-[#334a91]">{studentInfoText}</p>
                     </div>
                 </div>
                 
@@ -223,7 +223,7 @@ export const ClinicCommentModal = ({ isOpen, onClose, onSave, log, students, par
                                                 key={option.id}
                                                 type="button"
                                                 onClick={() => handleChange(setStudentId, option.id)}
-                                                className="w-full border-b last:border-b-0 px-3 py-2 text-left text-sm hover:bg-indigo-50"
+                                                className="w-full border-b last:border-b-0 px-3 py-2 text-left text-sm hover:bg-[#f1f4ff]"
                                             >
                                                 {option.label || option.name}
                                             </button>
@@ -245,7 +245,7 @@ export const ClinicCommentModal = ({ isOpen, onClose, onSave, log, students, par
                                 ))}
                             </select> */}
                             {studentId && (
-                                <p className="mt-1 text-xs text-indigo-700">선택됨: {sortedStudentOptions.find((s) => String(s.id) === String(studentId))?.label || currentStudent?.name}</p>
+                                <p className="mt-1 text-xs text-[#334a91]">선택됨: {sortedStudentOptions.find((s) => String(s.id) === String(studentId))?.label || currentStudent?.name}</p>
                             )}
                         </div>
                     )}
@@ -322,7 +322,7 @@ export const ClinicCommentModal = ({ isOpen, onClose, onSave, log, students, par
                         <button
                             type="button"
                             onClick={() => setIsCommentPreviewOpen((prev) => !prev)}
-                            className="text-xs font-semibold text-indigo-700 hover:text-indigo-900 inline-flex items-center gap-2"
+                            className="text-xs font-semibold text-[#334a91] hover:text-[#334a91] inline-flex items-center gap-2"
                         >
                             <span>
                                 {isCommentPreviewOpen ? '▼' : '▶'} 코멘트 미리보기
@@ -358,7 +358,7 @@ export const ClinicCommentModal = ({ isOpen, onClose, onSave, log, students, par
 
                 <div className="pt-4 flex justify-end space-x-2">
                     <button type="button" onClick={handleCloseWrapper} className="px-4 py-2 bg-gray-200 rounded-lg text-sm">취소</button>
-                    <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700">
+                    <button type="submit" className="px-4 py-2 bg-[#455fab] text-white rounded-lg text-sm font-bold hover:bg-[#3b5198]">
                         {isNewLog ? '기록 등록' : '저장하기'}
                     </button>
                 </div>

@@ -24,7 +24,7 @@ export default function VideoProgressViewer({ log, students, videoProgress, atte
 
     return (
         <div className="bg-white p-4 rounded-lg shadow-inner mt-4 border border-gray-200">
-            <h4 className="text-lg font-bold mb-3 text-indigo-700 flex items-center">
+            <h4 className="text-lg font-bold mb-3 text-[#334a91] flex items-center">
                 <Icon name="monitor" className="w-5 h-5 mr-2" />
                 동영상 보강 현황 (결석생)
             </h4>
@@ -37,7 +37,7 @@ export default function VideoProgressViewer({ log, students, videoProgress, atte
                         const progress = progressData?.percent || 0; 
 
                         return (
-                            <div key={student.id} className="p-3 border rounded-lg bg-indigo-50">
+                            <div key={student.id} className="p-3 border rounded-lg bg-[#f1f4ff]">
                                 <p className="text-sm font-semibold">{student.name} ({formatGradeLabel(student.grade)})</p>
                                 <div className="mt-2">
                                     <div className="w-full bg-gray-200 rounded-full h-2.5">
@@ -46,7 +46,7 @@ export default function VideoProgressViewer({ log, students, videoProgress, atte
                                             style={{ width: `${progress}%`, backgroundColor: progress === 100 ? '#10B981' : '#6366F1' }}
                                         ></div>
                                     </div>
-                                    <p className={`text-xs mt-1 font-bold ${progress === 100 ? 'text-green-600' : 'text-indigo-600'}`}>
+                                    <p className={`text-xs mt-1 font-bold ${progress === 100 ? 'text-green-600' : 'text-[#455fab]'}`}>
                                         {progress}% 시청 완료
                                     </p>
                                 </div>

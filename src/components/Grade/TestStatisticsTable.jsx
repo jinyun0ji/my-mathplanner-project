@@ -28,7 +28,7 @@ export default function TestStatisticsTable({ test, stats, currentStudents }) {
 
     // 🚨 수정: 요약 통계 값과 색상 정의
     const summaryItems = [
-        { label: '평균 점수', value: formatStat(safeStats.average, 1), color: 'text-blue-600' },
+        { label: '평균 점수', value: formatStat(safeStats.average, 1), color: 'text-[#455fab]' },
         { label: '최고 점수', value: formatStat(safeStats.maxScore, 1), color: 'text-green-600' },
         { label: '최저 점수', value: formatStat(safeStats.minScore, 1), color: 'text-red-600' },
         { label: '표준 편차', value: formatStat(safeStats.stdDev, 2), color: 'text-gray-700' },
@@ -41,7 +41,7 @@ export default function TestStatisticsTable({ test, stats, currentStudents }) {
     return (
         <div className="bg-white p-6 rounded-xl shadow-md space-y-4">
             <h2 className="text-xl font-bold text-gray-800 border-b pb-2 flex items-center">
-                <Icon name="barChart" className="w-5 h-5 mr-2 text-blue-600" />
+                <Icon name="barChart" className="w-5 h-5 mr-2 text-[#455fab]" />
                 시험 결과 통계 (읽기 전용)
             </h2>
             
@@ -117,7 +117,7 @@ export default function TestStatisticsTable({ test, stats, currentStudents }) {
                                         {student.rank}
                                     </td>
                                     <td className="px-3 py-2 font-medium text-gray-900">{student.name}</td>
-                                    <td className="px-3 py-2 text-center text-blue-600 font-semibold">
+                                    <td className="px-3 py-2 text-center text-[#455fab] font-semibold">
                                         {Number.isFinite(student.score) ? student.score.toFixed(1) : '-'}
                                     </td>
                                 </tr>

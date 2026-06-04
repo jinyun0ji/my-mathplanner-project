@@ -242,7 +242,7 @@ export const HomeworkAssignmentModal = ({ isOpen, onClose, onSave, classId, assi
               </p>
             </div>
             <div className="text-right">
-              <p className="text-sm font-bold text-blue-700">총 {totalQuestions} 문제</p>
+              <p className="text-sm font-bold text-[#334a91]">총 {totalQuestions} 문제</p>
             </div>
           </div>
         </div>
@@ -254,7 +254,7 @@ export const HomeworkAssignmentModal = ({ isOpen, onClose, onSave, classId, assi
               <p className="text-xs text-gray-500">선택된 학생에게만 과제가 표시됩니다.</p>
             </div>
             <div className="flex items-center gap-2 text-xs">
-              <button type="button" onClick={handleSelectAll} className="text-indigo-600 font-semibold hover:text-indigo-800">
+              <button type="button" onClick={handleSelectAll} className="text-[#455fab] font-semibold hover:text-[#334a91]">
                 전체 선택
               </button>
               <span className="text-gray-300">|</span>
@@ -271,7 +271,7 @@ export const HomeworkAssignmentModal = ({ isOpen, onClose, onSave, classId, assi
                 <label key={student.id} className="flex items-center gap-2 text-sm text-gray-700">
                   <input
                     type="checkbox"
-                    className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                    className="rounded border-gray-300 text-[#455fab] focus:ring-[#455fab]"
                     checked={assignedStudentIds.includes(student.id)}
                     onChange={() => toggleStudent(student.id)}
                   />
@@ -299,7 +299,7 @@ export const HomeworkAssignmentModal = ({ isOpen, onClose, onSave, classId, assi
           <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium rounded-lg text-gray-700 bg-gray-200 hover:bg-gray-300 transition duration-150">
             취소
           </button>
-          <button type="submit" className="px-4 py-2 text-sm font-medium rounded-lg text-white bg-blue-600 hover:bg-blue-700 transition duration-150 shadow-md">
+          <button type="submit" className="px-4 py-2 text-sm font-medium rounded-lg text-white bg-[#455fab] hover:bg-[#3b5198] transition duration-150 shadow-md">
             {assignment ? '과제 수정 저장' : '과제 배정하기'}
           </button>
         </div>

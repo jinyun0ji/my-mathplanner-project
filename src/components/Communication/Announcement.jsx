@@ -69,7 +69,7 @@ export default function Announcement({ announcements, handleSaveAnnouncement, ha
                                     {a.scheduleTime.replace('T', ' ')} 발송 예정 ({getClassNames(a.targetClasses)})
                                 </p>
                             </div>
-                            <button onClick={() => handleEdit(a)} className="text-sm text-blue-600 hover:underline">수정</button>
+                            <button onClick={() => handleEdit(a)} className="text-sm text-[#455fab] hover:underline">수정</button>
                         </div>
                     ))}
                 </div>
@@ -94,7 +94,7 @@ export default function Announcement({ announcements, handleSaveAnnouncement, ha
                         </div>
                         <div className="text-sm text-gray-700 ml-6" dangerouslySetInnerHTML={{ __html: a.content }}></div>
                         <div className='flex justify-end space-x-3 pt-2 border-t border-yellow-200'>
-                             <button onClick={() => handleEdit(a)} className="text-xs text-indigo-600 hover:text-indigo-800 flex items-center"><Icon name="edit" className="w-3 h-3 mr-1"/>수정</button>
+                             <button onClick={() => handleEdit(a)} className="text-xs text-[#455fab] hover:text-[#334a91] flex items-center"><Icon name="edit" className="w-3 h-3 mr-1"/>수정</button>
                              <button onClick={() => handleDelete(a.id)} className="text-xs text-red-600 hover:text-red-800 flex items-center"><Icon name="trash" className="w-3 h-3 mr-1"/>삭제</button>
                         </div>
                     </div>
@@ -106,13 +106,13 @@ export default function Announcement({ announcements, handleSaveAnnouncement, ha
                         <div className='flex justify-between items-start'>
                             <h5 className="text-base font-medium text-gray-800">{a.title}</h5>
                             <div className='flex space-x-3 text-sm text-gray-500'>
-                                <p className='text-xs text-blue-700 font-medium'>[대상: {getClassNames(a.targetClasses)}]</p>
+                                <p className='text-xs text-[#334a91] font-medium'>[대상: {getClassNames(a.targetClasses)}]</p>
                                 <p className='text-xs'>{a.date} by {a.author}</p>
                             </div>
                         </div>
                         <div className="text-sm text-gray-700 ml-1" dangerouslySetInnerHTML={{ __html: a.content }}></div>
                         <div className='flex justify-end space-x-3 pt-2 border-t mt-2'>
-                             <button onClick={() => handleEdit(a)} className="text-xs text-indigo-600 hover:text-indigo-800 flex items-center"><Icon name="edit" className="w-3 h-3 mr-1"/>수정</button>
+                             <button onClick={() => handleEdit(a)} className="text-xs text-[#455fab] hover:text-[#334a91] flex items-center"><Icon name="edit" className="w-3 h-3 mr-1"/>수정</button>
                              <button onClick={() => handleDelete(a.id)} className="text-xs text-red-600 hover:text-red-800 flex items-center"><Icon name="trash" className="w-3 h-3 mr-1"/>삭제</button>
                         </div>
                     </div>

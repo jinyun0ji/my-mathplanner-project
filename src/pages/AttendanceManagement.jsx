@@ -1,9 +1,9 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Icon, formatGradeLabel } from '../utils/helpers';
 import { isClosedDate, normalizeDateToYMD } from '../utils/closures';
-import ClassSelectionPanel from '../components/Shared/ClassSelectionPanel'; 
-import { AttendanceModal } from '../components/common/AttendanceModal'; 
-import { MemoModal } from '../utils/modals/MemoModal'; 
+import ClassSelectionPanel from '../components/Shared/ClassSelectionPanel';
+import { AttendanceModal } from '../components/common/AttendanceModal';
+import { MemoModal } from '../utils/modals/MemoModal';
 import { getDefaultClassId } from '../utils/classStatus';
 import { useClassStudents } from '../utils/useClassStudents';
 import { filterRosterByWithdrawDate } from '../utils/rosterFilter';
@@ -20,7 +20,7 @@ const toDateKey = (v) => {
     return String(v).slice(0, 10);
 };
 
-export default function AttendanceManagement({ 
+export default function AttendanceManagement({
     classes, attendanceLogs, handleSaveAttendance,
     studentMemos, handleSaveMemo, handleSaveClass, calculateClassSessions,
     closures = [],
@@ -108,16 +108,16 @@ export default function AttendanceManagement({
         const initial = {};
         rosterForAttendance.forEach(s => {
             const existingLog = findAttendanceLogForStudent(s);
-            initial[s.id] = existingLog || { 
-                classId: selectedClassId, 
-                date: selectedDate, 
-                studentId: s.id, 
+            initial[s.id] = existingLog || {
+                classId: selectedClassId,
+                date: selectedDate,
+                studentId: s.id,
                 status: null
             };
         });
         return initial;
     }, [rosterForAttendance, classAttendance, selectedClassId, selectedDate]);
-    
+
     const sessionDates = useMemo(() => {
         if (!selectedClass) return [];
         return calculateClassSessions(selectedClass).map(session => ({
@@ -156,10 +156,10 @@ export default function AttendanceManagement({
     useEffect(() => {
         if (selectedClassId) {
             const today = new Date().toISOString().slice(0, 10);
-            
+
             const pastAndCurrentSessions = availableSessions.filter(s => s.dateKey <= today);
             const isSelectedDateValid = availableSessions.some(s => s.dateKey === selectedDate);
-            
+
             if (!isSelectedDateValid && pastAndCurrentSessions.length > 0) {
                 const mostRecentDate = pastAndCurrentSessions[pastAndCurrentSessions.length - 1].dateKey;
                 setSelectedDate(mostRecentDate);
@@ -194,7 +194,7 @@ export default function AttendanceManagement({
         '출석': 'bg-green-50 text-green-800 border-green-200',
         '지각': 'bg-yellow-50 text-yellow-700 border-yellow-200',
         '결석': 'bg-red-50 text-red-700 border-red-200',
-        '동영상보강': 'bg-indigo-50 text-indigo-800 border-indigo-200',
+        '동영상보강': 'bg-[#f1f4ff] text-[#334a91] border-[#cfd8ff]',
         '미기록': 'bg-gray-50 text-gray-600 border-gray-200'
     };
 
@@ -208,11 +208,11 @@ export default function AttendanceManagement({
                 <div className="px-4 py-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:gap-4">
                         <div className="flex items-center gap-2 text-sm font-semibold text-gray-800">
-                            <Icon name="calendar" className="w-4 h-4 text-indigo-800" />
+                            <Icon name="calendar" className="w-4 h-4 text-[#334a91]" />
                             <span>{selectedClass ? selectedClass.name : '클래스를 선택하세요'}</span>
                         </div>
                         <div className="flex items-center gap-2 text-xs text-gray-600">
-                            <Icon name="clock" className="w-4 h-4 text-indigo-800" />
+                            <Icon name="clock" className="w-4 h-4 text-[#334a91]" />
                             <span className="font-semibold text-gray-700">{selectedDate || '날짜 선택'}</span>
                             {isSelectedDateClosed && (
                                 <span className="rounded-full bg-red-100 text-red-700 px-2 py-0.5 text-[11px] font-semibold">
@@ -225,7 +225,7 @@ export default function AttendanceManagement({
                                 { label: '출석', value: attendanceSummary['출석'], tone: 'bg-green-50 text-green-800 border-green-200' },
                                 { label: '지각', value: attendanceSummary['지각'], tone: 'bg-yellow-50 text-yellow-800 border-yellow-200' },
                                 { label: '결석', value: attendanceSummary['결석'], tone: 'bg-red-50 text-red-700 border-red-200' },
-                                { label: '동영상보강', value: attendanceSummary['동영상보강'], tone: 'bg-indigo-50 text-indigo-800 border-indigo-200' },
+                                { label: '동영상보강', value: attendanceSummary['동영상보강'], tone: 'bg-[#f1f4ff] text-[#334a91] border-[#cfd8ff]' },
                             ].map(item => (
                                 <span key={item.label} className={`inline-flex items-center gap-1 px-3 py-1 rounded-full border font-semibold ${item.tone}`}>
                                     <span>{item.label}</span>
@@ -237,7 +237,7 @@ export default function AttendanceManagement({
                     <div className="flex flex-wrap gap-2 justify-end">
                         <button
                             onClick={() => setIsAttendanceModalOpen(true)}
-                            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg shadow-md transition text-white bg-indigo-900 hover:bg-indigo-800"
+                            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg shadow-md transition text-white bg-[#455fab] hover:bg-[#3b5198]"
                         >
                             <Icon name="checkSquare" className="w-5 h-5" />
                             출결 입력
@@ -245,7 +245,7 @@ export default function AttendanceManagement({
                     </div>
                 </div>
             </div>
-            
+
             <div className="grid gap-4 xl:grid-cols-[320px,1fr]">
                 <div className="space-y-4">
                     <ClassSelectionPanel
@@ -267,12 +267,12 @@ export default function AttendanceManagement({
                                     [...availableSessions].reverse().map(session => {
                                         const isSelected = session.dateKey === selectedDate;
                                         return (
-                                            <li 
-                                                key={session.dateKey} 
+                                            <li
+                                                key={session.dateKey}
                                                 onClick={() => setSelectedDate(session.dateKey)}
                                                 className={`p-2 rounded-lg transition ${
-                                                    isSelected 
-                                                        ? 'bg-blue-100 font-bold text-blue-700' 
+                                                    isSelected
+                                                        ? 'bg-blue-100 font-bold text-[#334a91]'
                                                         : 'text-gray-600 hover:bg-gray-50'
                                                 } cursor-pointer`}
                                             >
@@ -283,9 +283,9 @@ export default function AttendanceManagement({
                                     })
                                 )}
                             </ul>
-                        )} 
+                        )}
                         customPanelTitle="수업 날짜 선택"
-                        onDateSelect={(date) => setSelectedDate(toDateKey(date))} 
+                        onDateSelect={(date) => setSelectedDate(toDateKey(date))}
                     />
                 </div>
 
@@ -320,7 +320,7 @@ export default function AttendanceManagement({
                                                 const badgeStyle = statusBadgeStyles[status] || statusBadgeStyles['미기록'];
 
                                                 return (
-                                                    <tr key={student.id} className="hover:bg-indigo-50 transition-colors">
+                                                    <tr key={student.id} className="hover:bg-[#f1f4ff] transition-colors">
                                                         <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">{formatStudentNameWithParentLast4(student, parentLast4Map)}</td>
                                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{formatGradeLabel(student.grade)} / {student.school}</td>
                                                         <td className="px-6 py-4 whitespace-nowrap text-sm">
@@ -334,7 +334,7 @@ export default function AttendanceManagement({
                                                                 className={`flex items-center text-xs px-2 py-1 rounded-full transition-colors ${
                                                                     memoContent
                                                                         ? 'bg-yellow-100 text-yellow-800'
-                                                                        : 'bg-gray-100 text-gray-500 hover:bg-indigo-100 hover:text-indigo-900'
+                                                                        : 'bg-gray-100 text-gray-500 hover:bg-[#eef2ff] hover:text-[#334a91]'
                                                                 }`}
                                                             >
                                                                 <Icon name="fileText" className="w-4 h-4 mr-1" />
@@ -368,7 +368,7 @@ export default function AttendanceManagement({
                                                     <div className="flex items-center gap-2">
                                                         <button
                                                             onClick={() => openMemoModal(student)}
-                                                            className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-semibold border transition ${memoStyle} hover:border-indigo-300 hover:bg-indigo-50`}
+                                                            className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-semibold border transition ${memoStyle} hover:border-[#cfd8ff] hover:bg-[#f1f4ff]`}
                                                             title={memoContent ? '메모 있음' : '메모 작성'}
                                                             aria-label={memoContent ? `${formatStudentNameWithParentLast4(student, parentLast4Map)} 메모 확인` : `${formatStudentNameWithParentLast4(student, parentLast4Map)} 메모 작성`}
                                                         >
@@ -418,7 +418,7 @@ export default function AttendanceManagement({
                             <div className="flex justify-end">
                                 <button
                                     onClick={() => openMemoModal(selectedStudent)}
-                                    className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-indigo-900 bg-indigo-50 hover:bg-indigo-100 rounded-lg border border-indigo-200"
+                                    className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-[#334a91] bg-[#f1f4ff] hover:bg-[#eef2ff] rounded-lg border border-[#cfd8ff]"
                                 >
                                     <Icon name="edit" className="w-4 h-4" />
                                     메모 작성/수정

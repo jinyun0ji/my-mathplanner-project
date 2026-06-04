@@ -70,22 +70,22 @@ export default function Home({ onQuickAction, onCreateLinkCode, userRole }) {
     ];
 
     const toneStyles = {
-        indigo: 'bg-indigo-50 text-indigo-900 border-indigo-100',
+        indigo: 'bg-[#f1f4ff] text-[#334a91] border-[#eef2ff]',
         blue: 'bg-blue-50 text-blue-800 border-blue-100',
         emerald: 'bg-emerald-50 text-emerald-800 border-emerald-100',
         orange: 'bg-orange-50 text-orange-800 border-orange-100',
-        violet: 'bg-violet-50 text-violet-800 border-violet-100',
+        violet: 'bg-[#f1f4ff] text-[#334a91] border-[#eef2ff]',
         rose: 'bg-rose-50 text-rose-800 border-rose-100',
         amber: 'bg-amber-50 text-amber-800 border-amber-100',
         sky: 'bg-sky-50 text-sky-800 border-sky-100',
     };
 
     const hoverToneStyles = {
-        indigo: 'hover:bg-indigo-50',
+        indigo: 'hover:bg-[#f1f4ff]',
         blue: 'hover:bg-blue-50',
         emerald: 'hover:bg-emerald-50',
         orange: 'hover:bg-orange-50',
-        violet: 'hover:bg-violet-50',
+        violet: 'hover:bg-[#f1f4ff]',
         rose: 'hover:bg-rose-50',
         amber: 'hover:bg-amber-50',
         sky: 'hover:bg-sky-50',
@@ -279,10 +279,10 @@ export default function Home({ onQuickAction, onCreateLinkCode, userRole }) {
                                 <h3 className="text-2xl font-bold text-gray-800 mt-1 truncate">{stat.value}</h3>
                             </div>
                             <div className={`p-2.5 rounded-lg ${
-                                stat.color === 'indigo' ? 'bg-indigo-50 text-indigo-900' :
+                                stat.color === 'indigo' ? 'bg-[#f1f4ff] text-[#334a91]' :
                                 stat.color === 'green' ? 'bg-green-50 text-green-700' :
                                 stat.color === 'red' ? 'bg-red-50 text-red-600' :
-                                'bg-blue-50 text-blue-600'
+                                'bg-blue-50 text-[#455fab]'
                             }`}>
                                 <Icon name={stat.icon} className="w-5 h-5" />
                             </div>
@@ -313,13 +313,13 @@ export default function Home({ onQuickAction, onCreateLinkCode, userRole }) {
                                 key={idx} 
                                 type="button"
                                 onClick={() => onQuickAction?.(action.key)}
-                                className={`p-4 rounded-xl border border-gray-200 hover:border-indigo-900 transition flex flex-col items-start text-left group bg-gray-50/50 min-w-0 ${hoverToneStyles[action.tone]}`}
+                                className={`p-4 rounded-xl border border-gray-200 hover:border-[#334a91] transition flex flex-col items-start text-left group bg-gray-50/50 min-w-0 ${hoverToneStyles[action.tone]}`}
                             >
                                 <div className={`p-2 rounded-lg ${toneStyles[action.tone]} font-bold flex items-center justify-center text-sm shadow-inner`}>
                                     <Icon name={action.icon} className="w-5 h-5" />
                                 </div>
-                                <span className="text-sm font-bold text-gray-700 group-hover:text-indigo-900 transition-colors mt-3 truncate">{action.label}</span>
-                                <span className="text-[11px] text-gray-500 group-hover:text-indigo-800 transition-colors mt-1 leading-relaxed break-words">{action.hint}</span>
+                                <span className="text-sm font-bold text-gray-700 group-hover:text-[#334a91] transition-colors mt-3 truncate">{action.label}</span>
+                                <span className="text-[11px] text-gray-500 group-hover:text-[#334a91] transition-colors mt-1 leading-relaxed break-words">{action.hint}</span>
                             </button>
                         ))}
                     </div>

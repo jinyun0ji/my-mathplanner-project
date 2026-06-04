@@ -80,18 +80,18 @@ export const StudentFormModal = ({ isOpen, onClose, student = null, allClasses, 
         <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700">이름*</label>
-            <input type="text" value={name} onChange={e => setName(e.target.value)} required className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border" />
+            <input type="text" value={name} onChange={e => setName(e.target.value)} required className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-[#455fab] focus:ring-[#455fab] p-2 border" />
           </div>
           <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-sm font-medium text-gray-700">학년*</label>
-                <select value={grade} onChange={e => setGrade(e.target.value)} required className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border">
+                <select value={grade} onChange={e => setGrade(e.target.value)} required className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-[#455fab] focus:ring-[#455fab] p-2 border">
                   {['중1','중2','중3','고1','고2','고3'].map(g => <option key={g} value={g}>{g}</option>)}
                 </select>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700">재원 상태*</label>
-                <select value={status} onChange={e => setStatus(e.target.value)} required className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border">
+                <select value={status} onChange={e => setStatus(e.target.value)} required className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-[#455fab] focus:ring-[#455fab] p-2 border">
                   <option value="재원생">재원생</option>
                   <option value="휴원">휴원</option>
                 </select>
@@ -99,11 +99,11 @@ export const StudentFormModal = ({ isOpen, onClose, student = null, allClasses, 
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700">학교*</label>
-            <input type="text" value={school} onChange={e => setSchool(e.target.value)} required className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border" />
+            <input type="text" value={school} onChange={e => setSchool(e.target.value)} required className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-[#455fab] focus:ring-[#455fab] p-2 border" />
           </div>
           {/* <div>
             <label className="block text-sm font-medium text-gray-700">클리닉 희망 시간</label>
-            <input type="time" value={clinicTime || ''} onChange={e => setClinicTime(e.target.value)} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border" />
+            <input type="time" value={clinicTime || ''} onChange={e => setClinicTime(e.target.value)} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-[#455fab] focus:ring-[#455fab] p-2 border" />
           </div> */}
         </div>
 
@@ -111,15 +111,15 @@ export const StudentFormModal = ({ isOpen, onClose, student = null, allClasses, 
         <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700">학생 연락처</label>
-            <input type="tel" value={phone} onChange={e => setPhone(e.target.value)} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border" />
+            <input type="tel" value={phone} onChange={e => setPhone(e.target.value)} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-[#455fab] focus:ring-[#455fab] p-2 border" />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700">학부모 연락처</label>
-            <input type="tel" value={parentPhone} onChange={e => setParentPhone(e.target.value)} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border" />
+            <input type="tel" value={parentPhone} onChange={e => setParentPhone(e.target.value)} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-[#455fab] focus:ring-[#455fab] p-2 border" />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700">등록일</label>
-            <input type="date" value={registeredDate} onChange={e => setRegisteredDate(e.target.value)} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border" />
+            <input type="date" value={registeredDate} onChange={e => setRegisteredDate(e.target.value)} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-[#455fab] focus:ring-[#455fab] p-2 border" />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700">수강 클래스</label>
@@ -131,7 +131,7 @@ export const StudentFormModal = ({ isOpen, onClose, student = null, allClasses, 
                   onClick={() => handleClassToggle(cls.id)}
                   className={`px-3 py-1 text-xs rounded-full border transition duration-150 ${
                     classSelections.includes(cls.id) 
-                      ? 'bg-indigo-600 text-white border-indigo-700 shadow-sm'
+                      ? 'bg-[#455fab] text-white border-[#334a91] shadow-sm'
                       : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-100'
                   }`}
                 >
@@ -141,7 +141,7 @@ export const StudentFormModal = ({ isOpen, onClose, student = null, allClasses, 
             </div>
           </div>
           {/* <div className="flex items-center pt-2">
-            <input type="checkbox" id="bookReceived" checked={bookReceived} onChange={e => setBookReceived(e.target.checked)} className="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500" />
+            <input type="checkbox" id="bookReceived" checked={bookReceived} onChange={e => setBookReceived(e.target.checked)} className="h-4 w-4 text-[#455fab] border-gray-300 rounded focus:ring-[#455fab]" />
             <label htmlFor="bookReceived" className="ml-2 block text-sm text-gray-900">교재 수령 완료</label>
             <span className="ml-auto text-xs text-gray-500 flex items-center"><Icon name="info" className="w-3 h-3 mr-1" />이 상태는 수납 관리와 연동됩니다.</span>
           </div> */}
@@ -152,7 +152,7 @@ export const StudentFormModal = ({ isOpen, onClose, student = null, allClasses, 
           <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium rounded-lg text-gray-700 bg-gray-200 hover:bg-gray-300 transition duration-150">
             취소
           </button>
-          <button type="submit" className="px-4 py-2 text-sm font-medium rounded-lg text-white bg-indigo-600 hover:bg-indigo-700 transition duration-150 shadow-md">
+          <button type="submit" className="px-4 py-2 text-sm font-medium rounded-lg text-white bg-[#455fab] hover:bg-[#3b5198] transition duration-150 shadow-md">
             {student ? '수정 사항 저장' : '등록하기'}
           </button>
         </div>

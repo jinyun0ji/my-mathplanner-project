@@ -29,10 +29,10 @@ export default function ClassroomView({
     targetMemo, onClearTargetMemo,
     homeworkAssignments, homeworkResults,
     tests, grades,
-    onNavigateToTab 
+    onNavigateToTab
 }) {
     const selectedClass = classes.find(c => String(c.id) === String(selectedClassId));
-    
+
     const sortedLogs = useMemo(
         () => getSortedLessonLogs(lessonLogs, selectedClassId),
         [lessonLogs, selectedClassId]
@@ -44,7 +44,7 @@ export default function ClassroomView({
     const playerRef = useRef(null);
     const [isAttendanceDetailOpen, setIsAttendanceDetailOpen] = useState(false);
     const [isVideoListOpen, setIsVideoListOpen] = useState(false);
-    
+
     // 자료 리스트 펼침 상태 관리
     const [expandedMaterialLogId, setExpandedMaterialLogId] = useState(null);
     const attendanceMap = useMemo(() => {
@@ -190,7 +190,7 @@ export default function ClassroomView({
     const currentVideoId = selectedVideo?.videoId;
 
     const toggleMaterials = (e, logId) => {
-        e.stopPropagation(); 
+        e.stopPropagation();
         setExpandedMaterialLogId(prev => prev === logId ? null : logId);
     };
 
@@ -210,35 +210,35 @@ export default function ClassroomView({
         const canAccess = canAccessLessonContent(attendanceMap[log.id]);
 
         return (
-            <div 
-                key={log.id} 
+            <div
+                key={log.id}
                 className={`p-4 rounded-xl transition-all border ${
-                    isSelected 
-                        ? 'bg-indigo-50 border-indigo-200 shadow-sm' 
+                    isSelected
+                        ? 'bg-[#f1f4ff] border-[#cfd8ff] shadow-sm'
                         : 'bg-white border-gray-100 hover:bg-gray-50'
                 }`}
             >
                 <div className="flex justify-between items-start">
-                    <div 
+                    <div
                         className="flex-1 min-w-0 pr-4 cursor-pointer"
                         onClick={() => playVideo(log)}
                     >
                         <div className="flex items-center gap-2 mb-1.5">
                             <span className="text-xs font-mono text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">{log.date}</span>
                             {prog >= 100 && <span className="text-[10px] font-bold text-green-600 bg-green-50 px-1.5 py-0.5 rounded border border-green-100">완료</span>}
-                            {prog > 0 && prog < 100 && <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100">{prog}%</span>}
+                            {prog > 0 && prog < 100 && <span className="text-[10px] font-bold text-[#455fab] bg-[#f1f4ff] px-1.5 py-0.5 rounded border border-[#eef2ff]">{prog}%</span>}
                         </div>
-                        <h4 className={`text-base font-bold truncate ${isSelected ? 'text-indigo-900' : 'text-gray-800'}`}>{log.progress}</h4>
+                        <h4 className={`text-base font-bold truncate ${isSelected ? 'text-[#334a91]' : 'text-gray-800'}`}>{log.progress}</h4>
                         <p className="text-xs text-gray-500 mt-1 truncate mb-2">{log.assignment}</p>
                     </div>
 
                     <div className="flex items-center gap-3">
                         {hasMaterials && (
-                            <button 
+                            <button
                                 onClick={(e) => toggleMaterials(e, log.id)}
                                 className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${
-                                    isMaterialsExpanded 
-                                        ? 'bg-gray-200 text-gray-800' 
+                                    isMaterialsExpanded
+                                        ? 'bg-gray-200 text-gray-800'
                                         : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
                                 }`}
                                 title="강의 자료"
@@ -247,9 +247,9 @@ export default function ClassroomView({
                                 <Icon name="fileText" className="w-4 h-4" />
                             </button>
                         )}
-                        <button 
+                        <button
                             onClick={() => playVideo(log)}
-                            className={`w-10 h-10 rounded-full flex items-center justify-center transition-all shadow-sm ${isSelected ? 'bg-indigo-100 text-indigo-600' : 'bg-gray-50 text-gray-300'}`}
+                            className={`w-10 h-10 rounded-full flex items-center justify-center transition-all shadow-sm ${isSelected ? 'bg-[#eef2ff] text-[#455fab]' : 'bg-gray-50 text-gray-300'}`}
                         >
                             <PlayCircleFilledWhiteIcon className="w-7 h-7" />
                         </button>
@@ -265,13 +265,13 @@ export default function ClassroomView({
                         <div className="space-y-2">
                             {attachments.map((mat, idx) => (
                                 canAccess ? (
-                                    <a 
-                                        key={idx} 
-                                        href={mat.url} 
-                                        target="_blank" 
+                                    <a
+                                        key={idx}
+                                        href={mat.url}
+                                        target="_blank"
                                         rel="noopener noreferrer"
                                         className="flex items-center gap-3 p-3 rounded-xl bg-gray-50 border border-gray-100 active:bg-gray-200 transition-colors"
-                                        onClick={(e) => e.stopPropagation()} 
+                                        onClick={(e) => e.stopPropagation()}
                                     >
                                         <div className="w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center flex-shrink-0 text-red-500">
                                             {/* ✅ [수정] 다운로드 아이콘 사용 */}
@@ -306,7 +306,7 @@ export default function ClassroomView({
             <div className="animate-fade-in-up pb-20 space-y-6 relative">
                 <div className="flex items-center gap-3">
                     <button onClick={() => setSelectedClassId(null)} className="p-2 bg-white rounded-xl text-gray-600 hover:bg-gray-100 transition-colors shadow-sm active:scale-95">
-                        <Icon name="chevronLeft" className="w-6 h-6" /> 
+                        <Icon name="chevronLeft" className="w-6 h-6" />
                     </button>
                     <div>
                         <h2 className="text-xl font-bold text-gray-900">{selectedClass?.name}</h2>
@@ -318,7 +318,7 @@ export default function ClassroomView({
                 <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
                     <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-gray-50">
                         {/* ✅ [수정] 복습 영상 아이콘: list -> video */}
-                        <h3 className="font-bold text-gray-800 flex items-center gap-2"><Icon name="video" className="w-5 h-5 text-indigo-600" />복습 영상 ({sortedLogs.length})</h3>
+                        <h3 className="font-bold text-gray-800 flex items-center gap-2"><Icon name="video" className="w-5 h-5 text-[#455fab]" />복습 영상 ({sortedLogs.length})</h3>
                     </div>
                     <div className="divide-y divide-gray-100">
                         {sortedLogs.length > 0 ? sortedLogs.map(log => renderLogItem(log)) : (<div className="p-10 text-center text-gray-400 text-sm">등록된 강의가 없습니다.</div>)}
@@ -337,7 +337,7 @@ export default function ClassroomView({
                                     stats.attendance.logs.sort((a,b) => new Date(b.date) - new Date(a.date)).map(log => (
                                         <div key={log.id} className="flex justify-between items-center p-3 rounded-xl bg-gray-50 border border-gray-100">
                                             <span className="text-sm font-medium text-gray-600">{log.date}</span>
-                                            <span className={`text-xs font-bold px-2 py-1 rounded ${log.status === '출석' ? 'bg-green-100 text-green-700' : log.status === '지각' ? 'bg-yellow-100 text-yellow-700' : log.status === '동영상보강' ? 'bg-blue-100 text-blue-700' : 'bg-red-100 text-red-700'}`}>{log.status}</span>
+                                            <span className={`text-xs font-bold px-2 py-1 rounded ${log.status === '출석' ? 'bg-green-100 text-green-700' : log.status === '지각' ? 'bg-yellow-100 text-yellow-700' : log.status === '동영상보강' ? 'bg-blue-100 text-[#334a91]' : 'bg-red-100 text-red-700'}`}>{log.status}</span>
                                         </div>
                                     ))
                                 ) : (<div className="text-center py-10 text-gray-400 text-sm">기록된 출결이 없습니다.</div>)}
@@ -354,7 +354,7 @@ export default function ClassroomView({
         <div className="fixed inset-0 z-50 bg-white flex flex-col animate-fade-in-up">
             <div className="flex-none h-14 flex items-center gap-3 px-4 border-b border-gray-200 bg-white shadow-sm z-20">
                 <button onClick={() => { setViewMode('list'); onClearTargetMemo(); }} className="p-2 bg-gray-100 rounded-lg text-gray-600 hover:bg-gray-200 transition-colors active:scale-95"><Icon name="chevronLeft" className="w-5 h-5" /></button>
-                <div className="flex-1 min-w-0"><h2 className="text-base font-bold text-gray-900 truncate"><span className="text-indigo-600 mr-2">[{currentLesson?.date}]</span>{currentLesson?.progress}</h2></div>
+                <div className="flex-1 min-w-0"><h2 className="text-base font-bold text-gray-900 truncate"><span className="text-[#455fab] mr-2">[{currentLesson?.date}]</span>{currentLesson?.progress}</h2></div>
             </div>
 
             <div className={`flex-1 flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden ${hasLessonVideos ? 'bg-black' : 'bg-white'}`}>
@@ -415,8 +415,8 @@ export default function ClassroomView({
 
                     <div className="bg-white border-y border-gray-200 shrink-0">
                             <div className="px-4 py-3 flex justify-between items-center">
-                                <div className="bg-gray-900 px-4 py-1.5 rounded-full flex items-center gap-3 shadow-sm border border-gray-200"><span className="text-xs text-gray-300 font-medium">내 수강률</span><div className="w-20 bg-gray-700 rounded-full h-1.5 overflow-hidden"><div className={`h-full rounded-full transition-all duration-500 ${progressData.percent >= 100 ? 'bg-green-500' : 'bg-indigo-500'}`} style={{ width: `${progressData.percent}%` }}></div></div><span className={`text-xs font-bold font-mono ${progressData.percent >= 100 ? 'text-green-400' : 'text-white'}`}>{progressData.percent}%</span></div>
-                                <button onClick={() => setIsListOpen(!isListOpen)} className="flex items-center gap-1 text-sm font-bold text-gray-600 hover:text-indigo-900 transition-colors bg-gray-100 px-3 py-1.5 rounded-lg hover:bg-gray-200 active:bg-gray-300">{isListOpen ? '목록 닫기' : '다른 강의'}<Icon name={isListOpen ? "chevronDown" : "chevronUp"} className="w-4 h-4" /></button>
+                                <div className="bg-gray-900 px-4 py-1.5 rounded-full flex items-center gap-3 shadow-sm border border-gray-200"><span className="text-xs text-gray-300 font-medium">내 수강률</span><div className="w-20 bg-gray-700 rounded-full h-1.5 overflow-hidden"><div className={`h-full rounded-full transition-all duration-500 ${progressData.percent >= 100 ? 'bg-green-500' : 'bg-[#455fab]'}`} style={{ width: `${progressData.percent}%` }}></div></div><span className={`text-xs font-bold font-mono ${progressData.percent >= 100 ? 'text-green-400' : 'text-white'}`}>{progressData.percent}%</span></div>
+                                <button onClick={() => setIsListOpen(!isListOpen)} className="flex items-center gap-1 text-sm font-bold text-gray-600 hover:text-[#334a91] transition-colors bg-gray-100 px-3 py-1.5 rounded-lg hover:bg-gray-200 active:bg-gray-300">{isListOpen ? '목록 닫기' : '다른 강의'}<Icon name={isListOpen ? "chevronDown" : "chevronUp"} className="w-4 h-4" /></button>
                             </div>
                         </div>
                     {isListOpen && (
@@ -430,12 +430,12 @@ export default function ClassroomView({
                 )}
                 <div className={`w-full ${hasLessonVideos ? 'lg:w-[400px]' : 'lg:w-full'} flex flex-col bg-white min-h-[40vh] lg:min-h-0 lg:h-full flex-shrink-0 border-t lg:border-t-0 ${hasLessonVideos ? 'lg:border-l' : ''} border-gray-200`}>
                     <div className="flex border-b border-gray-200 bg-gray-50">
-                        <div className="flex-1 py-3 text-center text-sm font-bold text-indigo-600 border-b-2 border-indigo-600 bg-white">학습 메모</div>
+                        <div className="flex-1 py-3 text-center text-sm font-bold text-[#455fab] border-b-2 border-[#455fab] bg-white">학습 메모</div>
                     </div>
                     <div className="p-4 border-b border-gray-100 bg-white">
                         <div className="flex gap-2">
-                        <input type="text" value={bookmarkNote} onChange={(e) => setBookmarkNote(e.target.value)} placeholder="중요한 내용 메모하기..." className="flex-1 bg-gray-50 border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all" onKeyPress={(e) => e.key === 'Enter' && handleAddMemo()} />
-                            <button onClick={handleAddMemo} className="bg-indigo-600 hover:bg-indigo-700 text-white p-2.5 rounded-xl transition-colors shadow-sm flex-shrink-0 active:scale-95"><Icon name="plus" className="w-5 h-5" /></button>
+                        <input type="text" value={bookmarkNote} onChange={(e) => setBookmarkNote(e.target.value)} placeholder="중요한 내용 메모하기..." className="flex-1 bg-gray-50 border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-[#455fab] focus:outline-none transition-all" onKeyPress={(e) => e.key === 'Enter' && handleAddMemo()} />
+                            <button onClick={handleAddMemo} className="bg-[#455fab] hover:bg-[#3b5198] text-white p-2.5 rounded-xl transition-colors shadow-sm flex-shrink-0 active:scale-95"><Icon name="plus" className="w-5 h-5" /></button>
                         </div>
                     </div>
                     <div className="flex-1 overflow-y-auto p-4 custom-scrollbar bg-gray-50/30">
@@ -444,9 +444,9 @@ export default function ClassroomView({
                                 {myMemos.map((bm) => {
                                     const isEditing = editingMemoId === bm.id;
                                     return (
-                                        <div key={bm.id} className="bg-white p-3.5 rounded-xl border border-gray-200 shadow-sm hover:border-indigo-300 hover:shadow-md transition-all group">
+                                        <div key={bm.id} className="bg-white p-3.5 rounded-xl border border-gray-200 shadow-sm hover:border-[#cfd8ff] hover:shadow-md transition-all group">
                                             <button onClick={() => handleSeekToMemo(bm.time)} className="flex items-center gap-2 mb-2 w-full text-left active:opacity-70">
-                                                <div className="bg-indigo-50 text-indigo-600 px-2 py-1 rounded text-[11px] font-bold font-mono border border-indigo-100 flex items-center gap-1 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+                                                <div className="bg-[#f1f4ff] text-[#455fab] px-2 py-1 rounded text-[11px] font-bold font-mono border border-[#eef2ff] flex items-center gap-1 group-hover:bg-[#455fab] group-hover:text-white transition-colors">
                                                     <Icon name="play" className="w-3 h-3" />
                                                     {formatTime(bm.time)}
                                                 </div>
@@ -459,19 +459,19 @@ export default function ClassroomView({
                                                             type="number"
                                                             value={editFields.time}
                                                             onChange={(e) => setEditFields((prev) => ({ ...prev, time: e.target.value }))}
-                                                            className="w-28 bg-gray-50 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                                                            className="w-28 bg-gray-50 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#455fab] focus:outline-none"
                                                             min={0}
                                                             step={1}
                                                         />
                                                         <div className="flex gap-2 ml-auto">
-                                                            <button onClick={handleSaveEditedMemo} className="px-3 py-2 rounded-lg bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700 active:scale-95">저장</button>
+                                                            <button onClick={handleSaveEditedMemo} className="px-3 py-2 rounded-lg bg-[#455fab] text-white text-xs font-bold hover:bg-[#3b5198] active:scale-95">저장</button>
                                                             <button onClick={() => { setEditingMemoId(null); setEditFields({ note: '', time: '' }); }} className="px-3 py-2 rounded-lg bg-gray-100 text-gray-700 text-xs font-bold hover:bg-gray-200 active:scale-95">취소</button>
                                                         </div>
                                                     </div>
                                                     <textarea
                                                         value={editFields.note}
                                                         onChange={(e) => setEditFields((prev) => ({ ...prev, note: e.target.value }))}
-                                                        className="w-full bg-gray-50 border border-gray-300 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                                                        className="w-full bg-gray-50 border border-gray-300 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-[#455fab] focus:outline-none"
                                                         rows={2}
                                                     />
                                                 </div>

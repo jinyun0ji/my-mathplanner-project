@@ -53,7 +53,7 @@ export default function Header({ page }) {
             <div className="flex items-center space-x-3 sm:space-x-4">
 
                 <div className="flex items-center space-x-2 sm:space-x-3 cursor-pointer p-1.5 rounded-lg hover:bg-gray-50 transition">
-                    <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-sm border border-indigo-200">
+                    <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-[#eef2ff] flex items-center justify-center text-[#455fab] font-bold text-sm border border-[#cfd8ff]">
                         {avatarLabel}
                     </div>
                     <div className="text-sm">

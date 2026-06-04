@@ -56,7 +56,7 @@ export default function HomeworkStatisticsPanel({ summary, assignment, completio
     if (!stats) return null;
 
     const summaryItems = [
-        { label: '평균 수행률', value: `${stats.averageCompletionRate}%`, color: 'text-blue-600' },
+        { label: '평균 수행률', value: `${stats.averageCompletionRate}%`, color: 'text-[#455fab]' },
         { label: '완료 학생', value: `${stats.completedCount}명`, color: 'text-green-600' },
         { label: '오답 진행', value: `${stats.wrongProgressCount}명`, color: 'text-yellow-600' },
         { label: '미완료 학생', value: `${stats.incompleteCount}명`, color: 'text-red-600' },
@@ -66,7 +66,7 @@ export default function HomeworkStatisticsPanel({ summary, assignment, completio
     return (
         <div className="bg-white p-6 rounded-xl shadow-md space-y-4">
             <h2 className="text-xl font-bold text-gray-800 border-b pb-2 flex items-center">
-                <Icon name="clipboardCheck" className="w-5 h-5 mr-2 text-blue-600" />
+                <Icon name="clipboardCheck" className="w-5 h-5 mr-2 text-[#455fab]" />
                 과제 결과 통계
             </h2>
 
@@ -82,7 +82,7 @@ export default function HomeworkStatisticsPanel({ summary, assignment, completio
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <div className="space-y-3">
                     <h3 className="text-lg font-semibold text-gray-700 flex items-center">
-                        <Icon name="barChart" className="w-4 h-4 mr-2 text-blue-500" />
+                        <Icon name="barChart" className="w-4 h-4 mr-2 text-[#455fab]" />
                         문항별 정답률 (전체, 낮은 순)
                     </h3>
                     <div className="overflow-y-auto max-h-96 border rounded-lg">
@@ -114,7 +114,7 @@ export default function HomeworkStatisticsPanel({ summary, assignment, completio
 
                 <div className="space-y-3">
                     <h3 className="text-lg font-semibold text-gray-700 flex items-center">
-                        <Icon name="users" className="w-4 h-4 mr-2 text-indigo-500" />
+                        <Icon name="users" className="w-4 h-4 mr-2 text-[#455fab]" />
                         학생별 수행 현황
                     </h3>
                     <div className="overflow-y-auto max-h-96 border rounded-lg">
@@ -131,7 +131,7 @@ export default function HomeworkStatisticsPanel({ summary, assignment, completio
                                     return (
                                         <tr key={student.studentId} className="hover:bg-gray-50">
                                             <td className="px-3 py-2 font-medium text-gray-900">{student.studentName}</td>
-                                            <td className={`px-3 py-2 text-center font-bold ${(completion?.display ?? 0) === 100 ? 'text-green-600' : 'text-blue-600'}`}>
+                                            <td className={`px-3 py-2 text-center font-bold ${(completion?.display ?? 0) === 100 ? 'text-green-600' : 'text-[#455fab]'}`}>
                                                 {completion?.total > 0
                                                     ? `${completion.display}% (${completion.done}/${completion.total})`
                                                     : '-'}

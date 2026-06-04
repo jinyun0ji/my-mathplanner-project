@@ -154,14 +154,14 @@ export default function ParentClassroomView({
         // 상태 뱃지 결정
         let statusBadge;
         if (prog >= 100) statusBadge = null; // 정상은 굳이 표시 안함 (심플함 유지)
-        else if (prog > 0) statusBadge = <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">학습 중</span>;
+        else if (prog > 0) statusBadge = <span className="text-[10px] font-bold text-[#455fab] bg-[#f1f4ff] px-2 py-0.5 rounded border border-[#eef2ff]">학습 중</span>;
         else statusBadge = <span className="text-[10px] font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded border border-red-100">미수강</span>;
 
         return (
             <div 
                 key={log.id} 
                 onClick={() => onOpenReport && onOpenReport(log.id)} // ✅ [수정] 클릭 시 리포트 열기
-                className="group bg-white border border-gray-100 rounded-xl p-4 mb-3 shadow-sm hover:border-indigo-200 transition-all cursor-pointer active:scale-[0.98]"
+                className="group bg-white border border-gray-100 rounded-xl p-4 mb-3 shadow-sm hover:border-[#cfd8ff] transition-all cursor-pointer active:scale-[0.98]"
             >
                 <div className="flex justify-between items-start">
                     <div className="flex-1 min-w-0">
@@ -179,7 +179,7 @@ export default function ParentClassroomView({
                     {hasMaterials && (
                         <button 
                             onClick={(e) => toggleMaterials(e, log.id)}
-                            className={`ml-3 p-2 rounded-lg transition-colors flex-shrink-0 ${isMaterialsExpanded ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'}`}
+                            className={`ml-3 p-2 rounded-lg transition-colors flex-shrink-0 ${isMaterialsExpanded ? 'bg-[#eef2ff] text-[#334a91]' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'}`}
                         >
                             <Icon name="fileText" className="w-5 h-5" />
                         </button>
@@ -197,7 +197,7 @@ export default function ParentClassroomView({
                                         href={mat.url} 
                                         target="_blank" 
                                         rel="noopener noreferrer"
-                                        className="flex items-center gap-2 p-2 rounded-lg bg-gray-50 hover:bg-indigo-50 hover:text-indigo-700 transition-colors"
+                                        className="flex items-center gap-2 p-2 rounded-lg bg-gray-50 hover:bg-[#f1f4ff] hover:text-[#334a91] transition-colors"
                                     >
                                         <Icon name="download" className="w-4 h-4 text-gray-400" />
                                         <span className="text-xs font-medium text-gray-700 truncate">{mat.name}</span>
@@ -265,7 +265,7 @@ export default function ParentClassroomView({
                     onClick={() => onNavigateToTab && onNavigateToTab('learning', 'homework')} 
                     className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center justify-center cursor-pointer active:scale-95 transition-transform"
                 >
-                    <div className="bg-blue-50 p-2 rounded-full mb-2 text-blue-600"><Icon name="fileText" className="w-5 h-5" /></div>
+                    <div className="bg-blue-50 p-2 rounded-full mb-2 text-[#455fab]"><Icon name="fileText" className="w-5 h-5" /></div>
                     <span className="text-xs text-gray-500 font-bold mb-0.5">미제출 과제</span>
                     <span className={`text-sm font-extrabold ${stats.homework.unsubmitted > 0 ? 'text-red-500' : 'text-gray-900'}`}>
                         {stats.homework.unsubmitted}건
@@ -277,9 +277,9 @@ export default function ParentClassroomView({
                     onClick={() => onNavigateToTab && onNavigateToTab('learning', 'grades')} 
                     className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center justify-center cursor-pointer active:scale-95 transition-transform"
                 >
-                    <div className="bg-purple-50 p-2 rounded-full mb-2 text-purple-600"><Icon name="trendingUp" className="w-5 h-5" /></div>
+                    <div className="bg-[#f1f4ff] p-2 rounded-full mb-2 text-[#455fab]"><Icon name="trendingUp" className="w-5 h-5" /></div>
                     <span className="text-xs text-gray-500 font-bold mb-0.5">최근 성적</span>
-                    <span className="text-sm font-extrabold text-indigo-600">{stats.grade.trend}</span>
+                    <span className="text-sm font-extrabold text-[#455fab]">{stats.grade.trend}</span>
                     <span className="text-[9px] text-gray-400 mt-0.5">{stats.grade.diff}</span>
                 </div>
             </div>
@@ -308,7 +308,7 @@ export default function ParentClassroomView({
             <div>
                 <div className="flex justify-between items-end mb-3 px-1">
                     <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-                        <Icon name="list" className="w-5 h-5 text-indigo-600" />
+                        <Icon name="list" className="w-5 h-5 text-[#455fab]" />
                         최근 수업 기록
                     </h3>
                     {!isHistoryExpanded && sortedLogs.length > 3 && (

@@ -17,11 +17,11 @@ export default function ClinicReportCard({ log }) {
     const isAttentionNeeded = displayableComment && displayableComment.includes('부족');
     const badgeStyle = isAttentionNeeded
         ? 'bg-orange-50 text-orange-600 border-orange-100'
-        : 'bg-indigo-50 text-indigo-600 border-indigo-100';
+        : 'bg-[#f1f4ff] text-[#455fab] border-[#eef2ff]';
     const statusText = isAttentionNeeded ? '확인 필요' : '작성 완료';
 
     return (
-        <div className="bg-white rounded-2xl p-5 border border-gray-200 shadow-sm transition-all hover:border-indigo-200">
+        <div className="bg-white rounded-2xl p-5 border border-gray-200 shadow-sm transition-all hover:border-[#cfd8ff]">
             {/* 카드 헤더 */}
             <div className="flex justify-between items-start mb-4 border-b border-gray-50 pb-3">
                 <div>
@@ -59,7 +59,7 @@ export default function ClinicReportCard({ log }) {
                             {isLongComment && (
                                 <button 
                                     onClick={(e) => { e.stopPropagation(); setIsExpanded(!isExpanded); }}
-                                    className="mt-2 text-xs font-bold text-gray-500 underline decoration-gray-300 underline-offset-2 hover:text-indigo-600 transition-colors"
+                                    className="mt-2 text-xs font-bold text-gray-500 underline decoration-gray-300 underline-offset-2 hover:text-[#455fab] transition-colors"
                                 >
                                     {isExpanded ? '접기' : '전체 보기'}
                                 </button>

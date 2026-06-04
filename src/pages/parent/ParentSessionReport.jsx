@@ -8,7 +8,7 @@ export default function ParentSessionReport({ report, onBack }) {
     const getStatusColor = (val) => {
         if (['결석', '미제출', '미응시'].includes(val)) return 'text-red-600 bg-red-50 border-red-100';
         if (['지각', '숙제 출제'].includes(val)) return 'text-orange-600 bg-orange-50 border-orange-100';
-        return 'text-indigo-600 bg-indigo-50 border-indigo-100';
+        return 'text-[#455fab] bg-[#f1f4ff] border-[#eef2ff]';
     };
 
     return (
@@ -29,7 +29,7 @@ export default function ParentSessionReport({ report, onBack }) {
                 <SummaryCard label="출결" value={report.attendance} colorClass={getStatusColor(report.attendance)} icon="user" />
                 <SummaryCard label="과제" value={report.homeworkStatus} colorClass={getStatusColor(report.homeworkStatus)} icon="fileText" />
                 <SummaryCard label="진도" value={report.progressTopic} colorClass="text-gray-800 bg-white border-gray-200" icon="book" />
-                <SummaryCard label="오늘 테스트" value={report.testScore} colorClass={report.testScore === '테스트 없음' ? 'text-gray-400 bg-gray-50' : 'text-blue-600 bg-blue-50 border-blue-100'} icon="edit" />
+                <SummaryCard label="오늘 테스트" value={report.testScore} colorClass={report.testScore === '테스트 없음' ? 'text-gray-400 bg-gray-50' : 'text-[#455fab] bg-blue-50 border-blue-100'} icon="edit" />
             </div>
 
 
@@ -65,14 +65,14 @@ export default function ParentSessionReport({ report, onBack }) {
             {/* 5-3. 다음 과제 안내 (Optional) */}
             {report.homework && (
                 <Section title="다음 과제">
-                    <div className="bg-indigo-50 p-4 rounded-2xl border border-indigo-100">
+                    <div className="bg-[#f1f4ff] p-4 rounded-2xl border border-[#eef2ff]">
                         <div className="flex items-start gap-3">
-                            <div className="bg-white p-2 rounded-lg text-indigo-600 shadow-sm">
+                            <div className="bg-white p-2 rounded-lg text-[#455fab] shadow-sm">
                                 <Icon name="clipboard" className="w-5 h-5" />
                             </div>
                             <div>
-                                <h4 className="font-bold text-indigo-900 text-sm mb-1">{report.homework.description}</h4>
-                                <p className="text-xs text-indigo-500">~ {report.homework.dueDate} 까지 제출</p>
+                                <h4 className="font-bold text-[#334a91] text-sm mb-1">{report.homework.description}</h4>
+                                <p className="text-xs text-[#455fab]">~ {report.homework.dueDate} 까지 제출</p>
                             </div>
                         </div>
                     </div>

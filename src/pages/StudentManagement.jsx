@@ -4,7 +4,7 @@ import { doc, serverTimestamp, setDoc, Timestamp, updateDoc, arrayRemove, arrayU
 import { Icon } from '../utils/helpers';
 import { StudentFormModal } from '../utils/modals/StudentFormModal';
 import { MemoModal } from '../utils/modals/MemoModal';
-import { Modal } from '../components/common/Modal'; 
+import { Modal } from '../components/common/Modal';
 import { db } from '../firebase/client';
 import { buildStudentParentPhoneLast4Map, formatStudentNameWithParentLast4 } from '../utils/parentPhone';
 
@@ -22,7 +22,7 @@ export default function StudentManagement({
     const [isStudentModalOpen, setIsStudentModalOpen] = useState(false);
     const [studentToEdit, setStudentToEdit] = useState(null);
     const [memoModalState, setMemoModalState] = useState({ isOpen: false, studentId: null, content: '', studentName: '' });
-    
+
     const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
     const [selectedStudentSchedule, setSelectedStudentSchedule] = useState({ name: '', schedules: [] });
     const [retireModal, setRetireModal] = useState({ isOpen: false, student: null, classId: null });
@@ -363,7 +363,7 @@ export default function StudentManagement({
                             <select
                                 value={selectedClassId}
                                 onChange={(e) => setSelectedClassId(e.target.value)}
-                                className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:border-indigo-900 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                                className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:border-[#334a91] focus:outline-none focus:ring-2 focus:ring-[#cfd8ff]"
                             >
                                 <option value="all">전체</option>
                                 {classOptions.map((option) => (
@@ -378,7 +378,7 @@ export default function StudentManagement({
                             <select
                                 value={selectedStatus}
                                 onChange={(e) => setSelectedStatus(e.target.value)}
-                                className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:border-indigo-900 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                                className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:border-[#334a91] focus:outline-none focus:ring-2 focus:ring-[#cfd8ff]"
                             >
                                 <option value="all">전체</option>
                                 {statusOptions.map((status) => (
@@ -390,7 +390,7 @@ export default function StudentManagement({
                         </label>
                         <label className="text-xs font-semibold text-gray-600 sm:col-span-2">
                             검색
-                            <div className="mt-1 flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus-within:border-indigo-900 focus-within:ring-2 focus-within:ring-indigo-200">
+                            <div className="mt-1 flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus-within:border-[#334a91] focus-within:ring-2 focus-within:ring-[#cfd8ff]">
                                 <Icon name="search" className="w-4 h-4 text-gray-400"/>
                                 <input
                                     type="text"
@@ -403,16 +403,16 @@ export default function StudentManagement({
                         </label>
                     </div>
                     <div className="flex w-full justify-end lg:w-auto">
-                        <button 
+                        <button
                             onClick={handleNewStudent}
-                            className="w-full lg:w-auto justify-center bg-indigo-900 hover:bg-indigo-800 text-white font-bold py-2 px-4 rounded-lg flex items-center shadow-md transition duration-150 text-sm"
+                            className="w-full lg:w-auto justify-center bg-[#455fab] hover:bg-[#3b5198] text-white font-bold py-2 px-4 rounded-lg flex items-center shadow-md transition duration-150 text-sm"
                         >
                             <Icon name="plus" className="w-5 h-5 mr-2" />
                             새 학생 등록
                         </button>
                     </div>
                 </div>
-                
+
                 <div className="overflow-x-auto rounded-lg border border-gray-200 hidden md:block">
                     <table className="min-w-[1280px] w-full table-fixed divide-y divide-gray-200">
                         <colgroup>
@@ -449,9 +449,9 @@ export default function StudentManagement({
                                     .map(([id]) => id);
                                 const getClassName = (classId) => classes.find((cls) => String(cls.id) === String(classId))?.name || classId;
                                 const withdrawDate = getWithdrawDate(student);
-                                
+
                                 return (
-                                    <tr key={student.id} className="hover:bg-indigo-50 cursor-pointer transition duration-100" onClick={() => handlePageChange('students', student.id)}>
+                                    <tr key={student.id} className="hover:bg-[#f1f4ff] cursor-pointer transition duration-100" onClick={() => handlePageChange('students', student.id)}>
                                         <td className="px-4 py-4 whitespace-nowrap text-sm font-bold text-gray-900">
                                             <div className="flex items-center gap-2">
                                                 <span>{getStudentDisplayName(student)}</span>
@@ -483,12 +483,12 @@ export default function StudentManagement({
                                         <td className="px-4 py-4 text-sm text-gray-600">
                                             <div className="flex flex-wrap gap-2">
                                                 {activeClassIds.length > 0 ? activeClassIds.map((classId) => (
-                                                    <div key={classId} className="flex items-center gap-1 px-2 py-1 rounded-full bg-indigo-50 text-indigo-700 text-xs font-semibold border border-indigo-100">
+                                                    <div key={classId} className="flex items-center gap-1 px-2 py-1 rounded-full bg-[#f1f4ff] text-[#334a91] text-xs font-semibold border border-[#eef2ff]">
                                                         <span>{getClassName(classId)}</span>
                                                         <button
                                                             type="button"
                                                             onClick={(e) => { e.stopPropagation(); handleWithdrawClick(student, classId); }}
-                                                            className="text-[10px] text-indigo-700 hover:text-indigo-900"
+                                                            className="text-[10px] text-[#334a91] hover:text-[#334a91]"
                                                         >
                                                             퇴원 처리
                                                         </button>
@@ -506,7 +506,7 @@ export default function StudentManagement({
                                                                 <button
                                                                     type="button"
                                                                     onClick={(e) => { e.stopPropagation(); handleRestoreClick(student, classId); }}
-                                                                    className="text-[10px] text-indigo-600 hover:text-indigo-800"
+                                                                    className="text-[10px] text-[#455fab] hover:text-[#334a91]"
                                                                 >
                                                                     복원
                                                                 </button>
@@ -524,36 +524,36 @@ export default function StudentManagement({
                                         <td className="px-4 py-4 whitespace-nowrap text-sm font-medium">
                                             <div className="flex space-x-2">
                                                 {/* ✅ [수정] 타학원 버튼: 데이터 있으면 녹색/인디고, 없으면 회색 */}
-                                                <button 
-                                                    type="button" 
+                                                <button
+                                                    type="button"
                                                     onClick={(e) => {e.stopPropagation(); openScheduleModal(student);}}
                                                     className={`p-1 rounded-full transition-colors ${
-                                                        hasExternal 
-                                                            ? 'text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 ring-1 ring-indigo-200' 
+                                                        hasExternal
+                                                            ? 'text-[#455fab] hover:text-[#334a91] bg-[#f1f4ff] hover:bg-[#eef2ff] ring-1 ring-[#cfd8ff]'
                                                             : 'text-gray-300 hover:text-gray-500 hover:bg-gray-100'
                                                     }`}
                                                     title={hasExternal ? "타학원 시간표 보기" : "타학원 시간표 없음"}
                                                 >
                                                     <Icon name="calendar" className="w-5 h-5" />
                                                 </button>
-                                                <button 
-                                                    type="button" 
+                                                <button
+                                                    type="button"
                                                     onClick={(e) => {e.stopPropagation(); openMemoModal(student);}}
                                                     className="text-gray-400 hover:text-yellow-600 p-1 rounded-full hover:bg-yellow-50 transition-colors"
                                                     title="메모"
                                                 >
                                                     <Icon name="fileText" className="w-5 h-5" />
                                                 </button>
-                                                <button 
-                                                    type="button" 
+                                                <button
+                                                    type="button"
                                                     onClick={(e) => {e.stopPropagation(); handleEdit(student);}}
-                                                    className="text-gray-400 hover:text-indigo-900 p-1 rounded-full hover:bg-indigo-50 transition-colors"
+                                                    className="text-gray-400 hover:text-[#334a91] p-1 rounded-full hover:bg-[#f1f4ff] transition-colors"
                                                     title="수정"
                                                 >
                                                     <Icon name="edit" className="w-5 h-5" />
                                                 </button>
-                                                <button 
-                                                    type="button" 
+                                                <button
+                                                    type="button"
                                                     onClick={(e) => {e.stopPropagation(); if(window.confirm(`${student.name} 학생을 정말 삭제하시겠습니까?`)) handleDeleteStudent(student.id);}}
                                                     className="text-gray-400 hover:text-red-600 p-1 rounded-full hover:bg-red-50 transition-colors"
                                                     title="삭제"
@@ -584,7 +584,7 @@ export default function StudentManagement({
                         const getClassName = (classId) => classes.find((cls) => String(cls.id) === String(classId))?.name || classId;
                         const withdrawDate = getWithdrawDate(student);
                         return (
-                            <div 
+                            <div
                                 key={student.id}
                                 onClick={() => handlePageChange('students', student.id)}
                                 className="border border-gray-200 rounded-xl p-4 shadow-sm bg-white active:scale-[0.99] transition"
@@ -606,12 +606,12 @@ export default function StudentManagement({
                                         <div className="mt-2 space-y-1">
                                             <div className="flex flex-wrap gap-2 text-sm text-gray-700 leading-snug">
                                                 {activeClassIds.length > 0 ? activeClassIds.map((classId) => (
-                                                    <span key={classId} className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-indigo-50 text-indigo-700 text-xs font-semibold border border-indigo-100">
+                                                    <span key={classId} className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-[#f1f4ff] text-[#334a91] text-xs font-semibold border border-[#eef2ff]">
                                                         {getClassName(classId)}
                                                         <button
                                                             type="button"
                                                             onClick={(e) => { e.stopPropagation(); handleWithdrawClick(student, classId); }}
-                                                            className="text-[10px] text-indigo-700"
+                                                            className="text-[10px] text-[#334a91]"
                                                         >
                                                             퇴원 처리
                                                         </button>
@@ -628,7 +628,7 @@ export default function StudentManagement({
                                                                 <button
                                                                     type="button"
                                                                     onClick={(e) => { e.stopPropagation(); handleRestoreClick(student, classId); }}
-                                                                    className="text-[10px] text-indigo-600"
+                                                                    className="text-[10px] text-[#455fab]"
                                                                 >
                                                                     복원
                                                                 </button>
@@ -665,20 +665,20 @@ export default function StudentManagement({
                                         </div>
                                     </div>
                                     <div className="flex flex-col gap-2">
-                                        <button 
-                                            type="button" 
+                                        <button
+                                            type="button"
                                             onClick={(e) => {e.stopPropagation(); openScheduleModal(student);}}
                                             className={`p-2 rounded-lg transition-colors ${
-                                                hasExternal 
-                                                    ? 'text-indigo-700 bg-indigo-50 hover:bg-indigo-100 ring-1 ring-indigo-100' 
+                                                hasExternal
+                                                    ? 'text-[#334a91] bg-[#f1f4ff] hover:bg-[#eef2ff] ring-1 ring-[#eef2ff]'
                                                     : 'text-gray-400 bg-gray-50 hover:bg-gray-100'
                                             }`}
                                             title={hasExternal ? "타학원 시간표 보기" : "타학원 시간표 없음"}
                                         >
                                             <Icon name="calendar" className="w-5 h-5" />
                                         </button>
-                                        <button 
-                                            type="button" 
+                                        <button
+                                            type="button"
                                             onClick={(e) => {e.stopPropagation(); openMemoModal(student);}}
                                             className="p-2 rounded-lg text-gray-500 bg-gray-50 hover:bg-yellow-50 hover:text-yellow-700 transition-colors"
                                             title="메모"
@@ -689,15 +689,15 @@ export default function StudentManagement({
                                 </div>
 
                                 <div className="flex justify-end gap-2 mt-3">
-                                    <button 
-                                        type="button" 
+                                    <button
+                                        type="button"
                                         onClick={(e) => {e.stopPropagation(); handleEdit(student);}}
-                                        className="flex-1 text-sm font-semibold text-indigo-900 bg-indigo-50 hover:bg-indigo-100 rounded-lg py-2 transition-colors"
+                                        className="flex-1 text-sm font-semibold text-[#334a91] bg-[#f1f4ff] hover:bg-[#eef2ff] rounded-lg py-2 transition-colors"
                                     >
                                         수정
                                     </button>
-                                    <button 
-                                        type="button" 
+                                    <button
+                                        type="button"
                                         onClick={(e) => {e.stopPropagation(); if(window.confirm(`${student.name} 학생을 정말 삭제하시겠습니까?`)) handleDeleteStudent(student.id);}}
                                         className="flex-1 text-sm font-semibold text-red-600 bg-red-50 hover:bg-red-100 rounded-lg py-2 transition-colors"
                                     >
@@ -720,7 +720,7 @@ export default function StudentManagement({
                             type="date"
                             value={retireDate}
                             onChange={(e) => setRetireDate(e.target.value)}
-                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-indigo-600 focus:ring-2 focus:ring-indigo-200"
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#455fab] focus:ring-2 focus:ring-[#cfd8ff]"
                         />
                     </div>
                     <div className="space-y-2">
@@ -728,7 +728,7 @@ export default function StudentManagement({
                         <select
                             value={retireReason}
                             onChange={(e) => setRetireReason(e.target.value)}
-                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-indigo-600 focus:ring-2 focus:ring-indigo-200"
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#455fab] focus:ring-2 focus:ring-[#cfd8ff]"
                         >
                             <option value="중도퇴원">중도퇴원</option>
                             <option value="전반">전반</option>
@@ -745,7 +745,7 @@ export default function StudentManagement({
                         <button
                             type="button"
                             onClick={handleRetireSave}
-                            className="px-4 py-2 rounded-lg bg-indigo-900 text-white text-sm font-semibold hover:bg-indigo-800 transition-colors"
+                            className="px-4 py-2 rounded-lg bg-[#455fab] text-white text-sm font-semibold hover:bg-[#3b5198] transition-colors"
                         >
                             저장
                         </button>
@@ -764,7 +764,7 @@ export default function StudentManagement({
                                         <p className="font-bold text-gray-900 text-lg">{s.academyName}</p>
                                         <p className="text-sm text-gray-600 font-medium">{s.courseName} <span className="text-gray-400">|</span> {s.instructor || '강사 미정'}</p>
                                     </div>
-                                    <span className="text-xs font-bold text-indigo-700 bg-indigo-50 px-2 py-1 rounded border border-indigo-100">
+                                    <span className="text-xs font-bold text-[#334a91] bg-[#f1f4ff] px-2 py-1 rounded border border-[#eef2ff]">
                                         {s.days.join(', ')}
                                     </span>
                                 </div>

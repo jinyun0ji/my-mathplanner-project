@@ -207,7 +207,7 @@ export default function ClosureManagement({ closures = [], setClosures, classes 
                     <button
                         type="submit"
                         disabled={isSaving}
-                        className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60"
+                        className="inline-flex items-center gap-2 rounded-lg bg-[#455fab] px-4 py-2 text-sm font-semibold text-white hover:bg-[#3b5198] disabled:opacity-60"
                     >
                         <Icon name="check" className="w-4 h-4" />
                         {editingId ? '휴강 수정' : '휴강 등록'}

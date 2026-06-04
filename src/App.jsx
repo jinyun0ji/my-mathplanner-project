@@ -57,7 +57,7 @@ function LoginRoute() {
                             await logout();
                             navigate('/login', { replace: true });
                         }}
-                        className="mt-5 w-full rounded-xl bg-indigo-600 px-4 py-3 text-sm font-bold text-white"
+                        className="mt-5 w-full rounded-xl bg-[#455fab] px-4 py-3 text-sm font-bold text-white"
                     >
                         확인
                     </button>

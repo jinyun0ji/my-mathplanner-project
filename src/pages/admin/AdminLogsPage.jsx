@@ -76,14 +76,14 @@ export default function AdminLogsPage() {
                         <button
                             type="button"
                             onClick={() => setTab('error')}
-                            className={`px-3 py-1.5 rounded-lg text-sm font-bold ${tab === 'error' ? 'bg-indigo-900 text-white' : 'bg-gray-100 text-gray-600'}`}
+                            className={`px-3 py-1.5 rounded-lg text-sm font-bold ${tab === 'error' ? 'bg-[#455fab] text-white' : 'bg-gray-100 text-gray-600'}`}
                         >
                             Error Logs
                         </button>
                         <button
                             type="button"
                             onClick={() => setTab('audit')}
-                            className={`px-3 py-1.5 rounded-lg text-sm font-bold ${tab === 'audit' ? 'bg-indigo-900 text-white' : 'bg-gray-100 text-gray-600'}`}
+                            className={`px-3 py-1.5 rounded-lg text-sm font-bold ${tab === 'audit' ? 'bg-[#455fab] text-white' : 'bg-gray-100 text-gray-600'}`}
                         >
                             Audit Logs
                         </button>
@@ -139,7 +139,7 @@ export default function AdminLogsPage() {
                                     ? (it.message || '')
                                     : `${it?.target?.id || ''}`;
                                 return (
-                                    <tr key={it.id} className="hover:bg-indigo-50/30">
+                                    <tr key={it.id} className="hover:bg-[#f1f4ff]/30">
                                         <td className="px-4 py-3 text-xs font-mono text-gray-600 whitespace-nowrap">{time}</td>
                                         <td className="px-4 py-3 text-xs font-semibold text-gray-700 whitespace-nowrap">{kind}</td>
                                         <td className="px-4 py-3 text-sm text-gray-800">{summary}</td>

@@ -728,7 +728,7 @@ export default function LessonReportManagement({
             />
           )}
           <button
-            className="px-3 py-2 rounded bg-indigo-600 text-white text-sm disabled:opacity-50"
+            className="px-3 py-2 rounded bg-[#455fab] text-white text-sm disabled:opacity-50"
             onClick={handleBulkSend}
             disabled={reportSaving || selectedStudentIdsForBulk.length === 0}
           >
@@ -780,7 +780,7 @@ export default function LessonReportManagement({
                     <td className="px-3 py-2 text-xs text-gray-600">{report?.status === LESSON_REPORT_STATUS.SENT ? '발송됨' : (report?.sendStatus === LESSON_REPORT_SEND_STATUS.SCHEDULED ? '예약됨' : '미발송')}</td>
                     <td className="px-3 py-2 text-right">
                       <button
-                        className="px-3 py-1.5 rounded bg-indigo-600 text-white text-xs"
+                        className="px-3 py-1.5 rounded bg-[#455fab] text-white text-xs"
                         onClick={() => openDraftForStudent(student.id, report || null)}
                       >
                         {report ? '수정' : '작성'}
@@ -813,8 +813,8 @@ export default function LessonReportManagement({
                 {students.find((item) => String(item.id) === String(draft.studentId))?.name || draft.studentId} · {selectedClassName}
               </p>
               <div className="inline-flex rounded border overflow-hidden">
-                <button className={`px-3 py-1.5 text-sm ${activeTab === 'edit' ? 'bg-indigo-600 text-white' : 'bg-white text-gray-700'}`} onClick={() => setActiveTab('edit')}>편집</button>
-                <button className={`px-3 py-1.5 text-sm ${activeTab === 'preview' ? 'bg-indigo-600 text-white' : 'bg-white text-gray-700'}`} onClick={() => setActiveTab('preview')}>미리보기</button>
+                <button className={`px-3 py-1.5 text-sm ${activeTab === 'edit' ? 'bg-[#455fab] text-white' : 'bg-white text-gray-700'}`} onClick={() => setActiveTab('edit')}>편집</button>
+                <button className={`px-3 py-1.5 text-sm ${activeTab === 'preview' ? 'bg-[#455fab] text-white' : 'bg-white text-gray-700'}`} onClick={() => setActiveTab('preview')}>미리보기</button>
               </div>
               </div>
 
@@ -916,9 +916,9 @@ export default function LessonReportManagement({
 
                 <div className="flex justify-end gap-2">
                   <button className="px-3 py-2 rounded bg-gray-100" onClick={() => setDraft(null)} disabled={reportSaving}>닫기</button>
-                  <button className="px-3 py-2 rounded bg-indigo-100 text-indigo-700" onClick={saveReport} disabled={reportSaving}>저장</button>
+                  <button className="px-3 py-2 rounded bg-[#eef2ff] text-[#334a91]" onClick={saveReport} disabled={reportSaving}>저장</button>
                   <button
-                    className="px-3 py-2 rounded bg-indigo-600 text-white"
+                    className="px-3 py-2 rounded bg-[#455fab] text-white"
                     onClick={async () => {
                       setReportSaving(true);
                       try {

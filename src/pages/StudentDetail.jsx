@@ -818,7 +818,7 @@ export default function StudentDetail() {
             : '정보 없음';
 
         const kpiCards = [
-            { label: '출결', value: attendanceItems.length, accent: 'text-indigo-600' },
+            { label: '출결', value: attendanceItems.length, accent: 'text-[#455fab]' },
             { label: '클리닉', value: clinicItems.length, accent: 'text-emerald-600' },
             { label: '과제', value: homeworkItems.length, accent: 'text-amber-600' },
             { label: '시험', value: gradeItems.length, accent: 'text-rose-600' },
@@ -843,7 +843,7 @@ export default function StudentDetail() {
                     onChange={(event) => setMemoDraft(event.target.value)}
                     placeholder="학생 관련 내부 메모를 남겨주세요."
                     rows={4}
-                    className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                    className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700 focus:border-[#455fab] focus:outline-none focus:ring-2 focus:ring-[#eef2ff]"
                 />
                 <div className="flex items-center justify-between">
                     <p className="text-xs text-rose-500">{memoError}</p>
@@ -851,7 +851,7 @@ export default function StudentDetail() {
                         type="button"
                         onClick={handleSaveStaffMemo}
                         disabled={memoSaving || !memoDraft.trim()}
-                        className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-indigo-300"
+                        className="inline-flex items-center gap-2 rounded-lg bg-[#455fab] px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-[#3b5198] disabled:cursor-not-allowed disabled:bg-[#cfd8ff]"
                     >
                         {memoSaving ? '저장 중...' : '저장'}
                     </button>
@@ -910,7 +910,7 @@ export default function StudentDetail() {
                                                     setMemoActionId(null);
                                                 }
                                             }}
-                                            className="rounded-lg bg-indigo-600 px-3 py-1 text-white disabled:cursor-not-allowed disabled:bg-indigo-300"
+                                            className="rounded-lg bg-[#455fab] px-3 py-1 text-white disabled:cursor-not-allowed disabled:bg-[#cfd8ff]"
                                         >
                                             저장
                                         </button>
@@ -967,7 +967,7 @@ export default function StudentDetail() {
             <button
                 type="button"
                 onClick={() => navigate('/attendance')}
-                className="text-xs font-semibold text-indigo-600 hover:underline"
+                className="text-xs font-semibold text-[#455fab] hover:underline"
             >
                 출결 관리
             </button>
@@ -977,7 +977,7 @@ export default function StudentDetail() {
             <button
                 type="button"
                 onClick={() => navigate('/clinic')}
-                className="text-xs font-semibold text-indigo-600 hover:underline"
+                className="text-xs font-semibold text-[#455fab] hover:underline"
             >
                 클리닉 관리
             </button>
@@ -987,7 +987,7 @@ export default function StudentDetail() {
             <button
                 type="button"
                 onClick={() => navigate('/homework')}
-                className="text-xs font-semibold text-indigo-600 hover:underline"
+                className="text-xs font-semibold text-[#455fab] hover:underline"
             >
                 과제 관리
             </button>
@@ -997,7 +997,7 @@ export default function StudentDetail() {
             <button
                 type="button"
                 onClick={() => navigate('/grades')}
-                className="text-xs font-semibold text-indigo-600 hover:underline"
+                className="text-xs font-semibold text-[#455fab] hover:underline"
             >
                 성적 관리
             </button>
@@ -1113,7 +1113,7 @@ export default function StudentDetail() {
                                 <div key={item.id} className="rounded-lg border border-gray-100 bg-gray-50 px-4 py-3">
                                     <p className="text-sm font-semibold text-gray-800">{testName}</p>
                                     <p className="mt-1 text-xs text-gray-500">{formatDate(dateValue)} · {className}</p>
-                                    <p className="mt-2 text-sm font-semibold text-indigo-600">
+                                    <p className="mt-2 text-sm font-semibold text-[#455fab]">
                                         {scoreText === '미응시'
                                             ? '미응시'
                                             : (scoreText && maxScore
@@ -1155,7 +1155,7 @@ export default function StudentDetail() {
                                     </p>
                                 </div>
                                 <div className="flex flex-col items-end gap-2">
-                                    <span className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-600">
+                                    <span className="rounded-full bg-[#f1f4ff] px-3 py-1 text-xs font-semibold text-[#455fab]">
                                         {student.status || '상태 정보 없음'}
                                     </span>
                                     <button
@@ -1169,7 +1169,7 @@ export default function StudentDetail() {
                                     <button
                                         type="button"
                                         onClick={() => document.getElementById('student-sent-lesson-reports')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-                                        className="inline-flex items-center gap-2 text-xs font-semibold text-indigo-600 hover:text-indigo-800"
+                                        className="inline-flex items-center gap-2 text-xs font-semibold text-[#455fab] hover:text-[#334a91]"
                                     >
                                         <Icon name="clipboardCheck" className="h-4 w-4" />
                                         수업 리포트 보기
@@ -1204,10 +1204,10 @@ export default function StudentDetail() {
                                             classBadges.map((item) => (
                                                 <span
                                                     key={item.id}
-                                                    className="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-white px-3 py-1 text-xs font-semibold text-indigo-600"
+                                                    className="inline-flex items-center gap-1 rounded-full border border-[#cfd8ff] bg-white px-3 py-1 text-xs font-semibold text-[#455fab]"
                                                 >
                                                     {item.name}
-                                                    <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-500">
+                                                    <span className="rounded-full bg-[#f1f4ff] px-2 py-0.5 text-[10px] font-semibold text-[#455fab]">
                                                         {item.status}
                                                     </span>
                                                 </span>
@@ -1244,7 +1244,7 @@ export default function StudentDetail() {
                                                 {Array.isArray(report?.testSummary?.text) && report.testSummary.text.length > 0 && (
                                                     <p>시험: {report.testSummary.text.join(' · ')}</p>
                                                 )}
-                                                {report.comment && <p className="text-indigo-700">코멘트: {report.comment}</p>}
+                                                {report.comment && <p className="text-[#334a91]">코멘트: {report.comment}</p>}
                                                 <p className="text-[11px] text-gray-400">발송 시각: {formatDateTime(report?.sentAt || report?.updatedAt)}</p>
                                             </div>
                                         </details>

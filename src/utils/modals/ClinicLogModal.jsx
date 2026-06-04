@@ -78,7 +78,7 @@ export const ClinicLogModal = ({ isOpen, onClose, onSave, logToEdit = null, stud
                         <p className="font-semibold text-gray-700">학생 정보 요약</p>
                         <p className="text-xs text-gray-600 mt-1">
                             학교/학년: {selectedStudent.school} ({formatGradeLabel(selectedStudent.grade)})<br/>
-                            수강 클래스: <span className="font-medium text-blue-600">{studentClassNames || '없음'}</span><br/>
+                            수강 클래스: <span className="font-medium text-[#455fab]">{studentClassNames || '없음'}</span><br/>
                             클리닉 희망: {selectedStudent.clinicTime || '미정'}
                         </p>
                     </div>
@@ -109,7 +109,7 @@ export const ClinicLogModal = ({ isOpen, onClose, onSave, logToEdit = null, stud
                     <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium rounded-lg text-gray-700 bg-gray-200 hover:bg-gray-300 transition duration-150">
                         취소
                     </button>
-                    <button type="submit" className="px-4 py-2 text-sm font-medium rounded-lg text-white bg-indigo-600 hover:bg-indigo-700 transition duration-150 shadow-md">
+                    <button type="submit" className="px-4 py-2 text-sm font-medium rounded-lg text-white bg-[#455fab] hover:bg-[#3b5198] transition duration-150 shadow-md">
                         {logToEdit ? '로그 수정 저장' : '로그 기록하기'}
                     </button>
                 </div>

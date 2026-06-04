@@ -38,7 +38,7 @@ export default function WorkLogs({ logs, handleSaveLog, handleDeleteLog }) {
             <div className='flex justify-end'>
                 <button 
                     onClick={() => { setLogToEdit(null); setNewContent(''); setIsModalOpen(true); }}
-                    className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg flex items-center shadow-md transition duration-150"
+                    className="bg-[#455fab] hover:bg-[#3b5198] text-white font-medium py-2 px-4 rounded-lg flex items-center shadow-md transition duration-150"
                 >
                     <Icon name="plus" className="w-5 h-5 mr-2" />
                     새 근무 일지 작성
@@ -56,7 +56,7 @@ export default function WorkLogs({ logs, handleSaveLog, handleDeleteLog }) {
                                     <p className="text-sm text-gray-500 font-medium">{log.date} by <span className="text-gray-800">{log.createdByName || log.author || '알 수 없음'}</span></p>
                                 </div>
                                 <div className='flex space-x-2'>
-                                    <button onClick={() => handleEdit(log)} className="text-indigo-600 hover:text-indigo-800 p-1 rounded-full hover:bg-indigo-100" title="수정"><Icon name="edit" className="w-4 h-4"/></button>
+                                    <button onClick={() => handleEdit(log)} className="text-[#455fab] hover:text-[#334a91] p-1 rounded-full hover:bg-[#eef2ff]" title="수정"><Icon name="edit" className="w-4 h-4"/></button>
                                     <button onClick={() => { if(window.confirm('정말 이 일지를 삭제하시겠습니까?')) handleDeleteLog(log.id); }} className="text-red-600 hover:text-red-800 p-1 rounded-full hover:bg-red-100" title="삭제"><Icon name="trash" className="w-4 h-4"/></button>
                                 </div>
                             </div>
@@ -76,7 +76,7 @@ export default function WorkLogs({ logs, handleSaveLog, handleDeleteLog }) {
                         <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-sm font-medium rounded-lg text-gray-700 bg-gray-200 hover:bg-gray-300 transition duration-150">
                             취소
                         </button>
-                        <button type="submit" className="px-4 py-2 text-sm font-medium rounded-lg text-white bg-blue-600 hover:bg-blue-700 transition duration-150 shadow-md">
+                        <button type="submit" className="px-4 py-2 text-sm font-medium rounded-lg text-white bg-[#455fab] hover:bg-[#3b5198] transition duration-150 shadow-md">
                             {logToEdit ? '수정 사항 저장' : '등록하기'}
                         </button>
                     </div>

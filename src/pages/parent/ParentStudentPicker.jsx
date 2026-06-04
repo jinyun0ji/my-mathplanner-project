@@ -47,8 +47,8 @@ export default function ParentStudentPicker({ students }) {
                                 onClick={() => setSelectedStudentId(student.id)}
                                 className={`w-full text-left rounded-2xl border px-4 py-4 shadow-sm transition-all ${
                                     isSelected
-                                        ? 'border-indigo-500 bg-indigo-50 shadow-md'
-                                        : 'border-gray-200 bg-white hover:border-indigo-200'
+                                        ? 'border-[#455fab] bg-[#f1f4ff] shadow-md'
+                                        : 'border-gray-200 bg-white hover:border-[#cfd8ff]'
                                 }`}
                             >
                                 <div className="flex items-center justify-between">
@@ -58,7 +58,7 @@ export default function ParentStudentPicker({ students }) {
                                             {student.school} · {student.grade}
                                         </div>
                                     </div>
-                                    <div className={`w-4 h-4 rounded-full border-2 ${isSelected ? 'border-indigo-600 bg-indigo-600' : 'border-gray-300'}`} />
+                                    <div className={`w-4 h-4 rounded-full border-2 ${isSelected ? 'border-[#455fab] bg-[#455fab]' : 'border-gray-300'}`} />
                                 </div>
                             </button>
                         );
@@ -69,7 +69,7 @@ export default function ParentStudentPicker({ students }) {
                     type="button"
                     onClick={handleConfirm}
                     disabled={!selectedStudentId || isSaving}
-                    className="w-full py-3.5 rounded-xl bg-indigo-600 text-white font-bold shadow-lg disabled:opacity-60 disabled:cursor-not-allowed hover:bg-indigo-700 transition-colors"
+                    className="w-full py-3.5 rounded-xl bg-[#455fab] text-white font-bold shadow-lg disabled:opacity-60 disabled:cursor-not-allowed hover:bg-[#3b5198] transition-colors"
                 >
                     {isSaving ? '저장 중...' : '선택 완료'}
                 </button>

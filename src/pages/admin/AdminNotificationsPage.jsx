@@ -53,7 +53,7 @@ export default function AdminNotificationsPage() {
         <div className="space-y-6">
             <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
                 <div className="flex flex-col gap-2">
-                    <p className="text-xs font-semibold text-indigo-500 uppercase tracking-wider">관리자 전용</p>
+                    <p className="text-xs font-semibold text-[#455fab] uppercase tracking-wider">관리자 전용</p>
                     <h1 className="text-2xl font-bold text-gray-800">알림 로그</h1>
                     <p className="text-sm text-gray-500">
                         최근 20건의 발송 내역만 불러와 Firestore 읽기 비용을 최소화합니다.
@@ -69,7 +69,7 @@ export default function AdminNotificationsPage() {
                             알림 발송이 완료되면 이 목록에 저장됩니다. 대상 수와 실패 수를 바로 확인하세요.
                         </p>
                     </div>
-                    <span className="px-3 py-1 text-xs font-semibold rounded-full bg-indigo-50 text-indigo-800 border border-indigo-100">
+                    <span className="px-3 py-1 text-xs font-semibold rounded-full bg-[#f1f4ff] text-[#334a91] border border-[#eef2ff]">
                         최신 20건
                     </span>
                 </div>

@@ -229,7 +229,7 @@ export default function TestResultPanel({
         <div className="space-y-4">
             <p className="text-sm text-gray-600">
                 총점: **{test.maxScore}점**, 문항 수: **{test.totalQuestions}개**
-                <span className="ml-4 font-bold text-blue-600">키 입력: 1 (맞음), 2 (틀림)</span>
+                <span className="ml-4 font-bold text-[#455fab]">키 입력: 1 (맞음), 2 (틀림)</span>
             </p>
             <div className="overflow-x-auto max-h-[60vh] relative">
                 <table className="min-w-full divide-y divide-gray-200 text-sm">
@@ -277,8 +277,8 @@ export default function TestResultPanel({
                                     )}
                                 </td>
 
-                                    <td className="px-3 py-2 text-center font-bold text-base text-blue-600">
-                                        <span className={`${!eligible ? 'text-gray-400' : (isAbsent ? 'text-red-500' : 'text-blue-600')}`}>
+                                    <td className="px-3 py-2 text-center font-bold text-base text-[#455fab]">
+                                        <span className={`${!eligible ? 'text-gray-400' : (isAbsent ? 'text-red-500' : 'text-[#455fab]')}`}>
                                             {totalScoreText}
                                         </span>
                                     </td>
@@ -294,7 +294,7 @@ export default function TestResultPanel({
                                                     onKeyDown={(e) => handleKeyDown(e, student.id, i)}
                                                     maxLength="1"
                                                     className={`w-8 h-6 text-center border rounded-md font-bold text-sm
-                                                        focus:ring-2 focus:ring-blue-500 transition duration-100
+                                                        focus:ring-2 focus:ring-[#455fab] transition duration-100
                                                         ${(!eligible || isAbsent) ? 'bg-gray-100 border-gray-300 text-gray-400 cursor-not-allowed' :
                                                           status === 1 ? 'bg-green-100 border-green-400 text-green-700' :
                                                           status === 0 ? 'bg-red-100 border-red-400 text-red-700' : 'border-gray-300 text-gray-700'}`
@@ -311,7 +311,7 @@ export default function TestResultPanel({
                                             type="text"
                                             value={currentGrades[student.id]?.comment || ''}
                                             onChange={(e) => handleCommentChange(student.id, e.target.value)}
-                                            className="w-full border rounded-md px-2 py-1 text-sm focus:ring-1 focus:ring-blue-500 disabled:bg-gray-100"
+                                            className="w-full border rounded-md px-2 py-1 text-sm focus:ring-1 focus:ring-[#455fab] disabled:bg-gray-100"
                                             placeholder="특이사항 입력"
                                             disabled={!eligible}
                                         />

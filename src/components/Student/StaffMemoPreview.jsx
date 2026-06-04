@@ -40,7 +40,7 @@ export default function StaffMemoPreview({ memos = [], limit = 3, onOpenAll }) {
                     type="button"
                     onClick={onOpenAll}
                     disabled={!memos.length}
-                    className="text-xs font-semibold text-indigo-600 hover:underline disabled:text-gray-300"
+                    className="text-xs font-semibold text-[#455fab] hover:underline disabled:text-gray-300"
                 >
                     전체보기
                 </button>

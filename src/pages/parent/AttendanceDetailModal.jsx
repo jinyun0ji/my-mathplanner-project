@@ -35,7 +35,7 @@ export default function AttendanceDetailModal({ isOpen, onClose, lesson, attenda
                 </div>
 
                 <div className="space-y-3 text-sm text-gray-800">
-                    <div className="flex items-center justify-between bg-indigo-50 text-indigo-700 border border-indigo-100 px-3 py-2 rounded-xl">
+                    <div className="flex items-center justify-between bg-[#f1f4ff] text-[#334a91] border border-[#eef2ff] px-3 py-2 rounded-xl">
                         <span className="font-semibold">출결 상태</span>
                         <span className="font-bold">{status}</span>
                     </div>

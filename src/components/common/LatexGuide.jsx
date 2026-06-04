@@ -35,7 +35,7 @@ export default function LatexGuide({ className = '' }) {
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="text-xs font-semibold text-indigo-700 hover:text-indigo-900 inline-flex items-center gap-2"
+        className="text-xs font-semibold text-[#334a91] hover:text-[#334a91] inline-flex items-center gap-2"
       >
         <span>{open ? '▼' : '▶'} LaTeX 수식 가이드 보기</span>
       </button>

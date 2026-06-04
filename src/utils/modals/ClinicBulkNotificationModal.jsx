@@ -60,8 +60,8 @@ export const ClinicBulkNotificationModal = ({ isOpen, onClose, selectedLogs, stu
     return (
         <Modal isOpen={isOpen} onClose={onClose} title="클리닉 알림 일괄 발송" maxWidth="max-w-lg">
             <div className="space-y-4">
-                <div className="bg-indigo-50 border border-indigo-200 p-4 rounded-lg">
-                    <h4 className="text-sm font-bold text-indigo-800 mb-2 flex items-center">
+                <div className="bg-[#f1f4ff] border border-[#cfd8ff] p-4 rounded-lg">
+                    <h4 className="text-sm font-bold text-[#334a91] mb-2 flex items-center">
                         <Icon name="users" className="w-4 h-4 mr-2" />
                         발송 대상 ({selectedLogs.length}명)
                     </h4>

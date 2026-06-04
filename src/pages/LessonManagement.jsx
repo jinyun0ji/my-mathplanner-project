@@ -155,13 +155,13 @@ export default function LessonManagement({
                         onClick={() => setSelectedDate(session.date)}
                         className={`p-3 rounded-lg transition cursor-pointer border flex flex-col gap-1 ${
                             isSelected
-                                ? 'bg-indigo-50 border-indigo-200 shadow-sm'
+                                ? 'bg-[#f1f4ff] border-[#cfd8ff] shadow-sm'
                                 : 'bg-white border-transparent hover:bg-gray-50 border-gray-100'
                         }`}
                     >
                         {/* 헤더: 회차 및 날짜 */}
                         <div className="flex justify-between items-center">
-                            <span className={`font-bold ${isSelected ? 'text-indigo-900' : 'text-gray-700'}`}>
+                            <span className={`font-bold ${isSelected ? 'text-[#334a91]' : 'text-gray-700'}`}>
                                 {session.session}회차
                                 <span className="font-mono text-xs font-normal ml-2 text-gray-400">{session.date}</span>
                             </span>
@@ -170,7 +170,7 @@ export default function LessonManagement({
 
                         {/* 내용 요약: 진도 내용이 있으면 표시 */}
                         {isLogged ? (
-                            <p className="text-xs text-gray-600 line-clamp-2 pl-2 border-l-2 border-indigo-100">
+                            <p className="text-xs text-gray-600 line-clamp-2 pl-2 border-l-2 border-[#eef2ff]">
                                 {log.progress}
                             </p>
                         ) : (
@@ -250,11 +250,11 @@ export default function LessonManagement({
                         <div className="space-y-2">
                             <div className="flex items-center justify-between text-sm">
                                 <div className="flex items-center gap-2 text-gray-800 font-semibold">
-                                    <Icon name="video" className="w-4 h-4 text-indigo-600" />
+                                    <Icon name="video" className="w-4 h-4 text-[#455fab]" />
                                     수업 영상 목록
                                 </div>
                                 {overallVideoProgress !== null && (
-                                    <span className="px-3 py-1 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-100">
+                                    <span className="px-3 py-1 rounded-full text-xs font-bold bg-[#f1f4ff] text-[#334a91] border border-[#eef2ff]">
                                         평균 진도율 {overallVideoProgress}%
                                     </span>
                                 )}
@@ -271,18 +271,18 @@ export default function LessonManagement({
                                             key={key}
                                             type="button"
                                             onClick={() => setActiveVideoByLog(prev => ({ ...prev, [log.id]: key }))}
-                                            className={`w-full text-left p-3 rounded-lg border transition ${isActive ? 'border-indigo-200 bg-indigo-50 shadow-sm' : 'border-gray-200 bg-white hover:bg-gray-50'}`}
+                                            className={`w-full text-left p-3 rounded-lg border transition ${isActive ? 'border-[#cfd8ff] bg-[#f1f4ff] shadow-sm' : 'border-gray-200 bg-white hover:bg-gray-50'}`}
                                         >
                                             <div className="flex items-center justify-between gap-2">
                                                 <div className="flex items-center gap-2 min-w-0">
-                                                    <Icon name={isActive ? 'playCircle' : 'play'} className="w-4 h-4 text-indigo-600" />
+                                                    <Icon name={isActive ? 'playCircle' : 'play'} className="w-4 h-4 text-[#455fab]" />
                                                     <p className="text-sm font-semibold text-gray-800 truncate">{video.title}</p>
                                                 </div>
-                                                <span className="text-xs font-bold text-indigo-700">{progressValue}%</span>
+                                                <span className="text-xs font-bold text-[#334a91]">{progressValue}%</span>
                                             </div>
                                             <div className="mt-2 w-full bg-gray-200 h-2 rounded-full overflow-hidden">
                                                 <div
-                                                    className="h-2 bg-indigo-500"
+                                                    className="h-2 bg-[#455fab]"
                                                     style={{ width: `${Math.min(100, Math.max(0, progressValue))}%` }}
                                                 />
                                             </div>
@@ -298,7 +298,7 @@ export default function LessonManagement({
                 {attachments.length > 0 && (
                     <div className="border-t pt-4 space-y-2">
                         <div className="text-sm font-semibold text-gray-700 flex items-center gap-2">
-                            <Icon name="fileText" className="w-4 h-4 text-indigo-600" />
+                            <Icon name="fileText" className="w-4 h-4 text-[#455fab]" />
                             첨부 자료 ({attachments.length})
                         </div>
                         <div className="space-y-2">
@@ -307,7 +307,7 @@ export default function LessonManagement({
                                     key={`${material.url}-${index}`}
                                     type="button"
                                     onClick={() => downloadAttachment(material.url, material.name || material.filename || 'material.pdf')}
-                                    className="w-full text-left text-sm text-indigo-600 flex items-center gap-2 rounded-lg border border-indigo-100 bg-indigo-50 px-3 py-2 hover:bg-indigo-100"
+                                    className="w-full text-left text-sm text-[#455fab] flex items-center gap-2 rounded-lg border border-[#eef2ff] bg-[#f1f4ff] px-3 py-2 hover:bg-[#eef2ff]"
                                 >
                                     <Icon name="download" className="w-4 h-4" />
                                     <span className="truncate">{material.name}</span>
@@ -352,14 +352,14 @@ export default function LessonManagement({
             <div className="sticky top-0 z-20 bg-white/90 backdrop-blur border-b border-gray-200 px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                     <div className="flex items-center gap-2">
-                        <Icon name="calendar" className="w-5 h-5 text-indigo-900" />
+                        <Icon name="calendar" className="w-5 h-5 text-[#334a91]" />
                         <p className="text-sm font-semibold text-gray-800">{selectedClass?.name || '클래스 미선택'}</p>
                     </div>
                     <span className="text-xs text-gray-500">{selectedDate || '날짜 선택'}</span>
                 </div>
                 <button
                     onClick={isCurrentDateLogged ? () => handleEditLog(currentLog) : handleNewLog}
-                    className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-indigo-900 hover:bg-indigo-800 rounded-lg shadow-md transition"
+                    className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-[#455fab] hover:bg-[#3b5198] rounded-lg shadow-md transition"
                 >
                     <Icon name="checkSquare" className="w-5 h-5" />
                     일지 수정 / 작성

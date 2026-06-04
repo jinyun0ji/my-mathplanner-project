@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Icon } from '../utils/helpers';
-import { Modal } from '../components/common/Modal'; 
+import { Modal } from '../components/common/Modal';
 import { PaymentNotificationModal } from '../utils/modals/PaymentNotificationModal'; // ✅ 신규 모달 import
 import { initialClasses } from '../api/initialData';
 import { addDoc, collection, doc, getDocs, query, serverTimestamp, updateDoc, where } from 'firebase/firestore';
@@ -33,7 +33,7 @@ export default function PaymentManagement({ classes, paymentLogs, isPaymentLogsL
     // 모달 상태
     const [isBookModalOpen, setIsBookModalOpen] = useState(false);
     const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
-    
+
     const [isClassSettingModalOpen, setIsClassSettingModalOpen] = useState(false);
 
     // ✅ 반별 필수 교재 설정 상태
@@ -41,7 +41,7 @@ export default function PaymentManagement({ classes, paymentLogs, isPaymentLogsL
     const [requiredBookIdsByClass, setRequiredBookIdsByClass] = useState({});
     const [isSavingRequiredBooks, setIsSavingRequiredBooks] = useState(false);
 
-    
+
     // ✅ 알림 모달 상태 추가
     const [isNotifModalOpen, setIsNotifModalOpen] = useState(false);
     const [notificationTargets, setNotificationTargets] = useState([]); // 알림 보낼 대상 목록
@@ -143,7 +143,7 @@ export default function PaymentManagement({ classes, paymentLogs, isPaymentLogsL
     }, []);
 
     const getPaymentTypeBadge = useCallback((type) => {
-        if (type === 'book') return 'bg-blue-50 text-blue-700 border-blue-200';
+        if (type === 'book') return 'bg-blue-50 text-[#334a91] border-blue-200';
         if (type === 'tuition') return 'bg-amber-50 text-amber-700 border-amber-200';
         return 'bg-gray-50 text-gray-600 border-gray-200';
     }, []);
@@ -368,8 +368,8 @@ export default function PaymentManagement({ classes, paymentLogs, isPaymentLogsL
 
     // [체크박스 핸들러] 개별 선택/해제
     const handleSelectStudent = (studentId) => {
-        setSelectedStudentIds(prev => 
-            prev.includes(studentId) 
+        setSelectedStudentIds(prev =>
+            prev.includes(studentId)
                 ? prev.filter(id => id !== studentId)
                 : [...prev, studentId]
         );
@@ -524,9 +524,9 @@ export default function PaymentManagement({ classes, paymentLogs, isPaymentLogsL
                 ))
                 : prev
         ));
-        
+
         setIsPaymentModalOpen(false);
-        setPaymentForm({ ...paymentForm, bookId: '' }); 
+        setPaymentForm({ ...paymentForm, bookId: '' });
         setActiveTab('payment');
         navigate('/payment');
     };
@@ -592,7 +592,7 @@ export default function PaymentManagement({ classes, paymentLogs, isPaymentLogsL
         setEditingPaymentId(null);
     };
 
-    
+
     // ✅ 반별 필수 교재 저장
     const saveRequiredBooksForClass = useCallback(async () => {
         if (!selectedClassForSetting) {
@@ -640,12 +640,12 @@ return (
                         { id: 'stock', label: '📚 교재 재고 관리', icon: 'book' },
                         { id: 'payment', label: '💳 결제 내역 조회', icon: 'list' },
                     ].map(tab => (
-                        <button 
-                            key={tab.id} 
+                        <button
+                            key={tab.id}
                             onClick={() => setActiveTab(tab.id)}
                             className={`flex items-center px-4 sm:px-5 py-3 text-sm font-bold transition-all duration-200 rounded-t-lg w-full sm:w-auto min-w-[180px] ${
-                                activeTab === tab.id 
-                                    ? 'bg-white border-t border-l border-r border-gray-200 text-indigo-600 shadow-[0_2px_0_0_white]' 
+                                activeTab === tab.id
+                                    ? 'bg-white border-t border-l border-r border-gray-200 text-[#455fab] shadow-[0_2px_0_0_white]'
                                     : 'bg-gray-50 text-gray-500 hover:text-gray-700 hover:bg-gray-100'
                             }`}
                         >
@@ -654,27 +654,27 @@ return (
                         </button>
                     ))}
                 </div>
-                
+
                 <div className="hidden sm:flex flex-wrap gap-2 pb-2 justify-end">
                     {activeTab === 'classStatus' && (
-                        <button 
+                        <button
                             onClick={() => setIsClassSettingModalOpen(true)}
-                            className="flex items-center px-3 py-2 bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200 transition font-bold text-sm w-full sm:w-auto justify-center"
+                            className="flex items-center px-3 py-2 bg-[#eef2ff] text-[#334a91] rounded-lg hover:bg-[#cfd8ff] transition font-bold text-sm w-full sm:w-auto justify-center"
                         >
                             <Icon name="settings" className="w-4 h-4 mr-2" />
                             반별 교재 설정
                         </button>
                     )}
                     {activeTab === 'stock' && (
-                        <button 
+                        <button
                             onClick={() => setIsBookModalOpen(true)}
-                            className="flex items-center px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition font-bold text-sm w-full sm:w-auto justify-center"
+                            className="flex items-center px-4 py-2 bg-[#455fab] text-white rounded-lg hover:bg-[#3b5198] transition font-bold text-sm w-full sm:w-auto justify-center"
                         >
                             <Icon name="plus" className="w-4 h-4 mr-2" />
                             교재 등록
                         </button>
                     )}
-                    <button 
+                    <button
                         onClick={() => setIsPaymentModalOpen(true)}
                         className="flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition font-bold text-sm w-full sm:w-auto justify-center"
                     >
@@ -685,22 +685,22 @@ return (
 
                 <div className="sm:hidden grid grid-cols-2 gap-2">
                     {activeTab === 'classStatus' && (
-                        <button 
+                        <button
                             onClick={() => setIsClassSettingModalOpen(true)}
-                            className="w-full text-sm font-bold px-3 py-2 rounded-lg bg-indigo-50 text-indigo-800 border border-indigo-100"
+                            className="w-full text-sm font-bold px-3 py-2 rounded-lg bg-[#f1f4ff] text-[#334a91] border border-[#eef2ff]"
                         >
                             반별 교재 설정
                         </button>
                     )}
                     {activeTab === 'stock' && (
-                        <button 
+                        <button
                             onClick={() => setIsBookModalOpen(true)}
-                            className="w-full text-sm font-bold px-3 py-2 rounded-lg bg-indigo-50 text-indigo-800 border border-indigo-100"
+                            className="w-full text-sm font-bold px-3 py-2 rounded-lg bg-[#f1f4ff] text-[#334a91] border border-[#eef2ff]"
                         >
                             교재 등록
                         </button>
                     )}
-                    <button 
+                    <button
                         onClick={() => setIsPaymentModalOpen(true)}
                         className="w-full text-sm font-bold px-3 py-2 rounded-lg bg-green-600 text-white shadow"
                     >
@@ -723,8 +723,8 @@ return (
                         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between bg-gray-50 p-4 rounded-lg border">
                             <div className="flex flex-col sm:flex-row sm:items-center sm:gap-3 gap-2">
                                 <label className="font-bold text-gray-700">조회할 클래스:</label>
-                                <select 
-                                    className="border-gray-300 rounded-md shadow-sm p-2 border focus:ring-indigo-500 focus:border-indigo-500 w-full sm:w-auto"
+                                <select
+                                    className="border-gray-300 rounded-md shadow-sm p-2 border focus:ring-[#455fab] focus:border-[#455fab] w-full sm:w-auto"
                                     value={viewClassId ?? ''}
                                     onChange={(e) => {
                                         setViewClassId(e.target.value);
@@ -734,16 +734,16 @@ return (
                                     {Array.isArray(effectiveClasses) && effectiveClasses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                                 </select>
                             </div>
-                            
+
                             {/* ✅ 일괄 발송 버튼 (선택된 학생이 있을 때만 표시) */}
                             {selectedStudentIds.length > 0 && (
                                 <div className="flex items-center animate-fadeIn">
                                     <span className="text-sm text-gray-600 mr-3 font-medium">
                                         {selectedStudentIds.length}명 선택됨
                                     </span>
-                                    <button 
+                                    <button
                                         onClick={openBulkNotification}
-                                        className="flex items-center px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-bold text-sm shadow-md transition"
+                                        className="flex items-center px-4 py-2 bg-[#455fab] text-white rounded-lg hover:bg-[#3b5198] font-bold text-sm shadow-md transition"
                                     >
                                         <Icon name="bell" className="w-4 h-4 mr-2" />
                                         일괄 안내 발송
@@ -766,12 +766,12 @@ return (
                                     <tr>
                                         {/* ✅ 체크박스 헤더 */}
                                         <th className="px-6 py-3 w-10">
-                                            <input 
-                                                type="checkbox" 
+                                            <input
+                                                type="checkbox"
                                                 onChange={handleSelectAll}
                                                 checked={selectedStudentIds.length > 0 && selectedStudentIds.length === classPaymentStatusList.filter(s => !s.isFullyPaid).length}
                                                 disabled={classPaymentStatusList.filter(s => !s.isFullyPaid).length === 0}
-                                                className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                                                className="rounded border-gray-300 text-[#455fab] focus:ring-[#455fab]"
                                             />
                                         </th>
                                         <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">학생명</th>
@@ -787,11 +787,11 @@ return (
                                             {/* ✅ 체크박스 셀 */}
                                             <td className="px-6 py-4">
                                                 {!status.isFullyPaid && (
-                                                    <input 
+                                                    <input
                                                         type="checkbox"
                                                         checked={selectedStudentIds.includes(status.student.id)}
                                                         onChange={() => handleSelectStudent(status.student.id)}
-                                                        className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                                                        className="rounded border-gray-300 text-[#455fab] focus:ring-[#455fab]"
                                                     />
                                                 )}
                                             </td>
@@ -802,8 +802,8 @@ return (
                                                 {Array.isArray(status.requiredBooks) && status.requiredBooks.length > 0 ? (
                                                     status.requiredBooks.map(b => (
                                                         <span key={b.id} className={`inline-block mr-1 mb-1 px-2 py-0.5 rounded text-xs border ${
-                                                            status.unpaidBooks.find(ub => String(ub.id) === String(b.id)) 
-                                                                ? 'bg-red-50 text-red-600 border-red-200 font-medium' 
+                                                            status.unpaidBooks.find(ub => String(ub.id) === String(b.id))
+                                                                ? 'bg-red-50 text-red-600 border-red-200 font-medium'
                                                                 : 'bg-green-50 text-green-600 border-green-200 line-through opacity-60'
                                                         }`}>
                                                             {getBookTitle(b)}
@@ -830,9 +830,9 @@ return (
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap text-center">
                                                 {!status.isFullyPaid && (
-                                                    <button 
+                                                    <button
                                                         onClick={() => openSingleNotification(status)}
-                                                        className="text-indigo-600 hover:text-indigo-900 hover:bg-indigo-50 p-2 rounded-full transition"
+                                                        className="text-[#455fab] hover:text-[#334a91] hover:bg-[#f1f4ff] p-2 rounded-full transition"
                                                         title="안내 발송"
                                                     >
                                                         <Icon name="bell" className="w-5 h-5" />
@@ -862,11 +862,11 @@ return (
                                             </div>
                                             <div className="flex items-center gap-2">
                                                 {!status.isFullyPaid && (
-                                                    <input 
+                                                    <input
                                                         type="checkbox"
                                                         checked={selectedStudentIds.includes(status.student.id)}
                                                         onChange={() => handleSelectStudent(status.student.id)}
-                                                        className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                                                        className="rounded border-gray-300 text-[#455fab] focus:ring-[#455fab]"
                                                     />
                                                 )}
                                                 <span className={`text-[11px] font-bold px-2 py-1 rounded-full ${status.isFullyPaid ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
@@ -878,8 +878,8 @@ return (
                                         <div className="flex flex-wrap gap-1">
                                             {Array.isArray(status.requiredBooks) && status.requiredBooks.length > 0 ? status.requiredBooks.map(b => (
                                                 <span key={b.id} className={`px-2 py-1 text-[11px] rounded border ${
-                                                    status.unpaidBooks.find(ub => String(ub.id) === String(b.id)) 
-                                                        ? 'bg-red-50 text-red-600 border-red-200' 
+                                                    status.unpaidBooks.find(ub => String(ub.id) === String(b.id))
+                                                        ? 'bg-red-50 text-red-600 border-red-200'
                                                         : 'bg-green-50 text-green-600 border-green-200 line-through opacity-70'
                                                 }`}>
                                                     {getBookTitle(b)}
@@ -897,9 +897,9 @@ return (
                                                 )}
                                             </div>
                                             {!status.isFullyPaid && (
-                                                <button 
+                                                <button
                                                     onClick={() => openSingleNotification(status)}
-                                                    className="text-indigo-600 hover:text-indigo-900 text-sm font-semibold flex items-center gap-1"
+                                                    className="text-[#455fab] hover:text-[#334a91] text-sm font-semibold flex items-center gap-1"
                                                 >
                                                     <Icon name="bell" className="w-4 h-4" /> 안내
                                                 </button>
@@ -943,17 +943,17 @@ return (
                                     <tr key={book.id} className="hover:bg-gray-50 transition">
                                         <td className="px-6 py-4 whitespace-nowrap">
                                             <span className={`px-2 py-1 text-xs rounded-full font-bold
-                                                ${book.type === '진도교재' ? 'bg-blue-100 text-blue-800' : 
+                                                ${book.type === '진도교재' ? 'bg-blue-100 text-blue-800' :
                                                   book.type === '숙제교재' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
                                                 {book.type}
                                             </span>
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{getBookTitle(book)}</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{getBookPrice(book).toLocaleString()}원</td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-indigo-600">{getBookStock(book)}권</td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-[#455fab]">{getBookStock(book)}권</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm">
                                             {getBookStock(book) < 5 ?
-                                                <span className="text-red-500 font-bold flex items-center"><Icon name="alertCircle" className="w-4 h-4 mr-1"/>주문필요</span> : 
+                                                <span className="text-red-500 font-bold flex items-center"><Icon name="alertCircle" className="w-4 h-4 mr-1"/>주문필요</span> :
                                                 <span className="text-green-600 font-medium">충분</span>}
                                         </td>
                                     </tr>
@@ -977,14 +977,14 @@ return (
                                         <p className="text-xs text-gray-500 mt-0.5">{book.type}</p>
                                     </div>
                                     <span className={`px-2 py-1 text-[11px] rounded-full font-bold
-                                                ${book.type === '진도교재' ? 'bg-blue-100 text-blue-800' : 
+                                                ${book.type === '진도교재' ? 'bg-blue-100 text-blue-800' :
                                                   book.type === '숙제교재' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
                                         {book.type}
                                     </span>
                                 </div>
                                 <div className="flex items-center justify-between text-sm text-gray-700">
                                     <span className="font-semibold">{getBookPrice(book).toLocaleString()}원</span>
-                                    <span className="font-bold text-indigo-700">{getBookStock(book)}권</span>
+                                    <span className="font-bold text-[#334a91]">{getBookStock(book)}권</span>
                                 </div>
                                 <div className="text-xs text-gray-500">
                                     {getBookStock(book) < 5 ? (
@@ -1033,12 +1033,12 @@ return (
                                             onClick={() => {
                                                 if (!isEditing) startEditingPayment(log);
                                             }}
-                                            className={`transition ${isEditing ? 'bg-indigo-50/40' : 'hover:bg-gray-50'} ${isEditing ? '' : 'cursor-pointer'}`}
+                                            className={`transition ${isEditing ? 'bg-[#f1f4ff]/40' : 'hover:bg-gray-50'} ${isEditing ? '' : 'cursor-pointer'}`}
                                         >
                                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{getLogDate(log)}</td>
                                             <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">{getLogStudentName(log)}</td>
                                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{getLogBookName(log)}</td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-indigo-600">
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-[#455fab]">
                                                 {isEditing ? (
                                                     <input
                                                         type="number"
@@ -1095,7 +1095,7 @@ return (
                                                                 e.stopPropagation();
                                                                 handlePaymentUpdateSubmit(log.id);
                                                             }}
-                                                            className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-indigo-700"
+                                                            className="rounded-md bg-[#455fab] px-3 py-1.5 text-xs font-bold text-white hover:bg-[#3b5198]"
                                                         >
                                                             저장
                                                         </button>
@@ -1133,7 +1133,7 @@ return (
                                     onClick={() => {
                                         if (!isEditing) startEditingPayment(log);
                                     }}
-                                    className={`border rounded-xl p-4 shadow-sm space-y-3 transition ${isEditing ? 'bg-indigo-50/40' : 'bg-white hover:bg-gray-50'} ${isEditing ? '' : 'cursor-pointer'}`}
+                                    className={`border rounded-xl p-4 shadow-sm space-y-3 transition ${isEditing ? 'bg-[#f1f4ff]/40' : 'bg-white hover:bg-gray-50'} ${isEditing ? '' : 'cursor-pointer'}`}
                                 >
                                     <div className="flex items-start justify-between">
                                         <div>
@@ -1146,10 +1146,10 @@ return (
                                                 value={editingPaymentForm.amount}
                                                 onChange={(e) => setEditingPaymentForm(prev => ({ ...prev, amount: e.target.value }))}
                                                 onClick={(e) => e.stopPropagation()}
-                                                className="w-24 rounded-md border border-gray-300 px-2 py-1 text-sm text-indigo-700"
+                                                className="w-24 rounded-md border border-gray-300 px-2 py-1 text-sm text-[#334a91]"
                                             />
                                         ) : (
-                                            <span className="text-sm font-bold text-indigo-700">{Number.isFinite(log.amount) ? log.amount.toLocaleString() : '0'}원</span>
+                                            <span className="text-sm font-bold text-[#334a91]">{Number.isFinite(log.amount) ? log.amount.toLocaleString() : '0'}원</span>
                                         )}
                                     </div>
                                     <p className="text-sm text-gray-700">{getLogBookName(log)}</p>
@@ -1195,7 +1195,7 @@ return (
                                                     e.stopPropagation();
                                                     handlePaymentUpdateSubmit(log.id);
                                                 }}
-                                                className="flex-1 rounded-md bg-indigo-600 px-3 py-2 text-xs font-bold text-white hover:bg-indigo-700"
+                                                className="flex-1 rounded-md bg-[#455fab] px-3 py-2 text-xs font-bold text-white hover:bg-[#3b5198]"
                                             >
                                                 저장
                                             </button>
@@ -1225,9 +1225,9 @@ return (
                     </div>
                 )}
             </div>
-            
+
             {/* 0. ✅ 알림 발송 모달 (신규) */}
-            <PaymentNotificationModal 
+            <PaymentNotificationModal
                 isOpen={isNotifModalOpen}
                 onClose={() => setIsNotifModalOpen(false)}
                 targets={notificationTargets}
@@ -1239,19 +1239,19 @@ return (
                 <form onSubmit={handleAddBook} className="space-y-4">
                     <div>
                         <label className="block text-sm font-bold text-gray-700 mb-1">교재명</label>
-                        <input 
-                            type="text" 
-                            value={newBook.title} 
-                            onChange={e => setNewBook({...newBook, title: e.target.value})} 
-                            required 
-                            className="w-full rounded-lg border-gray-300 border p-2.5 focus:ring-2 focus:ring-indigo-500"
+                        <input
+                            type="text"
+                            value={newBook.title}
+                            onChange={e => setNewBook({...newBook, title: e.target.value})}
+                            required
+                            className="w-full rounded-lg border-gray-300 border p-2.5 focus:ring-2 focus:ring-[#455fab]"
                         />
                     </div>
                     <div>
                         <label className="block text-sm font-bold text-gray-700 mb-1">교재 유형</label>
-                        <select 
-                            value={newBook.type} 
-                            onChange={e => setNewBook({...newBook, type: e.target.value})} 
+                        <select
+                            value={newBook.type}
+                            onChange={e => setNewBook({...newBook, type: e.target.value})}
                             className="w-full rounded-lg border-gray-300 border p-2.5"
                         >
                             <option value="진도교재">진도교재</option>
@@ -1262,36 +1262,36 @@ return (
                     <div className="grid grid-cols-2 gap-4">
                         <div>
                             <label className="block text-sm font-bold text-gray-700 mb-1">판매가 (원)</label>
-                            <input 
-                                type="number" 
-                                value={newBook.price} 
-                                onChange={e => setNewBook({...newBook, price: Number(e.target.value)})} 
-                                required 
+                            <input
+                                type="number"
+                                value={newBook.price}
+                                onChange={e => setNewBook({...newBook, price: Number(e.target.value)})}
+                                required
                                 className="w-full rounded-lg border-gray-300 border p-2.5"
                             />
                         </div>
                         <div>
                             <label className="block text-sm font-bold text-gray-700 mb-1">초기 재고</label>
-                            <input 
-                                type="number" 
-                                value={newBook.stock} 
-                                onChange={e => setNewBook({...newBook, stock: Number(e.target.value)})} 
-                                required 
+                            <input
+                                type="number"
+                                value={newBook.stock}
+                                onChange={e => setNewBook({...newBook, stock: Number(e.target.value)})}
+                                required
                                 className="w-full rounded-lg border-gray-300 border p-2.5"
                             />
                         </div>
                     </div>
                     <div className="flex justify-end pt-4 border-t mt-4">
-                        <button 
+                        <button
                             type="button"
                             onClick={() => setIsBookModalOpen(false)}
                             className="mr-2 px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg font-medium transition"
                         >
                             취소
                         </button>
-                        <button 
-                            type="submit" 
-                            className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-bold shadow-md transition"
+                        <button
+                            type="submit"
+                            className="px-6 py-2 bg-[#455fab] text-white rounded-lg hover:bg-[#3b5198] font-bold shadow-md transition"
                         >
                             등록하기
                         </button>
@@ -1312,7 +1312,7 @@ return (
 
                     <div>
                         <label className="block text-sm font-bold text-gray-700 mb-1">학생 선택</label>
-                        <select 
+                        <select
                             className="w-full rounded-lg border-gray-300 border p-2.5"
                             value={paymentForm.studentId}
                             onChange={e => setPaymentForm({...paymentForm, studentId: e.target.value, bookId: ''})}
@@ -1325,8 +1325,8 @@ return (
 
                     {/* 추천 교재 섹션 */}
                     {recommendedBooksList.length > 0 && (
-                        <div className="bg-indigo-50 p-4 rounded-lg border border-indigo-100">
-                            <p className="text-xs font-bold text-indigo-700 mb-2 flex items-center">
+                        <div className="bg-[#f1f4ff] p-4 rounded-lg border border-[#eef2ff]">
+                            <p className="text-xs font-bold text-[#334a91] mb-2 flex items-center">
                                 <Icon name="check" className="w-3 h-3 mr-1"/> 필수 구매 대상 교재
                             </p>
                             <div className="flex flex-wrap gap-2">
@@ -1335,9 +1335,9 @@ return (
                                         key={b.id} type="button"
                                         onClick={() => setPaymentForm({...paymentForm, bookId: b.id})}
                                         className={`text-xs px-3 py-1.5 rounded-full border transition font-medium ${
-                                            String(paymentForm.bookId) === String(b.id) 
-                                                ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' 
-                                                : 'bg-white text-indigo-600 border-indigo-200 hover:bg-indigo-50'
+                                            String(paymentForm.bookId) === String(b.id)
+                                                ? 'bg-[#455fab] text-white border-[#455fab] shadow-md'
+                                                : 'bg-white text-[#455fab] border-[#cfd8ff] hover:bg-[#f1f4ff]'
                                         }`}
                                     >
                                         {getBookTitle(b)}
@@ -1349,7 +1349,7 @@ return (
 
                     <div>
                         <label className="block text-sm font-bold text-gray-700 mb-1">결제할 교재 선택</label>
-                        <select 
+                        <select
                             className="w-full rounded-lg border-gray-300 border p-2.5"
                             value={paymentForm.bookId}
                             onChange={e => setPaymentForm({...paymentForm, bookId: e.target.value})}
@@ -1363,14 +1363,14 @@ return (
                             ))}
                         </select>
                     </div>
-                    
+
                     <div className="grid grid-cols-2 gap-4">
                         <div>
                             <div className="flex items-center justify-between mb-1">
                                 <label className="block text-sm font-bold text-gray-700">결제 수단</label>
                                 <label className="flex items-center text-xs text-emerald-700 font-bold cursor-pointer select-none">
-                                    <input 
-                                        type="checkbox" 
+                                    <input
+                                        type="checkbox"
                                         checked={useEasyPay}
                                         onChange={(e) => handleMethodChange(e.target.checked ? '간편결제' : '카드')}
                                         className="mr-2 h-4 w-4 text-emerald-600 border-gray-300 rounded"
@@ -1378,9 +1378,9 @@ return (
                                     간편결제 사용
                                 </label>
                             </div>
-                            <select 
+                            <select
                                 className="w-full rounded-lg border-gray-300 border p-2.5"
-                                value={paymentForm.method} 
+                                value={paymentForm.method}
                                 onChange={e => handleMethodChange(e.target.value)}
                             >
                                 <option value="간편결제">간편결제 (모바일)</option>
@@ -1391,9 +1391,9 @@ return (
                         </div>
                         <div>
                             <label className="block text-sm font-bold text-gray-700 mb-1">결제 경로</label>
-                            <select 
+                            <select
                                 className="w-full rounded-lg border-gray-300 border p-2.5"
-                                value={paymentForm.channel} 
+                                value={paymentForm.channel}
                                 onChange={e => handleChannelChange(e.target.value)}
                             >
                                 <option value="간편결제">간편결제 링크</option>
@@ -1415,10 +1415,10 @@ return (
                     )}
 
                     <div className="flex justify-end pt-4 border-t mt-4">
-                        <button 
+                        <button
                             type="submit"
                             disabled={isSubmittingPayment}
-                            className={`w-full py-3 rounded-lg font-bold text-lg shadow-lg transition active:scale-95 ${isSubmittingPayment ? 'bg-gray-300 text-gray-600' : 'bg-indigo-600 text-white hover:bg-indigo-700'}`}
+                            className={`w-full py-3 rounded-lg font-bold text-lg shadow-lg transition active:scale-95 ${isSubmittingPayment ? 'bg-gray-300 text-gray-600' : 'bg-[#455fab] text-white hover:bg-[#3b5198]'}`}
                         >
                             {isSubmittingPayment
                                 ? '결제 처리 중...'
@@ -1435,8 +1435,8 @@ return (
                 <div className="flex flex-col h-[500px]">
                     <div className="mb-4">
                         <label className="block text-sm font-bold text-gray-700 mb-2">설정할 반 선택</label>
-                        <select 
-                            className="w-full rounded-lg border-gray-300 border p-2.5 focus:ring-2 focus:ring-indigo-500"
+                        <select
+                            className="w-full rounded-lg border-gray-300 border p-2.5 focus:ring-2 focus:ring-[#455fab]"
                             value={selectedClassForSetting ?? ''}
                             onChange={e => setSelectedClassForSetting(e.target.value)}
                         >
@@ -1445,7 +1445,7 @@ return (
                             ))}
                         </select>
                     </div>
-                    
+
                     <div className="flex-1 overflow-y-auto border rounded-xl p-3 bg-gray-50 space-y-2">
                         {selectedClassForSetting ? (
                             (Array.isArray(materialsByClass[String(selectedClassForSetting)]) ? materialsByClass[String(selectedClassForSetting)] : []).length > 0 ? (
@@ -1453,7 +1453,7 @@ return (
                                     <div key={book.id} className="flex items-center p-4 rounded-lg border bg-white">
                                         <input
                                             type="checkbox"
-                                            className="mr-4 h-5 w-5 text-indigo-600"
+                                            className="mr-4 h-5 w-5 text-[#455fab]"
                                             checked={(Array.isArray(selectedRequiredBookIds) ? selectedRequiredBookIds : []).includes(String(book?.id))}
                                             onChange={() => {
                                                 const id = String(book?.id);
@@ -1482,9 +1482,9 @@ return (
                         )}
                     </div>
                     <div className="pt-4 border-t mt-2 flex justify-end">
-                         <button 
+                         <button
                             onClick={saveRequiredBooksForClass}
-                            disabled={isSavingRequiredBooks} 
+                            disabled={isSavingRequiredBooks}
                             className="px-6 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-900 font-bold transition"
                          >
                              {isSavingRequiredBooks ? '저장 중...' : '설정 저장'}

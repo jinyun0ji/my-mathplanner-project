@@ -311,7 +311,7 @@ export const TestFormModal = ({
     >
       <form onSubmit={handleSubmit} className="space-y-4">
         {editingTestId && (
-          <div className="flex items-center text-xs font-semibold text-indigo-900 bg-indigo-50 border border-indigo-200 rounded px-3 py-2">
+          <div className="flex items-center text-xs font-semibold text-[#334a91] bg-[#f1f4ff] border border-[#cfd8ff] rounded px-3 py-2">
             <Icon name="edit" className="w-4 h-4 mr-2" />
             시험 수정 중 (저장 시 기존 시험 정보가 업데이트됩니다)
           </div>
@@ -374,7 +374,7 @@ export const TestFormModal = ({
             <button
               type="button"
               onClick={handleApplyEqualScores}
-              className="px-3 py-1 text-xs font-semibold rounded-md text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200"
+              className="px-3 py-1 text-xs font-semibold rounded-md text-[#334a91] bg-[#f1f4ff] hover:bg-[#eef2ff] border border-[#cfd8ff]"
             >
               균등 배점 적용
             </button>
@@ -467,7 +467,7 @@ export const TestFormModal = ({
             <button
               type="button"
               onClick={handleResetToNew}
-              className="px-4 py-2 text-sm font-medium rounded-lg text-indigo-900 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 transition duration-150"
+              className="px-4 py-2 text-sm font-medium rounded-lg text-[#334a91] bg-[#f1f4ff] hover:bg-[#eef2ff] border border-[#cfd8ff] transition duration-150"
             >
               수정 취소
             </button>

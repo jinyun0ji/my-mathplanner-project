@@ -103,15 +103,15 @@ export default function DashboardTab({
                     </div>
                     <div className="grid grid-cols-3 gap-2 text-xs">
                         <div className="rounded-xl bg-gray-50 border border-gray-100 px-3 py-2">
-                            <p className="text-gray-500 mb-1 flex items-center gap-1"><Icon name="calendar" className="w-3.5 h-3.5 text-indigo-500" />오늘 수업</p>
+                            <p className="text-gray-500 mb-1 flex items-center gap-1"><Icon name="calendar" className="w-3.5 h-3.5 text-[#455fab]" />오늘 수업</p>
                             <p className="text-base font-bold">{allEvents.length}개</p>
                         </div>
                         <div className="rounded-xl bg-gray-50 border border-gray-100 px-3 py-2">
-                            <p className="text-gray-500 mb-1 flex items-center gap-1"><Icon name="clipboardCheck" className="w-3.5 h-3.5 text-indigo-500" />남은 과제</p>
+                            <p className="text-gray-500 mb-1 flex items-center gap-1"><Icon name="clipboardCheck" className="w-3.5 h-3.5 text-[#455fab]" />남은 과제</p>
                             <p className="text-base font-bold">{pendingHomework.length}개</p>
                         </div>
                         <div className="rounded-xl bg-gray-50 border border-gray-100 px-3 py-2">
-                            <p className="text-gray-500 mb-1 flex items-center gap-1"><Icon name="activity" className="w-3.5 h-3.5 text-indigo-500" />출석률</p>
+                            <p className="text-gray-500 mb-1 flex items-center gap-1"><Icon name="activity" className="w-3.5 h-3.5 text-[#455fab]" />출석률</p>
                             <p className="text-base font-bold">{attendanceRate !== null ? `${attendanceRate}%` : '기록 없음'}</p>
                         </div>
                     </div>
@@ -122,7 +122,7 @@ export default function DashboardTab({
             <section className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
                 <div className="bg-gray-50 px-4 py-2.5 border-b border-gray-100 flex justify-between items-center">
                     <h3 className="text-sm font-bold text-gray-800 flex items-center gap-2">
-                        <Icon name="calendar" className="w-4 h-4 text-indigo-600" />
+                        <Icon name="calendar" className="w-4 h-4 text-[#455fab]" />
                         오늘의 수업 ({filteredTodayItems.length})
                     </h3>
                     <span className="text-xs text-gray-500">
@@ -135,7 +135,7 @@ export default function DashboardTab({
                         filteredTodayItems.map((item, idx) => (
                             <div
                                 key={idx}
-                                className="flex items-center gap-2 p-2.5 hover:bg-indigo-50 rounded-xl transition-colors border border-gray-100"
+                                className="flex items-center gap-2 p-2.5 hover:bg-[#f1f4ff] rounded-xl transition-colors border border-gray-100"
                             >
                                 <span className="text-xs font-mono font-bold text-gray-500 bg-gray-100 px-2 py-1 rounded">
                                     {item.time}
@@ -159,7 +159,7 @@ export default function DashboardTab({
                 const isNotStarted = (hw.checkedCount || 0) === 0;
                 const isReviewing = (hw.checkedCount || 0) >= (hw.totalQuestions || 0) && (hw.incorrectCount || 0) > 0;
                 const accentClass = isNotStarted ? 'bg-brand-red' : isReviewing ? 'bg-amber-500' : 'bg-brand-main';
-                const badgeClass = isNotStarted ? 'bg-red-100 text-red-600' : isReviewing ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-600';
+                const badgeClass = isNotStarted ? 'bg-red-100 text-red-600' : isReviewing ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-[#455fab]';
                 const assignedDate = hw.assignedDate || hw.date || '';
                 return (
                     <div key={hw.id} className="snap-center shrink-0 w-60 bg-white p-3 rounded-xl shadow-sm border border-gray-200 relative overflow-hidden active:scale-95 transition-transform">
