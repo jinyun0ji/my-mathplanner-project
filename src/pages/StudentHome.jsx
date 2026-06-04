@@ -22,7 +22,6 @@ import {
     calculateHomeworkStats,
     calculateGradeComparison,
     isClosedForClass,
-    isClassActiveForStudent,
     formatClassScheduleKo,
     hasClassOnDate,
     getClassTimeOnDate,
@@ -359,11 +358,7 @@ export default function StudentHome({
         return '예정';
     };
     const todayItems = useMemo(() => {
-        const visibleTodayClasses = myClasses.filter((cls) => {
-            if (!cls?.id) return false;
-            if (!isClassActiveForStudent({ cls, student, todayYmd: todayStr })) return false;
-            return true;
-        });
+        const visibleTodayClasses = myClasses.filter((cls) => Boolean(cls?.id));
 
         const todayClinics = studentId
             ? clinicLogs.filter(log => log.studentId === studentId && log.date === todayStr).map(log => ({
@@ -412,7 +407,7 @@ export default function StudentHome({
             ...todayClinics,
             ...todayExternal,
         ].sort((a, b) => String(a.time || '').localeCompare(String(b.time || '')));
-    }, [clinicLogs, externalSchedules, myClasses, student, studentId, todayDayName, todayStr]);
+    }, [clinicLogs, externalSchedules, myClasses, studentId, todayDayName, todayStr]);
     const filteredTodayItems = useMemo(() => {
         const list = Array.isArray(todayItems) ? todayItems : [];
         return list.filter((item) => {
@@ -549,7 +544,7 @@ export default function StudentHome({
 
     return (
         <div className="bg-gray-50 min-h-screen flex flex-col relative font-sans">
-            <StudentHeader onLogout={onLogout} />
+            <StudentHeader student={student} onOpenNotifications={handleOpenNotification} onOpenMessages={() => setIsMessengerPage(true)} hasUnread={hasUnread} />
             {/* <div style={{position:'fixed', top:10, right:10, zIndex:9999, background:'#fff', padding:6}}>
                 activeTab: {activeTab}
             </div> */}
@@ -619,6 +614,11 @@ export default function StudentHome({
                                 clinicLogs={clinicLogs} students={students} classes={myClasses}
                                 visibleClasses={myClasses}
                                 initialTab={initialLearningTab}
+                                attendanceLogs={filteredAttendanceLogs}
+                                student={student}
+                                tests={filteredTests}
+                                grades={grades}
+                                classTestStats={classTestStats}
                                 lessonReports={sentLessonReports}
                             />
                         )}
@@ -629,6 +629,7 @@ export default function StudentHome({
                                 videoMemos={videoMemos} lessonLogs={filteredLessonLogs} onLinkToMemo={handleNavigateToMemo} notices={visibleNotices}
                                 onOpenNotifications={handleOpenNotification}
                                 onOpenMessages={() => setIsMessengerPage(true)}
+                                studentAuthUid={studentAuthUid}
                             />
                         )}
                     </div>

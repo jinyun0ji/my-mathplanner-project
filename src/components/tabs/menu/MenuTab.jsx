@@ -134,7 +134,7 @@ const getViewTitle = (view) => {
     return '전체';
 };
 
-export default function MenuTab({ student, onUpdateStudent, onLogout, videoMemos, lessonLogs, onLinkToMemo, notices, onOpenNotifications, onOpenMessages, isParent = false }) {
+export default function MenuTab({ student, onUpdateStudent, onLogout, videoMemos, lessonLogs, onLinkToMemo, notices, onOpenNotifications, onOpenMessages, isParent = false, studentAuthUid = '' }) {
     const [moreView, setMoreView] = useState('menu');
     const [isProfileOpen, setIsProfileOpen] = useState(false);
     const [isMemosOpen, setIsMemosOpen] = useState(false);
@@ -167,18 +167,27 @@ export default function MenuTab({ student, onUpdateStudent, onLogout, videoMemos
     };
 
     const getMyMemos = () => {
-        const memoKey = student?.authUid || student?.id;
-        if (!memoKey || !videoMemos) return [];
+        const memoKeys = [studentAuthUid, student?.authUid, student?.uid, student?.studentUid, student?.id]
+            .filter(Boolean)
+            .map(String);
+        if (!memoKeys.length || !videoMemos) return [];
 
-        const memos = Array.isArray(videoMemos[memoKey]) ? videoMemos[memoKey] : [];
+        const seen = new Set();
+        const memos = memoKeys.flatMap((memoKey) => (Array.isArray(videoMemos[memoKey]) ? videoMemos[memoKey] : []))
+            .filter((memo) => {
+                const key = memo?.id || `${memo?.lessonId || ''}-${memo?.time || ''}-${memo?.note || ''}`;
+                if (seen.has(key)) return false;
+                seen.add(key);
+                return true;
+            });
         return memos
             .map((memo) => {
                 const lesson = lessonLogs?.find((l) => String(l.id) === String(memo.lessonId));
                 return {
                     ...memo,
-                    lessonTitle: lesson?.progress,
-                    lessonDate: lesson?.date,
-                    classId: lesson?.classId,
+                    lessonTitle: lesson?.progress || lesson?.title || memo?.lessonTitle || '강의 메모',
+                    lessonDate: lesson?.date || lesson?.lessonDate || memo?.lessonDate || '',
+                    classId: lesson?.classId || memo?.classId || memo?.classDocId,
                     lessonId: lesson?.id || memo.lessonId,
                     updatedAtMs: toMillis(memo.updatedAt) || 0,
                 };

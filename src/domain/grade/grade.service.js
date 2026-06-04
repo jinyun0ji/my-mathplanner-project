@@ -4,8 +4,25 @@ const isCorrectAnswer = (value) => {
     return value === true || value === 1 || value === '맞음' || value === '고침';
 };
 
-export const isAbsentGrade = (grade) =>
-    grade && (grade.totalScore === null || grade.score === null);
+export const isAbsentGrade = (grade) => {
+    if (!grade) return true;
+    if (grade.attempted === false) return true;
+
+    const hasNumericScore = [grade.score, grade.totalScore, grade.result, grade.studentScore, grade.value]
+        .some((value) => value !== null && value !== undefined && value !== '' && Number.isFinite(Number(value)));
+    if (hasNumericScore) return false;
+
+    const answerMap = grade.answers || grade.correctCount;
+    if (answerMap && typeof answerMap === 'object' && !Array.isArray(answerMap)) {
+        return Object.keys(answerMap).length === 0;
+    }
+    if (Array.isArray(grade.questionResults) && grade.questionResults.length > 0) return false;
+    if (grade.scores && typeof grade.scores === 'object' && !Array.isArray(grade.scores)) {
+        return Object.keys(grade.scores).length === 0;
+    }
+
+    return true;
+};
 
 const getPerQuestionScore = (test, index) => {
     if (Array.isArray(test?.questionScores) && test.questionScores.length > 0) {
@@ -57,16 +74,17 @@ export const getTotalScore = (grade = {}, test = {}) => {
 
 export const formatGradeScoreText = (grade = null, totalScore = null, test = {}) => {
     const resolvedGrade = grade || null;
-    const resolvedTotalScore = Number.isFinite(totalScore)
-        ? totalScore
-        : (resolvedGrade && !isAbsentGrade(resolvedGrade) ? getTotalScore(resolvedGrade, test) : null);
+    const scoreFallback = resolvedGrade
+        ? [resolvedGrade.totalScore, resolvedGrade.score, resolvedGrade.result, resolvedGrade.studentScore, resolvedGrade.value]
+            .map(Number)
+            .find(Number.isFinite)
+        : null;
+    const serviceTotal = resolvedGrade && !isAbsentGrade(resolvedGrade) ? getTotalScore(resolvedGrade, test) : null;
+    const resolvedTotalScore = Number.isFinite(Number(totalScore))
+        ? Number(totalScore)
+        : (Number.isFinite(serviceTotal) ? serviceTotal : (Number.isFinite(scoreFallback) ? scoreFallback : null));
 
-    const isNoShow =
-        resolvedGrade
-            ? (resolvedGrade.attempted === false)
-                || (resolvedGrade.score === null && resolvedGrade.totalScore === null
-                    && !resolvedGrade.scores && !resolvedGrade.questionResults && !resolvedGrade.answers && !resolvedGrade.correctCount)
-            : true;
+    const isNoShow = !Number.isFinite(resolvedTotalScore) && isAbsentGrade(resolvedGrade);
 
     let scoreText = '-';
     if (isNoShow) {

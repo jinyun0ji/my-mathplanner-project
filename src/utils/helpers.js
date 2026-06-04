@@ -108,8 +108,19 @@ export const calculateGradeComparison = (studentId, classes, tests, grades, clas
     if (!tests || !grades) return [];
 
     const myGrades = [];
-    const myClassIds = classes.filter(c => (c.students || []).includes(studentId)).map(c => c.id);
-    const relevantTests = tests.filter(t => myClassIds.includes(t.classId));
+    const studentKey = String(studentId || '');
+    const classList = Array.isArray(classes) ? classes : [];
+    const testList = Array.isArray(tests) ? tests : [];
+    const hasGradeRecord = (test) => Boolean(grades?.[studentId]?.[test.id]);
+    const rosterContainsStudent = (cls = {}) => [
+        ...(Array.isArray(cls.students) ? cls.students : []),
+        ...(Array.isArray(cls.studentIds) ? cls.studentIds : []),
+        ...(Array.isArray(cls.studentDocIds) ? cls.studentDocIds : []),
+        ...(Array.isArray(cls.studentAuthUids) ? cls.studentAuthUids : []),
+    ].some((value) => String(value) === studentKey);
+    const visibleClassIds = classList.map(c => String(c.id || c.classId || c.classDocId || c.docId || '')).filter(Boolean);
+    const myClassIds = classList.filter(rosterContainsStudent).map(c => String(c.id));
+    const relevantTests = testList.filter(t => visibleClassIds.includes(String(t.classId)) || myClassIds.includes(String(t.classId)) || hasGradeRecord(t));
 
     const computeScoreFromCorrectCount = (record, test) => {
         if (!record?.correctCount) return null;
@@ -129,20 +140,20 @@ export const calculateGradeComparison = (studentId, classes, tests, grades, clas
 
 
     relevantTests.forEach(test => {
-        const myRecord = grades[studentId]?.[test.id];
-        
-        if (myRecord) {
+        const myRecord = grades[studentId]?.[test.id] || null;
+        {
             const aggregatedStats = classTestStats?.[test.id] || classTestStats?.[`${test.classId}_${test.id}`] || null;
             const hasStats = aggregatedStats && Number.isFinite(aggregatedStats.count) && aggregatedStats.count > 0;
 
-            const rawMyScore = myRecord.score;
+            const rawMyScore = myRecord?.score;
             const totalScoreFromService = isAbsentGrade(myRecord) ? null : getTotalScore(myRecord, test);
             const computedMyScore = Number.isFinite(totalScoreFromService)
                 ? totalScoreFromService
                 : computeScoreFromCorrectCount(myRecord, test);
 
-            const myScore = Number.isFinite(rawMyScore)
-                ? rawMyScore
+            const numericRawMyScore = Number(rawMyScore);
+            const myScore = Number.isFinite(numericRawMyScore)
+                ? numericRawMyScore
                 : (Number.isFinite(computedMyScore) ? computedMyScore : null);
 
             const averageSource = hasStats && Number.isFinite(aggregatedStats.average) ? aggregatedStats.average : null;
@@ -165,7 +176,7 @@ export const calculateGradeComparison = (studentId, classes, tests, grades, clas
             }
 
             const questionsAnalysis = [];
-            if (test.questionScores && myRecord.correctCount) {
+            if (test.questionScores && myRecord?.correctCount) {
                 test.questionScores.forEach((score, idx) => {
                     const qNum = idx + 1;
                     const status = myRecord.correctCount[qNum] || '미응시';
@@ -181,7 +192,8 @@ export const calculateGradeComparison = (studentId, classes, tests, grades, clas
 
             myGrades.push({
                 testId: test.id, testName: test.name, testDate: test.date,
-                className: classes.find(c => String(c.id) === String(test.classId))?.name || '반 정보 없음',
+                classId: test.classId,
+                className: classList.find(c => String(c.id) === String(test.classId))?.name || test.className || '반 정보 없음',
                 studentScore: Number.isFinite(myScore) ? myScore : null,
                 classAverage: classAverage,
                 highestScore: highestScore,

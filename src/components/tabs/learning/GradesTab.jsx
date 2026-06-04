@@ -196,7 +196,7 @@ export default function GradesTab({ myGradeComparison }) {
                                                 ? <Icon name="trendingUp" className="w-3 h-3 text-green-500" />
                                                 : <Icon name="trendingDown" className="w-3 h-3 text-red-500" />
                                         }
-                                        {item.statsReady && item.classAverage !== null ? `평균 ${item.classAverage}점` : '통계 준비 중'}
+                                        {item.statsReady && item.classAverage !== null ? `평균 ${item.classAverage}점${item.highestScore !== null && item.highestScore !== undefined ? ` · 최고 ${item.highestScore}점` : ''}` : '통계 준비 중'}
                                     </div>
                                 </div>
                                 <div className="text-right">

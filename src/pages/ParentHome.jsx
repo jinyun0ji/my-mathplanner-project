@@ -13,7 +13,6 @@ import {
     calculateDurationMinutes,
     formatDuration,
     isClosedForClass,
-    isClassActiveForStudent,
     formatClassScheduleKo,
     hasClassOnDate,
     getClassTimeOnDate,
@@ -330,11 +329,7 @@ const ParentDashboard = ({
         return '예정';
     };
     const todayItems = useMemo(() => {
-        const visibleTodayClasses = myClasses.filter((cls) => {
-            if (!cls?.id) return false;
-            if (!isClassActiveForStudent({ cls, student: child, todayYmd: todayStr })) return false;
-            return true;
-        });
+        const visibleTodayClasses = myClasses.filter((cls) => Boolean(cls?.id));
 
         console.log('[parent][today] visibleTodayClasses', visibleTodayClasses.map((c) => ({
             id: c.id,
@@ -347,7 +342,6 @@ const ParentDashboard = ({
             endDate: c.endDate,
             todayStr,
             hasClassToday: hasClassOnDate(c, todayStr),
-            activeForStudent: isClassActiveForStudent({ cls: c, student: child, todayYmd: todayStr }),
         })));
 
         const todayClinicSchedules = clinicLogs
