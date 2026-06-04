@@ -14,14 +14,16 @@ export default function ParentBoardPage({ notices = [], onBack }) {
     return (
         <section className="space-y-4">
             <div className="flex items-center gap-3">
-                <button
-                    type="button"
-                    onClick={onBack}
-                    className="w-10 h-10 rounded-full border border-gray-200 bg-white text-gray-700 shadow-sm flex items-center justify-center active:scale-95"
-                    aria-label="이전 화면으로 돌아가기"
-                >
-                    ←
-                </button>
+                {onBack && (
+                    <button
+                        type="button"
+                        onClick={onBack}
+                        className="w-10 h-10 rounded-full border border-gray-200 bg-white text-gray-700 shadow-sm flex items-center justify-center active:scale-95"
+                        aria-label="이전 화면으로 돌아가기"
+                    >
+                        ←
+                    </button>
+                )}
                 <div>
                     <h2 className="text-xl font-extrabold text-gray-900">게시판</h2>
                     <p className="text-xs text-gray-500">학원에서 전달한 안내와 게시글을 확인하세요.</p>

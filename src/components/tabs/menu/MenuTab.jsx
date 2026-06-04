@@ -1,37 +1,19 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Icon, formatTime } from '../../../utils/helpers';
+import { Icon, formatTime, formatClassScheduleKo } from '../../../utils/helpers';
 import ModalPortal from '../../common/ModalPortal';
 import AccountDeletionRequestButton from '../../common/AccountDeletionRequestButton';
 import ParentLegalPage from '../../../pages/parent/ParentLegalPage';
+import ParentBoardPage from '../../../pages/parent/ParentBoardPage';
 import { termsContent } from '../../../content/legal/terms';
 import { privacyContent } from '../../../content/legal/privacy';
 
-const stripHtml = (value) => String(value || '')
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<[^>]+>/g, '')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .trim();
-
-const getNoticeDate = (notice) => {
-    const value = notice?.date || notice?.createdAt || notice?.updatedAt || notice?.publishedAt;
-    if (!value) return '-';
-    if (typeof value === 'string') return value;
-    const date = typeof value?.toDate === 'function' ? value.toDate() : new Date(value);
-    if (Number.isNaN(date.getTime())) return '-';
-    return date.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' });
-};
-
-const getNoticeAuthor = (notice) => notice?.author || notice?.authorName || notice?.createdByName || '채수용 수학';
 
 const ShortcutCard = ({ icon, title, description, onClick }) => (
     <button
         type="button"
         onClick={onClick}
-        className="flex min-h-[116px] flex-col items-start rounded-2xl border border-gray-200 bg-white p-4 text-left shadow-sm transition active:scale-[0.98] hover:border-gray-300 hover:bg-gray-50"
+        className="flex flex-col items-start rounded-2xl border border-gray-200 bg-white p-4 text-left shadow-sm active:scale-[0.98]"
     >
         <span className="mb-3 flex h-9 w-9 items-center justify-center rounded-xl border border-gray-100 bg-gray-50 text-gray-700">
             <Icon name={icon} className="h-4 w-4" />
@@ -67,64 +49,60 @@ const SectionCard = ({ title, children }) => (
     </section>
 );
 
-const StudentNoticesPage = ({ notices = [] }) => (
-    <section className="space-y-3">
-        {notices.length > 0 ? (
-            <div className="space-y-3">
-                {notices.map((notice, index) => {
-                    const content = stripHtml(notice?.summary || notice?.content || notice?.body || notice?.text);
-                    const excerpt = content.length > 120 ? `${content.slice(0, 120)}...` : content;
-                    return (
-                        <article key={notice?.id || `${notice?.title || 'notice'}-${index}`} className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
-                            <h3 className="text-sm font-bold text-gray-900">{notice?.title || '제목 없음'}</h3>
-                            <p className="mt-2 whitespace-pre-line text-sm leading-6 text-gray-600">{excerpt || '내용이 없습니다.'}</p>
-                            <div className="mt-4 flex items-center justify-between gap-3 text-xs text-gray-500">
-                                <span>{getNoticeAuthor(notice)}</span>
-                                <span>{getNoticeDate(notice)}</span>
-                            </div>
-                        </article>
-                    );
-                })}
-            </div>
-        ) : (
-            <div className="rounded-2xl border border-dashed border-gray-200 bg-white px-4 py-10 text-center text-sm text-gray-500">
-                등록된 공지사항이 없습니다.
-            </div>
-        )}
-    </section>
+const emptyValue = (value) => {
+    if (value === null || value === undefined || value === '') return '-';
+    return String(value);
+};
+
+const firstValue = (...values) => values.find((value) => value !== null && value !== undefined && value !== '') || '';
+
+const getClassName = (classItem) => firstValue(classItem?.name, classItem?.title, classItem?.className, classItem?.subject, '클래스명 미정');
+const getClassTeacherName = (classItem) => firstValue(classItem?.teacherName, classItem?.teacher, classItem?.tutorName, classItem?.tutor, classItem?.instructorName, classItem?.instructor, '담당 선생님 미정');
+const getClassTimeLabel = (classItem) => firstValue(classItem?.timeLabel, classItem?.scheduleLabel, classItem?.dayTime, classItem?.daysText, formatClassScheduleKo(classItem));
+
+const AccountInfoRow = ({ label, value }) => (
+    <div className="flex items-start justify-between gap-4 border-b border-gray-100 py-3 last:border-b-0">
+        <dt className="shrink-0 text-sm font-semibold text-gray-500">{label}</dt>
+        <dd className="text-right text-sm font-medium text-gray-900 break-all">{emptyValue(value)}</dd>
+    </div>
 );
 
-const StudentAccountPage = ({ student, onEdit }) => (
-    <section className="space-y-4">
-        <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
-            <div className="flex items-center gap-3">
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 text-xl">😎</div>
-                <div className="min-w-0 flex-1">
-                    <h2 className="truncate text-base font-extrabold text-gray-900">{student?.name || '학생'}</h2>
-                    <p className="mt-0.5 text-xs text-gray-500">{[student?.school, student?.grade].filter(Boolean).join(' | ') || '학교/학년 정보 없음'}</p>
-                </div>
-                <button type="button" onClick={onEdit} className="rounded-xl bg-gray-100 px-3 py-2 text-xs font-bold text-gray-600 active:bg-gray-200">
-                    수정
-                </button>
-            </div>
-        </div>
-        <SectionCard title="학생 정보">
-            <div className="divide-y divide-gray-100 px-4">
-                {[
-                    ['이름', student?.name || '-'],
-                    ['학교', student?.school || '-'],
-                    ['학년', student?.grade || '-'],
-                    ['전화번호', student?.phone || '-'],
-                ].map(([label, value]) => (
-                    <div key={label} className="flex items-center justify-between gap-4 py-3 text-sm">
-                        <span className="font-semibold text-gray-500">{label}</span>
-                        <span className="text-right font-bold text-gray-900">{value}</span>
+const StudentAccountPage = ({ student, myClasses = [] }) => {
+    const classesToShow = Array.isArray(myClasses) ? myClasses : [];
+    return (
+        <section className="space-y-4">
+            <article className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+                <h3 className="mb-2 text-sm font-bold text-gray-900">학생 정보</h3>
+                <dl>
+                    <AccountInfoRow label="이름" value={student?.name} />
+                    <AccountInfoRow label="Google 이메일" value={student?.email || student?.googleEmail || student?.loginEmail} />
+                    <AccountInfoRow label="전화번호" value={student?.phone} />
+                    <AccountInfoRow label="학교" value={student?.school} />
+                    <AccountInfoRow label="학년" value={student?.grade} />
+                </dl>
+            </article>
+
+            <article className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+                <h3 className="mb-3 text-sm font-bold text-gray-900">현재 수강 클래스</h3>
+                {classesToShow.length > 0 ? (
+                    <div className="space-y-2">
+                        {classesToShow.map((classItem, index) => (
+                            <div key={classItem?.id || classItem?.classId || `${getClassName(classItem)}-${index}`} className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-3">
+                                <p className="text-sm font-semibold text-gray-900">{getClassName(classItem)}</p>
+                                <p className="mt-1 text-xs text-gray-500">담당: {getClassTeacherName(classItem)}</p>
+                                <p className="mt-1 text-xs text-gray-500">요일/시간: {emptyValue(getClassTimeLabel(classItem))}</p>
+                            </div>
+                        ))}
                     </div>
-                ))}
-            </div>
-        </SectionCard>
-    </section>
-);
+                ) : (
+                    <p className="rounded-xl border border-dashed border-gray-200 bg-gray-50 px-3 py-6 text-center text-sm text-gray-500">
+                        현재 수강 중인 클래스가 없습니다.
+                    </p>
+                )}
+            </article>
+        </section>
+    );
+};
 
 const getViewTitle = (view) => {
     if (view === 'account') return '계정 정보';
@@ -134,17 +112,13 @@ const getViewTitle = (view) => {
     return '전체';
 };
 
-export default function MenuTab({ student, onUpdateStudent, onLogout, videoMemos, lessonLogs, onLinkToMemo, notices, onOpenNotifications, onOpenMessages, isParent = false, studentAuthUid = '' }) {
+export default function MenuTab({ student, onUpdateStudent, onLogout, videoMemos, lessonLogs, onLinkToMemo, notices, onOpenNotifications, onOpenMessages, isParent = false, studentAuthUid = '', myClasses = [] }) {
     const [moreView, setMoreView] = useState('menu');
     const [isProfileOpen, setIsProfileOpen] = useState(false);
     const [isMemosOpen, setIsMemosOpen] = useState(false);
     const [editData, setEditData] = useState({ school: '', grade: '', phone: '' });
     const navigate = useNavigate();
 
-    const handleOpenProfile = () => {
-        if (student) setEditData({ school: student.school || '', grade: student.grade || '', phone: student.phone || '' });
-        setIsProfileOpen(true);
-    };
     const handleSaveProfile = () => {
         if (!editData.school || !editData.grade || !editData.phone) { alert('모든 정보를 입력해주세요.'); return; }
         let normalizedSchool = editData.school.trim();
@@ -259,8 +233,8 @@ export default function MenuTab({ student, onUpdateStudent, onLogout, videoMemos
                     </div>
                 </section>
             )}
-            {moreView === 'board' && <StudentNoticesPage notices={notices} />}
-            {moreView === 'account' && <StudentAccountPage student={student} onEdit={handleOpenProfile} />}
+            {moreView === 'board' && <ParentBoardPage notices={notices} onBack={() => setMoreView('menu')} />}
+            {moreView === 'account' && <StudentAccountPage student={student} myClasses={myClasses} />}
             {moreView === 'terms' && <ParentLegalPage content={termsContent} />}
             {moreView === 'privacy' && <ParentLegalPage content={privacyContent} />}
 

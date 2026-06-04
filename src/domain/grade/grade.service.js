@@ -1,4 +1,5 @@
 import { formatRoundedScore } from '../../utils/numberFormat';
+import { formatStudentScore, isAbsentGradeRecord, pickScoreValue, toFiniteScoreNumber } from '../../utils/scoreDisplay';
 
 const isCorrectAnswer = (value) => {
     return value === true || value === 1 || value === '맞음' || value === '고침';
@@ -6,11 +7,10 @@ const isCorrectAnswer = (value) => {
 
 export const isAbsentGrade = (grade) => {
     if (!grade) return true;
-    if (grade.attempted === false) return true;
+    if (isAbsentGradeRecord(grade)) return true;
 
-    const hasNumericScore = [grade.score, grade.totalScore, grade.result, grade.studentScore, grade.value]
-        .some((value) => value !== null && value !== undefined && value !== '' && Number.isFinite(Number(value)));
-    if (hasNumericScore) return false;
+    const score = toFiniteScoreNumber(pickScoreValue(grade));
+    if (score !== null) return false;
 
     const answerMap = grade.answers || grade.correctCount;
     if (answerMap && typeof answerMap === 'object' && !Array.isArray(answerMap)) {
@@ -74,24 +74,17 @@ export const getTotalScore = (grade = {}, test = {}) => {
 
 export const formatGradeScoreText = (grade = null, totalScore = null, test = {}) => {
     const resolvedGrade = grade || null;
-    const scoreFallback = resolvedGrade
-        ? [resolvedGrade.totalScore, resolvedGrade.score, resolvedGrade.result, resolvedGrade.studentScore, resolvedGrade.value]
-            .map(Number)
-            .find(Number.isFinite)
-        : null;
+    const explicitTotal = toFiniteScoreNumber(totalScore);
     const serviceTotal = resolvedGrade && !isAbsentGrade(resolvedGrade) ? getTotalScore(resolvedGrade, test) : null;
-    const resolvedTotalScore = Number.isFinite(Number(totalScore))
-        ? Number(totalScore)
-        : (Number.isFinite(serviceTotal) ? serviceTotal : (Number.isFinite(scoreFallback) ? scoreFallback : null));
+    const pickedScore = resolvedGrade ? toFiniteScoreNumber(pickScoreValue(resolvedGrade)) : null;
+    const resolvedTotalScore = explicitTotal !== null
+        ? explicitTotal
+        : (Number.isFinite(serviceTotal) ? serviceTotal : pickedScore);
 
-    const isNoShow = !Number.isFinite(resolvedTotalScore) && isAbsentGrade(resolvedGrade);
-
-    let scoreText = '-';
-    if (isNoShow) {
-        scoreText = '미응시';
-    } else if (Number.isFinite(resolvedTotalScore)) {
-        scoreText = formatRoundedScore(resolvedTotalScore, 1);
-    }
+    const isNoShow = resolvedTotalScore === null && isAbsentGrade(resolvedGrade);
+    const scoreText = isNoShow
+        ? '미응시'
+        : (resolvedTotalScore !== null ? formatRoundedScore(resolvedTotalScore, 1) : formatStudentScore(resolvedGrade, { includeUnit: false, absentLabel: '-' }));
 
     return { scoreText, isNoShow, totalScore: resolvedTotalScore };
 };

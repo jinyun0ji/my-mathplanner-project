@@ -223,7 +223,7 @@ const buildRoomQueries = ({ authUid, parentDocId, studentId, student }) => {
     return descriptors;
 };
 
-export default function ParentMessengerPage({ studentId, student, ongoingClasses = [], onBack }) {
+export default function ParentMessengerPage({ studentId, student, ongoingClasses = [], onBack, viewerRole = 'parent' }) {
     const [rooms, setRooms] = useState([]);
     const [error, setError] = useState('');
     const [selectedSlot, setSelectedSlot] = useState(null);
@@ -341,7 +341,7 @@ export default function ParentMessengerPage({ studentId, student, ongoingClasses
                         studentAuthUid={student?.authUid || student?.studentUid || student?.uid || ''}
                         selectedRoomId={selectedRoomId}
                         teacherName={currentRoomDisplayName}
-                        userRole="parent"
+                        userRole={viewerRole}
                         allowLegacyResolve={false}
                         emptyMessage="아직 대화 내역이 없습니다."
                         chatSlot={currentSlot?.slot || ''}

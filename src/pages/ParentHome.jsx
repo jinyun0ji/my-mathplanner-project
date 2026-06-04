@@ -12,10 +12,6 @@ import {
     getClinicDisplayStatus,
     calculateDurationMinutes,
     formatDuration,
-    isClosedForClass,
-    formatClassScheduleKo,
-    hasClassOnDate,
-    getClassTimeOnDate,
 } from '../utils/helpers';
 import NotificationsIcon from '@mui/icons-material/Notifications';
 import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
@@ -32,6 +28,7 @@ import { sortClassesByStatus, getViewerVisibleClassIds } from '../utils/classSta
 import { formatNoticeDate, getNoticeDateValue, getNoticePreviewText, sortNoticesForDisplay } from '../utils/notices';
 import { auth, functions } from '../firebase/client';
 import { formatStudentScore, formatTestStatsInline, getTestStatsForDisplay } from '../utils/scoreDisplay';
+import { getViewerTodayClassItems, toLocalYmd } from '../utils/viewerTodaySchedule';
 import { FEATURES } from '../config/features';
 import MathText from '../components/common/MathText';
 
@@ -48,6 +45,38 @@ const getItemClassId = (item) => (
     || item?.class?.ref
     || ''
 );
+
+
+const normalizeViewerClassStatus = (value) => {
+    if (value === 'withdrawn') return '퇴원';
+    if (value === 'active') return '진행중';
+    if (value === '재원') return '진행중';
+    return value;
+};
+
+const isViewerWithdrawnStatus = (value) => {
+    const normalized = normalizeViewerClassStatus(value);
+    return ['퇴원', '중도퇴원', '전반', '전반퇴원'].includes(normalized);
+};
+
+const toDayStartMs = (value) => {
+    const date = value ? new Date(value) : new Date();
+    const time = Number.isNaN(date.getTime()) ? new Date() : date;
+    return new Date(time.getFullYear(), time.getMonth(), time.getDate()).getTime();
+};
+
+const shouldHideTodayItemByExit = (item, exitMap) => {
+    const classId = String(getItemClassId(item) || item?.classId || '');
+    const classCode = String(item?.classCode || item?.classKey || item?.code || '');
+    if (!classId && !classCode) return false;
+    const exit = exitMap?.[classId] || (classCode ? exitMap?.[classCode] : null);
+    if (!exit) return false;
+    if (!isViewerWithdrawnStatus(exit.status)) return false;
+    if (!exit.exitAtMs) return true;
+    const itemDayMs = toDayStartMs(item?.date || new Date());
+    const exitDayMs = toDayStartMs(exit.exitAtMs);
+    return itemDayMs >= exitDayMs;
+};
 
 const buildStudentClassStatusMap = (child) => {
     if (!child) return {};
@@ -269,7 +298,7 @@ const ParentDashboard = ({
     closures,
 }) => {
     const today = new Date();
-    const todayStr = today.toISOString().split('T')[0];
+    const todayStr = toLocalYmd(today);
     const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
     const todayDayName = dayNames[today.getDay()];
 
@@ -329,22 +358,7 @@ const ParentDashboard = ({
         return '예정';
     };
     const todayItems = useMemo(() => {
-        const visibleTodayClasses = myClasses.filter((cls) => Boolean(cls?.id));
-
-        console.log('[parent][today] visibleTodayClasses', visibleTodayClasses.map((c) => ({
-            id: c.id,
-            name: c.name,
-            schedule: c.schedule,
-            schedules: c.schedules,
-            days: c.days,
-            dayOfWeek: c.dayOfWeek,
-            startDate: c.startDate,
-            endDate: c.endDate,
-            todayStr,
-            hasClassToday: hasClassOnDate(c, todayStr),
-        })));
-
-        const todayClinicSchedules = clinicLogs
+        const todayClinicSchedules = (Array.isArray(clinicLogs) ? clinicLogs : [])
             .filter((l) => l.studentId === child.id && l.date === todayStr)
             .map((l) => ({
                 type: 'clinic',
@@ -355,39 +369,25 @@ const ParentDashboard = ({
                 date: l.date,
             }));
 
-        const todaysClasses = visibleTodayClasses
-            .filter((c) => hasClassOnDate(c, todayStr))
-            .map((c) => {
-                const todayTime = getClassTimeOnDate(c, todayStr);
-                const startTime = String(todayTime || '').split('~')[0] || '99:99';
-                return {
-                    type: 'class',
-                    classId: c.id,
-                    classCode: c.classId || c.code || c.classCode || c.key || null,
-                    time: startTime,
-                    title: c.name,
-                    sub: `${c.teacher} 선생님`,
-                    timeLabel: todayTime,
-                    todayTime,
-                    scheduleLabel: formatClassScheduleKo(c),
-                    date: todayStr,
-                };
-            });
-        return [
+        const todaysClasses = getViewerTodayClassItems({
+            classes: myClasses,
+            date: today,
+            dateStr: todayStr,
+            closures,
+            isClassRetiredOnDate: (classId, dateValue) => shouldHideTodayItemByExit({ classId, date: dateValue }, childClassExitMap),
+        });
+
+        const merged = [
             ...todaysClasses,
             ...todayClinicSchedules,
         ].sort((a, b) => String(a.time || '').localeCompare(String(b.time || '')));
-    }, [child, clinicLogs, myClasses, todayStr]);
-
+        console.log('[parent][today] home count', { count: merged.length, classCount: todaysClasses.length, todayStr });
+        return merged;
+    }, [child, childClassExitMap, clinicLogs, myClasses, today, todayStr, closures]);
     const filteredTodayItems = useMemo(() => {
         const list = Array.isArray(todayItems) ? todayItems : [];
-        return list.filter((item) => {
-            if (item?.type !== 'class') return true;
-            const classId = String(item?.classId || item?.classDocId || item?.class?.id || '');
-            if (!classId) return true;
-            return !isClosedForClass(todayStr, classId, closures);
-        });
-    }, [todayItems, closures, todayStr]);
+        return list.filter((item) => !shouldHideTodayItemByExit(item, childClassExitMap));
+    }, [todayItems, childClassExitMap]);
 
     // 3. 확인 필요 항목 (Action Items)
     const actionItems = [];

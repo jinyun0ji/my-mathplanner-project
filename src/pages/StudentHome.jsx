@@ -2,15 +2,6 @@
 import React, {useState, useMemo, useEffect, useCallback} from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
-    collection,
-    query,
-    where,
-    getDocs,
-    writeBatch,
-    doc,
-    serverTimestamp,
-} from 'firebase/firestore';
-import {
     DashboardTab, ClassTab, ScheduleTab, LearningTab, MenuTab,
     BoardTab
 } from '../components/StudentTabs';
@@ -21,17 +12,15 @@ import {
     Icon,
     calculateHomeworkStats,
     calculateGradeComparison,
-    isClosedForClass,
-    formatClassScheduleKo,
-    hasClassOnDate,
-    getClassTimeOnDate,
 } from '../utils/helpers';
 import { sortClassesByStatus, getViewerVisibleClassIds } from '../utils/classStatus';
+import { getViewerTodayClassItems, toLocalYmd } from '../utils/viewerTodaySchedule';
 import NotificationsIcon from '@mui/icons-material/Notifications';
 import useNotifications from '../notifications/useNotifications';
 import NotificationList from '../notifications/NotificationList';
 import openNotification from '../notifications/openNotification';
-import { db } from '../firebase/client';
+import { functions } from '../firebase/client';
+import { httpsCallable } from 'firebase/functions';
 import { FEATURES } from '../config/features';
 
 const normalizeClassStatus = (value) => {
@@ -167,6 +156,30 @@ const buildChildClassExitMap = (child) => {
         if (fallback) map[fallback] = entry;
     }
     return map;
+};
+
+
+const getNoticeClassIds = (notice = {}) => [
+    ...(Array.isArray(notice?.targetClassIds) ? notice.targetClassIds : []),
+    ...(Array.isArray(notice?.targetClasses) ? notice.targetClasses : []),
+    ...(Array.isArray(notice?.classIds) ? notice.classIds : []),
+    notice?.classId,
+].filter(Boolean).map(String);
+
+const getNoticeAudienceValues = (notice = {}) => [
+    ...(Array.isArray(notice?.audienceAuthUids) ? notice.audienceAuthUids : []),
+    ...(Array.isArray(notice?.targetAuthUids) ? notice.targetAuthUids : []),
+    ...(Array.isArray(notice?.targetStudentIds) ? notice.targetStudentIds : []),
+    ...(Array.isArray(notice?.targetStudents) ? notice.targetStudents : []),
+    ...(Array.isArray(notice?.studentIds) ? notice.studentIds : []),
+].filter(Boolean).map(String);
+
+const isNoticeVisibleToStudent = ({ notice, studentKeys, classIds }) => {
+    const audience = getNoticeAudienceValues(notice);
+    if (audience.length > 0 && audience.some((value) => studentKeys.has(value))) return true;
+    const noticeClassIds = getNoticeClassIds(notice);
+    if (noticeClassIds.length > 0) return noticeClassIds.some((value) => classIds.has(value));
+    return audience.length === 0;
 };
 
 export default function StudentHome({
@@ -339,7 +352,7 @@ export default function StudentHome({
         [currentStudentProfile],
     );
     const today = new Date();
-    const todayStr = today.toISOString().split('T')[0];
+    const todayStr = toLocalYmd(today);
     const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
     const todayDayName = dayNames[today.getDay()];
     const buildClinicTeacher = (log) => log?.tutorName || log?.tutor || log?.teacherName || log?.teacher || '-';
@@ -358,10 +371,8 @@ export default function StudentHome({
         return '예정';
     };
     const todayItems = useMemo(() => {
-        const visibleTodayClasses = myClasses.filter((cls) => Boolean(cls?.id));
-
         const todayClinics = studentId
-            ? clinicLogs.filter(log => log.studentId === studentId && log.date === todayStr).map(log => ({
+            ? (Array.isArray(clinicLogs) ? clinicLogs : []).filter(log => log.studentId === studentId && log.date === todayStr).map(log => ({
                 type: 'clinic',
                 time: log.checkIn || (typeof log?.plannedTime === 'string' ? log.plannedTime : log?.plannedTime?.start) || '99:99',
                 timeLabel: formatClinicTime(log),
@@ -371,52 +382,39 @@ export default function StudentHome({
             }))
             : [];
         const todayExternal = studentId
-            ? externalSchedules
-                .filter(schedule => schedule.studentId === studentId && schedule.days.includes(todayDayName) && todayStr >= schedule.startDate && (!schedule.endDate || todayStr <= schedule.endDate))
+            ? (Array.isArray(externalSchedules) ? externalSchedules : [])
+                .filter(schedule => schedule.studentId === studentId && Array.isArray(schedule.days) && schedule.days.includes(todayDayName) && todayStr >= schedule.startDate && (!schedule.endDate || todayStr <= schedule.endDate))
                 .map(schedule => ({
                     type: 'external',
-                    time: `${schedule.startTime}~${schedule.endTime}`,
+                    time: schedule.startTime || '99:99',
                     title: schedule.courseName || schedule.academyName || '외부 일정',
                     sub: schedule.instructor ? `${schedule.academyName} • ${schedule.instructor}` : schedule.academyName || '',
-                    timeLabel: `${schedule.startTime}~${schedule.endTime}`,
+                    timeLabel: schedule.startTime && schedule.endTime ? `${schedule.startTime}~${schedule.endTime}` : (schedule.startTime || '시간 미정'),
                     date: todayStr,
                 }))
             : [];
 
-            const todaysClasses = visibleTodayClasses
-            .filter((c) => hasClassOnDate(c, todayStr))
-            .map((c) => {
-                const todayTime = getClassTimeOnDate(c, todayStr);
-                const startTime = String(todayTime || '').split('~')[0] || '99:99';
-                return {
-                    type: 'class',
-                    classId: c.id,
-                    classCode: c.classId || c.code || c.classCode || c.key || null,
-                    time: startTime,
-                    title: c.name,
-                    sub: `${c.teacher} 선생님`,
-                    timeLabel: todayTime,
-                    todayTime,
-                    scheduleLabel: formatClassScheduleKo(c),
-                    date: todayStr,
-                };
-            });
+        const todaysClasses = getViewerTodayClassItems({
+            classes: myClasses,
+            date: today,
+            dateStr: todayStr,
+            closures,
+            visibleClassIds,
+            isClassRetiredOnDate: (classId, dateValue) => shouldHideTodayItemByExit({ classId, date: dateValue }, studentClassExitMap),
+        });
 
-        return [
+        const merged = [
             ...todaysClasses,
             ...todayClinics,
             ...todayExternal,
         ].sort((a, b) => String(a.time || '').localeCompare(String(b.time || '')));
-    }, [clinicLogs, externalSchedules, myClasses, studentId, todayDayName, todayStr]);
+        console.log('[student][today] home count', { count: merged.length, classCount: todaysClasses.length, todayStr, visibleClassIds });
+        return merged;
+    }, [clinicLogs, externalSchedules, myClasses, studentId, today, todayDayName, todayStr, closures, visibleClassIds, studentClassExitMap]);
     const filteredTodayItems = useMemo(() => {
         const list = Array.isArray(todayItems) ? todayItems : [];
-        return list.filter((item) => {
-            const classId = getItemClassId(item);
-            if (classId && isClosedForClass(todayStr, classId, closures)) return false;
-            return !shouldHideTodayItemByExit(item, studentClassExitMap);
-        });
-    }, [todayItems, studentClassExitMap, closures, todayStr]);
-
+        return list.filter((item) => !shouldHideTodayItemByExit(item, studentClassExitMap));
+    }, [todayItems, studentClassExitMap]);
 
     const { notifications, hasUnread, unreadCount, lastReadAt, isLoading, isMetaLoading, setNotifications } = useNotifications(viewerUid);
 
@@ -446,9 +444,12 @@ export default function StudentHome({
     );
 
     useEffect(() => {
-        const combinedNotices = Array.isArray(notices) ? notices : [];
+        const studentKeys = new Set([studentId, student?.id, student?.studentId, student?.authUid, student?.uid, userId].filter(Boolean).map(String));
+        const classIds = new Set(visibleClassIds.map(String));
+        const combinedNotices = (Array.isArray(notices) ? notices : [])
+            .filter((notice) => isNoticeVisibleToStudent({ notice, studentKeys, classIds }));
         setVisibleNotices(combinedNotices);
-    }, [notices]);
+    }, [notices, student, studentId, userId, visibleClassIds]);
 
     const handleOpenNotification = () => { setIsNotificationOpen(true); };
 
@@ -491,31 +492,17 @@ export default function StudentHome({
             return;
         }
 
-        const q = query(
-            collection(db, 'notifications', viewerUid, 'items'),
-            where('isRead', '==', false)
-        );
-
-        const snap = await getDocs(q);
-        console.log('[notifications] unread docs =', snap.size);
-
-        if (snap.empty) return;
-
-        const batch = writeBatch(db);
-        snap.docs.forEach((d) => {
-            batch.update(doc(db, 'notifications', viewerUid, 'items', d.id), {
-                isRead: true,
-                readAt: serverTimestamp(),
-            });
-        });
-
-        await batch.commit();
-        console.log('[notifications] markAllRead committed');
-
-        setNotifications((prev) =>
-            prev.map((n) => ({ ...n, isRead: true, readAt: n.readAt || new Date() }))
-        );
+        try {
+            const callable = httpsCallable(functions, 'markAllNotificationsRead');
+            const result = await callable({ viewerUid });
+            const now = new Date();
+            setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true, readAt: n.readAt || now })));
+            console.log('[student][notifications] markAllRead success', { viewerUid, updated: result?.data?.updated ?? null });
+        } catch (error) {
+            console.error('[student][notifications] markAllRead failed', error);
+        }
     };
+
 
 
     const sentLessonReports = useMemo(() => (Array.isArray(lessonReports) ? lessonReports : [])
@@ -537,6 +524,7 @@ export default function StudentHome({
                 studentId={studentId}
                 student={student}
                 ongoingClasses={ongoingClasses}
+                viewerRole="student"
                 onBack={() => setIsMessengerPage(false)}
             />
         );
@@ -630,6 +618,7 @@ export default function StudentHome({
                                 onOpenNotifications={handleOpenNotification}
                                 onOpenMessages={() => setIsMessengerPage(true)}
                                 studentAuthUid={studentAuthUid}
+                                myClasses={ongoingClasses}
                             />
                         )}
                     </div>

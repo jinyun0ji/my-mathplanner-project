@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Icon, getClinicDisplayStatus, getWeekOfMonth, isClosedForClass, hasClassOnDate, getClassTimeOnDate } from '../../../utils/helpers';
+import { Icon, getClinicDisplayStatus, getWeekOfMonth, isClosedForClass, hasClassOnDate } from '../../../utils/helpers';
+import { getViewerDailyClassItems } from '../../../utils/viewerTodaySchedule';
 import ModalPortal from '../../common/ModalPortal';
 import { useParentContext } from '../../../parent';
 
@@ -345,20 +346,20 @@ export default function ScheduleTab({
 
     const dailyClasses = useMemo(() => {
         const dateStr = formatDate(selectedDate);
-        return myClasses
-            .filter(cls =>
-                hasClassOnDate(cls, dateStr) &&
-                !isClassRetiredOnDate(cls.id, selectedDate) &&
-                !isClosedForClass(dateStr, cls.id, closures)
-            )
-            .map(cls => ({
-                id: `math-${cls.id}`,
-                type: 'math',
-                name: cls.name,
-                teacher: cls.teacher,
-                time: getClassTimeOnDate(cls, dateStr) || resolveClassSchedule(cls).time || '시간 미정',
-                scheduleId: cls.id,
-            }));
+        return getViewerDailyClassItems({
+            classes: myClasses,
+            date: selectedDate,
+            dateStr,
+            closures,
+            isClassRetiredOnDate,
+        }).map((item) => ({
+            id: `math-${item.classId}`,
+            type: 'math',
+            name: item.name,
+            teacher: item.teacher,
+            time: item.todayTime || item.timeLabel || resolveClassSchedule(item.rawClass).time || '시간 미정',
+            scheduleId: item.classId,
+        }));
     }, [myClasses, selectedDate, childClassExitMap, student, closures]);
 
     useEffect(() => {

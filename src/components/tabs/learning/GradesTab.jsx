@@ -18,7 +18,11 @@ const getTrendText = (t) => {
     return '...';
 };
 
-const resolveScoreText = (gradeItem = {}) => formatGradeScoreText(gradeItem.grade, gradeItem.totalScore);
+const resolveScoreText = (gradeItem = {}) => {
+    const info = formatGradeScoreText(gradeItem.grade, gradeItem.totalScore);
+    if (info.scoreText === '미응시') console.log('[student][grades] absent score display', { testId: gradeItem.testId, testName: gradeItem.testName });
+    return info;
+};
 
 // 상세 분석 컴포넌트
 const QuestionAnalysisList = ({ questions, classAverage, highestScore, trend, statsReady }) => {
@@ -179,34 +183,21 @@ export default function GradesTab({ myGradeComparison }) {
                 myGradeComparison.map((item, idx) => {
                     const scoreInfo = resolveScoreText(item);
                     return (
-                        <div key={idx} onClick={() => setSelectedTestId(item.testId)} className="bg-white p-3 rounded-xl shadow-sm border border-gray-100 cursor-pointer active:scale-[0.98] transition-all hover:border-indigo-200 active:bg-gray-50">
-                            <div className="flex justify-between items-start mb-2">
-                                <div className="flex items-center gap-2">
-                                    <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">{item.className}</span>
-                                    <span className="text-xs text-gray-400">{item.testDate}</span>
+                        <article key={idx} onClick={() => setSelectedTestId(item.testId)} className="rounded-xl border border-gray-200 bg-white p-3 space-y-1 text-sm text-gray-700 shadow-sm cursor-pointer active:scale-[0.98] transition-all hover:border-indigo-200 active:bg-gray-50">
+                            <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0">
+                                    <p className="font-bold text-gray-900 truncate">{item.testName || '시험'}</p>
+                                    <p className="mt-1 text-xs text-gray-500">{item.testDate || '-'}</p>
                                 </div>
+                                <span className="text-[11px] font-semibold text-indigo-700 bg-indigo-50 border border-indigo-100 rounded-full px-2 py-0.5 shrink-0">
+                                    {scoreInfo.scoreText === '미응시' ? '미응시' : `${scoreInfo.scoreText}점`}
+                                </span>
                             </div>
-                            <div className="flex justify-between items-end">
-                                <div>
-                                    <h3 className="text-sm font-bold text-gray-900 leading-tight mb-1">{item.testName}</h3>
-                                    <div className="flex items-center gap-1 text-xs text-gray-500 font-medium">
-                                        {item.isAboveAverage === null
-                                            ? <Icon name="minus" className="w-3 h-3 text-gray-400" />
-                                            : item.isAboveAverage
-                                                ? <Icon name="trendingUp" className="w-3 h-3 text-green-500" />
-                                                : <Icon name="trendingDown" className="w-3 h-3 text-red-500" />
-                                        }
-                                        {item.statsReady && item.classAverage !== null ? `평균 ${item.classAverage}점${item.highestScore !== null && item.highestScore !== undefined ? ` · 최고 ${item.highestScore}점` : ''}` : '통계 준비 중'}
-                                    </div>
-                                </div>
-                                <div className="text-right">
-                                    <span className="text-xl font-extrabold text-indigo-900">{scoreInfo.scoreText}</span>
-                                    {scoreInfo.scoreText !== '-' && scoreInfo.scoreText !== '미응시' && (
-                                        <span className="text-xs text-gray-400 font-medium">점</span>
-                                    )}
-                                </div>
+                            <div className="flex items-center gap-2 text-xs text-gray-500">
+                                <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">{item.className}</span>
+                                <span>{item.statsReady && item.classAverage !== null ? `평균 ${item.classAverage}점${item.highestScore !== null && item.highestScore !== undefined ? ` · 최고 ${item.highestScore}점` : ''}` : '통계 준비 중'}</span>
                             </div>
-                        </div>
+                        </article>
                     );
                 })
             )}

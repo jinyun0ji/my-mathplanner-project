@@ -361,7 +361,7 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
             roomId: resolvedRoomId,
             text,
             senderId: viewerUid,
-            senderRole: isChatRoomMode ? 'parent' : userRole,
+            senderRole: isChatRoomMode ? userRole : userRole,
             senderName: buildSenderName(),
             createdAt: new Date(localCreatedAtMs),
             localCreatedAtMs,
@@ -405,8 +405,6 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
                     const slot = String(roomCreationContext?.slot || normalizedChatSlot || 'direct');
                     const roomPayload = {
                         participantIds: [String(viewerUid), targetAuthUid],
-                        parentId: parentDocId || String(viewerUid),
-                        parentUid: String(viewerUid),
                         studentId: String(studentId || ''),
                         type: 'individual',
                         channel: slot,
@@ -417,6 +415,14 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
                         createdBy: String(viewerUid),
                         updatedBy: String(viewerUid),
                     };
+
+                    if (userRole === 'parent') {
+                        roomPayload.parentId = parentDocId || String(viewerUid);
+                        roomPayload.parentUid = String(viewerUid);
+                    } else if (userRole === 'student') {
+                        roomPayload.studentUid = String(viewerUid);
+                        roomPayload.studentAuthUid = String(viewerUid);
+                    }
 
                     if (slot === 'teacher') {
                         roomPayload.teacherAuthUid = targetAuthUid;
@@ -432,7 +438,7 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
                 await addDoc(collection(db, 'chatRooms', resolvedRoomId, 'messages'), {
                     roomId: resolvedRoomId,
                     senderId: viewerUid,
-                    senderRole: 'parent',
+                    senderRole: userRole,
                     senderName: buildSenderName(),
                     messageType: 'text',
                     text,
