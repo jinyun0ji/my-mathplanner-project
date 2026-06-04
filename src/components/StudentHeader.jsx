@@ -1,8 +1,8 @@
 // src/components/StudentHeader.jsx
 import React from 'react';
-import SchoolIcon from '@mui/icons-material/School';
 import NotificationsIcon from '@mui/icons-material/Notifications';
 import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
+import logoHorizontal from '../assets/logo/logo-horizontal.png';
 
 export default function StudentHeader({
     student,
@@ -16,11 +16,13 @@ export default function StudentHeader({
         <header className="bg-white border-b border-gray-100 sticky top-0 z-30 shadow-sm shrink-0">
             <div className="flex items-center justify-between px-4 py-2 bg-white">
                 <div className="flex items-center gap-2 min-w-0 text-brand-dark">
-                    <div className="bg-brand-dark text-white p-1.5 rounded-lg flex items-center justify-center shrink-0">
-                        <SchoolIcon className="w-5 h-5 text-white" style={{ fontSize: 20 }} />
-                    </div>
+                    <img
+                        src={logoHorizontal}
+                        alt="채수용 수학"
+                        className="h-8 w-auto max-w-[132px] object-contain shrink-0"
+                    />
                     <div className="min-w-0">
-                        <h1 className="text-base font-extrabold tracking-tight text-brand-dark truncate">채수용 수학</h1>
+                        <h1 className="sr-only">채수용 수학</h1>
                         <p className="text-xs text-gray-500 truncate">{student?.name || '학생'}{profileText ? ` · ${profileText}` : ''}</p>
                     </div>
                 </div>

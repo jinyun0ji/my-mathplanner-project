@@ -1160,6 +1160,10 @@ video {
   max-height: 100%;
 }
 
+.max-h-\[72px\]{
+  max-height: 72px;
+}
+
 .min-h-0{
   min-height: 0px;
 }
@@ -1380,6 +1384,10 @@ video {
   width: 15rem;
 }
 
+.w-auto{
+  width: auto;
+}
+
 .min-w-0{
   min-width: 0px;
 }
@@ -1494,6 +1502,18 @@ video {
 
 .max-w-\[72\%\]{
   max-width: 72%;
+}
+
+.max-w-\[132px\]{
+  max-width: 132px;
+}
+
+.max-w-\[150px\]{
+  max-width: 150px;
+}
+
+.max-w-\[280px\]{
+  max-width: 280px;
 }
 
 .flex-1{
@@ -2771,6 +2791,10 @@ video {
 
 .fill-current{
   fill: currentColor;
+}
+
+.object-contain{
+  object-fit: contain;
 }
 
 .p-0{

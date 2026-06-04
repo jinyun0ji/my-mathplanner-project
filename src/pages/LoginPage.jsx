@@ -1,6 +1,6 @@
 // src/pages/LoginPage.jsx
 import React from 'react';
-import { Icon } from '../utils/helpers';
+import logoHorizontal from '../assets/logo/logo-horizontal.png';
 import { Link } from 'react-router-dom';
 
 export default function LoginPage({ onSocialLogin }) {
@@ -8,12 +8,13 @@ export default function LoginPage({ onSocialLogin }) {
         <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4 sm:px-6 lg:px-8 font-sans">
             <div className="max-w-md w-full space-y-8 bg-white p-10 rounded-2xl shadow-xl border border-gray-100">
                 <div className="text-center">
-                    {/* ✅ [수정] 로고 변경 */}
-                    <div className="mx-auto h-16 w-16 bg-indigo-600 rounded-xl flex items-center justify-center mb-4 shadow-lg transform rotate-3 text-white">
-                        <Icon name="book" className="w-10 h-10" />
-                    </div>
-                    <h2 className="text-3xl font-extrabold text-gray-900 tracking-tight">채수용 수학</h2>
-                    <p className="mt-2 text-sm text-gray-500">통합 학습 관리 시스템</p>
+                    <img
+                        src={logoHorizontal}
+                        alt="채수용 수학"
+                        className="mx-auto max-h-[72px] w-auto max-w-[280px] object-contain"
+                    />
+                    <h2 className="sr-only">채수용 수학</h2>
+                    <p className="mt-3 text-sm text-gray-500">통합 학습 관리 시스템</p>
                 </div>
 
                 <div className="mt-8">

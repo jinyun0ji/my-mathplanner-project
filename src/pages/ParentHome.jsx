@@ -31,6 +31,7 @@ import { formatStudentScore, formatTestStatsInline, getTestStatsForDisplay } fro
 import { getViewerTodayClassItems, toLocalYmd } from '../utils/viewerTodaySchedule';
 import { FEATURES } from '../config/features';
 import MathText from '../components/common/MathText';
+import logoHorizontal from '../assets/logo/logo-horizontal.png';
 
 
 const getItemClassId = (item) => (
@@ -1225,9 +1226,16 @@ export default function ParentHome({
             {/* 헤더 & 자녀 선택 */}
             <div className="bg-white sticky top-0 z-30 shadow-sm">
                 <div className="flex items-center justify-between px-4 py-2 border-b border-gray-100 bg-white">
-                    <div className="min-w-0">
-                        <p className="text-base font-bold text-gray-900 truncate">채수용 수학</p>
-                        <p className="text-xs text-gray-500 truncate">{activeChildName} · {activeChildSchool} {activeChildGrade}</p>
+                    <div className="flex items-center gap-2 min-w-0">
+                        <img
+                            src={logoHorizontal}
+                            alt="채수용 수학"
+                            className="h-8 w-auto max-w-[132px] object-contain shrink-0"
+                        />
+                        <div className="min-w-0">
+                            <p className="sr-only">채수용 수학</p>
+                            <p className="text-xs text-gray-500 truncate">{activeChildName} · {activeChildSchool} {activeChildGrade}</p>
+                        </div>
                     </div>
                     <div className="flex items-center gap-2">
                         <button type="button" onClick={() => setIsNotificationOpen(true)} className="relative p-2 rounded-lg border border-gray-200 text-gray-600">

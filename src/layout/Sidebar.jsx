@@ -3,6 +3,7 @@ import React from 'react';
 import { Icon } from '../utils/helpers';
 import useAuth from '../auth/useAuth';
 import { isAdminRole, isStaffGroupRole, isTeachingGroupRole } from '../constants/roles';
+import logoHorizontal from '../assets/logo/logo-horizontal.png';
 
 export default function Sidebar({ page, setPage, onLogout, isOpen, onClose }) {
     const { role } = useAuth();
@@ -60,13 +61,15 @@ export default function Sidebar({ page, setPage, onLogout, isOpen, onClose }) {
             <div>
                 {/* 로고 영역 */}
                 <div className="h-16 flex items-center justify-between px-6 border-b border-gray-100">
-                    <div className="flex items-center text-indigo-600">
-                        <div className="bg-indigo-600 text-white p-1.5 rounded-lg mr-2.5">
-                            <Icon name="school" className="w-5 h-5" />
-                        </div>
-                        <div>
-                            <h1 className="text-lg font-bold tracking-tight text-gray-900">채수용 수학</h1>
-                            <p className="text-[11px] text-gray-400 font-medium -mt-1 tracking-wide">{roleLabel} 페이지</p>
+                    <div className="flex items-center min-w-0 text-indigo-600">
+                        <img
+                            src={logoHorizontal}
+                            alt="채수용 수학"
+                            className="h-9 w-auto max-w-[150px] object-contain shrink-0"
+                        />
+                        <div className="min-w-0 ml-2">
+                            <h1 className="sr-only">채수용 수학</h1>
+                            {/* <p className="text-[11px] text-gray-400 font-medium tracking-wide">{roleLabel} 페이지</p> */}
                         </div>
                     </div>
                     {/* 닫기 버튼: md 이상에서는 숨김 */}

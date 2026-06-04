@@ -3,6 +3,7 @@ import { httpsCallable } from 'firebase/functions';
 import { Link } from 'react-router-dom';
 import { functions } from '../firebase/client';
 import { signInWithGoogle } from '../auth/authService';
+import logoHorizontal from '../assets/logo/logo-horizontal.png';
 
 const normalizeInviteCode = (value) => (value || '').trim();
 
@@ -122,7 +123,12 @@ export default function InviteSignupPage() {
     return (
         <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
             <div className="max-w-md w-full bg-white p-8 rounded-2xl shadow-lg space-y-6">
-                <div className="text-center space-y-2">
+                <div className="text-center space-y-3">
+                    <img
+                        src={logoHorizontal}
+                        alt="채수용 수학"
+                        className="mx-auto max-h-[72px] w-auto max-w-[280px] object-contain"
+                    />
                     <h1 className="text-2xl font-bold text-gray-900">초대 코드로 가입하기</h1>
                     <p className="text-gray-600 text-sm leading-relaxed">
                         학원에서 받은 초대 코드를 입력해 학생 또는 학부모 계정을 생성합니다.

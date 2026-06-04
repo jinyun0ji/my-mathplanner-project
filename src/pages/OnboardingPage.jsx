@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import logoHorizontal from '../assets/logo/logo-horizontal.png';
 
 export default function OnboardingPage({ onSubmitLinkCode }) {
     const [linkCode, setLinkCode] = useState('');
@@ -24,7 +25,12 @@ export default function OnboardingPage({ onSubmitLinkCode }) {
     return (
         <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
             <div className="max-w-md w-full bg-white p-8 rounded-2xl shadow-lg space-y-6">
-                <div className="text-center space-y-2">
+                <div className="text-center space-y-3">
+                    <img
+                        src={logoHorizontal}
+                        alt="채수용 수학"
+                        className="mx-auto max-h-[72px] w-auto max-w-[280px] object-contain"
+                    />
                     <h1 className="text-2xl font-bold text-gray-900">학생 연결이 필요해요</h1>
                     <p className="text-gray-600 text-sm leading-relaxed">
                         학원에서 발급한 연결 코드를 입력하면 학부모 계정으로 전환됩니다.
