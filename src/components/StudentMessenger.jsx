@@ -11,6 +11,7 @@ import {
     orderBy,
     query,
     serverTimestamp,
+    setDoc,
     updateDoc,
     where,
 } from 'firebase/firestore';
@@ -202,7 +203,7 @@ async function resolveRoomId(studentId, studentAuthUid = '') {
     return null;
 }
 
-export default function StudentMessenger({ studentId, studentAuthUid = '', selectedRoomId = '', teacherName = '메시지', userRole = 'parent', isFloating = false, allowLegacyResolve = true, emptyMessage = '아직 대화 내역이 없습니다.' }) {
+export default function StudentMessenger({ studentId, studentAuthUid = '', selectedRoomId = '', teacherName = '메시지', userRole = 'parent', isFloating = false, allowLegacyResolve = true, emptyMessage = '아직 대화 내역이 없습니다.', chatSlot = '', roomCreationContext = null }) {
     const [roomId, setRoomId] = useState(null);
     const [messages, setMessages] = useState([]);
     const [optimisticMessages, setOptimisticMessages] = useState([]);
@@ -211,6 +212,8 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
     const [error, setError] = useState('');
     const [myProfileDocId, setMyProfileDocId] = useState('');
     const messagesEndRef = useRef(null);
+    const normalizedChatSlot = String(chatSlot || roomCreationContext?.slot || '');
+    const canCreateChatRoom = Boolean(roomCreationContext?.targetAuthUid && normalizedChatSlot);
 
     useEffect(() => {
         optimisticMessagesRef.current = optimisticMessages;
@@ -346,11 +349,11 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
         const text = inputText.trim();
         if (!text) return;
 
-        const resolvedRoomId = selectedRoomId ? String(selectedRoomId) : roomId || (allowLegacyResolve ? await resolveRoomId(studentId, studentAuthUid) : null);
-        if (!resolvedRoomId) return;
+        let resolvedRoomId = selectedRoomId ? String(selectedRoomId) : roomId || (allowLegacyResolve ? await resolveRoomId(studentId, studentAuthUid) : null);
 
         const viewerUid = auth.currentUser?.uid || 'parent-anonymous';
-        const isChatRoomMode = !!selectedRoomId;
+        const isChatRoomMode = !!selectedRoomId || canCreateChatRoom;
+        if (!resolvedRoomId && !canCreateChatRoom) return;
         const localCreatedAtMs = Date.now();
         const clientTempId = `client-${localCreatedAtMs}-${Math.random().toString(36).slice(2, 10)}`;
         const optimisticMessage = {
@@ -382,6 +385,50 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
 
         try {
             if (isChatRoomMode) {
+                if (!resolvedRoomId) {
+                    let parentDocId = myProfileDocId;
+                    if (!parentDocId && viewerUid) {
+                        try {
+                            const indexSnap = await getDoc(doc(db, 'userAuthIndex', viewerUid));
+                            parentDocId = indexSnap.exists() ? String(indexSnap.data()?.userDocId || viewerUid) : String(viewerUid);
+                            setMyProfileDocId(parentDocId);
+                        } catch (indexError) {
+                            logFirestoreQueryFailure('load userAuthIndex before room create', indexError, { doc: ['userAuthIndex', viewerUid] });
+                            parentDocId = String(viewerUid);
+                        }
+                    }
+
+                    const roomRef = doc(collection(db, 'chatRooms'));
+                    resolvedRoomId = roomRef.id;
+                    const targetAuthUid = String(roomCreationContext?.targetAuthUid || '');
+                    const targetName = String(roomCreationContext?.targetName || teacherName || '메시지');
+                    const slot = String(roomCreationContext?.slot || normalizedChatSlot || 'direct');
+                    const roomPayload = {
+                        participantIds: [String(viewerUid), targetAuthUid],
+                        parentId: parentDocId || String(viewerUid),
+                        parentUid: String(viewerUid),
+                        studentId: String(studentId || ''),
+                        type: 'individual',
+                        channel: slot,
+                        slot,
+                        internalOnly: true,
+                        createdAt: serverTimestamp(),
+                        updatedAt: serverTimestamp(),
+                        createdBy: String(viewerUid),
+                        updatedBy: String(viewerUid),
+                    };
+
+                    if (slot === 'teacher') {
+                        roomPayload.teacherAuthUid = targetAuthUid;
+                        roomPayload.teacherName = targetName;
+                    } else {
+                        roomPayload.staffAuthUid = targetAuthUid;
+                        roomPayload.staffName = targetName;
+                    }
+
+                    await setDoc(roomRef, roomPayload);
+                }
+                
                 await addDoc(collection(db, 'chatRooms', resolvedRoomId, 'messages'), {
                     roomId: resolvedRoomId,
                     senderId: viewerUid,

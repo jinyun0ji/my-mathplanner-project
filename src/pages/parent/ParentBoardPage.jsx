@@ -1,50 +1,15 @@
 import React, { useMemo, useState } from 'react';
 import { Icon } from '../../utils/helpers';
-
-const getNoticeDateValue = (notice) => (
-    notice?.date
-    || notice?.createdAt
-    || notice?.updatedAt
-    || notice?.scheduleTime
-    || ''
-);
-
-const getNoticeDateMs = (value) => {
-    if (!value) return 0;
-    if (typeof value?.toDate === 'function') return value.toDate().getTime();
-    if (value instanceof Date) return value.getTime();
-    const date = new Date(value);
-    return Number.isNaN(date.getTime()) ? 0 : date.getTime();
-};
-
-const formatNoticeDate = (value) => {
-    if (!value) return '-';
-    if (typeof value === 'string') return value.slice(0, 10) || '-';
-    if (typeof value?.toDate === 'function') return value.toDate().toISOString().slice(0, 10);
-    const date = value instanceof Date ? value : new Date(value);
-    return Number.isNaN(date.getTime()) ? '-' : date.toISOString().slice(0, 10);
-};
-
-const stripHtml = (value) => String(value || '').replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
-
-const getNoticePreview = (content) => {
-    const plainText = stripHtml(content);
-    if (!plainText) return '내용이 없습니다.';
-    return plainText.length > 120 ? `${plainText.slice(0, 120)}...` : plainText;
-};
+import {
+    formatNoticeDate,
+    getNoticeDateValue,
+    getNoticePreviewText,
+    sortNoticesForDisplay,
+} from '../../utils/notices';
 
 export default function ParentBoardPage({ notices = [], onBack }) {
     const [expandedNoticeId, setExpandedNoticeId] = useState(null);
-    const sortedNotices = useMemo(
-        () => [...(Array.isArray(notices) ? notices : [])]
-            .sort((a, b) => {
-                const pinA = a?.isPinned ? 1 : 0;
-                const pinB = b?.isPinned ? 1 : 0;
-                if (pinA !== pinB) return pinB - pinA;
-                return getNoticeDateMs(getNoticeDateValue(b)) - getNoticeDateMs(getNoticeDateValue(a));
-            }),
-        [notices],
-    );
+    const sortedNotices = useMemo(() => sortNoticesForDisplay(notices), [notices]);
 
     return (
         <section className="space-y-4">
@@ -93,7 +58,7 @@ export default function ParentBoardPage({ notices = [], onBack }) {
                                         </div>
                                     </div>
                                     <p className="text-sm text-gray-600 leading-6 line-clamp-3">
-                                        {getNoticePreview(notice.content)}
+                                        {getNoticePreviewText(notice.content)}
                                     </p>
                                     <div className="flex items-center gap-2 text-xs text-gray-400 pt-1">
                                         <span className="font-medium text-gray-500">{notice.author || '채수용 수학'}</span>

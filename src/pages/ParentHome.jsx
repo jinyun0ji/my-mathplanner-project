@@ -30,6 +30,7 @@ import NotificationList from '../notifications/NotificationList';
 import openNotification from '../notifications/openNotification';
 import { useParentContext } from '../parent';
 import { sortClassesByStatus, getViewerVisibleClassIds } from '../utils/classStatus';
+import { formatNoticeDate, getNoticeDateValue, getNoticePreviewText, sortNoticesForDisplay } from '../utils/notices';
 import { auth, functions } from '../firebase/client';
 import { FEATURES } from '../config/features';
 import MathText from '../components/common/MathText';
@@ -939,7 +940,8 @@ export default function ParentHome({
             || '',
     }), [currentParent]);
 
-    const noticePreview = useMemo(() => visibleNotices.slice(0, 3), [visibleNotices]);
+    const sortedVisibleNotices = useMemo(() => sortNoticesForDisplay(visibleNotices), [visibleNotices]);
+    const noticePreview = useMemo(() => sortedVisibleNotices.slice(0, 3), [sortedVisibleNotices]);
 
     useEffect(() => {
         const activeStudentClassIds = Array.from(new Set((visibleClassIds || []).map((id) => String(id)).filter(Boolean)));
@@ -951,7 +953,7 @@ export default function ParentHome({
         });
         console.log('[parent board] loaded announcements', {
             total: visibleNotices.length,
-            sample: visibleNotices.slice(0, 3).map((n) => ({
+            sample: sortedVisibleNotices.slice(0, 3).map((n) => ({
                 id: n.id,
                 title: n.title,
                 isPublic: n.isPublic,
@@ -968,7 +970,7 @@ export default function ParentHome({
                 targetAuthUids: n.targetAuthUids,
             })),
         });
-    }, [visibleClassIds, activeChildId, parentAuthUid, visibleNotices, userId, activeChild]);
+    }, [visibleClassIds, activeChildId, parentAuthUid, visibleNotices, sortedVisibleNotices, userId, activeChild]);
 
     const handleNotificationClick = async (notification) => {
         const targetStudentId = notification?.studentId;
@@ -1330,8 +1332,8 @@ export default function ParentHome({
                                                         className="w-full text-left p-3 rounded-xl border border-gray-100 hover:border-indigo-200 hover:bg-indigo-50 transition-colors"
                                                     >
                                                         <p className="text-sm font-bold text-gray-900">{notice.title}</p>
-                                                        <p className="text-xs text-gray-500 mt-1">{notice.content}</p>
-                                                        <p className="text-[11px] text-gray-400 mt-1">{notice.author || '채수용 수학'} • {notice.date}</p>
+                                                        <p className="text-xs text-gray-500 mt-1 line-clamp-2">{getNoticePreviewText(notice.content, 80)}</p>
+                                                        <p className="text-[11px] text-gray-400 mt-1">{notice.author || '채수용 수학'} • {formatNoticeDate(getNoticeDateValue(notice))}</p>
                                                     </button>
                                                 )) : (
                                                     <p className="text-xs text-gray-500 py-2">등록된 게시글이 없습니다.</p>

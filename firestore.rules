@@ -51,6 +51,8 @@ service cloud.firestore {
     function isStaffOrAdminOrTeacher() { return isAdminOrStaff(); }
     function isStudent() { return userRole() == 'student'; }
     function isParent() { return userRole() == 'parent'; }
+    function fixedTeacherAuthUid() { return 'EzOXjwwyATO2sP5yuc3CkS3oRw22'; }
+    function fixedInstituteAuthUid() { return 'lVwBt6If6JVwkop9uPIbOIHQmwg2'; }
 
     /** ✅ 학생이면: 내 학생 문서ID = myProfileDocId() */
     function getMyStudentId() {
@@ -341,6 +343,43 @@ service cloud.firestore {
         && canAccessChatRoomData(get(/databases/$(database)/documents/chatRooms/$(roomId)).data);
     }
 
+
+    function hasAllowedParentChatCounterpart(participantIds) {
+      return participantIds is list
+        && (
+          fixedTeacherAuthUid() in participantIds
+          || fixedInstituteAuthUid() in participantIds
+        );
+    }
+
+    function isValidParentDirectChatRoomCreate() {
+      return isParent()
+        && request.resource.data.type == 'individual'
+        && request.resource.data.participantIds is list
+        && request.resource.data.participantIds.size() >= 2
+        && hasMyParticipantKey(request.resource.data.participantIds)
+        && hasAllowedParentChatCounterpart(request.resource.data.participantIds)
+        && request.resource.data.internalOnly == true
+        && request.resource.data.parentId == myProfileDocId()
+        && request.resource.data.parentUid == uid()
+        && request.resource.data.createdBy == uid()
+        && request.resource.data.updatedBy == uid()
+        && request.resource.data.channel in ['teacher', 'institute']
+        && request.resource.data.slot in ['teacher', 'institute']
+        && (
+          (
+            request.resource.data.slot == 'teacher'
+            && request.resource.data.teacherAuthUid == fixedTeacherAuthUid()
+            && fixedTeacherAuthUid() in request.resource.data.participantIds
+          )
+          || (
+            request.resource.data.slot == 'institute'
+            && request.resource.data.staffAuthUid == fixedInstituteAuthUid()
+            && fixedInstituteAuthUid() in request.resource.data.participantIds
+          )
+        );
+    }
+
     function isAllowedChatRoomUpdateFieldSet() {
       return request.resource.data.diff(resource.data).changedKeys()
         .hasOnly(['updatedAt', 'updatedBy', 'lastMessageText', 'lastMessageAt', 'lastMessageSenderId', 'unreadCountByUser', 'status']);
@@ -348,9 +387,6 @@ service cloud.firestore {
 
     function isValidDirectChatRoomPatch() {
       return isAllowedChatRoomUpdateFieldSet()
-        && request.resource.data.participantIds == resource.data.participantIds
-        && request.resource.data.participantRoles == resource.data.participantRoles
-        && request.resource.data.internalOnly == resource.data.internalOnly
         && request.resource.data.updatedBy == uid()
         && request.resource.data.lastMessageSenderId == uid();
     }
@@ -626,11 +662,16 @@ service cloud.firestore {
       allow get, list: if canAccessChatRoomData(resource.data);
 
       allow create: if isSignedIn()
-        && isStaffOrAdminOrTeacher()
-        && request.resource.data.type == 'individual'
-        && request.resource.data.participantIds is list
-        && request.resource.data.participantIds.size() >= 2
-        && request.resource.data.internalOnly == true;
+        && (
+          (
+            isStaffOrAdminOrTeacher()
+            && request.resource.data.type == 'individual'
+            && request.resource.data.participantIds is list
+            && request.resource.data.participantIds.size() >= 2
+            && request.resource.data.internalOnly == true
+          )
+          || isValidParentDirectChatRoomCreate()
+        );
 
       allow update: if isSignedIn() && (
         isStaffOrAdminOrTeacher()

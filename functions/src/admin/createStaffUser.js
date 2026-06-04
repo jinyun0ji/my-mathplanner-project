@@ -10,11 +10,16 @@ const createStaffUser = functions.https.onCall(async (data, context) => {
 
     const email = typeof data?.email === 'string' ? data.email.trim() : '';
     const role = typeof data?.role === 'string' ? data.role.trim() : '';
+    const name = typeof data?.name === 'string' ? data.name.trim() : '';
     const requestedPassword = typeof data?.tempPassword === 'string' ? data.tempPassword : '';
     const tempPassword = requestedPassword || crypto.randomBytes(8).toString('base64').slice(0, 12);
 
     if (!email || !role) {
         throw new functions.https.HttpsError('invalid-argument', 'Email and role are required.');
+    }
+
+    if (!name) {
+        throw new functions.https.HttpsError('invalid-argument', '직원 이름을 입력해주세요.');
     }
 
     if (![ROLE.STAFF, ROLE.ADMIN].includes(role)) {
@@ -47,6 +52,7 @@ const createStaffUser = functions.https.onCall(async (data, context) => {
     const userPayload = {
         email: userRecord.email ?? email,
         displayName: userRecord.displayName ?? null,
+        name,
         role,
     };
 
@@ -57,7 +63,7 @@ const createStaffUser = functions.https.onCall(async (data, context) => {
 
     await userRef.set(userPayload, { merge: true });
 
-    return { uid: userRecord.uid, email: userRecord.email, role, tempPassword };
+    return { uid: userRecord.uid, email: userRecord.email, name, role, tempPassword };
 });
 
 module.exports = { createStaffUser };

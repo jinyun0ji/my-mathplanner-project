@@ -15,6 +15,7 @@ const getStaffList = functions.https.onCall(async (data, context) => {
         return {
             uid: doc.id,
             displayName: payload.displayName ?? null,
+            name: payload.name ?? null,
             email: payload.email ?? null,
             role: payload.role ?? null,
             active: payload.active ?? null,

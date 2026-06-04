@@ -1917,8 +1917,8 @@ export default function AppRoutes({ user, role, studentIds }) {
       }
   };
 
-  const handleCreateStaffUser = async ({ email, role }) => {
-      const result = await createStaffUser({ email, role });
+  const handleCreateStaffUser = async ({ email, role, name }) => {
+      const result = await createStaffUser({ email, role, name });
       logNotification('success', '직원 계정 생성', `${email} 계정이 생성되었습니다.`);
       return result;
   };

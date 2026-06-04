@@ -7,6 +7,9 @@ import { auth, db } from '../../firebase/client';
 const INSTITUTE_SLOT = 'institute';
 const TEACHER_SLOT = 'teacher';
 const INSTITUTE_NAME = '채수용 수학 연구소';
+const INSTITUTE_AUTH_UID = 'lVwBt6If6JVwkop9uPIbOIHQmwg2';
+const TEACHER_AUTH_UID = 'EzOXjwwyATO2sP5yuc3CkS3oRw22';
+const TEACHER_DISPLAY_NAME = '채수용 선생님';
 
 const toDate = (value) => {
     if (!value) return null;
@@ -72,12 +75,12 @@ const hasAnyKeyword = (values, keywords) => values.some((value) => {
 const roomDisplayName = (slot, teacherName = '') => {
     if (slot === INSTITUTE_SLOT) return INSTITUTE_NAME;
     const normalizedTeacherName = normalizeText(teacherName);
-    if (normalizedTeacherName) return `${normalizedTeacherName} 선생님`;
-    return '담당 강사';
+    if (normalizedTeacherName) return normalizedTeacherName.endsWith('선생님') ? normalizedTeacherName : `${normalizedTeacherName} 선생님`;
+    return TEACHER_DISPLAY_NAME;
 };
 
 const getTeacherCandidates = (classes = []) => {
-    const candidates = [];
+    const candidates = [{ name: TEACHER_DISPLAY_NAME, ids: [TEACHER_AUTH_UID] }];
     classes.forEach((classInfo) => {
         const name = normalizeText(
             classInfo?.teacherName
@@ -103,7 +106,9 @@ const getTeacherCandidates = (classes = []) => {
         candidates.push({ name, ids });
     });
 
-    return candidates;
+    return candidates.filter((candidate, index, list) => (
+        list.findIndex((item) => item.name === candidate.name && item.ids.join('|') === candidate.ids.join('|')) === index
+    ));
 };
 
 const getTeacherNameForDisplay = (teacherCandidates, teacherRoom = null) => {
@@ -115,14 +120,17 @@ const getTeacherNameForDisplay = (teacherCandidates, teacherRoom = null) => {
         || teacherRoom?.title
         || teacherRoom?.displayName
     );
-    if (roomName && !roomName.includes('연구소') && !roomName.includes('채수용 수학')) return roomName.replace(/\s*선생님$/, '');
+    if (roomName && !roomName.includes('연구소') && !roomName.includes('채수용 수학')) return roomName;
     return normalizeText(teacherCandidates.find((candidate) => candidate.name)?.name || '');
 };
 
 const isTeacherRoom = (room, teacherCandidates) => {
-    if (!room || teacherCandidates.length === 0) return false;
+    if (!room) return false;
+    const participantIds = getRoomIdFields(room);
+    if (participantIds.includes(TEACHER_AUTH_UID)) return true;
+    if (teacherCandidates.length === 0) return false;
     const roomTexts = getRoomTextFields(room);
-    const roomIds = new Set(getRoomIdFields(room));
+    const roomIds = new Set(participantIds);
 
     return teacherCandidates.some((candidate) => {
         const idsMatch = candidate.ids.some((id) => roomIds.has(id));
@@ -152,10 +160,11 @@ const isStaffDirectRoom = (room) => {
 const buildMessengerSlots = (rooms, teacherCandidates) => {
     const sortedRooms = sortRooms([...rooms]);
     const teacherCandidatesRooms = sortedRooms.filter((room) => isTeacherRoom(room, teacherCandidates));
-    const teacherRoom = teacherCandidatesRooms[0] || null;
+    const teacherRoom = teacherCandidatesRooms.find((room) => getRoomIdFields(room).includes(TEACHER_AUTH_UID)) || teacherCandidatesRooms[0] || null;
 
-    const explicitInstituteRoom = sortedRooms.find((room) => room.id !== teacherRoom?.id && isExplicitInstituteRoom(room));
-    const fallbackInstituteRoom = sortedRooms.find((room) => room.id !== teacherRoom?.id && isStaffDirectRoom(room));
+    const nonTeacherRooms = sortedRooms.filter((room) => room.id !== teacherRoom?.id && !isTeacherRoom(room, teacherCandidates));
+    const explicitInstituteRoom = nonTeacherRooms.find((room) => getRoomIdFields(room).includes(INSTITUTE_AUTH_UID)) || nonTeacherRooms.find((room) => isExplicitInstituteRoom(room));
+    const fallbackInstituteRoom = nonTeacherRooms.find((room) => isStaffDirectRoom(room));
     const instituteRoom = explicitInstituteRoom || fallbackInstituteRoom || null;
 
     const teacherName = getTeacherNameForDisplay(teacherCandidates, teacherRoom);
@@ -172,7 +181,7 @@ const buildMessengerSlots = (rooms, teacherCandidates) => {
             room: teacherRoom,
             id: teacherRoom?.id || `${TEACHER_SLOT}-placeholder`,
             title: roomDisplayName(TEACHER_SLOT, teacherName),
-            teacherName,
+            teacherName: teacherName || TEACHER_DISPLAY_NAME,
         },
     ];
 };
@@ -231,6 +240,7 @@ export default function ParentMessengerPage({ studentId, student, ongoingClasses
     const messengerSlots = useMemo(() => buildMessengerSlots(rooms, teacherCandidates), [rooms, teacherCandidates]);
     const currentSlot = selectedSlot ? messengerSlots.find((slot) => slot.slot === selectedSlot.slot) || selectedSlot : null;
     const selectedRoomId = currentSlot?.room?.id || '';
+    const currentSlotTargetAuthUid = currentSlot?.slot === TEACHER_SLOT ? TEACHER_AUTH_UID : INSTITUTE_AUTH_UID;
     const currentRoomDisplayName = currentSlot?.title || '';
 
     useEffect(() => {
@@ -334,6 +344,12 @@ export default function ParentMessengerPage({ studentId, student, ongoingClasses
                         userRole="parent"
                         allowLegacyResolve={false}
                         emptyMessage="아직 대화 내역이 없습니다."
+                        chatSlot={currentSlot?.slot || ''}
+                        roomCreationContext={{
+                            slot: currentSlot?.slot || '',
+                            targetAuthUid: currentSlotTargetAuthUid,
+                            targetName: currentSlot?.slot === TEACHER_SLOT ? TEACHER_DISPLAY_NAME : INSTITUTE_NAME,
+                        }}
                     />
                 </div>
             </div>

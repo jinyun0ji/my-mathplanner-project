@@ -4691,6 +4691,10 @@ body{
     grid-template-columns: 2fr auto;
   }
 
+  .md\:grid-cols-\[1\.5fr_2fr_1\.5fr_auto\]{
+    grid-template-columns: 1.5fr 2fr 1.5fr auto;
+  }
+
   .md\:flex-row{
     flex-direction: row;
   }

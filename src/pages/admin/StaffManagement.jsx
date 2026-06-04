@@ -7,6 +7,7 @@ import { ROLE } from '../../constants/roles';
 export default function StaffManagement() {
     const { user } = useAuth();
     const [staffEmail, setStaffEmail] = useState('');
+    const [staffName, setStaffName] = useState('');
     const [staffRole, setStaffRole] = useState(ROLE.STAFF);
     const [staffStatus, setStaffStatus] = useState('');
     const [staffSubmitting, setStaffSubmitting] = useState(false);
@@ -38,15 +39,23 @@ export default function StaffManagement() {
         event.preventDefault();
 
         setStaffStatus('');
+        
+        const trimmedName = staffName.trim();
+        if (!trimmedName) {
+            setStaffStatus('직원 이름을 입력해주세요.');
+            return;
+        }
+
         setStaffSubmitting(true);
 
         try {
-            const result = await createStaffUser({ email: staffEmail, role: staffRole });
+            const result = await createStaffUser({ email: staffEmail, role: staffRole, name: staffName });
             const tempPasswordMessage = result?.tempPassword
                 ? `임시 비밀번호: ${result.tempPassword}`
                 : '임시 비밀번호는 계정 재설정으로 안내해주세요.';
             setStaffStatus(`계정을 생성했습니다. ${tempPasswordMessage}`);
             setStaffEmail('');
+            setStaffName('');
             setStaffRole(ROLE.STAFF);
             await loadStaffList();
         } catch (error) {
@@ -105,6 +114,7 @@ export default function StaffManagement() {
     };
 
     const resolveStaffName = (staff) => {
+        if (staff?.name) return staff.name;
         if (staff?.displayName) return staff.displayName;
         if (staff?.email) return staff.email.split('@')[0] || '이메일 없음';
         return '이메일 없음';
@@ -128,7 +138,18 @@ export default function StaffManagement() {
                     </span>
                 </div>
 
-                <form className="grid grid-cols-1 md:grid-cols-[2fr_1.5fr_auto] gap-3 items-end" onSubmit={handleCreateStaffSubmit}>
+                <form className="grid grid-cols-1 md:grid-cols-[1.5fr_2fr_1.5fr_auto] gap-3 items-end" onSubmit={handleCreateStaffSubmit}>
+                    <label className="flex flex-col gap-1">
+                        <span className="text-xs font-semibold text-gray-600">직원 이름</span>
+                        <input
+                            type="text"
+                            required
+                            value={staffName}
+                            onChange={(event) => setStaffName(event.target.value)}
+                            className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                            placeholder="[조교] 홍길동"
+                        />
+                    </label>
                     <label className="flex flex-col gap-1">
                         <span className="text-xs font-semibold text-gray-600">직원 이메일</span>
                         <input
