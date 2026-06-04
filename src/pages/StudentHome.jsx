@@ -15,6 +15,7 @@ import {
     BoardTab
 } from '../components/StudentTabs';
 import ClassroomView from './student/ClassroomView';
+import ParentMessengerPage from './parent/ParentMessengerPage';
 import StudentHeader from '../components/StudentHeader';
 import {
     Icon,
@@ -257,20 +258,52 @@ export default function StudentHome({
     const [isNotificationOpen, setIsNotificationOpen] = useState(false);
     const [visibleNotices, setVisibleNotices] = useState([]);
     const [targetMemo, setTargetMemo] = useState(null);
+    const [isMessengerPage, setIsMessengerPage] = useState(false);
     const viewerUid = student?.authUid || userId;
     const studentDocId = studentId;
     const studentAuthUid = student?.authUid || userId;
     const rawMyClasses = useMemo(() => {
         if (!Array.isArray(classes) || !studentId) return [];
-        const studentClassIds = new Set([
+        const addClassIdFromItem = (targetSet, item) => {
+            if (!item) return;
+            if (typeof item === 'string') {
+                targetSet.add(String(item));
+                return;
+            }
+            if (typeof item !== 'object') return;
+            [item.id, item.classId, item.classDocId, item.classDocumentId, item.classRefId, item.docId, item.classCode, item.code, item.classKey]
+                .filter(Boolean)
+                .forEach((value) => targetSet.add(String(value)));
+        };
+        const studentClassIds = new Set();
+        [
             ...(Array.isArray(student?.classIds) ? student.classIds : []),
-            ...(Array.isArray(student?.classes) ? student.classes.filter((item) => typeof item === 'string') : []),
-        ].map(String));
-        return classes.filter((c) => {
-            const classId = String(c?.id || c?.classId || '');
-            return (c.students || []).includes(studentId) || studentClassIds.has(classId);
+            ...(Array.isArray(student?.classes) ? student.classes : []),
+            ...(Array.isArray(student?.classStatuses) ? student.classStatuses : []),
+            ...(Array.isArray(student?.enrollments) ? student.enrollments : []),
+            ...(Array.isArray(student?.classEnrollments) ? student.classEnrollments : []),
+            ...(Array.isArray(student?.classesMeta) ? student.classesMeta : []),
+        ].forEach((item) => addClassIdFromItem(studentClassIds, item));
+        [student?.classStatusMap, student?.studentClassStatusMap, student?.enrollmentMap].forEach((mapLike) => {
+            if (!mapLike || typeof mapLike !== 'object') return;
+            Object.entries(mapLike).forEach(([key, value]) => {
+                if (key) studentClassIds.add(String(key));
+                addClassIdFromItem(studentClassIds, value);
+            });
         });
-    }, [classes, studentId, student?.classIds, student?.classes]);
+
+        const studentKeys = new Set([studentId, student?.id, student?.studentId, student?.authUid, userId].filter(Boolean).map(String));
+        return classes.filter((c) => {
+            const classKeys = [c?.id, c?.classId, c?.classDocId, c?.docId, c?.code, c?.classCode, c?.key].filter(Boolean).map(String);
+            const rosterKeys = [
+                ...(Array.isArray(c?.students) ? c.students : []),
+                ...(Array.isArray(c?.studentIds) ? c.studentIds : []),
+                ...(Array.isArray(c?.studentDocIds) ? c.studentDocIds : []),
+                ...(Array.isArray(c?.studentAuthUids) ? c.studentAuthUids : []),
+            ].map(String);
+            return classKeys.some((classId) => studentClassIds.has(classId)) || rosterKeys.some((key) => studentKeys.has(key));
+        });
+    }, [classes, student, studentId, userId]);
     const visibleClassIds = useMemo(() => getViewerVisibleClassIds(rawMyClasses, student), [rawMyClasses, student]);
     const visibleClassIdSet = useMemo(() => new Set(visibleClassIds), [visibleClassIds]);
     const myClasses = useMemo(
@@ -448,6 +481,7 @@ export default function StudentHome({
                 if (refCollection === 'chats') {
                     setSelectedClassId(null);
                     setActiveTab('menu');
+                    setIsMessengerPage(true);
                 }
             },
         });
@@ -501,6 +535,17 @@ export default function StudentHome({
         { id: 'schedule', icon: 'calendar', label: '일정' },
         { id: 'menu', icon: 'menu', label: '전체' },
     ];
+
+    if (isMessengerPage) {
+        return (
+            <ParentMessengerPage
+                studentId={studentId}
+                student={student}
+                ongoingClasses={ongoingClasses}
+                onBack={() => setIsMessengerPage(false)}
+            />
+        );
+    }
 
     return (
         <div className="bg-gray-50 min-h-screen flex flex-col relative font-sans">
@@ -571,7 +616,8 @@ export default function StudentHome({
                         {activeTab === 'learning' && (
                             <LearningTab
                                 studentId={studentId} myHomeworkStats={myHomeworkStats} myGradeComparison={myGradeComparison}
-                                clinicLogs={clinicLogs} students={students} classes={classes}
+                                clinicLogs={clinicLogs} students={students} classes={myClasses}
+                                visibleClasses={myClasses}
                                 initialTab={initialLearningTab}
                                 lessonReports={sentLessonReports}
                             />
@@ -581,7 +627,8 @@ export default function StudentHome({
                             <MenuTab 
                                 student={student} onUpdateStudent={onUpdateStudent} onLogout={onLogout}
                                 videoMemos={videoMemos} lessonLogs={filteredLessonLogs} onLinkToMemo={handleNavigateToMemo} notices={visibleNotices}
-                                setActiveTab={setActiveTab}
+                                onOpenNotifications={handleOpenNotification}
+                                onOpenMessages={() => setIsMessengerPage(true)}
                             />
                         )}
                     </div>

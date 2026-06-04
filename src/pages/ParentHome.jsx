@@ -1202,7 +1202,7 @@ export default function ParentHome({
     const navItems = [
         { id: 'home', icon: 'home', label: '홈' },
         { id: 'report', icon: 'clipboardCheck', label: '수업리포트' },
-        { id: 'learning', icon: 'bookOpen', label: '학습관리' },
+        { id: 'learning', icon: 'clipboardCheck', label: '학습관리' },
         { id: 'schedule', icon: 'calendar', label: '일정' },
         { id: 'more', icon: 'menu', label: '전체' },
     ];

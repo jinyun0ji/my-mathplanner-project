@@ -35,6 +35,7 @@ export default function LearningTab({
     clinicLogs,
     students,
     classes,
+    visibleClasses = null,
     lessonReports = [],
     initialTab = 'homework',
     isParent = false,
@@ -54,15 +55,27 @@ export default function LearningTab({
     }, [initialTab]);
 
     const classNameMap = useMemo(() => buildClassNameMap(classes), [classes]);
+    const stableVisibleClasses = useMemo(() => (Array.isArray(visibleClasses) ? visibleClasses : classes), [classes, visibleClasses]);
     const classOptions = useMemo(() => {
         const optionMap = new Map();
+        (Array.isArray(stableVisibleClasses) ? stableVisibleClasses : []).forEach((classItem) => {
+            const classId = normalizeId(classItem?.id || classItem?.classId || classItem?.classDocId || classItem?.docId);
+            if (!classId || optionMap.has(classId)) return;
+            optionMap.set(classId, classItem?.name || classItem?.title || classNameMap.get(classId) || classId);
+        });
         [...(myHomeworkStats || []), ...(myGradeComparison || []), ...(lessonReports || [])].forEach((item) => {
             const classId = getItemClassId(item);
             if (!classId || optionMap.has(classId)) return;
             optionMap.set(classId, classNameMap.get(classId) || item?.className || item?.classTitle || classId);
         });
         return [{ id: 'all', name: '전체 클래스' }, ...Array.from(optionMap, ([id, name]) => ({ id, name }))];
-    }, [classNameMap, lessonReports, myGradeComparison, myHomeworkStats]);
+    }, [classNameMap, lessonReports, myGradeComparison, myHomeworkStats, stableVisibleClasses]);
+
+    useEffect(() => {
+        if (classFilter !== 'all' && !classOptions.some((option) => option.id === classFilter)) {
+            setClassFilter('all');
+        }
+    }, [classFilter, classOptions]);
 
     const filteredHomeworkStats = useMemo(() => filterByClass(myHomeworkStats, classFilter), [classFilter, myHomeworkStats]);
     const filteredGradeComparison = useMemo(() => filterByClass(myGradeComparison, classFilter), [classFilter, myGradeComparison]);
