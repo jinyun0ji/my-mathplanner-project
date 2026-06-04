@@ -39,6 +39,23 @@ const getExpectedRoomType = (role, slotOrType) => {
 
 const getRoomType = (room) => String(room?.roomType || room?.channel || '').trim();
 
+const getRoomSlot = (room) => {
+    const explicitSlot = String(room?.slot || '').trim();
+    if (explicitSlot) return explicitSlot;
+    const type = getRoomType(room);
+    if (type === 'institute' || type.endsWith('_institute')) return 'institute';
+    if (type === 'teacher' || type.endsWith('_teacher')) return 'teacher';
+    return '';
+};
+
+const isCompatibleRoomType = (room, expectedRoomType) => {
+    const actualType = getRoomType(room);
+    if (actualType === expectedRoomType) return true;
+    if (actualType === 'institute') return expectedRoomType === 'student_institute' || expectedRoomType === 'parent_institute';
+    if (actualType === 'teacher') return expectedRoomType === 'student_teacher' || expectedRoomType === 'parent_teacher';
+    return false;
+};
+
 const buildStandardRoomId = (roomType, ownerUid, counterpartUid) => {
     if (!roomType || !ownerUid || !counterpartUid) return '';
     return `direct_${roomType}_${ownerUid}_${counterpartUid}`;
@@ -46,13 +63,18 @@ const buildStandardRoomId = (roomType, ownerUid, counterpartUid) => {
 
 const isExactStandardRoom = (room, { viewerUid, targetAuthUid, roomType, studentId = '' }) => {
     if (!room || !viewerUid || !targetAuthUid || !roomType) return false;
-    if (getRoomType(room) !== roomType) return false;
+    if (!isCompatibleRoomType(room, roomType)) return false;
+    const expectedSlot = roomType.endsWith('_teacher') ? 'teacher' : 'institute';
+    const roomSlot = getRoomSlot(room);
+    if (roomSlot && roomSlot !== expectedSlot) return false;
     const participantIds = Array.isArray(room?.participantIds) ? room.participantIds.map(String) : [];
     if (participantIds.length !== 2) return false;
     if (!participantIds.includes(String(viewerUid)) || !participantIds.includes(String(targetAuthUid))) return false;
-    if (room?.targetRole && !['staff', 'teacher'].includes(String(room.targetRole))) return false;
+    if (room?.targetRole && expectedSlot === 'teacher' && String(room.targetRole) !== 'teacher') return false;
+    if (room?.targetRole && expectedSlot === 'institute' && String(room.targetRole) !== 'staff') return false;
     if (room?.counterpartUid && String(room.counterpartUid) !== String(targetAuthUid)) return false;
-    if (roomType === 'parent_teacher' && studentId && room?.studentId && String(room.studentId) !== String(studentId)) return false;
+    if (expectedSlot === 'teacher' && room?.teacherAuthUid && String(room.teacherAuthUid) !== String(targetAuthUid)) return false;
+    if ((roomType === 'parent_teacher' || roomType === 'parent_institute') && studentId && room?.studentId && String(room.studentId) !== String(studentId)) return false;
     return true;
 };
 
@@ -71,17 +93,7 @@ const resolveStandardChatRoom = async ({ viewerUid, targetAuthUid, roomType, stu
         }
     }
 
-    const queryShape = { collection: 'chatRooms', where: ['participantIds', 'array-contains', viewerUid], exactRoomType: roomType, counterpartUid: targetAuthUid };
-    try {
-        console.log('[student messenger] resolve standard room query', queryShape);
-        const snap = await getDocs(query(collection(db, 'chatRooms'), where('participantIds', 'array-contains', viewerUid), limit(50)));
-        return snap.docs
-            .map((roomDoc) => ({ id: roomDoc.id, ...roomDoc.data() }))
-            .find((room) => isExactStandardRoom(room, { viewerUid, targetAuthUid, roomType, studentId })) || null;
-    } catch (error) {
-        logFirestoreQueryFailure('resolve standard room query', error, queryShape);
-        return null;
-    }
+    return null;
 };
 
 const parseClientTempIdTime = (clientTempId) => {

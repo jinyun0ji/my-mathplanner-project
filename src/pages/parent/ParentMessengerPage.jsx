@@ -25,14 +25,39 @@ const STANDARD_ROOM_TYPES = {
 const getExpectedRoomType = (viewerRole, slot) => STANDARD_ROOM_TYPES[String(viewerRole || 'parent')]?.[slot] || '';
 const getRoomType = (room) => normalizeText(room?.roomType || room?.channel);
 const getParticipantIds = (room) => (Array.isArray(room?.participantIds) ? room.participantIds.map(String) : []);
+const getRoomSlot = (room) => {
+    const explicitSlot = normalizeText(room?.slot);
+    if (explicitSlot) return explicitSlot;
+    const roomType = getRoomType(room);
+    if (roomType === 'institute' || roomType.endsWith('_institute')) return INSTITUTE_SLOT;
+    if (roomType === 'teacher' || roomType.endsWith('_teacher')) return TEACHER_SLOT;
+    return '';
+};
+const isCompatibleRoomType = (room, expectedRoomType) => {
+    const actualType = getRoomType(room);
+    if (actualType === expectedRoomType) return true;
+    if (actualType === 'institute') return expectedRoomType.endsWith('_institute');
+    if (actualType === 'teacher') return expectedRoomType.endsWith('_teacher');
+    return false;
+};
 
-const isStandardSlotRoom = (room, { viewerRole, slot, authUid, targetAuthUid, studentId }) => {
+const isStandardSlotRoom = (room, { viewerRole, slot, authUid, targetAuthUid, studentId, teacherName = '' }) => {
     const expectedRoomType = getExpectedRoomType(viewerRole, slot);
-    if (!room || !expectedRoomType || getRoomType(room) !== expectedRoomType) return false;
+    if (!room || !expectedRoomType || !isCompatibleRoomType(room, expectedRoomType)) return false;
+    const roomSlot = getRoomSlot(room);
+    if (roomSlot && roomSlot !== slot) return false;
     const participantIds = getParticipantIds(room);
     if (participantIds.length !== 2) return false;
     if (!participantIds.includes(String(authUid || '')) || !participantIds.includes(String(targetAuthUid || ''))) return false;
     if (room?.counterpartUid && String(room.counterpartUid) !== String(targetAuthUid || '')) return false;
+    if (slot === TEACHER_SLOT) {
+        const roomTeacherName = normalizeText(room?.teacherName || room?.counterpartName);
+        const expectedTeacherName = normalizeText(teacherName);
+        if (room?.targetRole && String(room.targetRole) !== 'teacher') return false;
+        if (room?.teacherAuthUid && String(room.teacherAuthUid) !== String(targetAuthUid || '')) return false;
+        if (!room?.teacherAuthUid && !room?.counterpartUid && expectedTeacherName && roomTeacherName && roomTeacherName !== expectedTeacherName) return false;
+    }
+    if (slot === INSTITUTE_SLOT && room?.targetRole && String(room.targetRole) !== 'staff') return false;
     if ((expectedRoomType === 'parent_teacher' || expectedRoomType === 'parent_institute') && studentId && room?.studentId && String(room.studentId) !== String(studentId)) return false;
     return true;
 };
@@ -126,6 +151,7 @@ const buildMessengerSlots = (rooms, teacherCandidates, { viewerRole = 'parent', 
         authUid,
         targetAuthUid: TEACHER_AUTH_UID,
         studentId,
+        teacherName: TEACHER_DISPLAY_NAME,
     })) || null;
 
     const instituteRoom = sortedRooms.find((room) => isStandardSlotRoom(room, {
@@ -300,7 +326,7 @@ export default function ParentMessengerPage({ studentId, student, ongoingClasses
                         roomCreationContext={{
                             slot: currentSlot?.slot || '',
                             targetAuthUid: currentSlotTargetAuthUid,
-                            targetName: currentSlot?.slot === TEACHER_SLOT ? TEACHER_DISPLAY_NAME : INSTITUTE_NAME,
+                            targetName: currentSlot?.slot === TEACHER_SLOT ? (currentSlot?.teacherName || TEACHER_DISPLAY_NAME) : INSTITUTE_NAME,
                             roomType: currentSlot?.roomType || getExpectedRoomType(viewerRole, currentSlot?.slot),
                         }}
                     />

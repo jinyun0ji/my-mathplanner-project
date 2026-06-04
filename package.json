@@ -36,7 +36,9 @@
     "migrate:homework-question-keys:dry": "node functions/scripts/migrateHomeworkResultQuestionNumbers.js",
     "migrate:homework-question-keys:write": "node functions/scripts/migrateHomeworkResultQuestionNumbers.js --write",
     "backfill:chat-parent-participants:dry": "node functions/scripts/backfillChatParticipantIdsForParents.js",
-    "backfill:chat-parent-participants:write": "node functions/scripts/backfillChatParticipantIdsForParents.js --write"
+    "backfill:chat-parent-participants:write": "node functions/scripts/backfillChatParticipantIdsForParents.js --write",
+    "backfill:chat-room-types:dry": "node functions/scripts/backfillChatRoomTypes.js",
+    "backfill:chat-room-types:write": "node functions/scripts/backfillChatRoomTypes.js --write"
   },
   "eslintConfig": {
     "extends": [
