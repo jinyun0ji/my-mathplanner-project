@@ -71,6 +71,7 @@ export default function LessonReportManagement({
   grades = {},
   lessonReports = [],
   closures = [],
+  classTestStats = {},
 }) {
   const { studentId: routeStudentId } = useParams();
   const [searchParams] = useSearchParams();
@@ -330,8 +331,9 @@ export default function LessonReportManagement({
       grades,
       studentId: draft?.studentId,
       student: students.find((item) => String(item.id) === String(draft?.studentId || '')) || null,
+      classTestStats,
     }),
-    [draft?.selectedTestIds, draft?.studentId, grades, students, tests],
+    [classTestStats, draft?.selectedTestIds, draft?.studentId, grades, students, tests],
   );
 
 
@@ -522,6 +524,7 @@ export default function LessonReportManagement({
       grades,
       studentId: reportDraft.studentId,
       student,
+      classTestStats,
     });
 
     const payload = {
@@ -944,7 +947,7 @@ export default function LessonReportManagement({
                     <p className="font-semibold">시험</p>
                     <ul className="list-disc pl-5">
                       {previewTestSummary.text.map((line, index) => (
-                        <li key={`preview-test-${index}`}>{line}</li>
+                        <li key={`preview-test-${index}`} className="whitespace-pre-line">{line}</li>
                       ))}
                     </ul>
                   </div>

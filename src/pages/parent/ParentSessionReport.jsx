@@ -32,6 +32,18 @@ export default function ParentSessionReport({ report, onBack }) {
                 <SummaryCard label="오늘 테스트" value={report.testScore} colorClass={report.testScore === '테스트 없음' ? 'text-gray-400 bg-gray-50' : 'text-blue-600 bg-blue-50 border-blue-100'} icon="edit" />
             </div>
 
+
+            {Array.isArray(report.testDetails) && report.testDetails.length > 0 && (
+                <Section title="시험">
+                    <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm text-sm text-gray-700 space-y-1">
+                        <p className="font-semibold text-gray-900">{report.testDetails[0]}</p>
+                        {report.testDetails.slice(1).map((line, index) => (
+                            <p key={`test-detail-${index}`}>{line}</p>
+                        ))}
+                    </div>
+                </Section>
+            )}
+
             {/* 5-1. 오늘 수업 내용 */}
             <Section title="오늘 수업 내용">
                 <ul className="list-disc list-inside space-y-1 text-sm text-gray-700 bg-white p-4 rounded-2xl border border-gray-200 shadow-sm">

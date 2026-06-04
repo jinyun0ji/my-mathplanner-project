@@ -1,5 +1,5 @@
 // src/utils/reportHelper.js
-import { formatSessionTestScore } from './scoreDisplay';
+import { buildTestDisplayLines, formatSessionTestScore, getTestStatsForDisplay } from './scoreDisplay';
 
 
 // [데이터 어댑터] Raw Data -> SessionReport Interface 변환
@@ -8,11 +8,10 @@ export const generateSessionReport = (sessionId, studentId, contextData) => {
         lessonLogs,
         attendanceLogs,
         homeworkAssignments,
-        homeworkResults,
         tests,
         grades,
         classes = [],
-        students = []
+        classTestStats = {}
     } = contextData;
 
     // 1. 기본 수업 정보 (LessonLog)
@@ -53,7 +52,7 @@ export const generateSessionReport = (sessionId, studentId, contextData) => {
     let testScoreValue = "테스트 없음";
     if (dailyTest) {
         const grade = grades[studentId]?.[dailyTest.id] || null;
-        testScoreValue = formatSessionTestScore(grade, dailyTest);
+        testScoreValue = formatSessionTestScore(grade, dailyTest, classTestStats);
     }
 
     // 5. 수업 요약
@@ -99,6 +98,11 @@ export const generateSessionReport = (sessionId, studentId, contextData) => {
         homeworkStatus,
         progressTopic: lesson.progress,
         testScore: testScoreValue,
+        testDetails: dailyTest ? buildTestDisplayLines({
+            title: dailyTest.name || '시험',
+            gradeRecord: grades[studentId]?.[dailyTest.id] || null,
+            stats: getTestStatsForDisplay(dailyTest, classTestStats),
+        }) : [],
 
         lessonSummary,
         learningComment,
