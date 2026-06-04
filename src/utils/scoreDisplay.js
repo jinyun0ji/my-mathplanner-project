@@ -17,33 +17,45 @@ export const pickScoreValue = (recordOrValue) => {
     return recordOrValue;
   }
 
-  if ('score' in recordOrValue) return recordOrValue.score;
-  if ('result' in recordOrValue) return recordOrValue.result;
-  if ('totalScore' in recordOrValue) return recordOrValue.totalScore;
-  if ('studentScore' in recordOrValue) return recordOrValue.studentScore;
-  if ('value' in recordOrValue) return recordOrValue.value;
-  return null;
+  const scoreKeys = ['score', 'totalScore', 'result', 'studentScore', 'value'];
+  const existingValues = scoreKeys
+    .filter((key) => key in recordOrValue)
+    .map((key) => recordOrValue[key]);
+  const presentValue = existingValues.find((value) => !isScoreEmptyText(value));
+  return presentValue !== undefined ? presentValue : (existingValues[0] ?? null);
 };
 
-export const isAbsentScore = (recordOrValue) => {
+export const isAbsentGradeRecord = (recordOrValue) => {
   if (recordOrValue && typeof recordOrValue === 'object' && !(recordOrValue instanceof Date)) {
     if (recordOrValue.attempted === false) return true;
 
-    const values = [
-      recordOrValue.score,
+    const checkedValues = [
       recordOrValue.result,
+      recordOrValue.score,
       recordOrValue.totalScore,
+    ];
+
+    const hasCheckedField = checkedValues.some((value) => value !== undefined);
+    const checkedFieldsAreAbsent = hasCheckedField
+      ? checkedValues
+        .filter((value) => value !== undefined)
+        .every((value) => isScoreEmptyText(value))
+      : true;
+
+    if (!checkedFieldsAreAbsent) return false;
+
+    const fallbackValues = [
       recordOrValue.studentScore,
       recordOrValue.value,
     ];
-
-    const hasPresentValue = values.some((value) => value !== undefined && !isScoreEmptyText(value));
-    if (hasPresentValue) return false;
-    return values.some((value) => isScoreEmptyText(value));
+    const hasFallbackScore = fallbackValues.some((value) => value !== undefined && !isScoreEmptyText(value));
+    return !hasFallbackScore;
   }
 
   return isScoreEmptyText(recordOrValue);
 };
+
+export const isAbsentScore = isAbsentGradeRecord;
 
 export const formatNumberOneDecimal = (value, fallback = '-') => {
   const num = toFiniteScoreNumber(value);
@@ -53,7 +65,7 @@ export const formatNumberOneDecimal = (value, fallback = '-') => {
 
 export const formatStudentScore = (recordOrValue, options = {}) => {
   const { absentLabel = '미응시', includeUnit = true } = options;
-  if (isAbsentScore(recordOrValue)) return absentLabel;
+  if (isAbsentGradeRecord(recordOrValue)) return absentLabel;
 
   const score = toFiniteScoreNumber(pickScoreValue(recordOrValue));
   if (score === null) return absentLabel;
@@ -69,15 +81,66 @@ export const formatScoreStat = (value, options = {}) => {
   return includeUnit ? `${label}점` : label;
 };
 
-export const formatSessionTestScore = (gradeRecord, test = {}) => {
-  const maxScore = test?.maxScore ?? test?.totalScore ?? test?.classMax ?? null;
-  const maxLabel = formatScoreStat(maxScore, { fallback: '', includeUnit: true });
-
-  if (isAbsentScore(gradeRecord)) {
-    return maxLabel ? `미응시 / ${maxLabel}` : '미응시';
+const firstFiniteScore = (...values) => {
+  for (const value of values) {
+    const score = toFiniteScoreNumber(value);
+    if (score !== null) return score;
   }
+  return null;
+};
 
+export const getTestStatsForDisplay = (test = {}, classTestStats = {}) => {
+  const stats = classTestStats?.[test?.id] || classTestStats?.[`${test?.classId}_${test?.id}`] || null;
+
+  return {
+    average: firstFiniteScore(
+      stats?.average,
+      test?.average,
+      test?.classAverage,
+    ),
+    highest: firstFiniteScore(
+      stats?.maxScore,
+      stats?.highestScore,
+      stats?.classMax,
+      test?.classMax,
+      test?.highestScore,
+      test?.highScore,
+    ),
+    perfect: firstFiniteScore(
+      test?.maxScore,
+      test?.totalScore,
+      test?.perfectScore,
+    ),
+  };
+};
+
+export const buildTestStatParts = (stats = {}, options = {}) => {
+  const { includeUnit = true } = options;
+  return [
+    ['평균', stats.average],
+    ['최고', stats.highest],
+    ['만점', stats.perfect],
+  ]
+    .map(([label, value]) => {
+      const formatted = formatScoreStat(value, { fallback: '', includeUnit });
+      return formatted ? `${label} ${formatted}` : '';
+    })
+    .filter(Boolean);
+};
+
+export const formatTestStatsInline = (stats = {}, options = {}) => (
+  buildTestStatParts(stats, options).join(' · ')
+);
+
+export const buildTestDisplayLines = ({ title, gradeRecord, stats = {} }) => ([
+  title,
+  `학생: ${formatStudentScore(gradeRecord, { includeUnit: true })}`,
+  ...buildTestStatParts(stats, { includeUnit: true }).map((part) => part.replace(' ', ': ')),
+]);
+
+export const formatSessionTestScore = (gradeRecord, test = {}, classTestStats = {}) => {
+  const stats = getTestStatsForDisplay(test, classTestStats);
   const scoreLabel = formatStudentScore(gradeRecord, { includeUnit: true });
-  if (scoreLabel === '미응시') return maxLabel ? `미응시 / ${maxLabel}` : '미응시';
-  return maxLabel ? `${scoreLabel} / ${maxLabel}` : scoreLabel;
+  const statParts = buildTestStatParts(stats, { includeUnit: true });
+  return [scoreLabel, ...statParts].join(' · ');
 };

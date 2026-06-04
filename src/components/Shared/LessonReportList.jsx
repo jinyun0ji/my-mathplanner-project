@@ -34,7 +34,7 @@ export default function LessonReportList({ reports = [] }) {
                             <div className="text-sm text-gray-700">
                                 <p className="font-semibold">시험</p>
                                 <ul className="list-disc pl-5">
-                                    {testLines.map((line, index) => <li key={`test-line-${report.id}-${index}`}>{line}</li>)}
+                                    {testLines.map((line, index) => <li key={`test-line-${report.id}-${index}`} className="whitespace-pre-line">{line}</li>)}
                                 </ul>
                             </div>
                         )}

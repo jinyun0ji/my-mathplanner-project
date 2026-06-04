@@ -4,7 +4,14 @@ import {
     getAssignmentQuestionNumbers,
     normalizeHomeworkResultMapForDisplay,
 } from '../homework/homework.service';
-import { formatRoundedPercent, formatRoundedScore } from '../../utils/numberFormat';
+import { formatRoundedPercent } from '../../utils/numberFormat';
+import {
+    buildTestDisplayLines,
+    getTestStatsForDisplay,
+    isAbsentGradeRecord,
+    pickScoreValue,
+    toFiniteScoreNumber,
+} from '../../utils/scoreDisplay';
 
 export const LESSON_REPORT_STATUS = {
     DRAFT: 'draft',
@@ -210,48 +217,37 @@ export const summarizeAssignedHomework = ({
     })),
 });
 
-export const summarizeTests = ({ selectedTestIds = [], tests = [], grades = {}, studentId, student = null }) => {
+export const summarizeTests = ({ selectedTestIds = [], tests = [], grades = {}, studentId, student = null, classTestStats = {} }) => {
     const items = selectedTestIds
         .map((id) => tests.find((test) => String(test.id) === String(id)))
         .filter(Boolean)
         .map((test) => {
             const grade = getGradeForLessonReportStudent({ student, studentId, grades, testId: test.id });
             const title = buildTestTitle(test);
-
-            const attempted = grade?.attempted === true;
-            const scoreFromResult = toFiniteNumber(grade?.result);
-            const scoreFromScore = toFiniteNumber(grade?.score);
-            const scoreFromTotal = toFiniteNumber(grade?.totalScore);
-            const resolvedScore = attempted
-                ? (scoreFromScore ?? scoreFromTotal ?? scoreFromResult)
-                : (scoreFromScore ?? scoreFromTotal ?? scoreFromResult);
-
-            const maxScore = toFiniteNumber(test?.maxScore);
-            const computedScore = Number.isFinite(resolvedScore) ? resolvedScore : getTotalScore(grade, test);
+            const stats = getTestStatsForDisplay(test, classTestStats);
+            const absent = isAbsentGradeRecord(grade);
+            const directScore = absent ? null : toFiniteScoreNumber(pickScoreValue(grade));
+            const computedScore = directScore ?? (absent ? null : getTotalScore(grade, test));
 
             const questionCount = toFiniteNumber(grade?.questionCount) ?? toFiniteNumber(test?.totalQuestions);
             const correctCount = toFiniteNumber(grade?.correctCount);
+            const displayLines = buildTestDisplayLines({ title, gradeRecord: grade, stats });
 
-            let summary = `${title} 결과 미입력`;
-            if (Number.isFinite(computedScore)) {
-                const scoreText = formatRoundedScore(computedScore, 1, '점');
-                summary = Number.isFinite(maxScore)
-                    ? `${title} ${scoreText} / ${formatRoundedScore(maxScore, 1, '점')}`
-                    : `${title} ${scoreText}`;
-            } else if (Number.isFinite(questionCount) && Number.isFinite(correctCount)) {
-                summary = `${title} ${questionCount}문항 중 ${correctCount}문항 정답`;
-            }
+            const summary = displayLines.join('\n');
 
             return {
                 testId: test.id,
                 name: test.name || '시험',
                 title,
                 grade,
-                attempted,
+                attempted: grade?.attempted === true && !absent,
                 score: Number.isFinite(computedScore) ? computedScore : null,
-                maxScore: Number.isFinite(maxScore) ? maxScore : null,
+                average: stats.average,
+                highestScore: stats.highest,
+                maxScore: stats.perfect,
                 totalQuestions: Number.isFinite(questionCount) ? questionCount : null,
                 correctCount: Number.isFinite(correctCount) ? correctCount : null,
+                displayLines,
                 summary,
             };
         });

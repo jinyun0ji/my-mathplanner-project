@@ -32,7 +32,7 @@ import { useParentContext } from '../parent';
 import { sortClassesByStatus, getViewerVisibleClassIds } from '../utils/classStatus';
 import { formatNoticeDate, getNoticeDateValue, getNoticePreviewText, sortNoticesForDisplay } from '../utils/notices';
 import { auth, functions } from '../firebase/client';
-import { formatStudentScore, formatScoreStat } from '../utils/scoreDisplay';
+import { formatStudentScore, formatTestStatsInline, getTestStatsForDisplay } from '../utils/scoreDisplay';
 import { FEATURES } from '../config/features';
 import MathText from '../components/common/MathText';
 
@@ -1057,7 +1057,6 @@ export default function ParentHome({
     }, [filteredAttendanceLogs, activeChildId, activeChild?.studentUid, activeChild?.uid, activeChild?.authUid]);
 
     const formatScoreDisplay = useCallback((value) => formatStudentScore(value, { includeUnit: true }), []);
-    const formatStatDisplay = useCallback((value) => formatScoreStat(value, { fallback: '통계 준비 중', includeUnit: false }), []);
 
     const attendanceHistory = useMemo(() => {
         const list = Array.isArray(childAttendanceLogs) ? childAttendanceLogs : [];
@@ -1110,9 +1109,9 @@ export default function ParentHome({
     // ✅ 리포트 데이터 생성 (현재 선택된 리포트 ID가 있을 때만)
     const activeReport = useMemo(() => {
         if (!selectedReportId) return null;
-        const contextData = { lessonLogs: filteredLessonLogs, attendanceLogs: filteredAttendanceLogs, homeworkAssignments: filteredHomeworkAssignments, homeworkResults, tests: filteredTests, grades, classes };
+        const contextData = { lessonLogs: filteredLessonLogs, attendanceLogs: filteredAttendanceLogs, homeworkAssignments: filteredHomeworkAssignments, homeworkResults, tests: filteredTests, grades, classes, classTestStats };
         return generateSessionReport(selectedReportId, activeChildId, contextData);
-    }, [selectedReportId, activeChildId, filteredLessonLogs, filteredAttendanceLogs, filteredHomeworkAssignments, homeworkResults, filteredTests, grades, classes]);
+    }, [selectedReportId, activeChildId, filteredLessonLogs, filteredAttendanceLogs, filteredHomeworkAssignments, homeworkResults, filteredTests, grades, classes, classTestStats]);
 
     const sentLessonReports = useMemo(() => (Array.isArray(lessonReports) ? lessonReports : [])
         .filter((report) => report?.status === 'sent' && String(report?.studentId || '') === String(activeChildId || '') && isVisibleClassItem(report))
@@ -1380,7 +1379,7 @@ export default function ParentHome({
                                                         <p className="font-semibold">시험</p>
                                                         <ul className="list-disc pl-5">
                                                             {report.testSummary.text.map((line, index) => (
-                                                                <li key={`report-test-${report.id}-${index}`}>{line}</li>
+                                                                <li key={`report-test-${report.id}-${index}`} className="whitespace-pre-line">{line}</li>
                                                             ))}
                                                         </ul>
                                                     </div>
@@ -1537,12 +1536,9 @@ export default function ParentHome({
                                                 {section.grades.length === 0 ? (
                                                     <p className="text-sm text-gray-500">시험 기록이 없습니다.</p>
                                                 ) : section.grades.map((test) => {
-                                                    const stats = classTestStats?.[test.id] || classTestStats?.[`${test.classId}_${test.id}`] || {};
-                                                    const averageRaw = Number.isFinite(stats?.average) ? stats.average : test.average ?? test.classAverage ?? null;
-                                                    const maxScoreRaw = Number.isFinite(stats?.maxScore) ? stats.maxScore : (test.maxScore ?? test.classMax ?? null);
+                                                    const statsForDisplay = getTestStatsForDisplay(test, classTestStats);
                                                     const studentScoreLabel = formatScoreDisplay(test.studentScore);
-                                                    const averageLabel = formatStatDisplay(averageRaw);
-                                                    const maxScoreLabel = formatStatDisplay(maxScoreRaw);
+                                                    const statsInline = formatTestStatsInline(statsForDisplay, { includeUnit: true });
                                                     return (
                                                         <article key={test.id} className="rounded-xl border border-gray-200 p-3 space-y-1 text-sm text-gray-700">
                                                             <div className="flex items-start justify-between gap-2">
@@ -1550,15 +1546,9 @@ export default function ParentHome({
                                                             <span className="text-[11px] font-semibold text-indigo-700 bg-indigo-50 border border-indigo-100 rounded-full px-2 py-0.5">{studentScoreLabel}</span>
                                                             </div>
                                                             <p className="text-xs text-gray-500">{test.date || '-'}</p>
-                                                            <p className="text-xs text-gray-500 mt-2">
-                                                                {averageLabel !== '통계 준비 중' && maxScoreLabel !== '통계 준비 중'
-                                                                    ? `평균 ${averageLabel}점 · 최고 ${maxScoreLabel}점`
-                                                                    : averageLabel !== '통계 준비 중'
-                                                                        ? `평균 ${averageLabel}점`
-                                                                        : maxScoreLabel !== '통계 준비 중'
-                                                                            ? `최고 ${maxScoreLabel}점`
-                                                                            : '평균 준비 중'}
-                                                            </p>
+                                                            {statsInline && (
+                                                                <p className="text-xs text-gray-500 mt-2">{statsInline}</p>
+                                                            )}
                                                         </article>
                                                     );
                                                 })}

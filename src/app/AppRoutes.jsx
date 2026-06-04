@@ -2035,6 +2035,7 @@ export default function AppRoutes({ user, role, studentIds }) {
     userRole: role,
     userId,
     lessonReports,
+    classTestStats,
     closures,
     setClosures,
   };
