@@ -133,6 +133,41 @@ const buildUserLookups = ({ students = [], parents = [] }) => {
     };
 };
 
+
+const getRoomType = (room) => normalizeText(room?.roomType || room?.channel);
+
+const getStudentDisplayNameForRoom = (room, { studentById, studentByAuthUid, parentLast4Map }) => {
+    const studentName = normalizeText(room?.studentName)
+        || getStudentNameFromIds(getRoomStudentIds(room), studentById);
+    if (studentName) return studentName;
+
+    const participantIds = Array.isArray(room?.participantIds) ? room.participantIds.map(String) : [];
+    const participantStudent = participantIds.map((participantId) => studentByAuthUid.get(participantId)).find(Boolean);
+    if (!participantStudent) return '';
+
+    return getMessengerTargetDisplayName({
+        user: participantStudent,
+        role: 'student',
+        studentById,
+        parentLast4Map,
+    });
+};
+
+const getStandardRoomDisplayTitle = (room, contextData = {}) => {
+    const roomType = getRoomType(room);
+    if (!['student_teacher', 'parent_teacher', 'student_institute', 'parent_institute'].includes(roomType)) return '';
+
+    const { studentById, studentByAuthUid, parentLast4Map } = buildUserLookups({
+        students: contextData.students || [],
+        parents: contextData.parents || [],
+    });
+    const studentName = getStudentDisplayNameForRoom(room, { studentById, studentByAuthUid, parentLast4Map });
+    if (roomType === 'parent_teacher' || roomType === 'parent_institute') {
+        return studentName ? appendParentSuffix(studentName) : '이름 미등록 학부모';
+    }
+    return studentName || '이름 미등록 학생';
+};
+
 const resolveCounterpartyUid = (room, currentUserId) => {
     const participantIds = Array.isArray(room?.participantIds) ? room.participantIds.map(String) : [];
     if (!participantIds.length) return null;
@@ -264,6 +299,9 @@ export const getChatRoomCounterparty = (
 };
 
 export const getChatRoomDisplayTitle = (room, currentUserId, contextData = {}) => {
+    const standardTitle = getStandardRoomDisplayTitle(room, contextData);
+    if (standardTitle) return standardTitle;
+
     const counterparty = getChatRoomCounterparty(
         room,
         currentUserId,

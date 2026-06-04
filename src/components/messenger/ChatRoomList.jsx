@@ -29,7 +29,7 @@ export default function ChatRoomList({
                             >
                                 <div className="flex items-center justify-between gap-3">
                                     <span className="text-sm font-medium text-gray-700 truncate">{counterpartName}</span>
-                                    <span className="text-[11px] text-gray-400 shrink-0">{room.type || 'individual'}</span>
+                                    <span className="text-[11px] text-gray-400 shrink-0">{room.roomType || room.channel || room.type || 'individual'}</span>
                                 </div>
                                 <p className="text-xs text-gray-500 truncate mt-1">{room.lastMessageText || '메시지가 없습니다.'}</p>
                             </button>

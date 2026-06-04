@@ -312,16 +312,8 @@ service cloud.firestore {
     function canAccessChatRoomData(data) {
       return isSignedIn()
         && data != null
-        && (
-          isStaffOrAdminOrTeacher()
-          || hasMyParticipantKey(data.participantIds)
-          || (data.parentId is string && data.parentId == myProfileDocId())
-          || (data.parentUid is string && data.parentUid == uid())
-          || (data.parentUids is list && uid() in data.parentUids)
-          || (data.studentId is string && data.studentId == myProfileDocId())
-          || (data.studentUid is string && data.studentUid == uid())
-          || (data.studentAuthUid is string && data.studentAuthUid == uid())
-        );
+        && data.participantIds is list
+        && uid() in data.participantIds;
     }
 
     function canAccessChatRoomDoc() {
@@ -359,24 +351,31 @@ service cloud.firestore {
       return isParent()
         && request.resource.data.type == 'individual'
         && request.resource.data.participantIds is list
-        && request.resource.data.participantIds.size() >= 2
-        && hasMyParticipantKey(request.resource.data.participantIds)
+        && request.resource.data.participantIds.size() == 2
+        && uid() in request.resource.data.participantIds
         && hasAllowedParentChatCounterpart(request.resource.data.participantIds)
         && request.resource.data.internalOnly == true
         && request.resource.data.parentId == myProfileDocId()
         && request.resource.data.parentUid == uid()
         && request.resource.data.createdBy == uid()
         && request.resource.data.updatedBy == uid()
-        && request.resource.data.channel in ['teacher', 'institute']
+        && request.resource.data.roomType in ['parent_teacher', 'parent_institute']
+        && request.resource.data.channel == request.resource.data.roomType
         && request.resource.data.slot in ['teacher', 'institute']
         && (
           (
             request.resource.data.slot == 'teacher'
+            && request.resource.data.roomType in ['parent_teacher', 'student_teacher']
+            && request.resource.data.targetRole == 'teacher'
+            && request.resource.data.counterpartUid == fixedTeacherAuthUid()
             && request.resource.data.teacherAuthUid == fixedTeacherAuthUid()
             && fixedTeacherAuthUid() in request.resource.data.participantIds
           )
           || (
             request.resource.data.slot == 'institute'
+            && request.resource.data.roomType in ['parent_institute', 'student_institute']
+            && request.resource.data.targetRole == 'staff'
+            && request.resource.data.counterpartUid == fixedInstituteAuthUid()
             && request.resource.data.staffAuthUid == fixedInstituteAuthUid()
             && fixedInstituteAuthUid() in request.resource.data.participantIds
           )
@@ -388,8 +387,8 @@ service cloud.firestore {
       return isStudent()
         && request.resource.data.type == 'individual'
         && request.resource.data.participantIds is list
-        && request.resource.data.participantIds.size() >= 2
-        && hasMyParticipantKey(request.resource.data.participantIds)
+        && request.resource.data.participantIds.size() == 2
+        && uid() in request.resource.data.participantIds
         && hasAllowedParentChatCounterpart(request.resource.data.participantIds)
         && request.resource.data.internalOnly == true
         && request.resource.data.studentId == myProfileDocId()
@@ -397,16 +396,23 @@ service cloud.firestore {
         && request.resource.data.studentAuthUid == uid()
         && request.resource.data.createdBy == uid()
         && request.resource.data.updatedBy == uid()
-        && request.resource.data.channel in ['teacher', 'institute']
+        && request.resource.data.roomType in ['student_teacher', 'student_institute']
+        && request.resource.data.channel == request.resource.data.roomType
         && request.resource.data.slot in ['teacher', 'institute']
         && (
           (
             request.resource.data.slot == 'teacher'
+            && request.resource.data.roomType in ['parent_teacher', 'student_teacher']
+            && request.resource.data.targetRole == 'teacher'
+            && request.resource.data.counterpartUid == fixedTeacherAuthUid()
             && request.resource.data.teacherAuthUid == fixedTeacherAuthUid()
             && fixedTeacherAuthUid() in request.resource.data.participantIds
           )
           || (
             request.resource.data.slot == 'institute'
+            && request.resource.data.roomType in ['parent_institute', 'student_institute']
+            && request.resource.data.targetRole == 'staff'
+            && request.resource.data.counterpartUid == fixedInstituteAuthUid()
             && request.resource.data.staffAuthUid == fixedInstituteAuthUid()
             && fixedInstituteAuthUid() in request.resource.data.participantIds
           )
@@ -719,7 +725,7 @@ service cloud.firestore {
             isStaffOrAdminOrTeacher()
             && request.resource.data.type == 'individual'
             && request.resource.data.participantIds is list
-            && request.resource.data.participantIds.size() >= 2
+            && request.resource.data.participantIds.size() == 2
             && request.resource.data.internalOnly == true
           )
           || isValidParentDirectChatRoomCreate()
@@ -749,7 +755,7 @@ service cloud.firestore {
       allow read: if canAccessRoomMessages();
 
       allow create: if canAccessRoomMessages()
-        && request.resource.data.senderId in [uid(), myProfileDocId()]
+        && request.resource.data.senderId == uid()
         && request.resource.data.messageType == 'text'
         && request.resource.data.text is string
         && request.resource.data.text.size() > 0

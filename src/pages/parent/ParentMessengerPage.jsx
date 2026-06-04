@@ -11,6 +11,32 @@ const INSTITUTE_AUTH_UID = 'lVwBt6If6JVwkop9uPIbOIHQmwg2';
 const TEACHER_AUTH_UID = 'EzOXjwwyATO2sP5yuc3CkS3oRw22';
 const TEACHER_DISPLAY_NAME = '채수용 선생님';
 
+const STANDARD_ROOM_TYPES = {
+    student: {
+        [INSTITUTE_SLOT]: 'student_institute',
+        [TEACHER_SLOT]: 'student_teacher',
+    },
+    parent: {
+        [INSTITUTE_SLOT]: 'parent_institute',
+        [TEACHER_SLOT]: 'parent_teacher',
+    },
+};
+
+const getExpectedRoomType = (viewerRole, slot) => STANDARD_ROOM_TYPES[String(viewerRole || 'parent')]?.[slot] || '';
+const getRoomType = (room) => normalizeText(room?.roomType || room?.channel);
+const getParticipantIds = (room) => (Array.isArray(room?.participantIds) ? room.participantIds.map(String) : []);
+
+const isStandardSlotRoom = (room, { viewerRole, slot, authUid, targetAuthUid, studentId }) => {
+    const expectedRoomType = getExpectedRoomType(viewerRole, slot);
+    if (!room || !expectedRoomType || getRoomType(room) !== expectedRoomType) return false;
+    const participantIds = getParticipantIds(room);
+    if (participantIds.length !== 2) return false;
+    if (!participantIds.includes(String(authUid || '')) || !participantIds.includes(String(targetAuthUid || ''))) return false;
+    if (room?.counterpartUid && String(room.counterpartUid) !== String(targetAuthUid || '')) return false;
+    if ((expectedRoomType === 'parent_teacher' || expectedRoomType === 'parent_institute') && studentId && room?.studentId && String(room.studentId) !== String(studentId)) return false;
+    return true;
+};
+
 const toDate = (value) => {
     if (!value) return null;
     if (typeof value?.toDate === 'function') return value.toDate();
@@ -19,7 +45,6 @@ const toDate = (value) => {
 };
 
 const normalizeText = (value) => String(value || '').trim();
-const normalizeLower = (value) => normalizeText(value).toLowerCase();
 
 const uniqueStrings = (values) => Array.from(new Set(
     values.flat(Infinity).filter((value) => typeof value === 'string' && value.trim()).map((value) => value.trim())
@@ -40,37 +65,6 @@ const getLastMessagePreview = (room) => (
 );
 
 const sortRooms = (roomList) => roomList.sort((a, b) => getRoomSortTime(b) - getRoomSortTime(a));
-
-const getRoomTextFields = (room) => uniqueStrings([
-    room?.type,
-    room?.channel,
-    room?.staffName,
-    room?.name,
-    room?.title,
-    room?.displayName,
-    room?.counterpartName,
-    room?.teacherName,
-    room?.participantName,
-    room?.participantNames && Object.values(room.participantNames),
-]);
-
-const getRoomIdFields = (room) => uniqueStrings([
-    room?.staffId,
-    room?.staffUid,
-    room?.staffAuthUid,
-    room?.teacherId,
-    room?.teacherUid,
-    room?.teacherAuthUid,
-    room?.createdBy,
-    room?.updatedBy,
-    room?.participantIds,
-    room?.participantUserDocIds && Object.values(room.participantUserDocIds),
-]);
-
-const hasAnyKeyword = (values, keywords) => values.some((value) => {
-    const lower = normalizeLower(value);
-    return keywords.some((keyword) => lower.includes(keyword));
-});
 
 const roomDisplayName = (slot, teacherName = '') => {
     if (slot === INSTITUTE_SLOT) return INSTITUTE_NAME;
@@ -124,48 +118,23 @@ const getTeacherNameForDisplay = (teacherCandidates, teacherRoom = null) => {
     return normalizeText(teacherCandidates.find((candidate) => candidate.name)?.name || '');
 };
 
-const isTeacherRoom = (room, teacherCandidates) => {
-    if (!room) return false;
-    const participantIds = getRoomIdFields(room);
-    if (participantIds.includes(TEACHER_AUTH_UID)) return true;
-    if (teacherCandidates.length === 0) return false;
-    const roomTexts = getRoomTextFields(room);
-    const roomIds = new Set(participantIds);
-
-    return teacherCandidates.some((candidate) => {
-        const idsMatch = candidate.ids.some((id) => roomIds.has(id));
-        const nameMatch = candidate.name && roomTexts.some((text) => normalizeText(text).includes(candidate.name));
-        return idsMatch || nameMatch;
-    });
-};
-
-const isExplicitInstituteRoom = (room) => {
-    const roomTexts = getRoomTextFields(room);
-    return hasAnyKeyword(roomTexts, ['연구소', '채수용', 'institute', 'academy', 'lab', 'center', '운영', '관리자']);
-};
-
-const isStaffDirectRoom = (room) => {
-    const type = normalizeLower(room?.type);
-    const channel = normalizeLower(room?.channel);
-    const participantRoles = room?.participantRoles && typeof room.participantRoles === 'object'
-        ? Object.values(room.participantRoles).map(normalizeLower)
-        : [];
-    return type.includes('direct')
-        || type.includes('individual')
-        || channel.includes('direct')
-        || Boolean(room?.staffId || room?.staffUid || room?.staffAuthUid)
-        || participantRoles.some((role) => ['admin', 'staff', 'operator', 'teacher', 'teaching'].includes(role));
-};
-
-const buildMessengerSlots = (rooms, teacherCandidates) => {
+const buildMessengerSlots = (rooms, teacherCandidates, { viewerRole = 'parent', authUid = '', studentId = '' } = {}) => {
     const sortedRooms = sortRooms([...rooms]);
-    const teacherCandidatesRooms = sortedRooms.filter((room) => isTeacherRoom(room, teacherCandidates));
-    const teacherRoom = teacherCandidatesRooms.find((room) => getRoomIdFields(room).includes(TEACHER_AUTH_UID)) || teacherCandidatesRooms[0] || null;
+    const teacherRoom = sortedRooms.find((room) => isStandardSlotRoom(room, {
+        viewerRole,
+        slot: TEACHER_SLOT,
+        authUid,
+        targetAuthUid: TEACHER_AUTH_UID,
+        studentId,
+    })) || null;
 
-    const nonTeacherRooms = sortedRooms.filter((room) => room.id !== teacherRoom?.id && !isTeacherRoom(room, teacherCandidates));
-    const explicitInstituteRoom = nonTeacherRooms.find((room) => getRoomIdFields(room).includes(INSTITUTE_AUTH_UID)) || nonTeacherRooms.find((room) => isExplicitInstituteRoom(room));
-    const fallbackInstituteRoom = nonTeacherRooms.find((room) => isStaffDirectRoom(room));
-    const instituteRoom = explicitInstituteRoom || fallbackInstituteRoom || null;
+    const instituteRoom = sortedRooms.find((room) => isStandardSlotRoom(room, {
+        viewerRole,
+        slot: INSTITUTE_SLOT,
+        authUid,
+        targetAuthUid: INSTITUTE_AUTH_UID,
+        studentId,
+    })) || null;
 
     const teacherName = getTeacherNameForDisplay(teacherCandidates, teacherRoom);
 
@@ -175,6 +144,7 @@ const buildMessengerSlots = (rooms, teacherCandidates) => {
             room: instituteRoom,
             id: instituteRoom?.id || `${INSTITUTE_SLOT}-placeholder`,
             title: roomDisplayName(INSTITUTE_SLOT),
+            roomType: getExpectedRoomType(viewerRole, INSTITUTE_SLOT),
         },
         {
             slot: TEACHER_SLOT,
@@ -182,43 +152,21 @@ const buildMessengerSlots = (rooms, teacherCandidates) => {
             id: teacherRoom?.id || `${TEACHER_SLOT}-placeholder`,
             title: roomDisplayName(TEACHER_SLOT, teacherName),
             teacherName: teacherName || TEACHER_DISPLAY_NAME,
+            roomType: getExpectedRoomType(viewerRole, TEACHER_SLOT),
         },
     ];
 };
 
-const buildRoomQueries = ({ authUid, parentDocId, studentId, student }) => {
-    const parentDocCandidates = uniqueStrings([
-        parentDocId,
-        student?.parentId,
-        student?.parentDocId,
-    ]);
-    const parentUidCandidates = uniqueStrings([
-        authUid,
-        student?.parentUid,
-    ]);
-
+const buildRoomQueries = ({ authUid }) => {
     const descriptors = [];
-    const addDescriptor = (field, op, value) => {
-        if (!value) return;
-        const queryShape = { collection: 'chatRooms', where: [field, op, value] };
-        const key = JSON.stringify(queryShape);
-        if (descriptors.some((item) => item.key === key)) return;
-        descriptors.push({
-            key,
-            queryShape,
-            ref: query(collection(db, 'chatRooms'), where(field, op, value)),
-        });
-    };
+    if (!authUid) return descriptors;
 
-    addDescriptor('participantIds', 'array-contains', authUid);
-    parentDocCandidates.forEach((candidate) => addDescriptor('participantIds', 'array-contains', candidate));
-    parentUidCandidates.forEach((candidate) => addDescriptor('participantIds', 'array-contains', candidate));
-    parentDocCandidates.forEach((candidate) => addDescriptor('parentId', '==', candidate));
-    parentUidCandidates.forEach((candidate) => addDescriptor('parentUid', '==', candidate));
-    if (studentId) {
-        addDescriptor('studentId', '==', String(studentId));
-        addDescriptor('studentIds', 'array-contains', String(studentId));
-    }
+    const queryShape = { collection: 'chatRooms', where: ['participantIds', 'array-contains', authUid] };
+    descriptors.push({
+        key: JSON.stringify(queryShape),
+        queryShape,
+        ref: query(collection(db, 'chatRooms'), where('participantIds', 'array-contains', authUid)),
+    });
 
     return descriptors;
 };
@@ -237,7 +185,12 @@ export default function ParentMessengerPage({ studentId, student, ongoingClasses
     }), [student?.id, student?.studentId, student?.parentId, student?.parentDocId, student?.parentUid]);
 
     const teacherCandidates = useMemo(() => getTeacherCandidates(ongoingClasses), [ongoingClasses]);
-    const messengerSlots = useMemo(() => buildMessengerSlots(rooms, teacherCandidates), [rooms, teacherCandidates]);
+    const activeStudentId = String(studentId || studentQueryFields.id || '');
+    const messengerSlots = useMemo(() => buildMessengerSlots(rooms, teacherCandidates, {
+        viewerRole,
+        authUid,
+        studentId: activeStudentId,
+    }), [rooms, teacherCandidates, viewerRole, authUid, activeStudentId]);
     const currentSlot = selectedSlot ? messengerSlots.find((slot) => slot.slot === selectedSlot.slot) || selectedSlot : null;
     const selectedRoomId = currentSlot?.room?.id || '';
     const currentSlotTargetAuthUid = currentSlot?.slot === TEACHER_SLOT ? TEACHER_AUTH_UID : INSTITUTE_AUTH_UID;
@@ -286,8 +239,7 @@ export default function ParentMessengerPage({ studentId, student, ongoingClasses
             if (!isMounted) return;
             console.log('[parent messenger] participant keys', { authUid, parentDocId });
 
-            const activeChildId = String(studentId || studentQueryFields.id || '');
-            const descriptors = buildRoomQueries({ authUid, parentDocId, studentId: activeChildId, student: studentQueryFields });
+            const descriptors = buildRoomQueries({ authUid });
             totalQueries = descriptors.length;
             if (!totalQueries) return;
 
@@ -324,7 +276,7 @@ export default function ParentMessengerPage({ studentId, student, ongoingClasses
             isMounted = false;
             unsubscribers.forEach((unsubscribe) => unsubscribe && unsubscribe());
         };
-    }, [authUid, studentId, studentQueryFields]);
+    }, [authUid]);
 
     if (currentSlot) {
         return (
@@ -337,7 +289,7 @@ export default function ParentMessengerPage({ studentId, student, ongoingClasses
                 </header>
                 <div className="flex-1 min-h-0">
                     <StudentMessenger
-                        studentId={studentId}
+                        studentId={activeStudentId}
                         studentAuthUid={student?.authUid || student?.studentUid || student?.uid || ''}
                         selectedRoomId={selectedRoomId}
                         teacherName={currentRoomDisplayName}
@@ -349,6 +301,7 @@ export default function ParentMessengerPage({ studentId, student, ongoingClasses
                             slot: currentSlot?.slot || '',
                             targetAuthUid: currentSlotTargetAuthUid,
                             targetName: currentSlot?.slot === TEACHER_SLOT ? TEACHER_DISPLAY_NAME : INSTITUTE_NAME,
+                            roomType: currentSlot?.roomType || getExpectedRoomType(viewerRole, currentSlot?.slot),
                         }}
                     />
                 </div>
