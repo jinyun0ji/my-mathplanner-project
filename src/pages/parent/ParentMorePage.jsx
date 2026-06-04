@@ -94,7 +94,7 @@ const ParentNoticesPage = ({ notices = [] }) => (
   </section>
 );
 
-const ParentMoreMenu = ({ notices = [], onChangeView, onOpenNotifications, onOpenMessages, onLogout, onAfterDeletionRequested }) => (
+const ParentMoreMenu = ({ onChangeView, onOpenNotifications, onOpenMessages, onLogout, onAfterDeletionRequested }) => (
   <section className="space-y-6">
     {/* <header className="px-1 pt-1">
       <h1 className="text-2xl font-extrabold text-gray-900">전체</h1>
@@ -116,19 +116,26 @@ const ParentMoreMenu = ({ notices = [], onChangeView, onOpenNotifications, onOpe
       <MenuRow icon="lock" title="개인정보처리방침" description="개인정보 수집 및 보호 안내" onClick={() => onChangeView('privacy')} />
     </SectionCard>
 
-    <div className="space-y-2 pt-1">
-      <button
-        type="button"
-        onClick={onLogout}
-        className="flex w-full items-center justify-center gap-2 rounded-2xl border border-rose-100 bg-white px-4 py-3 text-sm font-bold text-rose-600 shadow-sm active:scale-[0.99]"
-      >
-        <Icon name="logOut" className="h-4 w-4" />
-        로그아웃
-      </button>
-      <AccountDeletionRequestButton onAfterRequested={onAfterDeletionRequested} />
+    <div className="space-y-3 pt-1">
+      <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+        <button
+          type="button"
+          onClick={onLogout}
+          className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-semibold text-gray-700 active:bg-gray-50"
+        >
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-gray-50 text-gray-500">
+            <Icon name="logOut" className="h-4 w-4" />
+          </span>
+          로그아웃
+        </button>
+      </div>
+      <div className="pt-3 text-center">
+        <AccountDeletionRequestButton
+          onAfterRequested={onAfterDeletionRequested}
+          className="inline-flex items-center justify-center gap-1.5 px-2 py-1 text-xs font-semibold text-rose-500 underline-offset-2 hover:text-rose-600 hover:underline active:text-rose-700"
+        />
+      </div>
     </div>
-
-    <p className="px-1 text-center text-xs text-gray-400">표시 중인 공지 {notices.length}건</p>
   </section>
 );
 
@@ -178,7 +185,6 @@ const ParentMorePage = ({
 
       {moreView === 'menu' && (
         <ParentMoreMenu
-          notices={notices}
           onChangeView={onChangeView}
           onOpenNotifications={onOpenNotifications}
           onOpenMessages={onOpenMessages}
