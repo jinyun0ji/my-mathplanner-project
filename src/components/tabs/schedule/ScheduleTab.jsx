@@ -467,8 +467,8 @@ export default function ScheduleTab({
 
         if (allSchedules.length === 0) {
             return (
-                <div className="text-center py-20 text-brand-gray bg-white rounded-2xl border border-dashed border-brand-gray/50">
-                    <p className="font-bold text-brand-gray mb-1">
+                <div className="min-h-[108px] rounded-xl border border-dashed border-gray-200 bg-white/80 px-4 py-8 text-center text-sm text-brand-gray">
+                    <p className="mb-1 text-sm font-semibold text-brand-gray">
                         {selectedDate.getMonth() + 1}월 {selectedDate.getDate()}일 ({dayOfWeek})
                     </p>
                     일정이 없습니다.
@@ -477,7 +477,7 @@ export default function ScheduleTab({
         }
 
         return (
-            <div className="grid grid-cols-1 gap-4">
+            <div className="grid grid-cols-1 gap-3">
                 {allSchedules.map((item) => {
                     let log = null;
                     let borderColor = 'border-brand-main/30';
@@ -515,19 +515,19 @@ export default function ScheduleTab({
                     }
 
                     return (
-                        <div key={item.id} className={`relative pl-6 border-l-2 py-2 ml-2 ${borderColor}`}>
-                            <div className={`absolute -left-[9px] top-3 w-4 h-4 rounded-full ring-4 ring-white ${dotColor}`}></div>
+                        <div key={item.id} className={`relative ml-2 border-l-2 py-1.5 pl-5 ${borderColor}`}>
+                            <div className={`absolute -left-[7px] top-3 h-3.5 w-3.5 rounded-full ring-4 ring-white ${dotColor}`}></div>
 
                             <div
                                 onClick={(e) => item.type === 'external' ? handleEditClick(e, item) : null}
-                                className={`bg-white p-5 rounded-2xl shadow-sm border border-brand-gray/30 relative group h-full flex flex-col justify-between transition-all hover:shadow-md ${item.type === 'external' ? 'cursor-pointer hover:border-brand-main/50' : ''}`}
+                                className={`group relative flex h-full flex-col justify-between rounded-xl border border-brand-gray/30 bg-white p-4 shadow-sm transition-all hover:shadow-md ${item.type === 'external' ? 'cursor-pointer hover:border-brand-main/50' : ''}`}
                             >
                                 <div>
                                     <div className="flex justify-between mb-2">
                                         <span className={`text-xs font-bold px-2 py-1 rounded ${typeClass}`}>{typeLabel}</span>
                                         <span className="text-xs text-brand-gray font-medium">{item.time}</span>
                                     </div>
-                                    <h4 className="font-bold text-brand-black text-lg mb-2">{item.name}</h4>
+                                    <h4 className="mb-2 text-base font-bold text-brand-black">{item.name}</h4>
                                 </div>
 
                                 <div className="flex justify-between items-end">
@@ -586,9 +586,9 @@ export default function ScheduleTab({
     };
 
     return (
-        <div className="pb-24 relative animate-fade-in-up">
-            <div className="flex justify-between items-center mb-6 px-1">
-                <h2 className="text-2xl font-bold text-brand-black">수업일정</h2>
+        <div className="relative animate-fade-in-up pb-12">
+            <div className="mb-3 flex items-center justify-between px-1">
+                <h2 className="text-base font-bold text-brand-black">수업일정</h2>
                 <div className="flex gap-2">
                     {false && (
                         <button
@@ -598,21 +598,21 @@ export default function ScheduleTab({
                             <Icon name="plus" className="w-4 h-4" /> 일정 추가
                         </button>
                     )}
-                    <div className="bg-white p-1 rounded-xl border border-brand-gray/30 shadow-sm flex h-[32px] items-center">
+                    <div className="flex h-8 items-center rounded-full border border-gray-200 bg-gray-50 p-0.5">
                         <button
                             onClick={() => setViewType('weekly')}
-                            className={`px-3 py-0 h-full flex items-center rounded-lg text-xs font-bold transition-all ${viewType === 'weekly'
-                                ? 'bg-brand-main text-white shadow-md'
-                                : 'text-brand-gray hover:text-brand-black'
+                            className={`flex h-full items-center rounded-full px-2.5 text-xs font-semibold transition-all ${viewType === 'weekly'
+                                ? 'bg-white text-brand-main shadow-sm'
+                                : 'text-gray-500 hover:text-gray-800'
                                 }`}
                         >
                             주간
                         </button>
                         <button
                             onClick={() => { setViewType('monthly'); setSelectedDate(new Date()); }}
-                            className={`px-3 py-0 h-full flex items-center rounded-lg text-xs font-bold transition-all ${viewType === 'monthly'
-                                ? 'bg-brand-main text-white shadow-md'
-                                : 'text-brand-gray hover:text-brand-black'
+                            className={`flex h-full items-center rounded-full px-2.5 text-xs font-semibold transition-all ${viewType === 'monthly'
+                                ? 'bg-white text-brand-main shadow-sm'
+                                : 'text-gray-500 hover:text-gray-800'
                                 }`}
                         >
                             월간
@@ -622,24 +622,24 @@ export default function ScheduleTab({
             </div>
 
             {viewType === 'weekly' ? (
-                <div className="space-y-6">
-                    <div className="flex items-center justify-between px-2 mb-2">
+                <div className="space-y-3">
+                    <div className="flex items-center justify-between rounded-xl border border-gray-100 bg-white px-2 py-1.5 shadow-sm">
                         <button
                             onClick={prevWeek}
-                            className="p-2 bg-white rounded-full shadow-sm text-brand-gray hover:text-brand-main hover:bg-brand-bg active:bg-gray-200 transition-colors"
+                            className="rounded-full p-1.5 text-brand-gray transition-colors hover:bg-brand-bg hover:text-brand-main active:bg-gray-200"
                         >
-                            <Icon name="chevronLeft" className="w-5 h-5" />
+                            <Icon name="chevronLeft" className="h-4 w-4" />
                         </button>
-                        <span className="font-bold text-brand-black text-lg">{weekMonth}월 {weekNum}주차</span>
+                        <span className="text-sm font-bold text-brand-black">{weekMonth}월 {weekNum}주차</span>
                         <button
                             onClick={nextWeek}
-                            className="p-2 bg-white rounded-full shadow-sm text-brand-gray hover:text-brand-main hover:bg-brand-bg active:bg-gray-200 transition-colors"
+                            className="rounded-full p-1.5 text-brand-gray transition-colors hover:bg-brand-bg hover:text-brand-main active:bg-gray-200"
                         >
-                            <Icon name="chevronRight" className="w-5 h-5" />
+                            <Icon name="chevronRight" className="h-4 w-4" />
                         </button>
                     </div>
 
-                    <div className="flex justify-between bg-white p-1.5 rounded-2xl shadow-sm border border-brand-gray/30 overflow-x-auto">
+                    <div className="flex justify-between overflow-x-auto rounded-xl border border-gray-100 bg-white p-1 shadow-sm">
                         {weekDays.map((day, index) => {
                             const date = new Date(sunday);
                             date.setDate(sunday.getDate() + index);
@@ -652,10 +652,10 @@ export default function ScheduleTab({
                                 <button
                                     key={day}
                                     onClick={() => setSelectedDate(date)}
-                                    className={`flex flex-col items-center p-1 rounded-xl flex-1 transition-all min-w-[32px] relative active:scale-95 ${isSelected ? 'bg-brand-main text-white shadow-brand scale-105' : 'hover:bg-brand-bg'} ${!isSelected && isToday ? 'text-brand-main font-bold' : ''} ${!isSelected && !isToday ? 'text-brand-gray' : ''}`}
+                                    className={`relative flex min-w-[32px] flex-1 flex-col items-center rounded-lg px-1 py-1 transition-all active:scale-95 ${isSelected ? 'bg-brand-main text-white shadow-sm' : 'hover:bg-brand-bg'} ${!isSelected && isToday ? 'font-bold text-brand-main' : ''} ${!isSelected && !isToday ? 'text-brand-gray' : ''}`}
                                 >
                                     <span className="text-[10px] mb-0.5">{day}</span>
-                                    <span className={`font-bold ${isSelected ? 'text-base' : 'text-sm'}`}>{date.getDate()}</span>
+                                    <span className={`font-bold ${isSelected ? 'text-sm' : 'text-xs'}`}>{date.getDate()}</span>
                                     <div className="flex gap-0.5 mt-1 h-1.5 items-center">
                                         {(hasClass || status) && (
                                             <div className={`w-1 h-1 rounded-full ${isSelected ? 'bg-white' : (status === '출석' ? 'bg-green-500' : status === '지각' ? 'bg-yellow-400' : status === '결석' ? 'bg-brand-red' : 'bg-brand-gray')}`}></div>
@@ -668,18 +668,18 @@ export default function ScheduleTab({
                         })}
                     </div>
 
-                    <div className="space-y-4">{renderSchedules()}</div>
+                    <div className="space-y-3">{renderSchedules()}</div>
                 </div>
             ) : (
-                <div className="flex flex-col md:flex-row gap-6">
-                    <div className="bg-white rounded-3xl shadow-lg p-6 border border-brand-gray/30 mb-6 max-w-md mx-auto w-full md:w-1/2 flex-shrink-0 h-fit">
-                        <div className="flex justify-between items-center mb-6">
-                            <button onClick={prevMonth} className="p-2 hover:bg-brand-bg rounded-full text-brand-gray active:bg-gray-200">
-                                <Icon name="chevronLeft" className="w-5 h-5" />
+                <div className="flex flex-col gap-3 md:flex-row">
+                    <div className="mx-auto h-fit w-full max-w-md flex-shrink-0 rounded-2xl border border-gray-100 bg-white p-3 shadow-sm md:w-1/2">
+                        <div className="mb-3 flex items-center justify-between">
+                            <button onClick={prevMonth} className="rounded-full p-1.5 text-brand-gray hover:bg-brand-bg active:bg-gray-200">
+                                <Icon name="chevronLeft" className="h-4 w-4" />
                             </button>
-                            <h3 className="text-lg font-bold text-brand-black">{selectedDate.getFullYear()}년 {selectedDate.getMonth() + 1}월</h3>
-                            <button onClick={nextMonth} className="p-2 hover:bg-brand-bg rounded-full text-brand-gray active:bg-gray-200">
-                                <Icon name="chevronRight" className="w-5 h-5" />
+                            <h3 className="text-sm font-bold text-brand-black">{selectedDate.getFullYear()}년 {selectedDate.getMonth() + 1}월</h3>
+                            <button onClick={nextMonth} className="rounded-full p-1.5 text-brand-gray hover:bg-brand-bg active:bg-gray-200">
+                                <Icon name="chevronRight" className="h-4 w-4" />
                             </button>
                         </div>
 
@@ -689,7 +689,7 @@ export default function ScheduleTab({
                             ))}
                         </div>
 
-                        <div className="grid grid-cols-7 gap-y-4 gap-x-1">
+                        <div className="grid grid-cols-7 gap-x-1 gap-y-2">
                             {calendarDays.map((date, index) => {
                                 if (!date) return <div key={index}></div>;
 
@@ -703,7 +703,7 @@ export default function ScheduleTab({
                                         className="flex flex-col items-center cursor-pointer group active:scale-90 transition-transform"
                                         onClick={() => setSelectedDate(date)}
                                     >
-                                        <div className={`w-8 h-8 flex items-center justify-center rounded-full text-sm font-medium transition-all ${isSelected ? 'bg-brand-main text-white shadow-brand scale-110' : ''} ${!isSelected && isToday ? 'text-brand-main font-bold bg-brand-light/30' : ''} ${!isSelected && !isToday ? 'text-brand-black group-hover:bg-brand-bg' : ''}`}>
+                                        <div className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-medium transition-all ${isSelected ? 'bg-brand-main text-white shadow-sm' : ''} ${!isSelected && isToday ? 'bg-brand-light/30 font-bold text-brand-main' : ''} ${!isSelected && !isToday ? 'text-brand-black group-hover:bg-brand-bg' : ''}`}>
                                             {date.getDate()}
                                         </div>
 
@@ -721,7 +721,7 @@ export default function ScheduleTab({
                         </div>
                     </div>
 
-                    <div className="space-y-4 w-full md:w-1/2 flex-1">{renderSchedules()}</div>
+                    <div className="w-full flex-1 space-y-3 md:w-1/2">{renderSchedules()}</div>
                 </div>
             )}
 

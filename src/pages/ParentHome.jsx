@@ -1409,7 +1409,7 @@ export default function ParentHome({
                         )}
 
                         {activeTab === 'schedule' && (
-                            <div className="space-y-3"><div className="bg-white border border-gray-100 rounded-xl p-3 shadow-sm"><h3 className="text-sm font-semibold text-gray-900 mb-1">오늘/이번 주 일정</h3><p className="text-xs text-gray-500">일정을 간결한 리스트로 확인하세요.</p></div><div className="bg-white border border-gray-100 rounded-xl p-2 shadow-sm"><ScheduleTab 
+                            <div className="space-y-3"><div className="rounded-xl border border-gray-100 bg-white p-3 shadow-sm"><h3 className="mb-1 text-sm font-semibold text-gray-900">오늘/이번 주 일정</h3><p className="text-xs text-gray-500">일정을 간결한 리스트로 확인하세요.</p></div><div className="rounded-xl border border-gray-100 bg-white p-3 shadow-sm"><ScheduleTab 
                                 myClasses={myClasses} attendanceLogs={filteredAttendanceLogs} clinicLogs={clinicLogs}
                                 externalSchedules={externalSchedules} onSaveExternalSchedule={onSaveExternalSchedule} onDeleteExternalSchedule={onDeleteExternalSchedule}
                                 student={activeChild}
