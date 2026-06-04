@@ -1,4 +1,6 @@
 // src/utils/reportHelper.js
+import { formatSessionTestScore } from './scoreDisplay';
+
 
 // [데이터 어댑터] Raw Data -> SessionReport Interface 변환
 export const generateSessionReport = (sessionId, studentId, contextData) => {
@@ -50,8 +52,8 @@ export const generateSessionReport = (sessionId, studentId, contextData) => {
 
     let testScoreValue = "테스트 없음";
     if (dailyTest) {
-        const grade = grades[studentId]?.[dailyTest.id];
-        testScoreValue = grade ? `${grade.score}점` : "미응시";
+        const grade = grades[studentId]?.[dailyTest.id] || null;
+        testScoreValue = formatSessionTestScore(grade, dailyTest);
     }
 
     // 5. 수업 요약

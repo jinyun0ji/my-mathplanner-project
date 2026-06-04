@@ -32,6 +32,7 @@ import { useParentContext } from '../parent';
 import { sortClassesByStatus, getViewerVisibleClassIds } from '../utils/classStatus';
 import { formatNoticeDate, getNoticeDateValue, getNoticePreviewText, sortNoticesForDisplay } from '../utils/notices';
 import { auth, functions } from '../firebase/client';
+import { formatStudentScore, formatScoreStat } from '../utils/scoreDisplay';
 import { FEATURES } from '../config/features';
 import MathText from '../components/common/MathText';
 
@@ -1055,26 +1056,8 @@ export default function ParentHome({
             .sort((a, b) => new Date(b.date || b.createdAt || b.updatedAt || 0) - new Date(a.date || a.createdAt || a.updatedAt || 0));
     }, [filteredAttendanceLogs, activeChildId, activeChild?.studentUid, activeChild?.uid, activeChild?.authUid]);
 
-    const isScoreEmptyValue = (value) =>
-        value === null
-        || value === undefined
-        || value === ''
-        || value === '미응시'
-        || value === '미입력';
-    const toFiniteScoreNumber = useCallback((value) => {
-        if (isScoreEmptyValue(value)) return null;
-        const num = Number(value);
-        return Number.isFinite(num) ? num : null;
-    }, []);
-    const formatOneDecimal = useCallback((value, fallback = '-') => {
-        const num = toFiniteScoreNumber(value);
-        if (num === null) return fallback;
-        return num.toFixed(1);
-    }, [toFiniteScoreNumber]);
-    const formatScoreDisplay = useCallback((value) => {
-        return formatOneDecimal(value, '미응시');
-    }, [formatOneDecimal]);
-    const formatStatDisplay = useCallback((value) => formatOneDecimal(value, '통계 준비 중'), [formatOneDecimal]);
+    const formatScoreDisplay = useCallback((value) => formatStudentScore(value, { includeUnit: true }), []);
+    const formatStatDisplay = useCallback((value) => formatScoreStat(value, { fallback: '통계 준비 중', includeUnit: false }), []);
 
     const attendanceHistory = useMemo(() => {
         const list = Array.isArray(childAttendanceLogs) ? childAttendanceLogs : [];
@@ -1188,7 +1171,7 @@ export default function ParentHome({
                 const studentRecord = grades?.[activeChildId]?.[test.id] || {};
                 return {
                     ...test,
-                    studentScore: studentRecord.score ?? studentRecord.result ?? '미응시',
+                    studentScore: studentRecord,
                 };
             }).sort((a,b)=>String(b.date||'').localeCompare(String(a.date||''))),
             attendance: (attendanceMap.get(String(cls.id)) || []).slice(0, 10),
@@ -1564,13 +1547,17 @@ export default function ParentHome({
                                                         <article key={test.id} className="rounded-xl border border-gray-200 p-3 space-y-1 text-sm text-gray-700">
                                                             <div className="flex items-start justify-between gap-2">
                                                             <p className="font-bold text-gray-900">{test.name || '시험'}</p>
-                                                            <span className="text-[11px] font-semibold text-indigo-700 bg-indigo-50 border border-indigo-100 rounded-full px-2 py-0.5">점수 {studentScoreLabel}</span>
+                                                            <span className="text-[11px] font-semibold text-indigo-700 bg-indigo-50 border border-indigo-100 rounded-full px-2 py-0.5">{studentScoreLabel}</span>
                                                             </div>
                                                             <p className="text-xs text-gray-500">{test.date || '-'}</p>
                                                             <p className="text-xs text-gray-500 mt-2">
-                                                                {averageLabel === '통계 준비 중' || maxScoreLabel === '통계 준비 중'
-                                                                    ? '통계 준비 중'
-                                                                    : `평균 ${averageLabel}점 · 최고 ${maxScoreLabel}점`}
+                                                                {averageLabel !== '통계 준비 중' && maxScoreLabel !== '통계 준비 중'
+                                                                    ? `평균 ${averageLabel}점 · 최고 ${maxScoreLabel}점`
+                                                                    : averageLabel !== '통계 준비 중'
+                                                                        ? `평균 ${averageLabel}점`
+                                                                        : maxScoreLabel !== '통계 준비 중'
+                                                                            ? `최고 ${maxScoreLabel}점`
+                                                                            : '평균 준비 중'}
                                                             </p>
                                                         </article>
                                                     );

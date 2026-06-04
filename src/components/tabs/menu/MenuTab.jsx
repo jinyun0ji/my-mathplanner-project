@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Icon, formatTime } from '../../../utils/helpers';
 import CampaignIcon from '@mui/icons-material/Campaign';
 import NoteAltIcon from '@mui/icons-material/NoteAlt';
 import TuneIcon from '@mui/icons-material/Tune';
 import ModalPortal from '../../common/ModalPortal';
+import AccountDeletionRequestButton from '../../common/AccountDeletionRequestButton';
 
 export default function MenuTab({ student, onUpdateStudent, onLogout, videoMemos, lessonLogs, onLinkToMemo, notices, setActiveTab, isParent = false }) {
     const [isProfileOpen, setIsProfileOpen] = useState(false);
@@ -11,6 +13,7 @@ export default function MenuTab({ student, onUpdateStudent, onLogout, videoMemos
     const [isMemosOpen, setIsMemosOpen] = useState(false); 
     const [editData, setEditData] = useState({ school: '', grade: '', phone: '' });
     const [notifications, setNotifications] = useState({ all: true, post: true, homework: true, clinic: true, class_update: true });
+    const navigate = useNavigate();
 
     const handleOpenProfile = () => { if (student) setEditData({ school: student.school || '', grade: student.grade || '', phone: student.phone || '' }); setIsProfileOpen(true); };
     const handleSaveProfile = () => {
@@ -20,6 +23,11 @@ export default function MenuTab({ student, onUpdateStudent, onLogout, videoMemos
         onUpdateStudent({ ...student, ...editData, school: normalizedSchool }, true);
         setIsProfileOpen(false); alert('정보가 수정되었습니다.');
     };
+    const handleAfterDeletionRequested = async () => {
+        await onLogout?.();
+        navigate('/login', { replace: true });
+    };
+
     const toggleNotification = (key) => { setNotifications(prev => { if (key === 'all') { const newValue = !prev.all; return { all: newValue, post: newValue, homework: newValue, clinic: newValue, class_update: newValue }; } const newSettings = { ...prev, [key]: !prev[key] }; if (!newSettings[key]) newSettings.all = false; else if (newSettings.post && newSettings.homework && newSettings.clinic && newSettings.class_update) newSettings.all = true; return newSettings; }); };
 
     const toMillis = (value) => {
@@ -87,7 +95,15 @@ export default function MenuTab({ student, onUpdateStudent, onLogout, videoMemos
                     <div className="flex items-center gap-3"><div className="bg-gray-50 p-2 rounded-lg text-gray-500"><TuneIcon className="w-5 h-5" /></div><span className="font-bold text-gray-800">알림 설정</span></div><Icon name="chevronRight" className="w-4 h-4 text-gray-300" />
                 </button>
             </div>
-            <button onClick={onLogout} className="w-full py-4 text-gray-400 text-sm font-medium underline active:text-gray-600">로그아웃</button>
+            <div className="space-y-2">
+                <button onClick={onLogout} className="w-full py-4 text-gray-400 text-sm font-medium underline active:text-gray-600">로그아웃</button>
+                {!isParent && (
+                    <AccountDeletionRequestButton
+                        onAfterRequested={handleAfterDeletionRequested}
+                        className="w-full rounded-2xl border border-rose-200 bg-white px-4 py-3 text-sm font-bold text-rose-600 shadow-sm active:scale-[0.99]"
+                    />
+                )}
+            </div>
             
             {/* 모달들 (프로필 수정, 메모 등)은 isParent가 아닐 때만 렌더링되거나 호출됨 */}
             {isProfileOpen && !isParent && <ModalPortal><div className="fixed inset-0 z-[70] bg-black/50 flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => setIsProfileOpen(false)}><div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl animate-fade-in-up" onClick={e => e.stopPropagation()}><div className="flex justify-between items-center mb-6"><h3 className="text-lg font-bold text-brand-black">내 정보 수정</h3><button onClick={() => setIsProfileOpen(false)} className="text-brand-gray hover:text-brand-black"><Icon name="x" className="w-6 h-6" /></button></div><div className="space-y-4"><div><label className="block text-xs font-bold text-brand-gray mb-1">이름</label><input type="text" value={student?.name || ''} disabled className="w-full bg-brand-bg/50 border border-brand-gray/30 rounded-lg px-3 py-2 text-sm text-brand-gray cursor-not-allowed" /></div><div><label className="block text-xs font-bold text-brand-gray mb-1">학교</label><input type="text" value={editData.school} onChange={(e) => setEditData({...editData, school: e.target.value})} className="w-full border border-brand-gray/30 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-main focus:outline-none" placeholder="예: 서울고" /><p className="text-[10px] text-brand-gray mt-1 ml-1">* '고등학교'는 자동으로 '고'로 저장됩니다.</p></div><div><label className="block text-xs font-bold text-brand-gray mb-1">학년</label><select value={editData.grade} onChange={(e) => setEditData({...editData, grade: e.target.value})} className="w-full border border-brand-gray/30 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-main focus:outline-none appearance-none bg-white"><option value="" disabled>학년을 선택하세요</option><option value="고1">고1</option><option value="고2">고2</option><option value="고3">고3</option></select></div><div><label className="block text-xs font-bold text-brand-gray mb-1">전화번호</label><input type="text" value={editData.phone} onChange={(e) => setEditData({...editData, phone: e.target.value})} className="w-full border border-brand-gray/30 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-main focus:outline-none" placeholder="010-0000-0000" /></div><button onClick={handleSaveProfile} className="w-full bg-brand-main hover:bg-brand-dark text-white font-bold py-3 rounded-xl mt-4 transition-colors active:scale-95">저장하기</button></div></div></div></ModalPortal>}

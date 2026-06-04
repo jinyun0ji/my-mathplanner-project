@@ -12,6 +12,7 @@ import { doc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../firebase/client';
 import { signOutUser } from './authService';
 import { ALLOWED_ROLES, ROLE, isParentRole } from '../constants/roles';
+import { isDeletionRequestedProfile } from '../accountDeletion';
 
 const AuthContext = createContext(null);
 
@@ -100,6 +101,9 @@ export function AuthProvider({ children }) {
             displayName: data.displayName ?? data.name ?? '',
             email: data.email ?? '',
             active: data.active !== false,
+            status: data.status ?? null,
+            deletionRequested: data.deletionRequested === true,
+            deletionAccessBlocked: isDeletionRequestedProfile(data),
           });
 
           setRole(normalizedRole);
@@ -143,6 +147,9 @@ export function AuthProvider({ children }) {
           displayName: data.displayName ?? data.name ?? '',
           email: data.email ?? '',
           active: data.active !== false,
+          status: data.status ?? null,
+          deletionRequested: data.deletionRequested === true,
+          deletionAccessBlocked: isDeletionRequestedProfile(data),
         });
 
         setRole(legacyRole);

@@ -1,7 +1,9 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Icon } from '../../utils/helpers';
 import ParentAccountPage from './ParentAccountPage';
 import ParentLegalPage from './ParentLegalPage';
+import AccountDeletionRequestButton from '../../components/common/AccountDeletionRequestButton';
 import { termsContent } from '../../content/legal/terms';
 import { privacyContent } from '../../content/legal/privacy';
 
@@ -92,7 +94,7 @@ const ParentNoticesPage = ({ notices = [] }) => (
   </section>
 );
 
-const ParentMoreMenu = ({ notices = [], onChangeView, onOpenNotifications, onOpenMessages, onLogout }) => (
+const ParentMoreMenu = ({ notices = [], onChangeView, onOpenNotifications, onOpenMessages, onLogout, onAfterDeletionRequested }) => (
   <section className="space-y-6">
     {/* <header className="px-1 pt-1">
       <h1 className="text-2xl font-extrabold text-gray-900">전체</h1>
@@ -114,7 +116,7 @@ const ParentMoreMenu = ({ notices = [], onChangeView, onOpenNotifications, onOpe
       <MenuRow icon="lock" title="개인정보처리방침" description="개인정보 수집 및 보호 안내" onClick={() => onChangeView('privacy')} />
     </SectionCard>
 
-    <div className="pt-1">
+    <div className="space-y-2 pt-1">
       <button
         type="button"
         onClick={onLogout}
@@ -123,6 +125,7 @@ const ParentMoreMenu = ({ notices = [], onChangeView, onOpenNotifications, onOpe
         <Icon name="logOut" className="h-4 w-4" />
         로그아웃
       </button>
+      <AccountDeletionRequestButton onAfterRequested={onAfterDeletionRequested} />
     </div>
 
     <p className="px-1 text-center text-xs text-gray-400">표시 중인 공지 {notices.length}건</p>
@@ -150,7 +153,12 @@ const ParentMorePage = ({
   onOpenMessages,
   onLogout,
 }) => {
+  const navigate = useNavigate();
   const isMenu = moreView === 'menu';
+  const handleAfterDeletionRequested = async () => {
+    await onLogout?.();
+    navigate('/login', { replace: true });
+  };
 
   return (
     <div className="space-y-4 bg-gray-50 pb-6">
@@ -175,6 +183,7 @@ const ParentMorePage = ({
           onOpenNotifications={onOpenNotifications}
           onOpenMessages={onOpenMessages}
           onLogout={onLogout}
+          onAfterDeletionRequested={handleAfterDeletionRequested}
         />
       )}
       {moreView === 'board' && <ParentNoticesPage notices={notices} />}
