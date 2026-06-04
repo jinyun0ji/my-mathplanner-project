@@ -182,7 +182,10 @@ export default function StudentHome({
     // ✅ URL(querystring)로 탭/상세 상태를 동기화해서 "뒤로가기"가 탭 전환/이전 화면으로 동작하게 함
     const [searchParams, setSearchParams] = useSearchParams();
 
-    const readTabFromUrl = () => searchParams.get('tab') || 'home';
+    const readTabFromUrl = () => {
+        const tab = searchParams.get('tab') || 'home';
+        return tab === 'report' ? 'class' : tab;
+    };
     const readSubTabFromUrl = () => searchParams.get('subTab') || 'homework';
     const readClassIdFromUrl = () => searchParams.get('classId');
 
@@ -493,7 +496,7 @@ export default function StudentHome({
 
     const navItems = [
         { id: 'home', icon: 'home', label: '홈' },
-        { id: 'report', icon: 'fileText', label: '수업리포트' },
+        { id: 'class', icon: 'fileText', label: '클래스' },
         { id: 'learning', icon: 'clipboardCheck', label: '학습관리' },
         { id: 'schedule', icon: 'calendar', label: '일정' },
         { id: 'menu', icon: 'menu', label: '전체' },
@@ -558,15 +561,6 @@ export default function StudentHome({
                             />
                         )}
                         {activeTab === 'class' && <ClassTab myClasses={myClasses} setSelectedClassId={setSelectedClassId} />}
-                        {activeTab === 'report' && (
-                            <LearningTab
-                                studentId={studentId} myHomeworkStats={myHomeworkStats} myGradeComparison={myGradeComparison}
-                                clinicLogs={clinicLogs} students={students} classes={classes}
-                                initialTab="reports"
-                                lessonReports={sentLessonReports}
-                                compactHeader={false}
-                            />
-                        )}
                         {activeTab === 'schedule' && (
                             <ScheduleTab
                                 myClasses={myClasses} externalSchedules={externalSchedules} attendanceLogs={filteredAttendanceLogs}
