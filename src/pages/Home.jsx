@@ -1,10 +1,11 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Icon } from '../utils/helpers';
 import { collection, getDocs, limit, orderBy, query } from 'firebase/firestore';
 import { db } from '../firebase/client';
 import useAuth from '../auth/useAuth';
 import { isAdminRole, isStaffOrTeachingRole } from '../constants/roles';
-import { completeStaffTimelineItem, fetchPendingStaffTimeline } from '../domain/staffTimeline/staffTimeline.service';
+import { fetchStaffTimeline as fetchStaffTimelineThreads } from '../domain/staffTimeline/staffTimeline.service';
+import StaffTimelineThreadCard from '../components/StaffTimeline/StaffTimelineThreadCard';
 
 export default function Home({ onQuickAction, onCreateLinkCode, userRole }) {
     const { user, userProfile } = useAuth();
@@ -18,7 +19,7 @@ export default function Home({ onQuickAction, onCreateLinkCode, userRole }) {
     const [staffTimelineItems, setStaffTimelineItems] = useState([]);
     const [staffTimelineLoading, setStaffTimelineLoading] = useState(false);
     const [staffTimelineError, setStaffTimelineError] = useState('');
-    const [completingTimelineId, setCompletingTimelineId] = useState('');
+    const [staffTimelineFilter, setStaffTimelineFilter] = useState('pending');
     const isAdmin = isAdminRole(userRole);
     const canAccessStaffTimeline = isStaffOrTeachingRole(userRole);
     const fallbackName = userProfile?.email || user?.email ? (userProfile?.email || user?.email).split('@')[0] : '';
@@ -55,7 +56,7 @@ export default function Home({ onQuickAction, onCreateLinkCode, userRole }) {
     }, [fetchLogs]);
 
 
-    const fetchStaffTimeline = useCallback(async () => {
+    const loadStaffTimeline = useCallback(async () => {
         if (!canAccessStaffTimeline || !db) {
             setStaffTimelineItems([]);
             return;
@@ -65,7 +66,10 @@ export default function Home({ onQuickAction, onCreateLinkCode, userRole }) {
         setStaffTimelineError('');
 
         try {
-            const items = await fetchPendingStaffTimeline(db, 30);
+            const items = await fetchStaffTimelineThreads(db, {
+                status: staffTimelineFilter,
+                limitCount: 50,
+            });
             setStaffTimelineItems(items);
         } catch (error) {
             console.error('[staffTimeline] failed to load items', error);
@@ -74,11 +78,33 @@ export default function Home({ onQuickAction, onCreateLinkCode, userRole }) {
         } finally {
             setStaffTimelineLoading(false);
         }
-    }, [canAccessStaffTimeline]);
+    }, [canAccessStaffTimeline, staffTimelineFilter]);
 
     useEffect(() => {
-        fetchStaffTimeline();
-    }, [fetchStaffTimeline]);
+        loadStaffTimeline();
+    }, [loadStaffTimeline]);
+
+    const timelineGroups = useMemo(() => {
+        const groups = new Map();
+        staffTimelineItems.forEach((item) => {
+            const key = item.studentId || `name:${item.studentName || 'unknown'}`;
+            if (!groups.has(key)) {
+                groups.set(key, {
+                    key,
+                    studentName: item.studentName || '학생명 미상',
+                    items: [],
+                });
+            }
+            groups.get(key).items.push(item);
+        });
+        return Array.from(groups.values());
+    }, [staffTimelineItems]);
+
+    const timelineActor = useMemo(() => ({
+        uid: user?.uid || '',
+        name: displayName,
+        role: userProfile?.role || userProfile?.type || userRole || 'staff',
+    }), [displayName, user?.uid, userProfile?.role, userProfile?.type, userRole]);
 
     const stats = [
         { label: '총 재원생', value: '42명', change: '+2명', type: 'increase', icon: 'users', color: 'indigo' },
@@ -141,40 +167,6 @@ export default function Home({ onQuickAction, onCreateLinkCode, userRole }) {
     };
 
 
-    const getTimelineDateText = (value) => {
-        if (!value) return '-';
-        const date = value?.toDate ? value.toDate() : new Date(value);
-        if (Number.isNaN(date.getTime())) return '-';
-        return date.toLocaleString('ko-KR', {
-            month: '2-digit',
-            day: '2-digit',
-            hour: '2-digit',
-            minute: '2-digit',
-        });
-    };
-
-    const handleCompleteTimelineItem = async (item) => {
-        if (!item?.id || !canAccessStaffTimeline) return;
-
-        const completionComment = window.prompt('처리 완료 메모를 입력하세요. (선택)') || '';
-        setCompletingTimelineId(item.id);
-        setStaffTimelineError('');
-
-        try {
-            await completeStaffTimelineItem(db, item.id, {
-                completedBy: user?.uid || '',
-                completedByName: displayName,
-                completionComment,
-            });
-            await fetchStaffTimeline();
-        } catch (error) {
-            console.error('[staffTimeline] failed to complete item', error);
-            setStaffTimelineError(error?.message || '인수인계 처리 완료 저장에 실패했습니다.');
-        } finally {
-            setCompletingTimelineId('');
-        }
-    };
-
     const visibleNotificationLogs = (notificationLogs || []).slice(0, 10);
 
     return (
@@ -227,7 +219,7 @@ export default function Home({ onQuickAction, onCreateLinkCode, userRole }) {
                 </div>
             )}
 
-            {isAdmin && (
+            {/* {isAdmin && (
                 <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-5 flex flex-col gap-4">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
@@ -307,82 +299,77 @@ export default function Home({ onQuickAction, onCreateLinkCode, userRole }) {
                         </div>
                     )}
                 </div>
-            )}
+            )} */}
 
 
             {canAccessStaffTimeline && (
-                <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-5 flex flex-col gap-4">
-                    <div className="flex items-center justify-between gap-3">
+                <section className="flex flex-col gap-4 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <div className="flex items-center gap-3">
-                            <div className="p-2.5 rounded-xl bg-[#f1f4ff] text-[#334a91] border border-[#eef2ff]">
-                                <Icon name="clipboard" className="w-5 h-5" />
+                            <div className="rounded-xl border border-[#eef2ff] bg-[#f1f4ff] p-2.5 text-[#334a91]">
+                                <Icon name="clipboard" className="h-5 w-5" />
                             </div>
                             <div>
-                                <h3 className="text-lg font-bold text-gray-800">교직원 인수인계</h3>
-                                <p className="text-xs text-gray-500">클리닉에서 공유된 처리 대기 지시사항을 최신순으로 확인합니다.</p>
+                                <h3 className="text-lg font-bold text-gray-800">학생별 교직원 타임라인</h3>
+                                <p className="text-xs text-gray-500">클리닉 맥락과 후속 댓글을 학생별로 이어서 확인합니다.</p>
                             </div>
                         </div>
-                        <span className="rounded-full bg-[#f1f4ff] px-3 py-1 text-xs font-bold text-[#334a91]">
-                            대기 {staffTimelineItems.length}건
+                        <span className="self-start rounded-full bg-[#f1f4ff] px-3 py-1 text-xs font-bold text-[#334a91] sm:self-auto">
+                            {staffTimelineItems.length}건
                         </span>
                     </div>
 
+                    <div className="flex rounded-xl bg-gray-100 p-1" role="group" aria-label="교직원 타임라인 상태 필터">
+                        {[
+                            { value: 'pending', label: '처리대기' },
+                            { value: 'completed', label: '처리완료' },
+                            { value: 'all', label: '전체' },
+                        ].map((filter) => (
+                            <button
+                                key={filter.value}
+                                type="button"
+                                onClick={() => setStaffTimelineFilter(filter.value)}
+                                className={`flex-1 rounded-lg px-3 py-2 text-sm font-bold transition ${staffTimelineFilter === filter.value ? 'bg-white text-[#334a91] shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                            >
+                                {filter.label}
+                            </button>
+                        ))}
+                    </div>
+
                     {staffTimelineError && (
-                        <div className="rounded-xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-                            {staffTimelineError}
-                        </div>
+                        <div className="rounded-xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm text-rose-700">{staffTimelineError}</div>
                     )}
 
                     {staffTimelineLoading ? (
-                        <div className="text-sm text-gray-500 text-center py-6 border border-dashed border-gray-200 rounded-xl">
-                            인수인계를 불러오는 중입니다...
-                        </div>
-                    ) : staffTimelineItems.length === 0 ? (
-                        <div className="text-sm text-gray-500 text-center py-6 border border-dashed border-gray-200 rounded-xl">
-                            처리할 인수인계가 없습니다.
+                        <div className="rounded-xl border border-dashed border-gray-200 py-6 text-center text-sm text-gray-500">인수인계를 불러오는 중입니다...</div>
+                    ) : timelineGroups.length === 0 ? (
+                        <div className="rounded-xl border border-dashed border-gray-200 py-6 text-center text-sm text-gray-500">
+                            {staffTimelineFilter === 'pending' ? '처리 대기 중인 인수인계가 없습니다.' : '해당 상태의 인수인계가 없습니다.'}
                         </div>
                     ) : (
-                        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-                            {staffTimelineItems.map((item) => {
-                                const isCompleted = item.status === 'completed';
-                                return (
-                                    <div key={item.id} className="rounded-xl border border-gray-200 bg-gray-50/60 p-4 shadow-sm">
-                                        <div className="flex items-start justify-between gap-3">
-                                            <div className="min-w-0">
-                                                <p className="text-base font-bold text-gray-900 truncate">{item.studentName || '학생명 미상'}</p>
-                                                <p className="mt-1 text-xs text-gray-500">
-                                                    <span className="font-semibold text-[#334a91]">{item.sourceType === 'clinic' ? '클리닉' : item.sourceType || '-'}</span>
-                                                    <span className="mx-1.5 text-gray-300">·</span>
-                                                    작성자 {item.createdByName || '-'}
-                                                    <span className="mx-1.5 text-gray-300">·</span>
-                                                    {getTimelineDateText(item.createdAt)}
-                                                </p>
-                                            </div>
-                                            <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-bold ${isCompleted ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-[#eef2ff] text-[#334a91] border border-[#dfe6ff]'}`}>
-                                                {isCompleted ? '처리완료' : '처리대기'}
-                                            </span>
-                                        </div>
-                                        <p className="mt-3 whitespace-pre-wrap rounded-lg bg-white px-3 py-2 text-sm leading-relaxed text-gray-700 border border-gray-100">
-                                            {item.content || '내용 없음'}
-                                        </p>
-                                        {!isCompleted && (
-                                            <div className="mt-3 flex justify-end">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleCompleteTimelineItem(item)}
-                                                    disabled={completingTimelineId === item.id}
-                                                    className="rounded-lg bg-[#455fab] px-3 py-2 text-xs font-bold text-white transition hover:bg-[#3b5198] disabled:cursor-not-allowed disabled:opacity-60"
-                                                >
-                                                    {completingTimelineId === item.id ? '저장 중...' : '처리 완료'}
-                                                </button>
-                                            </div>
-                                        )}
+                        <div className="space-y-5">
+                            {timelineGroups.map((group) => (
+                                <div key={group.key} className="rounded-2xl border border-[#e7ebf8] bg-[#f8f9ff] p-3 sm:p-4">
+                                    <div className="mb-3 flex items-center justify-between gap-3">
+                                        <h4 className="font-bold text-gray-900">{group.studentName}</h4>
+                                        <span className="text-xs font-semibold text-gray-500">메모 {group.items.length}건</span>
                                     </div>
-                                );
-                            })}
+                                    <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                                        {group.items.map((item) => (
+                                            <StaffTimelineThreadCard
+                                                key={item.id}
+                                                thread={item}
+                                                actor={timelineActor}
+                                                onChanged={loadStaffTimeline}
+                                                showStudentName={false}
+                                            />
+                                        ))}
+                                    </div>
+                                </div>
+                            ))}
                         </div>
                     )}
-                </div>
+                </section>
             )}
 
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,2.2fr)_minmax(260px,1fr)]">

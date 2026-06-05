@@ -9,7 +9,8 @@ import { ClinicBulkNotificationModal } from '../utils/modals/ClinicBulkNotificat
 import { buildStudentParentPhoneLast4Map } from '../utils/parentPhone';
 import StudentNameWithParentLast4 from '../components/common/StudentNameWithParentLast4';
 import useAuth from '../auth/useAuth';
-import { createStaffTimelineItem, fetchClinicTimelineItems } from '../domain/staffTimeline/staffTimeline.service';
+import { createStaffTimelineThread, fetchClinicTimelineThreads } from '../domain/staffTimeline/staffTimeline.service';
+import StaffTimelineThreadCard from '../components/StaffTimeline/StaffTimelineThreadCard';
 
 export default function ClinicManagement({ 
     students, parents = [], classes, handleSaveClinicLog, handleDeleteClinicLog,
@@ -56,6 +57,11 @@ export default function ClinicManagement({
         || currentUserFallbackName
         || '교직원';
     const currentSenderRole = userProfile?.role || userProfile?.type || userRole || 'staff';
+    const timelineActor = useMemo(() => ({
+        uid: user?.uid || '',
+        name: currentUserName,
+        role: currentSenderRole,
+    }), [currentSenderRole, currentUserName, user?.uid]);
 
     useEffect(() => {
         console.log('[DEBUG] students =', students?.slice(0, 3));
@@ -490,7 +496,7 @@ export default function ClinicManagement({
             }
 
             try {
-                const items = await fetchClinicTimelineItems(db, clinicLogIds);
+                const items = await fetchClinicTimelineThreads(db, clinicLogIds);
                 if (!cancelled) {
                     setClinicTimelineItems(items);
                     setClinicTimelineError('');
@@ -530,7 +536,7 @@ export default function ClinicManagement({
             setClinicTimelineItems([]);
             return;
         }
-        const items = await fetchClinicTimelineItems(db, clinicLogIds);
+        const items = await fetchClinicTimelineThreads(db, clinicLogIds);
         setClinicTimelineItems(items);
     }, [visibleLogs]);
 
@@ -562,9 +568,17 @@ export default function ClinicManagement({
 
         setSavingStaffMemoLogId(log.id);
         try {
-            await createStaffTimelineItem(db, {
+            await createStaffTimelineThread(db, {
                 sourceType: 'clinic',
                 sourceDocId: log.id,
+                sourceCollection: log.sourceCollection || (log.reservationId ? 'clinicReservations' : 'clinicLogs'),
+                sourceSummary: {
+                    date: log.effectiveDate || log.date || log.clinicDate || '',
+                    plannedTime: log.plannedTime || log.timeSlot || '',
+                    teacherName: log.teacherName || log.tutorName || getAssistantName(log) || '',
+                    clinicComment: log.clinicComment || log.comment || log.content || '',
+                    status: log.displayStatus || log.status || (log.checkIn ? 'attended' : 'pending'),
+                },
                 studentId,
                 studentName,
                 content,
@@ -581,6 +595,47 @@ export default function ClinicManagement({
         } finally {
             setSavingStaffMemoLogId('');
         }
+    };
+
+    const renderStaffMemoPanel = (log, className = '') => {
+        const threads = clinicTimelineItemsByLogId.get(String(log.id || '')) || [];
+        return (
+            <div className={`rounded-xl border border-[#dfe6ff] bg-[#f8f9ff] p-3 text-left ${className}`}>
+                {threads.length > 0 && (
+                    <div className="mb-4 space-y-3">
+                        <div className="flex items-center justify-between gap-2">
+                            <p className="text-xs font-bold text-[#334a91]">연결된 교직원 메모</p>
+                            <span className="text-[11px] font-semibold text-gray-500">{threads.length}건</span>
+                        </div>
+                        {threads.map((thread) => (
+                            <StaffTimelineThreadCard
+                                key={thread.id}
+                                thread={thread}
+                                actor={timelineActor}
+                                onChanged={refreshClinicTimelineItems}
+                                showStudentName={false}
+                                compact
+                            />
+                        ))}
+                    </div>
+                )}
+                <div className="rounded-lg border border-[#dfe6ff] bg-white p-3">
+                    <p className="mb-2 text-xs font-bold text-gray-700">새 교직원 메모</p>
+                    <textarea
+                        value={staffMemoDrafts[log.id] || ''}
+                        onChange={(event) => handleStaffMemoDraftChange(log.id, event.target.value)}
+                        placeholder="교직원끼리 공유할 지시사항이나 인수인계를 입력하세요."
+                        className="min-h-[82px] w-full rounded-lg border border-gray-200 px-3 py-2 text-xs text-gray-700 focus:border-[#334a91] focus:outline-none focus:ring-2 focus:ring-[#cfd8ff]"
+                    />
+                    <div className="mt-2 flex justify-end gap-2">
+                        <button type="button" onClick={() => handleToggleStaffMemo(log.id)} className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-600">닫기</button>
+                        <button type="button" onClick={() => handleSaveStaffMemo(log)} disabled={savingStaffMemoLogId === log.id} className="rounded-lg bg-[#455fab] px-3 py-1.5 text-xs font-bold text-white disabled:opacity-60">
+                            {savingStaffMemoLogId === log.id ? '저장 중...' : '새 메모 저장'}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
     };
 
     useEffect(() => {
@@ -946,33 +1001,7 @@ export default function ClinicManagement({
                                                             </>
                                                         )}
                                                     </div>
-                                                    {viewMode === 'staff' && openStaffMemoLogId === log.id && (
-                                                            <div className="w-64 rounded-xl border border-[#dfe6ff] bg-white p-3 text-left shadow-sm">
-                                                                <textarea
-                                                                    value={staffMemoDrafts[log.id] || ''}
-                                                                    onChange={(e) => handleStaffMemoDraftChange(log.id, e.target.value)}
-                                                                    placeholder="교직원끼리 공유할 지시사항이나 인수인계를 입력하세요."
-                                                                    className="min-h-[76px] w-full rounded-lg border border-gray-200 px-3 py-2 text-xs text-gray-700 focus:border-[#334a91] focus:outline-none focus:ring-2 focus:ring-[#cfd8ff]"
-                                                                />
-                                                                <div className="mt-2 flex justify-end gap-2">
-                                                                    <button
-                                                                        type="button"
-                                                                        onClick={() => handleToggleStaffMemo(log.id)}
-                                                                        className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-600 hover:bg-gray-50"
-                                                                    >
-                                                                        취소
-                                                                    </button>
-                                                                    <button
-                                                                        type="button"
-                                                                        onClick={() => handleSaveStaffMemo(log)}
-                                                                        disabled={savingStaffMemoLogId === log.id}
-                                                                        className="rounded-lg bg-[#455fab] px-3 py-1.5 text-xs font-bold text-white hover:bg-[#3b5198] disabled:cursor-not-allowed disabled:opacity-60"
-                                                                    >
-                                                                        {savingStaffMemoLogId === log.id ? '저장 중...' : '저장'}
-                                                                    </button>
-                                                                </div>
-                                                            </div>
-                                                        )}
+                                                    {viewMode === 'staff' && openStaffMemoLogId === log.id && renderStaffMemoPanel(log, 'w-[32rem] max-w-[80vw]')}
                                                     </div>
                                                 </td>
                                             </tr>
@@ -1130,27 +1159,7 @@ export default function ClinicManagement({
                                         )}
                                     </div>
 
-                                    {viewMode === 'staff' && openStaffMemoLogId === log.id && (
-                                        <div className="rounded-xl border border-[#dfe6ff] bg-[#f8f9ff] p-3">
-                                            <textarea
-                                                value={staffMemoDrafts[log.id] || ''}
-                                                onChange={(e) => handleStaffMemoDraftChange(log.id, e.target.value)}
-                                                placeholder="교직원끼리 공유할 지시사항이나 인수인계를 입력하세요."
-                                                className="min-h-[90px] w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:border-[#334a91] focus:outline-none focus:ring-2 focus:ring-[#cfd8ff]"
-                                            />
-                                            <div className="mt-2 flex justify-end gap-2">
-                                                <button type="button" onClick={() => handleToggleStaffMemo(log.id)} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-600">취소</button>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleSaveStaffMemo(log)}
-                                                    disabled={savingStaffMemoLogId === log.id}
-                                                    className="rounded-lg bg-[#455fab] px-3 py-2 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
-                                                >
-                                                    {savingStaffMemoLogId === log.id ? '저장 중...' : '저장'}
-                                                </button>
-                                            </div>
-                                        </div>
-                                    )}
+                                    {viewMode === 'staff' && openStaffMemoLogId === log.id && renderStaffMemoPanel(log)}
                                 </div>
                             );
                         }) : (

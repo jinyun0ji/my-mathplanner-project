@@ -677,6 +677,14 @@ service cloud.firestore {
       allow create, update, delete: if false;
     }
 
+    match /staffTimeline/{threadId} {
+      allow get, list, create, update, delete: if isStaffOrAdminOrTeacher();
+
+      match /replies/{replyId} {
+        allow get, list, create, update, delete: if isStaffOrAdminOrTeacher();
+      }
+    }
+
     match /notifications/{logId} {
       allow read, write: if isStaffOrAdminOrTeacher();
     }
