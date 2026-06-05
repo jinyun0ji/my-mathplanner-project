@@ -29,6 +29,8 @@ const hasRoomTypeOrChannel = (room, expectedRoomType) => (
     || normalizeText(room?.channel) === expectedRoomType
 );
 const getParticipantIds = (room) => (Array.isArray(room?.participantIds) ? room.participantIds.map(String) : []);
+const getVisibleToRoles = (room) => (Array.isArray(room?.visibleToRoles) ? room.visibleToRoles.map(String) : []);
+const getParticipantRole = (room, uid) => String(room?.participantRoles?.[String(uid || '')] || '').trim();
 const getRoomSlot = (room) => {
     const explicitSlot = normalizeText(room?.slot);
     if (explicitSlot) return explicitSlot;
@@ -40,12 +42,47 @@ const getRoomSlot = (room) => {
 const isCompatibleRoomType = (room, expectedRoomType) => {
     const actualType = getRoomType(room);
     if (expectedRoomType === 'parent_institute') {
-        return hasRoomTypeOrChannel(room, 'parent_institute') || getRoomSlot(room) === INSTITUTE_SLOT;
+        return hasRoomTypeOrChannel(room, 'parent_institute') || getRoomSlot(room) === INSTITUTE_SLOT || !actualType;
     }
     if (actualType === expectedRoomType) return true;
     if (actualType === 'institute') return expectedRoomType === 'student_institute';
     if (actualType === 'teacher') return expectedRoomType.endsWith('_teacher');
     return false;
+};
+
+const hasExpectedParticipants = (room, authUid, targetAuthUid) => {
+    const participantIds = getParticipantIds(room);
+    return participantIds.length === 2
+        && participantIds.includes(String(authUid || ''))
+        && participantIds.includes(String(targetAuthUid || ''));
+};
+
+const isStudentIdCompatible = (room, studentId) => {
+    const roomStudentId = normalizeText(room?.studentId);
+    return !roomStudentId || !studentId || roomStudentId === String(studentId || '');
+};
+
+const isParentInstituteBaseCandidate = (room, { authUid, targetAuthUid, studentId }) => {
+    if (!hasExpectedParticipants(room, authUid, targetAuthUid)) return false;
+    if (!isStudentIdCompatible(room, studentId)) return false;
+    if (hasRoomTypeOrChannel(room, 'student_institute')) return false;
+    if (getParticipantRole(room, authUid) === 'student') return false;
+    if (room?.counterpartUid && String(room.counterpartUid) !== String(targetAuthUid || '')) return false;
+    if (room?.staffAuthUid && String(room.staffAuthUid) !== String(targetAuthUid || '')) return false;
+    return true;
+};
+
+const isParentInstituteLegacyRoom = (room, options) => (
+    isParentInstituteBaseCandidate(room, options)
+    && (getVisibleToRoles(room).includes('parent') || getParticipantRole(room, options.authUid) === 'parent')
+);
+
+const getParentInstitutePriority = (room, options) => {
+    if (!isParentInstituteBaseCandidate(room, options)) return 0;
+    if (hasRoomTypeOrChannel(room, 'parent_institute')) return 3;
+    if (getRoomSlot(room) === INSTITUTE_SLOT) return 2;
+    if (isParentInstituteLegacyRoom(room, options)) return 1;
+    return 0;
 };
 
 const isStandardSlotRoom = (room, { viewerRole, slot, authUid, targetAuthUid, studentId, teacherName = '' }) => {
@@ -54,19 +91,11 @@ const isStandardSlotRoom = (room, { viewerRole, slot, authUid, targetAuthUid, st
     const roomSlot = getRoomSlot(room);
     if (roomSlot && roomSlot !== slot) return false;
     const participantIds = getParticipantIds(room);
+    if (expectedRoomType === 'parent_institute') {
+        return getParentInstitutePriority(room, { authUid, targetAuthUid, studentId }) > 0;
+    }
     if (participantIds.length !== 2) return false;
     if (!participantIds.includes(String(authUid || '')) || !participantIds.includes(String(targetAuthUid || ''))) return false;
-    if (expectedRoomType === 'parent_institute') {
-        const isParentInstituteRoom = hasRoomTypeOrChannel(room, 'parent_institute')
-            || (roomSlot === INSTITUTE_SLOT
-                && !hasRoomTypeOrChannel(room, 'student_institute')
-                && participantIds.includes(String(authUid || ''))
-                && participantIds.includes(String(targetAuthUid || '')));
-        if (!isParentInstituteRoom) return false;
-        if (room?.studentId && String(room.studentId) !== String(studentId || '')) return false;
-        if (room?.counterpartUid && String(room.counterpartUid) !== String(targetAuthUid || '')) return false;
-        if (room?.staffAuthUid && String(room.staffAuthUid) !== String(targetAuthUid || '')) return false;
-    }
     if (expectedRoomType !== 'parent_institute' && room?.counterpartUid && String(room.counterpartUid) !== String(targetAuthUid || '')) return false;
     if (slot === TEACHER_SLOT) {
         const roomTeacherName = normalizeText(room?.teacherName || room?.counterpartName);
@@ -172,19 +201,18 @@ const buildMessengerSlots = (rooms, teacherCandidates, { viewerRole = 'parent', 
     })) || null;
 
     const instituteCandidates = sortedRooms
-        .filter((room) => isStandardSlotRoom(room, {
-            viewerRole,
-            slot: INSTITUTE_SLOT,
-            authUid,
-            targetAuthUid: INSTITUTE_AUTH_UID,
-            studentId,
+        .map((room) => ({
+            room,
+            priority: getParentInstitutePriority(room, {
+                authUid,
+                targetAuthUid: INSTITUTE_AUTH_UID,
+                studentId,
+            }),
         }))
-        .filter((room) => !hasRoomTypeOrChannel(room, 'student_institute'));
+        .filter((candidate) => candidate.priority > 0);
     const instituteRoom = instituteCandidates
-        .find((room) => hasRoomTypeOrChannel(room, 'parent_institute'))
-        || instituteCandidates.find((room) => getParticipantIds(room).includes(String(authUid || '')) && getParticipantIds(room).includes(INSTITUTE_AUTH_UID))
-        || instituteCandidates.find((room) => getRoomSlot(room) === INSTITUTE_SLOT)
-        || null;
+        .sort((left, right) => right.priority - left.priority || getRoomSortTime(right.room) - getRoomSortTime(left.room))
+        .map((candidate) => candidate.room)[0] || null;
 
     const teacherName = getTeacherNameForDisplay(teacherCandidates, teacherRoom);
 

@@ -340,6 +340,7 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
 
     useEffect(() => {
         if (selectedRoomId) {
+            console.log('[student messenger] use selected chatRoom', { roomId: String(selectedRoomId) });
             setMessages([]);
             setOptimisticMessages([]);
             setRoomId(String(selectedRoomId));
