@@ -24,6 +24,10 @@ const STANDARD_ROOM_TYPES = {
 
 const getExpectedRoomType = (viewerRole, slot) => STANDARD_ROOM_TYPES[String(viewerRole || 'parent')]?.[slot] || '';
 const getRoomType = (room) => normalizeText(room?.roomType || room?.channel);
+const hasRoomTypeOrChannel = (room, expectedRoomType) => (
+    normalizeText(room?.roomType) === expectedRoomType
+    || normalizeText(room?.channel) === expectedRoomType
+);
 const getParticipantIds = (room) => (Array.isArray(room?.participantIds) ? room.participantIds.map(String) : []);
 const getRoomSlot = (room) => {
     const explicitSlot = normalizeText(room?.slot);
@@ -35,8 +39,9 @@ const getRoomSlot = (room) => {
 };
 const isCompatibleRoomType = (room, expectedRoomType) => {
     const actualType = getRoomType(room);
+    if (expectedRoomType === 'parent_institute') return hasRoomTypeOrChannel(room, 'parent_institute');
     if (actualType === expectedRoomType) return true;
-    if (actualType === 'institute') return expectedRoomType.endsWith('_institute');
+    if (actualType === 'institute') return expectedRoomType === 'student_institute';
     if (actualType === 'teacher') return expectedRoomType.endsWith('_teacher');
     return false;
 };
@@ -49,7 +54,12 @@ const isStandardSlotRoom = (room, { viewerRole, slot, authUid, targetAuthUid, st
     const participantIds = getParticipantIds(room);
     if (participantIds.length !== 2) return false;
     if (!participantIds.includes(String(authUid || '')) || !participantIds.includes(String(targetAuthUid || ''))) return false;
-    if (room?.counterpartUid && String(room.counterpartUid) !== String(targetAuthUid || '')) return false;
+    if (expectedRoomType === 'parent_institute') {
+        if (!hasRoomTypeOrChannel(room, 'parent_institute')) return false;
+        if (!studentId || String(room?.studentId || '') !== String(studentId)) return false;
+        if (String(room?.counterpartUid || '') !== String(targetAuthUid || '') && String(room?.staffAuthUid || '') !== String(targetAuthUid || '')) return false;
+    }
+    if (expectedRoomType !== 'parent_institute' && room?.counterpartUid && String(room.counterpartUid) !== String(targetAuthUid || '')) return false;
     if (slot === TEACHER_SLOT) {
         const roomTeacherName = normalizeText(room?.teacherName || room?.counterpartName);
         const expectedTeacherName = normalizeText(teacherName);
@@ -58,7 +68,7 @@ const isStandardSlotRoom = (room, { viewerRole, slot, authUid, targetAuthUid, st
         if (!room?.teacherAuthUid && !room?.counterpartUid && expectedTeacherName && roomTeacherName && roomTeacherName !== expectedTeacherName) return false;
     }
     if (slot === INSTITUTE_SLOT && room?.targetRole && String(room.targetRole) !== 'staff') return false;
-    if ((expectedRoomType === 'parent_teacher' || expectedRoomType === 'parent_institute') && studentId && room?.studentId && String(room.studentId) !== String(studentId)) return false;
+    if (expectedRoomType === 'parent_teacher' && studentId && room?.studentId && String(room.studentId) !== String(studentId)) return false;
     return true;
 };
 
@@ -219,6 +229,19 @@ export default function ParentMessengerPage({ studentId, student, ongoingClasses
     }), [rooms, teacherCandidates, viewerRole, authUid, activeStudentId]);
     const currentSlot = selectedSlot ? messengerSlots.find((slot) => slot.slot === selectedSlot.slot) || selectedSlot : null;
     const selectedRoomId = currentSlot?.room?.id || '';
+    const handleSelectSlot = (slot) => {
+        if (slot?.slot === INSTITUTE_SLOT && slot?.room) {
+            console.log('[parent messenger] selected institute room', {
+                roomId: slot.room.id,
+                roomType: slot.room.roomType,
+                channel: slot.room.channel,
+                participantIds: getParticipantIds(slot.room),
+                parentUid: slot.room.parentUid,
+                studentId: slot.room.studentId,
+            });
+        }
+        setSelectedSlot(slot);
+    };
     const currentSlotTargetAuthUid = currentSlot?.slot === TEACHER_SLOT ? TEACHER_AUTH_UID : INSTITUTE_AUTH_UID;
     const currentRoomDisplayName = currentSlot?.title || '';
 
@@ -346,7 +369,7 @@ export default function ParentMessengerPage({ studentId, student, ongoingClasses
             <section className="py-2">
                 {error && <div className="mx-4 mb-2 text-xs text-gray-500 bg-white border border-gray-100 rounded-lg px-3 py-2">{error}</div>}
                 {messengerSlots.map((slot) => (
-                    <button key={slot.id} type="button" onClick={() => setSelectedSlot(slot)} className="h-16 w-full px-4 bg-white border-b border-gray-100 flex items-center gap-3 text-left">
+                    <button key={slot.id} type="button" onClick={() => handleSelectSlot(slot)} className="h-16 w-full px-4 bg-white border-b border-gray-100 flex items-center gap-3 text-left">
                         <div className="w-10 h-10 rounded-full bg-gray-200" />
                         <div className="flex-1 min-w-0">
                             <p className="text-sm font-semibold text-gray-900 truncate">{slot.title}</p>
