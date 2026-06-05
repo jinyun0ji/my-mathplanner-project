@@ -1056,6 +1056,10 @@ video {
   height: 100vh;
 }
 
+.h-\[calc\(100vh-140px\)\]{
+  height: calc(100vh - 140px);
+}
+
 .max-h-16{
   max-height: 4rem;
 }
@@ -1148,6 +1152,18 @@ video {
   max-height: 100%;
 }
 
+.max-h-\[220px\]{
+  max-height: 220px;
+}
+
+.max-h-\[200px\]{
+  max-height: 200px;
+}
+
+.max-h-\[400px\]{
+  max-height: 400px;
+}
+
 .min-h-0{
   min-height: 0px;
 }
@@ -1198,6 +1214,10 @@ video {
 
 .min-h-screen{
   min-height: 100vh;
+}
+
+.min-h-\[680px\]{
+  min-height: 680px;
 }
 
 .w-0{
@@ -1595,6 +1615,10 @@ video {
 .select-none{
   -webkit-user-select: none;
           user-select: none;
+}
+
+.resize-none{
+  resize: none;
 }
 
 .resize-y{
@@ -3838,6 +3862,15 @@ body{
   background-color: rgb(234 179 8 / var(--tw-bg-opacity, 1));
 }
 
+.hover\:bg-gray-50\/50:hover{
+  background-color: rgb(249 250 251 / 0.5);
+}
+
+.hover\:bg-green-50:hover{
+  --tw-bg-opacity: 1;
+  background-color: rgb(240 253 244 / var(--tw-bg-opacity, 1));
+}
+
 .hover\:text-\[\#334a91\]:hover{
   --tw-text-opacity: 1;
   color: rgb(51 74 145 / var(--tw-text-opacity, 1));
@@ -4450,6 +4483,10 @@ body{
 
   .lg\:col-span-2{
     grid-column: span 2 / span 2;
+  }
+
+  .lg\:col-span-3{
+    grid-column: span 3 / span 3;
   }
 
   .lg\:block{

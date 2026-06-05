@@ -49,9 +49,9 @@ export default function InternalMessengerPanel({
             }
             return target.searchText.includes(normalizedStudentQuery);
         });
-        }, [normalizedStudentQuery, targetOptions]);
+    }, [normalizedStudentQuery, targetOptions]);
         
-        const { active: activeStudentTargets, withdrawn: withdrawnStudentTargets } = useMemo(() => (
+    const { active: activeStudentTargets, withdrawn: withdrawnStudentTargets } = useMemo(() => (
         splitStudentTargetsByStatus(filteredTargets)
     ), [filteredTargets]);
 
@@ -165,7 +165,7 @@ export default function InternalMessengerPanel({
     };
 
     const handleSendMessage = async (text) => {
-       const target = targetOptions.find((option) => option.authUid === targetUid) || null;
+        const target = targetOptions.find((option) => option.authUid === targetUid) || null;
         let roomId = selectedRoom?.id || null;
         if (!roomId && !target) return;
 
@@ -368,157 +368,168 @@ export default function InternalMessengerPanel({
     const hasTargets = targetOptions.length > 0;
 
     return (
-        <div className="space-y-4">
-            <div className="bg-white rounded-xl shadow p-4 space-y-3">
-                <p className="text-sm font-semibold text-gray-700">메신저 대상 선택 (내부 운영용)</p>
-
-                <div className="flex items-center gap-2">
-                    <input
-                        value={studentSearchQuery}
-                        onChange={(event) => setStudentSearchQuery(event.target.value)}
-                        placeholder="학생 검색"
-                        className="border rounded px-3 py-2 text-sm min-w-[220px]"
-                    />
-                    <span className="text-xs text-gray-500">선택 {selectedTargetUids.length}명</span>
-                    <button type="button" onClick={clearSelection} className="px-2 py-1 text-xs rounded border border-gray-300">선택 해제</button>
-                </div>
-
-                <div className="border rounded-lg max-h-[260px] overflow-y-auto">
-                    {!hasTargets && <p className="text-sm text-gray-400 px-3 py-6">선택 가능한 대상이 없습니다.</p>}
-
-                    {hasTargets && studentSections.length === 0 && normalizedStudentQuery && (
-                        <p className="text-sm text-gray-400 px-3 py-6">학생 검색 결과가 없습니다.</p>
-                    )}
-
-                    {studentSections.map((section) => (
-                        <div key={section.key} className="border-b last:border-b-0">
-                            <div className="px-3 py-2 bg-gray-50 text-xs font-semibold text-gray-600">[{section.title}]</div>
-                            {section.items.map((target) => {
-                                const checked = selectedTargetUids.includes(target.authUid);
-                                const isFocused = targetUid === target.authUid;
-                                return (
-                                    <label key={target.authUid} className={`px-3 py-2 flex items-center gap-2 text-sm border-t first:border-t-0 ${isFocused ? 'bg-green-50' : ''}`}>
-                                        <input
-                                            type="checkbox"
-                                            checked={checked}
-                                            onChange={() => toggleTargetSelection(target.authUid)}
-                                        />
-                                        <button
-                                            type="button"
-                                            onClick={() => setTargetUid(target.authUid)}
-                                            className="text-left flex-1 text-gray-700 truncate"
-                                        >
-                                            {target.displayName}
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => handleCreateOrOpenRoom(target.authUid)}
-                                            className="px-2 py-1 text-xs rounded border border-gray-300 shrink-0"
-                                        >
-                                            1:1 열기
-                                        </button>
-                                    </label>
-                                );
-                            })}
-                        </div>
-                    ))}
-
-                    {withdrawnStudentTargets.length > 0 && (
-                        <div className="border-b last:border-b-0">
-                            <div className="px-3 py-2 bg-gray-50 text-xs font-semibold text-gray-500">[퇴원생]</div>
-                            {withdrawnStudentTargets.map((target) => {
-                                const checked = selectedTargetUids.includes(target.authUid);
-                                const isFocused = targetUid === target.authUid;
-                                return (
-                                    <label key={target.authUid} className={`px-3 py-2 flex items-center gap-2 text-sm border-t first:border-t-0 ${isFocused ? 'bg-green-50' : ''}`}>
-                                        <input
-                                            type="checkbox"
-                                            checked={checked}
-                                            onChange={() => toggleTargetSelection(target.authUid)}
-                                        />
-                                        <button
-                                            type="button"
-                                            onClick={() => setTargetUid(target.authUid)}
-                                            className="text-left flex-1 text-gray-400 truncate"
-                                        >
-                                            {target.displayName} <span className="text-gray-400">(퇴원)</span>
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => handleCreateOrOpenRoom(target.authUid)}
-                                            className="px-2 py-1 text-xs rounded border border-gray-300 shrink-0"
-                                        >
-                                            1:1 열기
-                                        </button>
-                                    </label>
-                                );
-                            })}
-                        </div>
-                    )}
-
-                    {parentTargets.length > 0 && (
-                        <div>
-                            <div className="px-3 py-2 bg-gray-50 text-xs font-semibold text-gray-600">[학부모]</div>
-                            {parentTargets.map((target) => {
-                                const checked = selectedTargetUids.includes(target.authUid);
-                                const isFocused = targetUid === target.authUid;
-                                return (
-                                    <label key={target.authUid} className={`px-3 py-2 flex items-center gap-2 text-sm border-t ${isFocused ? 'bg-green-50' : ''}`}>
-                                        <input
-                                            type="checkbox"
-                                            checked={checked}
-                                            onChange={() => toggleTargetSelection(target.authUid)}
-                                        />
-                                        <button
-                                            type="button"
-                                            onClick={() => setTargetUid(target.authUid)}
-                                            className="text-left flex-1 text-gray-700 truncate"
-                                        >
-                                            {target.displayName}
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => handleCreateOrOpenRoom(target.authUid)}
-                                            className="px-2 py-1 text-xs rounded border border-gray-300 shrink-0"
-                                        >
-                                            1:1 열기
-                                        </button>
-                                    </label>
-                                );
-                            })}
-                        </div>
-                    )}
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                    <textarea
-                        value={broadcastText}
-                        onChange={(event) => setBroadcastText(event.target.value)}
-                        placeholder="선택 대상 fan-out 메시지 입력"
-                        rows={3}
-                        className="border rounded px-3 py-2 text-sm min-w-[260px] flex-1 resize-y"
-                    />
-                    <button type="button" onClick={handleBroadcastToSelected} className="px-3 py-2 text-sm rounded border border-gray-300">선택 대상에게 발송</button>
-                </div>
-                {statusMessage && <p className="text-xs text-gray-500">{statusMessage}</p>}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
+            {/* 1열: 실시간 대화창 (좌측 배치 및 종횡비 확보) */}
+            <div className="lg:col-span-2 h-full">
+                <ChatMessagePane
+                    room={selectedRoomResolved}
+                    messages={messages}
+                    myUid={userId}
+                    onSend={handleSendMessage}
+                    onRetryMessage={handleRetryMessage}
+                    contextData={roomDisplayContext}
+                />
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                <div className="order-1 lg:order-2 lg:col-span-1">
+            {/* 2열: 컨트롤 카드 및 리스트 (우측 종렬 배치) */}
+            <div className="lg:col-span-1 space-y-4">
+                {/* 2열-상단: 메신저 대상 선택 카드 */}
+                <div className="bg-white rounded-xl shadow p-4 space-y-3">
+                    <p className="text-sm font-semibold text-gray-700">메신저 대상 선택 (내부 운영용)</p>
+
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                        <input
+                            value={studentSearchQuery}
+                            onChange={(event) => setStudentSearchQuery(event.target.value)}
+                            placeholder="학생 검색"
+                            className="border rounded px-2.5 py-1.5 text-sm flex-1 min-w-0"
+                        />
+                        <div className="flex items-center justify-between gap-2 shrink-0">
+                            <span className="text-xs text-gray-500 font-medium">선택 {selectedTargetUids.length}명</span>
+                            <button type="button" onClick={clearSelection} className="px-2 py-1 text-xs rounded border border-gray-300 bg-white hover:bg-gray-50">해제</button>
+                        </div>
+                    </div>
+
+                    <div className="border rounded-lg max-h-[220px] overflow-y-auto custom-scrollbar">
+                        {!hasTargets && <p className="text-sm text-gray-400 px-3 py-6 text-center">선택 가능한 대상이 없습니다.</p>}
+
+                        {hasTargets && studentSections.length === 0 && normalizedStudentQuery && (
+                            <p className="text-sm text-gray-400 px-3 py-6 text-center">학생 검색 결과가 없습니다.</p>
+                        )}
+
+                        {studentSections.map((section) => (
+                            <div key={section.key} className="border-b last:border-b-0">
+                                <div className="px-3 py-1.5 bg-gray-50 text-xs font-semibold text-gray-600">[{section.title}]</div>
+                                {section.items.map((target) => {
+                                    const checked = selectedTargetUids.includes(target.authUid);
+                                    const isFocused = targetUid === target.authUid;
+                                    return (
+                                        <label key={target.authUid} className={`px-3 py-2 flex items-center gap-2 text-xs border-t first:border-t-0 hover:bg-gray-50/50 cursor-pointer ${isFocused ? 'bg-green-50 hover:bg-green-50' : ''}`}>
+                                            <input
+                                                type="checkbox"
+                                                checked={checked}
+                                                onChange={() => toggleTargetSelection(target.authUid)}
+                                                className="rounded border-gray-300 text-[#455fab] focus:ring-[#455fab] h-3.5 w-3.5"
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={() => setTargetUid(target.authUid)}
+                                                className="text-left flex-1 text-gray-700 truncate font-medium"
+                                            >
+                                                {target.displayName}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleCreateOrOpenRoom(target.authUid)}
+                                                className="px-2 py-0.5 text-[11px] rounded border border-gray-300 bg-white hover:bg-gray-50 font-semibold shrink-0"
+                                            >
+                                                열기
+                                            </button>
+                                        </label>
+                                    );
+                                })}
+                        </div>
+                        ))}
+
+                        {withdrawnStudentTargets.length > 0 && (
+                            <div className="border-b last:border-b-0">
+                                <div className="px-3 py-1.5 bg-gray-50 text-xs font-semibold text-gray-500">[퇴원생]</div>
+                                {withdrawnStudentTargets.map((target) => {
+                                    const checked = selectedTargetUids.includes(target.authUid);
+                                    const isFocused = targetUid === target.authUid;
+                                    return (
+                                        <label key={target.authUid} className={`px-3 py-2 flex items-center gap-2 text-xs border-t first:border-t-0 hover:bg-gray-50/50 cursor-pointer ${isFocused ? 'bg-green-50 hover:bg-green-50' : ''}`}>
+                                            <input
+                                                type="checkbox"
+                                                checked={checked}
+                                                onChange={() => toggleTargetSelection(target.authUid)}
+                                                className="rounded border-gray-300 text-[#455fab] focus:ring-[#455fab] h-3.5 w-3.5"
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={() => setTargetUid(target.authUid)}
+                                                className="text-left flex-1 text-gray-400 truncate"
+                                            >
+                                                {target.displayName} <span className="text-gray-400 font-normal">(퇴원)</span>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleCreateOrOpenRoom(target.authUid)}
+                                                className="px-2 py-0.5 text-[11px] rounded border border-gray-300 bg-white hover:bg-gray-50 font-semibold shrink-0"
+                                            >
+                                                열기
+                                            </button>
+                                        </label>
+                                    );
+                                })}
+                            </div>
+                        )}
+
+                        {parentTargets.length > 0 && (
+                            <div>
+                                <div className="px-3 py-1.5 bg-gray-50 text-xs font-semibold text-gray-600">[학부모]</div>
+                                {parentTargets.map((target) => {
+                                    const checked = selectedTargetUids.includes(target.authUid);
+                                    const isFocused = targetUid === target.authUid;
+                                    return (
+                                        <label key={target.authUid} className={`px-3 py-2 flex items-center gap-2 text-xs border-t hover:bg-gray-50/50 cursor-pointer ${isFocused ? 'bg-green-50 hover:bg-green-50' : ''}`}>
+                                            <input
+                                                type="checkbox"
+                                                checked={checked}
+                                                onChange={() => toggleTargetSelection(target.authUid)}
+                                                className="rounded border-gray-300 text-[#455fab] focus:ring-[#455fab] h-3.5 w-3.5"
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={() => setTargetUid(target.authUid)}
+                                                className="text-left flex-1 text-gray-700 truncate"
+                                            >
+                                                {target.displayName}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleCreateOrOpenRoom(target.authUid)}
+                                                className="px-2 py-0.5 text-[11px] rounded border border-gray-300 bg-white hover:bg-gray-50 font-semibold shrink-0"
+                                            >
+                                                열기
+                                            </button>
+                                        </label>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="flex flex-col gap-2">
+                        <textarea
+                            value={broadcastText}
+                            onChange={(event) => setBroadcastText(event.target.value)}
+                            placeholder="선택 대상 fan-out 메시지 입력"
+                            rows={2}
+                            className="border rounded px-3 py-2 text-xs w-full resize-none focus:outline-none focus:ring-1 focus:ring-[#455fab]"
+                        />
+                        <button type="button" onClick={handleBroadcastToSelected} className="w-full py-2 text-xs rounded border border-gray-300 bg-gray-50 hover:bg-gray-100 font-semibold transition-colors">선택 대상 일괄 발송</button>
+                    </div>
+                    {statusMessage && <p className="text-[11px] text-gray-500 italic">{statusMessage}</p>}
+                </div>
+
+                {/* 2열-하단: 상담 채팅방 목록 카드 */}
+                <div className="bg-white rounded-xl shadow p-1">
                     <ChatRoomList
                         rooms={rooms}
                         selectedRoomId={selectedRoom?.id || null}
                         onSelectRoom={setSelectedRoom}
                         myUid={userId}
-                        contextData={roomDisplayContext}
-                    />
-                </div>
-                <div className="order-2 lg:order-1 lg:col-span-2">
-                    <ChatMessagePane
-                        room={selectedRoomResolved}
-                        messages={messages}
-                        myUid={userId}
-                        onSend={handleSendMessage}
-                        onRetryMessage={handleRetryMessage}
                         contextData={roomDisplayContext}
                     />
                 </div>
