@@ -193,16 +193,24 @@ const buildMessengerSlots = (rooms, teacherCandidates, { viewerRole = 'parent', 
     ];
 };
 
-const buildRoomQueries = ({ authUid }) => {
+const buildRoomQueries = ({ authUid, parentDocId }) => {
     const descriptors = [];
-    if (!authUid) return descriptors;
+    const addDescriptor = (field, operator, value) => {
+        const normalizedValue = String(value || '');
+        if (!normalizedValue) return;
+        const queryShape = { collection: 'chatRooms', where: [field, operator, normalizedValue] };
+        if (descriptors.some((descriptor) => descriptor.key === JSON.stringify(queryShape))) return;
+        descriptors.push({
+            key: JSON.stringify(queryShape),
+            queryShape,
+            ref: query(collection(db, 'chatRooms'), where(field, operator, normalizedValue)),
+        });
+    };
 
-    const queryShape = { collection: 'chatRooms', where: ['participantIds', 'array-contains', authUid] };
-    descriptors.push({
-        key: JSON.stringify(queryShape),
-        queryShape,
-        ref: query(collection(db, 'chatRooms'), where('participantIds', 'array-contains', authUid)),
-    });
+    addDescriptor('participantIds', 'array-contains', authUid);
+    addDescriptor('participantIds', 'array-contains', parentDocId);
+    addDescriptor('parentUid', '==', authUid);
+    addDescriptor('parentId', '==', parentDocId);
 
     return descriptors;
 };
@@ -288,7 +296,7 @@ export default function ParentMessengerPage({ studentId, student, ongoingClasses
             if (!isMounted) return;
             console.log('[parent messenger] participant keys', { authUid, parentDocId });
 
-            const descriptors = buildRoomQueries({ authUid });
+            const descriptors = buildRoomQueries({ authUid, parentDocId });
             totalQueries = descriptors.length;
             if (!totalQueries) return;
 
