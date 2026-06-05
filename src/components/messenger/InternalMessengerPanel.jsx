@@ -368,9 +368,12 @@ export default function InternalMessengerPanel({
     const hasTargets = targetOptions.length > 0;
 
     return (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
-            {/* 1열: 실시간 대화창 (좌측 배치 및 종횡비 확보) */}
-            <div className="lg:col-span-2 h-full">
+        /* ✅ 그리드 높이를 뷰포트 기준으로 꽉 채우도록 설정 (h-[calc(...)]) */
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 h-[calc(100vh-130px)] min-h-[600px]">
+            
+            {/* 1열: 실시간 대화창 (강제 높이 확장) */}
+            {/* ✅ [&>div]:!h-full & [&>div]:!max-h-none 를 사용하여 ChatMessagePane 내부의 420px 고정 높이를 강제로 무시하고 세로로 꽉 채웁니다. */}
+            <div className="lg:col-span-2 h-full rounded-xl shadow-sm overflow-hidden [&>div]:!h-full [&>div]:!max-h-none [&>div]:!border-0 border border-gray-200">
                 <ChatMessagePane
                     room={selectedRoomResolved}
                     messages={messages}
@@ -381,10 +384,11 @@ export default function InternalMessengerPanel({
                 />
             </div>
 
-            {/* 2열: 컨트롤 카드 및 리스트 (우측 종렬 배치) */}
-            <div className="lg:col-span-1 space-y-4">
-                {/* 2열-상단: 메신저 대상 선택 카드 */}
-                <div className="bg-white rounded-xl shadow p-4 space-y-3">
+            {/* 2열: 컨트롤 카드 및 리스트 (상하단 분리) */}
+            <div className="lg:col-span-1 flex flex-col gap-4 h-full min-h-0">
+                
+                {/* 2열-상단: 메신저 대상 선택 카드 (높이 고정, 스크롤 가능) */}
+                <div className="bg-white rounded-xl shadow border border-gray-200 p-4 space-y-3 shrink-0">
                     <p className="text-sm font-semibold text-gray-700">메신저 대상 선택 (내부 운영용)</p>
 
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -400,7 +404,7 @@ export default function InternalMessengerPanel({
                         </div>
                     </div>
 
-                    <div className="border rounded-lg max-h-[220px] overflow-y-auto custom-scrollbar">
+                    <div className="border rounded-lg max-h-[160px] overflow-y-auto custom-scrollbar">
                         {!hasTargets && <p className="text-sm text-gray-400 px-3 py-6 text-center">선택 가능한 대상이 없습니다.</p>}
 
                         {hasTargets && studentSections.length === 0 && normalizedStudentQuery && (
@@ -438,7 +442,7 @@ export default function InternalMessengerPanel({
                                         </label>
                                     );
                                 })}
-                        </div>
+                            </div>
                         ))}
 
                         {withdrawnStudentTargets.length > 0 && (
@@ -523,8 +527,9 @@ export default function InternalMessengerPanel({
                     {statusMessage && <p className="text-[11px] text-gray-500 italic">{statusMessage}</p>}
                 </div>
 
-                {/* 2열-하단: 상담 채팅방 목록 카드 */}
-                <div className="bg-white rounded-xl shadow p-1">
+                {/* 2열-하단: 상담 채팅방 목록 카드 (남은 높이 100% 꽉 채우기) */}
+                {/* ✅ flex-1과 min-h-0 을 주어 상단 카드를 제외한 모든 높이를 차지하게 하고, 내부 스크롤 강제 활성화 */}
+                <div className="bg-white rounded-xl shadow border border-gray-200 p-1 flex-1 min-h-0 overflow-y-auto custom-scrollbar [&>div]:!h-full [&>div]:!max-h-none [&>div]:!border-0">
                     <ChatRoomList
                         rooms={rooms}
                         selectedRoomId={selectedRoom?.id || null}
@@ -533,6 +538,7 @@ export default function InternalMessengerPanel({
                         contextData={roomDisplayContext}
                     />
                 </div>
+                
             </div>
         </div>
     );
