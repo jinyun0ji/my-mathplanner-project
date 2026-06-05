@@ -83,11 +83,11 @@ const isExactStandardRoom = (room, { viewerUid, targetAuthUid, roomType, student
     if (!participantIds.includes(String(viewerUid)) || !participantIds.includes(String(targetAuthUid))) return false;
     if (roomType === 'parent_institute') {
         if (!hasRoomTypeOrChannel(room, 'parent_institute')) return false;
-        if (!studentId || String(room?.studentId || '') !== String(studentId)) return false;
-        if (String(room?.counterpartUid || '') !== String(targetAuthUid) && String(room?.staffAuthUid || '') !== String(targetAuthUid)) return false;
+        if (room?.studentId && String(room.studentId) !== String(studentId || '')) return false;
+        if (room?.counterpartUid && String(room.counterpartUid) !== String(targetAuthUid)) return false;
+        if (room?.staffAuthUid && String(room.staffAuthUid) !== String(targetAuthUid)) return false;
     }
     if (room?.targetRole && expectedSlot === 'teacher' && String(room.targetRole) !== 'teacher') return false;
-    if (room?.targetRole && expectedSlot === 'institute' && String(room.targetRole) !== 'staff') return false;
     if (roomType !== 'parent_institute' && room?.counterpartUid && String(room.counterpartUid) !== String(targetAuthUid)) return false;
     if (expectedSlot === 'teacher' && room?.teacherAuthUid && String(room.teacherAuthUid) !== String(targetAuthUid)) return false;
     if ((roomType === 'parent_teacher' || roomType === 'parent_institute') && studentId && room?.studentId && String(room.studentId) !== String(studentId)) return false;
@@ -97,29 +97,21 @@ const isExactStandardRoom = (room, { viewerUid, targetAuthUid, roomType, student
 const resolveStandardChatRoom = async ({ viewerUid, targetAuthUid, roomType, studentId = '' }) => {
     if (!viewerUid || !targetAuthUid || !roomType) return null;
     const deterministicRoomId = buildStandardRoomId(roomType, viewerUid, targetAuthUid, studentId);
-    if (deterministicRoomId) {
-        try {
-            const directSnap = await getDoc(doc(db, 'chatRooms', deterministicRoomId));
-            if (directSnap.exists()) {
-                const room = { id: directSnap.id, ...directSnap.data() };
-                if (isExactStandardRoom(room, { viewerUid, targetAuthUid, roomType, studentId })) return room;
-            }
-        } catch (error) {
-            logFirestoreQueryFailure('resolve standard direct room doc', error, { doc: ['chatRooms', deterministicRoomId] });
-        }
-    }
+    if (!deterministicRoomId) return null;
 
     try {
-        const snap = await getDocs(query(collection(db, 'chatRooms'), where('participantIds', 'array-contains', String(viewerUid))));
-        const room = snap.docs
-            .map((roomDoc) => ({ id: roomDoc.id, ...roomDoc.data() }))
-            .find((candidate) => isExactStandardRoom(candidate, { viewerUid, targetAuthUid, roomType, studentId }));
-        if (room) return room;
+        const directSnap = await getDoc(doc(db, 'chatRooms', deterministicRoomId));
+        if (!directSnap.exists()) return null;
+        const room = { id: directSnap.id, ...directSnap.data() };
+        return isExactStandardRoom(room, { viewerUid, targetAuthUid, roomType, studentId }) ? room : null;
     } catch (error) {
-        logFirestoreQueryFailure('resolve standard participant rooms', error, { collection: 'chatRooms', where: ['participantIds', 'array-contains', String(viewerUid)] });
+        console.warn('[student messenger] deterministic standard room lookup skipped', {
+            code: error?.code,
+            message: error?.message,
+            query: { doc: ['chatRooms', deterministicRoomId] },
+        });
+        return null;
     }
-
-    return null;
 };
 
 const parseClientTempIdTime = (clientTempId) => {
@@ -556,17 +548,21 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
                     resolvedRoomId = resolvedRoomId || buildStandardRoomId(roomType, viewerUid, targetAuthUid, studentId);
                     const roomRef = doc(db, 'chatRooms', resolvedRoomId);
                     const targetRole = slot === 'teacher' ? 'teacher' : 'staff';
+                    const isParentInstituteRoom = userRole === 'parent' && slot === 'institute';
+                    const effectiveRoomType = isParentInstituteRoom ? 'parent_institute' : roomType;
+                    const effectiveTargetRole = isParentInstituteRoom ? 'staff' : targetRole;
+                    const effectiveTargetName = isParentInstituteRoom ? '채수용 수학 연구소' : targetName;
                     const roomPayload = {
                         participantIds: [String(viewerUid), targetAuthUid],
-                        participantRoles: { [String(viewerUid)]: userRole, [targetAuthUid]: targetRole },
-                        participantNames: { [String(viewerUid)]: buildSenderName(), [targetAuthUid]: targetName },
+                        participantRoles: { [String(viewerUid)]: userRole, [targetAuthUid]: effectiveTargetRole },
+                        participantNames: { [String(viewerUid)]: buildSenderName(), [targetAuthUid]: effectiveTargetName },
                         participantUserDocIds: { [String(viewerUid)]: parentDocId || String(studentId || viewerUid) },
                         studentId: String(studentId || ''),
                         type: 'individual',
-                        roomType,
-                        channel: roomType,
-                        slot,
-                        targetRole,
+                        roomType: effectiveRoomType,
+                        channel: effectiveRoomType,
+                        slot: isParentInstituteRoom ? 'institute' : slot,
+                        targetRole: effectiveTargetRole,
                         counterpartUid: targetAuthUid,
                         internalOnly: true,
                         createdAt: serverTimestamp(),
@@ -585,10 +581,10 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
 
                     if (slot === 'teacher') {
                         roomPayload.teacherAuthUid = targetAuthUid;
-                        roomPayload.teacherName = targetName;
+                        roomPayload.teacherName = effectiveTargetName;
                     } else {
                         roomPayload.staffAuthUid = targetAuthUid;
-                        roomPayload.staffName = targetName;
+                        roomPayload.staffName = effectiveTargetName;
                     }
 
                     await setDoc(roomRef, roomPayload, { merge: true });
