@@ -503,7 +503,7 @@ export default function InternalMessengerPanel({
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                <div className="lg:col-span-1">
+                <div className="order-1 lg:order-2 lg:col-span-1">
                     <ChatRoomList
                         rooms={rooms}
                         selectedRoomId={selectedRoom?.id || null}
@@ -512,7 +512,7 @@ export default function InternalMessengerPanel({
                         contextData={roomDisplayContext}
                     />
                 </div>
-                <div className="lg:col-span-2">
+                <div className="order-2 lg:order-1 lg:col-span-2">
                     <ChatMessagePane
                         room={selectedRoomResolved}
                         messages={messages}
