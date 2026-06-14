@@ -1,19 +1,23 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { addDoc, collection, deleteDoc, doc, getDocs, orderBy, query, serverTimestamp, updateDoc } from 'firebase/firestore';
+import { addDoc, collection, deleteDoc, doc, getDocs, orderBy, query, serverTimestamp, updateDoc, where } from 'firebase/firestore';
 import { db } from '../../firebase/client';
 import { Modal } from '../common/Modal';
 
 const CATEGORIES = { document: '문서', book: '교재', consultation: '상담', admin: '행정', etc: '기타' };
 const STATUSES = { pending: '대기', in_progress: '진행 중', completed: '완료' };
-const emptyForm = { title: '', content: '', category: 'etc', assigneeIds: '', assigneeNames: '', dueDate: '', status: 'pending' };
+const ASSIGNEE_ROLES = ['admin', 'staff', 'teacher', 'teaching', 'staffOrTeaching'];
+const emptyForm = { title: '', content: '', category: 'etc', assigneeIds: [], assigneeNames: [], dueDate: '', status: 'pending' };
 const ymd = (date) => {
     const pad = (value) => String(value).padStart(2, '0');
     return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 };
-const toList = (value) => String(value || '').split(',').map((item) => item.trim()).filter(Boolean);
+const toArray = (value) => Array.isArray(value) ? value.filter(Boolean) : [];
+const getStaffId = (staff) => staff?.uid || staff?.id || '';
+const getStaffName = (staff) => staff?.name?.trim() || staff?.displayName?.trim() || '';
 
 export default function StaffTasksPanel({ actor }) {
     const [tasks, setTasks] = useState([]);
+    const [assigneeOptions, setAssigneeOptions] = useState([]);
     const [filter, setFilter] = useState('today');
     const [form, setForm] = useState(emptyForm);
     const [editingId, setEditingId] = useState('');
@@ -25,8 +29,17 @@ export default function StaffTasksPanel({ actor }) {
 
     const load = useCallback(async () => {
         try {
-            const snapshot = await getDocs(query(collection(db, 'staffTasks'), orderBy('createdAt', 'desc')));
+            const [snapshot, staffSnapshot] = await Promise.all([
+                getDocs(query(collection(db, 'staffTasks'), orderBy('createdAt', 'desc'))),
+                getDocs(query(collection(db, 'users'), where('role', 'in', ASSIGNEE_ROLES))),
+            ]);
             setTasks(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })));
+            setAssigneeOptions(staffSnapshot.docs
+                .map((item) => ({ id: item.id, ...item.data() }))
+                .filter((staff) => staff.active !== false)
+                .map((staff) => ({ id: getStaffId(staff), name: getStaffName(staff) }))
+                .filter((staff) => staff.id && staff.name)
+                .sort((a, b) => a.name.localeCompare(b.name, 'ko')));
             setError('');
         } catch (loadError) {
             console.error('[staffTasks] load failed', loadError);
@@ -43,17 +56,40 @@ export default function StaffTasksPanel({ actor }) {
     };
     const openCreate = () => {
         setEditingId('');
-        setForm({ ...emptyForm, assigneeIds: actor.uid || '', assigneeNames: actor.name || '' });
+        const actorOption = assigneeOptions.find((option) => option.id === actor.uid);
+        setForm({
+            ...emptyForm,
+            assigneeIds: actorOption ? [actorOption.id] : [],
+            assigneeNames: actorOption ? [actorOption.name] : [],
+        });
         setIsModalOpen(true);
     };
     const openEdit = (task) => {
+        const storedIds = toArray(task.assigneeIds);
+        const storedNames = toArray(task.assigneeNames);
+        const selectedOptions = assigneeOptions.filter((option) => (
+            storedIds.includes(option.id) || storedNames.includes(option.name)
+        ));
         setEditingId(task.id);
         setForm({
             title: task.title || '', content: task.content || '', category: task.category || 'etc',
-            assigneeIds: (task.assigneeIds || []).join(', '), assigneeNames: (task.assigneeNames || []).join(', '),
+            assigneeIds: selectedOptions.map((option) => option.id),
+            assigneeNames: selectedOptions.map((option) => option.name),
             status: task.status || 'pending', dueDate: task.dueDate || '',
         });
         setIsModalOpen(true);
+    };
+    const toggleAssignee = (option) => {
+        const isSelected = form.assigneeIds.includes(option.id);
+        setForm({
+            ...form,
+            assigneeIds: isSelected
+                ? form.assigneeIds.filter((id) => id !== option.id)
+                : [...form.assigneeIds, option.id],
+            assigneeNames: isSelected
+                ? form.assigneeNames.filter((name) => name !== option.name)
+                : [...form.assigneeNames, option.name],
+        });
     };
 
     const save = async (event) => {
@@ -61,11 +97,10 @@ export default function StaffTasksPanel({ actor }) {
         if (!form.title.trim() || saving) return;
         setSaving(true);
         try {
-            const assigneeIds = toList(form.assigneeIds);
-            const assigneeNames = toList(form.assigneeNames);
             const base = {
                 title: form.title.trim(), content: form.content.trim(), category: form.category,
-                assigneeIds, assigneeNames, dueDate: form.dueDate, status: form.status,
+                assigneeIds: form.assigneeIds, assigneeNames: form.assigneeNames,
+                dueDate: form.dueDate, status: form.status,
                 updatedAt: serverTimestamp(), updatedBy: actor.uid,
                 completedAt: form.status === 'completed' ? serverTimestamp() : null,
                 completedBy: form.status === 'completed' ? actor.uid : '',
@@ -100,13 +135,14 @@ export default function StaffTasksPanel({ actor }) {
     };
 
     const today = ymd(new Date());
-    const weekEnd = new Date();
-    weekEnd.setDate(weekEnd.getDate() + (7 - ((weekEnd.getDay() + 6) % 7) - 1));
+    const weekStart = new Date();
+    weekStart.setDate(weekStart.getDate() - ((weekStart.getDay() + 6) % 7));
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekStart.getDate() + 6);
     const filtered = tasks.filter((task) => {
-        if (filter === 'completed') return task.status === 'completed';
-        if (task.status === 'completed') return false;
         if (filter === 'today') return task.dueDate === today;
-        if (filter === 'week') return task.dueDate >= today && task.dueDate <= ymd(weekEnd);
+        if (filter === 'week') return task.dueDate >= ymd(weekStart) && task.dueDate <= ymd(weekEnd);
+        if (filter === 'noDueDate') return !task.dueDate;
         return true;
     });
     const days = useMemo(() => {
@@ -115,6 +151,14 @@ export default function StaffTasksPanel({ actor }) {
         return Array.from({ length: 42 }, (_, index) => { const date = new Date(start); date.setDate(start.getDate() + index); return date; });
     }, [month]);
     const selectedTasks = tasks.filter((task) => task.dueDate === selectedDate);
+    const resolveAssigneeNames = (task) => {
+        const storedNames = toArray(task.assigneeNames);
+        if (storedNames.length > 0) return storedNames;
+        const storedIds = toArray(task.assigneeIds);
+        return assigneeOptions
+            .filter((option) => storedIds.includes(option.id))
+            .map((option) => option.name);
+    };
 
     return (
         <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
@@ -126,7 +170,7 @@ export default function StaffTasksPanel({ actor }) {
             <div className="grid gap-5 xl:grid-cols-[1fr_1.2fr]">
                 <div>
                     <div className="mb-3 flex rounded-lg bg-gray-100 p-1">
-                        {[['today', '오늘 마감'], ['week', '이번 주'], ['all', '진행 업무'], ['completed', '완료 업무']].map(([value, label]) => (
+                        {[['today', '오늘'], ['week', '이번 주'], ['all', '전체'], ['noDueDate', '마감일 없음']].map(([value, label]) => (
                             <button key={value} type="button" onClick={() => setFilter(value)} className={`flex-1 rounded-md px-2 py-2 text-xs font-bold ${filter === value ? 'bg-white text-[#334a91] shadow-sm' : 'text-gray-500'}`}>{label}</button>
                         ))}
                     </div>
@@ -136,7 +180,7 @@ export default function StaffTasksPanel({ actor }) {
                                 <div className="min-w-0 flex-1">
                                     <p className={`text-sm font-bold ${task.status === 'completed' ? 'text-gray-400 line-through' : 'text-gray-800'}`}>{task.title}</p>
                                     <p className="text-xs text-gray-500">{CATEGORIES[task.category] || '기타'} · {STATUSES[task.status] || '대기'} · {task.dueDate || '마감일 없음'}</p>
-                                    {task.assigneeNames?.length > 0 && <p className="mt-1 text-xs text-gray-400">담당: {task.assigneeNames.join(', ')}</p>}
+                                    {resolveAssigneeNames(task).length > 0 && <p className="mt-1 text-xs text-gray-400">담당: {resolveAssigneeNames(task).join(', ')}</p>}
                                 </div>
                                 {task.status !== 'completed' && <button type="button" onClick={() => complete(task)} className="text-xs font-semibold text-emerald-700">완료</button>}
                                 <button type="button" onClick={() => openEdit(task)} className="text-xs text-[#455fab]">수정</button>
@@ -161,10 +205,20 @@ export default function StaffTasksPanel({ actor }) {
                     <label className="sm:col-span-2 text-sm font-semibold text-gray-700">제목<input required value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} className="mt-1 w-full rounded-lg border px-3 py-2 font-normal" /></label>
                     <label className="sm:col-span-2 text-sm font-semibold text-gray-700">내용<textarea rows="5" value={form.content} onChange={(e) => setForm({ ...form, content: e.target.value })} className="mt-1 w-full rounded-lg border px-3 py-2 font-normal" /></label>
                     <label className="text-sm font-semibold text-gray-700">카테고리<select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} className="mt-1 w-full rounded-lg border px-3 py-2 font-normal">{Object.entries(CATEGORIES).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-                    <label className="text-sm font-semibold text-gray-700">상태<select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })} className="mt-1 w-full rounded-lg border px-3 py-2 font-normal">{Object.entries(STATUSES).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-                    <label className="text-sm font-semibold text-gray-700">담당자 ID<input value={form.assigneeIds} onChange={(e) => setForm({ ...form, assigneeIds: e.target.value })} placeholder="여러 명은 쉼표로 구분" className="mt-1 w-full rounded-lg border px-3 py-2 font-normal" /></label>
-                    <label className="text-sm font-semibold text-gray-700">담당자 이름<input value={form.assigneeNames} onChange={(e) => setForm({ ...form, assigneeNames: e.target.value })} placeholder="여러 명은 쉼표로 구분" className="mt-1 w-full rounded-lg border px-3 py-2 font-normal" /></label>
+                    <fieldset className="text-sm font-semibold text-gray-700">
+                        <legend>담당자</legend>
+                        <div className="mt-1 max-h-36 space-y-1 overflow-auto rounded-lg border p-2 font-normal">
+                            {assigneeOptions.map((option) => (
+                                <label key={option.id} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 hover:bg-gray-50">
+                                    <input type="checkbox" checked={form.assigneeIds.includes(option.id)} onChange={() => toggleAssignee(option)} />
+                                    <span>{option.name}</span>
+                                </label>
+                            ))}
+                            {assigneeOptions.length === 0 && <p className="px-2 py-1 text-gray-400">선택 가능한 담당자가 없습니다.</p>}
+                        </div>
+                    </fieldset>
                     <label className="text-sm font-semibold text-gray-700">마감일<input type="date" value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.target.value })} className="mt-1 w-full rounded-lg border px-3 py-2 font-normal" /></label>
+                    <label className="text-sm font-semibold text-gray-700">상태<select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })} className="mt-1 w-full rounded-lg border px-3 py-2 font-normal">{Object.entries(STATUSES).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
                     <div className="flex items-end justify-end gap-2 sm:col-span-2"><button type="button" onClick={closeModal} className="rounded-lg border px-4 py-2 text-sm font-semibold text-gray-600">취소</button><button disabled={saving} className="rounded-lg bg-[#455fab] px-5 py-2 text-sm font-bold text-white disabled:opacity-60">{saving ? '저장 중...' : editingId ? '수정 저장' : '업무 추가'}</button></div>
                 </form>
             </Modal>

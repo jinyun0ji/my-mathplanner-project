@@ -1,199 +1,54 @@
-diff --git a/src/app/AppRoutes.jsx b/src/app/AppRoutes.jsx
-index 042e6e4c8e1286224d0341e7c0d240bda4b8625b..7d4dca99ebbca2aa4ff1ee9b30a9345595fb4009 100644
---- a/src/app/AppRoutes.jsx
-+++ b/src/app/AppRoutes.jsx
-@@ -915,50 +915,54 @@ export default function AppRoutes({ user, role, studentIds }) {
-               },
-               userId,
-               userRole: role,
-               route: routePath,
-               app: 'staff',
-           });
-           console.error('[Firestore WRITE ERROR]', error);
-           throw error;
-       }
-   };
- 
-   const handleDeleteLessonLog = async (id) => {
-       try {
-           ensureFirestoreContext();
-           await deleteDoc(doc(db, 'lessonLogs', id));
-           setLessonLogs(prev => prev.filter(l => l.id !== id));
-       } catch (error) {
-           console.error('[Firestore WRITE ERROR]', error);
-           alert('수업 일지 삭제에 실패했습니다. 권한 또는 네트워크를 확인하세요.');
-       }
-   };
- 
-   const handleSaveAttendance = async (records) => {
-       ensureFirestoreContext();
-       try {
-+          if (!Array.isArray(records) || records.length === 0) {
-+              logNotification('success', '출결 저장', '변경된 출결 기록이 없습니다.');
-+              return;
-+          }
-           const nextLogs = [...attendanceLogs];
-           for (const record of records) {
-               const docId = record.id || `${record.classId}_${record.studentId}_${record.date}`;
-               const payload = {
-                   ...record,
-                   studentUid: record.studentId,
-                   updatedAt: serverTimestamp(),
-                   updatedBy: userId,
-               };
-               await setDoc(doc(db, 'attendanceLogs', docId), payload, { merge: true });
-               const existingIndex = nextLogs.findIndex((log) => log.id === docId);
-               const nextRecord = { ...record, id: docId, studentUid: record.studentId };
-               if (existingIndex >= 0) {
-                   nextLogs[existingIndex] = nextRecord;
-               } else {
-                   nextLogs.push(nextRecord);
-               }
-           }
-           setAttendanceLogs(nextLogs);
-           logNotification('success', '출결 저장', '출결 기록이 저장되었습니다.');
-       } catch (error) {
-         await logClientError({
-               scope: 'attendance',
-               action: 'saveAttendance',
-               message: error?.message || 'unknown attendance write error',
-diff --git a/src/components/common/AttendanceModal.jsx b/src/components/common/AttendanceModal.jsx
-index c1e092009ce267ad72b136c6c980d7f43c4b4dec..8717b21ade5b4e84646d6549db94089ac3b3166b 100644
---- a/src/components/common/AttendanceModal.jsx
-+++ b/src/components/common/AttendanceModal.jsx
-@@ -1,56 +1,65 @@
- // src/components/common/AttendanceModal.jsx
- import React, { useState, useEffect } from 'react';
- import { Modal } from './Modal';
- import { Icon, formatGradeLabel } from '../../utils/helpers';
- import { formatStudentNameWithParentLast4 } from '../../utils/parentPhone';
- 
- export const AttendanceModal = ({ isOpen, onClose, studentsData, initialAttendance, onSave, isReadOnly = false, parentLast4Map = {} }) => {
-     const [attendance, setAttendance] = useState({});
-+    const [loadedAttendance, setLoadedAttendance] = useState({});
- 
-     useEffect(() => {
-         setAttendance(initialAttendance);
-+        setLoadedAttendance(initialAttendance);
-     }, [initialAttendance, isOpen]);
- 
-     const handleStatusChange = (studentId, status) => {
-         if (isReadOnly) return;
-         setAttendance(prev => {
-             const currentStatus = prev[studentId]?.status;
-             const nextStatus = currentStatus === status ? null : status;
-             return {
-                 ...prev,
-                 [studentId]: { ...prev[studentId], status: nextStatus }
-             };
-         });
-     };
-     
-     const handleSubmit = (e) => {
-         e.preventDefault();
-         if (isReadOnly) return;
--        // ✅ [수정] status가 null인(미입력) 항목은 저장하지 않고 필터링
--        const validRecords = Object.values(attendance).filter(record => record.status);
--        onSave(validRecords);
-+        const changedRecords = Object.entries(attendance)
-+            .filter(([, record]) => record.status)
-+            .filter(([studentId, record]) => {
-+                const initial = loadedAttendance[studentId] || {};
-+                return ['status', 'reason', 'memo'].some((field) => (
-+                    (record[field] ?? '') !== (initial[field] ?? '')
-+                ));
-+            })
-+            .map(([, record]) => record);
-+        onSave(changedRecords);
-         onClose();
-     };
- 
-     const studentList = studentsData.filter(s => attendance[s.id]);
- 
-     return (
-         <Modal isOpen={isOpen} onClose={onClose} title="출결 현황 기록" maxWidth="max-w-3xl">
-             <form onSubmit={handleSubmit} className="space-y-4">
-                 {isReadOnly && (
-                     <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
-                         휴강일에는 출결을 수정/저장할 수 없습니다.
-                     </div>
-                 )}
-                 <div className="max-h-[60vh] overflow-y-auto">
-                     <table className="min-w-full divide-y divide-gray-200">
-                         <thead className="bg-gray-50 sticky top-0">
-                             <tr>
-                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">이름</th>
-                                 <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">상태 선택</th>
-                             </tr>
-                         </thead>
-                         <tbody className="bg-white divide-y divide-gray-200">
-                             {studentList.map(student => (
-                                 <tr key={student.id}>
-                                     <td className="px-6 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
-@@ -79,26 +88,26 @@ export const AttendanceModal = ({ isOpen, onClose, studentsData, initialAttendan
-                             ))}
-                         </tbody>
-                     </table>
-                 </div>
- 
-                 <div className="pt-4 border-t flex justify-between items-center">
-                     <p className="text-sm text-gray-600 flex items-center">
-                         <Icon name="info" className="w-4 h-4 mr-1 text-[#455fab]"/>
-                         미기록 학생은 자동으로 '결석' 처리되지 않습니다.
-                     </p>
-                     <button
-                         type="submit"
-                         disabled={isReadOnly}
-                         className={`px-6 py-2 text-sm font-medium rounded-lg transition duration-150 shadow-md ${
-                             isReadOnly
-                                 ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                                 : 'text-white bg-[#455fab] hover:bg-[#3b5198]'
-                         }`}
-                     >
-                         출결 기록 저장
-                     </button>
-                 </div>
-             </form>
-         </Modal>
-     );
--};
-\ No newline at end of file
-+};
 diff --git a/src/components/dashboard/StaffTasksPanel.jsx b/src/components/dashboard/StaffTasksPanel.jsx
-index 408549765246469505e6e277b72da0816c5190da..d5860dd654ed74b3667234b865d0d334cf648b8e 100644
+index d5860dd654ed74b3667234b865d0d334cf648b8e..48c5491cbd7520bdfb6f3209f60219d42ed8ea80 100644
 --- a/src/components/dashboard/StaffTasksPanel.jsx
 +++ b/src/components/dashboard/StaffTasksPanel.jsx
-@@ -1,166 +1,173 @@
+@@ -1,173 +1,227 @@
  import React, { useCallback, useEffect, useMemo, useState } from 'react';
- import { addDoc, collection, deleteDoc, doc, getDocs, orderBy, query, serverTimestamp, updateDoc } from 'firebase/firestore';
+-import { addDoc, collection, deleteDoc, doc, getDocs, orderBy, query, serverTimestamp, updateDoc } from 'firebase/firestore';
++import { addDoc, collection, deleteDoc, doc, getDocs, orderBy, query, serverTimestamp, updateDoc, where } from 'firebase/firestore';
  import { db } from '../../firebase/client';
-+import { Modal } from '../common/Modal';
+ import { Modal } from '../common/Modal';
  
  const CATEGORIES = { document: '문서', book: '교재', consultation: '상담', admin: '행정', etc: '기타' };
--const emptyForm = { title: '', content: '', category: 'etc', status: 'pending', dueDate: '' };
-+const STATUSES = { pending: '대기', in_progress: '진행 중', completed: '완료' };
-+const emptyForm = { title: '', content: '', category: 'etc', assigneeIds: '', assigneeNames: '', dueDate: '', status: 'pending' };
+ const STATUSES = { pending: '대기', in_progress: '진행 중', completed: '완료' };
+-const emptyForm = { title: '', content: '', category: 'etc', assigneeIds: '', assigneeNames: '', dueDate: '', status: 'pending' };
++const ASSIGNEE_ROLES = ['admin', 'staff', 'teacher', 'teaching', 'staffOrTeaching'];
++const emptyForm = { title: '', content: '', category: 'etc', assigneeIds: [], assigneeNames: [], dueDate: '', status: 'pending' };
  const ymd = (date) => {
      const pad = (value) => String(value).padStart(2, '0');
      return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
  };
-+const toList = (value) => String(value || '').split(',').map((item) => item.trim()).filter(Boolean);
+-const toList = (value) => String(value || '').split(',').map((item) => item.trim()).filter(Boolean);
++const toArray = (value) => Array.isArray(value) ? value.filter(Boolean) : [];
++const getStaffId = (staff) => staff?.uid || staff?.id || '';
++const getStaffName = (staff) => staff?.name?.trim() || staff?.displayName?.trim() || '';
  
  export default function StaffTasksPanel({ actor }) {
      const [tasks, setTasks] = useState([]);
++    const [assigneeOptions, setAssigneeOptions] = useState([]);
      const [filter, setFilter] = useState('today');
      const [form, setForm] = useState(emptyForm);
      const [editingId, setEditingId] = useState('');
-+    const [isModalOpen, setIsModalOpen] = useState(false);
+     const [isModalOpen, setIsModalOpen] = useState(false);
      const [selectedDate, setSelectedDate] = useState(ymd(new Date()));
      const [month, setMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
      const [error, setError] = useState('');
-+    const [saving, setSaving] = useState(false);
+     const [saving, setSaving] = useState(false);
  
      const load = useCallback(async () => {
          try {
-             const snapshot = await getDocs(query(collection(db, 'staffTasks'), orderBy('createdAt', 'desc')));
+-            const snapshot = await getDocs(query(collection(db, 'staffTasks'), orderBy('createdAt', 'desc')));
++            const [snapshot, staffSnapshot] = await Promise.all([
++                getDocs(query(collection(db, 'staffTasks'), orderBy('createdAt', 'desc'))),
++                getDocs(query(collection(db, 'users'), where('role', 'in', ASSIGNEE_ROLES))),
++            ]);
              setTasks(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })));
++            setAssigneeOptions(staffSnapshot.docs
++                .map((item) => ({ id: item.id, ...item.data() }))
++                .filter((staff) => staff.active !== false)
++                .map((staff) => ({ id: getStaffId(staff), name: getStaffName(staff) }))
++                .filter((staff) => staff.id && staff.name)
++                .sort((a, b) => a.name.localeCompare(b.name, 'ko')));
              setError('');
          } catch (loadError) {
              console.error('[staffTasks] load failed', loadError);
@@ -203,165 +58,153 @@ index 408549765246469505e6e277b72da0816c5190da..d5860dd654ed74b3667234b865d0d334
  
      useEffect(() => { load(); }, [load]);
  
-+    const closeModal = () => {
-+        setIsModalOpen(false);
-+        setEditingId('');
-+        setForm(emptyForm);
-+    };
-+    const openCreate = () => {
-+        setEditingId('');
-+        setForm({ ...emptyForm, assigneeIds: actor.uid || '', assigneeNames: actor.name || '' });
-+        setIsModalOpen(true);
-+    };
-+    const openEdit = (task) => {
-+        setEditingId(task.id);
+     const closeModal = () => {
+         setIsModalOpen(false);
+         setEditingId('');
+         setForm(emptyForm);
+     };
+     const openCreate = () => {
+         setEditingId('');
+-        setForm({ ...emptyForm, assigneeIds: actor.uid || '', assigneeNames: actor.name || '' });
++        const actorOption = assigneeOptions.find((option) => option.id === actor.uid);
 +        setForm({
-+            title: task.title || '', content: task.content || '', category: task.category || 'etc',
-+            assigneeIds: (task.assigneeIds || []).join(', '), assigneeNames: (task.assigneeNames || []).join(', '),
-+            status: task.status || 'pending', dueDate: task.dueDate || '',
++            ...emptyForm,
++            assigneeIds: actorOption ? [actorOption.id] : [],
++            assigneeNames: actorOption ? [actorOption.name] : [],
 +        });
-+        setIsModalOpen(true);
+         setIsModalOpen(true);
+     };
+     const openEdit = (task) => {
++        const storedIds = toArray(task.assigneeIds);
++        const storedNames = toArray(task.assigneeNames);
++        const selectedOptions = assigneeOptions.filter((option) => (
++            storedIds.includes(option.id) || storedNames.includes(option.name)
++        ));
+         setEditingId(task.id);
+         setForm({
+             title: task.title || '', content: task.content || '', category: task.category || 'etc',
+-            assigneeIds: (task.assigneeIds || []).join(', '), assigneeNames: (task.assigneeNames || []).join(', '),
++            assigneeIds: selectedOptions.map((option) => option.id),
++            assigneeNames: selectedOptions.map((option) => option.name),
+             status: task.status || 'pending', dueDate: task.dueDate || '',
+         });
+         setIsModalOpen(true);
+     };
++    const toggleAssignee = (option) => {
++        const isSelected = form.assigneeIds.includes(option.id);
++        setForm({
++            ...form,
++            assigneeIds: isSelected
++                ? form.assigneeIds.filter((id) => id !== option.id)
++                : [...form.assigneeIds, option.id],
++            assigneeNames: isSelected
++                ? form.assigneeNames.filter((name) => name !== option.name)
++                : [...form.assigneeNames, option.name],
++        });
 +    };
-+
+ 
      const save = async (event) => {
          event.preventDefault();
--        if (!form.title.trim()) return;
--        const base = {
--            ...form,
--            title: form.title.trim(),
--            content: form.content.trim(),
--            assigneeIds: actor.uid ? [actor.uid] : [],
--            assigneeNames: actor.name ? [actor.name] : [],
--            updatedAt: serverTimestamp(),
--            updatedBy: actor.uid,
--        };
--        if (editingId) {
--            await updateDoc(doc(db, 'staffTasks', editingId), base);
--        } else {
--            await addDoc(collection(db, 'staffTasks'), {
--                ...base,
--                createdAt: serverTimestamp(),
--                createdBy: actor.uid,
--                createdByName: actor.name,
--                completedAt: null,
--                completedBy: '',
--                completedByName: '',
-+        if (!form.title.trim() || saving) return;
-+        setSaving(true);
-+        try {
-+            const assigneeIds = toList(form.assigneeIds);
-+            const assigneeNames = toList(form.assigneeNames);
-+            const base = {
-+                title: form.title.trim(), content: form.content.trim(), category: form.category,
-+                assigneeIds, assigneeNames, dueDate: form.dueDate, status: form.status,
-+                updatedAt: serverTimestamp(), updatedBy: actor.uid,
-+                completedAt: form.status === 'completed' ? serverTimestamp() : null,
-+                completedBy: form.status === 'completed' ? actor.uid : '',
-+                completedByName: form.status === 'completed' ? actor.name : '',
-+            };
-+            if (editingId) await updateDoc(doc(db, 'staffTasks', editingId), base);
-+            else await addDoc(collection(db, 'staffTasks'), {
-+                ...base, createdAt: serverTimestamp(), createdBy: actor.uid, createdByName: actor.name,
+         if (!form.title.trim() || saving) return;
+         setSaving(true);
+         try {
+-            const assigneeIds = toList(form.assigneeIds);
+-            const assigneeNames = toList(form.assigneeNames);
+             const base = {
+                 title: form.title.trim(), content: form.content.trim(), category: form.category,
+-                assigneeIds, assigneeNames, dueDate: form.dueDate, status: form.status,
++                assigneeIds: form.assigneeIds, assigneeNames: form.assigneeNames,
++                dueDate: form.dueDate, status: form.status,
+                 updatedAt: serverTimestamp(), updatedBy: actor.uid,
+                 completedAt: form.status === 'completed' ? serverTimestamp() : null,
+                 completedBy: form.status === 'completed' ? actor.uid : '',
+                 completedByName: form.status === 'completed' ? actor.name : '',
+             };
+             if (editingId) await updateDoc(doc(db, 'staffTasks', editingId), base);
+             else await addDoc(collection(db, 'staffTasks'), {
+                 ...base, createdAt: serverTimestamp(), createdBy: actor.uid, createdByName: actor.name,
              });
-+            closeModal();
-+            await load();
-+        } catch (saveError) {
-+            console.error('[staffTasks] save failed', saveError);
-+            setError('업무를 저장하지 못했습니다.');
-+        } finally {
-+            setSaving(false);
+             closeModal();
+             await load();
+         } catch (saveError) {
+             console.error('[staffTasks] save failed', saveError);
+             setError('업무를 저장하지 못했습니다.');
+         } finally {
+             setSaving(false);
          }
--        setForm(emptyForm);
--        setEditingId('');
--        await load();
      };
  
      const complete = async (task) => {
--        const completed = task.status !== 'completed';
          await updateDoc(doc(db, 'staffTasks', task.id), {
--            status: completed ? 'completed' : 'pending',
--            completedAt: completed ? serverTimestamp() : null,
--            completedBy: completed ? actor.uid : '',
--            completedByName: completed ? actor.name : '',
--            updatedAt: serverTimestamp(),
--            updatedBy: actor.uid,
-+            status: 'completed', completedAt: serverTimestamp(), completedBy: actor.uid,
-+            completedByName: actor.name, updatedAt: serverTimestamp(), updatedBy: actor.uid,
+             status: 'completed', completedAt: serverTimestamp(), completedBy: actor.uid,
+             completedByName: actor.name, updatedAt: serverTimestamp(), updatedBy: actor.uid,
          });
          await load();
      };
--
      const remove = async (task) => {
          if (!window.confirm(`"${task.title}" 업무를 삭제할까요?`)) return;
          await deleteDoc(doc(db, 'staffTasks', task.id));
-+        if (editingId === task.id) closeModal();
+         if (editingId === task.id) closeModal();
          await load();
      };
  
      const today = ymd(new Date());
-     const weekEnd = new Date();
-     weekEnd.setDate(weekEnd.getDate() + (7 - ((weekEnd.getDay() + 6) % 7) - 1));
+-    const weekEnd = new Date();
+-    weekEnd.setDate(weekEnd.getDate() + (7 - ((weekEnd.getDay() + 6) % 7) - 1));
++    const weekStart = new Date();
++    weekStart.setDate(weekStart.getDate() - ((weekStart.getDay() + 6) % 7));
++    const weekEnd = new Date(weekStart);
++    weekEnd.setDate(weekStart.getDate() + 6);
      const filtered = tasks.filter((task) => {
-+        if (filter === 'completed') return task.status === 'completed';
-+        if (task.status === 'completed') return false;
+-        if (filter === 'completed') return task.status === 'completed';
+-        if (task.status === 'completed') return false;
          if (filter === 'today') return task.dueDate === today;
-         if (filter === 'week') return task.dueDate >= today && task.dueDate <= ymd(weekEnd);
+-        if (filter === 'week') return task.dueDate >= today && task.dueDate <= ymd(weekEnd);
++        if (filter === 'week') return task.dueDate >= ymd(weekStart) && task.dueDate <= ymd(weekEnd);
++        if (filter === 'noDueDate') return !task.dueDate;
          return true;
      });
      const days = useMemo(() => {
          const first = new Date(month.getFullYear(), month.getMonth(), 1);
--        const start = new Date(first);
--        start.setDate(start.getDate() - start.getDay());
--        return Array.from({ length: 42 }, (_, index) => {
--            const date = new Date(start);
--            date.setDate(start.getDate() + index);
--            return date;
--        });
-+        const start = new Date(first); start.setDate(start.getDate() - start.getDay());
-+        return Array.from({ length: 42 }, (_, index) => { const date = new Date(start); date.setDate(start.getDate() + index); return date; });
+         const start = new Date(first); start.setDate(start.getDate() - start.getDay());
+         return Array.from({ length: 42 }, (_, index) => { const date = new Date(start); date.setDate(start.getDate() + index); return date; });
      }, [month]);
      const selectedTasks = tasks.filter((task) => task.dueDate === selectedDate);
++    const resolveAssigneeNames = (task) => {
++        const storedNames = toArray(task.assigneeNames);
++        if (storedNames.length > 0) return storedNames;
++        const storedIds = toArray(task.assigneeIds);
++        return assigneeOptions
++            .filter((option) => storedIds.includes(option.id))
++            .map((option) => option.name);
++    };
  
      return (
          <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
--            <div className="mb-4">
--                <h3 className="text-lg font-bold text-gray-900">직원 업무관리</h3>
--                <p className="text-xs text-gray-500">staffTasks · 일반 업무와 마감일 관리</p>
-+            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-+                <div><h3 className="text-lg font-bold text-gray-900">직원 업무관리</h3><p className="text-xs text-gray-500">staffTasks · 일반 업무와 마감일 관리</p></div>
-+                <button type="button" onClick={openCreate} className="rounded-xl bg-[#455fab] px-6 py-3 text-base font-bold text-white shadow-sm hover:bg-[#3b5198]">+ 업무 추가</button>
+             <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                 <div><h3 className="text-lg font-bold text-gray-900">직원 업무관리</h3><p className="text-xs text-gray-500">staffTasks · 일반 업무와 마감일 관리</p></div>
+                 <button type="button" onClick={openCreate} className="rounded-xl bg-[#455fab] px-6 py-3 text-base font-bold text-white shadow-sm hover:bg-[#3b5198]">+ 업무 추가</button>
              </div>
              {error && <p className="mb-3 rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{error}</p>}
--            <form onSubmit={save} className="mb-5 grid gap-2 rounded-xl bg-gray-50 p-3 md:grid-cols-6">
--                <input className="rounded-lg border px-3 py-2 text-sm md:col-span-2" placeholder="업무 제목" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
--                <select className="rounded-lg border px-2 py-2 text-sm" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
--                    {Object.entries(CATEGORIES).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
--                </select>
--                <input type="date" className="rounded-lg border px-2 py-2 text-sm" value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.target.value })} />
--                <input className="rounded-lg border px-3 py-2 text-sm" placeholder="내용" value={form.content} onChange={(e) => setForm({ ...form, content: e.target.value })} />
--                <button className="rounded-lg bg-[#455fab] px-3 py-2 text-sm font-bold text-white">{editingId ? '수정 저장' : '업무 추가'}</button>
--            </form>
              <div className="grid gap-5 xl:grid-cols-[1fr_1.2fr]">
                  <div>
                      <div className="mb-3 flex rounded-lg bg-gray-100 p-1">
--                        {[['today', '오늘 마감'], ['week', '이번 주'], ['all', '전체']].map(([value, label]) => (
-+                        {[['today', '오늘 마감'], ['week', '이번 주'], ['all', '진행 업무'], ['completed', '완료 업무']].map(([value, label]) => (
+-                        {[['today', '오늘 마감'], ['week', '이번 주'], ['all', '진행 업무'], ['completed', '완료 업무']].map(([value, label]) => (
++                        {[['today', '오늘'], ['week', '이번 주'], ['all', '전체'], ['noDueDate', '마감일 없음']].map(([value, label]) => (
                              <button key={value} type="button" onClick={() => setFilter(value)} className={`flex-1 rounded-md px-2 py-2 text-xs font-bold ${filter === value ? 'bg-white text-[#334a91] shadow-sm' : 'text-gray-500'}`}>{label}</button>
                          ))}
                      </div>
                      <div className="max-h-80 space-y-2 overflow-auto">
                          {filtered.map((task) => (
                              <div key={task.id} className="flex items-start gap-2 rounded-lg border p-3">
--                                <input type="checkbox" checked={task.status === 'completed'} onChange={() => complete(task)} className="mt-1" />
                                  <div className="min-w-0 flex-1">
                                      <p className={`text-sm font-bold ${task.status === 'completed' ? 'text-gray-400 line-through' : 'text-gray-800'}`}>{task.title}</p>
--                                    <p className="text-xs text-gray-500">{CATEGORIES[task.category] || '기타'} · {task.dueDate || '마감일 없음'}</p>
-+                                    <p className="text-xs text-gray-500">{CATEGORIES[task.category] || '기타'} · {STATUSES[task.status] || '대기'} · {task.dueDate || '마감일 없음'}</p>
-+                                    {task.assigneeNames?.length > 0 && <p className="mt-1 text-xs text-gray-400">담당: {task.assigneeNames.join(', ')}</p>}
+                                     <p className="text-xs text-gray-500">{CATEGORIES[task.category] || '기타'} · {STATUSES[task.status] || '대기'} · {task.dueDate || '마감일 없음'}</p>
+-                                    {task.assigneeNames?.length > 0 && <p className="mt-1 text-xs text-gray-400">담당: {task.assigneeNames.join(', ')}</p>}
++                                    {resolveAssigneeNames(task).length > 0 && <p className="mt-1 text-xs text-gray-400">담당: {resolveAssigneeNames(task).join(', ')}</p>}
                                  </div>
--                                <button type="button" onClick={() => { setEditingId(task.id); setForm({ title: task.title || '', content: task.content || '', category: task.category || 'etc', status: task.status || 'pending', dueDate: task.dueDate || '' }); }} className="text-xs text-[#455fab]">수정</button>
-+                                {task.status !== 'completed' && <button type="button" onClick={() => complete(task)} className="text-xs font-semibold text-emerald-700">완료</button>}
-+                                <button type="button" onClick={() => openEdit(task)} className="text-xs text-[#455fab]">수정</button>
+                                 {task.status !== 'completed' && <button type="button" onClick={() => complete(task)} className="text-xs font-semibold text-emerald-700">완료</button>}
+                                 <button type="button" onClick={() => openEdit(task)} className="text-xs text-[#455fab]">수정</button>
                                  <button type="button" onClick={() => remove(task)} className="text-xs text-rose-600">삭제</button>
                              </div>
                          ))}
@@ -369,667 +212,40 @@ index 408549765246469505e6e277b72da0816c5190da..d5860dd654ed74b3667234b865d0d334
                      </div>
                  </div>
                  <div>
--                    <div className="mb-2 flex items-center justify-between">
--                        <button type="button" onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))}>‹</button>
--                        <strong className="text-sm">{month.getFullYear()}년 {month.getMonth() + 1}월</strong>
--                        <button type="button" onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))}>›</button>
--                    </div>
-+                    <div className="mb-2 flex items-center justify-between"><button type="button" onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))}>‹</button><strong className="text-sm">{month.getFullYear()}년 {month.getMonth() + 1}월</strong><button type="button" onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))}>›</button></div>
+                     <div className="mb-2 flex items-center justify-between"><button type="button" onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))}>‹</button><strong className="text-sm">{month.getFullYear()}년 {month.getMonth() + 1}월</strong><button type="button" onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))}>›</button></div>
                      <div className="grid grid-cols-7 overflow-hidden rounded-lg border text-center text-xs">
                          {'일월화수목금토'.split('').map((day) => <div key={day} className="bg-gray-50 py-2 font-bold">{day}</div>)}
--                        {days.map((date) => {
--                            const dateKey = ymd(date);
--                            const count = tasks.filter((task) => task.dueDate === dateKey).length;
--                            return <button type="button" key={dateKey} onClick={() => setSelectedDate(dateKey)} className={`min-h-12 border-t p-1 ${date.getMonth() !== month.getMonth() ? 'text-gray-300' : ''} ${selectedDate === dateKey ? 'bg-[#f1f4ff]' : ''}`}>
--                                <span>{date.getDate()}</span>{count > 0 && <span className="mx-auto mt-1 block h-1.5 w-1.5 rounded-full bg-[#455fab]" />}
--                            </button>;
--                        })}
--                    </div>
--                    <div className="mt-3 rounded-lg bg-gray-50 p-3">
--                        <p className="mb-2 text-xs font-bold">{selectedDate} 업무</p>
--                        {selectedTasks.map((task) => <p key={task.id} className="text-xs text-gray-600">• {task.title}</p>)}
--                        {selectedTasks.length === 0 && <p className="text-xs text-gray-400">등록된 업무가 없습니다.</p>}
-+                        {days.map((date) => { const dateKey = ymd(date); const count = tasks.filter((task) => task.dueDate === dateKey).length; return <button type="button" key={dateKey} onClick={() => setSelectedDate(dateKey)} className={`min-h-12 border-t p-1 ${date.getMonth() !== month.getMonth() ? 'text-gray-300' : ''} ${selectedDate === dateKey ? 'bg-[#f1f4ff]' : ''}`}><span>{date.getDate()}</span>{count > 0 && <span className="mx-auto mt-1 block h-1.5 w-1.5 rounded-full bg-[#455fab]" />}</button>; })}
+                         {days.map((date) => { const dateKey = ymd(date); const count = tasks.filter((task) => task.dueDate === dateKey).length; return <button type="button" key={dateKey} onClick={() => setSelectedDate(dateKey)} className={`min-h-12 border-t p-1 ${date.getMonth() !== month.getMonth() ? 'text-gray-300' : ''} ${selectedDate === dateKey ? 'bg-[#f1f4ff]' : ''}`}><span>{date.getDate()}</span>{count > 0 && <span className="mx-auto mt-1 block h-1.5 w-1.5 rounded-full bg-[#455fab]" />}</button>; })}
                      </div>
-+                    <div className="mt-3 rounded-lg bg-gray-50 p-3"><p className="mb-2 text-xs font-bold">{selectedDate} 업무</p>{selectedTasks.map((task) => <button type="button" onClick={() => openEdit(task)} key={task.id} className="block text-left text-xs text-gray-600 hover:text-[#455fab]">• {task.title}</button>)}{selectedTasks.length === 0 && <p className="text-xs text-gray-400">등록된 업무가 없습니다.</p>}</div>
+                     <div className="mt-3 rounded-lg bg-gray-50 p-3"><p className="mb-2 text-xs font-bold">{selectedDate} 업무</p>{selectedTasks.map((task) => <button type="button" onClick={() => openEdit(task)} key={task.id} className="block text-left text-xs text-gray-600 hover:text-[#455fab]">• {task.title}</button>)}{selectedTasks.length === 0 && <p className="text-xs text-gray-400">등록된 업무가 없습니다.</p>}</div>
                  </div>
              </div>
-+
-+            <Modal isOpen={isModalOpen} onClose={closeModal} title={editingId ? '업무 수정' : '업무 추가'} maxWidth="max-w-2xl">
-+                <form onSubmit={save} className="grid gap-4 sm:grid-cols-2">
-+                    <label className="sm:col-span-2 text-sm font-semibold text-gray-700">제목<input required value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} className="mt-1 w-full rounded-lg border px-3 py-2 font-normal" /></label>
-+                    <label className="sm:col-span-2 text-sm font-semibold text-gray-700">내용<textarea rows="5" value={form.content} onChange={(e) => setForm({ ...form, content: e.target.value })} className="mt-1 w-full rounded-lg border px-3 py-2 font-normal" /></label>
-+                    <label className="text-sm font-semibold text-gray-700">카테고리<select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} className="mt-1 w-full rounded-lg border px-3 py-2 font-normal">{Object.entries(CATEGORIES).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+ 
+             <Modal isOpen={isModalOpen} onClose={closeModal} title={editingId ? '업무 수정' : '업무 추가'} maxWidth="max-w-2xl">
+                 <form onSubmit={save} className="grid gap-4 sm:grid-cols-2">
+                     <label className="sm:col-span-2 text-sm font-semibold text-gray-700">제목<input required value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} className="mt-1 w-full rounded-lg border px-3 py-2 font-normal" /></label>
+                     <label className="sm:col-span-2 text-sm font-semibold text-gray-700">내용<textarea rows="5" value={form.content} onChange={(e) => setForm({ ...form, content: e.target.value })} className="mt-1 w-full rounded-lg border px-3 py-2 font-normal" /></label>
+                     <label className="text-sm font-semibold text-gray-700">카테고리<select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} className="mt-1 w-full rounded-lg border px-3 py-2 font-normal">{Object.entries(CATEGORIES).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+-                    <label className="text-sm font-semibold text-gray-700">상태<select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })} className="mt-1 w-full rounded-lg border px-3 py-2 font-normal">{Object.entries(STATUSES).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+-                    <label className="text-sm font-semibold text-gray-700">담당자 ID<input value={form.assigneeIds} onChange={(e) => setForm({ ...form, assigneeIds: e.target.value })} placeholder="여러 명은 쉼표로 구분" className="mt-1 w-full rounded-lg border px-3 py-2 font-normal" /></label>
+-                    <label className="text-sm font-semibold text-gray-700">담당자 이름<input value={form.assigneeNames} onChange={(e) => setForm({ ...form, assigneeNames: e.target.value })} placeholder="여러 명은 쉼표로 구분" className="mt-1 w-full rounded-lg border px-3 py-2 font-normal" /></label>
++                    <fieldset className="text-sm font-semibold text-gray-700">
++                        <legend>담당자</legend>
++                        <div className="mt-1 max-h-36 space-y-1 overflow-auto rounded-lg border p-2 font-normal">
++                            {assigneeOptions.map((option) => (
++                                <label key={option.id} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 hover:bg-gray-50">
++                                    <input type="checkbox" checked={form.assigneeIds.includes(option.id)} onChange={() => toggleAssignee(option)} />
++                                    <span>{option.name}</span>
++                                </label>
++                            ))}
++                            {assigneeOptions.length === 0 && <p className="px-2 py-1 text-gray-400">선택 가능한 담당자가 없습니다.</p>}
++                        </div>
++                    </fieldset>
+                     <label className="text-sm font-semibold text-gray-700">마감일<input type="date" value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.target.value })} className="mt-1 w-full rounded-lg border px-3 py-2 font-normal" /></label>
 +                    <label className="text-sm font-semibold text-gray-700">상태<select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })} className="mt-1 w-full rounded-lg border px-3 py-2 font-normal">{Object.entries(STATUSES).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-+                    <label className="text-sm font-semibold text-gray-700">담당자 ID<input value={form.assigneeIds} onChange={(e) => setForm({ ...form, assigneeIds: e.target.value })} placeholder="여러 명은 쉼표로 구분" className="mt-1 w-full rounded-lg border px-3 py-2 font-normal" /></label>
-+                    <label className="text-sm font-semibold text-gray-700">담당자 이름<input value={form.assigneeNames} onChange={(e) => setForm({ ...form, assigneeNames: e.target.value })} placeholder="여러 명은 쉼표로 구분" className="mt-1 w-full rounded-lg border px-3 py-2 font-normal" /></label>
-+                    <label className="text-sm font-semibold text-gray-700">마감일<input type="date" value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.target.value })} className="mt-1 w-full rounded-lg border px-3 py-2 font-normal" /></label>
-+                    <div className="flex items-end justify-end gap-2 sm:col-span-2"><button type="button" onClick={closeModal} className="rounded-lg border px-4 py-2 text-sm font-semibold text-gray-600">취소</button><button disabled={saving} className="rounded-lg bg-[#455fab] px-5 py-2 text-sm font-bold text-white disabled:opacity-60">{saving ? '저장 중...' : editingId ? '수정 저장' : '업무 추가'}</button></div>
-+                </form>
-+            </Modal>
+                     <div className="flex items-end justify-end gap-2 sm:col-span-2"><button type="button" onClick={closeModal} className="rounded-lg border px-4 py-2 text-sm font-semibold text-gray-600">취소</button><button disabled={saving} className="rounded-lg bg-[#455fab] px-5 py-2 text-sm font-bold text-white disabled:opacity-60">{saving ? '저장 중...' : editingId ? '수정 저장' : '업무 추가'}</button></div>
+                 </form>
+             </Modal>
          </section>
-     );
- }
-diff --git a/src/components/dashboard/TodayWorkBriefing.jsx b/src/components/dashboard/TodayWorkBriefing.jsx
-index 91d02e750757f28c91f58af9be92a35970b3f4f2..6108d4f4b61d7b70523793fa2c09859cb95a67d1 100644
---- a/src/components/dashboard/TodayWorkBriefing.jsx
-+++ b/src/components/dashboard/TodayWorkBriefing.jsx
-@@ -1,105 +1,121 @@
- import React, { useMemo } from 'react';
- import { hasClassOnDate } from '../../utils/helpers';
- import { isClosedClass, sortClassesWithClosedLast } from '../../utils/classStatus';
- 
- const toYmd = (value) => {
-     if (!value) return '';
-     if (typeof value === 'string') return value.match(/\d{4}-\d{2}-\d{2}/)?.[0] || '';
-     const raw = typeof value?.toDate === 'function' ? value.toDate() : value;
-     const date = new Date(raw);
-     if (Number.isNaN(date.getTime())) return '';
-     const pad = (number) => String(number).padStart(2, '0');
-     return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
- };
- 
- const classIdOf = (item) => String(item?.classId || item?.classDocId || item?.class?.id || '');
- const dateOf = (item) => toYmd(item?.date || item?.lessonDate || item?.dateKey || item?.createdAt);
- const studentClassIds = (student) => (student?.classIds || student?.classes || []).map(String);
-+const studentIds = (student) => [student?.id, student?.studentUid, student?.authUid, student?.uid].filter(Boolean).map(String);
-+const attendanceHasStatus = (log) => Boolean(String(log?.status || '').trim());
-+const reportIsReady = (report) => (
-+    report?.status === 'sent'
-+    || report?.sendStatus === 'sent'
-+    || report?.sendStatus === 'scheduled'
-+    || Boolean(report?.scheduledSendAt)
-+);
- 
- export default function TodayWorkBriefing({
-     classes = [],
-     students = [],
-     lessonLogs = [],
-     attendanceLogs = [],
-     lessonReports = [],
-     onNavigate,
- }) {
-     const today = toYmd(new Date());
-     const briefing = useMemo(() => sortClassesWithClosedLast(classes)
-         .filter((cls) => !isClosedClass(cls) && hasClassOnDate(cls, today))
-         .map((cls) => {
-             const classId = String(cls.id);
-             const roster = students.filter((student) => studentClassIds(student).includes(classId));
-             const todayAttendanceIds = new Set(attendanceLogs
--                .filter((log) => classIdOf(log) === classId && dateOf(log) === today)
--                .map((log) => String(log.studentId || log.userId || '')));
-+                .filter((log) => classIdOf(log) === classId && dateOf(log) === today && attendanceHasStatus(log))
-+                .flatMap((log) => [log.studentId, log.studentDocId, log.studentUid, log.authUid, log.userId].filter(Boolean).map(String)));
-+            const missingAttendanceCount = roster.filter((student) => (
-+                !studentIds(student).some((studentId) => todayAttendanceIds.has(studentId))
-+            )).length;
-             const reports = lessonReports.filter((report) => classIdOf(report) === classId && dateOf(report) === today);
-             const reportComplete = roster.length > 0 && roster.every((student) => reports.some((report) => (
--                String(report.studentId || '') === String(student.id)
--                && (report.status === 'sent' || report.sendStatus === 'scheduled' || Boolean(report.scheduledSendAt))
-+                studentIds(student).includes(String(report.studentId || report.studentUid || ''))
-+                && reportIsReady(report)
-             )));
-+            const lessonLogComplete = lessonLogs.some((log) => classIdOf(log) === classId && dateOf(log) === today);
-             return {
-                 cls,
-                 required: [
-                     {
--                        label: lessonLogs.some((log) => classIdOf(log) === classId && dateOf(log) === today)
--                            ? '수업일지 작성 완료' : '수업일지 미작성',
--                        complete: lessonLogs.some((log) => classIdOf(log) === classId && dateOf(log) === today),
-+                        label: lessonLogComplete ? '수업일지 작성 완료' : '수업일지 미작성',
-+                        complete: lessonLogComplete,
-                         page: 'lessons',
-+                        actionLabel: '수업관리로 이동',
-                     },
-                     {
--                        label: roster.filter((student) => !todayAttendanceIds.has(String(student.id))).length > 0
--                            ? `출결 미입력 ${roster.filter((student) => !todayAttendanceIds.has(String(student.id))).length}명`
-+                        label: missingAttendanceCount > 0
-+                            ? `출결 미입력 ${missingAttendanceCount}명`
-                             : '출결 입력 완료',
--                        complete: roster.length > 0 && roster.every((student) => todayAttendanceIds.has(String(student.id))),
-+                        complete: roster.length > 0 && missingAttendanceCount === 0,
-                         page: 'attendance',
-+                        actionLabel: '출결관리로 이동',
-                     },
-                     {
-                         label: reportComplete ? '리포트 작성/예약 완료' : '리포트 미작성/미예약',
-                         complete: reportComplete,
-                         page: 'lessonReports',
-+                        actionLabel: '수업리포트관리로 이동',
-                     },
-                 ],
-             };
-         }), [attendanceLogs, classes, lessonLogs, lessonReports, students, today]);
- 
-     return (
-         <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-             <div className="mb-4 flex items-center justify-between gap-3">
-                 <div>
-                     <h3 className="text-lg font-bold text-gray-900">오늘 업무 브리핑</h3>
-                     <p className="text-xs text-gray-500">{today} 수업 클래스 기준 자동 점검</p>
-                 </div>
-                 <span className="rounded-full bg-[#f1f4ff] px-3 py-1 text-xs font-bold text-[#334a91]">{briefing.length}개 클래스</span>
-             </div>
-             {briefing.length === 0 ? (
-                 <div className="rounded-xl border border-dashed border-gray-200 py-7 text-center text-sm text-gray-500">오늘 예정된 수업이 없습니다.</div>
-             ) : (
-                 <div className="grid gap-4 lg:grid-cols-2">
-                     {briefing.map(({ cls, required }) => (
-                         <article key={cls.id} className="rounded-xl border border-gray-200 p-4">
-                             <h4 className="font-bold text-gray-900">{cls.name}</h4>
-                             <div className="mt-3 space-y-2">
-                                 {required.map((item) => (
-                                     <button key={item.page} type="button" onClick={() => onNavigate?.(item.page)}
--                                        className="flex w-full items-center gap-2 rounded-lg bg-gray-50 px-3 py-2 text-left text-sm hover:bg-gray-100">
--                                        <input type="checkbox" checked={item.complete} readOnly disabled={!item.complete} className="h-4 w-4" />
--                                        <span className={item.complete ? 'text-emerald-700' : 'font-semibold text-rose-700'}>{item.label}</span>
-+                                        className={`flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-left text-sm ${item.complete ? 'border-emerald-100 bg-emerald-50/50 hover:bg-emerald-50' : 'border-rose-200 bg-rose-50 hover:bg-rose-100'}`}>
-+                                        <span aria-hidden className={`flex h-5 w-5 items-center justify-center rounded-full text-xs font-bold ${item.complete ? 'bg-emerald-600 text-white' : 'bg-rose-600 text-white'}`}>{item.complete ? '✓' : '!'}</span>
-+                                        <span className={`min-w-0 flex-1 ${item.complete ? 'text-emerald-700' : 'font-semibold text-rose-700'}`}>{item.label}</span>
-+                                        {!item.complete && <span className="rounded-full bg-rose-600 px-2 py-0.5 text-[10px] font-bold text-white">필수 경고</span>}
-+                                        <span className="text-[11px] font-semibold text-gray-500">{item.actionLabel} →</span>
-                                     </button>
-                                 ))}
-                             </div>
-                             <div className="mt-3 border-t pt-3">
-                                 <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-gray-400">선택 확인</p>
-                                 <div className="flex flex-wrap gap-3 text-xs text-gray-600">
-                                     {['성적 입력', '과제 검사', '과제 출제'].map((label) => (
-                                         <label key={label} className="flex items-center gap-1.5"><input type="checkbox" />{label}</label>
-                                     ))}
-                                 </div>
-                             </div>
-                         </article>
-                     ))}
-                 </div>
-             )}
-         </section>
-     );
- }
-diff --git a/src/pages/Home.jsx b/src/pages/Home.jsx
-index 8b2ceeed2df40da0272d8a7d8d0352943982b746..233bdf41703cb87a1b02ce4c7bbf540388878dae 100644
---- a/src/pages/Home.jsx
-+++ b/src/pages/Home.jsx
-@@ -1,344 +1,116 @@
- import React, { useCallback, useEffect, useMemo, useState } from 'react';
- import { Icon } from '../utils/helpers';
--import { collection, getDocs, limit, orderBy, query } from 'firebase/firestore';
- import { db } from '../firebase/client';
- import useAuth from '../auth/useAuth';
--import { isAdminRole, isStaffOrTeachingRole } from '../constants/roles';
-+import { isStaffOrTeachingRole } from '../constants/roles';
- import { fetchStaffTimeline as fetchStaffTimelineThreads } from '../domain/staffTimeline/staffTimeline.service';
- import StaffTimelineThreadCard from '../components/StaffTimeline/StaffTimelineThreadCard';
- import TodayWorkBriefing from '../components/dashboard/TodayWorkBriefing';
- import StaffTasksPanel from '../components/dashboard/StaffTasksPanel';
- 
- export default function Home({
--    onQuickAction, onCreateLinkCode, userRole, classes = [], students = [],
-+    onQuickAction, userRole, classes = [], students = [],
-     lessonLogs = [], attendanceLogs = [], lessonReports = [],
- }) {
-     const { user, userProfile } = useAuth();
--    const [linkStudentId, setLinkStudentId] = useState('');
--    const [linkCodeResult, setLinkCodeResult] = useState('');
--    const [linkStatus, setLinkStatus] = useState('');
--    const [linkSubmitting, setLinkSubmitting] = useState(false);
--    const [notificationLogs, setNotificationLogs] = useState([]);
--    const [logLoading, setLogLoading] = useState(false);
--    const [logError, setLogError] = useState('');
-     const [staffTimelineItems, setStaffTimelineItems] = useState([]);
-     const [staffTimelineLoading, setStaffTimelineLoading] = useState(false);
-     const [staffTimelineError, setStaffTimelineError] = useState('');
-     const [staffTimelineFilter, setStaffTimelineFilter] = useState('pending');
--    const isAdmin = isAdminRole(userRole);
-     const canAccessStaffTimeline = isStaffOrTeachingRole(userRole);
-     const fallbackName = userProfile?.email || user?.email ? (userProfile?.email || user?.email).split('@')[0] : '';
-     const displayName = userProfile?.displayName?.trim()
-         || user?.displayName?.trim()
-         || fallbackName
-         || '사용자';
- 
--    const fetchLogs = useCallback(async () => {
--        if (!isAdmin || !db) {
--            setNotificationLogs([]);
--            return;
--        }
--
--        setLogLoading(true);
--        setLogError('');
--
--        try {
--            const snapshot = await getDocs(query(
--                collection(db, 'notifications'),
--                orderBy('sentAt', 'desc'),
--                limit(10),
--            ));
--            setNotificationLogs(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
--        } catch (error) {
--            setLogError(error?.message || '알림 로그를 불러오지 못했습니다.');
--        } finally {
--            setLogLoading(false);
--        }
--    }, [db, isAdmin]);
--
--    useEffect(() => {
--        fetchLogs();
--    }, [fetchLogs]);
--
--
-     const loadStaffTimeline = useCallback(async () => {
-         if (!canAccessStaffTimeline || !db) {
-             setStaffTimelineItems([]);
-             return;
-         }
- 
-         setStaffTimelineLoading(true);
-         setStaffTimelineError('');
- 
-         try {
-             const items = await fetchStaffTimelineThreads(db, {
-                 status: staffTimelineFilter,
-                 limitCount: 50,
-             });
-             setStaffTimelineItems(items);
-         } catch (error) {
-             console.error('[staffTimeline] failed to load items', error);
-             setStaffTimelineError('교직원 인수인계를 불러오지 못했습니다.');
-             setStaffTimelineItems([]);
-         } finally {
-             setStaffTimelineLoading(false);
-         }
-     }, [canAccessStaffTimeline, staffTimelineFilter]);
- 
-     useEffect(() => {
-         loadStaffTimeline();
-     }, [loadStaffTimeline]);
- 
-     const timelineGroups = useMemo(() => {
-         const groups = new Map();
-         staffTimelineItems.forEach((item) => {
-             const key = item.studentId || `name:${item.studentName || 'unknown'}`;
-             if (!groups.has(key)) {
-                 groups.set(key, {
-                     key,
-                     studentName: item.studentName || '학생명 미상',
-                     items: [],
-                 });
-             }
-             groups.get(key).items.push(item);
-         });
-         return Array.from(groups.values());
-     }, [staffTimelineItems]);
- 
-     const timelineActor = useMemo(() => ({
-         uid: user?.uid || '',
-         name: displayName,
-         role: userProfile?.role || userProfile?.type || userRole || 'staff',
-     }), [displayName, user?.uid, userProfile?.role, userProfile?.type, userRole]);
- 
--    const stats = [
--        { label: '총 재원생', value: '42명', change: '+2명', type: 'increase', icon: 'users', color: 'indigo' },
--        { label: '오늘 출석률', value: '95%', change: '-2%', type: 'decrease', icon: 'checkCircle', color: 'green' },
--        { label: '미납 수강료', value: '120만', change: '관리 필요', type: 'warning', icon: 'alertCircle', color: 'red' },
--        { label: '이번 주 상담', value: '5건', change: '예정됨', type: 'neutral', icon: 'messageSquare', color: 'blue' },
--    ];
--
--    const quickActions = [
--        { key: 'newStudent', label: '신규생 등록', icon: 'userPlus', hint: '기본 정보와 반 배정', tone: 'indigo' },
--        { key: 'announcement', label: '전체 공지', icon: 'messageSquare', hint: '문자/알림 발송', tone: 'blue' },
--        { key: 'payment', label: '수납 처리', icon: 'creditCard', hint: '결제 및 영수증', tone: 'emerald' },
--        { key: 'worklog', label: '일지 작성', icon: 'fileText', hint: '수업/상담 기록', tone: 'orange' },
--        { key: 'attendance', label: '출결 체크', icon: 'checkSquare', hint: '실시간 출결 입력', tone: 'violet' },
--    ];
--
--    const reminders = [
--        { title: '오늘 출결 미완료 3건', description: '1·2교시 고1 심화반 확인 필요', icon: 'alertTriangle', tone: 'amber' },
--        { title: '상담 준비', description: '김민준 학생 상담 시 학부모 의견 반영', icon: 'messageCircle', tone: 'sky' },
--        { title: '교재 업데이트', description: '고2 수학(상) A반 프린트 최신본 업로드', icon: 'fileText', tone: 'indigo' },
--    ];
--
--    const toneStyles = {
--        indigo: 'bg-[#f1f4ff] text-[#334a91] border-[#eef2ff]',
--        blue: 'bg-blue-50 text-blue-800 border-blue-100',
--        emerald: 'bg-emerald-50 text-emerald-800 border-emerald-100',
--        orange: 'bg-orange-50 text-orange-800 border-orange-100',
--        violet: 'bg-[#f1f4ff] text-[#334a91] border-[#eef2ff]',
--        rose: 'bg-rose-50 text-rose-800 border-rose-100',
--        amber: 'bg-amber-50 text-amber-800 border-amber-100',
--        sky: 'bg-sky-50 text-sky-800 border-sky-100',
--    };
--
--    const hoverToneStyles = {
--        indigo: 'hover:bg-[#f1f4ff]',
--        blue: 'hover:bg-blue-50',
--        emerald: 'hover:bg-emerald-50',
--        orange: 'hover:bg-orange-50',
--        violet: 'hover:bg-[#f1f4ff]',
--        rose: 'hover:bg-rose-50',
--        amber: 'hover:bg-amber-50',
--        sky: 'hover:bg-sky-50',
--    };
--
--    const handleCreateLinkCodeSubmit = async (e) => {
--        e.preventDefault();
--        if (!onCreateLinkCode) return;
--
--        setLinkStatus('');
--        setLinkSubmitting(true);
--        try {
--            const result = await onCreateLinkCode({ studentId: linkStudentId });
--            setLinkCodeResult(result?.code || '');
--            setLinkStatus('연결 코드를 생성했습니다. 학부모에게 전달하세요.');
--        } catch (error) {
--            setLinkStatus(error?.message || '연결 코드 생성 중 오류가 발생했습니다.');
--        } finally {
--            setLinkSubmitting(false);
--        }
--    };
--
- 
--    const visibleNotificationLogs = (notificationLogs || []).slice(0, 10);
- 
-     return (
-         <div className="space-y-6 lg:space-y-8 pb-2">
- 
--            {onCreateLinkCode && (
--                <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-5 flex flex-col gap-4">
--                    <div className="flex items-center justify-between">
--                        <div className="flex items-center gap-3">
--                            <div className="p-2.5 rounded-xl bg-emerald-50 text-emerald-900 border border-emerald-100">
--                                <Icon name="link" className="w-5 h-5" />
--                            </div>
--                            <div>
--                                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">직원 전용</p>
--                                <p className="text-base font-bold text-gray-800">학부모 연결 코드 생성</p>
--                            </div>
--                        </div>
--                        <span className="px-3 py-1 text-xs font-semibold rounded-full bg-emerald-50 text-emerald-800 border border-emerald-100">
--                            학생 ID 필요
--                        </span>
--                    </div>
--                    <form className="grid grid-cols-1 md:grid-cols-[2fr_auto] gap-3 items-end" onSubmit={handleCreateLinkCodeSubmit}>
--                        <label className="flex flex-col gap-1">
--                            <span className="text-xs font-semibold text-gray-600">학생 ID</span>
--                            <input
--                                type="text"
--                                required
--                                value={linkStudentId}
--                                onChange={(e) => setLinkStudentId(e.target.value)}
--                                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
--                                placeholder="예: student123"
--                            />
--                        </label>
--                        <button
--                            type="submit"
--                            disabled={linkSubmitting}
--                            className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 text-white px-4 py-2.5 text-sm font-semibold shadow hover:bg-emerald-500 disabled:opacity-60"
--                        >
--                            <Icon name={linkSubmitting ? 'loader' : 'key'} className="w-4 h-4" />
--                            {linkSubmitting ? '생성 중...' : '연결 코드 생성'}
--                        </button>
--                    </form>
--                    {linkCodeResult && (
--                        <div className="rounded-lg bg-emerald-50 border border-emerald-100 p-3 text-sm text-emerald-900 flex items-center justify-between">
--                            <span className="font-semibold">발급된 코드</span>
--                            <code className="text-base font-bold tracking-widest">{linkCodeResult}</code>
--                        </div>
--                    )}
--                    {linkStatus && <p className="text-sm text-gray-600">{linkStatus}</p>}
--                </div>
--            )}
--
--            {/* {isAdmin && (
--                <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-5 flex flex-col gap-4">
--                    <div className="flex items-center justify-between">
--                        <div className="flex items-center gap-3">
--                            <div className="p-2.5 rounded-xl bg-rose-50 text-rose-900 border border-rose-100">
--                                <Icon name="bell" className="w-5 h-5" />
--                            </div>
--                            <div>
--                                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">관리자 전용</p>
--                                <p className="text-base font-bold text-gray-800">알림 발송 로그</p>
--                            </div>
--                        </div>
--                        <span className="px-3 py-1 text-xs font-semibold rounded-full bg-rose-50 text-rose-800 border border-rose-100">
--                            최근 10건
--                        </span>
--                    </div>
--
--                    {logLoading && (
--                        <div className="text-sm text-gray-500">로그를 불러오는 중...</div>
--                    )}
--                    {logError && (
--                        <div className="text-sm text-red-500">{logError}</div>
--                    )}
--
--                    {!logLoading && !logError && (
--                        <div className="space-y-3">
--                            {visibleNotificationLogs.length === 0 ? (
--                                <div className="text-sm text-gray-500 text-center py-6 border border-dashed border-gray-200 rounded-xl">
--                                    알림 로그가 없습니다.
--                                </div>
--                            ) : (
--                                <div className="overflow-x-auto border border-gray-200 rounded-xl">
--                                    <table className="min-w-full text-sm">
--                                        <thead className="bg-gray-50 text-gray-600 text-xs uppercase tracking-wider">
--                                            <tr>
--                                                <th className="px-4 py-3 text-left font-semibold">제목</th>
--                                                <th className="px-4 py-3 text-left font-semibold">타입</th>
--                                                <th className="px-4 py-3 text-left font-semibold">발송 시각</th>
--                                                <th className="px-4 py-3 text-right font-semibold">targetCount</th>
--                                                <th className="px-4 py-3 text-right font-semibold">failureCount</th>
--                                                <th className="px-4 py-3 text-right font-semibold">성공률</th>
--                                            </tr>
--                                        </thead>
--                                        <tbody>
--                                            {visibleNotificationLogs.map((log) => {
--                                                const targetCount = log.targetCount ?? log.targetUserCount ?? 0;
--                                                const failureCount = log.failureCount || 0;
--                                                const sentAt = log.sentAt?.toDate ? log.sentAt.toDate().toLocaleString('ko-KR') : '-';
--                                                const eventType = log.eventType || log.type || '-';
--                                                const successRate = targetCount === 0
--                                                    ? 0
--                                                    : Math.round(((targetCount - failureCount) / targetCount) * 100);
--                                                return (
--                                                    <tr key={log.id} className="border-t border-gray-200">
--                                                        <td className="px-4 py-3 font-semibold text-gray-800">
--                                                            {log.title || '-'}
--                                                        </td>
--                                                        <td className="px-4 py-3 text-gray-600">
--                                                            {eventType}
--                                                        </td>
--                                                        <td className="px-4 py-3 text-gray-500">{sentAt}</td>
--                                                        <td className="px-4 py-3 text-right font-semibold text-gray-800">
--                                                            {targetCount}
--                                                        </td>
--                                                        <td className="px-4 py-3 text-right font-semibold text-rose-600">
--                                                            {failureCount}
--                                                        </td>
--                                                        <td className="px-4 py-3 text-right font-semibold text-emerald-600">
--                                                            {successRate}%
--                                                        </td>
--                                                    </tr>
--                                                );
--                                            })}
--                                        </tbody>
--                                    </table>
--                                </div>
--                            )}
--                        </div>
--                    )}
--                </div>
--            )} */}
--
-             {canAccessStaffTimeline && (
-                 <>
-                     <TodayWorkBriefing
-                         classes={classes}
-                         students={students}
-                         lessonLogs={lessonLogs}
-                         attendanceLogs={attendanceLogs}
-                         lessonReports={lessonReports}
-                         onNavigate={onQuickAction}
-                     />
--                    <StaffTasksPanel actor={timelineActor} />
-                 </>
-             )}
- 
-             {canAccessStaffTimeline && (
-                 <section className="flex flex-col gap-4 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                         <div className="flex items-center gap-3">
-                             <div className="rounded-xl border border-[#eef2ff] bg-[#f1f4ff] p-2.5 text-[#334a91]">
-                                 <Icon name="clipboard" className="h-5 w-5" />
-                             </div>
-                             <div>
-                                 <h3 className="text-lg font-bold text-gray-800">학생별 교직원 타임라인</h3>
-                                 <p className="text-xs text-gray-500">클리닉 맥락과 후속 댓글을 학생별로 이어서 확인합니다.</p>
-                             </div>
-                         </div>
-                         <span className="self-start rounded-full bg-[#f1f4ff] px-3 py-1 text-xs font-bold text-[#334a91] sm:self-auto">
-                             {staffTimelineItems.length}건
-                         </span>
-                     </div>
- 
-                     <div className="flex rounded-xl bg-gray-100 p-1" role="group" aria-label="교직원 타임라인 상태 필터">
-                         {[
-                             { value: 'pending', label: '처리대기' },
-                             { value: 'completed', label: '처리완료' },
-                             { value: 'all', label: '전체' },
-@@ -368,131 +140,30 @@ export default function Home({
-                         <div className="space-y-5">
-                             {timelineGroups.map((group) => (
-                                 <div key={group.key} className="rounded-2xl border border-[#e7ebf8] bg-[#f8f9ff] p-3 sm:p-4">
-                                     <div className="mb-3 flex items-center justify-between gap-3">
-                                         <h4 className="font-bold text-gray-900">{group.studentName}</h4>
-                                         <span className="text-xs font-semibold text-gray-500">메모 {group.items.length}건</span>
-                                     </div>
-                                     <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-                                         {group.items.map((item) => (
-                                             <StaffTimelineThreadCard
-                                                 key={item.id}
-                                                 thread={item}
-                                                 actor={timelineActor}
-                                                 onChanged={loadStaffTimeline}
-                                                 showStudentName={false}
-                                             />
-                                         ))}
-                                     </div>
-                                 </div>
-                             ))}
-                         </div>
-                     )}
-                 </section>
-             )}
- 
--            <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,2.2fr)_minmax(260px,1fr)]">
--                <div className="relative overflow-hidden rounded-2xl bg-[radial-gradient(circle_at_15%_20%,rgba(56,189,248,0.28),transparent_40%),radial-gradient(circle_at_80%_15%,rgba(45,212,191,0.26),transparent_38%),linear-gradient(135deg,#0a1434,#1d4ed8,#0d9488)] p-6 lg:p-7 shadow-lg text-white">
--                    <div className="absolute inset-y-0 right-0 w-48 bg-white/10 blur-3xl" aria-hidden></div>
--                    <div className="relative flex flex-col gap-5">
--                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
--                            <div className="space-y-1">
--                                <p className="text-sm text-sky-100">오늘도 힘찬 하루 보내세요.</p>
--                                <h2 className="text-2xl lg:text-3xl font-bold">환영합니다, {displayName}님! 👋</h2>
--                                <p className="text-sky-100 text-sm">직원용 홈에서 주요 업무를 바로 확인해보세요.</p>
--                            </div>
--                            <div className="bg-white/10 p-3 rounded-xl backdrop-blur-sm border border-white/10 max-w-xs w-full sm:w-auto">
--                                <p className="text-xs font-medium text-sky-100">Today</p>
--                                <p className="text-lg lg:text-xl font-bold">12월 12일 (금)</p>
--                                <p className="text-xs text-sky-100 mt-1">주요 메모 {reminders.length}건</p>
--                            </div>
--                        </div>
--                        <div className="flex flex-wrap gap-2 text-[13px]">
--                            <span className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 font-semibold backdrop-blur">
--                                <Icon name="checkCircle" className="w-4 h-4" /> 핵심 지표 한눈에 보기
--                            </span>
--                            <span className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 font-semibold backdrop-blur">
--                                <Icon name="smartphone" className="w-4 h-4" /> 모바일에서도 편리하게
--                            </span>
--                        </div>
--                    </div>
--                </div>
--            </div>
--
--            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
--                {stats.map((stat, idx) => (
--                    <div key={idx} className="bg-white p-5 rounded-xl shadow-sm border border-gray-200 hover:shadow-md transition-shadow duration-200 min-w-0">
--                        <div className="flex items-start justify-between gap-4">
--                            <div>
--                                <p className="text-sm font-medium text-gray-500">{stat.label}</p>
--                                <h3 className="text-2xl font-bold text-gray-800 mt-1 truncate">{stat.value}</h3>
--                            </div>
--                            <div className={`p-2.5 rounded-lg ${
--                                stat.color === 'indigo' ? 'bg-[#f1f4ff] text-[#334a91]' :
--                                stat.color === 'green' ? 'bg-green-50 text-green-700' :
--                                stat.color === 'red' ? 'bg-red-50 text-red-600' :
--                                'bg-blue-50 text-[#455fab]'
--                            }`}>
--                                <Icon name={stat.icon} className="w-5 h-5" />
--                            </div>
--                        </div>
--                        <div className="mt-4 flex items-center text-xs text-left">
--                            <span className={`font-bold flex items-center ${
--                                stat.type === 'increase' ? 'text-green-600' :
--                                stat.type === 'decrease' ? 'text-red-500' :
--                                stat.type === 'warning' ? 'text-orange-500' : 'text-gray-500'
--                            }`}>
--                                {stat.change}
--                            </span>
--                            <span className="text-gray-400 ml-1.5">vs 지난달</span>
--                        </div>
--                    </div>
--                ))}
--            </div>
--
--            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
--                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
--                    <div className="flex items-center justify-between mb-4">
--                        <h3 className="text-lg font-bold text-gray-800">빠른 실행</h3>
--                        <span className="text-xs text-gray-400">모바일 친화형 버튼</span>
--                    </div>
--                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
--                        {quickActions.map((action, idx) => (
--                            <button 
--                                key={idx} 
--                                type="button"
--                                onClick={() => onQuickAction?.(action.key)}
--                                className={`p-4 rounded-xl border border-gray-200 hover:border-[#334a91] transition flex flex-col items-start text-left group bg-gray-50/50 min-w-0 ${hoverToneStyles[action.tone]}`}
--                            >
--                                <div className={`p-2 rounded-lg ${toneStyles[action.tone]} font-bold flex items-center justify-center text-sm shadow-inner`}>
--                                    <Icon name={action.icon} className="w-5 h-5" />
--                                </div>
--                                <span className="text-sm font-bold text-gray-700 group-hover:text-[#334a91] transition-colors mt-3 truncate">{action.label}</span>
--                                <span className="text-[11px] text-gray-500 group-hover:text-[#334a91] transition-colors mt-1 leading-relaxed break-words">{action.hint}</span>
--                            </button>
--                        ))}
--                    </div>
--                </div>
-+            {canAccessStaffTimeline && <StaffTasksPanel actor={timelineActor} />}
- 
--                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
--                    <div className="flex items-center justify-between mb-4">
--                        <h3 className="text-lg font-bold text-gray-800">업무 브리핑</h3>
--                        <span className="text-xs text-gray-400">현황 요약</span>
--                    </div>
--                    <div className="space-y-3">
--                        {reminders.map((item, idx) => (
--                            <div key={`briefing-${idx}`} className={`flex items-start gap-3 rounded-xl border ${toneStyles[item.tone]} p-3`}>
--                                <div className={`p-2 rounded-lg ${toneStyles[item.tone]} shadow-inner border`}>
--                                    <Icon name={item.icon} className="w-4 h-4" />
--                                </div>
--                                <div className="min-w-0">
--                                    <p className="text-sm font-bold text-gray-800">{item.title}</p>
--                                    <p className="text-xs text-gray-500 mt-0.5">{item.description}</p>
--                                </div>
--                            </div>
--                        ))}
--                    </div>
--                </div>
--            </div>
-         </div>
      );
  }
