@@ -2707,6 +2707,10 @@ video {
   background-color: rgb(229 231 235 / 0.7);
 }
 
+.bg-emerald-50\/50{
+  background-color: rgb(236 253 245 / 0.5);
+}
+
 .bg-opacity-50{
   --tw-bg-opacity: 0.5;
 }
@@ -3988,6 +3992,11 @@ body{
 .hover\:bg-\[\#e7ecff\]:hover{
   --tw-bg-opacity: 1;
   background-color: rgb(231 236 255 / var(--tw-bg-opacity, 1));
+}
+
+.hover\:bg-rose-100:hover{
+  --tw-bg-opacity: 1;
+  background-color: rgb(255 228 230 / var(--tw-bg-opacity, 1));
 }
 
 .hover\:text-\[\#334a91\]:hover{

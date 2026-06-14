@@ -937,6 +937,10 @@ export default function AppRoutes({ user, role, studentIds }) {
   const handleSaveAttendance = async (records) => {
       ensureFirestoreContext();
       try {
+          if (!Array.isArray(records) || records.length === 0) {
+              logNotification('success', '출결 저장', '변경된 출결 기록이 없습니다.');
+              return;
+          }
           const nextLogs = [...attendanceLogs];
           for (const record of records) {
               const docId = record.id || `${record.classId}_${record.studentId}_${record.date}`;

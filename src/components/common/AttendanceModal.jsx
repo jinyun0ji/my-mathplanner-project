@@ -6,9 +6,11 @@ import { formatStudentNameWithParentLast4 } from '../../utils/parentPhone';
 
 export const AttendanceModal = ({ isOpen, onClose, studentsData, initialAttendance, onSave, isReadOnly = false, parentLast4Map = {} }) => {
     const [attendance, setAttendance] = useState({});
+    const [loadedAttendance, setLoadedAttendance] = useState({});
 
     useEffect(() => {
         setAttendance(initialAttendance);
+        setLoadedAttendance(initialAttendance);
     }, [initialAttendance, isOpen]);
 
     const handleStatusChange = (studentId, status) => {
@@ -26,9 +28,16 @@ export const AttendanceModal = ({ isOpen, onClose, studentsData, initialAttendan
     const handleSubmit = (e) => {
         e.preventDefault();
         if (isReadOnly) return;
-        // ✅ [수정] status가 null인(미입력) 항목은 저장하지 않고 필터링
-        const validRecords = Object.values(attendance).filter(record => record.status);
-        onSave(validRecords);
+        const changedRecords = Object.entries(attendance)
+            .filter(([, record]) => record.status)
+            .filter(([studentId, record]) => {
+                const initial = loadedAttendance[studentId] || {};
+                return ['status', 'reason', 'memo'].some((field) => (
+                    (record[field] ?? '') !== (initial[field] ?? '')
+                ));
+            })
+            .map(([, record]) => record);
+        onSave(changedRecords);
         onClose();
     };
 
