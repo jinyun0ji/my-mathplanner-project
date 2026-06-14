@@ -536,6 +536,14 @@ service cloud.firestore {
       allow read: if signedIn();
       allow write: if isStaffOrAdminOrTeacher();
     }
+
+    match /staffTimeline/{docId} {
+      allow read, list, create, update, delete: if isStaffOrAdminOrTeacher();
+    }
+
+    match /staffTimeline/{docId}/replies/{replyId} {
+      allow read, list, create, update, delete: if isStaffOrAdminOrTeacher();
+    }
     
     // clinicReservations: 학생/부모는 본인 예약 read, 직원은 전체
     match /clinicReservations/{docId} {
@@ -593,6 +601,16 @@ service cloud.firestore {
       allow read: if signedIn();
 
       allow write: if isStaffOrAdminOrTeacher();
+    }
+
+    match /formulaSubjects/{docId} {
+      allow read: if signedIn();
+      allow create, update, delete: if false;
+    }
+
+    match /formulaConcepts/{docId} {
+      allow read: if signedIn();
+      allow create, update, delete: if false;
     }
 
     match /homeworkAssignments/{docId} {
@@ -675,14 +693,6 @@ service cloud.firestore {
       allow get: if request.auth != null && request.auth.uid == authUid;
       allow list: if false;
       allow create, update, delete: if false;
-    }
-
-    match /staffTimeline/{threadId} {
-      allow get, list, create, update, delete: if isStaffOrAdminOrTeacher();
-
-      match /replies/{replyId} {
-        allow get, list, create, update, delete: if isStaffOrAdminOrTeacher();
-      }
     }
 
     match /notifications/{logId} {

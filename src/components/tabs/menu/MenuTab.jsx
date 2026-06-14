@@ -112,7 +112,7 @@ const getViewTitle = (view) => {
     return '전체';
 };
 
-export default function MenuTab({ student, onUpdateStudent, onLogout, videoMemos, lessonLogs, onLinkToMemo, notices, onOpenNotifications, onOpenMessages, isParent = false, studentAuthUid = '', myClasses = [] }) {
+export default function MenuTab({ student, onUpdateStudent, onLogout, videoMemos, lessonLogs, onLinkToMemo, onOpenFormulaBook, notices, onOpenNotifications, onOpenMessages, isParent = false, studentAuthUid = '', myClasses = [] }) {
     const [moreView, setMoreView] = useState('menu');
     const [isProfileOpen, setIsProfileOpen] = useState(false);
     const [isMemosOpen, setIsMemosOpen] = useState(false);
@@ -203,6 +203,7 @@ export default function MenuTab({ student, onUpdateStudent, onLogout, videoMemos
                     {!isParent && (
                         <SectionCard title="학습">
                             <MenuRow icon="pen" title="나의 학습 메모" description="강의 수강 중 저장한 메모" onClick={() => setIsMemosOpen(true)} />
+                            <MenuRow icon="fileText" title="수학 공식집" description="과목별 핵심 개념과 영상" onClick={onOpenFormulaBook} />
                         </SectionCard>
                     )}
 

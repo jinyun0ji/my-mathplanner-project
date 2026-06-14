@@ -22,6 +22,7 @@ import openNotification from '../notifications/openNotification';
 import { functions } from '../firebase/client';
 import { httpsCallable } from 'firebase/functions';
 import { FEATURES } from '../config/features';
+import FormulaBookView from '../components/Student/formulaBook/FormulaBookView';
 
 const normalizeClassStatus = (value) => {
     if (value === 'withdrawn') return '퇴원';
@@ -196,25 +197,30 @@ export default function StudentHome({
     const [searchParams, setSearchParams] = useSearchParams();
 
     const readTabFromUrl = () => {
+        if (searchParams.get('mode') === 'formula') return 'class';
         const tab = searchParams.get('tab') || 'home';
         return tab === 'report' ? 'class' : tab;
     };
     const readSubTabFromUrl = () => searchParams.get('subTab') || 'homework';
     const readClassIdFromUrl = () => searchParams.get('classId');
+    const readClassroomModeFromUrl = () => searchParams.get('mode') === 'formula' ? 'formula' : 'class';
 
     const [activeTab, _setActiveTab] = useState(readTabFromUrl());
     const [initialLearningTab, _setInitialLearningTab] = useState(readSubTabFromUrl());
     const [selectedClassId, _setSelectedClassId] = useState(readClassIdFromUrl());
+    const [classroomMode, _setClassroomMode] = useState(readClassroomModeFromUrl());
 
     // ✅ URL -> state (브라우저 뒤로/앞으로로 URL이 바뀌면 화면도 따라감)
     useEffect(() => {
         const nextTab = readTabFromUrl();
         const nextSubTab = readSubTabFromUrl();
         const nextClassId = readClassIdFromUrl();
+        const nextClassroomMode = readClassroomModeFromUrl();
 
         if (nextTab !== activeTab) _setActiveTab(nextTab);
         if (nextSubTab !== initialLearningTab) _setInitialLearningTab(nextSubTab);
         if ((nextClassId || null) !== (selectedClassId || null)) _setSelectedClassId(nextClassId || null);
+        if (nextClassroomMode !== classroomMode) _setClassroomMode(nextClassroomMode);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [searchParams]);
 
@@ -230,7 +236,30 @@ export default function StudentHome({
 
             // 탭 이동 시 classId는 유지하지 않음(클래스 화면은 별도 상태)
             if (tab !== 'class') next.delete('classId');
+            if (tab !== 'class') {
+                next.delete('mode');
+                next.delete('conceptId');
+                _setClassroomMode('class');
+            }
 
+            return next;
+        }, { replace });
+    }, [setSearchParams]);
+    const setClassroomMode = useCallback((mode, { replace = false } = {}) => {
+        const value = mode === 'formula' ? 'formula' : 'class';
+        _setClassroomMode(value);
+        _setActiveTab('class');
+        _setSelectedClassId(null);
+        setSearchParams(prev => {
+            const next = new URLSearchParams(prev);
+            next.set('tab', 'class');
+            next.delete('classId');
+            next.delete('subTab');
+            if (value === 'formula') next.set('mode', 'formula');
+            else {
+                next.delete('mode');
+                next.delete('conceptId');
+            }
             return next;
         }, { replace });
     }, [setSearchParams]);
@@ -265,6 +294,7 @@ export default function StudentHome({
         }, { replace });
 
         if (value) _setActiveTab('class');
+        if (value) _setClassroomMode('class');
     }, [setSearchParams]);
     const [isVideoModalOpen, setIsVideoModalOpen] = useState(false);
     const [isNotificationOpen, setIsNotificationOpen] = useState(false);
@@ -512,7 +542,7 @@ export default function StudentHome({
 
     const navItems = [
         { id: 'home', icon: 'home', label: '홈' },
-        { id: 'class', icon: 'fileText', label: '클래스' },
+        { id: 'class', icon: 'fileText', label: '강의실' },
         { id: 'learning', icon: 'clipboardCheck', label: '학습관리' },
         { id: 'schedule', icon: 'calendar', label: '일정' },
         { id: 'menu', icon: 'menu', label: '전체' },
@@ -588,7 +618,37 @@ export default function StudentHome({
                                 externalSchedules={externalSchedules} // ✅ [추가] 타학원 일정 데이터 전달
                             />
                         )}
-                        {activeTab === 'class' && <ClassTab myClasses={myClasses} setSelectedClassId={setSelectedClassId} />}
+                        {activeTab === 'class' && (
+                            <section className="space-y-4">
+                                <div className="grid grid-cols-2 rounded-xl bg-gray-200/70 p-1" aria-label="강의실 보기 선택">
+                                    <button
+                                        type="button"
+                                        onClick={() => setClassroomMode('class')}
+                                        className={`rounded-lg px-4 py-2.5 text-sm font-bold transition ${
+                                            classroomMode === 'class' ? 'bg-white text-[#455fab] shadow-sm' : 'text-gray-500'
+                                        }`}
+                                    >
+                                        클래스
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setClassroomMode('formula')}
+                                        className={`rounded-lg px-4 py-2.5 text-sm font-bold transition ${
+                                            classroomMode === 'formula' ? 'bg-white text-[#455fab] shadow-sm' : 'text-gray-500'
+                                        }`}
+                                    >
+                                        공식집
+                                    </button>
+                                </div>
+                                {classroomMode === 'class' ? (
+                                    <ClassTab myClasses={myClasses} setSelectedClassId={setSelectedClassId} />
+                                ) : (
+                                    <FormulaBookView
+                                        initialConceptId={searchParams.get('conceptId') || ''}
+                                    />
+                                )}
+                            </section>
+                        )}
                         {activeTab === 'schedule' && (
                             <ScheduleTab
                                 myClasses={myClasses} externalSchedules={externalSchedules} attendanceLogs={filteredAttendanceLogs}
@@ -617,6 +677,7 @@ export default function StudentHome({
                                 videoMemos={videoMemos} lessonLogs={filteredLessonLogs} onLinkToMemo={handleNavigateToMemo} notices={visibleNotices}
                                 onOpenNotifications={handleOpenNotification}
                                 onOpenMessages={() => setIsMessengerPage(true)}
+                                onOpenFormulaBook={() => setClassroomMode('formula')}
                                 studentAuthUid={studentAuthUid}
                                 myClasses={ongoingClasses}
                             />

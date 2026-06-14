@@ -1,1759 +1,916 @@
 diff --git a/firestore.rules b/firestore.rules
-index b80383d44dd8dff8288b2ecef2e9f2efedb7b680..ed08f8cac2e8af5040bac209a294ff61a57a2d3d 100644
+index ed08f8cac2e8af5040bac209a294ff61a57a2d3d..6b1d2493dab14124619db0690fd22ee030fcceff 100644
 --- a/firestore.rules
 +++ b/firestore.rules
-@@ -655,50 +655,58 @@ service cloud.firestore {
-             || (request.resource.data.studentId is string && isMyStudentUid(request.resource.data.studentId))
-           )
-         );
+@@ -573,50 +573,60 @@ service cloud.firestore {
+         && request.resource.data.level in ['error', 'warn']
+         && request.resource.data.diff({}).affectedKeys().hasOnly([
+           'level',
+           'scope',
+           'action',
+           'message',
+           'code',
+           'context',
+           'createdBy',
+           'createdAt',
+           'app',
+           'route',
+           'build',
+           'userRole'
+         ]);
+ 
+       allow update, delete: if false;
      }
  
-     match /invites/{inviteId} {
-       allow get: if signedIn();
-       allow list: if isStaffOrAdminOrTeacher();
-       allow create, delete: if isStaffOrAdminOrTeacher();
-       allow update: if isStaffOrAdminOrTeacher()
-         || (
-           signedIn()
-           && resource.data.consumed == false
-           && request.resource.data.consumed == true
-           && request.resource.data.consumedByAuthUid == uid()
-           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['consumed', 'consumedByAuthUid', 'consumedAt'])
-         );
+     match /announcements/{docId} {
+       allow read: if signedIn();
+ 
+       allow write: if isStaffOrAdminOrTeacher();
      }
  
-     match /accountLinks/{authUid} {
-       allow get: if request.auth != null && request.auth.uid == authUid;
-       allow list: if false;
-       allow create, update, delete: if false;
-     }
- 
-+    match /staffTimeline/{threadId} {
-+      allow get, list, create, update, delete: if isStaffOrAdminOrTeacher();
-+
-+      match /replies/{replyId} {
-+        allow get, list, create, update, delete: if isStaffOrAdminOrTeacher();
-+      }
++    match /formulaSubjects/{docId} {
++      allow read: if signedIn();
++      allow create, update, delete: if false;
 +    }
 +
-     match /notifications/{logId} {
-       allow read, write: if isStaffOrAdminOrTeacher();
++    match /formulaConcepts/{docId} {
++      allow read: if signedIn();
++      allow create, update, delete: if false;
++    }
++
+     match /homeworkAssignments/{docId} {
+       allow read: if signedIn();
+       allow write: if isStaffOrAdminOrTeacher();
      }
  
-     match /notifications/{userUid}/items/{notificationId} {
-       allow read: if signedIn()
-         && (uid() == userUid || isStaffOrAdminOrTeacher());
- 
-       // ✅ 본인: 읽음 처리용 update만 허용
-       allow update: if signedIn()
-         && uid() == userUid
-         && request.resource.data.diff(resource.data).changedKeys()
-             .hasOnly(['isRead', 'readAt', 'updatedAt']);
- 
-       // ✅ 직원/관리자/강사: 기존대로 full 권한
+     match /materials/{docId} {
+       allow read, list: if isStaffOrAdminOrTeacher();
        allow create, update, delete: if isStaffOrAdminOrTeacher();
      }
  
-     match /notifications/{userUid}/meta {
-       allow read, write: if signedIn()
-         && (uid() == userUid || isStaffOrAdminOrTeacher());
+     match /books/{docId} {
+       allow read, list: if isStaffOrAdminOrTeacher();
+       allow create, update, delete: if isStaffOrAdminOrTeacher();
      }
-     
-     match /notifications/{userUid}/meta/{metaId} {
-       allow read, write: if signedIn()
-diff --git a/src/components/StaffTimeline/StaffTimelineThreadCard.jsx b/src/components/StaffTimeline/StaffTimelineThreadCard.jsx
+ 
+     match /payments/{docId} {
+       allow read, write, list: if isStaffOrAdminOrTeacher();
+       allow create, update, delete: if isStaffOrAdminOrTeacher();
+     }
+ 
+     match /grades/{docId} {
+       allow read: if signedIn();
+       allow write: if isStaffOrAdminOrTeacher();
+     }
+ 
+@@ -782,26 +792,26 @@ service cloud.firestore {
+       allow update: if isStaffOrAdminOrTeacher() || isChatParticipant();
+ 
+       allow delete: if isStaffOrAdminOrTeacher();
+     }
+ 
+     match /chats/{roomId}/messages/{messageId} {
+       function roomDoc() {
+         return get(/databases/$(database)/documents/chats/$(roomId));
+       }
+ 
+       function isRoomParticipant() {
+         return isSignedIn()
+           && roomDoc().data.participantIds is list
+           && uid() in roomDoc().data.participantIds;
+       }
+ 
+       allow read, create: if isStaffOrAdminOrTeacher() || isRoomParticipant();
+ 
+       allow update, delete: if isStaffOrAdminOrTeacher();
+     }
+ 
+     match /{document=**} {
+       allow read, write: if false;
+     }
+   }
+-}
+\ No newline at end of file
++}
+diff --git a/src/components/student/formulaBook/FormulaBookView.jsx b/src/components/student/formulaBook/FormulaBookView.jsx
 new file mode 100644
-index 0000000000000000000000000000000000000000..2678e557e02efa41f2c350733a479e508ff20cfe
+index 0000000000000000000000000000000000000000..1707208c63eaf7c91f49a02b13205290b2a7d7f0
 --- /dev/null
-+++ b/src/components/StaffTimeline/StaffTimelineThreadCard.jsx
-@@ -0,0 +1,275 @@
-+import React, { useState } from 'react';
-+import { db } from '../../firebase/client';
-+import {
-+    completeStaffTimelineThread,
-+    createStaffTimelineReply,
-+    fetchStaffTimelineReplies,
-+    softDeleteStaffTimelineReply,
-+    softDeleteStaffTimelineThread,
-+    updateStaffTimelineReply,
-+    updateStaffTimelineThread,
-+} from '../../domain/staffTimeline/staffTimeline.service';
++++ b/src/components/student/formulaBook/FormulaBookView.jsx
+@@ -0,0 +1,196 @@
++import React, { useEffect, useMemo, useRef, useState } from 'react';
++import { collection, getDocs } from 'firebase/firestore';
++import { db } from '../../../firebase/client';
++import FormulaConceptModal from './FormulaConceptModal';
 +
-+const formatDateTime = (value) => {
-+    if (!value) return '-';
-+    const date = value?.toDate ? value.toDate() : new Date(value);
-+    if (Number.isNaN(date.getTime())) return '-';
-+    return date.toLocaleString('ko-KR', {
-+        year: 'numeric',
-+        month: '2-digit',
-+        day: '2-digit',
-+        hour: '2-digit',
-+        minute: '2-digit',
-+    });
++const normalizeText = (value) => String(value || '').trim().toLocaleLowerCase('ko-KR');
++const byOrderThenTitle = (a, b) => (
++    (Number(a.order) || 0) - (Number(b.order) || 0)
++    || String(a.title || '').localeCompare(String(b.title || ''), 'ko')
++);
++
++const matchesSearch = (concept, normalizedQuery) => {
++    if (!normalizedQuery) return true;
++    const searchableValues = [
++        concept.title,
++        concept.summary,
++        ...(Array.isArray(concept.tags) ? concept.tags : []),
++        ...(Array.isArray(concept.keywords) ? concept.keywords : []),
++    ];
++    return searchableValues.some((value) => normalizeText(value).includes(normalizedQuery));
 +};
 +
-+const compactText = (value, maxLength = 120) => {
-+    const text = String(value || '').trim();
-+    if (!text) return '원문 코멘트 없음';
-+    return text.length > maxLength ? `${text.slice(0, maxLength)}…` : text;
-+};
-+
-+export default function StaffTimelineThreadCard({
-+    thread,
-+    actor,
-+    onChanged,
-+    showStudentName = true,
-+    compact = false,
-+}) {
-+    const [isExpanded, setIsExpanded] = useState(false);
-+    const [replies, setReplies] = useState([]);
-+    const [replyDraft, setReplyDraft] = useState('');
-+    const [loadingReplies, setLoadingReplies] = useState(false);
-+    const [saving, setSaving] = useState(false);
++export default function FormulaBookView({ initialConceptId = '', onConceptHandled }) {
++    const [subjects, setSubjects] = useState([]);
++    const [concepts, setConcepts] = useState([]);
++    const [selectedSubjectId, setSelectedSubjectId] = useState('');
++    const [selectedConcept, setSelectedConcept] = useState(null);
++    const [search, setSearch] = useState('');
++    const [isLoading, setIsLoading] = useState(true);
 +    const [error, setError] = useState('');
-+    const [editingRoot, setEditingRoot] = useState(false);
-+    const [rootDraft, setRootDraft] = useState(thread.content || '');
-+    const [editingReplyId, setEditingReplyId] = useState('');
-+    const [replyEditDraft, setReplyEditDraft] = useState('');
++    const handledConceptIdRef = useRef('');
 +
-+    const isCompleted = thread.status === 'completed';
-+    const summary = thread.sourceSummary || {};
-+    const clinicWhen = [summary.date, summary.plannedTime].filter(Boolean).join(' ') || '일시 미상';
++    useEffect(() => {
++        let isMounted = true;
 +
-+    const reloadReplies = async () => {
-+        setLoadingReplies(true);
-+        setError('');
-+        try {
-+            setReplies(await fetchStaffTimelineReplies(db, thread.id));
-+        } catch (loadError) {
-+            console.error('[staffTimeline] failed to load replies', loadError);
-+            setError('댓글을 불러오지 못했습니다.');
-+        } finally {
-+            setLoadingReplies(false);
++        const loadFormulaBook = async () => {
++            try {
++                const [subjectSnapshot, conceptSnapshot] = await Promise.all([
++                    getDocs(collection(db, 'formulaSubjects')),
++                    getDocs(collection(db, 'formulaConcepts')),
++                ]);
++                if (!isMounted) return;
++
++                setSubjects(subjectSnapshot.docs
++                    .map((item) => ({ id: item.id, ...item.data() }))
++                    .filter((item) => item.active !== false)
++                    .sort(byOrderThenTitle));
++                setConcepts(conceptSnapshot.docs
++                    .map((item) => ({ id: item.id, ...item.data() }))
++                    .filter((item) => item.active !== false)
++                    .sort(byOrderThenTitle));
++            } catch (loadError) {
++                console.error('[FormulaBookView] load failed', loadError);
++                if (isMounted) setError('공식집을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.');
++            } finally {
++                if (isMounted) setIsLoading(false);
++            }
++        };
++
++        loadFormulaBook();
++        return () => {
++            isMounted = false;
++        };
++    }, []);
++
++    useEffect(() => {
++        if (isLoading || !initialConceptId || handledConceptIdRef.current === initialConceptId) return;
++
++        const concept = concepts.find((item) => String(item.id) === String(initialConceptId));
++        handledConceptIdRef.current = initialConceptId;
++        if (concept) {
++            setSelectedSubjectId(String(concept.subjectId || ''));
++            setSelectedConcept(concept);
 +        }
-+    };
++        onConceptHandled?.(Boolean(concept));
++    }, [concepts, initialConceptId, isLoading, onConceptHandled]);
 +
-+    const toggleReplies = async () => {
-+        const nextExpanded = !isExpanded;
-+        setIsExpanded(nextExpanded);
-+        if (nextExpanded) await reloadReplies();
-+    };
-+
-+    const runMutation = async (mutation, fallbackMessage, { refreshReplies = false } = {}) => {
-+        setSaving(true);
-+        setError('');
-+        try {
-+            await mutation();
-+            if (refreshReplies) await reloadReplies();
-+            await onChanged?.();
-+            return true;
-+        } catch (mutationError) {
-+            console.error('[staffTimeline] mutation failed', mutationError);
-+            setError(mutationError?.message || fallbackMessage);
-+            return false;
-+        } finally {
-+            setSaving(false);
-+        }
-+    };
-+
-+    const handleUpdateRoot = async () => {
-+        const content = rootDraft.trim();
-+        if (!content) {
-+            setError('메모 내용을 입력하세요.');
-+            return;
-+        }
-+        const didSave = await runMutation(
-+            () => updateStaffTimelineThread(db, thread.id, { content, updatedBy: actor.uid }),
-+            '메모 수정에 실패했습니다.',
-+        );
-+        if (didSave) setEditingRoot(false);
-+    };
-+
-+    const handleDeleteRoot = async () => {
-+        if (!window.confirm('이 교직원 메모를 삭제하시겠습니까?')) return;
-+        await runMutation(
-+            () => softDeleteStaffTimelineThread(db, thread.id, actor),
-+            '메모 삭제에 실패했습니다.',
-+        );
-+    };
-+
-+    const handleComplete = async () => {
-+        const completionComment = window.prompt('처리 완료 메모를 입력하세요. (선택)') || '';
-+        await runMutation(
-+            () => completeStaffTimelineThread(db, thread.id, actor, completionComment),
-+            '완료 처리에 실패했습니다.',
-+        );
-+    };
-+
-+    const handleCreateReply = async () => {
-+        const content = replyDraft.trim();
-+        if (!content) {
-+            setError('댓글 내용을 입력하세요.');
-+            return;
-+        }
-+        const didSave = await runMutation(
-+            () => createStaffTimelineReply(db, thread.id, {
-+                content,
-+                createdBy: actor.uid,
-+                createdByName: actor.name,
-+                senderRole: actor.role,
-+            }),
-+            '댓글 저장에 실패했습니다.',
-+            { refreshReplies: true },
-+        );
-+        if (didSave) setReplyDraft('');
-+    };
-+
-+    const handleUpdateReply = async (replyId) => {
-+        const content = replyEditDraft.trim();
-+        if (!content) {
-+            setError('댓글 내용을 입력하세요.');
-+            return;
-+        }
-+        const didSave = await runMutation(
-+            () => updateStaffTimelineReply(db, thread.id, replyId, { content, updatedBy: actor.uid }),
-+            '댓글 수정에 실패했습니다.',
-+            { refreshReplies: true },
-+        );
-+        if (didSave) {
-+            setEditingReplyId('');
-+            setReplyEditDraft('');
-+        }
-+    };
-+
-+    const handleDeleteReply = async (replyId) => {
-+        if (!window.confirm('이 댓글을 삭제하시겠습니까?')) return;
-+        await runMutation(
-+            () => softDeleteStaffTimelineReply(db, thread.id, replyId, actor),
-+            '댓글 삭제에 실패했습니다.',
-+            { refreshReplies: true },
-+        );
-+    };
++    const normalizedQuery = normalizeText(search);
++    const visibleConcepts = useMemo(() => concepts.filter((concept) => {
++        const isInSubject = !selectedSubjectId || String(concept.subjectId) === String(selectedSubjectId);
++        return isInSubject && matchesSearch(concept, normalizedQuery);
++    }), [concepts, normalizedQuery, selectedSubjectId]);
 +
 +    return (
-+        <article className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-+            <div className="flex flex-wrap items-start justify-between gap-3">
-+                <div className="min-w-0 flex-1">
-+                    {showStudentName && <p className="text-base font-bold text-gray-900">{thread.studentName || '학생명 미상'}</p>}
-+                    <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-500">
-+                        <span className="rounded bg-[#eef2ff] px-2 py-0.5 font-bold text-[#334a91]">
-+                            {thread.sourceType === 'clinic' ? '클리닉' : thread.sourceType || '기타'}
-+                        </span>
-+                        <span>{clinicWhen}</span>
-+                        {summary.teacherName && <span>· {summary.teacherName}</span>}
-+                    </div>
-+                </div>
-+                <span className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-bold ${isCompleted ? 'border-emerald-100 bg-emerald-50 text-emerald-700' : 'border-[#dfe6ff] bg-[#eef2ff] text-[#334a91]'}`}>
-+                    {isCompleted ? '처리완료' : '처리대기'}
-+                </span>
++        <section className="space-y-5">
++            {/* TODO: QR 링크로 로그인 전 진입한 경우 conceptId를 저장하고 로그인 완료 후 복원 처리 */}
++            <div className="relative">
++                <span className="pointer-events-none absolute inset-y-0 left-4 flex items-center text-gray-400">⌕</span>
++                <input
++                    type="search"
++                    value={search}
++                    onChange={(event) => setSearch(event.target.value)}
++                    placeholder="개념명, 태그, 키워드, 요약 검색"
++                    className="w-full rounded-2xl border border-gray-200 bg-white py-3.5 pl-11 pr-4 text-sm outline-none transition focus:border-[#455fab] focus:ring-2 focus:ring-[#455fab]/10"
++                    aria-label="수학 공식 검색"
++                />
 +            </div>
 +
-+            <div className="mt-3 rounded-lg border border-amber-100 bg-amber-50/70 px-3 py-2">
-+                <p className="text-[11px] font-bold uppercase tracking-wide text-amber-700">클리닉 원문</p>
-+                <p className="mt-1 text-xs leading-relaxed text-gray-600">{compactText(summary.clinicComment, compact ? 80 : 160)}</p>
-+            </div>
-+
-+            {editingRoot ? (
-+                <div className="mt-3">
-+                    <textarea
-+                        value={rootDraft}
-+                        onChange={(event) => setRootDraft(event.target.value)}
-+                        className="min-h-[90px] w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-[#455fab] focus:outline-none focus:ring-2 focus:ring-[#dfe6ff]"
-+                    />
-+                    <div className="mt-2 flex justify-end gap-2">
-+                        <button type="button" onClick={() => { setEditingRoot(false); setRootDraft(thread.content || ''); }} className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-600">취소</button>
-+                        <button type="button" disabled={saving} onClick={handleUpdateRoot} className="rounded-lg bg-[#455fab] px-3 py-1.5 text-xs font-bold text-white disabled:opacity-50">저장</button>
-+                    </div>
-+                </div>
-+            ) : (
-+                <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-gray-800">{thread.content || '내용 없음'}</p>
-+            )}
-+
-+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 pt-3 text-xs text-gray-500">
-+                <span>{thread.createdByName || '-'} · {formatDateTime(thread.createdAt)}{thread.updatedAt ? ' · 수정됨' : ''}</span>
-+                <span className="font-semibold text-gray-600">댓글 {Number(thread.replyCount || 0)}개</span>
-+            </div>
-+
-+            {isCompleted && (thread.completedByName || thread.completionComment) && (
-+                <div className="mt-2 rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
-+                    완료: {thread.completedByName || '-'}{thread.completionComment ? ` · ${thread.completionComment}` : ''}
++            {isLoading && (
++                <div className="rounded-2xl border border-gray-100 bg-white px-4 py-12 text-center text-sm text-gray-500">
++                    공식집을 불러오는 중입니다...
 +                </div>
 +            )}
 +
-+            {error && <p className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700">{error}</p>}
++            {!isLoading && error && (
++                <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-8 text-center text-sm text-red-600">
++                    {error}
++                </div>
++            )}
 +
-+            <div className="mt-3 flex flex-wrap gap-2">
-+                <button type="button" onClick={toggleReplies} className="rounded-lg border border-[#dfe6ff] bg-[#f8f9ff] px-3 py-1.5 text-xs font-bold text-[#334a91]">
-+                    {isExpanded ? '댓글 닫기' : '댓글 보기'}
-+                </button>
-+                <button type="button" onClick={() => setEditingRoot(true)} className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-600">메모 수정</button>
-+                <button type="button" onClick={handleDeleteRoot} disabled={saving} className="rounded-lg border border-rose-100 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-600 disabled:opacity-50">메모 삭제</button>
-+                {!isCompleted && (
-+                    <button type="button" onClick={handleComplete} disabled={saving} className="ml-auto rounded-lg bg-[#455fab] px-3 py-1.5 text-xs font-bold text-white disabled:opacity-50">처리 완료</button>
-+                )}
-+            </div>
-+
-+            {isExpanded && (
-+                <div className="mt-4 space-y-3 border-t border-gray-100 pt-4">
-+                    {loadingReplies ? (
-+                        <p className="text-center text-xs text-gray-500">댓글을 불러오는 중입니다...</p>
-+                    ) : replies.length === 0 ? (
-+                        <p className="text-center text-xs text-gray-400">아직 댓글이 없습니다.</p>
-+                    ) : replies.map((reply) => (
-+                        <div key={reply.id} className={`rounded-lg border px-3 py-2 ${reply.isDeleted ? 'border-gray-100 bg-gray-50' : 'border-gray-200 bg-gray-50/70'}`}>
-+                            {editingReplyId === reply.id ? (
-+                                <>
-+                                    <textarea value={replyEditDraft} onChange={(event) => setReplyEditDraft(event.target.value)} className="min-h-[70px] w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm" />
-+                                    <div className="mt-2 flex justify-end gap-2">
-+                                        <button type="button" onClick={() => setEditingReplyId('')} className="text-xs font-semibold text-gray-500">취소</button>
-+                                        <button type="button" onClick={() => handleUpdateReply(reply.id)} className="rounded bg-[#455fab] px-2.5 py-1 text-xs font-bold text-white">저장</button>
-+                                    </div>
-+                                </>
-+                            ) : (
-+                                <>
-+                                    <p className={`whitespace-pre-wrap text-sm ${reply.isDeleted ? 'italic text-gray-400' : 'text-gray-700'}`}>{reply.content}</p>
-+                                    <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-gray-400">
-+                                        <span>{reply.createdByName || '-'} · {formatDateTime(reply.createdAt)}{reply.updatedAt ? ' · 수정됨' : ''}</span>
-+                                        {!reply.isDeleted && (
-+                                            <span className="flex gap-2">
-+                                                <button type="button" onClick={() => { setEditingReplyId(reply.id); setReplyEditDraft(reply.content || ''); }} className="font-semibold text-gray-500">수정</button>
-+                                                <button type="button" onClick={() => handleDeleteReply(reply.id)} className="font-semibold text-rose-500">삭제</button>
-+                                            </span>
-+                                        )}
-+                                    </div>
-+                                </>
++            {!isLoading && !error && (
++                <>
++                    <div>
++                        <div className="mb-3 flex items-center justify-between">
++                            <h2 className="text-base font-extrabold text-gray-900">과목</h2>
++                            {selectedSubjectId && (
++                                <button type="button" onClick={() => setSelectedSubjectId('')} className="text-xs font-semibold text-[#455fab]">
++                                    전체 보기
++                                </button>
 +                            )}
 +                        </div>
-+                    ))}
-+
-+                    <div className="rounded-lg border border-[#dfe6ff] bg-[#f8f9ff] p-3">
-+                        <textarea
-+                            value={replyDraft}
-+                            onChange={(event) => setReplyDraft(event.target.value)}
-+                            placeholder={isCompleted ? '완료 후 추가 확인사항도 댓글로 남길 수 있습니다.' : '댓글을 입력하세요.'}
-+                            className="min-h-[76px] w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:border-[#455fab] focus:outline-none"
-+                        />
-+                        <div className="mt-2 flex justify-end">
-+                            <button type="button" onClick={handleCreateReply} disabled={saving} className="rounded-lg bg-[#455fab] px-3 py-1.5 text-xs font-bold text-white disabled:opacity-50">댓글 등록</button>
-+                        </div>
++                        {subjects.length > 0 ? (
++                            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
++                                {subjects.map((subject) => {
++                                    const isSelected = String(selectedSubjectId) === String(subject.id);
++                                    return (
++                                        <button
++                                            key={subject.id}
++                                            type="button"
++                                            onClick={() => setSelectedSubjectId(isSelected ? '' : subject.id)}
++                                            className={`rounded-2xl border p-4 text-left shadow-sm transition active:scale-[0.98] ${
++                                                isSelected
++                                                    ? 'border-[#455fab] bg-[#455fab] text-white'
++                                                    : 'border-gray-200 bg-white text-gray-900 hover:border-[#455fab]/40'
++                                            }`}
++                                        >
++                                            <span className="block text-sm font-bold">{subject.title}</span>
++                                            <span className={`mt-1 block text-xs ${isSelected ? 'text-white/75' : 'text-gray-400'}`}>
++                                                개념 {concepts.filter((item) => String(item.subjectId) === String(subject.id)).length}개
++                                            </span>
++                                        </button>
++                                    );
++                                })}
++                            </div>
++                        ) : (
++                            <div className="rounded-2xl border border-dashed border-gray-200 bg-white px-4 py-8 text-center text-sm text-gray-500">
++                                등록된 과목이 없습니다.
++                            </div>
++                        )}
 +                    </div>
-+                </div>
++
++                    <div>
++                        <h2 className="mb-3 text-base font-extrabold text-gray-900">
++                            {selectedSubjectId ? subjects.find((item) => String(item.id) === String(selectedSubjectId))?.title : '전체 개념'}
++                            <span className="ml-2 text-xs font-medium text-gray-400">{visibleConcepts.length}개</span>
++                        </h2>
++                        {visibleConcepts.length > 0 ? (
++                            <div className="grid gap-3 md:grid-cols-2">
++                                {visibleConcepts.map((concept) => (
++                                    <article key={concept.id} className="flex flex-col rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
++                                        <h3 className="text-base font-extrabold text-gray-900">{concept.title}</h3>
++                                        {Array.isArray(concept.tags) && concept.tags.length > 0 && (
++                                            <div className="mt-2 flex flex-wrap gap-1.5">
++                                                {concept.tags.map((tag) => (
++                                                    <span key={tag} className="rounded-full bg-[#eef2ff] px-2.5 py-1 text-[11px] font-semibold text-[#455fab]">
++                                                        #{tag}
++                                                    </span>
++                                                ))}
++                                            </div>
++                                        )}
++                                        <p className="mt-3 flex-1 text-sm leading-6 text-gray-600">
++                                            {concept.summary || '요약 설명이 없습니다.'}
++                                        </p>
++                                        <button
++                                            type="button"
++                                            onClick={() => setSelectedConcept(concept)}
++                                            className="mt-4 w-full rounded-xl bg-[#455fab] px-4 py-3 text-sm font-bold text-white transition active:scale-[0.98]"
++                                        >
++                                            영상 보기
++                                        </button>
++                                    </article>
++                                ))}
++                            </div>
++                        ) : (
++                            <div className="rounded-2xl border border-dashed border-gray-200 bg-white px-4 py-10 text-center text-sm text-gray-500">
++                                조건에 맞는 개념이 없습니다.
++                            </div>
++                        )}
++                    </div>
++                </>
 +            )}
-+        </article>
++
++            <FormulaConceptModal concept={selectedConcept} onClose={() => setSelectedConcept(null)} />
++        </section>
 +    );
 +}
-diff --git a/src/domain/staffTimeline/staffTimeline.service.js b/src/domain/staffTimeline/staffTimeline.service.js
-index 43eb32a8b4075fc118f6858169d7dc039c64c1ad..2e2e670728cd65cf3783f5c939b34d322238b949 100644
---- a/src/domain/staffTimeline/staffTimeline.service.js
-+++ b/src/domain/staffTimeline/staffTimeline.service.js
-@@ -1,106 +1,320 @@
- import {
-     addDoc,
-     collection,
-     doc,
-     getDocs,
-     limit,
-     orderBy,
-     query,
-+    runTransaction,
-     serverTimestamp,
-     updateDoc,
-     where,
- } from 'firebase/firestore';
- 
- const STAFF_TIMELINE_COLLECTION = 'staffTimeline';
-+const REPLIES_COLLECTION = 'replies';
- const CLINIC_SOURCE_TYPE = 'clinic';
-+const DEFAULT_DELETED_CONTENT = '삭제된 메모입니다.';
- 
- const chunkArray = (items, size) => {
-     const chunks = [];
-     for (let i = 0; i < items.length; i += size) {
-         chunks.push(items.slice(i, i + size));
-     }
-     return chunks;
- };
- 
- const normalizeSnapshot = (snapshot) => snapshot.docs.map((itemDoc) => ({
-     id: itemDoc.id,
-     ...itemDoc.data(),
- }));
- 
--export const fetchPendingStaffTimeline = async (firestoreDb, limitCount = 30) => {
-+const visibleThreads = (items) => items.filter((item) => item?.isDeleted !== true);
+diff --git a/src/components/student/formulaBook/FormulaConceptModal.jsx b/src/components/student/formulaBook/FormulaConceptModal.jsx
+new file mode 100644
+index 0000000000000000000000000000000000000000..bd9a1c4802ca1da43f6f717486c87c202da00824
+--- /dev/null
++++ b/src/components/student/formulaBook/FormulaConceptModal.jsx
+@@ -0,0 +1,107 @@
++import React, { useEffect, useMemo } from 'react';
++import ModalPortal from '../../common/ModalPortal';
 +
-+const assertDb = (firestoreDb) => {
-+    if (!firestoreDb) throw new Error('Firestore가 초기화되지 않았습니다.');
++const buildEmbedUrl = (value) => {
++    if (!value) return '';
++
++    try {
++        const url = new URL(value);
++        if (url.protocol !== 'https:' || url.hostname !== 'www.youtube.com' || !url.pathname.startsWith('/embed/')) {
++            return '';
++        }
++        url.searchParams.set('rel', '0');
++        url.searchParams.set('playsinline', '1');
++        return url.toString();
++    } catch {
++        return '';
++    }
 +};
 +
-+const assertId = (value, message) => {
-+    if (!value) throw new Error(message);
-+};
++export default function FormulaConceptModal({ concept, onClose }) {
++    const embedUrl = useMemo(() => buildEmbedUrl(concept?.youtubeEmbedUrl), [concept?.youtubeEmbedUrl]);
 +
-+const normalizeActor = (actor = {}) => ({
-+    uid: actor.uid || actor.createdBy || actor.updatedBy || actor.completedBy || '',
-+    name: actor.name || actor.createdByName || actor.completedByName || '',
-+    role: actor.role || actor.senderRole || '',
-+});
++    useEffect(() => {
++        if (!concept) return undefined;
 +
-+export const fetchStaffTimeline = async (
-+    firestoreDb,
-+    { status = 'pending', limitCount = 50 } = {},
-+) => {
-     if (!firestoreDb) return [];
- 
--    const timelineQuery = query(
-+    const constraints = [];
-+    if (status !== 'all') constraints.push(where('status', '==', status));
-+    constraints.push(orderBy('createdAt', 'desc'), limit(limitCount));
++        const handleKeyDown = (event) => {
++            if (event.key === 'Escape') onClose();
++        };
++        window.addEventListener('keydown', handleKeyDown);
++        return () => window.removeEventListener('keydown', handleKeyDown);
++    }, [concept, onClose]);
 +
-+    const snapshot = await getDocs(query(
-         collection(firestoreDb, STAFF_TIMELINE_COLLECTION),
--        where('status', '==', 'pending'),
--        orderBy('createdAt', 'desc'),
--        limit(limitCount),
-+        ...constraints,
-+    ));
-+    return visibleThreads(normalizeSnapshot(snapshot));
-+};
++    if (!concept) return null;
 +
-+export const fetchStaffTimelineByStudent = async (
-+    firestoreDb,
-+    studentId,
-+    { limitCount = 50 } = {},
-+) => {
-+    if (!firestoreDb || !studentId) return [];
++    return (
++        <ModalPortal>
++            <div
++                className="fixed inset-0 z-[80] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm"
++                onClick={onClose}
++                role="presentation"
++            >
++                <section
++                    className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white shadow-2xl"
++                    onClick={(event) => event.stopPropagation()}
++                    role="dialog"
++                    aria-modal="true"
++                    aria-labelledby="formula-concept-title"
++                >
++                    <header className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-gray-100 bg-white px-5 py-4">
++                        <div>
++                            <p className="mb-1 text-xs font-bold text-[#455fab]">수학 공식집</p>
++                            <h2 id="formula-concept-title" className="text-xl font-extrabold text-gray-900">
++                                {concept.title}
++                            </h2>
++                        </div>
++                        <button
++                            type="button"
++                            onClick={onClose}
++                            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gray-100 text-xl text-gray-500"
++                            aria-label="개념 상세 닫기"
++                        >
++                            ×
++                        </button>
++                    </header>
 +
-+    const snapshot = await getDocs(query(
-+        collection(firestoreDb, STAFF_TIMELINE_COLLECTION),
-+        where('studentId', '==', String(studentId)),
-+    ));
-+    return visibleThreads(normalizeSnapshot(snapshot))
-+        .sort((a, b) => {
-+            const aMillis = a?.createdAt?.toMillis?.() || 0;
-+            const bMillis = b?.createdAt?.toMillis?.() || 0;
-+            return bMillis - aMillis;
-+        })
-+        .slice(0, limitCount);
-+};
++                    <div className="space-y-5 p-5">
++                        {Array.isArray(concept.tags) && concept.tags.length > 0 && (
++                            <div className="flex flex-wrap gap-2">
++                                {concept.tags.map((tag) => (
++                                    <span key={tag} className="rounded-full bg-[#eef2ff] px-3 py-1 text-xs font-semibold text-[#455fab]">
++                                        #{tag}
++                                    </span>
++                                ))}
++                            </div>
++                        )}
 +
-+export const fetchClinicTimelineThreads = async (firestoreDb, sourceDocIds = []) => {
-+    if (!firestoreDb) return [];
++                        <div>
++                            <h3 className="mb-2 text-sm font-bold text-gray-900">개념 설명</h3>
++                            <p className="whitespace-pre-wrap text-sm leading-7 text-gray-700">
++                                {concept.description || concept.summary || '등록된 설명이 없습니다.'}
++                            </p>
++                        </div>
 +
-+    const uniqueSourceDocIds = Array.from(new Set((sourceDocIds || []).filter(Boolean).map(String)));
-+    if (uniqueSourceDocIds.length === 0) return [];
-+
-+    const snapshots = await Promise.all(
-+        chunkArray(uniqueSourceDocIds, 10).map((idChunk) => getDocs(query(
-+            collection(firestoreDb, STAFF_TIMELINE_COLLECTION),
-+            where('sourceType', '==', CLINIC_SOURCE_TYPE),
-+            where('sourceDocId', 'in', idChunk),
-+        ))),
++                        <div>
++                            <h3 className="mb-2 text-sm font-bold text-gray-900">영상</h3>
++                            {embedUrl ? (
++                                <div className="aspect-video overflow-hidden rounded-xl bg-black">
++                                    <iframe
++                                        className="h-full w-full"
++                                        src={embedUrl}
++                                        title={`${concept.title} 설명 영상`}
++                                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
++                                        allowFullScreen
++                                    />
++                                </div>
++                            ) : (
++                                <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 px-4 py-8 text-center text-sm text-gray-500">
++                                    재생 가능한 영상이 등록되지 않았습니다.
++                                </div>
++                            )}
++                        </div>
++                    </div>
++                </section>
++            </div>
++        </ModalPortal>
++    );
++}
+diff --git a/src/components/tabs/menu/MenuTab.jsx b/src/components/tabs/menu/MenuTab.jsx
+index 8c71e1d6771713684a802f606c85a6acb7b50aef..3af8dccf7b054bad0810a40bf462e01b58b5eb0d 100644
+--- a/src/components/tabs/menu/MenuTab.jsx
++++ b/src/components/tabs/menu/MenuTab.jsx
+@@ -90,51 +90,51 @@ const StudentAccountPage = ({ student, myClasses = [] }) => {
+                             <div key={classItem?.id || classItem?.classId || `${getClassName(classItem)}-${index}`} className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-3">
+                                 <p className="text-sm font-semibold text-gray-900">{getClassName(classItem)}</p>
+                                 <p className="mt-1 text-xs text-gray-500">담당: {getClassTeacherName(classItem)}</p>
+                                 <p className="mt-1 text-xs text-gray-500">요일/시간: {emptyValue(getClassTimeLabel(classItem))}</p>
+                             </div>
+                         ))}
+                     </div>
+                 ) : (
+                     <p className="rounded-xl border border-dashed border-gray-200 bg-gray-50 px-3 py-6 text-center text-sm text-gray-500">
+                         현재 수강 중인 클래스가 없습니다.
+                     </p>
+                 )}
+             </article>
+         </section>
      );
- 
--    const snapshot = await getDocs(timelineQuery);
--    return normalizeSnapshot(snapshot);
-+    return visibleThreads(snapshots.flatMap(normalizeSnapshot))
-+        .sort((a, b) => {
-+            const aMillis = a?.createdAt?.toMillis?.() || 0;
-+            const bMillis = b?.createdAt?.toMillis?.() || 0;
-+            return bMillis - aMillis;
-+        });
  };
  
--export const createStaffTimelineItem = async (firestoreDb, payload) => {
--    if (!firestoreDb) {
--        throw new Error('Firestore가 초기화되지 않았습니다.');
--    }
-+export const createStaffTimelineThread = async (firestoreDb, payload = {}) => {
-+    assertDb(firestoreDb);
+ const getViewTitle = (view) => {
+     if (view === 'account') return '계정 정보';
+     if (view === 'terms') return '이용약관';
+     if (view === 'privacy') return '개인정보처리방침';
+     if (view === 'board') return '게시판';
+     return '전체';
+ };
  
--    const itemPayload = {
--        sourceType: CLINIC_SOURCE_TYPE,
-+    const sourceSummary = payload.sourceSummary || {};
-+    const threadPayload = {
-+        sourceType: payload.sourceType || CLINIC_SOURCE_TYPE,
-         sourceDocId: payload.sourceDocId || '',
-+        sourceCollection: payload.sourceCollection || 'clinicLogs',
-+        sourceSummary: {
-+            date: sourceSummary.date || '',
-+            plannedTime: sourceSummary.plannedTime || '',
-+            teacherName: sourceSummary.teacherName || '',
-+            clinicComment: sourceSummary.clinicComment || '',
-+            status: sourceSummary.status || '',
-+        },
-         studentId: payload.studentId || '',
-         studentName: payload.studentName || '',
--        content: payload.content || '',
--        status: 'pending',
-+        title: payload.title || '',
-+        content: String(payload.content || '').trim(),
-+        status: payload.status === 'completed' ? 'completed' : 'pending',
-         createdAt: serverTimestamp(),
-         createdBy: payload.createdBy || '',
-         createdByName: payload.createdByName || '',
-         senderRole: payload.senderRole || '',
-+        updatedAt: null,
-+        updatedBy: null,
-         completedAt: null,
-         completedBy: null,
-         completedByName: null,
-         completionComment: '',
-+        replyCount: 0,
-+        lastReplyAt: null,
-+        lastReplyByName: '',
-+        isDeleted: false,
-+        deletedAt: null,
-+        deletedBy: null,
+-export default function MenuTab({ student, onUpdateStudent, onLogout, videoMemos, lessonLogs, onLinkToMemo, notices, onOpenNotifications, onOpenMessages, isParent = false, studentAuthUid = '', myClasses = [] }) {
++export default function MenuTab({ student, onUpdateStudent, onLogout, videoMemos, lessonLogs, onLinkToMemo, onOpenFormulaBook, notices, onOpenNotifications, onOpenMessages, isParent = false, studentAuthUid = '', myClasses = [] }) {
+     const [moreView, setMoreView] = useState('menu');
+     const [isProfileOpen, setIsProfileOpen] = useState(false);
+     const [isMemosOpen, setIsMemosOpen] = useState(false);
+     const [editData, setEditData] = useState({ school: '', grade: '', phone: '' });
+     const navigate = useNavigate();
+ 
+     const handleSaveProfile = () => {
+         if (!editData.school || !editData.grade || !editData.phone) { alert('모든 정보를 입력해주세요.'); return; }
+         let normalizedSchool = editData.school.trim();
+         if (normalizedSchool.endsWith('고등학교')) normalizedSchool = normalizedSchool.replace('고등학교', '고');
+         onUpdateStudent({ ...student, ...editData, school: normalizedSchool }, true);
+         setIsProfileOpen(false);
+         alert('정보가 수정되었습니다.');
+     };
+     const handleAfterDeletionRequested = async () => {
+         await onLogout?.();
+         navigate('/login', { replace: true });
      };
  
--    return addDoc(collection(firestoreDb, STAFF_TIMELINE_COLLECTION), itemPayload);
-+    return addDoc(collection(firestoreDb, STAFF_TIMELINE_COLLECTION), threadPayload);
-+};
-+
-+export const updateStaffTimelineThread = async (firestoreDb, threadId, patch = {}) => {
-+    assertDb(firestoreDb);
-+    assertId(threadId, '교직원 메모 ID가 없습니다.');
-+
-+    const allowedPatch = {};
-+    ['title', 'content'].forEach((key) => {
-+        if (Object.prototype.hasOwnProperty.call(patch, key)) allowedPatch[key] = patch[key];
-+    });
-+    allowedPatch.updatedAt = serverTimestamp();
-+    allowedPatch.updatedBy = patch.updatedBy || '';
-+
-+    return updateDoc(doc(firestoreDb, STAFF_TIMELINE_COLLECTION, threadId), allowedPatch);
+     const toMillis = (value) => {
+         if (!value) return 0;
+         if (typeof value === 'number') return value;
+         if (value instanceof Date) return value.getTime();
+         if (typeof value?.toDate === 'function') return value.toDate().getTime();
+         return 0;
+@@ -181,50 +181,51 @@ export default function MenuTab({ student, onUpdateStudent, onLogout, videoMemos
+                         onClick={() => setMoreView('menu')}
+                         className="flex h-9 w-9 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-700 shadow-sm active:scale-95"
+                         aria-label="전체 메뉴로 돌아가기"
+                     >
+                         <Icon name="chevronLeft" className="h-5 w-5" />
+                     </button>
+                     <h1 className="text-lg font-bold text-gray-900">{getViewTitle(moreView)}</h1>
+                 </header>
+             )}
+ 
+             {moreView === 'menu' && (
+                 <section className="space-y-6">
+                     <section className="grid grid-cols-3 gap-3">
+                         <ShortcutCard icon="fileText" title="게시판" description="학원에서 전달한 게시글" onClick={() => setMoreView('board')} />
+                         <ShortcutCard icon="bell" title="알림센터" description="읽지 않은 알림 확인" onClick={onOpenNotifications} />
+                         <ShortcutCard icon="messageSquare" title="메시지" description="연구소/강사와 대화" onClick={onOpenMessages} />
+                     </section>
+ 
+                     <SectionCard title="계정">
+                         <MenuRow icon="user" title="계정 정보" description="학생 정보 확인 및 수정" onClick={() => setMoreView('account')} />
+                     </SectionCard>
+ 
+                     {!isParent && (
+                         <SectionCard title="학습">
+                             <MenuRow icon="pen" title="나의 학습 메모" description="강의 수강 중 저장한 메모" onClick={() => setIsMemosOpen(true)} />
++                            <MenuRow icon="fileText" title="수학 공식집" description="과목별 핵심 개념과 영상" onClick={onOpenFormulaBook} />
+                         </SectionCard>
+                     )}
+ 
+                     <SectionCard title="고객 지원">
+                         <MenuRow icon="fileText" title="이용약관" description="서비스 이용 기준과 권리 안내" onClick={() => setMoreView('terms')} />
+                         <MenuRow icon="lock" title="개인정보처리방침" description="개인정보 수집 및 보호 안내" onClick={() => setMoreView('privacy')} />
+                     </SectionCard>
+ 
+                     <div className="space-y-3 pt-1">
+                         <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+                             <button
+                                 type="button"
+                                 onClick={onLogout}
+                                 className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-semibold text-gray-700 active:bg-gray-50"
+                             >
+                                 <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-gray-50 text-gray-500">
+                                     <Icon name="logOut" className="h-4 w-4" />
+                                 </span>
+                                 로그아웃
+                             </button>
+                         </div>
+                         <div className="pt-3 text-center">
+                             <AccountDeletionRequestButton
+                                 onAfterRequested={handleAfterDeletionRequested}
+                                 className="inline-flex items-center justify-center gap-1.5 px-2 py-1 text-xs font-semibold text-rose-500 underline-offset-2 hover:text-rose-600 hover:underline active:text-rose-700"
+diff --git a/src/pages/StudentHome.jsx b/src/pages/StudentHome.jsx
+index 8a76a8f969dce2d07a49d7d194789758e07221c2..92a27243d07eabc0b9eb423fac630762ad844f6e 100644
+--- a/src/pages/StudentHome.jsx
++++ b/src/pages/StudentHome.jsx
+@@ -1,49 +1,50 @@
+ // src/pages/StudentHome.jsx
+ import React, {useState, useMemo, useEffect, useCallback} from 'react';
+ import { useSearchParams } from 'react-router-dom';
+ import {
+     DashboardTab, ClassTab, ScheduleTab, LearningTab, MenuTab,
+     BoardTab
+ } from '../components/StudentTabs';
+ import ClassroomView from './student/ClassroomView';
+ import ParentMessengerPage from './parent/ParentMessengerPage';
+ import StudentHeader from '../components/StudentHeader';
+ import {
+     Icon,
+     calculateHomeworkStats,
+     calculateGradeComparison,
+ } from '../utils/helpers';
+ import { sortClassesByStatus, getViewerVisibleClassIds } from '../utils/classStatus';
+ import { getViewerTodayClassItems, toLocalYmd } from '../utils/viewerTodaySchedule';
+ import NotificationsIcon from '@mui/icons-material/Notifications';
+ import useNotifications from '../notifications/useNotifications';
+ import NotificationList from '../notifications/NotificationList';
+ import openNotification from '../notifications/openNotification';
+ import { functions } from '../firebase/client';
+ import { httpsCallable } from 'firebase/functions';
+ import { FEATURES } from '../config/features';
++import FormulaBookView from '../components/student/formulaBook/FormulaBookView';
+ 
+ const normalizeClassStatus = (value) => {
+     if (value === 'withdrawn') return '퇴원';
+     if (value === 'active') return '진행중';
+     if (value === '재원') return '진행중';
+     return value;
  };
  
--export const completeStaffTimelineItem = async (
-+export const softDeleteStaffTimelineThread = async (firestoreDb, threadId, actor = {}) => {
-+    assertDb(firestoreDb);
-+    assertId(threadId, '교직원 메모 ID가 없습니다.');
-+    const normalizedActor = normalizeActor(actor);
-+
-+    return updateDoc(doc(firestoreDb, STAFF_TIMELINE_COLLECTION, threadId), {
-+        isDeleted: true,
-+        deletedAt: serverTimestamp(),
-+        deletedBy: normalizedActor.uid,
-+        updatedAt: serverTimestamp(),
-+        updatedBy: normalizedActor.uid,
-+    });
-+};
-+
-+export const completeStaffTimelineThread = async (
-     firestoreDb,
--    itemId,
--    { completedBy, completedByName, completionComment } = {},
-+    threadId,
-+    actor = {},
-+    completionComment = '',
- ) => {
--    if (!firestoreDb) {
--        throw new Error('Firestore가 초기화되지 않았습니다.');
--    }
--    if (!itemId) {
--        throw new Error('인수인계 항목 ID가 없습니다.');
--    }
-+    assertDb(firestoreDb);
-+    assertId(threadId, '교직원 메모 ID가 없습니다.');
-+    const normalizedActor = normalizeActor(actor);
- 
--    const itemRef = doc(firestoreDb, STAFF_TIMELINE_COLLECTION, itemId);
--    return updateDoc(itemRef, {
-+    return updateDoc(doc(firestoreDb, STAFF_TIMELINE_COLLECTION, threadId), {
-         status: 'completed',
-         completedAt: serverTimestamp(),
--        completedBy: completedBy || '',
--        completedByName: completedByName || '',
-+        completedBy: normalizedActor.uid,
-+        completedByName: normalizedActor.name,
-         completionComment: completionComment || '',
-+        updatedAt: serverTimestamp(),
-+        updatedBy: normalizedActor.uid,
-     });
+ const isWithdrawnStatus = (value) => {
+     const normalized = normalizeClassStatus(value);
+     return ['퇴원', '중도퇴원', '전반', '전반퇴원'].includes(normalized);
  };
  
--export const fetchClinicTimelineItems = async (firestoreDb, clinicLogIds = []) => {
--    if (!firestoreDb) return [];
-+export const fetchStaffTimelineReplies = async (firestoreDb, threadId) => {
-+    if (!firestoreDb || !threadId) return [];
+ const toDayStartMs = (value) => {
+     const date = value ? new Date(value) : new Date();
+     const time = Number.isNaN(date.getTime()) ? new Date() : date;
+     return new Date(time.getFullYear(), time.getMonth(), time.getDate()).getTime();
+ };
  
--    const uniqueClinicLogIds = Array.from(new Set((clinicLogIds || []).filter(Boolean).map(String)));
--    if (uniqueClinicLogIds.length === 0) return [];
-+    const snapshot = await getDocs(query(
-+        collection(firestoreDb, STAFF_TIMELINE_COLLECTION, threadId, REPLIES_COLLECTION),
-+        orderBy('createdAt', 'asc'),
-+    ));
-+    return normalizeSnapshot(snapshot).map((reply) => (
-+        reply.isDeleted ? { ...reply, content: DEFAULT_DELETED_CONTENT } : reply
-+    ));
-+};
+ const getItemClassId = (item) => (
+     item?.classId
+     || item?.classDocId
+     || item?.classID
+     || item?.class?.id
+     || item?.class?.classId
+@@ -174,119 +175,148 @@ const getNoticeAudienceValues = (notice = {}) => [
+     ...(Array.isArray(notice?.studentIds) ? notice.studentIds : []),
+ ].filter(Boolean).map(String);
  
--    const snapshots = await Promise.all(
--        chunkArray(uniqueClinicLogIds, 10).map((idChunk) => getDocs(query(
--            collection(firestoreDb, STAFF_TIMELINE_COLLECTION),
--            where('sourceType', '==', CLINIC_SOURCE_TYPE),
--            where('sourceDocId', 'in', idChunk),
--        ))),
--    );
-+export const createStaffTimelineReply = async (firestoreDb, threadId, payload = {}) => {
-+    assertDb(firestoreDb);
-+    assertId(threadId, '교직원 메모 ID가 없습니다.');
-+
-+    const threadRef = doc(firestoreDb, STAFF_TIMELINE_COLLECTION, threadId);
-+    const replyCollection = collection(threadRef, REPLIES_COLLECTION);
-+    const replyRef = doc(replyCollection);
-+    const content = String(payload.content || '').trim();
-+
-+    return runTransaction(firestoreDb, async (transaction) => {
-+        const threadSnapshot = await transaction.get(threadRef);
-+        if (!threadSnapshot.exists()) throw new Error('교직원 메모를 찾을 수 없습니다.');
-+
-+        const replyPayload = {
-+            content,
-+            createdAt: serverTimestamp(),
-+            createdBy: payload.createdBy || '',
-+            createdByName: payload.createdByName || '',
-+            senderRole: payload.senderRole || '',
-+            updatedAt: null,
-+            updatedBy: null,
-+            deletedAt: null,
-+            deletedBy: null,
-+            isDeleted: false,
-+        };
-+        const currentCount = Number(threadSnapshot.data()?.replyCount || 0);
+ const isNoticeVisibleToStudent = ({ notice, studentKeys, classIds }) => {
+     const audience = getNoticeAudienceValues(notice);
+     if (audience.length > 0 && audience.some((value) => studentKeys.has(value))) return true;
+     const noticeClassIds = getNoticeClassIds(notice);
+     if (noticeClassIds.length > 0) return noticeClassIds.some((value) => classIds.has(value));
+     return audience.length === 0;
+ };
  
--    return snapshots.flatMap(normalizeSnapshot);
--};
-\ No newline at end of file
-+        transaction.set(replyRef, replyPayload);
-+        transaction.update(threadRef, {
-+            replyCount: currentCount + 1,
-+            lastReplyAt: serverTimestamp(),
-+            lastReplyByName: payload.createdByName || '',
-+        });
-+        return replyRef;
-+    });
-+};
-+
-+export const updateStaffTimelineReply = async (
-+    firestoreDb,
-+    threadId,
-+    replyId,
-+    patch = {},
-+) => {
-+    assertDb(firestoreDb);
-+    assertId(threadId, '교직원 메모 ID가 없습니다.');
-+    assertId(replyId, '댓글 ID가 없습니다.');
-+
-+    return updateDoc(doc(
-+        firestoreDb,
-+        STAFF_TIMELINE_COLLECTION,
-+        threadId,
-+        REPLIES_COLLECTION,
-+        replyId,
-+    ), {
-+        content: String(patch.content || '').trim(),
-+        updatedAt: serverTimestamp(),
-+        updatedBy: patch.updatedBy || '',
-+    });
-+};
-+
-+export const softDeleteStaffTimelineReply = async (
-+    firestoreDb,
-+    threadId,
-+    replyId,
-+    actor = {},
-+) => {
-+    assertDb(firestoreDb);
-+    assertId(threadId, '교직원 메모 ID가 없습니다.');
-+    assertId(replyId, '댓글 ID가 없습니다.');
-+    const normalizedActor = normalizeActor(actor);
-+    const threadRef = doc(firestoreDb, STAFF_TIMELINE_COLLECTION, threadId);
-+    const replyRef = doc(threadRef, REPLIES_COLLECTION, replyId);
-+
-+    return runTransaction(firestoreDb, async (transaction) => {
-+        const [threadSnapshot, replySnapshot] = await Promise.all([
-+            transaction.get(threadRef),
-+            transaction.get(replyRef),
-+        ]);
-+        if (!replySnapshot.exists() || replySnapshot.data()?.isDeleted) return;
-+
-+        transaction.update(replyRef, {
-+            isDeleted: true,
-+            content: DEFAULT_DELETED_CONTENT,
-+            deletedAt: serverTimestamp(),
-+            deletedBy: normalizedActor.uid,
-+            updatedAt: serverTimestamp(),
-+            updatedBy: normalizedActor.uid,
-+        });
-+        if (threadSnapshot.exists()) {
-+            const currentCount = Number(threadSnapshot.data()?.replyCount || 0);
-+            transaction.update(threadRef, { replyCount: Math.max(0, currentCount - 1) });
-+        }
-+    });
-+};
-+
-+// 기존 호출부와 단계적 마이그레이션을 위한 호환 alias
-+export const fetchPendingStaffTimeline = (firestoreDb, limitCount = 30) => (
-+    fetchStaffTimeline(firestoreDb, { status: 'pending', limitCount })
-+);
-+export const createStaffTimelineItem = createStaffTimelineThread;
-+export const completeStaffTimelineItem = (
-+    firestoreDb,
-+    itemId,
-+    { completedBy, completedByName, completionComment } = {},
-+) => completeStaffTimelineThread(
-+    firestoreDb,
-+    itemId,
-+    { uid: completedBy, name: completedByName },
-+    completionComment,
-+);
-+export const fetchClinicTimelineItems = fetchClinicTimelineThreads;
-diff --git a/src/domain/staffTimeline/staffTimeline.service.test.js b/src/domain/staffTimeline/staffTimeline.service.test.js
-new file mode 100644
-index 0000000000000000000000000000000000000000..bc968b6c3b0fa637cad679ef652a265563253868
---- /dev/null
-+++ b/src/domain/staffTimeline/staffTimeline.service.test.js
-@@ -0,0 +1,201 @@
-+import {
-+    addDoc,
-+    collection,
-+    doc,
-+    getDocs,
-+    limit,
-+    orderBy,
-+    query,
-+    runTransaction,
-+    serverTimestamp,
-+    updateDoc,
-+    where,
-+} from 'firebase/firestore';
-+import {
-+    completeStaffTimelineThread,
-+    createStaffTimelineReply,
-+    createStaffTimelineThread,
-+    fetchStaffTimeline,
-+    fetchStaffTimelineReplies,
-+    softDeleteStaffTimelineReply,
-+    softDeleteStaffTimelineThread,
-+    updateStaffTimelineReply,
-+    updateStaffTimelineThread,
-+} from './staffTimeline.service';
-+
-+jest.mock('firebase/firestore', () => ({
-+    addDoc: jest.fn(),
-+    collection: jest.fn((...args) => ({ type: 'collection', args })),
-+    doc: jest.fn((...args) => ({ type: 'doc', args })),
-+    getDocs: jest.fn(),
-+    limit: jest.fn((value) => ({ type: 'limit', value })),
-+    orderBy: jest.fn((field, direction) => ({ type: 'orderBy', field, direction })),
-+    query: jest.fn((...args) => ({ type: 'query', args })),
-+    runTransaction: jest.fn(),
-+    serverTimestamp: jest.fn(() => 'SERVER_TIMESTAMP'),
-+    updateDoc: jest.fn(),
-+    where: jest.fn((field, operator, value) => ({ type: 'where', field, operator, value })),
-+}));
-+
-+const db = { name: 'db' };
-+const makeSnapshot = (items) => ({
-+    docs: items.map(({ id, ...data }) => ({ id, data: () => data })),
-+});
-+
-+describe('staffTimeline.service', () => {
-+    beforeEach(() => {
-+        jest.clearAllMocks();
-+        collection.mockImplementation((...args) => ({ type: 'collection', args }));
-+        doc.mockImplementation((...args) => ({ type: 'doc', args }));
-+        limit.mockImplementation((value) => ({ type: 'limit', value }));
-+        orderBy.mockImplementation((field, direction) => ({ type: 'orderBy', field, direction }));
-+        query.mockImplementation((...args) => ({ type: 'query', args }));
-+        serverTimestamp.mockReturnValue('SERVER_TIMESTAMP');
-+        where.mockImplementation((field, operator, value) => ({ type: 'where', field, operator, value }));
-+        addDoc.mockResolvedValue({ id: 'new-thread' });
-+        updateDoc.mockResolvedValue(undefined);
-+    });
-+
-+    test('상태 필터 조회 시 soft delete root를 숨긴다', async () => {
-+        getDocs.mockResolvedValue(makeSnapshot([
-+            { id: 'visible', status: 'completed', isDeleted: false },
-+            { id: 'deleted', status: 'completed', isDeleted: true },
-+        ]));
-+
-+        const result = await fetchStaffTimeline(db, { status: 'completed', limitCount: 25 });
-+
-+        expect(where).toHaveBeenCalledWith('status', '==', 'completed');
-+        expect(orderBy).toHaveBeenCalledWith('createdAt', 'desc');
-+        expect(limit).toHaveBeenCalledWith(25);
-+        expect(result).toEqual([{ id: 'visible', status: 'completed', isDeleted: false }]);
-+    });
-+
-+    test('all 조회는 status where 없이 최신순으로 조회한다', async () => {
-+        getDocs.mockResolvedValue(makeSnapshot([]));
-+
-+        await fetchStaffTimeline(db, { status: 'all', limitCount: 50 });
-+
-+        expect(where).not.toHaveBeenCalledWith('status', '==', expect.anything());
-+        expect(query).toHaveBeenCalled();
-+    });
-+
-+    test('클리닉 sourceSummary와 thread 기본 메타데이터를 복사 저장한다', async () => {
-+        await createStaffTimelineThread(db, {
-+            sourceDocId: 'clinic-1',
-+            sourceCollection: 'clinicReservations',
-+            sourceSummary: {
-+                date: '2026-06-05',
-+                plannedTime: '18:00',
-+                teacherName: '채수용T',
-+                clinicComment: '오답 재확인',
-+                status: 'attended',
-+            },
-+            studentId: 'student-1',
-+            studentName: '박수빈',
-+            content: '다음 시간 확인',
-+            createdBy: 'staff-1',
-+            createdByName: '담당자',
-+            senderRole: 'staff',
-+        });
-+
-+        expect(addDoc).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-+            sourceType: 'clinic',
-+            sourceDocId: 'clinic-1',
-+            sourceCollection: 'clinicReservations',
-+            sourceSummary: {
-+                date: '2026-06-05',
-+                plannedTime: '18:00',
-+                teacherName: '채수용T',
-+                clinicComment: '오답 재확인',
-+                status: 'attended',
-+            },
-+            status: 'pending',
-+            replyCount: 0,
-+            isDeleted: false,
-+        }));
-+    });
-+
-+    test('root 수정, soft delete, 완료 처리를 update로 저장한다', async () => {
-+        await updateStaffTimelineThread(db, 'thread-1', { content: '수정 내용', updatedBy: 'staff-1' });
-+        expect(updateDoc).toHaveBeenLastCalledWith(expect.anything(), expect.objectContaining({
-+            content: '수정 내용',
-+            updatedBy: 'staff-1',
-+        }));
-+
-+        await softDeleteStaffTimelineThread(db, 'thread-1', { uid: 'staff-1' });
-+        expect(updateDoc).toHaveBeenLastCalledWith(expect.anything(), expect.objectContaining({
-+            isDeleted: true,
-+            deletedBy: 'staff-1',
-+        }));
-+
-+        await completeStaffTimelineThread(db, 'thread-1', { uid: 'staff-1', name: '담당자' }, '완료했습니다');
-+        expect(updateDoc).toHaveBeenLastCalledWith(expect.anything(), expect.objectContaining({
-+            status: 'completed',
-+            completedBy: 'staff-1',
-+            completedByName: '담당자',
-+            completionComment: '완료했습니다',
-+        }));
-+    });
-+
-+    test('댓글 생성은 transaction에서 replyCount와 마지막 댓글 정보를 갱신한다', async () => {
-+        const transaction = {
-+            get: jest.fn().mockResolvedValue({ exists: () => true, data: () => ({ replyCount: 2 }) }),
-+            set: jest.fn(),
-+            update: jest.fn(),
-+        };
-+        runTransaction.mockImplementation(async (_db, callback) => callback(transaction));
-+
-+        await createStaffTimelineReply(db, 'thread-1', {
-+            content: '추가 확인 예정',
-+            createdBy: 'staff-1',
-+            createdByName: '담당자',
-+            senderRole: 'teacher',
-+        });
-+
-+        expect(transaction.set).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-+            content: '추가 확인 예정',
-+            isDeleted: false,
-+        }));
-+        expect(transaction.update).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-+            replyCount: 3,
-+            lastReplyByName: '담당자',
-+        }));
-+    });
-+
-+    test('댓글 수정과 soft delete를 지원하고 삭제 댓글 문구를 유지한다', async () => {
-+        await updateStaffTimelineReply(db, 'thread-1', 'reply-1', { content: '수정 댓글', updatedBy: 'staff-1' });
-+        expect(updateDoc).toHaveBeenLastCalledWith(expect.anything(), expect.objectContaining({
-+            content: '수정 댓글',
-+            updatedBy: 'staff-1',
-+        }));
-+
-+        const transaction = {
-+            get: jest.fn()
-+                .mockResolvedValueOnce({ exists: () => true, data: () => ({ replyCount: 1 }) })
-+                .mockResolvedValueOnce({ exists: () => true, data: () => ({ isDeleted: false }) }),
-+            update: jest.fn(),
-+        };
-+        runTransaction.mockImplementation(async (_db, callback) => callback(transaction));
-+        await softDeleteStaffTimelineReply(db, 'thread-1', 'reply-1', { uid: 'staff-1' });
-+        expect(transaction.update).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-+            isDeleted: true,
-+            content: '삭제된 메모입니다.',
-+            deletedBy: 'staff-1',
-+        }));
-+        expect(transaction.update).toHaveBeenCalledWith(expect.anything(), { replyCount: 0 });
-+
-+        getDocs.mockResolvedValue(makeSnapshot([
-+            { id: 'reply-1', content: '원문', isDeleted: true },
-+        ]));
-+        await expect(fetchStaffTimelineReplies(db, 'thread-1')).resolves.toEqual([
-+            { id: 'reply-1', content: '삭제된 메모입니다.', isDeleted: true },
-+        ]);
-+    });
-+
-+    test('필수 식별자가 없으면 mutation을 거부한다', async () => {
-+        await expect(updateStaffTimelineThread(db, '', { content: 'x' })).rejects.toThrow('교직원 메모 ID가 없습니다.');
-+        expect(serverTimestamp).not.toHaveBeenCalled();
-+        expect(doc).not.toHaveBeenCalled();
-+        expect(collection).not.toHaveBeenCalled();
-+    });
-+});
-diff --git a/src/pages/ClinicManagement.jsx b/src/pages/ClinicManagement.jsx
-index 572937e0d4625b9bbb81c897195391516106f9e4..360017763fa2cdb7b4757fe9e6f22c3058449ce7 100644
---- a/src/pages/ClinicManagement.jsx
-+++ b/src/pages/ClinicManagement.jsx
-@@ -1,83 +1,89 @@
- import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
- import { Icon } from '../utils/helpers';
- import { db } from '../firebase/client';
- import { fetchClinicLogsDeepForStaff, fetchClinicLogsPaged } from '../data/firestoreSync';
- import { ClinicScheduleModal } from '../utils/modals/ClinicScheduleModal';
- import { ClinicCommentModal } from '../utils/modals/ClinicCommentModal';
- import { ClinicNotificationModal } from '../utils/modals/ClinicNotificationModal';
- import { ClinicBulkNotificationModal } from '../utils/modals/ClinicBulkNotificationModal';
- import { buildStudentParentPhoneLast4Map } from '../utils/parentPhone';
- import StudentNameWithParentLast4 from '../components/common/StudentNameWithParentLast4';
- import useAuth from '../auth/useAuth';
--import { createStaffTimelineItem, fetchClinicTimelineItems } from '../domain/staffTimeline/staffTimeline.service';
-+import { createStaffTimelineThread, fetchClinicTimelineThreads } from '../domain/staffTimeline/staffTimeline.service';
-+import StaffTimelineThreadCard from '../components/StaffTimeline/StaffTimelineThreadCard';
- 
- export default function ClinicManagement({ 
-     students, parents = [], classes, handleSaveClinicLog, handleDeleteClinicLog,
-     logNotification, userRole
+ export default function StudentHome({
+     student, studentId, userId, students, classes, homeworkAssignments, homeworkResults,
+     attendanceLogs, lessonLogs, notices, tests, grades, classTestStats,
+     videoProgress, onSaveVideoProgress, videoMemos, onAddMemo, onUpdateMemo, onDeleteMemo,
+     externalSchedules, onSaveExternalSchedule, onDeleteExternalSchedule,
+     clinicLogs, onUpdateStudent,
+     closures,
+     lessonReports = [],
+     onLogout
  }) {
-     const [filterMode, setFilterMode] = useState('all'); // all | date
-     const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().slice(0, 10));
-     const [rangeFrom, setRangeFrom] = useState('');
-     const [rangeTo, setRangeTo] = useState('');
-     const [viewMode, setViewMode] = useState('staff'); // staff | tutor
-     const [selectedClassId, setSelectedClassId] = useState('');
-     const [selectedAssistantId, setSelectedAssistantId] = useState('');
-     const [searchText, setSearchText] = useState('');
-     const [page, setPage] = useState(1);
-     const PAGE_SIZE = 25;
+     // ✅ URL(querystring)로 탭/상세 상태를 동기화해서 "뒤로가기"가 탭 전환/이전 화면으로 동작하게 함
+     const [searchParams, setSearchParams] = useSearchParams();
  
-     // 모달 상태
-     const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
-     const [isCommentModalOpen, setIsCommentModalOpen] = useState(false);
-     const [isNotifyModalOpen, setIsNotifyModalOpen] = useState(false);
-     const [isBulkNotifyModalOpen, setIsBulkNotifyModalOpen] = useState(false);
-     
-     const [selectedLog, setSelectedLog] = useState(null);
-     const [selectedLogIds, setSelectedLogIds] = useState([]);
-     const [selectedNotificationType, setSelectedNotificationType] = useState('comment'); 
-     const [openStaffMemoLogId, setOpenStaffMemoLogId] = useState('');
-     const [staffMemoDrafts, setStaffMemoDrafts] = useState({});
-     const [savingStaffMemoLogId, setSavingStaffMemoLogId] = useState('');
-     const [clinicTimelineItems, setClinicTimelineItems] = useState([]);
-     const [clinicTimelineError, setClinicTimelineError] = useState('');
-     const [pagedLogs, setPagedLogs] = useState([]);
-     const [deepLogs, setDeepLogs] = useState([]);
-     const [lastDoc, setLastDoc] = useState(null);
-     const [hasMore, setHasMore] = useState(true);
-     const FETCH_PAGE_SIZE = 50;
-     const { user, userProfile } = useAuth();
+     const readTabFromUrl = () => {
++        if (searchParams.get('mode') === 'formula') return 'class';
+         const tab = searchParams.get('tab') || 'home';
+         return tab === 'report' ? 'class' : tab;
+     };
+     const readSubTabFromUrl = () => searchParams.get('subTab') || 'homework';
+     const readClassIdFromUrl = () => searchParams.get('classId');
++    const readClassroomModeFromUrl = () => searchParams.get('mode') === 'formula' ? 'formula' : 'class';
  
-     const debugSampleLoggedRef = useRef(false);
+     const [activeTab, _setActiveTab] = useState(readTabFromUrl());
+     const [initialLearningTab, _setInitialLearningTab] = useState(readSubTabFromUrl());
+     const [selectedClassId, _setSelectedClassId] = useState(readClassIdFromUrl());
++    const [classroomMode, _setClassroomMode] = useState(readClassroomModeFromUrl());
  
-     const currentUserFallbackName = userProfile?.email || user?.email ? (userProfile?.email || user?.email).split('@')[0] : '';
-     const currentUserName = userProfile?.displayName?.trim()
-         || userProfile?.name?.trim()
-         || user?.displayName?.trim()
-         || currentUserFallbackName
-         || '교직원';
-     const currentSenderRole = userProfile?.role || userProfile?.type || userRole || 'staff';
-+    const timelineActor = useMemo(() => ({
-+        uid: user?.uid || '',
-+        name: currentUserName,
-+        role: currentSenderRole,
-+    }), [currentSenderRole, currentUserName, user?.uid]);
- 
+     // ✅ URL -> state (브라우저 뒤로/앞으로로 URL이 바뀌면 화면도 따라감)
      useEffect(() => {
-         console.log('[DEBUG] students =', students?.slice(0, 3));
-         console.log('[DEBUG] parents =', parents?.slice(0, 3));
-         console.log('[DEBUG] pagedLogs =', pagedLogs?.slice(0, 3));
-     }, [students, parents, pagedLogs]);
+         const nextTab = readTabFromUrl();
+         const nextSubTab = readSubTabFromUrl();
+         const nextClassId = readClassIdFromUrl();
++        const nextClassroomMode = readClassroomModeFromUrl();
  
-     useEffect(() => {
-         console.log('[clinic management] pagedLogs loaded =', pagedLogs.length);
-         if (pagedLogs.length > 0) {
-             console.log('[clinic management] effectiveDate sample', pagedLogs.slice(0, 30).map((log) => ({
-                 id: log.id,
-                 effectiveDate: log.effectiveDate,
-                 date: log.date,
-                 clinicDate: log.clinicDate,
-                 createdAt: log.createdAt,
-             })));
-         }
-     }, [pagedLogs]);
+         if (nextTab !== activeTab) _setActiveTab(nextTab);
+         if (nextSubTab !== initialLearningTab) _setInitialLearningTab(nextSubTab);
+         if ((nextClassId || null) !== (selectedClassId || null)) _setSelectedClassId(nextClassId || null);
++        if (nextClassroomMode !== classroomMode) _setClassroomMode(nextClassroomMode);
+         // eslint-disable-next-line react-hooks/exhaustive-deps
+     }, [searchParams]);
  
-     useEffect(() => {
-         let cancelled = false;
+     // ✅ state -> URL (앱 내부 동작은 아래 래퍼 함수를 통해서만 변경)
+     const setActiveTab = useCallback((tab, { replace = false } = {}) => {
+         _setActiveTab(tab);
+         setSearchParams(prev => {
+             const next = new URLSearchParams(prev);
+             next.set('tab', tab);
  
-         const load = async () => {
-             const today = new Date();
-@@ -468,143 +474,192 @@ export default function ClinicManagement({
-             setPage(totalPages);
-         }
-     }, [page, totalPages, filterMode]);
+             // learning 이외 탭으로 이동하면 subTab은 정리 (원하면 정책 변경 가능)
+             if (tab !== 'learning') next.delete('subTab');
  
-     const pageLogs = useMemo(() => {
-         if (filterMode !== 'all') return [];
-         const startIndex = (page - 1) * PAGE_SIZE;
-         return filteredAndSortedLogs.slice(startIndex, startIndex + PAGE_SIZE);
-     }, [filteredAndSortedLogs, page, filterMode]);
+             // 탭 이동 시 classId는 유지하지 않음(클래스 화면은 별도 상태)
+             if (tab !== 'class') next.delete('classId');
++            if (tab !== 'class') {
++                next.delete('mode');
++                next.delete('conceptId');
++                _setClassroomMode('class');
++            }
  
-     const visibleLogs = filterMode === 'date' ? dateLogs : pageLogs;
+             return next;
+         }, { replace });
+     }, [setSearchParams]);
++    const setClassroomMode = useCallback((mode, { replace = false } = {}) => {
++        const value = mode === 'formula' ? 'formula' : 'class';
++        _setClassroomMode(value);
++        _setActiveTab('class');
++        _setSelectedClassId(null);
++        setSearchParams(prev => {
++            const next = new URLSearchParams(prev);
++            next.set('tab', 'class');
++            next.delete('classId');
++            next.delete('subTab');
++            if (value === 'formula') next.set('mode', 'formula');
++            else {
++                next.delete('mode');
++                next.delete('conceptId');
++            }
++            return next;
++        }, { replace });
++    }, [setSearchParams]);
  
+     const setInitialLearningTab = useCallback((subTab, { replace = false } = {}) => {
+         const value = subTab || 'homework';
+         _setInitialLearningTab(value);
+         setSearchParams(prev => {
+             const next = new URLSearchParams(prev);
+             next.set('tab', 'learning');
+             next.set('subTab', value);
+             next.delete('classId');
+             return next;
+         }, { replace });
+         _setActiveTab('learning');
+     }, [setSearchParams]);
  
-     useEffect(() => {
-         let cancelled = false;
+     const setSelectedClassId = useCallback((classId, { replace = false } = {}) => {
+         const value = classId === null || classId === undefined || classId === '' ? null : String(classId);
+         _setSelectedClassId(value);
  
-         const loadTimelineItems = async () => {
-             const clinicLogIds = (visibleLogs || []).map((log) => log?.id).filter(Boolean);
-             if (clinicLogIds.length === 0) {
-                 setClinicTimelineItems([]);
-                 setClinicTimelineError('');
+         setSearchParams(prev => {
+             const next = new URLSearchParams(prev);
+             if (value) {
+                 next.set('tab', 'class');
+                 next.set('classId', value);
+                 next.delete('subTab');
+             } else {
+                 next.delete('classId');
+             }
+             return next;
+         }, { replace });
+ 
+         if (value) _setActiveTab('class');
++        if (value) _setClassroomMode('class');
+     }, [setSearchParams]);
+     const [isVideoModalOpen, setIsVideoModalOpen] = useState(false);
+     const [isNotificationOpen, setIsNotificationOpen] = useState(false);
+     const [visibleNotices, setVisibleNotices] = useState([]);
+     const [targetMemo, setTargetMemo] = useState(null);
+     const [isMessengerPage, setIsMessengerPage] = useState(false);
+     const viewerUid = student?.authUid || userId;
+     const studentDocId = studentId;
+     const studentAuthUid = student?.authUid || userId;
+     const rawMyClasses = useMemo(() => {
+         if (!Array.isArray(classes) || !studentId) return [];
+         const addClassIdFromItem = (targetSet, item) => {
+             if (!item) return;
+             if (typeof item === 'string') {
+                 targetSet.add(String(item));
                  return;
              }
- 
-             try {
--                const items = await fetchClinicTimelineItems(db, clinicLogIds);
-+                const items = await fetchClinicTimelineThreads(db, clinicLogIds);
-                 if (!cancelled) {
-                     setClinicTimelineItems(items);
-                     setClinicTimelineError('');
-                 }
-             } catch (error) {
-                 console.error('[staffTimeline] failed to load clinic timeline items', error);
-                 if (!cancelled) {
-                     setClinicTimelineItems([]);
-                     setClinicTimelineError('교직원 메모를 불러오지 못했습니다.');
-                 }
-             }
+             if (typeof item !== 'object') return;
+             [item.id, item.classId, item.classDocId, item.classDocumentId, item.classRefId, item.docId, item.classCode, item.code, item.classKey]
+                 .filter(Boolean)
+                 .forEach((value) => targetSet.add(String(value)));
          };
- 
-         loadTimelineItems();
-         return () => { cancelled = true; };
-     }, [visibleLogs]);
- 
-     const clinicTimelineItemsByLogId = useMemo(() => {
-         const grouped = new Map();
-         (clinicTimelineItems || []).forEach((item) => {
-             const key = String(item?.sourceDocId || '');
-             if (!key) return;
-             if (!grouped.has(key)) grouped.set(key, []);
-             grouped.get(key).push(item);
-         });
-         return grouped;
-     }, [clinicTimelineItems]);
- 
-     const getTimelineCountText = useCallback((logId) => {
-         const count = clinicTimelineItemsByLogId.get(String(logId || ''))?.length || 0;
-         return count > 0 ? `교직원 메모 ${count}` : '교직원 메모';
-     }, [clinicTimelineItemsByLogId]);
- 
-     const refreshClinicTimelineItems = useCallback(async () => {
-         const clinicLogIds = (visibleLogs || []).map((log) => log?.id).filter(Boolean);
-         if (clinicLogIds.length === 0) {
-             setClinicTimelineItems([]);
-             return;
-         }
--        const items = await fetchClinicTimelineItems(db, clinicLogIds);
-+        const items = await fetchClinicTimelineThreads(db, clinicLogIds);
-         setClinicTimelineItems(items);
-     }, [visibleLogs]);
- 
-     const handleStaffMemoDraftChange = (logId, value) => {
-         setStaffMemoDrafts((prev) => ({ ...prev, [logId]: value }));
-     };
- 
-     const handleToggleStaffMemo = (logId) => {
-         setOpenStaffMemoLogId((prev) => (prev === logId ? '' : logId));
-     };
- 
-     const handleSaveStaffMemo = async (log) => {
-         const content = String(staffMemoDrafts[log.id] || '').trim();
-         if (!content) {
-             alert('교직원끼리 공유할 지시사항이나 인수인계를 입력하세요.');
+         const studentClassIds = new Set();
+         [
+             ...(Array.isArray(student?.classIds) ? student.classIds : []),
+@@ -490,51 +520,51 @@ export default function StudentHome({
+         if (!viewerUid) {
+             console.warn('[notifications] no viewerUid');
              return;
          }
  
-         const resolvedStudent = resolveStudentFromLog(log);
-         const studentId = String(
-             resolvedStudent?.id
-             || log?.studentDocId
-             || log?.studentId
-             || log?.studentUid
-             || log?.authUid
-             || '',
+         try {
+             const callable = httpsCallable(functions, 'markAllNotificationsRead');
+             const result = await callable({ viewerUid });
+             const now = new Date();
+             setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true, readAt: n.readAt || now })));
+             console.log('[student][notifications] markAllRead success', { viewerUid, updated: result?.data?.updated ?? null });
+         } catch (error) {
+             console.error('[student][notifications] markAllRead failed', error);
+         }
+     };
+ 
+ 
+ 
+     const sentLessonReports = useMemo(() => (Array.isArray(lessonReports) ? lessonReports : [])
+         .filter((report) => report?.status === 'sent' && String(report?.studentId || '') === String(studentId || '') && isVisibleClassItem(report))
+         .map((report) => ({ ...report, className: classes.find((c) => String(c.id) === String(report.classId))?.name || report.classId }))
+         .sort((a, b) => String(b.lessonDate || '').localeCompare(String(a.lessonDate || ''))), [lessonReports, studentId, isVisibleClassItem, classes]);
+ 
+     const navItems = [
+         { id: 'home', icon: 'home', label: '홈' },
+-        { id: 'class', icon: 'fileText', label: '클래스' },
++        { id: 'class', icon: 'fileText', label: '강의실' },
+         { id: 'learning', icon: 'clipboardCheck', label: '학습관리' },
+         { id: 'schedule', icon: 'calendar', label: '일정' },
+         { id: 'menu', icon: 'menu', label: '전체' },
+     ];
+ 
+     if (isMessengerPage) {
+         return (
+             <ParentMessengerPage
+                 studentId={studentId}
+                 student={student}
+                 ongoingClasses={ongoingClasses}
+                 viewerRole="student"
+                 onBack={() => setIsMessengerPage(false)}
+             />
          );
-         const studentName = getStudentName(log) || resolvedStudent?.name || '';
- 
-         setSavingStaffMemoLogId(log.id);
-         try {
--            await createStaffTimelineItem(db, {
-+            await createStaffTimelineThread(db, {
-                 sourceType: 'clinic',
-                 sourceDocId: log.id,
-+                sourceCollection: log.sourceCollection || (log.reservationId ? 'clinicReservations' : 'clinicLogs'),
-+                sourceSummary: {
-+                    date: log.effectiveDate || log.date || log.clinicDate || '',
-+                    plannedTime: log.plannedTime || log.timeSlot || '',
-+                    teacherName: log.teacherName || log.tutorName || getAssistantName(log) || '',
-+                    clinicComment: log.clinicComment || log.comment || log.content || '',
-+                    status: log.displayStatus || log.status || (log.checkIn ? 'attended' : 'pending'),
-+                },
-                 studentId,
-                 studentName,
-                 content,
-                 createdBy: user?.uid || '',
-                 createdByName: currentUserName,
-                 senderRole: currentSenderRole,
-             });
-             setStaffMemoDrafts((prev) => ({ ...prev, [log.id]: '' }));
-             setOpenStaffMemoLogId('');
-             await refreshClinicTimelineItems();
-         } catch (error) {
-             console.error('[staffTimeline] failed to save clinic memo', error);
-             alert(error?.message || '교직원 메모 저장에 실패했습니다.');
-         } finally {
-             setSavingStaffMemoLogId('');
-         }
-     };
- 
-+    const renderStaffMemoPanel = (log, className = '') => {
-+        const threads = clinicTimelineItemsByLogId.get(String(log.id || '')) || [];
-+        return (
-+            <div className={`rounded-xl border border-[#dfe6ff] bg-[#f8f9ff] p-3 text-left ${className}`}>
-+                {threads.length > 0 && (
-+                    <div className="mb-4 space-y-3">
-+                        <div className="flex items-center justify-between gap-2">
-+                            <p className="text-xs font-bold text-[#334a91]">연결된 교직원 메모</p>
-+                            <span className="text-[11px] font-semibold text-gray-500">{threads.length}건</span>
-+                        </div>
-+                        {threads.map((thread) => (
-+                            <StaffTimelineThreadCard
-+                                key={thread.id}
-+                                thread={thread}
-+                                actor={timelineActor}
-+                                onChanged={refreshClinicTimelineItems}
-+                                showStudentName={false}
-+                                compact
-+                            />
-+                        ))}
-+                    </div>
-+                )}
-+                <div className="rounded-lg border border-[#dfe6ff] bg-white p-3">
-+                    <p className="mb-2 text-xs font-bold text-gray-700">새 교직원 메모</p>
-+                    <textarea
-+                        value={staffMemoDrafts[log.id] || ''}
-+                        onChange={(event) => handleStaffMemoDraftChange(log.id, event.target.value)}
-+                        placeholder="교직원끼리 공유할 지시사항이나 인수인계를 입력하세요."
-+                        className="min-h-[82px] w-full rounded-lg border border-gray-200 px-3 py-2 text-xs text-gray-700 focus:border-[#334a91] focus:outline-none focus:ring-2 focus:ring-[#cfd8ff]"
-+                    />
-+                    <div className="mt-2 flex justify-end gap-2">
-+                        <button type="button" onClick={() => handleToggleStaffMemo(log.id)} className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-600">닫기</button>
-+                        <button type="button" onClick={() => handleSaveStaffMemo(log)} disabled={savingStaffMemoLogId === log.id} className="rounded-lg bg-[#455fab] px-3 py-1.5 text-xs font-bold text-white disabled:opacity-60">
-+                            {savingStaffMemoLogId === log.id ? '저장 중...' : '새 메모 저장'}
-+                        </button>
-+                    </div>
-+                </div>
-+            </div>
-+        );
-+    };
-+
-     useEffect(() => {
-         setSelectedLogIds([]);
-     }, [filterMode, selectedDate, rangeFrom, rangeTo]);
- 
-     useEffect(() => {
-         if (filterMode === 'all') {
-             setPage(1);
-         }
-     }, [filterMode, selectedClassId, selectedAssistantId, searchText, rangeFrom, rangeTo]);
- 
-     // 핸들러
-     const openScheduleModal = () => setIsScheduleModalOpen(true);
-     
-     const openUnscheduledLogModal = () => {
-         setSelectedLog(null);
-         setIsCommentModalOpen(true);
      }
-     
-     const openCommentModal = (log) => {
-         setSelectedLog(log);
-         setIsCommentModalOpen(true);
-     };
- 
-     // 통합 알림 버튼 핸들러
-     const handleNotifyClick = (log) => {
-@@ -924,77 +979,51 @@ export default function ClinicManagement({
-                                                     <div className="flex justify-center space-x-1">
-                                                         <button onClick={() => openCommentModal(log)} className="text-gray-500 hover:text-[#334a91] p-1.5 rounded hover:bg-gray-100 transition" title="기록 수정"><Icon name="edit" className="w-4 h-4" /></button>
-                                                         
-                                                         {viewMode === 'staff' && (
-                                                             <>
-                                                                 <button 
-                                                                     onClick={() => handleNotifyClick(log)}
-                                                                     className={`p-1.5 rounded hover:bg-gray-100 transition ${isSent ? 'text-green-600' : 'text-gray-400 hover:text-[#334a91]'}`}
-                                                                     title="알림 발송"
-                                                                 >
-                                                                     <Icon name="bell" className="w-4 h-4" />
-                                                                 </button>
-                                                                 <button
-                                                                         type="button"
-                                                                         onClick={() => handleToggleStaffMemo(log.id)}
-                                                                         className="rounded border border-[#dfe6ff] bg-[#f1f4ff] px-2 py-1 text-[11px] font-bold text-[#334a91] transition hover:bg-[#e7ecff]"
-                                                                         title="교직원 메모"
-                                                                     >
-                                                                         {getTimelineCountText(log.id)}
-                                                                     </button>
- 
-                                                                 <button onClick={() => {if(window.confirm('일정을 삭제하시겠습니까?')) handleDeleteClinicLog(log.id)}} className="text-gray-400 hover:text-red-600 p-1.5 rounded hover:bg-gray-100 transition" title="삭제"><Icon name="trash" className="w-4 h-4" /></button>
-                                                             </>
-                                                         )}
-                                                     </div>
--                                                    {viewMode === 'staff' && openStaffMemoLogId === log.id && (
--                                                            <div className="w-64 rounded-xl border border-[#dfe6ff] bg-white p-3 text-left shadow-sm">
--                                                                <textarea
--                                                                    value={staffMemoDrafts[log.id] || ''}
--                                                                    onChange={(e) => handleStaffMemoDraftChange(log.id, e.target.value)}
--                                                                    placeholder="교직원끼리 공유할 지시사항이나 인수인계를 입력하세요."
--                                                                    className="min-h-[76px] w-full rounded-lg border border-gray-200 px-3 py-2 text-xs text-gray-700 focus:border-[#334a91] focus:outline-none focus:ring-2 focus:ring-[#cfd8ff]"
--                                                                />
--                                                                <div className="mt-2 flex justify-end gap-2">
--                                                                    <button
--                                                                        type="button"
--                                                                        onClick={() => handleToggleStaffMemo(log.id)}
--                                                                        className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-600 hover:bg-gray-50"
--                                                                    >
--                                                                        취소
--                                                                    </button>
--                                                                    <button
--                                                                        type="button"
--                                                                        onClick={() => handleSaveStaffMemo(log)}
--                                                                        disabled={savingStaffMemoLogId === log.id}
--                                                                        className="rounded-lg bg-[#455fab] px-3 py-1.5 text-xs font-bold text-white hover:bg-[#3b5198] disabled:cursor-not-allowed disabled:opacity-60"
--                                                                    >
--                                                                        {savingStaffMemoLogId === log.id ? '저장 중...' : '저장'}
--                                                                    </button>
--                                                                </div>
--                                                            </div>
--                                                        )}
-+                                                    {viewMode === 'staff' && openStaffMemoLogId === log.id && renderStaffMemoPanel(log, 'w-[32rem] max-w-[80vw]')}
-                                                     </div>
-                                                 </td>
-                                             </tr>
-                                         )
-                                     })
-                                 ) : (
-                                     <tr>
-                                         <td colSpan={viewMode === 'staff' ? (filterMode === 'all' ? 10 : 9) : (filterMode === 'all' ? 8 : 7)} className="px-6 py-12 text-center text-gray-500 bg-gray-50">
-                                             <div className="flex flex-col items-center">
-                                                 <Icon name="calendar" className="w-12 h-12 text-gray-300 mb-2" />
-                                                 <p className="text-lg font-medium">등록된 일정이 없습니다.</p>
-                                             </div>
-                                         </td>
-                                     </tr>
-                                 )}
-                             </tbody>
-                         </table>
-                     </div>
- 
-                     {filterMode === 'all' && (
-                         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600">
-                             <span className="font-medium">총 {filteredAndSortedLogs.length}개</span>
-                             <div className="flex items-center gap-3">
-                                 <button
-                                     type="button"
-@@ -1108,64 +1137,44 @@ export default function ClinicManagement({
-                                                 <button 
-                                                     onClick={() => handleNotifyClick(log)}
-                                                     className={`flex-1 text-sm font-semibold px-3 py-2 rounded-lg border transition ${
-                                                         isSent ? 'bg-green-50 text-green-700 border-green-200' : 'bg-white text-gray-700 border-gray-200 hover:border-[#cfd8ff]'
-                                                     }`}
-                                                 >
-                                                     알림 {isSent ? '완료' : '발송'}
-                                                 </button>
-                                                 <button
-                                                     type="button"
-                                                     onClick={() => handleToggleStaffMemo(log.id)}
-                                                     className="flex-1 rounded-lg border border-[#dfe6ff] bg-[#f1f4ff] px-3 py-2 text-sm font-semibold text-[#334a91] transition hover:bg-[#e7ecff]"
-                                                 >
-                                                     {getTimelineCountText(log.id)}
-                                                 </button>
-                                                 <button 
-                                                     onClick={() => {if(window.confirm('일정을 삭제하시겠습니까?')) handleDeleteClinicLog(log.id)}}
-                                                     className="flex-1 text-sm font-semibold px-3 py-2 rounded-lg bg-red-50 text-red-600 border border-red-100 hover:bg-red-100 transition"
-                                                 >
-                                                     삭제
-                                                 </button>
-                                             </>
-                                         )}
-                                     </div>
- 
--                                    {viewMode === 'staff' && openStaffMemoLogId === log.id && (
--                                        <div className="rounded-xl border border-[#dfe6ff] bg-[#f8f9ff] p-3">
--                                            <textarea
--                                                value={staffMemoDrafts[log.id] || ''}
--                                                onChange={(e) => handleStaffMemoDraftChange(log.id, e.target.value)}
--                                                placeholder="교직원끼리 공유할 지시사항이나 인수인계를 입력하세요."
--                                                className="min-h-[90px] w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:border-[#334a91] focus:outline-none focus:ring-2 focus:ring-[#cfd8ff]"
--                                            />
--                                            <div className="mt-2 flex justify-end gap-2">
--                                                <button type="button" onClick={() => handleToggleStaffMemo(log.id)} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-600">취소</button>
--                                                <button
--                                                    type="button"
--                                                    onClick={() => handleSaveStaffMemo(log)}
--                                                    disabled={savingStaffMemoLogId === log.id}
--                                                    className="rounded-lg bg-[#455fab] px-3 py-2 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
--                                                >
--                                                    {savingStaffMemoLogId === log.id ? '저장 중...' : '저장'}
--                                                </button>
--                                            </div>
--                                        </div>
--                                    )}
-+                                    {viewMode === 'staff' && openStaffMemoLogId === log.id && renderStaffMemoPanel(log)}
-                                 </div>
-                             );
-                         }) : (
-                             <div className="text-center text-gray-500 text-sm py-8">
-                                 {filterMode === 'date' ? '선택한 날짜에 일정이 없습니다.' : '등록된 일정이 없습니다.'}
-                             </div>
-                         )}
-                     </div>
-                 </div>
-             </div>
- 
-             <ClinicScheduleModal isOpen={isScheduleModalOpen} onClose={() => setIsScheduleModalOpen(false)} onSave={handleSaveClinicLog} students={students} parents={parents} defaultDate={selectedDate || new Date().toISOString().slice(0, 10)} clinicLogs={activeClinicLogs} classes={classes} />
-             <ClinicCommentModal isOpen={isCommentModalOpen} onClose={() => setIsCommentModalOpen(false)} onSave={handleSaveClinicLog} log={selectedLog} students={students} parents={parents} clinicLogs={activeClinicLogs} defaultDate={selectedDate || new Date().toISOString().slice(0, 10)} classes={classes} studentOptions={studentOptions} />
-             <ClinicNotificationModal isOpen={isNotifyModalOpen} onClose={() => setIsNotifyModalOpen(false)} log={selectedLog} students={students} logNotification={logNotification} onSent={handleNotificationSent} notificationType={selectedNotificationType} />
-             <ClinicBulkNotificationModal isOpen={isBulkNotifyModalOpen} onClose={() => setIsBulkNotifyModalOpen(false)} selectedLogs={visibleLogs.filter(log => selectedLogIds.includes(log.id))} students={students} logNotification={logNotification} onSent={handleNotificationSent} />
-         </div>
-     );
- };
-\ No newline at end of file
-diff --git a/src/pages/Home.jsx b/src/pages/Home.jsx
-index c2ddc47bcc1f5e7fb52864955a9fcaa571509c87..fcafc6d209f14afc30346f9f8f2524b49ef92806 100644
---- a/src/pages/Home.jsx
-+++ b/src/pages/Home.jsx
-@@ -1,106 +1,132 @@
--import React, { useCallback, useEffect, useState } from 'react';
-+import React, { useCallback, useEffect, useMemo, useState } from 'react';
- import { Icon } from '../utils/helpers';
- import { collection, getDocs, limit, orderBy, query } from 'firebase/firestore';
- import { db } from '../firebase/client';
- import useAuth from '../auth/useAuth';
- import { isAdminRole, isStaffOrTeachingRole } from '../constants/roles';
--import { completeStaffTimelineItem, fetchPendingStaffTimeline } from '../domain/staffTimeline/staffTimeline.service';
-+import { fetchStaffTimeline as fetchStaffTimelineThreads } from '../domain/staffTimeline/staffTimeline.service';
-+import StaffTimelineThreadCard from '../components/StaffTimeline/StaffTimelineThreadCard';
- 
- export default function Home({ onQuickAction, onCreateLinkCode, userRole }) {
-     const { user, userProfile } = useAuth();
-     const [linkStudentId, setLinkStudentId] = useState('');
-     const [linkCodeResult, setLinkCodeResult] = useState('');
-     const [linkStatus, setLinkStatus] = useState('');
-     const [linkSubmitting, setLinkSubmitting] = useState(false);
-     const [notificationLogs, setNotificationLogs] = useState([]);
-     const [logLoading, setLogLoading] = useState(false);
-     const [logError, setLogError] = useState('');
-     const [staffTimelineItems, setStaffTimelineItems] = useState([]);
-     const [staffTimelineLoading, setStaffTimelineLoading] = useState(false);
-     const [staffTimelineError, setStaffTimelineError] = useState('');
--    const [completingTimelineId, setCompletingTimelineId] = useState('');
-+    const [staffTimelineFilter, setStaffTimelineFilter] = useState('pending');
-     const isAdmin = isAdminRole(userRole);
-     const canAccessStaffTimeline = isStaffOrTeachingRole(userRole);
-     const fallbackName = userProfile?.email || user?.email ? (userProfile?.email || user?.email).split('@')[0] : '';
-     const displayName = userProfile?.displayName?.trim()
-         || user?.displayName?.trim()
-         || fallbackName
-         || '사용자';
- 
-     const fetchLogs = useCallback(async () => {
-         if (!isAdmin || !db) {
-             setNotificationLogs([]);
-             return;
-         }
- 
-         setLogLoading(true);
-         setLogError('');
- 
-         try {
-             const snapshot = await getDocs(query(
-                 collection(db, 'notifications'),
-                 orderBy('sentAt', 'desc'),
-                 limit(10),
-             ));
-             setNotificationLogs(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
-         } catch (error) {
-             setLogError(error?.message || '알림 로그를 불러오지 못했습니다.');
-         } finally {
-             setLogLoading(false);
-         }
-     }, [db, isAdmin]);
- 
-     useEffect(() => {
-         fetchLogs();
-     }, [fetchLogs]);
- 
- 
--    const fetchStaffTimeline = useCallback(async () => {
-+    const loadStaffTimeline = useCallback(async () => {
-         if (!canAccessStaffTimeline || !db) {
-             setStaffTimelineItems([]);
-             return;
-         }
- 
-         setStaffTimelineLoading(true);
-         setStaffTimelineError('');
- 
-         try {
--            const items = await fetchPendingStaffTimeline(db, 30);
-+            const items = await fetchStaffTimelineThreads(db, {
-+                status: staffTimelineFilter,
-+                limitCount: 50,
-+            });
-             setStaffTimelineItems(items);
-         } catch (error) {
-             console.error('[staffTimeline] failed to load items', error);
-             setStaffTimelineError('교직원 인수인계를 불러오지 못했습니다.');
-             setStaffTimelineItems([]);
-         } finally {
-             setStaffTimelineLoading(false);
-         }
--    }, [canAccessStaffTimeline]);
-+    }, [canAccessStaffTimeline, staffTimelineFilter]);
- 
-     useEffect(() => {
--        fetchStaffTimeline();
--    }, [fetchStaffTimeline]);
-+        loadStaffTimeline();
-+    }, [loadStaffTimeline]);
-+
-+    const timelineGroups = useMemo(() => {
-+        const groups = new Map();
-+        staffTimelineItems.forEach((item) => {
-+            const key = item.studentId || `name:${item.studentName || 'unknown'}`;
-+            if (!groups.has(key)) {
-+                groups.set(key, {
-+                    key,
-+                    studentName: item.studentName || '학생명 미상',
-+                    items: [],
-+                });
-+            }
-+            groups.get(key).items.push(item);
-+        });
-+        return Array.from(groups.values());
-+    }, [staffTimelineItems]);
-+
-+    const timelineActor = useMemo(() => ({
-+        uid: user?.uid || '',
-+        name: displayName,
-+        role: userProfile?.role || userProfile?.type || userRole || 'staff',
-+    }), [displayName, user?.uid, userProfile?.role, userProfile?.type, userRole]);
- 
-     const stats = [
-         { label: '총 재원생', value: '42명', change: '+2명', type: 'increase', icon: 'users', color: 'indigo' },
-         { label: '오늘 출석률', value: '95%', change: '-2%', type: 'decrease', icon: 'checkCircle', color: 'green' },
-         { label: '미납 수강료', value: '120만', change: '관리 필요', type: 'warning', icon: 'alertCircle', color: 'red' },
-         { label: '이번 주 상담', value: '5건', change: '예정됨', type: 'neutral', icon: 'messageSquare', color: 'blue' },
-     ];
- 
-     const quickActions = [
-         { key: 'newStudent', label: '신규생 등록', icon: 'userPlus', hint: '기본 정보와 반 배정', tone: 'indigo' },
-         { key: 'announcement', label: '전체 공지', icon: 'messageSquare', hint: '문자/알림 발송', tone: 'blue' },
-         { key: 'payment', label: '수납 처리', icon: 'creditCard', hint: '결제 및 영수증', tone: 'emerald' },
-         { key: 'worklog', label: '일지 작성', icon: 'fileText', hint: '수업/상담 기록', tone: 'orange' },
-         { key: 'attendance', label: '출결 체크', icon: 'checkSquare', hint: '실시간 출결 입력', tone: 'violet' },
-     ];
- 
-     const reminders = [
-         { title: '오늘 출결 미완료 3건', description: '1·2교시 고1 심화반 확인 필요', icon: 'alertTriangle', tone: 'amber' },
-         { title: '상담 준비', description: '김민준 학생 상담 시 학부모 의견 반영', icon: 'messageCircle', tone: 'sky' },
-         { title: '교재 업데이트', description: '고2 수학(상) A반 프린트 최신본 업로드', icon: 'fileText', tone: 'indigo' },
-     ];
- 
-     const toneStyles = {
-         indigo: 'bg-[#f1f4ff] text-[#334a91] border-[#eef2ff]',
-         blue: 'bg-blue-50 text-blue-800 border-blue-100',
-@@ -119,84 +145,50 @@ export default function Home({ onQuickAction, onCreateLinkCode, userRole }) {
-         orange: 'hover:bg-orange-50',
-         violet: 'hover:bg-[#f1f4ff]',
-         rose: 'hover:bg-rose-50',
-         amber: 'hover:bg-amber-50',
-         sky: 'hover:bg-sky-50',
-     };
- 
-     const handleCreateLinkCodeSubmit = async (e) => {
-         e.preventDefault();
-         if (!onCreateLinkCode) return;
- 
-         setLinkStatus('');
-         setLinkSubmitting(true);
-         try {
-             const result = await onCreateLinkCode({ studentId: linkStudentId });
-             setLinkCodeResult(result?.code || '');
-             setLinkStatus('연결 코드를 생성했습니다. 학부모에게 전달하세요.');
-         } catch (error) {
-             setLinkStatus(error?.message || '연결 코드 생성 중 오류가 발생했습니다.');
-         } finally {
-             setLinkSubmitting(false);
-         }
-     };
- 
- 
--    const getTimelineDateText = (value) => {
--        if (!value) return '-';
--        const date = value?.toDate ? value.toDate() : new Date(value);
--        if (Number.isNaN(date.getTime())) return '-';
--        return date.toLocaleString('ko-KR', {
--            month: '2-digit',
--            day: '2-digit',
--            hour: '2-digit',
--            minute: '2-digit',
--        });
--    };
--
--    const handleCompleteTimelineItem = async (item) => {
--        if (!item?.id || !canAccessStaffTimeline) return;
--
--        const completionComment = window.prompt('처리 완료 메모를 입력하세요. (선택)') || '';
--        setCompletingTimelineId(item.id);
--        setStaffTimelineError('');
--
--        try {
--            await completeStaffTimelineItem(db, item.id, {
--                completedBy: user?.uid || '',
--                completedByName: displayName,
--                completionComment,
--            });
--            await fetchStaffTimeline();
--        } catch (error) {
--            console.error('[staffTimeline] failed to complete item', error);
--            setStaffTimelineError(error?.message || '인수인계 처리 완료 저장에 실패했습니다.');
--        } finally {
--            setCompletingTimelineId('');
--        }
--    };
--
-     const visibleNotificationLogs = (notificationLogs || []).slice(0, 10);
  
      return (
-         <div className="space-y-6 lg:space-y-8 pb-2">
+         <div className="bg-gray-50 min-h-screen flex flex-col relative font-sans">
+             <StudentHeader student={student} onOpenNotifications={handleOpenNotification} onOpenMessages={() => setIsMessengerPage(true)} hasUnread={hasUnread} />
+             {/* <div style={{position:'fixed', top:10, right:10, zIndex:9999, background:'#fff', padding:6}}>
+                 activeTab: {activeTab}
+             </div> */}
  
-             {onCreateLinkCode && (
-                 <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-5 flex flex-col gap-4">
-                     <div className="flex items-center justify-between">
-                         <div className="flex items-center gap-3">
-                             <div className="p-2.5 rounded-xl bg-emerald-50 text-emerald-900 border border-emerald-100">
-                                 <Icon name="link" className="w-5 h-5" />
-                             </div>
-                             <div>
-                                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">직원 전용</p>
-                                 <p className="text-base font-bold text-gray-800">학부모 연결 코드 생성</p>
-                             </div>
-                         </div>
-                         <span className="px-3 py-1 text-xs font-semibold rounded-full bg-emerald-50 text-emerald-800 border border-emerald-100">
-                             학생 ID 필요
-                         </span>
+             <main className="flex-1 w-full max-w-md mx-auto p-4 pb-24 overflow-y-auto custom-scrollbar md:max-w-7xl">
+@@ -566,79 +596,110 @@ export default function StudentHome({
+                         onClearTargetMemo={() => setTargetMemo(null)}
+                         homeworkAssignments={filteredHomeworkAssignments}
+                         homeworkResults={homeworkResults}
+                         tests={filteredTests}
+                         grades={grades}
+                         onNavigateToTab={(tab, subTab = 'homework') => {
+                             setSelectedClassId(null);
+                             if (tab === 'learning') {
+                                 setInitialLearningTab(subTab);
+                             } else {
+                                 setActiveTab(tab);
+                             }
+                         }}
+                     />
+                 ) : (
+                     <div className="animate-fade-in space-y-4">
+                         {activeTab === 'home' && (
+                             <DashboardTab
+                                 student={student} myClasses={ongoingClasses} pendingHomeworkCount={pendingHomeworkCount}
+                                 attendanceLogs={filteredAttendanceLogs} clinicLogs={clinicLogs} homeworkStats={myHomeworkStats} notices={visibleNotices}
+                                 setActiveTab={setActiveTab}
+                                 today={today} todayDayName={todayDayName} todayItems={todayItems} filteredTodayItems={filteredTodayItems}
+                                 externalSchedules={externalSchedules} // ✅ [추가] 타학원 일정 데이터 전달
+                             />
+                         )}
+-                        {activeTab === 'class' && <ClassTab myClasses={myClasses} setSelectedClassId={setSelectedClassId} />}
++                        {activeTab === 'class' && (
++                            <section className="space-y-4">
++                                <div className="grid grid-cols-2 rounded-xl bg-gray-200/70 p-1" aria-label="강의실 보기 선택">
++                                    <button
++                                        type="button"
++                                        onClick={() => setClassroomMode('class')}
++                                        className={`rounded-lg px-4 py-2.5 text-sm font-bold transition ${
++                                            classroomMode === 'class' ? 'bg-white text-[#455fab] shadow-sm' : 'text-gray-500'
++                                        }`}
++                                    >
++                                        클래스
++                                    </button>
++                                    <button
++                                        type="button"
++                                        onClick={() => setClassroomMode('formula')}
++                                        className={`rounded-lg px-4 py-2.5 text-sm font-bold transition ${
++                                            classroomMode === 'formula' ? 'bg-white text-[#455fab] shadow-sm' : 'text-gray-500'
++                                        }`}
++                                    >
++                                        공식집
++                                    </button>
++                                </div>
++                                {classroomMode === 'class' ? (
++                                    <ClassTab myClasses={myClasses} setSelectedClassId={setSelectedClassId} />
++                                ) : (
++                                    <FormulaBookView
++                                        initialConceptId={searchParams.get('conceptId') || ''}
++                                    />
++                                )}
++                            </section>
++                        )}
+                         {activeTab === 'schedule' && (
+                             <ScheduleTab
+                                 myClasses={myClasses} externalSchedules={externalSchedules} attendanceLogs={filteredAttendanceLogs}
+                                 studentId={studentId} student={student} onSaveExternalSchedule={onSaveExternalSchedule} onDeleteExternalSchedule={onDeleteExternalSchedule} clinicLogs={clinicLogs}
+                                 closures={closures}
+                             />
+                         )}
+                         {activeTab === 'learning' && (
+                             <LearningTab
+                                 studentId={studentId} myHomeworkStats={myHomeworkStats} myGradeComparison={myGradeComparison}
+                                 clinicLogs={clinicLogs} students={students} classes={myClasses}
+                                 visibleClasses={myClasses}
+                                 initialTab={initialLearningTab}
+                                 attendanceLogs={filteredAttendanceLogs}
+                                 student={student}
+                                 tests={filteredTests}
+                                 grades={grades}
+                                 classTestStats={classTestStats}
+                                 lessonReports={sentLessonReports}
+                             />
+                         )}
+                         {activeTab === 'board' && <BoardTab notices={visibleNotices} />}
+                         {activeTab === 'menu' && (
+                             <MenuTab 
+                                 student={student} onUpdateStudent={onUpdateStudent} onLogout={onLogout}
+                                 videoMemos={videoMemos} lessonLogs={filteredLessonLogs} onLinkToMemo={handleNavigateToMemo} notices={visibleNotices}
+                                 onOpenNotifications={handleOpenNotification}
+                                 onOpenMessages={() => setIsMessengerPage(true)}
++                                onOpenFormulaBook={() => setClassroomMode('formula')}
+                                 studentAuthUid={studentAuthUid}
+                                 myClasses={ongoingClasses}
+                             />
+                         )}
                      </div>
-                     <form className="grid grid-cols-1 md:grid-cols-[2fr_auto] gap-3 items-end" onSubmit={handleCreateLinkCodeSubmit}>
-                         <label className="flex flex-col gap-1">
-                             <span className="text-xs font-semibold text-gray-600">학생 ID</span>
-                             <input
-@@ -289,122 +281,117 @@ export default function Home({ onQuickAction, onCreateLinkCode, userRole }) {
-                                                         </td>
-                                                         <td className="px-4 py-3 text-gray-500">{sentAt}</td>
-                                                         <td className="px-4 py-3 text-right font-semibold text-gray-800">
-                                                             {targetCount}
-                                                         </td>
-                                                         <td className="px-4 py-3 text-right font-semibold text-rose-600">
-                                                             {failureCount}
-                                                         </td>
-                                                         <td className="px-4 py-3 text-right font-semibold text-emerald-600">
-                                                             {successRate}%
-                                                         </td>
-                                                     </tr>
-                                                 );
-                                             })}
-                                         </tbody>
-                                     </table>
+                 )}
+             </main>
+ 
+             {student && !selectedClassId && (
+                 <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 z-40 pb-safe shadow-[0_-4px_10px_rgba(0,0,0,0.03)] h-[calc(60px+env(safe-area-inset-bottom))]">
+                     <div className="max-w-md mx-auto flex justify-around items-center h-[60px] md:max-w-7xl">
+                         {navItems.map(item => (
+                             <button 
+                                 key={item.id} 
+                                 onClick={() => setActiveTab(item.id)} 
+                                 className={`flex flex-col items-center justify-center w-full h-full transition-all duration-200 active:scale-95 active:bg-gray-50 ${
+                                     activeTab === item.id || (item.id === 'menu' && activeTab === 'board') ? 'text-brand-main' : 'text-gray-400 hover:text-gray-600'
+                                 }`}
+                             >
+                                 <div className={`mb-1 transition-transform duration-200 ${activeTab === item.id ? '-translate-y-0.5' : ''}`}>
+                                     <Icon name={item.icon} className={`w-6 h-6 ${activeTab === item.id ? 'fill-current' : ''}`} strokeWidth={activeTab === item.id ? 2.5 : 2} />
                                  </div>
-                             )}
-                         </div>
-                     )}
+                                 <span className={`text-[10px] ${activeTab === item.id ? 'font-bold' : 'font-medium'}`}>{item.label}</span>
+                             </button>
+                         ))}
+@@ -653,26 +714,26 @@ export default function StudentHome({
+                     <button
+                         onClick={handleOpenNotification}
+                         className="bg-white text-brand-main border border-brand-main/20 p-3 rounded-full shadow-lg hover:bg-gray-50 active:scale-90 flex items-center justify-center relative w-12 h-12"
+                     >
+                         <NotificationsIcon style={{ fontSize: 24 }} />
+                         {hasUnread && <span className="absolute top-2 right-2.5 w-2 h-2 bg-brand-red rounded-full ring-1 ring-white"></span>}
+                     </button>
                  </div>
              )}
- 
- 
-             {canAccessStaffTimeline && (
--                <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-5 flex flex-col gap-4">
--                    <div className="flex items-center justify-between gap-3">
-+                <section className="flex flex-col gap-4 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                         <div className="flex items-center gap-3">
--                            <div className="p-2.5 rounded-xl bg-[#f1f4ff] text-[#334a91] border border-[#eef2ff]">
--                                <Icon name="clipboard" className="w-5 h-5" />
-+                            <div className="rounded-xl border border-[#eef2ff] bg-[#f1f4ff] p-2.5 text-[#334a91]">
-+                                <Icon name="clipboard" className="h-5 w-5" />
-                             </div>
-                             <div>
--                                <h3 className="text-lg font-bold text-gray-800">교직원 인수인계</h3>
--                                <p className="text-xs text-gray-500">클리닉에서 공유된 처리 대기 지시사항을 최신순으로 확인합니다.</p>
-+                                <h3 className="text-lg font-bold text-gray-800">학생별 교직원 타임라인</h3>
-+                                <p className="text-xs text-gray-500">클리닉 맥락과 후속 댓글을 학생별로 이어서 확인합니다.</p>
-                             </div>
-                         </div>
--                        <span className="rounded-full bg-[#f1f4ff] px-3 py-1 text-xs font-bold text-[#334a91]">
--                            대기 {staffTimelineItems.length}건
-+                        <span className="self-start rounded-full bg-[#f1f4ff] px-3 py-1 text-xs font-bold text-[#334a91] sm:self-auto">
-+                            {staffTimelineItems.length}건
-                         </span>
-                     </div>
- 
-+                    <div className="flex rounded-xl bg-gray-100 p-1" role="group" aria-label="교직원 타임라인 상태 필터">
-+                        {[
-+                            { value: 'pending', label: '처리대기' },
-+                            { value: 'completed', label: '처리완료' },
-+                            { value: 'all', label: '전체' },
-+                        ].map((filter) => (
-+                            <button
-+                                key={filter.value}
-+                                type="button"
-+                                onClick={() => setStaffTimelineFilter(filter.value)}
-+                                className={`flex-1 rounded-lg px-3 py-2 text-sm font-bold transition ${staffTimelineFilter === filter.value ? 'bg-white text-[#334a91] shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-+                            >
-+                                {filter.label}
-+                            </button>
-+                        ))}
-+                    </div>
-+
-                     {staffTimelineError && (
--                        <div className="rounded-xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm text-rose-700">
--                            {staffTimelineError}
--                        </div>
-+                        <div className="rounded-xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm text-rose-700">{staffTimelineError}</div>
-                     )}
- 
-                     {staffTimelineLoading ? (
--                        <div className="text-sm text-gray-500 text-center py-6 border border-dashed border-gray-200 rounded-xl">
--                            인수인계를 불러오는 중입니다...
--                        </div>
--                    ) : staffTimelineItems.length === 0 ? (
--                        <div className="text-sm text-gray-500 text-center py-6 border border-dashed border-gray-200 rounded-xl">
--                            처리할 인수인계가 없습니다.
-+                        <div className="rounded-xl border border-dashed border-gray-200 py-6 text-center text-sm text-gray-500">인수인계를 불러오는 중입니다...</div>
-+                    ) : timelineGroups.length === 0 ? (
-+                        <div className="rounded-xl border border-dashed border-gray-200 py-6 text-center text-sm text-gray-500">
-+                            {staffTimelineFilter === 'pending' ? '처리 대기 중인 인수인계가 없습니다.' : '해당 상태의 인수인계가 없습니다.'}
-                         </div>
-                     ) : (
--                        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
--                            {staffTimelineItems.map((item) => {
--                                const isCompleted = item.status === 'completed';
--                                return (
--                                    <div key={item.id} className="rounded-xl border border-gray-200 bg-gray-50/60 p-4 shadow-sm">
--                                        <div className="flex items-start justify-between gap-3">
--                                            <div className="min-w-0">
--                                                <p className="text-base font-bold text-gray-900 truncate">{item.studentName || '학생명 미상'}</p>
--                                                <p className="mt-1 text-xs text-gray-500">
--                                                    <span className="font-semibold text-[#334a91]">{item.sourceType === 'clinic' ? '클리닉' : item.sourceType || '-'}</span>
--                                                    <span className="mx-1.5 text-gray-300">·</span>
--                                                    작성자 {item.createdByName || '-'}
--                                                    <span className="mx-1.5 text-gray-300">·</span>
--                                                    {getTimelineDateText(item.createdAt)}
--                                                </p>
--                                            </div>
--                                            <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-bold ${isCompleted ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-[#eef2ff] text-[#334a91] border border-[#dfe6ff]'}`}>
--                                                {isCompleted ? '처리완료' : '처리대기'}
--                                            </span>
--                                        </div>
--                                        <p className="mt-3 whitespace-pre-wrap rounded-lg bg-white px-3 py-2 text-sm leading-relaxed text-gray-700 border border-gray-100">
--                                            {item.content || '내용 없음'}
--                                        </p>
--                                        {!isCompleted && (
--                                            <div className="mt-3 flex justify-end">
--                                                <button
--                                                    type="button"
--                                                    onClick={() => handleCompleteTimelineItem(item)}
--                                                    disabled={completingTimelineId === item.id}
--                                                    className="rounded-lg bg-[#455fab] px-3 py-2 text-xs font-bold text-white transition hover:bg-[#3b5198] disabled:cursor-not-allowed disabled:opacity-60"
--                                                >
--                                                    {completingTimelineId === item.id ? '저장 중...' : '처리 완료'}
--                                                </button>
--                                            </div>
--                                        )}
-+                        <div className="space-y-5">
-+                            {timelineGroups.map((group) => (
-+                                <div key={group.key} className="rounded-2xl border border-[#e7ebf8] bg-[#f8f9ff] p-3 sm:p-4">
-+                                    <div className="mb-3 flex items-center justify-between gap-3">
-+                                        <h4 className="font-bold text-gray-900">{group.studentName}</h4>
-+                                        <span className="text-xs font-semibold text-gray-500">메모 {group.items.length}건</span>
-                                     </div>
--                                );
--                            })}
-+                                    <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-+                                        {group.items.map((item) => (
-+                                            <StaffTimelineThreadCard
-+                                                key={item.id}
-+                                                thread={item}
-+                                                actor={timelineActor}
-+                                                onChanged={loadStaffTimeline}
-+                                                showStudentName={false}
-+                                            />
-+                                        ))}
-+                                    </div>
-+                                </div>
-+                            ))}
-                         </div>
-                     )}
--                </div>
-+                </section>
+             {student && (
+                 <NotificationList
+                     isOpen={isNotificationOpen}
+                     onClose={() => setIsNotificationOpen(false)}
+                     notifications={notifications}
+                     onNotificationClick={handleNotificationClick}
+                     onMarkAllRead={handleMarkAllRead}
+                     unreadCount={unreadCount}
+                     lastReadAt={lastReadAt}
+                     isLoading={isLoading || isMetaLoading}
+                 />
              )}
+         </div>
+     );
+ }
  
-             <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,2.2fr)_minmax(260px,1fr)]">
-                 <div className="relative overflow-hidden rounded-2xl bg-[radial-gradient(circle_at_15%_20%,rgba(56,189,248,0.28),transparent_40%),radial-gradient(circle_at_80%_15%,rgba(45,212,191,0.26),transparent_38%),linear-gradient(135deg,#0a1434,#1d4ed8,#0d9488)] p-6 lg:p-7 shadow-lg text-white">
-                     <div className="absolute inset-y-0 right-0 w-48 bg-white/10 blur-3xl" aria-hidden></div>
-                     <div className="relative flex flex-col gap-5">
-                         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                             <div className="space-y-1">
-                                 <p className="text-sm text-sky-100">오늘도 힘찬 하루 보내세요.</p>
-                                 <h2 className="text-2xl lg:text-3xl font-bold">환영합니다, {displayName}님! 👋</h2>
-                                 <p className="text-sky-100 text-sm">직원용 홈에서 주요 업무를 바로 확인해보세요.</p>
-                             </div>
-                             <div className="bg-white/10 p-3 rounded-xl backdrop-blur-sm border border-white/10 max-w-xs w-full sm:w-auto">
-                                 <p className="text-xs font-medium text-sky-100">Today</p>
-                                 <p className="text-lg lg:text-xl font-bold">12월 12일 (금)</p>
-                                 <p className="text-xs text-sky-100 mt-1">주요 메모 {reminders.length}건</p>
-                             </div>
-                         </div>
-                         <div className="flex flex-wrap gap-2 text-[13px]">
-                             <span className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 font-semibold backdrop-blur">
-                                 <Icon name="checkCircle" className="w-4 h-4" /> 핵심 지표 한눈에 보기
-                             </span>
-                             <span className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 font-semibold backdrop-blur">
-                                 <Icon name="smartphone" className="w-4 h-4" /> 모바일에서도 편리하게
-                             </span>
+-// changed: hide ended classes in today’s lessons
+\ No newline at end of file
++// changed: hide ended classes in today’s lessons
