@@ -65,18 +65,49 @@ export const fetchStaffTimeline = async (
 
 export const fetchStaffTimelineByStudent = async (
     firestoreDb,
-    studentId,
+    studentOrId,
     { limitCount = 50 } = {},
 ) => {
-    if (!firestoreDb || !studentId) return [];
+    if (!firestoreDb || !studentOrId) return [];
 
-    const snapshot = await getDocs(query(
-        collection(firestoreDb, STAFF_TIMELINE_COLLECTION),
-        where('studentId', '==', String(studentId)),
-        orderBy('createdAt', 'desc'),
-        limit(Math.min(limitCount, 20)),
-    ));
-    return visibleThreads(normalizeSnapshot(snapshot));
+    const student = typeof studentOrId === 'object' ? studentOrId : { id: studentOrId };
+    const candidateValues = Array.from(new Set([
+        student.id,
+        student.uid,
+        student.authUid,
+        student.studentUid,
+        student.userUid,
+    ].filter(Boolean).map(String)));
+    const queryLimit = Math.min(limitCount, 20);
+    const primary = student.id ? [['studentId', String(student.id)]] : [];
+    const fallbackFields = ['studentDocId', 'studentUid', 'authUid'];
+    const fallback = fallbackFields.flatMap((field) => candidateValues.map((value) => [field, value]));
+    const runQueries = async (shapes) => Promise.all(shapes.map(async ([field, value]) => {
+        if (process.env.NODE_ENV !== 'production') {
+            console.log('[staffTimeline] query shape', { field, value, limit: queryLimit });
+        }
+        const snapshot = await getDocs(query(
+            collection(firestoreDb, STAFF_TIMELINE_COLLECTION),
+            where(field, '==', value),
+            limit(queryLimit),
+        ));
+        return normalizeSnapshot(snapshot);
+    }));
+
+    let groups = primary.length ? await runQueries(primary) : [];
+    if (!groups.flat().length) groups = await runQueries(fallback);
+
+    const deduped = new Map();
+    groups.flat().forEach((item) => deduped.set(String(item.id), item));
+    const matched = visibleThreads([...deduped.values()]).sort((a, b) => {
+        const aMillis = a?.createdAt?.toMillis?.() || new Date(a?.createdAt || 0).getTime() || 0;
+        const bMillis = b?.createdAt?.toMillis?.() || new Date(b?.createdAt || 0).getTime() || 0;
+        return bMillis - aMillis;
+    }).slice(0, queryLimit);
+    if (process.env.NODE_ENV !== 'production') {
+        console.log('[staffTimeline] matched count', matched.length);
+    }
+    return matched;
 };
 
 export const fetchClinicTimelineThreads = async (firestoreDb, sourceDocIds = []) => {

@@ -1,8 +1,16 @@
 diff --git a/src/domain/staffTimeline/staffTimeline.service.js b/src/domain/staffTimeline/staffTimeline.service.js
-index 2e2e670728cd65cf3783f5c939b34d322238b949..f40a52542fe9bc9389a9b74943a8ab91eaae7fe4 100644
+index f40a52542fe9bc9389a9b74943a8ab91eaae7fe4..319acc2204c3372fdb290b101a78316ca5d1b1f9 100644
 --- a/src/domain/staffTimeline/staffTimeline.service.js
 +++ b/src/domain/staffTimeline/staffTimeline.service.js
-@@ -51,58 +51,54 @@ export const fetchStaffTimeline = async (
+@@ -43,62 +43,93 @@ const assertId = (value, message) => {
+ const normalizeActor = (actor = {}) => ({
+     uid: actor.uid || actor.createdBy || actor.updatedBy || actor.completedBy || '',
+     name: actor.name || actor.createdByName || actor.completedByName || '',
+     role: actor.role || actor.senderRole || '',
+ });
+ 
+ export const fetchStaffTimeline = async (
+     firestoreDb,
      { status = 'pending', limitCount = 50 } = {},
  ) => {
      if (!firestoreDb) return [];
@@ -20,25 +28,59 @@ index 2e2e670728cd65cf3783f5c939b34d322238b949..f40a52542fe9bc9389a9b74943a8ab91
  
  export const fetchStaffTimelineByStudent = async (
      firestoreDb,
-     studentId,
+-    studentId,
++    studentOrId,
      { limitCount = 50 } = {},
  ) => {
-     if (!firestoreDb || !studentId) return [];
- 
-     const snapshot = await getDocs(query(
-         collection(firestoreDb, STAFF_TIMELINE_COLLECTION),
-         where('studentId', '==', String(studentId)),
-+        orderBy('createdAt', 'desc'),
-+        limit(Math.min(limitCount, 20)),
-     ));
--    return visibleThreads(normalizeSnapshot(snapshot))
--        .sort((a, b) => {
--            const aMillis = a?.createdAt?.toMillis?.() || 0;
--            const bMillis = b?.createdAt?.toMillis?.() || 0;
--            return bMillis - aMillis;
--        })
--        .slice(0, limitCount);
-+    return visibleThreads(normalizeSnapshot(snapshot));
+-    if (!firestoreDb || !studentId) return [];
+-
+-    const snapshot = await getDocs(query(
+-        collection(firestoreDb, STAFF_TIMELINE_COLLECTION),
+-        where('studentId', '==', String(studentId)),
+-        orderBy('createdAt', 'desc'),
+-        limit(Math.min(limitCount, 20)),
+-    ));
+-    return visibleThreads(normalizeSnapshot(snapshot));
++    if (!firestoreDb || !studentOrId) return [];
++
++    const student = typeof studentOrId === 'object' ? studentOrId : { id: studentOrId };
++    const candidateValues = Array.from(new Set([
++        student.id,
++        student.uid,
++        student.authUid,
++        student.studentUid,
++        student.userUid,
++    ].filter(Boolean).map(String)));
++    const queryLimit = Math.min(limitCount, 20);
++    const primary = student.id ? [['studentId', String(student.id)]] : [];
++    const fallbackFields = ['studentDocId', 'studentUid', 'authUid'];
++    const fallback = fallbackFields.flatMap((field) => candidateValues.map((value) => [field, value]));
++    const runQueries = async (shapes) => Promise.all(shapes.map(async ([field, value]) => {
++        if (process.env.NODE_ENV !== 'production') {
++            console.log('[staffTimeline] query shape', { field, value, limit: queryLimit });
++        }
++        const snapshot = await getDocs(query(
++            collection(firestoreDb, STAFF_TIMELINE_COLLECTION),
++            where(field, '==', value),
++            limit(queryLimit),
++        ));
++        return normalizeSnapshot(snapshot);
++    }));
++
++    let groups = primary.length ? await runQueries(primary) : [];
++    if (!groups.flat().length) groups = await runQueries(fallback);
++
++    const deduped = new Map();
++    groups.flat().forEach((item) => deduped.set(String(item.id), item));
++    const matched = visibleThreads([...deduped.values()]).sort((a, b) => {
++        const aMillis = a?.createdAt?.toMillis?.() || new Date(a?.createdAt || 0).getTime() || 0;
++        const bMillis = b?.createdAt?.toMillis?.() || new Date(b?.createdAt || 0).getTime() || 0;
++        return bMillis - aMillis;
++    }).slice(0, queryLimit);
++    if (process.env.NODE_ENV !== 'production') {
++        console.log('[staffTimeline] matched count', matched.length);
++    }
++    return matched;
  };
  
  export const fetchClinicTimelineThreads = async (firestoreDb, sourceDocIds = []) => {
@@ -65,33 +107,31 @@ index 2e2e670728cd65cf3783f5c939b34d322238b949..f40a52542fe9bc9389a9b74943a8ab91
  
  export const createStaffTimelineThread = async (firestoreDb, payload = {}) => {
 diff --git a/src/pages/Home.jsx b/src/pages/Home.jsx
-index 233bdf41703cb87a1b02ce4c7bbf540388878dae..21795dc2532c1f3b96c269666a1b9eb8a7c65af3 100644
+index 21795dc2532c1f3b96c269666a1b9eb8a7c65af3..e80533eb384a674cf6e0d132579634338a253abc 100644
 --- a/src/pages/Home.jsx
 +++ b/src/pages/Home.jsx
-@@ -1,169 +1,141 @@
--import React, { useCallback, useEffect, useMemo, useState } from 'react';
-+import React, { useCallback, useMemo, useState } from 'react';
+@@ -1,141 +1,183 @@
+ import React, { useCallback, useMemo, useState } from 'react';
  import { Icon } from '../utils/helpers';
  import { db } from '../firebase/client';
  import useAuth from '../auth/useAuth';
  import { isStaffOrTeachingRole } from '../constants/roles';
--import { fetchStaffTimeline as fetchStaffTimelineThreads } from '../domain/staffTimeline/staffTimeline.service';
-+import { fetchStaffTimelineByStudent } from '../domain/staffTimeline/staffTimeline.service';
+ import { fetchStaffTimelineByStudent } from '../domain/staffTimeline/staffTimeline.service';
  import StaffTimelineThreadCard from '../components/StaffTimeline/StaffTimelineThreadCard';
  import TodayWorkBriefing from '../components/dashboard/TodayWorkBriefing';
  import StaffTasksPanel from '../components/dashboard/StaffTasksPanel';
++import { isClosedClass, sortClassesWithClosedLast } from '../utils/classStatus';
  
  export default function Home({
      onQuickAction, userRole, classes = [], students = [],
      lessonLogs = [], attendanceLogs = [], lessonReports = [],
  }) {
      const { user, userProfile } = useAuth();
--    const [staffTimelineItems, setStaffTimelineItems] = useState([]);
-+    const [selectedTimelineStudentId, setSelectedTimelineStudentId] = useState('');
-+    const [timelineCache, setTimelineCache] = useState({});
++    const [selectedTimelineClassId, setSelectedTimelineClassId] = useState('');
+     const [selectedTimelineStudentId, setSelectedTimelineStudentId] = useState('');
+     const [timelineCache, setTimelineCache] = useState({});
      const [staffTimelineLoading, setStaffTimelineLoading] = useState(false);
      const [staffTimelineError, setStaffTimelineError] = useState('');
--    const [staffTimelineFilter, setStaffTimelineFilter] = useState('pending');
      const canAccessStaffTimeline = isStaffOrTeachingRole(userRole);
      const fallbackName = userProfile?.email || user?.email ? (userProfile?.email || user?.email).split('@')[0] : '';
      const displayName = userProfile?.displayName?.trim()
@@ -99,61 +139,51 @@ index 233bdf41703cb87a1b02ce4c7bbf540388878dae..21795dc2532c1f3b96c269666a1b9eb8
          || fallbackName
          || '사용자';
  
--    const loadStaffTimeline = useCallback(async () => {
--        if (!canAccessStaffTimeline || !db) {
--            setStaffTimelineItems([]);
--            return;
--        }
--
-+    const loadStaffTimeline = useCallback(async (studentId, force = false) => {
-+        if (!canAccessStaffTimeline || !db || !studentId) return;
-+        if (!force && Object.prototype.hasOwnProperty.call(timelineCache, studentId)) return;
+-    const loadStaffTimeline = useCallback(async (studentId, force = false) => {
++    const loadStaffTimeline = useCallback(async (student, force = false) => {
++        const studentId = student?.id;
+         if (!canAccessStaffTimeline || !db || !studentId) return;
+         if (!force && Object.prototype.hasOwnProperty.call(timelineCache, studentId)) return;
          setStaffTimelineLoading(true);
          setStaffTimelineError('');
--
          try {
--            const items = await fetchStaffTimelineThreads(db, {
--                status: staffTimelineFilter,
--                limitCount: 50,
--            });
--            setStaffTimelineItems(items);
-+            const items = await fetchStaffTimelineByStudent(db, studentId, { limitCount: 20 });
-+            setTimelineCache((current) => ({ ...current, [studentId]: items }));
+-            const items = await fetchStaffTimelineByStudent(db, studentId, { limitCount: 20 });
++            const items = await fetchStaffTimelineByStudent(db, student, { limitCount: 20 });
+             setTimelineCache((current) => ({ ...current, [studentId]: items }));
          } catch (error) {
              console.error('[staffTimeline] failed to load items', error);
              setStaffTimelineError('교직원 인수인계를 불러오지 못했습니다.');
--            setStaffTimelineItems([]);
          } finally {
              setStaffTimelineLoading(false);
          }
--    }, [canAccessStaffTimeline, staffTimelineFilter]);
-+    }, [canAccessStaffTimeline, timelineCache]);
+     }, [canAccessStaffTimeline, timelineCache]);
  
--    useEffect(() => {
--        loadStaffTimeline();
--    }, [loadStaffTimeline]);
--
--    const timelineGroups = useMemo(() => {
--        const groups = new Map();
--        staffTimelineItems.forEach((item) => {
--            const key = item.studentId || `name:${item.studentName || 'unknown'}`;
--            if (!groups.has(key)) {
--                groups.set(key, {
--                    key,
--                    studentName: item.studentName || '학생명 미상',
--                    items: [],
--                });
--            }
--            groups.get(key).items.push(item);
--        });
--        return Array.from(groups.values());
--    }, [staffTimelineItems]);
-+    const toggleTimelineStudent = (studentId) => {
-+        const nextId = selectedTimelineStudentId === studentId ? '' : studentId;
-+        setSelectedTimelineStudentId(nextId);
-+        if (nextId) loadStaffTimeline(nextId);
-+    };
+-    const toggleTimelineStudent = (studentId) => {
++    const toggleTimelineStudent = (student) => {
++        const studentId = student.id;
+         const nextId = selectedTimelineStudentId === studentId ? '' : studentId;
+         setSelectedTimelineStudentId(nextId);
+-        if (nextId) loadStaffTimeline(nextId);
++        if (nextId) loadStaffTimeline(student);
+     };
  
++    const timelineClasses = useMemo(() => sortClassesWithClosedLast(classes), [classes]);
++    const activeTimelineClasses = useMemo(
++        () => timelineClasses.filter((item) => !isClosedClass(item)),
++        [timelineClasses],
++    );
++    const timelineStudents = useMemo(() => {
++        if (!selectedTimelineClassId) return [];
++        return students.filter((student) => {
++            const ids = [
++                ...(Array.isArray(student.classIds) ? student.classIds : []),
++                ...(Array.isArray(student.classes) ? student.classes : []),
++                student.classId,
++            ].map((value) => String(value?.id || value || ''));
++            return ids.includes(String(selectedTimelineClassId));
++        });
++    }, [selectedTimelineClassId, students]);
++
      const timelineActor = useMemo(() => ({
          uid: user?.uid || '',
          name: displayName,
@@ -191,87 +221,78 @@ index 233bdf41703cb87a1b02ce4c7bbf540388878dae..21795dc2532c1f3b96c269666a1b9eb8
                              </div>
                          </div>
                          <span className="self-start rounded-full bg-[#f1f4ff] px-3 py-1 text-xs font-bold text-[#334a91] sm:self-auto">
--                            {staffTimelineItems.length}건
-+                            학생 {students.length}명
+-                            학생 {students.length}명
++                            학생 {timelineStudents.length}명
                          </span>
                      </div>
  
--                    <div className="flex rounded-xl bg-gray-100 p-1" role="group" aria-label="교직원 타임라인 상태 필터">
--                        {[
--                            { value: 'pending', label: '처리대기' },
--                            { value: 'completed', label: '처리완료' },
--                            { value: 'all', label: '전체' },
--                        ].map((filter) => (
--                            <button
--                                key={filter.value}
--                                type="button"
--                                onClick={() => setStaffTimelineFilter(filter.value)}
--                                className={`flex-1 rounded-lg px-3 py-2 text-sm font-bold transition ${staffTimelineFilter === filter.value ? 'bg-white text-[#334a91] shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
--                            >
--                                {filter.label}
--                            </button>
--                        ))}
--                    </div>
--
                      {staffTimelineError && (
                          <div className="rounded-xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm text-rose-700">{staffTimelineError}</div>
                      )}
  
--                    {staffTimelineLoading ? (
--                        <div className="rounded-xl border border-dashed border-gray-200 py-6 text-center text-sm text-gray-500">인수인계를 불러오는 중입니다...</div>
--                    ) : timelineGroups.length === 0 ? (
-+                    {students.length === 0 ? (
+-                    {students.length === 0 ? (
++                    <label className="block text-xs font-bold text-gray-600">
++                        클래스 선택
++                        <select
++                            value={selectedTimelineClassId}
++                            onChange={(event) => {
++                                setSelectedTimelineClassId(event.target.value);
++                                setSelectedTimelineStudentId('');
++                            }}
++                            className="mt-2 block w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm"
++                        >
++                            <option value="">진행중 클래스 선택</option>
++                            {activeTimelineClasses.map((cls) => (
++                                <option key={cls.id} value={cls.id}>{cls.name || '클래스명 미상'}</option>
++                            ))}
++                        </select>
++                    </label>
++
++                    {!selectedTimelineClassId ? (
++                        <div className="rounded-xl border border-dashed border-gray-200 py-6 text-center text-sm text-gray-500">
++                            클래스를 선택하면 학생 목록을 표시합니다.
++                        </div>
++                    ) : timelineStudents.length === 0 ? (
                          <div className="rounded-xl border border-dashed border-gray-200 py-6 text-center text-sm text-gray-500">
--                            {staffTimelineFilter === 'pending' ? '처리 대기 중인 인수인계가 없습니다.' : '해당 상태의 인수인계가 없습니다.'}
-+                            표시할 학생이 없습니다.
+                             표시할 학생이 없습니다.
                          </div>
                      ) : (
--                        <div className="space-y-5">
--                            {timelineGroups.map((group) => (
--                                <div key={group.key} className="rounded-2xl border border-[#e7ebf8] bg-[#f8f9ff] p-3 sm:p-4">
--                                    <div className="mb-3 flex items-center justify-between gap-3">
--                                        <h4 className="font-bold text-gray-900">{group.studentName}</h4>
--                                        <span className="text-xs font-semibold text-gray-500">메모 {group.items.length}건</span>
--                                    </div>
--                                    <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
--                                        {group.items.map((item) => (
-+                        <div className="space-y-2">
-+                            {students.map((student) => {
-+                                const isOpen = selectedTimelineStudentId === student.id;
-+                                const items = timelineCache[student.id] || [];
-+                                return (
-+                                <div key={student.id} className="rounded-xl border border-gray-200">
-+                                    <button type="button" onClick={() => toggleTimelineStudent(student.id)} className="flex w-full items-center justify-between gap-3 p-4 text-left">
-+                                        <div>
-+                                            <h4 className="font-bold text-gray-900">{student.name || '학생명 미상'}</h4>
-+                                            <p className="mt-1 text-xs text-gray-500">{student.school || '학교 미등록'} · {student.grade || student.schoolGrade || '학년 미등록'}</p>
-+                                        </div>
-+                                        <span className="text-xs font-bold text-[#455fab]">{isOpen ? '접기' : '펼치기'}</span>
-+                                    </button>
-+                                    {isOpen && (
-+                                        <div className="border-t border-gray-100 bg-[#f8f9ff] p-3">
-+                                            {staffTimelineLoading && !Object.prototype.hasOwnProperty.call(timelineCache, student.id) ? (
-+                                                <div className="py-5 text-center text-sm text-gray-500">타임라인을 불러오는 중입니다...</div>
-+                                            ) : items.length ? (
-+                                                <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">{items.map((item) => (
+                         <div className="space-y-2">
+-                            {students.map((student) => {
++                            {timelineStudents.map((student) => {
+                                 const isOpen = selectedTimelineStudentId === student.id;
+                                 const items = timelineCache[student.id] || [];
+                                 return (
+                                 <div key={student.id} className="rounded-xl border border-gray-200">
+-                                    <button type="button" onClick={() => toggleTimelineStudent(student.id)} className="flex w-full items-center justify-between gap-3 p-4 text-left">
++                                    <button type="button" onClick={() => toggleTimelineStudent(student)} className="flex w-full items-center justify-between gap-3 p-4 text-left">
+                                         <div>
+                                             <h4 className="font-bold text-gray-900">{student.name || '학생명 미상'}</h4>
+                                             <p className="mt-1 text-xs text-gray-500">{student.school || '학교 미등록'} · {student.grade || student.schoolGrade || '학년 미등록'}</p>
+                                         </div>
+                                         <span className="text-xs font-bold text-[#455fab]">{isOpen ? '접기' : '펼치기'}</span>
+                                     </button>
+                                     {isOpen && (
+                                         <div className="border-t border-gray-100 bg-[#f8f9ff] p-3">
+                                             {staffTimelineLoading && !Object.prototype.hasOwnProperty.call(timelineCache, student.id) ? (
+                                                 <div className="py-5 text-center text-sm text-gray-500">타임라인을 불러오는 중입니다...</div>
+                                             ) : items.length ? (
+                                                 <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">{items.map((item) => (
                                              <StaffTimelineThreadCard
                                                  key={item.id}
                                                  thread={item}
                                                  actor={timelineActor}
--                                                onChanged={loadStaffTimeline}
-+                                                onChanged={() => loadStaffTimeline(student.id, true)}
+-                                                onChanged={() => loadStaffTimeline(student.id, true)}
++                                                onChanged={() => loadStaffTimeline(student, true)}
                                                  showStudentName={false}
                                              />
--                                        ))}
--                                    </div>
-+                                                ))}</div>
-+                                            ) : <div className="py-5 text-center text-sm text-gray-500">교직원 타임라인 기록이 없습니다.</div>}
-+                                        </div>
-+                                    )}
+                                                 ))}</div>
+                                             ) : <div className="py-5 text-center text-sm text-gray-500">교직원 타임라인 기록이 없습니다.</div>}
+                                         </div>
+                                     )}
                                  </div>
--                            ))}
-+                                );
-+                            })}
+                                 );
+                             })}
                          </div>
                      )}
                  </section>
@@ -282,11 +303,249 @@ index 233bdf41703cb87a1b02ce4c7bbf540388878dae..21795dc2532c1f3b96c269666a1b9eb8
          </div>
      );
  }
+diff --git a/src/pages/HomeworkManagement.jsx b/src/pages/HomeworkManagement.jsx
+index 6579ea3e3e0686a3305689f6c7fa5487a0d8e016..6c21048ddc440fcf3bd855411407dd22154fbcf9 100644
+--- a/src/pages/HomeworkManagement.jsx
++++ b/src/pages/HomeworkManagement.jsx
+@@ -1,36 +1,36 @@
+ import React, { useState, useMemo, useEffect, useCallback } from 'react';
+ import { collection, query, where, getDocs, limit } from 'firebase/firestore';
+ import { Icon, getLastCheckedDate } from '../utils/helpers';
+ import ClassSelectionPanel from '../components/Shared/ClassSelectionPanel';
+ import HomeworkStatisticsPanel from '../components/Homework/HomeworkStatisticsPanel';
+ import { HomeworkAssignmentModal } from '../utils/modals/HomeworkAssignmentModal';
+ import HomeworkResultsModal from '../utils/modals/HomeworkResultsModal';
+ import { buildAssignmentSummary, classifyHomeworkResultKeyMode, computeHomeworkProgress, getAssignmentQuestionNumbers, getClassAssignments, getSelectedAssignment, normalizeHomeworkResultMapForDisplay, resolveAssignmentStudentIds, resolveAssignmentTypeLabel, resolveAssignmentType } from '../domain/homework/homework.service';
+ import { buildHomeworkWrongNoteText } from '../domain/homework/homeworkWrongNote.service';
+ import { db } from '../firebase/client';
+-import { getDefaultClassId } from '../utils/classStatus';
++import { getDefaultClassId, isClosedClass } from '../utils/classStatus';
+ import { useClassStudents } from '../utils/useClassStudents';
+ import { filterRosterByWithdrawDate } from '../utils/rosterFilter';
+ import { buildStudentParentPhoneLast4Map, formatStudentNameWithParentLast4 } from '../utils/parentPhone';
+ import { Modal } from '../components/common/Modal';
+ 
+ const isSameStudent = (result, student) => {
+     if (!result || !student) return false;
+ 
+     const resultStudentIds = [
+         result.studentId,
+         result.studentDocId,
+         result.studentUid,
+         result.authUid,
+     ].filter(Boolean).map(String);
+ 
+     const studentIds = [
+         student.id,
+         student.authUid,
+     ].filter(Boolean).map(String);
+ 
+     return resultStudentIds.some(rid => studentIds.includes(rid));
+ };
+ 
+ const toDateSafe = (value) => {
+     if (!value) return null;
+@@ -55,97 +55,104 @@ const compareByDateDescThenName = (a, b) => {
+     if (timeDiff !== 0) return timeDiff;
+ 
+     const classDiff = String(a?.className || '').localeCompare(String(b?.className || ''), 'ko');
+     if (classDiff !== 0) return classDiff;
+ 
+     const titleA = String(a?.book || a?.title || a?.content || '');
+     const titleB = String(b?.book || b?.title || b?.content || '');
+     return titleA.localeCompare(titleB, 'ko');
+ };
+ 
+ const normalizeSearchText = (value) => String(value || '').trim().toLowerCase().replace(/\s+/g, '');
+ 
+ const getHomeworkDisplayTitle = (assignment) => {
+     const title = assignment?.title || assignment?.book || '';
+     return String(title).trim() || '과제';
+ };
+ 
+ export default function HomeworkManagement({
+     classes, homeworkAssignments, homeworkResults,
+     handleSaveHomeworkAssignment, handleDeleteHomeworkAssignment,
+     handleUpdateHomeworkResult, handleSaveClass, calculateClassSessions,
+     setIsGlobalDirty,
+     students = [],
+     parents = [],
+ }) {
+-    const [selectedClassId, setSelectedClassId] = useState(() => getDefaultClassId(classes));
++    const activeClasses = useMemo(
++        () => (Array.isArray(classes) ? classes : []).filter((cls) => !isClosedClass(cls)),
++        [classes],
++    );
++    const [selectedClassId, setSelectedClassId] = useState(() => getDefaultClassId(activeClasses));
+     const [isAssignmentModalOpen, setIsAssignmentModalOpen] = useState(false);
+     const [assignmentToEdit, setAssignmentToEdit] = useState(null);
+     const [selectedAssignmentId, setSelectedAssignmentId] = useState(null);
+     const [isHomeworkResultsModalOpen, setIsHomeworkResultsModalOpen] = useState(false);
+     const [activeStudentId, setActiveStudentId] = useState(null);
+     const [activeAssignment, setActiveAssignment] = useState(null);
+     const { students: classStudents, isLoading: isLoadingStudents } = useClassStudents(selectedClassId);
+     const [scopedHomeworkResults, setScopedHomeworkResults] = useState(null);
+     const [isLoadingScopedResults, setIsLoadingScopedResults] = useState(false);
+     const [draftHomeworkOverlay, setDraftHomeworkOverlay] = useState({});
+     const [isWrongNoteModalOpen, setIsWrongNoteModalOpen] = useState(false);
+     const [wrongNoteText, setWrongNoteText] = useState('');
+     const [searchTerm, setSearchTerm] = useState('');
+     
+     const [checkedDate, setCheckedDate] = useState(() => new Date().toISOString().slice(0, 10));
+ 
+     const parentLast4Map = useMemo(
+         () => buildStudentParentPhoneLast4Map(students, parents),
+         [students, parents],
+     );
+ 
+     useEffect(() => {
+-        if (!classes || classes.length === 0) return;
+-        if (selectedClassId && classes.some(c => String(c.id) === String(selectedClassId))) return;
+-        setSelectedClassId(getDefaultClassId(classes));
+-    }, [classes, selectedClassId]);
++        if (activeClasses.length === 0) {
++            setSelectedClassId(null);
++            return;
++        }
++        if (selectedClassId && activeClasses.some(c => String(c.id) === String(selectedClassId))) return;
++        setSelectedClassId(getDefaultClassId(activeClasses));
++    }, [activeClasses, selectedClassId]);
+ 
+-    const selectedClass = classes.find(c => String(c.id) === String(selectedClassId));
++    const selectedClass = activeClasses.find(c => String(c.id) === String(selectedClassId));
+     const classAssignments = useMemo(
+         () => getClassAssignments(homeworkAssignments, selectedClassId),
+         [homeworkAssignments, selectedClassId]
+     );
+ 
+     const allAssignments = useMemo(() => {
+-        const classById = new Map((classes || []).map((cls) => [String(cls.id), cls]));
++        const classById = new Map(activeClasses.map((cls) => [String(cls.id), cls]));
+         return (Array.isArray(homeworkAssignments) ? homeworkAssignments : []).map((assignment, index) => {
+             const classId = String(assignment?.classId || assignment?.class || '');
+             const cls = classById.get(classId);
+             return {
+                 ...assignment,
+                 __index: index,
+                 classId,
+                 className: cls?.name || '',
+             };
+-        });
+-    }, [homeworkAssignments, classes]);
++        }).filter((assignment) => classById.has(assignment.classId));
++    }, [homeworkAssignments, activeClasses]);
+ 
+     const selectedAssignment = useMemo(
+         () => getSelectedAssignment(classAssignments, selectedAssignmentId),
+         [classAssignments, selectedAssignmentId]
+     );
+ 
+     const rosterForHomework = useMemo(() => {
+         const targetDate = selectedAssignment?.assignedDate || selectedAssignment?.date || checkedDate;
+         return filterRosterByWithdrawDate(classStudents, selectedClassId, targetDate);
+     }, [classStudents, selectedAssignment, selectedClassId, checkedDate]);
+ 
+     const effectiveHomeworkResults = scopedHomeworkResults ?? homeworkResults;
+ 
+     const normalizedHomeworkResults = useMemo(() => {
+         if (!effectiveHomeworkResults) return {};
+ 
+         const entries = Object.entries(effectiveHomeworkResults);
+         const normalized = {};
+ 
+         rosterForHomework.forEach((student) => {
+             const matches = entries.filter(([key, value]) => {
+                 if (isSameStudent({ studentId: key }, student)) return true;
+                 if (value && typeof value === 'object') {
+                     const sample = Object.values(value).find(Boolean);
+                     return isSameStudent(sample, student);
+@@ -551,51 +558,51 @@ export default function HomeworkManagement({
+ 
+                 <div className="flex flex-wrap gap-3 items-center justify-end">
+                     <button
+                         type="button"
+                         onClick={handleOpenWrongNoteModal}
+                         disabled={!selectedAssignment && !activeAssignment}
+                         className="px-3 py-1.5 text-xs font-semibold rounded-md bg-amber-600 text-white hover:bg-amber-700 disabled:bg-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed"
+                     >
+                         오답노트 텍스트 추출
+                     </button>
+                     <label className="text-xs font-semibold text-gray-700 flex items-center gap-2">
+                         <span>검사일</span>
+                         <input
+                             type="date"
+                             value={checkedDate}
+                             onChange={(e) => setCheckedDate(e.target.value)}
+                             className="border rounded-md px-2 py-1 text-xs"
+                         />
+                     </label>
+                 </div>
+             </div>
+ 
+             <div className="grid gap-4 xl:grid-cols-[320px,1fr]">
+                 <div className="space-y-4">
+                     <ClassSelectionPanel
+-                        classes={classes}
++                        classes={activeClasses}
+                         selectedClassId={selectedClassId}
+                         setSelectedClassId={handleClassSelectWrapper}
+                         handleClassSave={handleSaveClass}
+                         calculateClassSessions={calculateClassSessions}
+                         showSessions={false}
+                         showEditButton={true}
+                     />
+                     <div className="bg-white p-4 rounded-xl shadow-md space-y-3 border border-gray-200">
+                         <div className='flex justify-between items-center border-b pb-2'>
+                             <h4 className="text-lg font-bold text-gray-800">과제 목록</h4>
+                             <button
+                                 onClick={handleNewAssignment}
+                                 disabled={!selectedClassId}
+                                 className="text-[#334a91] hover:text-[#334a91] text-sm font-bold flex items-center disabled:text-gray-400"
+                             >
+                                 <Icon name="plus" className="w-4 h-4 mr-1" />
+                                 새 과제
+                             </button>
+                         </div>
+                         <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 space-y-2">
+                             <input
+                                 type="text"
+                                 value={searchTerm}
+                                 onChange={(e) => setSearchTerm(e.target.value)}
+                                 placeholder="과제명 검색"
+@@ -750,26 +757,26 @@ export default function HomeworkManagement({
+                         <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 px-4 py-8 text-center text-sm text-gray-500">
+                             추출할 오답 문항이 없습니다.
+                         </div>
+                     )}
+                     <div className="flex justify-end gap-2">
+                         <button
+                             type="button"
+                             onClick={handleCopyWrongNoteText}
+                             disabled={!wrongNoteText}
+                             className="px-4 py-2 text-sm font-semibold rounded-md bg-[#455fab] text-white hover:bg-[#3b5198] disabled:bg-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed"
+                         >
+                             복사
+                         </button>
+                         <button
+                             type="button"
+                             onClick={() => setIsWrongNoteModalOpen(false)}
+                             className="px-4 py-2 text-sm font-semibold rounded-md bg-gray-100 text-gray-700 hover:bg-gray-200"
+                         >
+                             닫기
+                         </button>
+                     </div>
+                 </div>
+             </Modal>
+         </div>
+     );
+-}
+\ No newline at end of file
++}
 diff --git a/src/pages/StudentDetail.jsx b/src/pages/StudentDetail.jsx
-index 4fc145968812de3c64a7024234c5e8678ef09fd7..4256bcd99665d98f01fd7988b66f99414173cb4b 100644
+index 4256bcd99665d98f01fd7988b66f99414173cb4b..72708a2fa13a3d8e471a06a75c29b4d3e02d4ebb 100644
 --- a/src/pages/StudentDetail.jsx
 +++ b/src/pages/StudentDetail.jsx
-@@ -1,35 +1,37 @@
+@@ -1,50 +1,51 @@
  import React, { useCallback, useEffect, useMemo, useState } from 'react';
  import { useNavigate, useParams } from 'react-router-dom';
  import {
@@ -296,9 +555,9 @@ index 4fc145968812de3c64a7024234c5e8678ef09fd7..4256bcd99665d98f01fd7988b66f9941
      getDoc,
      getDocs,
      limit,
-+    orderBy,
+     orderBy,
      query,
-+    startAfter,
+     startAfter,
      where,
  } from 'firebase/firestore';
  import { db } from '../firebase/client';
@@ -312,6 +571,7 @@ index 4fc145968812de3c64a7024234c5e8678ef09fd7..4256bcd99665d98f01fd7988b66f9941
  import { getStudentGradeLabel } from '../utils/gradeUtils';
  import { isClosedClass, sortClassesWithClosedLast } from '../utils/classStatus';
  import { isSameStudentByAnyKey } from '../utils/studentKey';
++import { normalizeHomeworkResultMapForDisplay } from '../domain/homework/homework.service';
  
  const COLLECTIONS = {
      users: 'users',
@@ -324,35 +584,20 @@ index 4fc145968812de3c64a7024234c5e8678ef09fd7..4256bcd99665d98f01fd7988b66f9941
      homeworkAssignments: 'homeworkAssignments',
      payments: 'payments',
      materials: 'materialPurchases',
-@@ -63,101 +65,208 @@ const formatDate = (value, fallback = '-') => {
- const formatTime = (value) => {
-     if (!value) return '-';
-     const date = toDate(value);
-     if (!date) return String(value);
-     return date.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
  };
  
- const firstValue = (record, keys, fallback = '') => {
-     for (const key of keys) {
-         const value = record?.[key];
-         if (value !== undefined && value !== null && value !== '') return value;
-     }
-     return fallback;
- };
+ const TABS = [
+     ['profile', '기본정보'],
+     ['classes', '수강반'],
+     ['attendance', '출결'],
+     ['grades', '성적'],
+     ['homework', '과제'],
+     ['clinic', '클리닉'],
+     ['timeline', '교직원 타임라인'],
+     ['payments', '결제/교재'],
+ ];
  
- const sortNewest = (items, keys) => [...items].sort((a, b) => {
-     const aDate = toDate(firstValue(a, keys));
-     const bDate = toDate(firstValue(b, keys));
-     return (bDate?.getTime() || 0) - (aDate?.getTime() || 0);
- });
- 
- const normalizeStatus = (value) => String(value || '').trim().toLowerCase();
- const isAbsent = (value) => ['결석', 'absent', 'absence'].includes(normalizeStatus(value));
- const isLate = (value) => ['지각', 'late', 'tardy'].includes(normalizeStatus(value));
- const isPresent = (value) => ['출석', 'present', 'attended', '정상'].includes(normalizeStatus(value));
-+const isVideoMakeup = (value) => ['동영상보강', '동영상 보강', 'video', 'video_makeup'].includes(normalizeStatus(value));
- 
- const getClassId = (record) => String(
+@@ -93,50 +94,51 @@ const getClassId = (record) => String(
      record?.classId || record?.classDocId || record?.class?.id || '',
  );
  
@@ -371,91 +616,81 @@ index 4fc145968812de3c64a7024234c5e8678ef09fd7..4256bcd99665d98f01fd7988b66f9941
      return [...map.values()];
  };
  
-+const PAGE_SIZE = 4;
-+const studentQueryPairs = (student, fields) => {
-+    const values = {
-+        id: student?.id,
-+        uid: student?.uid,
-+        authUid: student?.authUid,
-+        studentUid: student?.studentUid,
-+    };
-+    const pairs = fields.flatMap(([field, valueKeys]) => valueKeys.map((key) => [field, values[key]]));
-+    const seen = new Set();
-+    return pairs.filter(([field, value]) => {
-+        if (!value) return false;
-+        const key = `${field}:${value}`;
-+        if (seen.has(key)) return false;
-+        seen.add(key);
-+        return true;
-+    });
-+};
-+
-+const fetchStudentPage = async (collectionName, student, fields, cursors = {}) => {
-+    const pairs = studentQueryPairs(student, fields);
-+    const bufferedRows = Array.isArray(cursors.__buffer) ? cursors.__buffer : [];
-+    if (bufferedRows.length >= PAGE_SIZE) {
-+        return {
-+            rows: bufferedRows.slice(0, PAGE_SIZE),
-+            cursors: { ...cursors, __buffer: bufferedRows.slice(PAGE_SIZE) },
-+            hasMore: true,
-+        };
-+    }
-+    const results = await Promise.all(pairs.map(async ([field, value]) => {
-+        const cursorKey = `${field}:${value}`;
-+        if (cursors[cursorKey] === null) return { cursorKey, docs: [], cursor: null, hasMore: false };
-+        const constraints = [
-+            where(field, '==', value),
-+            orderBy('date', 'desc'),
-+            ...(cursors[cursorKey] ? [startAfter(cursors[cursorKey])] : []),
-+            limit(PAGE_SIZE),
-+        ];
-+        try {
-+            const snapshot = await getDocs(query(collection(db, collectionName), ...constraints));
-+            return {
-+                cursorKey,
-+                docs: snapshot.docs.map((item) => ({ id: item.id, ...item.data() })),
-+                cursor: snapshot.docs.at(-1) || null,
-+                hasMore: snapshot.size === PAGE_SIZE,
-+            };
-+        } catch (pageError) {
-+            console.warn(`[StudentDetail] ${collectionName} fallback query skipped`, { field, pageError });
-+            return { cursorKey, docs: [], cursor: null, hasMore: false };
-+        }
-+    }));
-+    const nextCursors = { ...cursors };
-+    results.forEach((result) => { nextCursors[result.cursorKey] = result.hasMore ? result.cursor : null; });
-+    const mergedRows = sortNewest(mergeById([
-+        bufferedRows,
-+        ...results.map((result) => result.docs),
-+    ]), ['date']);
-+    nextCursors.__buffer = mergedRows.slice(PAGE_SIZE);
-+    return {
-+        rows: mergedRows.slice(0, PAGE_SIZE),
-+        cursors: nextCursors,
-+        hasMore: nextCursors.__buffer.length > 0 || results.some((result) => result.hasMore),
-+    };
-+};
-+
-+const ATTENDANCE_FIELDS = [
-+    ['studentId', ['id']],
-+    ['studentUid', ['studentUid', 'uid', 'id']],
-+    ['authUid', ['authUid', 'uid']],
-+];
-+const CLINIC_FIELDS = [
-+    ['studentId', ['id']],
-+    ['studentDocId', ['id']],
-+    ['studentUid', ['uid', 'id']],
-+    ['authUid', ['authUid', 'uid']],
-+];
-+
+ const PAGE_SIZE = 4;
+ const studentQueryPairs = (student, fields) => {
+     const values = {
+         id: student?.id,
+         uid: student?.uid,
+         authUid: student?.authUid,
+         studentUid: student?.studentUid,
++        userUid: student?.userUid,
+     };
+     const pairs = fields.flatMap(([field, valueKeys]) => valueKeys.map((key) => [field, values[key]]));
+     const seen = new Set();
+     return pairs.filter(([field, value]) => {
+         if (!value) return false;
+         const key = `${field}:${value}`;
+         if (seen.has(key)) return false;
+         seen.add(key);
+         return true;
+     });
+ };
+ 
+ const fetchStudentPage = async (collectionName, student, fields, cursors = {}) => {
+     const pairs = studentQueryPairs(student, fields);
+     const bufferedRows = Array.isArray(cursors.__buffer) ? cursors.__buffer : [];
+     if (bufferedRows.length >= PAGE_SIZE) {
+         return {
+             rows: bufferedRows.slice(0, PAGE_SIZE),
+             cursors: { ...cursors, __buffer: bufferedRows.slice(PAGE_SIZE) },
+             hasMore: true,
+         };
+     }
+     const results = await Promise.all(pairs.map(async ([field, value]) => {
+         const cursorKey = `${field}:${value}`;
+         if (cursors[cursorKey] === null) return { cursorKey, docs: [], cursor: null, hasMore: false };
+@@ -164,86 +166,89 @@ const fetchStudentPage = async (collectionName, student, fields, cursors = {}) =
+     const mergedRows = sortNewest(mergeById([
+         bufferedRows,
+         ...results.map((result) => result.docs),
+     ]), ['date']);
+     nextCursors.__buffer = mergedRows.slice(PAGE_SIZE);
+     return {
+         rows: mergedRows.slice(0, PAGE_SIZE),
+         cursors: nextCursors,
+         hasMore: nextCursors.__buffer.length > 0 || results.some((result) => result.hasMore),
+     };
+ };
+ 
+ const ATTENDANCE_FIELDS = [
+     ['studentId', ['id']],
+     ['studentUid', ['studentUid', 'uid', 'id']],
+     ['authUid', ['authUid', 'uid']],
+ ];
+ const CLINIC_FIELDS = [
+     ['studentId', ['id']],
+     ['studentDocId', ['id']],
+     ['studentUid', ['uid', 'id']],
+     ['authUid', ['authUid', 'uid']],
+ ];
+ 
  const fetchByStudentKeys = async (collectionName, student, count = 300) => {
-     const fields = [
-         ['studentId', student.id],
-         ['studentDocId', student.id],
-         ['studentUid', student.id],
-         ['authUid', student.authUid],
-         ['uid', student.authUid],
-     ].filter(([, value]) => value);
+-    const fields = [
+-        ['studentId', student.id],
+-        ['studentDocId', student.id],
+-        ['studentUid', student.id],
+-        ['authUid', student.authUid],
+-        ['uid', student.authUid],
+-    ].filter(([, value]) => value);
++    const studentKeys = [...new Set([
++        student.id,
++        student.uid,
++        student.authUid,
++        student.studentUid,
++        student.userUid,
++    ].filter(Boolean).map(String))];
++    const fields = ['studentId', 'studentDocId', 'studentUid', 'authUid', 'uid']
++        .flatMap((field) => studentKeys.map((value) => [field, value]));
      const snapshots = await Promise.all(fields.map(([field, value]) => (
          getDocs(query(collection(db, collectionName), where(field, '==', value), limit(count)))
      )));
@@ -479,66 +714,39 @@ index 4fc145968812de3c64a7024234c5e8678ef09fd7..4256bcd99665d98f01fd7988b66f9941
      ));
  };
  
-+const fetchStudentRecords = async (collectionName, student) => {
-+    const keys = [...new Set([
-+        student?.id,
-+        student?.authUid,
-+        student?.uid,
-+        student?.studentUid,
-+    ].filter(Boolean).map(String))];
-+    const [queried, directSnapshots] = await Promise.all([
-+        fetchByStudentKeys(collectionName, student),
-+        Promise.all(keys.map((key) => getDoc(doc(db, collectionName, key)).catch(() => null))),
-+    ]);
-+    const direct = directSnapshots
-+        .filter((snapshot) => snapshot?.exists())
-+        .flatMap((snapshot) => {
-+            const data = snapshot.data();
-+            const nestedEntries = Object.entries(data || {}).filter(([, value]) => (
-+                value && typeof value === 'object' && !Array.isArray(value)
-+            ));
-+            if (!nestedEntries.length) return [{ id: snapshot.id, ...data }];
-+            return nestedEntries.map(([recordId, value]) => ({
-+                id: `${snapshot.id}:${recordId}`,
-+                studentId: snapshot.id,
-+                ...(collectionName === COLLECTIONS.grades ? { testId: recordId } : { assignmentId: recordId }),
-+                ...value,
-+            }));
-+        });
-+    return mergeById([queried, direct]);
-+};
-+
- const fetchByClassIds = async (collectionName, classIds) => {
-     const uniqueIds = [...new Set(classIds.filter(Boolean).map(String))];
-     const chunks = [];
-     for (let index = 0; index < uniqueIds.length; index += 10) chunks.push(uniqueIds.slice(index, index + 10));
-     if (!chunks.length) return [];
-     const snapshots = await Promise.all(chunks.flatMap((idsChunk) => [
-         getDocs(query(collection(db, collectionName), where('classId', 'in', idsChunk), limit(300))),
-         getDocs(query(collection(db, collectionName), where('classDocId', 'in', idsChunk), limit(300))),
-     ]));
-     return mergeById(snapshots.map((snapshot) => (
-         snapshot.docs.map((item) => ({ id: item.id, ...item.data() }))
-     )));
+ const fetchStudentRecords = async (collectionName, student) => {
+     const keys = [...new Set([
+         student?.id,
+         student?.authUid,
+         student?.uid,
+         student?.studentUid,
++        student?.userUid,
+     ].filter(Boolean).map(String))];
+     const [queried, directSnapshots] = await Promise.all([
+         fetchByStudentKeys(collectionName, student),
+         Promise.all(keys.map((key) => getDoc(doc(db, collectionName, key)).catch(() => null))),
+     ]);
+     const direct = directSnapshots
+         .filter((snapshot) => snapshot?.exists())
+         .flatMap((snapshot) => {
+             const data = snapshot.data();
+             const nestedEntries = Object.entries(data || {}).filter(([, value]) => (
+                 value && typeof value === 'object' && !Array.isArray(value)
+             ));
+             if (!nestedEntries.length) return [{ id: snapshot.id, ...data }];
+             return nestedEntries.map(([recordId, value]) => ({
+                 id: `${snapshot.id}:${recordId}`,
+                 studentId: snapshot.id,
+                 ...(collectionName === COLLECTIONS.grades ? { testId: recordId } : { assignmentId: recordId }),
+                 ...value,
+             }));
+         });
+     return mergeById([queried, direct]);
  };
  
- const EmptyState = ({ children }) => (
-     <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 px-4 py-10 text-center text-xs text-gray-500">
-         {children}
-     </div>
- );
- 
- const SectionCard = ({ title, description, children, action }) => (
-     <section className="rounded-2xl border border-gray-200 bg-white p-5">
-         <div className="mb-4 flex items-start justify-between gap-4">
-             <div>
-                 <h3 className="text-sm font-bold text-gray-900">{title}</h3>
-@@ -175,220 +284,265 @@ const DataTable = ({ columns, rows, emptyText }) => {
-         <div className="overflow-x-auto">
-             <table className="w-full min-w-[760px] text-left text-xs">
-                 <thead>
-                     <tr className="border-b border-gray-200 bg-gray-50 text-gray-500">
-                         {columns.map((column) => (
+ const fetchByClassIds = async (collectionName, classIds) => {
+     const uniqueIds = [...new Set(classIds.filter(Boolean).map(String))];
+@@ -289,225 +294,247 @@ const DataTable = ({ columns, rows, emptyText }) => {
                              <th key={column.key} className="px-3 py-2.5 font-semibold">{column.label}</th>
                          ))}
                      </tr>
@@ -559,13 +767,12 @@ index 4fc145968812de3c64a7024234c5e8678ef09fd7..4256bcd99665d98f01fd7988b66f9941
      );
  };
  
--const scoreValue = (grade) => firstValue(grade, ['score', 'result', 'studentScore'], null);
-+const scoreValue = (grade) => firstValue(grade, ['score', 'result', 'totalScore', 'studentScore'], null);
+ const scoreValue = (grade) => firstValue(grade, ['score', 'result', 'totalScore', 'studentScore'], null);
  const isNotAttempted = (grade) => {
      const value = scoreValue(grade);
      const normalized = normalizeStatus(value);
      return grade?.attempted === false
-+        || (Number(value) === 0 && grade?.attempted !== true)
+-        || (Number(value) === 0 && grade?.attempted !== true)
          || value === null
          || value === undefined
          || value === ''
@@ -593,12 +800,12 @@ index 4fc145968812de3c64a7024234c5e8678ef09fd7..4256bcd99665d98f01fd7988b66f9941
      const [homeworkResults, setHomeworkResults] = useState([]);
      const [homeworkAssignments, setHomeworkAssignments] = useState([]);
      const [clinicLogs, setClinicLogs] = useState([]);
-+    const [attendanceCursors, setAttendanceCursors] = useState({});
-+    const [clinicCursors, setClinicCursors] = useState({});
-+    const [attendanceHasMore, setAttendanceHasMore] = useState(false);
-+    const [clinicHasMore, setClinicHasMore] = useState(false);
-+    const [attendanceMoreLoading, setAttendanceMoreLoading] = useState(false);
-+    const [clinicMoreLoading, setClinicMoreLoading] = useState(false);
+     const [attendanceCursors, setAttendanceCursors] = useState({});
+     const [clinicCursors, setClinicCursors] = useState({});
+     const [attendanceHasMore, setAttendanceHasMore] = useState(false);
+     const [clinicHasMore, setClinicHasMore] = useState(false);
+     const [attendanceMoreLoading, setAttendanceMoreLoading] = useState(false);
+     const [clinicMoreLoading, setClinicMoreLoading] = useState(false);
      const [payments, setPayments] = useState([]);
      const [materials, setMaterials] = useState([]);
      const [timeline, setTimeline] = useState([]);
@@ -607,25 +814,28 @@ index 4fc145968812de3c64a7024234c5e8678ef09fd7..4256bcd99665d98f01fd7988b66f9941
      const [timelineSaving, setTimelineSaving] = useState(false);
      const [timelineError, setTimelineError] = useState('');
  
-     const canUseTimeline = [ROLE.ADMIN, ROLE.STAFF].includes(role);
+-    const canUseTimeline = [ROLE.ADMIN, ROLE.STAFF].includes(role);
++    const canUseTimeline = [ROLE.ADMIN, ROLE.STAFF, ROLE.TEACHER].includes(role);
  
      const loadTimeline = useCallback(async () => {
-         if (!studentId || !canUseTimeline) {
+-        if (!studentId || !canUseTimeline) {
++        if (!student || !canUseTimeline) {
              setTimeline([]);
              return;
          }
          setTimelineLoading(true);
          setTimelineError('');
          try {
--            setTimeline(await fetchStaffTimelineByStudent(db, studentId, { limitCount: 100 }));
-+            setTimeline(await fetchStaffTimelineByStudent(db, studentId, { limitCount: 20 }));
+-            setTimeline(await fetchStaffTimelineByStudent(db, studentId, { limitCount: 20 }));
++            setTimeline(await fetchStaffTimelineByStudent(db, student, { limitCount: 20 }));
          } catch (loadError) {
              console.error('[StudentDetail] staffTimeline load failed', loadError);
              setTimelineError('교직원 타임라인을 불러오지 못했습니다.');
          } finally {
              setTimelineLoading(false);
          }
-     }, [studentId, canUseTimeline]);
+-    }, [studentId, canUseTimeline]);
++    }, [student, canUseTimeline]);
  
      useEffect(() => {
          let mounted = true;
@@ -640,21 +850,16 @@ index 4fc145968812de3c64a7024234c5e8678ef09fd7..4256bcd99665d98f01fd7988b66f9941
                      throw new Error('학생 역할의 문서가 아닙니다.');
                  }
  
--                const [attendanceRows, gradeRows, homeworkRows, clinicRows, paymentRows, materialRows] = await Promise.all([
--                    fetchByStudentKeys(COLLECTIONS.attendance, loadedStudent),
--                    fetchByStudentKeys(COLLECTIONS.grades, loadedStudent),
--                    fetchByStudentKeys(COLLECTIONS.homeworkResults, loadedStudent),
--                    fetchByStudentKeys(COLLECTIONS.clinic, loadedStudent),
-+                const [attendancePage, gradeRows, homeworkRows, clinicPage, paymentRows, materialRows] = await Promise.all([
-+                    fetchStudentPage(COLLECTIONS.attendance, loadedStudent, ATTENDANCE_FIELDS),
-+                    fetchStudentRecords(COLLECTIONS.grades, loadedStudent),
-+                    fetchStudentRecords(COLLECTIONS.homeworkResults, loadedStudent),
-+                    fetchStudentPage(COLLECTIONS.clinic, loadedStudent, CLINIC_FIELDS),
+                 const [attendancePage, gradeRows, homeworkRows, clinicPage, paymentRows, materialRows] = await Promise.all([
+                     fetchStudentPage(COLLECTIONS.attendance, loadedStudent, ATTENDANCE_FIELDS),
+                     fetchStudentRecords(COLLECTIONS.grades, loadedStudent),
+                     fetchStudentRecords(COLLECTIONS.homeworkResults, loadedStudent),
+                     fetchStudentPage(COLLECTIONS.clinic, loadedStudent, CLINIC_FIELDS),
                      fetchByStudentKeys(COLLECTIONS.payments, loadedStudent).catch(() => []),
                      fetchByStudentKeys(COLLECTIONS.materials, loadedStudent).catch(() => []),
                  ]);
-+                const attendanceRows = attendancePage.rows;
-+                const clinicRows = clinicPage.rows;
+                 const attendanceRows = attendancePage.rows;
+                 const clinicRows = clinicPage.rows;
  
                  const classIds = new Set(getStudentClassIds(loadedStudent));
                  [...attendanceRows, ...gradeRows, ...homeworkRows, ...clinicRows].forEach((item) => {
@@ -672,13 +877,24 @@ index 4fc145968812de3c64a7024234c5e8678ef09fd7..4256bcd99665d98f01fd7988b66f9941
                  setStudent(loadedStudent);
                  setClasses(classRows);
                  setAttendances(attendanceRows.filter((item) => isSameStudentByAnyKey(item, loadedStudent)));
-+                setAttendanceCursors(attendancePage.cursors);
-+                setAttendanceHasMore(attendancePage.hasMore);
-                 setGrades(gradeRows.filter((item) => isSameStudentByAnyKey(item, loadedStudent)));
-                 setHomeworkResults(homeworkRows.filter((item) => isSameStudentByAnyKey(item, loadedStudent)));
+                 setAttendanceCursors(attendancePage.cursors);
+                 setAttendanceHasMore(attendancePage.hasMore);
+-                setGrades(gradeRows.filter((item) => isSameStudentByAnyKey(item, loadedStudent)));
+-                setHomeworkResults(homeworkRows.filter((item) => isSameStudentByAnyKey(item, loadedStudent)));
++                const matchedGrades = gradeRows.filter((item) => (
++                    isSameStudentByAnyKey(item, loadedStudent)
++                    && testRows.some((test) => String(firstValue(item, ['testId', 'testDocId'])) === String(test.id))
++                ));
++                const matchedHomework = homeworkRows.filter((item) => isSameStudentByAnyKey(item, loadedStudent));
++                if (process.env.NODE_ENV !== 'production') {
++                    console.log('[studentDetail][grades] matched count', matchedGrades.length);
++                    console.log('[studentDetail][homework] matched count', matchedHomework.length);
++                }
++                setGrades(matchedGrades);
++                setHomeworkResults(matchedHomework);
                  setClinicLogs(clinicRows.filter((item) => isSameStudentByAnyKey(item, loadedStudent)));
-+                setClinicCursors(clinicPage.cursors);
-+                setClinicHasMore(clinicPage.hasMore);
+                 setClinicCursors(clinicPage.cursors);
+                 setClinicHasMore(clinicPage.hasMore);
                  setPayments(paymentRows);
                  setMaterials(materialRows);
                  setTests(testRows);
@@ -695,17 +911,21 @@ index 4fc145968812de3c64a7024234c5e8678ef09fd7..4256bcd99665d98f01fd7988b66f9941
      }, [studentId]);
  
      useEffect(() => {
--        loadTimeline();
--    }, [loadTimeline]);
-+        if (activeTab === 'timeline') loadTimeline();
-+    }, [activeTab, loadTimeline]);
+         if (activeTab === 'timeline') loadTimeline();
+     }, [activeTab, loadTimeline]);
  
      const classMap = useMemo(() => new Map(classes.map((item) => [String(item.id), item])), [classes]);
      const testMap = useMemo(() => new Map(tests.map((item) => [String(item.id), item])), [tests]);
-     const assignmentMap = useMemo(() => new Map(homeworkAssignments.map((item) => [
+-    const assignmentMap = useMemo(() => new Map(homeworkAssignments.map((item) => [
++    const activeHomeworkAssignments = useMemo(
++        () => homeworkAssignments.filter((item) => !isClosedClass(classMap.get(getClassId(item)))),
++        [homeworkAssignments, classMap],
++    );
++    const assignmentMap = useMemo(() => new Map(activeHomeworkAssignments.map((item) => [
          String(item.id || item.assignmentId),
          item,
-     ])), [homeworkAssignments]);
+-    ])), [homeworkAssignments]);
++    ])), [activeHomeworkAssignments]);
      const sortedClasses = useMemo(() => sortClassesWithClosedLast(classes), [classes]);
      const sortedAttendances = useMemo(
          () => sortNewest(attendances, ['date', 'lessonDate', 'createdAt']),
@@ -719,20 +939,18 @@ index 4fc145968812de3c64a7024234c5e8678ef09fd7..4256bcd99665d98f01fd7988b66f9941
  
      const attendanceSummary = useMemo(() => {
          const presentCount = sortedAttendances.filter((item) => isPresent(firstValue(item, ['status', 'attendanceStatus']))).length;
-+        const videoCount = sortedAttendances.filter((item) => isVideoMakeup(firstValue(item, ['status', 'attendanceStatus']))).length;
+         const videoCount = sortedAttendances.filter((item) => isVideoMakeup(firstValue(item, ['status', 'attendanceStatus']))).length;
          const absentCount = sortedAttendances.filter((item) => isAbsent(firstValue(item, ['status', 'attendanceStatus']))).length;
          const lateCount = sortedAttendances.filter((item) => isLate(firstValue(item, ['status', 'attendanceStatus']))).length;
--        const counted = presentCount + absentCount + lateCount;
          return {
              recent: sortedAttendances.slice(0, 4),
-+            presentCount,
-+            videoCount,
+             presentCount,
+             videoCount,
              absentCount,
              lateCount,
--            rate: counted ? Math.round(((presentCount + lateCount) / counted) * 100) : null,
-+            rate: sortedAttendances.length
-+                ? Math.round(((presentCount + videoCount) / sortedAttendances.length) * 100)
-+                : null,
+             rate: sortedAttendances.length
+                 ? Math.round(((presentCount + videoCount) / sortedAttendances.length) * 100)
+                 : null,
          };
      }, [sortedAttendances]);
  
@@ -746,10 +964,24 @@ index 4fc145968812de3c64a7024234c5e8678ef09fd7..4256bcd99665d98f01fd7988b66f9941
          return start && end ? total + Math.max(0, Math.round((end - start) / 60000)) : total;
      }, 0), [clinicLogs]);
  
-     const homeworkRows = useMemo(() => sortNewest(homeworkResults.map((result) => {
-         const assignmentId = String(firstValue(result, ['assignmentId', 'homeworkAssignmentId'], ''));
-         return { ...assignmentMap.get(assignmentId), ...result };
-     }), ['assignedDate', 'date', 'createdAt']), [homeworkResults, assignmentMap]);
+-    const homeworkRows = useMemo(() => sortNewest(homeworkResults.map((result) => {
+-        const assignmentId = String(firstValue(result, ['assignmentId', 'homeworkAssignmentId'], ''));
+-        return { ...assignmentMap.get(assignmentId), ...result };
+-    }), ['assignedDate', 'date', 'createdAt']), [homeworkResults, assignmentMap]);
++    const homeworkRows = useMemo(() => sortNewest(homeworkResults.flatMap((result) => {
++        const assignmentId = String(firstValue(result, ['assignmentId', 'homeworkAssignmentId', 'id'], ''));
++        const assignment = assignmentMap.get(assignmentId);
++        if (!assignment) return [];
++        const questionNumbers = Array.isArray(assignment.questionNumbers) ? assignment.questionNumbers : [];
++        return [{
++            ...assignment,
++            ...result,
++            results: normalizeHomeworkResultMapForDisplay(result.results || {}, questionNumbers, {
++                assignmentId,
++                studentId: student?.id,
++            }),
++        }];
++    }), ['assignedDate', 'date', 'createdAt']), [homeworkResults, assignmentMap, student?.id]);
  
      const actor = useMemo(() => ({
          uid: profileDocId || user?.uid || '',
@@ -757,346 +989,82 @@ index 4fc145968812de3c64a7024234c5e8678ef09fd7..4256bcd99665d98f01fd7988b66f9941
          role,
      }), [profileDocId, user, userProfile, role]);
  
-+    const loadMore = async (type) => {
-+        if (!student) return;
-+        const isAttendance = type === 'attendance';
-+        const setMoreLoading = isAttendance ? setAttendanceMoreLoading : setClinicMoreLoading;
-+        setMoreLoading(true);
-+        try {
-+            const page = await fetchStudentPage(
-+                isAttendance ? COLLECTIONS.attendance : COLLECTIONS.clinic,
-+                student,
-+                isAttendance ? ATTENDANCE_FIELDS : CLINIC_FIELDS,
-+                isAttendance ? attendanceCursors : clinicCursors,
-+            );
-+            if (isAttendance) {
-+                setAttendances((current) => sortNewest(mergeById([current, page.rows]), ['date']));
-+                setAttendanceCursors(page.cursors);
-+                setAttendanceHasMore(page.hasMore);
-+            } else {
-+                setClinicLogs((current) => sortNewest(mergeById([current, page.rows]), ['date']));
-+                setClinicCursors(page.cursors);
-+                setClinicHasMore(page.hasMore);
-+            }
-+        } catch (loadError) {
-+            console.error(`[StudentDetail] ${type} pagination failed`, loadError);
-+        } finally {
-+            setMoreLoading(false);
-+        }
-+    };
-+
-     const handleCreateTimeline = async () => {
-         const content = timelineDraft.trim();
-         if (!content || !student) return;
-         setTimelineSaving(true);
-         setTimelineError('');
+     const loadMore = async (type) => {
+         if (!student) return;
+         const isAttendance = type === 'attendance';
+         const setMoreLoading = isAttendance ? setAttendanceMoreLoading : setClinicMoreLoading;
+         setMoreLoading(true);
          try {
-             await createStaffTimelineThread(db, {
-                 sourceType: 'studentMemo',
-                 sourceDocId: student.id,
-                 sourceCollection: COLLECTIONS.users,
-                 studentId: student.id,
-                 studentName: student.name || '',
-                 title: '학생 상세 메모',
-                 content,
-                 createdBy: actor.uid,
-                 createdByName: actor.name,
-                 senderRole: actor.role,
-             });
-             setTimelineDraft('');
-             await loadTimeline();
-         } catch (saveError) {
-             console.error('[StudentDetail] staffTimeline save failed', saveError);
-             setTimelineError('교직원 메모 저장에 실패했습니다.');
-         } finally {
-             setTimelineSaving(false);
-@@ -441,169 +595,193 @@ export default function StudentDetail() {
-                     </dl>
-                 </SectionCard>
+             const page = await fetchStudentPage(
+                 isAttendance ? COLLECTIONS.attendance : COLLECTIONS.clinic,
+                 student,
+                 isAttendance ? ATTENDANCE_FIELDS : CLINIC_FIELDS,
+                 isAttendance ? attendanceCursors : clinicCursors,
              );
-         }
-         if (activeTab === 'classes') {
-             return (
-                 <SectionCard title="수강반" description="진행 중 클래스가 먼저 표시됩니다.">
-                     <DataTable
-                         rows={sortedClasses}
-                         emptyText="등록된 수강반이 없습니다."
-                         columns={[
-                             { key: 'name', label: '클래스명' },
-                             { key: 'teacher', label: '담당 강사', render: (row) => firstValue(row, ['teacherName', 'teacher'], '-') },
-                             { key: 'schedule', label: '요일/시간', render: (row) => [firstValue(row, ['day', 'days', 'weekday']), firstValue(row, ['time', 'classTime'])].filter(Boolean).join(' ') || '-' },
-                             { key: 'status', label: '상태', render: (row) => <span className={`rounded-full px-2 py-1 font-bold ${isClosedClass(row) ? 'bg-gray-100 text-gray-500' : 'bg-[#eef2ff] text-[#455fab]'}`}>{isClosedClass(row) ? '종강' : firstValue(row, ['status', 'classStatus'], '진행중')}</span> },
-                             { key: 'startDate', label: '시작일', render: (row) => formatDate(firstValue(row, ['startDate', 'startedAt'])) },
-                             { key: 'endDate', label: '종강일', render: (row) => formatDate(firstValue(row, ['endDate', 'endedAt', 'finishDate'])) },
-                         ]}
-                     />
-                 </SectionCard>
-             );
-         }
-         if (activeTab === 'attendance') {
-             return (
-                 <div className="space-y-4">
--                    <div className="grid gap-3 sm:grid-cols-3">
--                        {[['출석률', attendanceSummary.rate === null ? '-' : `${attendanceSummary.rate}%`], ['결석', `${attendanceSummary.absentCount}회`], ['지각', `${attendanceSummary.lateCount}회`]].map(([label, value]) => (
-+                    <p className="text-xs font-medium text-gray-500">현재 표시된 최근 기록 기준 요약입니다.</p>
-+                    <div className="grid gap-3 sm:grid-cols-5">
-+                        {[
-+                            ['출석', `${attendanceSummary.presentCount}회`],
-+                            ['지각', `${attendanceSummary.lateCount}회`],
-+                            ['결석', `${attendanceSummary.absentCount}회`],
-+                            ['동영상 보강', `${attendanceSummary.videoCount}회`],
-+                            ['출석률', attendanceSummary.rate === null ? '-' : `${attendanceSummary.rate}%`],
-+                        ].map(([label, value]) => (
-                             <div key={label} className="rounded-xl border border-gray-200 bg-white p-4">
-                                 <p className="text-xs text-gray-500">{label}</p><p className="mt-1 text-xl font-bold text-[#455fab]">{value}</p>
-                             </div>
-                         ))}
-                     </div>
--                    <SectionCard title="출결 기록" description="최근 4회 출결을 포함한 전체 기록을 최신순으로 표시합니다.">
-+                    <SectionCard title="출결 기록" description="최근 기록부터 4개씩 표시합니다.">
-                         <DataTable rows={sortedAttendances} emptyText="출결 기록이 없습니다." columns={[
-                             { key: 'date', label: '날짜', render: (row) => formatDate(firstValue(row, ['date', 'lessonDate', 'createdAt'])) },
-                             { key: 'class', label: '클래스', render: className },
-                             { key: 'status', label: '출결 상태', render: (row) => firstValue(row, ['status', 'attendanceStatus'], '-') },
-                             { key: 'memo', label: '메모/사유', render: (row) => firstValue(row, ['memo', 'reason', 'note'], '-') },
-                         ]} />
-+                        <div className="no-print mt-4 text-center">
-+                            {attendanceHasMore ? (
-+                                <button type="button" disabled={attendanceMoreLoading} onClick={() => loadMore('attendance')} className="rounded-lg border border-[#455fab] px-4 py-2 text-xs font-bold text-[#455fab] disabled:opacity-50">
-+                                    {attendanceMoreLoading ? '불러오는 중...' : '출결 4개 더보기'}
-+                                </button>
-+                            ) : sortedAttendances.length > 0 && <p className="text-xs text-gray-400">더 이상 기록이 없습니다.</p>}
-+                        </div>
-                     </SectionCard>
-                 </div>
-             );
-         }
-         if (activeTab === 'grades') {
-             return (
-                 <SectionCard title="성적" description="미응시는 점수와 구분하여 표시합니다.">
-                     <DataTable rows={sortedGrades} emptyText="성적 기록이 없습니다." columns={[
-                         { key: 'test', label: '시험명', render: (row) => testMap.get(String(firstValue(row, ['testId', 'testDocId'])))?.name || firstValue(row, ['testName', 'name'], '-') },
-                         { key: 'class', label: '클래스', render: className },
-                         { key: 'date', label: '날짜', render: (row) => formatDate(firstValue(row, ['date', 'testDate', 'createdAt'])) },
-                         { key: 'score', label: '학생 점수', render: (row) => <span className={isNotAttempted(row) ? 'font-bold text-gray-400' : 'font-bold text-[#455fab]'}>{formatScore(row)}</span> },
-                         { key: 'average', label: '평균', render: (row) => firstValue(row, ['average', 'classAverage'], '-') },
-                         { key: 'highest', label: '최고점', render: (row) => firstValue(row, ['highest', 'highestScore', 'classMax'], '-') },
-                         { key: 'attempted', label: '응시 여부', render: (row) => isNotAttempted(row) ? '미응시' : '응시' },
-                     ]} />
-                 </SectionCard>
-             );
-         }
-         if (activeTab === 'homework') {
-             return (
-                 <SectionCard title="과제" description="해당 학생의 과제 결과만 표시합니다.">
-                     <DataTable rows={homeworkRows} emptyText="과제 결과가 없습니다." columns={[
-                         { key: 'title', label: '과제명', render: (row) => firstValue(row, ['title', 'name', 'homeworkName'], '-') },
-                         { key: 'class', label: '클래스', render: className },
-                         { key: 'date', label: '출제일', render: (row) => formatDate(firstValue(row, ['assignedDate', 'date', 'createdAt'])) },
-                         { key: 'status', label: '제출/완료', render: (row) => firstValue(row, ['status', 'submissionStatus'], row?.completed ? '완료' : '미완료') },
-                         { key: 'summary', label: '문항 요약', render: (row) => `맞음 ${firstValue(row, ['correctCount', 'correct'], 0)} · 틀림 ${firstValue(row, ['wrongCount', 'wrong'], 0)} · 고침 ${firstValue(row, ['correctedCount', 'corrected'], 0)} · 남음 ${firstValue(row, ['remainingCount', 'remaining'], 0)}` },
-                     ]} />
-                 </SectionCard>
-             );
-         }
-         if (activeTab === 'clinic') {
-             return (
--                <SectionCard title="클리닉" description={`누적 클리닉 시간 ${clinicMinutes ? `${Math.floor(clinicMinutes / 60)}시간 ${clinicMinutes % 60}분` : '집계 정보 없음'}`}>
-+                <SectionCard title="클리닉" description={`현재 표시된 기록 합계 ${clinicMinutes ? `${Math.floor(clinicMinutes / 60)}시간 ${clinicMinutes % 60}분` : '집계 정보 없음'}`}>
-                     <DataTable rows={sortedClinics} emptyText="클리닉 기록이 없습니다." columns={[
-                         { key: 'date', label: '날짜', render: (row) => formatDate(firstValue(row, ['date', 'clinicDate', 'createdAt'])) },
-                         { key: 'time', label: '시간', render: (row) => firstValue(row, ['plannedTime', 'time'], formatTime(firstValue(row, ['checkIn', 'startAt']))) },
--                        { key: 'teacher', label: '담당자', render: (row) => firstValue(row, ['teacherName', 'staffName', 'createdByName'], '-') },
-+                        { key: 'teacher', label: '담당자', render: (row) => firstValue(row, ['tutorName', 'tutor', 'assistantName', 'assistant', 'teacherName', 'teacher', 'updatedByName', 'createdByName'], '담당자 미지정') },
-                         { key: 'status', label: '상태', render: (row) => firstValue(row, ['status', 'clinicStatus'], '-') },
-                         { key: 'comment', label: '코멘트', render: (row) => firstValue(row, ['clinicComment', 'comment', 'content'], '-') },
-                     ]} />
-+                    <div className="no-print mt-4 text-center">
-+                        {clinicHasMore ? (
-+                            <button type="button" disabled={clinicMoreLoading} onClick={() => loadMore('clinic')} className="rounded-lg border border-[#455fab] px-4 py-2 text-xs font-bold text-[#455fab] disabled:opacity-50">
-+                                {clinicMoreLoading ? '불러오는 중...' : '클리닉 4개 더보기'}
-+                            </button>
-+                        ) : sortedClinics.length > 0 && <p className="text-xs text-gray-400">더 이상 기록이 없습니다.</p>}
-+                    </div>
-                 </SectionCard>
-             );
-         }
-         if (activeTab === 'timeline') {
-             if (!canUseTimeline) return <EmptyState>교직원만 접근할 수 있습니다.</EmptyState>;
-             return (
-                 <SectionCard title="교직원 타임라인" description="학생/학부모에게 노출되지 않는 내부 기록입니다.">
-                     <div className="mb-5 rounded-xl border border-[#dfe6ff] bg-[#f8f9ff] p-4">
-                         <textarea value={timelineDraft} onChange={(event) => setTimelineDraft(event.target.value)} placeholder="새 교직원 메모를 입력하세요." className="min-h-[90px] w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:border-[#455fab] focus:outline-none" />
-                         <div className="mt-2 flex items-center justify-between">
-                             <p className="text-xs text-rose-600">{timelineError}</p>
-                             <button type="button" disabled={timelineSaving || !timelineDraft.trim()} onClick={handleCreateTimeline} className="rounded-lg bg-[#455fab] px-4 py-2 text-xs font-bold text-white disabled:opacity-50">{timelineSaving ? '저장 중...' : '메모 등록'}</button>
-                         </div>
-                     </div>
-                     {timelineLoading ? <EmptyState>타임라인을 불러오는 중입니다.</EmptyState> : (
-                         <div className="space-y-3">
-                             {timeline.map((thread) => <StaffTimelineThreadCard key={thread.id} thread={thread} actor={actor} onChanged={loadTimeline} showStudentName={false} />)}
-                             {!timeline.length && <EmptyState>교직원 타임라인 기록이 없습니다.</EmptyState>}
-                         </div>
-                     )}
-                 </SectionCard>
-             );
-         }
-         const paymentMaterialRows = [
-             ...payments.map((item) => ({ ...item, recordType: '결제' })),
-             ...materials.map((item) => ({ ...item, recordType: '교재' })),
-         ];
-         return (
-             <SectionCard title="결제/교재">
-                 <DataTable rows={sortNewest(paymentMaterialRows, ['date', 'paidAt', 'createdAt'])} emptyText="결제/교재 기록이 없습니다." columns={[
-                     { key: 'type', label: '구분', render: (row) => row.recordType },
-                     { key: 'date', label: '날짜', render: (row) => formatDate(firstValue(row, ['date', 'paidAt', 'receivedAt', 'createdAt'])) },
-                     { key: 'item', label: '항목', render: (row) => firstValue(row, ['title', 'itemName', 'bookName', 'description'], '-') },
-                     { key: 'amount', label: '금액', render: (row) => { const amount = Number(firstValue(row, ['amount', 'price'], NaN)); return Number.isFinite(amount) ? `${amount.toLocaleString()}원` : '-'; } },
-                     { key: 'status', label: '상태', render: (row) => firstValue(row, ['status', 'paymentStatus', 'receiveStatus'], '-') },
-                 ]} />
-             </SectionCard>
-         );
-     };
- 
-     return (
--        <div className="mx-auto max-w-[1500px] space-y-4 pb-8">
--            <button type="button" onClick={() => navigate('/students')} className="text-xs font-semibold text-gray-500 hover:text-[#455fab]">← 학생 목록</button>
-+        <div className="student-detail-print mx-auto max-w-[1500px] space-y-4 pb-8">
-+            <div className="no-print flex items-center justify-between">
-+                <button type="button" onClick={() => navigate('/students')} className="text-xs font-semibold text-gray-500 hover:text-[#455fab]">← 학생 목록</button>
-+                <button type="button" onClick={() => window.print()} className="rounded-lg bg-[#455fab] px-4 py-2 text-xs font-bold text-white">인쇄</button>
-+            </div>
-             <section className="rounded-2xl border border-gray-200 bg-white p-5">
-                 <div className="flex flex-wrap items-start justify-between gap-4 border-b border-gray-100 pb-5">
-                     <div>
-                         <div className="flex items-center gap-2">
-                             <h1 className="text-2xl font-bold text-gray-900">{student.name || '이름 미상'}</h1>
-                             <span className="rounded-full bg-[#eef2ff] px-2.5 py-1 text-xs font-bold text-[#455fab]">{student.status || '상태 미상'}</span>
-                         </div>
-                         <p className="mt-1 text-sm text-gray-500">{student.school || '학교 정보 없음'} · {getStudentGradeLabel(student)}</p>
-                     </div>
-                     <div className="rounded-xl bg-[#455fab] px-5 py-3 text-white">
-                         <p className="text-[11px] text-white/70">수강 중 클래스</p>
-                         <p className="mt-0.5 text-2xl font-bold">{activeClassCount}</p>
-                     </div>
-                 </div>
-                 <div className="grid gap-3 pt-4 md:grid-cols-3">
-                     <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
-                         <p className="text-[11px] font-bold text-gray-400">최근 출결</p>
-                         <p className="mt-1 text-sm font-semibold text-gray-800">{attendanceSummary.recent[0] ? `${formatDate(firstValue(attendanceSummary.recent[0], ['date', 'lessonDate']))} · ${firstValue(attendanceSummary.recent[0], ['status', 'attendanceStatus'], '-')}` : '기록 없음'}</p>
-                         <p className="mt-1 text-xs text-gray-500">최근 4회 · 출석률 {attendanceSummary.rate === null ? '-' : `${attendanceSummary.rate}%`}</p>
-                     </div>
-                     <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
-                         <p className="text-[11px] font-bold text-gray-400">최근 성적</p>
-                         <p className="mt-1 text-sm font-semibold text-gray-800">{latestGrade ? formatScore(latestGrade) : '기록 없음'}</p>
-                         <p className="mt-1 text-xs text-gray-500">{latestGrade ? (testMap.get(String(firstValue(latestGrade, ['testId', 'testDocId'])))?.name || firstValue(latestGrade, ['testName'], '시험명 없음')) : '등록된 성적이 없습니다.'}</p>
-                     </div>
-                     <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
-                         <p className="text-[11px] font-bold text-gray-400">최근 클리닉</p>
-                         <p className="mt-1 text-sm font-semibold text-gray-800">{latestClinic ? `${formatDate(firstValue(latestClinic, ['date', 'clinicDate']))} · ${firstValue(latestClinic, ['status', 'clinicStatus'], '-')}` : '기록 없음'}</p>
-                         <p className="mt-1 text-xs text-gray-500">{clinicMinutes ? `누적 ${Math.floor(clinicMinutes / 60)}시간 ${clinicMinutes % 60}분` : '누적 시간 정보 없음'}</p>
-                     </div>
-                 </div>
-             </section>
--            <nav className="overflow-x-auto rounded-2xl border border-gray-200 bg-white px-2">
-+            <nav className="no-print overflow-x-auto rounded-2xl border border-gray-200 bg-white px-2">
-                 <div className="flex min-w-max">
-                     {TABS.map(([id, label]) => (
-                         <button key={id} type="button" onClick={() => setActiveTab(id)} className={`border-b-2 px-4 py-3 text-xs font-bold transition ${activeTab === id ? 'border-[#455fab] text-[#455fab]' : 'border-transparent text-gray-500 hover:text-gray-800'}`}>
-                             {label}
-                         </button>
-                     ))}
-                 </div>
-             </nav>
-             {renderTab()}
-         </div>
+             if (isAttendance) {
+                 setAttendances((current) => sortNewest(mergeById([current, page.rows]), ['date']));
+                 setAttendanceCursors(page.cursors);
+                 setAttendanceHasMore(page.hasMore);
+             } else {
+                 setClinicLogs((current) => sortNewest(mergeById([current, page.rows]), ['date']));
+diff --git a/src/utils/studentKey.js b/src/utils/studentKey.js
+index ca2f47d0f16c1e6a3ac25218ed2e80e61311711e..4e5008681d78ad32418e5899ca9ceff35a51b93f 100644
+--- a/src/utils/studentKey.js
++++ b/src/utils/studentKey.js
+@@ -1,53 +1,54 @@
+ export const getStudentKeyCandidates = (studentOrRowLike) => {
+   if (!studentOrRowLike) return [];
+   const raw = [];
+   if (Array.isArray(studentOrRowLike)) {
+     raw.push(...studentOrRowLike);
+   } else if (typeof studentOrRowLike === 'object') {
+     raw.push(
+       studentOrRowLike.id,
+       studentOrRowLike.uid,
+       studentOrRowLike.authUid,
+       studentOrRowLike.studentId,
+       studentOrRowLike.studentUid,
+       studentOrRowLike.studentDocId,
+       studentOrRowLike.studentDocIds,
+       studentOrRowLike.studentKey,
+       studentOrRowLike.userId,
++      studentOrRowLike.userUid,
+       studentOrRowLike.parentUid,
+       studentOrRowLike.parentId,
+       studentOrRowLike.parentAuthUid,
      );
- }
-diff --git a/src/styles/print.css b/src/styles/print.css
-index 25a796a5c5af339a1f7e324722ae6ea87d2158f6..c19061be9f4338fe18631da318d1caf434154485 100644
---- a/src/styles/print.css
-+++ b/src/styles/print.css
-@@ -1,30 +1,54 @@
- .print-only { display: none; }
- 
- @media print {
-   body * { visibility: hidden !important; }
-   .print-root, .print-root * { visibility: visible !important; }
-+  .student-detail-print,
-+  .student-detail-print * { visibility: visible !important; }
-+
-+  .student-detail-print {
-+    position: absolute;
-+    inset: 0;
-+    width: 100%;
-+    max-width: none !important;
-+    background: #fff !important;
-+    color: #111 !important;
-+  }
-+
-+  .student-detail-print .no-print,
-+  .student-detail-print button,
-+  .student-detail-print [role="dialog"] { display: none !important; }
-+
-+  .student-detail-print section,
-+  .student-detail-print table,
-+  .student-detail-print th,
-+  .student-detail-print td {
-+    border-color: #d1d5db !important;
-+    background: #fff !important;
-+    color: #111827 !important;
-+  }
- 
-   .print-root {
-     position: absolute;
-     left: 0;
-     top: 0;
-     width: 100%;
+   } else {
+     raw.push(studentOrRowLike);
    }
  
-   .print-grid {
-     display: grid;
-     grid-template-columns: 1fr 1fr;
-     gap: 10mm;
-     align-items: start;
+   const flattened = raw.flatMap((value) => (Array.isArray(value) ? value : [value]));
+   const normalized = flattened
+     .filter((value) => value !== null && value !== undefined && value !== '')
+     .map((value) => String(value));
+   return Array.from(new Set(normalized));
+ };
+ 
+ export const isSameStudentByAnyKey = (a, b) => {
+   const aKeys = getStudentKeyCandidates(a);
+   const bKeys = getStudentKeyCandidates(b);
+   if (aKeys.length === 0 || bKeys.length === 0) return false;
+   return aKeys.some((key) => bKeys.includes(String(key)));
+ };
+ 
+ export const normalizeStudentIdOnRow = (row, authUidToDocIdMap = null) => {
+   if (!row || typeof row !== 'object') return row;
+   const out = { ...row };
+ 
+   // 1) studentId가 비어있으면 studentUid/studentDocId/authUid에서 채운다
+   if (!out.studentId) out.studentId = out.studentUid || out.studentDocId || out.authUid || null;
+ 
+   // 2) authUid가 있는데 studentId가 docId여야 하는 화면이라면 맵으로 변환
+   //    (선택: 필요할 때만 사용)
+   if (authUidToDocIdMap && out.studentId && authUidToDocIdMap.has(out.studentId)) {
+     out.studentId = authUidToDocIdMap.get(out.studentId);
    }
  
-   .avoid-break {
-     break-inside: avoid;
-     page-break-inside: avoid;
-   }
- 
-   table {
-     width: 100%;
-     border-collapse: collapse;
-   }
- 
-@@ -33,26 +57,26 @@
-   tr, td, th {
-     break-inside: avoid;
-     page-break-inside: avoid;
-   }
- 
-   .no-print-scroll {
-     max-height: none !important;
-     overflow: visible !important;
-   }
- 
-   .print-scale {
-     transform-origin: top left;
-     transform: scale(0.95);
-   }
- 
-   .print-scale-tight {
-     transform-origin: top left;
-     transform: scale(0.90);
-   }
- 
-   svg text,
-   .recharts-text,
-   .recharts-cartesian-axis-tick-value {
-     fill: #111 !important;
-   }
--}
+   return out;
+-};
 \ No newline at end of file
-+}
++};

@@ -14,6 +14,7 @@ export const getStudentKeyCandidates = (studentOrRowLike) => {
       studentOrRowLike.studentDocIds,
       studentOrRowLike.studentKey,
       studentOrRowLike.userId,
+      studentOrRowLike.userUid,
       studentOrRowLike.parentUid,
       studentOrRowLike.parentId,
       studentOrRowLike.parentAuthUid,

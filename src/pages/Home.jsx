@@ -7,12 +7,14 @@ import { fetchStaffTimelineByStudent } from '../domain/staffTimeline/staffTimeli
 import StaffTimelineThreadCard from '../components/StaffTimeline/StaffTimelineThreadCard';
 import TodayWorkBriefing from '../components/dashboard/TodayWorkBriefing';
 import StaffTasksPanel from '../components/dashboard/StaffTasksPanel';
+import { isClosedClass, sortClassesWithClosedLast } from '../utils/classStatus';
 
 export default function Home({
     onQuickAction, userRole, classes = [], students = [],
     lessonLogs = [], attendanceLogs = [], lessonReports = [],
 }) {
     const { user, userProfile } = useAuth();
+    const [selectedTimelineClassId, setSelectedTimelineClassId] = useState('');
     const [selectedTimelineStudentId, setSelectedTimelineStudentId] = useState('');
     const [timelineCache, setTimelineCache] = useState({});
     const [staffTimelineLoading, setStaffTimelineLoading] = useState(false);
@@ -24,13 +26,14 @@ export default function Home({
         || fallbackName
         || '사용자';
 
-    const loadStaffTimeline = useCallback(async (studentId, force = false) => {
+    const loadStaffTimeline = useCallback(async (student, force = false) => {
+        const studentId = student?.id;
         if (!canAccessStaffTimeline || !db || !studentId) return;
         if (!force && Object.prototype.hasOwnProperty.call(timelineCache, studentId)) return;
         setStaffTimelineLoading(true);
         setStaffTimelineError('');
         try {
-            const items = await fetchStaffTimelineByStudent(db, studentId, { limitCount: 20 });
+            const items = await fetchStaffTimelineByStudent(db, student, { limitCount: 20 });
             setTimelineCache((current) => ({ ...current, [studentId]: items }));
         } catch (error) {
             console.error('[staffTimeline] failed to load items', error);
@@ -40,11 +43,29 @@ export default function Home({
         }
     }, [canAccessStaffTimeline, timelineCache]);
 
-    const toggleTimelineStudent = (studentId) => {
+    const toggleTimelineStudent = (student) => {
+        const studentId = student.id;
         const nextId = selectedTimelineStudentId === studentId ? '' : studentId;
         setSelectedTimelineStudentId(nextId);
-        if (nextId) loadStaffTimeline(nextId);
+        if (nextId) loadStaffTimeline(student);
     };
+
+    const timelineClasses = useMemo(() => sortClassesWithClosedLast(classes), [classes]);
+    const activeTimelineClasses = useMemo(
+        () => timelineClasses.filter((item) => !isClosedClass(item)),
+        [timelineClasses],
+    );
+    const timelineStudents = useMemo(() => {
+        if (!selectedTimelineClassId) return [];
+        return students.filter((student) => {
+            const ids = [
+                ...(Array.isArray(student.classIds) ? student.classIds : []),
+                ...(Array.isArray(student.classes) ? student.classes : []),
+                student.classId,
+            ].map((value) => String(value?.id || value || ''));
+            return ids.includes(String(selectedTimelineClassId));
+        });
+    }, [selectedTimelineClassId, students]);
 
     const timelineActor = useMemo(() => ({
         uid: user?.uid || '',
@@ -83,7 +104,7 @@ export default function Home({
                             </div>
                         </div>
                         <span className="self-start rounded-full bg-[#f1f4ff] px-3 py-1 text-xs font-bold text-[#334a91] sm:self-auto">
-                            학생 {students.length}명
+                            학생 {timelineStudents.length}명
                         </span>
                     </div>
 
@@ -91,18 +112,39 @@ export default function Home({
                         <div className="rounded-xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm text-rose-700">{staffTimelineError}</div>
                     )}
 
-                    {students.length === 0 ? (
+                    <label className="block text-xs font-bold text-gray-600">
+                        클래스 선택
+                        <select
+                            value={selectedTimelineClassId}
+                            onChange={(event) => {
+                                setSelectedTimelineClassId(event.target.value);
+                                setSelectedTimelineStudentId('');
+                            }}
+                            className="mt-2 block w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm"
+                        >
+                            <option value="">진행중 클래스 선택</option>
+                            {activeTimelineClasses.map((cls) => (
+                                <option key={cls.id} value={cls.id}>{cls.name || '클래스명 미상'}</option>
+                            ))}
+                        </select>
+                    </label>
+
+                    {!selectedTimelineClassId ? (
+                        <div className="rounded-xl border border-dashed border-gray-200 py-6 text-center text-sm text-gray-500">
+                            클래스를 선택하면 학생 목록을 표시합니다.
+                        </div>
+                    ) : timelineStudents.length === 0 ? (
                         <div className="rounded-xl border border-dashed border-gray-200 py-6 text-center text-sm text-gray-500">
                             표시할 학생이 없습니다.
                         </div>
                     ) : (
                         <div className="space-y-2">
-                            {students.map((student) => {
+                            {timelineStudents.map((student) => {
                                 const isOpen = selectedTimelineStudentId === student.id;
                                 const items = timelineCache[student.id] || [];
                                 return (
                                 <div key={student.id} className="rounded-xl border border-gray-200">
-                                    <button type="button" onClick={() => toggleTimelineStudent(student.id)} className="flex w-full items-center justify-between gap-3 p-4 text-left">
+                                    <button type="button" onClick={() => toggleTimelineStudent(student)} className="flex w-full items-center justify-between gap-3 p-4 text-left">
                                         <div>
                                             <h4 className="font-bold text-gray-900">{student.name || '학생명 미상'}</h4>
                                             <p className="mt-1 text-xs text-gray-500">{student.school || '학교 미등록'} · {student.grade || student.schoolGrade || '학년 미등록'}</p>
@@ -119,7 +161,7 @@ export default function Home({
                                                 key={item.id}
                                                 thread={item}
                                                 actor={timelineActor}
-                                                onChanged={() => loadStaffTimeline(student.id, true)}
+                                                onChanged={() => loadStaffTimeline(student, true)}
                                                 showStudentName={false}
                                             />
                                                 ))}</div>

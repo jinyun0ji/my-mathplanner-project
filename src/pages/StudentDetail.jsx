@@ -23,6 +23,7 @@ import {
 import { getStudentGradeLabel } from '../utils/gradeUtils';
 import { isClosedClass, sortClassesWithClosedLast } from '../utils/classStatus';
 import { isSameStudentByAnyKey } from '../utils/studentKey';
+import { normalizeHomeworkResultMapForDisplay } from '../domain/homework/homework.service';
 
 const COLLECTIONS = {
     users: 'users',
@@ -115,6 +116,7 @@ const studentQueryPairs = (student, fields) => {
         uid: student?.uid,
         authUid: student?.authUid,
         studentUid: student?.studentUid,
+        userUid: student?.userUid,
     };
     const pairs = fields.flatMap(([field, valueKeys]) => valueKeys.map((key) => [field, values[key]]));
     const seen = new Set();
@@ -186,13 +188,15 @@ const CLINIC_FIELDS = [
 ];
 
 const fetchByStudentKeys = async (collectionName, student, count = 300) => {
-    const fields = [
-        ['studentId', student.id],
-        ['studentDocId', student.id],
-        ['studentUid', student.id],
-        ['authUid', student.authUid],
-        ['uid', student.authUid],
-    ].filter(([, value]) => value);
+    const studentKeys = [...new Set([
+        student.id,
+        student.uid,
+        student.authUid,
+        student.studentUid,
+        student.userUid,
+    ].filter(Boolean).map(String))];
+    const fields = ['studentId', 'studentDocId', 'studentUid', 'authUid', 'uid']
+        .flatMap((field) => studentKeys.map((value) => [field, value]));
     const snapshots = await Promise.all(fields.map(([field, value]) => (
         getDocs(query(collection(db, collectionName), where(field, '==', value), limit(count)))
     )));
@@ -222,6 +226,7 @@ const fetchStudentRecords = async (collectionName, student) => {
         student?.authUid,
         student?.uid,
         student?.studentUid,
+        student?.userUid,
     ].filter(Boolean).map(String))];
     const [queried, directSnapshots] = await Promise.all([
         fetchByStudentKeys(collectionName, student),
@@ -311,7 +316,6 @@ const isNotAttempted = (grade) => {
     const value = scoreValue(grade);
     const normalized = normalizeStatus(value);
     return grade?.attempted === false
-        || (Number(value) === 0 && grade?.attempted !== true)
         || value === null
         || value === undefined
         || value === ''
@@ -353,24 +357,24 @@ export default function StudentDetail() {
     const [timelineSaving, setTimelineSaving] = useState(false);
     const [timelineError, setTimelineError] = useState('');
 
-    const canUseTimeline = [ROLE.ADMIN, ROLE.STAFF].includes(role);
+    const canUseTimeline = [ROLE.ADMIN, ROLE.STAFF, ROLE.TEACHER].includes(role);
 
     const loadTimeline = useCallback(async () => {
-        if (!studentId || !canUseTimeline) {
+        if (!student || !canUseTimeline) {
             setTimeline([]);
             return;
         }
         setTimelineLoading(true);
         setTimelineError('');
         try {
-            setTimeline(await fetchStaffTimelineByStudent(db, studentId, { limitCount: 20 }));
+            setTimeline(await fetchStaffTimelineByStudent(db, student, { limitCount: 20 }));
         } catch (loadError) {
             console.error('[StudentDetail] staffTimeline load failed', loadError);
             setTimelineError('교직원 타임라인을 불러오지 못했습니다.');
         } finally {
             setTimelineLoading(false);
         }
-    }, [studentId, canUseTimeline]);
+    }, [student, canUseTimeline]);
 
     useEffect(() => {
         let mounted = true;
@@ -414,8 +418,17 @@ export default function StudentDetail() {
                 setAttendances(attendanceRows.filter((item) => isSameStudentByAnyKey(item, loadedStudent)));
                 setAttendanceCursors(attendancePage.cursors);
                 setAttendanceHasMore(attendancePage.hasMore);
-                setGrades(gradeRows.filter((item) => isSameStudentByAnyKey(item, loadedStudent)));
-                setHomeworkResults(homeworkRows.filter((item) => isSameStudentByAnyKey(item, loadedStudent)));
+                const matchedGrades = gradeRows.filter((item) => (
+                    isSameStudentByAnyKey(item, loadedStudent)
+                    && testRows.some((test) => String(firstValue(item, ['testId', 'testDocId'])) === String(test.id))
+                ));
+                const matchedHomework = homeworkRows.filter((item) => isSameStudentByAnyKey(item, loadedStudent));
+                if (process.env.NODE_ENV !== 'production') {
+                    console.log('[studentDetail][grades] matched count', matchedGrades.length);
+                    console.log('[studentDetail][homework] matched count', matchedHomework.length);
+                }
+                setGrades(matchedGrades);
+                setHomeworkResults(matchedHomework);
                 setClinicLogs(clinicRows.filter((item) => isSameStudentByAnyKey(item, loadedStudent)));
                 setClinicCursors(clinicPage.cursors);
                 setClinicHasMore(clinicPage.hasMore);
@@ -440,10 +453,14 @@ export default function StudentDetail() {
 
     const classMap = useMemo(() => new Map(classes.map((item) => [String(item.id), item])), [classes]);
     const testMap = useMemo(() => new Map(tests.map((item) => [String(item.id), item])), [tests]);
-    const assignmentMap = useMemo(() => new Map(homeworkAssignments.map((item) => [
+    const activeHomeworkAssignments = useMemo(
+        () => homeworkAssignments.filter((item) => !isClosedClass(classMap.get(getClassId(item)))),
+        [homeworkAssignments, classMap],
+    );
+    const assignmentMap = useMemo(() => new Map(activeHomeworkAssignments.map((item) => [
         String(item.id || item.assignmentId),
         item,
-    ])), [homeworkAssignments]);
+    ])), [activeHomeworkAssignments]);
     const sortedClasses = useMemo(() => sortClassesWithClosedLast(classes), [classes]);
     const sortedAttendances = useMemo(
         () => sortNewest(attendances, ['date', 'lessonDate', 'createdAt']),
@@ -482,10 +499,20 @@ export default function StudentDetail() {
         return start && end ? total + Math.max(0, Math.round((end - start) / 60000)) : total;
     }, 0), [clinicLogs]);
 
-    const homeworkRows = useMemo(() => sortNewest(homeworkResults.map((result) => {
-        const assignmentId = String(firstValue(result, ['assignmentId', 'homeworkAssignmentId'], ''));
-        return { ...assignmentMap.get(assignmentId), ...result };
-    }), ['assignedDate', 'date', 'createdAt']), [homeworkResults, assignmentMap]);
+    const homeworkRows = useMemo(() => sortNewest(homeworkResults.flatMap((result) => {
+        const assignmentId = String(firstValue(result, ['assignmentId', 'homeworkAssignmentId', 'id'], ''));
+        const assignment = assignmentMap.get(assignmentId);
+        if (!assignment) return [];
+        const questionNumbers = Array.isArray(assignment.questionNumbers) ? assignment.questionNumbers : [];
+        return [{
+            ...assignment,
+            ...result,
+            results: normalizeHomeworkResultMapForDisplay(result.results || {}, questionNumbers, {
+                assignmentId,
+                studentId: student?.id,
+            }),
+        }];
+    }), ['assignedDate', 'date', 'createdAt']), [homeworkResults, assignmentMap, student?.id]);
 
     const actor = useMemo(() => ({
         uid: profileDocId || user?.uid || '',

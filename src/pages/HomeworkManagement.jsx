@@ -8,7 +8,7 @@ import HomeworkResultsModal from '../utils/modals/HomeworkResultsModal';
 import { buildAssignmentSummary, classifyHomeworkResultKeyMode, computeHomeworkProgress, getAssignmentQuestionNumbers, getClassAssignments, getSelectedAssignment, normalizeHomeworkResultMapForDisplay, resolveAssignmentStudentIds, resolveAssignmentTypeLabel, resolveAssignmentType } from '../domain/homework/homework.service';
 import { buildHomeworkWrongNoteText } from '../domain/homework/homeworkWrongNote.service';
 import { db } from '../firebase/client';
-import { getDefaultClassId } from '../utils/classStatus';
+import { getDefaultClassId, isClosedClass } from '../utils/classStatus';
 import { useClassStudents } from '../utils/useClassStudents';
 import { filterRosterByWithdrawDate } from '../utils/rosterFilter';
 import { buildStudentParentPhoneLast4Map, formatStudentNameWithParentLast4 } from '../utils/parentPhone';
@@ -77,7 +77,11 @@ export default function HomeworkManagement({
     students = [],
     parents = [],
 }) {
-    const [selectedClassId, setSelectedClassId] = useState(() => getDefaultClassId(classes));
+    const activeClasses = useMemo(
+        () => (Array.isArray(classes) ? classes : []).filter((cls) => !isClosedClass(cls)),
+        [classes],
+    );
+    const [selectedClassId, setSelectedClassId] = useState(() => getDefaultClassId(activeClasses));
     const [isAssignmentModalOpen, setIsAssignmentModalOpen] = useState(false);
     const [assignmentToEdit, setAssignmentToEdit] = useState(null);
     const [selectedAssignmentId, setSelectedAssignmentId] = useState(null);
@@ -100,19 +104,22 @@ export default function HomeworkManagement({
     );
 
     useEffect(() => {
-        if (!classes || classes.length === 0) return;
-        if (selectedClassId && classes.some(c => String(c.id) === String(selectedClassId))) return;
-        setSelectedClassId(getDefaultClassId(classes));
-    }, [classes, selectedClassId]);
+        if (activeClasses.length === 0) {
+            setSelectedClassId(null);
+            return;
+        }
+        if (selectedClassId && activeClasses.some(c => String(c.id) === String(selectedClassId))) return;
+        setSelectedClassId(getDefaultClassId(activeClasses));
+    }, [activeClasses, selectedClassId]);
 
-    const selectedClass = classes.find(c => String(c.id) === String(selectedClassId));
+    const selectedClass = activeClasses.find(c => String(c.id) === String(selectedClassId));
     const classAssignments = useMemo(
         () => getClassAssignments(homeworkAssignments, selectedClassId),
         [homeworkAssignments, selectedClassId]
     );
 
     const allAssignments = useMemo(() => {
-        const classById = new Map((classes || []).map((cls) => [String(cls.id), cls]));
+        const classById = new Map(activeClasses.map((cls) => [String(cls.id), cls]));
         return (Array.isArray(homeworkAssignments) ? homeworkAssignments : []).map((assignment, index) => {
             const classId = String(assignment?.classId || assignment?.class || '');
             const cls = classById.get(classId);
@@ -122,8 +129,8 @@ export default function HomeworkManagement({
                 classId,
                 className: cls?.name || '',
             };
-        });
-    }, [homeworkAssignments, classes]);
+        }).filter((assignment) => classById.has(assignment.classId));
+    }, [homeworkAssignments, activeClasses]);
 
     const selectedAssignment = useMemo(
         () => getSelectedAssignment(classAssignments, selectedAssignmentId),
@@ -573,7 +580,7 @@ export default function HomeworkManagement({
             <div className="grid gap-4 xl:grid-cols-[320px,1fr]">
                 <div className="space-y-4">
                     <ClassSelectionPanel
-                        classes={classes}
+                        classes={activeClasses}
                         selectedClassId={selectedClassId}
                         setSelectedClassId={handleClassSelectWrapper}
                         handleClassSave={handleSaveClass}
