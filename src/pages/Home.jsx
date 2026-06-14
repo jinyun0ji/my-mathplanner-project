@@ -6,8 +6,13 @@ import useAuth from '../auth/useAuth';
 import { isAdminRole, isStaffOrTeachingRole } from '../constants/roles';
 import { fetchStaffTimeline as fetchStaffTimelineThreads } from '../domain/staffTimeline/staffTimeline.service';
 import StaffTimelineThreadCard from '../components/StaffTimeline/StaffTimelineThreadCard';
+import TodayWorkBriefing from '../components/dashboard/TodayWorkBriefing';
+import StaffTasksPanel from '../components/dashboard/StaffTasksPanel';
 
-export default function Home({ onQuickAction, onCreateLinkCode, userRole }) {
+export default function Home({
+    onQuickAction, onCreateLinkCode, userRole, classes = [], students = [],
+    lessonLogs = [], attendanceLogs = [], lessonReports = [],
+}) {
     const { user, userProfile } = useAuth();
     const [linkStudentId, setLinkStudentId] = useState('');
     const [linkCodeResult, setLinkCodeResult] = useState('');
@@ -301,6 +306,19 @@ export default function Home({ onQuickAction, onCreateLinkCode, userRole }) {
                 </div>
             )} */}
 
+            {canAccessStaffTimeline && (
+                <>
+                    <TodayWorkBriefing
+                        classes={classes}
+                        students={students}
+                        lessonLogs={lessonLogs}
+                        attendanceLogs={attendanceLogs}
+                        lessonReports={lessonReports}
+                        onNavigate={onQuickAction}
+                    />
+                    <StaffTasksPanel actor={timelineActor} />
+                </>
+            )}
 
             {canAccessStaffTimeline && (
                 <section className="flex flex-col gap-4 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">

@@ -8,6 +8,7 @@ import { Modal } from '../components/common/Modal';
 import { db } from '../firebase/client';
 import { buildStudentParentPhoneLast4Map, formatStudentNameWithParentLast4 } from '../utils/parentPhone';
 import { getStudentGradeLabel } from '../utils/gradeUtils';
+import { formatClassLabel, sortClassesWithClosedLast } from '../utils/classStatus';
 
 const RETIRE_REASONS = ['중도퇴원', '전반'];
 
@@ -197,7 +198,7 @@ export default function StudentManagement({
     const normalizedStudents = useMemo(() => Array.isArray(students) ? students : [], [students]);
 
     const classOptions = useMemo(() => {
-        return (Array.isArray(classes) ? classes : []).filter((item) => item?.id && item?.name);
+        return sortClassesWithClosedLast(classes).filter((item) => item?.id && item?.name);
     }, [classes]);
 
     const statusOptions = useMemo(() => {
@@ -369,7 +370,7 @@ export default function StudentManagement({
                                 <option value="all">전체</option>
                                 {classOptions.map((option) => (
                                     <option key={option.id} value={option.id}>
-                                        {option.name}
+                                        {formatClassLabel(option)}
                                     </option>
                                 ))}
                             </select>

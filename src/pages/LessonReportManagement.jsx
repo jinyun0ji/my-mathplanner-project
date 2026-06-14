@@ -15,6 +15,7 @@ import {
 import { getLinkedParentAuthUids } from '../utils/parentLinking';
 import { filterRosterByWithdrawDate } from '../utils/rosterFilter';
 import { hasClassOnDate, isClosedForClass } from '../utils/helpers';
+import { formatClassLabel, sortClassesWithClosedLast } from '../utils/classStatus';
 
 const pad2 = (value) => String(value).padStart(2, '0');
 
@@ -92,7 +93,7 @@ export default function LessonReportManagement({
   const [localReportMap, setLocalReportMap] = useState({});
 
   const availableClasses = useMemo(
-    () => (Array.isArray(classes) ? classes.filter((item) => item?.id) : []),
+    () => sortClassesWithClosedLast(classes).filter((item) => item?.id),
     [classes],
   );
 
@@ -709,7 +710,7 @@ export default function LessonReportManagement({
         <div className="grid gap-2 md:grid-cols-3">
           <select value={selectedClassId} onChange={(e) => setSelectedClassId(e.target.value)} className="border rounded p-2 text-sm">
             <option value="">클래스 선택</option>
-            {availableClasses.map((cls) => <option key={cls.id} value={cls.id}>{cls.name}</option>)}
+            {availableClasses.map((cls) => <option key={cls.id} value={cls.id}>{formatClassLabel(cls)}</option>)}
           </select>
           <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value || todayYmd())} className="border rounded p-2 text-sm" />
           <div className="text-sm text-gray-600 flex items-center">총 {classStudents.length}명</div>
@@ -825,7 +826,7 @@ export default function LessonReportManagement({
                     {classStudents.map((student) => <option key={student.id} value={student.id}>{student.name || student.id}</option>)}
                   </select>
                   <select value={draft.classId} onChange={(e) => handleDraftSelectionChange({ classId: e.target.value })} className="border rounded p-2 text-sm">
-                    {availableClasses.map((cls) => <option key={cls.id} value={cls.id}>{cls.name}</option>)}
+                    {availableClasses.map((cls) => <option key={cls.id} value={cls.id}>{formatClassLabel(cls)}</option>)}
                   </select>
                   <input type="date" value={draft.lessonDate} onChange={(e) => handleDraftSelectionChange({ lessonDate: e.target.value || todayYmd() })} className="border rounded p-2 text-sm" />
                 </div>

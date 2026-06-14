@@ -1257,6 +1257,10 @@ video {
   min-height: 82px;
 }
 
+.min-h-12{
+  min-height: 3rem;
+}
+
 .w-0{
   width: 0px;
 }
@@ -2869,6 +2873,11 @@ video {
 .py-8{
   padding-top: 2rem;
   padding-bottom: 2rem;
+}
+
+.py-7{
+  padding-top: 1.75rem;
+  padding-bottom: 1.75rem;
 }
 
 .pb-1{
@@ -4564,6 +4573,10 @@ body{
     grid-template-columns: 2fr auto;
   }
 
+  .md\:grid-cols-6{
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+
   .md\:flex-row{
     flex-direction: row;
   }
@@ -4786,6 +4799,10 @@ body{
 
   .xl\:grid-cols-2{
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .xl\:grid-cols-\[1fr_1\.2fr\]{
+    grid-template-columns: 1fr 1.2fr;
   }
 }
 

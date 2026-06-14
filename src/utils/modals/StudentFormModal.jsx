@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Modal } from '../../components/common/Modal';
 import { getBirthYearFromGradeLabel, normalizeBirthYear } from '../gradeUtils';
+import { formatClassLabel, isClosedClass, sortClassesWithClosedLast } from '../classStatus';
 
 export const StudentFormModal = ({ isOpen, onClose, student = null, allClasses, onSave }) => {
   const [name, setName] = useState('');
@@ -16,7 +17,7 @@ export const StudentFormModal = ({ isOpen, onClose, student = null, allClasses, 
   const [registeredDate, setRegisteredDate] = useState('');
 
   // ✅ [수정] 필터 제거 (모든 클래스가 나오도록 수정)
-  const availableClasses = allClasses;
+  const availableClasses = sortClassesWithClosedLast(allClasses);
 
   useEffect(() => {
     if (student) {
@@ -145,7 +146,10 @@ export const StudentFormModal = ({ isOpen, onClose, student = null, allClasses, 
                       : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-100'
                   }`}
                 >
-                  {cls.name}
+                  {formatClassLabel(cls)}
+                  {isClosedClass(cls) && (
+                    <span className="ml-1 rounded bg-gray-200 px-1 text-[10px] text-gray-600">종강</span>
+                  )}
                 </button>
               )) : <span className="text-xs text-gray-400">등록된 클래스가 없습니다.</span>}
             </div>

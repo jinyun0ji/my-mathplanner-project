@@ -1939,7 +1939,16 @@ export default function AppRoutes({ user, role, studentIds }) {
   };
 
   const handleQuickAction = (key) => {
-      const map = { newStudent: 'students', announcement: 'communication', payment: 'payment', worklog: 'communication', attendance: 'attendance', clinic: 'clinic' };
+      const map = {
+          newStudent: 'students',
+          announcement: 'communication',
+          payment: 'payment',
+          worklog: 'communication',
+          attendance: 'attendance',
+          clinic: 'clinic',
+          lessons: 'lessons',
+          lessonReports: 'lessonReports',
+      };
       if (map[key]) handlePageChange(map[key]);
   };
 
@@ -2070,7 +2079,7 @@ export default function AppRoutes({ user, role, studentIds }) {
             )}
         >
             <Route index element={<Navigate to={PAGE_ROUTES.lessons} replace />} />
-            <Route path="home" element={<Home onQuickAction={handleQuickAction} onCreateStaffUser={managementProps.onCreateStaffUser} onCreateLinkCode={managementProps.onCreateLinkCode} userRole={role} />} />
+            <Route path="home" element={<Home {...managementProps} onQuickAction={handleQuickAction} onCreateStaffUser={managementProps.onCreateStaffUser} onCreateLinkCode={managementProps.onCreateLinkCode} userRole={role} />} />
             <Route path="lessons" element={<LessonManagement {...managementProps} />} />
             <Route path="attendance" element={<AttendanceManagement {...managementProps} />} />
             <Route path="students" element={<StudentManagement {...managementProps} />} />

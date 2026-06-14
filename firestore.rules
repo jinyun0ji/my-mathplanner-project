@@ -544,6 +544,10 @@ service cloud.firestore {
     match /staffTimeline/{docId}/replies/{replyId} {
       allow read, list, create, update, delete: if isStaffOrAdminOrTeacher();
     }
+
+    match /staffTasks/{taskId} {
+      allow read, list, create, update, delete: if isStaffOrAdminOrTeacher();
+    }
     
     // clinicReservations: 학생/부모는 본인 예약 read, 직원은 전체
     match /clinicReservations/{docId} {

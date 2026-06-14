@@ -1,304 +1,174 @@
 diff --git a/firestore.rules b/firestore.rules
-index 5e9f32d24b0b590843b5666059163b3dc1699f88..49d4cf41d96b5659441f2ed8aa2f043eb272db2b 100644
+index 49d4cf41d96b5659441f2ed8aa2f043eb272db2b..457bb844e7944b5b155f0c599494d120a42ca38b 100644
 --- a/firestore.rules
 +++ b/firestore.rules
-@@ -581,58 +581,60 @@ service cloud.firestore {
-         && request.resource.data.level in ['error', 'warn']
-         && request.resource.data.diff({}).affectedKeys().hasOnly([
-           'level',
-           'scope',
-           'action',
-           'message',
-           'code',
-           'context',
-           'createdBy',
-           'createdAt',
-           'app',
-           'route',
-           'build',
-           'userRole'
-         ]);
- 
-       allow update, delete: if false;
+@@ -522,50 +522,54 @@ service cloud.firestore {
+       allow write: if isStaff();
      }
  
-     match /announcements/{docId} {
-       allow read: if signedIn();
- 
-       allow write: if isStaffOrAdminOrTeacher();
-     }
- 
--    match /formulaSubjects/{docId} {
--      allow read: if signedIn();
--      allow create, update, delete: if false;
-+    match /formulaBookSubjects/{docId} {
-+      allow read: if isStaffOrAdminOrTeacher()
-+        || ((isStudent() || isParent()) && resource.data.active == true);
-+      allow create, update, delete: if isStaffOrAdminOrTeacher();
-     }
- 
--    match /formulaConcepts/{docId} {
--      allow read: if signedIn();
--      allow create, update, delete: if false;
-+    match /formulaBookConcepts/{docId} {
-+      allow read: if isStaffOrAdminOrTeacher()
-+        || ((isStudent() || isParent()) && resource.data.active == true);
-+      allow create, update, delete: if isStaffOrAdminOrTeacher();
-     }
- 
-     match /homeworkAssignments/{docId} {
+     match /lessonLogs/{docId} {
        allow read: if signedIn();
        allow write: if isStaffOrAdminOrTeacher();
      }
  
-     match /materials/{docId} {
-       allow read, list: if isStaffOrAdminOrTeacher();
-       allow create, update, delete: if isStaffOrAdminOrTeacher();
-     }
- 
-     match /books/{docId} {
-       allow read, list: if isStaffOrAdminOrTeacher();
-       allow create, update, delete: if isStaffOrAdminOrTeacher();
-     }
- 
-     match /payments/{docId} {
-       allow read, write, list: if isStaffOrAdminOrTeacher();
-       allow create, update, delete: if isStaffOrAdminOrTeacher();
-     }
- 
-     match /grades/{docId} {
+     match /attendanceLogs/{docId} {
        allow read: if signedIn();
        allow write: if isStaffOrAdminOrTeacher();
-diff --git a/functions/scripts/backfillStudentBirthYearFromGrade.js b/functions/scripts/backfillStudentBirthYearFromGrade.js
-new file mode 100644
-index 0000000000000000000000000000000000000000..be978abc88ddd9d6ccfc91b396d9cacb054de27b
---- /dev/null
-+++ b/functions/scripts/backfillStudentBirthYearFromGrade.js
-@@ -0,0 +1,61 @@
-+/* eslint-disable no-console */
-+/**
-+ * 기존 학생 grade를 birthYear로 보강합니다. grade 필드는 삭제하지 않습니다.
-+ *
-+ * Dry run: node functions/scripts/backfillStudentBirthYearFromGrade.js
-+ * 실제 반영: node functions/scripts/backfillStudentBirthYearFromGrade.js --write
-+ * 기준 연도 지정: node functions/scripts/backfillStudentBirthYearFromGrade.js --year=2026 --write
-+ */
-+const admin = require('firebase-admin');
+     }
+ 
+     match /clinicLogs/{docId} {
+       allow read: if signedIn();
+       allow write: if isStaffOrAdminOrTeacher();
+     }
+ 
+     match /staffTimeline/{docId} {
+       allow read, list, create, update, delete: if isStaffOrAdminOrTeacher();
+     }
+ 
+     match /staffTimeline/{docId}/replies/{replyId} {
+       allow read, list, create, update, delete: if isStaffOrAdminOrTeacher();
+     }
 +
-+if (!admin.apps.length) admin.initializeApp();
-+
-+const db = admin.firestore();
-+const args = new Set(process.argv.slice(2));
-+const dryRun = !args.has('--write');
-+const yearArg = process.argv.find((arg) => arg.startsWith('--year='));
-+const baseYear = Number(yearArg?.split('=')[1] || new Date().getFullYear());
-+const gradeOffsets = { 고1: 16, 고2: 17, 고3: 18 };
-+const BATCH_SIZE = 400;
-+
-+async function main() {
-+  if (!Number.isInteger(baseYear)) throw new Error('유효한 기준 연도가 필요합니다.');
-+  console.log(`[backfillStudentBirthYearFromGrade] start mode=${dryRun ? 'dry-run' : 'write'} baseYear=${baseYear}`);
-+
-+  const snapshot = await db.collection('users').where('role', '==', 'student').get();
-+  const targets = snapshot.docs.filter((studentDoc) => {
-+    const data = studentDoc.data();
-+    return gradeOffsets[data.grade] && (data.birthYear === null || data.birthYear === undefined || data.birthYear === '');
-+  });
-+
-+  targets.forEach((studentDoc) => {
-+    const data = studentDoc.data();
-+    console.log({
-+      id: studentDoc.id,
-+      name: data.name || '',
-+      grade: data.grade,
-+      birthYear: baseYear - gradeOffsets[data.grade],
-+    });
-+  });
-+
-+  if (!dryRun) {
-+    for (let index = 0; index < targets.length; index += BATCH_SIZE) {
-+      const batch = db.batch();
-+      targets.slice(index, index + BATCH_SIZE).forEach((studentDoc) => {
-+        const data = studentDoc.data();
-+        batch.update(studentDoc.ref, {
-+          birthYear: baseYear - gradeOffsets[data.grade],
-+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-+        });
-+      });
-+      await batch.commit();
++    match /staffTasks/{taskId} {
++      allow read, list, create, update, delete: if isStaffOrAdminOrTeacher();
 +    }
-+  }
-+
-+  console.log(`[backfillStudentBirthYearFromGrade] complete ${dryRun ? 'candidates' : 'updated'}=${targets.length}`);
-+}
-+
-+main().catch((error) => {
-+  console.error('[backfillStudentBirthYearFromGrade] failed', error);
-+  process.exitCode = 1;
-+});
-diff --git a/package.json b/package.json
-index ddb058c84ee95fc24619f8f12c5c4d679516f6db..ff1bafff682d0babbdff866c413784b57d0fa7c5 100644
---- a/package.json
-+++ b/package.json
-@@ -16,46 +16,48 @@
-     "@testing-library/user-event": "^13.5.0",
-     "firebase": "^12.7.0",
-     "katex": "^0.16.28",
-     "lucide-react": "^0.561.0",
-     "react": "^19.1.0",
-     "react-dom": "^19.1.0",
-     "react-katex": "^3.1.0",
-     "react-router-dom": "^6.24.1",
-     "react-scripts": "5.0.1",
-     "react-to-print": "^3.3.0",
-     "react-youtube": "^10.1.0",
-     "tailwind-scrollbar-hide": "^4.0.0",
-     "web-vitals": "^2.1.4"
-   },
-   "scripts": {
-     "start": "react-scripts start",
-     "build": "react-scripts build",
-     "test": "react-scripts test",
-     "eject": "react-scripts eject",
-     "migrate:memos": "node functions/scripts/migrateStudentMemosToStaffMemos.js",
-     "migrate:homework-question-keys:dry": "node functions/scripts/migrateHomeworkResultQuestionNumbers.js",
-     "migrate:homework-question-keys:write": "node functions/scripts/migrateHomeworkResultQuestionNumbers.js --write",
-     "backfill:chat-parent-participants:dry": "node functions/scripts/backfillChatParticipantIdsForParents.js",
-     "backfill:chat-parent-participants:write": "node functions/scripts/backfillChatParticipantIdsForParents.js --write",
-     "backfill:chat-room-types:dry": "node functions/scripts/backfillChatRoomTypes.js",
--    "backfill:chat-room-types:write": "node functions/scripts/backfillChatRoomTypes.js --write"
-+    "backfill:chat-room-types:write": "node functions/scripts/backfillChatRoomTypes.js --write",
-+    "backfill:student-birth-year:dry": "node functions/scripts/backfillStudentBirthYearFromGrade.js",
-+    "backfill:student-birth-year:write": "node functions/scripts/backfillStudentBirthYearFromGrade.js --write"
-   },
-   "eslintConfig": {
-     "extends": [
-       "react-app",
-       "react-app/jest"
-     ]
-   },
-   "browserslist": {
-     "production": [
-       ">0.2%",
-       "not dead",
-       "not op_mini all"
-     ],
-     "development": [
-       "last 1 chrome version",
-       "last 1 firefox version",
-       "last 1 safari version"
-     ]
-   }
- }
+     
+     // clinicReservations: 학생/부모는 본인 예약 read, 직원은 전체
+     match /clinicReservations/{docId} {
+       allow read: if signedIn();
+       allow write: if isStaffOrAdminOrTeacher();
+     }
+ 
+     match /clinicSessions/{docId} {
+       allow read, get, list: if isStaffOrAdminOrTeacher()
+         || (isSignedIn() && isMyStudentUid(resource.data.studentDocId));
+       allow write: if isStaffOrAdminOrTeacher();
+     }
+ 
+     match /clinicNotifications/{docId} {
+       allow read, get, list: if isStaffOrAdminOrTeacher();
+       allow write: if isStaffOrAdminOrTeacher();
+     }
+ 
+     match /workLogs/{docId} {
+       allow read, list: if isStaffOrAdminOrTeacher();
+       allow write: if isStaffOrAdminOrTeacher();
+     }
+     
+     match /auditLogs/{docId} {
+       allow read, list: if isStaffOrAdminOrTeacher();
 diff --git a/src/app/AppRoutes.jsx b/src/app/AppRoutes.jsx
-index 094917fe56a4b0faba217408a6e2ddc679d0536a..60c2041436d3fd64e452604e49b554fb6ef31ea7 100644
+index 60c2041436d3fd64e452604e49b554fb6ef31ea7..042e6e4c8e1286224d0341e7c0d240bda4b8625b 100644
 --- a/src/app/AppRoutes.jsx
 +++ b/src/app/AppRoutes.jsx
-@@ -6,50 +6,51 @@ import {
-     calculateClassSessions, calculateGradeComparison,
-     calculateHomeworkStats
- } from '../utils/helpers';
- import StudentHome from '../pages/StudentHome';
- import Home from '../pages/Home';
- import StudentManagement from '../pages/StudentManagement';
- import StudentDetail from '../pages/StudentDetail';
- import LessonReportManagement from '../pages/LessonReportManagement';
- import LessonManagement from '../pages/LessonManagement';
- import AttendanceManagement from '../pages/AttendanceManagement';
- import HomeworkManagement from '../pages/HomeworkManagement';
- import GradeManagement from '../pages/GradeManagement';
- import ClinicManagement from '../pages/ClinicManagement';
- import ClosureManagement from '../pages/ClosureManagement';
- import InternalCommunication from '../pages/InternalCommunication';
- import PaymentManagement from '../pages/PaymentManagement';
- import ParentHome from '../pages/ParentHome';
- import ParentStudentPicker from '../pages/parent/ParentStudentPicker';
- import OnboardingPage from '../pages/OnboardingPage';
- import StaffManagement from '../pages/admin/StaffManagement';
- import AdminNotificationsPage from '../pages/admin/AdminNotificationsPage';
- import AdminPaymentsPage from '../pages/admin/AdminPaymentsPage';
- import AdminSettingsPage from '../pages/admin/AdminSettingsPage';
- import AdminLogsPage from '../pages/admin/AdminLogsPage';
- import InviteManagementPage from '../pages/admin/InviteManagementPage';
-+import FormulaBookManagement from '../pages/FormulaBookManagement';
- import AdminRoute from '../routes/AdminRoute';
- import StaffOrTeachingRoute from '../routes/StaffOrTeachingRoute';
- import useAuth from '../auth/useAuth';
- import {
-     ROLE,
-     isParentRole,
-     isStudentRole,
-     isAdminRole,
-     isStaffRole,
-     isStaffOrTeachingRole,
-     isViewerGroupRole,
- } from '../constants/roles';
- import { db, functions } from '../firebase/client';
- import { loadStaffDataOnce, loadViewerDataOnce } from '../data/firestoreSync';
- import { createLinkCode, createStaffUser } from '../admin/staffService';
- import { claimStudentLinkCode } from '../parent/linkCodeService';
- import { useParentContext } from '../parent';
- import { logClientError } from '../utils/errorLogger';
- import { addVideoMemo, deleteVideoMemo, updateVideoMemo } from '../domain/memo/videoMemo.service';
- import { getAssignmentQuestionNumbers, normalizeHomeworkResultMapForDisplay } from '../domain/homework/homework.service';
- import {
-     addDoc,
-     arrayRemove,
-     arrayUnion,
-     collection,
-@@ -69,50 +70,51 @@ import {
- } from 'firebase/firestore';
- import { httpsCallable } from 'firebase/functions';
+@@ -1917,51 +1917,60 @@ export default function AppRoutes({ user, role, studentIds }) {
+       } catch (error) {
+           alert('공지사항 전송에 실패했습니다. 권한 또는 네트워크를 확인하세요.');
+       }
+   };
  
- const PAGE_ROUTES = {
-     home: '/home',
-     lessons: '/lessons',
-     lessonReports: '/lesson-reports',
-     students: '/students',
-     attendance: '/attendance',
-     grades: '/grades',
-     homework: '/homework',
-     clinic: '/clinic',
-     payment: '/payment',
-     communication: '/communication',
-     closures: '/closures',
- };
+   const handleCreateStaffUser = async ({ email, role, name }) => {
+       const result = await createStaffUser({ email, role, name });
+       logNotification('success', '직원 계정 생성', `${email} 계정이 생성되었습니다.`);
+       return result;
+   };
  
- const ADMIN_ROUTES = new Set([
-     '/admin/staff',
-     '/admin/invites',
-     '/admin/notifications',
-     '/admin/payments',
-     '/admin/settings',
-     '/admin/logs',
-     '/staff/invites',
-+    '/formula-books',
- ]);
+   const getClassesNames = useCallback((ids) => ids.map(id => classes.find(c => String(c.id) === String(id))?.name).join(', '), [classes]);
  
- const getPageKeyFromPath = (pathname) => {
-     if (pathname === '/lesson-reports' || pathname.startsWith('/lesson-reports/')) return 'lessonReports';
-     if (pathname.startsWith('/students/')) return 'students';
-     if (ADMIN_ROUTES.has(pathname)) return pathname;
-     const entry = Object.entries(PAGE_ROUTES).find(([, path]) => path === pathname);
-     if (entry) return entry[0];
-     return 'lessons';
- };
+   const handlePageChange = (newPage, sId = null, reset = false) => {
+     if (isGlobalDirty && !window.confirm('저장되지 않은 변경사항이 있습니다. 이동하시겠습니까?')) return false;
+     if (reset) setStudentSearchTerm('');
+     setIsGlobalDirty(false);
+     const nextPath = getPathForPage(newPage, sId);
+     if (location.pathname !== nextPath) {
+         navigate(nextPath);
+     }
+     return true;
+   };
  
- const getPathForPage = (pageKey, studentId) => {
-     if (!pageKey) return PAGE_ROUTES.lessons;
-     if (pageKey.startsWith('/')) return pageKey;
-     if (pageKey === 'students' && studentId) return `${PAGE_ROUTES.students}/${studentId}`;
-     return PAGE_ROUTES[pageKey] || PAGE_ROUTES.lessons;
- };
+   const handleQuickAction = (key) => {
+-      const map = { newStudent: 'students', announcement: 'communication', payment: 'payment', worklog: 'communication', attendance: 'attendance', clinic: 'clinic' };
++      const map = {
++          newStudent: 'students',
++          announcement: 'communication',
++          payment: 'payment',
++          worklog: 'communication',
++          attendance: 'attendance',
++          clinic: 'clinic',
++          lessons: 'lessons',
++          lessonReports: 'lessonReports',
++      };
+       if (map[key]) handlePageChange(map[key]);
+   };
  
- const AppShellLayout = ({
-     page,
-     notifications,
-     students,
-     parents,
-     classes,
-     userId,
-@@ -2090,63 +2092,71 @@ export default function AppRoutes({ user, role, studentIds }) {
+   const handleLogout = async () => {
+       await logout();
+       processedAnnouncementIdsRef.current = new Set();
+       navigate('/login', { replace: true });
+   };
+ 
+   const handleClaimLinkCode = async (code) => {
+       await claimStudentLinkCode(code);
+   };
+ 
+   // ✅ B안 기준: 학생은 무조건 users 문서ID(profileDocId)로 식별
+     const studentId = useMemo(() => {
+         if (!isStudentRole(role)) return null;
+         return Array.isArray(studentIds) && studentIds.length > 0
+             ? studentIds[0]
+             : null;
+     }, [role, studentIds]);
+ 
+     const student = useMemo(() => {
+         if (!studentId) return null;
+         return students.find((s) => s.id === studentId) || null;
+     }, [students, studentId]);
+@@ -2048,51 +2057,51 @@ export default function AppRoutes({ user, role, studentIds }) {
+             element={(
+                 <AppShellLayout
+                     page={page}
+                     notifications={notifications}
+                     students={students}
+                     parents={parents}
+                     classes={classes}
+                     userId={userId}
+                     userRole={role}
+                     isSidebarOpen={isSidebarOpen}
+                     isMessengerOpen={isMessengerOpen}
+                     hasNewNotifications={hasNewNotifications}
+                     hasNewMessages={hasNewMessages}
+                     isMobileMenuOpen={isMobileMenuOpen}
+                     setIsMobileMenuOpen={setIsMobileMenuOpen}
+                     setHasNewNotifications={setHasNewNotifications}
+                     setHasNewMessages={setHasNewMessages}
+                     toggleSidebar={toggleSidebar}
+                     toggleMessenger={toggleMessenger}
+                     handlePageChange={handlePageChange}
+                     handleLogout={handleLogout}
+                 />
+             )}
+         >
+             <Route index element={<Navigate to={PAGE_ROUTES.lessons} replace />} />
+-            <Route path="home" element={<Home onQuickAction={handleQuickAction} onCreateStaffUser={managementProps.onCreateStaffUser} onCreateLinkCode={managementProps.onCreateLinkCode} userRole={role} />} />
++            <Route path="home" element={<Home {...managementProps} onQuickAction={handleQuickAction} onCreateStaffUser={managementProps.onCreateStaffUser} onCreateLinkCode={managementProps.onCreateLinkCode} userRole={role} />} />
+             <Route path="lessons" element={<LessonManagement {...managementProps} />} />
+             <Route path="attendance" element={<AttendanceManagement {...managementProps} />} />
+             <Route path="students" element={<StudentManagement {...managementProps} />} />
+             <Route path="students/:studentId" element={<StudentDetail />} />
+             <Route path="lesson-reports" element={<LessonReportManagement {...managementProps} />} />
+             <Route path="students/:studentId/lesson-reports" element={<LessonReportManagement {...managementProps} />} />
+             <Route path="grades" element={<GradeManagement {...managementProps} />} />
+             <Route path="homework" element={<HomeworkManagement {...managementProps} />} />
+             <Route path="clinic" element={<ClinicManagement {...managementProps} />} />
+             <Route path="communication" element={<InternalCommunication {...managementProps} />} />
+             <Route path="payment" element={<PaymentManagement {...managementProps} />} />
+             <Route
+                 path="closures"
+                 element={(
+                     <StaffOrTeachingRoute>
+                         <ClosureManagement {...managementProps} />
+                     </StaffOrTeachingRoute>
+                 )}
              />
              <Route
                  path="admin/staff"
@@ -306,706 +176,669 @@ index 094917fe56a4b0faba217408a6e2ddc679d0536a..60c2041436d3fd64e452604e49b554fb
                      <AdminRoute>
                          <StaffManagement />
                      </AdminRoute>
-                 )}
-             />
-             <Route
-                 path="admin/invites"
-                 element={(
-                     <StaffOrTeachingRoute>
-                         <InviteManagementPage />
-                     </StaffOrTeachingRoute>
-                 )}
-             />
-             <Route
-                 path="staff/invites"
-                 element={(
-                     <StaffOrTeachingRoute>
-                         <InviteManagementPage />
-                     </StaffOrTeachingRoute>
-                 )}
-             />
-+            <Route
-+                path="formula-books"
-+                element={(
-+                    <StaffOrTeachingRoute>
-+                        <FormulaBookManagement />
-+                    </StaffOrTeachingRoute>
-+                )}
-+            />
-             <Route
-                 path="admin/notifications"
-                 element={(
-                     <AdminRoute>
-                         <AdminNotificationsPage />
-                     </AdminRoute>
-                 )}
-             />
-             <Route
-                 path="admin/payments"
-                 element={(
-                     <AdminRoute>
-                         <AdminPaymentsPage />
-                     </AdminRoute>
-                 )}
-             />
-             <Route
-                 path="admin/settings"
-                 element={(
-                     <AdminRoute>
-                         <AdminSettingsPage />
-                     </AdminRoute>
-                 )}
-             />
+diff --git a/src/components/dashboard/StaffTasksPanel.jsx b/src/components/dashboard/StaffTasksPanel.jsx
+new file mode 100644
+index 0000000000000000000000000000000000000000..408549765246469505e6e277b72da0816c5190da
+--- /dev/null
++++ b/src/components/dashboard/StaffTasksPanel.jsx
+@@ -0,0 +1,166 @@
++import React, { useCallback, useEffect, useMemo, useState } from 'react';
++import { addDoc, collection, deleteDoc, doc, getDocs, orderBy, query, serverTimestamp, updateDoc } from 'firebase/firestore';
++import { db } from '../../firebase/client';
++
++const CATEGORIES = { document: '문서', book: '교재', consultation: '상담', admin: '행정', etc: '기타' };
++const emptyForm = { title: '', content: '', category: 'etc', status: 'pending', dueDate: '' };
++const ymd = (date) => {
++    const pad = (value) => String(value).padStart(2, '0');
++    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
++};
++
++export default function StaffTasksPanel({ actor }) {
++    const [tasks, setTasks] = useState([]);
++    const [filter, setFilter] = useState('today');
++    const [form, setForm] = useState(emptyForm);
++    const [editingId, setEditingId] = useState('');
++    const [selectedDate, setSelectedDate] = useState(ymd(new Date()));
++    const [month, setMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
++    const [error, setError] = useState('');
++
++    const load = useCallback(async () => {
++        try {
++            const snapshot = await getDocs(query(collection(db, 'staffTasks'), orderBy('createdAt', 'desc')));
++            setTasks(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })));
++            setError('');
++        } catch (loadError) {
++            console.error('[staffTasks] load failed', loadError);
++            setError('업무 목록을 불러오지 못했습니다.');
++        }
++    }, []);
++
++    useEffect(() => { load(); }, [load]);
++
++    const save = async (event) => {
++        event.preventDefault();
++        if (!form.title.trim()) return;
++        const base = {
++            ...form,
++            title: form.title.trim(),
++            content: form.content.trim(),
++            assigneeIds: actor.uid ? [actor.uid] : [],
++            assigneeNames: actor.name ? [actor.name] : [],
++            updatedAt: serverTimestamp(),
++            updatedBy: actor.uid,
++        };
++        if (editingId) {
++            await updateDoc(doc(db, 'staffTasks', editingId), base);
++        } else {
++            await addDoc(collection(db, 'staffTasks'), {
++                ...base,
++                createdAt: serverTimestamp(),
++                createdBy: actor.uid,
++                createdByName: actor.name,
++                completedAt: null,
++                completedBy: '',
++                completedByName: '',
++            });
++        }
++        setForm(emptyForm);
++        setEditingId('');
++        await load();
++    };
++
++    const complete = async (task) => {
++        const completed = task.status !== 'completed';
++        await updateDoc(doc(db, 'staffTasks', task.id), {
++            status: completed ? 'completed' : 'pending',
++            completedAt: completed ? serverTimestamp() : null,
++            completedBy: completed ? actor.uid : '',
++            completedByName: completed ? actor.name : '',
++            updatedAt: serverTimestamp(),
++            updatedBy: actor.uid,
++        });
++        await load();
++    };
++
++    const remove = async (task) => {
++        if (!window.confirm(`"${task.title}" 업무를 삭제할까요?`)) return;
++        await deleteDoc(doc(db, 'staffTasks', task.id));
++        await load();
++    };
++
++    const today = ymd(new Date());
++    const weekEnd = new Date();
++    weekEnd.setDate(weekEnd.getDate() + (7 - ((weekEnd.getDay() + 6) % 7) - 1));
++    const filtered = tasks.filter((task) => {
++        if (filter === 'today') return task.dueDate === today;
++        if (filter === 'week') return task.dueDate >= today && task.dueDate <= ymd(weekEnd);
++        return true;
++    });
++    const days = useMemo(() => {
++        const first = new Date(month.getFullYear(), month.getMonth(), 1);
++        const start = new Date(first);
++        start.setDate(start.getDate() - start.getDay());
++        return Array.from({ length: 42 }, (_, index) => {
++            const date = new Date(start);
++            date.setDate(start.getDate() + index);
++            return date;
++        });
++    }, [month]);
++    const selectedTasks = tasks.filter((task) => task.dueDate === selectedDate);
++
++    return (
++        <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
++            <div className="mb-4">
++                <h3 className="text-lg font-bold text-gray-900">직원 업무관리</h3>
++                <p className="text-xs text-gray-500">staffTasks · 일반 업무와 마감일 관리</p>
++            </div>
++            {error && <p className="mb-3 rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{error}</p>}
++            <form onSubmit={save} className="mb-5 grid gap-2 rounded-xl bg-gray-50 p-3 md:grid-cols-6">
++                <input className="rounded-lg border px-3 py-2 text-sm md:col-span-2" placeholder="업무 제목" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
++                <select className="rounded-lg border px-2 py-2 text-sm" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
++                    {Object.entries(CATEGORIES).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
++                </select>
++                <input type="date" className="rounded-lg border px-2 py-2 text-sm" value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.target.value })} />
++                <input className="rounded-lg border px-3 py-2 text-sm" placeholder="내용" value={form.content} onChange={(e) => setForm({ ...form, content: e.target.value })} />
++                <button className="rounded-lg bg-[#455fab] px-3 py-2 text-sm font-bold text-white">{editingId ? '수정 저장' : '업무 추가'}</button>
++            </form>
++            <div className="grid gap-5 xl:grid-cols-[1fr_1.2fr]">
++                <div>
++                    <div className="mb-3 flex rounded-lg bg-gray-100 p-1">
++                        {[['today', '오늘 마감'], ['week', '이번 주'], ['all', '전체']].map(([value, label]) => (
++                            <button key={value} type="button" onClick={() => setFilter(value)} className={`flex-1 rounded-md px-2 py-2 text-xs font-bold ${filter === value ? 'bg-white text-[#334a91] shadow-sm' : 'text-gray-500'}`}>{label}</button>
++                        ))}
++                    </div>
++                    <div className="max-h-80 space-y-2 overflow-auto">
++                        {filtered.map((task) => (
++                            <div key={task.id} className="flex items-start gap-2 rounded-lg border p-3">
++                                <input type="checkbox" checked={task.status === 'completed'} onChange={() => complete(task)} className="mt-1" />
++                                <div className="min-w-0 flex-1">
++                                    <p className={`text-sm font-bold ${task.status === 'completed' ? 'text-gray-400 line-through' : 'text-gray-800'}`}>{task.title}</p>
++                                    <p className="text-xs text-gray-500">{CATEGORIES[task.category] || '기타'} · {task.dueDate || '마감일 없음'}</p>
++                                </div>
++                                <button type="button" onClick={() => { setEditingId(task.id); setForm({ title: task.title || '', content: task.content || '', category: task.category || 'etc', status: task.status || 'pending', dueDate: task.dueDate || '' }); }} className="text-xs text-[#455fab]">수정</button>
++                                <button type="button" onClick={() => remove(task)} className="text-xs text-rose-600">삭제</button>
++                            </div>
++                        ))}
++                        {filtered.length === 0 && <p className="py-6 text-center text-sm text-gray-400">해당 업무가 없습니다.</p>}
++                    </div>
++                </div>
++                <div>
++                    <div className="mb-2 flex items-center justify-between">
++                        <button type="button" onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))}>‹</button>
++                        <strong className="text-sm">{month.getFullYear()}년 {month.getMonth() + 1}월</strong>
++                        <button type="button" onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))}>›</button>
++                    </div>
++                    <div className="grid grid-cols-7 overflow-hidden rounded-lg border text-center text-xs">
++                        {'일월화수목금토'.split('').map((day) => <div key={day} className="bg-gray-50 py-2 font-bold">{day}</div>)}
++                        {days.map((date) => {
++                            const dateKey = ymd(date);
++                            const count = tasks.filter((task) => task.dueDate === dateKey).length;
++                            return <button type="button" key={dateKey} onClick={() => setSelectedDate(dateKey)} className={`min-h-12 border-t p-1 ${date.getMonth() !== month.getMonth() ? 'text-gray-300' : ''} ${selectedDate === dateKey ? 'bg-[#f1f4ff]' : ''}`}>
++                                <span>{date.getDate()}</span>{count > 0 && <span className="mx-auto mt-1 block h-1.5 w-1.5 rounded-full bg-[#455fab]" />}
++                            </button>;
++                        })}
++                    </div>
++                    <div className="mt-3 rounded-lg bg-gray-50 p-3">
++                        <p className="mb-2 text-xs font-bold">{selectedDate} 업무</p>
++                        {selectedTasks.map((task) => <p key={task.id} className="text-xs text-gray-600">• {task.title}</p>)}
++                        {selectedTasks.length === 0 && <p className="text-xs text-gray-400">등록된 업무가 없습니다.</p>}
++                    </div>
++                </div>
++            </div>
++        </section>
++    );
++}
+diff --git a/src/components/dashboard/TodayWorkBriefing.jsx b/src/components/dashboard/TodayWorkBriefing.jsx
+new file mode 100644
+index 0000000000000000000000000000000000000000..91d02e750757f28c91f58af9be92a35970b3f4f2
+--- /dev/null
++++ b/src/components/dashboard/TodayWorkBriefing.jsx
+@@ -0,0 +1,105 @@
++import React, { useMemo } from 'react';
++import { hasClassOnDate } from '../../utils/helpers';
++import { isClosedClass, sortClassesWithClosedLast } from '../../utils/classStatus';
++
++const toYmd = (value) => {
++    if (!value) return '';
++    if (typeof value === 'string') return value.match(/\d{4}-\d{2}-\d{2}/)?.[0] || '';
++    const raw = typeof value?.toDate === 'function' ? value.toDate() : value;
++    const date = new Date(raw);
++    if (Number.isNaN(date.getTime())) return '';
++    const pad = (number) => String(number).padStart(2, '0');
++    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
++};
++
++const classIdOf = (item) => String(item?.classId || item?.classDocId || item?.class?.id || '');
++const dateOf = (item) => toYmd(item?.date || item?.lessonDate || item?.dateKey || item?.createdAt);
++const studentClassIds = (student) => (student?.classIds || student?.classes || []).map(String);
++
++export default function TodayWorkBriefing({
++    classes = [],
++    students = [],
++    lessonLogs = [],
++    attendanceLogs = [],
++    lessonReports = [],
++    onNavigate,
++}) {
++    const today = toYmd(new Date());
++    const briefing = useMemo(() => sortClassesWithClosedLast(classes)
++        .filter((cls) => !isClosedClass(cls) && hasClassOnDate(cls, today))
++        .map((cls) => {
++            const classId = String(cls.id);
++            const roster = students.filter((student) => studentClassIds(student).includes(classId));
++            const todayAttendanceIds = new Set(attendanceLogs
++                .filter((log) => classIdOf(log) === classId && dateOf(log) === today)
++                .map((log) => String(log.studentId || log.userId || '')));
++            const reports = lessonReports.filter((report) => classIdOf(report) === classId && dateOf(report) === today);
++            const reportComplete = roster.length > 0 && roster.every((student) => reports.some((report) => (
++                String(report.studentId || '') === String(student.id)
++                && (report.status === 'sent' || report.sendStatus === 'scheduled' || Boolean(report.scheduledSendAt))
++            )));
++            return {
++                cls,
++                required: [
++                    {
++                        label: lessonLogs.some((log) => classIdOf(log) === classId && dateOf(log) === today)
++                            ? '수업일지 작성 완료' : '수업일지 미작성',
++                        complete: lessonLogs.some((log) => classIdOf(log) === classId && dateOf(log) === today),
++                        page: 'lessons',
++                    },
++                    {
++                        label: roster.filter((student) => !todayAttendanceIds.has(String(student.id))).length > 0
++                            ? `출결 미입력 ${roster.filter((student) => !todayAttendanceIds.has(String(student.id))).length}명`
++                            : '출결 입력 완료',
++                        complete: roster.length > 0 && roster.every((student) => todayAttendanceIds.has(String(student.id))),
++                        page: 'attendance',
++                    },
++                    {
++                        label: reportComplete ? '리포트 작성/예약 완료' : '리포트 미작성/미예약',
++                        complete: reportComplete,
++                        page: 'lessonReports',
++                    },
++                ],
++            };
++        }), [attendanceLogs, classes, lessonLogs, lessonReports, students, today]);
++
++    return (
++        <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
++            <div className="mb-4 flex items-center justify-between gap-3">
++                <div>
++                    <h3 className="text-lg font-bold text-gray-900">오늘 업무 브리핑</h3>
++                    <p className="text-xs text-gray-500">{today} 수업 클래스 기준 자동 점검</p>
++                </div>
++                <span className="rounded-full bg-[#f1f4ff] px-3 py-1 text-xs font-bold text-[#334a91]">{briefing.length}개 클래스</span>
++            </div>
++            {briefing.length === 0 ? (
++                <div className="rounded-xl border border-dashed border-gray-200 py-7 text-center text-sm text-gray-500">오늘 예정된 수업이 없습니다.</div>
++            ) : (
++                <div className="grid gap-4 lg:grid-cols-2">
++                    {briefing.map(({ cls, required }) => (
++                        <article key={cls.id} className="rounded-xl border border-gray-200 p-4">
++                            <h4 className="font-bold text-gray-900">{cls.name}</h4>
++                            <div className="mt-3 space-y-2">
++                                {required.map((item) => (
++                                    <button key={item.page} type="button" onClick={() => onNavigate?.(item.page)}
++                                        className="flex w-full items-center gap-2 rounded-lg bg-gray-50 px-3 py-2 text-left text-sm hover:bg-gray-100">
++                                        <input type="checkbox" checked={item.complete} readOnly disabled={!item.complete} className="h-4 w-4" />
++                                        <span className={item.complete ? 'text-emerald-700' : 'font-semibold text-rose-700'}>{item.label}</span>
++                                    </button>
++                                ))}
++                            </div>
++                            <div className="mt-3 border-t pt-3">
++                                <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-gray-400">선택 확인</p>
++                                <div className="flex flex-wrap gap-3 text-xs text-gray-600">
++                                    {['성적 입력', '과제 검사', '과제 출제'].map((label) => (
++                                        <label key={label} className="flex items-center gap-1.5"><input type="checkbox" />{label}</label>
++                                    ))}
++                                </div>
++                            </div>
++                        </article>
++                    ))}
++                </div>
++            )}
++        </section>
++    );
++}
+diff --git a/src/pages/Home.jsx b/src/pages/Home.jsx
+index f191e43effbf8265a7cb45f1136ec24b15da6b4b..8b2ceeed2df40da0272d8a7d8d0352943982b746 100644
+--- a/src/pages/Home.jsx
++++ b/src/pages/Home.jsx
+@@ -1,35 +1,40 @@
+ import React, { useCallback, useEffect, useMemo, useState } from 'react';
+ import { Icon } from '../utils/helpers';
+ import { collection, getDocs, limit, orderBy, query } from 'firebase/firestore';
+ import { db } from '../firebase/client';
+ import useAuth from '../auth/useAuth';
+ import { isAdminRole, isStaffOrTeachingRole } from '../constants/roles';
+ import { fetchStaffTimeline as fetchStaffTimelineThreads } from '../domain/staffTimeline/staffTimeline.service';
+ import StaffTimelineThreadCard from '../components/StaffTimeline/StaffTimelineThreadCard';
++import TodayWorkBriefing from '../components/dashboard/TodayWorkBriefing';
++import StaffTasksPanel from '../components/dashboard/StaffTasksPanel';
  
-             <Route
-                 path="admin/logs"
-                 element={(
-                     <AdminRoute>
-                         <AdminLogsPage />
-                     </AdminRoute>
-                 )}
+-export default function Home({ onQuickAction, onCreateLinkCode, userRole }) {
++export default function Home({
++    onQuickAction, onCreateLinkCode, userRole, classes = [], students = [],
++    lessonLogs = [], attendanceLogs = [], lessonReports = [],
++}) {
+     const { user, userProfile } = useAuth();
+     const [linkStudentId, setLinkStudentId] = useState('');
+     const [linkCodeResult, setLinkCodeResult] = useState('');
+     const [linkStatus, setLinkStatus] = useState('');
+     const [linkSubmitting, setLinkSubmitting] = useState(false);
+     const [notificationLogs, setNotificationLogs] = useState([]);
+     const [logLoading, setLogLoading] = useState(false);
+     const [logError, setLogError] = useState('');
+     const [staffTimelineItems, setStaffTimelineItems] = useState([]);
+     const [staffTimelineLoading, setStaffTimelineLoading] = useState(false);
+     const [staffTimelineError, setStaffTimelineError] = useState('');
+     const [staffTimelineFilter, setStaffTimelineFilter] = useState('pending');
+     const isAdmin = isAdminRole(userRole);
+     const canAccessStaffTimeline = isStaffOrTeachingRole(userRole);
+     const fallbackName = userProfile?.email || user?.email ? (userProfile?.email || user?.email).split('@')[0] : '';
+     const displayName = userProfile?.displayName?.trim()
+         || user?.displayName?.trim()
+         || fallbackName
+         || '사용자';
+ 
+     const fetchLogs = useCallback(async () => {
+         if (!isAdmin || !db) {
+             setNotificationLogs([]);
+             return;
+         }
+@@ -279,50 +284,63 @@ export default function Home({ onQuickAction, onCreateLinkCode, userRole }) {
+                                                         <td className="px-4 py-3 text-gray-600">
+                                                             {eventType}
+                                                         </td>
+                                                         <td className="px-4 py-3 text-gray-500">{sentAt}</td>
+                                                         <td className="px-4 py-3 text-right font-semibold text-gray-800">
+                                                             {targetCount}
+                                                         </td>
+                                                         <td className="px-4 py-3 text-right font-semibold text-rose-600">
+                                                             {failureCount}
+                                                         </td>
+                                                         <td className="px-4 py-3 text-right font-semibold text-emerald-600">
+                                                             {successRate}%
+                                                         </td>
+                                                     </tr>
+                                                 );
+                                             })}
+                                         </tbody>
+                                     </table>
+                                 </div>
+                             )}
+                         </div>
+                     )}
+                 </div>
+             )} */}
+ 
++            {canAccessStaffTimeline && (
++                <>
++                    <TodayWorkBriefing
++                        classes={classes}
++                        students={students}
++                        lessonLogs={lessonLogs}
++                        attendanceLogs={attendanceLogs}
++                        lessonReports={lessonReports}
++                        onNavigate={onQuickAction}
++                    />
++                    <StaffTasksPanel actor={timelineActor} />
++                </>
++            )}
+ 
+             {canAccessStaffTimeline && (
+                 <section className="flex flex-col gap-4 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                         <div className="flex items-center gap-3">
+                             <div className="rounded-xl border border-[#eef2ff] bg-[#f1f4ff] p-2.5 text-[#334a91]">
+                                 <Icon name="clipboard" className="h-5 w-5" />
+                             </div>
+                             <div>
+                                 <h3 className="text-lg font-bold text-gray-800">학생별 교직원 타임라인</h3>
+                                 <p className="text-xs text-gray-500">클리닉 맥락과 후속 댓글을 학생별로 이어서 확인합니다.</p>
+                             </div>
+                         </div>
+                         <span className="self-start rounded-full bg-[#f1f4ff] px-3 py-1 text-xs font-bold text-[#334a91] sm:self-auto">
+                             {staffTimelineItems.length}건
+                         </span>
+                     </div>
+ 
+                     <div className="flex rounded-xl bg-gray-100 p-1" role="group" aria-label="교직원 타임라인 상태 필터">
+                         {[
+                             { value: 'pending', label: '처리대기' },
+                             { value: 'completed', label: '처리완료' },
+                             { value: 'all', label: '전체' },
+                         ].map((filter) => (
+                             <button
+@@ -455,26 +473,26 @@ export default function Home({ onQuickAction, onCreateLinkCode, userRole }) {
+                     </div>
+                 </div>
+ 
+                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                     <div className="flex items-center justify-between mb-4">
+                         <h3 className="text-lg font-bold text-gray-800">업무 브리핑</h3>
+                         <span className="text-xs text-gray-400">현황 요약</span>
+                     </div>
+                     <div className="space-y-3">
+                         {reminders.map((item, idx) => (
+                             <div key={`briefing-${idx}`} className={`flex items-start gap-3 rounded-xl border ${toneStyles[item.tone]} p-3`}>
+                                 <div className={`p-2 rounded-lg ${toneStyles[item.tone]} shadow-inner border`}>
+                                     <Icon name={item.icon} className="w-4 h-4" />
+                                 </div>
+                                 <div className="min-w-0">
+                                     <p className="text-sm font-bold text-gray-800">{item.title}</p>
+                                     <p className="text-xs text-gray-500 mt-0.5">{item.description}</p>
+                                 </div>
+                             </div>
+                         ))}
+                     </div>
+                 </div>
+             </div>
+         </div>
+     );
+-}
+\ No newline at end of file
++}
+diff --git a/src/pages/LessonReportManagement.jsx b/src/pages/LessonReportManagement.jsx
+index 78959233532ac97f9df34eb8a9450db56ad8c3fa..7139010f6c77babc833a616285fbe2b17d4eca8c 100644
+--- a/src/pages/LessonReportManagement.jsx
++++ b/src/pages/LessonReportManagement.jsx
+@@ -1,42 +1,43 @@
+ import React, { useEffect, useMemo, useState } from 'react';
+ import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+ import { addDoc, collection, doc, serverTimestamp, setDoc } from 'firebase/firestore';
+ import { db } from '../firebase/client';
+ import useAuth from '../auth/useAuth';
+ import {
+   buildLessonReportId,
+   LESSON_REPORT_SEND_STATUS,
+   LESSON_REPORT_STATUS,
+   getGradeForLessonReportStudent,
+   summarizeAssignedHomework,
+   summarizeHomework,
+   summarizeTests,
+ } from '../domain/lessonReport/lessonReport.service';
+ import { getLinkedParentAuthUids } from '../utils/parentLinking';
+ import { filterRosterByWithdrawDate } from '../utils/rosterFilter';
+ import { hasClassOnDate, isClosedForClass } from '../utils/helpers';
++import { formatClassLabel, sortClassesWithClosedLast } from '../utils/classStatus';
+ 
+ const pad2 = (value) => String(value).padStart(2, '0');
+ 
+ const toYmd = (value) => {
+   if (!value) return '';
+   if (typeof value === 'string') {
+     const match = value.match(/\d{4}-\d{2}-\d{2}/);
+     if (match) return match[0];
+   }
+ 
+   const dateValue = typeof value?.toDate === 'function' ? value.toDate() : value;
+   const parsed = new Date(dateValue);
+   if (Number.isNaN(parsed.getTime())) return '';
+   return `${parsed.getFullYear()}-${pad2(parsed.getMonth() + 1)}-${pad2(parsed.getDate())}`;
+ };
+ 
+ const todayYmd = () => toYmd(new Date());
+ const resolveClassId = (item) => String(item?.classId || item?.classDocId || item?.class?.id || '');
+ const resolveLessonLogDate = (item) => toYmd(item?.date || item?.lessonDate || item?.dateKey || item?.createdAt || item?.updatedAt);
+ const resolveAttendanceDate = (item) => toYmd(item?.date || item?.lessonDate || item?.dateKey || item?.createdAt || item?.updatedAt);
+ const resolveHomeworkDate = (item) => toYmd(item?.date || item?.assignedDate || item?.lessonDate || item?.createdAt || item?.updatedAt);
+ const resolveTestDate = (item) => toYmd(item?.date || item?.testDate || item?.lessonDate || item?.createdAt || item?.updatedAt);
+ const resolveLessonLogProgress = (log) => String(log?.progress || log?.learnedTopics || log?.lessonSummary || log?.topic || '');
+ 
+ const statusLabel = (status, sendStatus, scheduledSendAt) => {
+@@ -70,51 +71,51 @@ export default function LessonReportManagement({
+   homeworkResults = {},
+   grades = {},
+   lessonReports = [],
+   closures = [],
+   classTestStats = {},
+ }) {
+   const { studentId: routeStudentId } = useParams();
+   const [searchParams] = useSearchParams();
+   const navigate = useNavigate();
+   const { profileDocId } = useAuth();
+   
+   const preselectedStudentId = String(routeStudentId || searchParams.get('studentId') || '');
+   const [selectedClassId, setSelectedClassId] = useState('');
+   const [selectedDate, setSelectedDate] = useState(todayYmd);
+   const [selectedStudentId, setSelectedStudentId] = useState(preselectedStudentId);
+   const [draft, setDraft] = useState(null);
+   const [draftError, setDraftError] = useState('');
+   const [reportSaving, setReportSaving] = useState(false);
+   const [activeTab, setActiveTab] = useState('edit');
+   const [selectedStudentIdsForBulk, setSelectedStudentIdsForBulk] = useState([]);
+   const [sendMode, setSendMode] = useState('now');
+   const [scheduledSendAt, setScheduledSendAt] = useState('');
+   const [localReportMap, setLocalReportMap] = useState({});
+ 
+   const availableClasses = useMemo(
+-    () => (Array.isArray(classes) ? classes.filter((item) => item?.id) : []),
++    () => sortClassesWithClosedLast(classes).filter((item) => item?.id),
+     [classes],
+   );
+ 
+   useEffect(() => {
+     if (selectedClassId) return;
+     if (availableClasses.length === 0) return;
+ 
+     const fromStudent = students.find((item) => String(item.id) === preselectedStudentId);
+     const preferredClassId = getStudentClassIds(fromStudent)[0];
+     setSelectedClassId(String(preferredClassId || availableClasses[0].id));
+   }, [availableClasses, preselectedStudentId, selectedClassId, students]);
+ 
+   const selectedClass = useMemo(
+     () => availableClasses.find((item) => String(item.id) === String(selectedClassId)) || null,
+     [availableClasses, selectedClassId],
+   );
+ 
+   const isSelectedDateLessonDay = useMemo(() => {
+     if (!selectedClass || !selectedDate) return true;
+     if (!hasClassOnDate(selectedClass, selectedDate)) return false;
+     if (isClosedForClass(selectedDate, selectedClass.id, closures)) return false;
+     return true;
+   }, [closures, selectedClass, selectedDate]);
+ 
+   const classStudents = useMemo(() => {
+@@ -687,51 +688,51 @@ export default function LessonReportManagement({
+       }
+       setSelectedStudentIdsForBulk([]);
+     } catch (error) {
+       setDraftError(error?.message || '일괄 전송 중 오류가 발생했습니다.');
+     } finally {
+       setReportSaving(false);
+     }
+   };
+ 
+   return (
+     <div className="space-y-4">
+       <div className="flex flex-wrap items-center justify-between gap-2">
+         <div>
+           <h2 className="text-xl font-bold">수업 리포트 관리</h2>
+           <p className="text-sm text-gray-500">클래스/날짜 기준으로 학생 리포트를 한 번에 처리하세요.</p>
+         </div>
+         <div className="flex gap-2">
+           <button className="px-3 py-2 rounded bg-gray-100" onClick={() => navigate('/students')}>학생 관리</button>
+         </div>
+       </div>
+ 
+       <section className="bg-white border rounded p-4 space-y-3">
+         <div className="grid gap-2 md:grid-cols-3">
+           <select value={selectedClassId} onChange={(e) => setSelectedClassId(e.target.value)} className="border rounded p-2 text-sm">
+             <option value="">클래스 선택</option>
+-            {availableClasses.map((cls) => <option key={cls.id} value={cls.id}>{cls.name}</option>)}
++            {availableClasses.map((cls) => <option key={cls.id} value={cls.id}>{formatClassLabel(cls)}</option>)}
+           </select>
+           <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value || todayYmd())} className="border rounded p-2 text-sm" />
+           <div className="text-sm text-gray-600 flex items-center">총 {classStudents.length}명</div>
+         </div>
+         <div className="flex flex-wrap items-center gap-2">
+           <select value={sendMode} onChange={(e) => setSendMode(e.target.value)} className="border rounded p-2 text-sm">
+             <option value="now">즉시 전송</option>
+             <option value="scheduled">예약 전송</option>
+           </select>
+           {isScheduledMode && (
+             <input
+               type="datetime-local"
+               value={scheduledSendAt}
+               onChange={(e) => setScheduledSendAt(e.target.value)}
+               className="border rounded p-2 text-sm"
              />
-             <Route path="*" element={<Navigate to={PAGE_ROUTES.lessons} replace />} />
-         </Route>
-     </Routes>
+           )}
+           <button
+             className="px-3 py-2 rounded bg-[#455fab] text-white text-sm disabled:opacity-50"
+             onClick={handleBulkSend}
+             disabled={reportSaving || selectedStudentIdsForBulk.length === 0}
+           >
+             선택한 리포트 전송 ({selectedStudentIdsForBulk.length})
+           </button>
+         </div>
+@@ -803,51 +804,51 @@ export default function LessonReportManagement({
+         </div>
+       </section>
+ 
+       <section className="bg-white border rounded p-4 space-y-3">
+         {!draft ? (
+           <p className="text-sm text-gray-500">학생 목록에서 작성/수정 버튼을 눌러 리포트를 편집하세요.</p>
+         ) : (
+           <>
+             <div className="flex items-center justify-between">
+               <p className="text-sm font-semibold">
+                 {students.find((item) => String(item.id) === String(draft.studentId))?.name || draft.studentId} · {selectedClassName}
+               </p>
+               <div className="inline-flex rounded border overflow-hidden">
+                 <button className={`px-3 py-1.5 text-sm ${activeTab === 'edit' ? 'bg-[#455fab] text-white' : 'bg-white text-gray-700'}`} onClick={() => setActiveTab('edit')}>편집</button>
+                 <button className={`px-3 py-1.5 text-sm ${activeTab === 'preview' ? 'bg-[#455fab] text-white' : 'bg-white text-gray-700'}`} onClick={() => setActiveTab('preview')}>미리보기</button>
+               </div>
+               </div>
+ 
+             {activeTab === 'edit' ? (
+               <>
+                 <div className="grid grid-cols-3 gap-2">
+                   <select value={draft.studentId} onChange={(e) => handleDraftSelectionChange({ studentId: e.target.value })} className="border rounded p-2 text-sm">
+                     {classStudents.map((student) => <option key={student.id} value={student.id}>{student.name || student.id}</option>)}
+                   </select>
+                   <select value={draft.classId} onChange={(e) => handleDraftSelectionChange({ classId: e.target.value })} className="border rounded p-2 text-sm">
+-                    {availableClasses.map((cls) => <option key={cls.id} value={cls.id}>{cls.name}</option>)}
++                    {availableClasses.map((cls) => <option key={cls.id} value={cls.id}>{formatClassLabel(cls)}</option>)}
+                   </select>
+                   <input type="date" value={draft.lessonDate} onChange={(e) => handleDraftSelectionChange({ lessonDate: e.target.value || todayYmd() })} className="border rounded p-2 text-sm" />
+                 </div>
+ 
+                 <input value={draft.attendanceStatus || ''} onChange={(e) => handleDraftSelectionChange({ attendanceStatus: e.target.value })} className="border rounded p-2 text-sm w-full" placeholder="출결" />
+                 <textarea
+                   value={draft.learnedTopics || ''}
+                   onChange={(e) => setDraft((prev) => ({ ...prev, learnedTopics: e.target.value, isLearnedTopicsManuallyEdited: true }))}
+                   className="border rounded p-2 text-sm w-full"
+                   rows={4}
+                   placeholder="진도"
+                 />
+                 <p className="text-xs text-gray-500">자동 채움 기준: {draft.classId} · {draft.lessonDate} · {draft.studentId}</p>
+ 
+                 <div>
+                   <p className="text-sm font-semibold mb-1">과제 수행 정도 선택</p>
+                   <div className="space-y-1 max-h-32 overflow-auto">
+                     {selectableHomeworkProgress.map((hw) => (
+                       <label key={hw.id} className="flex items-center gap-2 text-sm">
+                         <input
+                           type="checkbox"
+                           checked={(draft.selectedHomeworkProgressIds || []).includes(hw.id)}
+                           onChange={(e) => setDraft((prev) => ({
+                             ...prev,
+                             selectedHomeworkProgressIds: e.target.checked
+@@ -942,26 +943,26 @@ export default function LessonReportManagement({
+                 {draft.learnedTopics && <p><span className="font-semibold">진도:</span> {draft.learnedTopics}</p>}
+                 {draft.attendanceStatus && <p><span className="font-semibold">출결:</span> {draft.attendanceStatus}</p>}
+                 {previewHomeworkSummary.text?.length > 0 && <p><span className="font-semibold">과제 수행 정도:</span> {previewHomeworkSummary.text.join(', ')}</p>}
+                 {previewTestSummary.text?.length > 0 && (
+                   <div>
+                     <p className="font-semibold">시험</p>
+                     <ul className="list-disc pl-5">
+                       {previewTestSummary.text.map((line, index) => (
+                         <li key={`preview-test-${index}`} className="whitespace-pre-line">{line}</li>
+                       ))}
+                     </ul>
+                   </div>
+                 )}
+                 {previewAssignedHomeworkSummary.items?.length > 0 && <p><span className="font-semibold">이번 수업 숙제:</span> {previewAssignedHomeworkSummary.items.map((item) => item.title).join(', ')}</p>}
+                 {draft.comment && <p><span className="font-semibold">코멘트:</span> {draft.comment}</p>}
+                 {!draft.comment && !draft.learnedTopics && !draft.attendanceStatus && previewHomeworkSummary.text?.length === 0 && previewTestSummary.text?.length === 0 && (
+                   <p className="text-gray-500">표시할 내용이 없습니다.</p>
+                 )}
+               </div>
+             )}
+           </>
+         )}
+       </section>
+     </div>
    );
 -}
 \ No newline at end of file
 +}
-diff --git a/src/components/Student/formulaBook/FormulaBookView.jsx b/src/components/Student/formulaBook/FormulaBookView.jsx
-index 1707208c63eaf7c91f49a02b13205290b2a7d7f0..c98e24cf30ed40395acb2f62a688be7a347b5227 100644
---- a/src/components/Student/formulaBook/FormulaBookView.jsx
-+++ b/src/components/Student/formulaBook/FormulaBookView.jsx
-@@ -1,65 +1,65 @@
- import React, { useEffect, useMemo, useRef, useState } from 'react';
--import { collection, getDocs } from 'firebase/firestore';
-+import { collection, getDocs, query, where } from 'firebase/firestore';
- import { db } from '../../../firebase/client';
- import FormulaConceptModal from './FormulaConceptModal';
- 
- const normalizeText = (value) => String(value || '').trim().toLocaleLowerCase('ko-KR');
- const byOrderThenTitle = (a, b) => (
-     (Number(a.order) || 0) - (Number(b.order) || 0)
-     || String(a.title || '').localeCompare(String(b.title || ''), 'ko')
- );
- 
- const matchesSearch = (concept, normalizedQuery) => {
-     if (!normalizedQuery) return true;
-     const searchableValues = [
-         concept.title,
-         concept.summary,
-         ...(Array.isArray(concept.tags) ? concept.tags : []),
-         ...(Array.isArray(concept.keywords) ? concept.keywords : []),
-     ];
-     return searchableValues.some((value) => normalizeText(value).includes(normalizedQuery));
- };
- 
- export default function FormulaBookView({ initialConceptId = '', onConceptHandled }) {
-     const [subjects, setSubjects] = useState([]);
-     const [concepts, setConcepts] = useState([]);
-     const [selectedSubjectId, setSelectedSubjectId] = useState('');
-     const [selectedConcept, setSelectedConcept] = useState(null);
-     const [search, setSearch] = useState('');
-     const [isLoading, setIsLoading] = useState(true);
-     const [error, setError] = useState('');
-     const handledConceptIdRef = useRef('');
- 
-     useEffect(() => {
-         let isMounted = true;
- 
-         const loadFormulaBook = async () => {
-             try {
-                 const [subjectSnapshot, conceptSnapshot] = await Promise.all([
--                    getDocs(collection(db, 'formulaSubjects')),
--                    getDocs(collection(db, 'formulaConcepts')),
-+                    getDocs(query(collection(db, 'formulaBookSubjects'), where('active', '==', true))),
-+                    getDocs(query(collection(db, 'formulaBookConcepts'), where('active', '==', true))),
-                 ]);
-                 if (!isMounted) return;
- 
-                 setSubjects(subjectSnapshot.docs
-                     .map((item) => ({ id: item.id, ...item.data() }))
-                     .filter((item) => item.active !== false)
-                     .sort(byOrderThenTitle));
-                 setConcepts(conceptSnapshot.docs
-                     .map((item) => ({ id: item.id, ...item.data() }))
-                     .filter((item) => item.active !== false)
-                     .sort(byOrderThenTitle));
-             } catch (loadError) {
-                 console.error('[FormulaBookView] load failed', loadError);
-                 if (isMounted) setError('공식집을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.');
-             } finally {
-                 if (isMounted) setIsLoading(false);
-             }
-         };
- 
-         loadFormulaBook();
-         return () => {
-             isMounted = false;
-         };
-     }, []);
- 
-diff --git a/src/components/StudentHeader.jsx b/src/components/StudentHeader.jsx
-index 5ecf8d3a15e6218b4415910c7d48bc82b0af4090..4a68bf758f76f8a0e1be970f0c33f93ad46a781e 100644
---- a/src/components/StudentHeader.jsx
-+++ b/src/components/StudentHeader.jsx
-@@ -1,38 +1,39 @@
- // src/components/StudentHeader.jsx
- import React from 'react';
- import NotificationsIcon from '@mui/icons-material/Notifications';
- import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
- import logoHorizontal from '../assets/logo/logo-horizontal.png';
-+import { getStudentGradeLabel } from '../utils/gradeUtils';
- 
- export default function StudentHeader({
-     student,
-     onOpenNotifications,
-     onOpenMessages,
-     hasUnread = false,
- }) {
--    const profileText = [student?.school, student?.grade].filter(Boolean).join(' ');
-+    const profileText = [student?.school, student ? getStudentGradeLabel(student) : ''].filter(Boolean).join(' ');
- 
-     return (
-         <header className="bg-white border-b border-gray-100 sticky top-0 z-30 shadow-sm shrink-0">
-             <div className="flex items-center justify-between px-4 py-2 bg-white">
-                 <div className="flex items-center gap-2 min-w-0 text-brand-dark">
-                     <img
-                         src={logoHorizontal}
-                         alt="채수용 수학"
-                         className="h-8 w-auto max-w-[132px] object-contain shrink-0"
-                     />
-                     <div className="min-w-0">
-                         <h1 className="sr-only">채수용 수학</h1>
-                         <p className="text-xs text-gray-500 truncate">{student?.name || '학생'}{profileText ? ` · ${profileText}` : ''}</p>
-                     </div>
-                 </div>
- 
-                 <div className="flex items-center gap-2">
-                     <button
-                         type="button"
-                         onClick={onOpenNotifications}
-                         className="relative p-2 rounded-lg border border-gray-200 text-gray-600 active:scale-95 hover:bg-gray-50"
-                         aria-label="알림센터 열기"
-                     >
-                         <NotificationsIcon style={{ fontSize: 20 }} />
-                         {hasUnread && <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />}
-diff --git a/src/components/tabs/ClassTab.jsx b/src/components/tabs/ClassTab.jsx
-index f411ee7d4f85e233e20d3a587c5b46360331c1d5..63da40ec48663b9db1d1fb68637c4649407ea1c2 100644
---- a/src/components/tabs/ClassTab.jsx
-+++ b/src/components/tabs/ClassTab.jsx
-@@ -1,26 +1,29 @@
- import React from 'react';
- import { Icon } from '../../utils/helpers';
- 
- export default function ClassTab({ myClasses, setSelectedClassId }) {
-     const visibleClasses = Array.isArray(myClasses)
-         ? [...myClasses].sort((a, b) => String(a?.name || '').localeCompare(String(b?.name || '')))
-         : [];
- 
-     return (
-         <div className="space-y-6 animate-fade-in-up pb-24">
--            <h2 className="text-2xl font-bold text-gray-900 px-1">나의 강의실</h2>
-             <div className="grid grid-cols-1 gap-4">
-                 {visibleClasses.length === 0 && (
-                     <div className="text-sm text-gray-500 px-1">
-                         표시할 클래스가 없습니다. (퇴원 처리/권한/데이터 로딩을 확인하세요)
-                     </div>
-                 )}
--                {visibleClasses.map(cls => (
-+                {visibleClasses.map(cls => {
-+                    const legacyTargetGrade = cls?.targetGrade || (cls?.grade ? `고${String(cls.grade).replace(/^고/, '')}` : '');
-+                    const targetGrades = Array.isArray(cls?.targetGrades) && cls.targetGrades.length ? cls.targetGrades : (legacyTargetGrade ? [legacyTargetGrade] : []);
-+                    return (
-                     <div key={cls.id} onClick={() => setSelectedClassId(cls.id)} className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm flex items-center justify-between cursor-pointer active:scale-[0.98] transition-transform active:bg-gray-50">
--                        <div className="flex gap-4 items-center"><div className="bg-brand-light/20 w-14 h-14 rounded-2xl flex items-center justify-center text-brand-main font-bold text-xl shrink-0">{String(cls?.name || '').charAt(0)}</div><div><h4 className="font-bold text-gray-900 text-lg mb-1">{cls?.name}</h4><p className="text-xs text-gray-500 font-medium bg-gray-100 px-2 py-1 rounded-md inline-flex items-center gap-1"><Icon name="users" className="w-3 h-3" /> {cls?.teacher} 선생님</p><p className="text-xs text-gray-400 mt-1 ml-0.5">{cls?.schedule?.days?.join(', ')} {cls?.schedule?.time}</p></div></div><div className="text-gray-300"><Icon name="chevronRight" className="w-6 h-6" /></div>
-+                        <div className="flex gap-4 items-center"><div className="bg-brand-light/20 w-14 h-14 rounded-2xl flex items-center justify-center text-brand-main font-bold text-xl shrink-0">{String(cls?.name || '').charAt(0)}</div><div><h4 className="font-bold text-gray-900 text-base mb-1">{cls?.name}</h4><p className="text-xs text-gray-500 font-medium bg-gray-100 px-2 py-1 rounded-md inline-flex items-center gap-1"><Icon name="users" className="w-3 h-3" /> {cls?.teacher} 선생님</p>{targetGrades.length > 0 && <p className="mt-1 text-xs font-semibold text-[#455fab]">{targetGrades.join(', ')}</p>}<p className="text-xs text-gray-400 mt-1 ml-0.5">{cls?.schedule?.days?.join(', ')} {cls?.schedule?.time}</p></div></div><div className="text-gray-300"><Icon name="chevronRight" className="w-6 h-6" /></div>
-                     </div>
--                ))}
-+                    );
-+                })}
-             </div>
-         </div>
-     );
--};
-\ No newline at end of file
-+};
-diff --git a/src/layout/Sidebar.jsx b/src/layout/Sidebar.jsx
-index ed098ad0d1d0e53dc9fbdb44950287f3e9566375..4af34170386031d70d285e44f0b791f05207d9f0 100644
---- a/src/layout/Sidebar.jsx
-+++ b/src/layout/Sidebar.jsx
-@@ -5,50 +5,51 @@ import useAuth from '../auth/useAuth';
- import { isAdminRole, isStaffGroupRole, isTeachingGroupRole } from '../constants/roles';
- import logoHorizontal from '../assets/logo/logo-horizontal.png';
- 
- export default function Sidebar({ page, setPage, onLogout, isOpen, onClose }) {
-     const { role } = useAuth();
-     const isAdmin = isAdminRole(role);
-     const isStaffGroup = isStaffGroupRole(role);
-     const isTeachingGroup = isTeachingGroupRole(role);
-     const canAccessInvites = isStaffGroup || isTeachingGroup;
-     const roleLabel = isAdminRole(role) ? '관리자' : '직원';
-     // ... (menuItems는 그대로 유지) ...
-     const menuItems = [
-         { name: '대시보드', key: 'home', icon: 'dashboard' },
-         { name: '수업 관리', key: 'lessons', icon: 'fileText' },
-         { name: '학생 관리', key: 'students', icon: 'users' },
-         { name: '수업 리포트 관리', key: 'lessonReports', icon: 'clipboardCheck' },
-         { name: '출결 관리', key: 'attendance', icon: 'calendar' },
-         { name: '성적 관리', key: 'grades', icon: 'barChart' },
-         { name: '과제 관리', key: 'homework', icon: 'clipboardCheck' },
-         { name: '클리닉 관리', key: 'clinic', icon: 'clock' },
-         { name: '휴강 관리', key: 'closures', icon: 'calendarPlus' },
-         { name: '교재/수납', key: 'payment', icon: 'wallet' },
-         { name: '내부 소통', key: 'communication', icon: 'messageSquare' },
-     ];
-     const staffTools = [
-+        { name: '공식집 관리', key: '/formula-books', icon: 'book' },
-         { name: '초대 코드', key: '/staff/invites', icon: 'link' },
-     ];
-     const adminMenuItems = [
-         { name: '직원 관리', key: '/admin/staff', icon: 'users' },
-         { name: '알림 로그', key: '/admin/notifications', icon: 'bell' },
-         { name: '운영 로그', key: '/admin/logs', icon: 'activity' },
-         { name: '결제 관리', key: '/admin/payments', icon: 'creditCard' },
-         { name: '시스템 설정', key: '/admin/settings', icon: 'settings' },
-     ];
-     const adminSectionItems = isAdmin
-         ? [...staffTools, ...adminMenuItems]
-         : isStaffGroup
-             ? staffTools
-             : canAccessInvites
-                 ? staffTools
-                 : [];
-     
-     return (
-         <aside 
-             className={`
-                 /* 기본 스타일 (모바일/태블릿 세로 모드) */
-                 fixed inset-y-0 left-0 z-50 w-64 bg-white h-screen border-r border-gray-200 
-                 flex flex-col justify-between transition-transform duration-300 ease-in-out
-                 
-                 /* 닫혀있으면 왼쪽으로 숨김, 열리면 보임 */
-@@ -112,26 +113,26 @@ export default function Sidebar({ page, setPage, onLogout, isOpen, onClose }) {
-                                         className={`flex items-center w-full px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 group ${
-                                             isActive
-                                                 ? 'bg-[#f1f4ff] text-[#334a91] shadow-sm ring-1 ring-[#cfd8ff]'
-                                                 : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'
-                                         }`}
-                                     >
-                                         <Icon name={item.icon} className={`w-5 h-5 mr-3 transition-colors ${isActive ? 'text-[#455fab]' : 'text-gray-400 group-hover:text-gray-600'}`} />
-                                         {item.name}
-                                     </button>
-                                 );
-                             })}
-                         </>
-                     )}
-                 </nav>
-             </div>
- 
-             {/* 하단 영역 (기존 유지) */}
-             <div className="p-4 border-t border-gray-100">
-                 <button onClick={onLogout} className="flex items-center justify-center w-full px-4 py-2.5 rounded-xl text-sm font-medium text-gray-500 hover:bg-red-50 hover:text-red-600 transition-colors duration-200">
-                     <Icon name="logOut" className="w-4 h-4 mr-2" />
-                     로그아웃
-                 </button>
-             </div>
-         </aside>
-     );
--};
-\ No newline at end of file
-+};
-diff --git a/src/pages/FormulaBookManagement.jsx b/src/pages/FormulaBookManagement.jsx
-new file mode 100644
-index 0000000000000000000000000000000000000000..d3e41dc3881589abf11b58dbeee32f31dc7edd05
---- /dev/null
-+++ b/src/pages/FormulaBookManagement.jsx
-@@ -0,0 +1,102 @@
-+import React, { useEffect, useMemo, useState } from 'react';
-+import {
-+  addDoc, collection, doc, getDocs, serverTimestamp, updateDoc,
-+} from 'firebase/firestore';
-+import useAuth from '../auth/useAuth';
-+import { db } from '../firebase/client';
-+
-+const SUBJECTS_COLLECTION = 'formulaBookSubjects';
-+const CONCEPTS_COLLECTION = 'formulaBookConcepts';
-+const emptySubject = { title: '', order: 0, active: true };
-+const emptyConcept = {
-+  subjectId: '', title: '', summary: '', description: '', tags: '', youtubeEmbedUrl: '', order: 0, active: true,
-+};
-+const sortItems = (items) => [...items].sort((a, b) => Number(a.order || 0) - Number(b.order || 0));
-+
-+export const buildFormulaConceptQrPath = (conceptId) => `/classroom?mode=formula&conceptId=${encodeURIComponent(conceptId)}`;
-+export const buildFormulaConceptQrUrl = (conceptId) => `${window.location.origin}${buildFormulaConceptQrPath(conceptId)}`;
-+
-+export default function FormulaBookManagement() {
-+  const { user } = useAuth();
-+  const [subjects, setSubjects] = useState([]);
-+  const [concepts, setConcepts] = useState([]);
-+  const [subjectForm, setSubjectForm] = useState(emptySubject);
-+  const [conceptForm, setConceptForm] = useState(emptyConcept);
-+  const [editingSubjectId, setEditingSubjectId] = useState('');
-+  const [editingConceptId, setEditingConceptId] = useState('');
-+  const [message, setMessage] = useState('');
-+
-+  const loadData = async () => {
-+    const [subjectSnapshot, conceptSnapshot] = await Promise.all([
-+      getDocs(collection(db, SUBJECTS_COLLECTION)),
-+      getDocs(collection(db, CONCEPTS_COLLECTION)),
-+    ]);
-+    setSubjects(sortItems(subjectSnapshot.docs.map((item) => ({ id: item.id, ...item.data() }))));
-+    setConcepts(sortItems(conceptSnapshot.docs.map((item) => ({ id: item.id, ...item.data() }))));
-+  };
-+
-+  useEffect(() => { loadData().catch(() => setMessage('공식집 데이터를 불러오지 못했습니다.')); }, []);
-+  const subjectTitleMap = useMemo(() => Object.fromEntries(subjects.map((item) => [item.id, item.title])), [subjects]);
-+
-+  const saveSubject = async (event) => {
-+    event.preventDefault();
-+    const payload = { ...subjectForm, order: Number(subjectForm.order) || 0, updatedAt: serverTimestamp(), updatedBy: user?.uid || '' };
-+    if (editingSubjectId) await updateDoc(doc(db, SUBJECTS_COLLECTION, editingSubjectId), payload);
-+    else await addDoc(collection(db, SUBJECTS_COLLECTION), { ...payload, createdAt: serverTimestamp(), createdBy: user?.uid || '' });
-+    setSubjectForm(emptySubject); setEditingSubjectId(''); setMessage('과목을 저장했습니다.'); await loadData();
-+  };
-+
-+  const saveConcept = async (event) => {
-+    event.preventDefault();
-+    const tags = String(conceptForm.tags || '').split(',').map((tag) => tag.trim()).filter(Boolean);
-+    const basePayload = {
-+      ...conceptForm, tags, order: Number(conceptForm.order) || 0, updatedAt: serverTimestamp(), updatedBy: user?.uid || '',
-+    };
-+    if (editingConceptId) {
-+      await updateDoc(doc(db, CONCEPTS_COLLECTION, editingConceptId), {
-+        ...basePayload, qrPath: buildFormulaConceptQrPath(editingConceptId),
-+      });
-+    } else {
-+      const created = await addDoc(collection(db, CONCEPTS_COLLECTION), {
-+        ...basePayload, qrPath: '', createdAt: serverTimestamp(), createdBy: user?.uid || '',
-+      });
-+      await updateDoc(created, { qrPath: buildFormulaConceptQrPath(created.id) });
-+    }
-+    setConceptForm(emptyConcept); setEditingConceptId(''); setMessage('개념을 저장했습니다.'); await loadData();
-+  };
-+
-+  const fieldClass = 'mt-1 w-full rounded-lg border border-gray-300 p-2 text-sm';
-+  return (
-+    <div className="space-y-6 p-4 md:p-8">
-+      <div><h1 className="text-2xl font-bold text-gray-900">공식집 관리</h1><p className="mt-1 text-sm text-gray-500">과목과 개념을 등록하고 QR 진입 링크를 관리합니다.</p></div>
-+      {message && <p className="rounded-lg bg-[#f1f4ff] p-3 text-sm text-[#334a91]">{message}</p>}
-+      <div className="grid gap-6 xl:grid-cols-2">
-+        <section className="rounded-2xl border bg-white p-5 shadow-sm">
-+          <h2 className="font-bold">과목</h2>
-+          <form onSubmit={saveSubject} className="mt-4 grid grid-cols-2 gap-3">
-+            <label className="col-span-2 text-sm">과목명<input className={fieldClass} required value={subjectForm.title} onChange={(e) => setSubjectForm({ ...subjectForm, title: e.target.value })} /></label>
-+            <label className="text-sm">표시 순서<input className={fieldClass} type="number" value={subjectForm.order} onChange={(e) => setSubjectForm({ ...subjectForm, order: e.target.value })} /></label>
-+            <label className="flex items-end gap-2 pb-2 text-sm"><input type="checkbox" checked={subjectForm.active} onChange={(e) => setSubjectForm({ ...subjectForm, active: e.target.checked })} /> 활성</label>
-+            <button className="col-span-2 rounded-lg bg-[#455fab] p-2 text-sm font-bold text-white">{editingSubjectId ? '과목 수정' : '과목 추가'}</button>
-+          </form>
-+          <div className="mt-4 divide-y">{subjects.map((subject) => <button type="button" key={subject.id} onClick={() => { setEditingSubjectId(subject.id); setSubjectForm({ title: subject.title || '', order: subject.order || 0, active: subject.active !== false }); }} className="flex w-full justify-between py-3 text-left text-sm"><span>{subject.title}</span><span className="text-gray-400">{subject.active === false ? '비활성' : '활성'} · {subject.order || 0}</span></button>)}</div>
-+        </section>
-+        <section className="rounded-2xl border bg-white p-5 shadow-sm">
-+          <h2 className="font-bold">개념</h2>
-+          <form onSubmit={saveConcept} className="mt-4 grid grid-cols-2 gap-3">
-+            <label className="col-span-2 text-sm">과목<select required className={fieldClass} value={conceptForm.subjectId} onChange={(e) => setConceptForm({ ...conceptForm, subjectId: e.target.value })}><option value="">선택</option>{subjects.map((subject) => <option key={subject.id} value={subject.id}>{subject.title}</option>)}</select></label>
-+            <label className="col-span-2 text-sm">개념명<input required className={fieldClass} value={conceptForm.title} onChange={(e) => setConceptForm({ ...conceptForm, title: e.target.value })} /></label>
-+            <label className="col-span-2 text-sm">요약<textarea className={fieldClass} value={conceptForm.summary} onChange={(e) => setConceptForm({ ...conceptForm, summary: e.target.value })} /></label>
-+            <label className="col-span-2 text-sm">상세 설명<textarea rows="4" className={fieldClass} value={conceptForm.description} onChange={(e) => setConceptForm({ ...conceptForm, description: e.target.value })} /></label>
-+            <label className="col-span-2 text-sm">태그 (쉼표 구분)<input className={fieldClass} value={conceptForm.tags} onChange={(e) => setConceptForm({ ...conceptForm, tags: e.target.value })} /></label>
-+            <label className="col-span-2 text-sm">YouTube embed URL<input className={fieldClass} value={conceptForm.youtubeEmbedUrl} onChange={(e) => setConceptForm({ ...conceptForm, youtubeEmbedUrl: e.target.value })} /></label>
-+            <label className="text-sm">표시 순서<input type="number" className={fieldClass} value={conceptForm.order} onChange={(e) => setConceptForm({ ...conceptForm, order: e.target.value })} /></label>
-+            <label className="flex items-end gap-2 pb-2 text-sm"><input type="checkbox" checked={conceptForm.active} onChange={(e) => setConceptForm({ ...conceptForm, active: e.target.checked })} /> 활성</label>
-+            <button className="col-span-2 rounded-lg bg-[#455fab] p-2 text-sm font-bold text-white">{editingConceptId ? '개념 수정' : '개념 추가'}</button>
-+          </form>
-+          <div className="mt-4 divide-y">{concepts.map((concept) => <div key={concept.id} className="flex items-center gap-2 py-3 text-sm"><button type="button" className="min-w-0 flex-1 text-left" onClick={() => { setEditingConceptId(concept.id); setConceptForm({ ...emptyConcept, ...concept, tags: Array.isArray(concept.tags) ? concept.tags.join(', ') : '' }); }}><b>{concept.title}</b><span className="ml-2 text-gray-400">{subjectTitleMap[concept.subjectId] || '과목 없음'}</span></button><button type="button" onClick={() => navigator.clipboard.writeText(buildFormulaConceptQrUrl(concept.id)).then(() => setMessage('QR 링크를 복사했습니다.'))} className="rounded-lg border px-2 py-1 text-xs font-semibold text-[#455fab]">QR 링크 복사</button></div>)}</div>
-+        </section>
-+      </div>
-+    </div>
-+  );
-+}
-diff --git a/src/pages/ParentHome.jsx b/src/pages/ParentHome.jsx
-index b1b68955edbbbf478eebe84884920e8878bb0e2a..83585d25c88f8ad8f6d6e5139e491955d148a598 100644
---- a/src/pages/ParentHome.jsx
-+++ b/src/pages/ParentHome.jsx
-@@ -10,50 +10,51 @@ import {
-     calculateGradeComparison,
-     getClinicComment,
-     getClinicDisplayStatus,
-     calculateDurationMinutes,
-     formatDuration,
- } from '../utils/helpers';
- import NotificationsIcon from '@mui/icons-material/Notifications';
- import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
- import ParentSessionReport from './parent/ParentSessionReport'; // ✅ 신규 리포트 컴포넌트
- import ParentMessengerPage from './parent/ParentMessengerPage';
- import ParentBoardPage from './parent/ParentBoardPage';
- import ParentMorePage from './parent/ParentMorePage';
- import { generateSessionReport } from '../utils/reportHelper'; // ✅ 리포트 데이터 생성 헬퍼
- import useNotifications from '../notifications/useNotifications';
- import NotificationList from '../notifications/NotificationList';
- import openNotification from '../notifications/openNotification';
- import { useParentContext } from '../parent';
- import { sortClassesByStatus, getViewerVisibleClassIds } from '../utils/classStatus';
- import { formatNoticeDate, getNoticeDateValue, getNoticePreviewText, sortNoticesForDisplay } from '../utils/notices';
- import { auth, functions } from '../firebase/client';
- import { formatStudentScore, formatTestStatsInline, getTestStatsForDisplay } from '../utils/scoreDisplay';
- import { getViewerTodayClassItems, toLocalYmd } from '../utils/viewerTodaySchedule';
- import { FEATURES } from '../config/features';
- import MathText from '../components/common/MathText';
- import logoHorizontal from '../assets/logo/logo-horizontal.png';
-+import { getStudentGradeLabel } from '../utils/gradeUtils';
- 
- 
- const getItemClassId = (item) => (
-     item?.classId
-     || item?.classDocId
-     || item?.classID
-     || item?.class?.id
-     || item?.class?.classId
-     || item?.class?.docId
-     || item?.class?.classDocId
-     || item?.classRef
-     || item?.class?.ref
-     || ''
- );
- 
- 
- const normalizeViewerClassStatus = (value) => {
-     if (value === 'withdrawn') return '퇴원';
-     if (value === 'active') return '진행중';
-     if (value === '재원') return '진행중';
-     return value;
- };
- 
- const isViewerWithdrawnStatus = (value) => {
-     const normalized = normalizeViewerClassStatus(value);
-@@ -477,51 +478,51 @@ const ParentDashboard = ({
-                             </div>
-                         ))}
-                     </div>
-                 </section>
-             )}
-         </div>
-     );
- };
- 
- // --- 메인 페이지 컴포넌트 ---
- export default function ParentHome({
-     userId, students, parents = [], classes, homeworkAssignments, homeworkResults,
-     attendanceLogs, lessonLogs, notices, tests, grades, classTestStats,
-     videoProgress, clinicLogs, lessonReports = [], onLogout,
-     externalSchedules, onSaveExternalSchedule, onDeleteExternalSchedule,
-     closures,
- }) {
-     const { activeStudentId, studentIds, setActiveStudentId } = useParentContext();
-     // 1. 자녀 데이터 및 선택 로직
-     const initialStudent = students.find(s => s.id === activeStudentId);
-     const [activeChildId, setActiveChildId] = useState(activeStudentId);
-     const pendingStudentSwitchRef = useRef(null);
-     const activeChild = students.find(s => s.id === activeChildId) || initialStudent;
-     const activeChildName = activeChild?.name || '학생';
-     const activeChildSchool = activeChild?.school || '학교 정보 없음';
--    const activeChildGrade = activeChild?.grade || '학년 정보 없음';
-+    const activeChildGrade = getStudentGradeLabel(activeChild);
-     // 2. 데이터 필터링
-     const rawMyClasses = useMemo(() => {
-         if (!Array.isArray(classes) || !activeChildId) return [];
-         const childClassIds = new Set([
-             ...(Array.isArray(activeChild?.classIds) ? activeChild.classIds : []),
-             ...(Array.isArray(activeChild?.classes) ? activeChild.classes.filter((item) => typeof item === 'string') : []),
-         ].map(String));
-         return classes.filter((c) => {
-             const classId = String(c?.id || c?.classId || '');
-             return (c.students || []).includes(activeChildId) || childClassIds.has(classId);
-         });
-     }, [classes, activeChildId, activeChild?.classIds, activeChild?.classes]);
-     const visibleClassIds = useMemo(() => getViewerVisibleClassIds(rawMyClasses, activeChild), [rawMyClasses, activeChild]);
-     const visibleClassIdSet = useMemo(() => new Set(visibleClassIds), [visibleClassIds]);
-     const myClasses = useMemo(
-         () => rawMyClasses.filter((cls) => visibleClassIdSet.has(String(cls?.id || cls?.classId || ''))),
-         [rawMyClasses, visibleClassIdSet],
-     );
-     const isVisibleClassItem = useCallback((item) => {
-         const classId = String(getItemClassId(item) || '');
-         return Boolean(classId && visibleClassIdSet.has(classId));
-     }, [visibleClassIdSet]);
-     const filteredLessonLogs = useMemo(() => {
-         if (!Array.isArray(lessonLogs)) return [];
-         return lessonLogs.filter((log) => isVisibleClassItem(log));
-@@ -1716,26 +1717,26 @@ export default function ParentHome({
-                     <button
-                         onClick={() => setIsNotificationOpen(true)}
-                         className="bg-white text-[#334a91] border border-[#cfd8ff] p-3 rounded-full shadow-lg hover:bg-gray-50 active:scale-90 flex items-center justify-center relative w-12 h-12"
-                     >
-                         <NotificationsIcon style={{ fontSize: 24 }} />
-                         {hasUnread && <span className="absolute top-2 right-2.5 w-2 h-2 bg-red-500 rounded-full ring-1 ring-white"></span>}
-                     </button>
-                 </div>
-             )}
- 
-             <NotificationList
-                 isOpen={isNotificationOpen}
-                 onClose={() => setIsNotificationOpen(false)}
-                 notifications={notifications}
-                 onNotificationClick={handleNotificationClick}
-                 onMarkAllRead={handleMarkAllRead}
-                 unreadCount={unreadCount}
-                 lastReadAt={lastReadAt}
-                 isLoading={isLoading || isMetaLoading}
-                 unreadOnly
-             />
-         </div>
-     );
- }
- 
--// changed: hide ended classes in today’s lessons
-\ No newline at end of file
-+// changed: hide ended classes in today’s lessons
-diff --git a/src/pages/StudentDetail.jsx b/src/pages/StudentDetail.jsx
-index 81123974949e904850ec30ccdaf753bb1491a6e5..8dab23e1b83f7c93addfb16f330679ac00e76a13 100644
---- a/src/pages/StudentDetail.jsx
-+++ b/src/pages/StudentDetail.jsx
-@@ -1,51 +1,52 @@
- import React, { useEffect, useMemo, useState } from 'react';
- import { useNavigate, useParams } from 'react-router-dom';
- import {
-     addDoc,
-     collection,
-     doc,
-     deleteDoc,
-     documentId,
-     getDoc,
-     getDocs,
-     limit,
-     onSnapshot,
-     orderBy,
-     query,
-     serverTimestamp,
-     updateDoc,
-     where,
- } from 'firebase/firestore';
- import { db } from '../firebase/client';
- import useAuth from '../auth/useAuth';
- import { ROLE } from '../constants/roles';
- import AccordionSection from '../components/common/AccordionSection';
- import { Modal } from '../components/common/Modal';
- import StaffMemoPreview from '../components/Student/StaffMemoPreview';
--import { formatGradeLabel, Icon } from '../utils/helpers';
-+import { Icon } from '../utils/helpers';
- import { formatGradeScoreText } from '../domain/grade/grade.service';
-+import { getStudentGradeLabel } from '../utils/gradeUtils';
- import { getLinkedParentAuthUids } from '../utils/parentLinking';
- import { getStudentKeyCandidates, isSameStudentByAnyKey } from '../utils/studentKey';
- 
- const COL = {
-     USERS: 'users',
-     ATTENDANCE: 'attendanceLogs',
-     CLINIC: 'clinicLogs',
-     GRADES: 'grades',
-     HOMEWORK_RESULTS: 'homeworkResults',
-     HOMEWORK_ASSIGNMENTS: 'homeworkAssignments',
-     TESTS: 'tests',
-     CLASSES: 'classes',
-     STAFF_MEMOS: 'staffMemos',
- };
- 
- const STAFF_MEMO_LIMIT = 100;
- 
- const formatDateTime = (value) => {
-     if (!value) return '작성 시각 정보 없음';
-     if (typeof value?.toDate === 'function') {
-         return value.toDate().toLocaleString('ko-KR');
-     }
-     if (value instanceof Date) {
-         return value.toLocaleString('ko-KR');
-     }
-@@ -1126,51 +1127,51 @@ export default function StudentDetail() {
-                                             {classAverage !== null && classMax !== null && ' · '}
-                                             {classMax !== null && `최고점 ${classMax}점`}
-                                         </p>
-                                     )}
-                                 </div>
-                             );
-                         })
-                 ) : (
-                     <p className="rounded-lg border border-dashed border-gray-200 bg-gray-50 p-4 text-xs text-gray-500">
-                         데이터 없음
-                     </p>
-                 )}
-             </div>
-         );
- 
-         return (
-             <div className="space-y-4">
-                 <div className="grid gap-4 lg:grid-cols-[420px,1fr]">
-                     <aside className="space-y-4">
-                         <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-                             <div className="flex flex-wrap items-start justify-between gap-4">
-                                 <div>
-                                     <p className="text-xs text-gray-500">학생 상세</p>
-                                     <h2 className="mt-1 text-2xl font-bold text-gray-900">{student.name || '이름 미상'}</h2>
-                                     <p className="mt-2 text-sm text-gray-600">
--                                        {student.school || '학교 정보 없음'} · {formatGradeLabel(student.grade) || '학년 정보 없음'}
-+                                        {student.school || '학교 정보 없음'} · {getStudentGradeLabel(student)}
-                                     </p>
-                                     <p className="mt-2 text-xs font-semibold text-gray-500">
-                                         현재 반: <span className="text-gray-700">{currentClassName}</span>
-                                     </p>
-                                 </div>
-                                 <div className="flex flex-col items-end gap-2">
-                                     <span className="rounded-full bg-[#f1f4ff] px-3 py-1 text-xs font-semibold text-[#455fab]">
-                                         {student.status || '상태 정보 없음'}
-                                     </span>
-                                     <button
-                                         type="button"
-                                         onClick={() => navigate('/students')}
-                                         className="inline-flex items-center gap-2 text-xs font-semibold text-gray-500 hover:text-gray-700"
-                                     >
-                                         <Icon name="arrow-left" className="h-4 w-4" />
-                                         학생 목록
-                                     </button>
-                                     <button
-                                         type="button"
-                                         onClick={() => document.getElementById('student-sent-lesson-reports')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-                                         className="inline-flex items-center gap-2 text-xs font-semibold text-[#455fab] hover:text-[#334a91]"
-                                     >
-                                         <Icon name="clipboardCheck" className="h-4 w-4" />
-                                         수업 리포트 보기
-                                     </button>
-@@ -1373,26 +1374,26 @@ export default function StudentDetail() {
-                     <AccordionSection title="시험/성적 요약">
-                         <div className="flex justify-end">{gradeLink}</div>
-                         <div className="mt-3">{gradeContent}</div>
-                     </AccordionSection>
-                 </div>
-             </main>
-         </div>
- 
-         {canManageStaffMemos && (
-             <Modal
-                 isOpen={isStaffMemoModalOpen}
-                 onClose={() => setIsStaffMemoModalOpen(false)}
-                 title="직원 메모 타임라인"
-             >
-                 <div className="space-y-6">
-                     {memoForm}
-                     {memoTimeline}
-                 </div>
-             </Modal>
-         )}
-         </div>
-         );
-     };
- 
-     return <div className="space-y-6">{renderStatus()}</div>;
--}
-\ No newline at end of file
-+}
 diff --git a/src/pages/StudentManagement.jsx b/src/pages/StudentManagement.jsx
-index c9c49b592c3694c91e4c63f540f08d9d8a1c10ab..374578a950cda35a3c5ff5390cd445c533d05ada 100644
+index 374578a950cda35a3c5ff5390cd445c533d05ada..2a4da2b6088a5cf6fda84480204885b3a5686922 100644
 --- a/src/pages/StudentManagement.jsx
 +++ b/src/pages/StudentManagement.jsx
-@@ -1,34 +1,35 @@
+@@ -1,35 +1,36 @@
  // src/pages/StudentManagement.jsx
  import React, { useEffect, useState, useMemo, useRef } from 'react';
  import { doc, serverTimestamp, setDoc, Timestamp, updateDoc, arrayRemove, arrayUnion } from 'firebase/firestore';
@@ -1015,7 +848,8 @@ index c9c49b592c3694c91e4c63f540f08d9d8a1c10ab..374578a950cda35a3c5ff5390cd445c5
  import { Modal } from '../components/common/Modal';
  import { db } from '../firebase/client';
  import { buildStudentParentPhoneLast4Map, formatStudentNameWithParentLast4 } from '../utils/parentPhone';
-+import { getStudentGradeLabel } from '../utils/gradeUtils';
+ import { getStudentGradeLabel } from '../utils/gradeUtils';
++import { formatClassLabel, sortClassesWithClosedLast } from '../utils/classStatus';
  
  const RETIRE_REASONS = ['중도퇴원', '전반'];
  
@@ -1041,374 +875,215 @@ index c9c49b592c3694c91e4c63f540f08d9d8a1c10ab..374578a950cda35a3c5ff5390cd445c5
      const [selectedStatus, setSelectedStatus] = useState('all');
      const todayString = useMemo(() => new Date().toISOString().slice(0, 10), []);
      const debugLoggedRef = useRef(false);
-@@ -457,51 +458,51 @@ export default function StudentManagement({
-                                                 <span>{getStudentDisplayName(student)}</span>
-                                                 {student.hasAccount && (
-                                                     <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700">
-                                                         계정 연결
-                                                     </span>
-                                                 )}
-                                             </div>
-                                         </td>
-                                         <td className="px-4 py-4 whitespace-nowrap text-xs text-gray-600">
-                                             {student.id ? (
-                                                 <button
-                                                     type="button"
-                                                     className="hover:underline"
-                                                     title={student.id}
-                                                     onClick={(e) => { e.stopPropagation(); copyToClipboard(student.id); }}
-                                                 >
-                                                     {shortId(student.id)}
-                                                 </button>
-                                             ) : '-'}
-                                         </td>
-                                         <td className="px-4 py-4 text-xs text-gray-600 align-top">
-                                             {renderAccountEmails(student)}
-                                         </td>
-                                         <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-600">{student.school}</td>
-                                         {/* 학년 표시 수정 */}
--                                        <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-600">{student.grade}</td>
-+                                        <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-600">{getStudentGradeLabel(student)}</td>
-                                         <td className="px-4 py-4 text-sm text-gray-600">
-                                             <div className="flex flex-wrap gap-2">
-                                                 {activeClassIds.length > 0 ? activeClassIds.map((classId) => (
-                                                     <div key={classId} className="flex items-center gap-1 px-2 py-1 rounded-full bg-[#f1f4ff] text-[#334a91] text-xs font-semibold border border-[#eef2ff]">
-                                                         <span>{getClassName(classId)}</span>
-                                                         <button
-                                                             type="button"
-                                                             onClick={(e) => { e.stopPropagation(); handleWithdrawClick(student, classId); }}
-                                                             className="text-[10px] text-[#334a91] hover:text-[#334a91]"
-                                                         >
-                                                             퇴원 처리
-                                                         </button>
-                                                     </div>
-                                                 )) : <span className="text-xs text-gray-400">수강 정보 없음</span>}
-                                             </div>
-                                             {withdrawnClassIds.length > 0 && (
-                                             <div className="mt-2 text-xs text-gray-500 space-y-1">
-                                                 <p className="font-semibold text-gray-600">종료된 클래스</p>
-                                                     <div className="flex flex-wrap gap-2">
-                                                         {withdrawnClassIds.map((classId) => (
-                                                             <div key={classId} className="flex items-center gap-1 px-2 py-1 rounded-full bg-gray-100 text-gray-700 border border-gray-200">
-                                                                 <span>{getClassName(classId)}</span>
-                                                                 <span className="text-[10px] font-semibold text-gray-500">수강 종료</span>
-                                                                 <button
-                                                                     type="button"
-@@ -580,51 +581,51 @@ export default function StudentManagement({
-                             const activeClassIds = allClassIds.filter((classId) => !isWithdrawnStatus(classStatusMap[classId]?.status));
-                         const withdrawnClassIds = Object.entries(classStatusMap)
-                             .filter(([, value]) => isWithdrawnStatus(value?.status))
-                             .map(([id]) => id);
-                         const getClassName = (classId) => classes.find((cls) => String(cls.id) === String(classId))?.name || classId;
-                         const withdrawDate = getWithdrawDate(student);
-                         return (
-                             <div
-                                 key={student.id}
-                                 onClick={() => handlePageChange('students', student.id)}
-                                 className="border border-gray-200 rounded-xl p-4 shadow-sm bg-white active:scale-[0.99] transition"
-                             >
-                                 <div className="flex justify-between items-start">
-                                     <div>
-                                         <div className="flex items-center gap-2 flex-wrap">
-                                             <span className="text-base font-bold text-gray-900">{getStudentDisplayName(student)}</span>
-                                             {student.hasAccount && (
-                                                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700">
-                                                     계정 연결
-                                                 </span>
-                                             )}
-                                             <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${isInactiveStatus(student.status) ? 'bg-gray-100 text-gray-500' : 'bg-green-50 text-green-700 ring-1 ring-green-100'}`}>
-                                                 {getStatusLabel(student.status)}
-                                             </span>
-                                         </div>
--                                        <p className="text-xs text-gray-500 mt-1">{student.school} • {student.grade}</p>
-+                                        <p className="text-xs text-gray-500 mt-1">{student.school} • {getStudentGradeLabel(student)}</p>
-                                         <div className="mt-2 space-y-1">
-                                             <div className="flex flex-wrap gap-2 text-sm text-gray-700 leading-snug">
-                                                 {activeClassIds.length > 0 ? activeClassIds.map((classId) => (
-                                                     <span key={classId} className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-[#f1f4ff] text-[#334a91] text-xs font-semibold border border-[#eef2ff]">
-                                                         {getClassName(classId)}
-                                                         <button
-                                                             type="button"
-                                                             onClick={(e) => { e.stopPropagation(); handleWithdrawClick(student, classId); }}
-                                                             className="text-[10px] text-[#334a91]"
-                                                         >
-                                                             퇴원 처리
-                                                         </button>
-                                                     </span>
-                                                 )) : <span className="text-xs text-gray-400">수강 정보 없음</span>}
-                                             </div>
-                                             {withdrawnClassIds.length > 0 && (
-                                                 <div className="text-[11px] text-gray-500">
-                                                     <p className="font-semibold text-gray-600">종료된 클래스</p>
-                                                     <div className="flex flex-wrap gap-2 mt-1">
-                                                         {withdrawnClassIds.map((classId) => (
-                                                             <span key={classId} className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-gray-100 text-gray-700 border border-gray-200">
-                                                                 {getClassName(classId)}
-                                                                 <button
-                                                                     type="button"
-                                                                     onClick={(e) => { e.stopPropagation(); handleRestoreClick(student, classId); }}
-diff --git a/src/utils/gradeUtils.js b/src/utils/gradeUtils.js
-new file mode 100644
-index 0000000000000000000000000000000000000000..ac78dda50ecf5a7dd408f17f75cec7070d5a9e15
---- /dev/null
-+++ b/src/utils/gradeUtils.js
-@@ -0,0 +1,37 @@
-+const HIGH_SCHOOL_GRADE_BY_OFFSET = {
-+  16: '고1',
-+  17: '고2',
-+  18: '고3',
-+};
-+
-+const BIRTH_YEAR_OFFSET_BY_GRADE = {
-+  고1: 16,
-+  고2: 17,
-+  고3: 18,
-+};
-+
-+export const normalizeBirthYear = (value) => {
-+  if (value === null || value === undefined || value === '') return null;
-+  const normalized = Number(String(value).trim());
-+  return Number.isInteger(normalized) && /^\d{4}$/.test(String(normalized)) ? normalized : null;
-+};
-+
-+export const getGradeLabelFromBirthYear = (birthYear, baseDate = new Date(), fallbackGrade = '') => {
-+  const normalizedBirthYear = normalizeBirthYear(birthYear);
-+  const resolvedDate = baseDate instanceof Date ? baseDate : new Date(baseDate);
-+  if (normalizedBirthYear && !Number.isNaN(resolvedDate.getTime())) {
-+    const label = HIGH_SCHOOL_GRADE_BY_OFFSET[resolvedDate.getFullYear() - normalizedBirthYear];
-+    if (label) return label;
-+  }
-+  return String(fallbackGrade || '').trim() || '학년 정보 없음';
-+};
-+
-+export const getBirthYearFromGradeLabel = (gradeLabel, baseYear = new Date().getFullYear()) => {
-+  const offset = BIRTH_YEAR_OFFSET_BY_GRADE[String(gradeLabel || '').trim()];
-+  const normalizedBaseYear = Number(baseYear);
-+  return offset && Number.isInteger(normalizedBaseYear) ? normalizedBaseYear - offset : null;
-+};
-+
-+export const getStudentGradeLabel = (student, baseDate = new Date()) => (
-+  getGradeLabelFromBirthYear(student?.birthYear, baseDate, student?.grade)
-+);
-diff --git a/src/utils/modals/ClassFormModal.jsx b/src/utils/modals/ClassFormModal.jsx
-index cc860b045d1771e5cecc85aae55bff3c10fd3a79..09d385e791efba32e7b54c1e54e3374f2158d233 100644
---- a/src/utils/modals/ClassFormModal.jsx
-+++ b/src/utils/modals/ClassFormModal.jsx
-@@ -1,146 +1,161 @@
- // src/utils/modals/ClassFormModal.jsx
- import React, { useState, useEffect, useMemo } from 'react';
- import { Modal } from '../../components/common/Modal';
- import {
-   WEEKDAY_KEYS,
-   formatWeekdayKo,
-   isValidTimeHHmm,
-   normalizeClassSchedule,
- } from '../../utils/helpers';
+@@ -175,51 +176,51 @@ export default function StudentManagement({
+     }, [pendingQuickAction, clearPendingQuickAction]);
  
- const DEFAULT_TIME = { start: '19:00', end: '21:00' };
+     useEffect(() => {
+         if (debugLoggedRef.current) return;
+         if (!parents?.length && !students?.length) return;
+         debugLoggedRef.current = true;
+         console.log('[staff] parents count=', parents?.length, 'sample=', parents?.slice(0, 3));
+         console.log('[staff] student id sample=', students?.[0]?.id);
+         if (students?.[0]?.id) {
+             const firstStudentId = String(students[0].id);
+             const linkedIdKeys = ['studentIds', 'childrenIds', 'studentDocIds', 'students', 'childIds', 'linkedStudentIds'];
+             const linkedParentsForFirstStudent = (Array.isArray(parents) ? parents : []).filter((parent) => linkedIdKeys.some((key) => {
+                 const linkedIds = normalizeLinkedIds(parent?.[key]);
+                 return linkedIds.includes(firstStudentId);
+             }));
+             console.log(
+                 '[staff] matched parents for first student=',
+                 linkedParentsForFirstStudent,
+             );
+         }
+     }, [parents, students]);
  
- export const ClassFormModal = ({ isOpen, onClose, onSave, classToEdit = null }) => {
-   const [name, setName] = useState('');
-   const [teacher, setTeacher] = useState('');
--  const [grade, setGrade] = useState(2);
-+  const [targetGrades, setTargetGrades] = useState(['고2']);
-   const [schoolType, setSchoolType] = useState('고등학교');
-   const [startDate, setStartDate] = useState('');
-   const [endDate, setEndDate] = useState('');
-   const [schedule, setSchedule] = useState({});
+     const normalizedStudents = useMemo(() => Array.isArray(students) ? students : [], [students]);
  
-   useEffect(() => {
-     if (classToEdit) {
-       setName(classToEdit.name || '');
-       setTeacher(classToEdit.teacher || '');
--      setGrade(classToEdit.grade || 2);
-+      const legacyGrade = classToEdit.targetGrade || (classToEdit.grade ? `고${String(classToEdit.grade).replace(/^고/, '')}` : '');
-+      setTargetGrades(Array.isArray(classToEdit.targetGrades) && classToEdit.targetGrades.length
-+        ? classToEdit.targetGrades
-+        : (legacyGrade ? [legacyGrade] : ['고2']));
-       setSchoolType(classToEdit.schoolType || '고등학교');
-       setStartDate(classToEdit.startDate || '');
-       setEndDate(classToEdit.endDate || '');
-       setSchedule(normalizeClassSchedule(classToEdit));
-     } else {
-       setName('');
-       setTeacher('');
--      setGrade(2);
-+      setTargetGrades(['고2']);
-       setSchoolType('고등학교');
-       setStartDate(new Date().toISOString().slice(0, 10));
-       setEndDate('');
-       setSchedule({});
-     }
-   }, [classToEdit]);
+     const classOptions = useMemo(() => {
+-        return (Array.isArray(classes) ? classes : []).filter((item) => item?.id && item?.name);
++        return sortClassesWithClosedLast(classes).filter((item) => item?.id && item?.name);
+     }, [classes]);
  
-   const selectedDays = useMemo(() => WEEKDAY_KEYS.filter((k) => schedule[k]), [schedule]);
-   const hasInvalidTime = useMemo(
-     () => selectedDays.some((k) => !isValidTimeHHmm(schedule[k]?.start) || !isValidTimeHHmm(schedule[k]?.end)),
-     [schedule, selectedDays],
-   );
+     const statusOptions = useMemo(() => {
+         const options = new Set(
+             normalizedStudents
+                 .map((student) => student?.status)
+                 .filter((status) => Boolean(status)),
+         );
+         return Array.from(options);
+     }, [normalizedStudents]);
  
-   const handleDayToggle = (dayKey) => {
-     setSchedule((prev) => {
-       if (prev[dayKey]) {
-         const next = { ...prev };
-         delete next[dayKey];
-         return next;
-       }
-       return {
-         ...prev,
-         [dayKey]: prev[dayKey] || { ...DEFAULT_TIME },
-       };
-     });
-   };
  
-   const handleTimeChange = (dayKey, field, value) => {
-     setSchedule((prev) => ({
-       ...prev,
-       [dayKey]: {
-         ...(prev[dayKey] || DEFAULT_TIME),
-         [field]: value,
-       },
-     }));
-   };
+     const parentLast4Map = useMemo(
+         () => buildStudentParentPhoneLast4Map(normalizedStudents, parents),
+         [normalizedStudents, parents],
+     );
  
-   const handleSubmit = async (e) => {
-     e.preventDefault();
--    if (!name || !teacher || !startDate || selectedDays.length === 0 || hasInvalidTime) return;
-+    if (!name || !teacher || !startDate || targetGrades.length === 0 || selectedDays.length === 0 || hasInvalidTime) return;
+     const getStudentDisplayName = (student) => formatStudentNameWithParentLast4(student, parentLast4Map);
  
-     const weekdays = selectedDays;
-     const first = weekdays[0];
-     const legacyStart = first ? schedule[first]?.start : '';
-     const legacyEnd = first ? schedule[first]?.end : '';
+     const filteredStudents = useMemo(() => {
+         const term = String(studentSearchTerm || '').trim().toLowerCase();
  
-     const classData = {
-       id: classToEdit ? classToEdit.id : null,
-       name,
-       teacher,
--      grade: Number(grade),
-+      targetGrades,
-       schoolType,
-       startDate,
-       endDate,
-       students: classToEdit ? classToEdit.students : [],
-       schedule,
-       weekdays,
-       dayOfWeek: first || '',
-       time: (legacyStart && legacyEnd) ? `${legacyStart}~${legacyEnd}` : '',
-       startTime: legacyStart || '',
-       endTime: legacyEnd || '',
+         const byClass = (student) => {
+             if (selectedClassId === 'all') return true;
+             const ids = Array.isArray(student.classIds)
+@@ -347,51 +348,51 @@ export default function StudentManagement({
+         } catch (error) {
+             console.error('전반/퇴원 처리 실패', error);
+             alert('저장 중 오류가 발생했습니다.');
+         }
      };
-     try {
-       await onSave(classData, !!classToEdit);
-       onClose();
-     } catch (error) {
-       alert('클래스 저장에 실패했습니다. 권한 또는 네트워크를 확인하세요.');
+ 
+     const closeRetireModal = () => {
+         setRetireModal({ isOpen: false, student: null, classId: null });
+     };
+ 
+     return (
+         <div className="space-y-6">
+             <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                 <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between mb-4">
+                     <div className="grid w-full grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                         <label className="text-xs font-semibold text-gray-600">
+                             클래스
+                             <select
+                                 value={selectedClassId}
+                                 onChange={(e) => setSelectedClassId(e.target.value)}
+                                 className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:border-[#334a91] focus:outline-none focus:ring-2 focus:ring-[#cfd8ff]"
+                             >
+                                 <option value="all">전체</option>
+                                 {classOptions.map((option) => (
+                                     <option key={option.id} value={option.id}>
+-                                        {option.name}
++                                        {formatClassLabel(option)}
+                                     </option>
+                                 ))}
+                             </select>
+                         </label>
+                         <label className="text-xs font-semibold text-gray-600">
+                             상태
+                             <select
+                                 value={selectedStatus}
+                                 onChange={(e) => setSelectedStatus(e.target.value)}
+                                 className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:border-[#334a91] focus:outline-none focus:ring-2 focus:ring-[#cfd8ff]"
+                             >
+                                 <option value="all">전체</option>
+                                 {statusOptions.map((status) => (
+                                     <option key={status} value={status}>
+                                         {status}
+                                     </option>
+                                 ))}
+                             </select>
+                         </label>
+                         <label className="text-xs font-semibold text-gray-600 sm:col-span-2">
+                             검색
+                             <div className="mt-1 flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus-within:border-[#334a91] focus-within:ring-2 focus-within:ring-[#cfd8ff]">
+                                 <Icon name="search" className="w-4 h-4 text-gray-400"/>
+                                 <input
+                                     type="text"
+diff --git a/src/utils/classStatus.js b/src/utils/classStatus.js
+index c003f8f1bc3e2b2b8411823b02deea659151ed5f..9ba5686fd05759dd0282a3a023dffa45ad939b3b 100644
+--- a/src/utils/classStatus.js
++++ b/src/utils/classStatus.js
+@@ -37,50 +37,54 @@ const CLASS_END_DATE_FIELDS = [
+     'finishedAt',
+     'finishDate',
+     'closeDate',
+     'closedAt',
+     'endAt',
+ ];
+ 
+ const readClassEndDateRaw = (classDoc = {}) => {
+     for (const field of CLASS_END_DATE_FIELDS) {
+         if (classDoc?.[field]) return classDoc[field];
      }
-   };
+     return null;
+ };
  
-   return (
-     <Modal isOpen={isOpen} onClose={onClose} title={classToEdit ? '클래스 정보 수정' : '새 클래스 등록'} maxWidth="max-w-xl">
-       <form onSubmit={handleSubmit} className="space-y-4">
-         <div className="grid grid-cols-2 gap-4">
-             <div>
-               <label className="block text-sm font-medium text-gray-700">클래스 이름*</label>
-               <input type="text" value={name} onChange={e => setName(e.target.value)} required className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border" />
-             </div>
-             <div>
-               <label className="block text-sm font-medium text-gray-700">담당 강사*</label>
-               <input type="text" value={teacher} onChange={e => setTeacher(e.target.value)} required className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border" />
-             </div>
-             <div>
-               <label className="block text-sm font-medium text-gray-700">대상 학년*</label>
--              <select value={grade} onChange={e => setGrade(e.target.value)} required className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border">
--                {[1, 2, 3].map(g => <option key={g} value={g}>고{g}</option>)}
--              </select>
-+              <div className="mt-1 flex flex-wrap gap-2 rounded-md border border-gray-300 p-2">
-+                {['고1', '고2', '고3'].map((gradeLabel) => (
-+                  <label key={gradeLabel} className="flex items-center gap-1.5 text-sm">
-+                    <input
-+                      type="checkbox"
-+                      checked={targetGrades.includes(gradeLabel)}
-+                      onChange={() => setTargetGrades((previous) => previous.includes(gradeLabel)
-+                        ? previous.filter((item) => item !== gradeLabel)
-+                        : [...previous, gradeLabel])}
-+                    />
-+                    {gradeLabel}
-+                  </label>
-+                ))}
-+                <button type="button" onClick={() => setTargetGrades(['고1', '고2', '고3'])} className="ml-auto text-xs font-semibold text-[#455fab]">전체</button>
-+              </div>
-             </div>
-             <div>
-               <label className="block text-sm font-medium text-gray-700">학교 구분</label>
-               <input type="text" value={schoolType} onChange={e => setSchoolType(e.target.value)} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border" />
-             </div>
-         </div>
+ const normalizeEndDate = (classDoc) => {
+     const parsed = parseDateValue(readClassEndDateRaw(classDoc));
+     if (!parsed || !isValidDate(parsed)) return null;
+     return getLocalStartOfDay(parsed);
+ };
  
-         <div>
-           <label className="block text-sm font-medium text-gray-700">수업 요일/시간*</label>
-           <div className="mt-2 space-y-2">
-             {WEEKDAY_KEYS.map(dayKey => {
-               const checked = Boolean(schedule[dayKey]);
-               return (
-                 <div key={dayKey} className="grid grid-cols-[auto,1fr,1fr] gap-2 items-center">
-                   <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
-                     <input type="checkbox" checked={checked} onChange={() => handleDayToggle(dayKey)} />
-                     {formatWeekdayKo(dayKey)}
-                   </label>
-                   <input
-                     type="time"
-                     step="60"
-                     value={schedule[dayKey]?.start || ''}
-                     onChange={(e) => handleTimeChange(dayKey, 'start', e.target.value)}
-                     disabled={!checked}
-                     className="rounded-md border-gray-300 shadow-sm p-2 border disabled:bg-gray-100"
-@@ -160,26 +175,26 @@ export const ClassFormModal = ({ isOpen, onClose, onSave, classToEdit = null })
-           {hasInvalidTime && <p className="text-xs text-red-600 mt-1">시간 형식은 HH:mm 이어야 합니다.</p>}
-         </div>
+ const getTodayStart = () => getLocalStartOfDay(new Date());
  
-         <div className="grid grid-cols-2 gap-4">
-           <div>
-             <label className="block text-sm font-medium text-gray-700">개강일*</label>
-             <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} required className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border" />
-           </div>
-           <div>
-             <label className="block text-sm font-medium text-gray-700">종강일 (선택)</label>
-             <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border" />
-           </div>
-         </div>
+ const CLOSED_STATUS_SET = new Set([
+     '종강',
+     '종료',
++    '퇴원',
++    '중도퇴원',
++    '전반',
++    '전반퇴원',
+     '마감',
+     'closed',
+     'close',
+     'completed',
+     'complete',
+     'finished',
+     'inactive',
+ ]);
  
-         <div className="pt-4 border-t flex justify-end space-x-3">
-           <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium rounded-lg text-gray-700 bg-gray-200 hover:bg-gray-300 transition duration-150">
-             취소
-           </button>
-           <button type="submit" disabled={selectedDays.length === 0 || hasInvalidTime} className="px-4 py-2 text-sm font-medium rounded-lg text-white bg-[#455fab] hover:bg-[#3b5198] transition duration-150 shadow-md disabled:opacity-50">
-             {classToEdit ? '수정 사항 저장' : '등록하기'}
-           </button>
-         </div>
-       </form>
-     </Modal>
-   );
+ const normalizeStatusText = (value) => String(value || '').trim().toLowerCase();
+ 
+ const VIEWER_ENDED_STATUS_SET = new Set([
+     '종강',
+     '종료',
+     'ended',
+     'inactive',
+     'finished',
+     'closed',
+     'completed',
+     'complete',
+ ]);
+ 
+ const VIEWER_ACTIVE_STATUS_SET = new Set([
+     '진행중',
+     '재원',
+@@ -274,26 +278,26 @@ export const normalizeYmd = (value) => {
+ 
+ export const isStudentActiveInClassOnDate = (student, classId, lessonDate) => {
+     if (!student || !classId) return true;
+ 
+     const map = student.classStatusMap;
+     const statusInfo = map?.[classId];
+ 
+     if (!statusInfo) return true;
+ 
+     const status = String(statusInfo.status || '');
+     const reason = String(statusInfo.endReason || '');
+ 
+     if (status !== '퇴원' || reason !== '중도퇴원') return true;
+ 
+     const endedAt = normalizeYmd(statusInfo.endedAt);
+     const normalizedLessonDate = normalizeYmd(lessonDate);
+ 
+     if (!endedAt || !normalizedLessonDate) return true;
+ 
+     return normalizedLessonDate <= endedAt;
+ };
+ 
+ export const filterActiveStudentsForLesson = (students, classId, lessonDate) => {
+     const list = Array.isArray(students) ? students : [];
+     return list.filter((student) => isStudentActiveInClassOnDate(student, classId, lessonDate));
 -};
 \ No newline at end of file
 +};
 diff --git a/src/utils/modals/StudentFormModal.jsx b/src/utils/modals/StudentFormModal.jsx
-index f36ac5294fb228bef4f8470dbff50b3f9f2e35fd..220cdc475ce7e7369d3e56808109afc513e6a41a 100644
+index 220cdc475ce7e7369d3e56808109afc513e6a41a..bff832212f2d973793fb7a6f32f5b6c146fc4374 100644
 --- a/src/utils/modals/StudentFormModal.jsx
 +++ b/src/utils/modals/StudentFormModal.jsx
-@@ -1,115 +1,125 @@
+@@ -1,44 +1,45 @@
  // src/utils/modals/StudentFormModal.jsx
  import React, { useState, useEffect } from 'react';
  import { Modal } from '../../components/common/Modal';
--import { Icon } from '../../utils/helpers';
-+import { getBirthYearFromGradeLabel, normalizeBirthYear } from '../gradeUtils';
+ import { getBirthYearFromGradeLabel, normalizeBirthYear } from '../gradeUtils';
++import { formatClassLabel, isClosedClass, sortClassesWithClosedLast } from '../classStatus';
  
  export const StudentFormModal = ({ isOpen, onClose, student = null, allClasses, onSave }) => {
    const [name, setName] = useState('');
    const [school, setSchool] = useState('');
--  const [grade, setGrade] = useState('');
-+  const [birthYear, setBirthYear] = useState('');
+   const [birthYear, setBirthYear] = useState('');
    const [phone, setPhone] = useState('');
    const [parentPhone, setParentPhone] = useState('');
    const [status, setStatus] = useState('재원생');
@@ -1418,15 +1093,15 @@ index f36ac5294fb228bef4f8470dbff50b3f9f2e35fd..220cdc475ce7e7369d3e56808109afc5
    const [registeredDate, setRegisteredDate] = useState('');
  
    // ✅ [수정] 필터 제거 (모든 클래스가 나오도록 수정)
-   const availableClasses = allClasses;
+-  const availableClasses = allClasses;
++  const availableClasses = sortClassesWithClosedLast(allClasses);
  
    useEffect(() => {
      if (student) {
        const nextStatus = student.status === 'inactive' ? '재원생' : (student.status || '재원생');
        setName(student.name);
        setSchool(student.school);
--      setGrade(student.grade);
-+      setBirthYear(student.birthYear || getBirthYearFromGradeLabel(student.grade) || '');
+       setBirthYear(student.birthYear || getBirthYearFromGradeLabel(student.grade) || '');
        setPhone(student.phone);
        setParentPhone(student.parentPhone);
        setStatus(nextStatus);
@@ -1437,8 +1112,7 @@ index f36ac5294fb228bef4f8470dbff50b3f9f2e35fd..220cdc475ce7e7369d3e56808109afc5
        } else {
        setName('');
        setSchool('');
--      setGrade('고1');
-+      setBirthYear('');
+       setBirthYear('');
        setPhone('');
        setParentPhone('');
        setStatus('재원생');
@@ -1446,96 +1120,37 @@ index f36ac5294fb228bef4f8470dbff50b3f9f2e35fd..220cdc475ce7e7369d3e56808109afc5
        setClinicTime('');
        setBookReceived(false);
        setRegisteredDate(new Date().toISOString().slice(0, 10));
-     }
-   }, [student]);
- 
-   const handleClassToggle = (classId) => {
-     setClassSelections(prev => 
-       prev.includes(classId) 
-         ? prev.filter(id => id !== classId)
-         : [...prev, classId]
-     );
-   };
- 
-   const handleSubmit = (e) => {
-     e.preventDefault();
--    if (!name || !school || !grade) return;
-+    const normalizedBirthYear = normalizeBirthYear(birthYear);
-+    const currentYear = new Date().getFullYear();
-+    if (!name || !school || !normalizedBirthYear || normalizedBirthYear < 1900 || normalizedBirthYear > currentYear) return;
-     const studentData = {
-       id: student ? student.id : null,
-       name,
-       school,
--      grade,
-+      birthYear: normalizedBirthYear,
-       phone,
-       parentPhone,
-       status,
-       classes: classSelections,
-       clinicTime: clinicTime || null,
-       bookReceived,
-       registeredDate,
-     };
-     onSave(studentData, !!student);
-     onClose();
-   };
- 
-   return (
-     <Modal isOpen={isOpen} onClose={onClose} title={student ? '학생 정보 수정' : '학생 신규 등록'} maxWidth="max-w-3xl">
-       <form onSubmit={handleSubmit} className="grid grid-cols-2 gap-x-6 gap-y-4">
-         {/* 1열 */}
-         <div className="space-y-4">
-           <div>
-             <label className="block text-sm font-medium text-gray-700">이름*</label>
-             <input type="text" value={name} onChange={e => setName(e.target.value)} required className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-[#455fab] focus:ring-[#455fab] p-2 border" />
-           </div>
-           <div className="grid grid-cols-2 gap-3">
-               <div>
--                <label className="block text-sm font-medium text-gray-700">학년*</label>
--                <select value={grade} onChange={e => setGrade(e.target.value)} required className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-[#455fab] focus:ring-[#455fab] p-2 border">
--                  {['중1','중2','중3','고1','고2','고3'].map(g => <option key={g} value={g}>{g}</option>)}
--                </select>
-+                <label className="block text-sm font-medium text-gray-700">출생년도*</label>
-+                <input
-+                  type="number"
-+                  inputMode="numeric"
-+                  min="1900"
-+                  max={new Date().getFullYear()}
-+                  value={birthYear}
-+                  onChange={e => setBirthYear(e.target.value)}
-+                  placeholder="예) 2009"
-+                  required
-+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-[#455fab] focus:ring-[#455fab] p-2 border"
-+                />
-               </div>
-               <div>
-                 <label className="block text-sm font-medium text-gray-700">재원 상태*</label>
-                 <select value={status} onChange={e => setStatus(e.target.value)} required className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-[#455fab] focus:ring-[#455fab] p-2 border">
-                   <option value="재원생">재원생</option>
-                   <option value="휴원">휴원</option>
-                 </select>
-               </div>
-           </div>
-           <div>
-             <label className="block text-sm font-medium text-gray-700">학교*</label>
-             <input type="text" value={school} onChange={e => setSchool(e.target.value)} required className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-[#455fab] focus:ring-[#455fab] p-2 border" />
-           </div>
-           {/* <div>
-             <label className="block text-sm font-medium text-gray-700">클리닉 희망 시간</label>
-             <input type="time" value={clinicTime || ''} onChange={e => setClinicTime(e.target.value)} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-[#455fab] focus:ring-[#455fab] p-2 border" />
-           </div> */}
-         </div>
- 
-         {/* 2열 */}
-         <div className="space-y-4">
-           <div>
+@@ -123,50 +124,53 @@ export const StudentFormModal = ({ isOpen, onClose, student = null, allClasses,
              <label className="block text-sm font-medium text-gray-700">학생 연락처</label>
              <input type="tel" value={phone} onChange={e => setPhone(e.target.value)} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-[#455fab] focus:ring-[#455fab] p-2 border" />
            </div>
-@@ -137,26 +147,26 @@ export const StudentFormModal = ({ isOpen, onClose, student = null, allClasses,
+           <div>
+             <label className="block text-sm font-medium text-gray-700">학부모 연락처</label>
+             <input type="tel" value={parentPhone} onChange={e => setParentPhone(e.target.value)} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-[#455fab] focus:ring-[#455fab] p-2 border" />
+           </div>
+           <div>
+             <label className="block text-sm font-medium text-gray-700">등록일</label>
+             <input type="date" value={registeredDate} onChange={e => setRegisteredDate(e.target.value)} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-[#455fab] focus:ring-[#455fab] p-2 border" />
+           </div>
+           <div>
+             <label className="block text-sm font-medium text-gray-700">수강 클래스</label>
+             <div className="mt-1 flex flex-wrap gap-2 p-2 border border-gray-300 rounded-md bg-gray-50 min-h-[42px]">
+               {availableClasses.length > 0 ? availableClasses.map(cls => (
+                 <button
+                   key={cls.id}
+                   type="button"
+                   onClick={() => handleClassToggle(cls.id)}
+                   className={`px-3 py-1 text-xs rounded-full border transition duration-150 ${
+                     classSelections.includes(cls.id) 
+                       ? 'bg-[#455fab] text-white border-[#334a91] shadow-sm'
+                       : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-100'
+                   }`}
                  >
-                   {cls.name}
+-                  {cls.name}
++                  {formatClassLabel(cls)}
++                  {isClosedClass(cls) && (
++                    <span className="ml-1 rounded bg-gray-200 px-1 text-[10px] text-gray-600">종강</span>
++                  )}
                  </button>
                )) : <span className="text-xs text-gray-400">등록된 클래스가 없습니다.</span>}
              </div>
@@ -1559,6 +1174,4 @@ index f36ac5294fb228bef4f8470dbff50b3f9f2e35fd..220cdc475ce7e7369d3e56808109afc5
        </form>
      </Modal>
    );
--};
-\ No newline at end of file
-+};
+ };

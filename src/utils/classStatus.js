@@ -59,6 +59,10 @@ const getTodayStart = () => getLocalStartOfDay(new Date());
 const CLOSED_STATUS_SET = new Set([
     '종강',
     '종료',
+    '퇴원',
+    '중도퇴원',
+    '전반',
+    '전반퇴원',
     '마감',
     'closed',
     'close',
