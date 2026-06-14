@@ -38,7 +38,9 @@
     "backfill:chat-parent-participants:dry": "node functions/scripts/backfillChatParticipantIdsForParents.js",
     "backfill:chat-parent-participants:write": "node functions/scripts/backfillChatParticipantIdsForParents.js --write",
     "backfill:chat-room-types:dry": "node functions/scripts/backfillChatRoomTypes.js",
-    "backfill:chat-room-types:write": "node functions/scripts/backfillChatRoomTypes.js --write"
+    "backfill:chat-room-types:write": "node functions/scripts/backfillChatRoomTypes.js --write",
+    "backfill:student-birth-year:dry": "node functions/scripts/backfillStudentBirthYearFromGrade.js",
+    "backfill:student-birth-year:write": "node functions/scripts/backfillStudentBirthYearFromGrade.js --write"
   },
   "eslintConfig": {
     "extends": [

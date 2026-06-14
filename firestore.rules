@@ -603,14 +603,16 @@ service cloud.firestore {
       allow write: if isStaffOrAdminOrTeacher();
     }
 
-    match /formulaSubjects/{docId} {
-      allow read: if signedIn();
-      allow create, update, delete: if false;
+    match /formulaBookSubjects/{docId} {
+      allow read: if isStaffOrAdminOrTeacher()
+        || ((isStudent() || isParent()) && resource.data.active == true);
+      allow create, update, delete: if isStaffOrAdminOrTeacher();
     }
 
-    match /formulaConcepts/{docId} {
-      allow read: if signedIn();
-      allow create, update, delete: if false;
+    match /formulaBookConcepts/{docId} {
+      allow read: if isStaffOrAdminOrTeacher()
+        || ((isStudent() || isParent()) && resource.data.active == true);
+      allow create, update, delete: if isStaffOrAdminOrTeacher();
     }
 
     match /homeworkAssignments/{docId} {

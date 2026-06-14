@@ -27,6 +27,7 @@ export default function Sidebar({ page, setPage, onLogout, isOpen, onClose }) {
         { name: '내부 소통', key: 'communication', icon: 'messageSquare' },
     ];
     const staffTools = [
+        { name: '공식집 관리', key: '/formula-books', icon: 'book' },
         { name: '초대 코드', key: '/staff/invites', icon: 'link' },
     ];
     const adminMenuItems = [

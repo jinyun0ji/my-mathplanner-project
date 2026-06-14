@@ -3,6 +3,7 @@ import React from 'react';
 import NotificationsIcon from '@mui/icons-material/Notifications';
 import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
 import logoHorizontal from '../assets/logo/logo-horizontal.png';
+import { getStudentGradeLabel } from '../utils/gradeUtils';
 
 export default function StudentHeader({
     student,
@@ -10,7 +11,7 @@ export default function StudentHeader({
     onOpenMessages,
     hasUnread = false,
 }) {
-    const profileText = [student?.school, student?.grade].filter(Boolean).join(' ');
+    const profileText = [student?.school, student ? getStudentGradeLabel(student) : ''].filter(Boolean).join(' ');
 
     return (
         <header className="bg-white border-b border-gray-100 sticky top-0 z-30 shadow-sm shrink-0">

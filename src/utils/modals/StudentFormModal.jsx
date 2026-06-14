@@ -1,12 +1,12 @@
 // src/utils/modals/StudentFormModal.jsx
 import React, { useState, useEffect } from 'react';
 import { Modal } from '../../components/common/Modal';
-import { Icon } from '../../utils/helpers';
+import { getBirthYearFromGradeLabel, normalizeBirthYear } from '../gradeUtils';
 
 export const StudentFormModal = ({ isOpen, onClose, student = null, allClasses, onSave }) => {
   const [name, setName] = useState('');
   const [school, setSchool] = useState('');
-  const [grade, setGrade] = useState('');
+  const [birthYear, setBirthYear] = useState('');
   const [phone, setPhone] = useState('');
   const [parentPhone, setParentPhone] = useState('');
   const [status, setStatus] = useState('재원생');
@@ -23,7 +23,7 @@ export const StudentFormModal = ({ isOpen, onClose, student = null, allClasses, 
       const nextStatus = student.status === 'inactive' ? '재원생' : (student.status || '재원생');
       setName(student.name);
       setSchool(student.school);
-      setGrade(student.grade);
+      setBirthYear(student.birthYear || getBirthYearFromGradeLabel(student.grade) || '');
       setPhone(student.phone);
       setParentPhone(student.parentPhone);
       setStatus(nextStatus);
@@ -34,7 +34,7 @@ export const StudentFormModal = ({ isOpen, onClose, student = null, allClasses, 
       } else {
       setName('');
       setSchool('');
-      setGrade('고1');
+      setBirthYear('');
       setPhone('');
       setParentPhone('');
       setStatus('재원생');
@@ -55,12 +55,14 @@ export const StudentFormModal = ({ isOpen, onClose, student = null, allClasses, 
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!name || !school || !grade) return;
+    const normalizedBirthYear = normalizeBirthYear(birthYear);
+    const currentYear = new Date().getFullYear();
+    if (!name || !school || !normalizedBirthYear || normalizedBirthYear < 1900 || normalizedBirthYear > currentYear) return;
     const studentData = {
       id: student ? student.id : null,
       name,
       school,
-      grade,
+      birthYear: normalizedBirthYear,
       phone,
       parentPhone,
       status,
@@ -84,10 +86,18 @@ export const StudentFormModal = ({ isOpen, onClose, student = null, allClasses, 
           </div>
           <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-sm font-medium text-gray-700">학년*</label>
-                <select value={grade} onChange={e => setGrade(e.target.value)} required className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-[#455fab] focus:ring-[#455fab] p-2 border">
-                  {['중1','중2','중3','고1','고2','고3'].map(g => <option key={g} value={g}>{g}</option>)}
-                </select>
+                <label className="block text-sm font-medium text-gray-700">출생년도*</label>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  min="1900"
+                  max={new Date().getFullYear()}
+                  value={birthYear}
+                  onChange={e => setBirthYear(e.target.value)}
+                  placeholder="예) 2009"
+                  required
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-[#455fab] focus:ring-[#455fab] p-2 border"
+                />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700">재원 상태*</label>

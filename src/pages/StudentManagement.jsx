@@ -7,6 +7,7 @@ import { MemoModal } from '../utils/modals/MemoModal';
 import { Modal } from '../components/common/Modal';
 import { db } from '../firebase/client';
 import { buildStudentParentPhoneLast4Map, formatStudentNameWithParentLast4 } from '../utils/parentPhone';
+import { getStudentGradeLabel } from '../utils/gradeUtils';
 
 const RETIRE_REASONS = ['중도퇴원', '전반'];
 
@@ -479,7 +480,7 @@ export default function StudentManagement({
                                         </td>
                                         <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-600">{student.school}</td>
                                         {/* 학년 표시 수정 */}
-                                        <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-600">{student.grade}</td>
+                                        <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-600">{getStudentGradeLabel(student)}</td>
                                         <td className="px-4 py-4 text-sm text-gray-600">
                                             <div className="flex flex-wrap gap-2">
                                                 {activeClassIds.length > 0 ? activeClassIds.map((classId) => (
@@ -602,7 +603,7 @@ export default function StudentManagement({
                                                 {getStatusLabel(student.status)}
                                             </span>
                                         </div>
-                                        <p className="text-xs text-gray-500 mt-1">{student.school} • {student.grade}</p>
+                                        <p className="text-xs text-gray-500 mt-1">{student.school} • {getStudentGradeLabel(student)}</p>
                                         <div className="mt-2 space-y-1">
                                             <div className="flex flex-wrap gap-2 text-sm text-gray-700 leading-snug">
                                                 {activeClassIds.length > 0 ? activeClassIds.map((classId) => (

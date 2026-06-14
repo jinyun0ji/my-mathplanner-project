@@ -22,8 +22,9 @@ import { ROLE } from '../constants/roles';
 import AccordionSection from '../components/common/AccordionSection';
 import { Modal } from '../components/common/Modal';
 import StaffMemoPreview from '../components/Student/StaffMemoPreview';
-import { formatGradeLabel, Icon } from '../utils/helpers';
+import { Icon } from '../utils/helpers';
 import { formatGradeScoreText } from '../domain/grade/grade.service';
+import { getStudentGradeLabel } from '../utils/gradeUtils';
 import { getLinkedParentAuthUids } from '../utils/parentLinking';
 import { getStudentKeyCandidates, isSameStudentByAnyKey } from '../utils/studentKey';
 
@@ -1148,7 +1149,7 @@ export default function StudentDetail() {
                                     <p className="text-xs text-gray-500">학생 상세</p>
                                     <h2 className="mt-1 text-2xl font-bold text-gray-900">{student.name || '이름 미상'}</h2>
                                     <p className="mt-2 text-sm text-gray-600">
-                                        {student.school || '학교 정보 없음'} · {formatGradeLabel(student.grade) || '학년 정보 없음'}
+                                        {student.school || '학교 정보 없음'} · {getStudentGradeLabel(student)}
                                     </p>
                                     <p className="mt-2 text-xs font-semibold text-gray-500">
                                         현재 반: <span className="text-gray-700">{currentClassName}</span>

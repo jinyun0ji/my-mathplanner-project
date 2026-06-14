@@ -32,6 +32,7 @@ import { getViewerTodayClassItems, toLocalYmd } from '../utils/viewerTodaySchedu
 import { FEATURES } from '../config/features';
 import MathText from '../components/common/MathText';
 import logoHorizontal from '../assets/logo/logo-horizontal.png';
+import { getStudentGradeLabel } from '../utils/gradeUtils';
 
 
 const getItemClassId = (item) => (
@@ -499,7 +500,7 @@ export default function ParentHome({
     const activeChild = students.find(s => s.id === activeChildId) || initialStudent;
     const activeChildName = activeChild?.name || '학생';
     const activeChildSchool = activeChild?.school || '학교 정보 없음';
-    const activeChildGrade = activeChild?.grade || '학년 정보 없음';
+    const activeChildGrade = getStudentGradeLabel(activeChild);
     // 2. 데이터 필터링
     const rawMyClasses = useMemo(() => {
         if (!Array.isArray(classes) || !activeChildId) return [];

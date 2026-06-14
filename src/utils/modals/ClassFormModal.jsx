@@ -13,7 +13,7 @@ const DEFAULT_TIME = { start: '19:00', end: '21:00' };
 export const ClassFormModal = ({ isOpen, onClose, onSave, classToEdit = null }) => {
   const [name, setName] = useState('');
   const [teacher, setTeacher] = useState('');
-  const [grade, setGrade] = useState(2);
+  const [targetGrades, setTargetGrades] = useState(['고2']);
   const [schoolType, setSchoolType] = useState('고등학교');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -23,7 +23,10 @@ export const ClassFormModal = ({ isOpen, onClose, onSave, classToEdit = null }) 
     if (classToEdit) {
       setName(classToEdit.name || '');
       setTeacher(classToEdit.teacher || '');
-      setGrade(classToEdit.grade || 2);
+      const legacyGrade = classToEdit.targetGrade || (classToEdit.grade ? `고${String(classToEdit.grade).replace(/^고/, '')}` : '');
+      setTargetGrades(Array.isArray(classToEdit.targetGrades) && classToEdit.targetGrades.length
+        ? classToEdit.targetGrades
+        : (legacyGrade ? [legacyGrade] : ['고2']));
       setSchoolType(classToEdit.schoolType || '고등학교');
       setStartDate(classToEdit.startDate || '');
       setEndDate(classToEdit.endDate || '');
@@ -31,7 +34,7 @@ export const ClassFormModal = ({ isOpen, onClose, onSave, classToEdit = null }) 
     } else {
       setName('');
       setTeacher('');
-      setGrade(2);
+      setTargetGrades(['고2']);
       setSchoolType('고등학교');
       setStartDate(new Date().toISOString().slice(0, 10));
       setEndDate('');
@@ -71,7 +74,7 @@ export const ClassFormModal = ({ isOpen, onClose, onSave, classToEdit = null }) 
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!name || !teacher || !startDate || selectedDays.length === 0 || hasInvalidTime) return;
+    if (!name || !teacher || !startDate || targetGrades.length === 0 || selectedDays.length === 0 || hasInvalidTime) return;
 
     const weekdays = selectedDays;
     const first = weekdays[0];
@@ -82,7 +85,7 @@ export const ClassFormModal = ({ isOpen, onClose, onSave, classToEdit = null }) 
       id: classToEdit ? classToEdit.id : null,
       name,
       teacher,
-      grade: Number(grade),
+      targetGrades,
       schoolType,
       startDate,
       endDate,
@@ -116,9 +119,21 @@ export const ClassFormModal = ({ isOpen, onClose, onSave, classToEdit = null }) 
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700">대상 학년*</label>
-              <select value={grade} onChange={e => setGrade(e.target.value)} required className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border">
-                {[1, 2, 3].map(g => <option key={g} value={g}>고{g}</option>)}
-              </select>
+              <div className="mt-1 flex flex-wrap gap-2 rounded-md border border-gray-300 p-2">
+                {['고1', '고2', '고3'].map((gradeLabel) => (
+                  <label key={gradeLabel} className="flex items-center gap-1.5 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={targetGrades.includes(gradeLabel)}
+                      onChange={() => setTargetGrades((previous) => previous.includes(gradeLabel)
+                        ? previous.filter((item) => item !== gradeLabel)
+                        : [...previous, gradeLabel])}
+                    />
+                    {gradeLabel}
+                  </label>
+                ))}
+                <button type="button" onClick={() => setTargetGrades(['고1', '고2', '고3'])} className="ml-auto text-xs font-semibold text-[#455fab]">전체</button>
+              </div>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700">학교 구분</label>

@@ -28,6 +28,7 @@ import AdminPaymentsPage from '../pages/admin/AdminPaymentsPage';
 import AdminSettingsPage from '../pages/admin/AdminSettingsPage';
 import AdminLogsPage from '../pages/admin/AdminLogsPage';
 import InviteManagementPage from '../pages/admin/InviteManagementPage';
+import FormulaBookManagement from '../pages/FormulaBookManagement';
 import AdminRoute from '../routes/AdminRoute';
 import StaffOrTeachingRoute from '../routes/StaffOrTeachingRoute';
 import useAuth from '../auth/useAuth';
@@ -91,6 +92,7 @@ const ADMIN_ROUTES = new Set([
     '/admin/settings',
     '/admin/logs',
     '/staff/invites',
+    '/formula-books',
 ]);
 
 const getPageKeyFromPath = (pathname) => {
@@ -2109,6 +2111,14 @@ export default function AppRoutes({ user, role, studentIds }) {
                 element={(
                     <StaffOrTeachingRoute>
                         <InviteManagementPage />
+                    </StaffOrTeachingRoute>
+                )}
+            />
+            <Route
+                path="formula-books"
+                element={(
+                    <StaffOrTeachingRoute>
+                        <FormulaBookManagement />
                     </StaffOrTeachingRoute>
                 )}
             />
