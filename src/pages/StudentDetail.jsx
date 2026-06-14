@@ -7,7 +7,9 @@ import {
     getDoc,
     getDocs,
     limit,
+    orderBy,
     query,
+    startAfter,
     where,
 } from 'firebase/firestore';
 import { db } from '../firebase/client';
@@ -85,6 +87,7 @@ const normalizeStatus = (value) => String(value || '').trim().toLowerCase();
 const isAbsent = (value) => ['결석', 'absent', 'absence'].includes(normalizeStatus(value));
 const isLate = (value) => ['지각', 'late', 'tardy'].includes(normalizeStatus(value));
 const isPresent = (value) => ['출석', 'present', 'attended', '정상'].includes(normalizeStatus(value));
+const isVideoMakeup = (value) => ['동영상보강', '동영상 보강', 'video', 'video_makeup'].includes(normalizeStatus(value));
 
 const getClassId = (record) => String(
     record?.classId || record?.classDocId || record?.class?.id || '',
@@ -104,6 +107,83 @@ const mergeById = (groups) => {
     });
     return [...map.values()];
 };
+
+const PAGE_SIZE = 4;
+const studentQueryPairs = (student, fields) => {
+    const values = {
+        id: student?.id,
+        uid: student?.uid,
+        authUid: student?.authUid,
+        studentUid: student?.studentUid,
+    };
+    const pairs = fields.flatMap(([field, valueKeys]) => valueKeys.map((key) => [field, values[key]]));
+    const seen = new Set();
+    return pairs.filter(([field, value]) => {
+        if (!value) return false;
+        const key = `${field}:${value}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    });
+};
+
+const fetchStudentPage = async (collectionName, student, fields, cursors = {}) => {
+    const pairs = studentQueryPairs(student, fields);
+    const bufferedRows = Array.isArray(cursors.__buffer) ? cursors.__buffer : [];
+    if (bufferedRows.length >= PAGE_SIZE) {
+        return {
+            rows: bufferedRows.slice(0, PAGE_SIZE),
+            cursors: { ...cursors, __buffer: bufferedRows.slice(PAGE_SIZE) },
+            hasMore: true,
+        };
+    }
+    const results = await Promise.all(pairs.map(async ([field, value]) => {
+        const cursorKey = `${field}:${value}`;
+        if (cursors[cursorKey] === null) return { cursorKey, docs: [], cursor: null, hasMore: false };
+        const constraints = [
+            where(field, '==', value),
+            orderBy('date', 'desc'),
+            ...(cursors[cursorKey] ? [startAfter(cursors[cursorKey])] : []),
+            limit(PAGE_SIZE),
+        ];
+        try {
+            const snapshot = await getDocs(query(collection(db, collectionName), ...constraints));
+            return {
+                cursorKey,
+                docs: snapshot.docs.map((item) => ({ id: item.id, ...item.data() })),
+                cursor: snapshot.docs.at(-1) || null,
+                hasMore: snapshot.size === PAGE_SIZE,
+            };
+        } catch (pageError) {
+            console.warn(`[StudentDetail] ${collectionName} fallback query skipped`, { field, pageError });
+            return { cursorKey, docs: [], cursor: null, hasMore: false };
+        }
+    }));
+    const nextCursors = { ...cursors };
+    results.forEach((result) => { nextCursors[result.cursorKey] = result.hasMore ? result.cursor : null; });
+    const mergedRows = sortNewest(mergeById([
+        bufferedRows,
+        ...results.map((result) => result.docs),
+    ]), ['date']);
+    nextCursors.__buffer = mergedRows.slice(PAGE_SIZE);
+    return {
+        rows: mergedRows.slice(0, PAGE_SIZE),
+        cursors: nextCursors,
+        hasMore: nextCursors.__buffer.length > 0 || results.some((result) => result.hasMore),
+    };
+};
+
+const ATTENDANCE_FIELDS = [
+    ['studentId', ['id']],
+    ['studentUid', ['studentUid', 'uid', 'id']],
+    ['authUid', ['authUid', 'uid']],
+];
+const CLINIC_FIELDS = [
+    ['studentId', ['id']],
+    ['studentDocId', ['id']],
+    ['studentUid', ['uid', 'id']],
+    ['authUid', ['authUid', 'uid']],
+];
 
 const fetchByStudentKeys = async (collectionName, student, count = 300) => {
     const fields = [
@@ -134,6 +214,35 @@ const fetchByIds = async (collectionName, ids) => {
     return snapshots.flatMap((snapshot) => (
         snapshot.docs.map((item) => ({ id: item.id, ...item.data() }))
     ));
+};
+
+const fetchStudentRecords = async (collectionName, student) => {
+    const keys = [...new Set([
+        student?.id,
+        student?.authUid,
+        student?.uid,
+        student?.studentUid,
+    ].filter(Boolean).map(String))];
+    const [queried, directSnapshots] = await Promise.all([
+        fetchByStudentKeys(collectionName, student),
+        Promise.all(keys.map((key) => getDoc(doc(db, collectionName, key)).catch(() => null))),
+    ]);
+    const direct = directSnapshots
+        .filter((snapshot) => snapshot?.exists())
+        .flatMap((snapshot) => {
+            const data = snapshot.data();
+            const nestedEntries = Object.entries(data || {}).filter(([, value]) => (
+                value && typeof value === 'object' && !Array.isArray(value)
+            ));
+            if (!nestedEntries.length) return [{ id: snapshot.id, ...data }];
+            return nestedEntries.map(([recordId, value]) => ({
+                id: `${snapshot.id}:${recordId}`,
+                studentId: snapshot.id,
+                ...(collectionName === COLLECTIONS.grades ? { testId: recordId } : { assignmentId: recordId }),
+                ...value,
+            }));
+        });
+    return mergeById([queried, direct]);
 };
 
 const fetchByClassIds = async (collectionName, classIds) => {
@@ -197,11 +306,12 @@ const DataTable = ({ columns, rows, emptyText }) => {
     );
 };
 
-const scoreValue = (grade) => firstValue(grade, ['score', 'result', 'studentScore'], null);
+const scoreValue = (grade) => firstValue(grade, ['score', 'result', 'totalScore', 'studentScore'], null);
 const isNotAttempted = (grade) => {
     const value = scoreValue(grade);
     const normalized = normalizeStatus(value);
     return grade?.attempted === false
+        || (Number(value) === 0 && grade?.attempted !== true)
         || value === null
         || value === undefined
         || value === ''
@@ -229,6 +339,12 @@ export default function StudentDetail() {
     const [homeworkResults, setHomeworkResults] = useState([]);
     const [homeworkAssignments, setHomeworkAssignments] = useState([]);
     const [clinicLogs, setClinicLogs] = useState([]);
+    const [attendanceCursors, setAttendanceCursors] = useState({});
+    const [clinicCursors, setClinicCursors] = useState({});
+    const [attendanceHasMore, setAttendanceHasMore] = useState(false);
+    const [clinicHasMore, setClinicHasMore] = useState(false);
+    const [attendanceMoreLoading, setAttendanceMoreLoading] = useState(false);
+    const [clinicMoreLoading, setClinicMoreLoading] = useState(false);
     const [payments, setPayments] = useState([]);
     const [materials, setMaterials] = useState([]);
     const [timeline, setTimeline] = useState([]);
@@ -247,7 +363,7 @@ export default function StudentDetail() {
         setTimelineLoading(true);
         setTimelineError('');
         try {
-            setTimeline(await fetchStaffTimelineByStudent(db, studentId, { limitCount: 100 }));
+            setTimeline(await fetchStaffTimelineByStudent(db, studentId, { limitCount: 20 }));
         } catch (loadError) {
             console.error('[StudentDetail] staffTimeline load failed', loadError);
             setTimelineError('교직원 타임라인을 불러오지 못했습니다.');
@@ -269,14 +385,16 @@ export default function StudentDetail() {
                     throw new Error('학생 역할의 문서가 아닙니다.');
                 }
 
-                const [attendanceRows, gradeRows, homeworkRows, clinicRows, paymentRows, materialRows] = await Promise.all([
-                    fetchByStudentKeys(COLLECTIONS.attendance, loadedStudent),
-                    fetchByStudentKeys(COLLECTIONS.grades, loadedStudent),
-                    fetchByStudentKeys(COLLECTIONS.homeworkResults, loadedStudent),
-                    fetchByStudentKeys(COLLECTIONS.clinic, loadedStudent),
+                const [attendancePage, gradeRows, homeworkRows, clinicPage, paymentRows, materialRows] = await Promise.all([
+                    fetchStudentPage(COLLECTIONS.attendance, loadedStudent, ATTENDANCE_FIELDS),
+                    fetchStudentRecords(COLLECTIONS.grades, loadedStudent),
+                    fetchStudentRecords(COLLECTIONS.homeworkResults, loadedStudent),
+                    fetchStudentPage(COLLECTIONS.clinic, loadedStudent, CLINIC_FIELDS),
                     fetchByStudentKeys(COLLECTIONS.payments, loadedStudent).catch(() => []),
                     fetchByStudentKeys(COLLECTIONS.materials, loadedStudent).catch(() => []),
                 ]);
+                const attendanceRows = attendancePage.rows;
+                const clinicRows = clinicPage.rows;
 
                 const classIds = new Set(getStudentClassIds(loadedStudent));
                 [...attendanceRows, ...gradeRows, ...homeworkRows, ...clinicRows].forEach((item) => {
@@ -294,9 +412,13 @@ export default function StudentDetail() {
                 setStudent(loadedStudent);
                 setClasses(classRows);
                 setAttendances(attendanceRows.filter((item) => isSameStudentByAnyKey(item, loadedStudent)));
+                setAttendanceCursors(attendancePage.cursors);
+                setAttendanceHasMore(attendancePage.hasMore);
                 setGrades(gradeRows.filter((item) => isSameStudentByAnyKey(item, loadedStudent)));
                 setHomeworkResults(homeworkRows.filter((item) => isSameStudentByAnyKey(item, loadedStudent)));
                 setClinicLogs(clinicRows.filter((item) => isSameStudentByAnyKey(item, loadedStudent)));
+                setClinicCursors(clinicPage.cursors);
+                setClinicHasMore(clinicPage.hasMore);
                 setPayments(paymentRows);
                 setMaterials(materialRows);
                 setTests(testRows);
@@ -313,8 +435,8 @@ export default function StudentDetail() {
     }, [studentId]);
 
     useEffect(() => {
-        loadTimeline();
-    }, [loadTimeline]);
+        if (activeTab === 'timeline') loadTimeline();
+    }, [activeTab, loadTimeline]);
 
     const classMap = useMemo(() => new Map(classes.map((item) => [String(item.id), item])), [classes]);
     const testMap = useMemo(() => new Map(tests.map((item) => [String(item.id), item])), [tests]);
@@ -335,14 +457,18 @@ export default function StudentDetail() {
 
     const attendanceSummary = useMemo(() => {
         const presentCount = sortedAttendances.filter((item) => isPresent(firstValue(item, ['status', 'attendanceStatus']))).length;
+        const videoCount = sortedAttendances.filter((item) => isVideoMakeup(firstValue(item, ['status', 'attendanceStatus']))).length;
         const absentCount = sortedAttendances.filter((item) => isAbsent(firstValue(item, ['status', 'attendanceStatus']))).length;
         const lateCount = sortedAttendances.filter((item) => isLate(firstValue(item, ['status', 'attendanceStatus']))).length;
-        const counted = presentCount + absentCount + lateCount;
         return {
             recent: sortedAttendances.slice(0, 4),
+            presentCount,
+            videoCount,
             absentCount,
             lateCount,
-            rate: counted ? Math.round(((presentCount + lateCount) / counted) * 100) : null,
+            rate: sortedAttendances.length
+                ? Math.round(((presentCount + videoCount) / sortedAttendances.length) * 100)
+                : null,
         };
     }, [sortedAttendances]);
 
@@ -366,6 +492,34 @@ export default function StudentDetail() {
         name: userProfile?.displayName || user?.displayName || user?.email || '교직원',
         role,
     }), [profileDocId, user, userProfile, role]);
+
+    const loadMore = async (type) => {
+        if (!student) return;
+        const isAttendance = type === 'attendance';
+        const setMoreLoading = isAttendance ? setAttendanceMoreLoading : setClinicMoreLoading;
+        setMoreLoading(true);
+        try {
+            const page = await fetchStudentPage(
+                isAttendance ? COLLECTIONS.attendance : COLLECTIONS.clinic,
+                student,
+                isAttendance ? ATTENDANCE_FIELDS : CLINIC_FIELDS,
+                isAttendance ? attendanceCursors : clinicCursors,
+            );
+            if (isAttendance) {
+                setAttendances((current) => sortNewest(mergeById([current, page.rows]), ['date']));
+                setAttendanceCursors(page.cursors);
+                setAttendanceHasMore(page.hasMore);
+            } else {
+                setClinicLogs((current) => sortNewest(mergeById([current, page.rows]), ['date']));
+                setClinicCursors(page.cursors);
+                setClinicHasMore(page.hasMore);
+            }
+        } catch (loadError) {
+            console.error(`[StudentDetail] ${type} pagination failed`, loadError);
+        } finally {
+            setMoreLoading(false);
+        }
+    };
 
     const handleCreateTimeline = async () => {
         const content = timelineDraft.trim();
@@ -463,20 +617,34 @@ export default function StudentDetail() {
         if (activeTab === 'attendance') {
             return (
                 <div className="space-y-4">
-                    <div className="grid gap-3 sm:grid-cols-3">
-                        {[['출석률', attendanceSummary.rate === null ? '-' : `${attendanceSummary.rate}%`], ['결석', `${attendanceSummary.absentCount}회`], ['지각', `${attendanceSummary.lateCount}회`]].map(([label, value]) => (
+                    <p className="text-xs font-medium text-gray-500">현재 표시된 최근 기록 기준 요약입니다.</p>
+                    <div className="grid gap-3 sm:grid-cols-5">
+                        {[
+                            ['출석', `${attendanceSummary.presentCount}회`],
+                            ['지각', `${attendanceSummary.lateCount}회`],
+                            ['결석', `${attendanceSummary.absentCount}회`],
+                            ['동영상 보강', `${attendanceSummary.videoCount}회`],
+                            ['출석률', attendanceSummary.rate === null ? '-' : `${attendanceSummary.rate}%`],
+                        ].map(([label, value]) => (
                             <div key={label} className="rounded-xl border border-gray-200 bg-white p-4">
                                 <p className="text-xs text-gray-500">{label}</p><p className="mt-1 text-xl font-bold text-[#455fab]">{value}</p>
                             </div>
                         ))}
                     </div>
-                    <SectionCard title="출결 기록" description="최근 4회 출결을 포함한 전체 기록을 최신순으로 표시합니다.">
+                    <SectionCard title="출결 기록" description="최근 기록부터 4개씩 표시합니다.">
                         <DataTable rows={sortedAttendances} emptyText="출결 기록이 없습니다." columns={[
                             { key: 'date', label: '날짜', render: (row) => formatDate(firstValue(row, ['date', 'lessonDate', 'createdAt'])) },
                             { key: 'class', label: '클래스', render: className },
                             { key: 'status', label: '출결 상태', render: (row) => firstValue(row, ['status', 'attendanceStatus'], '-') },
                             { key: 'memo', label: '메모/사유', render: (row) => firstValue(row, ['memo', 'reason', 'note'], '-') },
                         ]} />
+                        <div className="no-print mt-4 text-center">
+                            {attendanceHasMore ? (
+                                <button type="button" disabled={attendanceMoreLoading} onClick={() => loadMore('attendance')} className="rounded-lg border border-[#455fab] px-4 py-2 text-xs font-bold text-[#455fab] disabled:opacity-50">
+                                    {attendanceMoreLoading ? '불러오는 중...' : '출결 4개 더보기'}
+                                </button>
+                            ) : sortedAttendances.length > 0 && <p className="text-xs text-gray-400">더 이상 기록이 없습니다.</p>}
+                        </div>
                     </SectionCard>
                 </div>
             );
@@ -511,14 +679,21 @@ export default function StudentDetail() {
         }
         if (activeTab === 'clinic') {
             return (
-                <SectionCard title="클리닉" description={`누적 클리닉 시간 ${clinicMinutes ? `${Math.floor(clinicMinutes / 60)}시간 ${clinicMinutes % 60}분` : '집계 정보 없음'}`}>
+                <SectionCard title="클리닉" description={`현재 표시된 기록 합계 ${clinicMinutes ? `${Math.floor(clinicMinutes / 60)}시간 ${clinicMinutes % 60}분` : '집계 정보 없음'}`}>
                     <DataTable rows={sortedClinics} emptyText="클리닉 기록이 없습니다." columns={[
                         { key: 'date', label: '날짜', render: (row) => formatDate(firstValue(row, ['date', 'clinicDate', 'createdAt'])) },
                         { key: 'time', label: '시간', render: (row) => firstValue(row, ['plannedTime', 'time'], formatTime(firstValue(row, ['checkIn', 'startAt']))) },
-                        { key: 'teacher', label: '담당자', render: (row) => firstValue(row, ['teacherName', 'staffName', 'createdByName'], '-') },
+                        { key: 'teacher', label: '담당자', render: (row) => firstValue(row, ['tutorName', 'tutor', 'assistantName', 'assistant', 'teacherName', 'teacher', 'updatedByName', 'createdByName'], '담당자 미지정') },
                         { key: 'status', label: '상태', render: (row) => firstValue(row, ['status', 'clinicStatus'], '-') },
                         { key: 'comment', label: '코멘트', render: (row) => firstValue(row, ['clinicComment', 'comment', 'content'], '-') },
                     ]} />
+                    <div className="no-print mt-4 text-center">
+                        {clinicHasMore ? (
+                            <button type="button" disabled={clinicMoreLoading} onClick={() => loadMore('clinic')} className="rounded-lg border border-[#455fab] px-4 py-2 text-xs font-bold text-[#455fab] disabled:opacity-50">
+                                {clinicMoreLoading ? '불러오는 중...' : '클리닉 4개 더보기'}
+                            </button>
+                        ) : sortedClinics.length > 0 && <p className="text-xs text-gray-400">더 이상 기록이 없습니다.</p>}
+                    </div>
                 </SectionCard>
             );
         }
@@ -560,8 +735,11 @@ export default function StudentDetail() {
     };
 
     return (
-        <div className="mx-auto max-w-[1500px] space-y-4 pb-8">
-            <button type="button" onClick={() => navigate('/students')} className="text-xs font-semibold text-gray-500 hover:text-[#455fab]">← 학생 목록</button>
+        <div className="student-detail-print mx-auto max-w-[1500px] space-y-4 pb-8">
+            <div className="no-print flex items-center justify-between">
+                <button type="button" onClick={() => navigate('/students')} className="text-xs font-semibold text-gray-500 hover:text-[#455fab]">← 학생 목록</button>
+                <button type="button" onClick={() => window.print()} className="rounded-lg bg-[#455fab] px-4 py-2 text-xs font-bold text-white">인쇄</button>
+            </div>
             <section className="rounded-2xl border border-gray-200 bg-white p-5">
                 <div className="flex flex-wrap items-start justify-between gap-4 border-b border-gray-100 pb-5">
                     <div>
@@ -594,7 +772,7 @@ export default function StudentDetail() {
                     </div>
                 </div>
             </section>
-            <nav className="overflow-x-auto rounded-2xl border border-gray-200 bg-white px-2">
+            <nav className="no-print overflow-x-auto rounded-2xl border border-gray-200 bg-white px-2">
                 <div className="flex min-w-max">
                     {TABS.map(([id, label]) => (
                         <button key={id} type="button" onClick={() => setActiveTab(id)} className={`border-b-2 px-4 py-3 text-xs font-bold transition ${activeTab === id ? 'border-[#455fab] text-[#455fab]' : 'border-transparent text-gray-500 hover:text-gray-800'}`}>

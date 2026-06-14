@@ -2905,6 +2905,11 @@ video {
   padding-bottom: 1.75rem;
 }
 
+.py-5{
+  padding-top: 1.25rem;
+  padding-bottom: 1.25rem;
+}
+
 .pb-1{
   padding-bottom: 0.25rem;
 }
@@ -4476,6 +4481,10 @@ body{
 
   .sm\:grid-cols-6{
     grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+
+  .sm\:grid-cols-5{
+    grid-template-columns: repeat(5, minmax(0, 1fr));
   }
 
   .sm\:flex-row{

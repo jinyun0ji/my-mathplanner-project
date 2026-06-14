@@ -73,14 +73,10 @@ export const fetchStaffTimelineByStudent = async (
     const snapshot = await getDocs(query(
         collection(firestoreDb, STAFF_TIMELINE_COLLECTION),
         where('studentId', '==', String(studentId)),
+        orderBy('createdAt', 'desc'),
+        limit(Math.min(limitCount, 20)),
     ));
-    return visibleThreads(normalizeSnapshot(snapshot))
-        .sort((a, b) => {
-            const aMillis = a?.createdAt?.toMillis?.() || 0;
-            const bMillis = b?.createdAt?.toMillis?.() || 0;
-            return bMillis - aMillis;
-        })
-        .slice(0, limitCount);
+    return visibleThreads(normalizeSnapshot(snapshot));
 };
 
 export const fetchClinicTimelineThreads = async (firestoreDb, sourceDocIds = []) => {

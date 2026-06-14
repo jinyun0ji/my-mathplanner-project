@@ -3,6 +3,30 @@
 @media print {
   body * { visibility: hidden !important; }
   .print-root, .print-root * { visibility: visible !important; }
+  .student-detail-print,
+  .student-detail-print * { visibility: visible !important; }
+
+  .student-detail-print {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    max-width: none !important;
+    background: #fff !important;
+    color: #111 !important;
+  }
+
+  .student-detail-print .no-print,
+  .student-detail-print button,
+  .student-detail-print [role="dialog"] { display: none !important; }
+
+  .student-detail-print section,
+  .student-detail-print table,
+  .student-detail-print th,
+  .student-detail-print td {
+    border-color: #d1d5db !important;
+    background: #fff !important;
+    color: #111827 !important;
+  }
 
   .print-root {
     position: absolute;
