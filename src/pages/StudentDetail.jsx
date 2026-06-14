@@ -23,7 +23,13 @@ import {
 import { getStudentGradeLabel } from '../utils/gradeUtils';
 import { isClosedClass, sortClassesWithClosedLast } from '../utils/classStatus';
 import { isSameStudentByAnyKey } from '../utils/studentKey';
-import { normalizeHomeworkResultMapForDisplay } from '../domain/homework/homework.service';
+import {
+    normalizeHomeworkResultMapForDisplay,
+    resolveHomeworkAssignmentId,
+    resolveHomeworkAssignmentTitle,
+    resolveHomeworkQuestionSummary,
+} from '../domain/homework/homework.service';
+import { resolveGradeDisplay, resolveGradeTestId } from '../domain/grade/grade.service';
 
 const COLLECTIONS = {
     users: 'users',
@@ -91,7 +97,7 @@ const isPresent = (value) => ['출석', 'present', 'attended', '정상'].include
 const isVideoMakeup = (value) => ['동영상보강', '동영상 보강', 'video', 'video_makeup'].includes(normalizeStatus(value));
 
 const getClassId = (record) => String(
-    record?.classId || record?.classDocId || record?.class?.id || '',
+    record?.classId || record?.classUid || record?.classDocId || record?.class?.id || '',
 );
 
 const getStudentClassIds = (student) => {
@@ -405,12 +411,19 @@ export default function StudentDetail() {
                     const classId = getClassId(item);
                     if (classId) classIds.add(classId);
                 });
-                const testIds = gradeRows.map((item) => firstValue(item, ['testId', 'testDocId'])).filter(Boolean);
-                const [classRows, testRows, assignmentRows] = await Promise.all([
+                const testIds = gradeRows.map(resolveGradeTestId).filter(Boolean);
+                const assignmentIds = homeworkRows.map(resolveHomeworkAssignmentId).filter(Boolean);
+                const testRows = await fetchByIds(COLLECTIONS.tests, testIds);
+                testRows.forEach((test) => {
+                    const classId = getClassId(test);
+                    if (classId) classIds.add(classId);
+                });
+                const [classRows, assignmentRowsByClass, assignmentRowsById] = await Promise.all([
                     fetchByIds(COLLECTIONS.classes, [...classIds]),
-                    fetchByIds(COLLECTIONS.tests, testIds),
                     fetchByClassIds(COLLECTIONS.homeworkAssignments, [...classIds]),
+                    fetchByIds(COLLECTIONS.homeworkAssignments, assignmentIds),
                 ]);
+                const assignmentRows = mergeById([assignmentRowsByClass, assignmentRowsById]);
 
                 if (!mounted) return;
                 setStudent(loadedStudent);
@@ -420,12 +433,29 @@ export default function StudentDetail() {
                 setAttendanceHasMore(attendancePage.hasMore);
                 const matchedGrades = gradeRows.filter((item) => (
                     isSameStudentByAnyKey(item, loadedStudent)
-                    && testRows.some((test) => String(firstValue(item, ['testId', 'testDocId'])) === String(test.id))
+                    && testRows.some((test) => String(resolveGradeTestId(item)) === String(test.id))
                 ));
                 const matchedHomework = homeworkRows.filter((item) => isSameStudentByAnyKey(item, loadedStudent));
                 if (process.env.NODE_ENV !== 'production') {
-                    console.log('[studentDetail][grades] matched count', matchedGrades.length);
-                    console.log('[studentDetail][homework] matched count', matchedHomework.length);
+                    matchedGrades.forEach((grade) => {
+                        const testId = resolveGradeTestId(grade);
+                        const test = testRows.find((item) => String(item.id) === String(testId));
+                        const classDoc = classRows.find((item) => String(item.id) === String(getClassId(test)));
+                        console.log('[studentDetail][grade]', {
+                            gradeId: grade.id,
+                            testId,
+                            resolvedClassName: resolveGradeDisplay({ grade, test, classDoc }).className,
+                        });
+                    });
+                    matchedHomework.forEach((result) => {
+                        const assignmentId = resolveHomeworkAssignmentId(result);
+                        const assignment = assignmentRows.find((item) => String(item.id) === String(assignmentId));
+                        console.log('[studentDetail][homework]', {
+                            resultId: result.id,
+                            assignmentId,
+                            resolvedAssignmentTitle: resolveHomeworkAssignmentTitle(assignment),
+                        });
+                    });
                 }
                 setGrades(matchedGrades);
                 setHomeworkResults(matchedHomework);
@@ -466,7 +496,19 @@ export default function StudentDetail() {
         () => sortNewest(attendances, ['date', 'lessonDate', 'createdAt']),
         [attendances],
     );
-    const sortedGrades = useMemo(() => sortNewest(grades, ['date', 'testDate', 'createdAt']), [grades]);
+    const gradeRows = useMemo(() => grades.flatMap((grade) => {
+        const test = testMap.get(String(resolveGradeTestId(grade)));
+        if (!test) return [];
+        const classDoc = classMap.get(getClassId(test));
+        if (!classDoc || classDoc.active === false || isClosedClass(classDoc)) return [];
+        return [{ ...grade, test, classDoc, ...resolveGradeDisplay({ grade, test, classDoc }) }];
+    }), [grades, testMap, classMap]);
+    const sortedGrades = useMemo(
+        () => [...gradeRows].sort((a, b) => (
+            (toDate(b.testDate)?.getTime() || 0) - (toDate(a.testDate)?.getTime() || 0)
+        )),
+        [gradeRows],
+    );
     const sortedClinics = useMemo(
         () => sortNewest(clinicLogs, ['date', 'clinicDate', 'createdAt']),
         [clinicLogs],
@@ -500,13 +542,15 @@ export default function StudentDetail() {
     }, 0), [clinicLogs]);
 
     const homeworkRows = useMemo(() => sortNewest(homeworkResults.flatMap((result) => {
-        const assignmentId = String(firstValue(result, ['assignmentId', 'homeworkAssignmentId', 'id'], ''));
+        const assignmentId = String(resolveHomeworkAssignmentId(result));
         const assignment = assignmentMap.get(assignmentId);
         if (!assignment) return [];
         const questionNumbers = Array.isArray(assignment.questionNumbers) ? assignment.questionNumbers : [];
         return [{
             ...assignment,
             ...result,
+            assignmentTitle: resolveHomeworkAssignmentTitle(assignment),
+            questionSummary: resolveHomeworkQuestionSummary(assignment),
             results: normalizeHomeworkResultMapForDisplay(result.results || {}, questionNumbers, {
                 assignmentId,
                 studentId: student?.id,
@@ -588,7 +632,8 @@ export default function StudentDetail() {
         );
     }
 
-    const className = (record) => classMap.get(getClassId(record))?.name
+    const className = (record) => record?.className
+        || firstValue(classMap.get(getClassId(record)), ['name', 'className', 'title'])
         || firstValue(record, ['className'], '(클래스 미상)');
     const activeClassCount = sortedClasses.filter((item) => !isClosedClass(item)).length;
     const infoRows = [
@@ -680,12 +725,12 @@ export default function StudentDetail() {
             return (
                 <SectionCard title="성적" description="미응시는 점수와 구분하여 표시합니다.">
                     <DataTable rows={sortedGrades} emptyText="성적 기록이 없습니다." columns={[
-                        { key: 'test', label: '시험명', render: (row) => testMap.get(String(firstValue(row, ['testId', 'testDocId'])))?.name || firstValue(row, ['testName', 'name'], '-') },
+                        { key: 'test', label: '시험명', render: (row) => firstValue(row.test, ['name', 'title', 'testName'], firstValue(row, ['testName', 'name'], '-')) },
                         { key: 'class', label: '클래스', render: className },
-                        { key: 'date', label: '날짜', render: (row) => formatDate(firstValue(row, ['date', 'testDate', 'createdAt'])) },
+                        { key: 'date', label: '날짜', render: (row) => formatDate(row.testDate) },
                         { key: 'score', label: '학생 점수', render: (row) => <span className={isNotAttempted(row) ? 'font-bold text-gray-400' : 'font-bold text-[#455fab]'}>{formatScore(row)}</span> },
-                        { key: 'average', label: '평균', render: (row) => firstValue(row, ['average', 'classAverage'], '-') },
-                        { key: 'highest', label: '최고점', render: (row) => firstValue(row, ['highest', 'highestScore', 'classMax'], '-') },
+                        { key: 'average', label: '평균', render: (row) => row.classAverage ?? '-' },
+                        { key: 'highest', label: '최고점', render: (row) => row.highestScore ?? '-' },
                         { key: 'attempted', label: '응시 여부', render: (row) => isNotAttempted(row) ? '미응시' : '응시' },
                     ]} />
                 </SectionCard>
@@ -695,11 +740,11 @@ export default function StudentDetail() {
             return (
                 <SectionCard title="과제" description="해당 학생의 과제 결과만 표시합니다.">
                     <DataTable rows={homeworkRows} emptyText="과제 결과가 없습니다." columns={[
-                        { key: 'title', label: '과제명', render: (row) => firstValue(row, ['title', 'name', 'homeworkName'], '-') },
+                        { key: 'title', label: '과제명', render: (row) => row.assignmentTitle },
                         { key: 'class', label: '클래스', render: className },
                         { key: 'date', label: '출제일', render: (row) => formatDate(firstValue(row, ['assignedDate', 'date', 'createdAt'])) },
                         { key: 'status', label: '제출/완료', render: (row) => firstValue(row, ['status', 'submissionStatus'], row?.completed ? '완료' : '미완료') },
-                        { key: 'summary', label: '문항 요약', render: (row) => `맞음 ${firstValue(row, ['correctCount', 'correct'], 0)} · 틀림 ${firstValue(row, ['wrongCount', 'wrong'], 0)} · 고침 ${firstValue(row, ['correctedCount', 'corrected'], 0)} · 남음 ${firstValue(row, ['remainingCount', 'remaining'], 0)}` },
+                        { key: 'summary', label: '문항 요약', render: (row) => row.questionSummary },
                     ]} />
                 </SectionCard>
             );
@@ -790,7 +835,7 @@ export default function StudentDetail() {
                     <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
                         <p className="text-[11px] font-bold text-gray-400">최근 성적</p>
                         <p className="mt-1 text-sm font-semibold text-gray-800">{latestGrade ? formatScore(latestGrade) : '기록 없음'}</p>
-                        <p className="mt-1 text-xs text-gray-500">{latestGrade ? (testMap.get(String(firstValue(latestGrade, ['testId', 'testDocId'])))?.name || firstValue(latestGrade, ['testName'], '시험명 없음')) : '등록된 성적이 없습니다.'}</p>
+                        <p className="mt-1 text-xs text-gray-500">{latestGrade ? (firstValue(latestGrade.test, ['name', 'title', 'testName'], firstValue(latestGrade, ['testName'], '시험명 없음'))) : '등록된 성적이 없습니다.'}</p>
                     </div>
                     <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
                         <p className="text-[11px] font-bold text-gray-400">최근 클리닉</p>

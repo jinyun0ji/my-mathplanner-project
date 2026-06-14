@@ -1,6 +1,51 @@
 import { formatRoundedScore } from '../../utils/numberFormat';
 import { formatStudentScore, isAbsentGradeRecord, pickScoreValue, toFiniteScoreNumber } from '../../utils/scoreDisplay';
 
+const firstDisplayValue = (records, keys, fallback = null) => {
+    for (const record of records) {
+        for (const key of keys) {
+            const value = record?.[key];
+            if (value !== undefined && value !== null && value !== '') return value;
+        }
+    }
+    return fallback;
+};
+
+export const resolveGradeTestId = (grade = {}) => firstDisplayValue(
+    [grade],
+    ['testId', 'examId', 'assessmentId', 'testDocId'],
+    '',
+);
+
+export const resolveGradeDisplay = ({ grade = {}, test = {}, classDoc = {} } = {}) => ({
+    className: firstDisplayValue([classDoc], ['name', 'className', 'title'], '(클래스 미상)'),
+    testDate: firstDisplayValue(
+        [{ value: test.date }, { value: test.testDate }, { value: grade.testDate }, { value: grade.date }],
+        ['value'],
+        null,
+    ),
+    classAverage: firstDisplayValue(
+        [
+            { value: grade.classAverage },
+            { value: grade.average },
+            { value: test.average },
+            { value: test.classAverage },
+        ],
+        ['value'],
+        null,
+    ),
+    highestScore: firstDisplayValue(
+        [
+            { value: grade.classMax },
+            { value: grade.maxScore },
+            { value: test.maxScore },
+            { value: test.highestScore },
+        ],
+        ['value'],
+        null,
+    ),
+});
+
 const isCorrectAnswer = (value) => {
     return value === true || value === 1 || value === '맞음' || value === '고침';
 };

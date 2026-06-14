@@ -11,6 +11,31 @@ const resolveAssignedDate = (assignment) => (
     || resolveDateString(assignment?.createdAt)
 );
 
+export const resolveHomeworkAssignmentId = (result = {}) => (
+    result.assignmentId
+    || result.homeworkAssignmentId
+    || result.homeworkId
+    || ''
+);
+
+export const resolveHomeworkAssignmentTitle = (assignment = {}) => (
+    assignment.title
+    || assignment.name
+    || assignment.assignmentTitle
+    || '(과제명 없음)'
+);
+
+export const resolveHomeworkQuestionSummary = (assignment = {}) => {
+    const explicit = assignment.summary || assignment.description || assignment.memo;
+    if (explicit) return explicit;
+
+    const questionCount = getAssignmentQuestionNumbers(assignment).length;
+    if (!questionCount) return '-';
+
+    const type = String(assignment.questionType || assignment.problemType || '').trim();
+    return type ? `${type} ${questionCount}문항` : `총 ${questionCount}문항`;
+};
+
 export const getClassAssignments = (assignments = [], classId) => {
     if (!classId) return [];
 
