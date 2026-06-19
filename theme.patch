@@ -341,15 +341,17 @@ index b9949722e86de69c6b9ecbf804979b440f15d382..eb5385645108ffa2a0f52b21899a19a2
 \ No newline at end of file
 +}
 diff --git a/src/components/Student/formulaBook/FormulaBookView.jsx b/src/components/Student/formulaBook/FormulaBookView.jsx
-index c98e24cf30ed40395acb2f62a688be7a347b5227..1707208c63eaf7c91f49a02b13205290b2a7d7f0 100644
+index c98e24cf30ed40395acb2f62a688be7a347b5227..8b05e7336a12e9f36e643b09750b3a479cac791b 100644
 --- a/src/components/Student/formulaBook/FormulaBookView.jsx
 +++ b/src/components/Student/formulaBook/FormulaBookView.jsx
-@@ -1,65 +1,65 @@
+@@ -1,196 +1,216 @@
  import React, { useEffect, useMemo, useRef, useState } from 'react';
 -import { collection, getDocs, query, where } from 'firebase/firestore';
-+import { collection, getDocs } from 'firebase/firestore';
++import {
++    collection, doc, getDoc, getDocs, query, where,
++} from 'firebase/firestore';
  import { db } from '../../../firebase/client';
- import FormulaConceptModal from './FormulaConceptModal';
+-import FormulaConceptModal from './FormulaConceptModal';
  
  const normalizeText = (value) => String(value || '').trim().toLocaleLowerCase('ko-KR');
  const byOrderThenTitle = (a, b) => (
@@ -368,56 +370,329 @@ index c98e24cf30ed40395acb2f62a688be7a347b5227..1707208c63eaf7c91f49a02b13205290
      return searchableValues.some((value) => normalizeText(value).includes(normalizedQuery));
  };
  
++const buildNocookieEmbedUrl = (value) => {
++    if (!value) return '';
++    try {
++        const url = new URL(value);
++        const isYoutubeEmbed = ['www.youtube.com', 'youtube.com', 'www.youtube-nocookie.com', 'youtube-nocookie.com'].includes(url.hostname)
++            && url.pathname.startsWith('/embed/');
++        if (url.protocol !== 'https:' || !isYoutubeEmbed) return '';
++        const videoId = url.pathname.split('/').filter(Boolean)[1] || '';
++        if (!videoId) return '';
++        const embedUrl = new URL(`https://www.youtube-nocookie.com/embed/${videoId}`);
++        embedUrl.searchParams.set('modestbranding', '1');
++        embedUrl.searchParams.set('rel', '0');
++        embedUrl.searchParams.set('playsinline', '1');
++        return embedUrl.toString();
++    } catch {
++        return '';
++    }
++};
++
  export default function FormulaBookView({ initialConceptId = '', onConceptHandled }) {
      const [subjects, setSubjects] = useState([]);
      const [concepts, setConcepts] = useState([]);
      const [selectedSubjectId, setSelectedSubjectId] = useState('');
      const [selectedConcept, setSelectedConcept] = useState(null);
      const [search, setSearch] = useState('');
-     const [isLoading, setIsLoading] = useState(true);
+-    const [isLoading, setIsLoading] = useState(true);
++    const [isSubjectLoading, setIsSubjectLoading] = useState(true);
++    const [isConceptLoading, setIsConceptLoading] = useState(false);
      const [error, setError] = useState('');
      const handledConceptIdRef = useRef('');
  
      useEffect(() => {
          let isMounted = true;
- 
-         const loadFormulaBook = async () => {
+-
+-        const loadFormulaBook = async () => {
++        const loadSubjects = async () => {
              try {
-                 const [subjectSnapshot, conceptSnapshot] = await Promise.all([
+-                const [subjectSnapshot, conceptSnapshot] = await Promise.all([
 -                    getDocs(query(collection(db, 'formulaBookSubjects'), where('active', '==', true))),
 -                    getDocs(query(collection(db, 'formulaBookConcepts'), where('active', '==', true))),
-+                    getDocs(collection(db, 'formulaSubjects')),
-+                    getDocs(collection(db, 'formulaConcepts')),
-                 ]);
+-                ]);
++                const subjectSnapshot = await getDocs(collection(db, 'formulaSubjects'));
                  if (!isMounted) return;
- 
+-
                  setSubjects(subjectSnapshot.docs
                      .map((item) => ({ id: item.id, ...item.data() }))
                      .filter((item) => item.active !== false)
                      .sort(byOrderThenTitle));
++            } catch (loadError) {
++                console.error('[FormulaBookView] subject load failed', loadError);
++                if (isMounted) setError('공식집 과목을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.');
++            } finally {
++                if (isMounted) setIsSubjectLoading(false);
++            }
++        };
++        loadSubjects();
++        return () => { isMounted = false; };
++    }, []);
++
++    useEffect(() => {
++        if (!selectedSubjectId) {
++            setConcepts([]);
++            return undefined;
++        }
++        let isMounted = true;
++        const loadConcepts = async () => {
++            setIsConceptLoading(true);
++            try {
++                const conceptSnapshot = await getDocs(query(
++                    collection(db, 'formulaConcepts'),
++                    where('subjectId', '==', selectedSubjectId),
++                ));
++                if (!isMounted) return;
                  setConcepts(conceptSnapshot.docs
                      .map((item) => ({ id: item.id, ...item.data() }))
                      .filter((item) => item.active !== false)
                      .sort(byOrderThenTitle));
              } catch (loadError) {
-                 console.error('[FormulaBookView] load failed', loadError);
-                 if (isMounted) setError('공식집을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.');
+-                console.error('[FormulaBookView] load failed', loadError);
+-                if (isMounted) setError('공식집을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.');
++                console.error('[FormulaBookView] concept load failed', loadError);
++                if (isMounted) setError('공식집 개념을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.');
              } finally {
-                 if (isMounted) setIsLoading(false);
+-                if (isMounted) setIsLoading(false);
++                if (isMounted) setIsConceptLoading(false);
              }
          };
+-
+-        loadFormulaBook();
+-        return () => {
+-            isMounted = false;
+-        };
+-    }, []);
++        loadConcepts();
++        return () => { isMounted = false; };
++    }, [selectedSubjectId]);
  
-         loadFormulaBook();
-         return () => {
-             isMounted = false;
-         };
-     }, []);
+     useEffect(() => {
+-        if (isLoading || !initialConceptId || handledConceptIdRef.current === initialConceptId) return;
+-
+-        const concept = concepts.find((item) => String(item.id) === String(initialConceptId));
++        if (isSubjectLoading || !initialConceptId || handledConceptIdRef.current === initialConceptId) return;
+         handledConceptIdRef.current = initialConceptId;
+-        if (concept) {
+-            setSelectedSubjectId(String(concept.subjectId || ''));
+-            setSelectedConcept(concept);
+-        }
+-        onConceptHandled?.(Boolean(concept));
+-    }, [concepts, initialConceptId, isLoading, onConceptHandled]);
++        const loadInitialConcept = async () => {
++            try {
++                const conceptSnapshot = await getDoc(doc(db, 'formulaConcepts', initialConceptId));
++                const concept = conceptSnapshot.exists() ? { id: conceptSnapshot.id, ...conceptSnapshot.data() } : null;
++                if (concept?.active !== false) {
++                    setSelectedSubjectId(String(concept.subjectId || ''));
++                    setSelectedConcept(concept);
++                    onConceptHandled?.(true);
++                    return;
++                }
++                onConceptHandled?.(false);
++            } catch (loadError) {
++                console.error('[FormulaBookView] initial concept load failed', loadError);
++                onConceptHandled?.(false);
++            }
++        };
++        loadInitialConcept();
++    }, [initialConceptId, isSubjectLoading, onConceptHandled]);
  
+     const normalizedQuery = normalizeText(search);
+-    const visibleConcepts = useMemo(() => concepts.filter((concept) => {
+-        const isInSubject = !selectedSubjectId || String(concept.subjectId) === String(selectedSubjectId);
+-        return isInSubject && matchesSearch(concept, normalizedQuery);
+-    }), [concepts, normalizedQuery, selectedSubjectId]);
++    const visibleConcepts = useMemo(() => concepts.filter((concept) => matchesSearch(concept, normalizedQuery)), [concepts, normalizedQuery]);
++    const selectedSubject = subjects.find((item) => String(item.id) === String(selectedSubjectId));
++    const embedUrl = useMemo(() => buildNocookieEmbedUrl(selectedConcept?.youtubeEmbedUrl), [selectedConcept?.youtubeEmbedUrl]);
+ 
+     return (
+         <section className="space-y-5">
+-            {/* TODO: QR 링크로 로그인 전 진입한 경우 conceptId를 저장하고 로그인 완료 후 복원 처리 */}
+-            <div className="relative">
+-                <span className="pointer-events-none absolute inset-y-0 left-4 flex items-center text-gray-400">⌕</span>
+-                <input
+-                    type="search"
+-                    value={search}
+-                    onChange={(event) => setSearch(event.target.value)}
+-                    placeholder="개념명, 태그, 키워드, 요약 검색"
+-                    className="w-full rounded-2xl border border-gray-200 bg-white py-3.5 pl-11 pr-4 text-sm outline-none transition focus:border-[#455fab] focus:ring-2 focus:ring-[#455fab]/10"
+-                    aria-label="수학 공식 검색"
+-                />
++            <div>
++                <h2 className="mb-3 text-base font-extrabold text-gray-900">과목</h2>
++                {isSubjectLoading && <div className="rounded-2xl border border-gray-100 bg-white px-4 py-8 text-center text-sm text-gray-500">공식집 과목을 불러오는 중입니다...</div>}
++                {!isSubjectLoading && error && <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-8 text-center text-sm text-red-600">{error}</div>}
++                {!isSubjectLoading && !error && (
++                    <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white">
++                        {subjects.map((subject) => (
++                            <button
++                                key={subject.id}
++                                type="button"
++                                onClick={() => { setSelectedSubjectId(subject.id); setSelectedConcept(null); }}
++                                className={`flex w-full items-center justify-between border-b border-gray-100 px-4 py-3 text-left text-sm last:border-b-0 ${selectedSubjectId === subject.id ? 'bg-[#eef2ff] text-[#455fab]' : 'text-gray-800'}`}
++                            >
++                                <span className="font-bold">{subject.title}</span>
++                                <span className="text-xs text-gray-400">순서 {subject.order || 0}</span>
++                            </button>
++                        ))}
++                        {subjects.length === 0 && <div className="px-4 py-8 text-center text-sm text-gray-500">등록된 과목이 없습니다.</div>}
++                    </div>
++                )}
+             </div>
+ 
+-            {isLoading && (
+-                <div className="rounded-2xl border border-gray-100 bg-white px-4 py-12 text-center text-sm text-gray-500">
+-                    공식집을 불러오는 중입니다...
+-                </div>
+-            )}
+-
+-            {!isLoading && error && (
+-                <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-8 text-center text-sm text-red-600">
+-                    {error}
++            {selectedSubjectId && (
++                <div className="relative">
++                    <span className="pointer-events-none absolute inset-y-0 left-4 flex items-center text-gray-400">⌕</span>
++                    <input
++                        type="search"
++                        value={search}
++                        onChange={(event) => setSearch(event.target.value)}
++                        placeholder="개념명, 태그, 요약 검색"
++                        className="w-full rounded-2xl border border-gray-200 bg-white py-3.5 pl-11 pr-4 text-sm outline-none transition focus:border-[#455fab] focus:ring-2 focus:ring-[#455fab]/10"
++                        aria-label="수학 공식 검색"
++                    />
+                 </div>
+             )}
+ 
+-            {!isLoading && !error && (
+-                <>
+-                    <div>
+-                        <div className="mb-3 flex items-center justify-between">
+-                            <h2 className="text-base font-extrabold text-gray-900">과목</h2>
+-                            {selectedSubjectId && (
+-                                <button type="button" onClick={() => setSelectedSubjectId('')} className="text-xs font-semibold text-[#455fab]">
+-                                    전체 보기
++            {selectedSubjectId && (
++                <div>
++                    <h2 className="mb-3 text-base font-extrabold text-gray-900">
++                        {selectedSubject?.title || '선택한 과목'} 개념
++                        <span className="ml-2 text-xs font-medium text-gray-400">{visibleConcepts.length}개</span>
++                    </h2>
++                    {isConceptLoading ? (
++                        <div className="rounded-2xl border border-gray-100 bg-white px-4 py-8 text-center text-sm text-gray-500">개념을 불러오는 중입니다...</div>
++                    ) : (
++                        <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white">
++                            {visibleConcepts.map((concept) => (
++                                <button key={concept.id} type="button" onClick={() => setSelectedConcept(concept)} className="block w-full border-b border-gray-100 px-4 py-4 text-left last:border-b-0 hover:bg-gray-50">
++                                    <div className="flex items-center justify-between gap-3">
++                                        <h3 className="font-extrabold text-gray-900">{concept.title}</h3>
++                                        <span className="text-xs text-gray-400">순서 {concept.order || 0}</span>
++                                    </div>
++                                    <p className="mt-1 line-clamp-2 text-sm leading-6 text-gray-600">{concept.summary || '요약 설명이 없습니다.'}</p>
++                                    {Array.isArray(concept.tags) && concept.tags.length > 0 && <p className="mt-2 text-xs font-semibold text-[#455fab]">{concept.tags.map((tag) => `#${tag}`).join(' ')}</p>}
+                                 </button>
+-                            )}
++                            ))}
++                            {visibleConcepts.length === 0 && <div className="px-4 py-10 text-center text-sm text-gray-500">조건에 맞는 개념이 없습니다.</div>}
+                         </div>
+-                        {subjects.length > 0 ? (
+-                            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+-                                {subjects.map((subject) => {
+-                                    const isSelected = String(selectedSubjectId) === String(subject.id);
+-                                    return (
+-                                        <button
+-                                            key={subject.id}
+-                                            type="button"
+-                                            onClick={() => setSelectedSubjectId(isSelected ? '' : subject.id)}
+-                                            className={`rounded-2xl border p-4 text-left shadow-sm transition active:scale-[0.98] ${
+-                                                isSelected
+-                                                    ? 'border-[#455fab] bg-[#455fab] text-white'
+-                                                    : 'border-gray-200 bg-white text-gray-900 hover:border-[#455fab]/40'
+-                                            }`}
+-                                        >
+-                                            <span className="block text-sm font-bold">{subject.title}</span>
+-                                            <span className={`mt-1 block text-xs ${isSelected ? 'text-white/75' : 'text-gray-400'}`}>
+-                                                개념 {concepts.filter((item) => String(item.subjectId) === String(subject.id)).length}개
+-                                            </span>
+-                                        </button>
+-                                    );
+-                                })}
+-                            </div>
+-                        ) : (
+-                            <div className="rounded-2xl border border-dashed border-gray-200 bg-white px-4 py-8 text-center text-sm text-gray-500">
+-                                등록된 과목이 없습니다.
+-                            </div>
+-                        )}
+-                    </div>
++                    )}
++                </div>
++            )}
+ 
+-                    <div>
+-                        <h2 className="mb-3 text-base font-extrabold text-gray-900">
+-                            {selectedSubjectId ? subjects.find((item) => String(item.id) === String(selectedSubjectId))?.title : '전체 개념'}
+-                            <span className="ml-2 text-xs font-medium text-gray-400">{visibleConcepts.length}개</span>
+-                        </h2>
+-                        {visibleConcepts.length > 0 ? (
+-                            <div className="grid gap-3 md:grid-cols-2">
+-                                {visibleConcepts.map((concept) => (
+-                                    <article key={concept.id} className="flex flex-col rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+-                                        <h3 className="text-base font-extrabold text-gray-900">{concept.title}</h3>
+-                                        {Array.isArray(concept.tags) && concept.tags.length > 0 && (
+-                                            <div className="mt-2 flex flex-wrap gap-1.5">
+-                                                {concept.tags.map((tag) => (
+-                                                    <span key={tag} className="rounded-full bg-[#eef2ff] px-2.5 py-1 text-[11px] font-semibold text-[#455fab]">
+-                                                        #{tag}
+-                                                    </span>
+-                                                ))}
+-                                            </div>
+-                                        )}
+-                                        <p className="mt-3 flex-1 text-sm leading-6 text-gray-600">
+-                                            {concept.summary || '요약 설명이 없습니다.'}
+-                                        </p>
+-                                        <button
+-                                            type="button"
+-                                            onClick={() => setSelectedConcept(concept)}
+-                                            className="mt-4 w-full rounded-xl bg-[#455fab] px-4 py-3 text-sm font-bold text-white transition active:scale-[0.98]"
+-                                        >
+-                                            영상 보기
+-                                        </button>
+-                                    </article>
+-                                ))}
++            {!selectedSubjectId && !isSubjectLoading && !error && <div className="rounded-2xl border border-dashed border-gray-200 bg-white px-4 py-10 text-center text-sm text-gray-500">과목을 선택하면 개념 목록을 불러옵니다.</div>}
++
++            {selectedConcept && (
++                <article className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
++                    <p className="mb-1 text-xs font-bold text-[#455fab]">개념 상세</p>
++                    <h2 className="text-xl font-extrabold text-gray-900">{selectedConcept.title}</h2>
++                    {Array.isArray(selectedConcept.tags) && selectedConcept.tags.length > 0 && <p className="mt-2 text-xs font-semibold text-[#455fab]">{selectedConcept.tags.map((tag) => `#${tag}`).join(' ')}</p>}
++                    <p className="mt-4 whitespace-pre-wrap text-sm leading-7 text-gray-700">{selectedConcept.summary || '등록된 설명이 없습니다.'}</p>
++                    <div className="mt-5">
++                        {embedUrl ? (
++                            <div className="aspect-video overflow-hidden rounded-xl bg-black">
++                                <iframe className="h-full w-full" src={embedUrl} title={`${selectedConcept.title} 설명 영상`} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen />
+                             </div>
+                         ) : (
+-                            <div className="rounded-2xl border border-dashed border-gray-200 bg-white px-4 py-10 text-center text-sm text-gray-500">
+-                                조건에 맞는 개념이 없습니다.
+-                            </div>
++                            <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 px-4 py-8 text-center text-sm text-gray-500">재생 가능한 영상이 등록되지 않았습니다.</div>
+                         )}
+                     </div>
+-                </>
++                </article>
+             )}
+-
+-            <FormulaConceptModal concept={selectedConcept} onClose={() => setSelectedConcept(null)} />
+         </section>
+     );
+ }
 diff --git a/src/pages/FormulaBookManagement.jsx b/src/pages/FormulaBookManagement.jsx
-index d3e41dc3881589abf11b58dbeee32f31dc7edd05..7b650e15fc867c790134712666c4dda9a1c1b26f 100644
+index d3e41dc3881589abf11b58dbeee32f31dc7edd05..3b0b69f5125decab4b83e4094d140fd511fff12c 100644
 --- a/src/pages/FormulaBookManagement.jsx
 +++ b/src/pages/FormulaBookManagement.jsx
-@@ -1,102 +1,127 @@
+@@ -1,102 +1,162 @@
  import React, { useEffect, useMemo, useState } from 'react';
  import {
    addDoc, collection, doc, getDocs, serverTimestamp, updateDoc,
@@ -439,7 +714,8 @@ index d3e41dc3881589abf11b58dbeee32f31dc7edd05..7b650e15fc867c790134712666c4dda9
 -export const buildFormulaConceptQrPath = (conceptId) => `/classroom?mode=formula&conceptId=${encodeURIComponent(conceptId)}`;
 +export const buildFormulaConceptQrPath = (conceptId) => `/classroom?mode=book&conceptId=${encodeURIComponent(conceptId)}`;
  export const buildFormulaConceptQrUrl = (conceptId) => `${window.location.origin}${buildFormulaConceptQrPath(conceptId)}`;
- 
++export const buildQrImageUrl = (conceptId) => `https://api.qrserver.com/v1/create-qr-code/?size=640x640&format=png&data=${encodeURIComponent(buildFormulaConceptQrUrl(conceptId))}`;
++
 +const normalizeYoutubeEmbedUrl = (value) => {
 +  const raw = String(value || '').trim();
 +  const iframeSrc = raw.match(/<iframe[^>]+src=["']([^"']+)["']/i)?.[1];
@@ -448,16 +724,16 @@ index d3e41dc3881589abf11b58dbeee32f31dc7edd05..7b650e15fc867c790134712666c4dda9
 +    const url = new URL(input);
 +    let videoId = '';
 +    if (url.hostname === 'youtu.be') videoId = url.pathname.split('/').filter(Boolean)[0] || '';
-+    if (url.hostname.endsWith('youtube.com')) {
++    if (url.hostname.endsWith('youtube.com') || url.hostname.endsWith('youtube-nocookie.com')) {
 +      if (url.pathname.startsWith('/embed/')) videoId = url.pathname.split('/').filter(Boolean)[1] || '';
 +      if (url.pathname === '/watch') videoId = url.searchParams.get('v') || '';
 +      if (url.pathname.startsWith('/shorts/')) videoId = url.pathname.split('/').filter(Boolean)[1] || '';
 +    }
 +    if (!/^[\w-]{6,}$/.test(videoId)) return '';
-+    return `https://www.youtube.com/embed/${videoId}?modestbranding=1&rel=0`;
++    return `https://www.youtube-nocookie.com/embed/${videoId}?modestbranding=1&rel=0&playsinline=1`;
 +  } catch { return ''; }
 +};
-+
+ 
  export default function FormulaBookManagement() {
    const { user } = useAuth();
    const [subjects, setSubjects] = useState([]);
@@ -468,6 +744,7 @@ index d3e41dc3881589abf11b58dbeee32f31dc7edd05..7b650e15fc867c790134712666c4dda9
    const [editingConceptId, setEditingConceptId] = useState('');
 +  const [selectedSubjectFilter, setSelectedSubjectFilter] = useState('');
    const [message, setMessage] = useState('');
++  const [qrConcept, setQrConcept] = useState(null);
  
    const loadData = async () => {
      const [subjectSnapshot, conceptSnapshot] = await Promise.all([
@@ -515,11 +792,28 @@ index d3e41dc3881589abf11b58dbeee32f31dc7edd05..7b650e15fc867c790134712666c4dda9
 +  const deactivateSubject = async (subjectId) => { await updateDoc(doc(db, SUBJECTS_COLLECTION, subjectId), { active: false, updatedAt: serverTimestamp(), updatedBy: user?.uid || '' }); setMessage('과목을 비활성화했습니다.'); await loadData(); };
 +  const deactivateConcept = async (conceptId) => { await updateDoc(doc(db, CONCEPTS_COLLECTION, conceptId), { active: false, updatedAt: serverTimestamp(), updatedBy: user?.uid || '' }); setMessage('개념을 비활성화했습니다.'); await loadData(); };
 +
++  const downloadQrImage = async (concept) => {
++    try {
++      const response = await fetch(buildQrImageUrl(concept.id));
++      const blob = await response.blob();
++      const objectUrl = URL.createObjectURL(blob);
++      const link = document.createElement('a');
++      link.href = objectUrl;
++      link.download = `formula-${concept.id}-qr.png`;
++      link.click();
++      URL.revokeObjectURL(objectUrl);
++      setMessage('QR 이미지를 다운로드했습니다.');
++    } catch {
++      window.open(buildQrImageUrl(concept.id), '_blank', 'noopener,noreferrer');
++      setMessage('QR 이미지를 새 창으로 열었습니다. 이미지를 저장해주세요.');
++    }
++  };
++
    const fieldClass = 'mt-1 w-full rounded-lg border border-gray-300 p-2 text-sm';
    return (
      <div className="space-y-6 p-4 md:p-8">
 -      <div><h1 className="text-2xl font-bold text-gray-900">공식집 관리</h1><p className="mt-1 text-sm text-gray-500">과목과 개념을 등록하고 QR 진입 링크를 관리합니다.</p></div>
-+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between"><div><h1 className="text-2xl font-bold text-gray-900">공식집 관리</h1><p className="mt-1 text-sm text-gray-500">과목과 개념을 등록하고 QR 진입 링크를 관리합니다.</p></div><div className="flex gap-2"><button type="button" onClick={() => { setEditingSubjectId(''); setSubjectForm(emptySubject); }} className="rounded-lg bg-[#455fab] px-4 py-2 text-sm font-bold text-white">과목 추가</button><button type="button" onClick={() => { setEditingConceptId(''); setConceptForm(emptyConcept); }} className="rounded-lg bg-[#455fab] px-4 py-2 text-sm font-bold text-white">개념 추가</button></div></div>
++      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between"><div><h1 className="text-2xl font-bold text-gray-900">공식집 관리</h1><p className="mt-1 text-sm text-gray-500">과목과 개념을 등록하고 QR 이미지를 생성/다운로드합니다.</p></div><div className="flex gap-2"><button type="button" onClick={() => { setEditingSubjectId(''); setSubjectForm(emptySubject); }} className="rounded-lg bg-[#455fab] px-4 py-2 text-sm font-bold text-white">과목 추가</button><button type="button" onClick={() => { setEditingConceptId(''); setConceptForm(emptyConcept); }} className="rounded-lg bg-[#455fab] px-4 py-2 text-sm font-bold text-white">개념 추가</button></div></div>
        {message && <p className="rounded-lg bg-[#f1f4ff] p-3 text-sm text-[#334a91]">{message}</p>}
        <div className="grid gap-6 xl:grid-cols-2">
          <section className="rounded-2xl border bg-white p-5 shadow-sm">
@@ -548,9 +842,25 @@ index d3e41dc3881589abf11b58dbeee32f31dc7edd05..7b650e15fc867c790134712666c4dda9
              <button className="col-span-2 rounded-lg bg-[#455fab] p-2 text-sm font-bold text-white">{editingConceptId ? '개념 수정' : '개념 추가'}</button>
            </form>
 -          <div className="mt-4 divide-y">{concepts.map((concept) => <div key={concept.id} className="flex items-center gap-2 py-3 text-sm"><button type="button" className="min-w-0 flex-1 text-left" onClick={() => { setEditingConceptId(concept.id); setConceptForm({ ...emptyConcept, ...concept, tags: Array.isArray(concept.tags) ? concept.tags.join(', ') : '' }); }}><b>{concept.title}</b><span className="ml-2 text-gray-400">{subjectTitleMap[concept.subjectId] || '과목 없음'}</span></button><button type="button" onClick={() => navigator.clipboard.writeText(buildFormulaConceptQrUrl(concept.id)).then(() => setMessage('QR 링크를 복사했습니다.'))} className="rounded-lg border px-2 py-1 text-xs font-semibold text-[#455fab]">QR 링크 복사</button></div>)}</div>
-+          <div className="mt-4 divide-y">{visibleConcepts.map((concept) => <div key={concept.id} className="flex items-center gap-2 py-3 text-sm"><button type="button" className="min-w-0 flex-1 text-left" onClick={() => { setEditingConceptId(concept.id); setConceptForm({ ...emptyConcept, ...concept, tags: Array.isArray(concept.tags) ? concept.tags.join(', ') : '' }); }}><b>{concept.title}</b><span className="ml-2 text-gray-400">{subjectTitleMap[concept.subjectId] || '과목 없음'} · {concept.active === false ? '비활성' : '활성'} · {concept.order || 0}</span><p className="mt-1 truncate text-xs text-gray-500">{concept.summary}</p><p className="mt-1 truncate text-xs text-gray-400">{concept.youtubeEmbedUrl}</p></button><button type="button" onClick={() => navigator.clipboard.writeText(buildFormulaConceptQrUrl(concept.id)).then(() => setMessage('QR 링크를 복사했습니다.'))} className="rounded-lg border px-2 py-1 text-xs font-semibold text-[#455fab]">QR 링크 복사</button><button type="button" onClick={() => deactivateConcept(concept.id)} className="rounded-lg border px-2 py-1 text-xs font-semibold text-red-600">비활성화</button></div>)}</div>
++          <div className="mt-4 divide-y">{visibleConcepts.map((concept) => <div key={concept.id} className="flex items-center gap-2 py-3 text-sm"><button type="button" className="min-w-0 flex-1 text-left" onClick={() => { setEditingConceptId(concept.id); setConceptForm({ ...emptyConcept, ...concept, tags: Array.isArray(concept.tags) ? concept.tags.join(', ') : '' }); }}><b>{concept.title}</b><span className="ml-2 text-gray-400">{subjectTitleMap[concept.subjectId] || '과목 없음'} · {concept.active === false ? '비활성' : '활성'} · {concept.order || 0}</span><p className="mt-1 truncate text-xs text-gray-500">{concept.summary}</p><p className="mt-1 truncate text-xs text-gray-400">{concept.youtubeEmbedUrl}</p></button><button type="button" onClick={() => setQrConcept(concept)} className="rounded-lg border px-2 py-1 text-xs font-semibold text-[#455fab]">QR 생성</button><button type="button" onClick={() => deactivateConcept(concept.id)} className="rounded-lg border px-2 py-1 text-xs font-semibold text-red-600">비활성화</button></div>)}</div>
          </section>
        </div>
++      {qrConcept && (
++        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4" role="presentation" onClick={() => setQrConcept(null)}>
++          <section className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="formula-qr-title" onClick={(event) => event.stopPropagation()}>
++            <div className="flex items-start justify-between gap-3">
++              <div>
++                <p className="text-xs font-bold text-[#455fab]">공식집 QR</p>
++                <h2 id="formula-qr-title" className="mt-1 text-lg font-extrabold text-gray-900">{qrConcept.title}</h2>
++              </div>
++              <button type="button" onClick={() => setQrConcept(null)} className="rounded-full bg-gray-100 px-3 py-1 text-lg text-gray-500" aria-label="QR 닫기">×</button>
++            </div>
++            <img src={buildQrImageUrl(qrConcept.id)} alt={`${qrConcept.title} QR`} className="mx-auto mt-5 h-64 w-64 rounded-xl border border-gray-200" />
++            <p className="mt-3 break-all rounded-lg bg-gray-50 p-3 text-xs text-gray-500">{buildFormulaConceptQrUrl(qrConcept.id)}</p>
++            <button type="button" onClick={() => downloadQrImage(qrConcept)} className="mt-4 w-full rounded-lg bg-[#455fab] px-4 py-3 text-sm font-bold text-white">QR 다운로드</button>
++          </section>
++        </div>
++      )}
      </div>
    );
  }

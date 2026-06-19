@@ -11,6 +11,7 @@ import {
 } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../../firebase/client';
+import { uploadChatAttachment } from '../../components/chatAttachments';
 
 const createOrGetChatRoomCallable = httpsCallable(functions, 'createOrGetChatRoom');
 const broadcastChatMessageCallable = httpsCallable(functions, 'broadcastChatMessage');
@@ -76,21 +77,31 @@ export const sendMessageDirect = async ({
 }) => {
     const now = Date.now();
     const roomRef = doc(db, 'chatRooms', roomId);
+    const uploadedAttachment = attachments?.[0]?.file ? await uploadChatAttachment({
+        roomId,
+        messageId: clientTempId || String(now),
+        file: attachments[0].file,
+        uploaderUid: senderMeta?.senderId || '',
+    }) : null;
+    const finalAttachments = uploadedAttachment ? [uploadedAttachment] : attachments.filter((item) => !item.file);
+    const finalMessageType = uploadedAttachment ? (uploadedAttachment.type === 'image' ? 'image' : 'file') : messageType;
+    const fallbackLastMessage = uploadedAttachment ? (uploadedAttachment.type === 'image' ? '사진 첨부' : 'PDF 첨부') : text;
+
     const messagePayload = {
         roomId,
         senderId: senderMeta?.senderId || null,
         senderRole: senderMeta?.senderRole || null,
         senderName: senderMeta?.senderName || null,
-        messageType,
+        messageType: finalMessageType,
         text,
-        attachments,
+        attachments: finalAttachments,
         createdAt: serverTimestamp(),
         internalOnly: true,
         clientTempId,
     };
 
     const roomPatch = {
-        lastMessageText: text,
+        lastMessageText: text || fallbackLastMessage,
         lastMessageAt: serverTimestamp(),
         lastMessageSenderId: senderMeta?.senderId || null,
         updatedAt: serverTimestamp(),
@@ -109,7 +120,7 @@ export const sendMessageDirect = async ({
         roomId,
         messageId: messageRef.id,
         acceptedAt: now,
-        lastMessageText: text,
+        lastMessageText: text || fallbackLastMessage,
         lastMessageSenderId: senderMeta?.senderId || null,
     };
 };

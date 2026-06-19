@@ -164,7 +164,7 @@ export default function InternalMessengerPanel({
         }
     };
 
-    const handleSendMessage = async (text) => {
+    const handleSendMessage = async (text, attachment = null) => {
         const target = targetOptions.find((option) => option.authUid === targetUid) || null;
         let roomId = selectedRoom?.id || null;
         if (!roomId && !target) return;
@@ -193,6 +193,8 @@ export default function InternalMessengerPanel({
             senderRole: userRole,
             senderName: '나',
             text,
+            messageType: attachment?.file ? (attachment.file.type === 'application/pdf' ? 'file' : 'image') : 'text',
+            attachments: attachment?.file ? [{ type: attachment.file.type === 'application/pdf' ? 'pdf' : 'image', name: attachment.file.name, url: '', path: '', size: attachment.file.size, contentType: attachment.file.type }] : [],
             createdAt: new Date(),
             localOnly: true,
             sending: true,
@@ -211,7 +213,7 @@ export default function InternalMessengerPanel({
         setRooms((prev) => {
             const next = prev.map((room) => (
                 room.id === roomId
-                    ? { ...room, lastMessageText: text, lastMessageAt: new Date(), updatedAt: new Date() }
+                    ? { ...room, lastMessageText: text || (attachment?.file?.type === 'application/pdf' ? 'PDF 첨부' : '사진 첨부'), lastMessageAt: new Date(), updatedAt: new Date() }
                     : room
             ));
             next.sort((a, b) => {
@@ -235,6 +237,8 @@ export default function InternalMessengerPanel({
             const response = await sendMessageDirect({
                 roomId,
                 text,
+                messageType: attachment?.file ? (attachment.file.type === 'application/pdf' ? 'file' : 'image') : 'text',
+                attachments: attachment?.file ? [attachment] : [],
                 senderMeta: {
                     senderId: userId,
                     senderRole: userRole,
@@ -267,7 +271,7 @@ export default function InternalMessengerPanel({
                     room.id === roomId
                         ? {
                             ...room,
-                            lastMessageText: response?.lastMessageText || text,
+                            lastMessageText: response?.lastMessageText || text || (attachment?.file?.type === 'application/pdf' ? 'PDF 첨부' : '사진 첨부'),
                             lastMessageSenderId: response?.lastMessageSenderId || userId,
                             lastMessageAt: new Date(response?.acceptedAt || Date.now()),
                             updatedAt: new Date(response?.acceptedAt || Date.now()),

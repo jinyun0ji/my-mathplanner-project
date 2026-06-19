@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { getChatRoomDisplayTitle } from './messengerTargets';
+import { formatAttachmentSize, validateChatAttachment } from '../chatAttachments';
 
 const normalizeMessageDate = (value) => {
     if (!value) return null;
@@ -61,6 +62,31 @@ export default function ChatMessagePane({
     contextData = {},
 }) {
     const [draft, setDraft] = useState('');
+    const [attachmentFile, setAttachmentFile] = useState(null);
+    const [previewUrl, setPreviewUrl] = useState('');
+    const [error, setError] = useState('');
+
+    const clearAttachment = () => {
+        if (previewUrl) URL.revokeObjectURL(previewUrl);
+        setPreviewUrl('');
+        setAttachmentFile(null);
+    };
+
+    const handleAttachmentChange = (event) => {
+        const file = event.target.files?.[0] || null;
+        event.target.value = '';
+        if (!file) return;
+        const validation = validateChatAttachment(file);
+        if (!validation.ok) {
+            setError(validation.message);
+            clearAttachment();
+            return;
+        }
+        if (previewUrl) URL.revokeObjectURL(previewUrl);
+        setAttachmentFile(file);
+        setPreviewUrl(validation.type === 'image' ? URL.createObjectURL(file) : '');
+        setError('');
+    };
 
     const sortedMessages = useMemo(() => {
         return [...messages].sort((a, b) => {
@@ -94,9 +120,11 @@ export default function ChatMessagePane({
 
     const submitText = async () => {
         const text = draft.trim();
-        if (!text || !room?.id) return;
+        if ((!text && !attachmentFile) || !room?.id) return;
+        const file = attachmentFile;
         setDraft('');
-        await onSend(text);
+        clearAttachment();
+        await onSend(text, file ? { file } : null);
     };
 
     const submit = async (event) => {
@@ -112,7 +140,7 @@ export default function ChatMessagePane({
     };
 
     if (!room) {
-        return <div className="border rounded-lg bg-white h-[420px] flex items-center justify-center text-sm text-gray-400">왼쪽에서 채팅방을 선택하세요.</div>;
+        return <div className="border rounded-lg bg-white h-[420px] flex items-center justify-center text-sm text-gray-400">오른쪽에서 채팅방을 선택하세요.</div>;
     }
 
     return (
@@ -147,7 +175,19 @@ export default function ChatMessagePane({
                             <div className={`flex items-end gap-1.5 ${mine ? 'justify-end' : 'justify-start'}`}>
                                 {mine && <span className="text-xs text-gray-400 whitespace-nowrap self-end mb-1">{timeLabel}</span>}
                                 <div className={`max-w-[72%] rounded-2xl px-3 py-2 text-sm ${mine ? 'bg-[#455fab] text-white' : 'bg-white border border-gray-100 text-gray-900'} ${isSending ? 'opacity-70' : ''} ${isFailed ? 'border border-red-300 bg-red-50 text-red-700' : ''}`}>
-                                    <p className="whitespace-pre-wrap break-words">{message.text || ''}</p>
+                                    {message.text && <p className="whitespace-pre-wrap break-words">{message.text}</p>}
+                                    {(Array.isArray(message.attachments) ? message.attachments : []).map((attachment) => (
+                                        attachment.type === 'image' ? (
+                                            <a key={attachment.url || attachment.name} href={attachment.url} target="_blank" rel="noreferrer" className={message.text ? 'mt-2 block' : 'block'}>
+                                                <img src={attachment.url} alt={attachment.name} className="max-h-48 rounded-lg object-cover" onError={(event) => { event.currentTarget.style.display = 'none'; }} />
+                                                <span className="mt-1 block text-xs underline break-all">{attachment.name}</span>
+                                            </a>
+                                        ) : (
+                                            <a key={attachment.url || attachment.name} href={attachment.url} target="_blank" rel="noreferrer" className={`${message.text ? 'mt-2 ' : ''}flex items-center gap-2 rounded-lg border border-current/20 px-2 py-1.5 text-xs`}>
+                                                <span>📄</span><span className="break-all">{attachment.name}</span><span className="whitespace-nowrap opacity-75">{formatAttachmentSize(attachment.size)}</span>
+                                            </a>
+                                        )
+                                    ))}
                                     {isSending && <p className="text-[10px] text-gray-500 mt-1">전송 중…</p>}
                                     {isFailed && (
                                         <div className="mt-1 flex items-center justify-end gap-2">
@@ -168,7 +208,16 @@ export default function ChatMessagePane({
                     );
                 })}
             </div>
+            {error && <p className="border-t px-3 py-2 text-xs text-red-600">{error}</p>}
+            {attachmentFile && (
+                <div className="border-t px-3 py-2 flex items-center gap-3 text-xs">
+                    {previewUrl && <img src={previewUrl} alt="첨부 미리보기" className="h-12 w-12 rounded object-cover" />}
+                    <span className="flex-1 truncate">{attachmentFile.name} · {formatAttachmentSize(attachmentFile.size)}</span>
+                    <button type="button" onClick={clearAttachment} className="text-red-500">취소</button>
+                </div>
+            )}
             <form onSubmit={submit} className="border-t p-2 flex gap-2 items-end">
+                <label className="px-3 py-2 rounded border text-sm cursor-pointer">첨부<input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" onChange={handleAttachmentChange} className="hidden" /></label>
                 <textarea
                     value={draft}
                     onChange={(event) => setDraft(event.target.value)}
@@ -177,7 +226,7 @@ export default function ChatMessagePane({
                     rows={2}
                     className="flex-1 border rounded px-3 py-2 text-sm resize-y"
                 />
-                <button type="submit" className="px-3 py-2 rounded bg-green-600 text-white text-sm">전송</button>
+                <button type="submit" disabled={!draft.trim() && !attachmentFile} className="px-3 py-2 rounded bg-green-600 text-white text-sm disabled:bg-gray-300">전송</button>
             </form>
         </div>
     );

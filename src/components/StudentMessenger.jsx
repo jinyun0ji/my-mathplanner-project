@@ -16,6 +16,7 @@ import {
     where,
 } from 'firebase/firestore';
 import { auth, db } from '../firebase/client';
+import { formatAttachmentSize, uploadChatAttachment, validateChatAttachment } from './chatAttachments';
 
 const CANDIDATE_ROOM_IDS = (studentId) => [String(studentId || '')].filter(Boolean);
 
@@ -236,6 +237,8 @@ const normalizeMessage = (id, data, myIds, fallbackSenderName = '메시지') => 
         clientTempId: data?.clientTempId || '',
         localCreatedAtMs: data?.localCreatedAtMs || null,
         pending: Boolean(data?.pending),
+        messageType: data?.messageType || (Array.isArray(data?.attachments) && data.attachments.length ? (data.attachments[0]?.type === 'image' ? 'image' : 'file') : 'text'),
+        attachments: Array.isArray(data?.attachments) ? data.attachments : [],
     };
 };
 
@@ -304,6 +307,9 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
     const [optimisticMessages, setOptimisticMessages] = useState([]);
     const optimisticMessagesRef = useRef([]);
     const [inputText, setInputText] = useState('');
+    const [attachmentFile, setAttachmentFile] = useState(null);
+    const [attachmentPreviewUrl, setAttachmentPreviewUrl] = useState('');
+    const [isSending, setIsSending] = useState(false);
     const [error, setError] = useState('');
     const [myProfileDocId, setMyProfileDocId] = useState('');
     const messagesEndRef = useRef(null);
@@ -447,7 +453,7 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
             });
             setMessages(mergedItems
                 .map((item) => normalizeMessage(item.id, item.raw, myIds, fallbackSenderName))
-                .filter((item) => item.text));
+                .filter((item) => item.text || item.attachments.length));
         };
 
         const subscribe = (withOrderBy) => {
@@ -481,10 +487,45 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
 
     const placeholder = useMemo(() => (userRole === 'parent' ? '메시지 보내기...' : '메시지 입력'), [userRole]);
 
+    useEffect(() => () => {
+        if (attachmentPreviewUrl) URL.revokeObjectURL(attachmentPreviewUrl);
+    }, [attachmentPreviewUrl]);
+
+    const clearAttachment = () => {
+        if (attachmentPreviewUrl) URL.revokeObjectURL(attachmentPreviewUrl);
+        setAttachmentPreviewUrl('');
+        setAttachmentFile(null);
+    };
+
+    const handleAttachmentChange = (event) => {
+        const file = event.target.files?.[0] || null;
+        event.target.value = '';
+        if (!file) return;
+        const validation = validateChatAttachment(file);
+        if (!validation.ok) {
+            setError(validation.message);
+            clearAttachment();
+            return;
+        }
+        if (attachmentPreviewUrl) URL.revokeObjectURL(attachmentPreviewUrl);
+        setAttachmentFile(file);
+        setAttachmentPreviewUrl(validation.type === 'image' ? URL.createObjectURL(file) : '');
+        setError('');
+    };
+
     const handleSend = async (e) => {
         e.preventDefault();
         const text = inputText.trim();
-        if (!text) return;
+        const fileToUpload = attachmentFile;
+        if (!text && !fileToUpload) return;
+        if (fileToUpload) {
+            const validation = validateChatAttachment(fileToUpload);
+            if (!validation.ok) {
+                setError(validation.message);
+                return;
+            }
+        }
+        setIsSending(true);
 
         const viewerUid = auth.currentUser?.uid || 'parent-anonymous';
         const targetAuthUidForRoom = String(roomCreationContext?.targetAuthUid || '');
@@ -504,6 +545,15 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
             id: clientTempId,
             roomId: resolvedRoomId,
             text,
+            messageType: fileToUpload ? (fileToUpload.type === 'application/pdf' ? 'file' : 'image') : 'text',
+            attachments: fileToUpload ? [{
+                type: fileToUpload.type === 'application/pdf' ? 'pdf' : 'image',
+                name: fileToUpload.name,
+                url: attachmentPreviewUrl,
+                path: '',
+                size: fileToUpload.size,
+                contentType: fileToUpload.type,
+            }] : [],
             senderId: viewerUid,
             senderRole: isChatRoomMode ? userRole : userRole,
             senderName: buildSenderName(),
@@ -524,8 +574,9 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
         setMessages((prev) => sortMessageItems(dedupeMessages([
             ...prev.map((item) => ({ id: item.id, raw: item })),
             { id: optimisticMessage.id, raw: optimisticMessage },
-        ])).map((item) => normalizeMessage(item.id, item.raw, myIds, teacherName || '메시지')).filter((item) => item.text));
+        ])).map((item) => normalizeMessage(item.id, item.raw, myIds, teacherName || '메시지')).filter((item) => item.text || item.attachments.length));
         setInputText('');
+        clearAttachment();
 
         try {
             if (isChatRoomMode) {
@@ -606,14 +657,23 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
                     }
                 }
                 
+                const uploadedAttachment = fileToUpload ? await uploadChatAttachment({
+                    roomId: resolvedRoomId,
+                    messageId: clientTempId,
+                    file: fileToUpload,
+                    uploaderUid: viewerUid,
+                }) : null;
+                const attachments = uploadedAttachment ? [uploadedAttachment] : [];
+                const messageType = uploadedAttachment ? (uploadedAttachment.type === 'image' ? 'image' : 'file') : 'text';
+
                 await addDoc(collection(db, 'chatRooms', resolvedRoomId, 'messages'), {
                     roomId: resolvedRoomId,
                     senderId: viewerUid,
                     senderRole: userRole,
                     senderName: buildSenderName(),
-                    messageType: 'text',
+                    messageType,
                     text,
-                    attachments: [],
+                    attachments,
                     createdAt: serverTimestamp(),
                     localCreatedAtMs,
                     clientTempId,
@@ -622,13 +682,22 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
                 });
 
                 await updateDoc(doc(db, 'chatRooms', resolvedRoomId), {
-                    lastMessageText: text,
+                    lastMessageText: text || (uploadedAttachment?.type === 'image' ? '사진 첨부' : 'PDF 첨부'),
                     lastMessageAt: serverTimestamp(),
                     lastMessageSenderId: viewerUid,
                     updatedAt: serverTimestamp(),
                     updatedBy: viewerUid,
                 });
             } else {
+                const uploadedAttachment = fileToUpload ? await uploadChatAttachment({
+                    roomId: resolvedRoomId,
+                    messageId: clientTempId,
+                    file: fileToUpload,
+                    uploaderUid: viewerUid,
+                }) : null;
+                const attachments = uploadedAttachment ? [uploadedAttachment] : [];
+                const messageType = uploadedAttachment ? (uploadedAttachment.type === 'image' ? 'image' : 'file') : 'text';
+
                 const roomRef = doc(db, 'chats', resolvedRoomId);
                 const roomPatch = {
                     participantIds: arrayUnion(String(viewerUid)),
@@ -636,7 +705,7 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
                     parentUids: arrayUnion(String(viewerUid)),
                     updatedAt: serverTimestamp(),
                     lastMessageAt: serverTimestamp(),
-                    lastMessage: text,
+                    lastMessage: text || (uploadedAttachment?.type === 'image' ? '사진 첨부' : 'PDF 첨부'),
                 };
                 if (studentId) {
                     roomPatch.studentId = String(studentId);
@@ -645,6 +714,8 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
 
                 await addDoc(collection(db, 'chats', resolvedRoomId, 'messages'), {
                     text,
+                    messageType,
+                    attachments,
                     senderId: viewerUid,
                     senderRole: userRole,
                     senderName: '학부모',
@@ -664,6 +735,7 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
             });
             setMessages((prev) => prev.filter((item) => item.clientTempId !== clientTempId));
             setInputText(text);
+            if (fileToUpload) setAttachmentFile(fileToUpload);
             logFirestoreQueryFailure('send message', sendError, isChatRoomMode ? {
                 addDoc: { collection: `chatRooms/${resolvedRoomId}/messages`, fields: ['roomId', 'senderId', 'senderRole', 'senderName', 'messageType', 'text', 'attachments', 'createdAt', 'localCreatedAtMs', 'clientTempId', 'internalOnly', 'readBy'] },
                 updateDoc: { doc: ['chatRooms', resolvedRoomId], fields: ['lastMessageText', 'lastMessageAt', 'lastMessageSenderId', 'updatedAt', 'updatedBy'] },
@@ -671,7 +743,9 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
                 updateDoc: { doc: ['chats', resolvedRoomId], fields: ['participantIds', 'parentUid', 'parentUids', 'updatedAt', 'lastMessageAt', 'lastMessage', ...(studentId ? ['studentId'] : [])] },
                 addDoc: { collection: `chats/${resolvedRoomId}/messages`, fields: ['text', 'senderId', 'senderRole', 'senderName', 'createdAt', 'localCreatedAtMs', 'clientTempId'] },
             });
-            setError('메시지를 보낼 권한이 없습니다. 관리자에게 문의해주세요.');
+            setError(sendError?.message || '메시지를 보낼 권한이 없습니다. 관리자에게 문의해주세요.');
+        } finally {
+            setIsSending(false);
         }
     };
 
@@ -694,7 +768,19 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
                             <div className={`flex items-end gap-1.5 ${msg.isMe ? 'justify-end' : 'justify-start'}`}>
                                 {msg.isMe && <span className="text-[11px] text-gray-400 whitespace-nowrap self-end mb-1">{msg.time}</span>}
                                 <div className={`max-w-[72%] px-3 py-2 rounded-2xl text-sm ${msg.isMe ? 'bg-[#455fab] text-white' : 'bg-white text-gray-900 border border-gray-100'}`}>
-                                    <p className="whitespace-pre-wrap break-words">{msg.text}</p>
+                                    {msg.text && <p className="whitespace-pre-wrap break-words">{msg.text}</p>}
+                                    {msg.attachments.map((attachment) => (
+                                        attachment.type === 'image' ? (
+                                            <a key={attachment.url || attachment.name} href={attachment.url} target="_blank" rel="noreferrer" className={msg.text ? 'mt-2 block' : 'block'}>
+                                                <img src={attachment.url} alt={attachment.name} className="max-h-48 rounded-lg object-cover" onError={(event) => { event.currentTarget.style.display = 'none'; }} />
+                                                <span className="mt-1 block text-xs underline break-all">{attachment.name}</span>
+                                            </a>
+                                        ) : (
+                                            <a key={attachment.url || attachment.name} href={attachment.url} target="_blank" rel="noreferrer" className={`${msg.text ? 'mt-2 ' : ''}flex items-center gap-2 rounded-lg border border-current/20 px-2 py-1.5 text-xs`}>
+                                                <span>📄</span><span className="break-all">{attachment.name}</span><span className="whitespace-nowrap opacity-75">{formatAttachmentSize(attachment.size)}</span>
+                                            </a>
+                                        )
+                                    ))}
                                 </div>
                                 {!msg.isMe && <span className="text-[11px] text-gray-400 whitespace-nowrap self-end mb-1">{msg.time}</span>}
                             </div>
@@ -706,7 +792,18 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
                 <div ref={messagesEndRef} />
             </div>
 
+            {attachmentFile && (
+                <div className="px-3 py-2 border-t bg-white flex items-center gap-3 text-xs">
+                    {attachmentPreviewUrl && <img src={attachmentPreviewUrl} alt="첨부 미리보기" className="h-12 w-12 rounded object-cover" />}
+                    <span className="flex-1 truncate">{attachmentFile.name} · {formatAttachmentSize(attachmentFile.size)}</span>
+                    <button type="button" onClick={clearAttachment} className="text-red-500">취소</button>
+                </div>
+            )}
             <form onSubmit={handleSend} className="sticky bottom-0 p-3 bg-white border-t border-gray-100 flex gap-2">
+                <label className="px-3 py-2 rounded-full border border-gray-200 bg-white text-sm cursor-pointer">
+                    첨부
+                    <input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" onChange={handleAttachmentChange} className="hidden" />
+                </label>
                 <input
                     type="text"
                     value={inputText}
@@ -714,7 +811,7 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
                     placeholder={placeholder}
                     className="flex-1 bg-gray-50 border border-gray-200 rounded-full px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-300"
                 />
-                <button type="submit" disabled={!inputText.trim()} className="px-4 py-2 rounded-full text-sm font-semibold bg-gray-900 text-white disabled:bg-gray-300">
+                <button type="submit" disabled={isSending || (!inputText.trim() && !attachmentFile)} className="px-4 py-2 rounded-full text-sm font-semibold bg-gray-900 text-white disabled:bg-gray-300">
                     전송
                 </button>
             </form>

@@ -441,16 +441,39 @@ service cloud.firestore {
       ]);
     }
 
+
+
+    function isValidChatAttachmentList() {
+      return request.resource.data.attachments is list
+        && request.resource.data.attachments.size() <= 1
+        && (
+          request.resource.data.attachments.size() == 0
+          || (
+            request.resource.data.attachments[0].keys().hasOnly(['type', 'name', 'url', 'path', 'size', 'contentType'])
+            && request.resource.data.attachments[0].type in ['image', 'pdf']
+            && request.resource.data.attachments[0].name is string
+            && request.resource.data.attachments[0].url is string
+            && request.resource.data.attachments[0].path is string
+            && request.resource.data.attachments[0].size is int
+            && request.resource.data.attachments[0].contentType in ['image/jpeg', 'image/png', 'image/webp', 'application/pdf']
+          )
+        );
+    }
+
+    function hasMessageTextOrAttachment() {
+      return request.resource.data.text.size() > 0 || request.resource.data.attachments.size() > 0;
+    }
+
     function isValidDirectChatMessageCreate(roomId) {
       return canAccessChatRoomById(roomId)
         && request.resource.data.roomId == roomId
         && request.resource.data.senderId == uid()
-        && request.resource.data.messageType == 'text'
+        && request.resource.data.messageType in ['text', 'image', 'file']
         && request.resource.data.text is string
-        && request.resource.data.text.size() > 0
         && request.resource.data.text.size() <= 4000
+        && isValidChatAttachmentList()
+        && hasMessageTextOrAttachment()
         && request.resource.data.internalOnly == true
-        && (!('attachments' in request.resource.data) || request.resource.data.attachments is list)
         && (!('senderRole' in request.resource.data) || request.resource.data.senderRole is string || request.resource.data.senderRole == null)
         && (!('senderName' in request.resource.data) || request.resource.data.senderName is string || request.resource.data.senderName == null)
         && (!('clientTempId' in request.resource.data) || request.resource.data.clientTempId is string || request.resource.data.clientTempId == null)
@@ -768,10 +791,11 @@ service cloud.firestore {
 
       allow create: if canAccessRoomMessages()
         && request.resource.data.senderId == uid()
-        && request.resource.data.messageType == 'text'
+        && request.resource.data.messageType in ['text', 'image', 'file']
         && request.resource.data.text is string
-        && request.resource.data.text.size() > 0
         && request.resource.data.text.size() <= 4000
+        && isValidChatAttachmentList()
+        && hasMessageTextOrAttachment()
         && request.resource.data.internalOnly == true;
 
       allow update: if isStaffOrAdminOrTeacher();
