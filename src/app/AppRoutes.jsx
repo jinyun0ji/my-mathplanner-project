@@ -42,7 +42,7 @@ import {
     isViewerGroupRole,
 } from '../constants/roles';
 import { db, functions } from '../firebase/client';
-import { loadStaffDataOnce, loadViewerDataOnce } from '../data/firestoreSync';
+import { invalidateStaffDataCache, loadStaffDataOnce, loadViewerDataOnce } from '../data/firestoreSync';
 import { createLinkCode, createStaffUser } from '../admin/staffService';
 import { claimStudentLinkCode } from '../parent/linkCodeService';
 import { useParentContext } from '../parent';
@@ -904,6 +904,8 @@ export default function AppRoutes({ user, role, studentIds }) {
               });
               setLessonLogs(prev => [{ id: docRef.id, ...payloadWithoutFile }, ...prev]);
           }
+          invalidateStaffDataCache('lessons', ['lessonLogs']);
+          invalidateStaffDataCache('home', ['lessonLogs']);
       } catch (error) {
         await logClientError({
               scope: 'lessons',
@@ -929,6 +931,8 @@ export default function AppRoutes({ user, role, studentIds }) {
           ensureFirestoreContext();
           await deleteDoc(doc(db, 'lessonLogs', id));
           setLessonLogs(prev => prev.filter(l => l.id !== id));
+          invalidateStaffDataCache('lessons', ['lessonLogs']);
+          invalidateStaffDataCache('home', ['lessonLogs']);
       } catch (error) {
           console.error('[Firestore WRITE ERROR]', error);
           alert('수업 일지 삭제에 실패했습니다. 권한 또는 네트워크를 확인하세요.');
@@ -961,6 +965,8 @@ export default function AppRoutes({ user, role, studentIds }) {
               }
           }
           setAttendanceLogs(nextLogs);
+          invalidateStaffDataCache('attendance', ['attendanceLogs']);
+          invalidateStaffDataCache('home', ['attendanceLogs']);
           logNotification('success', '출결 저장', '출결 기록이 저장되었습니다.');
       } catch (error) {
         await logClientError({
@@ -1133,6 +1139,7 @@ export default function AppRoutes({ user, role, studentIds }) {
           }
 
           setHomeworkResults(nextResults);
+          invalidateStaffDataCache('homework', ['homeworkResults']);
       } catch (error) {
         await logClientError({
               scope: 'homework',
@@ -1277,6 +1284,7 @@ export default function AppRoutes({ user, role, studentIds }) {
               ...prev,
               [studentId]: { ...prev[studentId], [testId]: payload },
           }));
+          invalidateStaffDataCache('grades', ['grades']);
           try {
               await recomputeClassTestStats(db, testId, classId);
           } catch (statsError) {
@@ -1410,6 +1418,7 @@ export default function AppRoutes({ user, role, studentIds }) {
 
               const normalized = normalizeClinicLog({ id: data.id, ...payload, __source: source });
               setClinicLogs(prev => prev.map(l => l.id === data.id ? { ...l, ...normalized } : l));
+              invalidateStaffDataCache('clinic', ['clinicLogs']);
           } else {
               const hasReservationSameDate = clinicLogs.some((r) => {
                   const status = String(r?.status || '').toLowerCase();
@@ -1475,6 +1484,7 @@ export default function AppRoutes({ user, role, studentIds }) {
                           status: 'pending',
                       });
                       setClinicLogs((prev) => [...prev, normalized]);
+                      invalidateStaffDataCache('clinic', ['clinicLogs']);
                       return;
                   } catch (error) {
                     await logClientError({
@@ -1526,6 +1536,7 @@ export default function AppRoutes({ user, role, studentIds }) {
                       studentId: payload?.studentDocId || payload?.studentId || payload?.studentUid || '',
                   });
                   setClinicLogs(prev => [...prev, normalized]);
+                  invalidateStaffDataCache('clinic', ['clinicLogs']);
               }
           }
       } catch (error) {
@@ -1580,6 +1591,7 @@ export default function AppRoutes({ user, role, studentIds }) {
           }
 
           setClinicLogs(prev => prev.filter(l => l.id !== id));
+          invalidateStaffDataCache('clinic', ['clinicLogs']);
       } catch (error) {
           console.error('[Firestore WRITE ERROR]', error);
           alert('클리닉 기록 삭제에 실패했습니다. 권한 또는 네트워크를 확인하세요.');

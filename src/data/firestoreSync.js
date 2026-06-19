@@ -140,13 +140,39 @@ const fetchListSafe = async (q, isCancelled = () => false, mapper = null) => {
 // - 아래 메모리 캐시는 같은 브라우저 세션/같은 pageKey에서 이미 읽은 slice를 재사용해 탭 왕복 read를 줄인다.
 // - 대용량 attendanceLogs/grades/homeworkResults/clinicLogs는 pageKey 조건을 좁혀 전체 컬렉션성 로딩을 최소화한다.
 const staffDataCache = new Map();
-const STAFF_GLOBAL_CACHE_SLICES = new Set(['students', 'parents', 'classes']);
-const getStaffCacheKey = (pageKey, slice) => `${STAFF_GLOBAL_CACHE_SLICES.has(slice) ? 'global' : (pageKey || 'all')}:${slice}`;
-const readStaffCache = (pageKey, slice) => staffDataCache.get(getStaffCacheKey(pageKey, slice));
-const writeStaffCache = (pageKey, slice, value) => {
-    staffDataCache.set(getStaffCacheKey(pageKey, slice), value);
+const STAFF_GLOBAL_CACHE_SLICES = new Set(['classes']);
+const STAFF_DEFAULT_CACHE_TTL_MS = 60 * 1000;
+const STAFF_SENSITIVE_CACHE_TTL_MS = 30 * 1000;
+const STAFF_SENSITIVE_PAGES = new Set(['attendance', 'payment']);
+const getStaffCacheTtl = (pageKey) => STAFF_SENSITIVE_PAGES.has(pageKey) ? STAFF_SENSITIVE_CACHE_TTL_MS : STAFF_DEFAULT_CACHE_TTL_MS;
+const getStaffCacheKey = (pageKey, slice, queryKey = '') => `${STAFF_GLOBAL_CACHE_SLICES.has(slice) ? 'global' : (pageKey || 'all')}:${slice}:${queryKey || 'default'}`;
+const readStaffCache = (pageKey, slice, queryKey = '') => {
+    const key = getStaffCacheKey(pageKey, slice, queryKey);
+    const cached = staffDataCache.get(key);
+    if (!cached) return undefined;
+    if (Date.now() - cached.cachedAt > cached.ttl) {
+        staffDataCache.delete(key);
+        return undefined;
+    }
+    return cached.value;
+};
+const writeStaffCache = (pageKey, slice, value, queryKey = '', ttl = getStaffCacheTtl(pageKey)) => {
+    staffDataCache.set(getStaffCacheKey(pageKey, slice, queryKey), { value, cachedAt: Date.now(), ttl });
     return value;
 };
+export const invalidateStaffDataCache = (pageKey = null, slices = []) => {
+    const targetSlices = Array.isArray(slices) ? slices.filter(Boolean) : [slices].filter(Boolean);
+    for (const key of Array.from(staffDataCache.keys())) {
+        const [cachedPage, slice] = key.split(':');
+        const pageMatches = !pageKey || cachedPage === pageKey || cachedPage === 'global';
+        const sliceMatches = targetSlices.length === 0 || targetSlices.includes(slice);
+        if (pageMatches && sliceMatches) staffDataCache.delete(key);
+    }
+};
+const staffDataDebug = (message, payload = {}) => {
+    if (isDevelopment()) console.log(`[staffData] ${message}`, payload);
+};
+const getTodayDateString = () => new Date().toISOString().slice(0, 10);
 
 const viewerDetailCache = {
     lessonLogs: new Map(),
@@ -294,29 +320,6 @@ const fetchList = async (db, colName, setter, q, isCancelled, mapper = null) => 
     const items = mapper ? baseItems.map(mapper) : baseItems;
     if (isCancelled()) return [];
     setter(items);
-    return items;
-};
-
-const fetchAttendanceLogsWithPagination = async (db, isCancelled, pageSize = 1000) => {
-    const items = [];
-    let lastDoc = null;
-
-    while (true) {
-        if (isCancelled()) return items;
-        const constraints = [
-            orderBy('date', 'desc'),
-            limit(pageSize),
-        ];
-        if (lastDoc) {
-            constraints.push(startAfter(lastDoc));
-        }
-        const snap = await getDocs(query(collection(db, 'attendanceLogs'), ...constraints));
-        if (snap.empty) break;
-        items.push(...snap.docs.map((d) => normalizeAuthUid({ id: d.id, ...d.data() })));
-        lastDoc = snap.docs[snap.docs.length - 1];
-        if (snap.size < pageSize) break;
-    }
-
     return items;
 };
 
@@ -681,36 +684,6 @@ export async function fetchClinicLogsDeepForStaff({
 }
 
 // staff 전용: grades 전체 페이지네이션 로드
-const fetchGradesWithPagination = async (db, maxDocs = 5000, pageSize = 500) => {
-    const all = [];
-    let last = null;
-
-    while (all.length < maxDocs) {
-        const q = last
-            ? query(
-                collection(db, 'grades'),
-                orderBy(documentId()),
-                startAfter(last),
-                limit(pageSize),
-            )
-            : query(
-                collection(db, 'grades'),
-                orderBy(documentId()),
-                limit(pageSize),
-            );
-
-        const snap = await getDocs(q);
-        if (snap.empty) break;
-
-        all.push(...snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-        last = snap.docs[snap.docs.length - 1];
-
-        if (snap.size < pageSize) break;
-    }
-
-    return all;
-};
-
 const warnOnQuestionScores = (tests = [], context = 'viewer') => {
     tests.forEach((test) => {
         const totalQuestions = Number(test?.totalQuestions) || 0;
@@ -776,47 +749,17 @@ export const loadStaffDataOnce = async ({
 
     const shouldLoad = (key) => !pageKey || pageKey === key;
     const applyStudents = (items) => setStudents?.(dedupeStudentsByAuthUid(items));
-    const loadCachedSlice = async (slice, setter, loader) => {
-        const cached = readStaffCache(pageKey, slice);
+    const loadCachedSlice = async (slice, setter, loader, queryKey = '') => {
+        const cached = readStaffCache(pageKey, slice, queryKey);
         if (cached !== undefined) {
             setter?.(cached);
-            if (isDevelopment()) console.log('[staff][cache] hit', { pageKey, slice, count: Array.isArray(cached) ? cached.length : Object.keys(cached || {}).length });
+            staffDataDebug(`cache hit pageKey=${pageKey}`, { slice, queryKey, count: Array.isArray(cached) ? cached.length : Object.keys(cached || {}).length });
             return cached;
         }
         const loaded = await loader();
-        writeStaffCache(pageKey, slice, loaded);
+        writeStaffCache(pageKey, slice, loaded, queryKey);
         setter?.(loaded);
         return loaded;
-    };
-
-    const fetchHomeworkResultsWithPagination = async (db, maxDocs = 5000, pageSize = 500) => {
-        const all = [];
-        let last = null;
-
-        while (all.length < maxDocs) {
-            const q = last
-                ? query(
-                    collection(db, 'homeworkResults'),
-                    orderBy(documentId()),
-                    startAfter(last),
-                    limit(pageSize),
-                )
-                : query(
-                    collection(db, 'homeworkResults'),
-                    orderBy(documentId()),
-                    limit(pageSize),
-                );
-
-            const snap = await getDocs(q);
-            if (snap.empty) break;
-
-            all.push(...snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-            last = snap.docs[snap.docs.length - 1];
-
-            if (snap.size < pageSize) break;
-        }
-
-        return all;
     };
 
     let staffClasses = [];
@@ -881,42 +824,52 @@ export const loadStaffDataOnce = async ({
     };
 
     try {
-        if (setStudents) {
+        const today = getTodayDateString();
+        const pageNeedsStudents = ['home', 'lessons', 'lessonReports', 'grades', 'homework', 'clinic', 'payment', 'students'].includes(pageKey) || !pageKey;
+        const pageNeedsClasses = ['home', 'lessons', 'lessonReports', 'grades', 'homework', 'clinic', 'attendance', 'closures'].includes(pageKey) || !pageKey;
+        const loadingCollections = [];
+
+        if (setStudents && pageNeedsStudents) {
+            loadingCollections.push(pageKey === 'home' ? 'students(limit)' : 'students(limit)');
             staffStudents = await loadCachedSlice('students', applyStudents, () => fetchList(
                 db,
                 'users',
                 () => {},
-                query(collection(db, 'users'), where('role', '==', ROLE.STUDENT), limit(500)),
+                query(collection(db, 'users'), where('role', '==', ROLE.STUDENT), limit(pageKey === 'home' ? 300 : 800)),
                 () => false,
                 normalizeStudentUser,
-            ));
+            ), pageKey === 'home' ? 'limit300' : 'limit800');
         }
 
-        if (setParents) {
+        if (setParents && pageKey === 'students') {
+            loadingCollections.push('parents(limit)');
             const parentRoles = [ROLE.PARENT, '학부모'];
-            try {
-                await fetchList(
-                    db,
-                    'users',
-                    setParents,
-                    query(collection(db, 'users'), where('role', 'in', parentRoles), limit(500)),
-                    () => false,
-                );
-            } catch (error) {
-                console.warn('[staff] parent role in query failed, fallback to client filter', error);
-                const users = await fetchList(
-                    db,
-                    'users',
-                    () => {},
-                    query(collection(db, 'users'), limit(500)),
-                    () => false,
-                );
-                const roleSet = new Set(parentRoles);
-                setParents(users.filter((user) => roleSet.has(user?.role)));
-            }
+            await loadCachedSlice('parents', setParents, async () => {
+                try {
+                    return await fetchList(
+                        db,
+                        'users',
+                        () => {},
+                        query(collection(db, 'users'), where('role', 'in', parentRoles), limit(500)),
+                        () => false,
+                    );
+                } catch (error) {
+                    console.warn('[staff] parent role in query failed, fallback to client filter', error);
+                    const users = await fetchList(
+                        db,
+                        'users',
+                        () => {},
+                        query(collection(db, 'users'), limit(500)),
+                        () => false,
+                    );
+                    const roleSet = new Set(parentRoles);
+                    return users.filter((user) => roleSet.has(user?.role));
+                }
+            }, 'limit500');
         }
 
-        if (setClasses) {
+        if (setClasses && pageNeedsClasses) {
+            loadingCollections.push('classes');
             staffClasses = await loadCachedSlice('classes', setClasses, () => fetchList(
                 db,
                 'classes',
@@ -926,132 +879,138 @@ export const loadStaffDataOnce = async ({
             ));
         }
 
-        if (setTests && (shouldLoad('grades') || shouldLoad('lessons') || shouldLoad('lessonReports'))) {
-            const tests = await fetchList(db, 'tests', setTests, query(collection(db, 'tests'), orderBy('date', 'desc'), limit(200)), () => false);
+        if (setTests && shouldLoad('grades')) {
+            loadingCollections.push('tests(limit200)');
+            const tests = await loadCachedSlice('tests', setTests, () => fetchList(db, 'tests', () => {}, query(collection(db, 'tests'), orderBy('date', 'desc'), limit(200)), () => false), 'recent200');
             warnOnQuestionScores(tests, 'staff');
         }
 
-        if (setLessonLogs && (shouldLoad('lessons') || shouldLoad('lessonReports'))) {
-            await fetchList(db, 'lessonLogs', setLessonLogs, query(collection(db, 'lessonLogs'), orderBy('date', 'desc'), limit(150)), () => false);
-        }
-        if (setLessonReports && (shouldLoad('lessons') || shouldLoad('students') || shouldLoad('lessonReports'))) {
-            await fetchList(db, 'lessonReports', setLessonReports, query(collection(db, 'lessonReports'), orderBy('lessonDate', 'desc'), limit(300)), () => false);
-        }
-
-
-        if (setAttendanceLogs && (shouldLoad('attendance') || shouldLoad('lessons') || shouldLoad('lessonReports'))) {
-            await loadCachedSlice('attendanceLogs', setAttendanceLogs, () => fetchAttendanceLogsWithPagination(db, () => false));
+        if (setLessonLogs && shouldLoad('home')) {
+            loadingCollections.push('lessonLogs(today)');
+            await loadCachedSlice('lessonLogs', setLessonLogs, () => fetchList(db, 'lessonLogs', () => {}, query(collection(db, 'lessonLogs'), where('date', '==', today), limit(100)), () => false), `date:${today}`);
+        } else if (setLessonLogs && (shouldLoad('lessons') || shouldLoad('lessonReports'))) {
+            loadingCollections.push('lessonLogs(recent150)');
+            await loadCachedSlice('lessonLogs', setLessonLogs, () => fetchList(db, 'lessonLogs', () => {}, query(collection(db, 'lessonLogs'), orderBy('date', 'desc'), limit(150)), () => false), 'recent150');
         }
 
-        if (setClinicLogs && (shouldLoad('clinic') || shouldLoad('lessons'))) {
-            const cachedClinicLogs = readStaffCache(pageKey, 'clinicLogs');
+        if (setLessonReports && shouldLoad('home')) {
+            loadingCollections.push('lessonReports(today)');
+            await loadCachedSlice('lessonReports', setLessonReports, () => fetchList(db, 'lessonReports', () => {}, query(collection(db, 'lessonReports'), where('lessonDate', '==', today), limit(100)), () => false), `lessonDate:${today}`);
+        } else if (setLessonReports && shouldLoad('lessonReports')) {
+            loadingCollections.push('lessonReports(recent300)');
+            await loadCachedSlice('lessonReports', setLessonReports, () => fetchList(db, 'lessonReports', () => {}, query(collection(db, 'lessonReports'), orderBy('lessonDate', 'desc'), limit(300)), () => false), 'recent300');
+        }
+
+        if (setAttendanceLogs && shouldLoad('home')) {
+            loadingCollections.push('attendanceLogs(today)');
+            await loadCachedSlice('attendanceLogs', setAttendanceLogs, () => fetchList(db, 'attendanceLogs', () => {}, query(collection(db, 'attendanceLogs'), where('date', '==', today), limit(300)), () => false), `date:${today}`);
+        } else if (setAttendanceLogs && shouldLoad('attendance')) {
+            loadingCollections.push('attendanceLogs(recent300)');
+            await loadCachedSlice('attendanceLogs', setAttendanceLogs, () => fetchList(db, 'attendanceLogs', () => {}, query(collection(db, 'attendanceLogs'), orderBy('date', 'desc'), limit(300)), () => false), 'recent300');
+        }
+
+        if (setClinicLogs && shouldLoad('clinic')) {
+            loadingCollections.push('clinicLogs/recent + clinicReservations/recent');
+            const queryKey = 'recent300-reservations500';
+            const cachedClinicLogs = readStaffCache(pageKey, 'clinicLogs', queryKey);
             if (cachedClinicLogs !== undefined) {
                 setClinicLogs?.(cachedClinicLogs);
+                staffDataDebug(`cache hit pageKey=${pageKey}`, { slice: 'clinicLogs', count: cachedClinicLogs.length });
             } else {
-            const [lightLogs, lightReservations] = await Promise.all([
-                fetchClinicLogsLight(db, () => false, 300),
-                fetchClinicReservationsLight(db, () => false, 500),
-            ]);
-            const mergedClinicDocs = writeStaffCache(pageKey, 'clinicLogs', mergeClinicDocs(lightLogs, lightReservations));
-            setClinicLogs?.(mergedClinicDocs);
-            console.log('[staff] clinic logs loaded (merged)=', {
-                clinicLogs: lightLogs.length,
-                clinicReservations: lightReservations.length,
-                merged: mergedClinicDocs.length,
-            });
+                const [lightLogs, lightReservations] = await Promise.all([
+                    fetchClinicLogsLight(db, () => false, 300),
+                    fetchClinicReservationsLight(db, () => false, 500),
+                ]);
+                const mergedClinicDocs = writeStaffCache(pageKey, 'clinicLogs', mergeClinicDocs(lightLogs, lightReservations), queryKey);
+                setClinicLogs?.(mergedClinicDocs);
+                staffDataDebug('clinic logs loaded', { clinicLogs: lightLogs.length, clinicReservations: lightReservations.length, merged: mergedClinicDocs.length });
             }
         }
 
         if (setWorkLogs && shouldLoad('communication')) {
-            await fetchList(db, 'workLogs', setWorkLogs, query(collection(db, 'workLogs'), orderBy('date', 'desc'), limit(150)), () => false);
+            loadingCollections.push('workLogs(recent150)');
+            await loadCachedSlice('workLogs', setWorkLogs, () => fetchList(db, 'workLogs', () => {}, query(collection(db, 'workLogs'), orderBy('date', 'desc'), limit(150)), () => false), 'recent150');
         }
 
         if (setAnnouncements && shouldLoad('communication')) {
-            await fetchList(db, 'announcements', setAnnouncements, query(collection(db, 'announcements'), orderBy('date', 'desc'), limit(150)), () => false);
+            loadingCollections.push('announcements(recent150)');
+            await loadCachedSlice('announcements', setAnnouncements, () => fetchList(db, 'announcements', () => {}, query(collection(db, 'announcements'), orderBy('date', 'desc'), limit(150)), () => false), 'recent150');
         }
 
-        if (setHomeworkAssignments && (shouldLoad('homework') || shouldLoad('lessonReports'))) {
-            await fetchList(db, 'homeworkAssignments', setHomeworkAssignments, query(collection(db, 'homeworkAssignments'), orderBy('date', 'desc'), limit(150)), () => false);
+        if (setHomeworkAssignments && shouldLoad('homework')) {
+            loadingCollections.push('homeworkAssignments(recent150)');
+            await loadCachedSlice('homeworkAssignments', setHomeworkAssignments, () => fetchList(db, 'homeworkAssignments', () => {}, query(collection(db, 'homeworkAssignments'), orderBy('date', 'desc'), limit(150)), () => false), 'recent150');
         }
 
         if (setPaymentLogs && shouldLoad('payment')) {
-            await fetchList(
+            loadingCollections.push('payments(recent150)');
+            await loadCachedSlice('payments', setPaymentLogs, () => fetchList(
                 db,
                 'payments',
-                setPaymentLogs,
+                () => {},
                 query(collection(db, 'payments'), orderBy('createdAt', 'desc'), limit(150)),
                 () => false,
                 normalizePaymentLog,
-            );
+            ), 'recent150');
         }
 
         if (setGrades && shouldLoad('grades')) {
+            loadingCollections.push('grades(recent500)');
             await loadCachedSlice('grades', setGrades, async () => {
+                const grades = await fetchListSafe(query(collection(db, 'grades'), orderBy('updatedAt', 'desc'), limit(500)), () => false);
                 const mappedGrades = {};
-                const grades = await fetchGradesWithPagination(db, 5000, 500);
-
                 grades.forEach((raw) => {
-                    const data = normalizeAuthUid(raw); // ✅ authUid/studentUid → studentId로 정규화
-
-                    const sId = data.studentId; // ✅ 이제 항상 studentId를 키로 사용
+                    const data = normalizeAuthUid(raw);
+                    const sId = data.studentId;
                     const testId = data.testId;
-
-                    if (!sId || !testId) return; // 방어 로직
-
+                    if (!sId || !testId) return;
                     if (!mappedGrades[sId]) mappedGrades[sId] = {};
                     mappedGrades[sId][testId] = data;
                 });
                 return mappedGrades;
-            });
+            }, 'recent500');
         }
 
         if (setHomeworkResults && shouldLoad('homework')) {
+            loadingCollections.push('homeworkResults(recent500)');
             await loadCachedSlice('homeworkResults', setHomeworkResults, async () => {
-            const docs = await fetchHomeworkResultsWithPagination(db, 5000, 500);
-            const mappedResults = {};
-            const authUidToStudentDocId = new Map(
-                (staffStudents || [])
-                    .filter((student) => student?.authUid && student?.id)
-                    .map((student) => [String(student.authUid), String(student.id)]),
-            );
-            docs.forEach((data) => {
-                const assignmentId = data.assignmentId || data.homeworkAssignmentId || null;
-
-                const rawKey = data.studentId
-                    || data.studentDocId
-                    || data.authUid
-                    || data.studentUid
-                    || null;
-                
-                const sKey = rawKey && authUidToStudentDocId.get(String(rawKey))
-                ? authUidToStudentDocId.get(String(rawKey))
-                : rawKey;
-
-                if (!sKey || !assignmentId) return;
-
-                if (!mappedResults[sKey]) mappedResults[sKey] = {};
-                mappedResults[sKey][assignmentId] = data.results || data;
-            });
-            console.log('[staff][homeworkResults] loaded docs=', docs.length, 'keys=', Object.keys(mappedResults).length);
-            return mappedResults;
-            });
+                const docs = await fetchListSafe(query(collection(db, 'homeworkResults'), orderBy('updatedAt', 'desc'), limit(500)), () => false);
+                const mappedResults = {};
+                const authUidToStudentDocId = new Map(
+                    (staffStudents || [])
+                        .filter((student) => student?.authUid && student?.id)
+                        .map((student) => [String(student.authUid), String(student.id)]),
+                );
+                docs.forEach((data) => {
+                    const assignmentId = data.assignmentId || data.homeworkAssignmentId || null;
+                    const rawKey = data.studentId || data.studentDocId || data.authUid || data.studentUid || null;
+                    const sKey = rawKey && authUidToStudentDocId.get(String(rawKey)) ? authUidToStudentDocId.get(String(rawKey)) : rawKey;
+                    if (!sKey || !assignmentId) return;
+                    if (!mappedResults[sKey]) mappedResults[sKey] = {};
+                    mappedResults[sKey][assignmentId] = data.results || data;
+                });
+                return mappedResults;
+            }, 'recent500');
         }
 
         if (setExternalSchedules && shouldLoad('schedule')) {
-            await fetchList(
+            loadingCollections.push('externalSchedules(recent500)');
+            await loadCachedSlice('externalSchedules', setExternalSchedules, () => fetchList(
                 db,
                 'externalSchedules',
-                setExternalSchedules,
+                () => {},
                 query(collection(db, 'externalSchedules'), orderBy('startDate', 'desc'), limit(500)),
                 () => false,
-            );
+            ), 'recent500');
         }
 
-        if (setClosures) {
-            const closures = await fetchClosuresForStaff(staffClasses);
+        if (setClosures && shouldLoad('closures')) {
+            loadingCollections.push('closures(global/class)');
+            const closures = await loadCachedSlice('closures', setClosures, () => fetchClosuresForStaff(staffClasses), 'scoped500');
             setClosures(closures);
         }
 
+        staffDataDebug(`pageKey=${pageKey || 'all'} loading collections: ${loadingCollections.join(', ') || 'none'}`);
     } catch (error) {
         console.error('[FirestoreSync] staff 데이터 로드 실패:', error);
     }

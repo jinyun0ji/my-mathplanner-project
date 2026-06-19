@@ -1,14 +1,491 @@
+diff --git a/src/app/AppRoutes.jsx b/src/app/AppRoutes.jsx
+index a5eda96fdbdb8b96152a687d2b7b62a56db66ec7..4036459dfa2efdebf6b2b4d0c7a352f2e3f607b2 100644
+--- a/src/app/AppRoutes.jsx
++++ b/src/app/AppRoutes.jsx
+@@ -20,51 +20,51 @@ import ClosureManagement from '../pages/ClosureManagement';
+ import InternalCommunication from '../pages/InternalCommunication';
+ import PaymentManagement from '../pages/PaymentManagement';
+ import ParentHome from '../pages/ParentHome';
+ import ParentStudentPicker from '../pages/parent/ParentStudentPicker';
+ import OnboardingPage from '../pages/OnboardingPage';
+ import StaffManagement from '../pages/admin/StaffManagement';
+ import AdminNotificationsPage from '../pages/admin/AdminNotificationsPage';
+ import AdminPaymentsPage from '../pages/admin/AdminPaymentsPage';
+ import AdminSettingsPage from '../pages/admin/AdminSettingsPage';
+ import AdminLogsPage from '../pages/admin/AdminLogsPage';
+ import InviteManagementPage from '../pages/admin/InviteManagementPage';
+ import FormulaBookManagement from '../pages/FormulaBookManagement';
+ import AdminRoute from '../routes/AdminRoute';
+ import StaffOrTeachingRoute from '../routes/StaffOrTeachingRoute';
+ import useAuth from '../auth/useAuth';
+ import {
+     ROLE,
+     isParentRole,
+     isStudentRole,
+     isAdminRole,
+     isStaffRole,
+     isStaffOrTeachingRole,
+     isViewerGroupRole,
+ } from '../constants/roles';
+ import { db, functions } from '../firebase/client';
+-import { loadStaffDataOnce, loadViewerDataOnce } from '../data/firestoreSync';
++import { invalidateStaffDataCache, loadStaffDataOnce, loadViewerDataOnce } from '../data/firestoreSync';
+ import { createLinkCode, createStaffUser } from '../admin/staffService';
+ import { claimStudentLinkCode } from '../parent/linkCodeService';
+ import { useParentContext } from '../parent';
+ import { logClientError } from '../utils/errorLogger';
+ import { addVideoMemo, deleteVideoMemo, updateVideoMemo } from '../domain/memo/videoMemo.service';
+ import { getAssignmentQuestionNumbers, normalizeHomeworkResultMapForDisplay } from '../domain/homework/homework.service';
+ import { recomputeClassTestStats } from '../domain/grade/classTestStats.service';
+ import {
+     addDoc,
+     arrayRemove,
+     arrayUnion,
+     collection,
+     deleteDoc,
+     doc,
+     getDoc,
+     getDocs,
+     limit,
+     orderBy,
+     query,
+     setDoc,
+     serverTimestamp,
+     Timestamp,
+     where,
+     updateDoc,
+     writeBatch,
+@@ -882,107 +882,113 @@ export default function AppRoutes({ user, role, studentIds }) {
+       }
+   };
+ 
+   const handleSaveLessonLog = async (data, isEdit) => {
+       ensureFirestoreContext();
+       try {
+           const { file, ...payloadWithoutFile } = stripId(data);
+           if (isEdit) {
+               if (!data.id) throw new Error('수업 일지 ID가 없습니다.');
+               await updateDoc(doc(db, 'lessonLogs', data.id), {
+                   ...payloadWithoutFile,
+                   updatedAt: serverTimestamp(),
+                   updatedBy: userId,
+               });
+               setLessonLogs(prev => prev.map(l => l.id === data.id ? { ...l, ...payloadWithoutFile } : l));
+           } else {
+               const docRef = await addDoc(collection(db, 'lessonLogs'), {
+                   ...payloadWithoutFile,
+                   createdAt: serverTimestamp(),
+                   createdBy: userId,
+                   updatedAt: serverTimestamp(),
+                   updatedBy: userId,
+               });
+               setLessonLogs(prev => [{ id: docRef.id, ...payloadWithoutFile }, ...prev]);
+           }
++          invalidateStaffDataCache('lessons', ['lessonLogs']);
++          invalidateStaffDataCache('home', ['lessonLogs']);
+       } catch (error) {
+         await logClientError({
+               scope: 'lessons',
+               action: isEdit ? 'updateLessonLog' : 'createLessonLog',
+               message: error?.message || 'unknown lesson log write error',
+               code: error?.code || '',
+               context: {
+                   classId: data?.classId ? String(data.classId) : '',
+                   date: data?.date ? String(data.date) : '',
+               },
+               userId,
+               userRole: role,
+               route: routePath,
+               app: 'staff',
+           });
+           console.error('[Firestore WRITE ERROR]', error);
+           throw error;
+       }
+   };
+ 
+   const handleDeleteLessonLog = async (id) => {
+       try {
+           ensureFirestoreContext();
+           await deleteDoc(doc(db, 'lessonLogs', id));
+           setLessonLogs(prev => prev.filter(l => l.id !== id));
++          invalidateStaffDataCache('lessons', ['lessonLogs']);
++          invalidateStaffDataCache('home', ['lessonLogs']);
+       } catch (error) {
+           console.error('[Firestore WRITE ERROR]', error);
+           alert('수업 일지 삭제에 실패했습니다. 권한 또는 네트워크를 확인하세요.');
+       }
+   };
+ 
+   const handleSaveAttendance = async (records) => {
+       ensureFirestoreContext();
+       try {
+           if (!Array.isArray(records) || records.length === 0) {
+               logNotification('success', '출결 저장', '변경된 출결 기록이 없습니다.');
+               return;
+           }
+           const nextLogs = [...attendanceLogs];
+           for (const record of records) {
+               const docId = record.id || `${record.classId}_${record.studentId}_${record.date}`;
+               const payload = {
+                   ...record,
+                   studentUid: record.studentId,
+                   updatedAt: serverTimestamp(),
+                   updatedBy: userId,
+               };
+               await setDoc(doc(db, 'attendanceLogs', docId), payload, { merge: true });
+               const existingIndex = nextLogs.findIndex((log) => log.id === docId);
+               const nextRecord = { ...record, id: docId, studentUid: record.studentId };
+               if (existingIndex >= 0) {
+                   nextLogs[existingIndex] = nextRecord;
+               } else {
+                   nextLogs.push(nextRecord);
+               }
+           }
+           setAttendanceLogs(nextLogs);
++          invalidateStaffDataCache('attendance', ['attendanceLogs']);
++          invalidateStaffDataCache('home', ['attendanceLogs']);
+           logNotification('success', '출결 저장', '출결 기록이 저장되었습니다.');
+       } catch (error) {
+         await logClientError({
+               scope: 'attendance',
+               action: 'saveAttendance',
+               message: error?.message || 'unknown attendance write error',
+               code: error?.code || '',
+               context: {
+                   recordCount: Array.isArray(records) ? records.length : 0,
+                   classId: Array.isArray(records) && records[0]?.classId ? String(records[0].classId) : '',
+                   date: Array.isArray(records) && records[0]?.date ? String(records[0].date) : '',
+               },
+               userId,
+               userRole: role,
+               route: routePath,
+               app: 'staff',
+           });
+           console.error('[Firestore WRITE ERROR]', error);
+           alert('출결 저장에 실패했습니다. 권한 또는 네트워크를 확인하세요.');
+       }
+   };
+ 
+   const handleSaveHomeworkAssignment = async (data, isEdit) => {
+       ensureFirestoreContext();
+       try {
+@@ -1111,50 +1117,51 @@ export default function AppRoutes({ user, role, studentIds }) {
+                       });
+                   }
+               } catch (writeError) {
+                   if (writeError?.code === 'not-found') {
+                       await setDoc(docRef, {
+                           ...payload,
+                           createdAt: serverTimestamp(),
+                           createdBy: userId,
+                       });
+                   } else {
+                       throw writeError;
+                   }
+               }
+ 
+               if (!nextResults[studentId]) nextResults[studentId] = {};
+               nextResults[studentId][assignmentId] = {
+                   ...(existing && typeof existing === 'object' ? existing : {}),
+                   results: cleanedResults,
+                   lastCheckedDate: checkedDate,
+                   checkHistory: nextHistory,
+                   updatedAt: new Date().toISOString(),
+               };
+           }
+ 
+           setHomeworkResults(nextResults);
++          invalidateStaffDataCache('homework', ['homeworkResults']);
+       } catch (error) {
+         await logClientError({
+               scope: 'homework',
+               action: 'updateHomeworkResult',
+               message: error?.message || 'unknown homework result write error',
+               code: error?.code || '',
+               context: {
+                   updateCount: Array.isArray(updates) ? updates.length : 0,
+                   checkedDate: checkedDateInput || '',
+               },
+               userId,
+               userRole: role,
+               route: routePath,
+               app: 'staff',
+           });
+           console.error('[Firestore WRITE ERROR]', error);
+           alert('과제 채점 결과 저장에 실패했습니다. 권한 또는 네트워크를 확인하세요.');
+       }
+   };
+ 
+   const handleSaveTest = async (data, isEdit) => {
+       ensureFirestoreContext();
+       try {
+           const payload = stripId(data);
+           if (isEdit) {
+@@ -1255,50 +1262,51 @@ export default function AppRoutes({ user, role, studentIds }) {
+                   score = computedScore;
+                   totalScore = computedScore;
+                   attempted = true;
+                   correctCount = result;
+               }
+           }
+ 
+           const payload = {
+               authUid: studentId,
+               testId,
+               score,
+               totalScore,
+               attempted,
+               correctCount: isAbsent ? null : correctCount,
+               comment: comment || '',
+               updatedAt: serverTimestamp(),
+               updatedBy: userId,
+           };
+           const test = await findTestById();
+           const classId = test?.classId || '';
+           await setDoc(doc(db, 'grades', docId), { ...payload, ...(classId ? { classId } : {}) }, { merge: true });
+           setGrades(prev => ({
+               ...prev,
+               [studentId]: { ...prev[studentId], [testId]: payload },
+           }));
++          invalidateStaffDataCache('grades', ['grades']);
+           try {
+               await recomputeClassTestStats(db, testId, classId);
+           } catch (statsError) {
+               console.warn('[classTestStats] recompute failed after grade save', { testId, classId, statsError });
+           }
+       } catch (error) {
+         await logClientError({
+               scope: 'grades',
+               action: 'updateGrade',
+               message: error?.message || 'unknown grade write error',
+               code: error?.code || '',
+               context: {
+                   studentId: String(studentId || ''),
+                   testId: String(testId || ''),
+               },
+               userId,
+               userRole: role,
+               route: routePath,
+               app: 'staff',
+           });
+           console.error('[Firestore WRITE ERROR]', error);
+           alert('성적 저장에 실패했습니다. 권한 또는 네트워크를 확인하세요.');
+       }
+   };
+ 
+@@ -1388,50 +1396,51 @@ export default function AppRoutes({ user, role, studentIds }) {
+               const targetCollections = source === 'clinicReservations'
+                   ? ['clinicReservations', 'clinicLogs']
+                   : ['clinicLogs', 'clinicReservations'];
+ 
+               let didUpdate = false;
+               for (const colName of targetCollections) {
+                   const targetRef = doc(db, colName, data.id);
+                   const targetSnap = await getDoc(targetRef);
+                   if (!targetSnap.exists()) continue;
+ 
+                   await updateDoc(targetRef, {
+                       ...payload,
+                       updatedAt: serverTimestamp(),
+                       updatedBy: userId,
+                   });
+                   didUpdate = true;
+                   break;
+               }
+ 
+               if (!didUpdate) {
+                   throw new Error('수정할 클리닉 문서를 찾을 수 없습니다.');
+               }
+ 
+               const normalized = normalizeClinicLog({ id: data.id, ...payload, __source: source });
+               setClinicLogs(prev => prev.map(l => l.id === data.id ? { ...l, ...normalized } : l));
++              invalidateStaffDataCache('clinic', ['clinicLogs']);
+           } else {
+               const hasReservationSameDate = clinicLogs.some((r) => {
+                   const status = String(r?.status || '').toLowerCase();
+                   return String(r?.studentDocId || r?.studentId) === String(payload?.studentDocId || payload?.studentId)
+                       && String(r?.date) === String(payload?.date)
+                       && ['reserved', 'booked', 'pending'].includes(status);
+               });
+ 
+               const isUnreservedEntry = !payload?.plannedTime && ['attended', 'no-show'].includes(String(payload?.status || ''));
+               if (isUnreservedEntry && hasReservationSameDate) {
+                   alert('이미 해당 날짜에 예약이 있어 “미예약학생”으로 입력할 수 없습니다. 예약 취소 후 진행해주세요.');
+                   return;
+               }
+ 
+               const normalizedPlanned = resolveTimeSlotForClinicPayload(payload);
+               const isReservationCreate =
+                 Boolean(normalizedPlanned) && String(payload?.status || 'pending') === 'pending';
+ 
+               if (isReservationCreate) {
+                   try {
+                       const normalizedClassId = resolveClassIdForClinicPayload(payload, classes)
+                         || resolveClassIdForStudentFlexible(payload?.studentDocId || payload?.studentId || payload?.studentUid || payload?.authUid || '');
+                       const normalizedStudentDocId = String(
+                         payload?.studentDocId || payload?.studentId || payload?.studentUid || payload?.authUid || '',
+                       ).trim();
+@@ -1453,50 +1462,51 @@ export default function AppRoutes({ user, role, studentIds }) {
+                       const createReservation = httpsCallable(functions, 'createClinicReservation');
+                       const res = await createReservation({
+                           ...payload,
+                           studentDocId: normalizedStudentDocId,
+                           studentId: normalizedStudentDocId,
+                           classId: normalizedClassId,
+                           date: normalizedDate,
+                           timeSlot: normalizedTimeSlot,
+                           plannedTime: normalizedTimeSlot,
+                           authUid: normalizedAuthUid || null,
+                       });
+ 
+                       const reservationId = res?.data?.id || `local-${Date.now()}`;
+                       const normalized = normalizeClinicLog({
+                           id: reservationId,
+                           ...payload,
+                           studentId: normalizedStudentDocId,
+                           studentDocId: normalizedStudentDocId,
+                           classId: normalizedClassId,
+                           date: normalizedDate,
+                           plannedTime: normalizedTimeSlot,
+                           authUid: normalizedAuthUid || null,
+                           status: 'pending',
+                       });
+                       setClinicLogs((prev) => [...prev, normalized]);
++                      invalidateStaffDataCache('clinic', ['clinicLogs']);
+                       return;
+                   } catch (error) {
+                     await logClientError({
+                           scope: 'clinic',
+                           action: 'createClinicReservation',
+                           message: error?.message || 'unknown clinic reservation error',
+                           code: error?.code || '',
+                           context: {
+                               studentId: payload?.studentDocId || payload?.studentId || '',
+                               classId: payload?.classId || payload?.classDocId || '',
+                               date: payload?.date || '',
+                               plannedTime: payload?.plannedTime || payload?.timeSlot || '',
+                           },
+                           userId,
+                           userRole: role,
+                           route: routePath,
+                           app: 'staff',
+                       });
+                       console.error('[clinic] createClinicReservation FAIL', error);
+ 
+                       const code = error?.code || '';
+                       const msg = error?.message || '';
+                       const details = error?.details ? JSON.stringify(error.details) : '';
+ 
+                       alert(
+@@ -1504,50 +1514,51 @@ export default function AppRoutes({ user, role, studentIds }) {
+                         + (code ? `code: ${code}\n` : '')
+                         + (msg ? `message: ${msg}\n` : '')
+                         + (details ? `details: ${details}\n` : '')
+                       );
+ 
+                       return;
+                   }
+               } else {
+                 const normalizedAuthUid = resolveStudentAuthUidForClinicPayload(payload);
+                   const docRef = await addDoc(collection(db, 'clinicLogs'), {
+                       ...payload,
+                       authUid: normalizedAuthUid || null,
+                       studentId: payload?.studentDocId || payload?.studentId || payload?.studentUid || '',
+                       createdAt: serverTimestamp(),
+                       createdBy: userId,
+                       updatedAt: serverTimestamp(),
+                       updatedBy: userId,
+                   });
+                   const normalized = normalizeClinicLog({
+                       id: docRef.id,
+                       ...payload,
+                       authUid: normalizedAuthUid || null,
+                       studentId: payload?.studentDocId || payload?.studentId || payload?.studentUid || '',
+                   });
+                   setClinicLogs(prev => [...prev, normalized]);
++                  invalidateStaffDataCache('clinic', ['clinicLogs']);
+               }
+           }
+       } catch (error) {
+         if (error?.code === 'already-exists' || error?.message?.includes('already-exists')) {
+             alert('이미 해당 날짜에 예약이 있습니다. 시간 변경은 기존 예약을 취소 후 진행하세요.');
+             return;
+         }
+         await logClientError({
+               scope: 'clinic',
+               action: isEdit ? 'updateClinicLog' : 'createClinicLog',
+               message: error?.message || 'unknown clinic write error',
+               code: error?.code || '',
+               context: {
+                   studentId: data?.studentDocId || data?.studentId || '',
+                   classId: data?.classId || data?.classDocId || '',
+                   date: data?.date || data?.clinicDate || '',
+                   plannedTime: data?.plannedTime || data?.timeSlot || '',
+               },
+               userId,
+               userRole: role,
+               route: routePath,
+               app: 'staff',
+           });
+           console.error('[Firestore WRITE ERROR]', error);
+           alert('클리닉 기록 저장에 실패했습니다. 권한 또는 네트워크를 확인하세요.');
+@@ -1558,50 +1569,51 @@ export default function AppRoutes({ user, role, studentIds }) {
+       try {
+         const current = clinicLogs.find((item) => item?.id === id);
+           const source = current?.__source || 'clinicLogs';
+           const targetCollections = source === 'clinicReservations'
+               ? ['clinicReservations', 'clinicLogs']
+               : ['clinicLogs', 'clinicReservations'];
+ 
+           let didDelete = false;
+           for (const colName of targetCollections) {
+               const targetRef = doc(db, colName, id);
+               const targetSnap = await getDoc(targetRef);
+               if (!targetSnap.exists()) continue;
+               await deleteDoc(targetRef);
+               didDelete = true;
+               break;
+           }
+ 
+           if (!didDelete) {
+               await Promise.allSettled([
+                   deleteDoc(doc(db, 'clinicLogs', id)),
+                   deleteDoc(doc(db, 'clinicReservations', id)),
+               ]);
+           }
+ 
+           setClinicLogs(prev => prev.filter(l => l.id !== id));
++          invalidateStaffDataCache('clinic', ['clinicLogs']);
+       } catch (error) {
+           console.error('[Firestore WRITE ERROR]', error);
+           alert('클리닉 기록 삭제에 실패했습니다. 권한 또는 네트워크를 확인하세요.');
+       }
+   };
+ 
+   const normalizeAnnouncementPayload = (data) => {
+       const base = stripId(data);
+       const targetClassesFromPayload = Array.isArray(base.targetClasses)
+           ? base.targetClasses
+           : Array.isArray(base.targetClassIds)
+               ? base.targetClassIds
+               : [];
+       const targetClasses = Array.from(new Set(targetClassesFromPayload.map((id) => String(id))));
+       const targetStudents = Array.isArray(base.targetStudents)
+           ? Array.from(new Set(base.targetStudents.map((id) => String(id))))
+           : [];
+       const targetAuthUids = Array.isArray(base.targetAuthUids)
+           ? Array.from(new Set(base.targetAuthUids.map((id) => String(id))))
+           : [];
+         const audienceAuthUids = Array.isArray(base.audienceAuthUids)
+           ? Array.from(new Set(base.audienceAuthUids.map((id) => String(id)).filter(Boolean)))
+           : [];
+       const isPublic = targetClasses.length === 0;
+ 
 diff --git a/src/data/firestoreSync.js b/src/data/firestoreSync.js
-index 2cae3bece59f1b68c78e6ceb337ac7fc3f5d38cc..88f939b0b306c142c4e4334acb8011a9bb5d49f2 100644
+index 88f939b0b306c142c4e4334acb8011a9bb5d49f2..df39cd18ec6786b78584f40cc3050426ec94f9c4 100644
 --- a/src/data/firestoreSync.js
 +++ b/src/data/firestoreSync.js
-@@ -112,50 +112,64 @@ const fetchClassScopedDocs = async ({
-             if (seen.has(d.id)) return;
-             seen.add(d.id);
-             out.push(mapDoc(d));
-         });
-     }
-     return out;
+@@ -118,57 +118,83 @@ const fetchClassScopedDocs = async ({
  };
  
  
@@ -28,20 +505,51 @@ index 2cae3bece59f1b68c78e6ceb337ac7fc3f5d38cc..88f939b0b306c142c4e4334acb8011a9
      return mapper ? baseItems.map(mapper) : baseItems;
  };
  
-+
-+// 직원 화면 Firestore read 1차 절감 메모
-+// - 기존 loadStaffDataOnce는 직원 pageKey 변경마다 users/classes/closures 및 일부 대용량 컬렉션을 반복 조회했다.
-+// - 아래 메모리 캐시는 같은 브라우저 세션/같은 pageKey에서 이미 읽은 slice를 재사용해 탭 왕복 read를 줄인다.
-+// - 대용량 attendanceLogs/grades/homeworkResults/clinicLogs는 pageKey 조건을 좁혀 전체 컬렉션성 로딩을 최소화한다.
-+const staffDataCache = new Map();
-+const STAFF_GLOBAL_CACHE_SLICES = new Set(['students', 'parents', 'classes']);
-+const getStaffCacheKey = (pageKey, slice) => `${STAFF_GLOBAL_CACHE_SLICES.has(slice) ? 'global' : (pageKey || 'all')}:${slice}`;
-+const readStaffCache = (pageKey, slice) => staffDataCache.get(getStaffCacheKey(pageKey, slice));
-+const writeStaffCache = (pageKey, slice, value) => {
-+    staffDataCache.set(getStaffCacheKey(pageKey, slice), value);
-+    return value;
+ 
+ // 직원 화면 Firestore read 1차 절감 메모
+ // - 기존 loadStaffDataOnce는 직원 pageKey 변경마다 users/classes/closures 및 일부 대용량 컬렉션을 반복 조회했다.
+ // - 아래 메모리 캐시는 같은 브라우저 세션/같은 pageKey에서 이미 읽은 slice를 재사용해 탭 왕복 read를 줄인다.
+ // - 대용량 attendanceLogs/grades/homeworkResults/clinicLogs는 pageKey 조건을 좁혀 전체 컬렉션성 로딩을 최소화한다.
+ const staffDataCache = new Map();
+-const STAFF_GLOBAL_CACHE_SLICES = new Set(['students', 'parents', 'classes']);
+-const getStaffCacheKey = (pageKey, slice) => `${STAFF_GLOBAL_CACHE_SLICES.has(slice) ? 'global' : (pageKey || 'all')}:${slice}`;
+-const readStaffCache = (pageKey, slice) => staffDataCache.get(getStaffCacheKey(pageKey, slice));
+-const writeStaffCache = (pageKey, slice, value) => {
+-    staffDataCache.set(getStaffCacheKey(pageKey, slice), value);
++const STAFF_GLOBAL_CACHE_SLICES = new Set(['classes']);
++const STAFF_DEFAULT_CACHE_TTL_MS = 60 * 1000;
++const STAFF_SENSITIVE_CACHE_TTL_MS = 30 * 1000;
++const STAFF_SENSITIVE_PAGES = new Set(['attendance', 'payment']);
++const getStaffCacheTtl = (pageKey) => STAFF_SENSITIVE_PAGES.has(pageKey) ? STAFF_SENSITIVE_CACHE_TTL_MS : STAFF_DEFAULT_CACHE_TTL_MS;
++const getStaffCacheKey = (pageKey, slice, queryKey = '') => `${STAFF_GLOBAL_CACHE_SLICES.has(slice) ? 'global' : (pageKey || 'all')}:${slice}:${queryKey || 'default'}`;
++const readStaffCache = (pageKey, slice, queryKey = '') => {
++    const key = getStaffCacheKey(pageKey, slice, queryKey);
++    const cached = staffDataCache.get(key);
++    if (!cached) return undefined;
++    if (Date.now() - cached.cachedAt > cached.ttl) {
++        staffDataCache.delete(key);
++        return undefined;
++    }
++    return cached.value;
 +};
-+
++const writeStaffCache = (pageKey, slice, value, queryKey = '', ttl = getStaffCacheTtl(pageKey)) => {
++    staffDataCache.set(getStaffCacheKey(pageKey, slice, queryKey), { value, cachedAt: Date.now(), ttl });
+     return value;
+ };
++export const invalidateStaffDataCache = (pageKey = null, slices = []) => {
++    const targetSlices = Array.isArray(slices) ? slices.filter(Boolean) : [slices].filter(Boolean);
++    for (const key of Array.from(staffDataCache.keys())) {
++        const [cachedPage, slice] = key.split(':');
++        const pageMatches = !pageKey || cachedPage === pageKey || cachedPage === 'global';
++        const sliceMatches = targetSlices.length === 0 || targetSlices.includes(slice);
++        if (pageMatches && sliceMatches) staffDataCache.delete(key);
++    }
++};
++const staffDataDebug = (message, payload = {}) => {
++    if (isDevelopment()) console.log(`[staffData] ${message}`, payload);
++};
++const getTodayDateString = () => new Date().toISOString().slice(0, 10);
+ 
  const viewerDetailCache = {
      lessonLogs: new Map(),
      attendance: new Map(),
@@ -66,8 +574,162 @@ index 2cae3bece59f1b68c78e6ceb337ac7fc3f5d38cc..88f939b0b306c142c4e4334acb8011a9
      if (!value) return '';
      if (typeof value === 'string') return value;
      if (typeof value?.toDate === 'function') {
-         return value.toDate().toISOString().slice(0, 10);
-@@ -740,50 +754,62 @@ export const loadStaffDataOnce = async ({
+@@ -275,73 +301,50 @@ const normalizePaymentLog = (log) => {
+     const amount = Number.isFinite(base.amount) ? base.amount : itemAmount;
+     const date = base.date || formatPaymentDate(base.createdAt);
+     return {
+         ...base,
+         amount,
+         date,
+         status: base.status || 'paid',
+         studentName: base.studentName || base.payerName,
+         bookName: base.bookName || base.bookTitle || firstItem?.title || firstItem?.name,
+     };
+ };
+ 
+ const fetchList = async (db, colName, setter, q, isCancelled, mapper = null) => {
+     if (q === null) {
+         if (!isCancelled()) setter([]);
+         return [];
+     }
+     const snap = await getDocs(q || collection(db, colName));
+     const baseItems = snap.docs.map((d) => normalizeAuthUid({ id: d.id, ...d.data() }));
+     const items = mapper ? baseItems.map(mapper) : baseItems;
+     if (isCancelled()) return [];
+     setter(items);
+     return items;
+ };
+ 
+-const fetchAttendanceLogsWithPagination = async (db, isCancelled, pageSize = 1000) => {
+-    const items = [];
+-    let lastDoc = null;
+-
+-    while (true) {
+-        if (isCancelled()) return items;
+-        const constraints = [
+-            orderBy('date', 'desc'),
+-            limit(pageSize),
+-        ];
+-        if (lastDoc) {
+-            constraints.push(startAfter(lastDoc));
+-        }
+-        const snap = await getDocs(query(collection(db, 'attendanceLogs'), ...constraints));
+-        if (snap.empty) break;
+-        items.push(...snap.docs.map((d) => normalizeAuthUid({ id: d.id, ...d.data() })));
+-        lastDoc = snap.docs[snap.docs.length - 1];
+-        if (snap.size < pageSize) break;
+-    }
+-
+-    return items;
+-};
+-
+ const fetchClinicLogsLight = async (db, isCancelled, lightLimit = 300) => {
+     const snap = await getDocs(
+         query(
+             collection(db, 'clinicLogs'),
+             orderBy('date', 'desc'),
+             limit(lightLimit),
+         ),
+     );
+     if (isCancelled()) return [];
+     return snap.docs.map((d) => normalizeClinicLog({ id: d.id, ...d.data() }));
+ };
+ 
+ const fetchClinicReservationsLight = async (db, isCancelled, lightLimit = 500) => {
+     const snap = await getDocs(
+         query(
+             collection(db, 'clinicReservations'),
+             orderBy('date', 'desc'),
+             limit(lightLimit),
+         ),
+     );
+     if (isCancelled()) return [];
+     return snap.docs.map((d) => normalizeClinicReservation({ id: d.id, ...d.data() }));
+ };
+ 
+ const fetchClinicForViewer = async ({
+@@ -659,80 +662,50 @@ export async function fetchClinicLogsDeepForStaff({
+         ]);
+         if (isCancelled?.()) return [];
+         pushClinicLogSnap(logsSnap);
+         pushReservationSnap(reservationsSnap);
+         return mergeClinicDocs(clinicLogs, reservations);
+     }
+ 
+ 
+     const clauses = [
+         orderBy('date', 'desc'),
+         limit(safeMaxDocs),
+     ];
+ 
+     const [logsSnap, reservationsSnap] = await Promise.all([
+         getDocs(query(logsCol, ...clauses)),
+         getDocs(query(reservationsCol, ...clauses)),
+     ]);
+     if (isCancelled?.()) return [];
+     pushClinicLogSnap(logsSnap);
+     pushReservationSnap(reservationsSnap);
+ 
+     return mergeClinicDocs(clinicLogs, reservations);
+ }
+ 
+ // staff 전용: grades 전체 페이지네이션 로드
+-const fetchGradesWithPagination = async (db, maxDocs = 5000, pageSize = 500) => {
+-    const all = [];
+-    let last = null;
+-
+-    while (all.length < maxDocs) {
+-        const q = last
+-            ? query(
+-                collection(db, 'grades'),
+-                orderBy(documentId()),
+-                startAfter(last),
+-                limit(pageSize),
+-            )
+-            : query(
+-                collection(db, 'grades'),
+-                orderBy(documentId()),
+-                limit(pageSize),
+-            );
+-
+-        const snap = await getDocs(q);
+-        if (snap.empty) break;
+-
+-        all.push(...snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+-        last = snap.docs[snap.docs.length - 1];
+-
+-        if (snap.size < pageSize) break;
+-    }
+-
+-    return all;
+-};
+-
+ const warnOnQuestionScores = (tests = [], context = 'viewer') => {
+     tests.forEach((test) => {
+         const totalQuestions = Number(test?.totalQuestions) || 0;
+         const hasScores = Array.isArray(test?.questionScores);
+         if (!hasScores || test.questionScores.length < totalQuestions) {
+             console.warn(`[${context}] test missing questionScores`, test?.id);
+         }
+     });
+ };
+ 
+ const normalizeStudentUser = (user) => {
+     if (!user || !isStudentRole(user.role)) return user;
+     return {
+         ...user,
+         classes: Array.isArray(user.classIds) ? user.classIds : (user.classes || []),
+     };
+ };
+ 
+ const dedupeStudentsByAuthUid = (students = []) => {
+     const map = new Map();
+     students.forEach((student) => {
+         if (!student) return;
+         const key = student.authUid || student.id;
+         const existing = key ? map.get(key) : null;
+         if (!existing) {
+@@ -754,93 +727,63 @@ export const loadStaffDataOnce = async ({
      userRole,
      pageKey = null,
      setStudents,
@@ -93,44 +755,80 @@ index 2cae3bece59f1b68c78e6ceb337ac7fc3f5d38cc..88f939b0b306c142c4e4334acb8011a9
  
      const shouldLoad = (key) => !pageKey || pageKey === key;
      const applyStudents = (items) => setStudents?.(dedupeStudentsByAuthUid(items));
-+    const loadCachedSlice = async (slice, setter, loader) => {
-+        const cached = readStaffCache(pageKey, slice);
-+        if (cached !== undefined) {
-+            setter?.(cached);
-+            if (isDevelopment()) console.log('[staff][cache] hit', { pageKey, slice, count: Array.isArray(cached) ? cached.length : Object.keys(cached || {}).length });
-+            return cached;
-+        }
-+        const loaded = await loader();
-+        writeStaffCache(pageKey, slice, loaded);
-+        setter?.(loaded);
-+        return loaded;
-+    };
+-    const loadCachedSlice = async (slice, setter, loader) => {
+-        const cached = readStaffCache(pageKey, slice);
++    const loadCachedSlice = async (slice, setter, loader, queryKey = '') => {
++        const cached = readStaffCache(pageKey, slice, queryKey);
+         if (cached !== undefined) {
+             setter?.(cached);
+-            if (isDevelopment()) console.log('[staff][cache] hit', { pageKey, slice, count: Array.isArray(cached) ? cached.length : Object.keys(cached || {}).length });
++            staffDataDebug(`cache hit pageKey=${pageKey}`, { slice, queryKey, count: Array.isArray(cached) ? cached.length : Object.keys(cached || {}).length });
+             return cached;
+         }
+         const loaded = await loader();
+-        writeStaffCache(pageKey, slice, loaded);
++        writeStaffCache(pageKey, slice, loaded, queryKey);
+         setter?.(loaded);
+         return loaded;
+     };
  
-     const fetchHomeworkResultsWithPagination = async (db, maxDocs = 5000, pageSize = 500) => {
-         const all = [];
-         let last = null;
+-    const fetchHomeworkResultsWithPagination = async (db, maxDocs = 5000, pageSize = 500) => {
+-        const all = [];
+-        let last = null;
+-
+-        while (all.length < maxDocs) {
+-            const q = last
+-                ? query(
+-                    collection(db, 'homeworkResults'),
+-                    orderBy(documentId()),
+-                    startAfter(last),
+-                    limit(pageSize),
+-                )
+-                : query(
+-                    collection(db, 'homeworkResults'),
+-                    orderBy(documentId()),
+-                    limit(pageSize),
+-                );
+-
+-            const snap = await getDocs(q);
+-            if (snap.empty) break;
+-
+-            all.push(...snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+-            last = snap.docs[snap.docs.length - 1];
+-
+-            if (snap.size < pageSize) break;
+-        }
+-
+-        return all;
+-    };
+-
+     let staffClasses = [];
+     let staffStudents = [];
  
-         while (all.length < maxDocs) {
-             const q = last
-                 ? query(
-                     collection(db, 'homeworkResults'),
-                     orderBy(documentId()),
-                     startAfter(last),
-                     limit(pageSize),
-                 )
-                 : query(
-                     collection(db, 'homeworkResults'),
-                     orderBy(documentId()),
-                     limit(pageSize),
-                 );
+     const fetchClosuresForStaff = async (classes = []) => {
+         const merged = new Map();
  
-             const snap = await getDocs(q);
-             if (snap.empty) break;
+         try {
+             const globalSnap = await getDocs(
+                 query(
+                     collection(db, 'closures'),
+                     where('scope', '==', 'global'),
+                     orderBy('startDate', 'desc'),
+                     limit(500),
+                 ),
+             );
+             globalSnap.docs.forEach((d) => merged.set(d.id, { id: d.id, ...d.data() }));
+         } catch (e) {
+             console.warn('[staff] closures global load failed', e);
+         }
  
-             all.push(...snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-             last = snap.docs[snap.docs.length - 1];
+         const classIds = Array.isArray(classes)
+             ? classes.map((c) => String(c?.id)).filter(Boolean)
+             : [];
  
-@@ -834,196 +860,203 @@ export const loadStaffDataOnce = async ({
+         if (classIds.length > 0) {
+@@ -859,221 +802,237 @@ export const loadStaffDataOnce = async ({
+                     snap.docs.forEach((d) => merged.set(d.id, { id: d.id, ...d.data() }));
                  } catch (e) {
                      try {
                          const snap2 = await getDocs(
@@ -155,201 +853,289 @@ index 2cae3bece59f1b68c78e6ceb337ac7fc3f5d38cc..88f939b0b306c142c4e4334acb8011a9
      };
  
      try {
-         if (setStudents) {
--            staffStudents = await fetchList(
-+            staffStudents = await loadCachedSlice('students', applyStudents, () => fetchList(
+-        if (setStudents) {
++        const today = getTodayDateString();
++        const pageNeedsStudents = ['home', 'lessons', 'lessonReports', 'grades', 'homework', 'clinic', 'payment', 'students'].includes(pageKey) || !pageKey;
++        const pageNeedsClasses = ['home', 'lessons', 'lessonReports', 'grades', 'homework', 'clinic', 'attendance', 'closures'].includes(pageKey) || !pageKey;
++        const loadingCollections = [];
++
++        if (setStudents && pageNeedsStudents) {
++            loadingCollections.push(pageKey === 'home' ? 'students(limit)' : 'students(limit)');
+             staffStudents = await loadCachedSlice('students', applyStudents, () => fetchList(
                  db,
                  'users',
--                applyStudents,
-+                () => {},
-                 query(collection(db, 'users'), where('role', '==', ROLE.STUDENT), limit(500)),
+                 () => {},
+-                query(collection(db, 'users'), where('role', '==', ROLE.STUDENT), limit(500)),
++                query(collection(db, 'users'), where('role', '==', ROLE.STUDENT), limit(pageKey === 'home' ? 300 : 800)),
                  () => false,
                  normalizeStudentUser,
--            );
-+            ));
+-            ));
++            ), pageKey === 'home' ? 'limit300' : 'limit800');
          }
  
-         if (setParents) {
+-        if (setParents) {
++        if (setParents && pageKey === 'students') {
++            loadingCollections.push('parents(limit)');
              const parentRoles = [ROLE.PARENT, '학부모'];
-             try {
-                 await fetchList(
-                     db,
-                     'users',
-                     setParents,
-                     query(collection(db, 'users'), where('role', 'in', parentRoles), limit(500)),
-                     () => false,
-                 );
-             } catch (error) {
-                 console.warn('[staff] parent role in query failed, fallback to client filter', error);
-                 const users = await fetchList(
-                     db,
-                     'users',
-                     () => {},
-                     query(collection(db, 'users'), limit(500)),
-                     () => false,
-                 );
-                 const roleSet = new Set(parentRoles);
-                 setParents(users.filter((user) => roleSet.has(user?.role)));
-             }
+-            try {
+-                await fetchList(
+-                    db,
+-                    'users',
+-                    setParents,
+-                    query(collection(db, 'users'), where('role', 'in', parentRoles), limit(500)),
+-                    () => false,
+-                );
+-            } catch (error) {
+-                console.warn('[staff] parent role in query failed, fallback to client filter', error);
+-                const users = await fetchList(
+-                    db,
+-                    'users',
+-                    () => {},
+-                    query(collection(db, 'users'), limit(500)),
+-                    () => false,
+-                );
+-                const roleSet = new Set(parentRoles);
+-                setParents(users.filter((user) => roleSet.has(user?.role)));
+-            }
++            await loadCachedSlice('parents', setParents, async () => {
++                try {
++                    return await fetchList(
++                        db,
++                        'users',
++                        () => {},
++                        query(collection(db, 'users'), where('role', 'in', parentRoles), limit(500)),
++                        () => false,
++                    );
++                } catch (error) {
++                    console.warn('[staff] parent role in query failed, fallback to client filter', error);
++                    const users = await fetchList(
++                        db,
++                        'users',
++                        () => {},
++                        query(collection(db, 'users'), limit(500)),
++                        () => false,
++                    );
++                    const roleSet = new Set(parentRoles);
++                    return users.filter((user) => roleSet.has(user?.role));
++                }
++            }, 'limit500');
          }
  
-         if (setClasses) {
--            staffClasses = await fetchList(
-+            staffClasses = await loadCachedSlice('classes', setClasses, () => fetchList(
+-        if (setClasses) {
++        if (setClasses && pageNeedsClasses) {
++            loadingCollections.push('classes');
+             staffClasses = await loadCachedSlice('classes', setClasses, () => fetchList(
                  db,
                  'classes',
--                setClasses,
-+                () => {},
+                 () => {},
                  query(collection(db, 'classes'), orderBy('name')),
                  () => false,
--            );
-+            ));
+             ));
          }
  
-         if (setTests && (shouldLoad('grades') || shouldLoad('lessons') || shouldLoad('lessonReports'))) {
-             const tests = await fetchList(db, 'tests', setTests, query(collection(db, 'tests'), orderBy('date', 'desc'), limit(200)), () => false);
+-        if (setTests && (shouldLoad('grades') || shouldLoad('lessons') || shouldLoad('lessonReports'))) {
+-            const tests = await fetchList(db, 'tests', setTests, query(collection(db, 'tests'), orderBy('date', 'desc'), limit(200)), () => false);
++        if (setTests && shouldLoad('grades')) {
++            loadingCollections.push('tests(limit200)');
++            const tests = await loadCachedSlice('tests', setTests, () => fetchList(db, 'tests', () => {}, query(collection(db, 'tests'), orderBy('date', 'desc'), limit(200)), () => false), 'recent200');
              warnOnQuestionScores(tests, 'staff');
          }
  
-         if (setLessonLogs && (shouldLoad('lessons') || shouldLoad('lessonReports'))) {
-             await fetchList(db, 'lessonLogs', setLessonLogs, query(collection(db, 'lessonLogs'), orderBy('date', 'desc'), limit(150)), () => false);
-         }
-         if (setLessonReports && (shouldLoad('lessons') || shouldLoad('students') || shouldLoad('lessonReports'))) {
-             await fetchList(db, 'lessonReports', setLessonReports, query(collection(db, 'lessonReports'), orderBy('lessonDate', 'desc'), limit(300)), () => false);
-         }
- 
- 
--        if (setAttendanceLogs && (shouldLoad('attendance') || shouldLoad('lessons') || shouldLoad('students') || shouldLoad('lessonReports'))) {
--            const attendanceLogs = await fetchAttendanceLogsWithPagination(db, () => false);
--            setAttendanceLogs?.(attendanceLogs);
-+        if (setAttendanceLogs && (shouldLoad('attendance') || shouldLoad('lessons') || shouldLoad('lessonReports'))) {
-+            await loadCachedSlice('attendanceLogs', setAttendanceLogs, () => fetchAttendanceLogsWithPagination(db, () => false));
+-        if (setLessonLogs && (shouldLoad('lessons') || shouldLoad('lessonReports'))) {
+-            await fetchList(db, 'lessonLogs', setLessonLogs, query(collection(db, 'lessonLogs'), orderBy('date', 'desc'), limit(150)), () => false);
+-        }
+-        if (setLessonReports && (shouldLoad('lessons') || shouldLoad('students') || shouldLoad('lessonReports'))) {
+-            await fetchList(db, 'lessonReports', setLessonReports, query(collection(db, 'lessonReports'), orderBy('lessonDate', 'desc'), limit(300)), () => false);
++        if (setLessonLogs && shouldLoad('home')) {
++            loadingCollections.push('lessonLogs(today)');
++            await loadCachedSlice('lessonLogs', setLessonLogs, () => fetchList(db, 'lessonLogs', () => {}, query(collection(db, 'lessonLogs'), where('date', '==', today), limit(100)), () => false), `date:${today}`);
++        } else if (setLessonLogs && (shouldLoad('lessons') || shouldLoad('lessonReports'))) {
++            loadingCollections.push('lessonLogs(recent150)');
++            await loadCachedSlice('lessonLogs', setLessonLogs, () => fetchList(db, 'lessonLogs', () => {}, query(collection(db, 'lessonLogs'), orderBy('date', 'desc'), limit(150)), () => false), 'recent150');
          }
  
-         if (setClinicLogs && (shouldLoad('clinic') || shouldLoad('lessons'))) {
-+            const cachedClinicLogs = readStaffCache(pageKey, 'clinicLogs');
-+            if (cachedClinicLogs !== undefined) {
-+                setClinicLogs?.(cachedClinicLogs);
-+            } else {
-             const [lightLogs, lightReservations] = await Promise.all([
-                 fetchClinicLogsLight(db, () => false, 300),
-                 fetchClinicReservationsLight(db, () => false, 500),
-             ]);
--            const mergedClinicDocs = mergeClinicDocs(lightLogs, lightReservations);
-+            const mergedClinicDocs = writeStaffCache(pageKey, 'clinicLogs', mergeClinicDocs(lightLogs, lightReservations));
-             setClinicLogs?.(mergedClinicDocs);
-             console.log('[staff] clinic logs loaded (merged)=', {
-                 clinicLogs: lightLogs.length,
-                 clinicReservations: lightReservations.length,
-                 merged: mergedClinicDocs.length,
-             });
-+            }
++        if (setLessonReports && shouldLoad('home')) {
++            loadingCollections.push('lessonReports(today)');
++            await loadCachedSlice('lessonReports', setLessonReports, () => fetchList(db, 'lessonReports', () => {}, query(collection(db, 'lessonReports'), where('lessonDate', '==', today), limit(100)), () => false), `lessonDate:${today}`);
++        } else if (setLessonReports && shouldLoad('lessonReports')) {
++            loadingCollections.push('lessonReports(recent300)');
++            await loadCachedSlice('lessonReports', setLessonReports, () => fetchList(db, 'lessonReports', () => {}, query(collection(db, 'lessonReports'), orderBy('lessonDate', 'desc'), limit(300)), () => false), 'recent300');
++        }
+ 
+-        if (setAttendanceLogs && (shouldLoad('attendance') || shouldLoad('lessons') || shouldLoad('lessonReports'))) {
+-            await loadCachedSlice('attendanceLogs', setAttendanceLogs, () => fetchAttendanceLogsWithPagination(db, () => false));
++        if (setAttendanceLogs && shouldLoad('home')) {
++            loadingCollections.push('attendanceLogs(today)');
++            await loadCachedSlice('attendanceLogs', setAttendanceLogs, () => fetchList(db, 'attendanceLogs', () => {}, query(collection(db, 'attendanceLogs'), where('date', '==', today), limit(300)), () => false), `date:${today}`);
++        } else if (setAttendanceLogs && shouldLoad('attendance')) {
++            loadingCollections.push('attendanceLogs(recent300)');
++            await loadCachedSlice('attendanceLogs', setAttendanceLogs, () => fetchList(db, 'attendanceLogs', () => {}, query(collection(db, 'attendanceLogs'), orderBy('date', 'desc'), limit(300)), () => false), 'recent300');
+         }
+ 
+-        if (setClinicLogs && (shouldLoad('clinic') || shouldLoad('lessons'))) {
+-            const cachedClinicLogs = readStaffCache(pageKey, 'clinicLogs');
++        if (setClinicLogs && shouldLoad('clinic')) {
++            loadingCollections.push('clinicLogs/recent + clinicReservations/recent');
++            const queryKey = 'recent300-reservations500';
++            const cachedClinicLogs = readStaffCache(pageKey, 'clinicLogs', queryKey);
+             if (cachedClinicLogs !== undefined) {
+                 setClinicLogs?.(cachedClinicLogs);
++                staffDataDebug(`cache hit pageKey=${pageKey}`, { slice: 'clinicLogs', count: cachedClinicLogs.length });
+             } else {
+-            const [lightLogs, lightReservations] = await Promise.all([
+-                fetchClinicLogsLight(db, () => false, 300),
+-                fetchClinicReservationsLight(db, () => false, 500),
+-            ]);
+-            const mergedClinicDocs = writeStaffCache(pageKey, 'clinicLogs', mergeClinicDocs(lightLogs, lightReservations));
+-            setClinicLogs?.(mergedClinicDocs);
+-            console.log('[staff] clinic logs loaded (merged)=', {
+-                clinicLogs: lightLogs.length,
+-                clinicReservations: lightReservations.length,
+-                merged: mergedClinicDocs.length,
+-            });
++                const [lightLogs, lightReservations] = await Promise.all([
++                    fetchClinicLogsLight(db, () => false, 300),
++                    fetchClinicReservationsLight(db, () => false, 500),
++                ]);
++                const mergedClinicDocs = writeStaffCache(pageKey, 'clinicLogs', mergeClinicDocs(lightLogs, lightReservations), queryKey);
++                setClinicLogs?.(mergedClinicDocs);
++                staffDataDebug('clinic logs loaded', { clinicLogs: lightLogs.length, clinicReservations: lightReservations.length, merged: mergedClinicDocs.length });
+             }
          }
  
          if (setWorkLogs && shouldLoad('communication')) {
-             await fetchList(db, 'workLogs', setWorkLogs, query(collection(db, 'workLogs'), orderBy('date', 'desc'), limit(150)), () => false);
+-            await fetchList(db, 'workLogs', setWorkLogs, query(collection(db, 'workLogs'), orderBy('date', 'desc'), limit(150)), () => false);
++            loadingCollections.push('workLogs(recent150)');
++            await loadCachedSlice('workLogs', setWorkLogs, () => fetchList(db, 'workLogs', () => {}, query(collection(db, 'workLogs'), orderBy('date', 'desc'), limit(150)), () => false), 'recent150');
          }
  
          if (setAnnouncements && shouldLoad('communication')) {
-             await fetchList(db, 'announcements', setAnnouncements, query(collection(db, 'announcements'), orderBy('date', 'desc'), limit(150)), () => false);
+-            await fetchList(db, 'announcements', setAnnouncements, query(collection(db, 'announcements'), orderBy('date', 'desc'), limit(150)), () => false);
++            loadingCollections.push('announcements(recent150)');
++            await loadCachedSlice('announcements', setAnnouncements, () => fetchList(db, 'announcements', () => {}, query(collection(db, 'announcements'), orderBy('date', 'desc'), limit(150)), () => false), 'recent150');
          }
  
-         if (setHomeworkAssignments && (shouldLoad('homework') || shouldLoad('lessonReports'))) {
-             await fetchList(db, 'homeworkAssignments', setHomeworkAssignments, query(collection(db, 'homeworkAssignments'), orderBy('date', 'desc'), limit(150)), () => false);
+-        if (setHomeworkAssignments && (shouldLoad('homework') || shouldLoad('lessonReports'))) {
+-            await fetchList(db, 'homeworkAssignments', setHomeworkAssignments, query(collection(db, 'homeworkAssignments'), orderBy('date', 'desc'), limit(150)), () => false);
++        if (setHomeworkAssignments && shouldLoad('homework')) {
++            loadingCollections.push('homeworkAssignments(recent150)');
++            await loadCachedSlice('homeworkAssignments', setHomeworkAssignments, () => fetchList(db, 'homeworkAssignments', () => {}, query(collection(db, 'homeworkAssignments'), orderBy('date', 'desc'), limit(150)), () => false), 'recent150');
          }
  
          if (setPaymentLogs && shouldLoad('payment')) {
-             await fetchList(
+-            await fetchList(
++            loadingCollections.push('payments(recent150)');
++            await loadCachedSlice('payments', setPaymentLogs, () => fetchList(
                  db,
                  'payments',
-                 setPaymentLogs,
+-                setPaymentLogs,
++                () => {},
                  query(collection(db, 'payments'), orderBy('createdAt', 'desc'), limit(150)),
                  () => false,
                  normalizePaymentLog,
-             );
+-            );
++            ), 'recent150');
          }
  
--        if (setGrades && (shouldLoad('grades') || shouldLoad('lessonReports'))) {
--            const mappedGrades = {};
--            const grades = await fetchGradesWithPagination(db, 5000, 500);
-+        if (setGrades && shouldLoad('grades')) {
-+            await loadCachedSlice('grades', setGrades, async () => {
-+                const mappedGrades = {};
-+                const grades = await fetchGradesWithPagination(db, 5000, 500);
- 
--            grades.forEach((raw) => {
--                const data = normalizeAuthUid(raw); // ✅ authUid/studentUid → studentId로 정규화
-+                grades.forEach((raw) => {
-+                    const data = normalizeAuthUid(raw); // ✅ authUid/studentUid → studentId로 정규화
- 
--                const sId = data.studentId; // ✅ 이제 항상 studentId를 키로 사용
--                const testId = data.testId;
-+                    const sId = data.studentId; // ✅ 이제 항상 studentId를 키로 사용
-+                    const testId = data.testId;
- 
--                if (!sId || !testId) return; // 방어 로직
-+                    if (!sId || !testId) return; // 방어 로직
- 
--                if (!mappedGrades[sId]) mappedGrades[sId] = {};
--                mappedGrades[sId][testId] = data;
-+                    if (!mappedGrades[sId]) mappedGrades[sId] = {};
-+                    mappedGrades[sId][testId] = data;
-+                });
-+                return mappedGrades;
-             });
+         if (setGrades && shouldLoad('grades')) {
++            loadingCollections.push('grades(recent500)');
+             await loadCachedSlice('grades', setGrades, async () => {
++                const grades = await fetchListSafe(query(collection(db, 'grades'), orderBy('updatedAt', 'desc'), limit(500)), () => false);
+                 const mappedGrades = {};
+-                const grades = await fetchGradesWithPagination(db, 5000, 500);
 -
--            setGrades(mappedGrades);
+                 grades.forEach((raw) => {
+-                    const data = normalizeAuthUid(raw); // ✅ authUid/studentUid → studentId로 정규화
+-
+-                    const sId = data.studentId; // ✅ 이제 항상 studentId를 키로 사용
++                    const data = normalizeAuthUid(raw);
++                    const sId = data.studentId;
+                     const testId = data.testId;
+-
+-                    if (!sId || !testId) return; // 방어 로직
+-
++                    if (!sId || !testId) return;
+                     if (!mappedGrades[sId]) mappedGrades[sId] = {};
+                     mappedGrades[sId][testId] = data;
+                 });
+                 return mappedGrades;
+-            });
++            }, 'recent500');
          }
  
--        if (setHomeworkResults && (shouldLoad('homework') || shouldLoad('lessonReports'))) {
-+        if (setHomeworkResults && shouldLoad('homework')) {
-+            await loadCachedSlice('homeworkResults', setHomeworkResults, async () => {
-             const docs = await fetchHomeworkResultsWithPagination(db, 5000, 500);
-             const mappedResults = {};
-             const authUidToStudentDocId = new Map(
-                 (staffStudents || [])
-                     .filter((student) => student?.authUid && student?.id)
-                     .map((student) => [String(student.authUid), String(student.id)]),
-             );
-             docs.forEach((data) => {
-                 const assignmentId = data.assignmentId || data.homeworkAssignmentId || null;
- 
-                 const rawKey = data.studentId
-                     || data.studentDocId
-                     || data.authUid
-                     || data.studentUid
-                     || null;
-                 
-                 const sKey = rawKey && authUidToStudentDocId.get(String(rawKey))
-                 ? authUidToStudentDocId.get(String(rawKey))
-                 : rawKey;
- 
-                 if (!sKey || !assignmentId) return;
- 
-                 if (!mappedResults[sKey]) mappedResults[sKey] = {};
-                 mappedResults[sKey][assignmentId] = data.results || data;
-             });
-             console.log('[staff][homeworkResults] loaded docs=', docs.length, 'keys=', Object.keys(mappedResults).length);
--            setHomeworkResults(mappedResults);
-+            return mappedResults;
-+            });
+         if (setHomeworkResults && shouldLoad('homework')) {
++            loadingCollections.push('homeworkResults(recent500)');
+             await loadCachedSlice('homeworkResults', setHomeworkResults, async () => {
+-            const docs = await fetchHomeworkResultsWithPagination(db, 5000, 500);
+-            const mappedResults = {};
+-            const authUidToStudentDocId = new Map(
+-                (staffStudents || [])
+-                    .filter((student) => student?.authUid && student?.id)
+-                    .map((student) => [String(student.authUid), String(student.id)]),
+-            );
+-            docs.forEach((data) => {
+-                const assignmentId = data.assignmentId || data.homeworkAssignmentId || null;
+-
+-                const rawKey = data.studentId
+-                    || data.studentDocId
+-                    || data.authUid
+-                    || data.studentUid
+-                    || null;
+-                
+-                const sKey = rawKey && authUidToStudentDocId.get(String(rawKey))
+-                ? authUidToStudentDocId.get(String(rawKey))
+-                : rawKey;
+-
+-                if (!sKey || !assignmentId) return;
+-
+-                if (!mappedResults[sKey]) mappedResults[sKey] = {};
+-                mappedResults[sKey][assignmentId] = data.results || data;
+-            });
+-            console.log('[staff][homeworkResults] loaded docs=', docs.length, 'keys=', Object.keys(mappedResults).length);
+-            return mappedResults;
+-            });
++                const docs = await fetchListSafe(query(collection(db, 'homeworkResults'), orderBy('updatedAt', 'desc'), limit(500)), () => false);
++                const mappedResults = {};
++                const authUidToStudentDocId = new Map(
++                    (staffStudents || [])
++                        .filter((student) => student?.authUid && student?.id)
++                        .map((student) => [String(student.authUid), String(student.id)]),
++                );
++                docs.forEach((data) => {
++                    const assignmentId = data.assignmentId || data.homeworkAssignmentId || null;
++                    const rawKey = data.studentId || data.studentDocId || data.authUid || data.studentUid || null;
++                    const sKey = rawKey && authUidToStudentDocId.get(String(rawKey)) ? authUidToStudentDocId.get(String(rawKey)) : rawKey;
++                    if (!sKey || !assignmentId) return;
++                    if (!mappedResults[sKey]) mappedResults[sKey] = {};
++                    mappedResults[sKey][assignmentId] = data.results || data;
++                });
++                return mappedResults;
++            }, 'recent500');
          }
  
          if (setExternalSchedules && shouldLoad('schedule')) {
-             await fetchList(
+-            await fetchList(
++            loadingCollections.push('externalSchedules(recent500)');
++            await loadCachedSlice('externalSchedules', setExternalSchedules, () => fetchList(
                  db,
                  'externalSchedules',
-                 setExternalSchedules,
+-                setExternalSchedules,
++                () => {},
                  query(collection(db, 'externalSchedules'), orderBy('startDate', 'desc'), limit(500)),
                  () => false,
-             );
+-            );
++            ), 'recent500');
          }
  
-         if (setClosures) {
-             const closures = await fetchClosuresForStaff(staffClasses);
+-        if (setClosures) {
+-            const closures = await fetchClosuresForStaff(staffClasses);
++        if (setClosures && shouldLoad('closures')) {
++            loadingCollections.push('closures(global/class)');
++            const closures = await loadCachedSlice('closures', setClosures, () => fetchClosuresForStaff(staffClasses), 'scoped500');
              setClosures(closures);
          }
  
++        staffDataDebug(`pageKey=${pageKey || 'all'} loading collections: ${loadingCollections.join(', ') || 'none'}`);
      } catch (error) {
          console.error('[FirestoreSync] staff 데이터 로드 실패:', error);
      }
@@ -358,440 +1144,20 @@ index 2cae3bece59f1b68c78e6ceb337ac7fc3f5d38cc..88f939b0b306c142c4e4334acb8011a9
  export const loadViewerDataOnce = async ({
      db,
      isLoggedIn,
-diff --git a/src/domain/homework/homework.service.js b/src/domain/homework/homework.service.js
-index 551d896e794df03da8038b68a922f6a59aa85138..b82fade2805e0ccd8ea83e2175c76b57a822a988 100644
---- a/src/domain/homework/homework.service.js
-+++ b/src/domain/homework/homework.service.js
-@@ -275,51 +275,51 @@ export const hasWrongRemaining = (resultData) => {
- };
- 
- export const computeHomeworkProgress = (resultData, questionNumbersOrTotal) => {
-     const questionNumbers = Array.isArray(questionNumbersOrTotal)
-         ? questionNumbersOrTotal
-         : null;
-     const total = questionNumbers
-         ? questionNumbers.length
-         : (Number(questionNumbersOrTotal) > 0 ? Number(questionNumbersOrTotal) : 0);
-     const resultMap = normalizeResultsByQuestions(resultData, questionNumbers || []);
-     const statuses = Object.values(resultMap);
- 
-     const checkedCount = statuses.filter((status) => ['맞음', '틀림', '고침'].includes(status)).length;
-     const incorrectCount = statuses.filter((status) => status === '틀림').length;
-     const unchecked = total > 0 ? Math.max(total - checkedCount, 0) : 0;
- 
-     let completionRate = total > 0 ? Math.round((checkedCount / total) * 100) : 0;
-     if (checkedCount >= total && incorrectCount > 0) completionRate = 99;
-     if (checkedCount >= total && incorrectCount === 0 && completionRate < 100) completionRate = 100;
- 
-     let status = '진행중';
- 
-     if (checkedCount > 0 && checkedCount < total) {
-     status = '진행중';
-     } else if (checkedCount >= total) {
--    status = '완료';
-+    status = isHomeworkCompleteByCounts({ wrongCount: incorrectCount, remainingCount: unchecked }) ? '완료' : '미완료';
-     }
- 
-     return {
-         completionRate,
-         checkedCount,
-         incorrectCount,
-         uncheckedCount: unchecked,
-         status,
-     };
- };
- 
- export const getHomeworkStats = (results, questionNumbers = []) => {
-     const normalized = normalizeHomeworkResultMapForDisplay(results, questionNumbers);
-     const totalQuestions = Array.isArray(questionNumbers) ? questionNumbers.length : 0;
-     const values = Object.values(normalized);
-     const correctCount = values.filter((s) => s === '맞음').length;
-     const wrongCount = values.filter((s) => s === '틀림').length;
-     const fixedCount = values.filter((s) => s === '고침').length;
-     const checkedCount = correctCount + wrongCount + fixedCount;
-     const remainingCount = Math.max(totalQuestions - checkedCount, 0);
-     const completionRate = totalQuestions > 0 ? Math.round((checkedCount / totalQuestions) * 100) : 0;
-     return { correctCount, wrongCount, fixedCount, remainingCount, completionRate };
- };
- 
- export const buildHomeworkQuestionStats = ({ assignment, result }) => {
-@@ -345,50 +345,61 @@ export const buildHomeworkQuestionStats = ({ assignment, result }) => {
-         else remainingQuestionNumbers.push(questionNumber);
-     });
- 
-     const correctCount = correctQuestionNumbers.length;
-     const wrongCount = wrongQuestionNumbers.length;
-     const fixedCount = fixedQuestionNumbers.length;
-     const completedCount = correctCount + wrongCount + fixedCount;
-     const remainingCount = remainingQuestionNumbers.length;
-     const completionRate = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
- 
-     return {
-         totalCount,
-         completedCount,
-         correctCount,
-         wrongCount,
-         fixedCount,
-         remainingCount,
-         completionRate,
-         correctQuestionNumbers,
-         wrongQuestionNumbers,
-         fixedQuestionNumbers,
-         remainingQuestionNumbers,
-     };
- };
- 
-+
-+export const isHomeworkCompleteByCounts = ({ wrongCount = 0, remainingCount = 0 } = {}) => {
-+    const wrong = Number(wrongCount) || 0;
-+    const remaining = Number(remainingCount) || 0;
-+    return wrong === 0 && remaining === 0;
-+};
-+
-+export const getHomeworkCompletionLabel = (counts = {}) => (
-+    isHomeworkCompleteByCounts(counts) ? '완료' : '미완료'
-+);
-+
- export const applyHomeworkProgressCap = (progressPercent = 0, resultData, totalQuestions = null) => {
-     const safeProgress = Number.isFinite(progressPercent) ? progressPercent : 0;
-     const progress = computeHomeworkProgress(resultData, totalQuestions);
-     if (safeProgress >= 100 && (progress.incorrectCount > 0 || hasWrongRemaining(resultData))) return 99;
-     return progress.completionRate || safeProgress;
- };
- 
- export const isAssignmentAssignedToStudent = (assignment, studentId, extraStudentKeys = []) => {
-     if (!assignment || !studentId) return false;
-     const assignedIds = resolveAssignmentStudentIds(assignment).map(String);
-     const compareKeys = [studentId, ...extraStudentKeys].filter(Boolean).map(String);
-     if (assignedIds.length === 0) return true;
-     return compareKeys.some((key) => assignedIds.includes(key));
- };
- 
- export const buildAssignmentSummary = (selectedAssignment, classStudents = [], homeworkResults = {}, localChanges = []) => {
-     if (!selectedAssignment) return [];
- 
-     const questionNumbers = getAssignmentQuestionNumbers(selectedAssignment);
- 
-     return classStudents.map(student => {
-         const rawResult = homeworkResults[student.id]?.[selectedAssignment.id];
-         const savedResult = normalizeHomeworkResultMapForDisplay(rawResult, questionNumbers, {
-             assignmentId: selectedAssignment.id,
-             studentId: student.id,
-diff --git a/src/pages/HomeworkManagement.jsx b/src/pages/HomeworkManagement.jsx
-index 6c21048ddc440fcf3bd855411407dd22154fbcf9..c2025e216354ff6e93354a28c385819ba4d7f498 100644
---- a/src/pages/HomeworkManagement.jsx
-+++ b/src/pages/HomeworkManagement.jsx
-@@ -1,33 +1,33 @@
- import React, { useState, useMemo, useEffect, useCallback } from 'react';
- import { collection, query, where, getDocs, limit } from 'firebase/firestore';
- import { Icon, getLastCheckedDate } from '../utils/helpers';
- import ClassSelectionPanel from '../components/Shared/ClassSelectionPanel';
- import HomeworkStatisticsPanel from '../components/Homework/HomeworkStatisticsPanel';
- import { HomeworkAssignmentModal } from '../utils/modals/HomeworkAssignmentModal';
- import HomeworkResultsModal from '../utils/modals/HomeworkResultsModal';
--import { buildAssignmentSummary, classifyHomeworkResultKeyMode, computeHomeworkProgress, getAssignmentQuestionNumbers, getClassAssignments, getSelectedAssignment, normalizeHomeworkResultMapForDisplay, resolveAssignmentStudentIds, resolveAssignmentTypeLabel, resolveAssignmentType } from '../domain/homework/homework.service';
-+import { buildAssignmentSummary, classifyHomeworkResultKeyMode, computeHomeworkProgress, getAssignmentQuestionNumbers, getClassAssignments, getSelectedAssignment, normalizeHomeworkResultMapForDisplay, resolveAssignmentStudentIds, resolveAssignmentTypeLabel, resolveAssignmentType, isHomeworkCompleteByCounts } from '../domain/homework/homework.service';
- import { buildHomeworkWrongNoteText } from '../domain/homework/homeworkWrongNote.service';
- import { db } from '../firebase/client';
- import { getDefaultClassId, isClosedClass } from '../utils/classStatus';
- import { useClassStudents } from '../utils/useClassStudents';
- import { filterRosterByWithdrawDate } from '../utils/rosterFilter';
- import { buildStudentParentPhoneLast4Map, formatStudentNameWithParentLast4 } from '../utils/parentPhone';
- import { Modal } from '../components/common/Modal';
- 
- const isSameStudent = (result, student) => {
-     if (!result || !student) return false;
- 
-     const resultStudentIds = [
-         result.studentId,
-         result.studentDocId,
-         result.studentUid,
-         result.authUid,
-     ].filter(Boolean).map(String);
- 
-     const studentIds = [
-         student.id,
-         student.authUid,
-     ].filter(Boolean).map(String);
- 
-     return resultStudentIds.some(rid => studentIds.includes(rid));
- };
-@@ -287,51 +287,51 @@ export default function HomeworkManagement({
-             const sid = String(student.studentId);
-             const aid = String(selectedAssignment?.id || '');
-             const overlay = draftHomeworkOverlay?.[sid]?.[aid];
-             const mergedResultMap = overlay?.results || student.resultMap || {};
-             const normalizedResultMap = normalizeHomeworkResultMapForDisplay(mergedResultMap, questionNumbers, {
-                 assignmentId: selectedAssignment?.id,
-                 studentId: student.studentId,
-             });
- 
-             if (isDev) {
-                 console.log('[homework completion debug]', {
-                     assignmentId: selectedAssignment?.id,
-                     title: selectedAssignment?.title || selectedAssignment?.book || selectedAssignment?.content,
-                     questionNumbers,
-                     rawKeys: Object.keys(mergedResultMap || {}),
-                     normalizedKeys: Object.keys(normalizedResultMap || {}),
-                     mode: classifyHomeworkResultKeyMode(mergedResultMap, questionNumbers),
-                 });
-             }
- 
-             const progress = computeHomeworkProgress(normalizedResultMap, questionNumbers);
-             const answeredCount = progress.checkedCount;
-             const completionPercentRaw = progress.completionRate;
-             const hasWrong = progress.incorrectCount > 0;
-             const wrongProgress = completionPercentRaw === 99;
--            const completed = completionPercentRaw === 100;
-+            const completed = isHomeworkCompleteByCounts({ wrongCount: progress.incorrectCount, remainingCount: progress.uncheckedCount });
-             const completionPercentDisplay = overlay && typeof overlay.completionRate === 'number'
-                 ? overlay.completionRate
-                 : completionPercentRaw;
- 
-             acc[student.studentId] = {
-                 raw: completionPercentRaw,
-                 display: completionPercentDisplay,
-                 done: answeredCount,
-                 total: totalQuestions,
-                 hasWrong,
-                 wrongProgress,
-                 completed,
-             };
-             return acc;
-         }, {});
-     }, [assignmentSummary, selectedAssignment, draftHomeworkOverlay]);
- 
-     const assignmentStatusById = useMemo(() => {
-         const summaryByAssignment = {};
-         allAssignments.forEach((assignment) => {
-             const assignmentId = String(assignment.id);
-             const rates = [];
- 
-             Object.values(normalizedHomeworkResults || {}).forEach((byAssignment) => {
-                 const record = byAssignment?.[assignmentId];
-diff --git a/src/pages/StudentDetail.jsx b/src/pages/StudentDetail.jsx
-index 86beb3e1b1d9ebb392d1562742b9addf83575d40..c7bc490114ad8b416aea6f8a40595425ae883359 100644
---- a/src/pages/StudentDetail.jsx
-+++ b/src/pages/StudentDetail.jsx
-@@ -6,50 +6,52 @@ import {
-     documentId,
-     getDoc,
-     getDocs,
-     limit,
-     orderBy,
-     query,
-     startAfter,
-     where,
- } from 'firebase/firestore';
- import { db } from '../firebase/client';
- import useAuth from '../auth/useAuth';
- import { ROLE } from '../constants/roles';
- import StaffTimelineThreadCard from '../components/StaffTimeline/StaffTimelineThreadCard';
- import {
-     createStaffTimelineThread,
-     fetchStaffTimelineByStudent,
- } from '../domain/staffTimeline/staffTimeline.service';
- import { getStudentGradeLabel } from '../utils/gradeUtils';
- import { isClosedClass, sortClassesWithClosedLast } from '../utils/classStatus';
- import { isSameStudentByAnyKey } from '../utils/studentKey';
- import {
-     normalizeHomeworkResultMapForDisplay,
-     resolveHomeworkAssignmentId,
-     resolveHomeworkAssignmentTitle,
-     resolveHomeworkQuestionSummary,
-+    buildHomeworkQuestionStats,
-+    getHomeworkCompletionLabel,
- } from '../domain/homework/homework.service';
- import { resolveGradeDisplay, resolveGradeTestId } from '../domain/grade/grade.service';
- import { resolveClassTestStats } from '../domain/grade/classTestStats.service';
- import { formatScoreStat } from '../utils/scoreDisplay';
- 
- const COLLECTIONS = {
-     users: 'users',
-     classes: 'classes',
-     attendance: 'attendanceLogs',
-     clinic: 'clinicLogs',
-     grades: 'grades',
-     tests: 'tests',
-     homeworkResults: 'homeworkResults',
-     homeworkAssignments: 'homeworkAssignments',
-     payments: 'payments',
-     materials: 'materialPurchases',
- };
- 
- const TABS = [
-     ['profile', '기본정보'],
-     ['classes', '수강반'],
-     ['attendance', '출결'],
-     ['grades', '성적'],
-     ['homework', '과제'],
-     ['clinic', '클리닉'],
-@@ -549,54 +551,58 @@ export default function StudentDetail() {
-             presentCount,
-             videoCount,
-             absentCount,
-             lateCount,
-             rate: sortedAttendances.length
-                 ? Math.round(((presentCount + videoCount) / sortedAttendances.length) * 100)
-                 : null,
-         };
-     }, [sortedAttendances]);
- 
-     const latestGrade = sortedGrades[0];
-     const latestClinic = sortedClinics[0];
-     const clinicMinutes = useMemo(() => clinicLogs.reduce((total, item) => {
-         const direct = Number(firstValue(item, ['durationMinutes', 'minutes'], 0));
-         if (Number.isFinite(direct) && direct > 0) return total + direct;
-         const start = toDate(firstValue(item, ['checkIn', 'startAt']));
-         const end = toDate(firstValue(item, ['checkOut', 'endAt']));
-         return start && end ? total + Math.max(0, Math.round((end - start) / 60000)) : total;
-     }, 0), [clinicLogs]);
- 
-     const homeworkRows = useMemo(() => sortNewest(homeworkResults.flatMap((result) => {
-         const assignmentId = String(resolveHomeworkAssignmentId(result));
-         const assignment = assignmentMap.get(assignmentId);
-         if (!assignment) return [];
-         const questionNumbers = Array.isArray(assignment.questionNumbers) ? assignment.questionNumbers : [];
-+        const questionStats = buildHomeworkQuestionStats({ assignment, result });
-+        const completionLabel = getHomeworkCompletionLabel(questionStats);
-         return [{
-             ...assignment,
-             ...result,
-             assignmentTitle: resolveHomeworkAssignmentTitle(assignment),
-+            status: completionLabel,
-+            completed: completionLabel === '완료',
-             questionSummary: resolveHomeworkQuestionSummary(assignment, result),
-             results: normalizeHomeworkResultMapForDisplay(result, questionNumbers, {
-                 assignmentId,
-                 studentId: student?.id,
-             }),
-         }];
-     }), ['assignedDate', 'date', 'createdAt']), [homeworkResults, assignmentMap, student?.id]);
- 
-     const actor = useMemo(() => ({
-         uid: profileDocId || user?.uid || '',
-         name: userProfile?.displayName || user?.displayName || user?.email || '교직원',
-         role,
-     }), [profileDocId, user, userProfile, role]);
- 
-     const loadMore = async (type) => {
-         if (!student) return;
-         const isAttendance = type === 'attendance';
-         const setMoreLoading = isAttendance ? setAttendanceMoreLoading : setClinicMoreLoading;
-         setMoreLoading(true);
-         try {
-             const page = await fetchStudentPage(
-                 isAttendance ? COLLECTIONS.attendance : COLLECTIONS.clinic,
-                 student,
-                 isAttendance ? ATTENDANCE_FIELDS : CLINIC_FIELDS,
-                 isAttendance ? attendanceCursors : clinicCursors,
-diff --git a/src/utils/helpers.js b/src/utils/helpers.js
-index 7df3728060861442d3e142e0f57f6246e7b9596a..bf5b789ec0c0ad31b80091bdc8eb1948576e20c3 100644
---- a/src/utils/helpers.js
-+++ b/src/utils/helpers.js
-@@ -1,28 +1,28 @@
- // src/utils/helpers.js
- import React from 'react';
--import { buildHomeworkQuestionStats, computeHomeworkProgress, getAssignmentQuestionNumbers, isAssignmentAssignedToStudent, normalizeHomeworkResultMapForDisplay } from '../domain/homework/homework.service';
-+import { buildHomeworkQuestionStats, computeHomeworkProgress, getAssignmentQuestionNumbers, isAssignmentAssignedToStudent, isHomeworkCompleteByCounts, normalizeHomeworkResultMapForDisplay } from '../domain/homework/homework.service';
- import { isClosedDate, normalizeDateToYMD } from './closures';
- import { getTotalScore, isAbsentGrade } from '../domain/grade/grade.service';
- import { 
-     Home, Calendar, Clipboard, BarChart2, Menu, 
-     User, Users, ChevronRight, ChevronLeft, ChevronUp, ChevronDown, 
-     CheckCircle, Clock, AlertCircle, X, Check, LogOut,
-     Bell, MessageSquare, Video, FileText, Lock,
-     Search, Filter, MoreVertical, Plus, Trash2,
-     PlayCircle, PauseCircle, StopCircle, Volume2, VolumeX,
-     Maximize, Minimize, Settings, BookOpen, PenTool,
-     MapPin, Phone, Mail, Award, TrendingUp, TrendingDown, Activity,
-     Edit, List, Folder, Download, CreditCard, Smartphone,
-     AlertTriangle, MessageCircle, CheckSquare, CalendarPlus,
-     RefreshCw, UserX
- } from 'lucide-react';
- 
- export const Icon = ({ name, className, ...props }) => {
-     const icons = {
-         home: Home, calendar: Calendar, clipboard: Clipboard, clipboardCheck: Clipboard, 
-         barChart: BarChart2, menu: Menu, user: User, users: Users, 
-         chevronRight: ChevronRight, chevronLeft: ChevronLeft, 
-         chevronUp: ChevronUp, chevronDown: ChevronDown, 
-         checkCircle: CheckCircle, clock: Clock, 
-         alertCircle: AlertCircle, x: X, check: Check,
-         logOut: LogOut, bell: Bell, messageSquare: MessageSquare, monitor: Video,
-@@ -504,74 +504,73 @@ const findHomeworkResult = (results, studentKeys, assignmentId) => {
- 
-     if (Array.isArray(results)) {
-         return results.find((r) => {
-             const studentKey = r?.authUid || r?.studentId || r?.studentUid || r?.uid;
-             if (!studentKey || !studentKeys.includes(String(studentKey))) return false;
-             return String(r?.assignmentId) === String(assignmentId);
-         }) || null;
-     }
-     
-     return null;
- };
- 
- export const calculateHomeworkStats = (studentId, assignments, results, options = {}) => {
-     if (!assignments) return [];
-     const studentKeys = resolveStudentKeys(studentId, options);
- 
-     return assignments
-         .filter(hw => isAssignmentAssignedToStudent(hw, studentId, studentKeys))
-         .map(hw => {
-         const rawResult = findHomeworkResult(results, studentKeys, hw.id);
-             const questionNumbers = getAssignmentQuestionNumbers(hw);
-             const studentResults = normalizeHomeworkResultMapForDisplay(rawResult, questionNumbers, {
-                 assignmentId: hw.id,
-                 studentId,
-             });
--            const totalQuestions = questionNumbers.length;
-             const progress = computeHomeworkProgress(studentResults, questionNumbers);
-             const questionStats = buildHomeworkQuestionStats({ assignment: hw, result: rawResult });
-             const assignmentType = hw.type || 'homework';
- 
-             const statusLabel = assignmentType === 'video_makeup'
-                 ? '출제됨'
-                 : progress.status;
- 
-             const resolvedCheckedDate = getLastCheckedDate(rawResult) ?? rawResult?.updatedAt ?? null;
- 
-             return {
-                 ...hw,
-                 assignedDate: toDateString(hw.assignedDate) || toDateString(hw.date) || toDateString(hw.createdAt),
-                 lastCheckedDate: toDateString(resolvedCheckedDate),
-                 completionRate: progress.completionRate,
-                 status: statusLabel,
-                 checkedCount: progress.checkedCount,
-                 completedCount: questionStats.completedCount,
-                 correctCount: questionStats.correctCount,
-                 incorrectCount: questionStats.wrongCount,
-                 uncheckedCount: questionStats.remainingCount,
-                 fixedCount: questionStats.fixedCount,
--                isComplete: progress.checkedCount >= totalQuestions && progress.incorrectCount === 0,
-+                isComplete: isHomeworkCompleteByCounts({ wrongCount: questionStats.wrongCount, remainingCount: questionStats.remainingCount }),
-                 correctQuestionNumbers: questionStats.correctQuestionNumbers,
-                 wrongQuestionNumbers: questionStats.wrongQuestionNumbers,
-                 fixedQuestionNumbers: questionStats.fixedQuestionNumbers,
-                 remainingQuestionNumbers: questionStats.remainingQuestionNumbers,
-             };
-         });
- };
- 
- export const calculateDurationMinutes = (start, end) => {
-     if (!start || !end) return 0;
-     const [startH, startM] = start.split(':').map(Number);
-     const [endH, endM] = end.split(':').map(Number);
-     return (endH * 60 + endM) - (startH * 60 + startM);
- };
- 
- export const formatDuration = (minutes) => {
-     if (minutes <= 0) return '0분';
-     const h = Math.floor(minutes / 60);
-     const m = minutes % 60;
-     return h > 0 ? `${h}시간 ${m}분` : `${m}분`;
- };
- 
- export const formatTime = (seconds) => {
-     if (!seconds) return '0:00';
-     const m = Math.floor(seconds / 60);
+     userRole,
+     userId,
+     studentIds = [],
+     activeStudentId = null,
+     setStudents,
+     setClasses,
+     setLessonLogs,
+     setAttendanceLogs,
+     setClinicLogs,
+     setHomeworkAssignments,
+     setAnnouncements,
+     setTests,
+     setVideoProgress,
+     setVideoMemos,
+     setExternalSchedules,
+     setHomeworkResults,
+     setGrades,
