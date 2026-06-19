@@ -1,806 +1,673 @@
-diff --git a/functions/src/admin/retryNotification.js b/functions/src/admin/retryNotification.js
-index 8d32f5bc952d34a4818e738e3f99cd60b0dc2b8f..584c5e7c4310fa10969c8078163825c00c00ba49 100644
---- a/functions/src/admin/retryNotification.js
-+++ b/functions/src/admin/retryNotification.js
-@@ -1,45 +1,51 @@
- const functions = require('firebase-functions');
- const { getFirestore, FieldValue } = require('firebase-admin/firestore');
- const { assertAdmin } = require('../_utils/assertAdmin');
- const { notifyUsers } = require('../notify/notifications');
-+const { isNotificationSendingEnabled, notificationDisabledResult } = require('../notify/settings');
+diff --git a/firestore.rules b/firestore.rules
+index 22ae5127fb8a8f6bb76554698f2b2555050346ad..e877e4fadf292d2fa0244fecc1de2a9322f48799 100644
+--- a/firestore.rules
++++ b/firestore.rules
+@@ -585,59 +585,57 @@ service cloud.firestore {
+         && request.resource.data.level in ['error', 'warn']
+         && request.resource.data.diff({}).affectedKeys().hasOnly([
+           'level',
+           'scope',
+           'action',
+           'message',
+           'code',
+           'context',
+           'createdBy',
+           'createdAt',
+           'app',
+           'route',
+           'build',
+           'userRole'
+         ]);
  
- const db = getFirestore();
- const RETRY_LIMIT = 50;
- 
- const getUidsWithTokens = async (uids) => {
-     const checks = await Promise.all(uids.map(async (uid) => {
-         const snapshot = await db.collection('users').doc(uid).collection('fcmTokens').limit(1).get();
-         return snapshot.empty ? null : uid;
-     }));
- 
-     return checks.filter(Boolean);
- };
- 
- const retryNotification = functions.https.onCall(async (data, context) => {
-     await assertAdmin(context);
- 
-+    if (!isNotificationSendingEnabled()) {
-+        console.debug('[notifications] retry skipped: notification_disabled');
-+        return notificationDisabledResult();
-+    }
-+
-     const logId = typeof data?.logId === 'string' ? data.logId.trim() : '';
- 
-     if (!logId) {
-         throw new functions.https.HttpsError('invalid-argument', 'logId is required.');
+       allow update, delete: if false;
      }
  
-     const logRef = db.collection('notifications').doc(logId);
-     const logSnapshot = await logRef.get();
+     match /announcements/{docId} {
+       allow read: if signedIn();
  
-     if (!logSnapshot.exists) {
-         throw new functions.https.HttpsError('not-found', 'notification log not found.');
+       allow write: if isStaffOrAdminOrTeacher();
      }
  
-     const logData = logSnapshot.data() || {};
- 
-     if (logData.retry?.attempted) {
-         throw new functions.https.HttpsError('failed-precondition', 'Retry already attempted for this log.');
+-    match /formulaBookSubjects/{docId} {
+-      allow read: if isStaffOrAdminOrTeacher()
+-        || ((isStudent() || isParent()) && resource.data.active == true);
++    match /formulaSubjects/{docId} {
++      allow read: if signedIn();
+       allow create, update, delete: if isStaffOrAdminOrTeacher();
      }
  
-     const failedSnapshot = await logRef.collection('deliveries')
-         .where('status', '==', 'failed')
-         .limit(RETRY_LIMIT)
-         .get();
-     const failedUids = failedSnapshot.docs.map((doc) => doc.id).filter(Boolean);
- 
-diff --git a/functions/src/notify/fcm.js b/functions/src/notify/fcm.js
-index 95f98122fd319c3842bc0268c6879049375e2348..d595538e5ba0c82272d4fc367d295fdd748c9301 100644
---- a/functions/src/notify/fcm.js
-+++ b/functions/src/notify/fcm.js
-@@ -1,55 +1,68 @@
- const { getFirestore, FieldValue } = require('firebase-admin/firestore');
- const { getMessaging } = require('firebase-admin/messaging');
-+const { isNotificationSendingEnabled, notificationDisabledResult } = require('./settings');
- 
- const db = getFirestore();
- 
- const chunk = (items, size) => {
-     const results = [];
-     for (let i = 0; i < items.length; i += size) {
-         results.push(items.slice(i, i + size));
-     }
-     return results;
- };
- 
- const isInvalidTokenError = (error) => {
-     if (!error || !error.code) {
-         return false;
+-    match /formulaBookConcepts/{docId} {
+-      allow read: if isStaffOrAdminOrTeacher()
+-        || ((isStudent() || isParent()) && resource.data.active == true);
++    match /formulaConcepts/{docId} {
++      allow read: if signedIn();
+       allow create, update, delete: if isStaffOrAdminOrTeacher();
      }
  
-     return [
-         'messaging/invalid-registration-token',
-         'messaging/registration-token-not-registered',
-     ].includes(error.code);
- };
- 
- const resolveTokenEntries = (tokenSnapshot) => tokenSnapshot.docs.map((doc) => {
-     const token = doc.data()?.token || doc.id;
-     return token ? { token, ref: doc.ref } : null;
- }).filter(Boolean);
- 
- const sendFcmToUsers = async (userIds, dataPayload, { notificationIds = {}, logRef } = {}) => {
-+    if (!isNotificationSendingEnabled()) {
-+        console.debug('[notifications] FCM skipped: notification_disabled');
-+        return {
-+            successCount: 0,
-+            failureCount: 0,
-+            failedTokenCount: 0,
-+            failedUids: [],
-+            failedEntries: [],
-+            ...notificationDisabledResult(),
-+        };
-+    }
-+
-     const uniqueIds = [...new Set(userIds.filter(Boolean))];
- 
-     if (uniqueIds.length === 0) {
-         return { successCount: 0, failureCount: 0, failedTokenCount: 0, failedUids: [] };
+     match /homeworkAssignments/{docId} {
+       allow read: if signedIn();
+       allow write: if isStaffOrAdminOrTeacher();
      }
  
-     const messaging = getMessaging();
- 
-     const results = await Promise.all(uniqueIds.map(async (uid) => {
-         const tokenSnapshot = await db.collection('users').doc(uid).collection('fcmTokens').get();
-         const tokenEntries = resolveTokenEntries(tokenSnapshot);
- 
-         if (tokenEntries.length === 0) {
-             return {
-                 uid,
-                 success: false,
-                 failedTokenCount: 0,
-                 errorCode: 'no-token',
-             };
-         }
- 
-         const payload = {
-             ...dataPayload,
-             notificationId: notificationIds[uid],
-         };
-diff --git a/functions/src/notify/notifications.js b/functions/src/notify/notifications.js
-index deebf24026985c091cec085f534fe6536a069434..a10ed4dc8e4072e7e8dd84dcf9ce57194b88fe7b 100644
---- a/functions/src/notify/notifications.js
-+++ b/functions/src/notify/notifications.js
-@@ -1,92 +1,118 @@
- const { getFirestore, FieldValue } = require('firebase-admin/firestore');
- const { buildNotificationDocument, buildFcmDataPayload } = require('./builders');
- const { sendFcmToUsers } = require('./fcm');
-+const { isNotificationSendingEnabled, notificationDisabledResult } = require('./settings');
- 
- const db = getFirestore();
- 
- const createNotificationForUsers = async (userIds, payload) => {
-+    if (!isNotificationSendingEnabled()) {
-+        return { notificationIds: {}, targetUserCount: 0, ...notificationDisabledResult() };
-+    }
-+
-     const uniqueIds = [...new Set(userIds.filter(Boolean))];
- 
-     if (uniqueIds.length === 0) {
-         return { notificationIds: {}, targetUserCount: 0 };
+     match /materials/{docId} {
+       allow read, list: if isStaffOrAdminOrTeacher();
+       allow create, update, delete: if isStaffOrAdminOrTeacher();
      }
  
-     const notificationIds = {};
-     const batch = db.batch();
- 
-     uniqueIds.forEach((uid) => {
-         const docRef = db.collection('notifications').doc(uid).collection('items').doc();
-         notificationIds[uid] = docRef.id;
-         batch.set(docRef, {
-             ...buildNotificationDocument(payload),
-             createdAt: FieldValue.serverTimestamp(),
-         });
-     });
- 
-     await batch.commit();
-     return { notificationIds, targetUserCount: uniqueIds.length };
- };
- 
- const createNotificationLog = async ({ targetCount, payload, fcmData, logData = {} }) => {
-+    if (!isNotificationSendingEnabled()) {
-+        return null;
-+    }
-+
-     const logRef = db.collection('notifications').doc();
-     await logRef.set({
-         targetCount,
-         successCount: 0,
-         failureCount: 0,
-         failedTokenCount: 0,
-         sentAt: FieldValue.serverTimestamp(),
-         eventType: fcmData?.type || payload?.type || null,
-         type: fcmData?.type || payload?.type || null,
-         title: payload?.title || null,
-         body: payload?.body || null,
-         ref: payload?.ref || null,
-         refCollection: fcmData?.refCollection || null,
-         refId: fcmData?.refId || null,
-         studentId: fcmData?.studentId || payload?.studentId || null,
-         ...logData,
-     });
-     return logRef;
- };
- 
- const notifyUsers = async ({ userIds, payload, fcmData, logData }) => {
-+    if (!isNotificationSendingEnabled()) {
-+        console.debug('[notifications] sending skipped: notification_disabled');
-+        return {
-+            notificationIds: {},
-+            targetCount: 0,
-+            notificationLogId: null,
-+            fcmStats: { successCount: 0, failureCount: 0, failedTokenCount: 0, failedUids: [], failedEntries: [] },
-+            ...notificationDisabledResult(),
-+        };
-+    }
-+
-     const notificationPayload = {
-         ...payload,
-         refCollection: fcmData?.refCollection || payload?.refCollection || null,
-         refId: fcmData?.refId || payload?.refId || null,
-         studentId: fcmData?.studentId || payload?.studentId || payload?.authUid || null,
-     };
-     const { notificationIds, targetUserCount } = await createNotificationForUsers(userIds, notificationPayload);
-     const logRef = await createNotificationLog({
-         targetCount: targetUserCount,
-         payload: notificationPayload,
-         fcmData,
-         logData,
-     });
- 
-     if (targetUserCount === 0) {
-         return {
-             notificationIds,
-             targetCount: targetUserCount,
--            notificationLogId: logRef.id,
--            fcmStats: { successCount: 0, failureCount: 0, failedTokenCount: 0, failedUids: [] },
-+            notificationLogId: logRef?.id || null,
-+            fcmStats: { successCount: 0, failureCount: 0, failedTokenCount: 0, failedUids: [], failedEntries: [] },
-+            success: true,
-+            sent: false,
-         };
+     match /books/{docId} {
+       allow read, list: if isStaffOrAdminOrTeacher();
+       allow create, update, delete: if isStaffOrAdminOrTeacher();
      }
  
-     const fcmStats = await sendFcmToUsers(
-         userIds,
-         buildFcmDataPayload(fcmData),
-         { notificationIds, logRef },
-     );
+     match /payments/{docId} {
+       allow read, write, list: if isStaffOrAdminOrTeacher();
+       allow create, update, delete: if isStaffOrAdminOrTeacher();
+     }
  
-     return {
-         notificationIds,
-         targetCount: targetUserCount,
--        notificationLogId: logRef.id,
-+        notificationLogId: logRef?.id || null,
-         fcmStats,
-+        success: (fcmStats?.failureCount || 0) === 0,
-+        sent: (fcmStats?.successCount || 0) > 0,
-     };
- };
- 
- module.exports = {
-     createNotificationForUsers,
-+    createNotificationLog,
-     notifyUsers,
-+    isNotificationSendingEnabled,
- };
-\ No newline at end of file
-diff --git a/functions/src/notify/settings.js b/functions/src/notify/settings.js
-new file mode 100644
-index 0000000000000000000000000000000000000000..221022b1142da2ecba531afb16bd07924b993f49
---- /dev/null
-+++ b/functions/src/notify/settings.js
-@@ -0,0 +1,31 @@
-+const functions = require('firebase-functions');
-+
-+const TRUE_VALUES = new Set(['1', 'true', 'yes', 'on', 'enabled']);
-+
-+const normalizeFlag = (value) => String(value || '').trim().toLowerCase();
-+
-+const isNotificationSendingEnabled = () => {
-+    const envValue = normalizeFlag(process.env.NOTIFICATION_SENDING_ENABLED);
-+    if (envValue) {
-+        return TRUE_VALUES.has(envValue);
-+    }
-+
-+    const configValue = normalizeFlag(functions.config()?.notifications?.sending_enabled);
-+    if (configValue) {
-+        return TRUE_VALUES.has(configValue);
-+    }
-+
-+    return false;
-+};
-+
-+const notificationDisabledResult = () => ({
-+    success: true,
-+    sent: false,
-+    skipped: true,
-+    reason: 'notification_disabled',
-+});
-+
-+module.exports = {
-+    isNotificationSendingEnabled,
-+    notificationDisabledResult,
-+};
-diff --git a/functions/src/triggers/attendanceLogs.js b/functions/src/triggers/attendanceLogs.js
-index f68c65455291877539354862ec4e1a69fd534346..6a862adbd5fd96e370c80c8017c5546c2f699c85 100644
---- a/functions/src/triggers/attendanceLogs.js
-+++ b/functions/src/triggers/attendanceLogs.js
-@@ -1,46 +1,52 @@
- const functions = require('firebase-functions');
- const { getRecipientsForStudent } = require('../notify/recipients');
- const { notifyUsers } = require('../notify/notifications');
-+const { isNotificationSendingEnabled, notificationDisabledResult } = require('../notify/settings');
- 
- const TYPE = 'ATTENDANCE_UPDATED';
- const isUnchanged = (before, after) => JSON.stringify(before) === JSON.stringify(after);
- 
- const onAttendanceLogWritten = functions.firestore
-     .document('attendanceLogs/{id}')
-     .onWrite(async (change, context) => {
-         if (!change.after.exists) {
-             return null;
-         }
- 
-         const afterData = change.after.data() || {};
-         const beforeData = change.before.exists ? change.before.data() : null;
- 
-         if (beforeData && isUnchanged(beforeData, afterData)) {
-             return null;
-         }
- 
-+        if (!isNotificationSendingEnabled()) {
-+            console.debug('[notifications] trigger skipped: notification_disabled');
-+            return notificationDisabledResult();
-+        }
-+
-         const authUid = afterData.authUid || afterData.studentUid || afterData.studentId;
-         const recipients = await getRecipientsForStudent(authUid);
- 
-         if (!recipients) {
-             await notifyUsers({
-                 userIds: [],
-                 payload: {
-                     type: TYPE,
-                     title: '출결 안내',
-                     body: '출결 정보가 업데이트되었습니다.',
-                     ref: `attendanceLogs/${context.params.id}`,
-                     authUid,
-                 },
-                 fcmData: {
-                     type: TYPE,
-                     refCollection: 'attendanceLogs',
-                     refId: context.params.id,
-                     authUid,
-                 },
-             });
-             return null;
-         }
- 
-         const userIds = [recipients.studentUid];
-         const refId = context.params.id;
-diff --git a/functions/src/triggers/grades.js b/functions/src/triggers/grades.js
-index 428621be5e45d4d31e2e091400b29ebf5fc795d9..57fc7a4d3bafb2195ee712e5d9d81041880b8cd1 100644
---- a/functions/src/triggers/grades.js
-+++ b/functions/src/triggers/grades.js
-@@ -1,51 +1,57 @@
- const functions = require('firebase-functions');
- const { getRecipientsForStudent } = require('../notify/recipients');
- const { notifyUsers } = require('../notify/notifications');
-+const { isNotificationSendingEnabled, notificationDisabledResult } = require('../notify/settings');
- 
- const TYPE = 'GRADE_PUBLISHED';
- 
- const isUnchanged = (before, after) => JSON.stringify(before) === JSON.stringify(after);
- 
- const onGradeWritten = functions.firestore
-     .document('grades/{id}')
-     .onWrite(async (change, context) => {
-         if (!change.after.exists) {
-             return null;
-         }
- 
-         const afterData = change.after.data() || {};
-         const beforeData = change.before.exists ? change.before.data() : null;
- 
-         if (afterData.notifyMode === 'staff') {
-             return null;
-         }
- 
-         if (beforeData && isUnchanged(beforeData, afterData)) {
-             return null;
-         }
- 
-+        if (!isNotificationSendingEnabled()) {
-+            console.debug('[notifications] trigger skipped: notification_disabled');
-+            return notificationDisabledResult();
-+        }
-+
-         const authUid = afterData.authUid || afterData.studentUid || afterData.studentId;
-         const recipients = await getRecipientsForStudent(authUid);
- 
-         if (!recipients) {
-             await notifyUsers({
-                 userIds: [],
-                 payload: {
-                     type: TYPE,
-                     title: '성적 업데이트',
-                     body: '성적이 업데이트되었습니다.',
-                     ref: `grades/${context.params.id}`,
-                     authUid,
-                 },
-                 fcmData: {
-                     type: TYPE,
-                     refCollection: 'grades',
-                     refId: context.params.id,
-                     authUid,
-                 },
-             });
-             return null;
-         }
- 
-         const userIds = [recipients.studentUid];
-         const refId = context.params.id;
-diff --git a/functions/src/triggers/homeworkResults.js b/functions/src/triggers/homeworkResults.js
-index bfd3b203fcc00332b2a0a5499b591f34b1f7a302..c2bff75b2c44e111485f7feeafb711825d189097 100644
---- a/functions/src/triggers/homeworkResults.js
-+++ b/functions/src/triggers/homeworkResults.js
-@@ -1,51 +1,57 @@
- const functions = require('firebase-functions');
- const { getRecipientsForStudent } = require('../notify/recipients');
- const { notifyUsers } = require('../notify/notifications');
-+const { isNotificationSendingEnabled, notificationDisabledResult } = require('../notify/settings');
- 
- const TYPE = 'HOMEWORK_GRADED';
- 
- const isUnchanged = (before, after) => JSON.stringify(before) === JSON.stringify(after);
- 
- const onHomeworkResultWritten = functions.firestore
-     .document('homeworkResults/{id}')
-     .onWrite(async (change, context) => {
-         if (!change.after.exists) {
-             return null;
-         }
- 
-         const afterData = change.after.data() || {};
-         const beforeData = change.before.exists ? change.before.data() : null;
- 
-         if (afterData.notifyMode === 'staff') {
-             return null;
-         }
- 
-         if (beforeData && isUnchanged(beforeData, afterData)) {
-             return null;
-         }
- 
-+        if (!isNotificationSendingEnabled()) {
-+            console.debug('[notifications] trigger skipped: notification_disabled');
-+            return notificationDisabledResult();
-+        }
-+
-         const authUid = afterData.authUid || afterData.studentUid || afterData.studentId;
-         const recipients = await getRecipientsForStudent(authUid);
- 
-         if (!recipients) {
-             await notifyUsers({
-                 userIds: [],
-                 payload: {
-                     type: TYPE,
-                     title: '과제 채점 완료',
-                     body: '과제가 채점되었습니다.',
-                     ref: `homeworkResults/${context.params.id}`,
-                     authUid,
-                 },
-                 fcmData: {
-                     type: TYPE,
-                     refCollection: 'homeworkResults',
-                     refId: context.params.id,
-                     authUid,
-                 },
-             });
-             return null;
-         }
- 
-         const userIds = [recipients.studentUid];
-         const refId = context.params.id;
-diff --git a/functions/src/triggers/lessonLogs.js b/functions/src/triggers/lessonLogs.js
-index 066c1694dd60404cb3ea37b8323c4f69e87b7de8..d69a3313fec4bc7343b361c6f6a72ac1ada6d83a 100644
---- a/functions/src/triggers/lessonLogs.js
-+++ b/functions/src/triggers/lessonLogs.js
-@@ -1,51 +1,57 @@
- const functions = require('firebase-functions');
- const { getRecipientsForStudent } = require('../notify/recipients');
- const { notifyUsers } = require('../notify/notifications');
-+const { isNotificationSendingEnabled, notificationDisabledResult } = require('../notify/settings');
- 
- const TYPE = 'LESSON_UPDATED';
- 
- const isUnchanged = (before, after) => JSON.stringify(before) === JSON.stringify(after);
- 
- const onLessonLogWritten = functions.firestore
-     .document('lessonLogs/{id}')
-     .onWrite(async (change, context) => {
-         if (!change.after.exists) {
-             return null;
-         }
- 
-         const afterData = change.after.data() || {};
-         const beforeData = change.before.exists ? change.before.data() : null;
- 
-         if (afterData.notifyMode === 'staff') {
-             return null;
-         }
- 
-         if (beforeData && isUnchanged(beforeData, afterData)) {
-             return null;
-         }
- 
-+        if (!isNotificationSendingEnabled()) {
-+            console.debug('[notifications] trigger skipped: notification_disabled');
-+            return notificationDisabledResult();
-+        }
-+
-         const authUid = afterData.authUid || afterData.studentUid || afterData.studentId;
-         const recipients = await getRecipientsForStudent(authUid);
- 
-         if (!recipients) {
-             await notifyUsers({
-                 userIds: [],
-                 payload: {
-                     type: TYPE,
-                     title: '수업 안내',
-                     body: '새 수업 기록이 등록되었습니다.',
-                     ref: `lessonLogs/${context.params.id}`,
-                     authUid,
-                 },
-                 fcmData: {
-                     type: TYPE,
-                     refCollection: 'lessonLogs',
-                     refId: context.params.id,
-                     authUid,
-                 },
-             });
-             return null;
-         }
- 
-         const userIds = [recipients.studentUid];
-         const refId = context.params.id;
-diff --git a/src/config/features.js b/src/config/features.js
-index 78ccf08ec5a73da450e4792a07286e82f8f92b5b..0f32897b2b3301a1343bba187e22dfaed0b451db 100644
---- a/src/config/features.js
-+++ b/src/config/features.js
-@@ -1,4 +1,5 @@
- export const FEATURES = {
-   ENABLE_FLOATING_NOTIFICATIONS_FOR_VIEWERS: false, // student/parent
-+  ENABLE_NOTIFICATION_SENDING: false,
-   ENABLE_INTERNAL_MESSENGER: true, // staff/admin/teacher internal-only test UI
- };
-\ No newline at end of file
-diff --git a/src/pages/LessonReportManagement.jsx b/src/pages/LessonReportManagement.jsx
-index 7139010f6c77babc833a616285fbe2b17d4eca8c..9f5b715aad87a3cdf05fc4f8e718708ac066523a 100644
---- a/src/pages/LessonReportManagement.jsx
-+++ b/src/pages/LessonReportManagement.jsx
-@@ -1,43 +1,44 @@
- import React, { useEffect, useMemo, useState } from 'react';
- import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
- import { addDoc, collection, doc, serverTimestamp, setDoc } from 'firebase/firestore';
- import { db } from '../firebase/client';
+     match /grades/{docId} {
+       allow read: if signedIn();
+diff --git a/src/app/AuthGate.jsx b/src/app/AuthGate.jsx
+index a337df5670a0d3daff7fe3874f069d844388c53c..9ad18810b92598389a7edf213884e4199c414b63 100644
+--- a/src/app/AuthGate.jsx
++++ b/src/app/AuthGate.jsx
+@@ -4,121 +4,132 @@ import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-
+ import AppRoutes from './AppRoutes';
+ import OnboardingPage from '../pages/OnboardingPage';
+ import LoginPage from '../pages/LoginPage';
+ import InviteSignupPage from '../pages/InviteSignupPage';
  import useAuth from '../auth/useAuth';
- import {
-   buildLessonReportId,
-   LESSON_REPORT_SEND_STATUS,
-   LESSON_REPORT_STATUS,
-   getGradeForLessonReportStudent,
-   summarizeAssignedHomework,
-   summarizeHomework,
-   summarizeTests,
- } from '../domain/lessonReport/lessonReport.service';
- import { getLinkedParentAuthUids } from '../utils/parentLinking';
- import { filterRosterByWithdrawDate } from '../utils/rosterFilter';
- import { hasClassOnDate, isClosedForClass } from '../utils/helpers';
- import { formatClassLabel, sortClassesWithClosedLast } from '../utils/classStatus';
-+import { FEATURES } from '../config/features';
+ import { isParentRole, isStudentRole } from '../constants/roles';
+ import { claimStudentLinkCode } from '../parent/linkCodeService';
+ import { ParentProvider } from '../parent';
+ import { redirectToKakao, redirectToNaver } from '../auth/socialRedirect';
+ import { signInWithGoogle } from '../auth/authService';
+ import { initForegroundMessageListener } from '../firebase/messaging';
+ import { getDefaultRouteForRole } from '../auth/authRedirects';
+ import { DELETION_REQUESTED_MESSAGE } from '../accountDeletion';
  
- const pad2 = (value) => String(value).padStart(2, '0');
+ export default function AuthGate() {
+     const navigate = useNavigate();
+     const location = useLocation();
+     const pathname = location.pathname;
  
- const toYmd = (value) => {
-   if (!value) return '';
-   if (typeof value === 'string') {
-     const match = value.match(/\d{4}-\d{2}-\d{2}/);
-     if (match) return match[0];
-   }
+     const isOnboardingPage = pathname === '/onboarding';
+     const isLoginPage = pathname === '/login';
+     const isSignupPage = pathname.startsWith('/signup');
+     const isAuthCallbackPage = pathname === '/auth/callback';
+     const isStudentDetailPage = pathname.startsWith('/students/');
+     const isMessengerRoute = pathname.startsWith('/chat') || pathname.startsWith('/messages');
++    const isFormulaQrRoute = pathname === '/classroom' && new URLSearchParams(location.search).get('conceptId');
  
-   const dateValue = typeof value?.toDate === 'function' ? value.toDate() : value;
-   const parsed = new Date(dateValue);
-   if (Number.isNaN(parsed.getTime())) return '';
-   return `${parsed.getFullYear()}-${pad2(parsed.getMonth() + 1)}-${pad2(parsed.getDate())}`;
- };
+     const {
+         user,
+         role,
+         studentIds,
+         activeStudentId,
+         loading,
+         profileError,
+         userProfile,
+         logout,
+     } = useAuth();
  
- const todayYmd = () => toYmd(new Date());
- const resolveClassId = (item) => String(item?.classId || item?.classDocId || item?.class?.id || '');
- const resolveLessonLogDate = (item) => toYmd(item?.date || item?.lessonDate || item?.dateKey || item?.createdAt || item?.updatedAt);
- const resolveAttendanceDate = (item) => toYmd(item?.date || item?.lessonDate || item?.dateKey || item?.createdAt || item?.updatedAt);
- const resolveHomeworkDate = (item) => toYmd(item?.date || item?.assignedDate || item?.lessonDate || item?.createdAt || item?.updatedAt);
- const resolveTestDate = (item) => toYmd(item?.date || item?.testDate || item?.lessonDate || item?.createdAt || item?.updatedAt);
- const resolveLessonLogProgress = (log) => String(log?.progress || log?.learnedTopics || log?.lessonSummary || log?.topic || '');
+     const needsParentOnboarding =
+         isParentRole(role) && (!Array.isArray(studentIds) || studentIds.length === 0);
  
- const statusLabel = (status, sendStatus, scheduledSendAt) => {
-@@ -540,50 +541,55 @@ export default function LessonReportManagement({
-       homeworkSummary,
-       assignedHomeworkSummary,
-       testSummary,
-       status: isSendNow ? LESSON_REPORT_STATUS.SENT : (previous?.status || LESSON_REPORT_STATUS.DRAFT),
-       sendStatus: isSendNow
-         ? LESSON_REPORT_SEND_STATUS.SENT
-         : (isScheduled ? LESSON_REPORT_SEND_STATUS.SCHEDULED : LESSON_REPORT_SEND_STATUS.DRAFT),
-       sendMode: isScheduled ? 'scheduled' : 'now',
-       scheduledSendAt: isScheduled ? new Date(scheduledSendAt) : null,
-       scheduledBy: isScheduled ? (profileDocId || 'staff') : null,
-       updatedAt: now,
-       updatedBy: profileDocId || 'staff',
-       createdAt: previous?.createdAt || now,
-       createdBy: previous?.createdBy || profileDocId || 'staff',
-       sentAt: previous?.sentAt || (isFirstSend ? now : null),
-       sentBy: previous?.sentBy || (isFirstSend ? (profileDocId || 'staff') : null),
-       lastEditedAfterSentAt: previous?.status === LESSON_REPORT_STATUS.SENT ? now : null,
+     const isDeletionBlockedViewer = (isParentRole(role) || isStudentRole(role))
+         && Boolean(userProfile?.deletionAccessBlocked);
+ 
+     useEffect(() => {
+         let unsubscribe = null;
+ 
+         if (!user) return undefined;
+ 
+         initForegroundMessageListener()
+             .then((stop) => { unsubscribe = stop; })
+             .catch(() => {});
+ 
+         return () => {
+             if (typeof unsubscribe === 'function') unsubscribe();
+         };
+     }, [user]);
+ 
+     useEffect(() => {
+         if (loading) return;
+ 
+         const redirectPath = role ? (getDefaultRouteForRole(role) || '/home') : null;
+ 
+         if (!user) {
+             if (!isLoginPage && !isSignupPage && !isAuthCallbackPage) {
++                if (isFormulaQrRoute) sessionStorage.setItem('formulaQrRedirect', `${pathname}${location.search}`);
+                 navigate('/login', { replace: true });
+             }
+             return;
+         }
+ 
+         if (isDeletionBlockedViewer) return;
+ 
+         if (needsParentOnboarding && pathname !== '/onboarding') {
+             navigate('/onboarding', { replace: true });
+             return;
+         }
+ 
+         if (role && isMessengerRoute && (isParentRole(role) || isStudentRole(role))) {
+             navigate(redirectPath || '/home', { replace: true });
+             return;
+         }
+ 
+         if (
+             role &&
+             !needsParentOnboarding &&
+             !isStudentDetailPage &&
+             (isOnboardingPage || isLoginPage || isSignupPage)
+         ) {
++            const formulaQrRedirect = sessionStorage.getItem('formulaQrRedirect');
++            if (formulaQrRedirect && isStudentRole(role)) {
++                sessionStorage.removeItem('formulaQrRedirect');
++                const params = new URLSearchParams(formulaQrRedirect.split('?')[1] || '');
++                navigate(`/student/home?tab=class&mode=book&conceptId=${encodeURIComponent(params.get('conceptId') || '')}`, { replace: true });
++                return;
++            }
+             navigate(redirectPath || '/home', { replace: true });
+         }
+     }, [
+         isAuthCallbackPage,
+         isLoginPage,
+         isMessengerRoute,
+         isOnboardingPage,
+         isSignupPage,
+         isStudentDetailPage,
++        isFormulaQrRoute,
++        location.search,
+         loading,
+         navigate,
+         needsParentOnboarding,
+         pathname,
+         isDeletionBlockedViewer,
+         role,
+         user,
+     ]);
+ 
+     const handleSocialLogin = async (providerName) => {
+         if (providerName === 'google') return signInWithGoogle();
+         if (providerName === 'kakao') return redirectToKakao();
+         if (providerName === 'naver') return redirectToNaver();
+         throw new Error('지원되지 않는 소셜 로그인입니다.');
      };
  
-     delete payload.autoFilledLearnedTopics;
-     delete payload.isLearnedTopicsManuallyEdited;
-     return { payload, student, isFirstSend };
-   };
+     const handleClaimLinkCode = async (code) => {
+         await claimStudentLinkCode(code);
+     };
  
-   const notifyForFirstSend = async ({ reportDraft, student }) => {
-+    if (!FEATURES.ENABLE_NOTIFICATION_SENDING) {
-+      console.debug('[notifications] lesson report skipped: notification_disabled');
-+      return { success: true, sent: false, skipped: true, reason: 'notification_disabled' };
-+    }
-+
-     const parentAuthUids = await getLinkedParentAuthUids(reportDraft.studentId, student?.parentAuthUids || []);
-     const targetAuthUids = [student?.authUid, ...parentAuthUids].filter(Boolean);
-     await Promise.all(targetAuthUids.map((uid) => addDoc(collection(db, 'notifications', uid, 'items'), {
-       type: 'lesson_report',
-       category: 'lessonReport',
-       refCollection: 'lessonReports',
-       refId: reportDraft.id,
-       ref: `lessonReports/${reportDraft.id}`,
-       title: '새 수업 리포트가 도착했습니다.',
-       body: `${student?.name || '학생'} 학생의 수업 리포트가 도착했습니다.`,
-       isRead: false,
-       createdAt: serverTimestamp(),
-       payload: {
-         reportId: reportDraft.id,
-         studentId: reportDraft.studentId,
-         classId: reportDraft.classId,
-         lessonDate: reportDraft.lessonDate,
-         type: 'lesson_report',
-         refCollection: 'lessonReports',
-       },
-     })));
+     if (loading) {
+         return <div className="min-h-screen flex items-center justify-center">로딩 중...</div>;
+     }
  
-     await setDoc(
-       doc(db, 'lessonReports', reportDraft.id),
-       {
-diff --git a/src/pages/admin/AdminNotificationsPage.jsx b/src/pages/admin/AdminNotificationsPage.jsx
-index 6052b6fdc037e5e1c061965489c41fa4dabbdeb5..e74bc7d73c33e0a03c919c0d86455bfdf390a3b3 100644
---- a/src/pages/admin/AdminNotificationsPage.jsx
-+++ b/src/pages/admin/AdminNotificationsPage.jsx
-@@ -1,132 +1,145 @@
- import React, { useEffect, useState } from 'react';
- import { collection, getDocs, limit, orderBy, query } from 'firebase/firestore';
- import { db } from '../../firebase/client';
+     if (!user) {
+diff --git a/src/auth/StudentLogin.jsx b/src/auth/StudentLogin.jsx
+index b9949722e86de69c6b9ecbf804979b440f15d382..eb5385645108ffa2a0f52b21899a19a2167b5bae 100644
+--- a/src/auth/StudentLogin.jsx
++++ b/src/auth/StudentLogin.jsx
+@@ -1,87 +1,98 @@
+ import React, { useCallback, useEffect, useState } from 'react';
+ import { signInWithEmailAndPassword, signOut } from 'firebase/auth';
+ import { doc, getDoc } from 'firebase/firestore';
+-import { useNavigate } from 'react-router-dom';
++import { useLocation, useNavigate } from 'react-router-dom';
+ import { auth, db } from '../firebase/client';
+ import { ROLE, isParentRole, isStudentRole } from '../constants/roles';
+ import useAuth from './useAuth';
+ import { getDefaultRouteForRole } from './authRedirects';
  
-+const SKIPPED_REASONS = new Set(['notification_disabled']);
+ export default function StudentLogin() {
+     const { user, role, loading } = useAuth();
+     const [email, setEmail] = useState('');
+     const [password, setPassword] = useState('');
+     const [error, setError] = useState('');
+     const [pending, setPending] = useState(false);
+     const navigate = useNavigate();
++    const location = useLocation();
 +
-+const isSkippedLog = (log = {}) => (
-+    log.skipped === true
-+    || SKIPPED_REASONS.has(log.reason)
-+    || SKIPPED_REASONS.has(log.status)
-+    || SKIPPED_REASONS.has(log.errorCode)
-+);
-+
-+const getActualFailureCount = (log = {}) => (isSkippedLog(log) ? 0 : (log.failureCount ?? 0));
-+
- const formatSentAt = (sentAt) => {
-     if (!sentAt) return '-';
-     if (sentAt.toDate) return sentAt.toDate().toLocaleString('ko-KR');
-     if (sentAt instanceof Date) return sentAt.toLocaleString('ko-KR');
-     return '-';
++    const getFormulaRedirectPath = useCallback((fallbackSearch = '') => {
++        const stored = sessionStorage.getItem('formulaQrRedirect');
++        const search = stored?.split('?')[1] || fallbackSearch.replace(/^\?/, '');
++        const params = new URLSearchParams(search);
++        const conceptId = params.get('conceptId');
++        if (!conceptId) return '';
++        sessionStorage.removeItem('formulaQrRedirect');
++        return `/student/home?tab=class&mode=book&conceptId=${encodeURIComponent(conceptId)}`;
++    }, []);
+ 
+     useEffect(() => {
+         if (loading) return;
+         if (!user) return;
+ 
+-        const redirectPath = getDefaultRouteForRole(role) || '/home';
++        const redirectPath = isStudentRole(role) ? (getFormulaRedirectPath(location.search) || getDefaultRouteForRole(role) || '/home') : (getDefaultRouteForRole(role) || '/home');
+         navigate(redirectPath, { replace: true });
+-    }, [loading, navigate, role, user]);
++    }, [getFormulaRedirectPath, loading, location.search, navigate, role, user]);
+ 
+     const handleLogin = useCallback(async () => {
+         setError('');
+         setPending(true);
+ 
+         try {
+             const credential = await signInWithEmailAndPassword(auth, email.trim(), password);
+             const { user: loggedInUser } = credential;
+ 
+             if (!loggedInUser?.uid) {
+                 setError('로그인에 실패했습니다. 다시 시도해주세요.');
+                 return;
+             }
+ 
+             const userDoc = await getDoc(doc(db, 'users', loggedInUser.uid));
+             if (!userDoc.exists()) {
+                 setError('초대 기반 가입이 필요합니다. 관리자에게 문의하세요.');
+                 await signOut(auth);
+                 return;
+             }
+ 
+             const userData = userDoc.data();
+             const userRole = userData?.role;
+ 
+             if (!isStudentRole(userRole) && !isParentRole(userRole)) {
+                 setError('학생/학부모 전용 페이지입니다.');
+                 await signOut(auth);
+                 return;
+             }
+ 
+-            const redirectPath = userRole === ROLE.PARENT ? '/parent/home' : '/student/home';
++            const redirectPath = userRole === ROLE.PARENT ? '/parent/home' : (getFormulaRedirectPath(location.search) || '/student/home');
+             navigate(redirectPath, { replace: true });
+         } catch (loginError) {
+             setError('로그인에 실패했습니다. 이메일과 비밀번호를 확인해주세요.');
+         } finally {
+             setPending(false);
+         }
+-    }, [email, navigate, password]);
++    }, [email, getFormulaRedirectPath, location.search, navigate, password]);
+ 
+     const handleSubmit = (event) => {
+         event.preventDefault();
+         if (pending) return;
+         handleLogin();
+     };
+ 
+     return (
+         <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4 sm:px-6 lg:px-8 font-sans">
+             <div className="max-w-md w-full space-y-6 bg-white p-8 rounded-2xl shadow-lg border border-gray-100">
+                 <div className="text-center space-y-2">
+                     <h2 className="text-2xl font-bold text-gray-900">학생/학부모 로그인</h2>
+                     <p className="text-sm text-gray-500">이메일과 비밀번호로 로그인해주세요.</p>
+                 </div>
+ 
+                 <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
+                     <div>
+                         <label className="block text-sm font-medium text-gray-700">이메일</label>
+                         <input
+                             type="email"
+                             value={email}
+                             onChange={(e) => setEmail(e.target.value)}
+                             className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-[#455fab] focus:outline-none focus:ring-1 focus:ring-[#455fab]"
+                             placeholder="student@example.com"
+                             required
+@@ -90,26 +101,26 @@ export default function StudentLogin() {
+                     <div>
+                         <label className="block text-sm font-medium text-gray-700">비밀번호</label>
+                         <input
+                             type="password"
+                             value={password}
+                             onChange={(e) => setPassword(e.target.value)}
+                             className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-[#455fab] focus:outline-none focus:ring-1 focus:ring-[#455fab]"
+                             placeholder="비밀번호를 입력하세요"
+                             required
+                         />
+                     </div>
+ 
+                     {error && <p className="text-sm text-red-600">{error}</p>}
+ 
+                     <button
+                         type="submit"
+                         disabled={pending}
+                         className="w-full flex justify-center py-2.5 px-4 border border-transparent text-sm font-semibold rounded-lg text-white bg-[#455fab] hover:bg-[#3b5198] focus:outline-none focus:ring-2 focus:ring-[#455fab] focus:ring-offset-2 disabled:opacity-60 disabled:cursor-not-allowed"
+                     >
+                         {pending ? '로그인 중...' : '로그인'}
+                     </button>
+                 </form>
+             </div>
+         </div>
+     );
+-}
+\ No newline at end of file
++}
+diff --git a/src/components/Student/formulaBook/FormulaBookView.jsx b/src/components/Student/formulaBook/FormulaBookView.jsx
+index c98e24cf30ed40395acb2f62a688be7a347b5227..1707208c63eaf7c91f49a02b13205290b2a7d7f0 100644
+--- a/src/components/Student/formulaBook/FormulaBookView.jsx
++++ b/src/components/Student/formulaBook/FormulaBookView.jsx
+@@ -1,65 +1,65 @@
+ import React, { useEffect, useMemo, useRef, useState } from 'react';
+-import { collection, getDocs, query, where } from 'firebase/firestore';
++import { collection, getDocs } from 'firebase/firestore';
+ import { db } from '../../../firebase/client';
+ import FormulaConceptModal from './FormulaConceptModal';
+ 
+ const normalizeText = (value) => String(value || '').trim().toLocaleLowerCase('ko-KR');
+ const byOrderThenTitle = (a, b) => (
+     (Number(a.order) || 0) - (Number(b.order) || 0)
+     || String(a.title || '').localeCompare(String(b.title || ''), 'ko')
+ );
+ 
+ const matchesSearch = (concept, normalizedQuery) => {
+     if (!normalizedQuery) return true;
+     const searchableValues = [
+         concept.title,
+         concept.summary,
+         ...(Array.isArray(concept.tags) ? concept.tags : []),
+         ...(Array.isArray(concept.keywords) ? concept.keywords : []),
+     ];
+     return searchableValues.some((value) => normalizeText(value).includes(normalizedQuery));
  };
  
- export default function AdminNotificationsPage() {
-     const [logs, setLogs] = useState([]);
-     const [isLoading, setIsLoading] = useState(false);
+ export default function FormulaBookView({ initialConceptId = '', onConceptHandled }) {
+     const [subjects, setSubjects] = useState([]);
+     const [concepts, setConcepts] = useState([]);
+     const [selectedSubjectId, setSelectedSubjectId] = useState('');
+     const [selectedConcept, setSelectedConcept] = useState(null);
+     const [search, setSearch] = useState('');
+     const [isLoading, setIsLoading] = useState(true);
      const [error, setError] = useState('');
+     const handledConceptIdRef = useRef('');
  
      useEffect(() => {
          let isMounted = true;
  
-         const fetchLogs = async () => {
-             if (!db) {
-                 setLogs([]);
-                 return;
-             }
- 
-             setIsLoading(true);
-             setError('');
- 
+         const loadFormulaBook = async () => {
              try {
-                 console.info('[AdminNotificationsPage] Firestore path: notifications');
-                 const snapshot = await getDocs(query(
-                     collection(db, 'notifications'),
-                     orderBy('sentAt', 'desc'),
-                     limit(20),
-                 ));
+                 const [subjectSnapshot, conceptSnapshot] = await Promise.all([
+-                    getDocs(query(collection(db, 'formulaBookSubjects'), where('active', '==', true))),
+-                    getDocs(query(collection(db, 'formulaBookConcepts'), where('active', '==', true))),
++                    getDocs(collection(db, 'formulaSubjects')),
++                    getDocs(collection(db, 'formulaConcepts')),
+                 ]);
                  if (!isMounted) return;
--                setLogs(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
-+                setLogs(snapshot.docs
-+                    .map((doc) => ({ id: doc.id, ...doc.data() }))
-+                    .filter((log) => !isSkippedLog(log)));
-             } catch (fetchError) {
-                 if (!isMounted) return;
-                 setError(fetchError?.message || '알림 로그를 불러오지 못했습니다.');
+ 
+                 setSubjects(subjectSnapshot.docs
+                     .map((item) => ({ id: item.id, ...item.data() }))
+                     .filter((item) => item.active !== false)
+                     .sort(byOrderThenTitle));
+                 setConcepts(conceptSnapshot.docs
+                     .map((item) => ({ id: item.id, ...item.data() }))
+                     .filter((item) => item.active !== false)
+                     .sort(byOrderThenTitle));
+             } catch (loadError) {
+                 console.error('[FormulaBookView] load failed', loadError);
+                 if (isMounted) setError('공식집을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.');
              } finally {
                  if (isMounted) setIsLoading(false);
              }
          };
  
-         fetchLogs();
- 
+         loadFormulaBook();
          return () => {
              isMounted = false;
          };
      }, []);
-     return (
-         <div className="space-y-6">
-             <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
-                 <div className="flex flex-col gap-2">
-                     <p className="text-xs font-semibold text-[#455fab] uppercase tracking-wider">관리자 전용</p>
-                     <h1 className="text-2xl font-bold text-gray-800">알림 로그</h1>
-                     <p className="text-sm text-gray-500">
-                         최근 20건의 발송 내역만 불러와 Firestore 읽기 비용을 최소화합니다.
-                     </p>
-                 </div>
-             </div>
  
-             <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
-                 <div className="flex items-start justify-between gap-4">
-                     <div>
-                         <h2 className="text-lg font-semibold text-gray-800">발송 기록</h2>
-                         <p className="text-sm text-gray-500">
--                            알림 발송이 완료되면 이 목록에 저장됩니다. 대상 수와 실패 수를 바로 확인하세요.
-+                            알림 발송이 완료되면 이 목록에 저장됩니다. 대상 수와 실제 FCM 실패 수를 바로 확인하세요.
-                         </p>
-                     </div>
-                     <span className="px-3 py-1 text-xs font-semibold rounded-full bg-[#f1f4ff] text-[#334a91] border border-[#eef2ff]">
-                         최신 20건
-                     </span>
-                 </div>
+diff --git a/src/pages/FormulaBookManagement.jsx b/src/pages/FormulaBookManagement.jsx
+index d3e41dc3881589abf11b58dbeee32f31dc7edd05..7b650e15fc867c790134712666c4dda9a1c1b26f 100644
+--- a/src/pages/FormulaBookManagement.jsx
++++ b/src/pages/FormulaBookManagement.jsx
+@@ -1,102 +1,127 @@
+ import React, { useEffect, useMemo, useState } from 'react';
+ import {
+   addDoc, collection, doc, getDocs, serverTimestamp, updateDoc,
+ } from 'firebase/firestore';
+ import useAuth from '../auth/useAuth';
+ import { db } from '../firebase/client';
  
-                 {isLoading && (
-                     <div className="mt-6 text-sm text-gray-500">알림 로그를 불러오는 중...</div>
-                 )}
-                 {error && (
-                     <div className="mt-6 text-sm text-red-500">{error}</div>
-                 )}
+-const SUBJECTS_COLLECTION = 'formulaBookSubjects';
+-const CONCEPTS_COLLECTION = 'formulaBookConcepts';
++const SUBJECTS_COLLECTION = 'formulaSubjects';
++const CONCEPTS_COLLECTION = 'formulaConcepts';
+ const emptySubject = { title: '', order: 0, active: true };
+ const emptyConcept = {
+-  subjectId: '', title: '', summary: '', description: '', tags: '', youtubeEmbedUrl: '', order: 0, active: true,
++  subjectId: '', title: '', summary: '', tags: '', youtubeEmbedUrl: '', order: 0, active: true,
+ };
+ const sortItems = (items) => [...items].sort((a, b) => Number(a.order || 0) - Number(b.order || 0));
  
-                 {!isLoading && !error && logs.length === 0 && (
-                     <div className="mt-6 rounded-xl border border-dashed border-gray-200 bg-gray-50 p-6 text-center">
-                         <p className="text-sm font-semibold text-gray-700">아직 발송된 알림이 없습니다</p>
-                         <p className="text-xs text-gray-500 mt-2">
-                             새로운 알림을 발송하면 발송 시각과 대상 수가 이곳에 기록됩니다.
-                         </p>
-                     </div>
-                 )}
+-export const buildFormulaConceptQrPath = (conceptId) => `/classroom?mode=formula&conceptId=${encodeURIComponent(conceptId)}`;
++export const buildFormulaConceptQrPath = (conceptId) => `/classroom?mode=book&conceptId=${encodeURIComponent(conceptId)}`;
+ export const buildFormulaConceptQrUrl = (conceptId) => `${window.location.origin}${buildFormulaConceptQrPath(conceptId)}`;
  
-                 {!isLoading && !error && logs.length > 0 && (
-                     <div className="mt-6 overflow-x-auto border border-gray-200 rounded-xl">
-                         <table className="min-w-full text-sm">
-                             <thead className="bg-gray-50 text-gray-600 text-xs uppercase tracking-wider">
-                                 <tr>
-                                     <th className="px-4 py-3 text-left font-semibold">제목</th>
-                                     <th className="px-4 py-3 text-left font-semibold">발송 시각</th>
-                                     <th className="px-4 py-3 text-right font-semibold">대상 수</th>
-                                     <th className="px-4 py-3 text-right font-semibold">실패 수</th>
-                                 </tr>
-                             </thead>
-                             <tbody>
-                                 {logs.map((log) => {
-                                     const targetCount = log.targetCount ?? log.targetUserCount ?? 0;
--                                    const failureCount = log.failureCount ?? 0;
-+                                    const failureCount = getActualFailureCount(log);
-                                     return (
-                                         <tr key={log.id} className="border-t border-gray-200">
-                                             <td className="px-4 py-3 font-semibold text-gray-800">
-                                                 {log.title || '-'}
-                                             </td>
-                                             <td className="px-4 py-3 text-gray-500">
-                                                 {formatSentAt(log.sentAt)}
-                                             </td>
-                                             <td className="px-4 py-3 text-right font-semibold text-gray-800">
-                                                 {targetCount}
-                                             </td>
-                                             <td className="px-4 py-3 text-right font-semibold text-rose-600">
-                                                 {failureCount}
-                                             </td>
-                                         </tr>
-                                     );
-                                 })}
-                             </tbody>
-                         </table>
-                     </div>
-                 )}
-             </div>
-         </div>
-     );
++const normalizeYoutubeEmbedUrl = (value) => {
++  const raw = String(value || '').trim();
++  const iframeSrc = raw.match(/<iframe[^>]+src=["']([^"']+)["']/i)?.[1];
++  const input = iframeSrc || raw;
++  try {
++    const url = new URL(input);
++    let videoId = '';
++    if (url.hostname === 'youtu.be') videoId = url.pathname.split('/').filter(Boolean)[0] || '';
++    if (url.hostname.endsWith('youtube.com')) {
++      if (url.pathname.startsWith('/embed/')) videoId = url.pathname.split('/').filter(Boolean)[1] || '';
++      if (url.pathname === '/watch') videoId = url.searchParams.get('v') || '';
++      if (url.pathname.startsWith('/shorts/')) videoId = url.pathname.split('/').filter(Boolean)[1] || '';
++    }
++    if (!/^[\w-]{6,}$/.test(videoId)) return '';
++    return `https://www.youtube.com/embed/${videoId}?modestbranding=1&rel=0`;
++  } catch { return ''; }
++};
++
+ export default function FormulaBookManagement() {
+   const { user } = useAuth();
+   const [subjects, setSubjects] = useState([]);
+   const [concepts, setConcepts] = useState([]);
+   const [subjectForm, setSubjectForm] = useState(emptySubject);
+   const [conceptForm, setConceptForm] = useState(emptyConcept);
+   const [editingSubjectId, setEditingSubjectId] = useState('');
+   const [editingConceptId, setEditingConceptId] = useState('');
++  const [selectedSubjectFilter, setSelectedSubjectFilter] = useState('');
+   const [message, setMessage] = useState('');
+ 
+   const loadData = async () => {
+     const [subjectSnapshot, conceptSnapshot] = await Promise.all([
+       getDocs(collection(db, SUBJECTS_COLLECTION)),
+       getDocs(collection(db, CONCEPTS_COLLECTION)),
+     ]);
+     setSubjects(sortItems(subjectSnapshot.docs.map((item) => ({ id: item.id, ...item.data() }))));
+     setConcepts(sortItems(conceptSnapshot.docs.map((item) => ({ id: item.id, ...item.data() }))));
+   };
+ 
+   useEffect(() => { loadData().catch(() => setMessage('공식집 데이터를 불러오지 못했습니다.')); }, []);
+   const subjectTitleMap = useMemo(() => Object.fromEntries(subjects.map((item) => [item.id, item.title])), [subjects]);
++  const visibleConcepts = useMemo(() => concepts.filter((concept) => !selectedSubjectFilter || concept.subjectId === selectedSubjectFilter), [concepts, selectedSubjectFilter]);
+ 
+   const saveSubject = async (event) => {
+     event.preventDefault();
+     const payload = { ...subjectForm, order: Number(subjectForm.order) || 0, updatedAt: serverTimestamp(), updatedBy: user?.uid || '' };
+     if (editingSubjectId) await updateDoc(doc(db, SUBJECTS_COLLECTION, editingSubjectId), payload);
+     else await addDoc(collection(db, SUBJECTS_COLLECTION), { ...payload, createdAt: serverTimestamp(), createdBy: user?.uid || '' });
+     setSubjectForm(emptySubject); setEditingSubjectId(''); setMessage('과목을 저장했습니다.'); await loadData();
+   };
+ 
+   const saveConcept = async (event) => {
+     event.preventDefault();
+     const tags = String(conceptForm.tags || '').split(',').map((tag) => tag.trim()).filter(Boolean);
++    const youtubeEmbedUrl = normalizeYoutubeEmbedUrl(conceptForm.youtubeEmbedUrl);
++    if (!youtubeEmbedUrl) { setMessage('올바른 YouTube URL 또는 iframe 코드를 입력해주세요.'); return; }
+     const basePayload = {
+-      ...conceptForm, tags, order: Number(conceptForm.order) || 0, updatedAt: serverTimestamp(), updatedBy: user?.uid || '',
++      ...conceptForm, tags, youtubeEmbedUrl, order: Number(conceptForm.order) || 0, updatedAt: serverTimestamp(), updatedBy: user?.uid || '',
+     };
+     if (editingConceptId) {
+       await updateDoc(doc(db, CONCEPTS_COLLECTION, editingConceptId), {
+         ...basePayload, qrPath: buildFormulaConceptQrPath(editingConceptId),
+       });
+     } else {
+       const created = await addDoc(collection(db, CONCEPTS_COLLECTION), {
+         ...basePayload, qrPath: '', createdAt: serverTimestamp(), createdBy: user?.uid || '',
+       });
+       await updateDoc(created, { qrPath: buildFormulaConceptQrPath(created.id) });
+     }
+     setConceptForm(emptyConcept); setEditingConceptId(''); setMessage('개념을 저장했습니다.'); await loadData();
+   };
+ 
++  const deactivateSubject = async (subjectId) => { await updateDoc(doc(db, SUBJECTS_COLLECTION, subjectId), { active: false, updatedAt: serverTimestamp(), updatedBy: user?.uid || '' }); setMessage('과목을 비활성화했습니다.'); await loadData(); };
++  const deactivateConcept = async (conceptId) => { await updateDoc(doc(db, CONCEPTS_COLLECTION, conceptId), { active: false, updatedAt: serverTimestamp(), updatedBy: user?.uid || '' }); setMessage('개념을 비활성화했습니다.'); await loadData(); };
++
+   const fieldClass = 'mt-1 w-full rounded-lg border border-gray-300 p-2 text-sm';
+   return (
+     <div className="space-y-6 p-4 md:p-8">
+-      <div><h1 className="text-2xl font-bold text-gray-900">공식집 관리</h1><p className="mt-1 text-sm text-gray-500">과목과 개념을 등록하고 QR 진입 링크를 관리합니다.</p></div>
++      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between"><div><h1 className="text-2xl font-bold text-gray-900">공식집 관리</h1><p className="mt-1 text-sm text-gray-500">과목과 개념을 등록하고 QR 진입 링크를 관리합니다.</p></div><div className="flex gap-2"><button type="button" onClick={() => { setEditingSubjectId(''); setSubjectForm(emptySubject); }} className="rounded-lg bg-[#455fab] px-4 py-2 text-sm font-bold text-white">과목 추가</button><button type="button" onClick={() => { setEditingConceptId(''); setConceptForm(emptyConcept); }} className="rounded-lg bg-[#455fab] px-4 py-2 text-sm font-bold text-white">개념 추가</button></div></div>
+       {message && <p className="rounded-lg bg-[#f1f4ff] p-3 text-sm text-[#334a91]">{message}</p>}
+       <div className="grid gap-6 xl:grid-cols-2">
+         <section className="rounded-2xl border bg-white p-5 shadow-sm">
+           <h2 className="font-bold">과목</h2>
+           <form onSubmit={saveSubject} className="mt-4 grid grid-cols-2 gap-3">
+             <label className="col-span-2 text-sm">과목명<input className={fieldClass} required value={subjectForm.title} onChange={(e) => setSubjectForm({ ...subjectForm, title: e.target.value })} /></label>
+             <label className="text-sm">표시 순서<input className={fieldClass} type="number" value={subjectForm.order} onChange={(e) => setSubjectForm({ ...subjectForm, order: e.target.value })} /></label>
+             <label className="flex items-end gap-2 pb-2 text-sm"><input type="checkbox" checked={subjectForm.active} onChange={(e) => setSubjectForm({ ...subjectForm, active: e.target.checked })} /> 활성</label>
+             <button className="col-span-2 rounded-lg bg-[#455fab] p-2 text-sm font-bold text-white">{editingSubjectId ? '과목 수정' : '과목 추가'}</button>
+           </form>
+-          <div className="mt-4 divide-y">{subjects.map((subject) => <button type="button" key={subject.id} onClick={() => { setEditingSubjectId(subject.id); setSubjectForm({ title: subject.title || '', order: subject.order || 0, active: subject.active !== false }); }} className="flex w-full justify-between py-3 text-left text-sm"><span>{subject.title}</span><span className="text-gray-400">{subject.active === false ? '비활성' : '활성'} · {subject.order || 0}</span></button>)}</div>
++          <div className="mt-4 divide-y">{subjects.map((subject) => <div key={subject.id} className="flex items-center gap-2 py-3 text-sm"><button type="button" onClick={() => { setEditingSubjectId(subject.id); setSubjectForm({ title: subject.title || '', order: subject.order || 0, active: subject.active !== false }); }} className="min-w-0 flex-1 text-left"><span className="font-semibold">{subject.title}</span><span className="ml-2 text-gray-400">{subject.active === false ? '비활성' : '활성'} · {subject.order || 0}</span></button><button type="button" onClick={() => deactivateSubject(subject.id)} className="rounded-lg border px-2 py-1 text-xs font-semibold text-red-600">비활성화</button></div>)}</div>
+         </section>
+         <section className="rounded-2xl border bg-white p-5 shadow-sm">
+           <h2 className="font-bold">개념</h2>
++          <div className="mt-3 flex flex-wrap gap-2 text-xs"><button type="button" onClick={() => setSelectedSubjectFilter('')} className={`rounded-full border px-3 py-1 font-semibold ${!selectedSubjectFilter ? 'bg-[#455fab] text-white' : 'text-gray-600'}`}>전체 보기</button>{subjects.map((subject) => <button key={subject.id} type="button" onClick={() => setSelectedSubjectFilter(subject.id)} className={`rounded-full border px-3 py-1 font-semibold ${selectedSubjectFilter === subject.id ? 'bg-[#455fab] text-white' : 'text-gray-600'}`}>{subject.title}</button>)}</div>
+           <form onSubmit={saveConcept} className="mt-4 grid grid-cols-2 gap-3">
+             <label className="col-span-2 text-sm">과목<select required className={fieldClass} value={conceptForm.subjectId} onChange={(e) => setConceptForm({ ...conceptForm, subjectId: e.target.value })}><option value="">선택</option>{subjects.map((subject) => <option key={subject.id} value={subject.id}>{subject.title}</option>)}</select></label>
+             <label className="col-span-2 text-sm">개념명<input required className={fieldClass} value={conceptForm.title} onChange={(e) => setConceptForm({ ...conceptForm, title: e.target.value })} /></label>
+             <label className="col-span-2 text-sm">요약<textarea className={fieldClass} value={conceptForm.summary} onChange={(e) => setConceptForm({ ...conceptForm, summary: e.target.value })} /></label>
+-            <label className="col-span-2 text-sm">상세 설명<textarea rows="4" className={fieldClass} value={conceptForm.description} onChange={(e) => setConceptForm({ ...conceptForm, description: e.target.value })} /></label>
+             <label className="col-span-2 text-sm">태그 (쉼표 구분)<input className={fieldClass} value={conceptForm.tags} onChange={(e) => setConceptForm({ ...conceptForm, tags: e.target.value })} /></label>
+             <label className="col-span-2 text-sm">YouTube embed URL<input className={fieldClass} value={conceptForm.youtubeEmbedUrl} onChange={(e) => setConceptForm({ ...conceptForm, youtubeEmbedUrl: e.target.value })} /></label>
+             <label className="text-sm">표시 순서<input type="number" className={fieldClass} value={conceptForm.order} onChange={(e) => setConceptForm({ ...conceptForm, order: e.target.value })} /></label>
+             <label className="flex items-end gap-2 pb-2 text-sm"><input type="checkbox" checked={conceptForm.active} onChange={(e) => setConceptForm({ ...conceptForm, active: e.target.checked })} /> 활성</label>
+             <button className="col-span-2 rounded-lg bg-[#455fab] p-2 text-sm font-bold text-white">{editingConceptId ? '개념 수정' : '개념 추가'}</button>
+           </form>
+-          <div className="mt-4 divide-y">{concepts.map((concept) => <div key={concept.id} className="flex items-center gap-2 py-3 text-sm"><button type="button" className="min-w-0 flex-1 text-left" onClick={() => { setEditingConceptId(concept.id); setConceptForm({ ...emptyConcept, ...concept, tags: Array.isArray(concept.tags) ? concept.tags.join(', ') : '' }); }}><b>{concept.title}</b><span className="ml-2 text-gray-400">{subjectTitleMap[concept.subjectId] || '과목 없음'}</span></button><button type="button" onClick={() => navigator.clipboard.writeText(buildFormulaConceptQrUrl(concept.id)).then(() => setMessage('QR 링크를 복사했습니다.'))} className="rounded-lg border px-2 py-1 text-xs font-semibold text-[#455fab]">QR 링크 복사</button></div>)}</div>
++          <div className="mt-4 divide-y">{visibleConcepts.map((concept) => <div key={concept.id} className="flex items-center gap-2 py-3 text-sm"><button type="button" className="min-w-0 flex-1 text-left" onClick={() => { setEditingConceptId(concept.id); setConceptForm({ ...emptyConcept, ...concept, tags: Array.isArray(concept.tags) ? concept.tags.join(', ') : '' }); }}><b>{concept.title}</b><span className="ml-2 text-gray-400">{subjectTitleMap[concept.subjectId] || '과목 없음'} · {concept.active === false ? '비활성' : '활성'} · {concept.order || 0}</span><p className="mt-1 truncate text-xs text-gray-500">{concept.summary}</p><p className="mt-1 truncate text-xs text-gray-400">{concept.youtubeEmbedUrl}</p></button><button type="button" onClick={() => navigator.clipboard.writeText(buildFormulaConceptQrUrl(concept.id)).then(() => setMessage('QR 링크를 복사했습니다.'))} className="rounded-lg border px-2 py-1 text-xs font-semibold text-[#455fab]">QR 링크 복사</button><button type="button" onClick={() => deactivateConcept(concept.id)} className="rounded-lg border px-2 py-1 text-xs font-semibold text-red-600">비활성화</button></div>)}</div>
+         </section>
+       </div>
+     </div>
+   );
  }
-\ No newline at end of file
+diff --git a/src/pages/StudentHome.jsx b/src/pages/StudentHome.jsx
+index ee1de98fa072fda98b122c9d9a2026f2726f1c75..8765304105bb26596ad6f0d7100715f59822e179 100644
+--- a/src/pages/StudentHome.jsx
++++ b/src/pages/StudentHome.jsx
+@@ -175,57 +175,57 @@ const getNoticeAudienceValues = (notice = {}) => [
+     ...(Array.isArray(notice?.studentIds) ? notice.studentIds : []),
+ ].filter(Boolean).map(String);
+ 
+ const isNoticeVisibleToStudent = ({ notice, studentKeys, classIds }) => {
+     const audience = getNoticeAudienceValues(notice);
+     if (audience.length > 0 && audience.some((value) => studentKeys.has(value))) return true;
+     const noticeClassIds = getNoticeClassIds(notice);
+     if (noticeClassIds.length > 0) return noticeClassIds.some((value) => classIds.has(value));
+     return audience.length === 0;
+ };
+ 
+ export default function StudentHome({
+     student, studentId, userId, students, classes, homeworkAssignments, homeworkResults,
+     attendanceLogs, lessonLogs, notices, tests, grades, classTestStats,
+     videoProgress, onSaveVideoProgress, videoMemos, onAddMemo, onUpdateMemo, onDeleteMemo,
+     externalSchedules, onSaveExternalSchedule, onDeleteExternalSchedule,
+     clinicLogs, onUpdateStudent,
+     closures,
+     lessonReports = [],
+     onLogout
+ }) {
+     // ✅ URL(querystring)로 탭/상세 상태를 동기화해서 "뒤로가기"가 탭 전환/이전 화면으로 동작하게 함
+     const [searchParams, setSearchParams] = useSearchParams();
+ 
+     const readTabFromUrl = () => {
+-        if (searchParams.get('mode') === 'formula') return 'class';
++        if (['formula', 'book'].includes(searchParams.get('mode'))) return 'class';
+         const tab = searchParams.get('tab') || 'home';
+         return tab === 'report' ? 'class' : tab;
+     };
+     const readSubTabFromUrl = () => searchParams.get('subTab') || 'homework';
+     const readClassIdFromUrl = () => searchParams.get('classId');
+-    const readClassroomModeFromUrl = () => searchParams.get('mode') === 'formula' ? 'formula' : 'class';
++    const readClassroomModeFromUrl = () => ['formula', 'book'].includes(searchParams.get('mode')) ? 'formula' : 'class';
+ 
+     const [activeTab, _setActiveTab] = useState(readTabFromUrl());
+     const [initialLearningTab, _setInitialLearningTab] = useState(readSubTabFromUrl());
+     const [selectedClassId, _setSelectedClassId] = useState(readClassIdFromUrl());
+     const [classroomMode, _setClassroomMode] = useState(readClassroomModeFromUrl());
+ 
+     // ✅ URL -> state (브라우저 뒤로/앞으로로 URL이 바뀌면 화면도 따라감)
+     useEffect(() => {
+         const nextTab = readTabFromUrl();
+         const nextSubTab = readSubTabFromUrl();
+         const nextClassId = readClassIdFromUrl();
+         const nextClassroomMode = readClassroomModeFromUrl();
+ 
+         if (nextTab !== activeTab) _setActiveTab(nextTab);
+         if (nextSubTab !== initialLearningTab) _setInitialLearningTab(nextSubTab);
+         if ((nextClassId || null) !== (selectedClassId || null)) _setSelectedClassId(nextClassId || null);
+         if (nextClassroomMode !== classroomMode) _setClassroomMode(nextClassroomMode);
+         // eslint-disable-next-line react-hooks/exhaustive-deps
+     }, [searchParams]);
+ 
+     // ✅ state -> URL (앱 내부 동작은 아래 래퍼 함수를 통해서만 변경)
+     const setActiveTab = useCallback((tab, { replace = false } = {}) => {
+         _setActiveTab(tab);
+         setSearchParams(prev => {
+             const next = new URLSearchParams(prev);
+@@ -233,51 +233,51 @@ export default function StudentHome({
+ 
+             // learning 이외 탭으로 이동하면 subTab은 정리 (원하면 정책 변경 가능)
+             if (tab !== 'learning') next.delete('subTab');
+ 
+             // 탭 이동 시 classId는 유지하지 않음(클래스 화면은 별도 상태)
+             if (tab !== 'class') next.delete('classId');
+             if (tab !== 'class') {
+                 next.delete('mode');
+                 next.delete('conceptId');
+                 _setClassroomMode('class');
+             }
+ 
+             return next;
+         }, { replace });
+     }, [setSearchParams]);
+     const setClassroomMode = useCallback((mode, { replace = false } = {}) => {
+         const value = mode === 'formula' ? 'formula' : 'class';
+         _setClassroomMode(value);
+         _setActiveTab('class');
+         _setSelectedClassId(null);
+         setSearchParams(prev => {
+             const next = new URLSearchParams(prev);
+             next.set('tab', 'class');
+             next.delete('classId');
+             next.delete('subTab');
+-            if (value === 'formula') next.set('mode', 'formula');
++            if (value === 'formula') next.set('mode', 'book');
+             else {
+                 next.delete('mode');
+                 next.delete('conceptId');
+             }
+             return next;
+         }, { replace });
+     }, [setSearchParams]);
+ 
+     const setInitialLearningTab = useCallback((subTab, { replace = false } = {}) => {
+         const value = subTab || 'homework';
+         _setInitialLearningTab(value);
+         setSearchParams(prev => {
+             const next = new URLSearchParams(prev);
+             next.set('tab', 'learning');
+             next.set('subTab', value);
+             next.delete('classId');
+             return next;
+         }, { replace });
+         _setActiveTab('learning');
+     }, [setSearchParams]);
+ 
+     const setSelectedClassId = useCallback((classId, { replace = false } = {}) => {
+         const value = classId === null || classId === undefined || classId === '' ? null : String(classId);
+         _setSelectedClassId(value);
+ 

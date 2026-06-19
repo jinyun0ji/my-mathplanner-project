@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { auth, db } from '../firebase/client';
 import { ROLE, isParentRole, isStudentRole } from '../constants/roles';
 import useAuth from './useAuth';
@@ -14,14 +14,25 @@ export default function StudentLogin() {
     const [error, setError] = useState('');
     const [pending, setPending] = useState(false);
     const navigate = useNavigate();
+    const location = useLocation();
+
+    const getFormulaRedirectPath = useCallback((fallbackSearch = '') => {
+        const stored = sessionStorage.getItem('formulaQrRedirect');
+        const search = stored?.split('?')[1] || fallbackSearch.replace(/^\?/, '');
+        const params = new URLSearchParams(search);
+        const conceptId = params.get('conceptId');
+        if (!conceptId) return '';
+        sessionStorage.removeItem('formulaQrRedirect');
+        return `/student/home?tab=class&mode=book&conceptId=${encodeURIComponent(conceptId)}`;
+    }, []);
 
     useEffect(() => {
         if (loading) return;
         if (!user) return;
 
-        const redirectPath = getDefaultRouteForRole(role) || '/home';
+        const redirectPath = isStudentRole(role) ? (getFormulaRedirectPath(location.search) || getDefaultRouteForRole(role) || '/home') : (getDefaultRouteForRole(role) || '/home');
         navigate(redirectPath, { replace: true });
-    }, [loading, navigate, role, user]);
+    }, [getFormulaRedirectPath, loading, location.search, navigate, role, user]);
 
     const handleLogin = useCallback(async () => {
         setError('');
@@ -52,14 +63,14 @@ export default function StudentLogin() {
                 return;
             }
 
-            const redirectPath = userRole === ROLE.PARENT ? '/parent/home' : '/student/home';
+            const redirectPath = userRole === ROLE.PARENT ? '/parent/home' : (getFormulaRedirectPath(location.search) || '/student/home');
             navigate(redirectPath, { replace: true });
         } catch (loginError) {
             setError('로그인에 실패했습니다. 이메일과 비밀번호를 확인해주세요.');
         } finally {
             setPending(false);
         }
-    }, [email, navigate, password]);
+    }, [email, getFormulaRedirectPath, location.search, navigate, password]);
 
     const handleSubmit = (event) => {
         event.preventDefault();

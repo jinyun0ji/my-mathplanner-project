@@ -607,15 +607,13 @@ service cloud.firestore {
       allow write: if isStaffOrAdminOrTeacher();
     }
 
-    match /formulaBookSubjects/{docId} {
-      allow read: if isStaffOrAdminOrTeacher()
-        || ((isStudent() || isParent()) && resource.data.active == true);
+    match /formulaSubjects/{docId} {
+      allow read: if signedIn();
       allow create, update, delete: if isStaffOrAdminOrTeacher();
     }
 
-    match /formulaBookConcepts/{docId} {
-      allow read: if isStaffOrAdminOrTeacher()
-        || ((isStudent() || isParent()) && resource.data.active == true);
+    match /formulaConcepts/{docId} {
+      allow read: if signedIn();
       allow create, update, delete: if isStaffOrAdminOrTeacher();
     }
 

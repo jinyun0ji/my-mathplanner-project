@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { collection, getDocs, query, where } from 'firebase/firestore';
+import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../../../firebase/client';
 import FormulaConceptModal from './FormulaConceptModal';
 
@@ -36,8 +36,8 @@ export default function FormulaBookView({ initialConceptId = '', onConceptHandle
         const loadFormulaBook = async () => {
             try {
                 const [subjectSnapshot, conceptSnapshot] = await Promise.all([
-                    getDocs(query(collection(db, 'formulaBookSubjects'), where('active', '==', true))),
-                    getDocs(query(collection(db, 'formulaBookConcepts'), where('active', '==', true))),
+                    getDocs(collection(db, 'formulaSubjects')),
+                    getDocs(collection(db, 'formulaConcepts')),
                 ]);
                 if (!isMounted) return;
 

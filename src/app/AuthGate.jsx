@@ -26,6 +26,7 @@ export default function AuthGate() {
     const isAuthCallbackPage = pathname === '/auth/callback';
     const isStudentDetailPage = pathname.startsWith('/students/');
     const isMessengerRoute = pathname.startsWith('/chat') || pathname.startsWith('/messages');
+    const isFormulaQrRoute = pathname === '/classroom' && new URLSearchParams(location.search).get('conceptId');
 
     const {
         user,
@@ -65,6 +66,7 @@ export default function AuthGate() {
 
         if (!user) {
             if (!isLoginPage && !isSignupPage && !isAuthCallbackPage) {
+                if (isFormulaQrRoute) sessionStorage.setItem('formulaQrRedirect', `${pathname}${location.search}`);
                 navigate('/login', { replace: true });
             }
             return;
@@ -88,6 +90,13 @@ export default function AuthGate() {
             !isStudentDetailPage &&
             (isOnboardingPage || isLoginPage || isSignupPage)
         ) {
+            const formulaQrRedirect = sessionStorage.getItem('formulaQrRedirect');
+            if (formulaQrRedirect && isStudentRole(role)) {
+                sessionStorage.removeItem('formulaQrRedirect');
+                const params = new URLSearchParams(formulaQrRedirect.split('?')[1] || '');
+                navigate(`/student/home?tab=class&mode=book&conceptId=${encodeURIComponent(params.get('conceptId') || '')}`, { replace: true });
+                return;
+            }
             navigate(redirectPath || '/home', { replace: true });
         }
     }, [
@@ -97,6 +106,8 @@ export default function AuthGate() {
         isOnboardingPage,
         isSignupPage,
         isStudentDetailPage,
+        isFormulaQrRoute,
+        location.search,
         loading,
         navigate,
         needsParentOnboarding,

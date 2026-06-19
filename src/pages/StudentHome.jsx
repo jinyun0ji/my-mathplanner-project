@@ -197,13 +197,13 @@ export default function StudentHome({
     const [searchParams, setSearchParams] = useSearchParams();
 
     const readTabFromUrl = () => {
-        if (searchParams.get('mode') === 'formula') return 'class';
+        if (['formula', 'book'].includes(searchParams.get('mode'))) return 'class';
         const tab = searchParams.get('tab') || 'home';
         return tab === 'report' ? 'class' : tab;
     };
     const readSubTabFromUrl = () => searchParams.get('subTab') || 'homework';
     const readClassIdFromUrl = () => searchParams.get('classId');
-    const readClassroomModeFromUrl = () => searchParams.get('mode') === 'formula' ? 'formula' : 'class';
+    const readClassroomModeFromUrl = () => ['formula', 'book'].includes(searchParams.get('mode')) ? 'formula' : 'class';
 
     const [activeTab, _setActiveTab] = useState(readTabFromUrl());
     const [initialLearningTab, _setInitialLearningTab] = useState(readSubTabFromUrl());
@@ -255,7 +255,7 @@ export default function StudentHome({
             next.set('tab', 'class');
             next.delete('classId');
             next.delete('subTab');
-            if (value === 'formula') next.set('mode', 'formula');
+            if (value === 'formula') next.set('mode', 'book');
             else {
                 next.delete('mode');
                 next.delete('conceptId');
