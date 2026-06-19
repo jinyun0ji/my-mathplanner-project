@@ -1,1163 +1,806 @@
-diff --git a/src/app/AppRoutes.jsx b/src/app/AppRoutes.jsx
-index a5eda96fdbdb8b96152a687d2b7b62a56db66ec7..4036459dfa2efdebf6b2b4d0c7a352f2e3f607b2 100644
---- a/src/app/AppRoutes.jsx
-+++ b/src/app/AppRoutes.jsx
-@@ -20,51 +20,51 @@ import ClosureManagement from '../pages/ClosureManagement';
- import InternalCommunication from '../pages/InternalCommunication';
- import PaymentManagement from '../pages/PaymentManagement';
- import ParentHome from '../pages/ParentHome';
- import ParentStudentPicker from '../pages/parent/ParentStudentPicker';
- import OnboardingPage from '../pages/OnboardingPage';
- import StaffManagement from '../pages/admin/StaffManagement';
- import AdminNotificationsPage from '../pages/admin/AdminNotificationsPage';
- import AdminPaymentsPage from '../pages/admin/AdminPaymentsPage';
- import AdminSettingsPage from '../pages/admin/AdminSettingsPage';
- import AdminLogsPage from '../pages/admin/AdminLogsPage';
- import InviteManagementPage from '../pages/admin/InviteManagementPage';
- import FormulaBookManagement from '../pages/FormulaBookManagement';
- import AdminRoute from '../routes/AdminRoute';
- import StaffOrTeachingRoute from '../routes/StaffOrTeachingRoute';
+diff --git a/functions/src/admin/retryNotification.js b/functions/src/admin/retryNotification.js
+index 8d32f5bc952d34a4818e738e3f99cd60b0dc2b8f..584c5e7c4310fa10969c8078163825c00c00ba49 100644
+--- a/functions/src/admin/retryNotification.js
++++ b/functions/src/admin/retryNotification.js
+@@ -1,45 +1,51 @@
+ const functions = require('firebase-functions');
+ const { getFirestore, FieldValue } = require('firebase-admin/firestore');
+ const { assertAdmin } = require('../_utils/assertAdmin');
+ const { notifyUsers } = require('../notify/notifications');
++const { isNotificationSendingEnabled, notificationDisabledResult } = require('../notify/settings');
+ 
+ const db = getFirestore();
+ const RETRY_LIMIT = 50;
+ 
+ const getUidsWithTokens = async (uids) => {
+     const checks = await Promise.all(uids.map(async (uid) => {
+         const snapshot = await db.collection('users').doc(uid).collection('fcmTokens').limit(1).get();
+         return snapshot.empty ? null : uid;
+     }));
+ 
+     return checks.filter(Boolean);
+ };
+ 
+ const retryNotification = functions.https.onCall(async (data, context) => {
+     await assertAdmin(context);
+ 
++    if (!isNotificationSendingEnabled()) {
++        console.debug('[notifications] retry skipped: notification_disabled');
++        return notificationDisabledResult();
++    }
++
+     const logId = typeof data?.logId === 'string' ? data.logId.trim() : '';
+ 
+     if (!logId) {
+         throw new functions.https.HttpsError('invalid-argument', 'logId is required.');
+     }
+ 
+     const logRef = db.collection('notifications').doc(logId);
+     const logSnapshot = await logRef.get();
+ 
+     if (!logSnapshot.exists) {
+         throw new functions.https.HttpsError('not-found', 'notification log not found.');
+     }
+ 
+     const logData = logSnapshot.data() || {};
+ 
+     if (logData.retry?.attempted) {
+         throw new functions.https.HttpsError('failed-precondition', 'Retry already attempted for this log.');
+     }
+ 
+     const failedSnapshot = await logRef.collection('deliveries')
+         .where('status', '==', 'failed')
+         .limit(RETRY_LIMIT)
+         .get();
+     const failedUids = failedSnapshot.docs.map((doc) => doc.id).filter(Boolean);
+ 
+diff --git a/functions/src/notify/fcm.js b/functions/src/notify/fcm.js
+index 95f98122fd319c3842bc0268c6879049375e2348..d595538e5ba0c82272d4fc367d295fdd748c9301 100644
+--- a/functions/src/notify/fcm.js
++++ b/functions/src/notify/fcm.js
+@@ -1,55 +1,68 @@
+ const { getFirestore, FieldValue } = require('firebase-admin/firestore');
+ const { getMessaging } = require('firebase-admin/messaging');
++const { isNotificationSendingEnabled, notificationDisabledResult } = require('./settings');
+ 
+ const db = getFirestore();
+ 
+ const chunk = (items, size) => {
+     const results = [];
+     for (let i = 0; i < items.length; i += size) {
+         results.push(items.slice(i, i + size));
+     }
+     return results;
+ };
+ 
+ const isInvalidTokenError = (error) => {
+     if (!error || !error.code) {
+         return false;
+     }
+ 
+     return [
+         'messaging/invalid-registration-token',
+         'messaging/registration-token-not-registered',
+     ].includes(error.code);
+ };
+ 
+ const resolveTokenEntries = (tokenSnapshot) => tokenSnapshot.docs.map((doc) => {
+     const token = doc.data()?.token || doc.id;
+     return token ? { token, ref: doc.ref } : null;
+ }).filter(Boolean);
+ 
+ const sendFcmToUsers = async (userIds, dataPayload, { notificationIds = {}, logRef } = {}) => {
++    if (!isNotificationSendingEnabled()) {
++        console.debug('[notifications] FCM skipped: notification_disabled');
++        return {
++            successCount: 0,
++            failureCount: 0,
++            failedTokenCount: 0,
++            failedUids: [],
++            failedEntries: [],
++            ...notificationDisabledResult(),
++        };
++    }
++
+     const uniqueIds = [...new Set(userIds.filter(Boolean))];
+ 
+     if (uniqueIds.length === 0) {
+         return { successCount: 0, failureCount: 0, failedTokenCount: 0, failedUids: [] };
+     }
+ 
+     const messaging = getMessaging();
+ 
+     const results = await Promise.all(uniqueIds.map(async (uid) => {
+         const tokenSnapshot = await db.collection('users').doc(uid).collection('fcmTokens').get();
+         const tokenEntries = resolveTokenEntries(tokenSnapshot);
+ 
+         if (tokenEntries.length === 0) {
+             return {
+                 uid,
+                 success: false,
+                 failedTokenCount: 0,
+                 errorCode: 'no-token',
+             };
+         }
+ 
+         const payload = {
+             ...dataPayload,
+             notificationId: notificationIds[uid],
+         };
+diff --git a/functions/src/notify/notifications.js b/functions/src/notify/notifications.js
+index deebf24026985c091cec085f534fe6536a069434..a10ed4dc8e4072e7e8dd84dcf9ce57194b88fe7b 100644
+--- a/functions/src/notify/notifications.js
++++ b/functions/src/notify/notifications.js
+@@ -1,92 +1,118 @@
+ const { getFirestore, FieldValue } = require('firebase-admin/firestore');
+ const { buildNotificationDocument, buildFcmDataPayload } = require('./builders');
+ const { sendFcmToUsers } = require('./fcm');
++const { isNotificationSendingEnabled, notificationDisabledResult } = require('./settings');
+ 
+ const db = getFirestore();
+ 
+ const createNotificationForUsers = async (userIds, payload) => {
++    if (!isNotificationSendingEnabled()) {
++        return { notificationIds: {}, targetUserCount: 0, ...notificationDisabledResult() };
++    }
++
+     const uniqueIds = [...new Set(userIds.filter(Boolean))];
+ 
+     if (uniqueIds.length === 0) {
+         return { notificationIds: {}, targetUserCount: 0 };
+     }
+ 
+     const notificationIds = {};
+     const batch = db.batch();
+ 
+     uniqueIds.forEach((uid) => {
+         const docRef = db.collection('notifications').doc(uid).collection('items').doc();
+         notificationIds[uid] = docRef.id;
+         batch.set(docRef, {
+             ...buildNotificationDocument(payload),
+             createdAt: FieldValue.serverTimestamp(),
+         });
+     });
+ 
+     await batch.commit();
+     return { notificationIds, targetUserCount: uniqueIds.length };
+ };
+ 
+ const createNotificationLog = async ({ targetCount, payload, fcmData, logData = {} }) => {
++    if (!isNotificationSendingEnabled()) {
++        return null;
++    }
++
+     const logRef = db.collection('notifications').doc();
+     await logRef.set({
+         targetCount,
+         successCount: 0,
+         failureCount: 0,
+         failedTokenCount: 0,
+         sentAt: FieldValue.serverTimestamp(),
+         eventType: fcmData?.type || payload?.type || null,
+         type: fcmData?.type || payload?.type || null,
+         title: payload?.title || null,
+         body: payload?.body || null,
+         ref: payload?.ref || null,
+         refCollection: fcmData?.refCollection || null,
+         refId: fcmData?.refId || null,
+         studentId: fcmData?.studentId || payload?.studentId || null,
+         ...logData,
+     });
+     return logRef;
+ };
+ 
+ const notifyUsers = async ({ userIds, payload, fcmData, logData }) => {
++    if (!isNotificationSendingEnabled()) {
++        console.debug('[notifications] sending skipped: notification_disabled');
++        return {
++            notificationIds: {},
++            targetCount: 0,
++            notificationLogId: null,
++            fcmStats: { successCount: 0, failureCount: 0, failedTokenCount: 0, failedUids: [], failedEntries: [] },
++            ...notificationDisabledResult(),
++        };
++    }
++
+     const notificationPayload = {
+         ...payload,
+         refCollection: fcmData?.refCollection || payload?.refCollection || null,
+         refId: fcmData?.refId || payload?.refId || null,
+         studentId: fcmData?.studentId || payload?.studentId || payload?.authUid || null,
+     };
+     const { notificationIds, targetUserCount } = await createNotificationForUsers(userIds, notificationPayload);
+     const logRef = await createNotificationLog({
+         targetCount: targetUserCount,
+         payload: notificationPayload,
+         fcmData,
+         logData,
+     });
+ 
+     if (targetUserCount === 0) {
+         return {
+             notificationIds,
+             targetCount: targetUserCount,
+-            notificationLogId: logRef.id,
+-            fcmStats: { successCount: 0, failureCount: 0, failedTokenCount: 0, failedUids: [] },
++            notificationLogId: logRef?.id || null,
++            fcmStats: { successCount: 0, failureCount: 0, failedTokenCount: 0, failedUids: [], failedEntries: [] },
++            success: true,
++            sent: false,
+         };
+     }
+ 
+     const fcmStats = await sendFcmToUsers(
+         userIds,
+         buildFcmDataPayload(fcmData),
+         { notificationIds, logRef },
+     );
+ 
+     return {
+         notificationIds,
+         targetCount: targetUserCount,
+-        notificationLogId: logRef.id,
++        notificationLogId: logRef?.id || null,
+         fcmStats,
++        success: (fcmStats?.failureCount || 0) === 0,
++        sent: (fcmStats?.successCount || 0) > 0,
+     };
+ };
+ 
+ module.exports = {
+     createNotificationForUsers,
++    createNotificationLog,
+     notifyUsers,
++    isNotificationSendingEnabled,
+ };
+\ No newline at end of file
+diff --git a/functions/src/notify/settings.js b/functions/src/notify/settings.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..221022b1142da2ecba531afb16bd07924b993f49
+--- /dev/null
++++ b/functions/src/notify/settings.js
+@@ -0,0 +1,31 @@
++const functions = require('firebase-functions');
++
++const TRUE_VALUES = new Set(['1', 'true', 'yes', 'on', 'enabled']);
++
++const normalizeFlag = (value) => String(value || '').trim().toLowerCase();
++
++const isNotificationSendingEnabled = () => {
++    const envValue = normalizeFlag(process.env.NOTIFICATION_SENDING_ENABLED);
++    if (envValue) {
++        return TRUE_VALUES.has(envValue);
++    }
++
++    const configValue = normalizeFlag(functions.config()?.notifications?.sending_enabled);
++    if (configValue) {
++        return TRUE_VALUES.has(configValue);
++    }
++
++    return false;
++};
++
++const notificationDisabledResult = () => ({
++    success: true,
++    sent: false,
++    skipped: true,
++    reason: 'notification_disabled',
++});
++
++module.exports = {
++    isNotificationSendingEnabled,
++    notificationDisabledResult,
++};
+diff --git a/functions/src/triggers/attendanceLogs.js b/functions/src/triggers/attendanceLogs.js
+index f68c65455291877539354862ec4e1a69fd534346..6a862adbd5fd96e370c80c8017c5546c2f699c85 100644
+--- a/functions/src/triggers/attendanceLogs.js
++++ b/functions/src/triggers/attendanceLogs.js
+@@ -1,46 +1,52 @@
+ const functions = require('firebase-functions');
+ const { getRecipientsForStudent } = require('../notify/recipients');
+ const { notifyUsers } = require('../notify/notifications');
++const { isNotificationSendingEnabled, notificationDisabledResult } = require('../notify/settings');
+ 
+ const TYPE = 'ATTENDANCE_UPDATED';
+ const isUnchanged = (before, after) => JSON.stringify(before) === JSON.stringify(after);
+ 
+ const onAttendanceLogWritten = functions.firestore
+     .document('attendanceLogs/{id}')
+     .onWrite(async (change, context) => {
+         if (!change.after.exists) {
+             return null;
+         }
+ 
+         const afterData = change.after.data() || {};
+         const beforeData = change.before.exists ? change.before.data() : null;
+ 
+         if (beforeData && isUnchanged(beforeData, afterData)) {
+             return null;
+         }
+ 
++        if (!isNotificationSendingEnabled()) {
++            console.debug('[notifications] trigger skipped: notification_disabled');
++            return notificationDisabledResult();
++        }
++
+         const authUid = afterData.authUid || afterData.studentUid || afterData.studentId;
+         const recipients = await getRecipientsForStudent(authUid);
+ 
+         if (!recipients) {
+             await notifyUsers({
+                 userIds: [],
+                 payload: {
+                     type: TYPE,
+                     title: '출결 안내',
+                     body: '출결 정보가 업데이트되었습니다.',
+                     ref: `attendanceLogs/${context.params.id}`,
+                     authUid,
+                 },
+                 fcmData: {
+                     type: TYPE,
+                     refCollection: 'attendanceLogs',
+                     refId: context.params.id,
+                     authUid,
+                 },
+             });
+             return null;
+         }
+ 
+         const userIds = [recipients.studentUid];
+         const refId = context.params.id;
+diff --git a/functions/src/triggers/grades.js b/functions/src/triggers/grades.js
+index 428621be5e45d4d31e2e091400b29ebf5fc795d9..57fc7a4d3bafb2195ee712e5d9d81041880b8cd1 100644
+--- a/functions/src/triggers/grades.js
++++ b/functions/src/triggers/grades.js
+@@ -1,51 +1,57 @@
+ const functions = require('firebase-functions');
+ const { getRecipientsForStudent } = require('../notify/recipients');
+ const { notifyUsers } = require('../notify/notifications');
++const { isNotificationSendingEnabled, notificationDisabledResult } = require('../notify/settings');
+ 
+ const TYPE = 'GRADE_PUBLISHED';
+ 
+ const isUnchanged = (before, after) => JSON.stringify(before) === JSON.stringify(after);
+ 
+ const onGradeWritten = functions.firestore
+     .document('grades/{id}')
+     .onWrite(async (change, context) => {
+         if (!change.after.exists) {
+             return null;
+         }
+ 
+         const afterData = change.after.data() || {};
+         const beforeData = change.before.exists ? change.before.data() : null;
+ 
+         if (afterData.notifyMode === 'staff') {
+             return null;
+         }
+ 
+         if (beforeData && isUnchanged(beforeData, afterData)) {
+             return null;
+         }
+ 
++        if (!isNotificationSendingEnabled()) {
++            console.debug('[notifications] trigger skipped: notification_disabled');
++            return notificationDisabledResult();
++        }
++
+         const authUid = afterData.authUid || afterData.studentUid || afterData.studentId;
+         const recipients = await getRecipientsForStudent(authUid);
+ 
+         if (!recipients) {
+             await notifyUsers({
+                 userIds: [],
+                 payload: {
+                     type: TYPE,
+                     title: '성적 업데이트',
+                     body: '성적이 업데이트되었습니다.',
+                     ref: `grades/${context.params.id}`,
+                     authUid,
+                 },
+                 fcmData: {
+                     type: TYPE,
+                     refCollection: 'grades',
+                     refId: context.params.id,
+                     authUid,
+                 },
+             });
+             return null;
+         }
+ 
+         const userIds = [recipients.studentUid];
+         const refId = context.params.id;
+diff --git a/functions/src/triggers/homeworkResults.js b/functions/src/triggers/homeworkResults.js
+index bfd3b203fcc00332b2a0a5499b591f34b1f7a302..c2bff75b2c44e111485f7feeafb711825d189097 100644
+--- a/functions/src/triggers/homeworkResults.js
++++ b/functions/src/triggers/homeworkResults.js
+@@ -1,51 +1,57 @@
+ const functions = require('firebase-functions');
+ const { getRecipientsForStudent } = require('../notify/recipients');
+ const { notifyUsers } = require('../notify/notifications');
++const { isNotificationSendingEnabled, notificationDisabledResult } = require('../notify/settings');
+ 
+ const TYPE = 'HOMEWORK_GRADED';
+ 
+ const isUnchanged = (before, after) => JSON.stringify(before) === JSON.stringify(after);
+ 
+ const onHomeworkResultWritten = functions.firestore
+     .document('homeworkResults/{id}')
+     .onWrite(async (change, context) => {
+         if (!change.after.exists) {
+             return null;
+         }
+ 
+         const afterData = change.after.data() || {};
+         const beforeData = change.before.exists ? change.before.data() : null;
+ 
+         if (afterData.notifyMode === 'staff') {
+             return null;
+         }
+ 
+         if (beforeData && isUnchanged(beforeData, afterData)) {
+             return null;
+         }
+ 
++        if (!isNotificationSendingEnabled()) {
++            console.debug('[notifications] trigger skipped: notification_disabled');
++            return notificationDisabledResult();
++        }
++
+         const authUid = afterData.authUid || afterData.studentUid || afterData.studentId;
+         const recipients = await getRecipientsForStudent(authUid);
+ 
+         if (!recipients) {
+             await notifyUsers({
+                 userIds: [],
+                 payload: {
+                     type: TYPE,
+                     title: '과제 채점 완료',
+                     body: '과제가 채점되었습니다.',
+                     ref: `homeworkResults/${context.params.id}`,
+                     authUid,
+                 },
+                 fcmData: {
+                     type: TYPE,
+                     refCollection: 'homeworkResults',
+                     refId: context.params.id,
+                     authUid,
+                 },
+             });
+             return null;
+         }
+ 
+         const userIds = [recipients.studentUid];
+         const refId = context.params.id;
+diff --git a/functions/src/triggers/lessonLogs.js b/functions/src/triggers/lessonLogs.js
+index 066c1694dd60404cb3ea37b8323c4f69e87b7de8..d69a3313fec4bc7343b361c6f6a72ac1ada6d83a 100644
+--- a/functions/src/triggers/lessonLogs.js
++++ b/functions/src/triggers/lessonLogs.js
+@@ -1,51 +1,57 @@
+ const functions = require('firebase-functions');
+ const { getRecipientsForStudent } = require('../notify/recipients');
+ const { notifyUsers } = require('../notify/notifications');
++const { isNotificationSendingEnabled, notificationDisabledResult } = require('../notify/settings');
+ 
+ const TYPE = 'LESSON_UPDATED';
+ 
+ const isUnchanged = (before, after) => JSON.stringify(before) === JSON.stringify(after);
+ 
+ const onLessonLogWritten = functions.firestore
+     .document('lessonLogs/{id}')
+     .onWrite(async (change, context) => {
+         if (!change.after.exists) {
+             return null;
+         }
+ 
+         const afterData = change.after.data() || {};
+         const beforeData = change.before.exists ? change.before.data() : null;
+ 
+         if (afterData.notifyMode === 'staff') {
+             return null;
+         }
+ 
+         if (beforeData && isUnchanged(beforeData, afterData)) {
+             return null;
+         }
+ 
++        if (!isNotificationSendingEnabled()) {
++            console.debug('[notifications] trigger skipped: notification_disabled');
++            return notificationDisabledResult();
++        }
++
+         const authUid = afterData.authUid || afterData.studentUid || afterData.studentId;
+         const recipients = await getRecipientsForStudent(authUid);
+ 
+         if (!recipients) {
+             await notifyUsers({
+                 userIds: [],
+                 payload: {
+                     type: TYPE,
+                     title: '수업 안내',
+                     body: '새 수업 기록이 등록되었습니다.',
+                     ref: `lessonLogs/${context.params.id}`,
+                     authUid,
+                 },
+                 fcmData: {
+                     type: TYPE,
+                     refCollection: 'lessonLogs',
+                     refId: context.params.id,
+                     authUid,
+                 },
+             });
+             return null;
+         }
+ 
+         const userIds = [recipients.studentUid];
+         const refId = context.params.id;
+diff --git a/src/config/features.js b/src/config/features.js
+index 78ccf08ec5a73da450e4792a07286e82f8f92b5b..0f32897b2b3301a1343bba187e22dfaed0b451db 100644
+--- a/src/config/features.js
++++ b/src/config/features.js
+@@ -1,4 +1,5 @@
+ export const FEATURES = {
+   ENABLE_FLOATING_NOTIFICATIONS_FOR_VIEWERS: false, // student/parent
++  ENABLE_NOTIFICATION_SENDING: false,
+   ENABLE_INTERNAL_MESSENGER: true, // staff/admin/teacher internal-only test UI
+ };
+\ No newline at end of file
+diff --git a/src/pages/LessonReportManagement.jsx b/src/pages/LessonReportManagement.jsx
+index 7139010f6c77babc833a616285fbe2b17d4eca8c..9f5b715aad87a3cdf05fc4f8e718708ac066523a 100644
+--- a/src/pages/LessonReportManagement.jsx
++++ b/src/pages/LessonReportManagement.jsx
+@@ -1,43 +1,44 @@
+ import React, { useEffect, useMemo, useState } from 'react';
+ import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+ import { addDoc, collection, doc, serverTimestamp, setDoc } from 'firebase/firestore';
+ import { db } from '../firebase/client';
  import useAuth from '../auth/useAuth';
  import {
-     ROLE,
-     isParentRole,
-     isStudentRole,
-     isAdminRole,
-     isStaffRole,
-     isStaffOrTeachingRole,
-     isViewerGroupRole,
- } from '../constants/roles';
- import { db, functions } from '../firebase/client';
--import { loadStaffDataOnce, loadViewerDataOnce } from '../data/firestoreSync';
-+import { invalidateStaffDataCache, loadStaffDataOnce, loadViewerDataOnce } from '../data/firestoreSync';
- import { createLinkCode, createStaffUser } from '../admin/staffService';
- import { claimStudentLinkCode } from '../parent/linkCodeService';
- import { useParentContext } from '../parent';
- import { logClientError } from '../utils/errorLogger';
- import { addVideoMemo, deleteVideoMemo, updateVideoMemo } from '../domain/memo/videoMemo.service';
- import { getAssignmentQuestionNumbers, normalizeHomeworkResultMapForDisplay } from '../domain/homework/homework.service';
- import { recomputeClassTestStats } from '../domain/grade/classTestStats.service';
- import {
-     addDoc,
-     arrayRemove,
-     arrayUnion,
-     collection,
-     deleteDoc,
-     doc,
-     getDoc,
-     getDocs,
-     limit,
-     orderBy,
-     query,
-     setDoc,
-     serverTimestamp,
-     Timestamp,
-     where,
-     updateDoc,
-     writeBatch,
-@@ -882,107 +882,113 @@ export default function AppRoutes({ user, role, studentIds }) {
-       }
-   };
+   buildLessonReportId,
+   LESSON_REPORT_SEND_STATUS,
+   LESSON_REPORT_STATUS,
+   getGradeForLessonReportStudent,
+   summarizeAssignedHomework,
+   summarizeHomework,
+   summarizeTests,
+ } from '../domain/lessonReport/lessonReport.service';
+ import { getLinkedParentAuthUids } from '../utils/parentLinking';
+ import { filterRosterByWithdrawDate } from '../utils/rosterFilter';
+ import { hasClassOnDate, isClosedForClass } from '../utils/helpers';
+ import { formatClassLabel, sortClassesWithClosedLast } from '../utils/classStatus';
++import { FEATURES } from '../config/features';
  
-   const handleSaveLessonLog = async (data, isEdit) => {
-       ensureFirestoreContext();
-       try {
-           const { file, ...payloadWithoutFile } = stripId(data);
-           if (isEdit) {
-               if (!data.id) throw new Error('수업 일지 ID가 없습니다.');
-               await updateDoc(doc(db, 'lessonLogs', data.id), {
-                   ...payloadWithoutFile,
-                   updatedAt: serverTimestamp(),
-                   updatedBy: userId,
-               });
-               setLessonLogs(prev => prev.map(l => l.id === data.id ? { ...l, ...payloadWithoutFile } : l));
-           } else {
-               const docRef = await addDoc(collection(db, 'lessonLogs'), {
-                   ...payloadWithoutFile,
-                   createdAt: serverTimestamp(),
-                   createdBy: userId,
-                   updatedAt: serverTimestamp(),
-                   updatedBy: userId,
-               });
-               setLessonLogs(prev => [{ id: docRef.id, ...payloadWithoutFile }, ...prev]);
-           }
-+          invalidateStaffDataCache('lessons', ['lessonLogs']);
-+          invalidateStaffDataCache('home', ['lessonLogs']);
-       } catch (error) {
-         await logClientError({
-               scope: 'lessons',
-               action: isEdit ? 'updateLessonLog' : 'createLessonLog',
-               message: error?.message || 'unknown lesson log write error',
-               code: error?.code || '',
-               context: {
-                   classId: data?.classId ? String(data.classId) : '',
-                   date: data?.date ? String(data.date) : '',
-               },
-               userId,
-               userRole: role,
-               route: routePath,
-               app: 'staff',
-           });
-           console.error('[Firestore WRITE ERROR]', error);
-           throw error;
-       }
-   };
+ const pad2 = (value) => String(value).padStart(2, '0');
  
-   const handleDeleteLessonLog = async (id) => {
-       try {
-           ensureFirestoreContext();
-           await deleteDoc(doc(db, 'lessonLogs', id));
-           setLessonLogs(prev => prev.filter(l => l.id !== id));
-+          invalidateStaffDataCache('lessons', ['lessonLogs']);
-+          invalidateStaffDataCache('home', ['lessonLogs']);
-       } catch (error) {
-           console.error('[Firestore WRITE ERROR]', error);
-           alert('수업 일지 삭제에 실패했습니다. 권한 또는 네트워크를 확인하세요.');
-       }
-   };
+ const toYmd = (value) => {
+   if (!value) return '';
+   if (typeof value === 'string') {
+     const match = value.match(/\d{4}-\d{2}-\d{2}/);
+     if (match) return match[0];
+   }
  
-   const handleSaveAttendance = async (records) => {
-       ensureFirestoreContext();
-       try {
-           if (!Array.isArray(records) || records.length === 0) {
-               logNotification('success', '출결 저장', '변경된 출결 기록이 없습니다.');
-               return;
-           }
-           const nextLogs = [...attendanceLogs];
-           for (const record of records) {
-               const docId = record.id || `${record.classId}_${record.studentId}_${record.date}`;
-               const payload = {
-                   ...record,
-                   studentUid: record.studentId,
-                   updatedAt: serverTimestamp(),
-                   updatedBy: userId,
-               };
-               await setDoc(doc(db, 'attendanceLogs', docId), payload, { merge: true });
-               const existingIndex = nextLogs.findIndex((log) => log.id === docId);
-               const nextRecord = { ...record, id: docId, studentUid: record.studentId };
-               if (existingIndex >= 0) {
-                   nextLogs[existingIndex] = nextRecord;
-               } else {
-                   nextLogs.push(nextRecord);
-               }
-           }
-           setAttendanceLogs(nextLogs);
-+          invalidateStaffDataCache('attendance', ['attendanceLogs']);
-+          invalidateStaffDataCache('home', ['attendanceLogs']);
-           logNotification('success', '출결 저장', '출결 기록이 저장되었습니다.');
-       } catch (error) {
-         await logClientError({
-               scope: 'attendance',
-               action: 'saveAttendance',
-               message: error?.message || 'unknown attendance write error',
-               code: error?.code || '',
-               context: {
-                   recordCount: Array.isArray(records) ? records.length : 0,
-                   classId: Array.isArray(records) && records[0]?.classId ? String(records[0].classId) : '',
-                   date: Array.isArray(records) && records[0]?.date ? String(records[0].date) : '',
-               },
-               userId,
-               userRole: role,
-               route: routePath,
-               app: 'staff',
-           });
-           console.error('[Firestore WRITE ERROR]', error);
-           alert('출결 저장에 실패했습니다. 권한 또는 네트워크를 확인하세요.');
-       }
-   };
- 
-   const handleSaveHomeworkAssignment = async (data, isEdit) => {
-       ensureFirestoreContext();
-       try {
-@@ -1111,50 +1117,51 @@ export default function AppRoutes({ user, role, studentIds }) {
-                       });
-                   }
-               } catch (writeError) {
-                   if (writeError?.code === 'not-found') {
-                       await setDoc(docRef, {
-                           ...payload,
-                           createdAt: serverTimestamp(),
-                           createdBy: userId,
-                       });
-                   } else {
-                       throw writeError;
-                   }
-               }
- 
-               if (!nextResults[studentId]) nextResults[studentId] = {};
-               nextResults[studentId][assignmentId] = {
-                   ...(existing && typeof existing === 'object' ? existing : {}),
-                   results: cleanedResults,
-                   lastCheckedDate: checkedDate,
-                   checkHistory: nextHistory,
-                   updatedAt: new Date().toISOString(),
-               };
-           }
- 
-           setHomeworkResults(nextResults);
-+          invalidateStaffDataCache('homework', ['homeworkResults']);
-       } catch (error) {
-         await logClientError({
-               scope: 'homework',
-               action: 'updateHomeworkResult',
-               message: error?.message || 'unknown homework result write error',
-               code: error?.code || '',
-               context: {
-                   updateCount: Array.isArray(updates) ? updates.length : 0,
-                   checkedDate: checkedDateInput || '',
-               },
-               userId,
-               userRole: role,
-               route: routePath,
-               app: 'staff',
-           });
-           console.error('[Firestore WRITE ERROR]', error);
-           alert('과제 채점 결과 저장에 실패했습니다. 권한 또는 네트워크를 확인하세요.');
-       }
-   };
- 
-   const handleSaveTest = async (data, isEdit) => {
-       ensureFirestoreContext();
-       try {
-           const payload = stripId(data);
-           if (isEdit) {
-@@ -1255,50 +1262,51 @@ export default function AppRoutes({ user, role, studentIds }) {
-                   score = computedScore;
-                   totalScore = computedScore;
-                   attempted = true;
-                   correctCount = result;
-               }
-           }
- 
-           const payload = {
-               authUid: studentId,
-               testId,
-               score,
-               totalScore,
-               attempted,
-               correctCount: isAbsent ? null : correctCount,
-               comment: comment || '',
-               updatedAt: serverTimestamp(),
-               updatedBy: userId,
-           };
-           const test = await findTestById();
-           const classId = test?.classId || '';
-           await setDoc(doc(db, 'grades', docId), { ...payload, ...(classId ? { classId } : {}) }, { merge: true });
-           setGrades(prev => ({
-               ...prev,
-               [studentId]: { ...prev[studentId], [testId]: payload },
-           }));
-+          invalidateStaffDataCache('grades', ['grades']);
-           try {
-               await recomputeClassTestStats(db, testId, classId);
-           } catch (statsError) {
-               console.warn('[classTestStats] recompute failed after grade save', { testId, classId, statsError });
-           }
-       } catch (error) {
-         await logClientError({
-               scope: 'grades',
-               action: 'updateGrade',
-               message: error?.message || 'unknown grade write error',
-               code: error?.code || '',
-               context: {
-                   studentId: String(studentId || ''),
-                   testId: String(testId || ''),
-               },
-               userId,
-               userRole: role,
-               route: routePath,
-               app: 'staff',
-           });
-           console.error('[Firestore WRITE ERROR]', error);
-           alert('성적 저장에 실패했습니다. 권한 또는 네트워크를 확인하세요.');
-       }
-   };
- 
-@@ -1388,50 +1396,51 @@ export default function AppRoutes({ user, role, studentIds }) {
-               const targetCollections = source === 'clinicReservations'
-                   ? ['clinicReservations', 'clinicLogs']
-                   : ['clinicLogs', 'clinicReservations'];
- 
-               let didUpdate = false;
-               for (const colName of targetCollections) {
-                   const targetRef = doc(db, colName, data.id);
-                   const targetSnap = await getDoc(targetRef);
-                   if (!targetSnap.exists()) continue;
- 
-                   await updateDoc(targetRef, {
-                       ...payload,
-                       updatedAt: serverTimestamp(),
-                       updatedBy: userId,
-                   });
-                   didUpdate = true;
-                   break;
-               }
- 
-               if (!didUpdate) {
-                   throw new Error('수정할 클리닉 문서를 찾을 수 없습니다.');
-               }
- 
-               const normalized = normalizeClinicLog({ id: data.id, ...payload, __source: source });
-               setClinicLogs(prev => prev.map(l => l.id === data.id ? { ...l, ...normalized } : l));
-+              invalidateStaffDataCache('clinic', ['clinicLogs']);
-           } else {
-               const hasReservationSameDate = clinicLogs.some((r) => {
-                   const status = String(r?.status || '').toLowerCase();
-                   return String(r?.studentDocId || r?.studentId) === String(payload?.studentDocId || payload?.studentId)
-                       && String(r?.date) === String(payload?.date)
-                       && ['reserved', 'booked', 'pending'].includes(status);
-               });
- 
-               const isUnreservedEntry = !payload?.plannedTime && ['attended', 'no-show'].includes(String(payload?.status || ''));
-               if (isUnreservedEntry && hasReservationSameDate) {
-                   alert('이미 해당 날짜에 예약이 있어 “미예약학생”으로 입력할 수 없습니다. 예약 취소 후 진행해주세요.');
-                   return;
-               }
- 
-               const normalizedPlanned = resolveTimeSlotForClinicPayload(payload);
-               const isReservationCreate =
-                 Boolean(normalizedPlanned) && String(payload?.status || 'pending') === 'pending';
- 
-               if (isReservationCreate) {
-                   try {
-                       const normalizedClassId = resolveClassIdForClinicPayload(payload, classes)
-                         || resolveClassIdForStudentFlexible(payload?.studentDocId || payload?.studentId || payload?.studentUid || payload?.authUid || '');
-                       const normalizedStudentDocId = String(
-                         payload?.studentDocId || payload?.studentId || payload?.studentUid || payload?.authUid || '',
-                       ).trim();
-@@ -1453,50 +1462,51 @@ export default function AppRoutes({ user, role, studentIds }) {
-                       const createReservation = httpsCallable(functions, 'createClinicReservation');
-                       const res = await createReservation({
-                           ...payload,
-                           studentDocId: normalizedStudentDocId,
-                           studentId: normalizedStudentDocId,
-                           classId: normalizedClassId,
-                           date: normalizedDate,
-                           timeSlot: normalizedTimeSlot,
-                           plannedTime: normalizedTimeSlot,
-                           authUid: normalizedAuthUid || null,
-                       });
- 
-                       const reservationId = res?.data?.id || `local-${Date.now()}`;
-                       const normalized = normalizeClinicLog({
-                           id: reservationId,
-                           ...payload,
-                           studentId: normalizedStudentDocId,
-                           studentDocId: normalizedStudentDocId,
-                           classId: normalizedClassId,
-                           date: normalizedDate,
-                           plannedTime: normalizedTimeSlot,
-                           authUid: normalizedAuthUid || null,
-                           status: 'pending',
-                       });
-                       setClinicLogs((prev) => [...prev, normalized]);
-+                      invalidateStaffDataCache('clinic', ['clinicLogs']);
-                       return;
-                   } catch (error) {
-                     await logClientError({
-                           scope: 'clinic',
-                           action: 'createClinicReservation',
-                           message: error?.message || 'unknown clinic reservation error',
-                           code: error?.code || '',
-                           context: {
-                               studentId: payload?.studentDocId || payload?.studentId || '',
-                               classId: payload?.classId || payload?.classDocId || '',
-                               date: payload?.date || '',
-                               plannedTime: payload?.plannedTime || payload?.timeSlot || '',
-                           },
-                           userId,
-                           userRole: role,
-                           route: routePath,
-                           app: 'staff',
-                       });
-                       console.error('[clinic] createClinicReservation FAIL', error);
- 
-                       const code = error?.code || '';
-                       const msg = error?.message || '';
-                       const details = error?.details ? JSON.stringify(error.details) : '';
- 
-                       alert(
-@@ -1504,50 +1514,51 @@ export default function AppRoutes({ user, role, studentIds }) {
-                         + (code ? `code: ${code}\n` : '')
-                         + (msg ? `message: ${msg}\n` : '')
-                         + (details ? `details: ${details}\n` : '')
-                       );
- 
-                       return;
-                   }
-               } else {
-                 const normalizedAuthUid = resolveStudentAuthUidForClinicPayload(payload);
-                   const docRef = await addDoc(collection(db, 'clinicLogs'), {
-                       ...payload,
-                       authUid: normalizedAuthUid || null,
-                       studentId: payload?.studentDocId || payload?.studentId || payload?.studentUid || '',
-                       createdAt: serverTimestamp(),
-                       createdBy: userId,
-                       updatedAt: serverTimestamp(),
-                       updatedBy: userId,
-                   });
-                   const normalized = normalizeClinicLog({
-                       id: docRef.id,
-                       ...payload,
-                       authUid: normalizedAuthUid || null,
-                       studentId: payload?.studentDocId || payload?.studentId || payload?.studentUid || '',
-                   });
-                   setClinicLogs(prev => [...prev, normalized]);
-+                  invalidateStaffDataCache('clinic', ['clinicLogs']);
-               }
-           }
-       } catch (error) {
-         if (error?.code === 'already-exists' || error?.message?.includes('already-exists')) {
-             alert('이미 해당 날짜에 예약이 있습니다. 시간 변경은 기존 예약을 취소 후 진행하세요.');
-             return;
-         }
-         await logClientError({
-               scope: 'clinic',
-               action: isEdit ? 'updateClinicLog' : 'createClinicLog',
-               message: error?.message || 'unknown clinic write error',
-               code: error?.code || '',
-               context: {
-                   studentId: data?.studentDocId || data?.studentId || '',
-                   classId: data?.classId || data?.classDocId || '',
-                   date: data?.date || data?.clinicDate || '',
-                   plannedTime: data?.plannedTime || data?.timeSlot || '',
-               },
-               userId,
-               userRole: role,
-               route: routePath,
-               app: 'staff',
-           });
-           console.error('[Firestore WRITE ERROR]', error);
-           alert('클리닉 기록 저장에 실패했습니다. 권한 또는 네트워크를 확인하세요.');
-@@ -1558,50 +1569,51 @@ export default function AppRoutes({ user, role, studentIds }) {
-       try {
-         const current = clinicLogs.find((item) => item?.id === id);
-           const source = current?.__source || 'clinicLogs';
-           const targetCollections = source === 'clinicReservations'
-               ? ['clinicReservations', 'clinicLogs']
-               : ['clinicLogs', 'clinicReservations'];
- 
-           let didDelete = false;
-           for (const colName of targetCollections) {
-               const targetRef = doc(db, colName, id);
-               const targetSnap = await getDoc(targetRef);
-               if (!targetSnap.exists()) continue;
-               await deleteDoc(targetRef);
-               didDelete = true;
-               break;
-           }
- 
-           if (!didDelete) {
-               await Promise.allSettled([
-                   deleteDoc(doc(db, 'clinicLogs', id)),
-                   deleteDoc(doc(db, 'clinicReservations', id)),
-               ]);
-           }
- 
-           setClinicLogs(prev => prev.filter(l => l.id !== id));
-+          invalidateStaffDataCache('clinic', ['clinicLogs']);
-       } catch (error) {
-           console.error('[Firestore WRITE ERROR]', error);
-           alert('클리닉 기록 삭제에 실패했습니다. 권한 또는 네트워크를 확인하세요.');
-       }
-   };
- 
-   const normalizeAnnouncementPayload = (data) => {
-       const base = stripId(data);
-       const targetClassesFromPayload = Array.isArray(base.targetClasses)
-           ? base.targetClasses
-           : Array.isArray(base.targetClassIds)
-               ? base.targetClassIds
-               : [];
-       const targetClasses = Array.from(new Set(targetClassesFromPayload.map((id) => String(id))));
-       const targetStudents = Array.isArray(base.targetStudents)
-           ? Array.from(new Set(base.targetStudents.map((id) => String(id))))
-           : [];
-       const targetAuthUids = Array.isArray(base.targetAuthUids)
-           ? Array.from(new Set(base.targetAuthUids.map((id) => String(id))))
-           : [];
-         const audienceAuthUids = Array.isArray(base.audienceAuthUids)
-           ? Array.from(new Set(base.audienceAuthUids.map((id) => String(id)).filter(Boolean)))
-           : [];
-       const isPublic = targetClasses.length === 0;
- 
-diff --git a/src/data/firestoreSync.js b/src/data/firestoreSync.js
-index 88f939b0b306c142c4e4334acb8011a9bb5d49f2..df39cd18ec6786b78584f40cc3050426ec94f9c4 100644
---- a/src/data/firestoreSync.js
-+++ b/src/data/firestoreSync.js
-@@ -118,57 +118,83 @@ const fetchClassScopedDocs = async ({
+   const dateValue = typeof value?.toDate === 'function' ? value.toDate() : value;
+   const parsed = new Date(dateValue);
+   if (Number.isNaN(parsed.getTime())) return '';
+   return `${parsed.getFullYear()}-${pad2(parsed.getMonth() + 1)}-${pad2(parsed.getDate())}`;
  };
  
+ const todayYmd = () => toYmd(new Date());
+ const resolveClassId = (item) => String(item?.classId || item?.classDocId || item?.class?.id || '');
+ const resolveLessonLogDate = (item) => toYmd(item?.date || item?.lessonDate || item?.dateKey || item?.createdAt || item?.updatedAt);
+ const resolveAttendanceDate = (item) => toYmd(item?.date || item?.lessonDate || item?.dateKey || item?.createdAt || item?.updatedAt);
+ const resolveHomeworkDate = (item) => toYmd(item?.date || item?.assignedDate || item?.lessonDate || item?.createdAt || item?.updatedAt);
+ const resolveTestDate = (item) => toYmd(item?.date || item?.testDate || item?.lessonDate || item?.createdAt || item?.updatedAt);
+ const resolveLessonLogProgress = (log) => String(log?.progress || log?.learnedTopics || log?.lessonSummary || log?.topic || '');
  
+ const statusLabel = (status, sendStatus, scheduledSendAt) => {
+@@ -540,50 +541,55 @@ export default function LessonReportManagement({
+       homeworkSummary,
+       assignedHomeworkSummary,
+       testSummary,
+       status: isSendNow ? LESSON_REPORT_STATUS.SENT : (previous?.status || LESSON_REPORT_STATUS.DRAFT),
+       sendStatus: isSendNow
+         ? LESSON_REPORT_SEND_STATUS.SENT
+         : (isScheduled ? LESSON_REPORT_SEND_STATUS.SCHEDULED : LESSON_REPORT_SEND_STATUS.DRAFT),
+       sendMode: isScheduled ? 'scheduled' : 'now',
+       scheduledSendAt: isScheduled ? new Date(scheduledSendAt) : null,
+       scheduledBy: isScheduled ? (profileDocId || 'staff') : null,
+       updatedAt: now,
+       updatedBy: profileDocId || 'staff',
+       createdAt: previous?.createdAt || now,
+       createdBy: previous?.createdBy || profileDocId || 'staff',
+       sentAt: previous?.sentAt || (isFirstSend ? now : null),
+       sentBy: previous?.sentBy || (isFirstSend ? (profileDocId || 'staff') : null),
+       lastEditedAfterSentAt: previous?.status === LESSON_REPORT_STATUS.SENT ? now : null,
+     };
  
- export const safeIn = (arr, max = 10) => safeNonEmptyArray(arr).slice(0, max);
+     delete payload.autoFilledLearnedTopics;
+     delete payload.isLearnedTopicsManuallyEdited;
+     return { payload, student, isFirstSend };
+   };
  
- export function buildInQueryOrNull(values, max = 10) {
-     const v = safeIn(values, max);
-     return v.length > 0 ? v : null;
- }
- 
- const fetchListSafe = async (q, isCancelled = () => false, mapper = null) => {
-     if (!q) return [];
-     const snap = await getDocs(q);
-     if (isCancelled()) return [];
-     const baseItems = snap.docs.map((d) => normalizeAuthUid({ id: d.id, ...d.data() }));
-     return mapper ? baseItems.map(mapper) : baseItems;
- };
- 
- 
- // 직원 화면 Firestore read 1차 절감 메모
- // - 기존 loadStaffDataOnce는 직원 pageKey 변경마다 users/classes/closures 및 일부 대용량 컬렉션을 반복 조회했다.
- // - 아래 메모리 캐시는 같은 브라우저 세션/같은 pageKey에서 이미 읽은 slice를 재사용해 탭 왕복 read를 줄인다.
- // - 대용량 attendanceLogs/grades/homeworkResults/clinicLogs는 pageKey 조건을 좁혀 전체 컬렉션성 로딩을 최소화한다.
- const staffDataCache = new Map();
--const STAFF_GLOBAL_CACHE_SLICES = new Set(['students', 'parents', 'classes']);
--const getStaffCacheKey = (pageKey, slice) => `${STAFF_GLOBAL_CACHE_SLICES.has(slice) ? 'global' : (pageKey || 'all')}:${slice}`;
--const readStaffCache = (pageKey, slice) => staffDataCache.get(getStaffCacheKey(pageKey, slice));
--const writeStaffCache = (pageKey, slice, value) => {
--    staffDataCache.set(getStaffCacheKey(pageKey, slice), value);
-+const STAFF_GLOBAL_CACHE_SLICES = new Set(['classes']);
-+const STAFF_DEFAULT_CACHE_TTL_MS = 60 * 1000;
-+const STAFF_SENSITIVE_CACHE_TTL_MS = 30 * 1000;
-+const STAFF_SENSITIVE_PAGES = new Set(['attendance', 'payment']);
-+const getStaffCacheTtl = (pageKey) => STAFF_SENSITIVE_PAGES.has(pageKey) ? STAFF_SENSITIVE_CACHE_TTL_MS : STAFF_DEFAULT_CACHE_TTL_MS;
-+const getStaffCacheKey = (pageKey, slice, queryKey = '') => `${STAFF_GLOBAL_CACHE_SLICES.has(slice) ? 'global' : (pageKey || 'all')}:${slice}:${queryKey || 'default'}`;
-+const readStaffCache = (pageKey, slice, queryKey = '') => {
-+    const key = getStaffCacheKey(pageKey, slice, queryKey);
-+    const cached = staffDataCache.get(key);
-+    if (!cached) return undefined;
-+    if (Date.now() - cached.cachedAt > cached.ttl) {
-+        staffDataCache.delete(key);
-+        return undefined;
+   const notifyForFirstSend = async ({ reportDraft, student }) => {
++    if (!FEATURES.ENABLE_NOTIFICATION_SENDING) {
++      console.debug('[notifications] lesson report skipped: notification_disabled');
++      return { success: true, sent: false, skipped: true, reason: 'notification_disabled' };
 +    }
-+    return cached.value;
-+};
-+const writeStaffCache = (pageKey, slice, value, queryKey = '', ttl = getStaffCacheTtl(pageKey)) => {
-+    staffDataCache.set(getStaffCacheKey(pageKey, slice, queryKey), { value, cachedAt: Date.now(), ttl });
-     return value;
- };
-+export const invalidateStaffDataCache = (pageKey = null, slices = []) => {
-+    const targetSlices = Array.isArray(slices) ? slices.filter(Boolean) : [slices].filter(Boolean);
-+    for (const key of Array.from(staffDataCache.keys())) {
-+        const [cachedPage, slice] = key.split(':');
-+        const pageMatches = !pageKey || cachedPage === pageKey || cachedPage === 'global';
-+        const sliceMatches = targetSlices.length === 0 || targetSlices.includes(slice);
-+        if (pageMatches && sliceMatches) staffDataCache.delete(key);
-+    }
-+};
-+const staffDataDebug = (message, payload = {}) => {
-+    if (isDevelopment()) console.log(`[staffData] ${message}`, payload);
-+};
-+const getTodayDateString = () => new Date().toISOString().slice(0, 10);
- 
- const viewerDetailCache = {
-     lessonLogs: new Map(),
-     attendance: new Map(),
-     homeworkResults: new Map(),
-     grades: new Map(),
- };
- 
- const viewerDetailCacheKey = (classIds = [], studentId = '') => {
-     const classKey = safeNonEmptyArray(classIds).sort().join(',');
-     return `${classKey}|${String(studentId || '')}`;
- };
- 
- const normalizeAuthUid = (item) => {
-     if (item?.studentId) return item;
-     if (item?.studentDocId) return { ...item, studentId: item.studentDocId };
-     if (item?.authUid) return { ...item, studentId: item.authUid };
-     if (item?.studentUid) return { ...item, studentId: item.studentUid };
-     return item;
- };
- 
- const formatPaymentDate = (value) => {
-     if (!value) return '';
-     if (typeof value === 'string') return value;
-     if (typeof value?.toDate === 'function') {
-@@ -275,73 +301,50 @@ const normalizePaymentLog = (log) => {
-     const amount = Number.isFinite(base.amount) ? base.amount : itemAmount;
-     const date = base.date || formatPaymentDate(base.createdAt);
-     return {
-         ...base,
-         amount,
-         date,
-         status: base.status || 'paid',
-         studentName: base.studentName || base.payerName,
-         bookName: base.bookName || base.bookTitle || firstItem?.title || firstItem?.name,
-     };
- };
- 
- const fetchList = async (db, colName, setter, q, isCancelled, mapper = null) => {
-     if (q === null) {
-         if (!isCancelled()) setter([]);
-         return [];
-     }
-     const snap = await getDocs(q || collection(db, colName));
-     const baseItems = snap.docs.map((d) => normalizeAuthUid({ id: d.id, ...d.data() }));
-     const items = mapper ? baseItems.map(mapper) : baseItems;
-     if (isCancelled()) return [];
-     setter(items);
-     return items;
- };
- 
--const fetchAttendanceLogsWithPagination = async (db, isCancelled, pageSize = 1000) => {
--    const items = [];
--    let lastDoc = null;
--
--    while (true) {
--        if (isCancelled()) return items;
--        const constraints = [
--            orderBy('date', 'desc'),
--            limit(pageSize),
--        ];
--        if (lastDoc) {
--            constraints.push(startAfter(lastDoc));
--        }
--        const snap = await getDocs(query(collection(db, 'attendanceLogs'), ...constraints));
--        if (snap.empty) break;
--        items.push(...snap.docs.map((d) => normalizeAuthUid({ id: d.id, ...d.data() })));
--        lastDoc = snap.docs[snap.docs.length - 1];
--        if (snap.size < pageSize) break;
--    }
--
--    return items;
--};
--
- const fetchClinicLogsLight = async (db, isCancelled, lightLimit = 300) => {
-     const snap = await getDocs(
-         query(
-             collection(db, 'clinicLogs'),
-             orderBy('date', 'desc'),
-             limit(lightLimit),
-         ),
-     );
-     if (isCancelled()) return [];
-     return snap.docs.map((d) => normalizeClinicLog({ id: d.id, ...d.data() }));
- };
- 
- const fetchClinicReservationsLight = async (db, isCancelled, lightLimit = 500) => {
-     const snap = await getDocs(
-         query(
-             collection(db, 'clinicReservations'),
-             orderBy('date', 'desc'),
-             limit(lightLimit),
-         ),
-     );
-     if (isCancelled()) return [];
-     return snap.docs.map((d) => normalizeClinicReservation({ id: d.id, ...d.data() }));
- };
- 
- const fetchClinicForViewer = async ({
-@@ -659,80 +662,50 @@ export async function fetchClinicLogsDeepForStaff({
-         ]);
-         if (isCancelled?.()) return [];
-         pushClinicLogSnap(logsSnap);
-         pushReservationSnap(reservationsSnap);
-         return mergeClinicDocs(clinicLogs, reservations);
-     }
- 
- 
-     const clauses = [
-         orderBy('date', 'desc'),
-         limit(safeMaxDocs),
-     ];
- 
-     const [logsSnap, reservationsSnap] = await Promise.all([
-         getDocs(query(logsCol, ...clauses)),
-         getDocs(query(reservationsCol, ...clauses)),
-     ]);
-     if (isCancelled?.()) return [];
-     pushClinicLogSnap(logsSnap);
-     pushReservationSnap(reservationsSnap);
- 
-     return mergeClinicDocs(clinicLogs, reservations);
- }
- 
- // staff 전용: grades 전체 페이지네이션 로드
--const fetchGradesWithPagination = async (db, maxDocs = 5000, pageSize = 500) => {
--    const all = [];
--    let last = null;
--
--    while (all.length < maxDocs) {
--        const q = last
--            ? query(
--                collection(db, 'grades'),
--                orderBy(documentId()),
--                startAfter(last),
--                limit(pageSize),
--            )
--            : query(
--                collection(db, 'grades'),
--                orderBy(documentId()),
--                limit(pageSize),
--            );
--
--        const snap = await getDocs(q);
--        if (snap.empty) break;
--
--        all.push(...snap.docs.map((d) => ({ id: d.id, ...d.data() })));
--        last = snap.docs[snap.docs.length - 1];
--
--        if (snap.size < pageSize) break;
--    }
--
--    return all;
--};
--
- const warnOnQuestionScores = (tests = [], context = 'viewer') => {
-     tests.forEach((test) => {
-         const totalQuestions = Number(test?.totalQuestions) || 0;
-         const hasScores = Array.isArray(test?.questionScores);
-         if (!hasScores || test.questionScores.length < totalQuestions) {
-             console.warn(`[${context}] test missing questionScores`, test?.id);
-         }
-     });
- };
- 
- const normalizeStudentUser = (user) => {
-     if (!user || !isStudentRole(user.role)) return user;
-     return {
-         ...user,
-         classes: Array.isArray(user.classIds) ? user.classIds : (user.classes || []),
-     };
- };
- 
- const dedupeStudentsByAuthUid = (students = []) => {
-     const map = new Map();
-     students.forEach((student) => {
-         if (!student) return;
-         const key = student.authUid || student.id;
-         const existing = key ? map.get(key) : null;
-         if (!existing) {
-@@ -754,93 +727,63 @@ export const loadStaffDataOnce = async ({
-     userRole,
-     pageKey = null,
-     setStudents,
-     setParents,
-     setClasses,
-     setTests,
-     setLessonLogs,
-     setAttendanceLogs,
-     setClinicLogs,
-     setWorkLogs,
-     setAnnouncements,
-     setHomeworkAssignments,
-     setPaymentLogs,
-     setGrades,
-     setHomeworkResults,
-     setExternalSchedules,
-     setClosures,
-     setLessonReports,
- }) => {
-     if (!isLoggedIn || !db) return;
-     if (!userRole) return;
-     if (!isStaffOrTeachingRole(userRole)) return;
- 
-     const shouldLoad = (key) => !pageKey || pageKey === key;
-     const applyStudents = (items) => setStudents?.(dedupeStudentsByAuthUid(items));
--    const loadCachedSlice = async (slice, setter, loader) => {
--        const cached = readStaffCache(pageKey, slice);
-+    const loadCachedSlice = async (slice, setter, loader, queryKey = '') => {
-+        const cached = readStaffCache(pageKey, slice, queryKey);
-         if (cached !== undefined) {
-             setter?.(cached);
--            if (isDevelopment()) console.log('[staff][cache] hit', { pageKey, slice, count: Array.isArray(cached) ? cached.length : Object.keys(cached || {}).length });
-+            staffDataDebug(`cache hit pageKey=${pageKey}`, { slice, queryKey, count: Array.isArray(cached) ? cached.length : Object.keys(cached || {}).length });
-             return cached;
-         }
-         const loaded = await loader();
--        writeStaffCache(pageKey, slice, loaded);
-+        writeStaffCache(pageKey, slice, loaded, queryKey);
-         setter?.(loaded);
-         return loaded;
-     };
- 
--    const fetchHomeworkResultsWithPagination = async (db, maxDocs = 5000, pageSize = 500) => {
--        const all = [];
--        let last = null;
--
--        while (all.length < maxDocs) {
--            const q = last
--                ? query(
--                    collection(db, 'homeworkResults'),
--                    orderBy(documentId()),
--                    startAfter(last),
--                    limit(pageSize),
--                )
--                : query(
--                    collection(db, 'homeworkResults'),
--                    orderBy(documentId()),
--                    limit(pageSize),
--                );
--
--            const snap = await getDocs(q);
--            if (snap.empty) break;
--
--            all.push(...snap.docs.map((d) => ({ id: d.id, ...d.data() })));
--            last = snap.docs[snap.docs.length - 1];
--
--            if (snap.size < pageSize) break;
--        }
--
--        return all;
--    };
--
-     let staffClasses = [];
-     let staffStudents = [];
- 
-     const fetchClosuresForStaff = async (classes = []) => {
-         const merged = new Map();
- 
-         try {
-             const globalSnap = await getDocs(
-                 query(
-                     collection(db, 'closures'),
-                     where('scope', '==', 'global'),
-                     orderBy('startDate', 'desc'),
-                     limit(500),
-                 ),
-             );
-             globalSnap.docs.forEach((d) => merged.set(d.id, { id: d.id, ...d.data() }));
-         } catch (e) {
-             console.warn('[staff] closures global load failed', e);
-         }
- 
-         const classIds = Array.isArray(classes)
-             ? classes.map((c) => String(c?.id)).filter(Boolean)
-             : [];
- 
-         if (classIds.length > 0) {
-@@ -859,221 +802,237 @@ export const loadStaffDataOnce = async ({
-                     snap.docs.forEach((d) => merged.set(d.id, { id: d.id, ...d.data() }));
-                 } catch (e) {
-                     try {
-                         const snap2 = await getDocs(
-                             query(
-                                 collection(db, 'closures'),
-                                 where('scope', '==', 'class'),
-                                 where('classId', 'in', ch),
-                                 limit(500),
-                             ),
-                         );
-                         snap2.docs.forEach((d) => merged.set(d.id, { id: d.id, ...d.data() }));
-                     } catch (e2) {
-                         console.warn('[staff] closures class load failed', e2);
-                     }
-                 }
-             }
-         }
- 
-         return Array.from(merged.values()).sort((a, b) =>
-             String(b?.startDate || '').localeCompare(String(a?.startDate || '')),
-         );
-     };
- 
-     try {
--        if (setStudents) {
-+        const today = getTodayDateString();
-+        const pageNeedsStudents = ['home', 'lessons', 'lessonReports', 'grades', 'homework', 'clinic', 'payment', 'students'].includes(pageKey) || !pageKey;
-+        const pageNeedsClasses = ['home', 'lessons', 'lessonReports', 'grades', 'homework', 'clinic', 'attendance', 'closures'].includes(pageKey) || !pageKey;
-+        const loadingCollections = [];
 +
-+        if (setStudents && pageNeedsStudents) {
-+            loadingCollections.push(pageKey === 'home' ? 'students(limit)' : 'students(limit)');
-             staffStudents = await loadCachedSlice('students', applyStudents, () => fetchList(
-                 db,
-                 'users',
-                 () => {},
--                query(collection(db, 'users'), where('role', '==', ROLE.STUDENT), limit(500)),
-+                query(collection(db, 'users'), where('role', '==', ROLE.STUDENT), limit(pageKey === 'home' ? 300 : 800)),
-                 () => false,
-                 normalizeStudentUser,
--            ));
-+            ), pageKey === 'home' ? 'limit300' : 'limit800');
-         }
+     const parentAuthUids = await getLinkedParentAuthUids(reportDraft.studentId, student?.parentAuthUids || []);
+     const targetAuthUids = [student?.authUid, ...parentAuthUids].filter(Boolean);
+     await Promise.all(targetAuthUids.map((uid) => addDoc(collection(db, 'notifications', uid, 'items'), {
+       type: 'lesson_report',
+       category: 'lessonReport',
+       refCollection: 'lessonReports',
+       refId: reportDraft.id,
+       ref: `lessonReports/${reportDraft.id}`,
+       title: '새 수업 리포트가 도착했습니다.',
+       body: `${student?.name || '학생'} 학생의 수업 리포트가 도착했습니다.`,
+       isRead: false,
+       createdAt: serverTimestamp(),
+       payload: {
+         reportId: reportDraft.id,
+         studentId: reportDraft.studentId,
+         classId: reportDraft.classId,
+         lessonDate: reportDraft.lessonDate,
+         type: 'lesson_report',
+         refCollection: 'lessonReports',
+       },
+     })));
  
--        if (setParents) {
-+        if (setParents && pageKey === 'students') {
-+            loadingCollections.push('parents(limit)');
-             const parentRoles = [ROLE.PARENT, '학부모'];
--            try {
--                await fetchList(
--                    db,
--                    'users',
--                    setParents,
--                    query(collection(db, 'users'), where('role', 'in', parentRoles), limit(500)),
--                    () => false,
--                );
--            } catch (error) {
--                console.warn('[staff] parent role in query failed, fallback to client filter', error);
--                const users = await fetchList(
--                    db,
--                    'users',
--                    () => {},
--                    query(collection(db, 'users'), limit(500)),
--                    () => false,
--                );
--                const roleSet = new Set(parentRoles);
--                setParents(users.filter((user) => roleSet.has(user?.role)));
--            }
-+            await loadCachedSlice('parents', setParents, async () => {
-+                try {
-+                    return await fetchList(
-+                        db,
-+                        'users',
-+                        () => {},
-+                        query(collection(db, 'users'), where('role', 'in', parentRoles), limit(500)),
-+                        () => false,
-+                    );
-+                } catch (error) {
-+                    console.warn('[staff] parent role in query failed, fallback to client filter', error);
-+                    const users = await fetchList(
-+                        db,
-+                        'users',
-+                        () => {},
-+                        query(collection(db, 'users'), limit(500)),
-+                        () => false,
-+                    );
-+                    const roleSet = new Set(parentRoles);
-+                    return users.filter((user) => roleSet.has(user?.role));
-+                }
-+            }, 'limit500');
-         }
+     await setDoc(
+       doc(db, 'lessonReports', reportDraft.id),
+       {
+diff --git a/src/pages/admin/AdminNotificationsPage.jsx b/src/pages/admin/AdminNotificationsPage.jsx
+index 6052b6fdc037e5e1c061965489c41fa4dabbdeb5..e74bc7d73c33e0a03c919c0d86455bfdf390a3b3 100644
+--- a/src/pages/admin/AdminNotificationsPage.jsx
++++ b/src/pages/admin/AdminNotificationsPage.jsx
+@@ -1,132 +1,145 @@
+ import React, { useEffect, useState } from 'react';
+ import { collection, getDocs, limit, orderBy, query } from 'firebase/firestore';
+ import { db } from '../../firebase/client';
  
--        if (setClasses) {
-+        if (setClasses && pageNeedsClasses) {
-+            loadingCollections.push('classes');
-             staffClasses = await loadCachedSlice('classes', setClasses, () => fetchList(
-                 db,
-                 'classes',
-                 () => {},
-                 query(collection(db, 'classes'), orderBy('name')),
-                 () => false,
-             ));
-         }
- 
--        if (setTests && (shouldLoad('grades') || shouldLoad('lessons') || shouldLoad('lessonReports'))) {
--            const tests = await fetchList(db, 'tests', setTests, query(collection(db, 'tests'), orderBy('date', 'desc'), limit(200)), () => false);
-+        if (setTests && shouldLoad('grades')) {
-+            loadingCollections.push('tests(limit200)');
-+            const tests = await loadCachedSlice('tests', setTests, () => fetchList(db, 'tests', () => {}, query(collection(db, 'tests'), orderBy('date', 'desc'), limit(200)), () => false), 'recent200');
-             warnOnQuestionScores(tests, 'staff');
-         }
- 
--        if (setLessonLogs && (shouldLoad('lessons') || shouldLoad('lessonReports'))) {
--            await fetchList(db, 'lessonLogs', setLessonLogs, query(collection(db, 'lessonLogs'), orderBy('date', 'desc'), limit(150)), () => false);
--        }
--        if (setLessonReports && (shouldLoad('lessons') || shouldLoad('students') || shouldLoad('lessonReports'))) {
--            await fetchList(db, 'lessonReports', setLessonReports, query(collection(db, 'lessonReports'), orderBy('lessonDate', 'desc'), limit(300)), () => false);
-+        if (setLessonLogs && shouldLoad('home')) {
-+            loadingCollections.push('lessonLogs(today)');
-+            await loadCachedSlice('lessonLogs', setLessonLogs, () => fetchList(db, 'lessonLogs', () => {}, query(collection(db, 'lessonLogs'), where('date', '==', today), limit(100)), () => false), `date:${today}`);
-+        } else if (setLessonLogs && (shouldLoad('lessons') || shouldLoad('lessonReports'))) {
-+            loadingCollections.push('lessonLogs(recent150)');
-+            await loadCachedSlice('lessonLogs', setLessonLogs, () => fetchList(db, 'lessonLogs', () => {}, query(collection(db, 'lessonLogs'), orderBy('date', 'desc'), limit(150)), () => false), 'recent150');
-         }
- 
-+        if (setLessonReports && shouldLoad('home')) {
-+            loadingCollections.push('lessonReports(today)');
-+            await loadCachedSlice('lessonReports', setLessonReports, () => fetchList(db, 'lessonReports', () => {}, query(collection(db, 'lessonReports'), where('lessonDate', '==', today), limit(100)), () => false), `lessonDate:${today}`);
-+        } else if (setLessonReports && shouldLoad('lessonReports')) {
-+            loadingCollections.push('lessonReports(recent300)');
-+            await loadCachedSlice('lessonReports', setLessonReports, () => fetchList(db, 'lessonReports', () => {}, query(collection(db, 'lessonReports'), orderBy('lessonDate', 'desc'), limit(300)), () => false), 'recent300');
-+        }
- 
--        if (setAttendanceLogs && (shouldLoad('attendance') || shouldLoad('lessons') || shouldLoad('lessonReports'))) {
--            await loadCachedSlice('attendanceLogs', setAttendanceLogs, () => fetchAttendanceLogsWithPagination(db, () => false));
-+        if (setAttendanceLogs && shouldLoad('home')) {
-+            loadingCollections.push('attendanceLogs(today)');
-+            await loadCachedSlice('attendanceLogs', setAttendanceLogs, () => fetchList(db, 'attendanceLogs', () => {}, query(collection(db, 'attendanceLogs'), where('date', '==', today), limit(300)), () => false), `date:${today}`);
-+        } else if (setAttendanceLogs && shouldLoad('attendance')) {
-+            loadingCollections.push('attendanceLogs(recent300)');
-+            await loadCachedSlice('attendanceLogs', setAttendanceLogs, () => fetchList(db, 'attendanceLogs', () => {}, query(collection(db, 'attendanceLogs'), orderBy('date', 'desc'), limit(300)), () => false), 'recent300');
-         }
- 
--        if (setClinicLogs && (shouldLoad('clinic') || shouldLoad('lessons'))) {
--            const cachedClinicLogs = readStaffCache(pageKey, 'clinicLogs');
-+        if (setClinicLogs && shouldLoad('clinic')) {
-+            loadingCollections.push('clinicLogs/recent + clinicReservations/recent');
-+            const queryKey = 'recent300-reservations500';
-+            const cachedClinicLogs = readStaffCache(pageKey, 'clinicLogs', queryKey);
-             if (cachedClinicLogs !== undefined) {
-                 setClinicLogs?.(cachedClinicLogs);
-+                staffDataDebug(`cache hit pageKey=${pageKey}`, { slice: 'clinicLogs', count: cachedClinicLogs.length });
-             } else {
--            const [lightLogs, lightReservations] = await Promise.all([
--                fetchClinicLogsLight(db, () => false, 300),
--                fetchClinicReservationsLight(db, () => false, 500),
--            ]);
--            const mergedClinicDocs = writeStaffCache(pageKey, 'clinicLogs', mergeClinicDocs(lightLogs, lightReservations));
--            setClinicLogs?.(mergedClinicDocs);
--            console.log('[staff] clinic logs loaded (merged)=', {
--                clinicLogs: lightLogs.length,
--                clinicReservations: lightReservations.length,
--                merged: mergedClinicDocs.length,
--            });
-+                const [lightLogs, lightReservations] = await Promise.all([
-+                    fetchClinicLogsLight(db, () => false, 300),
-+                    fetchClinicReservationsLight(db, () => false, 500),
-+                ]);
-+                const mergedClinicDocs = writeStaffCache(pageKey, 'clinicLogs', mergeClinicDocs(lightLogs, lightReservations), queryKey);
-+                setClinicLogs?.(mergedClinicDocs);
-+                staffDataDebug('clinic logs loaded', { clinicLogs: lightLogs.length, clinicReservations: lightReservations.length, merged: mergedClinicDocs.length });
-             }
-         }
- 
-         if (setWorkLogs && shouldLoad('communication')) {
--            await fetchList(db, 'workLogs', setWorkLogs, query(collection(db, 'workLogs'), orderBy('date', 'desc'), limit(150)), () => false);
-+            loadingCollections.push('workLogs(recent150)');
-+            await loadCachedSlice('workLogs', setWorkLogs, () => fetchList(db, 'workLogs', () => {}, query(collection(db, 'workLogs'), orderBy('date', 'desc'), limit(150)), () => false), 'recent150');
-         }
- 
-         if (setAnnouncements && shouldLoad('communication')) {
--            await fetchList(db, 'announcements', setAnnouncements, query(collection(db, 'announcements'), orderBy('date', 'desc'), limit(150)), () => false);
-+            loadingCollections.push('announcements(recent150)');
-+            await loadCachedSlice('announcements', setAnnouncements, () => fetchList(db, 'announcements', () => {}, query(collection(db, 'announcements'), orderBy('date', 'desc'), limit(150)), () => false), 'recent150');
-         }
- 
--        if (setHomeworkAssignments && (shouldLoad('homework') || shouldLoad('lessonReports'))) {
--            await fetchList(db, 'homeworkAssignments', setHomeworkAssignments, query(collection(db, 'homeworkAssignments'), orderBy('date', 'desc'), limit(150)), () => false);
-+        if (setHomeworkAssignments && shouldLoad('homework')) {
-+            loadingCollections.push('homeworkAssignments(recent150)');
-+            await loadCachedSlice('homeworkAssignments', setHomeworkAssignments, () => fetchList(db, 'homeworkAssignments', () => {}, query(collection(db, 'homeworkAssignments'), orderBy('date', 'desc'), limit(150)), () => false), 'recent150');
-         }
- 
-         if (setPaymentLogs && shouldLoad('payment')) {
--            await fetchList(
-+            loadingCollections.push('payments(recent150)');
-+            await loadCachedSlice('payments', setPaymentLogs, () => fetchList(
-                 db,
-                 'payments',
--                setPaymentLogs,
-+                () => {},
-                 query(collection(db, 'payments'), orderBy('createdAt', 'desc'), limit(150)),
-                 () => false,
-                 normalizePaymentLog,
--            );
-+            ), 'recent150');
-         }
- 
-         if (setGrades && shouldLoad('grades')) {
-+            loadingCollections.push('grades(recent500)');
-             await loadCachedSlice('grades', setGrades, async () => {
-+                const grades = await fetchListSafe(query(collection(db, 'grades'), orderBy('updatedAt', 'desc'), limit(500)), () => false);
-                 const mappedGrades = {};
--                const grades = await fetchGradesWithPagination(db, 5000, 500);
--
-                 grades.forEach((raw) => {
--                    const data = normalizeAuthUid(raw); // ✅ authUid/studentUid → studentId로 정규화
--
--                    const sId = data.studentId; // ✅ 이제 항상 studentId를 키로 사용
-+                    const data = normalizeAuthUid(raw);
-+                    const sId = data.studentId;
-                     const testId = data.testId;
--
--                    if (!sId || !testId) return; // 방어 로직
--
-+                    if (!sId || !testId) return;
-                     if (!mappedGrades[sId]) mappedGrades[sId] = {};
-                     mappedGrades[sId][testId] = data;
-                 });
-                 return mappedGrades;
--            });
-+            }, 'recent500');
-         }
- 
-         if (setHomeworkResults && shouldLoad('homework')) {
-+            loadingCollections.push('homeworkResults(recent500)');
-             await loadCachedSlice('homeworkResults', setHomeworkResults, async () => {
--            const docs = await fetchHomeworkResultsWithPagination(db, 5000, 500);
--            const mappedResults = {};
--            const authUidToStudentDocId = new Map(
--                (staffStudents || [])
--                    .filter((student) => student?.authUid && student?.id)
--                    .map((student) => [String(student.authUid), String(student.id)]),
--            );
--            docs.forEach((data) => {
--                const assignmentId = data.assignmentId || data.homeworkAssignmentId || null;
--
--                const rawKey = data.studentId
--                    || data.studentDocId
--                    || data.authUid
--                    || data.studentUid
--                    || null;
--                
--                const sKey = rawKey && authUidToStudentDocId.get(String(rawKey))
--                ? authUidToStudentDocId.get(String(rawKey))
--                : rawKey;
--
--                if (!sKey || !assignmentId) return;
--
--                if (!mappedResults[sKey]) mappedResults[sKey] = {};
--                mappedResults[sKey][assignmentId] = data.results || data;
--            });
--            console.log('[staff][homeworkResults] loaded docs=', docs.length, 'keys=', Object.keys(mappedResults).length);
--            return mappedResults;
--            });
-+                const docs = await fetchListSafe(query(collection(db, 'homeworkResults'), orderBy('updatedAt', 'desc'), limit(500)), () => false);
-+                const mappedResults = {};
-+                const authUidToStudentDocId = new Map(
-+                    (staffStudents || [])
-+                        .filter((student) => student?.authUid && student?.id)
-+                        .map((student) => [String(student.authUid), String(student.id)]),
-+                );
-+                docs.forEach((data) => {
-+                    const assignmentId = data.assignmentId || data.homeworkAssignmentId || null;
-+                    const rawKey = data.studentId || data.studentDocId || data.authUid || data.studentUid || null;
-+                    const sKey = rawKey && authUidToStudentDocId.get(String(rawKey)) ? authUidToStudentDocId.get(String(rawKey)) : rawKey;
-+                    if (!sKey || !assignmentId) return;
-+                    if (!mappedResults[sKey]) mappedResults[sKey] = {};
-+                    mappedResults[sKey][assignmentId] = data.results || data;
-+                });
-+                return mappedResults;
-+            }, 'recent500');
-         }
- 
-         if (setExternalSchedules && shouldLoad('schedule')) {
--            await fetchList(
-+            loadingCollections.push('externalSchedules(recent500)');
-+            await loadCachedSlice('externalSchedules', setExternalSchedules, () => fetchList(
-                 db,
-                 'externalSchedules',
--                setExternalSchedules,
-+                () => {},
-                 query(collection(db, 'externalSchedules'), orderBy('startDate', 'desc'), limit(500)),
-                 () => false,
--            );
-+            ), 'recent500');
-         }
- 
--        if (setClosures) {
--            const closures = await fetchClosuresForStaff(staffClasses);
-+        if (setClosures && shouldLoad('closures')) {
-+            loadingCollections.push('closures(global/class)');
-+            const closures = await loadCachedSlice('closures', setClosures, () => fetchClosuresForStaff(staffClasses), 'scoped500');
-             setClosures(closures);
-         }
- 
-+        staffDataDebug(`pageKey=${pageKey || 'all'} loading collections: ${loadingCollections.join(', ') || 'none'}`);
-     } catch (error) {
-         console.error('[FirestoreSync] staff 데이터 로드 실패:', error);
-     }
++const SKIPPED_REASONS = new Set(['notification_disabled']);
++
++const isSkippedLog = (log = {}) => (
++    log.skipped === true
++    || SKIPPED_REASONS.has(log.reason)
++    || SKIPPED_REASONS.has(log.status)
++    || SKIPPED_REASONS.has(log.errorCode)
++);
++
++const getActualFailureCount = (log = {}) => (isSkippedLog(log) ? 0 : (log.failureCount ?? 0));
++
+ const formatSentAt = (sentAt) => {
+     if (!sentAt) return '-';
+     if (sentAt.toDate) return sentAt.toDate().toLocaleString('ko-KR');
+     if (sentAt instanceof Date) return sentAt.toLocaleString('ko-KR');
+     return '-';
  };
  
- export const loadViewerDataOnce = async ({
-     db,
-     isLoggedIn,
-     userRole,
-     userId,
-     studentIds = [],
-     activeStudentId = null,
-     setStudents,
-     setClasses,
-     setLessonLogs,
-     setAttendanceLogs,
-     setClinicLogs,
-     setHomeworkAssignments,
-     setAnnouncements,
-     setTests,
-     setVideoProgress,
-     setVideoMemos,
-     setExternalSchedules,
-     setHomeworkResults,
-     setGrades,
+ export default function AdminNotificationsPage() {
+     const [logs, setLogs] = useState([]);
+     const [isLoading, setIsLoading] = useState(false);
+     const [error, setError] = useState('');
+ 
+     useEffect(() => {
+         let isMounted = true;
+ 
+         const fetchLogs = async () => {
+             if (!db) {
+                 setLogs([]);
+                 return;
+             }
+ 
+             setIsLoading(true);
+             setError('');
+ 
+             try {
+                 console.info('[AdminNotificationsPage] Firestore path: notifications');
+                 const snapshot = await getDocs(query(
+                     collection(db, 'notifications'),
+                     orderBy('sentAt', 'desc'),
+                     limit(20),
+                 ));
+                 if (!isMounted) return;
+-                setLogs(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
++                setLogs(snapshot.docs
++                    .map((doc) => ({ id: doc.id, ...doc.data() }))
++                    .filter((log) => !isSkippedLog(log)));
+             } catch (fetchError) {
+                 if (!isMounted) return;
+                 setError(fetchError?.message || '알림 로그를 불러오지 못했습니다.');
+             } finally {
+                 if (isMounted) setIsLoading(false);
+             }
+         };
+ 
+         fetchLogs();
+ 
+         return () => {
+             isMounted = false;
+         };
+     }, []);
+     return (
+         <div className="space-y-6">
+             <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
+                 <div className="flex flex-col gap-2">
+                     <p className="text-xs font-semibold text-[#455fab] uppercase tracking-wider">관리자 전용</p>
+                     <h1 className="text-2xl font-bold text-gray-800">알림 로그</h1>
+                     <p className="text-sm text-gray-500">
+                         최근 20건의 발송 내역만 불러와 Firestore 읽기 비용을 최소화합니다.
+                     </p>
+                 </div>
+             </div>
+ 
+             <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
+                 <div className="flex items-start justify-between gap-4">
+                     <div>
+                         <h2 className="text-lg font-semibold text-gray-800">발송 기록</h2>
+                         <p className="text-sm text-gray-500">
+-                            알림 발송이 완료되면 이 목록에 저장됩니다. 대상 수와 실패 수를 바로 확인하세요.
++                            알림 발송이 완료되면 이 목록에 저장됩니다. 대상 수와 실제 FCM 실패 수를 바로 확인하세요.
+                         </p>
+                     </div>
+                     <span className="px-3 py-1 text-xs font-semibold rounded-full bg-[#f1f4ff] text-[#334a91] border border-[#eef2ff]">
+                         최신 20건
+                     </span>
+                 </div>
+ 
+                 {isLoading && (
+                     <div className="mt-6 text-sm text-gray-500">알림 로그를 불러오는 중...</div>
+                 )}
+                 {error && (
+                     <div className="mt-6 text-sm text-red-500">{error}</div>
+                 )}
+ 
+                 {!isLoading && !error && logs.length === 0 && (
+                     <div className="mt-6 rounded-xl border border-dashed border-gray-200 bg-gray-50 p-6 text-center">
+                         <p className="text-sm font-semibold text-gray-700">아직 발송된 알림이 없습니다</p>
+                         <p className="text-xs text-gray-500 mt-2">
+                             새로운 알림을 발송하면 발송 시각과 대상 수가 이곳에 기록됩니다.
+                         </p>
+                     </div>
+                 )}
+ 
+                 {!isLoading && !error && logs.length > 0 && (
+                     <div className="mt-6 overflow-x-auto border border-gray-200 rounded-xl">
+                         <table className="min-w-full text-sm">
+                             <thead className="bg-gray-50 text-gray-600 text-xs uppercase tracking-wider">
+                                 <tr>
+                                     <th className="px-4 py-3 text-left font-semibold">제목</th>
+                                     <th className="px-4 py-3 text-left font-semibold">발송 시각</th>
+                                     <th className="px-4 py-3 text-right font-semibold">대상 수</th>
+                                     <th className="px-4 py-3 text-right font-semibold">실패 수</th>
+                                 </tr>
+                             </thead>
+                             <tbody>
+                                 {logs.map((log) => {
+                                     const targetCount = log.targetCount ?? log.targetUserCount ?? 0;
+-                                    const failureCount = log.failureCount ?? 0;
++                                    const failureCount = getActualFailureCount(log);
+                                     return (
+                                         <tr key={log.id} className="border-t border-gray-200">
+                                             <td className="px-4 py-3 font-semibold text-gray-800">
+                                                 {log.title || '-'}
+                                             </td>
+                                             <td className="px-4 py-3 text-gray-500">
+                                                 {formatSentAt(log.sentAt)}
+                                             </td>
+                                             <td className="px-4 py-3 text-right font-semibold text-gray-800">
+                                                 {targetCount}
+                                             </td>
+                                             <td className="px-4 py-3 text-right font-semibold text-rose-600">
+                                                 {failureCount}
+                                             </td>
+                                         </tr>
+                                     );
+                                 })}
+                             </tbody>
+                         </table>
+                     </div>
+                 )}
+             </div>
+         </div>
+     );
+ }
+\ No newline at end of file

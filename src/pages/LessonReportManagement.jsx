@@ -16,6 +16,7 @@ import { getLinkedParentAuthUids } from '../utils/parentLinking';
 import { filterRosterByWithdrawDate } from '../utils/rosterFilter';
 import { hasClassOnDate, isClosedForClass } from '../utils/helpers';
 import { formatClassLabel, sortClassesWithClosedLast } from '../utils/classStatus';
+import { FEATURES } from '../config/features';
 
 const pad2 = (value) => String(value).padStart(2, '0');
 
@@ -562,6 +563,11 @@ export default function LessonReportManagement({
   };
 
   const notifyForFirstSend = async ({ reportDraft, student }) => {
+    if (!FEATURES.ENABLE_NOTIFICATION_SENDING) {
+      console.debug('[notifications] lesson report skipped: notification_disabled');
+      return { success: true, sent: false, skipped: true, reason: 'notification_disabled' };
+    }
+
     const parentAuthUids = await getLinkedParentAuthUids(reportDraft.studentId, student?.parentAuthUids || []);
     const targetAuthUids = [student?.authUid, ...parentAuthUids].filter(Boolean);
     await Promise.all(targetAuthUids.map((uid) => addDoc(collection(db, 'notifications', uid, 'items'), {

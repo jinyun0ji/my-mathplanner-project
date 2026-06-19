@@ -1,6 +1,7 @@
 const functions = require('firebase-functions');
 const { getRecipientsForStudent } = require('../notify/recipients');
 const { notifyUsers } = require('../notify/notifications');
+const { isNotificationSendingEnabled, notificationDisabledResult } = require('../notify/settings');
 
 const TYPE = 'HOMEWORK_GRADED';
 
@@ -22,6 +23,11 @@ const onHomeworkResultWritten = functions.firestore
 
         if (beforeData && isUnchanged(beforeData, afterData)) {
             return null;
+        }
+
+        if (!isNotificationSendingEnabled()) {
+            console.debug('[notifications] trigger skipped: notification_disabled');
+            return notificationDisabledResult();
         }
 
         const authUid = afterData.authUid || afterData.studentUid || afterData.studentId;

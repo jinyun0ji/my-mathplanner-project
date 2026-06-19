@@ -2,6 +2,7 @@ const functions = require('firebase-functions');
 const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 const { assertAdmin } = require('../_utils/assertAdmin');
 const { notifyUsers } = require('../notify/notifications');
+const { isNotificationSendingEnabled, notificationDisabledResult } = require('../notify/settings');
 
 const db = getFirestore();
 const RETRY_LIMIT = 50;
@@ -17,6 +18,11 @@ const getUidsWithTokens = async (uids) => {
 
 const retryNotification = functions.https.onCall(async (data, context) => {
     await assertAdmin(context);
+
+    if (!isNotificationSendingEnabled()) {
+        console.debug('[notifications] retry skipped: notification_disabled');
+        return notificationDisabledResult();
+    }
 
     const logId = typeof data?.logId === 'string' ? data.logId.trim() : '';
 

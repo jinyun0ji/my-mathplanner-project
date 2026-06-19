@@ -1,10 +1,15 @@
 const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 const { buildNotificationDocument, buildFcmDataPayload } = require('./builders');
 const { sendFcmToUsers } = require('./fcm');
+const { isNotificationSendingEnabled, notificationDisabledResult } = require('./settings');
 
 const db = getFirestore();
 
 const createNotificationForUsers = async (userIds, payload) => {
+    if (!isNotificationSendingEnabled()) {
+        return { notificationIds: {}, targetUserCount: 0, ...notificationDisabledResult() };
+    }
+
     const uniqueIds = [...new Set(userIds.filter(Boolean))];
 
     if (uniqueIds.length === 0) {
@@ -28,6 +33,10 @@ const createNotificationForUsers = async (userIds, payload) => {
 };
 
 const createNotificationLog = async ({ targetCount, payload, fcmData, logData = {} }) => {
+    if (!isNotificationSendingEnabled()) {
+        return null;
+    }
+
     const logRef = db.collection('notifications').doc();
     await logRef.set({
         targetCount,
@@ -49,6 +58,17 @@ const createNotificationLog = async ({ targetCount, payload, fcmData, logData = 
 };
 
 const notifyUsers = async ({ userIds, payload, fcmData, logData }) => {
+    if (!isNotificationSendingEnabled()) {
+        console.debug('[notifications] sending skipped: notification_disabled');
+        return {
+            notificationIds: {},
+            targetCount: 0,
+            notificationLogId: null,
+            fcmStats: { successCount: 0, failureCount: 0, failedTokenCount: 0, failedUids: [], failedEntries: [] },
+            ...notificationDisabledResult(),
+        };
+    }
+
     const notificationPayload = {
         ...payload,
         refCollection: fcmData?.refCollection || payload?.refCollection || null,
@@ -67,8 +87,10 @@ const notifyUsers = async ({ userIds, payload, fcmData, logData }) => {
         return {
             notificationIds,
             targetCount: targetUserCount,
-            notificationLogId: logRef.id,
-            fcmStats: { successCount: 0, failureCount: 0, failedTokenCount: 0, failedUids: [] },
+            notificationLogId: logRef?.id || null,
+            fcmStats: { successCount: 0, failureCount: 0, failedTokenCount: 0, failedUids: [], failedEntries: [] },
+            success: true,
+            sent: false,
         };
     }
 
@@ -81,12 +103,16 @@ const notifyUsers = async ({ userIds, payload, fcmData, logData }) => {
     return {
         notificationIds,
         targetCount: targetUserCount,
-        notificationLogId: logRef.id,
+        notificationLogId: logRef?.id || null,
         fcmStats,
+        success: (fcmStats?.failureCount || 0) === 0,
+        sent: (fcmStats?.successCount || 0) > 0,
     };
 };
 
 module.exports = {
     createNotificationForUsers,
+    createNotificationLog,
     notifyUsers,
+    isNotificationSendingEnabled,
 };

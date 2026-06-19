@@ -2,6 +2,17 @@ import React, { useEffect, useState } from 'react';
 import { collection, getDocs, limit, orderBy, query } from 'firebase/firestore';
 import { db } from '../../firebase/client';
 
+const SKIPPED_REASONS = new Set(['notification_disabled']);
+
+const isSkippedLog = (log = {}) => (
+    log.skipped === true
+    || SKIPPED_REASONS.has(log.reason)
+    || SKIPPED_REASONS.has(log.status)
+    || SKIPPED_REASONS.has(log.errorCode)
+);
+
+const getActualFailureCount = (log = {}) => (isSkippedLog(log) ? 0 : (log.failureCount ?? 0));
+
 const formatSentAt = (sentAt) => {
     if (!sentAt) return '-';
     if (sentAt.toDate) return sentAt.toDate().toLocaleString('ko-KR');
@@ -34,7 +45,9 @@ export default function AdminNotificationsPage() {
                     limit(20),
                 ));
                 if (!isMounted) return;
-                setLogs(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
+                setLogs(snapshot.docs
+                    .map((doc) => ({ id: doc.id, ...doc.data() }))
+                    .filter((log) => !isSkippedLog(log)));
             } catch (fetchError) {
                 if (!isMounted) return;
                 setError(fetchError?.message || '알림 로그를 불러오지 못했습니다.');
@@ -66,7 +79,7 @@ export default function AdminNotificationsPage() {
                     <div>
                         <h2 className="text-lg font-semibold text-gray-800">발송 기록</h2>
                         <p className="text-sm text-gray-500">
-                            알림 발송이 완료되면 이 목록에 저장됩니다. 대상 수와 실패 수를 바로 확인하세요.
+                            알림 발송이 완료되면 이 목록에 저장됩니다. 대상 수와 실제 FCM 실패 수를 바로 확인하세요.
                         </p>
                     </div>
                     <span className="px-3 py-1 text-xs font-semibold rounded-full bg-[#f1f4ff] text-[#334a91] border border-[#eef2ff]">
@@ -104,7 +117,7 @@ export default function AdminNotificationsPage() {
                             <tbody>
                                 {logs.map((log) => {
                                     const targetCount = log.targetCount ?? log.targetUserCount ?? 0;
-                                    const failureCount = log.failureCount ?? 0;
+                                    const failureCount = getActualFailureCount(log);
                                     return (
                                         <tr key={log.id} className="border-t border-gray-200">
                                             <td className="px-4 py-3 font-semibold text-gray-800">
