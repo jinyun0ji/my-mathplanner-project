@@ -1,817 +1,581 @@
-diff --git a/firestore.rules b/firestore.rules
-index 457bb844e7944b5b155f0c599494d120a42ca38b..22ae5127fb8a8f6bb76554698f2b2555050346ad 100644
---- a/firestore.rules
-+++ b/firestore.rules
-@@ -497,51 +497,51 @@ service cloud.firestore {
-        classes
-     ========================= */
-     // 정책: classes.students에는 studentDocId(users 문서ID)만 저장을 권장.
-     // 레거시(authUid) 조회는 당분간 유지하지만, 데이터는 점진적으로 정리한다.
-     match /classes/{classId} {
-       allow read: if signedIn();
-       allow write: if isStaffOrAdminOrTeacher();
-     }
-     
-     match /closures/{closureId} {
-       allow read: if signedIn();
-       allow create, update, delete: if isStaffOrAdminOrTeacher();
-     }
- 
-     /* =========================
-        tests / lessonLogs / homeworkAssignments 등
-        (여기는 기존대로 두되, isClassMember가 B안 대응되었기 때문에 대부분 살아남)
-     ========================= */
-     match /tests/{docId} {
-       allow read: if signedIn();
-       allow write: if isStaffOrAdminOrTeacher();
-     }
-     
-     match /classTestStats/{id} {
-       allow read: if request.auth != null;
--      allow write: if isStaff();
-+      allow write: if isStaffOrAdminOrTeacher();
-     }
- 
-     match /lessonLogs/{docId} {
-       allow read: if signedIn();
-       allow write: if isStaffOrAdminOrTeacher();
-     }
- 
-     match /attendanceLogs/{docId} {
-       allow read: if signedIn();
-       allow write: if isStaffOrAdminOrTeacher();
-     }
- 
-     match /clinicLogs/{docId} {
-       allow read: if signedIn();
-       allow write: if isStaffOrAdminOrTeacher();
-     }
- 
-     match /staffTimeline/{docId} {
-       allow read, list, create, update, delete: if isStaffOrAdminOrTeacher();
-     }
- 
-     match /staffTimeline/{docId}/replies/{replyId} {
-       allow read, list, create, update, delete: if isStaffOrAdminOrTeacher();
-     }
- 
-diff --git a/functions/classTestStats.js b/functions/classTestStats.js
-index a8a82bd6cd7d5d560272981a3315cecc35de8079..5317bb32772a76e48ef495320a38a0ffdf8e3a15 100644
---- a/functions/classTestStats.js
-+++ b/functions/classTestStats.js
-@@ -1,186 +1,77 @@
- const functions = require('firebase-functions');
- const admin = require('firebase-admin');
- 
--const db = admin.firestore();
--
--const chunkArray = (items, size = 10) => {
--    const chunks = [];
--    for (let i = 0; i < items.length; i += size) {
--        chunks.push(items.slice(i, i + size));
--    }
--    return chunks;
--};
--
--const isCorrectAnswer = (value) => value === true || value === 1 || value === '맞음' || value === '고침';
--
--const getPerQuestionScore = (test, index) => {
--    if (Array.isArray(test?.questionScores) && test.questionScores.length > index) {
--        const value = Number(test.questionScores[index]);
--        if (Number.isFinite(value)) return value;
--    }
--
--    if (Number.isFinite(test?.maxScore) && Number.isFinite(test?.totalQuestions) && test.totalQuestions > 0) {
--        return Number(test.maxScore) / Number(test.totalQuestions);
--    }
--
--    return 1;
--};
--
--const getTotalScore = (grade = {}, test = {}) => {
--    if (!grade) return null;
--
--    const storedScore = grade.totalScore ?? grade.score;
--    if (Number.isFinite(Number(storedScore))) {
--        return Number(storedScore);
-+const getNumericScore = (grade = {}) => {
-+    for (const value of [grade.score, grade.totalScore, grade.result]) {
-+        if (value === null || value === undefined || value === '') continue;
-+        const score = Number(value);
-+        if (Number.isFinite(score)) return score;
-     }
--
--    const answerMap = grade.answers || grade.correctCount;
--    if (answerMap && typeof answerMap === 'object' && !Array.isArray(answerMap)) {
--        const entries = Object.entries(answerMap);
--        if (entries.length === 0) return null;
--
--        return entries.reduce((sum, [questionNumber, value]) => {
--            if (!isCorrectAnswer(value)) return sum;
--            const index = Number(questionNumber) - 1;
--            return sum + getPerQuestionScore(test, Number.isFinite(index) ? index : 0);
--        }, 0);
--    }
--
--    if (Array.isArray(grade.questionResults) && grade.questionResults.length > 0) {
--        return grade.questionResults.reduce((sum, result) => {
--            const value = Number(result?.score);
--            return Number.isFinite(value) ? sum + value : sum;
--        }, 0);
--    }
--
--    if (grade.scores && typeof grade.scores === 'object' && !Array.isArray(grade.scores)) {
--        const scoreValues = Object.values(grade.scores).map(Number).filter(Number.isFinite);
--        if (scoreValues.length > 0) {
--            return scoreValues.reduce((sum, value) => sum + value, 0);
--        }
--    }
--
-     return null;
- };
- 
--const collectGradesForField = async ({ testId, studentIds, field }) => {
--    const docs = [];
--    const chunks = chunkArray(studentIds, 10);
--
--    for (const chunk of chunks) {
--        const snap = await db
--            .collection('grades')
--            .where('testId', '==', testId)
--            .where(field, 'in', chunk)
--            .get();
-+const calculateClassTestStats = (grades = []) => {
-+    const scores = grades
-+        .filter((grade) => grade?.attempted === true)
-+        .map(getNumericScore)
-+        .filter((score) => score !== null);
-+    const submittedCount = scores.length;
-+    return {
-+        average: submittedCount ? scores.reduce((sum, score) => sum + score, 0) / submittedCount : null,
-+        maxScore: submittedCount ? Math.max(...scores) : null,
-+        submittedCount,
-+        absentCount: grades.length - submittedCount,
-+        totalCount: grades.length,
-+    };
-+};
- 
--        snap.docs.forEach((docSnap) => {
--            docs.push({ id: docSnap.id, ...docSnap.data() });
--        });
-+const recomputeClassTestStats = async ({ db, testId, classId = '' }) => {
-+    if (!testId) return null;
-+    let resolvedClassId = classId;
-+    if (!resolvedClassId) {
-+        const testSnapshot = await db.collection('tests').doc(testId).get();
-+        resolvedClassId = testSnapshot.exists ? testSnapshot.data()?.classId : '';
-     }
--
--    return docs;
-+    if (!resolvedClassId) throw new Error(`classId not found for test ${testId}`);
-+
-+    const gradesSnapshot = await db.collection('grades').where('testId', '==', testId).get();
-+    const stats = calculateClassTestStats(gradesSnapshot.docs.map((snapshot) => snapshot.data()));
-+    const payload = {
-+        classId: resolvedClassId,
-+        testId,
-+        ...stats,
-+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-+    };
-+    await db.collection('classTestStats').doc(`${resolvedClassId}_${testId}`).set(payload, { merge: true });
-+    return payload;
- };
- 
- const onGradeWriteUpdateClassTestStats = functions.firestore
-     .document('grades/{gradeDocId}')
-     .onWrite(async (change) => {
--        const gradeData = change.after.exists ? change.after.data() : change.before.data();
--        if (!gradeData?.testId) {
--            return null;
--        }
--
--        const testId = gradeData.testId;
--        const testSnap = await db.collection('tests').doc(testId).get();
--        if (!testSnap.exists) {
--            return null;
--        }
--
--        const test = { id: testSnap.id, ...testSnap.data() };
--        const classId = test.classId;
--        if (!classId) {
--            return null;
--        }
--
--        const classSnap = await db.collection('classes').doc(classId).get();
--        if (!classSnap.exists) {
--            return null;
--        }
--
--        const classStudents = Array.isArray(classSnap.data()?.students)
--            ? classSnap.data().students.filter(Boolean)
--            : [];
--
--        if (classStudents.length === 0) {
--            return null;
--        }
--
--        const gradeMap = new Map();
--
--        const byStudentId = await collectGradesForField({ testId, studentIds: classStudents, field: 'studentDocId' });
--        byStudentId.forEach((g) => gradeMap.set(g.id, g));
--
--        const byAuthUid = await collectGradesForField({ testId, studentIds: classStudents, field: 'authUid' });
--        byAuthUid.forEach((g) => gradeMap.set(g.id, g));
--
--        const byStudentUid = await collectGradesForField({ testId, studentIds: classStudents, field: 'studentUid' });
--        byStudentUid.forEach((g) => gradeMap.set(g.id, g));
--
--        const grades = Array.from(gradeMap.values());
--        const totalQuestions = Number(test?.totalQuestions) || (Array.isArray(test?.questionScores) ? test.questionScores.length : 0);
--
--        const correctCounts = {};
--        const scores = [];
--
--        grades.forEach((g) => {
--            const score = getTotalScore(g, test);
--            if (!Number.isFinite(score)) return;
--            scores.push(score);
--
--            if (totalQuestions > 0) {
--                const answerMap = g.answers || g.correctCount;
--                for (let i = 1; i <= totalQuestions; i++) {
--                    const status = answerMap?.[i.toString()];
--                    if (isCorrectAnswer(status)) {
--                        correctCounts[i] = (correctCounts[i] || 0) + 1;
--                    }
--                }
--            }
--        });
--
--        const count = scores.length;
--        const average = count > 0 ? scores.reduce((sum, s) => sum + s, 0) / count : null;
--        const maxScore = count > 0 ? Math.max(...scores) : null;
--        const minScore = count > 0 ? Math.min(...scores) : null;
--        const variance = count > 0 && Number.isFinite(average)
--            ? scores.reduce((sum, s) => sum + Math.pow(s - average, 2), 0) / count
--            : null;
--        const stdDev = variance !== null ? Math.sqrt(variance) : null;
--
--        const correctRates = {};
--        if (totalQuestions > 0 && count > 0) {
--            for (let i = 1; i <= totalQuestions; i++) {
--                const correct = correctCounts[i] || 0;
--                correctRates[i] = correct / count;
-+        const grade = change.after.exists ? change.after.data() : change.before.data();
-+        if (!grade?.testId) return null;
-+        try {
-+            const stats = await recomputeClassTestStats({
-+                db: admin.firestore(),
-+                testId: grade.testId,
-+                classId: grade.classId,
-+            });
-+            if (process.env.NODE_ENV !== 'production') {
-+                console.log('[classTestStats] recomputed', {
-+                    testId: grade.testId,
-+                    classId: stats?.classId,
-+                    submittedCount: stats?.submittedCount,
-+                });
-             }
-+        } catch (error) {
-+            console.warn('[classTestStats] recompute failed', { testId: grade.testId, error });
-         }
--
--        const docId = `${classId}_${testId}`;
--        await db.collection('classTestStats').doc(docId).set({
--            classId,
--            testId,
--            count,
--            average,
--            maxScore,
--            minScore,
--            stdDev,
--            correctRates,
--            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
--        }, { merge: true });
--
-         return null;
-     });
- 
- module.exports = {
-+    calculateClassTestStats,
-+    recomputeClassTestStats,
-     onGradeWriteUpdateClassTestStats,
--};
-\ No newline at end of file
-+};
-diff --git a/functions/index.js b/functions/index.js
-index 6245909de933a754ad7f871fb875c7fb85eef75b..eccf469baeb515355497e93dfc410f98894b4367 100644
---- a/functions/index.js
-+++ b/functions/index.js
-@@ -1,16 +1,14 @@
- const admin = require('firebase-admin');
- if (admin.apps.length === 0) {
-     admin.initializeApp();
- }
- 
- const srcExports = require('./src');
- const { onClinicLogsWriteCreateNotifications } = require('./clinicNotifications');
- const { onGradeWriteUpdateClassTestStats } = require('./classTestStats');
--const { onGradesWriteUpdateClassTestStats } = require('./classTestStatsTrigger');
- 
- module.exports = {
-     ...srcExports,
-     onClinicLogsWriteCreateNotifications,
-     onGradeWriteUpdateClassTestStats,
--    onGradesWriteUpdateClassTestStats,
--};
-\ No newline at end of file
-+};
-diff --git a/functions/scripts/backfillClassTestStats.js b/functions/scripts/backfillClassTestStats.js
-new file mode 100644
-index 0000000000000000000000000000000000000000..da2276489ad405dcd93a6954db16eb774455a572
---- /dev/null
-+++ b/functions/scripts/backfillClassTestStats.js
-@@ -0,0 +1,52 @@
-+const admin = require('firebase-admin');
-+const { calculateClassTestStats } = require('../classTestStats');
-+
-+if (!admin.apps.length) admin.initializeApp();
-+
-+const db = admin.firestore();
-+const dryRun = !process.argv.includes('--write');
-+
-+async function backfillClassTestStats() {
-+    const testsSnapshot = await db.collection('tests').get();
-+    console.log(`[classTestStats] ${dryRun ? 'dry run' : 'write'}: ${testsSnapshot.size} tests`);
-+
-+    for (const testSnapshot of testsSnapshot.docs) {
-+        const testId = testSnapshot.id;
-+        const classId = testSnapshot.data()?.classId;
-+        if (!classId) {
-+            console.warn('[classTestStats] skipped test without classId', { testId });
-+            continue;
-+        }
-+
-+        const gradesSnapshot = await db.collection('grades').where('testId', '==', testId).get();
-+        const stats = calculateClassTestStats(gradesSnapshot.docs.map((snapshot) => snapshot.data()));
-+        const payload = {
-+            classId,
-+            testId,
-+            ...stats,
-+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-+        };
-+
-+        console.log('[classTestStats]', {
-+            testId,
-+            classId,
-+            submittedCount: stats.submittedCount,
-+            absentCount: stats.absentCount,
-+            average: stats.average,
-+            maxScore: stats.maxScore,
-+        });
-+        if (!dryRun) {
-+            await db.collection('classTestStats').doc(`${classId}_${testId}`).set(payload, { merge: true });
-+        }
-+    }
-+}
-+
-+backfillClassTestStats()
-+    .then(() => {
-+        console.log('[classTestStats] backfill completed');
-+        process.exit(0);
-+    })
-+    .catch((error) => {
-+        console.error('[classTestStats] backfill failed', error);
-+        process.exit(1);
-+    });
-diff --git a/package.json b/package.json
-index ff1bafff682d0babbdff866c413784b57d0fa7c5..f9f84957da9573f8580d05e26407162c1389b64b 100644
---- a/package.json
-+++ b/package.json
-@@ -18,46 +18,48 @@
-     "katex": "^0.16.28",
-     "lucide-react": "^0.561.0",
-     "react": "^19.1.0",
-     "react-dom": "^19.1.0",
-     "react-katex": "^3.1.0",
-     "react-router-dom": "^6.24.1",
-     "react-scripts": "5.0.1",
-     "react-to-print": "^3.3.0",
-     "react-youtube": "^10.1.0",
-     "tailwind-scrollbar-hide": "^4.0.0",
-     "web-vitals": "^2.1.4"
-   },
-   "scripts": {
-     "start": "react-scripts start",
-     "build": "react-scripts build",
-     "test": "react-scripts test",
-     "eject": "react-scripts eject",
-     "migrate:memos": "node functions/scripts/migrateStudentMemosToStaffMemos.js",
-     "migrate:homework-question-keys:dry": "node functions/scripts/migrateHomeworkResultQuestionNumbers.js",
-     "migrate:homework-question-keys:write": "node functions/scripts/migrateHomeworkResultQuestionNumbers.js --write",
-     "backfill:chat-parent-participants:dry": "node functions/scripts/backfillChatParticipantIdsForParents.js",
-     "backfill:chat-parent-participants:write": "node functions/scripts/backfillChatParticipantIdsForParents.js --write",
-     "backfill:chat-room-types:dry": "node functions/scripts/backfillChatRoomTypes.js",
-     "backfill:chat-room-types:write": "node functions/scripts/backfillChatRoomTypes.js --write",
-     "backfill:student-birth-year:dry": "node functions/scripts/backfillStudentBirthYearFromGrade.js",
--    "backfill:student-birth-year:write": "node functions/scripts/backfillStudentBirthYearFromGrade.js --write"
-+    "backfill:student-birth-year:write": "node functions/scripts/backfillStudentBirthYearFromGrade.js --write",
-+    "backfill:class-test-stats:dry": "node functions/scripts/backfillClassTestStats.js",
-+    "backfill:class-test-stats:write": "node functions/scripts/backfillClassTestStats.js --write"
-   },
-   "eslintConfig": {
-     "extends": [
-       "react-app",
-       "react-app/jest"
-     ]
-   },
-   "browserslist": {
-     "production": [
-       ">0.2%",
-       "not dead",
-       "not op_mini all"
-     ],
-     "development": [
-       "last 1 chrome version",
-       "last 1 firefox version",
-       "last 1 safari version"
-     ]
-   }
- }
-diff --git a/src/app/AppRoutes.jsx b/src/app/AppRoutes.jsx
-index 7d4dca99ebbca2aa4ff1ee9b30a9345595fb4009..a5eda96fdbdb8b96152a687d2b7b62a56db66ec7 100644
---- a/src/app/AppRoutes.jsx
-+++ b/src/app/AppRoutes.jsx
-@@ -27,50 +27,51 @@ import AdminNotificationsPage from '../pages/admin/AdminNotificationsPage';
- import AdminPaymentsPage from '../pages/admin/AdminPaymentsPage';
- import AdminSettingsPage from '../pages/admin/AdminSettingsPage';
- import AdminLogsPage from '../pages/admin/AdminLogsPage';
- import InviteManagementPage from '../pages/admin/InviteManagementPage';
- import FormulaBookManagement from '../pages/FormulaBookManagement';
- import AdminRoute from '../routes/AdminRoute';
- import StaffOrTeachingRoute from '../routes/StaffOrTeachingRoute';
- import useAuth from '../auth/useAuth';
- import {
-     ROLE,
-     isParentRole,
-     isStudentRole,
-     isAdminRole,
-     isStaffRole,
-     isStaffOrTeachingRole,
-     isViewerGroupRole,
- } from '../constants/roles';
- import { db, functions } from '../firebase/client';
- import { loadStaffDataOnce, loadViewerDataOnce } from '../data/firestoreSync';
- import { createLinkCode, createStaffUser } from '../admin/staffService';
- import { claimStudentLinkCode } from '../parent/linkCodeService';
- import { useParentContext } from '../parent';
- import { logClientError } from '../utils/errorLogger';
- import { addVideoMemo, deleteVideoMemo, updateVideoMemo } from '../domain/memo/videoMemo.service';
- import { getAssignmentQuestionNumbers, normalizeHomeworkResultMapForDisplay } from '../domain/homework/homework.service';
-+import { recomputeClassTestStats } from '../domain/grade/classTestStats.service';
- import {
-     addDoc,
-     arrayRemove,
-     arrayUnion,
-     collection,
-     deleteDoc,
-     doc,
-     getDoc,
-     getDocs,
-     limit,
-     orderBy,
-     query,
-     setDoc,
-     serverTimestamp,
-     Timestamp,
-     where,
-     updateDoc,
-     writeBatch,
- } from 'firebase/firestore';
- import { httpsCallable } from 'firebase/functions';
- 
- const PAGE_ROUTES = {
-     home: '/home',
-     lessons: '/lessons',
-     lessonReports: '/lesson-reports',
-@@ -1247,55 +1248,62 @@ export default function AppRoutes({ user, role, studentIds }) {
-           let attempted = false;
-           let correctCount = {};
- 
-           if (!isAbsent && result && typeof result === 'object') {
-               const test = await findTestById();
-               const computedScore = computeWeightedScore(result, test);
-               if (computedScore !== null) {
-                   score = computedScore;
-                   totalScore = computedScore;
-                   attempted = true;
-                   correctCount = result;
-               }
-           }
- 
-           const payload = {
-               authUid: studentId,
-               testId,
-               score,
-               totalScore,
-               attempted,
-               correctCount: isAbsent ? null : correctCount,
-               comment: comment || '',
-               updatedAt: serverTimestamp(),
-               updatedBy: userId,
-           };
--          await setDoc(doc(db, 'grades', docId), payload, { merge: true });
-+          const test = await findTestById();
-+          const classId = test?.classId || '';
-+          await setDoc(doc(db, 'grades', docId), { ...payload, ...(classId ? { classId } : {}) }, { merge: true });
-           setGrades(prev => ({
-               ...prev,
-               [studentId]: { ...prev[studentId], [testId]: payload },
-           }));
-+          try {
-+              await recomputeClassTestStats(db, testId, classId);
-+          } catch (statsError) {
-+              console.warn('[classTestStats] recompute failed after grade save', { testId, classId, statsError });
-+          }
-       } catch (error) {
-         await logClientError({
-               scope: 'grades',
-               action: 'updateGrade',
-               message: error?.message || 'unknown grade write error',
-               code: error?.code || '',
-               context: {
-                   studentId: String(studentId || ''),
-                   testId: String(testId || ''),
-               },
-               userId,
-               userRole: role,
-               route: routePath,
-               app: 'staff',
-           });
-           console.error('[Firestore WRITE ERROR]', error);
-           alert('성적 저장에 실패했습니다. 권한 또는 네트워크를 확인하세요.');
-       }
-   };
- 
-   const handleSaveClinicLog = async (data, isEdit) => {
-     const resolveClassIdForStudentFlexible = (studentDocIdOrAuthUid) => {
-           if (!studentDocIdOrAuthUid) return null;
- 
-           // 1) classes.students 기반(기존)
 diff --git a/src/data/firestoreSync.js b/src/data/firestoreSync.js
-index 9f292aaf86ed4a79b3e2bf2c7e06dfb20e1c1753..2cae3bece59f1b68c78e6ceb337ac7fc3f5d38cc 100644
+index 2cae3bece59f1b68c78e6ceb337ac7fc3f5d38cc..88f939b0b306c142c4e4334acb8011a9bb5d49f2 100644
 --- a/src/data/firestoreSync.js
 +++ b/src/data/firestoreSync.js
-@@ -1604,51 +1604,51 @@ export const loadViewerDataOnce = async ({
-                 warnOnQuestionScores(filteredTests, 'viewer');
-             } catch (e) {
-                 console.warn('[viewer] lessonLogs/tests load failed', e);
-                 if (!isCancelled()) {
-                     setLessonLogs?.([]);
-                     setTests?.([]);
-                 }
-             }
+@@ -112,50 +112,64 @@ const fetchClassScopedDocs = async ({
+             if (seen.has(d.id)) return;
+             seen.add(d.id);
+             out.push(mapDoc(d));
+         });
+     }
+     return out;
+ };
  
-              /* =========================
-                classTestStats (viewer: student/parent)
-                - stats are optional
-                - must NOT break viewer load
-             ========================= */
-             if (setClassTestStats && Array.isArray(viewerTests)) {
-                 try {
-                     const statsMap = {};
  
-                     for (const t of viewerTests) {
-                         if (!t?.id || !t?.classId) continue;
  
-                         const statsId = `${t.classId}_${t.id}`;
-                         const snap = await getDoc(doc(db, 'classTestStats', statsId));
+ export const safeIn = (arr, max = 10) => safeNonEmptyArray(arr).slice(0, max);
  
-                         if (snap.exists()) {
--                            statsMap[t.id] = snap.data();
-+                            statsMap[statsId] = snap.data();
-                         }
-                     }
+ export function buildInQueryOrNull(values, max = 10) {
+     const v = safeIn(values, max);
+     return v.length > 0 ? v : null;
+ }
  
-                     if (!isCancelled()) setClassTestStats(statsMap);
+ const fetchListSafe = async (q, isCancelled = () => false, mapper = null) => {
+     if (!q) return [];
+     const snap = await getDocs(q);
+     if (isCancelled()) return [];
+     const baseItems = snap.docs.map((d) => normalizeAuthUid({ id: d.id, ...d.data() }));
+     return mapper ? baseItems.map(mapper) : baseItems;
+ };
+ 
++
++// 직원 화면 Firestore read 1차 절감 메모
++// - 기존 loadStaffDataOnce는 직원 pageKey 변경마다 users/classes/closures 및 일부 대용량 컬렉션을 반복 조회했다.
++// - 아래 메모리 캐시는 같은 브라우저 세션/같은 pageKey에서 이미 읽은 slice를 재사용해 탭 왕복 read를 줄인다.
++// - 대용량 attendanceLogs/grades/homeworkResults/clinicLogs는 pageKey 조건을 좁혀 전체 컬렉션성 로딩을 최소화한다.
++const staffDataCache = new Map();
++const STAFF_GLOBAL_CACHE_SLICES = new Set(['students', 'parents', 'classes']);
++const getStaffCacheKey = (pageKey, slice) => `${STAFF_GLOBAL_CACHE_SLICES.has(slice) ? 'global' : (pageKey || 'all')}:${slice}`;
++const readStaffCache = (pageKey, slice) => staffDataCache.get(getStaffCacheKey(pageKey, slice));
++const writeStaffCache = (pageKey, slice, value) => {
++    staffDataCache.set(getStaffCacheKey(pageKey, slice), value);
++    return value;
++};
++
+ const viewerDetailCache = {
+     lessonLogs: new Map(),
+     attendance: new Map(),
+     homeworkResults: new Map(),
+     grades: new Map(),
+ };
+ 
+ const viewerDetailCacheKey = (classIds = [], studentId = '') => {
+     const classKey = safeNonEmptyArray(classIds).sort().join(',');
+     return `${classKey}|${String(studentId || '')}`;
+ };
+ 
+ const normalizeAuthUid = (item) => {
+     if (item?.studentId) return item;
+     if (item?.studentDocId) return { ...item, studentId: item.studentDocId };
+     if (item?.authUid) return { ...item, studentId: item.authUid };
+     if (item?.studentUid) return { ...item, studentId: item.studentUid };
+     return item;
+ };
+ 
+ const formatPaymentDate = (value) => {
+     if (!value) return '';
+     if (typeof value === 'string') return value;
+     if (typeof value?.toDate === 'function') {
+         return value.toDate().toISOString().slice(0, 10);
+@@ -740,50 +754,62 @@ export const loadStaffDataOnce = async ({
+     userRole,
+     pageKey = null,
+     setStudents,
+     setParents,
+     setClasses,
+     setTests,
+     setLessonLogs,
+     setAttendanceLogs,
+     setClinicLogs,
+     setWorkLogs,
+     setAnnouncements,
+     setHomeworkAssignments,
+     setPaymentLogs,
+     setGrades,
+     setHomeworkResults,
+     setExternalSchedules,
+     setClosures,
+     setLessonReports,
+ }) => {
+     if (!isLoggedIn || !db) return;
+     if (!userRole) return;
+     if (!isStaffOrTeachingRole(userRole)) return;
+ 
+     const shouldLoad = (key) => !pageKey || pageKey === key;
+     const applyStudents = (items) => setStudents?.(dedupeStudentsByAuthUid(items));
++    const loadCachedSlice = async (slice, setter, loader) => {
++        const cached = readStaffCache(pageKey, slice);
++        if (cached !== undefined) {
++            setter?.(cached);
++            if (isDevelopment()) console.log('[staff][cache] hit', { pageKey, slice, count: Array.isArray(cached) ? cached.length : Object.keys(cached || {}).length });
++            return cached;
++        }
++        const loaded = await loader();
++        writeStaffCache(pageKey, slice, loaded);
++        setter?.(loaded);
++        return loaded;
++    };
+ 
+     const fetchHomeworkResultsWithPagination = async (db, maxDocs = 5000, pageSize = 500) => {
+         const all = [];
+         let last = null;
+ 
+         while (all.length < maxDocs) {
+             const q = last
+                 ? query(
+                     collection(db, 'homeworkResults'),
+                     orderBy(documentId()),
+                     startAfter(last),
+                     limit(pageSize),
+                 )
+                 : query(
+                     collection(db, 'homeworkResults'),
+                     orderBy(documentId()),
+                     limit(pageSize),
+                 );
+ 
+             const snap = await getDocs(q);
+             if (snap.empty) break;
+ 
+             all.push(...snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+             last = snap.docs[snap.docs.length - 1];
+ 
+@@ -834,196 +860,203 @@ export const loadStaffDataOnce = async ({
                  } catch (e) {
-                     console.error('[viewer] FAIL: classTestStats (skip)', e);
-                     if (!isCancelled()) setClassTestStats({});
+                     try {
+                         const snap2 = await getDocs(
+                             query(
+                                 collection(db, 'closures'),
+                                 where('scope', '==', 'class'),
+                                 where('classId', 'in', ch),
+                                 limit(500),
+                             ),
+                         );
+                         snap2.docs.forEach((d) => merged.set(d.id, { id: d.id, ...d.data() }));
+                     } catch (e2) {
+                         console.warn('[staff] closures class load failed', e2);
+                     }
                  }
              }
-         } else if (!isCancelled() && !hasDetailCache) {
-             setLessonLogs?.([]);
-             setTests?.([]);
-             setClassTestStats?.({});
          }
  
-         /* =========================
-         grades (viewer): 병렬 로딩 결과 사용
-         ========================= */
-         
-         /* =========================
-            homeworkResults (직접 getDocs)
-         ========================= */
-         try {
-             if (!hasDetailCache && scopedStudentUids.length > 0) {
-                 const mapped = {};
-@@ -1886,26 +1886,26 @@ export const loadViewerDataOnce = async ({
+         return Array.from(merged.values()).sort((a, b) =>
+             String(b?.startDate || '').localeCompare(String(a?.startDate || '')),
+         );
+     };
+ 
+     try {
+         if (setStudents) {
+-            staffStudents = await fetchList(
++            staffStudents = await loadCachedSlice('students', applyStudents, () => fetchList(
+                 db,
+                 'users',
+-                applyStudents,
++                () => {},
+                 query(collection(db, 'users'), where('role', '==', ROLE.STUDENT), limit(500)),
+                 () => false,
+                 normalizeStudentUser,
+-            );
++            ));
+         }
+ 
+         if (setParents) {
+             const parentRoles = [ROLE.PARENT, '학부모'];
+             try {
+                 await fetchList(
+                     db,
+                     'users',
+                     setParents,
+                     query(collection(db, 'users'), where('role', 'in', parentRoles), limit(500)),
+                     () => false,
+                 );
+             } catch (error) {
+                 console.warn('[staff] parent role in query failed, fallback to client filter', error);
+                 const users = await fetchList(
+                     db,
+                     'users',
+                     () => {},
+                     query(collection(db, 'users'), limit(500)),
+                     () => false,
+                 );
+                 const roleSet = new Set(parentRoles);
+                 setParents(users.filter((user) => roleSet.has(user?.role)));
+             }
+         }
+ 
+         if (setClasses) {
+-            staffClasses = await fetchList(
++            staffClasses = await loadCachedSlice('classes', setClasses, () => fetchList(
+                 db,
+                 'classes',
+-                setClasses,
++                () => {},
+                 query(collection(db, 'classes'), orderBy('name')),
+                 () => false,
+-            );
++            ));
+         }
+ 
+         if (setTests && (shouldLoad('grades') || shouldLoad('lessons') || shouldLoad('lessonReports'))) {
+             const tests = await fetchList(db, 'tests', setTests, query(collection(db, 'tests'), orderBy('date', 'desc'), limit(200)), () => false);
+             warnOnQuestionScores(tests, 'staff');
+         }
+ 
+         if (setLessonLogs && (shouldLoad('lessons') || shouldLoad('lessonReports'))) {
+             await fetchList(db, 'lessonLogs', setLessonLogs, query(collection(db, 'lessonLogs'), orderBy('date', 'desc'), limit(150)), () => false);
+         }
+         if (setLessonReports && (shouldLoad('lessons') || shouldLoad('students') || shouldLoad('lessonReports'))) {
+             await fetchList(db, 'lessonReports', setLessonReports, query(collection(db, 'lessonReports'), orderBy('lessonDate', 'desc'), limit(300)), () => false);
+         }
+ 
+ 
+-        if (setAttendanceLogs && (shouldLoad('attendance') || shouldLoad('lessons') || shouldLoad('students') || shouldLoad('lessonReports'))) {
+-            const attendanceLogs = await fetchAttendanceLogsWithPagination(db, () => false);
+-            setAttendanceLogs?.(attendanceLogs);
++        if (setAttendanceLogs && (shouldLoad('attendance') || shouldLoad('lessons') || shouldLoad('lessonReports'))) {
++            await loadCachedSlice('attendanceLogs', setAttendanceLogs, () => fetchAttendanceLogsWithPagination(db, () => false));
+         }
+ 
+         if (setClinicLogs && (shouldLoad('clinic') || shouldLoad('lessons'))) {
++            const cachedClinicLogs = readStaffCache(pageKey, 'clinicLogs');
++            if (cachedClinicLogs !== undefined) {
++                setClinicLogs?.(cachedClinicLogs);
++            } else {
+             const [lightLogs, lightReservations] = await Promise.all([
+                 fetchClinicLogsLight(db, () => false, 300),
+                 fetchClinicReservationsLight(db, () => false, 500),
+             ]);
+-            const mergedClinicDocs = mergeClinicDocs(lightLogs, lightReservations);
++            const mergedClinicDocs = writeStaffCache(pageKey, 'clinicLogs', mergeClinicDocs(lightLogs, lightReservations));
+             setClinicLogs?.(mergedClinicDocs);
+             console.log('[staff] clinic logs loaded (merged)=', {
+                 clinicLogs: lightLogs.length,
+                 clinicReservations: lightReservations.length,
+                 merged: mergedClinicDocs.length,
+             });
++            }
+         }
+ 
+         if (setWorkLogs && shouldLoad('communication')) {
+             await fetchList(db, 'workLogs', setWorkLogs, query(collection(db, 'workLogs'), orderBy('date', 'desc'), limit(150)), () => false);
+         }
+ 
+         if (setAnnouncements && shouldLoad('communication')) {
+             await fetchList(db, 'announcements', setAnnouncements, query(collection(db, 'announcements'), orderBy('date', 'desc'), limit(150)), () => false);
+         }
+ 
+         if (setHomeworkAssignments && (shouldLoad('homework') || shouldLoad('lessonReports'))) {
+             await fetchList(db, 'homeworkAssignments', setHomeworkAssignments, query(collection(db, 'homeworkAssignments'), orderBy('date', 'desc'), limit(150)), () => false);
+         }
+ 
+         if (setPaymentLogs && shouldLoad('payment')) {
+             await fetchList(
+                 db,
+                 'payments',
+                 setPaymentLogs,
+                 query(collection(db, 'payments'), orderBy('createdAt', 'desc'), limit(150)),
+                 () => false,
+                 normalizePaymentLog,
+             );
+         }
+ 
+-        if (setGrades && (shouldLoad('grades') || shouldLoad('lessonReports'))) {
+-            const mappedGrades = {};
+-            const grades = await fetchGradesWithPagination(db, 5000, 500);
++        if (setGrades && shouldLoad('grades')) {
++            await loadCachedSlice('grades', setGrades, async () => {
++                const mappedGrades = {};
++                const grades = await fetchGradesWithPagination(db, 5000, 500);
+ 
+-            grades.forEach((raw) => {
+-                const data = normalizeAuthUid(raw); // ✅ authUid/studentUid → studentId로 정규화
++                grades.forEach((raw) => {
++                    const data = normalizeAuthUid(raw); // ✅ authUid/studentUid → studentId로 정규화
+ 
+-                const sId = data.studentId; // ✅ 이제 항상 studentId를 키로 사용
+-                const testId = data.testId;
++                    const sId = data.studentId; // ✅ 이제 항상 studentId를 키로 사용
++                    const testId = data.testId;
+ 
+-                if (!sId || !testId) return; // 방어 로직
++                    if (!sId || !testId) return; // 방어 로직
+ 
+-                if (!mappedGrades[sId]) mappedGrades[sId] = {};
+-                mappedGrades[sId][testId] = data;
++                    if (!mappedGrades[sId]) mappedGrades[sId] = {};
++                    mappedGrades[sId][testId] = data;
++                });
++                return mappedGrades;
+             });
+-
+-            setGrades(mappedGrades);
+         }
+ 
+-        if (setHomeworkResults && (shouldLoad('homework') || shouldLoad('lessonReports'))) {
++        if (setHomeworkResults && shouldLoad('homework')) {
++            await loadCachedSlice('homeworkResults', setHomeworkResults, async () => {
+             const docs = await fetchHomeworkResultsWithPagination(db, 5000, 500);
+             const mappedResults = {};
+             const authUidToStudentDocId = new Map(
+                 (staffStudents || [])
+                     .filter((student) => student?.authUid && student?.id)
+                     .map((student) => [String(student.authUid), String(student.id)]),
+             );
+             docs.forEach((data) => {
+                 const assignmentId = data.assignmentId || data.homeworkAssignmentId || null;
+ 
+                 const rawKey = data.studentId
+                     || data.studentDocId
+                     || data.authUid
+                     || data.studentUid
+                     || null;
+                 
+                 const sKey = rawKey && authUidToStudentDocId.get(String(rawKey))
+                 ? authUidToStudentDocId.get(String(rawKey))
+                 : rawKey;
+ 
+                 if (!sKey || !assignmentId) return;
+ 
+                 if (!mappedResults[sKey]) mappedResults[sKey] = {};
+                 mappedResults[sKey][assignmentId] = data.results || data;
+             });
+             console.log('[staff][homeworkResults] loaded docs=', docs.length, 'keys=', Object.keys(mappedResults).length);
+-            setHomeworkResults(mappedResults);
++            return mappedResults;
++            });
+         }
+ 
+         if (setExternalSchedules && shouldLoad('schedule')) {
+             await fetchList(
+                 db,
+                 'externalSchedules',
+                 setExternalSchedules,
+                 query(collection(db, 'externalSchedules'), orderBy('startDate', 'desc'), limit(500)),
+                 () => false,
+             );
+         }
  
          if (setClosures) {
-             try {
-                 const snap = await getDocs(
-                     query(collection(db, 'closures'), orderBy('startDate', 'desc'), limit(200)),
-                 );
-                 if (!isCancelled()) {
-                     setClosures(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-                 }
-             } catch (e) {
-                 console.warn('[viewer] closures load skipped', e);
-                 if (!isCancelled()) setClosures([]);
-             }
+             const closures = await fetchClosuresForStaff(staffClasses);
+             setClosures(closures);
          }
- 
-         console.log('[viewer] COMPLETE');
  
      } catch (error) {
-         console.error('[viewer] loadViewerDataOnce FAILED (top-level)', error);
-         if (String(error?.code || '').includes('permission-denied')
-             || String(error?.message || '').includes('Missing or insufficient permissions')) {
-             return;
-         }
-         throw error;
+         console.error('[FirestoreSync] staff 데이터 로드 실패:', error);
      }
--};
-\ No newline at end of file
-+};
-diff --git a/src/domain/grade/classTestStats.service.js b/src/domain/grade/classTestStats.service.js
-new file mode 100644
-index 0000000000000000000000000000000000000000..40f86f6eaf6bb52f9951f3e23d110c8e23798919
---- /dev/null
-+++ b/src/domain/grade/classTestStats.service.js
-@@ -0,0 +1,63 @@
-+import {
-+    collection,
-+    doc,
-+    getDoc,
-+    getDocs,
-+    query,
-+    serverTimestamp,
-+    setDoc,
-+    where,
-+} from 'firebase/firestore';
-+import { toFiniteScoreNumber } from '../../utils/scoreDisplay';
-+
-+export const resolveClassTestStats = (test = {}, statsMap = {}) => (
-+    statsMap?.[`${test?.classId}_${test?.id}`]
-+    || statsMap?.[test?.id]
-+    || null
-+);
-+
-+const getNumericGradeScore = (grade = {}) => {
-+    for (const value of [grade.score, grade.totalScore, grade.result]) {
-+        const score = toFiniteScoreNumber(value);
-+        if (score !== null) return score;
-+    }
-+    return null;
-+};
-+
-+export const recomputeClassTestStats = async (db, testId, classId = '') => {
-+    if (!testId) return null;
-+
-+    let resolvedClassId = classId;
-+    if (!resolvedClassId) {
-+        const testSnapshot = await getDoc(doc(db, 'tests', testId));
-+        resolvedClassId = testSnapshot.exists() ? testSnapshot.data()?.classId : '';
-+    }
-+    if (!resolvedClassId) throw new Error(`classId not found for test ${testId}`);
-+
-+    const gradesSnapshot = await getDocs(query(
-+        collection(db, 'grades'),
-+        where('testId', '==', testId),
-+    ));
-+    const grades = gradesSnapshot.docs.map((snapshot) => snapshot.data());
-+    const scores = grades
-+        .filter((grade) => grade?.attempted === true)
-+        .map(getNumericGradeScore)
-+        .filter((score) => score !== null);
-+    const submittedCount = scores.length;
-+    const stats = {
-+        classId: resolvedClassId,
-+        testId,
-+        average: submittedCount ? scores.reduce((sum, score) => sum + score, 0) / submittedCount : null,
-+        maxScore: submittedCount ? Math.max(...scores) : null,
-+        submittedCount,
-+        absentCount: grades.length - submittedCount,
-+        totalCount: grades.length,
-+        updatedAt: serverTimestamp(),
-+    };
-+
-+    await setDoc(doc(db, 'classTestStats', `${resolvedClassId}_${testId}`), stats, { merge: true });
-+    if (process.env.NODE_ENV !== 'production') {
-+        console.log('[classTestStats] recomputed', { ...stats, updatedAt: undefined });
-+    }
-+    return stats;
-+};
+ };
+ 
+ export const loadViewerDataOnce = async ({
+     db,
+     isLoggedIn,
 diff --git a/src/domain/homework/homework.service.js b/src/domain/homework/homework.service.js
-index 5bf0c12c5019c91d70a24f7aa2c15abaafc36622..551d896e794df03da8038b68a922f6a59aa85138 100644
+index 551d896e794df03da8038b68a922f6a59aa85138..b82fade2805e0ccd8ea83e2175c76b57a822a988 100644
 --- a/src/domain/homework/homework.service.js
 +++ b/src/domain/homework/homework.service.js
-@@ -1,61 +1,79 @@
- const resolveDateString = (value) => {
-     if (!value) return null;
-     if (typeof value === 'string') return value;
-     if (typeof value?.toDate === 'function') return value.toDate().toISOString().slice(0, 10);
-     try { return new Date(value).toISOString().slice(0, 10); } catch { return null; }
+@@ -275,51 +275,51 @@ export const hasWrongRemaining = (resultData) => {
  };
  
- const resolveAssignedDate = (assignment) => (
-     resolveDateString(assignment?.assignedDate)
-     || resolveDateString(assignment?.date)
-     || resolveDateString(assignment?.createdAt)
- );
+ export const computeHomeworkProgress = (resultData, questionNumbersOrTotal) => {
+     const questionNumbers = Array.isArray(questionNumbersOrTotal)
+         ? questionNumbersOrTotal
+         : null;
+     const total = questionNumbers
+         ? questionNumbers.length
+         : (Number(questionNumbersOrTotal) > 0 ? Number(questionNumbersOrTotal) : 0);
+     const resultMap = normalizeResultsByQuestions(resultData, questionNumbers || []);
+     const statuses = Object.values(resultMap);
  
- export const resolveHomeworkAssignmentId = (result = {}) => (
-     result.assignmentId
-     || result.homeworkAssignmentId
-     || result.homeworkId
-+    || (
-+        result.studentId && String(result.id || '').startsWith(`${result.studentId}_`)
-+            ? String(result.id).slice(String(result.studentId).length + 1)
-+            : (String(result.id || '').includes('_') ? String(result.id).split('_').at(-1) : '')
-+    )
-     || ''
- );
+     const checkedCount = statuses.filter((status) => ['맞음', '틀림', '고침'].includes(status)).length;
+     const incorrectCount = statuses.filter((status) => status === '틀림').length;
+     const unchecked = total > 0 ? Math.max(total - checkedCount, 0) : 0;
  
- export const resolveHomeworkAssignmentTitle = (assignment = {}) => (
-     assignment.title
-     || assignment.name
-     || assignment.assignmentTitle
--    || '(과제명 없음)'
-+    || assignment.book
-+    || assignment.bookName
-+    || assignment.content
-+    || '과제명 없음'
- );
+     let completionRate = total > 0 ? Math.round((checkedCount / total) * 100) : 0;
+     if (checkedCount >= total && incorrectCount > 0) completionRate = 99;
+     if (checkedCount >= total && incorrectCount === 0 && completionRate < 100) completionRate = 100;
  
--export const resolveHomeworkQuestionSummary = (assignment = {}) => {
--    const explicit = assignment.summary || assignment.description || assignment.memo;
--    if (explicit) return explicit;
--
--    const questionCount = getAssignmentQuestionNumbers(assignment).length;
--    if (!questionCount) return '-';
--
--    const type = String(assignment.questionType || assignment.problemType || '').trim();
--    return type ? `${type} ${questionCount}문항` : `총 ${questionCount}문항`;
-+export const resolveHomeworkQuestionSummary = (assignment = {}, result = {}) => {
-+    const questionNumbers = getAssignmentQuestionNumbers(assignment);
-+    const normalized = normalizeHomeworkResultMapForDisplay(result, questionNumbers, {
-+        assignmentId: assignment?.id,
-+    });
-+    const values = Object.values(normalized);
-+    const normalize = (value) => typeof value === 'string' ? value.trim().toLowerCase() : value;
-+    const correctValues = new Set([true, 1, '1', 'o', '맞음', 'correct']);
-+    const wrongValues = new Set([false, 0, '0', 'x', '틀림', 'wrong', 'incorrect']);
-+    const fixedValues = new Set(['고침', 'fixed', 'revised']);
-+    const correct = Number(result?.correctCount) || values.filter((value) => correctValues.has(normalize(value))).length;
-+    const wrong = Number(result?.wrongCount) || values.filter((value) => wrongValues.has(normalize(value))).length;
-+    const fixed = Number(result?.fixedCount) || values.filter((value) => fixedValues.has(normalize(value))).length;
-+    const explicitTotal = Number(assignment?.totalQuestions ?? assignment?.questionCount ?? result?.totalQuestions);
-+    const total = Number.isFinite(explicitTotal) && explicitTotal >= 0
-+        ? explicitTotal
-+        : (questionNumbers.length || Object.keys(normalized).length);
-+    const unanswered = Math.max(0, total - correct - wrong - fixed);
-+    return `맞음 ${correct} / 틀림 ${wrong} / 고침 ${fixed} / 안 풂 ${unanswered}`;
+     let status = '진행중';
+ 
+     if (checkedCount > 0 && checkedCount < total) {
+     status = '진행중';
+     } else if (checkedCount >= total) {
+-    status = '완료';
++    status = isHomeworkCompleteByCounts({ wrongCount: incorrectCount, remainingCount: unchecked }) ? '완료' : '미완료';
+     }
+ 
+     return {
+         completionRate,
+         checkedCount,
+         incorrectCount,
+         uncheckedCount: unchecked,
+         status,
+     };
  };
  
- export const getClassAssignments = (assignments = [], classId) => {
-     if (!classId) return [];
- 
-     return assignments
-         .filter(a => a.classId === classId)
-         .sort((a, b) => new Date(resolveAssignedDate(b) || b.date) - new Date(resolveAssignedDate(a) || a.date));
+ export const getHomeworkStats = (results, questionNumbers = []) => {
+     const normalized = normalizeHomeworkResultMapForDisplay(results, questionNumbers);
+     const totalQuestions = Array.isArray(questionNumbers) ? questionNumbers.length : 0;
+     const values = Object.values(normalized);
+     const correctCount = values.filter((s) => s === '맞음').length;
+     const wrongCount = values.filter((s) => s === '틀림').length;
+     const fixedCount = values.filter((s) => s === '고침').length;
+     const checkedCount = correctCount + wrongCount + fixedCount;
+     const remainingCount = Math.max(totalQuestions - checkedCount, 0);
+     const completionRate = totalQuestions > 0 ? Math.round((checkedCount / totalQuestions) * 100) : 0;
+     return { correctCount, wrongCount, fixedCount, remainingCount, completionRate };
  };
  
- export const getSelectedAssignment = (assignments = [], assignmentId) => {
-     return assignments.find(a => a.id === assignmentId) || null;
+ export const buildHomeworkQuestionStats = ({ assignment, result }) => {
+@@ -345,50 +345,61 @@ export const buildHomeworkQuestionStats = ({ assignment, result }) => {
+         else remainingQuestionNumbers.push(questionNumber);
+     });
+ 
+     const correctCount = correctQuestionNumbers.length;
+     const wrongCount = wrongQuestionNumbers.length;
+     const fixedCount = fixedQuestionNumbers.length;
+     const completedCount = correctCount + wrongCount + fixedCount;
+     const remainingCount = remainingQuestionNumbers.length;
+     const completionRate = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
+ 
+     return {
+         totalCount,
+         completedCount,
+         correctCount,
+         wrongCount,
+         fixedCount,
+         remainingCount,
+         completionRate,
+         correctQuestionNumbers,
+         wrongQuestionNumbers,
+         fixedQuestionNumbers,
+         remainingQuestionNumbers,
+     };
  };
  
- export const getClassStudents = (students = [], selectedClass) => {
-     if (!selectedClass) return [];
++
++export const isHomeworkCompleteByCounts = ({ wrongCount = 0, remainingCount = 0 } = {}) => {
++    const wrong = Number(wrongCount) || 0;
++    const remaining = Number(remainingCount) || 0;
++    return wrong === 0 && remaining === 0;
++};
++
++export const getHomeworkCompletionLabel = (counts = {}) => (
++    isHomeworkCompleteByCounts(counts) ? '완료' : '미완료'
++);
++
+ export const applyHomeworkProgressCap = (progressPercent = 0, resultData, totalQuestions = null) => {
+     const safeProgress = Number.isFinite(progressPercent) ? progressPercent : 0;
+     const progress = computeHomeworkProgress(resultData, totalQuestions);
+     if (safeProgress >= 100 && (progress.incorrectCount > 0 || hasWrongRemaining(resultData))) return 99;
+     return progress.completionRate || safeProgress;
+ };
  
-     const classId = String(selectedClass.id);
-     return students
-         .filter((student) => {
-             const classIds = Array.isArray(student.classIds)
-                 ? student.classIds
-                 : (student.classes || []);
-             return classIds.map(String).includes(classId);
-         })
+ export const isAssignmentAssignedToStudent = (assignment, studentId, extraStudentKeys = []) => {
+     if (!assignment || !studentId) return false;
+     const assignedIds = resolveAssignmentStudentIds(assignment).map(String);
+     const compareKeys = [studentId, ...extraStudentKeys].filter(Boolean).map(String);
+     if (assignedIds.length === 0) return true;
+     return compareKeys.some((key) => assignedIds.includes(key));
+ };
+ 
+ export const buildAssignmentSummary = (selectedAssignment, classStudents = [], homeworkResults = {}, localChanges = []) => {
+     if (!selectedAssignment) return [];
+ 
+     const questionNumbers = getAssignmentQuestionNumbers(selectedAssignment);
+ 
+     return classStudents.map(student => {
+         const rawResult = homeworkResults[student.id]?.[selectedAssignment.id];
+         const savedResult = normalizeHomeworkResultMapForDisplay(rawResult, questionNumbers, {
+             assignmentId: selectedAssignment.id,
+             studentId: student.id,
+diff --git a/src/pages/HomeworkManagement.jsx b/src/pages/HomeworkManagement.jsx
+index 6c21048ddc440fcf3bd855411407dd22154fbcf9..c2025e216354ff6e93354a28c385819ba4d7f498 100644
+--- a/src/pages/HomeworkManagement.jsx
++++ b/src/pages/HomeworkManagement.jsx
+@@ -1,33 +1,33 @@
+ import React, { useState, useMemo, useEffect, useCallback } from 'react';
+ import { collection, query, where, getDocs, limit } from 'firebase/firestore';
+ import { Icon, getLastCheckedDate } from '../utils/helpers';
+ import ClassSelectionPanel from '../components/Shared/ClassSelectionPanel';
+ import HomeworkStatisticsPanel from '../components/Homework/HomeworkStatisticsPanel';
+ import { HomeworkAssignmentModal } from '../utils/modals/HomeworkAssignmentModal';
+ import HomeworkResultsModal from '../utils/modals/HomeworkResultsModal';
+-import { buildAssignmentSummary, classifyHomeworkResultKeyMode, computeHomeworkProgress, getAssignmentQuestionNumbers, getClassAssignments, getSelectedAssignment, normalizeHomeworkResultMapForDisplay, resolveAssignmentStudentIds, resolveAssignmentTypeLabel, resolveAssignmentType } from '../domain/homework/homework.service';
++import { buildAssignmentSummary, classifyHomeworkResultKeyMode, computeHomeworkProgress, getAssignmentQuestionNumbers, getClassAssignments, getSelectedAssignment, normalizeHomeworkResultMapForDisplay, resolveAssignmentStudentIds, resolveAssignmentTypeLabel, resolveAssignmentType, isHomeworkCompleteByCounts } from '../domain/homework/homework.service';
+ import { buildHomeworkWrongNoteText } from '../domain/homework/homeworkWrongNote.service';
+ import { db } from '../firebase/client';
+ import { getDefaultClassId, isClosedClass } from '../utils/classStatus';
+ import { useClassStudents } from '../utils/useClassStudents';
+ import { filterRosterByWithdrawDate } from '../utils/rosterFilter';
+ import { buildStudentParentPhoneLast4Map, formatStudentNameWithParentLast4 } from '../utils/parentPhone';
+ import { Modal } from '../components/common/Modal';
+ 
+ const isSameStudent = (result, student) => {
+     if (!result || !student) return false;
+ 
+     const resultStudentIds = [
+         result.studentId,
+         result.studentDocId,
+         result.studentUid,
+         result.authUid,
+     ].filter(Boolean).map(String);
+ 
+     const studentIds = [
+         student.id,
+         student.authUid,
+     ].filter(Boolean).map(String);
+ 
+     return resultStudentIds.some(rid => studentIds.includes(rid));
+ };
+@@ -287,51 +287,51 @@ export default function HomeworkManagement({
+             const sid = String(student.studentId);
+             const aid = String(selectedAssignment?.id || '');
+             const overlay = draftHomeworkOverlay?.[sid]?.[aid];
+             const mergedResultMap = overlay?.results || student.resultMap || {};
+             const normalizedResultMap = normalizeHomeworkResultMapForDisplay(mergedResultMap, questionNumbers, {
+                 assignmentId: selectedAssignment?.id,
+                 studentId: student.studentId,
+             });
+ 
+             if (isDev) {
+                 console.log('[homework completion debug]', {
+                     assignmentId: selectedAssignment?.id,
+                     title: selectedAssignment?.title || selectedAssignment?.book || selectedAssignment?.content,
+                     questionNumbers,
+                     rawKeys: Object.keys(mergedResultMap || {}),
+                     normalizedKeys: Object.keys(normalizedResultMap || {}),
+                     mode: classifyHomeworkResultKeyMode(mergedResultMap, questionNumbers),
+                 });
+             }
+ 
+             const progress = computeHomeworkProgress(normalizedResultMap, questionNumbers);
+             const answeredCount = progress.checkedCount;
+             const completionPercentRaw = progress.completionRate;
+             const hasWrong = progress.incorrectCount > 0;
+             const wrongProgress = completionPercentRaw === 99;
+-            const completed = completionPercentRaw === 100;
++            const completed = isHomeworkCompleteByCounts({ wrongCount: progress.incorrectCount, remainingCount: progress.uncheckedCount });
+             const completionPercentDisplay = overlay && typeof overlay.completionRate === 'number'
+                 ? overlay.completionRate
+                 : completionPercentRaw;
+ 
+             acc[student.studentId] = {
+                 raw: completionPercentRaw,
+                 display: completionPercentDisplay,
+                 done: answeredCount,
+                 total: totalQuestions,
+                 hasWrong,
+                 wrongProgress,
+                 completed,
+             };
+             return acc;
+         }, {});
+     }, [assignmentSummary, selectedAssignment, draftHomeworkOverlay]);
+ 
+     const assignmentStatusById = useMemo(() => {
+         const summaryByAssignment = {};
+         allAssignments.forEach((assignment) => {
+             const assignmentId = String(assignment.id);
+             const rates = [];
+ 
+             Object.values(normalizedHomeworkResults || {}).forEach((byAssignment) => {
+                 const record = byAssignment?.[assignmentId];
 diff --git a/src/pages/StudentDetail.jsx b/src/pages/StudentDetail.jsx
-index ed7934d8dd71128c97d901033b68e240d3de7f6a..86beb3e1b1d9ebb392d1562742b9addf83575d40 100644
+index 86beb3e1b1d9ebb392d1562742b9addf83575d40..c7bc490114ad8b416aea6f8a40595425ae883359 100644
 --- a/src/pages/StudentDetail.jsx
 +++ b/src/pages/StudentDetail.jsx
-@@ -8,50 +8,52 @@ import {
+@@ -6,50 +6,52 @@ import {
+     documentId,
+     getDoc,
      getDocs,
      limit,
      orderBy,
@@ -835,10 +599,12 @@ index ed7934d8dd71128c97d901033b68e240d3de7f6a..86beb3e1b1d9ebb392d1562742b9addf
      resolveHomeworkAssignmentId,
      resolveHomeworkAssignmentTitle,
      resolveHomeworkQuestionSummary,
++    buildHomeworkQuestionStats,
++    getHomeworkCompletionLabel,
  } from '../domain/homework/homework.service';
  import { resolveGradeDisplay, resolveGradeTestId } from '../domain/grade/grade.service';
-+import { resolveClassTestStats } from '../domain/grade/classTestStats.service';
-+import { formatScoreStat } from '../utils/scoreDisplay';
+ import { resolveClassTestStats } from '../domain/grade/classTestStats.service';
+ import { formatScoreStat } from '../utils/scoreDisplay';
  
  const COLLECTIONS = {
      users: 'users',
@@ -860,216 +626,7 @@ index ed7934d8dd71128c97d901033b68e240d3de7f6a..86beb3e1b1d9ebb392d1562742b9addf
      ['grades', '성적'],
      ['homework', '과제'],
      ['clinic', '클리닉'],
-     ['timeline', '교직원 타임라인'],
-     ['payments', '결제/교재'],
- ];
- 
-@@ -324,50 +326,51 @@ const isNotAttempted = (grade) => {
-     return grade?.attempted === false
-         || value === null
-         || value === undefined
-         || value === ''
-         || ['미응시', '미제출', 'absent', 'not_attempted'].includes(normalized);
- };
- 
- const formatScore = (grade) => {
-     if (isNotAttempted(grade)) return '미응시';
-     const numeric = Number(scoreValue(grade));
-     return Number.isFinite(numeric) ? `${numeric.toFixed(1)}점` : String(scoreValue(grade));
- };
- 
- export default function StudentDetail() {
-     const { studentId } = useParams();
-     const navigate = useNavigate();
-     const { user, role, userProfile, profileDocId } = useAuth();
-     const [activeTab, setActiveTab] = useState('profile');
-     const [loading, setLoading] = useState(true);
-     const [error, setError] = useState('');
-     const [student, setStudent] = useState(null);
-     const [classes, setClasses] = useState([]);
-     const [attendances, setAttendances] = useState([]);
-     const [grades, setGrades] = useState([]);
-     const [tests, setTests] = useState([]);
-+    const [classTestStats, setClassTestStats] = useState({});
-     const [homeworkResults, setHomeworkResults] = useState([]);
-     const [homeworkAssignments, setHomeworkAssignments] = useState([]);
-     const [clinicLogs, setClinicLogs] = useState([]);
-     const [attendanceCursors, setAttendanceCursors] = useState({});
-     const [clinicCursors, setClinicCursors] = useState({});
-     const [attendanceHasMore, setAttendanceHasMore] = useState(false);
-     const [clinicHasMore, setClinicHasMore] = useState(false);
-     const [attendanceMoreLoading, setAttendanceMoreLoading] = useState(false);
-     const [clinicMoreLoading, setClinicMoreLoading] = useState(false);
-     const [payments, setPayments] = useState([]);
-     const [materials, setMaterials] = useState([]);
-     const [timeline, setTimeline] = useState([]);
-     const [timelineLoading, setTimelineLoading] = useState(false);
-     const [timelineDraft, setTimelineDraft] = useState('');
-     const [timelineSaving, setTimelineSaving] = useState(false);
-     const [timelineError, setTimelineError] = useState('');
- 
-     const canUseTimeline = [ROLE.ADMIN, ROLE.STAFF, ROLE.TEACHER].includes(role);
- 
-     const loadTimeline = useCallback(async () => {
-         if (!student || !canUseTimeline) {
-             setTimeline([]);
-             return;
-         }
-         setTimelineLoading(true);
-@@ -396,184 +399,206 @@ export default function StudentDetail() {
-                 }
- 
-                 const [attendancePage, gradeRows, homeworkRows, clinicPage, paymentRows, materialRows] = await Promise.all([
-                     fetchStudentPage(COLLECTIONS.attendance, loadedStudent, ATTENDANCE_FIELDS),
-                     fetchStudentRecords(COLLECTIONS.grades, loadedStudent),
-                     fetchStudentRecords(COLLECTIONS.homeworkResults, loadedStudent),
-                     fetchStudentPage(COLLECTIONS.clinic, loadedStudent, CLINIC_FIELDS),
-                     fetchByStudentKeys(COLLECTIONS.payments, loadedStudent).catch(() => []),
-                     fetchByStudentKeys(COLLECTIONS.materials, loadedStudent).catch(() => []),
-                 ]);
-                 const attendanceRows = attendancePage.rows;
-                 const clinicRows = clinicPage.rows;
- 
-                 const classIds = new Set(getStudentClassIds(loadedStudent));
-                 [...attendanceRows, ...gradeRows, ...homeworkRows, ...clinicRows].forEach((item) => {
-                     const classId = getClassId(item);
-                     if (classId) classIds.add(classId);
-                 });
-                 const testIds = gradeRows.map(resolveGradeTestId).filter(Boolean);
-                 const assignmentIds = homeworkRows.map(resolveHomeworkAssignmentId).filter(Boolean);
-                 const testRows = await fetchByIds(COLLECTIONS.tests, testIds);
-                 testRows.forEach((test) => {
-                     const classId = getClassId(test);
-                     if (classId) classIds.add(classId);
-                 });
--                const [classRows, assignmentRowsByClass, assignmentRowsById] = await Promise.all([
-+                const statsIds = testRows
-+                    .filter((test) => test.id && getClassId(test))
-+                    .map((test) => `${getClassId(test)}_${test.id}`);
-+                const [classRows, assignmentRowsByClass, assignmentRowsById, statsRows] = await Promise.all([
-                     fetchByIds(COLLECTIONS.classes, [...classIds]),
-                     fetchByClassIds(COLLECTIONS.homeworkAssignments, [...classIds]),
-                     fetchByIds(COLLECTIONS.homeworkAssignments, assignmentIds),
-+                    fetchByIds('classTestStats', statsIds),
-                 ]);
-                 const assignmentRows = mergeById([assignmentRowsByClass, assignmentRowsById]);
- 
-                 if (!mounted) return;
-                 setStudent(loadedStudent);
-                 setClasses(classRows);
-                 setAttendances(attendanceRows.filter((item) => isSameStudentByAnyKey(item, loadedStudent)));
-                 setAttendanceCursors(attendancePage.cursors);
-                 setAttendanceHasMore(attendancePage.hasMore);
-                 const matchedGrades = gradeRows.filter((item) => (
-                     isSameStudentByAnyKey(item, loadedStudent)
-                     && testRows.some((test) => String(resolveGradeTestId(item)) === String(test.id))
-                 ));
-                 const matchedHomework = homeworkRows.filter((item) => isSameStudentByAnyKey(item, loadedStudent));
-                 if (process.env.NODE_ENV !== 'production') {
-                     matchedGrades.forEach((grade) => {
-                         const testId = resolveGradeTestId(grade);
-                         const test = testRows.find((item) => String(item.id) === String(testId));
-                         const classDoc = classRows.find((item) => String(item.id) === String(getClassId(test)));
-                         console.log('[studentDetail][grade]', {
-                             gradeId: grade.id,
-                             testId,
-                             resolvedClassName: resolveGradeDisplay({ grade, test, classDoc }).className,
-                         });
-                     });
-                     matchedHomework.forEach((result) => {
-                         const assignmentId = resolveHomeworkAssignmentId(result);
-                         const assignment = assignmentRows.find((item) => String(item.id) === String(assignmentId));
-                         console.log('[studentDetail][homework]', {
-                             resultId: result.id,
-                             assignmentId,
-                             resolvedAssignmentTitle: resolveHomeworkAssignmentTitle(assignment),
-                         });
-                     });
-                 }
-                 setGrades(matchedGrades);
-                 setHomeworkResults(matchedHomework);
-                 setClinicLogs(clinicRows.filter((item) => isSameStudentByAnyKey(item, loadedStudent)));
-                 setClinicCursors(clinicPage.cursors);
-                 setClinicHasMore(clinicPage.hasMore);
-                 setPayments(paymentRows);
-                 setMaterials(materialRows);
-                 setTests(testRows);
-+                setClassTestStats(Object.fromEntries(statsRows.map((stats) => [stats.id, stats])));
-                 setHomeworkAssignments(assignmentRows);
-             } catch (loadError) {
-                 console.error('[StudentDetail] load failed', loadError);
-                 if (mounted) setError(loadError?.message || '학생 정보를 불러오지 못했습니다.');
-             } finally {
-                 if (mounted) setLoading(false);
-             }
-         };
-         load();
-         return () => { mounted = false; };
-     }, [studentId]);
- 
-     useEffect(() => {
-         if (activeTab === 'timeline') loadTimeline();
-     }, [activeTab, loadTimeline]);
- 
-     const classMap = useMemo(() => new Map(classes.map((item) => [String(item.id), item])), [classes]);
-     const testMap = useMemo(() => new Map(tests.map((item) => [String(item.id), item])), [tests]);
-     const activeHomeworkAssignments = useMemo(
-         () => homeworkAssignments.filter((item) => !isClosedClass(classMap.get(getClassId(item)))),
-         [homeworkAssignments, classMap],
-     );
-     const assignmentMap = useMemo(() => new Map(activeHomeworkAssignments.map((item) => [
-         String(item.id || item.assignmentId),
-         item,
-     ])), [activeHomeworkAssignments]);
-     const sortedClasses = useMemo(() => sortClassesWithClosedLast(classes), [classes]);
-     const sortedAttendances = useMemo(
-         () => sortNewest(attendances, ['date', 'lessonDate', 'createdAt']),
-         [attendances],
-     );
-     const gradeRows = useMemo(() => grades.flatMap((grade) => {
-         const test = testMap.get(String(resolveGradeTestId(grade)));
-         if (!test) return [];
-         const classDoc = classMap.get(getClassId(test));
-         if (!classDoc || classDoc.active === false || isClosedClass(classDoc)) return [];
--        return [{ ...grade, test, classDoc, ...resolveGradeDisplay({ grade, test, classDoc }) }];
--    }), [grades, testMap, classMap]);
-+        const stats = resolveClassTestStats(test, classTestStats);
-+        const resolved = {
-+            ...grade,
-+            test,
-+            classDoc,
-+            ...resolveGradeDisplay({ grade, test, classDoc }),
-+            classAverage: stats?.average ?? test?.average ?? null,
-+            highestScore: stats?.maxScore ?? test?.maxScore ?? null,
-+            submittedCount: stats?.submittedCount ?? null,
-+        };
-+        if (process.env.NODE_ENV !== 'production') {
-+            console.log('[studentDetail][gradeStats] resolved stats', {
-+                testId: test.id,
-+                classId: test.classId,
-+                stats,
-+            });
-+        }
-+        return [resolved];
-+    }), [grades, testMap, classMap, classTestStats]);
-     const sortedGrades = useMemo(
-         () => [...gradeRows].sort((a, b) => (
-             (toDate(b.testDate)?.getTime() || 0) - (toDate(a.testDate)?.getTime() || 0)
-         )),
-         [gradeRows],
-     );
-     const sortedClinics = useMemo(
-         () => sortNewest(clinicLogs, ['date', 'clinicDate', 'createdAt']),
-         [clinicLogs],
-     );
- 
-     const attendanceSummary = useMemo(() => {
-         const presentCount = sortedAttendances.filter((item) => isPresent(firstValue(item, ['status', 'attendanceStatus']))).length;
-         const videoCount = sortedAttendances.filter((item) => isVideoMakeup(firstValue(item, ['status', 'attendanceStatus']))).length;
-         const absentCount = sortedAttendances.filter((item) => isAbsent(firstValue(item, ['status', 'attendanceStatus']))).length;
-         const lateCount = sortedAttendances.filter((item) => isLate(firstValue(item, ['status', 'attendanceStatus']))).length;
-         return {
-             recent: sortedAttendances.slice(0, 4),
+@@ -549,54 +551,58 @@ export default function StudentDetail() {
              presentCount,
              videoCount,
              absentCount,
@@ -1095,14 +652,16 @@ index ed7934d8dd71128c97d901033b68e240d3de7f6a..86beb3e1b1d9ebb392d1562742b9addf
          const assignment = assignmentMap.get(assignmentId);
          if (!assignment) return [];
          const questionNumbers = Array.isArray(assignment.questionNumbers) ? assignment.questionNumbers : [];
++        const questionStats = buildHomeworkQuestionStats({ assignment, result });
++        const completionLabel = getHomeworkCompletionLabel(questionStats);
          return [{
              ...assignment,
              ...result,
              assignmentTitle: resolveHomeworkAssignmentTitle(assignment),
--            questionSummary: resolveHomeworkQuestionSummary(assignment),
--            results: normalizeHomeworkResultMapForDisplay(result.results || {}, questionNumbers, {
-+            questionSummary: resolveHomeworkQuestionSummary(assignment, result),
-+            results: normalizeHomeworkResultMapForDisplay(result, questionNumbers, {
++            status: completionLabel,
++            completed: completionLabel === '완료',
+             questionSummary: resolveHomeworkQuestionSummary(assignment, result),
+             results: normalizeHomeworkResultMapForDisplay(result, questionNumbers, {
                  assignmentId,
                  studentId: student?.id,
              }),
@@ -1126,259 +685,113 @@ index ed7934d8dd71128c97d901033b68e240d3de7f6a..86beb3e1b1d9ebb392d1562742b9addf
                  student,
                  isAttendance ? ATTENDANCE_FIELDS : CLINIC_FIELDS,
                  isAttendance ? attendanceCursors : clinicCursors,
-             );
-             if (isAttendance) {
-@@ -707,52 +732,53 @@ export default function StudentDetail() {
-                         <DataTable rows={sortedAttendances} emptyText="출결 기록이 없습니다." columns={[
-                             { key: 'date', label: '날짜', render: (row) => formatDate(firstValue(row, ['date', 'lessonDate', 'createdAt'])) },
-                             { key: 'class', label: '클래스', render: className },
-                             { key: 'status', label: '출결 상태', render: (row) => firstValue(row, ['status', 'attendanceStatus'], '-') },
-                             { key: 'memo', label: '메모/사유', render: (row) => firstValue(row, ['memo', 'reason', 'note'], '-') },
-                         ]} />
-                         <div className="no-print mt-4 text-center">
-                             {attendanceHasMore ? (
-                                 <button type="button" disabled={attendanceMoreLoading} onClick={() => loadMore('attendance')} className="rounded-lg border border-[#455fab] px-4 py-2 text-xs font-bold text-[#455fab] disabled:opacity-50">
-                                     {attendanceMoreLoading ? '불러오는 중...' : '출결 4개 더보기'}
-                                 </button>
-                             ) : sortedAttendances.length > 0 && <p className="text-xs text-gray-400">더 이상 기록이 없습니다.</p>}
-                         </div>
-                     </SectionCard>
-                 </div>
-             );
-         }
-         if (activeTab === 'grades') {
-             return (
-                 <SectionCard title="성적" description="미응시는 점수와 구분하여 표시합니다.">
-                     <DataTable rows={sortedGrades} emptyText="성적 기록이 없습니다." columns={[
-                         { key: 'test', label: '시험명', render: (row) => firstValue(row.test, ['name', 'title', 'testName'], firstValue(row, ['testName', 'name'], '-')) },
-                         { key: 'class', label: '클래스', render: className },
-                         { key: 'date', label: '날짜', render: (row) => formatDate(row.testDate) },
-                         { key: 'score', label: '학생 점수', render: (row) => <span className={isNotAttempted(row) ? 'font-bold text-gray-400' : 'font-bold text-[#455fab]'}>{formatScore(row)}</span> },
--                        { key: 'average', label: '평균', render: (row) => row.classAverage ?? '-' },
--                        { key: 'highest', label: '최고점', render: (row) => row.highestScore ?? '-' },
-+                        { key: 'average', label: '평균', render: (row) => formatScoreStat(row.classAverage) },
-+                        { key: 'highest', label: '최고점', render: (row) => formatScoreStat(row.highestScore) },
-+                        { key: 'submitted', label: '응시자 수', render: (row) => row.submittedCount ?? '통계 준비 중' },
-                         { key: 'attempted', label: '응시 여부', render: (row) => isNotAttempted(row) ? '미응시' : '응시' },
-                     ]} />
-                 </SectionCard>
-             );
-         }
-         if (activeTab === 'homework') {
-             return (
-                 <SectionCard title="과제" description="해당 학생의 과제 결과만 표시합니다.">
-                     <DataTable rows={homeworkRows} emptyText="과제 결과가 없습니다." columns={[
-                         { key: 'title', label: '과제명', render: (row) => row.assignmentTitle },
-                         { key: 'class', label: '클래스', render: className },
-                         { key: 'date', label: '출제일', render: (row) => formatDate(firstValue(row, ['assignedDate', 'date', 'createdAt'])) },
-                         { key: 'status', label: '제출/완료', render: (row) => firstValue(row, ['status', 'submissionStatus'], row?.completed ? '완료' : '미완료') },
-                         { key: 'summary', label: '문항 요약', render: (row) => row.questionSummary },
-                     ]} />
-                 </SectionCard>
-             );
-         }
-         if (activeTab === 'clinic') {
-             return (
-                 <SectionCard title="클리닉" description={`현재 표시된 기록 합계 ${clinicMinutes ? `${Math.floor(clinicMinutes / 60)}시간 ${clinicMinutes % 60}분` : '집계 정보 없음'}`}>
-                     <DataTable rows={sortedClinics} emptyText="클리닉 기록이 없습니다." columns={[
-                         { key: 'date', label: '날짜', render: (row) => formatDate(firstValue(row, ['date', 'clinicDate', 'createdAt'])) },
-                         { key: 'time', label: '시간', render: (row) => firstValue(row, ['plannedTime', 'time'], formatTime(firstValue(row, ['checkIn', 'startAt']))) },
-                         { key: 'teacher', label: '담당자', render: (row) => firstValue(row, ['tutorName', 'tutor', 'assistantName', 'assistant', 'teacherName', 'teacher', 'updatedByName', 'createdByName'], '담당자 미지정') },
 diff --git a/src/utils/helpers.js b/src/utils/helpers.js
-index 87953c9aaba1d392cbc85cb1ce2fceff275e26ed..7df3728060861442d3e142e0f57f6246e7b9596a 100644
+index 7df3728060861442d3e142e0f57f6246e7b9596a..bf5b789ec0c0ad31b80091bdc8eb1948576e20c3 100644
 --- a/src/utils/helpers.js
 +++ b/src/utils/helpers.js
-@@ -120,68 +120,69 @@ export const calculateGradeComparison = (studentId, classes, tests, grades, clas
-     ].some((value) => String(value) === studentKey);
-     const visibleClassIds = classList.map(c => String(c.id || c.classId || c.classDocId || c.docId || '')).filter(Boolean);
-     const myClassIds = classList.filter(rosterContainsStudent).map(c => String(c.id));
-     const relevantTests = testList.filter(t => visibleClassIds.includes(String(t.classId)) || myClassIds.includes(String(t.classId)) || hasGradeRecord(t));
+@@ -1,28 +1,28 @@
+ // src/utils/helpers.js
+ import React from 'react';
+-import { buildHomeworkQuestionStats, computeHomeworkProgress, getAssignmentQuestionNumbers, isAssignmentAssignedToStudent, normalizeHomeworkResultMapForDisplay } from '../domain/homework/homework.service';
++import { buildHomeworkQuestionStats, computeHomeworkProgress, getAssignmentQuestionNumbers, isAssignmentAssignedToStudent, isHomeworkCompleteByCounts, normalizeHomeworkResultMapForDisplay } from '../domain/homework/homework.service';
+ import { isClosedDate, normalizeDateToYMD } from './closures';
+ import { getTotalScore, isAbsentGrade } from '../domain/grade/grade.service';
+ import { 
+     Home, Calendar, Clipboard, BarChart2, Menu, 
+     User, Users, ChevronRight, ChevronLeft, ChevronUp, ChevronDown, 
+     CheckCircle, Clock, AlertCircle, X, Check, LogOut,
+     Bell, MessageSquare, Video, FileText, Lock,
+     Search, Filter, MoreVertical, Plus, Trash2,
+     PlayCircle, PauseCircle, StopCircle, Volume2, VolumeX,
+     Maximize, Minimize, Settings, BookOpen, PenTool,
+     MapPin, Phone, Mail, Award, TrendingUp, TrendingDown, Activity,
+     Edit, List, Folder, Download, CreditCard, Smartphone,
+     AlertTriangle, MessageCircle, CheckSquare, CalendarPlus,
+     RefreshCw, UserX
+ } from 'lucide-react';
  
-     const computeScoreFromCorrectCount = (record, test) => {
-         if (!record?.correctCount) return null;
+ export const Icon = ({ name, className, ...props }) => {
+     const icons = {
+         home: Home, calendar: Calendar, clipboard: Clipboard, clipboardCheck: Clipboard, 
+         barChart: BarChart2, menu: Menu, user: User, users: Users, 
+         chevronRight: ChevronRight, chevronLeft: ChevronLeft, 
+         chevronUp: ChevronUp, chevronDown: ChevronDown, 
+         checkCircle: CheckCircle, clock: Clock, 
+         alertCircle: AlertCircle, x: X, check: Check,
+         logOut: LogOut, bell: Bell, messageSquare: MessageSquare, monitor: Video,
+@@ -504,74 +504,73 @@ const findHomeworkResult = (results, studentKeys, assignmentId) => {
  
-         const entries = Object.entries(record.correctCount);
-         if (entries.length === 0) return null;
- 
-         // 맞음/고침을 정답으로 처리
-         const correct = entries.filter(([, v]) => v === '맞음' || v === '고침').length;
-         const total = entries.length;
- 
-         const maxScore = Number(test?.maxScore) || 0;
-         if (maxScore <= 0) return correct; // 만점이 없으면 '맞은 개수'라도 반환
- 
-         return Math.round((correct / total) * maxScore);
-     };
- 
- 
-     relevantTests.forEach(test => {
-         const myRecord = grades[studentId]?.[test.id] || null;
-         {
--            const aggregatedStats = classTestStats?.[test.id] || classTestStats?.[`${test.classId}_${test.id}`] || null;
--            const hasStats = aggregatedStats && Number.isFinite(aggregatedStats.count) && aggregatedStats.count > 0;
-+            const aggregatedStats = classTestStats?.[`${test.classId}_${test.id}`] || classTestStats?.[test.id] || null;
-+            const submittedCount = Number(aggregatedStats?.submittedCount ?? aggregatedStats?.attemptedCount ?? aggregatedStats?.count);
-+            const hasStats = aggregatedStats && Number.isFinite(submittedCount);
- 
-             const rawMyScore = myRecord?.score;
-             const totalScoreFromService = isAbsentGrade(myRecord) ? null : getTotalScore(myRecord, test);
-             const computedMyScore = Number.isFinite(totalScoreFromService)
-                 ? totalScoreFromService
-                 : computeScoreFromCorrectCount(myRecord, test);
- 
-             const numericRawMyScore = Number(rawMyScore);
-             const myScore = Number.isFinite(numericRawMyScore)
-                 ? numericRawMyScore
-                 : (Number.isFinite(computedMyScore) ? computedMyScore : null);
- 
-             const averageSource = hasStats && Number.isFinite(aggregatedStats.average) ? aggregatedStats.average : null;
-             const classAverage = averageSource !== null ? Math.round(averageSource) : null;
-             const highestScore = hasStats && Number.isFinite(aggregatedStats.maxScore) ? aggregatedStats.maxScore : null;
--            const totalStudents = hasStats && Number.isFinite(aggregatedStats.count) ? aggregatedStats.count : null;
-+            const totalStudents = hasStats ? submittedCount : null;
- 
-             const myAccuracy = (Number.isFinite(myScore) && test.maxScore > 0)
-                 ? Math.round((myScore / test.maxScore) * 100)
-                 : null;
-             const scoreDifference = (classAverage !== null && Number.isFinite(myScore)) ? myScore - classAverage : null;
-             const isAboveAverage = (classAverage !== null && Number.isFinite(myScore)) ? myScore >= classAverage : null;
- 
-             let zScore;
-             
-             const stdDevSource = hasStats && Number.isFinite(aggregatedStats.stdDev) ? aggregatedStats.stdDev : test.stdDev;
-             const avgForZ = averageSource !== null ? averageSource : test.average;
-             if (Number.isFinite(stdDevSource) && stdDevSource > 0 && Number.isFinite(avgForZ) && Number.isFinite(myScore)) {
-                 zScore = (myScore - avgForZ) / stdDevSource;
-             }
- 
-             const questionsAnalysis = [];
-             if (test.questionScores && myRecord?.correctCount) {
-                 test.questionScores.forEach((score, idx) => {
-                     const qNum = idx + 1;
-                     const status = myRecord.correctCount[qNum] || '미응시';
-                     const rate = aggregatedStats?.correctRates ? aggregatedStats.correctRates[qNum] : null;
-                     const itemAccuracy = Number.isFinite(rate) ? Math.round(rate * 100) : null;
- 
-                     questionsAnalysis.push({
-                         no: qNum, score: score, status: status, itemAccuracy: itemAccuracy,
-@@ -608,26 +609,26 @@ export const getClinicDisplayStatus = (item) => {
-     if (item.checkOut) return '완료';
-     if (item.checkIn) return '입실 중';
- 
-     const hasPlannedTime = Boolean(item?.plannedTime || item?.timeSlot || item?.date);
-     const isReserved = [statusValue, attendanceValue, resultValue, checkStatusValue].some((value) => reservedKeywords.includes(value));
-     if (hasPlannedTime && isReserved) return '예약됨';
-     if (hasPlannedTime) return '입실 예정';
- 
-     return '예약됨';
+     if (Array.isArray(results)) {
+         return results.find((r) => {
+             const studentKey = r?.authUid || r?.studentId || r?.studentUid || r?.uid;
+             if (!studentKey || !studentKeys.includes(String(studentKey))) return false;
+             return String(r?.assignmentId) === String(assignmentId);
+         }) || null;
+     }
+     
+     return null;
  };
  
- export const getClinicComment = (item) => {
-     if (!item) return '';
-     const candidates = [
-         item.comment,
-         item.note,
-         item.notes,
-         item.memo,
-         item.content,
-         item.reason,
-         item.noShowComment,
-         item.absenceComment,
-     ];
-     const resolved = candidates.find((value) => typeof value === 'string' && value.trim().length > 0);
-     return resolved ? resolved.trim() : '';
--};
-\ No newline at end of file
-+};
-diff --git a/src/utils/scoreDisplay.js b/src/utils/scoreDisplay.js
-index 80802eb1534bac50dfb4bc81188383f61d83c0c0..89631e4199c5725845e5aeed9bb3bdd464d79b63 100644
---- a/src/utils/scoreDisplay.js
-+++ b/src/utils/scoreDisplay.js
-@@ -68,79 +68,81 @@ export const formatStudentScore = (recordOrValue, options = {}) => {
-   if (isAbsentGradeRecord(recordOrValue)) return absentLabel;
+ export const calculateHomeworkStats = (studentId, assignments, results, options = {}) => {
+     if (!assignments) return [];
+     const studentKeys = resolveStudentKeys(studentId, options);
  
-   const score = toFiniteScoreNumber(pickScoreValue(recordOrValue));
-   if (score === null) return absentLabel;
+     return assignments
+         .filter(hw => isAssignmentAssignedToStudent(hw, studentId, studentKeys))
+         .map(hw => {
+         const rawResult = findHomeworkResult(results, studentKeys, hw.id);
+             const questionNumbers = getAssignmentQuestionNumbers(hw);
+             const studentResults = normalizeHomeworkResultMapForDisplay(rawResult, questionNumbers, {
+                 assignmentId: hw.id,
+                 studentId,
+             });
+-            const totalQuestions = questionNumbers.length;
+             const progress = computeHomeworkProgress(studentResults, questionNumbers);
+             const questionStats = buildHomeworkQuestionStats({ assignment: hw, result: rawResult });
+             const assignmentType = hw.type || 'homework';
  
-   const label = score.toFixed(1);
-   return includeUnit ? `${label}점` : label;
+             const statusLabel = assignmentType === 'video_makeup'
+                 ? '출제됨'
+                 : progress.status;
+ 
+             const resolvedCheckedDate = getLastCheckedDate(rawResult) ?? rawResult?.updatedAt ?? null;
+ 
+             return {
+                 ...hw,
+                 assignedDate: toDateString(hw.assignedDate) || toDateString(hw.date) || toDateString(hw.createdAt),
+                 lastCheckedDate: toDateString(resolvedCheckedDate),
+                 completionRate: progress.completionRate,
+                 status: statusLabel,
+                 checkedCount: progress.checkedCount,
+                 completedCount: questionStats.completedCount,
+                 correctCount: questionStats.correctCount,
+                 incorrectCount: questionStats.wrongCount,
+                 uncheckedCount: questionStats.remainingCount,
+                 fixedCount: questionStats.fixedCount,
+-                isComplete: progress.checkedCount >= totalQuestions && progress.incorrectCount === 0,
++                isComplete: isHomeworkCompleteByCounts({ wrongCount: questionStats.wrongCount, remainingCount: questionStats.remainingCount }),
+                 correctQuestionNumbers: questionStats.correctQuestionNumbers,
+                 wrongQuestionNumbers: questionStats.wrongQuestionNumbers,
+                 fixedQuestionNumbers: questionStats.fixedQuestionNumbers,
+                 remainingQuestionNumbers: questionStats.remainingQuestionNumbers,
+             };
+         });
  };
  
- export const formatScoreStat = (value, options = {}) => {
-   const { fallback = '통계 준비 중', includeUnit = false } = options;
-   const label = formatNumberOneDecimal(value, fallback);
-   if (label === fallback) return label;
-   return includeUnit ? `${label}점` : label;
+ export const calculateDurationMinutes = (start, end) => {
+     if (!start || !end) return 0;
+     const [startH, startM] = start.split(':').map(Number);
+     const [endH, endM] = end.split(':').map(Number);
+     return (endH * 60 + endM) - (startH * 60 + startM);
  };
  
- const firstFiniteScore = (...values) => {
-   for (const value of values) {
-     const score = toFiniteScoreNumber(value);
-     if (score !== null) return score;
-   }
-   return null;
+ export const formatDuration = (minutes) => {
+     if (minutes <= 0) return '0분';
+     const h = Math.floor(minutes / 60);
+     const m = minutes % 60;
+     return h > 0 ? `${h}시간 ${m}분` : `${m}분`;
  };
  
- export const getTestStatsForDisplay = (test = {}, classTestStats = {}) => {
--  const stats = classTestStats?.[test?.id] || classTestStats?.[`${test?.classId}_${test?.id}`] || null;
-+  const stats = classTestStats?.[`${test?.classId}_${test?.id}`] || classTestStats?.[test?.id] || null;
- 
-   return {
-     average: firstFiniteScore(
-       stats?.average,
-       test?.average,
-       test?.classAverage,
-     ),
-     highest: firstFiniteScore(
-       stats?.maxScore,
-       stats?.highestScore,
-       stats?.classMax,
-       test?.classMax,
-       test?.highestScore,
-       test?.highScore,
-     ),
-+    submittedCount: firstFiniteScore(stats?.submittedCount, stats?.attemptedCount, stats?.count),
-     perfect: firstFiniteScore(
-       test?.maxScore,
-       test?.totalScore,
-       test?.perfectScore,
-     ),
-   };
- };
- 
- export const buildTestStatParts = (stats = {}, options = {}) => {
-   const { includeUnit = true } = options;
-   return [
--    ['평균', stats.average],
--    ['최고', stats.highest],
--    ['만점', stats.perfect],
-+    ['평균', stats.average, includeUnit],
-+    ['최고', stats.highest, includeUnit],
-+    ['응시자', stats.submittedCount, false],
-+    ['만점', stats.perfect, includeUnit],
-   ]
--    .map(([label, value]) => {
--      const formatted = formatScoreStat(value, { fallback: '', includeUnit });
-+    .map(([label, value, partIncludesUnit]) => {
-+      const formatted = formatScoreStat(value, { fallback: '', includeUnit: partIncludesUnit });
-       return formatted ? `${label} ${formatted}` : '';
-     })
-     .filter(Boolean);
- };
- 
- export const formatTestStatsInline = (stats = {}, options = {}) => (
-   buildTestStatParts(stats, options).join(' · ')
- );
- 
- export const buildTestDisplayLines = ({ title, gradeRecord, stats = {} }) => ([
-   title,
-   `학생: ${formatStudentScore(gradeRecord, { includeUnit: true })}`,
-   ...buildTestStatParts(stats, { includeUnit: true }).map((part) => part.replace(' ', ': ')),
- ]);
- 
- export const formatSessionTestScore = (gradeRecord, test = {}, classTestStats = {}) => {
-   const stats = getTestStatsForDisplay(test, classTestStats);
-   const scoreLabel = formatStudentScore(gradeRecord, { includeUnit: true });
-   const statParts = buildTestStatParts(stats, { includeUnit: true });
-   return [scoreLabel, ...statParts].join(' · ');
- };
+ export const formatTime = (seconds) => {
+     if (!seconds) return '0:00';
+     const m = Math.floor(seconds / 60);

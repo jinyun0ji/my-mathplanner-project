@@ -1,6 +1,6 @@
 // src/utils/helpers.js
 import React from 'react';
-import { buildHomeworkQuestionStats, computeHomeworkProgress, getAssignmentQuestionNumbers, isAssignmentAssignedToStudent, normalizeHomeworkResultMapForDisplay } from '../domain/homework/homework.service';
+import { buildHomeworkQuestionStats, computeHomeworkProgress, getAssignmentQuestionNumbers, isAssignmentAssignedToStudent, isHomeworkCompleteByCounts, normalizeHomeworkResultMapForDisplay } from '../domain/homework/homework.service';
 import { isClosedDate, normalizeDateToYMD } from './closures';
 import { getTotalScore, isAbsentGrade } from '../domain/grade/grade.service';
 import { 
@@ -526,7 +526,6 @@ export const calculateHomeworkStats = (studentId, assignments, results, options 
                 assignmentId: hw.id,
                 studentId,
             });
-            const totalQuestions = questionNumbers.length;
             const progress = computeHomeworkProgress(studentResults, questionNumbers);
             const questionStats = buildHomeworkQuestionStats({ assignment: hw, result: rawResult });
             const assignmentType = hw.type || 'homework';
@@ -549,7 +548,7 @@ export const calculateHomeworkStats = (studentId, assignments, results, options 
                 incorrectCount: questionStats.wrongCount,
                 uncheckedCount: questionStats.remainingCount,
                 fixedCount: questionStats.fixedCount,
-                isComplete: progress.checkedCount >= totalQuestions && progress.incorrectCount === 0,
+                isComplete: isHomeworkCompleteByCounts({ wrongCount: questionStats.wrongCount, remainingCount: questionStats.remainingCount }),
                 correctQuestionNumbers: questionStats.correctQuestionNumbers,
                 wrongQuestionNumbers: questionStats.wrongQuestionNumbers,
                 fixedQuestionNumbers: questionStats.fixedQuestionNumbers,

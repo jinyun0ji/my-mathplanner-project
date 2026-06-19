@@ -28,6 +28,8 @@ import {
     resolveHomeworkAssignmentId,
     resolveHomeworkAssignmentTitle,
     resolveHomeworkQuestionSummary,
+    buildHomeworkQuestionStats,
+    getHomeworkCompletionLabel,
 } from '../domain/homework/homework.service';
 import { resolveGradeDisplay, resolveGradeTestId } from '../domain/grade/grade.service';
 import { resolveClassTestStats } from '../domain/grade/classTestStats.service';
@@ -571,10 +573,14 @@ export default function StudentDetail() {
         const assignment = assignmentMap.get(assignmentId);
         if (!assignment) return [];
         const questionNumbers = Array.isArray(assignment.questionNumbers) ? assignment.questionNumbers : [];
+        const questionStats = buildHomeworkQuestionStats({ assignment, result });
+        const completionLabel = getHomeworkCompletionLabel(questionStats);
         return [{
             ...assignment,
             ...result,
             assignmentTitle: resolveHomeworkAssignmentTitle(assignment),
+            status: completionLabel,
+            completed: completionLabel === '완료',
             questionSummary: resolveHomeworkQuestionSummary(assignment, result),
             results: normalizeHomeworkResultMapForDisplay(result, questionNumbers, {
                 assignmentId,

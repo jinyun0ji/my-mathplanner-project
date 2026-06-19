@@ -5,7 +5,7 @@ import ClassSelectionPanel from '../components/Shared/ClassSelectionPanel';
 import HomeworkStatisticsPanel from '../components/Homework/HomeworkStatisticsPanel';
 import { HomeworkAssignmentModal } from '../utils/modals/HomeworkAssignmentModal';
 import HomeworkResultsModal from '../utils/modals/HomeworkResultsModal';
-import { buildAssignmentSummary, classifyHomeworkResultKeyMode, computeHomeworkProgress, getAssignmentQuestionNumbers, getClassAssignments, getSelectedAssignment, normalizeHomeworkResultMapForDisplay, resolveAssignmentStudentIds, resolveAssignmentTypeLabel, resolveAssignmentType } from '../domain/homework/homework.service';
+import { buildAssignmentSummary, classifyHomeworkResultKeyMode, computeHomeworkProgress, getAssignmentQuestionNumbers, getClassAssignments, getSelectedAssignment, normalizeHomeworkResultMapForDisplay, resolveAssignmentStudentIds, resolveAssignmentTypeLabel, resolveAssignmentType, isHomeworkCompleteByCounts } from '../domain/homework/homework.service';
 import { buildHomeworkWrongNoteText } from '../domain/homework/homeworkWrongNote.service';
 import { db } from '../firebase/client';
 import { getDefaultClassId, isClosedClass } from '../utils/classStatus';
@@ -309,7 +309,7 @@ export default function HomeworkManagement({
             const completionPercentRaw = progress.completionRate;
             const hasWrong = progress.incorrectCount > 0;
             const wrongProgress = completionPercentRaw === 99;
-            const completed = completionPercentRaw === 100;
+            const completed = isHomeworkCompleteByCounts({ wrongCount: progress.incorrectCount, remainingCount: progress.uncheckedCount });
             const completionPercentDisplay = overlay && typeof overlay.completionRate === 'number'
                 ? overlay.completionRate
                 : completionPercentRaw;

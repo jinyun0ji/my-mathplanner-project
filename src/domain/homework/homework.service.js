@@ -297,7 +297,7 @@ export const computeHomeworkProgress = (resultData, questionNumbersOrTotal) => {
     if (checkedCount > 0 && checkedCount < total) {
     status = '진행중';
     } else if (checkedCount >= total) {
-    status = '완료';
+    status = isHomeworkCompleteByCounts({ wrongCount: incorrectCount, remainingCount: unchecked }) ? '완료' : '미완료';
     }
 
     return {
@@ -366,6 +366,17 @@ export const buildHomeworkQuestionStats = ({ assignment, result }) => {
         remainingQuestionNumbers,
     };
 };
+
+
+export const isHomeworkCompleteByCounts = ({ wrongCount = 0, remainingCount = 0 } = {}) => {
+    const wrong = Number(wrongCount) || 0;
+    const remaining = Number(remainingCount) || 0;
+    return wrong === 0 && remaining === 0;
+};
+
+export const getHomeworkCompletionLabel = (counts = {}) => (
+    isHomeworkCompleteByCounts(counts) ? '완료' : '미완료'
+);
 
 export const applyHomeworkProgressCap = (progressPercent = 0, resultData, totalQuestions = null) => {
     const safeProgress = Number.isFinite(progressPercent) ? progressPercent : 0;

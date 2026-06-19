@@ -134,6 +134,20 @@ const fetchListSafe = async (q, isCancelled = () => false, mapper = null) => {
     return mapper ? baseItems.map(mapper) : baseItems;
 };
 
+
+// 직원 화면 Firestore read 1차 절감 메모
+// - 기존 loadStaffDataOnce는 직원 pageKey 변경마다 users/classes/closures 및 일부 대용량 컬렉션을 반복 조회했다.
+// - 아래 메모리 캐시는 같은 브라우저 세션/같은 pageKey에서 이미 읽은 slice를 재사용해 탭 왕복 read를 줄인다.
+// - 대용량 attendanceLogs/grades/homeworkResults/clinicLogs는 pageKey 조건을 좁혀 전체 컬렉션성 로딩을 최소화한다.
+const staffDataCache = new Map();
+const STAFF_GLOBAL_CACHE_SLICES = new Set(['students', 'parents', 'classes']);
+const getStaffCacheKey = (pageKey, slice) => `${STAFF_GLOBAL_CACHE_SLICES.has(slice) ? 'global' : (pageKey || 'all')}:${slice}`;
+const readStaffCache = (pageKey, slice) => staffDataCache.get(getStaffCacheKey(pageKey, slice));
+const writeStaffCache = (pageKey, slice, value) => {
+    staffDataCache.set(getStaffCacheKey(pageKey, slice), value);
+    return value;
+};
+
 const viewerDetailCache = {
     lessonLogs: new Map(),
     attendance: new Map(),
@@ -762,6 +776,18 @@ export const loadStaffDataOnce = async ({
 
     const shouldLoad = (key) => !pageKey || pageKey === key;
     const applyStudents = (items) => setStudents?.(dedupeStudentsByAuthUid(items));
+    const loadCachedSlice = async (slice, setter, loader) => {
+        const cached = readStaffCache(pageKey, slice);
+        if (cached !== undefined) {
+            setter?.(cached);
+            if (isDevelopment()) console.log('[staff][cache] hit', { pageKey, slice, count: Array.isArray(cached) ? cached.length : Object.keys(cached || {}).length });
+            return cached;
+        }
+        const loaded = await loader();
+        writeStaffCache(pageKey, slice, loaded);
+        setter?.(loaded);
+        return loaded;
+    };
 
     const fetchHomeworkResultsWithPagination = async (db, maxDocs = 5000, pageSize = 500) => {
         const all = [];
@@ -856,14 +882,14 @@ export const loadStaffDataOnce = async ({
 
     try {
         if (setStudents) {
-            staffStudents = await fetchList(
+            staffStudents = await loadCachedSlice('students', applyStudents, () => fetchList(
                 db,
                 'users',
-                applyStudents,
+                () => {},
                 query(collection(db, 'users'), where('role', '==', ROLE.STUDENT), limit(500)),
                 () => false,
                 normalizeStudentUser,
-            );
+            ));
         }
 
         if (setParents) {
@@ -891,13 +917,13 @@ export const loadStaffDataOnce = async ({
         }
 
         if (setClasses) {
-            staffClasses = await fetchList(
+            staffClasses = await loadCachedSlice('classes', setClasses, () => fetchList(
                 db,
                 'classes',
-                setClasses,
+                () => {},
                 query(collection(db, 'classes'), orderBy('name')),
                 () => false,
-            );
+            ));
         }
 
         if (setTests && (shouldLoad('grades') || shouldLoad('lessons') || shouldLoad('lessonReports'))) {
@@ -913,23 +939,27 @@ export const loadStaffDataOnce = async ({
         }
 
 
-        if (setAttendanceLogs && (shouldLoad('attendance') || shouldLoad('lessons') || shouldLoad('students') || shouldLoad('lessonReports'))) {
-            const attendanceLogs = await fetchAttendanceLogsWithPagination(db, () => false);
-            setAttendanceLogs?.(attendanceLogs);
+        if (setAttendanceLogs && (shouldLoad('attendance') || shouldLoad('lessons') || shouldLoad('lessonReports'))) {
+            await loadCachedSlice('attendanceLogs', setAttendanceLogs, () => fetchAttendanceLogsWithPagination(db, () => false));
         }
 
         if (setClinicLogs && (shouldLoad('clinic') || shouldLoad('lessons'))) {
+            const cachedClinicLogs = readStaffCache(pageKey, 'clinicLogs');
+            if (cachedClinicLogs !== undefined) {
+                setClinicLogs?.(cachedClinicLogs);
+            } else {
             const [lightLogs, lightReservations] = await Promise.all([
                 fetchClinicLogsLight(db, () => false, 300),
                 fetchClinicReservationsLight(db, () => false, 500),
             ]);
-            const mergedClinicDocs = mergeClinicDocs(lightLogs, lightReservations);
+            const mergedClinicDocs = writeStaffCache(pageKey, 'clinicLogs', mergeClinicDocs(lightLogs, lightReservations));
             setClinicLogs?.(mergedClinicDocs);
             console.log('[staff] clinic logs loaded (merged)=', {
                 clinicLogs: lightLogs.length,
                 clinicReservations: lightReservations.length,
                 merged: mergedClinicDocs.length,
             });
+            }
         }
 
         if (setWorkLogs && shouldLoad('communication')) {
@@ -955,26 +985,28 @@ export const loadStaffDataOnce = async ({
             );
         }
 
-        if (setGrades && (shouldLoad('grades') || shouldLoad('lessonReports'))) {
-            const mappedGrades = {};
-            const grades = await fetchGradesWithPagination(db, 5000, 500);
+        if (setGrades && shouldLoad('grades')) {
+            await loadCachedSlice('grades', setGrades, async () => {
+                const mappedGrades = {};
+                const grades = await fetchGradesWithPagination(db, 5000, 500);
 
-            grades.forEach((raw) => {
-                const data = normalizeAuthUid(raw); // ✅ authUid/studentUid → studentId로 정규화
+                grades.forEach((raw) => {
+                    const data = normalizeAuthUid(raw); // ✅ authUid/studentUid → studentId로 정규화
 
-                const sId = data.studentId; // ✅ 이제 항상 studentId를 키로 사용
-                const testId = data.testId;
+                    const sId = data.studentId; // ✅ 이제 항상 studentId를 키로 사용
+                    const testId = data.testId;
 
-                if (!sId || !testId) return; // 방어 로직
+                    if (!sId || !testId) return; // 방어 로직
 
-                if (!mappedGrades[sId]) mappedGrades[sId] = {};
-                mappedGrades[sId][testId] = data;
+                    if (!mappedGrades[sId]) mappedGrades[sId] = {};
+                    mappedGrades[sId][testId] = data;
+                });
+                return mappedGrades;
             });
-
-            setGrades(mappedGrades);
         }
 
-        if (setHomeworkResults && (shouldLoad('homework') || shouldLoad('lessonReports'))) {
+        if (setHomeworkResults && shouldLoad('homework')) {
+            await loadCachedSlice('homeworkResults', setHomeworkResults, async () => {
             const docs = await fetchHomeworkResultsWithPagination(db, 5000, 500);
             const mappedResults = {};
             const authUidToStudentDocId = new Map(
@@ -1001,7 +1033,8 @@ export const loadStaffDataOnce = async ({
                 mappedResults[sKey][assignmentId] = data.results || data;
             });
             console.log('[staff][homeworkResults] loaded docs=', docs.length, 'keys=', Object.keys(mappedResults).length);
-            setHomeworkResults(mappedResults);
+            return mappedResults;
+            });
         }
 
         if (setExternalSchedules && shouldLoad('schedule')) {
