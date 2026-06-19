@@ -40,7 +40,9 @@
     "backfill:chat-room-types:dry": "node functions/scripts/backfillChatRoomTypes.js",
     "backfill:chat-room-types:write": "node functions/scripts/backfillChatRoomTypes.js --write",
     "backfill:student-birth-year:dry": "node functions/scripts/backfillStudentBirthYearFromGrade.js",
-    "backfill:student-birth-year:write": "node functions/scripts/backfillStudentBirthYearFromGrade.js --write"
+    "backfill:student-birth-year:write": "node functions/scripts/backfillStudentBirthYearFromGrade.js --write",
+    "backfill:class-test-stats:dry": "node functions/scripts/backfillClassTestStats.js",
+    "backfill:class-test-stats:write": "node functions/scripts/backfillClassTestStats.js --write"
   },
   "eslintConfig": {
     "extends": [

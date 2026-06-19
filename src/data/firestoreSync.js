@@ -1626,7 +1626,7 @@ export const loadViewerDataOnce = async ({
                         const snap = await getDoc(doc(db, 'classTestStats', statsId));
 
                         if (snap.exists()) {
-                            statsMap[t.id] = snap.data();
+                            statsMap[statsId] = snap.data();
                         }
                     }
 

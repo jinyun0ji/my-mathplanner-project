@@ -90,7 +90,7 @@ const firstFiniteScore = (...values) => {
 };
 
 export const getTestStatsForDisplay = (test = {}, classTestStats = {}) => {
-  const stats = classTestStats?.[test?.id] || classTestStats?.[`${test?.classId}_${test?.id}`] || null;
+  const stats = classTestStats?.[`${test?.classId}_${test?.id}`] || classTestStats?.[test?.id] || null;
 
   return {
     average: firstFiniteScore(
@@ -106,6 +106,7 @@ export const getTestStatsForDisplay = (test = {}, classTestStats = {}) => {
       test?.highestScore,
       test?.highScore,
     ),
+    submittedCount: firstFiniteScore(stats?.submittedCount, stats?.attemptedCount, stats?.count),
     perfect: firstFiniteScore(
       test?.maxScore,
       test?.totalScore,
@@ -117,12 +118,13 @@ export const getTestStatsForDisplay = (test = {}, classTestStats = {}) => {
 export const buildTestStatParts = (stats = {}, options = {}) => {
   const { includeUnit = true } = options;
   return [
-    ['평균', stats.average],
-    ['최고', stats.highest],
-    ['만점', stats.perfect],
+    ['평균', stats.average, includeUnit],
+    ['최고', stats.highest, includeUnit],
+    ['응시자', stats.submittedCount, false],
+    ['만점', stats.perfect, includeUnit],
   ]
-    .map(([label, value]) => {
-      const formatted = formatScoreStat(value, { fallback: '', includeUnit });
+    .map(([label, value, partIncludesUnit]) => {
+      const formatted = formatScoreStat(value, { fallback: '', includeUnit: partIncludesUnit });
       return formatted ? `${label} ${formatted}` : '';
     })
     .filter(Boolean);

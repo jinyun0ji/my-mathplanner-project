@@ -15,6 +15,11 @@ export const resolveHomeworkAssignmentId = (result = {}) => (
     result.assignmentId
     || result.homeworkAssignmentId
     || result.homeworkId
+    || (
+        result.studentId && String(result.id || '').startsWith(`${result.studentId}_`)
+            ? String(result.id).slice(String(result.studentId).length + 1)
+            : (String(result.id || '').includes('_') ? String(result.id).split('_').at(-1) : '')
+    )
     || ''
 );
 
@@ -22,18 +27,31 @@ export const resolveHomeworkAssignmentTitle = (assignment = {}) => (
     assignment.title
     || assignment.name
     || assignment.assignmentTitle
-    || '(과제명 없음)'
+    || assignment.book
+    || assignment.bookName
+    || assignment.content
+    || '과제명 없음'
 );
 
-export const resolveHomeworkQuestionSummary = (assignment = {}) => {
-    const explicit = assignment.summary || assignment.description || assignment.memo;
-    if (explicit) return explicit;
-
-    const questionCount = getAssignmentQuestionNumbers(assignment).length;
-    if (!questionCount) return '-';
-
-    const type = String(assignment.questionType || assignment.problemType || '').trim();
-    return type ? `${type} ${questionCount}문항` : `총 ${questionCount}문항`;
+export const resolveHomeworkQuestionSummary = (assignment = {}, result = {}) => {
+    const questionNumbers = getAssignmentQuestionNumbers(assignment);
+    const normalized = normalizeHomeworkResultMapForDisplay(result, questionNumbers, {
+        assignmentId: assignment?.id,
+    });
+    const values = Object.values(normalized);
+    const normalize = (value) => typeof value === 'string' ? value.trim().toLowerCase() : value;
+    const correctValues = new Set([true, 1, '1', 'o', '맞음', 'correct']);
+    const wrongValues = new Set([false, 0, '0', 'x', '틀림', 'wrong', 'incorrect']);
+    const fixedValues = new Set(['고침', 'fixed', 'revised']);
+    const correct = Number(result?.correctCount) || values.filter((value) => correctValues.has(normalize(value))).length;
+    const wrong = Number(result?.wrongCount) || values.filter((value) => wrongValues.has(normalize(value))).length;
+    const fixed = Number(result?.fixedCount) || values.filter((value) => fixedValues.has(normalize(value))).length;
+    const explicitTotal = Number(assignment?.totalQuestions ?? assignment?.questionCount ?? result?.totalQuestions);
+    const total = Number.isFinite(explicitTotal) && explicitTotal >= 0
+        ? explicitTotal
+        : (questionNumbers.length || Object.keys(normalized).length);
+    const unanswered = Math.max(0, total - correct - wrong - fixed);
+    return `맞음 ${correct} / 틀림 ${wrong} / 고침 ${fixed} / 안 풂 ${unanswered}`;
 };
 
 export const getClassAssignments = (assignments = [], classId) => {

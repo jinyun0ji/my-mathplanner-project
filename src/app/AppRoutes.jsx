@@ -49,6 +49,7 @@ import { useParentContext } from '../parent';
 import { logClientError } from '../utils/errorLogger';
 import { addVideoMemo, deleteVideoMemo, updateVideoMemo } from '../domain/memo/videoMemo.service';
 import { getAssignmentQuestionNumbers, normalizeHomeworkResultMapForDisplay } from '../domain/homework/homework.service';
+import { recomputeClassTestStats } from '../domain/grade/classTestStats.service';
 import {
     addDoc,
     arrayRemove,
@@ -1269,11 +1270,18 @@ export default function AppRoutes({ user, role, studentIds }) {
               updatedAt: serverTimestamp(),
               updatedBy: userId,
           };
-          await setDoc(doc(db, 'grades', docId), payload, { merge: true });
+          const test = await findTestById();
+          const classId = test?.classId || '';
+          await setDoc(doc(db, 'grades', docId), { ...payload, ...(classId ? { classId } : {}) }, { merge: true });
           setGrades(prev => ({
               ...prev,
               [studentId]: { ...prev[studentId], [testId]: payload },
           }));
+          try {
+              await recomputeClassTestStats(db, testId, classId);
+          } catch (statsError) {
+              console.warn('[classTestStats] recompute failed after grade save', { testId, classId, statsError });
+          }
       } catch (error) {
         await logClientError({
               scope: 'grades',

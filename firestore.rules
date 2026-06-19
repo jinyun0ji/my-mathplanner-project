@@ -519,7 +519,7 @@ service cloud.firestore {
     
     match /classTestStats/{id} {
       allow read: if request.auth != null;
-      allow write: if isStaff();
+      allow write: if isStaffOrAdminOrTeacher();
     }
 
     match /lessonLogs/{docId} {

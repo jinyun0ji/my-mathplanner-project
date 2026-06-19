@@ -142,8 +142,9 @@ export const calculateGradeComparison = (studentId, classes, tests, grades, clas
     relevantTests.forEach(test => {
         const myRecord = grades[studentId]?.[test.id] || null;
         {
-            const aggregatedStats = classTestStats?.[test.id] || classTestStats?.[`${test.classId}_${test.id}`] || null;
-            const hasStats = aggregatedStats && Number.isFinite(aggregatedStats.count) && aggregatedStats.count > 0;
+            const aggregatedStats = classTestStats?.[`${test.classId}_${test.id}`] || classTestStats?.[test.id] || null;
+            const submittedCount = Number(aggregatedStats?.submittedCount ?? aggregatedStats?.attemptedCount ?? aggregatedStats?.count);
+            const hasStats = aggregatedStats && Number.isFinite(submittedCount);
 
             const rawMyScore = myRecord?.score;
             const totalScoreFromService = isAbsentGrade(myRecord) ? null : getTotalScore(myRecord, test);
@@ -159,7 +160,7 @@ export const calculateGradeComparison = (studentId, classes, tests, grades, clas
             const averageSource = hasStats && Number.isFinite(aggregatedStats.average) ? aggregatedStats.average : null;
             const classAverage = averageSource !== null ? Math.round(averageSource) : null;
             const highestScore = hasStats && Number.isFinite(aggregatedStats.maxScore) ? aggregatedStats.maxScore : null;
-            const totalStudents = hasStats && Number.isFinite(aggregatedStats.count) ? aggregatedStats.count : null;
+            const totalStudents = hasStats ? submittedCount : null;
 
             const myAccuracy = (Number.isFinite(myScore) && test.maxScore > 0)
                 ? Math.round((myScore / test.maxScore) * 100)

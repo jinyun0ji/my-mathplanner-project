@@ -30,6 +30,8 @@ import {
     resolveHomeworkQuestionSummary,
 } from '../domain/homework/homework.service';
 import { resolveGradeDisplay, resolveGradeTestId } from '../domain/grade/grade.service';
+import { resolveClassTestStats } from '../domain/grade/classTestStats.service';
+import { formatScoreStat } from '../utils/scoreDisplay';
 
 const COLLECTIONS = {
     users: 'users',
@@ -346,6 +348,7 @@ export default function StudentDetail() {
     const [attendances, setAttendances] = useState([]);
     const [grades, setGrades] = useState([]);
     const [tests, setTests] = useState([]);
+    const [classTestStats, setClassTestStats] = useState({});
     const [homeworkResults, setHomeworkResults] = useState([]);
     const [homeworkAssignments, setHomeworkAssignments] = useState([]);
     const [clinicLogs, setClinicLogs] = useState([]);
@@ -418,10 +421,14 @@ export default function StudentDetail() {
                     const classId = getClassId(test);
                     if (classId) classIds.add(classId);
                 });
-                const [classRows, assignmentRowsByClass, assignmentRowsById] = await Promise.all([
+                const statsIds = testRows
+                    .filter((test) => test.id && getClassId(test))
+                    .map((test) => `${getClassId(test)}_${test.id}`);
+                const [classRows, assignmentRowsByClass, assignmentRowsById, statsRows] = await Promise.all([
                     fetchByIds(COLLECTIONS.classes, [...classIds]),
                     fetchByClassIds(COLLECTIONS.homeworkAssignments, [...classIds]),
                     fetchByIds(COLLECTIONS.homeworkAssignments, assignmentIds),
+                    fetchByIds('classTestStats', statsIds),
                 ]);
                 const assignmentRows = mergeById([assignmentRowsByClass, assignmentRowsById]);
 
@@ -465,6 +472,7 @@ export default function StudentDetail() {
                 setPayments(paymentRows);
                 setMaterials(materialRows);
                 setTests(testRows);
+                setClassTestStats(Object.fromEntries(statsRows.map((stats) => [stats.id, stats])));
                 setHomeworkAssignments(assignmentRows);
             } catch (loadError) {
                 console.error('[StudentDetail] load failed', loadError);
@@ -501,8 +509,25 @@ export default function StudentDetail() {
         if (!test) return [];
         const classDoc = classMap.get(getClassId(test));
         if (!classDoc || classDoc.active === false || isClosedClass(classDoc)) return [];
-        return [{ ...grade, test, classDoc, ...resolveGradeDisplay({ grade, test, classDoc }) }];
-    }), [grades, testMap, classMap]);
+        const stats = resolveClassTestStats(test, classTestStats);
+        const resolved = {
+            ...grade,
+            test,
+            classDoc,
+            ...resolveGradeDisplay({ grade, test, classDoc }),
+            classAverage: stats?.average ?? test?.average ?? null,
+            highestScore: stats?.maxScore ?? test?.maxScore ?? null,
+            submittedCount: stats?.submittedCount ?? null,
+        };
+        if (process.env.NODE_ENV !== 'production') {
+            console.log('[studentDetail][gradeStats] resolved stats', {
+                testId: test.id,
+                classId: test.classId,
+                stats,
+            });
+        }
+        return [resolved];
+    }), [grades, testMap, classMap, classTestStats]);
     const sortedGrades = useMemo(
         () => [...gradeRows].sort((a, b) => (
             (toDate(b.testDate)?.getTime() || 0) - (toDate(a.testDate)?.getTime() || 0)
@@ -550,8 +575,8 @@ export default function StudentDetail() {
             ...assignment,
             ...result,
             assignmentTitle: resolveHomeworkAssignmentTitle(assignment),
-            questionSummary: resolveHomeworkQuestionSummary(assignment),
-            results: normalizeHomeworkResultMapForDisplay(result.results || {}, questionNumbers, {
+            questionSummary: resolveHomeworkQuestionSummary(assignment, result),
+            results: normalizeHomeworkResultMapForDisplay(result, questionNumbers, {
                 assignmentId,
                 studentId: student?.id,
             }),
@@ -729,8 +754,9 @@ export default function StudentDetail() {
                         { key: 'class', label: '클래스', render: className },
                         { key: 'date', label: '날짜', render: (row) => formatDate(row.testDate) },
                         { key: 'score', label: '학생 점수', render: (row) => <span className={isNotAttempted(row) ? 'font-bold text-gray-400' : 'font-bold text-[#455fab]'}>{formatScore(row)}</span> },
-                        { key: 'average', label: '평균', render: (row) => row.classAverage ?? '-' },
-                        { key: 'highest', label: '최고점', render: (row) => row.highestScore ?? '-' },
+                        { key: 'average', label: '평균', render: (row) => formatScoreStat(row.classAverage) },
+                        { key: 'highest', label: '최고점', render: (row) => formatScoreStat(row.highestScore) },
+                        { key: 'submitted', label: '응시자 수', render: (row) => row.submittedCount ?? '통계 준비 중' },
                         { key: 'attempted', label: '응시 여부', render: (row) => isNotAttempted(row) ? '미응시' : '응시' },
                     ]} />
                 </SectionCard>
