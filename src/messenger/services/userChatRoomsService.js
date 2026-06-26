@@ -37,10 +37,18 @@ export const fetchRoomsForIndexes = async (indexes = []) => {
     return rooms.filter(Boolean);
 };
 
-export const subscribeUserChatRooms = ({ authUid, onNext, onError }) => {
+export const subscribeUserChatRooms = ({ authUid, role = '', onNext, onError }) => {
     const indexQuery = query(collection(db, 'userChatRooms', authUid, 'rooms'));
     return onSnapshot(indexQuery, async (snap) => {
         try {
+            if (process.env.NODE_ENV === 'development') {
+                console.log('[resolver] userChatRooms snapshot', {
+                    role,
+                    authUid,
+                    count: snap.docs.length,
+                    ids: snap.docs.map((docSnap) => docSnap.id),
+                });
+            }
             const indexes = snap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
             onNext(await fetchRoomsForIndexes(indexes), indexes);
         } catch (error) {

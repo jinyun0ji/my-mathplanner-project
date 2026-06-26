@@ -43,6 +43,7 @@ export const useMessengerRooms = ({ role = 'student', authUid = '', student = {}
         logChatRoomsQuery(role, authUid);
         const unsubscribe = subscribeUserChatRooms({
             authUid,
+            role,
             onNext: (nextRooms) => {
                 log('snapshot', { role, count: nextRooms.length });
                 setRawRooms(nextRooms);

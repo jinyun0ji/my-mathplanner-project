@@ -42,12 +42,25 @@ export default function StudentMessengerPage({ studentId, student, onBack }) {
                 roomType: slot.room?.roomType || slot.roomType || '',
             });
         }
-        setSelectedSlot({ slot: slot.slot });
+        setSelectedSlot(slot);
     };
 
     const currentSlot = selectedSlot ? messengerSlots.find((slot) => slot.slot === selectedSlot.slot) || selectedSlot : null;
     if (currentSlot) {
         const targetAuthUid = currentSlot.slot === SLOTS.TEACHER ? TEACHER_AUTH_UID : INSTITUTE_AUTH_UID;
+        const currentRoomId = String(currentSlot.room?.roomId || currentSlot.room?.id || '').trim();
+        const canCreateCurrentRoom = Boolean(targetAuthUid && getExpectedRoomType(currentSlot.slot));
+        if (!currentRoomId && !canCreateCurrentRoom) {
+            return (
+                <div className="h-screen min-h-screen bg-gray-50 flex flex-col overflow-hidden">
+                    <header className="h-14 bg-white border-b border-gray-100 px-4 flex items-center gap-3">
+                        <button type="button" onClick={() => setSelectedSlot(null)} className="text-gray-700"><ArrowBackIosNewIcon style={{ fontSize: 18 }} /></button>
+                        <h1 className="text-base font-semibold text-gray-900 truncate">{currentSlot.title}</h1>
+                    </header>
+                    <div className="flex-1 flex items-center justify-center text-sm text-gray-500">대화방을 준비 중입니다.</div>
+                </div>
+            );
+        }
         return (
             <div className="h-screen min-h-screen bg-gray-50 flex flex-col overflow-hidden">
                 <header className="h-14 bg-white border-b border-gray-100 px-4 flex items-center gap-3">
@@ -58,7 +71,7 @@ export default function StudentMessengerPage({ studentId, student, onBack }) {
                     <StudentMessenger
                         studentId={activeStudentId}
                         studentAuthUid={student?.authUid || student?.studentUid || student?.uid || ''}
-                        selectedRoomId={currentSlot.room?.roomId || currentSlot.room?.id || ''}
+                        selectedRoomId={currentRoomId}
                         teacherName={currentSlot.title}
                         userRole="student"
                         allowLegacyResolve={false}

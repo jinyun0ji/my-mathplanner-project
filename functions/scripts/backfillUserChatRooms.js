@@ -5,7 +5,6 @@ if (!admin.apps.length) {
 }
 
 const db = admin.firestore();
-const { FieldValue } = admin.firestore;
 
 const isWriteMode = process.argv.includes('--write');
 const dryRun = !isWriteMode;
@@ -13,20 +12,20 @@ const batchLimit = 450;
 
 const uniqueStrings = (values = []) => Array.from(new Set(values.map((value) => String(value || '').trim()).filter(Boolean)));
 
-const counterpartFor = (participantIds, participantId, room = {}) => {
-    if (room.counterpartUid && String(room.counterpartUid) !== String(participantId)) return String(room.counterpartUid);
-    return participantIds.find((uid) => uid !== participantId) || '';
-};
-
-const buildIndexData = ({ roomId, room, participantId, participantIds }) => ({
+const buildIndexData = ({ roomId, room }) => ({
     roomId,
-    roomType: room.roomType || room.channel || room.type || '',
-    channel: room.channel || room.roomType || '',
+    roomType: room.roomType || room.channel || '',
+    channel: room.channel || '',
     slot: room.slot || '',
-    counterpartUid: counterpartFor(participantIds, participantId, room),
+    counterpartUid: room.counterpartUid || room.staffAuthUid || room.teacherAuthUid || '',
     lastMessageText: room.lastMessageText || room.lastMessage || room.message || '',
-    lastMessageAt: room.lastMessageAt || room.updatedAt || null,
-    updatedAt: room.updatedAt || FieldValue.serverTimestamp(),
+    lastMessageAt: room.lastMessageAt || room.updatedAt || room.createdAt || null,
+    updatedAt: room.updatedAt || room.lastMessageAt || room.createdAt || null,
+    studentId: room.studentId || '',
+    parentUid: room.parentUid || '',
+    studentAuthUid: room.studentAuthUid || room.studentUid || '',
+    staffAuthUid: room.staffAuthUid || '',
+    teacherAuthUid: room.teacherAuthUid || '',
 });
 
 const commitBatch = async (batch, writes) => {
@@ -56,8 +55,9 @@ const main = async () => {
 
         participantIds.forEach((participantId) => {
             const indexRef = db.collection('userChatRooms').doc(participantId).collection('rooms').doc(roomDoc.id);
-            const indexData = buildIndexData({ roomId: roomDoc.id, room, participantId, participantIds });
+            const indexData = buildIndexData({ roomId: roomDoc.id, room });
             indexWrites += 1;
+            console.log('[backfill:userChatRooms] index', { participantUid: participantId, roomDocId: roomDoc.id, roomType: indexData.roomType });
             if (dryRun) {
                 console.log('[dry-run]', indexRef.path, indexData);
                 return;

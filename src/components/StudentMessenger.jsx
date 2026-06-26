@@ -54,6 +54,8 @@ const getRoomSlot = (room) => {
     return '';
 };
 
+const normalizedRoleFromRoomType = (roomType) => (String(roomType || '').startsWith('parent_') ? 'parent' : 'student');
+
 const hasRoomTypeOrChannel = (room, expectedRoomType) => (
     String(room?.roomType || '').trim() === expectedRoomType
     || String(room?.channel || '').trim() === expectedRoomType
@@ -83,6 +85,14 @@ const resolveChatRoom = async ({ viewerUid, targetAuthUid, roomType, studentId =
     if (!authUid || !targetAuthUid || !roomType) return null;
     try {
         const indexSnap = await getDocs(collection(db, 'userChatRooms', authUid, 'rooms'));
+        if (process.env.NODE_ENV === 'development') {
+            console.log('[resolver] userChatRooms snapshot', {
+                role: normalizedRoleFromRoomType(roomType),
+                authUid,
+                count: indexSnap.docs.length,
+                ids: indexSnap.docs.map((item) => item.id),
+            });
+        }
         const rooms = await fetchRoomsForIndexes(indexSnap.docs.map((item) => ({ id: item.id, ...item.data() })));
         return rooms
             .filter((room) => isResolvedRoomCandidate(room, { viewerUid: authUid, targetAuthUid, roomType, studentId, participantKeys }))

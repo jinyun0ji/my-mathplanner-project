@@ -56,6 +56,7 @@ export default function ParentMessengerPage({ studentId, student, onBack }) {
         if (process.env.NODE_ENV === 'development') console.log('[parent messenger] userChatRooms query', queryShape);
         const unsubscribe = subscribeUserChatRooms({
             authUid,
+            role: 'parent',
             onNext: (myRooms) => {
                 setRooms(sortRooms(myRooms.filter((room) => hasAuthParticipant(room, authUid))));
                 setLoading(false);
@@ -94,13 +95,25 @@ export default function ParentMessengerPage({ studentId, student, onBack }) {
                 roomType: slot.room?.roomType || slot.roomType || '',
             });
         }
-        setSelectedSlot({ slot: slot.slot });
+        setSelectedSlot(slot);
     };
 
     const currentSlot = selectedSlot ? messengerSlots.find((slot) => slot.slot === selectedSlot.slot) || selectedSlot : null;
 
     if (currentSlot) {
         const targetAuthUid = currentSlot.slot === SLOTS.TEACHER ? TEACHER_AUTH_UID : INSTITUTE_AUTH_UID;
+        const currentRoomId = String(currentSlot.room?.roomId || currentSlot.room?.id || '').trim();
+        if (!currentRoomId) {
+            return (
+                <div className="h-screen min-h-screen bg-gray-50 flex flex-col overflow-hidden">
+                    <header className="h-14 bg-white border-b border-gray-100 px-4 flex items-center gap-3">
+                        <button type="button" onClick={() => setSelectedSlot(null)} className="text-gray-700"><ArrowBackIosNewIcon style={{ fontSize: 18 }} /></button>
+                        <h1 className="text-base font-semibold text-gray-900 truncate">{currentSlot.title}</h1>
+                    </header>
+                    <div className="flex-1 flex items-center justify-center text-sm text-gray-500">대화방을 찾을 수 없습니다.</div>
+                </div>
+            );
+        }
         return (
             <div className="h-screen min-h-screen bg-gray-50 flex flex-col overflow-hidden">
                 <header className="h-14 bg-white border-b border-gray-100 px-4 flex items-center gap-3">
@@ -111,7 +124,7 @@ export default function ParentMessengerPage({ studentId, student, onBack }) {
                     <StudentMessenger
                         studentId={activeStudentId}
                         studentAuthUid={student?.authUid || student?.studentUid || student?.uid || ''}
-                        selectedRoomId={currentSlot.room?.roomId || currentSlot.room?.id || ''}
+                        selectedRoomId={currentRoomId}
                         teacherName={currentSlot.title}
                         userRole="parent"
                         allowLegacyResolve={false}
