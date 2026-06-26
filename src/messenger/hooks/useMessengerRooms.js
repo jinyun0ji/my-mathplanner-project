@@ -1,0 +1,69 @@
+import { useEffect, useMemo, useState } from 'react';
+import { collection, onSnapshot, query, where } from 'firebase/firestore';
+import { db } from '../../firebase/client';
+import { resolveParentRooms } from '../resolvers/parentResolver';
+import { resolveStaffRooms } from '../resolvers/staffResolver';
+import { resolveStudentRooms } from '../resolvers/studentResolver';
+import { buildParentParticipantKeys, buildStudentParticipantKeys, uniqueStrings } from '../utils/participantKeys';
+import { sortRooms } from '../utils/roomMatcher';
+
+const log = (...args) => {
+    if (process.env.NODE_ENV === 'development') console.log('[resolver]', ...args);
+};
+
+export const useMessengerRooms = ({ role = 'student', authUid = '', student = {}, parent = {} } = {}) => {
+    const [rawRooms, setRawRooms] = useState([]);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState('');
+
+    const participantKeys = useMemo(() => {
+        if (role === 'parent') return buildParentParticipantKeys({ authUid, parent, student, studentId: student?.id || student?.studentId });
+        if (role === 'staff') return uniqueStrings([authUid, parent?.id, student?.id, student?.studentId]);
+        return buildStudentParticipantKeys({ authUid, student, studentId: student?.id || student?.studentId });
+    }, [role, authUid, parent, student]);
+
+    useEffect(() => {
+        if (!authUid) {
+            setRawRooms([]);
+            setLoading(false);
+            return undefined;
+        }
+        setLoading(true);
+        setError('');
+        const roomQuery = query(collection(db, 'chatRooms'), where('participantIds', 'array-contains', authUid));
+        log('query', { role, queryShape: { collection: 'chatRooms', where: ['participantIds', 'array-contains', authUid] } });
+        const unsubscribe = onSnapshot(roomQuery, (snap) => {
+            const nextRooms = snap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
+            log('snapshot', { role, count: nextRooms.length });
+            setRawRooms(nextRooms);
+            setLoading(false);
+            setError('');
+        }, (snapshotError) => {
+            console.error('[resolver] failed to load chatRooms', {
+                role,
+                authUid,
+                queryShape: { collection: 'chatRooms', where: ['participantIds', 'array-contains', authUid] },
+                code: snapshotError?.code,
+                message: snapshotError?.message,
+            });
+            setLoading(false);
+            setError('대화 목록을 불러오지 못했습니다.');
+        });
+        return unsubscribe;
+    }, [role, authUid]);
+
+    const resolved = useMemo(() => {
+        if (role === 'parent') return resolveParentRooms({ rooms: rawRooms, participantKeys });
+        if (role === 'staff') return { rooms: resolveStaffRooms({ rooms: rawRooms, participantKeys }) };
+        return resolveStudentRooms({ rooms: rawRooms, participantKeys });
+    }, [role, rawRooms, participantKeys]);
+
+    return {
+        rooms: sortRooms([...(resolved.rooms || rawRooms)]),
+        rawRooms,
+        loading,
+        error,
+        participantKeys,
+        ...resolved,
+    };
+};
