@@ -1,11 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
-import { collection, onSnapshot, query, where } from 'firebase/firestore';
-import { db } from '../../firebase/client';
 import { resolveParentRooms } from '../resolvers/parentResolver';
 import { resolveStaffRooms } from '../resolvers/staffResolver';
 import { resolveStudentRooms } from '../resolvers/studentResolver';
 import { buildParentParticipantKeys, buildStudentParticipantKeys, uniqueStrings } from '../utils/participantKeys';
 import { sortRooms } from '../utils/roomMatcher';
+import { getUserChatRoomsQueryShape, subscribeUserChatRooms } from '../services/userChatRoomsService';
 
 const log = (...args) => {
     if (process.env.NODE_ENV === 'development') console.log('[resolver]', ...args);
@@ -13,9 +12,9 @@ const log = (...args) => {
 
 const logChatRoomsQuery = (role, authUid) => {
     if (process.env.NODE_ENV !== 'development') return;
-    const queryShape = { collection: 'chatRooms', where: ['participantIds', 'array-contains', authUid] };
+    const queryShape = getUserChatRoomsQueryShape(authUid);
     if (role === 'student') {
-        console.log('[student resolver] chatRooms query', queryShape);
+        console.log('[student resolver] userChatRooms query', queryShape);
         return;
     }
     log('query', { role, queryShape });
@@ -40,26 +39,27 @@ export const useMessengerRooms = ({ role = 'student', authUid = '', student = {}
         }
         setLoading(true);
         setError('');
-        const roomQuery = query(collection(db, 'chatRooms'), where('participantIds', 'array-contains', authUid));
+        const queryShape = getUserChatRoomsQueryShape(authUid);
         logChatRoomsQuery(role, authUid);
-        const unsubscribe = onSnapshot(roomQuery, (snap) => {
-            const nextRooms = snap.docs
-                .map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }))
-                .filter((room) => Array.isArray(room.participantIds) && room.participantIds.map(String).includes(authUid));
-            log('snapshot', { role, count: nextRooms.length });
-            setRawRooms(nextRooms);
-            setLoading(false);
-            setError('');
-        }, (snapshotError) => {
-            console.error('[resolver] failed to load chatRooms', {
-                role,
-                authUid,
-                queryShape: { collection: 'chatRooms', where: ['participantIds', 'array-contains', authUid] },
-                code: snapshotError?.code,
-                message: snapshotError?.message,
-            });
-            setLoading(false);
-            setError('대화 목록을 불러오지 못했습니다.');
+        const unsubscribe = subscribeUserChatRooms({
+            authUid,
+            onNext: (nextRooms) => {
+                log('snapshot', { role, count: nextRooms.length });
+                setRawRooms(nextRooms);
+                setLoading(false);
+                setError('');
+            },
+            onError: (snapshotError) => {
+                console.error('[resolver] failed to load userChatRooms', {
+                    role,
+                    authUid,
+                    queryShape,
+                    code: snapshotError?.code,
+                    message: snapshotError?.message,
+                });
+                setLoading(false);
+                setError('대화 목록을 불러오지 못했습니다.');
+            },
         });
         return unsubscribe;
     }, [role, authUid]);

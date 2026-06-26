@@ -123,6 +123,39 @@ const applyRoomMetadata = ({
     };
 };
 
+
+const pickCounterpartUid = (participantIds, participantId) => participantIds.find((uid) => uid && uid !== participantId) || '';
+
+const buildUserChatRoomIndexData = ({ roomId, roomData = {}, participantId, lastMessageText = null, lastMessageAt = null, updatedAt = null }) => {
+    const participantIds = Array.isArray(roomData.participantIds) ? roomData.participantIds.map(String).filter(Boolean) : [];
+    return {
+        roomId,
+        roomType: roomData.roomType || roomData.channel || roomData.type || '',
+        channel: roomData.channel || roomData.roomType || '',
+        slot: roomData.slot || '',
+        counterpartUid: roomData.counterpartUid && String(roomData.counterpartUid) !== String(participantId)
+            ? String(roomData.counterpartUid)
+            : pickCounterpartUid(participantIds, String(participantId)),
+        lastMessageText: lastMessageText ?? roomData.lastMessageText ?? roomData.lastMessage ?? roomData.message ?? '',
+        lastMessageAt: lastMessageAt ?? roomData.lastMessageAt ?? roomData.updatedAt ?? null,
+        updatedAt: updatedAt ?? roomData.updatedAt ?? null,
+    };
+};
+
+const upsertUserChatRoomIndexesInBatch = ({ batch, roomId, roomData = {}, participantIds = null, lastMessageText = null, lastMessageAt = null, updatedAt = null }) => {
+    const ids = Array.from(new Set((participantIds || roomData.participantIds || []).map((value) => String(value || '').trim()).filter(Boolean)));
+    ids.forEach((participantId) => {
+        const indexRef = db.collection('userChatRooms').doc(participantId).collection('rooms').doc(roomId);
+        batch.set(indexRef, buildUserChatRoomIndexData({ roomId, roomData: { ...roomData, participantIds: ids }, participantId, lastMessageText, lastMessageAt, updatedAt }), { merge: true });
+    });
+};
+
+const upsertUserChatRoomIndexes = async ({ roomId, roomData = {}, participantIds = null, lastMessageText = null, lastMessageAt = null, updatedAt = null }) => {
+    const batch = db.batch();
+    upsertUserChatRoomIndexesInBatch({ batch, roomId, roomData, participantIds, lastMessageText, lastMessageAt, updatedAt });
+    await batch.commit();
+};
+
 const writeMessageAndRoomState = async ({ roomId, roomData, sender, messagePayload }) => {
     const now = FieldValue.serverTimestamp();
     const participantIds = Array.isArray(roomData?.participantIds) ? roomData.participantIds : [];
@@ -158,14 +191,26 @@ const writeMessageAndRoomState = async ({ roomId, roomData, sender, messagePaylo
         internalOnly: true,
     });
 
+    const lastMessageText = messagePayload.text || '';
+
     batch.set(roomRef, {
-        lastMessageText: messagePayload.text || '',
+        lastMessageText,
         lastMessageAt: now,
         lastMessageSenderId: sender.authUid,
         updatedAt: now,
         updatedBy: sender.authUid,
         ...unreadPatch,
     }, { merge: true });
+
+    upsertUserChatRoomIndexesInBatch({
+        batch,
+        roomId,
+        roomData,
+        participantIds,
+        lastMessageText,
+        lastMessageAt: now,
+        updatedAt: now,
+    });
 
     await batch.commit();
 
@@ -181,6 +226,8 @@ module.exports = {
     getDirectRoomId,
     applyRoomMetadata,
     writeMessageAndRoomState,
+    upsertUserChatRoomIndexes,
+    upsertUserChatRoomIndexesInBatch,
     db,
     FieldValue,
 };

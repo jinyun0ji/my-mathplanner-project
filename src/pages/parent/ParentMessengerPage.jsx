@@ -1,19 +1,19 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import ArrowBackIosNewIcon from '@mui/icons-material/ArrowBackIosNew';
-import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import StudentMessenger from '../../components/StudentMessenger';
-import { auth, db } from '../../firebase/client';
+import { auth } from '../../firebase/client';
 import { INSTITUTE_AUTH_UID, ROOM_TYPES, SLOTS, TEACHER_AUTH_UID } from '../../messenger/constants/messengerConstants';
 import { getInstituteDisplayName, getTeacherDisplayName } from '../../messenger/services/displayNameService';
 import { getLastMessagePreview } from '../../messenger/services/roomPreviewService';
 import { buildParentParticipantKeys } from '../../messenger/utils/participantKeys';
 import { getRoomSlot, hasRoomTypeOrChannel, sortRooms, toDate } from '../../messenger/utils/roomMatcher';
+import { getUserChatRoomsQueryShape, subscribeUserChatRooms } from '../../messenger/services/userChatRoomsService';
 
 const getParticipantIds = (room) => (Array.isArray(room?.participantIds) ? room.participantIds.map(String) : []);
 const hasTarget = (room, targetUid, fields = []) => fields.some((field) => String(room?.[field] || '') === targetUid) || getParticipantIds(room).includes(targetUid);
 const hasViewerParticipant = (room, participantKeys = []) => participantKeys.some((key) => getParticipantIds(room).includes(String(key)));
 const hasAuthParticipant = (room, authUid) => Boolean(authUid) && getParticipantIds(room).includes(String(authUid));
-const getChatRoomsQueryShape = (authUid) => ({ collection: 'chatRooms', where: ['participantIds', 'array-contains', authUid] });
+
 const sameStudent = (room, studentId) => !room?.studentId || !studentId || String(room.studentId) === String(studentId);
 
 const isParentTeacherRoom = (room, participantKeys, studentId) => (
@@ -52,24 +52,24 @@ export default function ParentMessengerPage({ studentId, student, onBack }) {
         }
         setLoading(true);
         setError('');
-        const roomQuery = query(collection(db, 'chatRooms'), where('participantIds', 'array-contains', authUid));
-        const queryShape = getChatRoomsQueryShape(authUid);
-        if (process.env.NODE_ENV === 'development') console.log('[parent messenger] chatRooms query', queryShape);
-        const unsubscribe = onSnapshot(roomQuery, (snap) => {
-            const myRooms = snap.docs
-                .map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }))
-                .filter((room) => hasAuthParticipant(room, authUid));
-            setRooms(sortRooms(myRooms));
-            setLoading(false);
-            setError('');
-        }, (snapshotError) => {
-            console.error('[parent messenger] failed to load chatRooms', {
-                code: snapshotError?.code,
-                message: snapshotError?.message,
-                queryShape,
-            });
-            setLoading(false);
-            setError('대화 목록을 불러오지 못했습니다.');
+        const queryShape = getUserChatRoomsQueryShape(authUid);
+        if (process.env.NODE_ENV === 'development') console.log('[parent messenger] userChatRooms query', queryShape);
+        const unsubscribe = subscribeUserChatRooms({
+            authUid,
+            onNext: (myRooms) => {
+                setRooms(sortRooms(myRooms.filter((room) => hasAuthParticipant(room, authUid))));
+                setLoading(false);
+                setError('');
+            },
+            onError: (snapshotError) => {
+                console.error('[parent messenger] failed to load userChatRooms', {
+                    code: snapshotError?.code,
+                    message: snapshotError?.message,
+                    queryShape,
+                });
+                setLoading(false);
+                setError('대화 목록을 불러오지 못했습니다.');
+            },
         });
         return unsubscribe;
     }, [authUid]);

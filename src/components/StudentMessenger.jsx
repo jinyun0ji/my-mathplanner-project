@@ -4,14 +4,13 @@ import {
     doc,
     getDoc,
     getDocs,
-    query,
     serverTimestamp,
-    where,
 } from 'firebase/firestore';
 import { auth, db } from '../firebase/client';
 import { formatAttachmentSize, uploadChatAttachment, validateChatAttachment } from '../messenger/services/attachmentService';
 import { buildDeterministicRoomId, createRoomIfMissing } from '../messenger/services/roomFactory';
 import { sendRoomMessage, subscribeRoomMessages } from '../messenger/services/messageService';
+import { fetchRoomsForIndexes } from '../messenger/services/userChatRoomsService';
 
 // TODO(video_embed): allow only admin/staff/teacher to send YouTube watch/youtu.be/embed links,
 // normalize them to youtube-nocookie URLs, store messageType: 'video_embed',
@@ -83,13 +82,13 @@ const resolveChatRoom = async ({ viewerUid, targetAuthUid, roomType, studentId =
     const authUid = String(auth.currentUser?.uid || viewerUid || '').trim();
     if (!authUid || !targetAuthUid || !roomType) return null;
     try {
-        const snap = await getDocs(query(collection(db, 'chatRooms'), where('participantIds', 'array-contains', authUid)));
-        return snap.docs
-            .map((item) => ({ id: item.id, ...item.data() }))
+        const indexSnap = await getDocs(collection(db, 'userChatRooms', authUid, 'rooms'));
+        const rooms = await fetchRoomsForIndexes(indexSnap.docs.map((item) => ({ id: item.id, ...item.data() })));
+        return rooms
             .filter((room) => isResolvedRoomCandidate(room, { viewerUid: authUid, targetAuthUid, roomType, studentId, participantKeys }))
             .sort((left, right) => getMessageSortTime({ createdAt: right.lastMessageAt || right.updatedAt || right.createdAt }) - getMessageSortTime({ createdAt: left.lastMessageAt || left.updatedAt || left.createdAt }))[0] || null;
     } catch (resolveError) {
-        logFirestoreQueryFailure('resolve chatRooms room', resolveError, { collection: 'chatRooms', where: ['participantIds', 'array-contains', authUid] });
+        logFirestoreQueryFailure('resolve userChatRooms room', resolveError, { collection: `userChatRooms/${authUid}/rooms` });
         return null;
     }
 };

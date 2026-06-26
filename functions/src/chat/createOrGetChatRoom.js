@@ -6,6 +6,7 @@ const {
     applyRoomMetadata,
     db,
     FieldValue,
+    upsertUserChatRoomIndexesInBatch,
 } = require('./chatHelpers');
 
 const createOrGetChatRoom = functions.https.onCall(async (data, context) => {
@@ -32,10 +33,19 @@ const createOrGetChatRoom = functions.https.onCall(async (data, context) => {
     await db.runTransaction(async (transaction) => {
         const roomSnapshot = await transaction.get(roomRef);
         if (roomSnapshot.exists) {
+            const existingRoomData = roomSnapshot.data() || {};
             transaction.set(roomRef, {
                 updatedAt: now,
                 updatedBy: caller.authUid,
             }, { merge: true });
+            upsertUserChatRoomIndexesInBatch({
+                batch: transaction,
+                roomId,
+                roomData: existingRoomData,
+                lastMessageText: existingRoomData.lastMessageText || '',
+                lastMessageAt: existingRoomData.lastMessageAt || now,
+                updatedAt: now,
+            });
             return;
         }
 
@@ -50,13 +60,23 @@ const createOrGetChatRoom = functions.https.onCall(async (data, context) => {
             parentIdHint: data?.parentId || null,
         });
 
-        transaction.set(roomRef, {
+        const newRoomData = {
             ...baseRoomData,
             createdAt: now,
             createdBy: caller.authUid,
             lastMessageText: '',
             lastMessageAt: now,
             lastMessageSenderId: null,
+        };
+
+        transaction.set(roomRef, newRoomData);
+        upsertUserChatRoomIndexesInBatch({
+            batch: transaction,
+            roomId,
+            roomData: newRoomData,
+            lastMessageText: '',
+            lastMessageAt: now,
+            updatedAt: now,
         });
     });
 
