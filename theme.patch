@@ -1,929 +1,137 @@
-diff --git a/firestore.rules b/firestore.rules
-index 5606ca039b817cc21010055f0033328eefdfdc7f..7d70e041714cbdc98851d66401ebe61644c69d89 100644
---- a/firestore.rules
-+++ b/firestore.rules
-@@ -744,50 +744,57 @@ service cloud.firestore {
-     match /notifications/{userUid}/items/{notificationId} {
-       allow read: if signedIn()
-         && (uid() == userUid || isStaffOrAdminOrTeacher());
- 
-       // ✅ 본인: 읽음 처리용 update만 허용
-       allow update: if signedIn()
-         && uid() == userUid
-         && request.resource.data.diff(resource.data).changedKeys()
-             .hasOnly(['isRead', 'readAt', 'updatedAt']);
- 
-       // ✅ 직원/관리자/강사: 기존대로 full 권한
-       allow create, update, delete: if isStaffOrAdminOrTeacher();
-     }
- 
-     match /notifications/{userUid}/meta {
-       allow read, write: if signedIn()
-         && (uid() == userUid || isStaffOrAdminOrTeacher());
-     }
-     
-     match /notifications/{userUid}/meta/{metaId} {
-       allow read, write: if signedIn()
-         && (uid() == userUid || isStaffOrAdminOrTeacher());
-     }
-     
-     
-+    match /userChatRooms/{userUid}/rooms/{roomId} {
-+      allow read, list: if request.auth != null
-+        && request.auth.uid == userUid;
-+
-+      allow create, update, delete: if isStaffOrAdminOrTeacher();
-+    }
-+
-     match /chatRooms/{roomId} {
-       allow get, list: if canReadChatRoom(resource.data);
- 
-       allow create: if isSignedIn()
-         && (
-           isStaffOrAdminOrTeacher()
-           || isValidParentDirectChatRoomCreate()
-           || isValidStudentDirectChatRoomCreate()
-         );
- 
-       allow update: if isSignedIn()
-         && (
-           isStaffOrAdminOrTeacher()
-           || (
-             canReadChatRoom(resource.data)
-             && isValidDirectChatRoomPatch()
-           )
-         );
- 
-       allow delete: if isStaffOrAdminOrTeacher();
-     }
- 
-     match /chatRooms/{roomId}/messages/{messageId} {
-       function roomDoc() {
-         return get(/databases/$(database)/documents/chatRooms/$(roomId));
-diff --git a/functions/scripts/backfillUserChatRooms.js b/functions/scripts/backfillUserChatRooms.js
-new file mode 100644
-index 0000000000000000000000000000000000000000..f41ac421181071ec70f814cb62be83668d11cf52
---- /dev/null
-+++ b/functions/scripts/backfillUserChatRooms.js
-@@ -0,0 +1,83 @@
-+const admin = require('firebase-admin');
-+
-+if (!admin.apps.length) {
-+    admin.initializeApp();
-+}
-+
-+const db = admin.firestore();
-+const { FieldValue } = admin.firestore;
-+
-+const isWriteMode = process.argv.includes('--write');
-+const dryRun = !isWriteMode;
-+const batchLimit = 450;
-+
-+const uniqueStrings = (values = []) => Array.from(new Set(values.map((value) => String(value || '').trim()).filter(Boolean)));
-+
-+const counterpartFor = (participantIds, participantId, room = {}) => {
-+    if (room.counterpartUid && String(room.counterpartUid) !== String(participantId)) return String(room.counterpartUid);
-+    return participantIds.find((uid) => uid !== participantId) || '';
-+};
-+
-+const buildIndexData = ({ roomId, room, participantId, participantIds }) => ({
-+    roomId,
-+    roomType: room.roomType || room.channel || room.type || '',
-+    channel: room.channel || room.roomType || '',
-+    slot: room.slot || '',
-+    counterpartUid: counterpartFor(participantIds, participantId, room),
-+    lastMessageText: room.lastMessageText || room.lastMessage || room.message || '',
-+    lastMessageAt: room.lastMessageAt || room.updatedAt || null,
-+    updatedAt: room.updatedAt || FieldValue.serverTimestamp(),
-+});
-+
-+const commitBatch = async (batch, writes) => {
-+    if (!writes) return;
-+    if (dryRun) return;
-+    await batch.commit();
-+};
-+
-+const main = async () => {
-+    console.log(`[backfill:userChatRooms] start (${dryRun ? 'dry-run' : 'write'})`);
-+    const snapshot = await db.collection('chatRooms').get();
-+    let batch = db.batch();
-+    let pendingWrites = 0;
-+    let roomsScanned = 0;
-+    let indexWrites = 0;
-+    let skippedRooms = 0;
-+
-+    for (const roomDoc of snapshot.docs) {
-+        roomsScanned += 1;
-+        const room = roomDoc.data() || {};
-+        const participantIds = uniqueStrings(Array.isArray(room.participantIds) ? room.participantIds : []);
-+        if (!participantIds.length) {
-+            skippedRooms += 1;
-+            console.warn(`[backfill:userChatRooms] skip ${roomDoc.id}: participantIds missing/empty`);
-+            continue;
-+        }
-+
-+        participantIds.forEach((participantId) => {
-+            const indexRef = db.collection('userChatRooms').doc(participantId).collection('rooms').doc(roomDoc.id);
-+            const indexData = buildIndexData({ roomId: roomDoc.id, room, participantId, participantIds });
-+            indexWrites += 1;
-+            if (dryRun) {
-+                console.log('[dry-run]', indexRef.path, indexData);
-+                return;
-+            }
-+            batch.set(indexRef, indexData, { merge: true });
-+            pendingWrites += 1;
-+        });
-+
-+        if (pendingWrites >= batchLimit) {
-+            await commitBatch(batch, pendingWrites);
-+            batch = db.batch();
-+            pendingWrites = 0;
-+        }
-+    }
-+
-+    await commitBatch(batch, pendingWrites);
-+    console.log(`[backfill:userChatRooms] complete roomsScanned=${roomsScanned} skippedRooms=${skippedRooms} ${dryRun ? 'wouldWrite' : 'wrote'}=${indexWrites}`);
-+};
-+
-+main().catch((error) => {
-+    console.error('[backfill:userChatRooms] failed', error);
-+    process.exitCode = 1;
-+});
-diff --git a/functions/src/chat/chatHelpers.js b/functions/src/chat/chatHelpers.js
-index 2f33c0881b76d4a5ce0dbbc14ebd08d4d392a8bd..d043a8b13d3423f645bdaf32228d5a6af17c17a4 100644
---- a/functions/src/chat/chatHelpers.js
-+++ b/functions/src/chat/chatHelpers.js
-@@ -101,86 +101,133 @@ const applyRoomMetadata = ({
-         || (targetRole === 'parent' ? (targetUserDocIdHint || target.userDocId) : null)
-         || (callerRole === 'parent' ? caller.userDocId : null)
-         || null;
- 
-     return {
-         type: 'individual',
-         participantIds,
-         participantRoles,
-         participantNames,
-         participantUserDocIds,
-         studentId,
-         parentId,
-         staffId: caller.authUid,
-         visibleToRoles: Array.from(new Set([callerRole, targetRole])),
-         status: 'active',
-         internalOnly: true,
-         updatedAt: now,
-         updatedBy: caller.authUid,
-         unreadCountByUser: {
-             [caller.authUid]: 0,
-             [target.authUid]: 0,
-         },
-     };
- };
- 
-+
-+const pickCounterpartUid = (participantIds, participantId) => participantIds.find((uid) => uid && uid !== participantId) || '';
-+
-+const buildUserChatRoomIndexData = ({ roomId, roomData = {}, participantId, lastMessageText = null, lastMessageAt = null, updatedAt = null }) => {
-+    const participantIds = Array.isArray(roomData.participantIds) ? roomData.participantIds.map(String).filter(Boolean) : [];
-+    return {
-+        roomId,
-+        roomType: roomData.roomType || roomData.channel || roomData.type || '',
-+        channel: roomData.channel || roomData.roomType || '',
-+        slot: roomData.slot || '',
-+        counterpartUid: roomData.counterpartUid && String(roomData.counterpartUid) !== String(participantId)
-+            ? String(roomData.counterpartUid)
-+            : pickCounterpartUid(participantIds, String(participantId)),
-+        lastMessageText: lastMessageText ?? roomData.lastMessageText ?? roomData.lastMessage ?? roomData.message ?? '',
-+        lastMessageAt: lastMessageAt ?? roomData.lastMessageAt ?? roomData.updatedAt ?? null,
-+        updatedAt: updatedAt ?? roomData.updatedAt ?? null,
-+    };
-+};
-+
-+const upsertUserChatRoomIndexesInBatch = ({ batch, roomId, roomData = {}, participantIds = null, lastMessageText = null, lastMessageAt = null, updatedAt = null }) => {
-+    const ids = Array.from(new Set((participantIds || roomData.participantIds || []).map((value) => String(value || '').trim()).filter(Boolean)));
-+    ids.forEach((participantId) => {
-+        const indexRef = db.collection('userChatRooms').doc(participantId).collection('rooms').doc(roomId);
-+        batch.set(indexRef, buildUserChatRoomIndexData({ roomId, roomData: { ...roomData, participantIds: ids }, participantId, lastMessageText, lastMessageAt, updatedAt }), { merge: true });
-+    });
-+};
-+
-+const upsertUserChatRoomIndexes = async ({ roomId, roomData = {}, participantIds = null, lastMessageText = null, lastMessageAt = null, updatedAt = null }) => {
-+    const batch = db.batch();
-+    upsertUserChatRoomIndexesInBatch({ batch, roomId, roomData, participantIds, lastMessageText, lastMessageAt, updatedAt });
-+    await batch.commit();
-+};
-+
- const writeMessageAndRoomState = async ({ roomId, roomData, sender, messagePayload }) => {
-     const now = FieldValue.serverTimestamp();
-     const participantIds = Array.isArray(roomData?.participantIds) ? roomData.participantIds : [];
-     const unreadPatch = {};
- 
-     participantIds.forEach((participantId) => {
-         unreadPatch[`unreadCountByUser.${participantId}`] = participantId === sender.authUid
-             ? 0
-             : FieldValue.increment(1);
-     });
- 
-     const roomRef = db.collection('chatRooms').doc(roomId);
-     const messageRef = roomRef.collection('messages').doc();
-     const batch = db.batch();
- 
-     batch.set(messageRef, {
-         roomId,
-         senderId: sender.authUid,
-         senderRole: normalizeRole(sender.role),
-         senderName: sender.name || sender.authUid,
-         messageType: messagePayload.messageType || 'text',
-         text: messagePayload.text || '',
-         attachments: Array.isArray(messagePayload.attachments) ? messagePayload.attachments : [],
-         clientTempId: typeof messagePayload.clientTempId === 'string' ? messagePayload.clientTempId : null,
-         createdAt: now,
-         editedAt: null,
-         deletedAt: null,
-         readBy: {
-             [sender.authUid]: now,
-         },
-         isBroadcastCopy: Boolean(messagePayload.isBroadcastCopy),
-         broadcastId: messagePayload.broadcastId || null,
-         internalOnly: true,
-     });
- 
-+    const lastMessageText = messagePayload.text || '';
-+
-     batch.set(roomRef, {
--        lastMessageText: messagePayload.text || '',
-+        lastMessageText,
-         lastMessageAt: now,
-         lastMessageSenderId: sender.authUid,
-         updatedAt: now,
-         updatedBy: sender.authUid,
-         ...unreadPatch,
-     }, { merge: true });
- 
-+    upsertUserChatRoomIndexesInBatch({
-+        batch,
-+        roomId,
-+        roomData,
-+        participantIds,
-+        lastMessageText,
-+        lastMessageAt: now,
-+        updatedAt: now,
-+    });
-+
-     await batch.commit();
- 
-     return messageRef.id;
- };
- 
- module.exports = {
-     STAFF_ROLES,
-     VIEWER_ROLES,
-     normalizeRole,
-     getUserProfileByAuthUid,
-     assertStaffLikeCaller,
-     getDirectRoomId,
-     applyRoomMetadata,
-     writeMessageAndRoomState,
-+    upsertUserChatRoomIndexes,
-+    upsertUserChatRoomIndexesInBatch,
-     db,
-     FieldValue,
- };
-\ No newline at end of file
-diff --git a/functions/src/chat/createOrGetChatRoom.js b/functions/src/chat/createOrGetChatRoom.js
-index 71bb4dbb0c51e626916d17dbf4d0f674c069e53c..ce9a4b612d59f553a19db847fc5f2f2caa443c18 100644
---- a/functions/src/chat/createOrGetChatRoom.js
-+++ b/functions/src/chat/createOrGetChatRoom.js
-@@ -1,71 +1,91 @@
- const functions = require('firebase-functions');
- const {
-     assertStaffLikeCaller,
-     getUserProfileByAuthUid,
-     getDirectRoomId,
-     applyRoomMetadata,
-     db,
-     FieldValue,
-+    upsertUserChatRoomIndexesInBatch,
- } = require('./chatHelpers');
- 
- const createOrGetChatRoom = functions.https.onCall(async (data, context) => {
-     const caller = await assertStaffLikeCaller(context);
- 
-     const targetAuthUid = typeof data?.targetAuthUid === 'string' ? data.targetAuthUid.trim() : '';
-     if (!targetAuthUid) {
-         throw new functions.https.HttpsError('invalid-argument', 'targetAuthUid가 필요합니다.');
-     }
- 
-     if (targetAuthUid === caller.authUid) {
-         throw new functions.https.HttpsError('invalid-argument', '자기 자신과 채팅방을 생성할 수 없습니다.');
-     }
- 
-     const target = await getUserProfileByAuthUid(targetAuthUid);
-     if (!target) {
-         throw new functions.https.HttpsError('not-found', '대상 사용자 프로필을 찾을 수 없습니다.');
-     }
- 
-     const roomId = getDirectRoomId(caller.authUid, targetAuthUid);
-     const roomRef = db.collection('chatRooms').doc(roomId);
-     const now = FieldValue.serverTimestamp();
- 
-     await db.runTransaction(async (transaction) => {
-         const roomSnapshot = await transaction.get(roomRef);
-         if (roomSnapshot.exists) {
-+            const existingRoomData = roomSnapshot.data() || {};
-             transaction.set(roomRef, {
-                 updatedAt: now,
-                 updatedBy: caller.authUid,
-             }, { merge: true });
-+            upsertUserChatRoomIndexesInBatch({
-+                batch: transaction,
-+                roomId,
-+                roomData: existingRoomData,
-+                lastMessageText: existingRoomData.lastMessageText || '',
-+                lastMessageAt: existingRoomData.lastMessageAt || now,
-+                updatedAt: now,
-+            });
-             return;
-         }
- 
-         const baseRoomData = applyRoomMetadata({
-             caller,
-             target,
-             now,
-             targetRoleHint: data?.targetRole || null,
-             targetUserDocIdHint: data?.targetUserDocId || null,
-             targetNameHint: data?.targetName || null,
-             studentIdHint: data?.studentId || null,
-             parentIdHint: data?.parentId || null,
-         });
- 
--        transaction.set(roomRef, {
-+        const newRoomData = {
-             ...baseRoomData,
-             createdAt: now,
-             createdBy: caller.authUid,
-             lastMessageText: '',
-             lastMessageAt: now,
-             lastMessageSenderId: null,
-+        };
-+
-+        transaction.set(roomRef, newRoomData);
-+        upsertUserChatRoomIndexesInBatch({
-+            batch: transaction,
-+            roomId,
-+            roomData: newRoomData,
-+            lastMessageText: '',
-+            lastMessageAt: now,
-+            updatedAt: now,
-         });
-     });
- 
-     return {
-         roomId,
-         status: 'ok',
-     };
- });
- 
- module.exports = {
-     createOrGetChatRoom,
- };
-\ No newline at end of file
-diff --git a/functions/src/index.js b/functions/src/index.js
-index fa23117fc562460768de1bed49af2ea856db06a1..feb1993e19398f16d025d0e1d8b863d73fd4e3d4 100644
---- a/functions/src/index.js
-+++ b/functions/src/index.js
-@@ -1,59 +1,61 @@
- const { api } = require('./api');
- const { createStaffUser } = require('./admin/createStaffUser');
- const { adminCreateLinkCode } = require('./admin/createLinkCode');
- const { deactivateStaff } = require('./admin/deactivateStaff');
- const { getStaffList } = require('./admin/getStaffList');
- const { updateStaffRole } = require('./admin/updateStaffRole');
- const { retryNotification } = require('./admin/retryNotification');
- const { ensureUserProfileDoc } = require('./auth/ensureUserProfileDoc');
- // const { kakaoLogin } = require('./auth/kakaoLogin');
- // const { naverLogin } = require('./auth/naverLogin');
- const { claimStudentLinkCode } = require('./link/claimStudentLinkCode');
- const { onLessonLogWritten } = require('./triggers/lessonLogs');
- const { onAttendanceLogWritten } = require('./triggers/attendanceLogs');
- const { onHomeworkResultWritten } = require('./triggers/homeworkResults');
- const { onGradeWritten } = require('./triggers/grades');
- const { onChatMessageCreated } = require('./triggers/chatMessages');
-+const { onChatRoomWritten } = require('./triggers/chatRoomIndexes');
- const { createOrGetChatRoom } = require('./chat/createOrGetChatRoom');
- const { sendChatMessage } = require('./chat/sendChatMessage');
- const { broadcastChatMessage } = require('./chat/broadcastChatMessage');
- const { onAnnouncementCreated } = require('./triggers/announcements');
- const { resolveInviteCode } = require('./resolveInviteCode');
- const { acceptInviteAndCreateProfile } = require('./acceptInviteAndCreateProfile');
- const { createClinicReservation } = require('./clinic/createClinicReservation');
- const { markAllNotificationsRead } = require('./notify/markAllNotificationsRead');
- const { getViewerAnnouncements } = require('./viewer/getViewerAnnouncements');
- const { requestAccountDeletion } = require('./requestAccountDeletion');
- const auditLogs = require('./auditLogs');
- 
- exports.api = api;
- exports.createStaffUser = createStaffUser;
- exports.deactivateStaff = deactivateStaff;
- exports.adminCreateLinkCode = adminCreateLinkCode;
- exports.getStaffList = getStaffList;
- exports.updateStaffRole = updateStaffRole;
- exports.retryNotification = retryNotification;
- exports.ensureUserProfileDoc = ensureUserProfileDoc;
- // exports.kakaoLogin = kakaoLogin;
- // exports.naverLogin = naverLogin;
- exports.claimStudentLinkCode = claimStudentLinkCode;
- exports.onLessonLogWritten = onLessonLogWritten;
- exports.onAttendanceLogWritten = onAttendanceLogWritten;
- exports.onChatMessageCreated = onChatMessageCreated;
-+exports.onChatRoomWritten = onChatRoomWritten;
- exports.createOrGetChatRoom = createOrGetChatRoom;
- exports.sendChatMessage = sendChatMessage;
- exports.broadcastChatMessage = broadcastChatMessage;
- exports.onHomeworkResultWritten = onHomeworkResultWritten;
- exports.onGradeWritten = onGradeWritten;
- exports.onAnnouncementCreated = onAnnouncementCreated;
- exports.resolveInviteCode = resolveInviteCode;
- exports.acceptInviteAndCreateProfile = acceptInviteAndCreateProfile;
- exports.createClinicReservation = createClinicReservation;
- exports.auditClinicLogs = auditLogs.auditClinicLogs;
- exports.auditAttendanceLogs = auditLogs.auditAttendanceLogs;
- exports.auditHomeworkResults = auditLogs.auditHomeworkResults;
- exports.auditGrades = auditLogs.auditGrades;
- exports.auditPayments = auditLogs.auditPayments;
- exports.markAllNotificationsRead = markAllNotificationsRead;
- exports.getViewerAnnouncements = getViewerAnnouncements;
- exports.requestAccountDeletion = requestAccountDeletion;
-\ No newline at end of file
-diff --git a/functions/src/triggers/chatRoomIndexes.js b/functions/src/triggers/chatRoomIndexes.js
-new file mode 100644
-index 0000000000000000000000000000000000000000..f282a0aae2873236a79b6f6d7eb562901383b4fb
---- /dev/null
-+++ b/functions/src/triggers/chatRoomIndexes.js
-@@ -0,0 +1,24 @@
-+const functions = require('firebase-functions');
-+const { upsertUserChatRoomIndexes } = require('../chat/chatHelpers');
-+
-+const onChatRoomWritten = functions.firestore
-+    .document('chatRooms/{roomId}')
-+    .onWrite(async (change, context) => {
-+        if (!change.after.exists) return null;
-+        const roomData = change.after.data() || {};
-+        const participantIds = Array.isArray(roomData.participantIds) ? roomData.participantIds : [];
-+        if (!participantIds.length) return null;
-+        await upsertUserChatRoomIndexes({
-+            roomId: context.params.roomId,
-+            roomData,
-+            participantIds,
-+            lastMessageText: roomData.lastMessageText || roomData.lastMessage || roomData.message || '',
-+            lastMessageAt: roomData.lastMessageAt || roomData.updatedAt || null,
-+            updatedAt: roomData.updatedAt || null,
-+        });
-+        return null;
-+    });
-+
-+module.exports = {
-+    onChatRoomWritten,
-+};
-diff --git a/package.json b/package.json
-index f9f84957da9573f8580d05e26407162c1389b64b..9e43e61e5f8b334271b2c41a3905e5bd9f2724c3 100644
---- a/package.json
-+++ b/package.json
-@@ -20,46 +20,48 @@
-     "react": "^19.1.0",
-     "react-dom": "^19.1.0",
-     "react-katex": "^3.1.0",
-     "react-router-dom": "^6.24.1",
-     "react-scripts": "5.0.1",
-     "react-to-print": "^3.3.0",
-     "react-youtube": "^10.1.0",
-     "tailwind-scrollbar-hide": "^4.0.0",
-     "web-vitals": "^2.1.4"
-   },
-   "scripts": {
-     "start": "react-scripts start",
-     "build": "react-scripts build",
-     "test": "react-scripts test",
-     "eject": "react-scripts eject",
-     "migrate:memos": "node functions/scripts/migrateStudentMemosToStaffMemos.js",
-     "migrate:homework-question-keys:dry": "node functions/scripts/migrateHomeworkResultQuestionNumbers.js",
-     "migrate:homework-question-keys:write": "node functions/scripts/migrateHomeworkResultQuestionNumbers.js --write",
-     "backfill:chat-parent-participants:dry": "node functions/scripts/backfillChatParticipantIdsForParents.js",
-     "backfill:chat-parent-participants:write": "node functions/scripts/backfillChatParticipantIdsForParents.js --write",
-     "backfill:chat-room-types:dry": "node functions/scripts/backfillChatRoomTypes.js",
-     "backfill:chat-room-types:write": "node functions/scripts/backfillChatRoomTypes.js --write",
-     "backfill:student-birth-year:dry": "node functions/scripts/backfillStudentBirthYearFromGrade.js",
-     "backfill:student-birth-year:write": "node functions/scripts/backfillStudentBirthYearFromGrade.js --write",
-     "backfill:class-test-stats:dry": "node functions/scripts/backfillClassTestStats.js",
--    "backfill:class-test-stats:write": "node functions/scripts/backfillClassTestStats.js --write"
-+    "backfill:class-test-stats:write": "node functions/scripts/backfillClassTestStats.js --write",
-+    "backfill:user-chat-rooms:dry": "node functions/scripts/backfillUserChatRooms.js",
-+    "backfill:user-chat-rooms:write": "node functions/scripts/backfillUserChatRooms.js --write"
-   },
-   "eslintConfig": {
-     "extends": [
-       "react-app",
-       "react-app/jest"
-     ]
-   },
-   "browserslist": {
-     "production": [
-       ">0.2%",
-       "not dead",
-       "not op_mini all"
-     ],
-     "development": [
-       "last 1 chrome version",
-       "last 1 firefox version",
-       "last 1 safari version"
-     ]
-   }
- }
 diff --git a/src/components/StudentMessenger.jsx b/src/components/StudentMessenger.jsx
-index 249dfec076ef2bd8434f3ffee5976993c31e07a6..e5049c8ffb11ec07a13df23f522bbbe843b8073e 100644
+index e5049c8ffb11ec07a13df23f522bbbe843b8073e..2e7fa1680b672e662b967684d5baaa4c53bd9546 100644
 --- a/src/components/StudentMessenger.jsx
 +++ b/src/components/StudentMessenger.jsx
-@@ -1,39 +1,38 @@
- import React, { useState, useEffect, useMemo, useRef } from 'react';
- import {
-     collection,
-     doc,
-     getDoc,
-     getDocs,
--    query,
-     serverTimestamp,
--    where,
- } from 'firebase/firestore';
- import { auth, db } from '../firebase/client';
- import { formatAttachmentSize, uploadChatAttachment, validateChatAttachment } from '../messenger/services/attachmentService';
- import { buildDeterministicRoomId, createRoomIfMissing } from '../messenger/services/roomFactory';
- import { sendRoomMessage, subscribeRoomMessages } from '../messenger/services/messageService';
-+import { fetchRoomsForIndexes } from '../messenger/services/userChatRoomsService';
- 
- // TODO(video_embed): allow only admin/staff/teacher to send YouTube watch/youtu.be/embed links,
- // normalize them to youtube-nocookie URLs, store messageType: 'video_embed',
- // render video cards in-room, and play them in an internal iframe modal.
- const CANDIDATE_ROOM_IDS = (studentId) => [String(studentId || '')].filter(Boolean);
- 
- const CHAT_ROOM_TYPES = {
-     student: {
-         institute: 'student_institute',
-         teacher: 'student_teacher',
-     },
-     parent: {
-         institute: 'parent_institute',
-         teacher: 'parent_teacher',
-     },
- };
- 
- const getExpectedRoomType = (role, slotOrType) => {
-     const normalizedRole = String(role || '').trim();
-     const normalized = String(slotOrType || '').trim();
-     if (normalizedRole === 'parent' && (normalized === 'institute' || normalized === 'parent_institute')) return 'parent_institute';
-     if (['student_institute', 'student_teacher', 'parent_institute', 'parent_teacher'].includes(normalized)) return normalized;
-     return CHAT_ROOM_TYPES[normalizedRole]?.[normalized] || '';
- };
- 
-@@ -61,57 +60,57 @@ const hasRoomTypeOrChannel = (room, expectedRoomType) => (
- );
- 
- const isResolvedRoomCandidate = (room, { viewerUid, targetAuthUid, roomType, studentId = '', participantKeys = [] }) => {
-     if (!room || !viewerUid || !targetAuthUid || !roomType) return false;
-     const expectedSlot = roomType.endsWith('_teacher') ? 'teacher' : 'institute';
-     const roomSlot = getRoomSlot(room);
-     const participantIds = getParticipantIds(room);
-     const viewerKeys = uniqueStrings([viewerUid, participantKeys]);
-     if (!viewerKeys.some((key) => participantIds.includes(key))) return false;
-     if (!participantIds.includes(String(targetAuthUid)) && String(room?.counterpartUid || '') !== String(targetAuthUid) && String(room?.teacherAuthUid || '') !== String(targetAuthUid) && String(room?.staffAuthUid || '') !== String(targetAuthUid)) return false;
-     if (roomSlot && roomSlot !== expectedSlot) return false;
-     if (!hasRoomTypeOrChannel(room, roomType) && getRoomSlot(room) !== expectedSlot) return false;
-     if (roomType.startsWith('student_') && (hasRoomTypeOrChannel(room, 'parent_teacher') || hasRoomTypeOrChannel(room, 'parent_institute'))) return false;
-     if (roomType.startsWith('parent_') && (hasRoomTypeOrChannel(room, 'student_teacher') || hasRoomTypeOrChannel(room, 'student_institute'))) return false;
-     if ((roomType === 'parent_teacher' || roomType === 'parent_institute') && studentId && room?.studentId && String(room.studentId) !== String(studentId)) return false;
-     if (expectedSlot === 'teacher' && room?.teacherAuthUid && String(room.teacherAuthUid) !== String(targetAuthUid)) return false;
-     if (expectedSlot === 'institute' && room?.staffAuthUid && String(room.staffAuthUid) !== String(targetAuthUid)) return false;
-     if (room?.counterpartUid && String(room.counterpartUid) !== String(targetAuthUid)) return false;
-     return true;
- };
- 
- const resolveChatRoom = async ({ viewerUid, targetAuthUid, roomType, studentId = '', participantKeys = [] }) => {
-     const authUid = String(auth.currentUser?.uid || viewerUid || '').trim();
-     if (!authUid || !targetAuthUid || !roomType) return null;
-     try {
--        const snap = await getDocs(query(collection(db, 'chatRooms'), where('participantIds', 'array-contains', authUid)));
--        return snap.docs
--            .map((item) => ({ id: item.id, ...item.data() }))
-+        const indexSnap = await getDocs(collection(db, 'userChatRooms', authUid, 'rooms'));
-+        const rooms = await fetchRoomsForIndexes(indexSnap.docs.map((item) => ({ id: item.id, ...item.data() })));
-+        return rooms
-             .filter((room) => isResolvedRoomCandidate(room, { viewerUid: authUid, targetAuthUid, roomType, studentId, participantKeys }))
-             .sort((left, right) => getMessageSortTime({ createdAt: right.lastMessageAt || right.updatedAt || right.createdAt }) - getMessageSortTime({ createdAt: left.lastMessageAt || left.updatedAt || left.createdAt }))[0] || null;
-     } catch (resolveError) {
--        logFirestoreQueryFailure('resolve chatRooms room', resolveError, { collection: 'chatRooms', where: ['participantIds', 'array-contains', authUid] });
-+        logFirestoreQueryFailure('resolve userChatRooms room', resolveError, { collection: `userChatRooms/${authUid}/rooms` });
-         return null;
-     }
- };
- 
- const parseClientTempIdTime = (clientTempId) => {
-     const match = String(clientTempId || '').match(/(\d{12,})/);
-     if (!match) return 0;
-     const parsed = Number(match[1]);
-     return Number.isFinite(parsed) ? parsed : 0;
- };
- 
- const getCreatedAtTime = (createdAt) => {
-     if (createdAt && typeof createdAt?.toDate === 'function') {
-         const time = createdAt.toDate().getTime();
-         if (Number.isFinite(time)) return time;
-     }
-     if (createdAt instanceof Date) {
-         const time = createdAt.getTime();
-         if (Number.isFinite(time)) return time;
-     }
-     if (typeof createdAt === 'number' && Number.isFinite(createdAt)) return createdAt;
-     return 0;
- };
- 
- const getMessageSortTime = (message) => {
-diff --git a/src/messenger/hooks/useMessengerRooms.js b/src/messenger/hooks/useMessengerRooms.js
-index 0139d84cda695972fc2e321468c3c178a57eb70a..3e1ef8168931b5fc9fbc43e8e49c2aa7ad283fb8 100644
---- a/src/messenger/hooks/useMessengerRooms.js
-+++ b/src/messenger/hooks/useMessengerRooms.js
-@@ -1,81 +1,81 @@
- import { useEffect, useMemo, useState } from 'react';
--import { collection, onSnapshot, query, where } from 'firebase/firestore';
--import { db } from '../../firebase/client';
- import { resolveParentRooms } from '../resolvers/parentResolver';
- import { resolveStaffRooms } from '../resolvers/staffResolver';
- import { resolveStudentRooms } from '../resolvers/studentResolver';
- import { buildParentParticipantKeys, buildStudentParticipantKeys, uniqueStrings } from '../utils/participantKeys';
- import { sortRooms } from '../utils/roomMatcher';
-+import { getUserChatRoomsQueryShape, subscribeUserChatRooms } from '../services/userChatRoomsService';
- 
- const log = (...args) => {
-     if (process.env.NODE_ENV === 'development') console.log('[resolver]', ...args);
- };
- 
- const logChatRoomsQuery = (role, authUid) => {
-     if (process.env.NODE_ENV !== 'development') return;
--    const queryShape = { collection: 'chatRooms', where: ['participantIds', 'array-contains', authUid] };
-+    const queryShape = getUserChatRoomsQueryShape(authUid);
-     if (role === 'student') {
--        console.log('[student resolver] chatRooms query', queryShape);
-+        console.log('[student resolver] userChatRooms query', queryShape);
-         return;
-     }
-     log('query', { role, queryShape });
- };
- 
- export const useMessengerRooms = ({ role = 'student', authUid = '', student = {}, parent = {} } = {}) => {
-     const [rawRooms, setRawRooms] = useState([]);
-     const [loading, setLoading] = useState(false);
-     const [error, setError] = useState('');
- 
-     const participantKeys = useMemo(() => {
-         if (role === 'parent') return buildParentParticipantKeys({ authUid, parent, student, studentId: student?.id || student?.studentId });
-         if (role === 'staff') return uniqueStrings([authUid, parent?.id, student?.id, student?.studentId]);
-         return buildStudentParticipantKeys({ authUid, student, studentId: student?.id || student?.studentId });
-     }, [role, authUid, parent, student]);
+@@ -245,51 +245,51 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
+     }, [optimisticMessages]);
  
      useEffect(() => {
+         const authUid = auth.currentUser?.uid || '';
          if (!authUid) {
-             setRawRooms([]);
-             setLoading(false);
+             setMyProfileDocId('');
              return undefined;
          }
-         setLoading(true);
-         setError('');
--        const roomQuery = query(collection(db, 'chatRooms'), where('participantIds', 'array-contains', authUid));
-+        const queryShape = getUserChatRoomsQueryShape(authUid);
-         logChatRoomsQuery(role, authUid);
--        const unsubscribe = onSnapshot(roomQuery, (snap) => {
--            const nextRooms = snap.docs
--                .map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }))
--                .filter((room) => Array.isArray(room.participantIds) && room.participantIds.map(String).includes(authUid));
--            log('snapshot', { role, count: nextRooms.length });
--            setRawRooms(nextRooms);
--            setLoading(false);
--            setError('');
--        }, (snapshotError) => {
--            console.error('[resolver] failed to load chatRooms', {
--                role,
--                authUid,
--                queryShape: { collection: 'chatRooms', where: ['participantIds', 'array-contains', authUid] },
--                code: snapshotError?.code,
--                message: snapshotError?.message,
--            });
--            setLoading(false);
--            setError('대화 목록을 불러오지 못했습니다.');
-+        const unsubscribe = subscribeUserChatRooms({
-+            authUid,
-+            onNext: (nextRooms) => {
-+                log('snapshot', { role, count: nextRooms.length });
-+                setRawRooms(nextRooms);
-+                setLoading(false);
-+                setError('');
-+            },
-+            onError: (snapshotError) => {
-+                console.error('[resolver] failed to load userChatRooms', {
-+                    role,
-+                    authUid,
-+                    queryShape,
-+                    code: snapshotError?.code,
-+                    message: snapshotError?.message,
-+                });
-+                setLoading(false);
-+                setError('대화 목록을 불러오지 못했습니다.');
-+            },
+ 
+         let mounted = true;
+         getDoc(doc(db, 'userAuthIndex', authUid)).then((indexSnap) => {
+             if (!mounted) return;
+             setMyProfileDocId(indexSnap.exists() ? String(indexSnap.data()?.userDocId || '') : '');
+         }).catch((indexError) => {
+             logFirestoreQueryFailure('load userAuthIndex', indexError, { doc: ['userAuthIndex', authUid] });
+             if (mounted) setMyProfileDocId('');
          });
-         return unsubscribe;
-     }, [role, authUid]);
  
-     const resolved = useMemo(() => {
-         if (role === 'parent') return resolveParentRooms({ rooms: rawRooms, participantKeys });
-         if (role === 'staff') return { rooms: resolveStaffRooms({ rooms: rawRooms, participantKeys }) };
-         return resolveStudentRooms({ rooms: rawRooms, authUid });
-     }, [role, rawRooms, participantKeys, authUid]);
+         return () => {
+             mounted = false;
+         };
+     }, []);
  
-     return {
-         rooms: sortRooms([...(resolved.rooms || rawRooms)]),
-         rawRooms,
-         loading,
-         error,
-         participantKeys,
-         ...resolved,
-     };
- };
-diff --git a/src/messenger/services/roomPreviewService.js b/src/messenger/services/roomPreviewService.js
-index 5b1806464b00d37857d29200aa92bbb125709753..1ae92bdabe25b3f89c31c34e41a7632e3b91b38a 100644
---- a/src/messenger/services/roomPreviewService.js
-+++ b/src/messenger/services/roomPreviewService.js
-@@ -1,9 +1,10 @@
- import { EMPTY_ROOM_PREVIEW } from '../constants/messengerConstants';
- import { normalizeText } from '../utils/roomMatcher';
+     useEffect(() => {
+         if (selectedRoomId) {
+-            if (process.env.NODE_ENV === 'development') console.log('[student messenger] selected room', { roomId: String(selectedRoomId) });
++            if (process.env.NODE_ENV === 'development') console.log('[StudentMessenger] selected roomId', { roomId: String(selectedRoomId) });
+             setMessages([]);
+             setOptimisticMessages([]);
+             setRoomId(String(selectedRoomId));
+             return undefined;
+         }
  
- export const getLastMessagePreview = (room) => (
--    normalizeText(room?.lastMessageText)
-+    normalizeText(room?.indexLastMessageText)
-+    || normalizeText(room?.lastMessageText)
-     || normalizeText(room?.lastMessage)
-     || normalizeText(room?.message)
-     || EMPTY_ROOM_PREVIEW
- );
-diff --git a/src/messenger/services/userChatRoomsService.js b/src/messenger/services/userChatRoomsService.js
-new file mode 100644
-index 0000000000000000000000000000000000000000..45068ec1ceef3339ff7744df4172a8f150195a65
---- /dev/null
-+++ b/src/messenger/services/userChatRoomsService.js
-@@ -0,0 +1,50 @@
-+import { collection, doc, getDoc, onSnapshot, query } from 'firebase/firestore';
-+import { db } from '../../firebase/client';
-+
-+export const getUserChatRoomsQueryShape = (authUid) => ({ collection: `userChatRooms/${authUid}/rooms` });
-+
-+const toMillis = (value) => {
-+    if (!value) return 0;
-+    if (typeof value?.toMillis === 'function') return value.toMillis();
-+    if (typeof value?.toDate === 'function') return value.toDate().getTime();
-+    if (value instanceof Date) return value.getTime();
-+    const parsed = new Date(value).getTime();
-+    return Number.isFinite(parsed) ? parsed : 0;
-+};
-+
-+export const sortUserRoomIndexes = (indexes = []) => [...indexes].sort((left, right) => toMillis(right.lastMessageAt || right.updatedAt) - toMillis(left.lastMessageAt || left.updatedAt));
-+
-+export const mergeRoomWithIndex = (room, index) => ({
-+    ...(room || {}),
-+    id: room?.id || index?.roomId || index?.id || '',
-+    roomId: room?.roomId || index?.roomId || index?.id || '',
-+    indexLastMessageText: index?.lastMessageText || '',
-+    indexLastMessageAt: index?.lastMessageAt || null,
-+    indexUpdatedAt: index?.updatedAt || null,
-+    lastMessageText: index?.lastMessageText || room?.lastMessageText || '',
-+    lastMessageAt: index?.lastMessageAt || room?.lastMessageAt || null,
-+    updatedAt: index?.updatedAt || room?.updatedAt || null,
-+});
-+
-+export const fetchRoomsForIndexes = async (indexes = []) => {
-+    const rooms = await Promise.all(sortUserRoomIndexes(indexes).map(async (index) => {
-+        const roomId = String(index?.roomId || index?.id || '').trim();
-+        if (!roomId) return null;
-+        const roomSnap = await getDoc(doc(db, 'chatRooms', roomId));
-+        if (!roomSnap.exists()) return mergeRoomWithIndex({ id: roomId }, index);
-+        return mergeRoomWithIndex({ id: roomSnap.id, ...roomSnap.data() }, index);
-+    }));
-+    return rooms.filter(Boolean);
-+};
-+
-+export const subscribeUserChatRooms = ({ authUid, onNext, onError }) => {
-+    const indexQuery = query(collection(db, 'userChatRooms', authUid, 'rooms'));
-+    return onSnapshot(indexQuery, async (snap) => {
-+        try {
-+            const indexes = snap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
-+            onNext(await fetchRoomsForIndexes(indexes), indexes);
-+        } catch (error) {
-+            onError?.(error);
-+        }
-+    }, onError);
-+};
+         let cancelled = false;
+         setRoomId(null);
+         setMessages([]);
+         setOptimisticMessages([]);
+         setError('');
+ 
+         const viewerUid = auth.currentUser?.uid || '';
+         const targetAuthUid = String(roomCreationContext?.targetAuthUid || '');
+         if (!viewerUid || !targetAuthUid || !expectedRoomType) return () => { cancelled = true; };
+ 
+         resolveChatRoom({
+             viewerUid,
+             targetAuthUid,
+             roomType: expectedRoomType,
+             studentId,
+             participantKeys: roomStudentParticipantKeys,
+         }).then((resolvedRoom) => {
+             if (cancelled || !resolvedRoom?.id) return;
+             if (process.env.NODE_ENV === 'development') console.log('[student messenger] resolved room', { roomId: resolvedRoom.id, messagesPath: `chatRooms/${resolvedRoom.id}/messages` });
+@@ -320,53 +320,56 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
+             }));
+             const unresolvedOptimisticItems = optimisticMessagesRef.current
+                 .filter((item) => String(item.roomId || '') === String(roomId))
+                 .filter((optimistic) => !snapshotItems.some((serverItem) => isSameLogicalMessage(serverItem.raw, optimistic)))
+                 .map((item) => ({ id: item.id, raw: item }));
+             const mergedItems = sortMessageItems(dedupeMessages([...snapshotItems, ...unresolvedOptimisticItems]));
+ 
+             setOptimisticMessages((prev) => {
+                 const next = prev.filter((optimistic) => (
+                     String(optimistic.roomId || '') !== String(roomId)
+                     || !snapshotItems.some((serverItem) => isSameLogicalMessage(serverItem.raw, optimistic))
+                 ));
+                 if (next.length === prev.length) return prev;
+                 optimisticMessagesRef.current = next;
+                 return next;
+             });
+             setMessages(mergedItems
+                 .map((item) => normalizeMessage(item.id, item.raw, myIds, fallbackSenderName))
+                 .filter((item) => item.text || item.attachments.length));
+         };
+ 
+         const subscribe = (withOrderBy) => {
+             const queryShape = withOrderBy
+                 ? { collection: collectionPath, orderBy: ['createdAt', 'asc'] }
+                 : { collection: collectionPath, orderBy: null, clientSort: ['createdAt', 'asc'] };
+-            if (process.env.NODE_ENV === 'development') console.log('[student messenger][messages path]', { authUid: auth.currentUser?.uid || '', studentId: String(studentId || ''), studentAuthUid: String(studentAuthUid || ''), selectedRoomId: String(selectedRoomId || roomId || ''), roomType: expectedRoomType, channel: expectedRoomType, slot: normalizedChatSlot, participantIds: roomStudentParticipantKeys, lastMessageText: '', messagesPath: collectionPath, queryShape });
++            if (process.env.NODE_ENV === 'development') {
++                console.log('[StudentMessenger] subscribe messages', { roomId, path: collectionPath });
++                console.log('[student messenger][messages path]', { authUid: auth.currentUser?.uid || '', studentId: String(studentId || ''), studentAuthUid: String(studentAuthUid || ''), selectedRoomId: String(selectedRoomId || roomId || ''), roomType: expectedRoomType, channel: expectedRoomType, slot: normalizedChatSlot, participantIds: roomStudentParticipantKeys, lastMessageText: '', messagesPath: collectionPath, queryShape });
++            }
+             return subscribeRoomMessages({ roomId, withOrderBy, onNext: applySnapshot, onError: (snapshotError) => {
+-                logFirestoreQueryFailure('subscribe messages', snapshotError, queryShape);
++                if (process.env.NODE_ENV === 'development') logFirestoreQueryFailure('subscribe messages', snapshotError, queryShape);
+                 if (withOrderBy) {
+                     fallbackUnsub = subscribe(false);
+                     return;
+                 }
+                 setError('메시지를 불러올 권한이 없습니다. 관리자에게 문의해주세요.');
+             } });
+         };
+ 
+         const unsub = subscribe(true);
+         return () => {
+             unsub && unsub();
+             fallbackUnsub && fallbackUnsub();
+         };
+     }, [roomId, selectedRoomId, canCreateChatRoom, expectedRoomType, normalizedChatSlot, myProfileDocId, teacherName, userRole, studentId, studentAuthUid, roomStudentParticipantKeys]);
+ 
+     useEffect(() => {
+         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+     }, [messages]);
+ 
+     const placeholder = useMemo(() => (userRole === 'parent' ? '메시지 보내기...' : '메시지 입력'), [userRole]);
+ 
+     useEffect(() => () => {
+         if (attachmentPreviewUrl) URL.revokeObjectURL(attachmentPreviewUrl);
+     }, [attachmentPreviewUrl]);
+ 
 diff --git a/src/pages/parent/ParentMessengerPage.jsx b/src/pages/parent/ParentMessengerPage.jsx
-index 6a725ef889efad0034f3670fe99b35263fe5bead..ba93db900a378f98ec5472ff954458a95596ebc6 100644
+index ba93db900a378f98ec5472ff954458a95596ebc6..32456ab02439fd12ee84e21ea6ddf0854465a4dc 100644
 --- a/src/pages/parent/ParentMessengerPage.jsx
 +++ b/src/pages/parent/ParentMessengerPage.jsx
-@@ -1,97 +1,97 @@
- import React, { useEffect, useMemo, useState } from 'react';
- import ArrowBackIosNewIcon from '@mui/icons-material/ArrowBackIosNew';
--import { collection, onSnapshot, query, where } from 'firebase/firestore';
- import StudentMessenger from '../../components/StudentMessenger';
--import { auth, db } from '../../firebase/client';
-+import { auth } from '../../firebase/client';
- import { INSTITUTE_AUTH_UID, ROOM_TYPES, SLOTS, TEACHER_AUTH_UID } from '../../messenger/constants/messengerConstants';
- import { getInstituteDisplayName, getTeacherDisplayName } from '../../messenger/services/displayNameService';
- import { getLastMessagePreview } from '../../messenger/services/roomPreviewService';
- import { buildParentParticipantKeys } from '../../messenger/utils/participantKeys';
- import { getRoomSlot, hasRoomTypeOrChannel, sortRooms, toDate } from '../../messenger/utils/roomMatcher';
-+import { getUserChatRoomsQueryShape, subscribeUserChatRooms } from '../../messenger/services/userChatRoomsService';
- 
- const getParticipantIds = (room) => (Array.isArray(room?.participantIds) ? room.participantIds.map(String) : []);
- const hasTarget = (room, targetUid, fields = []) => fields.some((field) => String(room?.[field] || '') === targetUid) || getParticipantIds(room).includes(targetUid);
- const hasViewerParticipant = (room, participantKeys = []) => participantKeys.some((key) => getParticipantIds(room).includes(String(key)));
- const hasAuthParticipant = (room, authUid) => Boolean(authUid) && getParticipantIds(room).includes(String(authUid));
--const getChatRoomsQueryShape = (authUid) => ({ collection: 'chatRooms', where: ['participantIds', 'array-contains', authUid] });
-+
- const sameStudent = (room, studentId) => !room?.studentId || !studentId || String(room.studentId) === String(studentId);
- 
- const isParentTeacherRoom = (room, participantKeys, studentId) => (
-     hasViewerParticipant(room, participantKeys)
-     && sameStudent(room, studentId)
-     && !hasRoomTypeOrChannel(room, ROOM_TYPES.STUDENT_TEACHER)
-     && !hasRoomTypeOrChannel(room, ROOM_TYPES.STUDENT_INSTITUTE)
-     && (hasRoomTypeOrChannel(room, ROOM_TYPES.PARENT_TEACHER) || getRoomSlot(room) === SLOTS.TEACHER)
-     && hasTarget(room, TEACHER_AUTH_UID, ['teacherAuthUid', 'counterpartUid'])
- );
- 
- const isParentInstituteRoom = (room, participantKeys, studentId) => (
-     hasViewerParticipant(room, participantKeys)
-     && sameStudent(room, studentId)
-     && !hasRoomTypeOrChannel(room, ROOM_TYPES.STUDENT_TEACHER)
-     && !hasRoomTypeOrChannel(room, ROOM_TYPES.STUDENT_INSTITUTE)
-     && (hasRoomTypeOrChannel(room, ROOM_TYPES.PARENT_INSTITUTE) || getRoomSlot(room) === SLOTS.INSTITUTE)
-     && hasTarget(room, INSTITUTE_AUTH_UID, ['staffAuthUid', 'counterpartUid'])
- );
- 
- export default function ParentMessengerPage({ studentId, student, onBack }) {
-     const [selectedSlot, setSelectedSlot] = useState(null);
-     const [rooms, setRooms] = useState([]);
-     const [loading, setLoading] = useState(false);
-     const [error, setError] = useState('');
-     const authUid = String(auth.currentUser?.uid || '');
-     const activeStudentId = String(studentId || student?.id || student?.studentId || '');
-     const participantKeys = useMemo(() => buildParentParticipantKeys({ authUid, parent: { authUid, parentUid: authUid }, student, studentId: activeStudentId }), [authUid, student, activeStudentId]);
- 
-     useEffect(() => {
-         if (!authUid) {
-             setRooms([]);
-             setLoading(false);
-             setError('');
-             return undefined;
-         }
-         setLoading(true);
-         setError('');
--        const roomQuery = query(collection(db, 'chatRooms'), where('participantIds', 'array-contains', authUid));
--        const queryShape = getChatRoomsQueryShape(authUid);
--        if (process.env.NODE_ENV === 'development') console.log('[parent messenger] chatRooms query', queryShape);
--        const unsubscribe = onSnapshot(roomQuery, (snap) => {
--            const myRooms = snap.docs
--                .map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }))
--                .filter((room) => hasAuthParticipant(room, authUid));
--            setRooms(sortRooms(myRooms));
--            setLoading(false);
--            setError('');
--        }, (snapshotError) => {
--            console.error('[parent messenger] failed to load chatRooms', {
--                code: snapshotError?.code,
--                message: snapshotError?.message,
--                queryShape,
--            });
--            setLoading(false);
--            setError('대화 목록을 불러오지 못했습니다.');
-+        const queryShape = getUserChatRoomsQueryShape(authUid);
-+        if (process.env.NODE_ENV === 'development') console.log('[parent messenger] userChatRooms query', queryShape);
-+        const unsubscribe = subscribeUserChatRooms({
-+            authUid,
-+            onNext: (myRooms) => {
-+                setRooms(sortRooms(myRooms.filter((room) => hasAuthParticipant(room, authUid))));
-+                setLoading(false);
-+                setError('');
-+            },
-+            onError: (snapshotError) => {
-+                console.error('[parent messenger] failed to load userChatRooms', {
-+                    code: snapshotError?.code,
-+                    message: snapshotError?.message,
-+                    queryShape,
-+                });
-+                setLoading(false);
-+                setError('대화 목록을 불러오지 못했습니다.');
-+            },
+@@ -60,81 +60,96 @@ export default function ParentMessengerPage({ studentId, student, onBack }) {
+                 setRooms(sortRooms(myRooms.filter((room) => hasAuthParticipant(room, authUid))));
+                 setLoading(false);
+                 setError('');
+             },
+             onError: (snapshotError) => {
+                 console.error('[parent messenger] failed to load userChatRooms', {
+                     code: snapshotError?.code,
+                     message: snapshotError?.message,
+                     queryShape,
+                 });
+                 setLoading(false);
+                 setError('대화 목록을 불러오지 못했습니다.');
+             },
          });
          return unsubscribe;
      }, [authUid]);
@@ -936,6 +144,21 @@ index 6a725ef889efad0034f3670fe99b35263fe5bead..ba93db900a378f98ec5472ff954458a9
          { slot: SLOTS.TEACHER, room: teacherRoom, id: teacherRoom?.id || 'parent-teacher-placeholder', title: getTeacherDisplayName(), roomType: ROOM_TYPES.PARENT_TEACHER },
      ], [teacherRoom, instituteRoom]);
  
++    const handleOpenRoom = (slot) => {
++        const selectedRoomId = String(slot.room?.roomId || slot.room?.id || '').trim();
++        if (process.env.NODE_ENV === 'development') {
++            console.log('[MessengerPage] open room', {
++                role: 'parent',
++                selectedRoomId,
++                roomIdFromIndex: String(slot.room?.roomId || ''),
++                roomDocId: String(slot.room?.id || ''),
++                slot: slot.slot,
++                roomType: slot.room?.roomType || slot.roomType || '',
++            });
++        }
++        setSelectedSlot({ slot: slot.slot });
++    };
++
      const currentSlot = selectedSlot ? messengerSlots.find((slot) => slot.slot === selectedSlot.slot) || selectedSlot : null;
  
      if (currentSlot) {
@@ -949,3 +172,150 @@ index 6a725ef889efad0034f3670fe99b35263fe5bead..ba93db900a378f98ec5472ff954458a9
                  <div className="flex-1 min-h-0">
                      <StudentMessenger
                          studentId={activeStudentId}
+                         studentAuthUid={student?.authUid || student?.studentUid || student?.uid || ''}
+-                        selectedRoomId={currentSlot.room?.id || ''}
++                        selectedRoomId={currentSlot.room?.roomId || currentSlot.room?.id || ''}
+                         teacherName={currentSlot.title}
+                         userRole="parent"
+                         allowLegacyResolve={false}
+                         emptyMessage="아직 대화 내역이 없습니다."
+                         chatSlot={currentSlot.slot}
+                         roomCreationContext={{
+                             slot: currentSlot.slot,
+                             studentParticipantKeys: participantKeys,
+                             targetAuthUid,
+                             targetName: currentSlot.title,
+                             roomType: currentSlot.roomType,
+                         }}
+                     />
+                 </div>
+             </div>
+         );
+     }
+ 
+     return (
+         <div className="h-screen min-h-screen bg-gray-50 overflow-y-auto">
+             <header className="h-14 bg-white border-b border-gray-100 px-4 flex items-center gap-3 sticky top-0">
+                 <button type="button" onClick={onBack} className="text-gray-700"><ArrowBackIosNewIcon style={{ fontSize: 18 }} /></button>
+                 <h1 className="text-base font-semibold text-gray-900">메신저</h1>
+             </header>
+             <section className="py-2">
+                 {loading && <div className="mx-4 mb-2 text-xs text-gray-500 bg-white border border-gray-100 rounded-lg px-3 py-2">대화 목록을 불러오는 중입니다.</div>}
+                 {error && <div className="mx-4 mb-2 text-xs text-gray-500 bg-white border border-gray-100 rounded-lg px-3 py-2">{error}</div>}
+                 {messengerSlots.map((slot) => (
+-                    <button key={slot.id} type="button" onClick={() => setSelectedSlot(slot)} className="h-16 w-full px-4 bg-white border-b border-gray-100 flex items-center gap-3 text-left">
++                    <button key={slot.id} type="button" onClick={() => handleOpenRoom(slot)} className="h-16 w-full px-4 bg-white border-b border-gray-100 flex items-center gap-3 text-left">
+                         <div className="w-10 h-10 rounded-full bg-gray-200" />
+                         <div className="flex-1 min-w-0">
+                             <p className="text-sm font-semibold text-gray-900 truncate">{slot.title}</p>
+                             <p className="text-xs text-gray-500 truncate">{String(getLastMessagePreview(slot.room))}</p>
+                         </div>
+                         <div className="text-[11px] text-gray-400">{toDate(slot.room?.lastMessageAt || slot.room?.updatedAt || slot.room?.createdAt)?.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }) || ''}</div>
+                     </button>
+                 ))}
+             </section>
+         </div>
+     );
+ }
+diff --git a/src/pages/student/StudentMessengerPage.jsx b/src/pages/student/StudentMessengerPage.jsx
+index e77fcbea2324409fefda7ca68a8d805458ffaf6d..69a39c962473ef710ec8b2d684d822b18dae9999 100644
+--- a/src/pages/student/StudentMessengerPage.jsx
++++ b/src/pages/student/StudentMessengerPage.jsx
+@@ -8,80 +8,95 @@ import { getInstituteDisplayName, getTeacherDisplayName } from '../../messenger/
+ import { getLastMessagePreview } from '../../messenger/services/roomPreviewService';
+ import { buildStudentParticipantKeys } from '../../messenger/utils/participantKeys';
+ import { toDate } from '../../messenger/utils/roomMatcher';
+ 
+ const getExpectedRoomType = (slot) => (slot === SLOTS.INSTITUTE ? ROOM_TYPES.STUDENT_INSTITUTE : ROOM_TYPES.STUDENT_TEACHER);
+ 
+ export default function StudentMessengerPage({ studentId, student, onBack }) {
+     const [selectedSlot, setSelectedSlot] = useState(null);
+     const authUid = String(auth.currentUser?.uid || '');
+     const studentWithId = useMemo(() => ({ ...student, id: student?.id || studentId }), [student, studentId]);
+     const { loading, error, participantKeys, teacherRoom, instituteRoom } = useMessengerRooms({
+         role: 'student',
+         authUid,
+         student: studentWithId,
+     });
+     const participantKeyCandidates = useMemo(() => (
+         participantKeys?.length ? participantKeys : buildStudentParticipantKeys({ authUid, student, studentId })
+     ), [participantKeys, authUid, student, studentId]);
+     const activeStudentId = String(studentId || student?.id || student?.studentId || '');
+ 
+     const messengerSlots = useMemo(() => [
+         { slot: SLOTS.INSTITUTE, id: instituteRoom?.id || 'institute-placeholder', title: getInstituteDisplayName(), room: instituteRoom, roomType: ROOM_TYPES.STUDENT_INSTITUTE },
+         { slot: SLOTS.TEACHER, id: teacherRoom?.id || 'teacher-placeholder', title: getTeacherDisplayName(), room: teacherRoom, roomType: ROOM_TYPES.STUDENT_TEACHER },
+     ], [teacherRoom, instituteRoom]);
+ 
++    const handleOpenRoom = (slot) => {
++        const selectedRoomId = String(slot.room?.roomId || slot.room?.id || '').trim();
++        if (process.env.NODE_ENV === 'development') {
++            console.log('[MessengerPage] open room', {
++                role: 'student',
++                selectedRoomId,
++                roomIdFromIndex: String(slot.room?.roomId || ''),
++                roomDocId: String(slot.room?.id || ''),
++                slot: slot.slot,
++                roomType: slot.room?.roomType || slot.roomType || '',
++            });
++        }
++        setSelectedSlot({ slot: slot.slot });
++    };
++
+     const currentSlot = selectedSlot ? messengerSlots.find((slot) => slot.slot === selectedSlot.slot) || selectedSlot : null;
+     if (currentSlot) {
+         const targetAuthUid = currentSlot.slot === SLOTS.TEACHER ? TEACHER_AUTH_UID : INSTITUTE_AUTH_UID;
+         return (
+             <div className="h-screen min-h-screen bg-gray-50 flex flex-col overflow-hidden">
+                 <header className="h-14 bg-white border-b border-gray-100 px-4 flex items-center gap-3">
+                     <button type="button" onClick={() => setSelectedSlot(null)} className="text-gray-700"><ArrowBackIosNewIcon style={{ fontSize: 18 }} /></button>
+                     <h1 className="text-base font-semibold text-gray-900 truncate">{currentSlot.title}</h1>
+                 </header>
+                 <div className="flex-1 min-h-0">
+                     <StudentMessenger
+                         studentId={activeStudentId}
+                         studentAuthUid={student?.authUid || student?.studentUid || student?.uid || ''}
+-                        selectedRoomId={currentSlot.room?.id || ''}
++                        selectedRoomId={currentSlot.room?.roomId || currentSlot.room?.id || ''}
+                         teacherName={currentSlot.title}
+                         userRole="student"
+                         allowLegacyResolve={false}
+                         emptyMessage="아직 대화 내역이 없습니다."
+                         chatSlot={currentSlot.slot}
+                         roomCreationContext={{
+                             slot: currentSlot.slot,
+                             studentParticipantKeys: participantKeyCandidates,
+                             targetAuthUid,
+                             targetName: currentSlot.title,
+                             roomType: getExpectedRoomType(currentSlot.slot),
+                         }}
+                     />
+                 </div>
+             </div>
+         );
+     }
+ 
+     return (
+         <div className="h-screen min-h-screen bg-gray-50 overflow-y-auto">
+             <header className="h-14 bg-white border-b border-gray-100 px-4 flex items-center gap-3 sticky top-0">
+                 <button type="button" onClick={onBack} className="text-gray-700"><ArrowBackIosNewIcon style={{ fontSize: 18 }} /></button>
+                 <h1 className="text-base font-semibold text-gray-900">메신저</h1>
+             </header>
+             <section className="py-2">
+                 {loading && <div className="mx-4 mb-2 text-xs text-gray-500 bg-white border border-gray-100 rounded-lg px-3 py-2">대화 목록을 불러오는 중입니다.</div>}
+                 {error && <div className="mx-4 mb-2 text-xs text-gray-500 bg-white border border-gray-100 rounded-lg px-3 py-2">{error}</div>}
+                 {messengerSlots.map((slot) => (
+-                    <button key={slot.id} type="button" onClick={() => setSelectedSlot(slot)} className="h-16 w-full px-4 bg-white border-b border-gray-100 flex items-center gap-3 text-left">
++                    <button key={slot.id} type="button" onClick={() => handleOpenRoom(slot)} className="h-16 w-full px-4 bg-white border-b border-gray-100 flex items-center gap-3 text-left">
+                         <div className="w-10 h-10 rounded-full bg-gray-200" />
+                         <div className="flex-1 min-w-0">
+                             <p className="text-sm font-semibold text-gray-900 truncate">{slot.title}</p>
+                             <p className="text-xs text-gray-500 truncate">{String(getLastMessagePreview(slot.room))}</p>
+                         </div>
+                         <div className="text-[11px] text-gray-400">{toDate(slot.room?.lastMessageAt || slot.room?.updatedAt || slot.room?.createdAt)?.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }) || ''}</div>
+                     </button>
+                 ))}
+             </section>
+         </div>
+     );
+ }

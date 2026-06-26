@@ -267,7 +267,7 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
 
     useEffect(() => {
         if (selectedRoomId) {
-            if (process.env.NODE_ENV === 'development') console.log('[student messenger] selected room', { roomId: String(selectedRoomId) });
+            if (process.env.NODE_ENV === 'development') console.log('[StudentMessenger] selected roomId', { roomId: String(selectedRoomId) });
             setMessages([]);
             setOptimisticMessages([]);
             setRoomId(String(selectedRoomId));
@@ -342,9 +342,12 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
             const queryShape = withOrderBy
                 ? { collection: collectionPath, orderBy: ['createdAt', 'asc'] }
                 : { collection: collectionPath, orderBy: null, clientSort: ['createdAt', 'asc'] };
-            if (process.env.NODE_ENV === 'development') console.log('[student messenger][messages path]', { authUid: auth.currentUser?.uid || '', studentId: String(studentId || ''), studentAuthUid: String(studentAuthUid || ''), selectedRoomId: String(selectedRoomId || roomId || ''), roomType: expectedRoomType, channel: expectedRoomType, slot: normalizedChatSlot, participantIds: roomStudentParticipantKeys, lastMessageText: '', messagesPath: collectionPath, queryShape });
+            if (process.env.NODE_ENV === 'development') {
+                console.log('[StudentMessenger] subscribe messages', { roomId, path: collectionPath });
+                console.log('[student messenger][messages path]', { authUid: auth.currentUser?.uid || '', studentId: String(studentId || ''), studentAuthUid: String(studentAuthUid || ''), selectedRoomId: String(selectedRoomId || roomId || ''), roomType: expectedRoomType, channel: expectedRoomType, slot: normalizedChatSlot, participantIds: roomStudentParticipantKeys, lastMessageText: '', messagesPath: collectionPath, queryShape });
+            }
             return subscribeRoomMessages({ roomId, withOrderBy, onNext: applySnapshot, onError: (snapshotError) => {
-                logFirestoreQueryFailure('subscribe messages', snapshotError, queryShape);
+                if (process.env.NODE_ENV === 'development') logFirestoreQueryFailure('subscribe messages', snapshotError, queryShape);
                 if (withOrderBy) {
                     fallbackUnsub = subscribe(false);
                     return;
