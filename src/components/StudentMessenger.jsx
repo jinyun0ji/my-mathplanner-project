@@ -169,34 +169,27 @@ const isExactStandardRoom = (room, { viewerUid, targetAuthUid, roomType, student
 };
 
 const resolveStandardChatRoom = async ({ viewerUid, targetAuthUid, roomType, studentId = '', participantKeys = [] }) => {
-    if (!viewerUid || !targetAuthUid || !roomType) return null;
-    const keys = uniqueStrings([viewerUid, studentId, participantKeys]);
-    const seen = new Set();
-    const rooms = [];
+    const authUid = String(auth.currentUser?.uid || viewerUid || '').trim();
+    if (!authUid || !targetAuthUid || !roomType) return null;
 
-    for (const participantKey of keys) {
-        try {
-            const snap = await getDocs(query(
-                collection(db, 'chatRooms'),
-                where('participantIds', 'array-contains', participantKey),
-                limit(50),
-            ));
-            snap.docs.forEach((item) => {
-                if (seen.has(item.id)) return;
-                seen.add(item.id);
-                rooms.push({ id: item.id, ...item.data() });
-            });
-        } catch (error) {
-            logFirestoreQueryFailure('resolve standard room', error, {
-                collection: 'chatRooms',
-                where: ['participantIds', 'array-contains', participantKey],
-                limit: 50,
-            });
-        }
+    let rooms = [];
+    try {
+        const snap = await getDocs(query(
+            collection(db, 'chatRooms'),
+            where('participantIds', 'array-contains', authUid),
+        ));
+        rooms = snap.docs.map((item) => ({ id: item.id, ...item.data() }));
+    } catch (error) {
+        logFirestoreQueryFailure('resolve standard room', error, {
+            collection: 'chatRooms',
+            where: ['participantIds', 'array-contains', authUid],
+        });
+        return null;
     }
 
+    const viewerKeys = uniqueStrings([authUid, viewerUid, studentId, participantKeys]);
     return rooms
-        .filter((room) => isExactStandardRoom(room, { viewerUid, targetAuthUid, roomType, studentId, participantKeys: keys }))
+        .filter((room) => isExactStandardRoom(room, { viewerUid: authUid, targetAuthUid, roomType, studentId, participantKeys: viewerKeys }))
         .sort((left, right) => getMessageSortTime({ createdAt: right.lastMessageAt || right.updatedAt || right.createdAt }) - getMessageSortTime({ createdAt: left.lastMessageAt || left.updatedAt || left.createdAt }))[0] || null;
 };
 

@@ -1,306 +1,101 @@
-diff --git a/src/pages/StudentHome.jsx b/src/pages/StudentHome.jsx
-index 8765304105bb26596ad6f0d7100715f59822e179..3d4459bac26ac2782a53dbb995e00e340db0a994 100644
---- a/src/pages/StudentHome.jsx
-+++ b/src/pages/StudentHome.jsx
-@@ -1,34 +1,34 @@
- // src/pages/StudentHome.jsx
- import React, {useState, useMemo, useEffect, useCallback} from 'react';
- import { useSearchParams } from 'react-router-dom';
- import {
-     DashboardTab, ClassTab, ScheduleTab, LearningTab, MenuTab,
-     BoardTab
- } from '../components/StudentTabs';
- import ClassroomView from './student/ClassroomView';
--import ParentMessengerPage from './parent/ParentMessengerPage';
-+import StudentMessengerPage from './student/StudentMessengerPage';
- import StudentHeader from '../components/StudentHeader';
- import {
-     Icon,
-     calculateHomeworkStats,
-     calculateGradeComparison,
- } from '../utils/helpers';
- import { sortClassesByStatus, getViewerVisibleClassIds } from '../utils/classStatus';
- import { getViewerTodayClassItems, toLocalYmd } from '../utils/viewerTodaySchedule';
- import NotificationsIcon from '@mui/icons-material/Notifications';
- import useNotifications from '../notifications/useNotifications';
- import NotificationList from '../notifications/NotificationList';
- import openNotification from '../notifications/openNotification';
- import { functions } from '../firebase/client';
- import { httpsCallable } from 'firebase/functions';
- import { FEATURES } from '../config/features';
- import FormulaBookView from '../components/Student/formulaBook/FormulaBookView';
- 
- const normalizeClassStatus = (value) => {
-     if (value === 'withdrawn') return '퇴원';
-     if (value === 'active') return '진행중';
-     if (value === '재원') return '진행중';
-     return value;
+diff --git a/src/components/StudentMessenger.jsx b/src/components/StudentMessenger.jsx
+index c7cd18bbc9a03b5ef58bdf33fb6eec63df7e6bb4..503642ee973572e6d0703f44ce96028ae16be64f 100644
+--- a/src/components/StudentMessenger.jsx
++++ b/src/components/StudentMessenger.jsx
+@@ -147,78 +147,71 @@ const buildStandardRoomId = (roomType, ownerUid, counterpartUid, studentId = '')
  };
  
- const isWithdrawnStatus = (value) => {
-@@ -528,55 +528,53 @@ export default function StudentHome({
-             const now = new Date();
-             setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true, readAt: n.readAt || now })));
-             console.log('[student][notifications] markAllRead success', { viewerUid, updated: result?.data?.updated ?? null });
-         } catch (error) {
-             console.error('[student][notifications] markAllRead failed', error);
-         }
-     };
+ const isExactStandardRoom = (room, { viewerUid, targetAuthUid, roomType, studentId = '', participantKeys = [] }) => {
+     if (!room || !viewerUid || !targetAuthUid || !roomType) return false;
+     if (!isCompatibleRoomType(room, roomType)) return false;
+     const expectedSlot = roomType.endsWith('_teacher') ? 'teacher' : 'institute';
+     const roomSlot = getRoomSlot(room);
+     if (roomSlot && roomSlot !== expectedSlot) return false;
+     const participantIds = getParticipantIds(room);
+     const viewerKeys = uniqueStrings([viewerUid, participantKeys]);
+     if (!viewerKeys.some((key) => participantIds.includes(key)) || !participantIds.includes(String(targetAuthUid))) return false;
+     if (roomType === 'parent_institute') {
+         if (!hasRoomTypeOrChannel(room, 'parent_institute')) return false;
+         if (room?.studentId && String(room.studentId) !== String(studentId || '')) return false;
+         if (room?.counterpartUid && String(room.counterpartUid) !== String(targetAuthUid)) return false;
+         if (room?.staffAuthUid && String(room.staffAuthUid) !== String(targetAuthUid)) return false;
+     }
+     if (room?.targetRole && expectedSlot === 'teacher' && String(room.targetRole) !== 'teacher') return false;
+     if (roomType !== 'parent_institute' && room?.counterpartUid && String(room.counterpartUid) !== String(targetAuthUid)) return false;
+     if (expectedSlot === 'teacher' && room?.teacherAuthUid && String(room.teacherAuthUid) !== String(targetAuthUid)) return false;
+     if ((roomType === 'parent_teacher' || roomType === 'parent_institute') && studentId && room?.studentId && String(room.studentId) !== String(studentId)) return false;
+     return true;
+ };
  
- 
- 
-     const sentLessonReports = useMemo(() => (Array.isArray(lessonReports) ? lessonReports : [])
-         .filter((report) => report?.status === 'sent' && String(report?.studentId || '') === String(studentId || '') && isVisibleClassItem(report))
-         .map((report) => ({ ...report, className: classes.find((c) => String(c.id) === String(report.classId))?.name || report.classId }))
-         .sort((a, b) => String(b.lessonDate || '').localeCompare(String(a.lessonDate || ''))), [lessonReports, studentId, isVisibleClassItem, classes]);
- 
-     const navItems = [
-         { id: 'home', icon: 'home', label: '홈' },
-         { id: 'class', icon: 'fileText', label: '강의실' },
-         { id: 'learning', icon: 'clipboardCheck', label: '학습관리' },
-         { id: 'schedule', icon: 'calendar', label: '일정' },
-         { id: 'menu', icon: 'menu', label: '전체' },
-     ];
- 
-     if (isMessengerPage) {
-         return (
--            <ParentMessengerPage
-+            <StudentMessengerPage
-                 studentId={studentId}
-                 student={student}
--                ongoingClasses={ongoingClasses}
--                viewerRole="student"
-                 onBack={() => setIsMessengerPage(false)}
-             />
-         );
+ const resolveStandardChatRoom = async ({ viewerUid, targetAuthUid, roomType, studentId = '', participantKeys = [] }) => {
+-    if (!viewerUid || !targetAuthUid || !roomType) return null;
+-    const keys = uniqueStrings([viewerUid, studentId, participantKeys]);
+-    const seen = new Set();
+-    const rooms = [];
+-
+-    for (const participantKey of keys) {
+-        try {
+-            const snap = await getDocs(query(
+-                collection(db, 'chatRooms'),
+-                where('participantIds', 'array-contains', participantKey),
+-                limit(50),
+-            ));
+-            snap.docs.forEach((item) => {
+-                if (seen.has(item.id)) return;
+-                seen.add(item.id);
+-                rooms.push({ id: item.id, ...item.data() });
+-            });
+-        } catch (error) {
+-            logFirestoreQueryFailure('resolve standard room', error, {
+-                collection: 'chatRooms',
+-                where: ['participantIds', 'array-contains', participantKey],
+-                limit: 50,
+-            });
+-        }
++    const authUid = String(auth.currentUser?.uid || viewerUid || '').trim();
++    if (!authUid || !targetAuthUid || !roomType) return null;
++
++    let rooms = [];
++    try {
++        const snap = await getDocs(query(
++            collection(db, 'chatRooms'),
++            where('participantIds', 'array-contains', authUid),
++        ));
++        rooms = snap.docs.map((item) => ({ id: item.id, ...item.data() }));
++    } catch (error) {
++        logFirestoreQueryFailure('resolve standard room', error, {
++            collection: 'chatRooms',
++            where: ['participantIds', 'array-contains', authUid],
++        });
++        return null;
      }
  
-     return (
-         <div className="bg-gray-50 min-h-screen flex flex-col relative font-sans">
-             <StudentHeader student={student} onOpenNotifications={handleOpenNotification} onOpenMessages={() => setIsMessengerPage(true)} hasUnread={hasUnread} />
-             {/* <div style={{position:'fixed', top:10, right:10, zIndex:9999, background:'#fff', padding:6}}>
-                 activeTab: {activeTab}
-             </div> */}
++    const viewerKeys = uniqueStrings([authUid, viewerUid, studentId, participantKeys]);
+     return rooms
+-        .filter((room) => isExactStandardRoom(room, { viewerUid, targetAuthUid, roomType, studentId, participantKeys: keys }))
++        .filter((room) => isExactStandardRoom(room, { viewerUid: authUid, targetAuthUid, roomType, studentId, participantKeys: viewerKeys }))
+         .sort((left, right) => getMessageSortTime({ createdAt: right.lastMessageAt || right.updatedAt || right.createdAt }) - getMessageSortTime({ createdAt: left.lastMessageAt || left.updatedAt || left.createdAt }))[0] || null;
+ };
  
-             <main className="flex-1 w-full max-w-md mx-auto p-4 pb-24 overflow-y-auto custom-scrollbar md:max-w-7xl">
-                 {!student ? (
-                     <div className="p-6 text-center text-gray-500">
-                         학생 정보를 불러오는 중이거나
-                         <br />
-                         계정이 아직 학원에 연결되지 않았습니다.
-                         <br />
-                         관리자에게 문의해주세요.
-                     </div>
-                 ) : selectedClassId ? (
-                     <ClassroomView
-                         classes={classes}
-                         lessonLogs={filteredLessonLogs}
-diff --git a/src/pages/student/StudentMessengerPage.jsx b/src/pages/student/StudentMessengerPage.jsx
-new file mode 100644
-index 0000000000000000000000000000000000000000..f9a05a46c0941b8ecbe301660914785b5b92eb83
---- /dev/null
-+++ b/src/pages/student/StudentMessengerPage.jsx
-@@ -0,0 +1,203 @@
-+import React, { useEffect, useMemo, useState } from 'react';
-+import ArrowBackIosNewIcon from '@mui/icons-material/ArrowBackIosNew';
-+import { collection, onSnapshot, query, where } from 'firebase/firestore';
-+import StudentMessenger from '../../components/StudentMessenger';
-+import { auth, db } from '../../firebase/client';
-+
-+const INSTITUTE_SLOT = 'institute';
-+const TEACHER_SLOT = 'teacher';
-+const INSTITUTE_NAME = '채수용 수학 연구소';
-+const INSTITUTE_AUTH_UID = 'lVwBt6If6JVwkop9uPIbOIHQmwg2';
-+const TEACHER_AUTH_UID = 'EzOXjwwyATO2sP5yuc3CkS3oRw22';
-+const TEACHER_DISPLAY_NAME = '채수용 선생님';
-+const STUDENT_ROOM_TYPES = new Set(['student_institute', 'student_teacher']);
-+
-+const normalizeText = (value) => String(value || '').trim();
-+const uniqueStrings = (values) => Array.from(new Set(
-+    values.flat(Infinity).filter((value) => typeof value === 'string' && value.trim()).map((value) => value.trim())
-+));
-+const getParticipantIds = (room) => (Array.isArray(room?.participantIds) ? room.participantIds.map(String) : []);
-+const getRoomType = (room) => normalizeText(room?.roomType || room?.channel);
-+const getRoomSlot = (room) => {
-+    const explicitSlot = normalizeText(room?.slot);
-+    if (explicitSlot) return explicitSlot;
-+    const roomType = getRoomType(room);
-+    if (roomType.endsWith('_institute') || roomType === 'institute') return INSTITUTE_SLOT;
-+    if (roomType.endsWith('_teacher') || roomType === 'teacher') return TEACHER_SLOT;
-+    return '';
-+};
-+const getExpectedRoomType = (slot) => (slot === INSTITUTE_SLOT ? 'student_institute' : 'student_teacher');
-+const toDate = (value) => {
-+    if (!value) return null;
-+    if (typeof value?.toDate === 'function') return value.toDate();
-+    const parsed = new Date(value);
-+    return Number.isNaN(parsed.getTime()) ? null : parsed;
-+};
-+const getRoomSortTime = (room) => (
-+    toDate(room?.lastMessageAt)?.getTime()
-+    || toDate(room?.updatedAt)?.getTime()
-+    || toDate(room?.createdAt)?.getTime()
-+    || 0
-+);
-+const getLastMessagePreview = (room) => (
-+    normalizeText(room?.lastMessageText)
-+    || normalizeText(room?.lastMessage)
-+    || normalizeText(room?.message)
-+    || '대화 내역이 없습니다.'
-+);
-+const sortRooms = (roomList) => roomList.sort((a, b) => getRoomSortTime(b) - getRoomSortTime(a));
-+const hasCounterpartUid = (room, targetAuthUid, fields) => {
-+    const target = String(targetAuthUid || '');
-+    if (!target) return false;
-+    return fields.some((field) => String(room?.[field] || '') === target) || getParticipantIds(room).includes(target);
-+};
-+const hasStudentParticipant = (room, participantKeyCandidates) => {
-+    const participantIds = getParticipantIds(room);
-+    return uniqueStrings(participantKeyCandidates).some((key) => participantIds.includes(key));
-+};
-+const isStudentRoomType = (room, expectedRoomType) => {
-+    const roomType = normalizeText(room?.roomType);
-+    const channel = normalizeText(room?.channel);
-+    return roomType === expectedRoomType || channel === expectedRoomType;
-+};
-+const isStudentInstituteRoom = (room, participantKeyCandidates) => {
-+    if (!room) return false;
-+    if (getRoomSlot(room) === TEACHER_SLOT || isStudentRoomType(room, 'student_teacher')) return false;
-+    const hasInstituteMarker = isStudentRoomType(room, 'student_institute')
-+        || getRoomSlot(room) === INSTITUTE_SLOT
-+        || hasCounterpartUid(room, INSTITUTE_AUTH_UID, ['staffAuthUid', 'counterpartUid']);
-+    return hasInstituteMarker
-+        && hasCounterpartUid(room, INSTITUTE_AUTH_UID, ['staffAuthUid', 'counterpartUid'])
-+        && hasStudentParticipant(room, participantKeyCandidates);
-+};
-+const isStudentTeacherRoom = (room, participantKeyCandidates) => {
-+    if (!room) return false;
-+    if (getRoomSlot(room) === INSTITUTE_SLOT || isStudentRoomType(room, 'student_institute')) return false;
-+    const hasTeacherMarker = isStudentRoomType(room, 'student_teacher')
-+        || getRoomSlot(room) === TEACHER_SLOT
-+        || hasCounterpartUid(room, TEACHER_AUTH_UID, ['teacherAuthUid', 'counterpartUid']);
-+    return hasTeacherMarker
-+        && hasCounterpartUid(room, TEACHER_AUTH_UID, ['teacherAuthUid', 'counterpartUid'])
-+        && hasStudentParticipant(room, participantKeyCandidates);
-+};
-+const getTeacherName = (room) => {
-+    const roomName = normalizeText(room?.teacherName || room?.staffName || room?.counterpartName || room?.name || room?.title);
-+    return roomName && !roomName.includes('연구소') ? roomName : TEACHER_DISPLAY_NAME;
-+};
-+
-+export default function StudentMessengerPage({ studentId, student, onBack }) {
-+    const [rooms, setRooms] = useState([]);
-+    const [error, setError] = useState('');
-+    const [selectedSlot, setSelectedSlot] = useState(null);
-+    const authUid = String(auth.currentUser?.uid || '');
-+    const participantKeyCandidates = useMemo(() => uniqueStrings([
-+        authUid,
-+        student?.id,
-+        student?.studentId,
-+        student?.authUid,
-+        student?.uid,
-+        student?.userUid,
-+        student?.studentUid,
-+    ]), [authUid, student?.id, student?.studentId, student?.authUid, student?.uid, student?.userUid, student?.studentUid]);
-+    const activeStudentId = String(studentId || student?.id || student?.studentId || '');
-+
-+    useEffect(() => {
-+        if (!authUid) return undefined;
-+        let isMounted = true;
-+        const roomMap = new Map();
-+        const unsubscribers = [];
-+        const applyRooms = () => {
-+            if (!isMounted) return;
-+            setRooms(sortRooms(Array.from(roomMap.values()).filter((room) => STUDENT_ROOM_TYPES.has(getRoomType(room)))));
-+            setError('');
-+        };
-+
-+        participantKeyCandidates.forEach((participantKey) => {
-+            const roomQuery = query(collection(db, 'chatRooms'), where('participantIds', 'array-contains', participantKey));
-+            const unsubscribe = onSnapshot(roomQuery, (snap) => {
-+                snap.docs.forEach((docSnap) => roomMap.set(docSnap.id, { id: docSnap.id, ...docSnap.data() }));
-+                applyRooms();
-+            }, (snapshotError) => {
-+                console.error('[student messenger page] failed to load chatRooms', {
-+                    authUid,
-+                    queryShape: { collection: 'chatRooms', where: ['participantIds', 'array-contains', participantKey] },
-+                    code: snapshotError?.code,
-+                    message: snapshotError?.message,
-+                });
-+                if (isMounted && roomMap.size === 0) setError('대화 목록을 불러오지 못했습니다.');
-+            });
-+            unsubscribers.push(unsubscribe);
-+        });
-+
-+        return () => {
-+            isMounted = false;
-+            unsubscribers.forEach((unsubscribe) => unsubscribe && unsubscribe());
-+        };
-+    }, [authUid, participantKeyCandidates]);
-+
-+    const messengerSlots = useMemo(() => {
-+        const sortedRooms = sortRooms([...rooms]);
-+        const instituteRoom = sortedRooms.find((room) => isStudentInstituteRoom(room, participantKeyCandidates)) || null;
-+        const teacherRoom = sortedRooms.find((room) => isStudentTeacherRoom(room, participantKeyCandidates)) || null;
-+        return [
-+            { slot: INSTITUTE_SLOT, id: instituteRoom?.id || 'institute-placeholder', title: INSTITUTE_NAME, room: instituteRoom, roomType: 'student_institute' },
-+            { slot: TEACHER_SLOT, id: teacherRoom?.id || 'teacher-placeholder', title: getTeacherName(teacherRoom), room: teacherRoom, roomType: 'student_teacher' },
-+        ];
-+    }, [rooms, participantKeyCandidates]);
-+
-+    const currentSlot = selectedSlot ? messengerSlots.find((slot) => slot.slot === selectedSlot.slot) || selectedSlot : null;
-+    if (currentSlot) {
-+        const targetAuthUid = currentSlot.slot === TEACHER_SLOT ? TEACHER_AUTH_UID : INSTITUTE_AUTH_UID;
-+        return (
-+            <div className="h-screen min-h-screen bg-gray-50 flex flex-col overflow-hidden">
-+                <header className="h-14 bg-white border-b border-gray-100 px-4 flex items-center gap-3">
-+                    <button type="button" onClick={() => setSelectedSlot(null)} className="text-gray-700"><ArrowBackIosNewIcon style={{ fontSize: 18 }} /></button>
-+                    <h1 className="text-base font-semibold text-gray-900 truncate">{currentSlot.title}</h1>
-+                </header>
-+                <div className="flex-1 min-h-0">
-+                    <StudentMessenger
-+                        studentId={activeStudentId}
-+                        studentAuthUid={student?.authUid || student?.studentUid || student?.uid || ''}
-+                        selectedRoomId={currentSlot.room?.id || ''}
-+                        teacherName={currentSlot.title}
-+                        userRole="student"
-+                        allowLegacyResolve={false}
-+                        emptyMessage="아직 대화 내역이 없습니다."
-+                        chatSlot={currentSlot.slot}
-+                        roomCreationContext={{
-+                            slot: currentSlot.slot,
-+                            studentParticipantKeys: participantKeyCandidates,
-+                            targetAuthUid,
-+                            targetName: currentSlot.slot === TEACHER_SLOT ? currentSlot.title : INSTITUTE_NAME,
-+                            roomType: getExpectedRoomType(currentSlot.slot),
-+                        }}
-+                    />
-+                </div>
-+            </div>
-+        );
-+    }
-+
-+    return (
-+        <div className="h-screen min-h-screen bg-gray-50 overflow-y-auto">
-+            <header className="h-14 bg-white border-b border-gray-100 px-4 flex items-center gap-3 sticky top-0">
-+                <button type="button" onClick={onBack} className="text-gray-700"><ArrowBackIosNewIcon style={{ fontSize: 18 }} /></button>
-+                <h1 className="text-base font-semibold text-gray-900">메신저</h1>
-+            </header>
-+            <section className="py-2">
-+                {error && <div className="mx-4 mb-2 text-xs text-gray-500 bg-white border border-gray-100 rounded-lg px-3 py-2">{error}</div>}
-+                {messengerSlots.map((slot) => (
-+                    <button key={slot.id} type="button" onClick={() => setSelectedSlot(slot)} className="h-16 w-full px-4 bg-white border-b border-gray-100 flex items-center gap-3 text-left">
-+                        <div className="w-10 h-10 rounded-full bg-gray-200" />
-+                        <div className="flex-1 min-w-0">
-+                            <p className="text-sm font-semibold text-gray-900 truncate">{slot.title}</p>
-+                            <p className="text-xs text-gray-500 truncate">{String(getLastMessagePreview(slot.room))}</p>
-+                        </div>
-+                        <div className="text-[11px] text-gray-400">
-+                            {toDate(slot.room?.lastMessageAt || slot.room?.updatedAt || slot.room?.createdAt)?.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }) || ''}
-+                        </div>
-+                    </button>
-+                ))}
-+            </section>
-+        </div>
-+    );
-+}
+ const parseClientTempIdTime = (clientTempId) => {
+     const match = String(clientTempId || '').match(/(\d{12,})/);
+     if (!match) return 0;
+     const parsed = Number(match[1]);
+     return Number.isFinite(parsed) ? parsed : 0;
+ };
+ 
+ const getCreatedAtTime = (createdAt) => {
+     if (createdAt && typeof createdAt?.toDate === 'function') {
+         const time = createdAt.toDate().getTime();
+         if (Number.isFinite(time)) return time;
+     }
+     if (createdAt instanceof Date) {
+         const time = createdAt.getTime();
+         if (Number.isFinite(time)) return time;
+     }
+     if (typeof createdAt === 'number' && Number.isFinite(createdAt)) return createdAt;
+     return 0;
+ };
+ 
+ const getMessageSortTime = (message) => {
+     const createdAtTime = getCreatedAtTime(message?.createdAt);
