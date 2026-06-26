@@ -1,8 +1,12 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
+    collection,
     doc,
     getDoc,
+    getDocs,
+    query,
     serverTimestamp,
+    where,
 } from 'firebase/firestore';
 import { auth, db } from '../firebase/client';
 import { formatAttachmentSize, uploadChatAttachment, validateChatAttachment } from '../messenger/services/attachmentService';
@@ -39,6 +43,56 @@ const uniqueStrings = (values) => Array.from(new Set(
 ));
 
 const buildStandardRoomId = (roomType, ownerUid, counterpartUid, studentId = '') => buildDeterministicRoomId(roomType, ownerUid, counterpartUid, studentId);
+
+const getParticipantIds = (room) => (Array.isArray(room?.participantIds) ? room.participantIds.map(String) : []);
+
+const getRoomSlot = (room) => {
+    const explicitSlot = String(room?.slot || '').trim();
+    if (explicitSlot) return explicitSlot;
+    const roomType = String(room?.roomType || room?.channel || '').trim();
+    if (roomType === 'institute' || roomType.endsWith('_institute')) return 'institute';
+    if (roomType === 'teacher' || roomType.endsWith('_teacher')) return 'teacher';
+    return '';
+};
+
+const hasRoomTypeOrChannel = (room, expectedRoomType) => (
+    String(room?.roomType || '').trim() === expectedRoomType
+    || String(room?.channel || '').trim() === expectedRoomType
+);
+
+const isResolvedRoomCandidate = (room, { viewerUid, targetAuthUid, roomType, studentId = '', participantKeys = [] }) => {
+    if (!room || !viewerUid || !targetAuthUid || !roomType) return false;
+    const expectedSlot = roomType.endsWith('_teacher') ? 'teacher' : 'institute';
+    const roomSlot = getRoomSlot(room);
+    const participantIds = getParticipantIds(room);
+    const viewerKeys = uniqueStrings([viewerUid, participantKeys]);
+    if (!viewerKeys.some((key) => participantIds.includes(key))) return false;
+    if (!participantIds.includes(String(targetAuthUid)) && String(room?.counterpartUid || '') !== String(targetAuthUid) && String(room?.teacherAuthUid || '') !== String(targetAuthUid) && String(room?.staffAuthUid || '') !== String(targetAuthUid)) return false;
+    if (roomSlot && roomSlot !== expectedSlot) return false;
+    if (!hasRoomTypeOrChannel(room, roomType) && getRoomSlot(room) !== expectedSlot) return false;
+    if (roomType.startsWith('student_') && (hasRoomTypeOrChannel(room, 'parent_teacher') || hasRoomTypeOrChannel(room, 'parent_institute'))) return false;
+    if (roomType.startsWith('parent_') && (hasRoomTypeOrChannel(room, 'student_teacher') || hasRoomTypeOrChannel(room, 'student_institute'))) return false;
+    if ((roomType === 'parent_teacher' || roomType === 'parent_institute') && studentId && room?.studentId && String(room.studentId) !== String(studentId)) return false;
+    if (expectedSlot === 'teacher' && room?.teacherAuthUid && String(room.teacherAuthUid) !== String(targetAuthUid)) return false;
+    if (expectedSlot === 'institute' && room?.staffAuthUid && String(room.staffAuthUid) !== String(targetAuthUid)) return false;
+    if (room?.counterpartUid && String(room.counterpartUid) !== String(targetAuthUid)) return false;
+    return true;
+};
+
+const resolveChatRoom = async ({ viewerUid, targetAuthUid, roomType, studentId = '', participantKeys = [] }) => {
+    const authUid = String(auth.currentUser?.uid || viewerUid || '').trim();
+    if (!authUid || !targetAuthUid || !roomType) return null;
+    try {
+        const snap = await getDocs(query(collection(db, 'chatRooms'), where('participantIds', 'array-contains', authUid)));
+        return snap.docs
+            .map((item) => ({ id: item.id, ...item.data() }))
+            .filter((room) => isResolvedRoomCandidate(room, { viewerUid: authUid, targetAuthUid, roomType, studentId, participantKeys }))
+            .sort((left, right) => getMessageSortTime({ createdAt: right.lastMessageAt || right.updatedAt || right.createdAt }) - getMessageSortTime({ createdAt: left.lastMessageAt || left.updatedAt || left.createdAt }))[0] || null;
+    } catch (resolveError) {
+        logFirestoreQueryFailure('resolve chatRooms room', resolveError, { collection: 'chatRooms', where: ['participantIds', 'array-contains', authUid] });
+        return null;
+    }
+};
 
 const parseClientTempIdTime = (clientTempId) => {
     const match = String(clientTempId || '').match(/(\d{12,})/);
@@ -221,12 +275,31 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
             return undefined;
         }
 
+        let cancelled = false;
         setRoomId(null);
         setMessages([]);
         setOptimisticMessages([]);
         setError('');
 
-        return undefined;
+        const viewerUid = auth.currentUser?.uid || '';
+        const targetAuthUid = String(roomCreationContext?.targetAuthUid || '');
+        if (!viewerUid || !targetAuthUid || !expectedRoomType) return () => { cancelled = true; };
+
+        resolveChatRoom({
+            viewerUid,
+            targetAuthUid,
+            roomType: expectedRoomType,
+            studentId,
+            participantKeys: roomStudentParticipantKeys,
+        }).then((resolvedRoom) => {
+            if (cancelled || !resolvedRoom?.id) return;
+            if (process.env.NODE_ENV === 'development') console.log('[student messenger] resolved room', { roomId: resolvedRoom.id, messagesPath: `chatRooms/${resolvedRoom.id}/messages` });
+            setRoomId(String(resolvedRoom.id));
+        });
+
+        return () => {
+            cancelled = true;
+        };
     }, [studentId, studentAuthUid, selectedRoomId, allowLegacyResolve, canCreateChatRoom, expectedRoomType, roomCreationContext?.targetAuthUid, normalizedChatSlot, userRole, roomStudentParticipantKeys]);
 
     useEffect(() => {
