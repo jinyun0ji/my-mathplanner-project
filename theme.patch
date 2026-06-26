@@ -1,93 +1,387 @@
-diff --git a/src/components/StudentMessenger.jsx b/src/components/StudentMessenger.jsx
-index cfc8bd5288bb88ac6a42357ca03156935bf1268b..653fb3e5ad03e60ff838b92c871272009d845436 100644
---- a/src/components/StudentMessenger.jsx
-+++ b/src/components/StudentMessenger.jsx
-@@ -1,45 +1,48 @@
- import React, { useState, useEffect, useMemo, useRef } from 'react';
+diff --git a/src/components/Student/formulaBook/FormulaBookView.jsx b/src/components/Student/formulaBook/FormulaBookView.jsx
+index 4a1d1d15b1b36e03402cf15c43a8f50ffe239acb..8f7e60d900ebcc36ce20a69ae50ca927a9c643a5 100644
+--- a/src/components/Student/formulaBook/FormulaBookView.jsx
++++ b/src/components/Student/formulaBook/FormulaBookView.jsx
+@@ -1,217 +1,191 @@
+ import React, { useEffect, useMemo, useRef, useState } from 'react';
  import {
-     collection,
-     addDoc,
-     arrayUnion,
-     doc,
-     getDoc,
-     getDocs,
-     limit,
-     onSnapshot,
-     orderBy,
-     query,
-     serverTimestamp,
-     setDoc,
-     updateDoc,
-     where,
+     collection, doc, getDoc, getDocs, query, where,
  } from 'firebase/firestore';
- import { auth, db } from '../firebase/client';
- import { formatAttachmentSize, uploadChatAttachment, validateChatAttachment } from './chatAttachments';
+ import { db } from '../../../firebase/client';
++import FormulaConceptModal from './FormulaConceptModal';
  
-+// TODO(video_embed): allow only admin/staff/teacher to send YouTube watch/youtu.be/embed links,
-+// normalize them to youtube-nocookie URLs, store messageType: 'video_embed',
-+// render video cards in-room, and play them in an internal iframe modal.
- const CANDIDATE_ROOM_IDS = (studentId) => [String(studentId || '')].filter(Boolean);
+ const normalizeText = (value) => String(value || '').trim().toLocaleLowerCase('ko-KR');
+ const byOrderThenTitle = (a, b) => (
+     (Number(a.order) || 0) - (Number(b.order) || 0)
+     || String(a.title || '').localeCompare(String(b.title || ''), 'ko')
+ );
  
- const CHAT_ROOM_TYPES = {
-     student: {
-         institute: 'student_institute',
-         teacher: 'student_teacher',
-     },
-     parent: {
-         institute: 'parent_institute',
-         teacher: 'parent_teacher',
-     },
- };
- 
- const getExpectedRoomType = (role, slotOrType) => {
-     const normalizedRole = String(role || '').trim();
-     const normalized = String(slotOrType || '').trim();
-     if (normalizedRole === 'parent' && (normalized === 'institute' || normalized === 'parent_institute')) return 'parent_institute';
-     if (['student_institute', 'student_teacher', 'parent_institute', 'parent_teacher'].includes(normalized)) return normalized;
-     return CHAT_ROOM_TYPES[normalizedRole]?.[normalized] || '';
- };
- 
- const getRoomType = (room) => String(room?.roomType || room?.channel || '').trim();
- const hasRoomTypeOrChannel = (room, expectedRoomType) => (
-     String(room?.roomType || '').trim() === expectedRoomType
-     || String(room?.channel || '').trim() === expectedRoomType
-@@ -289,50 +292,51 @@ async function resolveRoomId(studentId, studentAuthUid = '') {
+ const matchesSearch = (concept, normalizedQuery) => {
+     if (!normalizedQuery) return true;
+     const searchableValues = [
+         concept.title,
+         concept.summary,
+         ...(Array.isArray(concept.tags) ? concept.tags : []),
+         ...(Array.isArray(concept.keywords) ? concept.keywords : []),
      ];
+     return searchableValues.some((value) => normalizeText(value).includes(normalizedQuery));
+ };
  
-     for (const check of checks) {
-         try {
-             console.log('[student messenger] resolve room query', check.shape);
-             const roomId = await check.run();
-             if (roomId) return roomId;
-         } catch (error) {
-             logFirestoreQueryFailure(check.label, error, check.shape);
-         }
-     }
- 
-     return null;
- }
- 
- export default function StudentMessenger({ studentId, studentAuthUid = '', selectedRoomId = '', teacherName = '메시지', userRole = 'parent', isFloating = false, allowLegacyResolve = true, emptyMessage = '아직 대화 내역이 없습니다.', chatSlot = '', roomCreationContext = null }) {
-     const [roomId, setRoomId] = useState(null);
-     const [messages, setMessages] = useState([]);
-     const [optimisticMessages, setOptimisticMessages] = useState([]);
-     const optimisticMessagesRef = useRef([]);
-     const [inputText, setInputText] = useState('');
-     const [attachmentFile, setAttachmentFile] = useState(null);
-     const [attachmentPreviewUrl, setAttachmentPreviewUrl] = useState('');
-     const [isSending, setIsSending] = useState(false);
+-const buildNocookieEmbedUrl = (value) => {
+-    if (!value) return '';
+-    try {
+-        const url = new URL(value);
+-        const isYoutubeEmbed = ['www.youtube.com', 'youtube.com', 'www.youtube-nocookie.com', 'youtube-nocookie.com'].includes(url.hostname)
+-            && url.pathname.startsWith('/embed/');
+-        if (url.protocol !== 'https:' || !isYoutubeEmbed) return '';
+-        const videoId = url.pathname.split('/').filter(Boolean)[1] || '';
+-        if (!videoId) return '';
+-        const embedUrl = new URL(`https://www.youtube-nocookie.com/embed/${videoId}`);
+-        embedUrl.searchParams.set('modestbranding', '1');
+-        embedUrl.searchParams.set('rel', '0');
+-        embedUrl.searchParams.set('playsinline', '1');
+-        return embedUrl.toString();
+-    } catch {
+-        return '';
+-    }
+-};
+-
+ export default function FormulaBookView({ initialConceptId = '', onConceptHandled }) {
+     const [subjects, setSubjects] = useState([]);
+     const [concepts, setConcepts] = useState([]);
++    const conceptCacheRef = useRef(new Map());
+     const [selectedSubjectId, setSelectedSubjectId] = useState('');
+     const [selectedConcept, setSelectedConcept] = useState(null);
+     const [search, setSearch] = useState('');
+     const [isSubjectLoading, setIsSubjectLoading] = useState(true);
+     const [isConceptLoading, setIsConceptLoading] = useState(false);
      const [error, setError] = useState('');
-+    const [imageModal, setImageModal] = useState(null);
-     const [myProfileDocId, setMyProfileDocId] = useState('');
-     const messagesEndRef = useRef(null);
-     const normalizedChatSlot = String(chatSlot || roomCreationContext?.slot || '');
-     const expectedRoomType = userRole === 'parent' && normalizedChatSlot === 'institute'
-         ? 'parent_institute'
-         : getExpectedRoomType(userRole, roomCreationContext?.roomType || normalizedChatSlot);
-     const canCreateChatRoom = Boolean(roomCreationContext?.targetAuthUid && expectedRoomType);
+     const handledConceptIdRef = useRef('');
  
      useEffect(() => {
-         optimisticMessagesRef.current = optimisticMessages;
+         let isMounted = true;
+         const loadSubjects = async () => {
+             try {
+                 const subjectSnapshot = await getDocs(collection(db, 'formulaSubjects'));
+                 if (!isMounted) return;
+                 setSubjects(subjectSnapshot.docs
+                     .map((item) => ({ id: item.id, ...item.data() }))
+                     .filter((item) => item.active !== false)
+                     .sort(byOrderThenTitle));
+             } catch (loadError) {
+                 console.error('[FormulaBookView] subject load failed', loadError);
+                 if (isMounted) setError('공식집 과목을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.');
+             } finally {
+                 if (isMounted) setIsSubjectLoading(false);
+             }
+         };
+         loadSubjects();
+         return () => { isMounted = false; };
+     }, []);
+ 
+     useEffect(() => {
+         if (!selectedSubjectId) {
+             setConcepts([]);
+             return undefined;
+         }
++        const cachedConcepts = conceptCacheRef.current.get(String(selectedSubjectId));
++        if (cachedConcepts) {
++            setConcepts(cachedConcepts);
++            setIsConceptLoading(false);
++            return undefined;
++        }
+         let isMounted = true;
+         const loadConcepts = async () => {
+             setIsConceptLoading(true);
+             try {
+                 const conceptSnapshot = await getDocs(query(
+                     collection(db, 'formulaConcepts'),
+                     where('subjectId', '==', selectedSubjectId),
++                    where('active', '==', true),
+                 ));
+                 if (!isMounted) return;
+-                setConcepts(conceptSnapshot.docs
++                const loadedConcepts = conceptSnapshot.docs
+                     .map((item) => ({ id: item.id, ...item.data() }))
+                     .filter((item) => item.active !== false)
+-                    .sort(byOrderThenTitle));
++                    .sort(byOrderThenTitle);
++                conceptCacheRef.current.set(String(selectedSubjectId), loadedConcepts);
++                setConcepts(loadedConcepts);
+             } catch (loadError) {
+                 console.error('[FormulaBookView] concept load failed', loadError);
+                 if (isMounted) setError('공식집 개념을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.');
+             } finally {
+                 if (isMounted) setIsConceptLoading(false);
+             }
+         };
+ 
+         loadConcepts();
+         return () => { isMounted = false; };
+     }, [selectedSubjectId]);
+ 
+     useEffect(() => {
+         if (isSubjectLoading || !initialConceptId || handledConceptIdRef.current === initialConceptId) return;
+         handledConceptIdRef.current = initialConceptId;
+         const loadInitialConcept = async () => {
+             try {
+                 const conceptSnapshot = await getDoc(doc(db, 'formulaConcepts', initialConceptId));
+                 const concept = conceptSnapshot.exists() ? { id: conceptSnapshot.id, ...conceptSnapshot.data() } : null;
+                 if (concept?.active !== false) {
+-                    setSelectedSubjectId(String(concept.subjectId || ''));
++                    const subjectId = String(concept.subjectId || '');
++                    setSelectedSubjectId(subjectId);
+                     setSelectedConcept(concept);
++                    if (subjectId && !conceptCacheRef.current.has(subjectId)) {
++                        conceptCacheRef.current.set(subjectId, [concept]);
++                        setConcepts([concept]);
++                    }
+                     onConceptHandled?.(true);
+                     return;
+                 }
+                 onConceptHandled?.(false);
+             } catch (loadError) {
+                 console.error('[FormulaBookView] initial concept load failed', loadError);
+                 onConceptHandled?.(false);
+             }
+         };
+         loadInitialConcept();
+     }, [initialConceptId, isSubjectLoading, onConceptHandled]);
+ 
+     const normalizedQuery = normalizeText(search);
+     const visibleConcepts = useMemo(() => concepts.filter((concept) => matchesSearch(concept, normalizedQuery)), [concepts, normalizedQuery]);
+     const selectedSubject = subjects.find((item) => String(item.id) === String(selectedSubjectId));
+-    const embedUrl = useMemo(() => buildNocookieEmbedUrl(selectedConcept?.youtubeEmbedUrl), [selectedConcept?.youtubeEmbedUrl]);
+ 
+     return (
+         <section className="space-y-5">
+             <div>
+                 <h2 className="mb-3 text-base font-extrabold text-gray-900">과목</h2>
+                 {isSubjectLoading && <div className="rounded-2xl border border-gray-100 bg-white px-4 py-8 text-center text-sm text-gray-500">공식집 과목을 불러오는 중입니다...</div>}
+                 {!isSubjectLoading && error && <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-8 text-center text-sm text-red-600">{error}</div>}
+                 {!isSubjectLoading && !error && (
+                     <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white">
+                         {subjects.map((subject) => (
+                             <button
+                                 key={subject.id}
+                                 type="button"
+                                 onClick={() => { setSelectedSubjectId(subject.id); setSelectedConcept(null); }}
+-                                className={`flex w-full items-center justify-between border-b border-gray-100 px-4 py-3 text-left text-sm last:border-b-0 ${selectedSubjectId === subject.id ? 'bg-[#eef2ff] text-[#455fab]' : 'text-gray-800'}`}
++                                className={`block w-full border-b border-gray-100 px-4 py-3 text-left text-sm last:border-b-0 ${selectedSubjectId === subject.id ? 'bg-[#eef2ff] text-[#455fab]' : 'text-gray-800'}`}
+                             >
+                                 <span className="font-bold">{subject.title}</span>
+-                                <span className="text-xs text-gray-400">순서 {subject.order || 0}</span>
+                             </button>
+                         ))}
+                         {subjects.length === 0 && <div className="px-4 py-8 text-center text-sm text-gray-500">등록된 과목이 없습니다.</div>}
+                     </div>
+                 )}
+             </div>
+ 
+             {selectedSubjectId && (
+                 <div className="relative">
+                     <span className="pointer-events-none absolute inset-y-0 left-4 flex items-center text-gray-400">⌕</span>
+                     <input
+                         type="search"
+                         value={search}
+                         onChange={(event) => setSearch(event.target.value)}
+                         placeholder="개념명, 태그, 요약 검색"
+                         className="w-full rounded-2xl border border-gray-200 bg-white py-3.5 pl-11 pr-4 text-sm outline-none transition focus:border-[#455fab] focus:ring-2 focus:ring-[#455fab]/10"
+                         aria-label="수학 공식 검색"
+                     />
+                 </div>
+             )}
+ 
+             {selectedSubjectId && (
+                 <div>
+                     <h2 className="mb-3 text-base font-extrabold text-gray-900">
+-                        {selectedSubject?.title || '선택한 과목'} 개념
+-                        <span className="ml-2 text-xs font-medium text-gray-400">{visibleConcepts.length}개</span>
++                        {selectedSubject?.title || '선택한 과목'} · {visibleConcepts.length}개
+                     </h2>
+                     {isConceptLoading ? (
+                         <div className="rounded-2xl border border-gray-100 bg-white px-4 py-8 text-center text-sm text-gray-500">개념을 불러오는 중입니다...</div>
+                     ) : (
+                         <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white">
+                             {visibleConcepts.map((concept) => (
+-                                <button key={concept.id} type="button" onClick={() => setSelectedConcept(concept)} className="block w-full border-b border-gray-100 px-4 py-4 text-left last:border-b-0 hover:bg-gray-50">
+-                                    <div className="flex items-center justify-between gap-3">
+-                                        <h3 className="font-extrabold text-gray-900">{concept.title}</h3>
+-                                        <span className="text-xs text-gray-400">순서 {concept.order || 0}</span>
+-                                    </div>
+-                                    <p className="mt-1 line-clamp-2 text-sm leading-6 text-gray-600">{concept.summary || '요약 설명이 없습니다.'}</p>
+-                                    {Array.isArray(concept.tags) && concept.tags.length > 0 && <p className="mt-2 text-xs font-semibold text-[#455fab]">{concept.tags.map((tag) => `#${tag}`).join(' ')}</p>}
++                                <button key={concept.id} type="button" onClick={() => setSelectedConcept(concept)} className="block w-full border-b border-gray-100 px-4 py-2.5 text-left last:border-b-0 hover:bg-gray-50">
++                                    <h3 className="text-sm font-extrabold text-gray-900">{concept.title}</h3>
++                                    {Array.isArray(concept.tags) && concept.tags.length > 0 && <p className="mt-1 truncate text-xs font-semibold text-[#455fab]">{concept.tags.map((tag) => `#${tag}`).join(' ')}</p>}
+                                 </button>
+                             ))}
+                             {visibleConcepts.length === 0 && <div className="px-4 py-10 text-center text-sm text-gray-500">조건에 맞는 개념이 없습니다.</div>}
+                         </div>
+                         )}
+                 </div>
+             )}
+ 
+             {!selectedSubjectId && !isSubjectLoading && !error && <div className="rounded-2xl border border-dashed border-gray-200 bg-white px-4 py-10 text-center text-sm text-gray-500">과목을 선택하면 개념 목록을 불러옵니다.</div>}
+ 
+-            {selectedConcept && (
+-                <article className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+-                    <p className="mb-1 text-xs font-bold text-[#455fab]">개념 상세</p>
+-                    <h2 className="text-xl font-extrabold text-gray-900">{selectedConcept.title}</h2>
+-                    {Array.isArray(selectedConcept.tags) && selectedConcept.tags.length > 0 && <p className="mt-2 text-xs font-semibold text-[#455fab]">{selectedConcept.tags.map((tag) => `#${tag}`).join(' ')}</p>}
+-                    <p className="mt-4 whitespace-pre-wrap text-sm leading-7 text-gray-700">{selectedConcept.summary || '등록된 설명이 없습니다.'}</p>
+-                    <div className="mt-5">
+-                        {embedUrl ? (
+-                            <div className="aspect-video overflow-hidden rounded-xl bg-black">
+-                                <iframe className="h-full w-full" src={embedUrl} title={`${selectedConcept.title} 설명 영상`} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen />
+-                            </div>
+-                        ) : (
+-                            <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 px-4 py-8 text-center text-sm text-gray-500">재생 가능한 영상이 등록되지 않았습니다.</div>
+-                        )}
+-                    </div>
+-                </article>
+-            )}
++            <FormulaConceptModal concept={selectedConcept} onClose={() => setSelectedConcept(null)} />
+         </section>
+     );
+ }
+diff --git a/src/components/Student/formulaBook/FormulaConceptModal.jsx b/src/components/Student/formulaBook/FormulaConceptModal.jsx
+index bd9a1c4802ca1da43f6f717486c87c202da00824..d15f0e0431c741807f93a341eed823fc291b89af 100644
+--- a/src/components/Student/formulaBook/FormulaConceptModal.jsx
++++ b/src/components/Student/formulaBook/FormulaConceptModal.jsx
+@@ -1,42 +1,52 @@
+ import React, { useEffect, useMemo } from 'react';
+ import ModalPortal from '../../common/ModalPortal';
+ 
+-const buildEmbedUrl = (value) => {
++const extractYoutubeVideoId = (value) => {
+     if (!value) return '';
+-
+     try {
+         const url = new URL(value);
+-        if (url.protocol !== 'https:' || url.hostname !== 'www.youtube.com' || !url.pathname.startsWith('/embed/')) {
+-            return '';
++        const hostname = url.hostname.replace(/^www\./, '');
++        if (hostname === 'youtu.be') return url.pathname.split('/').filter(Boolean)[0] || '';
++        if (hostname === 'youtube.com' || hostname === 'youtube-nocookie.com') {
++            if (url.pathname === '/watch') return url.searchParams.get('v') || '';
++            if (url.pathname.startsWith('/embed/')) return url.pathname.split('/').filter(Boolean)[1] || '';
+         }
+-        url.searchParams.set('rel', '0');
+-        url.searchParams.set('playsinline', '1');
+-        return url.toString();
+     } catch {
+         return '';
+     }
++    return '';
++};
++
++const buildEmbedUrl = (value) => {
++    const videoId = extractYoutubeVideoId(value);
++    if (!videoId) return '';
++    const url = new URL(`https://www.youtube-nocookie.com/embed/${videoId}`);
++    url.searchParams.set('modestbranding', '1');
++    url.searchParams.set('rel', '0');
++    url.searchParams.set('playsinline', '1');
++    return url.toString();
+ };
+ 
+ export default function FormulaConceptModal({ concept, onClose }) {
+     const embedUrl = useMemo(() => buildEmbedUrl(concept?.youtubeEmbedUrl), [concept?.youtubeEmbedUrl]);
+ 
+     useEffect(() => {
+         if (!concept) return undefined;
+ 
+         const handleKeyDown = (event) => {
+             if (event.key === 'Escape') onClose();
+         };
+         window.addEventListener('keydown', handleKeyDown);
+         return () => window.removeEventListener('keydown', handleKeyDown);
+     }, [concept, onClose]);
+ 
+     if (!concept) return null;
+ 
+     return (
+         <ModalPortal>
+             <div
+                 className="fixed inset-0 z-[80] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm"
+                 onClick={onClose}
+                 role="presentation"
+             >
+                 <section
+diff --git a/src/components/StudentMessenger.jsx b/src/components/StudentMessenger.jsx
+index 653fb3e5ad03e60ff838b92c871272009d845436..111eba39b415f100a95ab63f73c18e7f7782211f 100644
+--- a/src/components/StudentMessenger.jsx
++++ b/src/components/StudentMessenger.jsx
+@@ -83,53 +83,64 @@ const isExactStandardRoom = (room, { viewerUid, targetAuthUid, roomType, student
+     const roomSlot = getRoomSlot(room);
+     if (roomSlot && roomSlot !== expectedSlot) return false;
+     const participantIds = Array.isArray(room?.participantIds) ? room.participantIds.map(String) : [];
+     if (participantIds.length !== 2) return false;
+     if (!participantIds.includes(String(viewerUid)) || !participantIds.includes(String(targetAuthUid))) return false;
+     if (roomType === 'parent_institute') {
+         if (!hasRoomTypeOrChannel(room, 'parent_institute')) return false;
+         if (room?.studentId && String(room.studentId) !== String(studentId || '')) return false;
+         if (room?.counterpartUid && String(room.counterpartUid) !== String(targetAuthUid)) return false;
+         if (room?.staffAuthUid && String(room.staffAuthUid) !== String(targetAuthUid)) return false;
+     }
+     if (room?.targetRole && expectedSlot === 'teacher' && String(room.targetRole) !== 'teacher') return false;
+     if (roomType !== 'parent_institute' && room?.counterpartUid && String(room.counterpartUid) !== String(targetAuthUid)) return false;
+     if (expectedSlot === 'teacher' && room?.teacherAuthUid && String(room.teacherAuthUid) !== String(targetAuthUid)) return false;
+     if ((roomType === 'parent_teacher' || roomType === 'parent_institute') && studentId && room?.studentId && String(room.studentId) !== String(studentId)) return false;
+     return true;
+ };
+ 
+ const resolveStandardChatRoom = async ({ viewerUid, targetAuthUid, roomType, studentId = '' }) => {
+     if (!viewerUid || !targetAuthUid || !roomType) return null;
+     const deterministicRoomId = buildStandardRoomId(roomType, viewerUid, targetAuthUid, studentId);
+     if (!deterministicRoomId) return null;
+ 
+     try {
+         const directSnap = await getDoc(doc(db, 'chatRooms', deterministicRoomId));
+-        if (!directSnap.exists()) return null;
+-        const room = { id: directSnap.id, ...directSnap.data() };
+-        return isExactStandardRoom(room, { viewerUid, targetAuthUid, roomType, studentId }) ? room : null;
++        if (directSnap.exists()) {
++            const room = { id: directSnap.id, ...directSnap.data() };
++            if (isExactStandardRoom(room, { viewerUid, targetAuthUid, roomType, studentId })) return room;
++        }
++
++        const snap = await getDocs(query(
++            collection(db, 'chatRooms'),
++            where('participantIds', 'array-contains', String(viewerUid)),
++            limit(50),
++        ));
++        return snap.docs
++            .map((item) => ({ id: item.id, ...item.data() }))
++            .filter((room) => isExactStandardRoom(room, { viewerUid, targetAuthUid, roomType, studentId }))
++            .sort((left, right) => getMessageSortTime({ createdAt: right.lastMessageAt || right.updatedAt || right.createdAt }) - getMessageSortTime({ createdAt: left.lastMessageAt || left.updatedAt || left.createdAt }))[0] || null;
+     } catch (error) {
+         console.warn('[student messenger] deterministic standard room lookup skipped', {
+             code: error?.code,
+             message: error?.message,
+             query: { doc: ['chatRooms', deterministicRoomId] },
+         });
+         return null;
+     }
+ };
+ 
+ const parseClientTempIdTime = (clientTempId) => {
+     const match = String(clientTempId || '').match(/(\d{12,})/);
+     if (!match) return 0;
+     const parsed = Number(match[1]);
+     return Number.isFinite(parsed) ? parsed : 0;
+ };
+ 
+ const getCreatedAtTime = (createdAt) => {
+     if (createdAt && typeof createdAt?.toDate === 'function') {
+         const time = createdAt.toDate().getTime();
+         if (Number.isFinite(time)) return time;
+     }
+     if (createdAt instanceof Date) {
+         const time = createdAt.getTime();
+         if (Number.isFinite(time)) return time;
+@@ -328,73 +339,76 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
      }, [optimisticMessages]);
  
      useEffect(() => {
@@ -103,48 +397,71 @@ index cfc8bd5288bb88ac6a42357ca03156935bf1268b..653fb3e5ad03e60ff838b92c87127200
              setMyProfileDocId(indexSnap.exists() ? String(indexSnap.data()?.userDocId || '') : '');
          }).catch((indexError) => {
              logFirestoreQueryFailure('load userAuthIndex', indexError, { doc: ['userAuthIndex', authUid] });
-@@ -398,51 +402,51 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
- 
-         if (!allowLegacyResolve) {
-             return () => {
-                 mounted = false;
-             };
-         }
- 
-         resolveRoomId(studentId, studentAuthUid).then((resolved) => {
-             if (mounted) setRoomId(resolved);
-         }).catch((resolveError) => {
-             logFirestoreQueryFailure('resolve room', resolveError, {
-                 studentId: String(studentId || ''),
-                 studentAuthUid: String(studentAuthUid || ''),
-             });
-             if (mounted) setError('대화방을 찾는 중 권한 오류가 발생했습니다. 관리자에게 문의해주세요.');
+             if (mounted) setMyProfileDocId('');
          });
  
          return () => {
              mounted = false;
          };
-     }, [studentId, studentAuthUid, selectedRoomId, allowLegacyResolve, canCreateChatRoom, expectedRoomType, roomCreationContext?.targetAuthUid, normalizedChatSlot, userRole]);
+     }, []);
  
      useEffect(() => {
-         if (!roomId) return undefined;
-         
--        const isChatRoomMode = Boolean(selectedRoomId || canCreateChatRoom);
-+        const isChatRoomMode = Boolean(selectedRoomId || canCreateChatRoom || expectedRoomType === 'student_institute');
-         const collectionPath = isChatRoomMode ? `chatRooms/${roomId}/messages` : `chats/${roomId}/messages`;
-         const collectionArgs = isChatRoomMode ? ['chatRooms', roomId, 'messages'] : ['chats', roomId, 'messages'];
-         let fallbackUnsub = null;
+         if (selectedRoomId) {
+-            console.log('[student messenger] use selected chatRoom', { roomId: String(selectedRoomId) });
++            if (process.env.NODE_ENV === 'development') console.log('[student messenger] selected room', { roomId: String(selectedRoomId) });
+             setMessages([]);
+             setOptimisticMessages([]);
+             setRoomId(String(selectedRoomId));
+             return undefined;
+         }
  
-         const applySnapshot = (snap) => {
-             const myIds = new Set([auth.currentUser?.uid, myProfileDocId].filter(Boolean).map(String));
-             const fallbackSenderName = teacherName || '메시지';
-             setError('');
-             const snapshotItems = snap.docs.map((item) => ({
-                 id: item.id,
-                 raw: {
-                     ...item.data(),
-                     pending: item.metadata?.hasPendingWrites || Boolean(item.data()?.pending),
-                 },
+         let mounted = true;
+         setRoomId(null);
+         setMessages([]);
+         setOptimisticMessages([]);
+         setError('');
+ 
+         const viewerUid = auth.currentUser?.uid || '';
+         const targetAuthUid = String(roomCreationContext?.targetAuthUid || '');
+         if (canCreateChatRoom && viewerUid && targetAuthUid && expectedRoomType) {
+             resolveStandardChatRoom({ viewerUid, targetAuthUid, roomType: expectedRoomType, studentId }).then((resolvedRoom) => {
+                 if (!mounted) return;
+                 if (resolvedRoom) {
+-                    console.log('[messenger] resolved room', {
++                    if (process.env.NODE_ENV === 'development') console.log('[student messenger] selected room', {
+                         roomId: resolvedRoom.id,
+-                        roomType: getRoomType(resolvedRoom),
++                        roomType: resolvedRoom.roomType,
++                        channel: resolvedRoom.channel,
++                        slot: resolvedRoom.slot,
+                         participantIds: resolvedRoom.participantIds || [],
++                        messagesPath: `chatRooms/${resolvedRoom.id}/messages`,
+                     });
+                     if (userRole === 'parent' && normalizedChatSlot === 'institute') {
+                         console.log('[parent messenger] selected institute room', {
+                             roomId: resolvedRoom.id,
+                             roomType: resolvedRoom.roomType,
+                             channel: resolvedRoom.channel,
+                             participantIds: resolvedRoom.participantIds || [],
+                             parentUid: resolvedRoom.parentUid,
+                             studentId: resolvedRoom.studentId,
+                         });
+                     }
+                     setRoomId(resolvedRoom.id);
+                 }
+             }).catch((resolveError) => {
+                 logFirestoreQueryFailure('resolve standard room', resolveError, {
+                     viewerUid,
+                     targetAuthUid,
+                     roomType: expectedRoomType,
+                     studentId: String(studentId || ''),
+                 });
+                 if (mounted) setError('대화방을 찾는 중 권한 오류가 발생했습니다. 관리자에게 문의해주세요.');
+             });
+             return () => {
+                 mounted = false;
+             };
+@@ -442,51 +456,51 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
              }));
              const unresolvedOptimisticItems = optimisticMessagesRef.current
                  .filter((item) => String(item.roomId || '') === String(roomId))
@@ -156,14 +473,22 @@ index cfc8bd5288bb88ac6a42357ca03156935bf1268b..653fb3e5ad03e60ff838b92c87127200
                  const next = prev.filter((optimistic) => (
                      String(optimistic.roomId || '') !== String(roomId)
                      || !snapshotItems.some((serverItem) => isSameLogicalMessage(serverItem.raw, optimistic))
-@@ -457,101 +461,101 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
+                 ));
+                 if (next.length === prev.length) return prev;
+                 optimisticMessagesRef.current = next;
+                 return next;
+             });
+             setMessages(mergedItems
+                 .map((item) => normalizeMessage(item.id, item.raw, myIds, fallbackSenderName))
+                 .filter((item) => item.text || item.attachments.length));
          };
  
          const subscribe = (withOrderBy) => {
              const queryShape = withOrderBy
                  ? { collection: collectionPath, orderBy: ['createdAt', 'asc'] }
                  : { collection: collectionPath, orderBy: null, clientSort: ['createdAt', 'asc'] };
-             console.log('[student messenger] subscribe messages query', queryShape);
+-            console.log('[student messenger] subscribe messages query', queryShape);
++            if (process.env.NODE_ENV === 'development') console.log('[student messenger] subscribe messages query', queryShape);
              const messagesRef = collection(db, ...collectionArgs);
              const messagesQuery = withOrderBy ? query(messagesRef, orderBy('createdAt', 'asc')) : query(messagesRef);
  
@@ -182,327 +507,130 @@ index cfc8bd5288bb88ac6a42357ca03156935bf1268b..653fb3e5ad03e60ff838b92c87127200
              unsub && unsub();
              fallbackUnsub && fallbackUnsub();
          };
--    }, [roomId, selectedRoomId, canCreateChatRoom, myProfileDocId, teacherName]);
-+    }, [roomId, selectedRoomId, canCreateChatRoom, expectedRoomType, myProfileDocId, teacherName]);
+     }, [roomId, selectedRoomId, canCreateChatRoom, expectedRoomType, myProfileDocId, teacherName]);
  
      useEffect(() => {
          messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
      }, [messages]);
  
      const placeholder = useMemo(() => (userRole === 'parent' ? '메시지 보내기...' : '메시지 입력'), [userRole]);
+@@ -622,54 +636,57 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
+                         counterpartUid: targetAuthUid,
+                         internalOnly: true,
+                         createdAt: serverTimestamp(),
+                         updatedAt: serverTimestamp(),
+                         createdBy: String(viewerUid),
+                         updatedBy: String(viewerUid),
+                     };
  
-     useEffect(() => () => {
-         if (attachmentPreviewUrl) URL.revokeObjectURL(attachmentPreviewUrl);
-     }, [attachmentPreviewUrl]);
+                     if (userRole === 'parent') {
+                         roomPayload.parentId = parentDocId || String(viewerUid);
+                         roomPayload.parentUid = String(viewerUid);
+                     } else if (userRole === 'student') {
+                         roomPayload.studentUid = String(viewerUid);
+                         roomPayload.studentAuthUid = String(viewerUid);
+                     }
  
-     const clearAttachment = () => {
-         if (attachmentPreviewUrl) URL.revokeObjectURL(attachmentPreviewUrl);
-         setAttachmentPreviewUrl('');
-         setAttachmentFile(null);
-     };
+                     if (slot === 'teacher') {
+                         roomPayload.teacherAuthUid = targetAuthUid;
+                         roomPayload.teacherName = effectiveTargetName;
+                     } else {
+                         roomPayload.staffAuthUid = targetAuthUid;
+                         roomPayload.staffName = effectiveTargetName;
+                     }
  
-     const handleAttachmentChange = (event) => {
-         const file = event.target.files?.[0] || null;
-         event.target.value = '';
-         if (!file) return;
-         const validation = validateChatAttachment(file);
-         if (!validation.ok) {
-             setError(validation.message);
-             clearAttachment();
-             return;
-         }
-         if (attachmentPreviewUrl) URL.revokeObjectURL(attachmentPreviewUrl);
-         setAttachmentFile(file);
-         setAttachmentPreviewUrl(validation.type === 'image' ? URL.createObjectURL(file) : '');
-         setError('');
-     };
+                     await setDoc(roomRef, roomPayload, { merge: true });
+-                    console.log('[messenger] resolved room', {
++                    if (process.env.NODE_ENV === 'development') console.log('[student messenger] selected room', {
+                         roomId: resolvedRoomId,
+                         roomType: roomPayload.roomType,
++                        channel: roomPayload.channel,
++                        slot: roomPayload.slot,
+                         participantIds: roomPayload.participantIds,
++                        messagesPath: `chatRooms/${resolvedRoomId}/messages`,
+                     });
+                     if (userRole === 'parent' && slot === 'institute') {
+                         console.log('[parent messenger] selected institute room', {
+                             roomId: resolvedRoomId,
+                             roomType: roomPayload.roomType,
+                             channel: roomPayload.channel,
+                             participantIds: roomPayload.participantIds,
+                             parentUid: roomPayload.parentUid,
+                             studentId: roomPayload.studentId,
+                         });
+                     }
+                 }
+                 
+                 const uploadedAttachment = fileToUpload ? await uploadChatAttachment({
+                     roomId: resolvedRoomId,
+                     messageId: clientTempId,
+                     file: fileToUpload,
+                     uploaderUid: viewerUid,
+                 }) : null;
+                 const attachments = uploadedAttachment ? [uploadedAttachment] : [];
+                 const messageType = uploadedAttachment ? (uploadedAttachment.type === 'image' ? 'image' : 'file') : 'text';
  
-     const handleSend = async (e) => {
-         e.preventDefault();
-         const text = inputText.trim();
-         const fileToUpload = attachmentFile;
-         if (!text && !fileToUpload) return;
-         if (fileToUpload) {
-             const validation = validateChatAttachment(fileToUpload);
-             if (!validation.ok) {
-                 setError(validation.message);
-                 return;
+                 await addDoc(collection(db, 'chatRooms', resolvedRoomId, 'messages'), {
+                     roomId: resolvedRoomId,
+                     senderId: viewerUid,
+@@ -706,51 +723,51 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
+                 const roomPatch = {
+                     participantIds: arrayUnion(String(viewerUid)),
+                     parentUid: String(viewerUid),
+                     parentUids: arrayUnion(String(viewerUid)),
+                     updatedAt: serverTimestamp(),
+                     lastMessageAt: serverTimestamp(),
+                     lastMessage: text || (uploadedAttachment?.type === 'image' ? '사진 첨부' : 'PDF 첨부'),
+                 };
+                 if (studentId) {
+                     roomPatch.studentId = String(studentId);
+                 }
+                 await updateDoc(roomRef, roomPatch);
+ 
+                 await addDoc(collection(db, 'chats', resolvedRoomId, 'messages'), {
+                     text,
+                     messageType,
+                     attachments,
+                     senderId: viewerUid,
+                     senderRole: userRole,
+                     senderName: '학부모',
+                     createdAt: serverTimestamp(),
+                     localCreatedAtMs,
+                     clientTempId,
+                 });
              }
-         }
-         setIsSending(true);
- 
-         const viewerUid = auth.currentUser?.uid || 'parent-anonymous';
-         const targetAuthUidForRoom = String(roomCreationContext?.targetAuthUid || '');
--        const isChatRoomMode = Boolean(selectedRoomId || canCreateChatRoom);
-+        const isChatRoomMode = Boolean(selectedRoomId || canCreateChatRoom || expectedRoomType === 'student_institute');
-         let resolvedRoomId = selectedRoomId ? String(selectedRoomId) : roomId || null;
-         let shouldCreateStandardRoom = false;
-         if (!resolvedRoomId && canCreateChatRoom) {
-             const resolvedRoom = await resolveStandardChatRoom({ viewerUid, targetAuthUid: targetAuthUidForRoom, roomType: expectedRoomType, studentId });
-             resolvedRoomId = resolvedRoom?.id || buildStandardRoomId(expectedRoomType, viewerUid, targetAuthUidForRoom, studentId);
-             shouldCreateStandardRoom = !resolvedRoom;
-         }
-         if (!resolvedRoomId && allowLegacyResolve) resolvedRoomId = await resolveRoomId(studentId, studentAuthUid);
-         if (!resolvedRoomId && !canCreateChatRoom) return;
-         const localCreatedAtMs = Date.now();
-         const clientTempId = `client-${localCreatedAtMs}-${Math.random().toString(36).slice(2, 10)}`;
-         const optimisticMessage = {
-             id: clientTempId,
-             roomId: resolvedRoomId,
-             text,
-             messageType: fileToUpload ? (fileToUpload.type === 'application/pdf' ? 'file' : 'image') : 'text',
-             attachments: fileToUpload ? [{
-                 type: fileToUpload.type === 'application/pdf' ? 'pdf' : 'image',
-                 name: fileToUpload.name,
-                 url: attachmentPreviewUrl,
-                 path: '',
-                 size: fileToUpload.size,
-                 contentType: fileToUpload.type,
-             }] : [],
-             senderId: viewerUid,
-@@ -749,71 +753,84 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
+-            console.log('[messenger] message sent', { roomId: resolvedRoomId, senderId: viewerUid });
++            if (process.env.NODE_ENV === 'development') console.log('[student messenger] message sent', { roomId: resolvedRoomId, senderId: viewerUid });
+             setError('');
+             setRoomId(resolvedRoomId);
+         } catch (sendError) {
+             setOptimisticMessages((prev) => {
+                 const next = prev.filter((item) => item.clientTempId !== clientTempId);
+                 optimisticMessagesRef.current = next;
+                 return next;
+             });
+             setMessages((prev) => prev.filter((item) => item.clientTempId !== clientTempId));
+             setInputText(text);
+             if (fileToUpload) setAttachmentFile(fileToUpload);
+             logFirestoreQueryFailure('send message', sendError, isChatRoomMode ? {
+                 addDoc: { collection: `chatRooms/${resolvedRoomId}/messages`, fields: ['roomId', 'senderId', 'senderRole', 'senderName', 'messageType', 'text', 'attachments', 'createdAt', 'localCreatedAtMs', 'clientTempId', 'internalOnly', 'readBy'] },
+                 updateDoc: { doc: ['chatRooms', resolvedRoomId], fields: ['lastMessageText', 'lastMessageAt', 'lastMessageSenderId', 'updatedAt', 'updatedBy'] },
+             } : {
+                 updateDoc: { doc: ['chats', resolvedRoomId], fields: ['participantIds', 'parentUid', 'parentUids', 'updatedAt', 'lastMessageAt', 'lastMessage', ...(studentId ? ['studentId'] : [])] },
+                 addDoc: { collection: `chats/${resolvedRoomId}/messages`, fields: ['text', 'senderId', 'senderRole', 'senderName', 'createdAt', 'localCreatedAtMs', 'clientTempId'] },
+             });
+             setError(sendError?.message || '메시지를 보낼 권한이 없습니다. 관리자에게 문의해주세요.');
+         } finally {
+             setIsSending(false);
          }
      };
  
      return (
-         <div className={`${isFloating ? 'fixed bottom-24 right-5' : ''} bg-white h-full flex flex-col`}>
-             <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3 bg-gray-50 custom-scrollbar">
-                 {error && <div className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{error}</div>}
-                 {messages.length > 0 ? messages.map((msg, index) => {
-                     const previous = messages[index - 1];
-                     const showDateDivider = !previous || previous.date !== msg.date;
-                     return (
-                         <React.Fragment key={msg.id}>
-                             {showDateDivider && (
-                                 <div className="flex items-center gap-3 py-1">
-                                     <div className="flex-1 h-px bg-gray-200" />
-                                     <p className="text-xs text-gray-400 whitespace-nowrap">{msg.dateLabel}</p>
-                                     <div className="flex-1 h-px bg-gray-200" />
-                                 </div>
-                             )}
-                             <div className={`flex items-end gap-1.5 ${msg.isMe ? 'justify-end' : 'justify-start'}`}>
-                                 {msg.isMe && <span className="text-[11px] text-gray-400 whitespace-nowrap self-end mb-1">{msg.time}</span>}
-                                 <div className={`max-w-[72%] px-3 py-2 rounded-2xl text-sm ${msg.isMe ? 'bg-[#455fab] text-white' : 'bg-white text-gray-900 border border-gray-100'}`}>
-                                     {msg.text && <p className="whitespace-pre-wrap break-words">{msg.text}</p>}
-                                     {msg.attachments.map((attachment) => (
-                                         attachment.type === 'image' ? (
--                                            <a key={attachment.url || attachment.name} href={attachment.url} target="_blank" rel="noreferrer" className={msg.text ? 'mt-2 block' : 'block'}>
-+                                            <button key={attachment.url || attachment.name} type="button" onClick={() => setImageModal(attachment)} className={`${msg.text ? 'mt-2 ' : ''}block text-left`}>
-                                                 <img src={attachment.url} alt={attachment.name} className="max-h-48 rounded-lg object-cover" onError={(event) => { event.currentTarget.style.display = 'none'; }} />
-                                                 <span className="mt-1 block text-xs underline break-all">{attachment.name}</span>
--                                            </a>
-+                                            </button>
-                                         ) : (
-                                             <a key={attachment.url || attachment.name} href={attachment.url} target="_blank" rel="noreferrer" className={`${msg.text ? 'mt-2 ' : ''}flex items-center gap-2 rounded-lg border border-current/20 px-2 py-1.5 text-xs`}>
-                                                 <span>📄</span><span className="break-all">{attachment.name}</span><span className="whitespace-nowrap opacity-75">{formatAttachmentSize(attachment.size)}</span>
-                                             </a>
-                                         )
-                                     ))}
-                                 </div>
-                                 {!msg.isMe && <span className="text-[11px] text-gray-400 whitespace-nowrap self-end mb-1">{msg.time}</span>}
-                             </div>
-                         </React.Fragment>
-                     );
-                 }) : (
-                     <div className="text-center py-10 text-xs text-gray-500">{emptyMessage}</div>
-                 )}
-                 <div ref={messagesEndRef} />
-             </div>
- 
-+            {imageModal && (
-+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => setImageModal(null)}>
-+                    <div className="max-w-[96vw] max-h-[96vh] rounded-xl bg-white p-3 shadow-xl" onClick={(event) => event.stopPropagation()}>
-+                        <div className="mb-2 flex items-center justify-between gap-3">
-+                            <p className="truncate text-sm font-semibold text-gray-700">{imageModal.name || '이미지'}</p>
-+                            <button type="button" onClick={() => setImageModal(null)} className="rounded border px-2 py-1 text-xs">닫기</button>
-+                        </div>
-+                        <img src={imageModal.url} alt={imageModal.name || '첨부 이미지'} className="max-h-[78vh] max-w-[90vw] rounded-lg object-contain" />
-+                        {imageModal.url && <a href={imageModal.url} target="_blank" rel="noreferrer" className="mt-2 inline-block text-xs underline">원본 열기</a>}
-+                    </div>
-+                </div>
-+            )}
-+
-             {attachmentFile && (
-                 <div className="px-3 py-2 border-t bg-white flex items-center gap-3 text-xs">
-                     {attachmentPreviewUrl && <img src={attachmentPreviewUrl} alt="첨부 미리보기" className="h-12 w-12 rounded object-cover" />}
-                     <span className="flex-1 truncate">{attachmentFile.name} · {formatAttachmentSize(attachmentFile.size)}</span>
-                     <button type="button" onClick={clearAttachment} className="text-red-500">취소</button>
-                 </div>
-             )}
-             <form onSubmit={handleSend} className="sticky bottom-0 p-3 bg-white border-t border-gray-100 flex gap-2">
-                 <label className="px-3 py-2 rounded-full border border-gray-200 bg-white text-sm cursor-pointer">
-                     첨부
-                     <input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" onChange={handleAttachmentChange} className="hidden" />
-                 </label>
-                 <input
-                     type="text"
-                     value={inputText}
-                     onChange={(e) => setInputText(e.target.value)}
-                     placeholder={placeholder}
-                     className="flex-1 bg-gray-50 border border-gray-200 rounded-full px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-300"
-                 />
-                 <button type="submit" disabled={isSending || (!inputText.trim() && !attachmentFile)} className="px-4 py-2 rounded-full text-sm font-semibold bg-gray-900 text-white disabled:bg-gray-300">
-                     전송
-                 </button>
-             </form>
-         </div>
-     );
-diff --git a/src/components/messenger/ChatMessagePane.jsx b/src/components/messenger/ChatMessagePane.jsx
-index cd3fabf3059efa41f5308752a3fafc73a5b62cd0..6ffdc588d9439cff39b6bda217460ebfbe7413e5 100644
---- a/src/components/messenger/ChatMessagePane.jsx
-+++ b/src/components/messenger/ChatMessagePane.jsx
-@@ -43,50 +43,51 @@ const formatTime = (value) => {
-     const date = normalizeMessageDate(value);
-     if (!date || Number.isNaN(date.getTime())) return '';
-     return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
- };
- 
- const getParticipantCount = (room) => {
-     const candidates = [room?.participantIds, room?.participants, room?.memberIds, room?.members];
-     const values = candidates.find((candidate) => Array.isArray(candidate));
-     return values ? values.length : 2;
- };
- 
- const shouldShowSenderName = (room) => getParticipantCount(room) > 2;
- 
- export default function ChatMessagePane({
-     room,
-     messages = [],
-     myUid,
-     onSend,
-     onRetryMessage,
-     contextData = {},
- }) {
-     const [draft, setDraft] = useState('');
-     const [attachmentFile, setAttachmentFile] = useState(null);
-     const [previewUrl, setPreviewUrl] = useState('');
-     const [error, setError] = useState('');
-+    const [imageModal, setImageModal] = useState(null);
- 
-     const clearAttachment = () => {
-         if (previewUrl) URL.revokeObjectURL(previewUrl);
-         setPreviewUrl('');
-         setAttachmentFile(null);
-     };
- 
-     const handleAttachmentChange = (event) => {
-         const file = event.target.files?.[0] || null;
-         event.target.value = '';
-         if (!file) return;
-         const validation = validateChatAttachment(file);
-         if (!validation.ok) {
-             setError(validation.message);
-             clearAttachment();
-             return;
-         }
-         if (previewUrl) URL.revokeObjectURL(previewUrl);
-         setAttachmentFile(file);
-         setPreviewUrl(validation.type === 'image' ? URL.createObjectURL(file) : '');
-         setError('');
-     };
- 
-     const sortedMessages = useMemo(() => {
-         return [...messages].sort((a, b) => {
-@@ -156,78 +157,90 @@ export default function ChatMessagePane({
-                             <div key={item.key} className="flex items-center gap-3 py-1">
-                                 <div className="flex-1 h-px bg-gray-200" />
-                                 <p className="text-xs text-gray-400">{item.label}</p>
-                                 <div className="flex-1 h-px bg-gray-200" />
-                             </div>
-                         );
-                     }
- 
-                     const message = item.message;
-                     const mine = String(message.senderId || message.createdBy || '') === String(myUid || '');
-                     const isSending = Boolean(message?.sending);
-                     const isFailed = Boolean(message?.failed);
-                     const senderName = message?.senderName && message.senderName !== '나' ? message.senderName : '메시지';
-                     const timeLabel = formatTime(message.createdAt);
-                     return (
-                         <div key={item.key}>
-                             {shouldShowSenderName(room) && !mine && senderName && (
-                                 <p className="mb-1 text-xs font-semibold text-gray-500">{senderName}</p>
-                             )}
-                             <div className={`flex items-end gap-1.5 ${mine ? 'justify-end' : 'justify-start'}`}>
-                                 {mine && <span className="text-xs text-gray-400 whitespace-nowrap self-end mb-1">{timeLabel}</span>}
-                                 <div className={`max-w-[72%] rounded-2xl px-3 py-2 text-sm ${mine ? 'bg-[#455fab] text-white' : 'bg-white border border-gray-100 text-gray-900'} ${isSending ? 'opacity-70' : ''} ${isFailed ? 'border border-red-300 bg-red-50 text-red-700' : ''}`}>
-                                     {message.text && <p className="whitespace-pre-wrap break-words">{message.text}</p>}
-                                     {(Array.isArray(message.attachments) ? message.attachments : []).map((attachment) => (
-                                         attachment.type === 'image' ? (
--                                            <a key={attachment.url || attachment.name} href={attachment.url} target="_blank" rel="noreferrer" className={message.text ? 'mt-2 block' : 'block'}>
-+                                            <button key={attachment.url || attachment.name} type="button" onClick={() => setImageModal(attachment)} className={`${message.text ? 'mt-2 ' : ''}block text-left`}>
-                                                 <img src={attachment.url} alt={attachment.name} className="max-h-48 rounded-lg object-cover" onError={(event) => { event.currentTarget.style.display = 'none'; }} />
-                                                 <span className="mt-1 block text-xs underline break-all">{attachment.name}</span>
--                                            </a>
-+                                            </button>
-                                         ) : (
-                                             <a key={attachment.url || attachment.name} href={attachment.url} target="_blank" rel="noreferrer" className={`${message.text ? 'mt-2 ' : ''}flex items-center gap-2 rounded-lg border border-current/20 px-2 py-1.5 text-xs`}>
-                                                 <span>📄</span><span className="break-all">{attachment.name}</span><span className="whitespace-nowrap opacity-75">{formatAttachmentSize(attachment.size)}</span>
-                                             </a>
-                                         )
-                                     ))}
-                                     {isSending && <p className="text-[10px] text-gray-500 mt-1">전송 중…</p>}
-                                     {isFailed && (
-                                         <div className="mt-1 flex items-center justify-end gap-2">
-                                             <p className="text-[10px] text-red-500">전송 실패</p>
-                                             <button
-                                                 type="button"
-                                                 onClick={() => onRetryMessage?.(message)}
-                                                 className="text-[10px] px-1.5 py-0.5 rounded border border-red-300 text-red-600"
-                                             >
-                                                 재시도
-                                             </button>
-                                         </div>
-                                     )}
-                                 </div>
-                                 {!mine && <span className="text-xs text-gray-400 whitespace-nowrap self-end mb-1">{timeLabel}</span>}
-                             </div>
-                         </div>
-                     );
-                 })}
-             </div>
-             {error && <p className="border-t px-3 py-2 text-xs text-red-600">{error}</p>}
-             {attachmentFile && (
-                 <div className="border-t px-3 py-2 flex items-center gap-3 text-xs">
-                     {previewUrl && <img src={previewUrl} alt="첨부 미리보기" className="h-12 w-12 rounded object-cover" />}
-                     <span className="flex-1 truncate">{attachmentFile.name} · {formatAttachmentSize(attachmentFile.size)}</span>
-                     <button type="button" onClick={clearAttachment} className="text-red-500">취소</button>
-                 </div>
-             )}
-+            {imageModal && (
-+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => setImageModal(null)}>
-+                    <div className="max-w-[96vw] max-h-[96vh] rounded-xl bg-white p-3 shadow-xl" onClick={(event) => event.stopPropagation()}>
-+                        <div className="mb-2 flex items-center justify-between gap-3">
-+                            <p className="truncate text-sm font-semibold text-gray-700">{imageModal.name || '이미지'}</p>
-+                            <button type="button" onClick={() => setImageModal(null)} className="rounded border px-2 py-1 text-xs">닫기</button>
-+                        </div>
-+                        <img src={imageModal.url} alt={imageModal.name || '첨부 이미지'} className="max-h-[78vh] max-w-[90vw] rounded-lg object-contain" />
-+                        {imageModal.url && <a href={imageModal.url} target="_blank" rel="noreferrer" className="mt-2 inline-block text-xs underline">원본 열기</a>}
-+                    </div>
-+                </div>
-+            )}
-             <form onSubmit={submit} className="border-t p-2 flex gap-2 items-end">
-                 <label className="px-3 py-2 rounded border text-sm cursor-pointer">첨부<input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" onChange={handleAttachmentChange} className="hidden" /></label>
-                 <textarea
-                     value={draft}
-                     onChange={(event) => setDraft(event.target.value)}
-                     onKeyDown={handleKeyDown}
-                     placeholder="메시지 입력"
-                     rows={2}
-                     className="flex-1 border rounded px-3 py-2 text-sm resize-y"
-                 />
-                 <button type="submit" disabled={!draft.trim() && !attachmentFile} className="px-3 py-2 rounded bg-green-600 text-white text-sm disabled:bg-gray-300">전송</button>
-             </form>
-         </div>
-     );
- }
-\ No newline at end of file
 diff --git a/src/components/messenger/messengerTargets.js b/src/components/messenger/messengerTargets.js
-index 1cd2df196963d40714bd64f77c81627e264133d3..3b174dd54afb0830a254910cd7d3ece519320f6f 100644
+index 3b174dd54afb0830a254910cd7d3ece519320f6f..daa9247ff81e376f1b1b67abea29cf1b7873e9a2 100644
 --- a/src/components/messenger/messengerTargets.js
 +++ b/src/components/messenger/messengerTargets.js
-@@ -39,93 +39,105 @@ const getStudentClassIds = (student) => {
- };
+@@ -40,50 +40,51 @@ const getStudentClassIds = (student) => {
  
  const pickRepresentativeClass = (student, classMap) => {
      const classIds = getStudentClassIds(student);
@@ -527,7 +655,8 @@ index 1cd2df196963d40714bd64f77c81627e264133d3..3b174dd54afb0830a254910cd7d3ece5
  const hasParentSuffix = (value) => normalizeText(value).includes('학부모');
  
  const getArrayField = (value) => (Array.isArray(value) ? value.map(String).filter(Boolean) : []);
-+const getAuthUid = (user) => normalizeText(user?.authUid || user?.uid || user?.studentAuthUid || user?.studentUid || user?.parentUid);
+ const getAuthUid = (user) => normalizeText(user?.authUid || user?.uid || user?.studentAuthUid || user?.studentUid || user?.parentUid);
++const getUserName = (user) => normalizeText(user?.name) || normalizeText(user?.displayName) || normalizeText(user?.studentName);
  
  const getRoomStudentIds = (room) => [
      normalizeText(room?.studentId),
@@ -553,56 +682,56 @@ index 1cd2df196963d40714bd64f77c81627e264133d3..3b174dd54afb0830a254910cd7d3ece5
          : [];
      const counterpartyRole = counterpartyUid && room?.participantRoles
          ? room.participantRoles[counterpartyUid]
-         : '';
-     return isParentRole(counterpartyRole)
-         || roleValues.some(isParentRole)
-         || getRoomParentIds(room).length > 0
-         || Boolean(room?.parentName);
+@@ -100,108 +101,115 @@ const getParticipantNameByRole = (room, roleMatcher) => {
+     const matchedUid = Object.keys(roles).find((uid) => roleMatcher(roles[uid]));
+     return matchedUid ? normalizeText(names[matchedUid]) : '';
  };
  
-+const getParticipantNameByRole = (room, roleMatcher) => {
-+    const roles = room?.participantRoles && typeof room.participantRoles === 'object' ? room.participantRoles : {};
-+    const names = room?.participantNames && typeof room.participantNames === 'object' ? room.participantNames : {};
-+    const matchedUid = Object.keys(roles).find((uid) => roleMatcher(roles[uid]));
-+    return matchedUid ? normalizeText(names[matchedUid]) : '';
-+};
-+
  const resolveParentRoomDisplayName = (room, parent, studentById) => {
--    const studentName = normalizeText(room?.studentName)
--        || getStudentNameFromIds(getRoomStudentIds(room), studentById);
--    if (studentName) return appendParentSuffix(studentName);
-+    const participantParentName = getParticipantNameByRole(room, isParentRole);
-+    if (participantParentName) return hasParentSuffix(participantParentName) ? participantParentName : appendParentSuffix(participantParentName);
+     const participantParentName = getParticipantNameByRole(room, isParentRole);
+     if (participantParentName) return hasParentSuffix(participantParentName) ? participantParentName : appendParentSuffix(participantParentName);
  
      const parentName = normalizeText(room?.parentName)
-+        || normalizeText(room?.counterpartName)
+         || normalizeText(room?.counterpartName)
          || normalizeText(parent?.parentName)
          || normalizeText(parent?.name)
          || normalizeText(parent?.displayName);
      if (parentName) return hasParentSuffix(parentName) ? parentName : appendParentSuffix(parentName);
  
-+    const studentName = normalizeText(room?.studentName)
-+        || getStudentNameFromIds(getRoomStudentIds(room), studentById);
-+    if (studentName) return appendParentSuffix(studentName);
-+
+     const studentName = normalizeText(room?.studentName)
+         || getStudentNameFromIds(getRoomStudentIds(room), studentById);
+     if (studentName) return appendParentSuffix(studentName);
+ 
      return '이름 미등록 학부모';
  };
  
  const buildUserLookups = ({ students = [], parents = [] }) => {
      const safeStudents = Array.isArray(students) ? students : [];
      const safeParents = Array.isArray(parents) ? parents : [];
-     const studentById = new Map(safeStudents.map((student) => [String(student?.id), student]));
-     const studentByAuthUid = new Map(
-         safeStudents
-             .filter((student) => student?.authUid)
-             .map((student) => [String(student.authUid), student]),
-     );
-     const parentById = new Map(safeParents.map((parent) => [String(parent?.id), parent]));
-     const parentByAuthUid = new Map(
-         safeParents
-             .filter((parent) => parent?.authUid)
-             .map((parent) => [String(parent.authUid), parent]),
-     );
+-    const studentById = new Map(safeStudents.map((student) => [String(student?.id), student]));
+-    const studentByAuthUid = new Map(
+-        safeStudents
+-            .filter((student) => student?.authUid)
+-            .map((student) => [String(student.authUid), student]),
+-    );
+-    const parentById = new Map(safeParents.map((parent) => [String(parent?.id), parent]));
+-    const parentByAuthUid = new Map(
+-        safeParents
+-            .filter((parent) => parent?.authUid)
+-            .map((parent) => [String(parent.authUid), parent]),
+-    );
++    const studentById = new Map();
++    const studentByAuthUid = new Map();
++    safeStudents.forEach((student) => {
++        [student?.id, student?.studentId, student?.docId].filter(Boolean).forEach((id) => studentById.set(String(id), student));
++        [student?.authUid, student?.uid, student?.studentAuthUid, student?.studentUid].filter(Boolean).forEach((uid) => studentByAuthUid.set(String(uid), student));
++    });
++    const parentById = new Map();
++    const parentByAuthUid = new Map();
++    safeParents.forEach((parent) => {
++        [parent?.id, parent?.parentId, parent?.docId].filter(Boolean).forEach((id) => parentById.set(String(id), parent));
++        [parent?.authUid, parent?.uid, parent?.parentUid].filter(Boolean).forEach((uid) => parentByAuthUid.set(String(uid), parent));
++    });
      const parentLast4Map = buildStudentParentPhoneLast4Map(safeStudents, safeParents);
  
      return {
@@ -610,18 +739,31 @@ index 1cd2df196963d40714bd64f77c81627e264133d3..3b174dd54afb0830a254910cd7d3ece5
          studentByAuthUid,
          parentById,
          parentByAuthUid,
-@@ -135,57 +147,61 @@ const buildUserLookups = ({ students = [], parents = [] }) => {
+         parentLast4Map,
+     };
+ };
  
  
  const getRoomType = (room) => normalizeText(room?.roomType || room?.channel);
  
  const getStudentDisplayNameForRoom = (room, { studentById, studentByAuthUid, parentLast4Map }) => {
-     const studentName = normalizeText(room?.studentName)
-         || getStudentNameFromIds(getRoomStudentIds(room), studentById);
-     if (studentName) return studentName;
+-    const studentName = normalizeText(room?.studentName)
+-        || getStudentNameFromIds(getRoomStudentIds(room), studentById);
+-    if (studentName) return studentName;
++    const directStudent = getRoomStudentIds(room).map((studentId) => studentById.get(String(studentId)) || studentByAuthUid.get(String(studentId))).find(Boolean)
++        || (room?.studentDocId ? studentById.get(String(room.studentDocId)) : null);
++    const directName = getUserName(directStudent) || normalizeText(room?.studentName);
++    if (directName) return directName;
  
++    const roles = room?.participantRoles && typeof room.participantRoles === 'object' ? room.participantRoles : {};
++    const userDocIds = room?.participantUserDocIds && typeof room.participantUserDocIds === 'object' ? room.participantUserDocIds : {};
      const participantIds = Array.isArray(room?.participantIds) ? room.participantIds.map(String) : [];
-     const participantStudent = participantIds.map((participantId) => studentByAuthUid.get(participantId)).find(Boolean);
+-    const participantStudent = participantIds.map((participantId) => studentByAuthUid.get(participantId)).find(Boolean);
++    const roleStudentId = Object.keys(roles).find((uid) => lower(roles[uid]) === 'student');
++    const roleStudent = roleStudentId ? (studentByAuthUid.get(roleStudentId) || studentById.get(String(userDocIds[roleStudentId] || ''))) : null;
++    const participantStudent = roleStudent || participantIds.map((participantId) => studentByAuthUid.get(participantId) || studentById.get(String(userDocIds[participantId] || ''))).find(Boolean);
++    const participantName = roleStudentId ? normalizeText(room?.participantNames?.[roleStudentId]) : '';
++    if (!participantStudent && participantName) return participantName;
      if (!participantStudent) return '';
  
      return getMessengerTargetDisplayName({
@@ -636,19 +778,18 @@ index 1cd2df196963d40714bd64f77c81627e264133d3..3b174dd54afb0830a254910cd7d3ece5
      const roomType = getRoomType(room);
      if (!['student_teacher', 'parent_teacher', 'student_institute', 'parent_institute'].includes(roomType)) return '';
  
--    const { studentById, studentByAuthUid, parentLast4Map } = buildUserLookups({
-+    const { studentById, studentByAuthUid, parentById, parentByAuthUid, parentLast4Map } = buildUserLookups({
+     const { studentById, studentByAuthUid, parentById, parentByAuthUid, parentLast4Map } = buildUserLookups({
          students: contextData.students || [],
          parents: contextData.parents || [],
      });
      const studentName = getStudentDisplayNameForRoom(room, { studentById, studentByAuthUid, parentLast4Map });
      if (roomType === 'parent_teacher' || roomType === 'parent_institute') {
--        return studentName ? appendParentSuffix(studentName) : '이름 미등록 학부모';
-+        const parentIds = getRoomParentIds(room);
-+        const parent = parentIds
-+            .map((parentId) => parentById.get(String(parentId)) || parentByAuthUid.get(String(parentId)))
-+            .find(Boolean) || null;
-+        return resolveParentRoomDisplayName(room, parent, studentById);
+         const parentIds = getRoomParentIds(room);
+         const parent = parentIds
+             .map((parentId) => parentById.get(String(parentId)) || parentByAuthUid.get(String(parentId)))
+             .find(Boolean) || null;
+-        return resolveParentRoomDisplayName(room, parent, studentById);
++        return studentName ? appendParentSuffix(studentName) : resolveParentRoomDisplayName(room, parent, studentById);
      }
      return studentName || '이름 미등록 학생';
  };
@@ -674,51 +815,7 @@ index 1cd2df196963d40714bd64f77c81627e264133d3..3b174dd54afb0830a254910cd7d3ece5
              || '이름 미등록 학생';
      }
  
-@@ -336,102 +352,106 @@ export const isWithdrawnStudent = (student = {}) => {
- 
-     const classStatusMap = student?.classStatusMap || {};
-     const mapStatuses = Object.values(classStatusMap)
-         .map((entry) => entry?.status || entry)
-         .filter(Boolean);
- 
-     const classStatuses = student?.classStatuses || {};
-     const classStatusesValues = Object.values(classStatuses).filter(Boolean);
- 
-     const mergedStatuses = [...mapStatuses, ...classStatusesValues];
-     if (!mergedStatuses.length) return false;
- 
-     return mergedStatuses.every((status) => isEndedStatus(status));
- };
- 
- export const buildMessengerTargets = ({ students = [], parents = [], classes = [] }) => {
-     const safeStudents = Array.isArray(students) ? students : [];
-     const safeParents = Array.isArray(parents) ? parents : [];
-     const safeClasses = Array.isArray(classes) ? classes : [];
- 
-     const classMap = new Map(safeClasses.map((classDoc) => [String(classDoc?.id), classDoc]));
-     const studentById = new Map(safeStudents.map((student) => [String(student?.id), student]));
-     const parentLast4Map = buildStudentParentPhoneLast4Map(safeStudents, safeParents);
- 
-     const studentOptions = safeStudents
--        .filter((student) => student?.authUid)
-         .map((student) => {
-+            const authUid = getAuthUid(student);
-+            if (!authUid) return null;
-             const representativeClass = pickRepresentativeClass(student, classMap);
-             const classLabel = representativeClass
-                 ? formatClassLabel(representativeClass, { includeClosedBadge: true })
-                 : '미분류';
- 
-             const displayName = getMessengerTargetDisplayName({
-                 user: student,
-                 role: 'student',
-                 studentById,
-                 parentLast4Map,
-             });
- 
-             return {
--                authUid: String(student.authUid),
-+                authUid: String(authUid),
+@@ -394,60 +402,62 @@ export const buildMessengerTargets = ({ students = [], parents = [], classes = [
                  role: 'student',
                  displayName,
                  searchText: `${lower(displayName)} ${lower(student?.name)} ${lower(classLabel)}`,
@@ -730,15 +827,13 @@ index 1cd2df196963d40714bd64f77c81627e264133d3..3b174dd54afb0830a254910cd7d3ece5
                  parentId: null,
                  isWithdrawn: isWithdrawnStudent(student),
              };
--        });
-+        })
-+        .filter(Boolean);
+         })
+         .filter(Boolean);
  
      const parentOptions = safeParents
--        .filter((parent) => parent?.authUid)
          .map((parent) => {
-+            const authUid = getAuthUid(parent);
-+            if (!authUid) return null;
+             const authUid = getAuthUid(parent);
+             if (!authUid) return null;
              const displayName = getMessengerTargetDisplayName({
                  user: parent,
                  role: 'parent',
@@ -746,22 +841,24 @@ index 1cd2df196963d40714bd64f77c81627e264133d3..3b174dd54afb0830a254910cd7d3ece5
                  parentLast4Map,
              });
  
++            const linkedStudentIds = Array.isArray(parent?.studentIds) ? parent.studentIds.map(String) : [parent?.studentId, parent?.linkedStudentId].filter(Boolean).map(String);
++            const linkedStudent = linkedStudentIds.map((studentId) => studentById.get(studentId)).find(Boolean);
              return {
--                authUid: String(parent.authUid),
-+                authUid: String(authUid),
+                 authUid: String(authUid),
                  role: 'parent',
                  displayName,
-                 searchText: lower(displayName),
+-                searchText: lower(displayName),
++                searchText: `${lower(displayName)} ${lower(linkedStudent?.name)} ${lower(linkedStudent?.displayName)}`,
                  classId: null,
                  classLabel: null,
                  classClosed: false,
                  userDocId: parent?.id ? String(parent.id) : null,
-                 studentId: null,
+-                studentId: null,
++                studentId: linkedStudent?.id ? String(linkedStudent.id) : (linkedStudentIds[0] || null),
                  parentId: parent?.id ? String(parent.id) : null,
              };
--        });
-+        })
-+        .filter(Boolean);
+         })
+         .filter(Boolean);
  
      const merged = [...studentOptions, ...parentOptions];
      const uniqueMap = new Map();
@@ -783,193 +880,3 @@ index 1cd2df196963d40714bd64f77c81627e264133d3..3b174dd54afb0830a254910cd7d3ece5
          if (!grouped.has(classKey)) {
              const classDoc = classMap.get(classKey) || null;
              grouped.set(classKey, {
-                 key: classKey,
-                 classDoc,
-                 title: classDoc
-                     ? formatClassLabel(classDoc, { includeClosedBadge: true })
-diff --git a/src/pages/parent/ParentMessengerPage.jsx b/src/pages/parent/ParentMessengerPage.jsx
-index 4ddee6df15fbee0b1648e2855ae48b62325a341d..993c45add65ba42b58f607e476b95651340c11d9 100644
---- a/src/pages/parent/ParentMessengerPage.jsx
-+++ b/src/pages/parent/ParentMessengerPage.jsx
-@@ -40,50 +40,55 @@ const getRoomSlot = (room) => {
-     return '';
- };
- const isCompatibleRoomType = (room, expectedRoomType) => {
-     const actualType = getRoomType(room);
-     if (expectedRoomType === 'parent_institute') {
-         return hasRoomTypeOrChannel(room, 'parent_institute') || getRoomSlot(room) === INSTITUTE_SLOT || !actualType;
-     }
-     if (actualType === expectedRoomType) return true;
-     if (actualType === 'institute') return expectedRoomType === 'student_institute';
-     if (actualType === 'teacher') return expectedRoomType.endsWith('_teacher');
-     return false;
- };
- 
- const hasExpectedParticipants = (room, authUid, targetAuthUid) => {
-     const participantIds = getParticipantIds(room);
-     return participantIds.length === 2
-         && participantIds.includes(String(authUid || ''))
-         && participantIds.includes(String(targetAuthUid || ''));
- };
- 
- const isStudentIdCompatible = (room, studentId) => {
-     const roomStudentId = normalizeText(room?.studentId);
-     return !roomStudentId || !studentId || roomStudentId === String(studentId || '');
- };
- 
-+const isStudentInstituteCandidate = (room, { authUid, targetAuthUid, studentId }) => {
-+    if (!isStandardSlotRoom(room, { viewerRole: 'student', slot: INSTITUTE_SLOT, authUid, targetAuthUid, studentId })) return false;
-+    return true;
-+};
-+
- const isParentInstituteBaseCandidate = (room, { authUid, targetAuthUid, studentId }) => {
-     if (!hasExpectedParticipants(room, authUid, targetAuthUid)) return false;
-     if (!isStudentIdCompatible(room, studentId)) return false;
-     if (hasRoomTypeOrChannel(room, 'student_institute')) return false;
-     if (getParticipantRole(room, authUid) === 'student') return false;
-     if (room?.counterpartUid && String(room.counterpartUid) !== String(targetAuthUid || '')) return false;
-     if (room?.staffAuthUid && String(room.staffAuthUid) !== String(targetAuthUid || '')) return false;
-     return true;
- };
- 
- const isParentInstituteLegacyRoom = (room, options) => (
-     isParentInstituteBaseCandidate(room, options)
-     && (getVisibleToRoles(room).includes('parent') || getParticipantRole(room, options.authUid) === 'parent')
- );
- 
- const getParentInstitutePriority = (room, options) => {
-     if (!isParentInstituteBaseCandidate(room, options)) return 0;
-     if (hasRoomTypeOrChannel(room, 'parent_institute')) return 3;
-     if (getRoomSlot(room) === INSTITUTE_SLOT) return 2;
-     if (isParentInstituteLegacyRoom(room, options)) return 1;
-     return 0;
- };
- 
- const isStandardSlotRoom = (room, { viewerRole, slot, authUid, targetAuthUid, studentId, teacherName = '' }) => {
-     const expectedRoomType = getExpectedRoomType(viewerRole, slot);
-@@ -107,53 +112,53 @@ const isStandardSlotRoom = (room, { viewerRole, slot, authUid, targetAuthUid, st
-     if (expectedRoomType === 'parent_teacher' && studentId && room?.studentId && String(room.studentId) !== String(studentId)) return false;
-     return true;
- };
- 
- const toDate = (value) => {
-     if (!value) return null;
-     if (typeof value?.toDate === 'function') return value.toDate();
-     const parsed = new Date(value);
-     return Number.isNaN(parsed.getTime()) ? null : parsed;
- };
- 
- const normalizeText = (value) => String(value || '').trim();
- 
- const uniqueStrings = (values) => Array.from(new Set(
-     values.flat(Infinity).filter((value) => typeof value === 'string' && value.trim()).map((value) => value.trim())
- ));
- 
- const getRoomSortTime = (room) => (
-     toDate(room?.lastMessageAt)?.getTime()
-     || toDate(room?.updatedAt)?.getTime()
-     || toDate(room?.createdAt)?.getTime()
-     || 0
- );
- 
- const getLastMessagePreview = (room) => (
--    room?.lastMessageText
--    || room?.lastMessage
--    || room?.message
-+    normalizeText(room?.lastMessageText)
-+    || normalizeText(room?.lastMessage)
-+    || normalizeText(room?.message)
-     || '대화 내역이 없습니다.'
- );
- 
- const sortRooms = (roomList) => roomList.sort((a, b) => getRoomSortTime(b) - getRoomSortTime(a));
- 
- const roomDisplayName = (slot, teacherName = '') => {
-     if (slot === INSTITUTE_SLOT) return INSTITUTE_NAME;
-     const normalizedTeacherName = normalizeText(teacherName);
-     if (normalizedTeacherName) return normalizedTeacherName.endsWith('선생님') ? normalizedTeacherName : `${normalizedTeacherName} 선생님`;
-     return TEACHER_DISPLAY_NAME;
- };
- 
- const getTeacherCandidates = (classes = []) => {
-     const candidates = [{ name: TEACHER_DISPLAY_NAME, ids: [TEACHER_AUTH_UID] }];
-     classes.forEach((classInfo) => {
-         const name = normalizeText(
-             classInfo?.teacherName
-             || classInfo?.teacher
-             || classInfo?.instructorName
-             || classInfo?.instructor
-             || classInfo?.tutorName
-             || classInfo?.tutor
-         );
-         const ids = uniqueStrings([
-             classInfo?.teacherAuthUid,
-@@ -179,58 +184,60 @@ const getTeacherCandidates = (classes = []) => {
- const getTeacherNameForDisplay = (teacherCandidates, teacherRoom = null) => {
-     const roomName = normalizeText(
-         teacherRoom?.teacherName
-         || teacherRoom?.staffName
-         || teacherRoom?.counterpartName
-         || teacherRoom?.name
-         || teacherRoom?.title
-         || teacherRoom?.displayName
-     );
-     if (roomName && !roomName.includes('연구소') && !roomName.includes('채수용 수학')) return roomName;
-     return normalizeText(teacherCandidates.find((candidate) => candidate.name)?.name || '');
- };
- 
- const buildMessengerSlots = (rooms, teacherCandidates, { viewerRole = 'parent', authUid = '', studentId = '' } = {}) => {
-     const sortedRooms = sortRooms([...rooms]);
-     const teacherRoom = sortedRooms.find((room) => isStandardSlotRoom(room, {
-         viewerRole,
-         slot: TEACHER_SLOT,
-         authUid,
-         targetAuthUid: TEACHER_AUTH_UID,
-         studentId,
-         teacherName: TEACHER_DISPLAY_NAME,
-     })) || null;
- 
-     const instituteCandidates = sortedRooms
--        .map((room) => ({
--            room,
--            priority: getParentInstitutePriority(room, {
--                authUid,
--                targetAuthUid: INSTITUTE_AUTH_UID,
--                studentId,
--            }),
--        }))
-+        .map((room) => {
-+            const priority = viewerRole === 'student'
-+                ? (isStudentInstituteCandidate(room, { authUid, targetAuthUid: INSTITUTE_AUTH_UID, studentId }) ? 3 : 0)
-+                : getParentInstitutePriority(room, {
-+                    authUid,
-+                    targetAuthUid: INSTITUTE_AUTH_UID,
-+                    studentId,
-+                });
-+            return { room, priority };
-+        })
-         .filter((candidate) => candidate.priority > 0);
-     const instituteRoom = instituteCandidates
-         .sort((left, right) => right.priority - left.priority || getRoomSortTime(right.room) - getRoomSortTime(left.room))
-         .map((candidate) => candidate.room)[0] || null;
- 
-     const teacherName = getTeacherNameForDisplay(teacherCandidates, teacherRoom);
- 
-     return [
-         {
-             slot: INSTITUTE_SLOT,
-             room: instituteRoom,
-             id: instituteRoom?.id || `${INSTITUTE_SLOT}-placeholder`,
-             title: roomDisplayName(INSTITUTE_SLOT),
-             roomType: getExpectedRoomType(viewerRole, INSTITUTE_SLOT),
-         },
-         {
-             slot: TEACHER_SLOT,
-             room: teacherRoom,
-             id: teacherRoom?.id || `${TEACHER_SLOT}-placeholder`,
-             title: roomDisplayName(TEACHER_SLOT, teacherName),
-             teacherName: teacherName || TEACHER_DISPLAY_NAME,
-             roomType: getExpectedRoomType(viewerRole, TEACHER_SLOT),
-         },
-     ];
- };

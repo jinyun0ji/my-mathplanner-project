@@ -1,20 +1,30 @@
 import React, { useEffect, useMemo } from 'react';
 import ModalPortal from '../../common/ModalPortal';
 
-const buildEmbedUrl = (value) => {
+const extractYoutubeVideoId = (value) => {
     if (!value) return '';
-
     try {
         const url = new URL(value);
-        if (url.protocol !== 'https:' || url.hostname !== 'www.youtube.com' || !url.pathname.startsWith('/embed/')) {
-            return '';
+        const hostname = url.hostname.replace(/^www\./, '');
+        if (hostname === 'youtu.be') return url.pathname.split('/').filter(Boolean)[0] || '';
+        if (hostname === 'youtube.com' || hostname === 'youtube-nocookie.com') {
+            if (url.pathname === '/watch') return url.searchParams.get('v') || '';
+            if (url.pathname.startsWith('/embed/')) return url.pathname.split('/').filter(Boolean)[1] || '';
         }
-        url.searchParams.set('rel', '0');
-        url.searchParams.set('playsinline', '1');
-        return url.toString();
     } catch {
         return '';
     }
+    return '';
+};
+
+const buildEmbedUrl = (value) => {
+    const videoId = extractYoutubeVideoId(value);
+    if (!videoId) return '';
+    const url = new URL(`https://www.youtube-nocookie.com/embed/${videoId}`);
+    url.searchParams.set('modestbranding', '1');
+    url.searchParams.set('rel', '0');
+    url.searchParams.set('playsinline', '1');
+    return url.toString();
 };
 
 export default function FormulaConceptModal({ concept, onClose }) {

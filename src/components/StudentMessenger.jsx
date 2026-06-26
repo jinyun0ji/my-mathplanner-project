@@ -105,9 +105,20 @@ const resolveStandardChatRoom = async ({ viewerUid, targetAuthUid, roomType, stu
 
     try {
         const directSnap = await getDoc(doc(db, 'chatRooms', deterministicRoomId));
-        if (!directSnap.exists()) return null;
-        const room = { id: directSnap.id, ...directSnap.data() };
-        return isExactStandardRoom(room, { viewerUid, targetAuthUid, roomType, studentId }) ? room : null;
+        if (directSnap.exists()) {
+            const room = { id: directSnap.id, ...directSnap.data() };
+            if (isExactStandardRoom(room, { viewerUid, targetAuthUid, roomType, studentId })) return room;
+        }
+
+        const snap = await getDocs(query(
+            collection(db, 'chatRooms'),
+            where('participantIds', 'array-contains', String(viewerUid)),
+            limit(50),
+        ));
+        return snap.docs
+            .map((item) => ({ id: item.id, ...item.data() }))
+            .filter((room) => isExactStandardRoom(room, { viewerUid, targetAuthUid, roomType, studentId }))
+            .sort((left, right) => getMessageSortTime({ createdAt: right.lastMessageAt || right.updatedAt || right.createdAt }) - getMessageSortTime({ createdAt: left.lastMessageAt || left.updatedAt || left.createdAt }))[0] || null;
     } catch (error) {
         console.warn('[student messenger] deterministic standard room lookup skipped', {
             code: error?.code,
@@ -350,7 +361,7 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
 
     useEffect(() => {
         if (selectedRoomId) {
-            console.log('[student messenger] use selected chatRoom', { roomId: String(selectedRoomId) });
+            if (process.env.NODE_ENV === 'development') console.log('[student messenger] selected room', { roomId: String(selectedRoomId) });
             setMessages([]);
             setOptimisticMessages([]);
             setRoomId(String(selectedRoomId));
@@ -369,10 +380,13 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
             resolveStandardChatRoom({ viewerUid, targetAuthUid, roomType: expectedRoomType, studentId }).then((resolvedRoom) => {
                 if (!mounted) return;
                 if (resolvedRoom) {
-                    console.log('[messenger] resolved room', {
+                    if (process.env.NODE_ENV === 'development') console.log('[student messenger] selected room', {
                         roomId: resolvedRoom.id,
-                        roomType: getRoomType(resolvedRoom),
+                        roomType: resolvedRoom.roomType,
+                        channel: resolvedRoom.channel,
+                        slot: resolvedRoom.slot,
                         participantIds: resolvedRoom.participantIds || [],
+                        messagesPath: `chatRooms/${resolvedRoom.id}/messages`,
                     });
                     if (userRole === 'parent' && normalizedChatSlot === 'institute') {
                         console.log('[parent messenger] selected institute room', {
@@ -464,7 +478,7 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
             const queryShape = withOrderBy
                 ? { collection: collectionPath, orderBy: ['createdAt', 'asc'] }
                 : { collection: collectionPath, orderBy: null, clientSort: ['createdAt', 'asc'] };
-            console.log('[student messenger] subscribe messages query', queryShape);
+            if (process.env.NODE_ENV === 'development') console.log('[student messenger] subscribe messages query', queryShape);
             const messagesRef = collection(db, ...collectionArgs);
             const messagesQuery = withOrderBy ? query(messagesRef, orderBy('createdAt', 'asc')) : query(messagesRef);
 
@@ -644,10 +658,13 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
                     }
 
                     await setDoc(roomRef, roomPayload, { merge: true });
-                    console.log('[messenger] resolved room', {
+                    if (process.env.NODE_ENV === 'development') console.log('[student messenger] selected room', {
                         roomId: resolvedRoomId,
                         roomType: roomPayload.roomType,
+                        channel: roomPayload.channel,
+                        slot: roomPayload.slot,
                         participantIds: roomPayload.participantIds,
+                        messagesPath: `chatRooms/${resolvedRoomId}/messages`,
                     });
                     if (userRole === 'parent' && slot === 'institute') {
                         console.log('[parent messenger] selected institute room', {
@@ -728,7 +745,7 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
                     clientTempId,
                 });
             }
-            console.log('[messenger] message sent', { roomId: resolvedRoomId, senderId: viewerUid });
+            if (process.env.NODE_ENV === 'development') console.log('[student messenger] message sent', { roomId: resolvedRoomId, senderId: viewerUid });
             setError('');
             setRoomId(resolvedRoomId);
         } catch (sendError) {

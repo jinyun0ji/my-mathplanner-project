@@ -62,6 +62,7 @@ const hasParentSuffix = (value) => normalizeText(value).includes('학부모');
 
 const getArrayField = (value) => (Array.isArray(value) ? value.map(String).filter(Boolean) : []);
 const getAuthUid = (user) => normalizeText(user?.authUid || user?.uid || user?.studentAuthUid || user?.studentUid || user?.parentUid);
+const getUserName = (user) => normalizeText(user?.name) || normalizeText(user?.displayName) || normalizeText(user?.studentName);
 
 const getRoomStudentIds = (room) => [
     normalizeText(room?.studentId),
@@ -122,18 +123,18 @@ const resolveParentRoomDisplayName = (room, parent, studentById) => {
 const buildUserLookups = ({ students = [], parents = [] }) => {
     const safeStudents = Array.isArray(students) ? students : [];
     const safeParents = Array.isArray(parents) ? parents : [];
-    const studentById = new Map(safeStudents.map((student) => [String(student?.id), student]));
-    const studentByAuthUid = new Map(
-        safeStudents
-            .filter((student) => student?.authUid)
-            .map((student) => [String(student.authUid), student]),
-    );
-    const parentById = new Map(safeParents.map((parent) => [String(parent?.id), parent]));
-    const parentByAuthUid = new Map(
-        safeParents
-            .filter((parent) => parent?.authUid)
-            .map((parent) => [String(parent.authUid), parent]),
-    );
+    const studentById = new Map();
+    const studentByAuthUid = new Map();
+    safeStudents.forEach((student) => {
+        [student?.id, student?.studentId, student?.docId].filter(Boolean).forEach((id) => studentById.set(String(id), student));
+        [student?.authUid, student?.uid, student?.studentAuthUid, student?.studentUid].filter(Boolean).forEach((uid) => studentByAuthUid.set(String(uid), student));
+    });
+    const parentById = new Map();
+    const parentByAuthUid = new Map();
+    safeParents.forEach((parent) => {
+        [parent?.id, parent?.parentId, parent?.docId].filter(Boolean).forEach((id) => parentById.set(String(id), parent));
+        [parent?.authUid, parent?.uid, parent?.parentUid].filter(Boolean).forEach((uid) => parentByAuthUid.set(String(uid), parent));
+    });
     const parentLast4Map = buildStudentParentPhoneLast4Map(safeStudents, safeParents);
 
     return {
@@ -149,12 +150,19 @@ const buildUserLookups = ({ students = [], parents = [] }) => {
 const getRoomType = (room) => normalizeText(room?.roomType || room?.channel);
 
 const getStudentDisplayNameForRoom = (room, { studentById, studentByAuthUid, parentLast4Map }) => {
-    const studentName = normalizeText(room?.studentName)
-        || getStudentNameFromIds(getRoomStudentIds(room), studentById);
-    if (studentName) return studentName;
+    const directStudent = getRoomStudentIds(room).map((studentId) => studentById.get(String(studentId)) || studentByAuthUid.get(String(studentId))).find(Boolean)
+        || (room?.studentDocId ? studentById.get(String(room.studentDocId)) : null);
+    const directName = getUserName(directStudent) || normalizeText(room?.studentName);
+    if (directName) return directName;
 
+    const roles = room?.participantRoles && typeof room.participantRoles === 'object' ? room.participantRoles : {};
+    const userDocIds = room?.participantUserDocIds && typeof room.participantUserDocIds === 'object' ? room.participantUserDocIds : {};
     const participantIds = Array.isArray(room?.participantIds) ? room.participantIds.map(String) : [];
-    const participantStudent = participantIds.map((participantId) => studentByAuthUid.get(participantId)).find(Boolean);
+    const roleStudentId = Object.keys(roles).find((uid) => lower(roles[uid]) === 'student');
+    const roleStudent = roleStudentId ? (studentByAuthUid.get(roleStudentId) || studentById.get(String(userDocIds[roleStudentId] || ''))) : null;
+    const participantStudent = roleStudent || participantIds.map((participantId) => studentByAuthUid.get(participantId) || studentById.get(String(userDocIds[participantId] || ''))).find(Boolean);
+    const participantName = roleStudentId ? normalizeText(room?.participantNames?.[roleStudentId]) : '';
+    if (!participantStudent && participantName) return participantName;
     if (!participantStudent) return '';
 
     return getMessengerTargetDisplayName({
@@ -179,7 +187,7 @@ const getStandardRoomDisplayTitle = (room, contextData = {}) => {
         const parent = parentIds
             .map((parentId) => parentById.get(String(parentId)) || parentByAuthUid.get(String(parentId)))
             .find(Boolean) || null;
-        return resolveParentRoomDisplayName(room, parent, studentById);
+        return studentName ? appendParentSuffix(studentName) : resolveParentRoomDisplayName(room, parent, studentById);
     }
     return studentName || '이름 미등록 학생';
 };
@@ -416,16 +424,18 @@ export const buildMessengerTargets = ({ students = [], parents = [], classes = [
                 parentLast4Map,
             });
 
+            const linkedStudentIds = Array.isArray(parent?.studentIds) ? parent.studentIds.map(String) : [parent?.studentId, parent?.linkedStudentId].filter(Boolean).map(String);
+            const linkedStudent = linkedStudentIds.map((studentId) => studentById.get(studentId)).find(Boolean);
             return {
                 authUid: String(authUid),
                 role: 'parent',
                 displayName,
-                searchText: lower(displayName),
+                searchText: `${lower(displayName)} ${lower(linkedStudent?.name)} ${lower(linkedStudent?.displayName)}`,
                 classId: null,
                 classLabel: null,
                 classClosed: false,
                 userDocId: parent?.id ? String(parent.id) : null,
-                studentId: null,
+                studentId: linkedStudent?.id ? String(linkedStudent.id) : (linkedStudentIds[0] || null),
                 parentId: parent?.id ? String(parent.id) : null,
             };
         })
