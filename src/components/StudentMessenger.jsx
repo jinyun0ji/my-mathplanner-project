@@ -18,6 +18,9 @@ import {
 import { auth, db } from '../firebase/client';
 import { formatAttachmentSize, uploadChatAttachment, validateChatAttachment } from './chatAttachments';
 
+// TODO(video_embed): allow only admin/staff/teacher to send YouTube watch/youtu.be/embed links,
+// normalize them to youtube-nocookie URLs, store messageType: 'video_embed',
+// render video cards in-room, and play them in an internal iframe modal.
 const CANDIDATE_ROOM_IDS = (studentId) => [String(studentId || '')].filter(Boolean);
 
 const CHAT_ROOM_TYPES = {
@@ -311,6 +314,7 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
     const [attachmentPreviewUrl, setAttachmentPreviewUrl] = useState('');
     const [isSending, setIsSending] = useState(false);
     const [error, setError] = useState('');
+    const [imageModal, setImageModal] = useState(null);
     const [myProfileDocId, setMyProfileDocId] = useState('');
     const messagesEndRef = useRef(null);
     const normalizedChatSlot = String(chatSlot || roomCreationContext?.slot || '');
@@ -420,7 +424,7 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
     useEffect(() => {
         if (!roomId) return undefined;
         
-        const isChatRoomMode = Boolean(selectedRoomId || canCreateChatRoom);
+        const isChatRoomMode = Boolean(selectedRoomId || canCreateChatRoom || expectedRoomType === 'student_institute');
         const collectionPath = isChatRoomMode ? `chatRooms/${roomId}/messages` : `chats/${roomId}/messages`;
         const collectionArgs = isChatRoomMode ? ['chatRooms', roomId, 'messages'] : ['chats', roomId, 'messages'];
         let fallbackUnsub = null;
@@ -479,7 +483,7 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
             unsub && unsub();
             fallbackUnsub && fallbackUnsub();
         };
-    }, [roomId, selectedRoomId, canCreateChatRoom, myProfileDocId, teacherName]);
+    }, [roomId, selectedRoomId, canCreateChatRoom, expectedRoomType, myProfileDocId, teacherName]);
 
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -529,7 +533,7 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
 
         const viewerUid = auth.currentUser?.uid || 'parent-anonymous';
         const targetAuthUidForRoom = String(roomCreationContext?.targetAuthUid || '');
-        const isChatRoomMode = Boolean(selectedRoomId || canCreateChatRoom);
+        const isChatRoomMode = Boolean(selectedRoomId || canCreateChatRoom || expectedRoomType === 'student_institute');
         let resolvedRoomId = selectedRoomId ? String(selectedRoomId) : roomId || null;
         let shouldCreateStandardRoom = false;
         if (!resolvedRoomId && canCreateChatRoom) {
@@ -771,10 +775,10 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
                                     {msg.text && <p className="whitespace-pre-wrap break-words">{msg.text}</p>}
                                     {msg.attachments.map((attachment) => (
                                         attachment.type === 'image' ? (
-                                            <a key={attachment.url || attachment.name} href={attachment.url} target="_blank" rel="noreferrer" className={msg.text ? 'mt-2 block' : 'block'}>
+                                            <button key={attachment.url || attachment.name} type="button" onClick={() => setImageModal(attachment)} className={`${msg.text ? 'mt-2 ' : ''}block text-left`}>
                                                 <img src={attachment.url} alt={attachment.name} className="max-h-48 rounded-lg object-cover" onError={(event) => { event.currentTarget.style.display = 'none'; }} />
                                                 <span className="mt-1 block text-xs underline break-all">{attachment.name}</span>
-                                            </a>
+                                            </button>
                                         ) : (
                                             <a key={attachment.url || attachment.name} href={attachment.url} target="_blank" rel="noreferrer" className={`${msg.text ? 'mt-2 ' : ''}flex items-center gap-2 rounded-lg border border-current/20 px-2 py-1.5 text-xs`}>
                                                 <span>📄</span><span className="break-all">{attachment.name}</span><span className="whitespace-nowrap opacity-75">{formatAttachmentSize(attachment.size)}</span>
@@ -791,6 +795,19 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
                 )}
                 <div ref={messagesEndRef} />
             </div>
+
+            {imageModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => setImageModal(null)}>
+                    <div className="max-w-[96vw] max-h-[96vh] rounded-xl bg-white p-3 shadow-xl" onClick={(event) => event.stopPropagation()}>
+                        <div className="mb-2 flex items-center justify-between gap-3">
+                            <p className="truncate text-sm font-semibold text-gray-700">{imageModal.name || '이미지'}</p>
+                            <button type="button" onClick={() => setImageModal(null)} className="rounded border px-2 py-1 text-xs">닫기</button>
+                        </div>
+                        <img src={imageModal.url} alt={imageModal.name || '첨부 이미지'} className="max-h-[78vh] max-w-[90vw] rounded-lg object-contain" />
+                        {imageModal.url && <a href={imageModal.url} target="_blank" rel="noreferrer" className="mt-2 inline-block text-xs underline">원본 열기</a>}
+                    </div>
+                </div>
+            )}
 
             {attachmentFile && (
                 <div className="px-3 py-2 border-t bg-white flex items-center gap-3 text-xs">

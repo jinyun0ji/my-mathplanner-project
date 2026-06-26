@@ -65,6 +65,7 @@ export default function ChatMessagePane({
     const [attachmentFile, setAttachmentFile] = useState(null);
     const [previewUrl, setPreviewUrl] = useState('');
     const [error, setError] = useState('');
+    const [imageModal, setImageModal] = useState(null);
 
     const clearAttachment = () => {
         if (previewUrl) URL.revokeObjectURL(previewUrl);
@@ -178,10 +179,10 @@ export default function ChatMessagePane({
                                     {message.text && <p className="whitespace-pre-wrap break-words">{message.text}</p>}
                                     {(Array.isArray(message.attachments) ? message.attachments : []).map((attachment) => (
                                         attachment.type === 'image' ? (
-                                            <a key={attachment.url || attachment.name} href={attachment.url} target="_blank" rel="noreferrer" className={message.text ? 'mt-2 block' : 'block'}>
+                                            <button key={attachment.url || attachment.name} type="button" onClick={() => setImageModal(attachment)} className={`${message.text ? 'mt-2 ' : ''}block text-left`}>
                                                 <img src={attachment.url} alt={attachment.name} className="max-h-48 rounded-lg object-cover" onError={(event) => { event.currentTarget.style.display = 'none'; }} />
                                                 <span className="mt-1 block text-xs underline break-all">{attachment.name}</span>
-                                            </a>
+                                            </button>
                                         ) : (
                                             <a key={attachment.url || attachment.name} href={attachment.url} target="_blank" rel="noreferrer" className={`${message.text ? 'mt-2 ' : ''}flex items-center gap-2 rounded-lg border border-current/20 px-2 py-1.5 text-xs`}>
                                                 <span>📄</span><span className="break-all">{attachment.name}</span><span className="whitespace-nowrap opacity-75">{formatAttachmentSize(attachment.size)}</span>
@@ -214,6 +215,18 @@ export default function ChatMessagePane({
                     {previewUrl && <img src={previewUrl} alt="첨부 미리보기" className="h-12 w-12 rounded object-cover" />}
                     <span className="flex-1 truncate">{attachmentFile.name} · {formatAttachmentSize(attachmentFile.size)}</span>
                     <button type="button" onClick={clearAttachment} className="text-red-500">취소</button>
+                </div>
+            )}
+            {imageModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => setImageModal(null)}>
+                    <div className="max-w-[96vw] max-h-[96vh] rounded-xl bg-white p-3 shadow-xl" onClick={(event) => event.stopPropagation()}>
+                        <div className="mb-2 flex items-center justify-between gap-3">
+                            <p className="truncate text-sm font-semibold text-gray-700">{imageModal.name || '이미지'}</p>
+                            <button type="button" onClick={() => setImageModal(null)} className="rounded border px-2 py-1 text-xs">닫기</button>
+                        </div>
+                        <img src={imageModal.url} alt={imageModal.name || '첨부 이미지'} className="max-h-[78vh] max-w-[90vw] rounded-lg object-contain" />
+                        {imageModal.url && <a href={imageModal.url} target="_blank" rel="noreferrer" className="mt-2 inline-block text-xs underline">원본 열기</a>}
+                    </div>
                 </div>
             )}
             <form onSubmit={submit} className="border-t p-2 flex gap-2 items-end">

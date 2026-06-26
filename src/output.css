@@ -1185,6 +1185,14 @@ video {
   max-height: 9rem;
 }
 
+.max-h-\[78vh\]{
+  max-height: 78vh;
+}
+
+.max-h-\[96vh\]{
+  max-height: 96vh;
+}
+
 .min-h-0{
   min-height: 0px;
 }
@@ -1572,6 +1580,14 @@ video {
 
 .max-w-\[1500px\]{
   max-width: 1500px;
+}
+
+.max-w-\[90vw\]{
+  max-width: 90vw;
+}
+
+.max-w-\[96vw\]{
+  max-width: 96vw;
 }
 
 .flex-1{

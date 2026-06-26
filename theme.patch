@@ -1,983 +1,975 @@
-diff --git a/firestore.rules b/firestore.rules
-index 22ae5127fb8a8f6bb76554698f2b2555050346ad..e877e4fadf292d2fa0244fecc1de2a9322f48799 100644
---- a/firestore.rules
-+++ b/firestore.rules
-@@ -585,59 +585,57 @@ service cloud.firestore {
-         && request.resource.data.level in ['error', 'warn']
-         && request.resource.data.diff({}).affectedKeys().hasOnly([
-           'level',
-           'scope',
-           'action',
-           'message',
-           'code',
-           'context',
-           'createdBy',
-           'createdAt',
-           'app',
-           'route',
-           'build',
-           'userRole'
-         ]);
+diff --git a/src/components/StudentMessenger.jsx b/src/components/StudentMessenger.jsx
+index cfc8bd5288bb88ac6a42357ca03156935bf1268b..653fb3e5ad03e60ff838b92c871272009d845436 100644
+--- a/src/components/StudentMessenger.jsx
++++ b/src/components/StudentMessenger.jsx
+@@ -1,45 +1,48 @@
+ import React, { useState, useEffect, useMemo, useRef } from 'react';
+ import {
+     collection,
+     addDoc,
+     arrayUnion,
+     doc,
+     getDoc,
+     getDocs,
+     limit,
+     onSnapshot,
+     orderBy,
+     query,
+     serverTimestamp,
+     setDoc,
+     updateDoc,
+     where,
+ } from 'firebase/firestore';
+ import { auth, db } from '../firebase/client';
+ import { formatAttachmentSize, uploadChatAttachment, validateChatAttachment } from './chatAttachments';
  
-       allow update, delete: if false;
++// TODO(video_embed): allow only admin/staff/teacher to send YouTube watch/youtu.be/embed links,
++// normalize them to youtube-nocookie URLs, store messageType: 'video_embed',
++// render video cards in-room, and play them in an internal iframe modal.
+ const CANDIDATE_ROOM_IDS = (studentId) => [String(studentId || '')].filter(Boolean);
+ 
+ const CHAT_ROOM_TYPES = {
+     student: {
+         institute: 'student_institute',
+         teacher: 'student_teacher',
+     },
+     parent: {
+         institute: 'parent_institute',
+         teacher: 'parent_teacher',
+     },
+ };
+ 
+ const getExpectedRoomType = (role, slotOrType) => {
+     const normalizedRole = String(role || '').trim();
+     const normalized = String(slotOrType || '').trim();
+     if (normalizedRole === 'parent' && (normalized === 'institute' || normalized === 'parent_institute')) return 'parent_institute';
+     if (['student_institute', 'student_teacher', 'parent_institute', 'parent_teacher'].includes(normalized)) return normalized;
+     return CHAT_ROOM_TYPES[normalizedRole]?.[normalized] || '';
+ };
+ 
+ const getRoomType = (room) => String(room?.roomType || room?.channel || '').trim();
+ const hasRoomTypeOrChannel = (room, expectedRoomType) => (
+     String(room?.roomType || '').trim() === expectedRoomType
+     || String(room?.channel || '').trim() === expectedRoomType
+@@ -289,50 +292,51 @@ async function resolveRoomId(studentId, studentAuthUid = '') {
+     ];
+ 
+     for (const check of checks) {
+         try {
+             console.log('[student messenger] resolve room query', check.shape);
+             const roomId = await check.run();
+             if (roomId) return roomId;
+         } catch (error) {
+             logFirestoreQueryFailure(check.label, error, check.shape);
+         }
      }
  
-     match /announcements/{docId} {
-       allow read: if signedIn();
+     return null;
+ }
  
-       allow write: if isStaffOrAdminOrTeacher();
-     }
- 
--    match /formulaBookSubjects/{docId} {
--      allow read: if isStaffOrAdminOrTeacher()
--        || ((isStudent() || isParent()) && resource.data.active == true);
-+    match /formulaSubjects/{docId} {
-+      allow read: if signedIn();
-       allow create, update, delete: if isStaffOrAdminOrTeacher();
-     }
- 
--    match /formulaBookConcepts/{docId} {
--      allow read: if isStaffOrAdminOrTeacher()
--        || ((isStudent() || isParent()) && resource.data.active == true);
-+    match /formulaConcepts/{docId} {
-+      allow read: if signedIn();
-       allow create, update, delete: if isStaffOrAdminOrTeacher();
-     }
- 
-     match /homeworkAssignments/{docId} {
-       allow read: if signedIn();
-       allow write: if isStaffOrAdminOrTeacher();
-     }
- 
-     match /materials/{docId} {
-       allow read, list: if isStaffOrAdminOrTeacher();
-       allow create, update, delete: if isStaffOrAdminOrTeacher();
-     }
- 
-     match /books/{docId} {
-       allow read, list: if isStaffOrAdminOrTeacher();
-       allow create, update, delete: if isStaffOrAdminOrTeacher();
-     }
- 
-     match /payments/{docId} {
-       allow read, write, list: if isStaffOrAdminOrTeacher();
-       allow create, update, delete: if isStaffOrAdminOrTeacher();
-     }
- 
-     match /grades/{docId} {
-       allow read: if signedIn();
-diff --git a/src/app/AuthGate.jsx b/src/app/AuthGate.jsx
-index a337df5670a0d3daff7fe3874f069d844388c53c..9ad18810b92598389a7edf213884e4199c414b63 100644
---- a/src/app/AuthGate.jsx
-+++ b/src/app/AuthGate.jsx
-@@ -4,121 +4,132 @@ import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-
- import AppRoutes from './AppRoutes';
- import OnboardingPage from '../pages/OnboardingPage';
- import LoginPage from '../pages/LoginPage';
- import InviteSignupPage from '../pages/InviteSignupPage';
- import useAuth from '../auth/useAuth';
- import { isParentRole, isStudentRole } from '../constants/roles';
- import { claimStudentLinkCode } from '../parent/linkCodeService';
- import { ParentProvider } from '../parent';
- import { redirectToKakao, redirectToNaver } from '../auth/socialRedirect';
- import { signInWithGoogle } from '../auth/authService';
- import { initForegroundMessageListener } from '../firebase/messaging';
- import { getDefaultRouteForRole } from '../auth/authRedirects';
- import { DELETION_REQUESTED_MESSAGE } from '../accountDeletion';
- 
- export default function AuthGate() {
-     const navigate = useNavigate();
-     const location = useLocation();
-     const pathname = location.pathname;
- 
-     const isOnboardingPage = pathname === '/onboarding';
-     const isLoginPage = pathname === '/login';
-     const isSignupPage = pathname.startsWith('/signup');
-     const isAuthCallbackPage = pathname === '/auth/callback';
-     const isStudentDetailPage = pathname.startsWith('/students/');
-     const isMessengerRoute = pathname.startsWith('/chat') || pathname.startsWith('/messages');
-+    const isFormulaQrRoute = pathname === '/classroom' && new URLSearchParams(location.search).get('conceptId');
- 
-     const {
-         user,
-         role,
-         studentIds,
-         activeStudentId,
-         loading,
-         profileError,
-         userProfile,
-         logout,
-     } = useAuth();
- 
-     const needsParentOnboarding =
-         isParentRole(role) && (!Array.isArray(studentIds) || studentIds.length === 0);
- 
-     const isDeletionBlockedViewer = (isParentRole(role) || isStudentRole(role))
-         && Boolean(userProfile?.deletionAccessBlocked);
+ export default function StudentMessenger({ studentId, studentAuthUid = '', selectedRoomId = '', teacherName = '메시지', userRole = 'parent', isFloating = false, allowLegacyResolve = true, emptyMessage = '아직 대화 내역이 없습니다.', chatSlot = '', roomCreationContext = null }) {
+     const [roomId, setRoomId] = useState(null);
+     const [messages, setMessages] = useState([]);
+     const [optimisticMessages, setOptimisticMessages] = useState([]);
+     const optimisticMessagesRef = useRef([]);
+     const [inputText, setInputText] = useState('');
+     const [attachmentFile, setAttachmentFile] = useState(null);
+     const [attachmentPreviewUrl, setAttachmentPreviewUrl] = useState('');
+     const [isSending, setIsSending] = useState(false);
+     const [error, setError] = useState('');
++    const [imageModal, setImageModal] = useState(null);
+     const [myProfileDocId, setMyProfileDocId] = useState('');
+     const messagesEndRef = useRef(null);
+     const normalizedChatSlot = String(chatSlot || roomCreationContext?.slot || '');
+     const expectedRoomType = userRole === 'parent' && normalizedChatSlot === 'institute'
+         ? 'parent_institute'
+         : getExpectedRoomType(userRole, roomCreationContext?.roomType || normalizedChatSlot);
+     const canCreateChatRoom = Boolean(roomCreationContext?.targetAuthUid && expectedRoomType);
  
      useEffect(() => {
-         let unsubscribe = null;
+         optimisticMessagesRef.current = optimisticMessages;
+     }, [optimisticMessages]);
  
-         if (!user) return undefined;
+     useEffect(() => {
+         const authUid = auth.currentUser?.uid || '';
+         if (!authUid) {
+             setMyProfileDocId('');
+             return undefined;
+         }
  
-         initForegroundMessageListener()
-             .then((stop) => { unsubscribe = stop; })
-             .catch(() => {});
+         let mounted = true;
+         getDoc(doc(db, 'userAuthIndex', authUid)).then((indexSnap) => {
+             if (!mounted) return;
+             setMyProfileDocId(indexSnap.exists() ? String(indexSnap.data()?.userDocId || '') : '');
+         }).catch((indexError) => {
+             logFirestoreQueryFailure('load userAuthIndex', indexError, { doc: ['userAuthIndex', authUid] });
+@@ -398,51 +402,51 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
+ 
+         if (!allowLegacyResolve) {
+             return () => {
+                 mounted = false;
+             };
+         }
+ 
+         resolveRoomId(studentId, studentAuthUid).then((resolved) => {
+             if (mounted) setRoomId(resolved);
+         }).catch((resolveError) => {
+             logFirestoreQueryFailure('resolve room', resolveError, {
+                 studentId: String(studentId || ''),
+                 studentAuthUid: String(studentAuthUid || ''),
+             });
+             if (mounted) setError('대화방을 찾는 중 권한 오류가 발생했습니다. 관리자에게 문의해주세요.');
+         });
  
          return () => {
-             if (typeof unsubscribe === 'function') unsubscribe();
+             mounted = false;
          };
-     }, [user]);
+     }, [studentId, studentAuthUid, selectedRoomId, allowLegacyResolve, canCreateChatRoom, expectedRoomType, roomCreationContext?.targetAuthUid, normalizedChatSlot, userRole]);
  
      useEffect(() => {
-         if (loading) return;
+         if (!roomId) return undefined;
+         
+-        const isChatRoomMode = Boolean(selectedRoomId || canCreateChatRoom);
++        const isChatRoomMode = Boolean(selectedRoomId || canCreateChatRoom || expectedRoomType === 'student_institute');
+         const collectionPath = isChatRoomMode ? `chatRooms/${roomId}/messages` : `chats/${roomId}/messages`;
+         const collectionArgs = isChatRoomMode ? ['chatRooms', roomId, 'messages'] : ['chats', roomId, 'messages'];
+         let fallbackUnsub = null;
  
-         const redirectPath = role ? (getDefaultRouteForRole(role) || '/home') : null;
+         const applySnapshot = (snap) => {
+             const myIds = new Set([auth.currentUser?.uid, myProfileDocId].filter(Boolean).map(String));
+             const fallbackSenderName = teacherName || '메시지';
+             setError('');
+             const snapshotItems = snap.docs.map((item) => ({
+                 id: item.id,
+                 raw: {
+                     ...item.data(),
+                     pending: item.metadata?.hasPendingWrites || Boolean(item.data()?.pending),
+                 },
+             }));
+             const unresolvedOptimisticItems = optimisticMessagesRef.current
+                 .filter((item) => String(item.roomId || '') === String(roomId))
+                 .filter((optimistic) => !snapshotItems.some((serverItem) => isSameLogicalMessage(serverItem.raw, optimistic)))
+                 .map((item) => ({ id: item.id, raw: item }));
+             const mergedItems = sortMessageItems(dedupeMessages([...snapshotItems, ...unresolvedOptimisticItems]));
  
-         if (!user) {
-             if (!isLoginPage && !isSignupPage && !isAuthCallbackPage) {
-+                if (isFormulaQrRoute) sessionStorage.setItem('formulaQrRedirect', `${pathname}${location.search}`);
-                 navigate('/login', { replace: true });
-             }
-             return;
-         }
+             setOptimisticMessages((prev) => {
+                 const next = prev.filter((optimistic) => (
+                     String(optimistic.roomId || '') !== String(roomId)
+                     || !snapshotItems.some((serverItem) => isSameLogicalMessage(serverItem.raw, optimistic))
+@@ -457,101 +461,101 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
+         };
  
-         if (isDeletionBlockedViewer) return;
+         const subscribe = (withOrderBy) => {
+             const queryShape = withOrderBy
+                 ? { collection: collectionPath, orderBy: ['createdAt', 'asc'] }
+                 : { collection: collectionPath, orderBy: null, clientSort: ['createdAt', 'asc'] };
+             console.log('[student messenger] subscribe messages query', queryShape);
+             const messagesRef = collection(db, ...collectionArgs);
+             const messagesQuery = withOrderBy ? query(messagesRef, orderBy('createdAt', 'asc')) : query(messagesRef);
  
-         if (needsParentOnboarding && pathname !== '/onboarding') {
-             navigate('/onboarding', { replace: true });
-             return;
-         }
+             return onSnapshot(messagesQuery, applySnapshot, (snapshotError) => {
+                 logFirestoreQueryFailure('subscribe messages', snapshotError, queryShape);
+                 if (withOrderBy) {
+                     fallbackUnsub = subscribe(false);
+                     return;
+                 }
+                 setError('메시지를 불러올 권한이 없습니다. 관리자에게 문의해주세요.');
+             });
+         };
  
-         if (role && isMessengerRoute && (isParentRole(role) || isStudentRole(role))) {
-             navigate(redirectPath || '/home', { replace: true });
-             return;
-         }
- 
-         if (
-             role &&
-             !needsParentOnboarding &&
-             !isStudentDetailPage &&
-             (isOnboardingPage || isLoginPage || isSignupPage)
-         ) {
-+            const formulaQrRedirect = sessionStorage.getItem('formulaQrRedirect');
-+            if (formulaQrRedirect && isStudentRole(role)) {
-+                sessionStorage.removeItem('formulaQrRedirect');
-+                const params = new URLSearchParams(formulaQrRedirect.split('?')[1] || '');
-+                navigate(`/student/home?tab=class&mode=book&conceptId=${encodeURIComponent(params.get('conceptId') || '')}`, { replace: true });
-+                return;
-+            }
-             navigate(redirectPath || '/home', { replace: true });
-         }
-     }, [
-         isAuthCallbackPage,
-         isLoginPage,
-         isMessengerRoute,
-         isOnboardingPage,
-         isSignupPage,
-         isStudentDetailPage,
-+        isFormulaQrRoute,
-+        location.search,
-         loading,
-         navigate,
-         needsParentOnboarding,
-         pathname,
-         isDeletionBlockedViewer,
-         role,
-         user,
-     ]);
- 
-     const handleSocialLogin = async (providerName) => {
-         if (providerName === 'google') return signInWithGoogle();
-         if (providerName === 'kakao') return redirectToKakao();
-         if (providerName === 'naver') return redirectToNaver();
-         throw new Error('지원되지 않는 소셜 로그인입니다.');
-     };
- 
-     const handleClaimLinkCode = async (code) => {
-         await claimStudentLinkCode(code);
-     };
- 
-     if (loading) {
-         return <div className="min-h-screen flex items-center justify-center">로딩 중...</div>;
-     }
- 
-     if (!user) {
-diff --git a/src/auth/StudentLogin.jsx b/src/auth/StudentLogin.jsx
-index b9949722e86de69c6b9ecbf804979b440f15d382..eb5385645108ffa2a0f52b21899a19a2167b5bae 100644
---- a/src/auth/StudentLogin.jsx
-+++ b/src/auth/StudentLogin.jsx
-@@ -1,87 +1,98 @@
- import React, { useCallback, useEffect, useState } from 'react';
- import { signInWithEmailAndPassword, signOut } from 'firebase/auth';
- import { doc, getDoc } from 'firebase/firestore';
--import { useNavigate } from 'react-router-dom';
-+import { useLocation, useNavigate } from 'react-router-dom';
- import { auth, db } from '../firebase/client';
- import { ROLE, isParentRole, isStudentRole } from '../constants/roles';
- import useAuth from './useAuth';
- import { getDefaultRouteForRole } from './authRedirects';
- 
- export default function StudentLogin() {
-     const { user, role, loading } = useAuth();
-     const [email, setEmail] = useState('');
-     const [password, setPassword] = useState('');
-     const [error, setError] = useState('');
-     const [pending, setPending] = useState(false);
-     const navigate = useNavigate();
-+    const location = useLocation();
-+
-+    const getFormulaRedirectPath = useCallback((fallbackSearch = '') => {
-+        const stored = sessionStorage.getItem('formulaQrRedirect');
-+        const search = stored?.split('?')[1] || fallbackSearch.replace(/^\?/, '');
-+        const params = new URLSearchParams(search);
-+        const conceptId = params.get('conceptId');
-+        if (!conceptId) return '';
-+        sessionStorage.removeItem('formulaQrRedirect');
-+        return `/student/home?tab=class&mode=book&conceptId=${encodeURIComponent(conceptId)}`;
-+    }, []);
+         const unsub = subscribe(true);
+         return () => {
+             unsub && unsub();
+             fallbackUnsub && fallbackUnsub();
+         };
+-    }, [roomId, selectedRoomId, canCreateChatRoom, myProfileDocId, teacherName]);
++    }, [roomId, selectedRoomId, canCreateChatRoom, expectedRoomType, myProfileDocId, teacherName]);
  
      useEffect(() => {
-         if (loading) return;
-         if (!user) return;
+         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+     }, [messages]);
  
--        const redirectPath = getDefaultRouteForRole(role) || '/home';
-+        const redirectPath = isStudentRole(role) ? (getFormulaRedirectPath(location.search) || getDefaultRouteForRole(role) || '/home') : (getDefaultRouteForRole(role) || '/home');
-         navigate(redirectPath, { replace: true });
--    }, [loading, navigate, role, user]);
-+    }, [getFormulaRedirectPath, loading, location.search, navigate, role, user]);
+     const placeholder = useMemo(() => (userRole === 'parent' ? '메시지 보내기...' : '메시지 입력'), [userRole]);
  
-     const handleLogin = useCallback(async () => {
+     useEffect(() => () => {
+         if (attachmentPreviewUrl) URL.revokeObjectURL(attachmentPreviewUrl);
+     }, [attachmentPreviewUrl]);
+ 
+     const clearAttachment = () => {
+         if (attachmentPreviewUrl) URL.revokeObjectURL(attachmentPreviewUrl);
+         setAttachmentPreviewUrl('');
+         setAttachmentFile(null);
+     };
+ 
+     const handleAttachmentChange = (event) => {
+         const file = event.target.files?.[0] || null;
+         event.target.value = '';
+         if (!file) return;
+         const validation = validateChatAttachment(file);
+         if (!validation.ok) {
+             setError(validation.message);
+             clearAttachment();
+             return;
+         }
+         if (attachmentPreviewUrl) URL.revokeObjectURL(attachmentPreviewUrl);
+         setAttachmentFile(file);
+         setAttachmentPreviewUrl(validation.type === 'image' ? URL.createObjectURL(file) : '');
          setError('');
-         setPending(true);
+     };
  
-         try {
-             const credential = await signInWithEmailAndPassword(auth, email.trim(), password);
-             const { user: loggedInUser } = credential;
- 
-             if (!loggedInUser?.uid) {
-                 setError('로그인에 실패했습니다. 다시 시도해주세요.');
+     const handleSend = async (e) => {
+         e.preventDefault();
+         const text = inputText.trim();
+         const fileToUpload = attachmentFile;
+         if (!text && !fileToUpload) return;
+         if (fileToUpload) {
+             const validation = validateChatAttachment(fileToUpload);
+             if (!validation.ok) {
+                 setError(validation.message);
                  return;
              }
- 
-             const userDoc = await getDoc(doc(db, 'users', loggedInUser.uid));
-             if (!userDoc.exists()) {
-                 setError('초대 기반 가입이 필요합니다. 관리자에게 문의하세요.');
-                 await signOut(auth);
-                 return;
-             }
- 
-             const userData = userDoc.data();
-             const userRole = userData?.role;
- 
-             if (!isStudentRole(userRole) && !isParentRole(userRole)) {
-                 setError('학생/학부모 전용 페이지입니다.');
-                 await signOut(auth);
-                 return;
-             }
- 
--            const redirectPath = userRole === ROLE.PARENT ? '/parent/home' : '/student/home';
-+            const redirectPath = userRole === ROLE.PARENT ? '/parent/home' : (getFormulaRedirectPath(location.search) || '/student/home');
-             navigate(redirectPath, { replace: true });
-         } catch (loginError) {
-             setError('로그인에 실패했습니다. 이메일과 비밀번호를 확인해주세요.');
-         } finally {
-             setPending(false);
          }
--    }, [email, navigate, password]);
-+    }, [email, getFormulaRedirectPath, location.search, navigate, password]);
+         setIsSending(true);
  
-     const handleSubmit = (event) => {
-         event.preventDefault();
-         if (pending) return;
-         handleLogin();
+         const viewerUid = auth.currentUser?.uid || 'parent-anonymous';
+         const targetAuthUidForRoom = String(roomCreationContext?.targetAuthUid || '');
+-        const isChatRoomMode = Boolean(selectedRoomId || canCreateChatRoom);
++        const isChatRoomMode = Boolean(selectedRoomId || canCreateChatRoom || expectedRoomType === 'student_institute');
+         let resolvedRoomId = selectedRoomId ? String(selectedRoomId) : roomId || null;
+         let shouldCreateStandardRoom = false;
+         if (!resolvedRoomId && canCreateChatRoom) {
+             const resolvedRoom = await resolveStandardChatRoom({ viewerUid, targetAuthUid: targetAuthUidForRoom, roomType: expectedRoomType, studentId });
+             resolvedRoomId = resolvedRoom?.id || buildStandardRoomId(expectedRoomType, viewerUid, targetAuthUidForRoom, studentId);
+             shouldCreateStandardRoom = !resolvedRoom;
+         }
+         if (!resolvedRoomId && allowLegacyResolve) resolvedRoomId = await resolveRoomId(studentId, studentAuthUid);
+         if (!resolvedRoomId && !canCreateChatRoom) return;
+         const localCreatedAtMs = Date.now();
+         const clientTempId = `client-${localCreatedAtMs}-${Math.random().toString(36).slice(2, 10)}`;
+         const optimisticMessage = {
+             id: clientTempId,
+             roomId: resolvedRoomId,
+             text,
+             messageType: fileToUpload ? (fileToUpload.type === 'application/pdf' ? 'file' : 'image') : 'text',
+             attachments: fileToUpload ? [{
+                 type: fileToUpload.type === 'application/pdf' ? 'pdf' : 'image',
+                 name: fileToUpload.name,
+                 url: attachmentPreviewUrl,
+                 path: '',
+                 size: fileToUpload.size,
+                 contentType: fileToUpload.type,
+             }] : [],
+             senderId: viewerUid,
+@@ -749,71 +753,84 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
+         }
      };
  
      return (
-         <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4 sm:px-6 lg:px-8 font-sans">
-             <div className="max-w-md w-full space-y-6 bg-white p-8 rounded-2xl shadow-lg border border-gray-100">
-                 <div className="text-center space-y-2">
-                     <h2 className="text-2xl font-bold text-gray-900">학생/학부모 로그인</h2>
-                     <p className="text-sm text-gray-500">이메일과 비밀번호로 로그인해주세요.</p>
-                 </div>
- 
-                 <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
-                     <div>
-                         <label className="block text-sm font-medium text-gray-700">이메일</label>
-                         <input
-                             type="email"
-                             value={email}
-                             onChange={(e) => setEmail(e.target.value)}
-                             className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-[#455fab] focus:outline-none focus:ring-1 focus:ring-[#455fab]"
-                             placeholder="student@example.com"
-                             required
-@@ -90,26 +101,26 @@ export default function StudentLogin() {
-                     <div>
-                         <label className="block text-sm font-medium text-gray-700">비밀번호</label>
-                         <input
-                             type="password"
-                             value={password}
-                             onChange={(e) => setPassword(e.target.value)}
-                             className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-[#455fab] focus:outline-none focus:ring-1 focus:ring-[#455fab]"
-                             placeholder="비밀번호를 입력하세요"
-                             required
-                         />
-                     </div>
- 
-                     {error && <p className="text-sm text-red-600">{error}</p>}
- 
-                     <button
-                         type="submit"
-                         disabled={pending}
-                         className="w-full flex justify-center py-2.5 px-4 border border-transparent text-sm font-semibold rounded-lg text-white bg-[#455fab] hover:bg-[#3b5198] focus:outline-none focus:ring-2 focus:ring-[#455fab] focus:ring-offset-2 disabled:opacity-60 disabled:cursor-not-allowed"
-                     >
-                         {pending ? '로그인 중...' : '로그인'}
-                     </button>
-                 </form>
+         <div className={`${isFloating ? 'fixed bottom-24 right-5' : ''} bg-white h-full flex flex-col`}>
+             <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3 bg-gray-50 custom-scrollbar">
+                 {error && <div className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{error}</div>}
+                 {messages.length > 0 ? messages.map((msg, index) => {
+                     const previous = messages[index - 1];
+                     const showDateDivider = !previous || previous.date !== msg.date;
+                     return (
+                         <React.Fragment key={msg.id}>
+                             {showDateDivider && (
+                                 <div className="flex items-center gap-3 py-1">
+                                     <div className="flex-1 h-px bg-gray-200" />
+                                     <p className="text-xs text-gray-400 whitespace-nowrap">{msg.dateLabel}</p>
+                                     <div className="flex-1 h-px bg-gray-200" />
+                                 </div>
+                             )}
+                             <div className={`flex items-end gap-1.5 ${msg.isMe ? 'justify-end' : 'justify-start'}`}>
+                                 {msg.isMe && <span className="text-[11px] text-gray-400 whitespace-nowrap self-end mb-1">{msg.time}</span>}
+                                 <div className={`max-w-[72%] px-3 py-2 rounded-2xl text-sm ${msg.isMe ? 'bg-[#455fab] text-white' : 'bg-white text-gray-900 border border-gray-100'}`}>
+                                     {msg.text && <p className="whitespace-pre-wrap break-words">{msg.text}</p>}
+                                     {msg.attachments.map((attachment) => (
+                                         attachment.type === 'image' ? (
+-                                            <a key={attachment.url || attachment.name} href={attachment.url} target="_blank" rel="noreferrer" className={msg.text ? 'mt-2 block' : 'block'}>
++                                            <button key={attachment.url || attachment.name} type="button" onClick={() => setImageModal(attachment)} className={`${msg.text ? 'mt-2 ' : ''}block text-left`}>
+                                                 <img src={attachment.url} alt={attachment.name} className="max-h-48 rounded-lg object-cover" onError={(event) => { event.currentTarget.style.display = 'none'; }} />
+                                                 <span className="mt-1 block text-xs underline break-all">{attachment.name}</span>
+-                                            </a>
++                                            </button>
+                                         ) : (
+                                             <a key={attachment.url || attachment.name} href={attachment.url} target="_blank" rel="noreferrer" className={`${msg.text ? 'mt-2 ' : ''}flex items-center gap-2 rounded-lg border border-current/20 px-2 py-1.5 text-xs`}>
+                                                 <span>📄</span><span className="break-all">{attachment.name}</span><span className="whitespace-nowrap opacity-75">{formatAttachmentSize(attachment.size)}</span>
+                                             </a>
+                                         )
+                                     ))}
+                                 </div>
+                                 {!msg.isMe && <span className="text-[11px] text-gray-400 whitespace-nowrap self-end mb-1">{msg.time}</span>}
+                             </div>
+                         </React.Fragment>
+                     );
+                 }) : (
+                     <div className="text-center py-10 text-xs text-gray-500">{emptyMessage}</div>
+                 )}
+                 <div ref={messagesEndRef} />
              </div>
-         </div>
-     );
--}
-\ No newline at end of file
-+}
-diff --git a/src/components/Student/formulaBook/FormulaBookView.jsx b/src/components/Student/formulaBook/FormulaBookView.jsx
-index c98e24cf30ed40395acb2f62a688be7a347b5227..8b05e7336a12e9f36e643b09750b3a479cac791b 100644
---- a/src/components/Student/formulaBook/FormulaBookView.jsx
-+++ b/src/components/Student/formulaBook/FormulaBookView.jsx
-@@ -1,196 +1,216 @@
- import React, { useEffect, useMemo, useRef, useState } from 'react';
--import { collection, getDocs, query, where } from 'firebase/firestore';
-+import {
-+    collection, doc, getDoc, getDocs, query, where,
-+} from 'firebase/firestore';
- import { db } from '../../../firebase/client';
--import FormulaConceptModal from './FormulaConceptModal';
  
- const normalizeText = (value) => String(value || '').trim().toLocaleLowerCase('ko-KR');
- const byOrderThenTitle = (a, b) => (
-     (Number(a.order) || 0) - (Number(b.order) || 0)
-     || String(a.title || '').localeCompare(String(b.title || ''), 'ko')
- );
- 
- const matchesSearch = (concept, normalizedQuery) => {
-     if (!normalizedQuery) return true;
-     const searchableValues = [
-         concept.title,
-         concept.summary,
-         ...(Array.isArray(concept.tags) ? concept.tags : []),
-         ...(Array.isArray(concept.keywords) ? concept.keywords : []),
-     ];
-     return searchableValues.some((value) => normalizeText(value).includes(normalizedQuery));
- };
- 
-+const buildNocookieEmbedUrl = (value) => {
-+    if (!value) return '';
-+    try {
-+        const url = new URL(value);
-+        const isYoutubeEmbed = ['www.youtube.com', 'youtube.com', 'www.youtube-nocookie.com', 'youtube-nocookie.com'].includes(url.hostname)
-+            && url.pathname.startsWith('/embed/');
-+        if (url.protocol !== 'https:' || !isYoutubeEmbed) return '';
-+        const videoId = url.pathname.split('/').filter(Boolean)[1] || '';
-+        if (!videoId) return '';
-+        const embedUrl = new URL(`https://www.youtube-nocookie.com/embed/${videoId}`);
-+        embedUrl.searchParams.set('modestbranding', '1');
-+        embedUrl.searchParams.set('rel', '0');
-+        embedUrl.searchParams.set('playsinline', '1');
-+        return embedUrl.toString();
-+    } catch {
-+        return '';
-+    }
-+};
-+
- export default function FormulaBookView({ initialConceptId = '', onConceptHandled }) {
-     const [subjects, setSubjects] = useState([]);
-     const [concepts, setConcepts] = useState([]);
-     const [selectedSubjectId, setSelectedSubjectId] = useState('');
-     const [selectedConcept, setSelectedConcept] = useState(null);
-     const [search, setSearch] = useState('');
--    const [isLoading, setIsLoading] = useState(true);
-+    const [isSubjectLoading, setIsSubjectLoading] = useState(true);
-+    const [isConceptLoading, setIsConceptLoading] = useState(false);
-     const [error, setError] = useState('');
-     const handledConceptIdRef = useRef('');
- 
-     useEffect(() => {
-         let isMounted = true;
--
--        const loadFormulaBook = async () => {
-+        const loadSubjects = async () => {
-             try {
--                const [subjectSnapshot, conceptSnapshot] = await Promise.all([
--                    getDocs(query(collection(db, 'formulaBookSubjects'), where('active', '==', true))),
--                    getDocs(query(collection(db, 'formulaBookConcepts'), where('active', '==', true))),
--                ]);
-+                const subjectSnapshot = await getDocs(collection(db, 'formulaSubjects'));
-                 if (!isMounted) return;
--
-                 setSubjects(subjectSnapshot.docs
-                     .map((item) => ({ id: item.id, ...item.data() }))
-                     .filter((item) => item.active !== false)
-                     .sort(byOrderThenTitle));
-+            } catch (loadError) {
-+                console.error('[FormulaBookView] subject load failed', loadError);
-+                if (isMounted) setError('공식집 과목을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.');
-+            } finally {
-+                if (isMounted) setIsSubjectLoading(false);
-+            }
-+        };
-+        loadSubjects();
-+        return () => { isMounted = false; };
-+    }, []);
-+
-+    useEffect(() => {
-+        if (!selectedSubjectId) {
-+            setConcepts([]);
-+            return undefined;
-+        }
-+        let isMounted = true;
-+        const loadConcepts = async () => {
-+            setIsConceptLoading(true);
-+            try {
-+                const conceptSnapshot = await getDocs(query(
-+                    collection(db, 'formulaConcepts'),
-+                    where('subjectId', '==', selectedSubjectId),
-+                ));
-+                if (!isMounted) return;
-                 setConcepts(conceptSnapshot.docs
-                     .map((item) => ({ id: item.id, ...item.data() }))
-                     .filter((item) => item.active !== false)
-                     .sort(byOrderThenTitle));
-             } catch (loadError) {
--                console.error('[FormulaBookView] load failed', loadError);
--                if (isMounted) setError('공식집을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.');
-+                console.error('[FormulaBookView] concept load failed', loadError);
-+                if (isMounted) setError('공식집 개념을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.');
-             } finally {
--                if (isMounted) setIsLoading(false);
-+                if (isMounted) setIsConceptLoading(false);
-             }
-         };
--
--        loadFormulaBook();
--        return () => {
--            isMounted = false;
--        };
--    }, []);
-+        loadConcepts();
-+        return () => { isMounted = false; };
-+    }, [selectedSubjectId]);
- 
-     useEffect(() => {
--        if (isLoading || !initialConceptId || handledConceptIdRef.current === initialConceptId) return;
--
--        const concept = concepts.find((item) => String(item.id) === String(initialConceptId));
-+        if (isSubjectLoading || !initialConceptId || handledConceptIdRef.current === initialConceptId) return;
-         handledConceptIdRef.current = initialConceptId;
--        if (concept) {
--            setSelectedSubjectId(String(concept.subjectId || ''));
--            setSelectedConcept(concept);
--        }
--        onConceptHandled?.(Boolean(concept));
--    }, [concepts, initialConceptId, isLoading, onConceptHandled]);
-+        const loadInitialConcept = async () => {
-+            try {
-+                const conceptSnapshot = await getDoc(doc(db, 'formulaConcepts', initialConceptId));
-+                const concept = conceptSnapshot.exists() ? { id: conceptSnapshot.id, ...conceptSnapshot.data() } : null;
-+                if (concept?.active !== false) {
-+                    setSelectedSubjectId(String(concept.subjectId || ''));
-+                    setSelectedConcept(concept);
-+                    onConceptHandled?.(true);
-+                    return;
-+                }
-+                onConceptHandled?.(false);
-+            } catch (loadError) {
-+                console.error('[FormulaBookView] initial concept load failed', loadError);
-+                onConceptHandled?.(false);
-+            }
-+        };
-+        loadInitialConcept();
-+    }, [initialConceptId, isSubjectLoading, onConceptHandled]);
- 
-     const normalizedQuery = normalizeText(search);
--    const visibleConcepts = useMemo(() => concepts.filter((concept) => {
--        const isInSubject = !selectedSubjectId || String(concept.subjectId) === String(selectedSubjectId);
--        return isInSubject && matchesSearch(concept, normalizedQuery);
--    }), [concepts, normalizedQuery, selectedSubjectId]);
-+    const visibleConcepts = useMemo(() => concepts.filter((concept) => matchesSearch(concept, normalizedQuery)), [concepts, normalizedQuery]);
-+    const selectedSubject = subjects.find((item) => String(item.id) === String(selectedSubjectId));
-+    const embedUrl = useMemo(() => buildNocookieEmbedUrl(selectedConcept?.youtubeEmbedUrl), [selectedConcept?.youtubeEmbedUrl]);
- 
-     return (
-         <section className="space-y-5">
--            {/* TODO: QR 링크로 로그인 전 진입한 경우 conceptId를 저장하고 로그인 완료 후 복원 처리 */}
--            <div className="relative">
--                <span className="pointer-events-none absolute inset-y-0 left-4 flex items-center text-gray-400">⌕</span>
--                <input
--                    type="search"
--                    value={search}
--                    onChange={(event) => setSearch(event.target.value)}
--                    placeholder="개념명, 태그, 키워드, 요약 검색"
--                    className="w-full rounded-2xl border border-gray-200 bg-white py-3.5 pl-11 pr-4 text-sm outline-none transition focus:border-[#455fab] focus:ring-2 focus:ring-[#455fab]/10"
--                    aria-label="수학 공식 검색"
--                />
-+            <div>
-+                <h2 className="mb-3 text-base font-extrabold text-gray-900">과목</h2>
-+                {isSubjectLoading && <div className="rounded-2xl border border-gray-100 bg-white px-4 py-8 text-center text-sm text-gray-500">공식집 과목을 불러오는 중입니다...</div>}
-+                {!isSubjectLoading && error && <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-8 text-center text-sm text-red-600">{error}</div>}
-+                {!isSubjectLoading && !error && (
-+                    <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white">
-+                        {subjects.map((subject) => (
-+                            <button
-+                                key={subject.id}
-+                                type="button"
-+                                onClick={() => { setSelectedSubjectId(subject.id); setSelectedConcept(null); }}
-+                                className={`flex w-full items-center justify-between border-b border-gray-100 px-4 py-3 text-left text-sm last:border-b-0 ${selectedSubjectId === subject.id ? 'bg-[#eef2ff] text-[#455fab]' : 'text-gray-800'}`}
-+                            >
-+                                <span className="font-bold">{subject.title}</span>
-+                                <span className="text-xs text-gray-400">순서 {subject.order || 0}</span>
-+                            </button>
-+                        ))}
-+                        {subjects.length === 0 && <div className="px-4 py-8 text-center text-sm text-gray-500">등록된 과목이 없습니다.</div>}
++            {imageModal && (
++                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => setImageModal(null)}>
++                    <div className="max-w-[96vw] max-h-[96vh] rounded-xl bg-white p-3 shadow-xl" onClick={(event) => event.stopPropagation()}>
++                        <div className="mb-2 flex items-center justify-between gap-3">
++                            <p className="truncate text-sm font-semibold text-gray-700">{imageModal.name || '이미지'}</p>
++                            <button type="button" onClick={() => setImageModal(null)} className="rounded border px-2 py-1 text-xs">닫기</button>
++                        </div>
++                        <img src={imageModal.url} alt={imageModal.name || '첨부 이미지'} className="max-h-[78vh] max-w-[90vw] rounded-lg object-contain" />
++                        {imageModal.url && <a href={imageModal.url} target="_blank" rel="noreferrer" className="mt-2 inline-block text-xs underline">원본 열기</a>}
 +                    </div>
-+                )}
-             </div>
- 
--            {isLoading && (
--                <div className="rounded-2xl border border-gray-100 bg-white px-4 py-12 text-center text-sm text-gray-500">
--                    공식집을 불러오는 중입니다...
--                </div>
--            )}
--
--            {!isLoading && error && (
--                <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-8 text-center text-sm text-red-600">
--                    {error}
-+            {selectedSubjectId && (
-+                <div className="relative">
-+                    <span className="pointer-events-none absolute inset-y-0 left-4 flex items-center text-gray-400">⌕</span>
-+                    <input
-+                        type="search"
-+                        value={search}
-+                        onChange={(event) => setSearch(event.target.value)}
-+                        placeholder="개념명, 태그, 요약 검색"
-+                        className="w-full rounded-2xl border border-gray-200 bg-white py-3.5 pl-11 pr-4 text-sm outline-none transition focus:border-[#455fab] focus:ring-2 focus:ring-[#455fab]/10"
-+                        aria-label="수학 공식 검색"
-+                    />
-                 </div>
-             )}
- 
--            {!isLoading && !error && (
--                <>
--                    <div>
--                        <div className="mb-3 flex items-center justify-between">
--                            <h2 className="text-base font-extrabold text-gray-900">과목</h2>
--                            {selectedSubjectId && (
--                                <button type="button" onClick={() => setSelectedSubjectId('')} className="text-xs font-semibold text-[#455fab]">
--                                    전체 보기
-+            {selectedSubjectId && (
-+                <div>
-+                    <h2 className="mb-3 text-base font-extrabold text-gray-900">
-+                        {selectedSubject?.title || '선택한 과목'} 개념
-+                        <span className="ml-2 text-xs font-medium text-gray-400">{visibleConcepts.length}개</span>
-+                    </h2>
-+                    {isConceptLoading ? (
-+                        <div className="rounded-2xl border border-gray-100 bg-white px-4 py-8 text-center text-sm text-gray-500">개념을 불러오는 중입니다...</div>
-+                    ) : (
-+                        <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white">
-+                            {visibleConcepts.map((concept) => (
-+                                <button key={concept.id} type="button" onClick={() => setSelectedConcept(concept)} className="block w-full border-b border-gray-100 px-4 py-4 text-left last:border-b-0 hover:bg-gray-50">
-+                                    <div className="flex items-center justify-between gap-3">
-+                                        <h3 className="font-extrabold text-gray-900">{concept.title}</h3>
-+                                        <span className="text-xs text-gray-400">순서 {concept.order || 0}</span>
-+                                    </div>
-+                                    <p className="mt-1 line-clamp-2 text-sm leading-6 text-gray-600">{concept.summary || '요약 설명이 없습니다.'}</p>
-+                                    {Array.isArray(concept.tags) && concept.tags.length > 0 && <p className="mt-2 text-xs font-semibold text-[#455fab]">{concept.tags.map((tag) => `#${tag}`).join(' ')}</p>}
-                                 </button>
--                            )}
-+                            ))}
-+                            {visibleConcepts.length === 0 && <div className="px-4 py-10 text-center text-sm text-gray-500">조건에 맞는 개념이 없습니다.</div>}
-                         </div>
--                        {subjects.length > 0 ? (
--                            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
--                                {subjects.map((subject) => {
--                                    const isSelected = String(selectedSubjectId) === String(subject.id);
--                                    return (
--                                        <button
--                                            key={subject.id}
--                                            type="button"
--                                            onClick={() => setSelectedSubjectId(isSelected ? '' : subject.id)}
--                                            className={`rounded-2xl border p-4 text-left shadow-sm transition active:scale-[0.98] ${
--                                                isSelected
--                                                    ? 'border-[#455fab] bg-[#455fab] text-white'
--                                                    : 'border-gray-200 bg-white text-gray-900 hover:border-[#455fab]/40'
--                                            }`}
--                                        >
--                                            <span className="block text-sm font-bold">{subject.title}</span>
--                                            <span className={`mt-1 block text-xs ${isSelected ? 'text-white/75' : 'text-gray-400'}`}>
--                                                개념 {concepts.filter((item) => String(item.subjectId) === String(subject.id)).length}개
--                                            </span>
--                                        </button>
--                                    );
--                                })}
--                            </div>
--                        ) : (
--                            <div className="rounded-2xl border border-dashed border-gray-200 bg-white px-4 py-8 text-center text-sm text-gray-500">
--                                등록된 과목이 없습니다.
--                            </div>
--                        )}
--                    </div>
-+                    )}
 +                </div>
 +            )}
- 
--                    <div>
--                        <h2 className="mb-3 text-base font-extrabold text-gray-900">
--                            {selectedSubjectId ? subjects.find((item) => String(item.id) === String(selectedSubjectId))?.title : '전체 개념'}
--                            <span className="ml-2 text-xs font-medium text-gray-400">{visibleConcepts.length}개</span>
--                        </h2>
--                        {visibleConcepts.length > 0 ? (
--                            <div className="grid gap-3 md:grid-cols-2">
--                                {visibleConcepts.map((concept) => (
--                                    <article key={concept.id} className="flex flex-col rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
--                                        <h3 className="text-base font-extrabold text-gray-900">{concept.title}</h3>
--                                        {Array.isArray(concept.tags) && concept.tags.length > 0 && (
--                                            <div className="mt-2 flex flex-wrap gap-1.5">
--                                                {concept.tags.map((tag) => (
--                                                    <span key={tag} className="rounded-full bg-[#eef2ff] px-2.5 py-1 text-[11px] font-semibold text-[#455fab]">
--                                                        #{tag}
--                                                    </span>
--                                                ))}
--                                            </div>
--                                        )}
--                                        <p className="mt-3 flex-1 text-sm leading-6 text-gray-600">
--                                            {concept.summary || '요약 설명이 없습니다.'}
--                                        </p>
--                                        <button
--                                            type="button"
--                                            onClick={() => setSelectedConcept(concept)}
--                                            className="mt-4 w-full rounded-xl bg-[#455fab] px-4 py-3 text-sm font-bold text-white transition active:scale-[0.98]"
--                                        >
--                                            영상 보기
--                                        </button>
--                                    </article>
--                                ))}
-+            {!selectedSubjectId && !isSubjectLoading && !error && <div className="rounded-2xl border border-dashed border-gray-200 bg-white px-4 py-10 text-center text-sm text-gray-500">과목을 선택하면 개념 목록을 불러옵니다.</div>}
 +
-+            {selectedConcept && (
-+                <article className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-+                    <p className="mb-1 text-xs font-bold text-[#455fab]">개념 상세</p>
-+                    <h2 className="text-xl font-extrabold text-gray-900">{selectedConcept.title}</h2>
-+                    {Array.isArray(selectedConcept.tags) && selectedConcept.tags.length > 0 && <p className="mt-2 text-xs font-semibold text-[#455fab]">{selectedConcept.tags.map((tag) => `#${tag}`).join(' ')}</p>}
-+                    <p className="mt-4 whitespace-pre-wrap text-sm leading-7 text-gray-700">{selectedConcept.summary || '등록된 설명이 없습니다.'}</p>
-+                    <div className="mt-5">
-+                        {embedUrl ? (
-+                            <div className="aspect-video overflow-hidden rounded-xl bg-black">
-+                                <iframe className="h-full w-full" src={embedUrl} title={`${selectedConcept.title} 설명 영상`} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen />
-                             </div>
-                         ) : (
--                            <div className="rounded-2xl border border-dashed border-gray-200 bg-white px-4 py-10 text-center text-sm text-gray-500">
--                                조건에 맞는 개념이 없습니다.
--                            </div>
-+                            <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 px-4 py-8 text-center text-sm text-gray-500">재생 가능한 영상이 등록되지 않았습니다.</div>
-                         )}
-                     </div>
--                </>
-+                </article>
+             {attachmentFile && (
+                 <div className="px-3 py-2 border-t bg-white flex items-center gap-3 text-xs">
+                     {attachmentPreviewUrl && <img src={attachmentPreviewUrl} alt="첨부 미리보기" className="h-12 w-12 rounded object-cover" />}
+                     <span className="flex-1 truncate">{attachmentFile.name} · {formatAttachmentSize(attachmentFile.size)}</span>
+                     <button type="button" onClick={clearAttachment} className="text-red-500">취소</button>
+                 </div>
              )}
--
--            <FormulaConceptModal concept={selectedConcept} onClose={() => setSelectedConcept(null)} />
-         </section>
+             <form onSubmit={handleSend} className="sticky bottom-0 p-3 bg-white border-t border-gray-100 flex gap-2">
+                 <label className="px-3 py-2 rounded-full border border-gray-200 bg-white text-sm cursor-pointer">
+                     첨부
+                     <input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" onChange={handleAttachmentChange} className="hidden" />
+                 </label>
+                 <input
+                     type="text"
+                     value={inputText}
+                     onChange={(e) => setInputText(e.target.value)}
+                     placeholder={placeholder}
+                     className="flex-1 bg-gray-50 border border-gray-200 rounded-full px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-300"
+                 />
+                 <button type="submit" disabled={isSending || (!inputText.trim() && !attachmentFile)} className="px-4 py-2 rounded-full text-sm font-semibold bg-gray-900 text-white disabled:bg-gray-300">
+                     전송
+                 </button>
+             </form>
+         </div>
+     );
+diff --git a/src/components/messenger/ChatMessagePane.jsx b/src/components/messenger/ChatMessagePane.jsx
+index cd3fabf3059efa41f5308752a3fafc73a5b62cd0..6ffdc588d9439cff39b6bda217460ebfbe7413e5 100644
+--- a/src/components/messenger/ChatMessagePane.jsx
++++ b/src/components/messenger/ChatMessagePane.jsx
+@@ -43,50 +43,51 @@ const formatTime = (value) => {
+     const date = normalizeMessageDate(value);
+     if (!date || Number.isNaN(date.getTime())) return '';
+     return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+ };
+ 
+ const getParticipantCount = (room) => {
+     const candidates = [room?.participantIds, room?.participants, room?.memberIds, room?.members];
+     const values = candidates.find((candidate) => Array.isArray(candidate));
+     return values ? values.length : 2;
+ };
+ 
+ const shouldShowSenderName = (room) => getParticipantCount(room) > 2;
+ 
+ export default function ChatMessagePane({
+     room,
+     messages = [],
+     myUid,
+     onSend,
+     onRetryMessage,
+     contextData = {},
+ }) {
+     const [draft, setDraft] = useState('');
+     const [attachmentFile, setAttachmentFile] = useState(null);
+     const [previewUrl, setPreviewUrl] = useState('');
+     const [error, setError] = useState('');
++    const [imageModal, setImageModal] = useState(null);
+ 
+     const clearAttachment = () => {
+         if (previewUrl) URL.revokeObjectURL(previewUrl);
+         setPreviewUrl('');
+         setAttachmentFile(null);
+     };
+ 
+     const handleAttachmentChange = (event) => {
+         const file = event.target.files?.[0] || null;
+         event.target.value = '';
+         if (!file) return;
+         const validation = validateChatAttachment(file);
+         if (!validation.ok) {
+             setError(validation.message);
+             clearAttachment();
+             return;
+         }
+         if (previewUrl) URL.revokeObjectURL(previewUrl);
+         setAttachmentFile(file);
+         setPreviewUrl(validation.type === 'image' ? URL.createObjectURL(file) : '');
+         setError('');
+     };
+ 
+     const sortedMessages = useMemo(() => {
+         return [...messages].sort((a, b) => {
+@@ -156,78 +157,90 @@ export default function ChatMessagePane({
+                             <div key={item.key} className="flex items-center gap-3 py-1">
+                                 <div className="flex-1 h-px bg-gray-200" />
+                                 <p className="text-xs text-gray-400">{item.label}</p>
+                                 <div className="flex-1 h-px bg-gray-200" />
+                             </div>
+                         );
+                     }
+ 
+                     const message = item.message;
+                     const mine = String(message.senderId || message.createdBy || '') === String(myUid || '');
+                     const isSending = Boolean(message?.sending);
+                     const isFailed = Boolean(message?.failed);
+                     const senderName = message?.senderName && message.senderName !== '나' ? message.senderName : '메시지';
+                     const timeLabel = formatTime(message.createdAt);
+                     return (
+                         <div key={item.key}>
+                             {shouldShowSenderName(room) && !mine && senderName && (
+                                 <p className="mb-1 text-xs font-semibold text-gray-500">{senderName}</p>
+                             )}
+                             <div className={`flex items-end gap-1.5 ${mine ? 'justify-end' : 'justify-start'}`}>
+                                 {mine && <span className="text-xs text-gray-400 whitespace-nowrap self-end mb-1">{timeLabel}</span>}
+                                 <div className={`max-w-[72%] rounded-2xl px-3 py-2 text-sm ${mine ? 'bg-[#455fab] text-white' : 'bg-white border border-gray-100 text-gray-900'} ${isSending ? 'opacity-70' : ''} ${isFailed ? 'border border-red-300 bg-red-50 text-red-700' : ''}`}>
+                                     {message.text && <p className="whitespace-pre-wrap break-words">{message.text}</p>}
+                                     {(Array.isArray(message.attachments) ? message.attachments : []).map((attachment) => (
+                                         attachment.type === 'image' ? (
+-                                            <a key={attachment.url || attachment.name} href={attachment.url} target="_blank" rel="noreferrer" className={message.text ? 'mt-2 block' : 'block'}>
++                                            <button key={attachment.url || attachment.name} type="button" onClick={() => setImageModal(attachment)} className={`${message.text ? 'mt-2 ' : ''}block text-left`}>
+                                                 <img src={attachment.url} alt={attachment.name} className="max-h-48 rounded-lg object-cover" onError={(event) => { event.currentTarget.style.display = 'none'; }} />
+                                                 <span className="mt-1 block text-xs underline break-all">{attachment.name}</span>
+-                                            </a>
++                                            </button>
+                                         ) : (
+                                             <a key={attachment.url || attachment.name} href={attachment.url} target="_blank" rel="noreferrer" className={`${message.text ? 'mt-2 ' : ''}flex items-center gap-2 rounded-lg border border-current/20 px-2 py-1.5 text-xs`}>
+                                                 <span>📄</span><span className="break-all">{attachment.name}</span><span className="whitespace-nowrap opacity-75">{formatAttachmentSize(attachment.size)}</span>
+                                             </a>
+                                         )
+                                     ))}
+                                     {isSending && <p className="text-[10px] text-gray-500 mt-1">전송 중…</p>}
+                                     {isFailed && (
+                                         <div className="mt-1 flex items-center justify-end gap-2">
+                                             <p className="text-[10px] text-red-500">전송 실패</p>
+                                             <button
+                                                 type="button"
+                                                 onClick={() => onRetryMessage?.(message)}
+                                                 className="text-[10px] px-1.5 py-0.5 rounded border border-red-300 text-red-600"
+                                             >
+                                                 재시도
+                                             </button>
+                                         </div>
+                                     )}
+                                 </div>
+                                 {!mine && <span className="text-xs text-gray-400 whitespace-nowrap self-end mb-1">{timeLabel}</span>}
+                             </div>
+                         </div>
+                     );
+                 })}
+             </div>
+             {error && <p className="border-t px-3 py-2 text-xs text-red-600">{error}</p>}
+             {attachmentFile && (
+                 <div className="border-t px-3 py-2 flex items-center gap-3 text-xs">
+                     {previewUrl && <img src={previewUrl} alt="첨부 미리보기" className="h-12 w-12 rounded object-cover" />}
+                     <span className="flex-1 truncate">{attachmentFile.name} · {formatAttachmentSize(attachmentFile.size)}</span>
+                     <button type="button" onClick={clearAttachment} className="text-red-500">취소</button>
+                 </div>
+             )}
++            {imageModal && (
++                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => setImageModal(null)}>
++                    <div className="max-w-[96vw] max-h-[96vh] rounded-xl bg-white p-3 shadow-xl" onClick={(event) => event.stopPropagation()}>
++                        <div className="mb-2 flex items-center justify-between gap-3">
++                            <p className="truncate text-sm font-semibold text-gray-700">{imageModal.name || '이미지'}</p>
++                            <button type="button" onClick={() => setImageModal(null)} className="rounded border px-2 py-1 text-xs">닫기</button>
++                        </div>
++                        <img src={imageModal.url} alt={imageModal.name || '첨부 이미지'} className="max-h-[78vh] max-w-[90vw] rounded-lg object-contain" />
++                        {imageModal.url && <a href={imageModal.url} target="_blank" rel="noreferrer" className="mt-2 inline-block text-xs underline">원본 열기</a>}
++                    </div>
++                </div>
++            )}
+             <form onSubmit={submit} className="border-t p-2 flex gap-2 items-end">
+                 <label className="px-3 py-2 rounded border text-sm cursor-pointer">첨부<input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" onChange={handleAttachmentChange} className="hidden" /></label>
+                 <textarea
+                     value={draft}
+                     onChange={(event) => setDraft(event.target.value)}
+                     onKeyDown={handleKeyDown}
+                     placeholder="메시지 입력"
+                     rows={2}
+                     className="flex-1 border rounded px-3 py-2 text-sm resize-y"
+                 />
+                 <button type="submit" disabled={!draft.trim() && !attachmentFile} className="px-3 py-2 rounded bg-green-600 text-white text-sm disabled:bg-gray-300">전송</button>
+             </form>
+         </div>
      );
  }
-diff --git a/src/pages/FormulaBookManagement.jsx b/src/pages/FormulaBookManagement.jsx
-index d3e41dc3881589abf11b58dbeee32f31dc7edd05..3b0b69f5125decab4b83e4094d140fd511fff12c 100644
---- a/src/pages/FormulaBookManagement.jsx
-+++ b/src/pages/FormulaBookManagement.jsx
-@@ -1,102 +1,162 @@
- import React, { useEffect, useMemo, useState } from 'react';
- import {
-   addDoc, collection, doc, getDocs, serverTimestamp, updateDoc,
- } from 'firebase/firestore';
- import useAuth from '../auth/useAuth';
- import { db } from '../firebase/client';
- 
--const SUBJECTS_COLLECTION = 'formulaBookSubjects';
--const CONCEPTS_COLLECTION = 'formulaBookConcepts';
-+const SUBJECTS_COLLECTION = 'formulaSubjects';
-+const CONCEPTS_COLLECTION = 'formulaConcepts';
- const emptySubject = { title: '', order: 0, active: true };
- const emptyConcept = {
--  subjectId: '', title: '', summary: '', description: '', tags: '', youtubeEmbedUrl: '', order: 0, active: true,
-+  subjectId: '', title: '', summary: '', tags: '', youtubeEmbedUrl: '', order: 0, active: true,
+\ No newline at end of file
+diff --git a/src/components/messenger/messengerTargets.js b/src/components/messenger/messengerTargets.js
+index 1cd2df196963d40714bd64f77c81627e264133d3..3b174dd54afb0830a254910cd7d3ece519320f6f 100644
+--- a/src/components/messenger/messengerTargets.js
++++ b/src/components/messenger/messengerTargets.js
+@@ -39,93 +39,105 @@ const getStudentClassIds = (student) => {
  };
- const sortItems = (items) => [...items].sort((a, b) => Number(a.order || 0) - Number(b.order || 0));
  
--export const buildFormulaConceptQrPath = (conceptId) => `/classroom?mode=formula&conceptId=${encodeURIComponent(conceptId)}`;
-+export const buildFormulaConceptQrPath = (conceptId) => `/classroom?mode=book&conceptId=${encodeURIComponent(conceptId)}`;
- export const buildFormulaConceptQrUrl = (conceptId) => `${window.location.origin}${buildFormulaConceptQrPath(conceptId)}`;
-+export const buildQrImageUrl = (conceptId) => `https://api.qrserver.com/v1/create-qr-code/?size=640x640&format=png&data=${encodeURIComponent(buildFormulaConceptQrUrl(conceptId))}`;
-+
-+const normalizeYoutubeEmbedUrl = (value) => {
-+  const raw = String(value || '').trim();
-+  const iframeSrc = raw.match(/<iframe[^>]+src=["']([^"']+)["']/i)?.[1];
-+  const input = iframeSrc || raw;
-+  try {
-+    const url = new URL(input);
-+    let videoId = '';
-+    if (url.hostname === 'youtu.be') videoId = url.pathname.split('/').filter(Boolean)[0] || '';
-+    if (url.hostname.endsWith('youtube.com') || url.hostname.endsWith('youtube-nocookie.com')) {
-+      if (url.pathname.startsWith('/embed/')) videoId = url.pathname.split('/').filter(Boolean)[1] || '';
-+      if (url.pathname === '/watch') videoId = url.searchParams.get('v') || '';
-+      if (url.pathname.startsWith('/shorts/')) videoId = url.pathname.split('/').filter(Boolean)[1] || '';
-+    }
-+    if (!/^[\w-]{6,}$/.test(videoId)) return '';
-+    return `https://www.youtube-nocookie.com/embed/${videoId}?modestbranding=1&rel=0&playsinline=1`;
-+  } catch { return ''; }
+ const pickRepresentativeClass = (student, classMap) => {
+     const classIds = getStudentClassIds(student);
+     if (!classIds.length) return null;
+ 
+     const linkedClasses = classIds
+         .map((classId) => classMap.get(String(classId)) || null)
+         .filter(Boolean);
+ 
+     if (!linkedClasses.length) return null;
+ 
+     const ongoing = linkedClasses.find((classDoc) => !isClosedClass(classDoc));
+     return ongoing || linkedClasses[0] || null;
+ };
+ 
+ const appendParentSuffix = (name) => {
+     const normalized = normalizeText(name);
+     if (!normalized) return '';
+     return normalized.endsWith('학부모') ? normalized : `${normalized} 학부모`;
+ };
+ 
+ const hasParentSuffix = (value) => normalizeText(value).includes('학부모');
+ 
+ const getArrayField = (value) => (Array.isArray(value) ? value.map(String).filter(Boolean) : []);
++const getAuthUid = (user) => normalizeText(user?.authUid || user?.uid || user?.studentAuthUid || user?.studentUid || user?.parentUid);
+ 
+ const getRoomStudentIds = (room) => [
+     normalizeText(room?.studentId),
+     ...getArrayField(room?.studentIds),
+ ].filter(Boolean);
+ 
+ const getRoomParentIds = (room) => [
+     normalizeText(room?.parentId),
+     normalizeText(room?.parentUid),
+     ...getArrayField(room?.parentUids),
+ ].filter(Boolean);
+ 
+ const getStudentNameFromIds = (studentIds, studentById) => (
+     studentIds.map((studentId) => studentById.get(String(studentId))).find(Boolean)?.name
+     || ''
+ );
+ 
+ const isParentRole = (role) => ['parent', 'guardian', '학부모'].includes(lower(role));
+ 
+ const hasParentRoomHint = (room, counterpartyUid = '') => {
+     const roleValues = room?.participantRoles && typeof room.participantRoles === 'object'
+         ? Object.values(room.participantRoles)
+         : [];
+     const counterpartyRole = counterpartyUid && room?.participantRoles
+         ? room.participantRoles[counterpartyUid]
+         : '';
+     return isParentRole(counterpartyRole)
+         || roleValues.some(isParentRole)
+         || getRoomParentIds(room).length > 0
+         || Boolean(room?.parentName);
+ };
+ 
++const getParticipantNameByRole = (room, roleMatcher) => {
++    const roles = room?.participantRoles && typeof room.participantRoles === 'object' ? room.participantRoles : {};
++    const names = room?.participantNames && typeof room.participantNames === 'object' ? room.participantNames : {};
++    const matchedUid = Object.keys(roles).find((uid) => roleMatcher(roles[uid]));
++    return matchedUid ? normalizeText(names[matchedUid]) : '';
 +};
- 
- export default function FormulaBookManagement() {
-   const { user } = useAuth();
-   const [subjects, setSubjects] = useState([]);
-   const [concepts, setConcepts] = useState([]);
-   const [subjectForm, setSubjectForm] = useState(emptySubject);
-   const [conceptForm, setConceptForm] = useState(emptyConcept);
-   const [editingSubjectId, setEditingSubjectId] = useState('');
-   const [editingConceptId, setEditingConceptId] = useState('');
-+  const [selectedSubjectFilter, setSelectedSubjectFilter] = useState('');
-   const [message, setMessage] = useState('');
-+  const [qrConcept, setQrConcept] = useState(null);
- 
-   const loadData = async () => {
-     const [subjectSnapshot, conceptSnapshot] = await Promise.all([
-       getDocs(collection(db, SUBJECTS_COLLECTION)),
-       getDocs(collection(db, CONCEPTS_COLLECTION)),
-     ]);
-     setSubjects(sortItems(subjectSnapshot.docs.map((item) => ({ id: item.id, ...item.data() }))));
-     setConcepts(sortItems(conceptSnapshot.docs.map((item) => ({ id: item.id, ...item.data() }))));
-   };
- 
-   useEffect(() => { loadData().catch(() => setMessage('공식집 데이터를 불러오지 못했습니다.')); }, []);
-   const subjectTitleMap = useMemo(() => Object.fromEntries(subjects.map((item) => [item.id, item.title])), [subjects]);
-+  const visibleConcepts = useMemo(() => concepts.filter((concept) => !selectedSubjectFilter || concept.subjectId === selectedSubjectFilter), [concepts, selectedSubjectFilter]);
- 
-   const saveSubject = async (event) => {
-     event.preventDefault();
-     const payload = { ...subjectForm, order: Number(subjectForm.order) || 0, updatedAt: serverTimestamp(), updatedBy: user?.uid || '' };
-     if (editingSubjectId) await updateDoc(doc(db, SUBJECTS_COLLECTION, editingSubjectId), payload);
-     else await addDoc(collection(db, SUBJECTS_COLLECTION), { ...payload, createdAt: serverTimestamp(), createdBy: user?.uid || '' });
-     setSubjectForm(emptySubject); setEditingSubjectId(''); setMessage('과목을 저장했습니다.'); await loadData();
-   };
- 
-   const saveConcept = async (event) => {
-     event.preventDefault();
-     const tags = String(conceptForm.tags || '').split(',').map((tag) => tag.trim()).filter(Boolean);
-+    const youtubeEmbedUrl = normalizeYoutubeEmbedUrl(conceptForm.youtubeEmbedUrl);
-+    if (!youtubeEmbedUrl) { setMessage('올바른 YouTube URL 또는 iframe 코드를 입력해주세요.'); return; }
-     const basePayload = {
--      ...conceptForm, tags, order: Number(conceptForm.order) || 0, updatedAt: serverTimestamp(), updatedBy: user?.uid || '',
-+      ...conceptForm, tags, youtubeEmbedUrl, order: Number(conceptForm.order) || 0, updatedAt: serverTimestamp(), updatedBy: user?.uid || '',
-     };
-     if (editingConceptId) {
-       await updateDoc(doc(db, CONCEPTS_COLLECTION, editingConceptId), {
-         ...basePayload, qrPath: buildFormulaConceptQrPath(editingConceptId),
-       });
-     } else {
-       const created = await addDoc(collection(db, CONCEPTS_COLLECTION), {
-         ...basePayload, qrPath: '', createdAt: serverTimestamp(), createdBy: user?.uid || '',
-       });
-       await updateDoc(created, { qrPath: buildFormulaConceptQrPath(created.id) });
-     }
-     setConceptForm(emptyConcept); setEditingConceptId(''); setMessage('개념을 저장했습니다.'); await loadData();
-   };
- 
-+  const deactivateSubject = async (subjectId) => { await updateDoc(doc(db, SUBJECTS_COLLECTION, subjectId), { active: false, updatedAt: serverTimestamp(), updatedBy: user?.uid || '' }); setMessage('과목을 비활성화했습니다.'); await loadData(); };
-+  const deactivateConcept = async (conceptId) => { await updateDoc(doc(db, CONCEPTS_COLLECTION, conceptId), { active: false, updatedAt: serverTimestamp(), updatedBy: user?.uid || '' }); setMessage('개념을 비활성화했습니다.'); await loadData(); };
 +
-+  const downloadQrImage = async (concept) => {
-+    try {
-+      const response = await fetch(buildQrImageUrl(concept.id));
-+      const blob = await response.blob();
-+      const objectUrl = URL.createObjectURL(blob);
-+      const link = document.createElement('a');
-+      link.href = objectUrl;
-+      link.download = `formula-${concept.id}-qr.png`;
-+      link.click();
-+      URL.revokeObjectURL(objectUrl);
-+      setMessage('QR 이미지를 다운로드했습니다.');
-+    } catch {
-+      window.open(buildQrImageUrl(concept.id), '_blank', 'noopener,noreferrer');
-+      setMessage('QR 이미지를 새 창으로 열었습니다. 이미지를 저장해주세요.');
-+    }
-+  };
-+
-   const fieldClass = 'mt-1 w-full rounded-lg border border-gray-300 p-2 text-sm';
-   return (
-     <div className="space-y-6 p-4 md:p-8">
--      <div><h1 className="text-2xl font-bold text-gray-900">공식집 관리</h1><p className="mt-1 text-sm text-gray-500">과목과 개념을 등록하고 QR 진입 링크를 관리합니다.</p></div>
-+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between"><div><h1 className="text-2xl font-bold text-gray-900">공식집 관리</h1><p className="mt-1 text-sm text-gray-500">과목과 개념을 등록하고 QR 이미지를 생성/다운로드합니다.</p></div><div className="flex gap-2"><button type="button" onClick={() => { setEditingSubjectId(''); setSubjectForm(emptySubject); }} className="rounded-lg bg-[#455fab] px-4 py-2 text-sm font-bold text-white">과목 추가</button><button type="button" onClick={() => { setEditingConceptId(''); setConceptForm(emptyConcept); }} className="rounded-lg bg-[#455fab] px-4 py-2 text-sm font-bold text-white">개념 추가</button></div></div>
-       {message && <p className="rounded-lg bg-[#f1f4ff] p-3 text-sm text-[#334a91]">{message}</p>}
-       <div className="grid gap-6 xl:grid-cols-2">
-         <section className="rounded-2xl border bg-white p-5 shadow-sm">
-           <h2 className="font-bold">과목</h2>
-           <form onSubmit={saveSubject} className="mt-4 grid grid-cols-2 gap-3">
-             <label className="col-span-2 text-sm">과목명<input className={fieldClass} required value={subjectForm.title} onChange={(e) => setSubjectForm({ ...subjectForm, title: e.target.value })} /></label>
-             <label className="text-sm">표시 순서<input className={fieldClass} type="number" value={subjectForm.order} onChange={(e) => setSubjectForm({ ...subjectForm, order: e.target.value })} /></label>
-             <label className="flex items-end gap-2 pb-2 text-sm"><input type="checkbox" checked={subjectForm.active} onChange={(e) => setSubjectForm({ ...subjectForm, active: e.target.checked })} /> 활성</label>
-             <button className="col-span-2 rounded-lg bg-[#455fab] p-2 text-sm font-bold text-white">{editingSubjectId ? '과목 수정' : '과목 추가'}</button>
-           </form>
--          <div className="mt-4 divide-y">{subjects.map((subject) => <button type="button" key={subject.id} onClick={() => { setEditingSubjectId(subject.id); setSubjectForm({ title: subject.title || '', order: subject.order || 0, active: subject.active !== false }); }} className="flex w-full justify-between py-3 text-left text-sm"><span>{subject.title}</span><span className="text-gray-400">{subject.active === false ? '비활성' : '활성'} · {subject.order || 0}</span></button>)}</div>
-+          <div className="mt-4 divide-y">{subjects.map((subject) => <div key={subject.id} className="flex items-center gap-2 py-3 text-sm"><button type="button" onClick={() => { setEditingSubjectId(subject.id); setSubjectForm({ title: subject.title || '', order: subject.order || 0, active: subject.active !== false }); }} className="min-w-0 flex-1 text-left"><span className="font-semibold">{subject.title}</span><span className="ml-2 text-gray-400">{subject.active === false ? '비활성' : '활성'} · {subject.order || 0}</span></button><button type="button" onClick={() => deactivateSubject(subject.id)} className="rounded-lg border px-2 py-1 text-xs font-semibold text-red-600">비활성화</button></div>)}</div>
-         </section>
-         <section className="rounded-2xl border bg-white p-5 shadow-sm">
-           <h2 className="font-bold">개념</h2>
-+          <div className="mt-3 flex flex-wrap gap-2 text-xs"><button type="button" onClick={() => setSelectedSubjectFilter('')} className={`rounded-full border px-3 py-1 font-semibold ${!selectedSubjectFilter ? 'bg-[#455fab] text-white' : 'text-gray-600'}`}>전체 보기</button>{subjects.map((subject) => <button key={subject.id} type="button" onClick={() => setSelectedSubjectFilter(subject.id)} className={`rounded-full border px-3 py-1 font-semibold ${selectedSubjectFilter === subject.id ? 'bg-[#455fab] text-white' : 'text-gray-600'}`}>{subject.title}</button>)}</div>
-           <form onSubmit={saveConcept} className="mt-4 grid grid-cols-2 gap-3">
-             <label className="col-span-2 text-sm">과목<select required className={fieldClass} value={conceptForm.subjectId} onChange={(e) => setConceptForm({ ...conceptForm, subjectId: e.target.value })}><option value="">선택</option>{subjects.map((subject) => <option key={subject.id} value={subject.id}>{subject.title}</option>)}</select></label>
-             <label className="col-span-2 text-sm">개념명<input required className={fieldClass} value={conceptForm.title} onChange={(e) => setConceptForm({ ...conceptForm, title: e.target.value })} /></label>
-             <label className="col-span-2 text-sm">요약<textarea className={fieldClass} value={conceptForm.summary} onChange={(e) => setConceptForm({ ...conceptForm, summary: e.target.value })} /></label>
--            <label className="col-span-2 text-sm">상세 설명<textarea rows="4" className={fieldClass} value={conceptForm.description} onChange={(e) => setConceptForm({ ...conceptForm, description: e.target.value })} /></label>
-             <label className="col-span-2 text-sm">태그 (쉼표 구분)<input className={fieldClass} value={conceptForm.tags} onChange={(e) => setConceptForm({ ...conceptForm, tags: e.target.value })} /></label>
-             <label className="col-span-2 text-sm">YouTube embed URL<input className={fieldClass} value={conceptForm.youtubeEmbedUrl} onChange={(e) => setConceptForm({ ...conceptForm, youtubeEmbedUrl: e.target.value })} /></label>
-             <label className="text-sm">표시 순서<input type="number" className={fieldClass} value={conceptForm.order} onChange={(e) => setConceptForm({ ...conceptForm, order: e.target.value })} /></label>
-             <label className="flex items-end gap-2 pb-2 text-sm"><input type="checkbox" checked={conceptForm.active} onChange={(e) => setConceptForm({ ...conceptForm, active: e.target.checked })} /> 활성</label>
-             <button className="col-span-2 rounded-lg bg-[#455fab] p-2 text-sm font-bold text-white">{editingConceptId ? '개념 수정' : '개념 추가'}</button>
-           </form>
--          <div className="mt-4 divide-y">{concepts.map((concept) => <div key={concept.id} className="flex items-center gap-2 py-3 text-sm"><button type="button" className="min-w-0 flex-1 text-left" onClick={() => { setEditingConceptId(concept.id); setConceptForm({ ...emptyConcept, ...concept, tags: Array.isArray(concept.tags) ? concept.tags.join(', ') : '' }); }}><b>{concept.title}</b><span className="ml-2 text-gray-400">{subjectTitleMap[concept.subjectId] || '과목 없음'}</span></button><button type="button" onClick={() => navigator.clipboard.writeText(buildFormulaConceptQrUrl(concept.id)).then(() => setMessage('QR 링크를 복사했습니다.'))} className="rounded-lg border px-2 py-1 text-xs font-semibold text-[#455fab]">QR 링크 복사</button></div>)}</div>
-+          <div className="mt-4 divide-y">{visibleConcepts.map((concept) => <div key={concept.id} className="flex items-center gap-2 py-3 text-sm"><button type="button" className="min-w-0 flex-1 text-left" onClick={() => { setEditingConceptId(concept.id); setConceptForm({ ...emptyConcept, ...concept, tags: Array.isArray(concept.tags) ? concept.tags.join(', ') : '' }); }}><b>{concept.title}</b><span className="ml-2 text-gray-400">{subjectTitleMap[concept.subjectId] || '과목 없음'} · {concept.active === false ? '비활성' : '활성'} · {concept.order || 0}</span><p className="mt-1 truncate text-xs text-gray-500">{concept.summary}</p><p className="mt-1 truncate text-xs text-gray-400">{concept.youtubeEmbedUrl}</p></button><button type="button" onClick={() => setQrConcept(concept)} className="rounded-lg border px-2 py-1 text-xs font-semibold text-[#455fab]">QR 생성</button><button type="button" onClick={() => deactivateConcept(concept.id)} className="rounded-lg border px-2 py-1 text-xs font-semibold text-red-600">비활성화</button></div>)}</div>
-         </section>
-       </div>
-+      {qrConcept && (
-+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4" role="presentation" onClick={() => setQrConcept(null)}>
-+          <section className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="formula-qr-title" onClick={(event) => event.stopPropagation()}>
-+            <div className="flex items-start justify-between gap-3">
-+              <div>
-+                <p className="text-xs font-bold text-[#455fab]">공식집 QR</p>
-+                <h2 id="formula-qr-title" className="mt-1 text-lg font-extrabold text-gray-900">{qrConcept.title}</h2>
-+              </div>
-+              <button type="button" onClick={() => setQrConcept(null)} className="rounded-full bg-gray-100 px-3 py-1 text-lg text-gray-500" aria-label="QR 닫기">×</button>
-+            </div>
-+            <img src={buildQrImageUrl(qrConcept.id)} alt={`${qrConcept.title} QR`} className="mx-auto mt-5 h-64 w-64 rounded-xl border border-gray-200" />
-+            <p className="mt-3 break-all rounded-lg bg-gray-50 p-3 text-xs text-gray-500">{buildFormulaConceptQrUrl(qrConcept.id)}</p>
-+            <button type="button" onClick={() => downloadQrImage(qrConcept)} className="mt-4 w-full rounded-lg bg-[#455fab] px-4 py-3 text-sm font-bold text-white">QR 다운로드</button>
-+          </section>
-+        </div>
-+      )}
-     </div>
-   );
- }
-diff --git a/src/pages/StudentHome.jsx b/src/pages/StudentHome.jsx
-index ee1de98fa072fda98b122c9d9a2026f2726f1c75..8765304105bb26596ad6f0d7100715f59822e179 100644
---- a/src/pages/StudentHome.jsx
-+++ b/src/pages/StudentHome.jsx
-@@ -175,57 +175,57 @@ const getNoticeAudienceValues = (notice = {}) => [
-     ...(Array.isArray(notice?.studentIds) ? notice.studentIds : []),
- ].filter(Boolean).map(String);
+ const resolveParentRoomDisplayName = (room, parent, studentById) => {
+-    const studentName = normalizeText(room?.studentName)
+-        || getStudentNameFromIds(getRoomStudentIds(room), studentById);
+-    if (studentName) return appendParentSuffix(studentName);
++    const participantParentName = getParticipantNameByRole(room, isParentRole);
++    if (participantParentName) return hasParentSuffix(participantParentName) ? participantParentName : appendParentSuffix(participantParentName);
  
- const isNoticeVisibleToStudent = ({ notice, studentKeys, classIds }) => {
-     const audience = getNoticeAudienceValues(notice);
-     if (audience.length > 0 && audience.some((value) => studentKeys.has(value))) return true;
-     const noticeClassIds = getNoticeClassIds(notice);
-     if (noticeClassIds.length > 0) return noticeClassIds.some((value) => classIds.has(value));
-     return audience.length === 0;
+     const parentName = normalizeText(room?.parentName)
++        || normalizeText(room?.counterpartName)
+         || normalizeText(parent?.parentName)
+         || normalizeText(parent?.name)
+         || normalizeText(parent?.displayName);
+     if (parentName) return hasParentSuffix(parentName) ? parentName : appendParentSuffix(parentName);
+ 
++    const studentName = normalizeText(room?.studentName)
++        || getStudentNameFromIds(getRoomStudentIds(room), studentById);
++    if (studentName) return appendParentSuffix(studentName);
++
+     return '이름 미등록 학부모';
  };
  
- export default function StudentHome({
-     student, studentId, userId, students, classes, homeworkAssignments, homeworkResults,
-     attendanceLogs, lessonLogs, notices, tests, grades, classTestStats,
-     videoProgress, onSaveVideoProgress, videoMemos, onAddMemo, onUpdateMemo, onDeleteMemo,
-     externalSchedules, onSaveExternalSchedule, onDeleteExternalSchedule,
-     clinicLogs, onUpdateStudent,
-     closures,
-     lessonReports = [],
-     onLogout
- }) {
-     // ✅ URL(querystring)로 탭/상세 상태를 동기화해서 "뒤로가기"가 탭 전환/이전 화면으로 동작하게 함
-     const [searchParams, setSearchParams] = useSearchParams();
+ const buildUserLookups = ({ students = [], parents = [] }) => {
+     const safeStudents = Array.isArray(students) ? students : [];
+     const safeParents = Array.isArray(parents) ? parents : [];
+     const studentById = new Map(safeStudents.map((student) => [String(student?.id), student]));
+     const studentByAuthUid = new Map(
+         safeStudents
+             .filter((student) => student?.authUid)
+             .map((student) => [String(student.authUid), student]),
+     );
+     const parentById = new Map(safeParents.map((parent) => [String(parent?.id), parent]));
+     const parentByAuthUid = new Map(
+         safeParents
+             .filter((parent) => parent?.authUid)
+             .map((parent) => [String(parent.authUid), parent]),
+     );
+     const parentLast4Map = buildStudentParentPhoneLast4Map(safeStudents, safeParents);
  
-     const readTabFromUrl = () => {
--        if (searchParams.get('mode') === 'formula') return 'class';
-+        if (['formula', 'book'].includes(searchParams.get('mode'))) return 'class';
-         const tab = searchParams.get('tab') || 'home';
-         return tab === 'report' ? 'class' : tab;
-     };
-     const readSubTabFromUrl = () => searchParams.get('subTab') || 'homework';
-     const readClassIdFromUrl = () => searchParams.get('classId');
--    const readClassroomModeFromUrl = () => searchParams.get('mode') === 'formula' ? 'formula' : 'class';
-+    const readClassroomModeFromUrl = () => ['formula', 'book'].includes(searchParams.get('mode')) ? 'formula' : 'class';
+     return {
+         studentById,
+         studentByAuthUid,
+         parentById,
+         parentByAuthUid,
+@@ -135,57 +147,61 @@ const buildUserLookups = ({ students = [], parents = [] }) => {
  
-     const [activeTab, _setActiveTab] = useState(readTabFromUrl());
-     const [initialLearningTab, _setInitialLearningTab] = useState(readSubTabFromUrl());
-     const [selectedClassId, _setSelectedClassId] = useState(readClassIdFromUrl());
-     const [classroomMode, _setClassroomMode] = useState(readClassroomModeFromUrl());
  
-     // ✅ URL -> state (브라우저 뒤로/앞으로로 URL이 바뀌면 화면도 따라감)
-     useEffect(() => {
-         const nextTab = readTabFromUrl();
-         const nextSubTab = readSubTabFromUrl();
-         const nextClassId = readClassIdFromUrl();
-         const nextClassroomMode = readClassroomModeFromUrl();
+ const getRoomType = (room) => normalizeText(room?.roomType || room?.channel);
  
-         if (nextTab !== activeTab) _setActiveTab(nextTab);
-         if (nextSubTab !== initialLearningTab) _setInitialLearningTab(nextSubTab);
-         if ((nextClassId || null) !== (selectedClassId || null)) _setSelectedClassId(nextClassId || null);
-         if (nextClassroomMode !== classroomMode) _setClassroomMode(nextClassroomMode);
-         // eslint-disable-next-line react-hooks/exhaustive-deps
-     }, [searchParams]);
+ const getStudentDisplayNameForRoom = (room, { studentById, studentByAuthUid, parentLast4Map }) => {
+     const studentName = normalizeText(room?.studentName)
+         || getStudentNameFromIds(getRoomStudentIds(room), studentById);
+     if (studentName) return studentName;
  
-     // ✅ state -> URL (앱 내부 동작은 아래 래퍼 함수를 통해서만 변경)
-     const setActiveTab = useCallback((tab, { replace = false } = {}) => {
-         _setActiveTab(tab);
-         setSearchParams(prev => {
-             const next = new URLSearchParams(prev);
-@@ -233,51 +233,51 @@ export default function StudentHome({
+     const participantIds = Array.isArray(room?.participantIds) ? room.participantIds.map(String) : [];
+     const participantStudent = participantIds.map((participantId) => studentByAuthUid.get(participantId)).find(Boolean);
+     if (!participantStudent) return '';
  
-             // learning 이외 탭으로 이동하면 subTab은 정리 (원하면 정책 변경 가능)
-             if (tab !== 'learning') next.delete('subTab');
+     return getMessengerTargetDisplayName({
+         user: participantStudent,
+         role: 'student',
+         studentById,
+         parentLast4Map,
+     });
+ };
  
-             // 탭 이동 시 classId는 유지하지 않음(클래스 화면은 별도 상태)
-             if (tab !== 'class') next.delete('classId');
-             if (tab !== 'class') {
-                 next.delete('mode');
-                 next.delete('conceptId');
-                 _setClassroomMode('class');
-             }
+ const getStandardRoomDisplayTitle = (room, contextData = {}) => {
+     const roomType = getRoomType(room);
+     if (!['student_teacher', 'parent_teacher', 'student_institute', 'parent_institute'].includes(roomType)) return '';
  
-             return next;
-         }, { replace });
-     }, [setSearchParams]);
-     const setClassroomMode = useCallback((mode, { replace = false } = {}) => {
-         const value = mode === 'formula' ? 'formula' : 'class';
-         _setClassroomMode(value);
-         _setActiveTab('class');
-         _setSelectedClassId(null);
-         setSearchParams(prev => {
-             const next = new URLSearchParams(prev);
-             next.set('tab', 'class');
-             next.delete('classId');
-             next.delete('subTab');
--            if (value === 'formula') next.set('mode', 'formula');
-+            if (value === 'formula') next.set('mode', 'book');
-             else {
-                 next.delete('mode');
-                 next.delete('conceptId');
-             }
-             return next;
-         }, { replace });
-     }, [setSearchParams]);
+-    const { studentById, studentByAuthUid, parentLast4Map } = buildUserLookups({
++    const { studentById, studentByAuthUid, parentById, parentByAuthUid, parentLast4Map } = buildUserLookups({
+         students: contextData.students || [],
+         parents: contextData.parents || [],
+     });
+     const studentName = getStudentDisplayNameForRoom(room, { studentById, studentByAuthUid, parentLast4Map });
+     if (roomType === 'parent_teacher' || roomType === 'parent_institute') {
+-        return studentName ? appendParentSuffix(studentName) : '이름 미등록 학부모';
++        const parentIds = getRoomParentIds(room);
++        const parent = parentIds
++            .map((parentId) => parentById.get(String(parentId)) || parentByAuthUid.get(String(parentId)))
++            .find(Boolean) || null;
++        return resolveParentRoomDisplayName(room, parent, studentById);
+     }
+     return studentName || '이름 미등록 학생';
+ };
  
-     const setInitialLearningTab = useCallback((subTab, { replace = false } = {}) => {
-         const value = subTab || 'homework';
-         _setInitialLearningTab(value);
-         setSearchParams(prev => {
-             const next = new URLSearchParams(prev);
-             next.set('tab', 'learning');
-             next.set('subTab', value);
-             next.delete('classId');
-             return next;
-         }, { replace });
-         _setActiveTab('learning');
-     }, [setSearchParams]);
+ const resolveCounterpartyUid = (room, currentUserId) => {
+     const participantIds = Array.isArray(room?.participantIds) ? room.participantIds.map(String) : [];
+     if (!participantIds.length) return null;
+     return participantIds.find((uid) => uid !== String(currentUserId || '')) || participantIds[0] || null;
+ };
  
-     const setSelectedClassId = useCallback((classId, { replace = false } = {}) => {
-         const value = classId === null || classId === undefined || classId === '' ? null : String(classId);
-         _setSelectedClassId(value);
+ export const getMessengerTargetDisplayName = ({
+     user,
+     role,
+     studentById = new Map(),
+     parentLast4Map = {},
+ }) => {
+     if (!user) return '';
  
+     if (role === 'student') {
+         return normalizeText(user?.name)
+             || normalizeText(user?.displayName)
+             || formatStudentNameWithOptionalParentLast4(user, parentLast4Map)
+             || '이름 미등록 학생';
+     }
+ 
+@@ -336,102 +352,106 @@ export const isWithdrawnStudent = (student = {}) => {
+ 
+     const classStatusMap = student?.classStatusMap || {};
+     const mapStatuses = Object.values(classStatusMap)
+         .map((entry) => entry?.status || entry)
+         .filter(Boolean);
+ 
+     const classStatuses = student?.classStatuses || {};
+     const classStatusesValues = Object.values(classStatuses).filter(Boolean);
+ 
+     const mergedStatuses = [...mapStatuses, ...classStatusesValues];
+     if (!mergedStatuses.length) return false;
+ 
+     return mergedStatuses.every((status) => isEndedStatus(status));
+ };
+ 
+ export const buildMessengerTargets = ({ students = [], parents = [], classes = [] }) => {
+     const safeStudents = Array.isArray(students) ? students : [];
+     const safeParents = Array.isArray(parents) ? parents : [];
+     const safeClasses = Array.isArray(classes) ? classes : [];
+ 
+     const classMap = new Map(safeClasses.map((classDoc) => [String(classDoc?.id), classDoc]));
+     const studentById = new Map(safeStudents.map((student) => [String(student?.id), student]));
+     const parentLast4Map = buildStudentParentPhoneLast4Map(safeStudents, safeParents);
+ 
+     const studentOptions = safeStudents
+-        .filter((student) => student?.authUid)
+         .map((student) => {
++            const authUid = getAuthUid(student);
++            if (!authUid) return null;
+             const representativeClass = pickRepresentativeClass(student, classMap);
+             const classLabel = representativeClass
+                 ? formatClassLabel(representativeClass, { includeClosedBadge: true })
+                 : '미분류';
+ 
+             const displayName = getMessengerTargetDisplayName({
+                 user: student,
+                 role: 'student',
+                 studentById,
+                 parentLast4Map,
+             });
+ 
+             return {
+-                authUid: String(student.authUid),
++                authUid: String(authUid),
+                 role: 'student',
+                 displayName,
+                 searchText: `${lower(displayName)} ${lower(student?.name)} ${lower(classLabel)}`,
+                 classId: representativeClass?.id ? String(representativeClass.id) : null,
+                 classLabel,
+                 classClosed: representativeClass ? isClosedClass(representativeClass) : false,
+                 userDocId: student?.id ? String(student.id) : null,
+                 studentId: student?.id ? String(student.id) : null,
+                 parentId: null,
+                 isWithdrawn: isWithdrawnStudent(student),
+             };
+-        });
++        })
++        .filter(Boolean);
+ 
+     const parentOptions = safeParents
+-        .filter((parent) => parent?.authUid)
+         .map((parent) => {
++            const authUid = getAuthUid(parent);
++            if (!authUid) return null;
+             const displayName = getMessengerTargetDisplayName({
+                 user: parent,
+                 role: 'parent',
+                 studentById,
+                 parentLast4Map,
+             });
+ 
+             return {
+-                authUid: String(parent.authUid),
++                authUid: String(authUid),
+                 role: 'parent',
+                 displayName,
+                 searchText: lower(displayName),
+                 classId: null,
+                 classLabel: null,
+                 classClosed: false,
+                 userDocId: parent?.id ? String(parent.id) : null,
+                 studentId: null,
+                 parentId: parent?.id ? String(parent.id) : null,
+             };
+-        });
++        })
++        .filter(Boolean);
+ 
+     const merged = [...studentOptions, ...parentOptions];
+     const uniqueMap = new Map();
+     merged.forEach((target) => {
+         if (!uniqueMap.has(target.authUid)) uniqueMap.set(target.authUid, target);
+     });
+ 
+     return sortMessengerTargets(Array.from(uniqueMap.values()));
+ };
+ 
+ export const groupStudentTargetsByClass = (targets = [], classes = []) => {
+     const safeClasses = Array.isArray(classes) ? classes : [];
+     const classMap = new Map(safeClasses.map((classDoc) => [String(classDoc?.id), classDoc]));
+ 
+     const grouped = new Map();
+     (Array.isArray(targets) ? targets : []).forEach((target) => {
+         if (target?.role !== 'student') return;
+         const classKey = target?.classId ? String(target.classId) : '__unclassified__';
+         if (!grouped.has(classKey)) {
+             const classDoc = classMap.get(classKey) || null;
+             grouped.set(classKey, {
+                 key: classKey,
+                 classDoc,
+                 title: classDoc
+                     ? formatClassLabel(classDoc, { includeClosedBadge: true })
+diff --git a/src/pages/parent/ParentMessengerPage.jsx b/src/pages/parent/ParentMessengerPage.jsx
+index 4ddee6df15fbee0b1648e2855ae48b62325a341d..993c45add65ba42b58f607e476b95651340c11d9 100644
+--- a/src/pages/parent/ParentMessengerPage.jsx
++++ b/src/pages/parent/ParentMessengerPage.jsx
+@@ -40,50 +40,55 @@ const getRoomSlot = (room) => {
+     return '';
+ };
+ const isCompatibleRoomType = (room, expectedRoomType) => {
+     const actualType = getRoomType(room);
+     if (expectedRoomType === 'parent_institute') {
+         return hasRoomTypeOrChannel(room, 'parent_institute') || getRoomSlot(room) === INSTITUTE_SLOT || !actualType;
+     }
+     if (actualType === expectedRoomType) return true;
+     if (actualType === 'institute') return expectedRoomType === 'student_institute';
+     if (actualType === 'teacher') return expectedRoomType.endsWith('_teacher');
+     return false;
+ };
+ 
+ const hasExpectedParticipants = (room, authUid, targetAuthUid) => {
+     const participantIds = getParticipantIds(room);
+     return participantIds.length === 2
+         && participantIds.includes(String(authUid || ''))
+         && participantIds.includes(String(targetAuthUid || ''));
+ };
+ 
+ const isStudentIdCompatible = (room, studentId) => {
+     const roomStudentId = normalizeText(room?.studentId);
+     return !roomStudentId || !studentId || roomStudentId === String(studentId || '');
+ };
+ 
++const isStudentInstituteCandidate = (room, { authUid, targetAuthUid, studentId }) => {
++    if (!isStandardSlotRoom(room, { viewerRole: 'student', slot: INSTITUTE_SLOT, authUid, targetAuthUid, studentId })) return false;
++    return true;
++};
++
+ const isParentInstituteBaseCandidate = (room, { authUid, targetAuthUid, studentId }) => {
+     if (!hasExpectedParticipants(room, authUid, targetAuthUid)) return false;
+     if (!isStudentIdCompatible(room, studentId)) return false;
+     if (hasRoomTypeOrChannel(room, 'student_institute')) return false;
+     if (getParticipantRole(room, authUid) === 'student') return false;
+     if (room?.counterpartUid && String(room.counterpartUid) !== String(targetAuthUid || '')) return false;
+     if (room?.staffAuthUid && String(room.staffAuthUid) !== String(targetAuthUid || '')) return false;
+     return true;
+ };
+ 
+ const isParentInstituteLegacyRoom = (room, options) => (
+     isParentInstituteBaseCandidate(room, options)
+     && (getVisibleToRoles(room).includes('parent') || getParticipantRole(room, options.authUid) === 'parent')
+ );
+ 
+ const getParentInstitutePriority = (room, options) => {
+     if (!isParentInstituteBaseCandidate(room, options)) return 0;
+     if (hasRoomTypeOrChannel(room, 'parent_institute')) return 3;
+     if (getRoomSlot(room) === INSTITUTE_SLOT) return 2;
+     if (isParentInstituteLegacyRoom(room, options)) return 1;
+     return 0;
+ };
+ 
+ const isStandardSlotRoom = (room, { viewerRole, slot, authUid, targetAuthUid, studentId, teacherName = '' }) => {
+     const expectedRoomType = getExpectedRoomType(viewerRole, slot);
+@@ -107,53 +112,53 @@ const isStandardSlotRoom = (room, { viewerRole, slot, authUid, targetAuthUid, st
+     if (expectedRoomType === 'parent_teacher' && studentId && room?.studentId && String(room.studentId) !== String(studentId)) return false;
+     return true;
+ };
+ 
+ const toDate = (value) => {
+     if (!value) return null;
+     if (typeof value?.toDate === 'function') return value.toDate();
+     const parsed = new Date(value);
+     return Number.isNaN(parsed.getTime()) ? null : parsed;
+ };
+ 
+ const normalizeText = (value) => String(value || '').trim();
+ 
+ const uniqueStrings = (values) => Array.from(new Set(
+     values.flat(Infinity).filter((value) => typeof value === 'string' && value.trim()).map((value) => value.trim())
+ ));
+ 
+ const getRoomSortTime = (room) => (
+     toDate(room?.lastMessageAt)?.getTime()
+     || toDate(room?.updatedAt)?.getTime()
+     || toDate(room?.createdAt)?.getTime()
+     || 0
+ );
+ 
+ const getLastMessagePreview = (room) => (
+-    room?.lastMessageText
+-    || room?.lastMessage
+-    || room?.message
++    normalizeText(room?.lastMessageText)
++    || normalizeText(room?.lastMessage)
++    || normalizeText(room?.message)
+     || '대화 내역이 없습니다.'
+ );
+ 
+ const sortRooms = (roomList) => roomList.sort((a, b) => getRoomSortTime(b) - getRoomSortTime(a));
+ 
+ const roomDisplayName = (slot, teacherName = '') => {
+     if (slot === INSTITUTE_SLOT) return INSTITUTE_NAME;
+     const normalizedTeacherName = normalizeText(teacherName);
+     if (normalizedTeacherName) return normalizedTeacherName.endsWith('선생님') ? normalizedTeacherName : `${normalizedTeacherName} 선생님`;
+     return TEACHER_DISPLAY_NAME;
+ };
+ 
+ const getTeacherCandidates = (classes = []) => {
+     const candidates = [{ name: TEACHER_DISPLAY_NAME, ids: [TEACHER_AUTH_UID] }];
+     classes.forEach((classInfo) => {
+         const name = normalizeText(
+             classInfo?.teacherName
+             || classInfo?.teacher
+             || classInfo?.instructorName
+             || classInfo?.instructor
+             || classInfo?.tutorName
+             || classInfo?.tutor
+         );
+         const ids = uniqueStrings([
+             classInfo?.teacherAuthUid,
+@@ -179,58 +184,60 @@ const getTeacherCandidates = (classes = []) => {
+ const getTeacherNameForDisplay = (teacherCandidates, teacherRoom = null) => {
+     const roomName = normalizeText(
+         teacherRoom?.teacherName
+         || teacherRoom?.staffName
+         || teacherRoom?.counterpartName
+         || teacherRoom?.name
+         || teacherRoom?.title
+         || teacherRoom?.displayName
+     );
+     if (roomName && !roomName.includes('연구소') && !roomName.includes('채수용 수학')) return roomName;
+     return normalizeText(teacherCandidates.find((candidate) => candidate.name)?.name || '');
+ };
+ 
+ const buildMessengerSlots = (rooms, teacherCandidates, { viewerRole = 'parent', authUid = '', studentId = '' } = {}) => {
+     const sortedRooms = sortRooms([...rooms]);
+     const teacherRoom = sortedRooms.find((room) => isStandardSlotRoom(room, {
+         viewerRole,
+         slot: TEACHER_SLOT,
+         authUid,
+         targetAuthUid: TEACHER_AUTH_UID,
+         studentId,
+         teacherName: TEACHER_DISPLAY_NAME,
+     })) || null;
+ 
+     const instituteCandidates = sortedRooms
+-        .map((room) => ({
+-            room,
+-            priority: getParentInstitutePriority(room, {
+-                authUid,
+-                targetAuthUid: INSTITUTE_AUTH_UID,
+-                studentId,
+-            }),
+-        }))
++        .map((room) => {
++            const priority = viewerRole === 'student'
++                ? (isStudentInstituteCandidate(room, { authUid, targetAuthUid: INSTITUTE_AUTH_UID, studentId }) ? 3 : 0)
++                : getParentInstitutePriority(room, {
++                    authUid,
++                    targetAuthUid: INSTITUTE_AUTH_UID,
++                    studentId,
++                });
++            return { room, priority };
++        })
+         .filter((candidate) => candidate.priority > 0);
+     const instituteRoom = instituteCandidates
+         .sort((left, right) => right.priority - left.priority || getRoomSortTime(right.room) - getRoomSortTime(left.room))
+         .map((candidate) => candidate.room)[0] || null;
+ 
+     const teacherName = getTeacherNameForDisplay(teacherCandidates, teacherRoom);
+ 
+     return [
+         {
+             slot: INSTITUTE_SLOT,
+             room: instituteRoom,
+             id: instituteRoom?.id || `${INSTITUTE_SLOT}-placeholder`,
+             title: roomDisplayName(INSTITUTE_SLOT),
+             roomType: getExpectedRoomType(viewerRole, INSTITUTE_SLOT),
+         },
+         {
+             slot: TEACHER_SLOT,
+             room: teacherRoom,
+             id: teacherRoom?.id || `${TEACHER_SLOT}-placeholder`,
+             title: roomDisplayName(TEACHER_SLOT, teacherName),
+             teacherName: teacherName || TEACHER_DISPLAY_NAME,
+             roomType: getExpectedRoomType(viewerRole, TEACHER_SLOT),
+         },
+     ];
+ };

@@ -62,6 +62,11 @@ const isStudentIdCompatible = (room, studentId) => {
     return !roomStudentId || !studentId || roomStudentId === String(studentId || '');
 };
 
+const isStudentInstituteCandidate = (room, { authUid, targetAuthUid, studentId }) => {
+    if (!isStandardSlotRoom(room, { viewerRole: 'student', slot: INSTITUTE_SLOT, authUid, targetAuthUid, studentId })) return false;
+    return true;
+};
+
 const isParentInstituteBaseCandidate = (room, { authUid, targetAuthUid, studentId }) => {
     if (!hasExpectedParticipants(room, authUid, targetAuthUid)) return false;
     if (!isStudentIdCompatible(room, studentId)) return false;
@@ -129,9 +134,9 @@ const getRoomSortTime = (room) => (
 );
 
 const getLastMessagePreview = (room) => (
-    room?.lastMessageText
-    || room?.lastMessage
-    || room?.message
+    normalizeText(room?.lastMessageText)
+    || normalizeText(room?.lastMessage)
+    || normalizeText(room?.message)
     || '대화 내역이 없습니다.'
 );
 
@@ -201,14 +206,16 @@ const buildMessengerSlots = (rooms, teacherCandidates, { viewerRole = 'parent', 
     })) || null;
 
     const instituteCandidates = sortedRooms
-        .map((room) => ({
-            room,
-            priority: getParentInstitutePriority(room, {
-                authUid,
-                targetAuthUid: INSTITUTE_AUTH_UID,
-                studentId,
-            }),
-        }))
+        .map((room) => {
+            const priority = viewerRole === 'student'
+                ? (isStudentInstituteCandidate(room, { authUid, targetAuthUid: INSTITUTE_AUTH_UID, studentId }) ? 3 : 0)
+                : getParentInstitutePriority(room, {
+                    authUid,
+                    targetAuthUid: INSTITUTE_AUTH_UID,
+                    studentId,
+                });
+            return { room, priority };
+        })
         .filter((candidate) => candidate.priority > 0);
     const instituteRoom = instituteCandidates
         .sort((left, right) => right.priority - left.priority || getRoomSortTime(right.room) - getRoomSortTime(left.room))
