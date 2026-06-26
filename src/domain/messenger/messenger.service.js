@@ -147,15 +147,19 @@ export const subscribeInternalChatRooms = (currentAuthUid, onChange, onError = n
     const roomsQuery = query(
         collection(db, 'chatRooms'),
         where('participantIds', 'array-contains', currentAuthUid),
-        where('internalOnly', '==', true),
-        orderBy('lastMessageAt', 'desc'),
-        limit(100),
     );
 
     return onSnapshot(
         roomsQuery,
         (snapshot) => {
-            onChange(snapshot.docs.map(normalizeRoom));
+            onChange(snapshot.docs
+                .map(normalizeRoom)
+                .filter((room) => room?.internalOnly === true)
+                .sort((a, b) => {
+                    const getTime = (value) => (typeof value?.toDate === 'function' ? value.toDate() : new Date(value || 0)).getTime() || 0;
+                    return getTime(b?.lastMessageAt) - getTime(a?.lastMessageAt);
+                })
+                .slice(0, 100));
         },
         onError || (() => {}),
     );

@@ -12,6 +12,8 @@ import { getRoomSlot, hasRoomTypeOrChannel, sortRooms, toDate } from '../../mess
 const getParticipantIds = (room) => (Array.isArray(room?.participantIds) ? room.participantIds.map(String) : []);
 const hasTarget = (room, targetUid, fields = []) => fields.some((field) => String(room?.[field] || '') === targetUid) || getParticipantIds(room).includes(targetUid);
 const hasViewerParticipant = (room, participantKeys = []) => participantKeys.some((key) => getParticipantIds(room).includes(String(key)));
+const hasAuthParticipant = (room, authUid) => Boolean(authUid) && getParticipantIds(room).includes(String(authUid));
+const getChatRoomsQueryShape = (authUid) => ({ collection: 'chatRooms', where: ['participantIds', 'array-contains', authUid] });
 const sameStudent = (room, studentId) => !room?.studentId || !studentId || String(room.studentId) === String(studentId);
 
 const isParentTeacherRoom = (room, participantKeys, studentId) => (
@@ -51,15 +53,20 @@ export default function ParentMessengerPage({ studentId, student, onBack }) {
         setLoading(true);
         setError('');
         const roomQuery = query(collection(db, 'chatRooms'), where('participantIds', 'array-contains', authUid));
+        const queryShape = getChatRoomsQueryShape(authUid);
+        if (process.env.NODE_ENV === 'development') console.log('[parent messenger] chatRooms query', queryShape);
         const unsubscribe = onSnapshot(roomQuery, (snap) => {
-            setRooms(sortRooms(snap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }))));
+            const myRooms = snap.docs
+                .map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }))
+                .filter((room) => hasAuthParticipant(room, authUid));
+            setRooms(sortRooms(myRooms));
             setLoading(false);
             setError('');
         }, (snapshotError) => {
             console.error('[parent messenger] failed to load chatRooms', {
                 code: snapshotError?.code,
                 message: snapshotError?.message,
-                queryShape: { collection: 'chatRooms', where: ['participantIds', 'array-contains', authUid] },
+                queryShape,
             });
             setLoading(false);
             setError('대화 목록을 불러오지 못했습니다.');

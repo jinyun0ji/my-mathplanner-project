@@ -43,7 +43,9 @@ export const useMessengerRooms = ({ role = 'student', authUid = '', student = {}
         const roomQuery = query(collection(db, 'chatRooms'), where('participantIds', 'array-contains', authUid));
         logChatRoomsQuery(role, authUid);
         const unsubscribe = onSnapshot(roomQuery, (snap) => {
-            const nextRooms = snap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
+            const nextRooms = snap.docs
+                .map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }))
+                .filter((room) => Array.isArray(room.participantIds) && room.participantIds.map(String).includes(authUid));
             log('snapshot', { role, count: nextRooms.length });
             setRawRooms(nextRooms);
             setLoading(false);
