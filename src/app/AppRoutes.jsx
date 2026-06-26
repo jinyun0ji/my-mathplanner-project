@@ -27,6 +27,7 @@ import AdminNotificationsPage from '../pages/admin/AdminNotificationsPage';
 import AdminPaymentsPage from '../pages/admin/AdminPaymentsPage';
 import AdminSettingsPage from '../pages/admin/AdminSettingsPage';
 import AdminLogsPage from '../pages/admin/AdminLogsPage';
+import MasterViewPage from '../pages/admin/MasterViewPage';
 import InviteManagementPage from '../pages/admin/InviteManagementPage';
 import FormulaBookManagement from '../pages/FormulaBookManagement';
 import AdminRoute from '../routes/AdminRoute';
@@ -92,6 +93,7 @@ const ADMIN_ROUTES = new Set([
     '/admin/payments',
     '/admin/settings',
     '/admin/logs',
+    '/master-view',
     '/staff/invites',
     '/formula-books',
 ]);
@@ -2185,6 +2187,14 @@ export default function AppRoutes({ user, role, studentIds }) {
                 element={(
                     <AdminRoute>
                         <AdminLogsPage />
+                    </AdminRoute>
+                )}
+            />
+            <Route
+                path="master-view"
+                element={(
+                    <AdminRoute>
+                        <MasterViewPage students={students} classes={classes} userId={userId} />
                     </AdminRoute>
                 )}
             />

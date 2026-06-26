@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { collection, getDocs, query, where } from 'firebase/firestore';
+import { db } from '../../firebase/client';
 import {
     broadcastChatMessage,
     createOrOpenRoom,
@@ -31,12 +33,38 @@ export default function InternalMessengerPanel({
     const [statusMessage, setStatusMessage] = useState('');
     const [selectedTargetUids, setSelectedTargetUids] = useState([]);
     const [studentSearchQuery, setStudentSearchQuery] = useState('');
+    const [fallbackStudents, setFallbackStudents] = useState([]);
+
+    useEffect(() => {
+        if (Array.isArray(students) && students.length > 0) {
+            setFallbackStudents([]);
+            return undefined;
+        }
+        if (!isStaffOrTeachingRole(userRole)) return undefined;
+
+        let mounted = true;
+        getDocs(query(collection(db, 'users'), where('role', '==', 'student'))).then((snapshot) => {
+            if (!mounted) return;
+            setFallbackStudents(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })));
+        }).catch((error) => {
+            console.error('[internal-messenger] student target fallback query failed', error);
+            if (mounted) setFallbackStudents([]);
+        });
+
+        return () => {
+            mounted = false;
+        };
+    }, [students, userRole]);
+
+    const effectiveStudents = useMemo(() => (
+        Array.isArray(students) && students.length > 0 ? students : fallbackStudents
+    ), [students, fallbackStudents]);
 
     const targetOptions = useMemo(() => buildMessengerTargets({
-        students,
+        students: effectiveStudents,
         parents,
         classes,
-    }), [students, parents, classes]);
+    }), [effectiveStudents, parents, classes]);
 
     const normalizedStudentQuery = studentSearchQuery.trim().toLowerCase();
 
@@ -65,7 +93,7 @@ export default function InternalMessengerPanel({
             .sort((left, right) => String(left.displayName || '').localeCompare(String(right.displayName || ''), 'ko'))
     ), [filteredTargets]);
 
-    const roomDisplayContext = useMemo(() => ({ students, parents }), [students, parents]);
+    const roomDisplayContext = useMemo(() => ({ students: effectiveStudents, parents }), [effectiveStudents, parents]);
 
     const selectedRoomResolved = useMemo(() => {
         if (!selectedRoom?.id) return null;

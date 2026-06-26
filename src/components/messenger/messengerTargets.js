@@ -58,11 +58,37 @@ const appendParentSuffix = (name) => {
     return normalized.endsWith('학부모') ? normalized : `${normalized} 학부모`;
 };
 
-const hasParentSuffix = (value) => normalizeText(value).includes('학부모');
 
 const getArrayField = (value) => (Array.isArray(value) ? value.map(String).filter(Boolean) : []);
 const getAuthUid = (user) => normalizeText(user?.authUid || user?.uid || user?.studentAuthUid || user?.studentUid || user?.parentUid);
 const getUserName = (user) => normalizeText(user?.name) || normalizeText(user?.displayName) || normalizeText(user?.studentName);
+const isExcludedStudent = (student = {}) => (
+    student?.active === false
+    || lower(student?.status) === 'withdrawn'
+    || lower(student?.status) === 'deletion_requested'
+);
+const getParentRefsFromStudent = (student = {}) => {
+    const refs = [];
+    [student?.parentId, student?.parentUid].filter(Boolean).forEach((id) => refs.push({ id: String(id), authUid: String(id) }));
+    getArrayField(student?.parentIds).forEach((id) => refs.push({ id, authUid: id }));
+    getArrayField(student?.parentUids).forEach((id) => refs.push({ id, authUid: id }));
+    if (Array.isArray(student?.parents)) {
+        student.parents.forEach((parent) => {
+            if (typeof parent === 'string') refs.push({ id: parent, authUid: parent });
+            else if (parent && typeof parent === 'object') {
+                const authUid = getAuthUid(parent) || normalizeText(parent?.id) || normalizeText(parent?.parentId);
+                const id = normalizeText(parent?.id) || normalizeText(parent?.parentId) || authUid;
+                if (authUid || id) refs.push({ id, authUid: authUid || id });
+            }
+        });
+    }
+    const unique = new Map();
+    refs.filter((ref) => ref.authUid || ref.id).forEach((ref) => {
+        const key = `${ref.authUid || ''}|${ref.id || ''}`;
+        if (!unique.has(key)) unique.set(key, ref);
+    });
+    return Array.from(unique.values());
+};
 
 const getRoomStudentIds = (room) => [
     normalizeText(room?.studentId),
@@ -95,29 +121,12 @@ const hasParentRoomHint = (room, counterpartyUid = '') => {
         || Boolean(room?.parentName);
 };
 
-const getParticipantNameByRole = (room, roleMatcher) => {
-    const roles = room?.participantRoles && typeof room.participantRoles === 'object' ? room.participantRoles : {};
-    const names = room?.participantNames && typeof room.participantNames === 'object' ? room.participantNames : {};
-    const matchedUid = Object.keys(roles).find((uid) => roleMatcher(roles[uid]));
-    return matchedUid ? normalizeText(names[matchedUid]) : '';
-};
-
 const resolveParentRoomDisplayName = (room, parent, studentById) => {
-    const participantParentName = getParticipantNameByRole(room, isParentRole);
-    if (participantParentName) return hasParentSuffix(participantParentName) ? participantParentName : appendParentSuffix(participantParentName);
-
-    const parentName = normalizeText(room?.parentName)
-        || normalizeText(room?.counterpartName)
-        || normalizeText(parent?.parentName)
-        || normalizeText(parent?.name)
-        || normalizeText(parent?.displayName);
-    if (parentName) return hasParentSuffix(parentName) ? parentName : appendParentSuffix(parentName);
-
     const studentName = normalizeText(room?.studentName)
         || getStudentNameFromIds(getRoomStudentIds(room), studentById);
     if (studentName) return appendParentSuffix(studentName);
 
-    return '이름 미등록 학부모';
+    return '이름 미등록 학생 학부모';
 };
 
 const buildUserLookups = ({ students = [], parents = [] }) => {
@@ -126,7 +135,7 @@ const buildUserLookups = ({ students = [], parents = [] }) => {
     const studentById = new Map();
     const studentByAuthUid = new Map();
     safeStudents.forEach((student) => {
-        [student?.id, student?.studentId, student?.docId].filter(Boolean).forEach((id) => studentById.set(String(id), student));
+        [student?.id, student?.studentId, student?.docId, student?.userDocId].filter(Boolean).forEach((id) => studentById.set(String(id), student));
         [student?.authUid, student?.uid, student?.studentAuthUid, student?.studentUid].filter(Boolean).forEach((uid) => studentByAuthUid.set(String(uid), student));
     });
     const parentById = new Map();
@@ -378,12 +387,16 @@ export const buildMessengerTargets = ({ students = [], parents = [], classes = [
     const safeClasses = Array.isArray(classes) ? classes : [];
 
     const classMap = new Map(safeClasses.map((classDoc) => [String(classDoc?.id), classDoc]));
-    const studentById = new Map(safeStudents.map((student) => [String(student?.id), student]));
+    const studentById = new Map();
+    safeStudents.forEach((student) => {
+        [student?.id, student?.studentId, student?.docId, student?.userDocId].filter(Boolean).forEach((id) => studentById.set(String(id), student));
+    });
     const parentLast4Map = buildStudentParentPhoneLast4Map(safeStudents, safeParents);
 
     const studentOptions = safeStudents
+        .filter((student) => !isExcludedStudent(student))
         .map((student) => {
-            const authUid = getAuthUid(student);
+            const authUid = getAuthUid(student) || normalizeText(student?.id);
             if (!authUid) return null;
             const representativeClass = pickRepresentativeClass(student, classMap);
             const classLabel = representativeClass
@@ -413,6 +426,25 @@ export const buildMessengerTargets = ({ students = [], parents = [], classes = [
         })
         .filter(Boolean);
 
+
+    const studentParentOptions = safeStudents
+        .filter((student) => !isExcludedStudent(student))
+        .flatMap((student) => {
+            const studentName = getUserName(student) || '이름 미등록 학생';
+            return getParentRefsFromStudent(student).map((ref) => ({
+                authUid: String(ref.authUid || ref.id),
+                role: 'parent',
+                displayName: appendParentSuffix(studentName),
+                searchText: `${lower(studentName)} ${lower(appendParentSuffix(studentName))}`,
+                classId: null,
+                classLabel: null,
+                classClosed: false,
+                userDocId: ref.id || null,
+                studentId: student?.id ? String(student.id) : null,
+                parentId: ref.id || null,
+            }));
+        });
+
     const parentOptions = safeParents
         .map((parent) => {
             const authUid = getAuthUid(parent);
@@ -441,7 +473,7 @@ export const buildMessengerTargets = ({ students = [], parents = [], classes = [
         })
         .filter(Boolean);
 
-    const merged = [...studentOptions, ...parentOptions];
+    const merged = [...studentOptions, ...studentParentOptions, ...parentOptions];
     const uniqueMap = new Map();
     merged.forEach((target) => {
         if (!uniqueMap.has(target.authUid)) uniqueMap.set(target.authUid, target);

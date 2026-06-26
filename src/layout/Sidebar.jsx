@@ -31,6 +31,7 @@ export default function Sidebar({ page, setPage, onLogout, isOpen, onClose }) {
         { name: '초대 코드', key: '/staff/invites', icon: 'link' },
     ];
     const adminMenuItems = [
+        { name: '마스터뷰', key: '/master-view', icon: 'eye' },
         { name: '직원 관리', key: '/admin/staff', icon: 'users' },
         { name: '알림 로그', key: '/admin/notifications', icon: 'bell' },
         { name: '운영 로그', key: '/admin/logs', icon: 'activity' },

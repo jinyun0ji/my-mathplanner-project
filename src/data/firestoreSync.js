@@ -825,8 +825,8 @@ export const loadStaffDataOnce = async ({
 
     try {
         const today = getTodayDateString();
-        const pageNeedsStudents = ['home', 'lessons', 'lessonReports', 'grades', 'homework', 'clinic', 'payment', 'students'].includes(pageKey) || !pageKey;
-        const pageNeedsClasses = ['home', 'lessons', 'lessonReports', 'grades', 'homework', 'clinic', 'attendance', 'closures'].includes(pageKey) || !pageKey;
+        const pageNeedsStudents = ['home', 'lessons', 'lessonReports', 'grades', 'homework', 'clinic', 'payment', 'students', 'master-view'].includes(pageKey) || !pageKey;
+        const pageNeedsClasses = ['home', 'lessons', 'lessonReports', 'grades', 'homework', 'clinic', 'attendance', 'closures', 'master-view'].includes(pageKey) || !pageKey;
         const loadingCollections = [];
 
         if (setStudents && pageNeedsStudents) {

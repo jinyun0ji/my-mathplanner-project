@@ -1193,6 +1193,10 @@ video {
   max-height: 96vh;
 }
 
+.max-h-\[75vh\]{
+  max-height: 75vh;
+}
+
 .min-h-0{
   min-height: 0px;
 }
@@ -2350,6 +2354,11 @@ video {
   border-color: rgb(231 235 248 / var(--tw-border-opacity, 1));
 }
 
+.border-amber-300{
+  --tw-border-opacity: 1;
+  border-color: rgb(252 211 77 / var(--tw-border-opacity, 1));
+}
+
 .border-l-\[\#334a91\]{
   --tw-border-opacity: 1;
   border-left-color: rgb(51 74 145 / var(--tw-border-opacity, 1));
@@ -3477,6 +3486,11 @@ video {
 
 .text-white\/70{
   color: rgb(255 255 255 / 0.7);
+}
+
+.text-amber-900{
+  --tw-text-opacity: 1;
+  color: rgb(120 53 15 / var(--tw-text-opacity, 1));
 }
 
 .underline{
