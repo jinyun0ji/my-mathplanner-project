@@ -6,7 +6,7 @@ import {
     BoardTab
 } from '../components/StudentTabs';
 import ClassroomView from './student/ClassroomView';
-import ParentMessengerPage from './parent/ParentMessengerPage';
+import StudentMessengerPage from './student/StudentMessengerPage';
 import StudentHeader from '../components/StudentHeader';
 import {
     Icon,
@@ -550,11 +550,9 @@ export default function StudentHome({
 
     if (isMessengerPage) {
         return (
-            <ParentMessengerPage
+            <StudentMessengerPage
                 studentId={studentId}
                 student={student}
-                ongoingClasses={ongoingClasses}
-                viewerRole="student"
                 onBack={() => setIsMessengerPage(false)}
             />
         );

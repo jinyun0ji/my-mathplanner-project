@@ -1,4 +1,5 @@
 rules_version = '2';
+
 service firebase.storage {
   match /b/{bucket}/o {
     function signedIn() {
@@ -25,11 +26,19 @@ service firebase.storage {
     }
 
     match /chat-attachments/{roomId}/{fileName} {
-      // TODO: Restrict to chatRooms/{roomId}.participantIds after Storage rules can reliably share the same project Firestore lookup in all environments.
       allow read: if signedIn();
+
       allow write: if signedIn()
         && isAllowedChatAttachmentType()
         && isAllowedChatAttachmentSize();
+    }
+
+    match /lesson-materials/{allPaths=**} {
+      allow read: if signedIn();
+
+      // 임시 복구용: 로그인 사용자 업로드 허용
+      allow write: if signedIn()
+        && request.resource.size <= 30 * 1024 * 1024;
     }
   }
 }
