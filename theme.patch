@@ -1,112 +1,77 @@
-diff --git a/functions/src/chat/chatHelpers.js b/functions/src/chat/chatHelpers.js
-index d043a8b13d3423f645bdaf32228d5a6af17c17a4..b7c7f4c5c2fdb7a5d251a01add652d595b7f7683 100644
---- a/functions/src/chat/chatHelpers.js
-+++ b/functions/src/chat/chatHelpers.js
-@@ -1,30 +1,31 @@
- const { getFirestore, FieldValue } = require('firebase-admin/firestore');
- const functions = require('firebase-functions');
+diff --git a/src/app/AppRoutes.jsx b/src/app/AppRoutes.jsx
+index 5398eae2d9e5baa30782547d9854a44aa70ce5e2..cfbd6ace2adf17174281e12bfe7883676279aa83 100644
+--- a/src/app/AppRoutes.jsx
++++ b/src/app/AppRoutes.jsx
+@@ -199,51 +199,51 @@ export default function AppRoutes({ user, role, studentIds }) {
+   const [classTestStats, setClassTestStats] = useState({});
+   const [homeworkResults, setHomeworkResults] = useState({});
+   const [studentMemos, setStudentMemos] = useState({});
+   const [videoProgress, setVideoProgress] = useState({});
+   const [videoMemos, setVideoMemos] = useState({});
  
- const STAFF_ROLES = new Set(['admin', 'staff', 'teacher', 'teaching', 'staffOrTeaching']);
- const VIEWER_ROLES = new Set(['student', 'parent']);
-+const TEACHER_AUTH_UID = 'EzOXjwwyATO2sP5yuc3CkS3oRw22';
+   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
  
- const db = getFirestore();
+   const processedAnnouncementIdsRef = useRef(new Set());
  
- const normalizeRole = (role) => {
-     const raw = String(role || '').trim();
-     if (!raw) return null;
-     if (raw === 'teaching' || raw === 'staffOrTeaching') return 'teacher';
-     return raw;
- };
+   useEffect(() => {
+       if (isAuthenticated) processedAnnouncementIdsRef.current = new Set();
+   }, [isAuthenticated, userId]);
  
- const roleFromDoc = (userData = {}) => normalizeRole(userData.role || null);
- 
- const getUserProfileByAuthUid = async (authUid) => {
-     if (!authUid || typeof authUid !== 'string') return null;
- 
-     const indexSnapshot = await db.collection('userAuthIndex').doc(authUid).get();
-     const profileDocId = indexSnapshot.exists ? indexSnapshot.data()?.userDocId : authUid;
-     if (!profileDocId) return null;
- 
-     const userSnapshot = await db.collection('users').doc(profileDocId).get();
-     if (!userSnapshot.exists) return null;
- 
-     const data = userSnapshot.data() || {};
-     const userRole = roleFromDoc(data);
- 
-@@ -80,59 +81,67 @@ const applyRoomMetadata = ({
-         [target.authUid]: targetRole,
+   useEffect(() => {
+     if (!isAuthenticated || !role || !(isAdminRole(role) || isStaffRole(role) || isStaffOrTeachingRole(role))) return;
+     const shouldLoadPayments = page === 'payment';
+     if (shouldLoadPayments) {
+         setIsPaymentLogsLoading(true);
+     }
+     let isActive = true;
+     loadStaffDataOnce({
+         db,
+         isLoggedIn: isAuthenticated,
+         userRole: role,
+-        pageKey: page,
++        pageKey: page === '/master-view' ? 'master-view' : page,
+         setStudents: page === 'attendance' ? null : setStudents,
+         setParents,
+         setClasses,
+         setTests,
+         setLessonLogs,
+         setAttendanceLogs,
+         setClinicLogs,
+         setWorkLogs,
+         setAnnouncements,
+         setHomeworkAssignments,
+         setPaymentLogs,
+         setGrades,
+         setHomeworkResults,
+         setExternalSchedules,
+         setClosures,
+         setLessonReports,
+     }).finally(() => {
+         if (shouldLoadPayments && isActive) {
+             setIsPaymentLogsLoading(false);
+         }
+     });
+     return () => {
+         isActive = false;
      };
- 
-     const participantNames = {
-         [caller.authUid]: caller.name || caller.authUid,
-         [target.authUid]: targetNameHint || target.name || target.authUid,
-     };
- 
-     const participantUserDocIds = {
-         [caller.authUid]: caller.userDocId,
-         [target.authUid]: targetUserDocIdHint || target.userDocId,
-     };
- 
-     const studentId =
-         studentIdHint
-         || (targetRole === 'student' ? (targetUserDocIdHint || target.userDocId) : null)
-         || (callerRole === 'student' ? caller.userDocId : null)
-         || null;
- 
-     const parentId =
-         parentIdHint
-         || (targetRole === 'parent' ? (targetUserDocIdHint || target.userDocId) : null)
-         || (callerRole === 'parent' ? caller.userDocId : null)
-         || null;
- 
-+    const staffChannel = caller.authUid === TEACHER_AUTH_UID ? 'teacher' : 'institute';
-+    const roomType = `${targetRole}_${staffChannel}`;
-+
-     return {
-         type: 'individual',
-+        roomType,
-+        channel: roomType,
-+        slot: staffChannel,
-         participantIds,
-         participantRoles,
-         participantNames,
-         participantUserDocIds,
-         studentId,
-         parentId,
-         staffId: caller.authUid,
-+        staffAuthUid: staffChannel === 'institute' ? caller.authUid : null,
-+        teacherAuthUid: staffChannel === 'teacher' ? caller.authUid : null,
-         visibleToRoles: Array.from(new Set([callerRole, targetRole])),
-         status: 'active',
-         internalOnly: true,
-         updatedAt: now,
-         updatedBy: caller.authUid,
-         unreadCountByUser: {
-             [caller.authUid]: 0,
-             [target.authUid]: 0,
-         },
-     };
- };
- 
- 
- const pickCounterpartUid = (participantIds, participantId) => participantIds.find((uid) => uid && uid !== participantId) || '';
- 
- const buildUserChatRoomIndexData = ({ roomId, roomData = {}, participantId, lastMessageText = null, lastMessageAt = null, updatedAt = null }) => {
-     const participantIds = Array.isArray(roomData.participantIds) ? roomData.participantIds.map(String).filter(Boolean) : [];
-     return {
-         roomId,
-         roomType: roomData.roomType || roomData.channel || roomData.type || '',
-         channel: roomData.channel || roomData.roomType || '',
-         slot: roomData.slot || '',
-         counterpartUid: roomData.counterpartUid && String(roomData.counterpartUid) !== String(participantId)
-             ? String(roomData.counterpartUid)
-             : pickCounterpartUid(participantIds, String(participantId)),
+   }, [db, isAuthenticated, role, page]);
 diff --git a/src/components/messenger/InternalMessengerPanel.jsx b/src/components/messenger/InternalMessengerPanel.jsx
-index c2b562ea61e77e56011c16da248b8de267cdfe95..68d3fa2ae2453499d6d37ec2ebd05df9ae6c7a88 100644
+index 68d3fa2ae2453499d6d37ec2ebd05df9ae6c7a88..f285a65a04564849d5e0ef7b53e92bc9acb94817 100644
 --- a/src/components/messenger/InternalMessengerPanel.jsx
 +++ b/src/components/messenger/InternalMessengerPanel.jsx
-@@ -12,110 +12,127 @@ import { isStaffOrTeachingRole } from '../../constants/roles';
+@@ -1,31 +1,32 @@
+ import React, { useEffect, useMemo, useState } from 'react';
+ import { collection, getDocs, query, where } from 'firebase/firestore';
+ import { db } from '../../firebase/client';
+ import {
+     broadcastChatMessage,
+     createOrOpenRoom,
++    findExistingInternalRoom,
+     sendMessageDirect,
+     subscribeChatMessages,
+     subscribeInternalChatRooms,
+ } from '../../domain/messenger/messenger.service';
+ import { isStaffOrTeachingRole } from '../../constants/roles';
  import ChatRoomList from './ChatRoomList';
  import ChatMessagePane from './ChatMessagePane';
  import {
@@ -127,422 +92,110 @@ index c2b562ea61e77e56011c16da248b8de267cdfe95..68d3fa2ae2453499d6d37ec2ebd05df9
      const [messages, setMessages] = useState([]);
      const [, setOptimisticByRoom] = useState({});
      const [targetUid, setTargetUid] = useState('');
-     const [broadcastText, setBroadcastText] = useState('');
-     const [statusMessage, setStatusMessage] = useState('');
-     const [selectedTargetUids, setSelectedTargetUids] = useState([]);
-     const [studentSearchQuery, setStudentSearchQuery] = useState('');
-     const [fallbackStudents, setFallbackStudents] = useState([]);
-+    const [fallbackParents, setFallbackParents] = useState([]);
- 
-     useEffect(() => {
--        if (Array.isArray(students) && students.length > 0) {
-+        if (Array.isArray(students) && students.length > 0 && Array.isArray(parents) && parents.length > 0) {
-             setFallbackStudents([]);
-+            setFallbackParents([]);
-             return undefined;
-         }
-         if (!isStaffOrTeachingRole(userRole)) return undefined;
- 
-         let mounted = true;
--        getDocs(query(collection(db, 'users'), where('role', '==', 'student'))).then((snapshot) => {
-+        Promise.all([
-+            Array.isArray(students) && students.length > 0
-+                ? Promise.resolve(null)
-+                : getDocs(query(collection(db, 'users'), where('role', '==', 'student'))),
-+            Array.isArray(parents) && parents.length > 0
-+                ? Promise.resolve(null)
-+                : getDocs(query(collection(db, 'users'), where('role', '==', 'parent'))),
-+        ]).then(([studentSnapshot, parentSnapshot]) => {
-             if (!mounted) return;
--            setFallbackStudents(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })));
-+            setFallbackStudents(studentSnapshot ? studentSnapshot.docs.map((item) => ({ id: item.id, ...item.data() })) : []);
-+            setFallbackParents(parentSnapshot ? parentSnapshot.docs.map((item) => ({ id: item.id, ...item.data() })) : []);
-         }).catch((error) => {
--            console.error('[internal-messenger] student target fallback query failed', error);
--            if (mounted) setFallbackStudents([]);
-+            console.error('[internal-messenger] target fallback query failed', error);
-+            if (mounted) {
-+                setFallbackStudents([]);
-+                setFallbackParents([]);
-+            }
+@@ -167,77 +168,93 @@ export default function InternalMessengerPanel({
+                                 ? latestResolved.writeDoneAt - latestResolved.optimisticAt
+                                 : null,
+                             elapsedSnapshotMs: snapshotAt - latestResolved.optimisticAt,
+                         });
+                     }
+                 }
+                 if (unresolved.length === optimisticMessages.length) return prev;
+                 return {
+                     ...prev,
+                     [roomId]: unresolved,
+                 };
+             });
+             setMessages(mergedMessages);
+         }, (error) => {
+             console.error('[internal-messenger] message subscribe failed', error);
          });
+     }, [selectedRoom?.id]);
  
-         return () => {
-             mounted = false;
-         };
--    }, [students, userRole]);
-+    }, [students, parents, userRole]);
+     const handleCreateOrOpenRoom = async (nextTargetUid = null) => {
+         const resolvedTargetUid = nextTargetUid || targetUid;
+         if (!resolvedTargetUid) return;
+         const target = targetOptions.find((option) => option.authUid === resolvedTargetUid);
+         if (!target) return;
  
-     const effectiveStudents = useMemo(() => (
-         Array.isArray(students) && students.length > 0 ? students : fallbackStudents
-     ), [students, fallbackStudents]);
- 
-+    const effectiveParents = useMemo(() => (
-+        Array.isArray(parents) && parents.length > 0 ? parents : fallbackParents
-+    ), [parents, fallbackParents]);
+         try {
++            const existingRoom = findExistingInternalRoom(rooms, {
++                targetAuthUid: target.authUid,
++                targetUserDocId: target.userDocId,
++                targetRole: target.role,
++                studentId: target.studentId || null,
++                parentId: target.parentId || null,
++            });
 +
-     const targetOptions = useMemo(() => buildMessengerTargets({
-         students: effectiveStudents,
--        parents,
-+        parents: effectiveParents,
-         classes,
--    }), [effectiveStudents, parents, classes]);
-+    }), [effectiveStudents, effectiveParents, classes]);
++            setTargetUid(resolvedTargetUid);
++            if (existingRoom?.id) {
++                setStatusMessage('기존 채팅방을 열었습니다.');
++                setSelectedRoom(existingRoom);
++                return;
++            }
++
+             const result = await createOrOpenRoom({
++                existingRooms: rooms,
+                 targetAuthUid: target.authUid,
+                 targetUserDocId: target.userDocId,
+                 targetRole: target.role,
+                 targetName: target.displayName,
+                 studentId: target.studentId || null,
+                 parentId: target.parentId || null,
+             });
  
-     const normalizedStudentQuery = studentSearchQuery.trim().toLowerCase();
- 
-     const filteredTargets = useMemo(() => {
-         if (!normalizedStudentQuery) return targetOptions;
- 
-         return targetOptions.filter((target) => {
-             if (target.role === 'student') {
-                 return target.searchText.includes(normalizedStudentQuery);
+-            setTargetUid(resolvedTargetUid);
+             setStatusMessage('채팅방 준비 완료');
+             if (result?.roomId) {
+                 setSelectedRoom((prev) => (prev?.id === result.roomId ? prev : { id: result.roomId }));
              }
-             return target.searchText.includes(normalizedStudentQuery);
-         });
-     }, [normalizedStudentQuery, targetOptions]);
-         
-     const { active: activeStudentTargets, withdrawn: withdrawnStudentTargets } = useMemo(() => (
-         splitStudentTargetsByStatus(filteredTargets)
-     ), [filteredTargets]);
- 
-     const studentSections = useMemo(() => (
-         groupStudentTargetsByClass(activeStudentTargets, classes)
-     ), [activeStudentTargets, classes]);
- 
-     const parentTargets = useMemo(() => (
-         filteredTargets
-             .filter((target) => target.role === 'parent')
-             .sort((left, right) => String(left.displayName || '').localeCompare(String(right.displayName || ''), 'ko'))
-     ), [filteredTargets]);
- 
--    const roomDisplayContext = useMemo(() => ({ students: effectiveStudents, parents }), [effectiveStudents, parents]);
-+    const roomDisplayContext = useMemo(() => ({ students: effectiveStudents, parents: effectiveParents }), [effectiveStudents, effectiveParents]);
- 
-     const selectedRoomResolved = useMemo(() => {
-         if (!selectedRoom?.id) return null;
-         return rooms.find((room) => room.id === selectedRoom.id) || selectedRoom;
-     }, [rooms, selectedRoom]);
- 
-     useEffect(() => {
-         if (!isStaffOrTeachingRole(userRole) || !userId) return () => {};
-         return subscribeInternalChatRooms(userId, setRooms, (error) => {
-             console.error('[internal-messenger] room subscribe failed', error);
-         });
-     }, [userId, userRole]);
- 
-     useEffect(() => {
-         if (!selectedRoom?.id) {
-             setMessages([]);
-             return () => {};
+         } catch (error) {
+             console.error('[internal-messenger] create room failed', error);
+             setStatusMessage(`채팅방 생성 실패: ${error.message}`);
          }
- 
-         return subscribeChatMessages(selectedRoom.id, (serverMessages) => {
-             const roomId = selectedRoom.id;
-             const snapshotAt = Date.now();
-             let mergedMessages = serverMessages;
-             setOptimisticByRoom((prev) => {
-                 const optimisticMessages = Array.isArray(prev[roomId]) ? prev[roomId] : [];
-diff --git a/src/components/messenger/messengerTargets.js b/src/components/messenger/messengerTargets.js
-index 368f971ecc00803861b9823213c2ca803bdc57b4..7bb1a8b037762b7375372e7046b1eae3a716a8ba 100644
---- a/src/components/messenger/messengerTargets.js
-+++ b/src/components/messenger/messengerTargets.js
-@@ -47,51 +47,51 @@ const pickRepresentativeClass = (student, classMap) => {
-         .filter(Boolean);
- 
-     if (!linkedClasses.length) return null;
- 
-     const ongoing = linkedClasses.find((classDoc) => !isClosedClass(classDoc));
-     return ongoing || linkedClasses[0] || null;
- };
- 
- const appendParentSuffix = (name) => {
-     const normalized = normalizeText(name);
-     if (!normalized) return '';
-     return normalized.endsWith('학부모') ? normalized : `${normalized} 학부모`;
- };
- 
- 
- const getArrayField = (value) => (Array.isArray(value) ? value.map(String).filter(Boolean) : []);
- const getAuthUid = (user) => normalizeText(user?.authUid || user?.uid || user?.studentAuthUid || user?.studentUid || user?.parentUid);
- const getUserName = (user) => normalizeText(user?.name) || normalizeText(user?.displayName) || normalizeText(user?.studentName);
- const isExcludedStudent = (student = {}) => (
-     student?.active === false
-     || lower(student?.status) === 'withdrawn'
-     || lower(student?.status) === 'deletion_requested'
- );
- const getParentRefsFromStudent = (student = {}) => {
-     const refs = [];
--    [student?.parentId, student?.parentUid].filter(Boolean).forEach((id) => refs.push({ id: String(id), authUid: String(id) }));
-+    [student?.parentId, student?.parentUid, student?.parentDocId].filter(Boolean).forEach((id) => refs.push({ id: String(id), authUid: String(id) }));
-     getArrayField(student?.parentIds).forEach((id) => refs.push({ id, authUid: id }));
-     getArrayField(student?.parentUids).forEach((id) => refs.push({ id, authUid: id }));
-     if (Array.isArray(student?.parents)) {
-         student.parents.forEach((parent) => {
-             if (typeof parent === 'string') refs.push({ id: parent, authUid: parent });
-             else if (parent && typeof parent === 'object') {
-                 const authUid = getAuthUid(parent) || normalizeText(parent?.id) || normalizeText(parent?.parentId);
-                 const id = normalizeText(parent?.id) || normalizeText(parent?.parentId) || authUid;
-                 if (authUid || id) refs.push({ id, authUid: authUid || id });
-             }
-         });
-     }
-     const unique = new Map();
-     refs.filter((ref) => ref.authUid || ref.id).forEach((ref) => {
-         const key = `${ref.authUid || ''}|${ref.id || ''}`;
-         if (!unique.has(key)) unique.set(key, ref);
-     });
-     return Array.from(unique.values());
- };
- 
- const getRoomStudentIds = (room) => [
-     normalizeText(room?.studentId),
-     ...getArrayField(room?.studentIds),
- ].filter(Boolean);
- 
-@@ -123,51 +123,50 @@ const hasParentRoomHint = (room, counterpartyUid = '') => {
- 
- const resolveParentRoomDisplayName = (room, parent, studentById) => {
-     const studentName = normalizeText(room?.studentName)
-         || getStudentNameFromIds(getRoomStudentIds(room), studentById);
-     if (studentName) return appendParentSuffix(studentName);
- 
-     return '이름 미등록 학생 학부모';
- };
- 
- const buildUserLookups = ({ students = [], parents = [] }) => {
-     const safeStudents = Array.isArray(students) ? students : [];
-     const safeParents = Array.isArray(parents) ? parents : [];
-     const studentById = new Map();
-     const studentByAuthUid = new Map();
-     safeStudents.forEach((student) => {
-         [student?.id, student?.studentId, student?.docId, student?.userDocId].filter(Boolean).forEach((id) => studentById.set(String(id), student));
-         [student?.authUid, student?.uid, student?.studentAuthUid, student?.studentUid].filter(Boolean).forEach((uid) => studentByAuthUid.set(String(uid), student));
-     });
-     const parentById = new Map();
-     const parentByAuthUid = new Map();
-     safeParents.forEach((parent) => {
-         [parent?.id, parent?.parentId, parent?.docId].filter(Boolean).forEach((id) => parentById.set(String(id), parent));
-         [parent?.authUid, parent?.uid, parent?.parentUid].filter(Boolean).forEach((uid) => parentByAuthUid.set(String(uid), parent));
-     });
-     const parentLast4Map = buildStudentParentPhoneLast4Map(safeStudents, safeParents);
--
-     return {
-         studentById,
-         studentByAuthUid,
-         parentById,
-         parentByAuthUid,
-         parentLast4Map,
      };
- };
  
+     const handleSendMessage = async (text, attachment = null) => {
+         const target = targetOptions.find((option) => option.authUid === targetUid) || null;
+         let roomId = selectedRoom?.id || null;
+         if (!roomId && !target) return;
  
- const getRoomType = (room) => normalizeText(room?.roomType || room?.channel);
- 
- const getStudentDisplayNameForRoom = (room, { studentById, studentByAuthUid, parentLast4Map }) => {
-     const directStudent = getRoomStudentIds(room).map((studentId) => studentById.get(String(studentId)) || studentByAuthUid.get(String(studentId))).find(Boolean)
-         || (room?.studentDocId ? studentById.get(String(room.studentDocId)) : null);
-     const directName = getUserName(directStudent) || normalizeText(room?.studentName);
-     if (directName) return directName;
- 
-     const roles = room?.participantRoles && typeof room.participantRoles === 'object' ? room.participantRoles : {};
-     const userDocIds = room?.participantUserDocIds && typeof room.participantUserDocIds === 'object' ? room.participantUserDocIds : {};
-     const participantIds = Array.isArray(room?.participantIds) ? room.participantIds.map(String) : [];
-     const roleStudentId = Object.keys(roles).find((uid) => lower(roles[uid]) === 'student');
-     const roleStudent = roleStudentId ? (studentByAuthUid.get(roleStudentId) || studentById.get(String(userDocIds[roleStudentId] || ''))) : null;
-     const participantStudent = roleStudent || participantIds.map((participantId) => studentByAuthUid.get(participantId) || studentById.get(String(userDocIds[participantId] || ''))).find(Boolean);
-     const participantName = roleStudentId ? normalizeText(room?.participantNames?.[roleStudentId]) : '';
-@@ -217,51 +216,51 @@ export const getMessengerTargetDisplayName = ({
- 
-     if (role === 'student') {
-         return normalizeText(user?.name)
-             || normalizeText(user?.displayName)
-             || formatStudentNameWithOptionalParentLast4(user, parentLast4Map)
-             || '이름 미등록 학생';
-     }
- 
-     const linkedStudentIds = Array.isArray(user?.studentIds) ? user.studentIds.map(String) : [];
-     const linkedStudent = linkedStudentIds
-         .map((studentId) => studentById.get(studentId))
-         .find(Boolean);
- 
-     if (role === 'parent' && linkedStudent) {
-         const baseName = normalizeText(linkedStudent?.name)
-             || normalizeText(linkedStudent?.studentName)
-             || normalizeText(linkedStudent?.id);
-         if (baseName) return appendParentSuffix(baseName);
-     }
- 
-     const directName =
-         normalizeText(user?.name)
-         || normalizeText(user?.displayName)
-         || normalizeText(user?.parentName);
- 
--    if (role === 'parent' && directName) return appendParentSuffix(directName);
-+    if (role === 'parent' && directName) return '이름 미등록 학부모';
-     if (directName) return directName;
- 
-     if (role === 'parent') {
-         if (process.env.NODE_ENV === 'development') {
-             console.warn('[internal-messenger] parent display name fallback', {
-                 parentId: user?.id || null,
-                 authUid: user?.authUid || null,
+         if (!roomId) {
+             const created = await createOrOpenRoom({
++                existingRooms: rooms,
+                 targetAuthUid: target?.authUid,
+                 targetUserDocId: target?.userDocId || null,
+                 targetRole: target?.role || null,
+                 targetName: target?.displayName || null,
+                 studentId: target?.studentId || null,
+                 parentId: target?.parentId || null,
              });
+             roomId = created?.roomId || null;
+             if (!roomId) throw new Error('채팅방 생성에 실패했습니다.');
+             setSelectedRoom((prev) => (prev?.id === roomId ? prev : { id: roomId }));
          }
-         return '이름 미등록 학부모';
-     }
  
-     return '이름 미등록 사용자';
- };
- 
- export const getChatRoomCounterparty = (
-     room,
-     currentUserId,
-     students = [],
-     parents = [],
- ) => {
-     const counterpartyUid = resolveCounterpartyUid(room, currentUserId);
-     if (!counterpartyUid) return null;
- 
-     const {
-@@ -370,50 +369,58 @@ export const isWithdrawnStudent = (student = {}) => {
-     const classStatusMap = student?.classStatusMap || {};
-     const mapStatuses = Object.values(classStatusMap)
-         .map((entry) => entry?.status || entry)
-         .filter(Boolean);
- 
-     const classStatuses = student?.classStatuses || {};
-     const classStatusesValues = Object.values(classStatuses).filter(Boolean);
- 
-     const mergedStatuses = [...mapStatuses, ...classStatusesValues];
-     if (!mergedStatuses.length) return false;
- 
-     return mergedStatuses.every((status) => isEndedStatus(status));
- };
- 
- export const buildMessengerTargets = ({ students = [], parents = [], classes = [] }) => {
-     const safeStudents = Array.isArray(students) ? students : [];
-     const safeParents = Array.isArray(parents) ? parents : [];
-     const safeClasses = Array.isArray(classes) ? classes : [];
- 
-     const classMap = new Map(safeClasses.map((classDoc) => [String(classDoc?.id), classDoc]));
-     const studentById = new Map();
-     safeStudents.forEach((student) => {
-         [student?.id, student?.studentId, student?.docId, student?.userDocId].filter(Boolean).forEach((id) => studentById.set(String(id), student));
-     });
-     const parentLast4Map = buildStudentParentPhoneLast4Map(safeStudents, safeParents);
-+    const normalizePhone = (value) => String(value || '').replace(/\D/g, '');
-+    const studentByParentPhone = new Map();
-+    safeStudents.forEach((student) => {
-+        [student?.parentPhone, student?.motherPhone, student?.fatherPhone, student?.guardianPhone].forEach((phone) => {
-+            const normalizedPhone = normalizePhone(phone);
-+            if (normalizedPhone && !studentByParentPhone.has(normalizedPhone)) studentByParentPhone.set(normalizedPhone, student);
-+        });
-+    });
- 
-     const studentOptions = safeStudents
-         .filter((student) => !isExcludedStudent(student))
-         .map((student) => {
-             const authUid = getAuthUid(student) || normalizeText(student?.id);
-             if (!authUid) return null;
-             const representativeClass = pickRepresentativeClass(student, classMap);
-             const classLabel = representativeClass
-                 ? formatClassLabel(representativeClass, { includeClosedBadge: true })
-                 : '미분류';
- 
-             const displayName = getMessengerTargetDisplayName({
-                 user: student,
-                 role: 'student',
-                 studentById,
-                 parentLast4Map,
-             });
- 
-             return {
-                 authUid: String(authUid),
-                 role: 'student',
-                 displayName,
-                 searchText: `${lower(displayName)} ${lower(student?.name)} ${lower(classLabel)}`,
-                 classId: representativeClass?.id ? String(representativeClass.id) : null,
-                 classLabel,
-@@ -427,59 +434,65 @@ export const buildMessengerTargets = ({ students = [], parents = [], classes = [
-         .filter(Boolean);
- 
- 
-     const studentParentOptions = safeStudents
-         .filter((student) => !isExcludedStudent(student))
-         .flatMap((student) => {
-             const studentName = getUserName(student) || '이름 미등록 학생';
-             return getParentRefsFromStudent(student).map((ref) => ({
-                 authUid: String(ref.authUid || ref.id),
-                 role: 'parent',
-                 displayName: appendParentSuffix(studentName),
-                 searchText: `${lower(studentName)} ${lower(appendParentSuffix(studentName))}`,
-                 classId: null,
-                 classLabel: null,
-                 classClosed: false,
-                 userDocId: ref.id || null,
-                 studentId: student?.id ? String(student.id) : null,
-                 parentId: ref.id || null,
-             }));
-         });
- 
-     const parentOptions = safeParents
-         .map((parent) => {
-             const authUid = getAuthUid(parent);
-             if (!authUid) return null;
--            const displayName = getMessengerTargetDisplayName({
-+            const linkedStudentIds = Array.isArray(parent?.studentIds) ? parent.studentIds.map(String) : [parent?.studentId, parent?.linkedStudentId].filter(Boolean).map(String);
-+            const linkedStudentById = linkedStudentIds.map((studentId) => studentById.get(studentId)).find(Boolean);
-+            const linkedStudentByPhone = [parent?.phone, parent?.phoneNumber, parent?.parentPhone, parent?.mobile]
-+                .map(normalizePhone)
-+                .filter(Boolean)
-+                .map((phone) => studentByParentPhone.get(phone))
-+                .find(Boolean);
-+            const linkedStudent = linkedStudentById || linkedStudentByPhone || null;
-+            const linkedStudentName = getUserName(linkedStudent);
-+            const displayName = linkedStudentName ? appendParentSuffix(linkedStudentName) : getMessengerTargetDisplayName({
-                 user: parent,
-                 role: 'parent',
-                 studentById,
-                 parentLast4Map,
-             });
--
--            const linkedStudentIds = Array.isArray(parent?.studentIds) ? parent.studentIds.map(String) : [parent?.studentId, parent?.linkedStudentId].filter(Boolean).map(String);
--            const linkedStudent = linkedStudentIds.map((studentId) => studentById.get(studentId)).find(Boolean);
-             return {
-                 authUid: String(authUid),
-                 role: 'parent',
-                 displayName,
-                 searchText: `${lower(displayName)} ${lower(linkedStudent?.name)} ${lower(linkedStudent?.displayName)}`,
-                 classId: null,
-                 classLabel: null,
-                 classClosed: false,
-                 userDocId: parent?.id ? String(parent.id) : null,
-                 studentId: linkedStudent?.id ? String(linkedStudent.id) : (linkedStudentIds[0] || null),
-                 parentId: parent?.id ? String(parent.id) : null,
-             };
-         })
-         .filter(Boolean);
- 
-     const merged = [...studentOptions, ...studentParentOptions, ...parentOptions];
-     const uniqueMap = new Map();
-     merged.forEach((target) => {
-         if (!uniqueMap.has(target.authUid)) uniqueMap.set(target.authUid, target);
-     });
- 
-     return sortMessengerTargets(Array.from(uniqueMap.values()));
- };
- 
- export const groupStudentTargetsByClass = (targets = [], classes = []) => {
+         const clickAt = Date.now();
+         const tempId = `temp-${clickAt}-${userId}`;
+         const optimisticAt = Date.now();
+         const tempMessage = {
+             id: tempId,
+             roomId,
+             senderId: userId,
+             senderRole: userRole,
+             senderName: '나',
+             text,
+             messageType: attachment?.file ? (attachment.file.type === 'application/pdf' ? 'file' : 'image') : 'text',
+             attachments: attachment?.file ? [{ type: attachment.file.type === 'application/pdf' ? 'pdf' : 'image', name: attachment.file.name, url: '', path: '', size: attachment.file.size, contentType: attachment.file.type }] : [],
+             createdAt: new Date(),
 diff --git a/src/domain/messenger/messenger.service.js b/src/domain/messenger/messenger.service.js
-index 084022d6841a9e46fc1a3d0671434baf4cbf7cb6..2480af1c55faf117cade04c10bfd9403fed78228 100644
+index 2480af1c55faf117cade04c10bfd9403fed78228..a501933222cc6773bb28aa653f8390b2410f3414 100644
 --- a/src/domain/messenger/messenger.service.js
 +++ b/src/domain/messenger/messenger.service.js
-@@ -1,43 +1,80 @@
+@@ -1,44 +1,95 @@
  import {
      collection,
      doc,
-+    getDoc,
+     getDoc,
      limit,
      onSnapshot,
      orderBy,
@@ -558,49 +211,83 @@ index 084022d6841a9e46fc1a3d0671434baf4cbf7cb6..2480af1c55faf117cade04c10bfd9403
  const createOrGetChatRoomCallable = httpsCallable(functions, 'createOrGetChatRoom');
  const broadcastChatMessageCallable = httpsCallable(functions, 'broadcastChatMessage');
  
-+const uniqueStrings = (values = []) => Array.from(new Set(values.map((value) => String(value || '').trim()).filter(Boolean)));
 +
-+const pickCounterpartUid = (participantIds, participantUid) => participantIds.find((uid) => uid !== participantUid) || '';
++const normalizeString = (value) => String(value || '').trim();
 +
-+const buildUserChatRoomIndexData = ({ roomId, roomData = {}, participantUid, lastMessageText, timestamp }) => {
-+    const participantIds = uniqueStrings(Array.isArray(roomData.participantIds) ? roomData.participantIds : []);
-+    return {
-+        roomId,
-+        roomType: roomData.roomType || roomData.channel || roomData.type || '',
-+        channel: roomData.channel || roomData.roomType || '',
-+        slot: roomData.slot || '',
-+        counterpartUid: roomData.counterpartUid && String(roomData.counterpartUid) !== String(participantUid)
-+            ? String(roomData.counterpartUid)
-+            : pickCounterpartUid(participantIds, String(participantUid)),
-+        lastMessageText,
-+        lastMessageAt: timestamp,
-+        updatedAt: timestamp,
-+        studentId: roomData.studentId || '',
-+        parentId: roomData.parentId || '',
-+        parentUid: roomData.parentUid || '',
-+        staffAuthUid: roomData.staffAuthUid || '',
-+        teacherAuthUid: roomData.teacherAuthUid || '',
-+    };
++const getInternalRoomTypeForTargetRole = (targetRole) => (
++    String(targetRole || '').toLowerCase() === 'parent' ? 'parent_institute' : 'student_institute'
++);
++
++const getRoomType = (room = {}) => normalizeString(room?.roomType || room?.channel || room?.type);
++
++const getRoomParticipantIds = (room = {}) => (
++    Array.isArray(room?.participantIds) ? room.participantIds.map(normalizeString).filter(Boolean) : []
++);
++
++const roomHasTarget = (room = {}, target = {}) => {
++    const targetAuthUid = normalizeString(target.targetAuthUid);
++    const targetUserDocId = normalizeString(target.targetUserDocId);
++    const targetStudentId = normalizeString(target.studentId);
++    const targetParentId = normalizeString(target.parentId);
++    const participants = getRoomParticipantIds(room);
++    const participantUserDocIds = room?.participantUserDocIds && typeof room.participantUserDocIds === 'object'
++        ? room.participantUserDocIds
++        : {};
++
++    if (targetAuthUid && participants.includes(targetAuthUid)) return true;
++    if (targetUserDocId && Object.values(participantUserDocIds).map(normalizeString).includes(targetUserDocId)) return true;
++
++    const roomStudentIds = [room?.studentId, room?.studentDocId, ...(Array.isArray(room?.studentIds) ? room.studentIds : [])]
++        .map(normalizeString)
++        .filter(Boolean);
++
++    if (targetStudentId && roomStudentIds.length > 0 && !roomStudentIds.includes(targetStudentId)) return false;
++
++    if (String(target.targetRole || '').toLowerCase() === 'parent') {
++        return Boolean(targetParentId) && [room?.parentId, room?.parentUid, ...(Array.isArray(room?.parentUids) ? room.parentUids : [])]
++            .map(normalizeString)
++            .includes(targetParentId);
++    }
++
++    return Boolean(targetStudentId) && roomStudentIds.includes(targetStudentId);
 +};
 +
-+const upsertUserChatRoomIndexWrites = ({ batch, roomId, roomData = {}, lastMessageText, timestamp }) => {
-+    const participantIds = uniqueStrings(Array.isArray(roomData.participantIds) ? roomData.participantIds : []);
-+    participantIds.forEach((participantUid) => {
-+        batch.set(
-+            doc(db, 'userChatRooms', participantUid, 'rooms', roomId),
-+            buildUserChatRoomIndexData({ roomId, roomData, participantUid, lastMessageText, timestamp }),
-+            { merge: true },
-+        );
-+    });
++export const findExistingInternalRoom = (rooms = [], target = {}) => {
++    const expectedRoomType = normalizeString(target.roomType) || getInternalRoomTypeForTargetRole(target.targetRole);
++    return (Array.isArray(rooms) ? rooms : []).find((room) => (
++        room?.id
++        && room?.internalOnly === true
++        && getRoomType(room) === expectedRoomType
++        && roomHasTarget(room, target)
++    )) || null;
 +};
 +
- const normalizeRoom = (docSnapshot) => ({
-     id: docSnapshot.id,
-     ...docSnapshot.data(),
- });
+ const uniqueStrings = (values = []) => Array.from(new Set(values.map((value) => String(value || '').trim()).filter(Boolean)));
  
- const normalizeMessage = (docSnapshot) => ({
-     id: docSnapshot.id,
+ const pickCounterpartUid = (participantIds, participantUid) => participantIds.find((uid) => uid !== participantUid) || '';
+ 
+ const buildUserChatRoomIndexData = ({ roomId, roomData = {}, participantUid, lastMessageText, timestamp }) => {
+     const participantIds = uniqueStrings(Array.isArray(roomData.participantIds) ? roomData.participantIds : []);
+     return {
+         roomId,
+         roomType: roomData.roomType || roomData.channel || roomData.type || '',
+         channel: roomData.channel || roomData.roomType || '',
+         slot: roomData.slot || '',
+         counterpartUid: roomData.counterpartUid && String(roomData.counterpartUid) !== String(participantUid)
+             ? String(roomData.counterpartUid)
+             : pickCounterpartUid(participantIds, String(participantUid)),
+         lastMessageText,
+         lastMessageAt: timestamp,
+         updatedAt: timestamp,
+         studentId: roomData.studentId || '',
+         parentId: roomData.parentId || '',
+         parentUid: roomData.parentUid || '',
+         staffAuthUid: roomData.staffAuthUid || '',
+         teacherAuthUid: roomData.teacherAuthUid || '',
+     };
+ };
+ 
+@@ -63,59 +114,69 @@ const normalizeMessage = (docSnapshot) => ({
      ...docSnapshot.data(),
  });
  
@@ -619,190 +306,54 @@ index 084022d6841a9e46fc1a3d0671434baf4cbf7cb6..2480af1c55faf117cade04c10bfd9403
          targetName,
          studentId,
          parentId,
-@@ -87,54 +124,64 @@ export const sendMessageDirect = async ({
-     const finalMessageType = uploadedAttachment ? (uploadedAttachment.type === 'image' ? 'image' : 'file') : messageType;
-     const fallbackLastMessage = uploadedAttachment ? (uploadedAttachment.type === 'image' ? '사진 첨부' : 'PDF 첨부') : text;
- 
-     const messagePayload = {
-         roomId,
-         senderId: senderMeta?.senderId || null,
-         senderRole: senderMeta?.senderRole || null,
-         senderName: senderMeta?.senderName || null,
-         messageType: finalMessageType,
-         text,
-         attachments: finalAttachments,
-         createdAt: serverTimestamp(),
-         internalOnly: true,
-         clientTempId,
-     };
- 
-     const roomPatch = {
-         lastMessageText: text || fallbackLastMessage,
-         lastMessageAt: serverTimestamp(),
-         lastMessageSenderId: senderMeta?.senderId || null,
-         updatedAt: serverTimestamp(),
-         updatedBy: senderMeta?.senderId || null,
-         // TODO: unreadCountByUser 업데이트는 후속 단계에서 최소 비용 방식으로 재설계
-     };
- 
-+    const roomSnapshot = await getDoc(roomRef);
-+    const roomData = roomSnapshot.exists() ? roomSnapshot.data() || {} : {};
-+
-     const batch = writeBatch(db);
-     const messageRef = doc(collection(db, 'chatRooms', roomId, 'messages'));
-     batch.set(messageRef, messagePayload);
-     batch.update(roomRef, roomPatch);
-+    upsertUserChatRoomIndexWrites({
-+        batch,
-+        roomId,
-+        roomData,
-+        lastMessageText: text || fallbackLastMessage,
-+        timestamp: roomPatch.lastMessageAt,
-+    });
- 
-     await batch.commit();
- 
-     return {
-         roomId,
-         messageId: messageRef.id,
-         acceptedAt: now,
-         lastMessageText: text || fallbackLastMessage,
-         lastMessageSenderId: senderMeta?.senderId || null,
-     };
- };
- 
- export const broadcastChatMessage = async ({
-     text,
-     targetUserIds = [],
-     targetType = 'custom',
-     targetClassIds = [],
- }) => {
-     const result = await broadcastChatMessageCallable({
-         text,
-         targetUserIds,
-         targetType,
-         targetClassIds,
      });
  
-diff --git a/src/pages/admin/MasterViewPage.jsx b/src/pages/admin/MasterViewPage.jsx
-index 56119f714529c7d8a30cc1b695023a38b0d8f5df..74f29178e6e6911cac3f604dc676808a792c7fb0 100644
---- a/src/pages/admin/MasterViewPage.jsx
-+++ b/src/pages/admin/MasterViewPage.jsx
-@@ -1,88 +1,110 @@
- import React, { useMemo, useState } from 'react';
- import StudentHome from '../StudentHome';
- import ParentHome from '../ParentHome';
- import ParentContext from '../../parent/ParentContext';
- import { getStudentGradeLabel } from '../../utils/gradeUtils';
- 
- const countStudentClasses = (student, classes = []) => {
-   const ids = new Set([...(student?.classes || []), ...(student?.classIds || [])].map(String));
-   return classes.filter((cls) => ids.has(String(cls.id)) || (cls.students || []).map(String).includes(String(student.id))).length;
+     return result?.data || null;
  };
  
--const MasterBanner = () => (
-+const isExcludedFromMasterView = (student = {}) => {
-+  const status = String(student?.status || '').trim().toLowerCase();
-+  return student?.role !== 'student'
-+    || student?.active === false
-+    || student?.deletion_requested === true
-+    || student?.deletionRequested === true
-+    || status === 'withdrawn'
-+    || status === 'deletion_requested';
-+};
+ export const createOrOpenRoom = async ({
+     roomId = null,
++    existingRooms = [],
+     targetAuthUid,
+     targetUserDocId = null,
+     targetRole = null,
+     targetName = null,
+     studentId = null,
+     parentId = null,
+ }) => {
+     if (roomId) return { roomId, status: 'existing' };
+ 
++    const existingRoom = findExistingInternalRoom(existingRooms, {
++        targetAuthUid,
++        targetUserDocId,
++        targetRole,
++        studentId,
++        parentId,
++    });
++    if (existingRoom?.id) return { roomId: existingRoom.id, status: 'existing' };
 +
-+const getStudentStatusLabel = (student = {}) => {
-+  if (student?.active === false) return '비활성';
-+  if (student?.deletion_requested || student?.deletionRequested || String(student?.status || '').toLowerCase() === 'deletion_requested') return '탈퇴 요청';
-+  if (String(student?.status || '').toLowerCase() === 'withdrawn') return '퇴원';
-+  return student?.status || '재원';
-+};
-+
-+const MasterBanner = ({ mode }) => (
-   <div className="sticky top-0 z-50 bg-amber-100 border border-amber-300 text-amber-900 px-4 py-2 text-sm font-semibold rounded-lg mb-3">
--    관리자 마스터뷰로 보고 있습니다. 실제 학생/학부모 계정이 아닙니다.
-+    {mode === 'parent'
-+      ? '관리자 마스터뷰로 보고 있습니다. 실제 학부모 계정이 아닙니다.'
-+      : '관리자 마스터뷰로 보고 있습니다. 실제 학생 계정이 아닙니다.'}
-   </div>
- );
+     return createOrGetChatRoom({
+         targetAuthUid,
+         targetUserDocId,
+         targetRole,
+         targetName,
+         studentId,
+         parentId,
+     });
+ };
  
- export default function MasterViewPage({ students = [], classes = [], userId }) {
-   const [searchTerm, setSearchTerm] = useState('');
-   const [selectedStudentId, setSelectedStudentId] = useState('');
-   const [previewMode, setPreviewMode] = useState('student');
- 
-   const filteredStudents = useMemo(() => {
-     const term = searchTerm.trim().toLowerCase();
--    const base = students.slice(0, 800);
-+    const base = students.filter((student) => !isExcludedFromMasterView(student)).slice(0, 800);
-     if (!term) return base;
--    return base.filter((student) => [student.name, student.school, student.grade, student.phone, student.phoneNumber, student.parentPhone]
-+    return base.filter((student) => [student.name, student.school, getStudentGradeLabel(student), student.grade, student.phone, student.phoneNumber, student.parentPhone]
-       .some((value) => String(value || '').toLowerCase().includes(term)));
-   }, [students, searchTerm]);
- 
--  const selectedStudent = useMemo(() => students.find((student) => String(student.id) === String(selectedStudentId)) || null, [students, selectedStudentId]);
-+  const selectedStudent = useMemo(() => students.filter((student) => !isExcludedFromMasterView(student)).find((student) => String(student.id) === String(selectedStudentId)) || null, [students, selectedStudentId]);
-   const selectedClasses = useMemo(() => selectedStudent ? classes.filter((cls) => {
-     const ids = new Set([...(selectedStudent.classes || []), ...(selectedStudent.classIds || [])].map(String));
-     return ids.has(String(cls.id)) || (cls.students || []).map(String).includes(String(selectedStudent.id));
-   }) : [], [classes, selectedStudent]);
-   const previewStudents = selectedStudent ? [selectedStudent] : [];
- 
-   const parentContextValue = useMemo(() => ({
-     activeStudentId: selectedStudentId || null,
-     studentIds: selectedStudentId ? [selectedStudentId] : [],
-     loading: false,
-     setActiveStudentId: async () => {},
-   }), [selectedStudentId]);
- 
-   const emptyMap = {};
-   const noop = async () => undefined;
- 
-   return (
-     <div className="space-y-5">
-       <div>
-         <h1 className="text-2xl font-bold text-gray-900">마스터뷰</h1>
-         <p className="mt-1 text-sm text-gray-500">관리자 전용 학생/학부모 화면 확인 도구입니다.</p>
-       </div>
-       <section className="bg-white rounded-2xl border border-gray-100 p-4 space-y-3">
-         <input className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm" placeholder="학생 이름, 학교, 학년, 전화번호 검색" value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} />
-         <div className="flex gap-2">
-           <button type="button" onClick={() => setPreviewMode('student')} className={`px-3 py-2 rounded-lg text-sm ${previewMode === 'student' ? 'bg-[#455fab] text-white' : 'bg-gray-100'}`}>학생 화면으로 보기</button>
-           <button type="button" onClick={() => setPreviewMode('parent')} className={`px-3 py-2 rounded-lg text-sm ${previewMode === 'parent' ? 'bg-[#455fab] text-white' : 'bg-gray-100'}`}>학부모 화면으로 보기</button>
-         </div>
-         <div className="max-h-72 overflow-y-auto divide-y divide-gray-100 border rounded-xl">
-           {filteredStudents.map((student) => (
-             <button key={student.id} type="button" onClick={() => setSelectedStudentId(student.id)} className={`w-full text-left px-4 py-3 ${selectedStudentId === student.id ? 'bg-blue-50' : 'bg-white hover:bg-gray-50'}`}>
--              <div className="font-semibold text-gray-900">{student.name || '이름 없음'}</div>
-+              <div className="flex items-center justify-between gap-3">
-+                <div className="font-semibold text-gray-900">{student.name || '이름 없음'}</div>
-+                <span className="shrink-0 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">{getStudentStatusLabel(student)}</span>
-+              </div>
-               <div className="text-xs text-gray-500">{student.school || '학교 정보 없음'} · {getStudentGradeLabel(student)} · 수강 중 클래스 {countStudentClasses(student, classes)}개</div>
-             </button>
-           ))}
-         </div>
-       </section>
-       {selectedStudent && (
-         <section className="bg-white rounded-2xl border border-gray-100 p-3">
--          <MasterBanner />
-+          <MasterBanner mode={previewMode} />
-           <div className="relative border rounded-2xl overflow-hidden bg-gray-50 master-preview-readonly">
-             <style>{`.master-preview-readonly button, .master-preview-readonly input, .master-preview-readonly textarea, .master-preview-readonly select, .master-preview-readonly a { pointer-events: none !important; }`}</style>
-             <div className="select-none max-h-[75vh] overflow-y-auto">
-               {previewMode === 'student' ? (
-                 <StudentHome student={selectedStudent} studentId={selectedStudent.id} userId={userId} students={previewStudents} classes={selectedClasses} homeworkAssignments={[]} homeworkResults={emptyMap} attendanceLogs={[]} lessonLogs={[]} notices={[]} tests={[]} grades={emptyMap} classTestStats={emptyMap} videoProgress={emptyMap} videoMemos={emptyMap} onSaveVideoProgress={noop} onAddMemo={noop} onUpdateMemo={noop} onDeleteMemo={noop} externalSchedules={[]} onSaveExternalSchedule={noop} onDeleteExternalSchedule={noop} clinicLogs={[]} closures={[]} lessonReports={[]} onUpdateStudent={noop} onLogout={noop} />
-               ) : (
-                 <ParentContext.Provider value={parentContextValue}>
-                   <ParentHome userId={userId} students={previewStudents} classes={selectedClasses} homeworkAssignments={[]} homeworkResults={emptyMap} attendanceLogs={[]} lessonLogs={[]} notices={[]} tests={[]} grades={emptyMap} classTestStats={emptyMap} videoProgress={emptyMap} clinicLogs={[]} lessonReports={[]} onLogout={noop} externalSchedules={[]} onSaveExternalSchedule={noop} onDeleteExternalSchedule={noop} closures={[]} />
-                 </ParentContext.Provider>
-               )}
-             </div>
-           </div>
-         </section>
-       )}
-     </div>
-   );
- }
+ export const sendMessageDirect = async ({
+     roomId,
+     text,
+     messageType = 'text',
+     attachments = [],
+     senderMeta = {},
+     clientTempId = null,
+ }) => {
+     const now = Date.now();
+     const roomRef = doc(db, 'chatRooms', roomId);
+     const uploadedAttachment = attachments?.[0]?.file ? await uploadChatAttachment({
+         roomId,
+         messageId: clientTempId || String(now),
+         file: attachments[0].file,
+         uploaderUid: senderMeta?.senderId || '',

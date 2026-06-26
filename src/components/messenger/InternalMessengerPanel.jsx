@@ -4,6 +4,7 @@ import { db } from '../../firebase/client';
 import {
     broadcastChatMessage,
     createOrOpenRoom,
+    findExistingInternalRoom,
     sendMessageDirect,
     subscribeChatMessages,
     subscribeInternalChatRooms,
@@ -189,7 +190,23 @@ export default function InternalMessengerPanel({
         if (!target) return;
 
         try {
+            const existingRoom = findExistingInternalRoom(rooms, {
+                targetAuthUid: target.authUid,
+                targetUserDocId: target.userDocId,
+                targetRole: target.role,
+                studentId: target.studentId || null,
+                parentId: target.parentId || null,
+            });
+
+            setTargetUid(resolvedTargetUid);
+            if (existingRoom?.id) {
+                setStatusMessage('기존 채팅방을 열었습니다.');
+                setSelectedRoom(existingRoom);
+                return;
+            }
+
             const result = await createOrOpenRoom({
+                existingRooms: rooms,
                 targetAuthUid: target.authUid,
                 targetUserDocId: target.userDocId,
                 targetRole: target.role,
@@ -198,7 +215,6 @@ export default function InternalMessengerPanel({
                 parentId: target.parentId || null,
             });
 
-            setTargetUid(resolvedTargetUid);
             setStatusMessage('채팅방 준비 완료');
             if (result?.roomId) {
                 setSelectedRoom((prev) => (prev?.id === result.roomId ? prev : { id: result.roomId }));
@@ -216,6 +232,7 @@ export default function InternalMessengerPanel({
 
         if (!roomId) {
             const created = await createOrOpenRoom({
+                existingRooms: rooms,
                 targetAuthUid: target?.authUid,
                 targetUserDocId: target?.userDocId || null,
                 targetRole: target?.role || null,

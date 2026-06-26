@@ -17,6 +17,57 @@ import { uploadChatAttachment } from '../../components/chatAttachments';
 const createOrGetChatRoomCallable = httpsCallable(functions, 'createOrGetChatRoom');
 const broadcastChatMessageCallable = httpsCallable(functions, 'broadcastChatMessage');
 
+
+const normalizeString = (value) => String(value || '').trim();
+
+const getInternalRoomTypeForTargetRole = (targetRole) => (
+    String(targetRole || '').toLowerCase() === 'parent' ? 'parent_institute' : 'student_institute'
+);
+
+const getRoomType = (room = {}) => normalizeString(room?.roomType || room?.channel || room?.type);
+
+const getRoomParticipantIds = (room = {}) => (
+    Array.isArray(room?.participantIds) ? room.participantIds.map(normalizeString).filter(Boolean) : []
+);
+
+const roomHasTarget = (room = {}, target = {}) => {
+    const targetAuthUid = normalizeString(target.targetAuthUid);
+    const targetUserDocId = normalizeString(target.targetUserDocId);
+    const targetStudentId = normalizeString(target.studentId);
+    const targetParentId = normalizeString(target.parentId);
+    const participants = getRoomParticipantIds(room);
+    const participantUserDocIds = room?.participantUserDocIds && typeof room.participantUserDocIds === 'object'
+        ? room.participantUserDocIds
+        : {};
+
+    if (targetAuthUid && participants.includes(targetAuthUid)) return true;
+    if (targetUserDocId && Object.values(participantUserDocIds).map(normalizeString).includes(targetUserDocId)) return true;
+
+    const roomStudentIds = [room?.studentId, room?.studentDocId, ...(Array.isArray(room?.studentIds) ? room.studentIds : [])]
+        .map(normalizeString)
+        .filter(Boolean);
+
+    if (targetStudentId && roomStudentIds.length > 0 && !roomStudentIds.includes(targetStudentId)) return false;
+
+    if (String(target.targetRole || '').toLowerCase() === 'parent') {
+        return Boolean(targetParentId) && [room?.parentId, room?.parentUid, ...(Array.isArray(room?.parentUids) ? room.parentUids : [])]
+            .map(normalizeString)
+            .includes(targetParentId);
+    }
+
+    return Boolean(targetStudentId) && roomStudentIds.includes(targetStudentId);
+};
+
+export const findExistingInternalRoom = (rooms = [], target = {}) => {
+    const expectedRoomType = normalizeString(target.roomType) || getInternalRoomTypeForTargetRole(target.targetRole);
+    return (Array.isArray(rooms) ? rooms : []).find((room) => (
+        room?.id
+        && room?.internalOnly === true
+        && getRoomType(room) === expectedRoomType
+        && roomHasTarget(room, target)
+    )) || null;
+};
+
 const uniqueStrings = (values = []) => Array.from(new Set(values.map((value) => String(value || '').trim()).filter(Boolean)));
 
 const pickCounterpartUid = (participantIds, participantUid) => participantIds.find((uid) => uid !== participantUid) || '';
@@ -85,6 +136,7 @@ export const createOrGetChatRoom = async ({
 
 export const createOrOpenRoom = async ({
     roomId = null,
+    existingRooms = [],
     targetAuthUid,
     targetUserDocId = null,
     targetRole = null,
@@ -93,6 +145,15 @@ export const createOrOpenRoom = async ({
     parentId = null,
 }) => {
     if (roomId) return { roomId, status: 'existing' };
+
+    const existingRoom = findExistingInternalRoom(existingRooms, {
+        targetAuthUid,
+        targetUserDocId,
+        targetRole,
+        studentId,
+        parentId,
+    });
+    if (existingRoom?.id) return { roomId: existingRoom.id, status: 'existing' };
 
     return createOrGetChatRoom({
         targetAuthUid,

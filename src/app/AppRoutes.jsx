@@ -221,7 +221,7 @@ export default function AppRoutes({ user, role, studentIds }) {
         db,
         isLoggedIn: isAuthenticated,
         userRole: role,
-        pageKey: page,
+        pageKey: page === '/master-view' ? 'master-view' : page,
         setStudents: page === 'attendance' ? null : setStudents,
         setParents,
         setClasses,
