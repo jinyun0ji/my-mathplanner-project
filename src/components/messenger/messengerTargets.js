@@ -69,7 +69,7 @@ const isExcludedStudent = (student = {}) => (
 );
 const getParentRefsFromStudent = (student = {}) => {
     const refs = [];
-    [student?.parentId, student?.parentUid].filter(Boolean).forEach((id) => refs.push({ id: String(id), authUid: String(id) }));
+    [student?.parentId, student?.parentUid, student?.parentDocId].filter(Boolean).forEach((id) => refs.push({ id: String(id), authUid: String(id) }));
     getArrayField(student?.parentIds).forEach((id) => refs.push({ id, authUid: id }));
     getArrayField(student?.parentUids).forEach((id) => refs.push({ id, authUid: id }));
     if (Array.isArray(student?.parents)) {
@@ -145,7 +145,6 @@ const buildUserLookups = ({ students = [], parents = [] }) => {
         [parent?.authUid, parent?.uid, parent?.parentUid].filter(Boolean).forEach((uid) => parentByAuthUid.set(String(uid), parent));
     });
     const parentLast4Map = buildStudentParentPhoneLast4Map(safeStudents, safeParents);
-
     return {
         studentById,
         studentByAuthUid,
@@ -239,7 +238,7 @@ export const getMessengerTargetDisplayName = ({
         || normalizeText(user?.displayName)
         || normalizeText(user?.parentName);
 
-    if (role === 'parent' && directName) return appendParentSuffix(directName);
+    if (role === 'parent' && directName) return '이름 미등록 학부모';
     if (directName) return directName;
 
     if (role === 'parent') {
@@ -392,6 +391,14 @@ export const buildMessengerTargets = ({ students = [], parents = [], classes = [
         [student?.id, student?.studentId, student?.docId, student?.userDocId].filter(Boolean).forEach((id) => studentById.set(String(id), student));
     });
     const parentLast4Map = buildStudentParentPhoneLast4Map(safeStudents, safeParents);
+    const normalizePhone = (value) => String(value || '').replace(/\D/g, '');
+    const studentByParentPhone = new Map();
+    safeStudents.forEach((student) => {
+        [student?.parentPhone, student?.motherPhone, student?.fatherPhone, student?.guardianPhone].forEach((phone) => {
+            const normalizedPhone = normalizePhone(phone);
+            if (normalizedPhone && !studentByParentPhone.has(normalizedPhone)) studentByParentPhone.set(normalizedPhone, student);
+        });
+    });
 
     const studentOptions = safeStudents
         .filter((student) => !isExcludedStudent(student))
@@ -449,15 +456,21 @@ export const buildMessengerTargets = ({ students = [], parents = [], classes = [
         .map((parent) => {
             const authUid = getAuthUid(parent);
             if (!authUid) return null;
-            const displayName = getMessengerTargetDisplayName({
+            const linkedStudentIds = Array.isArray(parent?.studentIds) ? parent.studentIds.map(String) : [parent?.studentId, parent?.linkedStudentId].filter(Boolean).map(String);
+            const linkedStudentById = linkedStudentIds.map((studentId) => studentById.get(studentId)).find(Boolean);
+            const linkedStudentByPhone = [parent?.phone, parent?.phoneNumber, parent?.parentPhone, parent?.mobile]
+                .map(normalizePhone)
+                .filter(Boolean)
+                .map((phone) => studentByParentPhone.get(phone))
+                .find(Boolean);
+            const linkedStudent = linkedStudentById || linkedStudentByPhone || null;
+            const linkedStudentName = getUserName(linkedStudent);
+            const displayName = linkedStudentName ? appendParentSuffix(linkedStudentName) : getMessengerTargetDisplayName({
                 user: parent,
                 role: 'parent',
                 studentById,
                 parentLast4Map,
             });
-
-            const linkedStudentIds = Array.isArray(parent?.studentIds) ? parent.studentIds.map(String) : [parent?.studentId, parent?.linkedStudentId].filter(Boolean).map(String);
-            const linkedStudent = linkedStudentIds.map((studentId) => studentById.get(studentId)).find(Boolean);
             return {
                 authUid: String(authUid),
                 role: 'parent',

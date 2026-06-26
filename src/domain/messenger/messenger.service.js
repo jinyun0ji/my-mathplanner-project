@@ -1,6 +1,7 @@
 import {
     collection,
     doc,
+    getDoc,
     limit,
     onSnapshot,
     orderBy,
@@ -15,6 +16,42 @@ import { uploadChatAttachment } from '../../components/chatAttachments';
 
 const createOrGetChatRoomCallable = httpsCallable(functions, 'createOrGetChatRoom');
 const broadcastChatMessageCallable = httpsCallable(functions, 'broadcastChatMessage');
+
+const uniqueStrings = (values = []) => Array.from(new Set(values.map((value) => String(value || '').trim()).filter(Boolean)));
+
+const pickCounterpartUid = (participantIds, participantUid) => participantIds.find((uid) => uid !== participantUid) || '';
+
+const buildUserChatRoomIndexData = ({ roomId, roomData = {}, participantUid, lastMessageText, timestamp }) => {
+    const participantIds = uniqueStrings(Array.isArray(roomData.participantIds) ? roomData.participantIds : []);
+    return {
+        roomId,
+        roomType: roomData.roomType || roomData.channel || roomData.type || '',
+        channel: roomData.channel || roomData.roomType || '',
+        slot: roomData.slot || '',
+        counterpartUid: roomData.counterpartUid && String(roomData.counterpartUid) !== String(participantUid)
+            ? String(roomData.counterpartUid)
+            : pickCounterpartUid(participantIds, String(participantUid)),
+        lastMessageText,
+        lastMessageAt: timestamp,
+        updatedAt: timestamp,
+        studentId: roomData.studentId || '',
+        parentId: roomData.parentId || '',
+        parentUid: roomData.parentUid || '',
+        staffAuthUid: roomData.staffAuthUid || '',
+        teacherAuthUid: roomData.teacherAuthUid || '',
+    };
+};
+
+const upsertUserChatRoomIndexWrites = ({ batch, roomId, roomData = {}, lastMessageText, timestamp }) => {
+    const participantIds = uniqueStrings(Array.isArray(roomData.participantIds) ? roomData.participantIds : []);
+    participantIds.forEach((participantUid) => {
+        batch.set(
+            doc(db, 'userChatRooms', participantUid, 'rooms', roomId),
+            buildUserChatRoomIndexData({ roomId, roomData, participantUid, lastMessageText, timestamp }),
+            { merge: true },
+        );
+    });
+};
 
 const normalizeRoom = (docSnapshot) => ({
     id: docSnapshot.id,
@@ -109,10 +146,20 @@ export const sendMessageDirect = async ({
         // TODO: unreadCountByUser 업데이트는 후속 단계에서 최소 비용 방식으로 재설계
     };
 
+    const roomSnapshot = await getDoc(roomRef);
+    const roomData = roomSnapshot.exists() ? roomSnapshot.data() || {} : {};
+
     const batch = writeBatch(db);
     const messageRef = doc(collection(db, 'chatRooms', roomId, 'messages'));
     batch.set(messageRef, messagePayload);
     batch.update(roomRef, roomPatch);
+    upsertUserChatRoomIndexWrites({
+        batch,
+        roomId,
+        roomData,
+        lastMessageText: text || fallbackLastMessage,
+        timestamp: roomPatch.lastMessageAt,
+    });
 
     await batch.commit();
 

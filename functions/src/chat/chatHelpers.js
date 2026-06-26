@@ -3,6 +3,7 @@ const functions = require('firebase-functions');
 
 const STAFF_ROLES = new Set(['admin', 'staff', 'teacher', 'teaching', 'staffOrTeaching']);
 const VIEWER_ROLES = new Set(['student', 'parent']);
+const TEACHER_AUTH_UID = 'EzOXjwwyATO2sP5yuc3CkS3oRw22';
 
 const db = getFirestore();
 
@@ -102,8 +103,14 @@ const applyRoomMetadata = ({
         || (callerRole === 'parent' ? caller.userDocId : null)
         || null;
 
+    const staffChannel = caller.authUid === TEACHER_AUTH_UID ? 'teacher' : 'institute';
+    const roomType = `${targetRole}_${staffChannel}`;
+
     return {
         type: 'individual',
+        roomType,
+        channel: roomType,
+        slot: staffChannel,
         participantIds,
         participantRoles,
         participantNames,
@@ -111,6 +118,8 @@ const applyRoomMetadata = ({
         studentId,
         parentId,
         staffId: caller.authUid,
+        staffAuthUid: staffChannel === 'institute' ? caller.authUid : null,
+        teacherAuthUid: staffChannel === 'teacher' ? caller.authUid : null,
         visibleToRoles: Array.from(new Set([callerRole, targetRole])),
         status: 'active',
         internalOnly: true,

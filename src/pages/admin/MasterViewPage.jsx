@@ -9,9 +9,28 @@ const countStudentClasses = (student, classes = []) => {
   return classes.filter((cls) => ids.has(String(cls.id)) || (cls.students || []).map(String).includes(String(student.id))).length;
 };
 
-const MasterBanner = () => (
+const isExcludedFromMasterView = (student = {}) => {
+  const status = String(student?.status || '').trim().toLowerCase();
+  return student?.role !== 'student'
+    || student?.active === false
+    || student?.deletion_requested === true
+    || student?.deletionRequested === true
+    || status === 'withdrawn'
+    || status === 'deletion_requested';
+};
+
+const getStudentStatusLabel = (student = {}) => {
+  if (student?.active === false) return '비활성';
+  if (student?.deletion_requested || student?.deletionRequested || String(student?.status || '').toLowerCase() === 'deletion_requested') return '탈퇴 요청';
+  if (String(student?.status || '').toLowerCase() === 'withdrawn') return '퇴원';
+  return student?.status || '재원';
+};
+
+const MasterBanner = ({ mode }) => (
   <div className="sticky top-0 z-50 bg-amber-100 border border-amber-300 text-amber-900 px-4 py-2 text-sm font-semibold rounded-lg mb-3">
-    관리자 마스터뷰로 보고 있습니다. 실제 학생/학부모 계정이 아닙니다.
+    {mode === 'parent'
+      ? '관리자 마스터뷰로 보고 있습니다. 실제 학부모 계정이 아닙니다.'
+      : '관리자 마스터뷰로 보고 있습니다. 실제 학생 계정이 아닙니다.'}
   </div>
 );
 
@@ -22,13 +41,13 @@ export default function MasterViewPage({ students = [], classes = [], userId }) 
 
   const filteredStudents = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
-    const base = students.slice(0, 800);
+    const base = students.filter((student) => !isExcludedFromMasterView(student)).slice(0, 800);
     if (!term) return base;
-    return base.filter((student) => [student.name, student.school, student.grade, student.phone, student.phoneNumber, student.parentPhone]
+    return base.filter((student) => [student.name, student.school, getStudentGradeLabel(student), student.grade, student.phone, student.phoneNumber, student.parentPhone]
       .some((value) => String(value || '').toLowerCase().includes(term)));
   }, [students, searchTerm]);
 
-  const selectedStudent = useMemo(() => students.find((student) => String(student.id) === String(selectedStudentId)) || null, [students, selectedStudentId]);
+  const selectedStudent = useMemo(() => students.filter((student) => !isExcludedFromMasterView(student)).find((student) => String(student.id) === String(selectedStudentId)) || null, [students, selectedStudentId]);
   const selectedClasses = useMemo(() => selectedStudent ? classes.filter((cls) => {
     const ids = new Set([...(selectedStudent.classes || []), ...(selectedStudent.classIds || [])].map(String));
     return ids.has(String(cls.id)) || (cls.students || []).map(String).includes(String(selectedStudent.id));
@@ -60,7 +79,10 @@ export default function MasterViewPage({ students = [], classes = [], userId }) 
         <div className="max-h-72 overflow-y-auto divide-y divide-gray-100 border rounded-xl">
           {filteredStudents.map((student) => (
             <button key={student.id} type="button" onClick={() => setSelectedStudentId(student.id)} className={`w-full text-left px-4 py-3 ${selectedStudentId === student.id ? 'bg-blue-50' : 'bg-white hover:bg-gray-50'}`}>
-              <div className="font-semibold text-gray-900">{student.name || '이름 없음'}</div>
+              <div className="flex items-center justify-between gap-3">
+                <div className="font-semibold text-gray-900">{student.name || '이름 없음'}</div>
+                <span className="shrink-0 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">{getStudentStatusLabel(student)}</span>
+              </div>
               <div className="text-xs text-gray-500">{student.school || '학교 정보 없음'} · {getStudentGradeLabel(student)} · 수강 중 클래스 {countStudentClasses(student, classes)}개</div>
             </button>
           ))}
@@ -68,7 +90,7 @@ export default function MasterViewPage({ students = [], classes = [], userId }) 
       </section>
       {selectedStudent && (
         <section className="bg-white rounded-2xl border border-gray-100 p-3">
-          <MasterBanner />
+          <MasterBanner mode={previewMode} />
           <div className="relative border rounded-2xl overflow-hidden bg-gray-50 master-preview-readonly">
             <style>{`.master-preview-readonly button, .master-preview-readonly input, .master-preview-readonly textarea, .master-preview-readonly select, .master-preview-readonly a { pointer-events: none !important; }`}</style>
             <div className="select-none max-h-[75vh] overflow-y-auto">

@@ -34,37 +34,54 @@ export default function InternalMessengerPanel({
     const [selectedTargetUids, setSelectedTargetUids] = useState([]);
     const [studentSearchQuery, setStudentSearchQuery] = useState('');
     const [fallbackStudents, setFallbackStudents] = useState([]);
+    const [fallbackParents, setFallbackParents] = useState([]);
 
     useEffect(() => {
-        if (Array.isArray(students) && students.length > 0) {
+        if (Array.isArray(students) && students.length > 0 && Array.isArray(parents) && parents.length > 0) {
             setFallbackStudents([]);
+            setFallbackParents([]);
             return undefined;
         }
         if (!isStaffOrTeachingRole(userRole)) return undefined;
 
         let mounted = true;
-        getDocs(query(collection(db, 'users'), where('role', '==', 'student'))).then((snapshot) => {
+        Promise.all([
+            Array.isArray(students) && students.length > 0
+                ? Promise.resolve(null)
+                : getDocs(query(collection(db, 'users'), where('role', '==', 'student'))),
+            Array.isArray(parents) && parents.length > 0
+                ? Promise.resolve(null)
+                : getDocs(query(collection(db, 'users'), where('role', '==', 'parent'))),
+        ]).then(([studentSnapshot, parentSnapshot]) => {
             if (!mounted) return;
-            setFallbackStudents(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })));
+            setFallbackStudents(studentSnapshot ? studentSnapshot.docs.map((item) => ({ id: item.id, ...item.data() })) : []);
+            setFallbackParents(parentSnapshot ? parentSnapshot.docs.map((item) => ({ id: item.id, ...item.data() })) : []);
         }).catch((error) => {
-            console.error('[internal-messenger] student target fallback query failed', error);
-            if (mounted) setFallbackStudents([]);
+            console.error('[internal-messenger] target fallback query failed', error);
+            if (mounted) {
+                setFallbackStudents([]);
+                setFallbackParents([]);
+            }
         });
 
         return () => {
             mounted = false;
         };
-    }, [students, userRole]);
+    }, [students, parents, userRole]);
 
     const effectiveStudents = useMemo(() => (
         Array.isArray(students) && students.length > 0 ? students : fallbackStudents
     ), [students, fallbackStudents]);
 
+    const effectiveParents = useMemo(() => (
+        Array.isArray(parents) && parents.length > 0 ? parents : fallbackParents
+    ), [parents, fallbackParents]);
+
     const targetOptions = useMemo(() => buildMessengerTargets({
         students: effectiveStudents,
-        parents,
+        parents: effectiveParents,
         classes,
-    }), [effectiveStudents, parents, classes]);
+    }), [effectiveStudents, effectiveParents, classes]);
 
     const normalizedStudentQuery = studentSearchQuery.trim().toLowerCase();
 
@@ -93,7 +110,7 @@ export default function InternalMessengerPanel({
             .sort((left, right) => String(left.displayName || '').localeCompare(String(right.displayName || ''), 'ko'))
     ), [filteredTargets]);
 
-    const roomDisplayContext = useMemo(() => ({ students: effectiveStudents, parents }), [effectiveStudents, parents]);
+    const roomDisplayContext = useMemo(() => ({ students: effectiveStudents, parents: effectiveParents }), [effectiveStudents, effectiveParents]);
 
     const selectedRoomResolved = useMemo(() => {
         if (!selectedRoom?.id) return null;
