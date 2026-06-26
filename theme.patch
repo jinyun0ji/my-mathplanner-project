@@ -1,230 +1,190 @@
-diff --git a/src/domain/messenger/messenger.service.js b/src/domain/messenger/messenger.service.js
-index 0d0309b72166c9e1e30c3c85f1be0895dc1a290f..084022d6841a9e46fc1a3d0671434baf4cbf7cb6 100644
---- a/src/domain/messenger/messenger.service.js
-+++ b/src/domain/messenger/messenger.service.js
-@@ -125,56 +125,60 @@ export const sendMessageDirect = async ({
-     };
- };
+diff --git a/firestore.rules b/firestore.rules
+index 2b0e0bcbaa588d59c592a226eb21a0222d0d40e7..5606ca039b817cc21010055f0033328eefdfdc7f 100644
+--- a/firestore.rules
++++ b/firestore.rules
+@@ -287,63 +287,78 @@ service cloud.firestore {
+       );
+     }
  
- export const broadcastChatMessage = async ({
-     text,
-     targetUserIds = [],
-     targetType = 'custom',
-     targetClassIds = [],
- }) => {
-     const result = await broadcastChatMessageCallable({
-         text,
-         targetUserIds,
-         targetType,
-         targetClassIds,
-     });
+     function canAccessLegacyChatData(data) {
+       return isSignedIn() && data != null && (
+         isStaffOrAdminOrTeacher()
+         || isLegacyChatParticipantData(data)
+         || parentHasStudentAccess(data.studentId)
+       );
+     }
  
-     return result?.data || null;
- };
+     function myParticipantKeys() {
+       return [
+         uid(),
+         myProfileDocId()
+       ];
+     }
  
- export const subscribeInternalChatRooms = (currentAuthUid, onChange, onError = null) => {
-     if (!currentAuthUid) return () => {};
+     function hasMyParticipantKey(listField) {
+       return listField is list && (
+         uid() in listField
+         || myProfileDocId() in listField
+       );
+     }
  
-     const roomsQuery = query(
-         collection(db, 'chatRooms'),
-         where('participantIds', 'array-contains', currentAuthUid),
--        where('internalOnly', '==', true),
--        orderBy('lastMessageAt', 'desc'),
--        limit(100),
-     );
+-    function canAccessChatRoomData(data) {
++    function isChatRoomParticipant(data) {
++      return isSignedIn()
++        && data != null
++        && data.participantIds is list
++        && (
++          uid() in data.participantIds
++          || myProfileDocId() in data.participantIds
++        );
++    }
++
++    function canReadChatRoom(data) {
+       return isSignedIn()
+         && data != null
+         && (
+           isStaffOrAdminOrTeacher()
+-          || (data.participantIds is list && uid() in data.participantIds)
++          || isChatRoomParticipant(data)
+           || (('parentUid' in data) && data.parentUid == uid())
+           || (('studentAuthUid' in data) && data.studentAuthUid == uid())
++          || (('studentUid' in data) && data.studentUid == uid())
+         );
+     }
  
-     return onSnapshot(
-         roomsQuery,
-         (snapshot) => {
--            onChange(snapshot.docs.map(normalizeRoom));
-+            onChange(snapshot.docs
-+                .map(normalizeRoom)
-+                .filter((room) => room?.internalOnly === true)
-+                .sort((a, b) => {
-+                    const getTime = (value) => (typeof value?.toDate === 'function' ? value.toDate() : new Date(value || 0)).getTime() || 0;
-+                    return getTime(b?.lastMessageAt) - getTime(a?.lastMessageAt);
-+                })
-+                .slice(0, 100));
-         },
-         onError || (() => {}),
-     );
- };
++    function canAccessChatRoomData(data) {
++      return canReadChatRoom(data);
++    }
++
+     function canAccessChatRoomDoc() {
+-      return canAccessChatRoomData(resource.data);
++      return canReadChatRoom(resource.data);
+     }
  
- export const subscribeChatMessages = (roomId, onChange, onError = null) => {
-     if (!roomId) return () => {};
  
-     const messagesQuery = query(
-         collection(db, 'chatRooms', roomId, 'messages'),
-         orderBy('createdAt', 'asc'),
-         limit(200),
-     );
+     function announcementAudienceAuthUids() {
+       return (
+         resource != null
+         && resource.data != null
+         && ('audienceAuthUids' in resource.data)
+         && resource.data.audienceAuthUids is list
+       )
+         ? resource.data.audienceAuthUids
+         : [];
+     }
  
-     return onSnapshot(
-         messagesQuery,
-         (snapshot) => {
-             onChange(snapshot.docs.map(normalizeMessage));
-         },
-         onError || (() => {}),
-     );
- };
-\ No newline at end of file
-diff --git a/src/messenger/hooks/useMessengerRooms.js b/src/messenger/hooks/useMessengerRooms.js
-index b488e5c9da575f0ba4ba50252cc9ecfe136ebeb2..0139d84cda695972fc2e321468c3c178a57eb70a 100644
---- a/src/messenger/hooks/useMessengerRooms.js
-+++ b/src/messenger/hooks/useMessengerRooms.js
-@@ -21,51 +21,53 @@ const logChatRoomsQuery = (role, authUid) => {
-     log('query', { role, queryShape });
- };
+     function canAccessChatRoomById(roomId) {
+       return isSignedIn()
+         && exists(/databases/$(database)/documents/chatRooms/$(roomId))
+         && canAccessChatRoomData(get(/databases/$(database)/documents/chatRooms/$(roomId)).data);
+     }
  
- export const useMessengerRooms = ({ role = 'student', authUid = '', student = {}, parent = {} } = {}) => {
-     const [rawRooms, setRawRooms] = useState([]);
-     const [loading, setLoading] = useState(false);
-     const [error, setError] = useState('');
  
-     const participantKeys = useMemo(() => {
-         if (role === 'parent') return buildParentParticipantKeys({ authUid, parent, student, studentId: student?.id || student?.studentId });
-         if (role === 'staff') return uniqueStrings([authUid, parent?.id, student?.id, student?.studentId]);
-         return buildStudentParticipantKeys({ authUid, student, studentId: student?.id || student?.studentId });
-     }, [role, authUid, parent, student]);
+     function hasAllowedDirectChatCounterpart(participantIds) {
+       return participantIds is list
+         && (
+           fixedTeacherAuthUid() in participantIds
+@@ -730,88 +745,84 @@ service cloud.firestore {
+       allow read: if signedIn()
+         && (uid() == userUid || isStaffOrAdminOrTeacher());
  
-     useEffect(() => {
-         if (!authUid) {
-             setRawRooms([]);
-             setLoading(false);
-             return undefined;
-         }
-         setLoading(true);
-         setError('');
-         const roomQuery = query(collection(db, 'chatRooms'), where('participantIds', 'array-contains', authUid));
-         logChatRoomsQuery(role, authUid);
-         const unsubscribe = onSnapshot(roomQuery, (snap) => {
--            const nextRooms = snap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
-+            const nextRooms = snap.docs
-+                .map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }))
-+                .filter((room) => Array.isArray(room.participantIds) && room.participantIds.map(String).includes(authUid));
-             log('snapshot', { role, count: nextRooms.length });
-             setRawRooms(nextRooms);
-             setLoading(false);
-             setError('');
-         }, (snapshotError) => {
-             console.error('[resolver] failed to load chatRooms', {
-                 role,
-                 authUid,
-                 queryShape: { collection: 'chatRooms', where: ['participantIds', 'array-contains', authUid] },
-                 code: snapshotError?.code,
-                 message: snapshotError?.message,
-             });
-             setLoading(false);
-             setError('대화 목록을 불러오지 못했습니다.');
-         });
-         return unsubscribe;
-     }, [role, authUid]);
+       // ✅ 본인: 읽음 처리용 update만 허용
+       allow update: if signedIn()
+         && uid() == userUid
+         && request.resource.data.diff(resource.data).changedKeys()
+             .hasOnly(['isRead', 'readAt', 'updatedAt']);
  
-     const resolved = useMemo(() => {
-         if (role === 'parent') return resolveParentRooms({ rooms: rawRooms, participantKeys });
-         if (role === 'staff') return { rooms: resolveStaffRooms({ rooms: rawRooms, participantKeys }) };
-         return resolveStudentRooms({ rooms: rawRooms, authUid });
-     }, [role, rawRooms, participantKeys, authUid]);
+       // ✅ 직원/관리자/강사: 기존대로 full 권한
+       allow create, update, delete: if isStaffOrAdminOrTeacher();
+     }
  
-     return {
-diff --git a/src/pages/parent/ParentMessengerPage.jsx b/src/pages/parent/ParentMessengerPage.jsx
-index d60cc0ed9a58fb86fb2b24842c38c5346212a610..6a725ef889efad0034f3670fe99b35263fe5bead 100644
---- a/src/pages/parent/ParentMessengerPage.jsx
-+++ b/src/pages/parent/ParentMessengerPage.jsx
-@@ -1,87 +1,94 @@
- import React, { useEffect, useMemo, useState } from 'react';
- import ArrowBackIosNewIcon from '@mui/icons-material/ArrowBackIosNew';
- import { collection, onSnapshot, query, where } from 'firebase/firestore';
- import StudentMessenger from '../../components/StudentMessenger';
- import { auth, db } from '../../firebase/client';
- import { INSTITUTE_AUTH_UID, ROOM_TYPES, SLOTS, TEACHER_AUTH_UID } from '../../messenger/constants/messengerConstants';
- import { getInstituteDisplayName, getTeacherDisplayName } from '../../messenger/services/displayNameService';
- import { getLastMessagePreview } from '../../messenger/services/roomPreviewService';
- import { buildParentParticipantKeys } from '../../messenger/utils/participantKeys';
- import { getRoomSlot, hasRoomTypeOrChannel, sortRooms, toDate } from '../../messenger/utils/roomMatcher';
+     match /notifications/{userUid}/meta {
+       allow read, write: if signedIn()
+         && (uid() == userUid || isStaffOrAdminOrTeacher());
+     }
+     
+     match /notifications/{userUid}/meta/{metaId} {
+       allow read, write: if signedIn()
+         && (uid() == userUid || isStaffOrAdminOrTeacher());
+     }
+     
+     
+     match /chatRooms/{roomId} {
+-      allow get, list: if canAccessChatRoomData(resource.data);
++      allow get, list: if canReadChatRoom(resource.data);
  
- const getParticipantIds = (room) => (Array.isArray(room?.participantIds) ? room.participantIds.map(String) : []);
- const hasTarget = (room, targetUid, fields = []) => fields.some((field) => String(room?.[field] || '') === targetUid) || getParticipantIds(room).includes(targetUid);
- const hasViewerParticipant = (room, participantKeys = []) => participantKeys.some((key) => getParticipantIds(room).includes(String(key)));
-+const hasAuthParticipant = (room, authUid) => Boolean(authUid) && getParticipantIds(room).includes(String(authUid));
-+const getChatRoomsQueryShape = (authUid) => ({ collection: 'chatRooms', where: ['participantIds', 'array-contains', authUid] });
- const sameStudent = (room, studentId) => !room?.studentId || !studentId || String(room.studentId) === String(studentId);
+       allow create: if isSignedIn()
+         && (
+-          (
+-            isStaffOrAdminOrTeacher()
+-            && request.resource.data.type == 'individual'
+-            && request.resource.data.participantIds is list
+-            && request.resource.data.participantIds.size() == 2
+-            && request.resource.data.internalOnly == true
+-          )
++          isStaffOrAdminOrTeacher()
+           || isValidParentDirectChatRoomCreate()
+           || isValidStudentDirectChatRoomCreate()
+         );
  
- const isParentTeacherRoom = (room, participantKeys, studentId) => (
-     hasViewerParticipant(room, participantKeys)
-     && sameStudent(room, studentId)
-     && !hasRoomTypeOrChannel(room, ROOM_TYPES.STUDENT_TEACHER)
-     && !hasRoomTypeOrChannel(room, ROOM_TYPES.STUDENT_INSTITUTE)
-     && (hasRoomTypeOrChannel(room, ROOM_TYPES.PARENT_TEACHER) || getRoomSlot(room) === SLOTS.TEACHER)
-     && hasTarget(room, TEACHER_AUTH_UID, ['teacherAuthUid', 'counterpartUid'])
- );
+-      allow update: if isSignedIn() && (
+-        isStaffOrAdminOrTeacher()
+-        || (
+-          canAccessChatRoomData(resource.data)
+-          && isValidDirectChatRoomPatch()
+-        )
+-      );
++      allow update: if isSignedIn()
++        && (
++          isStaffOrAdminOrTeacher()
++          || (
++            canReadChatRoom(resource.data)
++            && isValidDirectChatRoomPatch()
++          )
++        );
  
- const isParentInstituteRoom = (room, participantKeys, studentId) => (
-     hasViewerParticipant(room, participantKeys)
-     && sameStudent(room, studentId)
-     && !hasRoomTypeOrChannel(room, ROOM_TYPES.STUDENT_TEACHER)
-     && !hasRoomTypeOrChannel(room, ROOM_TYPES.STUDENT_INSTITUTE)
-     && (hasRoomTypeOrChannel(room, ROOM_TYPES.PARENT_INSTITUTE) || getRoomSlot(room) === SLOTS.INSTITUTE)
-     && hasTarget(room, INSTITUTE_AUTH_UID, ['staffAuthUid', 'counterpartUid'])
- );
+       allow delete: if isStaffOrAdminOrTeacher();
+     }
  
- export default function ParentMessengerPage({ studentId, student, onBack }) {
-     const [selectedSlot, setSelectedSlot] = useState(null);
-     const [rooms, setRooms] = useState([]);
-     const [loading, setLoading] = useState(false);
-     const [error, setError] = useState('');
-     const authUid = String(auth.currentUser?.uid || '');
-     const activeStudentId = String(studentId || student?.id || student?.studentId || '');
-     const participantKeys = useMemo(() => buildParentParticipantKeys({ authUid, parent: { authUid, parentUid: authUid }, student, studentId: activeStudentId }), [authUid, student, activeStudentId]);
+     match /chatRooms/{roomId}/messages/{messageId} {
+       function roomDoc() {
+         return get(/databases/$(database)/documents/chatRooms/$(roomId));
+       }
  
-     useEffect(() => {
-         if (!authUid) {
-             setRooms([]);
-             setLoading(false);
-             setError('');
-             return undefined;
-         }
-         setLoading(true);
-         setError('');
-         const roomQuery = query(collection(db, 'chatRooms'), where('participantIds', 'array-contains', authUid));
-+        const queryShape = getChatRoomsQueryShape(authUid);
-+        if (process.env.NODE_ENV === 'development') console.log('[parent messenger] chatRooms query', queryShape);
-         const unsubscribe = onSnapshot(roomQuery, (snap) => {
--            setRooms(sortRooms(snap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }))));
-+            const myRooms = snap.docs
-+                .map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }))
-+                .filter((room) => hasAuthParticipant(room, authUid));
-+            setRooms(sortRooms(myRooms));
-             setLoading(false);
-             setError('');
-         }, (snapshotError) => {
-             console.error('[parent messenger] failed to load chatRooms', {
-                 code: snapshotError?.code,
-                 message: snapshotError?.message,
--                queryShape: { collection: 'chatRooms', where: ['participantIds', 'array-contains', authUid] },
-+                queryShape,
-             });
-             setLoading(false);
-             setError('대화 목록을 불러오지 못했습니다.');
-         });
-         return unsubscribe;
-     }, [authUid]);
+-      function canAccessRoomMessages() {
+-        return canAccessChatRoomData(roomDoc().data);
++      function canReadRoomMessages() {
++        return exists(/databases/$(database)/documents/chatRooms/$(roomId))
++          && canReadChatRoom(roomDoc().data);
+       }
  
-     const teacherRoom = useMemo(() => rooms.find((room) => isParentTeacherRoom(room, participantKeys, activeStudentId)) || null, [rooms, participantKeys, activeStudentId]);
-     const instituteRoom = useMemo(() => rooms.find((room) => isParentInstituteRoom(room, participantKeys, activeStudentId)) || null, [rooms, participantKeys, activeStudentId]);
+-      allow read: if canAccessRoomMessages();
++      allow read: if canReadRoomMessages();
  
-     const messengerSlots = useMemo(() => [
-         { slot: SLOTS.INSTITUTE, room: instituteRoom, id: instituteRoom?.id || 'parent-institute-placeholder', title: getInstituteDisplayName(), roomType: ROOM_TYPES.PARENT_INSTITUTE },
-         { slot: SLOTS.TEACHER, room: teacherRoom, id: teacherRoom?.id || 'parent-teacher-placeholder', title: getTeacherDisplayName(), roomType: ROOM_TYPES.PARENT_TEACHER },
-     ], [teacherRoom, instituteRoom]);
+-      allow create: if canAccessRoomMessages()
++      allow create: if canReadRoomMessages()
+         && request.resource.data.senderId == uid()
+         && request.resource.data.messageType in ['text', 'image', 'file']
+         && request.resource.data.text is string
+         && request.resource.data.text.size() <= 4000
+         && isValidChatAttachmentList()
+         && hasMessageTextOrAttachment()
+         && request.resource.data.internalOnly == true;
  
-     const currentSlot = selectedSlot ? messengerSlots.find((slot) => slot.slot === selectedSlot.slot) || selectedSlot : null;
+       allow update: if isStaffOrAdminOrTeacher();
+       allow delete: if false;
+     }
  
-     if (currentSlot) {
-         const targetAuthUid = currentSlot.slot === SLOTS.TEACHER ? TEACHER_AUTH_UID : INSTITUTE_AUTH_UID;
-         return (
-             <div className="h-screen min-h-screen bg-gray-50 flex flex-col overflow-hidden">
-                 <header className="h-14 bg-white border-b border-gray-100 px-4 flex items-center gap-3">
-                     <button type="button" onClick={() => setSelectedSlot(null)} className="text-gray-700"><ArrowBackIosNewIcon style={{ fontSize: 18 }} /></button>
-                     <h1 className="text-base font-semibold text-gray-900 truncate">{currentSlot.title}</h1>
-                 </header>
+     match /chatBroadcastLogs/{broadcastId} {
+       allow read, write: if isStaffOrAdminOrTeacher();
+     }
+ 
+     match /chats/{roomId} {
+       function isChatParticipant() {
+         return isSignedIn()
+           && resource.data.participantIds is list
+           && uid() in resource.data.participantIds;
+       }
+ 
+       allow get, list: if isStaffOrAdminOrTeacher() || isChatParticipant();
+ 
