@@ -146,15 +146,15 @@ const buildStandardRoomId = (roomType, ownerUid, counterpartUid, studentId = '')
     return `direct_${roomType}_${ownerUid}_${counterpartUid}`;
 };
 
-const isExactStandardRoom = (room, { viewerUid, targetAuthUid, roomType, studentId = '' }) => {
+const isExactStandardRoom = (room, { viewerUid, targetAuthUid, roomType, studentId = '', participantKeys = [] }) => {
     if (!room || !viewerUid || !targetAuthUid || !roomType) return false;
     if (!isCompatibleRoomType(room, roomType)) return false;
     const expectedSlot = roomType.endsWith('_teacher') ? 'teacher' : 'institute';
     const roomSlot = getRoomSlot(room);
     if (roomSlot && roomSlot !== expectedSlot) return false;
     const participantIds = getParticipantIds(room);
-    if (participantIds.length !== 2) return false;
-    if (!participantIds.includes(String(viewerUid)) || !participantIds.includes(String(targetAuthUid))) return false;
+    const viewerKeys = uniqueStrings([viewerUid, participantKeys]);
+    if (!viewerKeys.some((key) => participantIds.includes(key)) || !participantIds.includes(String(targetAuthUid))) return false;
     if (roomType === 'parent_institute') {
         if (!hasRoomTypeOrChannel(room, 'parent_institute')) return false;
         if (room?.studentId && String(room.studentId) !== String(studentId || '')) return false;
@@ -168,35 +168,36 @@ const isExactStandardRoom = (room, { viewerUid, targetAuthUid, roomType, student
     return true;
 };
 
-const resolveStandardChatRoom = async ({ viewerUid, targetAuthUid, roomType, studentId = '' }) => {
+const resolveStandardChatRoom = async ({ viewerUid, targetAuthUid, roomType, studentId = '', participantKeys = [] }) => {
     if (!viewerUid || !targetAuthUid || !roomType) return null;
-    const deterministicRoomId = buildStandardRoomId(roomType, viewerUid, targetAuthUid, studentId);
-    if (!deterministicRoomId) return null;
+    const keys = uniqueStrings([viewerUid, studentId, participantKeys]);
+    const seen = new Set();
+    const rooms = [];
 
-    try {
-        const directSnap = await getDoc(doc(db, 'chatRooms', deterministicRoomId));
-        if (directSnap.exists()) {
-            const room = { id: directSnap.id, ...directSnap.data() };
-            if (isExactStandardRoom(room, { viewerUid, targetAuthUid, roomType, studentId })) return room;
+    for (const participantKey of keys) {
+        try {
+            const snap = await getDocs(query(
+                collection(db, 'chatRooms'),
+                where('participantIds', 'array-contains', participantKey),
+                limit(50),
+            ));
+            snap.docs.forEach((item) => {
+                if (seen.has(item.id)) return;
+                seen.add(item.id);
+                rooms.push({ id: item.id, ...item.data() });
+            });
+        } catch (error) {
+            logFirestoreQueryFailure('resolve standard room', error, {
+                collection: 'chatRooms',
+                where: ['participantIds', 'array-contains', participantKey],
+                limit: 50,
+            });
         }
-
-        const snap = await getDocs(query(
-            collection(db, 'chatRooms'),
-            where('participantIds', 'array-contains', String(viewerUid)),
-            limit(50),
-        ));
-        return snap.docs
-            .map((item) => ({ id: item.id, ...item.data() }))
-            .filter((room) => isExactStandardRoom(room, { viewerUid, targetAuthUid, roomType, studentId }))
-            .sort((left, right) => getMessageSortTime({ createdAt: right.lastMessageAt || right.updatedAt || right.createdAt }) - getMessageSortTime({ createdAt: left.lastMessageAt || left.updatedAt || left.createdAt }))[0] || null;
-    } catch (error) {
-        console.warn('[student messenger] deterministic standard room lookup skipped', {
-            code: error?.code,
-            message: error?.message,
-            query: { doc: ['chatRooms', deterministicRoomId] },
-        });
-        return null;
     }
+
+    return rooms
+        .filter((room) => isExactStandardRoom(room, { viewerUid, targetAuthUid, roomType, studentId, participantKeys: keys }))
+        .sort((left, right) => getMessageSortTime({ createdAt: right.lastMessageAt || right.updatedAt || right.createdAt }) - getMessageSortTime({ createdAt: left.lastMessageAt || left.updatedAt || left.createdAt }))[0] || null;
 };
 
 const parseClientTempIdTime = (clientTempId) => {
@@ -450,7 +451,7 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
         if (canCreateChatRoom && viewerUid && targetAuthUid && expectedRoomType) {
             const resolveRoom = expectedRoomType === 'student_institute'
                 ? resolveInstituteChatRoom({ viewerUid, studentId, studentAuthUid, expectedRoomType, targetAuthUid, studentParticipantKeys: roomStudentParticipantKeys })
-                : resolveStandardChatRoom({ viewerUid, targetAuthUid, roomType: expectedRoomType, studentId });
+                : resolveStandardChatRoom({ viewerUid, targetAuthUid, roomType: expectedRoomType, studentId, participantKeys: roomStudentParticipantKeys });
             resolveRoom.then((resolvedRoom) => {
                 if (!mounted) return;
                 if (resolvedRoom) {
@@ -514,7 +515,7 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
     useEffect(() => {
         if (!roomId) return undefined;
         
-        const isChatRoomMode = Boolean(selectedRoomId || canCreateChatRoom || String(expectedRoomType || '').includes('institute'));
+        const isChatRoomMode = userRole === 'student' || Boolean(selectedRoomId || canCreateChatRoom || String(expectedRoomType || '').includes('institute'));
         const isInstituteRoomMode = String(expectedRoomType || '') === 'student_institute' || String(expectedRoomType || '') === 'parent_institute' || String(normalizedChatSlot || '') === 'institute';
         const effectiveChatRoomMode = isInstituteRoomMode || isChatRoomMode;
         const collectionPath = effectiveChatRoomMode ? `chatRooms/${roomId}/messages` : `chats/${roomId}/messages`;
@@ -556,7 +557,7 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
             const queryShape = withOrderBy
                 ? { collection: collectionPath, orderBy: ['createdAt', 'asc'] }
                 : { collection: collectionPath, orderBy: null, clientSort: ['createdAt', 'asc'] };
-            if (process.env.NODE_ENV === 'development') console.log('[student messenger] subscribe messages query', queryShape);
+            if (process.env.NODE_ENV === 'development') console.log('[student messenger][messages path]', { authUid: auth.currentUser?.uid || '', studentId: String(studentId || ''), studentAuthUid: String(studentAuthUid || ''), selectedRoomId: String(selectedRoomId || roomId || ''), roomType: expectedRoomType, channel: expectedRoomType, slot: normalizedChatSlot, participantIds: roomStudentParticipantKeys, lastMessageText: '', messagesPath: collectionPath, queryShape });
             const messagesRef = collection(db, ...collectionArgs);
             const messagesQuery = withOrderBy ? query(messagesRef, orderBy('createdAt', 'asc')) : query(messagesRef);
 
@@ -575,7 +576,7 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
             unsub && unsub();
             fallbackUnsub && fallbackUnsub();
         };
-    }, [roomId, selectedRoomId, canCreateChatRoom, expectedRoomType, normalizedChatSlot, myProfileDocId, teacherName]);
+    }, [roomId, selectedRoomId, canCreateChatRoom, expectedRoomType, normalizedChatSlot, myProfileDocId, teacherName, userRole, studentId, studentAuthUid, roomStudentParticipantKeys]);
 
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -625,13 +626,13 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
 
         const viewerUid = auth.currentUser?.uid || 'parent-anonymous';
         const targetAuthUidForRoom = String(roomCreationContext?.targetAuthUid || '');
-        const isChatRoomMode = Boolean(selectedRoomId || canCreateChatRoom || String(expectedRoomType || '').includes('institute'));
+        const isChatRoomMode = userRole === 'student' || Boolean(selectedRoomId || canCreateChatRoom || String(expectedRoomType || '').includes('institute'));
         let resolvedRoomId = selectedRoomId ? String(selectedRoomId) : roomId || null;
         let shouldCreateStandardRoom = false;
         if (!resolvedRoomId && canCreateChatRoom) {
             const resolvedRoom = expectedRoomType === 'student_institute'
                 ? await resolveInstituteChatRoom({ viewerUid, studentId, studentAuthUid, expectedRoomType, targetAuthUid: targetAuthUidForRoom, studentParticipantKeys: roomStudentParticipantKeys })
-                : await resolveStandardChatRoom({ viewerUid, targetAuthUid: targetAuthUidForRoom, roomType: expectedRoomType, studentId });
+                : await resolveStandardChatRoom({ viewerUid, targetAuthUid: targetAuthUidForRoom, roomType: expectedRoomType, studentId, participantKeys: roomStudentParticipantKeys });
             resolvedRoomId = resolvedRoom?.id || buildStandardRoomId(expectedRoomType, viewerUid, targetAuthUidForRoom, studentId);
             shouldCreateStandardRoom = !resolvedRoom;
         }

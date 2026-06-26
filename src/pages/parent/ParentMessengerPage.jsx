@@ -88,7 +88,6 @@ const isTeacherRoomCandidate = (room, { authUid, targetAuthUid, studentId, parti
     if (!teacherMarkers.some(Boolean)) return false;
     if (!hasCounterpartUid(room, targetAuthUid, ['teacherAuthUid', 'counterpartUid'])) return false;
     if (!hasStudentParticipant(room, uniqueStrings([authUid, participantKeyCandidates]))) return false;
-    if (!isStudentIdCompatible(room, studentId)) return false;
     const roomTeacherName = normalizeText(room?.teacherName || room?.counterpartName);
     const expectedTeacherName = normalizeText(teacherName);
     if (room?.targetRole && String(room.targetRole) !== 'teacher') return false;
@@ -109,7 +108,6 @@ const isStudentInstituteCandidate = (room, { authUid, targetAuthUid, studentId, 
     if (!instituteMarkers.some(Boolean)) return false;
     if (!hasCounterpartUid(room, targetAuthUid, ['staffAuthUid', 'counterpartUid'])) return false;
     if (!hasStudentParticipant(room, uniqueStrings([authUid, participantKeyCandidates]))) return false;
-    if (!isStudentIdCompatible(room, studentId)) return false;
     return true;
 };
 
@@ -367,14 +365,51 @@ export default function ParentMessengerPage({ studentId, student, ongoingClasses
     const selectedRoomId = currentSlot?.room?.id || '';
 
     useEffect(() => {
-        if (process.env.NODE_ENV !== 'development') return;
+        if (process.env.NODE_ENV !== 'development' || viewerRole !== 'student') return;
+        const summarizeRoom = (room) => room ? ({
+            id: room.id,
+            roomType: room.roomType,
+            channel: room.channel,
+            slot: room.slot,
+            participantIds: getParticipantIds(room),
+            lastMessageText: getLastMessagePreview(room),
+        }) : null;
+        const candidateRooms = rooms.map(summarizeRoom);
         const teacherSlot = messengerSlots.find((slot) => slot.slot === TEACHER_SLOT);
-        if (!teacherSlot?.room) return;
-        console.log('[student messenger][teacher preview]', {
-            roomId: teacherSlot.room.id,
-            lastMessageText: getLastMessagePreview(teacherSlot.room),
+        const instituteSlot = messengerSlots.find((slot) => slot.slot === INSTITUTE_SLOT);
+        const basePayload = {
+            'auth.uid': authUid,
+            authUid,
+            'student.id': student?.id || '',
+            'student.authUid': student?.authUid || '',
+            selectedRoomId: '',
+            roomType: '',
+            channel: '',
+            slot: '',
+            participantIds: [],
+            lastMessageText: '',
+            candidateRoomIds: rooms.map((room) => room.id),
+            candidateRooms,
+        };
+        console.log('[student messenger][student keys]', {
+            ...basePayload,
+            'student.uid': student?.uid || '',
+            'student.userUid': student?.userUid || '',
+            'student.studentUid': student?.studentUid || '',
+            participantKeyCandidates,
         });
-    }, [messengerSlots]);
+        console.log('[student messenger][candidate rooms]', basePayload);
+        console.log('[student messenger][selected teacher room]', {
+            ...basePayload,
+            selectedRoomId: teacherSlot?.room?.id || '',
+            ...summarizeRoom(teacherSlot?.room),
+        });
+        console.log('[student messenger][selected institute room]', {
+            ...basePayload,
+            selectedRoomId: instituteSlot?.room?.id || '',
+            ...summarizeRoom(instituteSlot?.room),
+        });
+    }, [viewerRole, rooms, messengerSlots, authUid, student?.id, student?.authUid, student?.uid, student?.userUid, student?.studentUid, participantKeyCandidates]);
     const handleSelectSlot = (slot) => {
         if (slot?.slot === INSTITUTE_SLOT && slot?.room) {
             console.log('[parent messenger] selected institute room', {
