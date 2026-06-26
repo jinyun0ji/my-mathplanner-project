@@ -34,7 +34,11 @@ const MasterBanner = ({ mode }) => (
   </div>
 );
 
-export default function MasterViewPage({ students = [], classes = [], userId }) {
+export default function MasterViewPage({
+  students = [], classes = [], userId, homeworkAssignments = [], homeworkResults = {},
+  attendanceLogs = [], lessonLogs = [], notices = [], tests = [], grades = {}, classTestStats = {},
+  videoProgress = {}, videoMemos = {}, externalSchedules = [], clinicLogs = [], closures = [], lessonReports = [],
+}) {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedStudentId, setSelectedStudentId] = useState('');
   const [previewMode, setPreviewMode] = useState('student');
@@ -48,11 +52,42 @@ export default function MasterViewPage({ students = [], classes = [], userId }) 
   }, [students, searchTerm]);
 
   const selectedStudent = useMemo(() => students.filter((student) => !isExcludedFromMasterView(student)).find((student) => String(student.id) === String(selectedStudentId)) || null, [students, selectedStudentId]);
-  const selectedClasses = useMemo(() => selectedStudent ? classes.filter((cls) => {
-    const ids = new Set([...(selectedStudent.classes || []), ...(selectedStudent.classIds || [])].map(String));
-    return ids.has(String(cls.id)) || (cls.students || []).map(String).includes(String(selectedStudent.id));
-  }) : [], [classes, selectedStudent]);
   const previewStudents = selectedStudent ? [selectedStudent] : [];
+
+  const blockPreviewMutation = (event) => {
+    const target = event.target?.closest?.('button, a, input, select, textarea');
+    if (!target) return;
+
+    const tag = target.tagName?.toLowerCase();
+    const type = String(target.getAttribute('type') || '').toLowerCase();
+    if (tag === 'input' || tag === 'select' || tag === 'textarea') {
+      if (['checkbox', 'radio', 'file', 'submit'].includes(type) || tag !== 'input') {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+      return;
+    }
+
+    const actionText = [target.innerText, target.getAttribute('aria-label'), target.getAttribute('title')]
+      .filter(Boolean)
+      .join(' ')
+      .trim();
+    const isMutationAction = /(저장|삭제|수정|등록|전송|제출|완료|추가|예약|취소|로그아웃|변경|업데이트|작성|보내기|save|delete|edit|submit|send|update|add|register)/i.test(actionText);
+    if (isMutationAction) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  };
+
+  const blockPreviewSubmit = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+  };
+
+  const blockPreviewInputChange = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+  };
 
   const parentContextValue = useMemo(() => ({
     activeStudentId: selectedStudentId || null,
@@ -61,7 +96,6 @@ export default function MasterViewPage({ students = [], classes = [], userId }) 
     setActiveStudentId: async () => {},
   }), [selectedStudentId]);
 
-  const emptyMap = {};
   const noop = async () => undefined;
 
   return (
@@ -91,14 +125,21 @@ export default function MasterViewPage({ students = [], classes = [], userId }) 
       {selectedStudent && (
         <section className="bg-white rounded-2xl border border-gray-100 p-3">
           <MasterBanner mode={previewMode} />
-          <div className="relative border rounded-2xl overflow-hidden bg-gray-50 master-preview-readonly">
-            <style>{`.master-preview-readonly button, .master-preview-readonly input, .master-preview-readonly textarea, .master-preview-readonly select, .master-preview-readonly a { pointer-events: none !important; }`}</style>
-            <div className="select-none max-h-[75vh] overflow-y-auto">
+          <div
+            className="relative border rounded-2xl overflow-hidden bg-gray-50 master-preview-readonly"
+            onClickCapture={blockPreviewMutation}
+            onSubmitCapture={blockPreviewSubmit}
+            onChangeCapture={blockPreviewInputChange}
+            onInputCapture={blockPreviewInputChange}
+            onKeyDownCapture={blockPreviewInputChange}
+          >
+            <style>{`.master-preview-readonly input, .master-preview-readonly textarea, .master-preview-readonly select { caret-color: transparent; }`}</style>
+            <div className="select-none h-[75vh] overflow-y-auto">
               {previewMode === 'student' ? (
-                <StudentHome student={selectedStudent} studentId={selectedStudent.id} userId={userId} students={previewStudents} classes={selectedClasses} homeworkAssignments={[]} homeworkResults={emptyMap} attendanceLogs={[]} lessonLogs={[]} notices={[]} tests={[]} grades={emptyMap} classTestStats={emptyMap} videoProgress={emptyMap} videoMemos={emptyMap} onSaveVideoProgress={noop} onAddMemo={noop} onUpdateMemo={noop} onDeleteMemo={noop} externalSchedules={[]} onSaveExternalSchedule={noop} onDeleteExternalSchedule={noop} clinicLogs={[]} closures={[]} lessonReports={[]} onUpdateStudent={noop} onLogout={noop} />
+                <StudentHome student={selectedStudent} studentId={selectedStudent.id} userId={userId} students={previewStudents} classes={classes} homeworkAssignments={homeworkAssignments} homeworkResults={homeworkResults} attendanceLogs={attendanceLogs} lessonLogs={lessonLogs} notices={notices} tests={tests} grades={grades} classTestStats={classTestStats} videoProgress={videoProgress} videoMemos={videoMemos} onSaveVideoProgress={noop} onAddMemo={noop} onUpdateMemo={noop} onDeleteMemo={noop} externalSchedules={externalSchedules} onSaveExternalSchedule={noop} onDeleteExternalSchedule={noop} clinicLogs={clinicLogs} closures={closures} lessonReports={lessonReports} onUpdateStudent={noop} onLogout={noop} embedded />
               ) : (
                 <ParentContext.Provider value={parentContextValue}>
-                  <ParentHome userId={userId} students={previewStudents} classes={selectedClasses} homeworkAssignments={[]} homeworkResults={emptyMap} attendanceLogs={[]} lessonLogs={[]} notices={[]} tests={[]} grades={emptyMap} classTestStats={emptyMap} videoProgress={emptyMap} clinicLogs={[]} lessonReports={[]} onLogout={noop} externalSchedules={[]} onSaveExternalSchedule={noop} onDeleteExternalSchedule={noop} closures={[]} />
+                  <ParentHome userId={userId} students={previewStudents} classes={classes} homeworkAssignments={homeworkAssignments} homeworkResults={homeworkResults} attendanceLogs={attendanceLogs} lessonLogs={lessonLogs} notices={notices} tests={tests} grades={grades} classTestStats={classTestStats} videoProgress={videoProgress} clinicLogs={clinicLogs} lessonReports={lessonReports} onLogout={noop} externalSchedules={externalSchedules} onSaveExternalSchedule={noop} onDeleteExternalSchedule={noop} closures={closures} embedded />
                 </ParentContext.Provider>
               )}
             </div>

@@ -1,359 +1,880 @@
 diff --git a/src/app/AppRoutes.jsx b/src/app/AppRoutes.jsx
-index 5398eae2d9e5baa30782547d9854a44aa70ce5e2..cfbd6ace2adf17174281e12bfe7883676279aa83 100644
+index cfbd6ace2adf17174281e12bfe7883676279aa83..7e6b9f77e5dd73a27490d5de9d06c3acd863b2f9 100644
 --- a/src/app/AppRoutes.jsx
 +++ b/src/app/AppRoutes.jsx
-@@ -199,51 +199,51 @@ export default function AppRoutes({ user, role, studentIds }) {
-   const [classTestStats, setClassTestStats] = useState({});
-   const [homeworkResults, setHomeworkResults] = useState({});
-   const [studentMemos, setStudentMemos] = useState({});
-   const [videoProgress, setVideoProgress] = useState({});
-   const [videoMemos, setVideoMemos] = useState({});
+@@ -2172,34 +2172,34 @@ export default function AppRoutes({ user, role, studentIds }) {
+                         <AdminPaymentsPage />
+                     </AdminRoute>
+                 )}
+             />
+             <Route
+                 path="admin/settings"
+                 element={(
+                     <AdminRoute>
+                         <AdminSettingsPage />
+                     </AdminRoute>
+                 )}
+             />
  
-   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+             <Route
+                 path="admin/logs"
+                 element={(
+                     <AdminRoute>
+                         <AdminLogsPage />
+                     </AdminRoute>
+                 )}
+             />
+             <Route
+                 path="master-view"
+                 element={(
+                     <AdminRoute>
+-                        <MasterViewPage students={students} classes={classes} userId={userId} />
++                        <MasterViewPage students={students} classes={classes} userId={userId} homeworkAssignments={homeworkAssignments} homeworkResults={homeworkResults} attendanceLogs={attendanceLogs} lessonLogs={lessonLogs} notices={announcements} tests={tests} grades={grades} classTestStats={classTestStats} videoProgress={videoProgress} videoMemos={videoMemos} externalSchedules={externalSchedules} clinicLogs={clinicLogs} closures={closures} lessonReports={lessonReports} />
+                     </AdminRoute>
+                 )}
+             />
+             <Route path="*" element={<Navigate to={PAGE_ROUTES.lessons} replace />} />
+         </Route>
+     </Routes>
+   );
+ }
+diff --git a/src/pages/ParentHome.jsx b/src/pages/ParentHome.jsx
+index 83585d25c88f8ad8f6d6e5139e491955d148a598..c0741b49b7e7f47840d520b98f5fe49726c751f2 100644
+--- a/src/pages/ParentHome.jsx
++++ b/src/pages/ParentHome.jsx
+@@ -469,50 +469,51 @@ const ParentDashboard = ({
+                                     item.type === 'danger' ? 'bg-red-50 border-red-100' : 'bg-orange-50 border-orange-100'
+                                 }`}
+                             >
+                                 <span className={`text-sm font-bold ${
+                                     item.type === 'danger' ? 'text-red-700' : 'text-orange-700'
+                                 }`}>{item.text}</span>
+                                 <Icon name="chevronRight" className={`w-4 h-4 ${
+                                     item.type === 'danger' ? 'text-red-300' : 'text-orange-300'
+                                 }`} />
+                             </div>
+                         ))}
+                     </div>
+                 </section>
+             )}
+         </div>
+     );
+ };
  
-   const processedAnnouncementIdsRef = useRef(new Set());
- 
-   useEffect(() => {
-       if (isAuthenticated) processedAnnouncementIdsRef.current = new Set();
-   }, [isAuthenticated, userId]);
- 
-   useEffect(() => {
-     if (!isAuthenticated || !role || !(isAdminRole(role) || isStaffRole(role) || isStaffOrTeachingRole(role))) return;
-     const shouldLoadPayments = page === 'payment';
-     if (shouldLoadPayments) {
-         setIsPaymentLogsLoading(true);
-     }
-     let isActive = true;
-     loadStaffDataOnce({
-         db,
-         isLoggedIn: isAuthenticated,
-         userRole: role,
--        pageKey: page,
-+        pageKey: page === '/master-view' ? 'master-view' : page,
-         setStudents: page === 'attendance' ? null : setStudents,
-         setParents,
-         setClasses,
-         setTests,
-         setLessonLogs,
-         setAttendanceLogs,
-         setClinicLogs,
-         setWorkLogs,
-         setAnnouncements,
-         setHomeworkAssignments,
-         setPaymentLogs,
-         setGrades,
-         setHomeworkResults,
-         setExternalSchedules,
-         setClosures,
-         setLessonReports,
-     }).finally(() => {
-         if (shouldLoadPayments && isActive) {
-             setIsPaymentLogsLoading(false);
-         }
-     });
-     return () => {
-         isActive = false;
-     };
-   }, [db, isAuthenticated, role, page]);
-diff --git a/src/components/messenger/InternalMessengerPanel.jsx b/src/components/messenger/InternalMessengerPanel.jsx
-index 68d3fa2ae2453499d6d37ec2ebd05df9ae6c7a88..f285a65a04564849d5e0ef7b53e92bc9acb94817 100644
---- a/src/components/messenger/InternalMessengerPanel.jsx
-+++ b/src/components/messenger/InternalMessengerPanel.jsx
-@@ -1,31 +1,32 @@
- import React, { useEffect, useMemo, useState } from 'react';
- import { collection, getDocs, query, where } from 'firebase/firestore';
- import { db } from '../../firebase/client';
- import {
-     broadcastChatMessage,
-     createOrOpenRoom,
-+    findExistingInternalRoom,
-     sendMessageDirect,
-     subscribeChatMessages,
-     subscribeInternalChatRooms,
- } from '../../domain/messenger/messenger.service';
- import { isStaffOrTeachingRole } from '../../constants/roles';
- import ChatRoomList from './ChatRoomList';
- import ChatMessagePane from './ChatMessagePane';
- import {
-     buildMessengerTargets,
-     groupStudentTargetsByClass,
-     splitStudentTargetsByStatus,
- } from './messengerTargets';
- 
- export default function InternalMessengerPanel({
-     userId,
-     userRole,
-     students = [],
-     parents = [],
-     classes = [],
+ // --- 메인 페이지 컴포넌트 ---
+ export default function ParentHome({
+     userId, students, parents = [], classes, homeworkAssignments, homeworkResults,
+     attendanceLogs, lessonLogs, notices, tests, grades, classTestStats,
+     videoProgress, clinicLogs, lessonReports = [], onLogout,
+     externalSchedules, onSaveExternalSchedule, onDeleteExternalSchedule,
+     closures,
++    embedded = false,
  }) {
-     const [rooms, setRooms] = useState([]);
-     const [selectedRoom, setSelectedRoom] = useState(null);
-     const [messages, setMessages] = useState([]);
-     const [, setOptimisticByRoom] = useState({});
-     const [targetUid, setTargetUid] = useState('');
-@@ -167,77 +168,93 @@ export default function InternalMessengerPanel({
-                                 ? latestResolved.writeDoneAt - latestResolved.optimisticAt
-                                 : null,
-                             elapsedSnapshotMs: snapshotAt - latestResolved.optimisticAt,
-                         });
-                     }
-                 }
-                 if (unresolved.length === optimisticMessages.length) return prev;
-                 return {
-                     ...prev,
-                     [roomId]: unresolved,
-                 };
-             });
-             setMessages(mergedMessages);
-         }, (error) => {
-             console.error('[internal-messenger] message subscribe failed', error);
+     const { activeStudentId, studentIds, setActiveStudentId } = useParentContext();
+     // 1. 자녀 데이터 및 선택 로직
+     const initialStudent = students.find(s => s.id === activeStudentId);
+     const [activeChildId, setActiveChildId] = useState(activeStudentId);
+     const pendingStudentSwitchRef = useRef(null);
+     const activeChild = students.find(s => s.id === activeChildId) || initialStudent;
+     const activeChildName = activeChild?.name || '학생';
+     const activeChildSchool = activeChild?.school || '학교 정보 없음';
+     const activeChildGrade = getStudentGradeLabel(activeChild);
+     // 2. 데이터 필터링
+     const rawMyClasses = useMemo(() => {
+         if (!Array.isArray(classes) || !activeChildId) return [];
+         const childClassIds = new Set([
+             ...(Array.isArray(activeChild?.classIds) ? activeChild.classIds : []),
+             ...(Array.isArray(activeChild?.classes) ? activeChild.classes.filter((item) => typeof item === 'string') : []),
+         ].map(String));
+         return classes.filter((c) => {
+             const classId = String(c?.id || c?.classId || '');
+             return (c.students || []).includes(activeChildId) || childClassIds.has(classId);
          });
-     }, [selectedRoom?.id]);
+     }, [classes, activeChildId, activeChild?.classIds, activeChild?.classes]);
+     const visibleClassIds = useMemo(() => getViewerVisibleClassIds(rawMyClasses, activeChild), [rawMyClasses, activeChild]);
+     const visibleClassIdSet = useMemo(() => new Set(visibleClassIds), [visibleClassIds]);
+     const myClasses = useMemo(
+@@ -603,155 +604,159 @@ export default function ParentHome({
+     const [learningMode, setLearningMode] = useState('regular'); // 'regular' | 'clinic'
+     const [learningSubTab, setLearningSubTab] = useState('homework');
+     const [expandedHomeworkDetails, setExpandedHomeworkDetails] = useState({});
+     const [classFilter, setClassFilter] = useState('ongoing'); // 기본: 진행중
+     const [selectedReportId, _setSelectedReportId] = useState(readReportFromUrl());
+     const [boardBackTab, setBoardBackTab] = useState('home');
+     const [moreView, setMoreView] = useState('menu');
  
-     const handleCreateOrOpenRoom = async (nextTargetUid = null) => {
-         const resolvedTargetUid = nextTargetUid || targetUid;
-         if (!resolvedTargetUid) return;
-         const target = targetOptions.find((option) => option.authUid === resolvedTargetUid);
-         if (!target) return;
+     // ✅ URL -> state (브라우저 뒤로/앞으로로 URL이 바뀌면 화면도 따라감)
+     useEffect(() => {
+         const nextTab = readTabFromUrl();
+         const nextClassroomId = readClassroomFromUrl();
+         const nextReportId = readReportFromUrl();
  
-         try {
-+            const existingRoom = findExistingInternalRoom(rooms, {
-+                targetAuthUid: target.authUid,
-+                targetUserDocId: target.userDocId,
-+                targetRole: target.role,
-+                studentId: target.studentId || null,
-+                parentId: target.parentId || null,
-+            });
-+
-+            setTargetUid(resolvedTargetUid);
-+            if (existingRoom?.id) {
-+                setStatusMessage('기존 채팅방을 열었습니다.');
-+                setSelectedRoom(existingRoom);
-+                return;
-+            }
-+
-             const result = await createOrOpenRoom({
-+                existingRooms: rooms,
-                 targetAuthUid: target.authUid,
-                 targetUserDocId: target.userDocId,
-                 targetRole: target.role,
-                 targetName: target.displayName,
-                 studentId: target.studentId || null,
-                 parentId: target.parentId || null,
-             });
+         if (nextTab !== activeTab) _setActiveTab(nextTab);
+         if ((nextClassroomId || null) !== (selectedClassroomId || null)) _setSelectedClassroomId(nextClassroomId || null);
+         if ((nextReportId || null) !== (selectedReportId || null)) _setSelectedReportId(nextReportId || null);
+         // eslint-disable-next-line react-hooks/exhaustive-deps
+     }, [searchParams]);
  
--            setTargetUid(resolvedTargetUid);
-             setStatusMessage('채팅방 준비 완료');
-             if (result?.roomId) {
-                 setSelectedRoom((prev) => (prev?.id === result.roomId ? prev : { id: result.roomId }));
+     // ✅ state -> URL (앱 내부 동작은 아래 래퍼 함수를 통해서만 변경)
+     const setActiveTab = useCallback((tab, { replace = false } = {}) => {
+         _setActiveTab(tab);
+         requestAnimationFrame(() => {
+             mainScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+-            window.scrollTo({ top: 0, behavior: 'smooth' });
++            if (!embedded) window.scrollTo({ top: 0, behavior: 'smooth' });
+         });
++        if (embedded) return;
+         setSearchParams(prev => {
+             const next = new URLSearchParams(prev);
+             next.set('tab', tab);
+ 
+             // 탭 이동 시, 상세 화면 파라미터 정리 (정책: report 탭이 아니면 상세 파라미터 제거)
+             if (tab !== 'report') {
+                 next.delete('reportId');
+                 next.delete('classroomId');
              }
-         } catch (error) {
-             console.error('[internal-messenger] create room failed', error);
-             setStatusMessage(`채팅방 생성 실패: ${error.message}`);
+             return next;
+         }, { replace });
+-    }, [setSearchParams]);
++    }, [setSearchParams, embedded]);
+ 
+     const setSelectedClassroomId = useCallback((classId, { replace = false } = {}) => {
+         const value = classId === null || classId === undefined || classId === '' ? null : String(classId);
+         _setSelectedClassroomId(value);
+         // classroom 선택은 report 탭 컨텍스트
+         if (value) _setActiveTab('report');
++        if (embedded) return;
+ 
+         setSearchParams(prev => {
+             const next = new URLSearchParams(prev);
+             if (value) {
+                 next.set('tab', 'report');
+                 next.set('classroomId', value);
+                 next.delete('reportId');
+             } else {
+                 next.delete('classroomId');
+             }
+             return next;
+         }, { replace });
+-    }, [setSearchParams]);
++    }, [setSearchParams, embedded]);
+ 
+     const setSelectedReportId = useCallback((reportId, { replace = false } = {}) => {
+         const value = reportId === null || reportId === undefined || reportId === '' ? null : String(reportId);
+         _setSelectedReportId(value);
+         // report 선택은 report 탭 컨텍스트
+         if (value) _setActiveTab('report');
++        if (embedded) return;
+ 
+         setSearchParams(prev => {
+             const next = new URLSearchParams(prev);
+             if (value) {
+                 next.set('tab', 'report');
+                 next.set('reportId', value);
+                 next.delete('classroomId');
+             } else {
+                 next.delete('reportId');
+             }
+             return next;
+         }, { replace });
+-    }, [setSearchParams]);
++    }, [setSearchParams, embedded]);
+ 
+     
+     const mainScrollRef = useRef(null);
+     const learningSectionRefs = useRef({ homework: null, grades: null, attendance: null, clinic: null });
+ 
+     const [clinicPageSize, setClinicPageSize] = useState(3);
+     const [lessonReportClassFilter, setLessonReportClassFilter] = useState('all');
+     const [showAllLessonReports, setShowAllLessonReports] = useState(false);
+ 
+ 
+     const waitForActiveStudentSwitch = useCallback((studentId) => {
+         if (!studentId || studentId === activeStudentId) {
+             return Promise.resolve();
          }
+ 
+         return new Promise((resolve) => {
+             pendingStudentSwitchRef.current = { studentId, resolve };
+         });
+     }, [activeStudentId]);
+ 
+     useEffect(() => {
+         const pending = pendingStudentSwitchRef.current;
+         if (!pending || pending.studentId !== activeStudentId) {
+             return;
+         }
+ 
+         pending.resolve();
+         pendingStudentSwitchRef.current = null;
+     }, [activeStudentId]);
+ 
+     const previousActiveStudentIdRef = useRef(activeStudentId);
+ 
+     useEffect(() => {
+         if (previousActiveStudentIdRef.current === activeStudentId) {
+             setActiveChildId(activeStudentId);
+             return;
+         }
+ 
+         previousActiveStudentIdRef.current = activeStudentId;
+         setActiveChildId(activeStudentId);
+         _setSelectedClassroomId(null);
+         _setSelectedReportId(null);
+         setClassFilter('ongoing');
+         _setActiveTab('home');
+         setClinicPageSize(3);
++        if (embedded) return;
+         setSearchParams((prev) => {
+             const next = new URLSearchParams(prev);
+             next.set('tab', 'home');
+             next.delete('classroomId');
+             next.delete('reportId');
+             return next;
+         }, { replace: true });
+-    }, [activeStudentId, setSearchParams]);
++    }, [activeStudentId, setSearchParams, embedded]);
+ 
+     // 알림 관련
+     const [isNotificationOpen, setIsNotificationOpen] = useState(false);
+     const [isMessengerPage, setIsMessengerPage] = useState(false);
+ 
+     useEffect(() => {
+         if (activeTab === 'more') {
+             setMoreView('menu');
+         }
+     }, [activeTab]);
+     const viewerUid = activeChild?.authUid || userId;
+     const { notifications, hasUnread, unreadCount, lastReadAt, isLoading, isMetaLoading, setNotifications } = useNotifications(viewerUid, 20, {
+         viewerRole: 'parent',
+         unreadOnly: true,
+     });
+ 
+     const buildClinicTeacher = useCallback((log) => (
+         log?.tutorName
+         || log?.tutor
+         || log?.assistantName
+         || log?.assistant
+         || log?.teacherName
+         || log?.teacher
+         || log?.updatedByName
+         || log?.createdByName
+@@ -1201,78 +1206,78 @@ export default function ParentHome({
+         { id: 'learning', icon: 'clipboardCheck', label: '학습관리' },
+         { id: 'schedule', icon: 'calendar', label: '일정' },
+         { id: 'more', icon: 'menu', label: '전체' },
+     ];
+ 
+     if (!activeChild) {
+         return (
+             <div className="min-h-screen flex items-center justify-center bg-gray-50 text-sm text-gray-500">
+                 학생 정보를 불러오는 중...
+             </div>
+         );
+     }
+ 
+     if (isMessengerPage) {
+         return (
+             <ParentMessengerPage
+                 studentId={activeChildId}
+                 student={activeChild}
+                 ongoingClasses={ongoingClasses}
+                 onBack={() => setIsMessengerPage(false)}
+             />
+         );
+     }
+ 
+     return (
+-        <div className="bg-gray-50 min-h-screen flex flex-col relative font-sans">
++        <div className={`bg-gray-50 flex flex-col relative font-sans ${embedded ? 'h-full min-h-0' : 'min-h-screen'}`}>
+             {/* 헤더 & 자녀 선택 */}
+             <div className="bg-white sticky top-0 z-30 shadow-sm">
+                 <div className="flex items-center justify-between px-4 py-2 border-b border-gray-100 bg-white">
+                     <div className="flex items-center gap-2 min-w-0">
+                         <img
+                             src={logoHorizontal}
+                             alt="채수용 수학"
+                             className="h-8 w-auto max-w-[132px] object-contain shrink-0"
+                         />
+                         <div className="min-w-0">
+                             <p className="sr-only">채수용 수학</p>
+                             <p className="text-xs text-gray-500 truncate">{activeChildName} · {activeChildSchool} {activeChildGrade}</p>
+                         </div>
+                     </div>
+                     <div className="flex items-center gap-2">
+                         <button type="button" onClick={() => setIsNotificationOpen(true)} className="relative p-2 rounded-lg border border-gray-200 text-gray-600">
+                             <NotificationsIcon style={{ fontSize: 20 }} />
+                             {hasUnread && <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />}
+                         </button>
+                         <button type="button" onClick={() => setIsMessengerPage(true)} className="relative p-2 rounded-lg border border-gray-200 text-gray-600">
+                             <ChatBubbleOutlineIcon style={{ fontSize: 20 }} />
+                         </button>
+                     </div>
+                 </div>
+             </div>
+ 
+-            <main ref={mainScrollRef} className="flex-1 w-full max-w-md mx-auto p-4 pb-24 overflow-y-auto custom-scrollbar md:max-w-7xl">
++            <main ref={mainScrollRef} className={`flex-1 w-full max-w-md mx-auto p-4 overflow-y-auto custom-scrollbar md:max-w-7xl ${embedded ? 'min-h-0 pb-4' : 'pb-24'}`}>
+                 {/* [라우팅 분기 1] 리포트 상세 화면 */}
+                 {selectedReportId ? (
+                     <ParentSessionReport
+                         report={activeReport}
+                         onBack={() => setSelectedReportId(null)}
+                     />
+                 ) : selectedClassroomId ? (
+                     /* [라우팅 분기 2] 강의실 화면 */
+                     <ParentClassroomView
+                         cclasses={classes} lessonLogs={filteredLessonLogs} attendanceLogs={filteredAttendanceLogs}
+                         selectedClassId={selectedClassroomId} setSelectedClassId={setSelectedClassroomId}
+                         videoProgress={filteredVideoProgress} homeworkAssignments={filteredHomeworkAssignments} homeworkResults={homeworkResults}
+                         tests={filteredTests} grades={grades}
+                         onNavigateToTab={() => { setSelectedClassroomId(null); setActiveTab('report'); }}
+                         onOpenReport={(sessionId) => setSelectedReportId(sessionId)}
+                         activeStudentName={activeChildName}
+                     />
+                 ) : (
+                     /* [라우팅 분기 3] 메인 */
+                     <div className="animate-fade-in space-y-4">
+                         {activeTab === 'home' && (
+                             <div className="space-y-3">
+                                 <section className="grid grid-cols-2 gap-3">
+                                     {[
+                                         { label: '출결 상세보기', subTab: 'attendance' },
+@@ -1672,70 +1677,70 @@ export default function ParentHome({
+                             </div>
+                         )}
+                         {(activeTab === 'board' || activeTab === 'notices') && (
+                             <ParentBoardPage notices={visibleNotices} onBack={() => setActiveTab(boardBackTab || 'home')} />
+                         )}
+                         {activeTab === 'more' && (
+                             <ParentMorePage
+                                 moreView={moreView}
+                                 onChangeView={handleMoreViewChange}
+                                 notices={visibleNotices}
+                                 activeChild={activeChild}
+                                 currentParent={currentParent}
+                                 accountInfo={accountInfo}
+                                 myClasses={myClasses}
+                                 ongoingClasses={ongoingClasses}
+                                 onOpenNotifications={() => setIsNotificationOpen(true)}
+                                 onOpenMessages={() => setIsMessengerPage(true)}
+                                 onLogout={onLogout}
+                             />
+                         )}
+                     </div>
+                 )}
+             </main>
+ 
+             {!selectedReportId && (
+-                <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 z-40 pb-safe shadow-[0_-4px_10px_rgba(0,0,0,0.03)] h-[calc(60px+env(safe-area-inset-bottom))]">
++                <div className={`${embedded ? 'sticky bottom-0' : 'fixed bottom-0 left-0 right-0'} bg-white border-t border-gray-200 z-40 pb-safe shadow-[0_-4px_10px_rgba(0,0,0,0.03)] h-[calc(60px+env(safe-area-inset-bottom))]`}>
+                     <div className="max-w-md mx-auto flex justify-around items-center h-[60px] md:max-w-7xl">
+                         {navItems.map(item => (
+                             <button 
+                                 key={item.id} 
+                                 onClick={() => setActiveTab(item.id)} 
+                                 className={`flex flex-col items-center justify-center w-full h-full transition-all duration-200 active:scale-95 ${activeTab === item.id ? 'text-[#334a91]' : 'text-gray-400 hover:text-gray-600'}`}
+                             >
+                                 <div className={`mb-1 transition-transform duration-200 ${activeTab === item.id ? '-translate-y-0.5' : ''}`}>
+                                     <Icon name={item.icon} className={`w-6 h-6 ${activeTab === item.id ? 'fill-current' : ''}`} strokeWidth={activeTab === item.id ? 2.5 : 2} />
+                                 </div>
+                                 <span className={`text-[10px] ${activeTab === item.id ? 'font-bold' : 'font-medium'}`}>{item.label}</span>
+                             </button>
+                         ))}
+                     </div>
+                 </div>
+             )}
+             
+             {FEATURES.ENABLE_FLOATING_NOTIFICATIONS_FOR_VIEWERS && (
+-                <div className={`fixed bottom-24 right-5 z-[60] flex flex-col gap-3 items-center`}>
++                <div className={`${embedded ? 'absolute bottom-24 right-5' : 'fixed bottom-24 right-5'} z-[60] flex flex-col gap-3 items-center`}>
+                     <button
+                         onClick={() => setIsNotificationOpen(true)}
+                         className="bg-white text-[#334a91] border border-[#cfd8ff] p-3 rounded-full shadow-lg hover:bg-gray-50 active:scale-90 flex items-center justify-center relative w-12 h-12"
+                     >
+                         <NotificationsIcon style={{ fontSize: 24 }} />
+                         {hasUnread && <span className="absolute top-2 right-2.5 w-2 h-2 bg-red-500 rounded-full ring-1 ring-white"></span>}
+                     </button>
+                 </div>
+             )}
+ 
+             <NotificationList
+                 isOpen={isNotificationOpen}
+                 onClose={() => setIsNotificationOpen(false)}
+                 notifications={notifications}
+                 onNotificationClick={handleNotificationClick}
+                 onMarkAllRead={handleMarkAllRead}
+                 unreadCount={unreadCount}
+                 lastReadAt={lastReadAt}
+                 isLoading={isLoading || isMetaLoading}
+                 unreadOnly
+             />
+         </div>
+     );
+ }
+ 
+diff --git a/src/pages/StudentHome.jsx b/src/pages/StudentHome.jsx
+index 3d4459bac26ac2782a53dbb995e00e340db0a994..b996292be321a2b180f9747c78c398c87e997fb5 100644
+--- a/src/pages/StudentHome.jsx
++++ b/src/pages/StudentHome.jsx
+@@ -169,155 +169,160 @@ const getNoticeClassIds = (notice = {}) => [
+ 
+ const getNoticeAudienceValues = (notice = {}) => [
+     ...(Array.isArray(notice?.audienceAuthUids) ? notice.audienceAuthUids : []),
+     ...(Array.isArray(notice?.targetAuthUids) ? notice.targetAuthUids : []),
+     ...(Array.isArray(notice?.targetStudentIds) ? notice.targetStudentIds : []),
+     ...(Array.isArray(notice?.targetStudents) ? notice.targetStudents : []),
+     ...(Array.isArray(notice?.studentIds) ? notice.studentIds : []),
+ ].filter(Boolean).map(String);
+ 
+ const isNoticeVisibleToStudent = ({ notice, studentKeys, classIds }) => {
+     const audience = getNoticeAudienceValues(notice);
+     if (audience.length > 0 && audience.some((value) => studentKeys.has(value))) return true;
+     const noticeClassIds = getNoticeClassIds(notice);
+     if (noticeClassIds.length > 0) return noticeClassIds.some((value) => classIds.has(value));
+     return audience.length === 0;
+ };
+ 
+ export default function StudentHome({
+     student, studentId, userId, students, classes, homeworkAssignments, homeworkResults,
+     attendanceLogs, lessonLogs, notices, tests, grades, classTestStats,
+     videoProgress, onSaveVideoProgress, videoMemos, onAddMemo, onUpdateMemo, onDeleteMemo,
+     externalSchedules, onSaveExternalSchedule, onDeleteExternalSchedule,
+     clinicLogs, onUpdateStudent,
+     closures,
+     lessonReports = [],
+-    onLogout
++    onLogout,
++    embedded = false,
+ }) {
+     // ✅ URL(querystring)로 탭/상세 상태를 동기화해서 "뒤로가기"가 탭 전환/이전 화면으로 동작하게 함
+     const [searchParams, setSearchParams] = useSearchParams();
+ 
+     const readTabFromUrl = () => {
+         if (['formula', 'book'].includes(searchParams.get('mode'))) return 'class';
+         const tab = searchParams.get('tab') || 'home';
+         return tab === 'report' ? 'class' : tab;
      };
+     const readSubTabFromUrl = () => searchParams.get('subTab') || 'homework';
+     const readClassIdFromUrl = () => searchParams.get('classId');
+     const readClassroomModeFromUrl = () => ['formula', 'book'].includes(searchParams.get('mode')) ? 'formula' : 'class';
  
-     const handleSendMessage = async (text, attachment = null) => {
-         const target = targetOptions.find((option) => option.authUid === targetUid) || null;
-         let roomId = selectedRoom?.id || null;
-         if (!roomId && !target) return;
+     const [activeTab, _setActiveTab] = useState(readTabFromUrl());
+     const [initialLearningTab, _setInitialLearningTab] = useState(readSubTabFromUrl());
+     const [selectedClassId, _setSelectedClassId] = useState(readClassIdFromUrl());
+     const [classroomMode, _setClassroomMode] = useState(readClassroomModeFromUrl());
  
-         if (!roomId) {
-             const created = await createOrOpenRoom({
-+                existingRooms: rooms,
-                 targetAuthUid: target?.authUid,
-                 targetUserDocId: target?.userDocId || null,
-                 targetRole: target?.role || null,
-                 targetName: target?.displayName || null,
-                 studentId: target?.studentId || null,
-                 parentId: target?.parentId || null,
-             });
-             roomId = created?.roomId || null;
-             if (!roomId) throw new Error('채팅방 생성에 실패했습니다.');
-             setSelectedRoom((prev) => (prev?.id === roomId ? prev : { id: roomId }));
-         }
+     // ✅ URL -> state (브라우저 뒤로/앞으로로 URL이 바뀌면 화면도 따라감)
+     useEffect(() => {
+         const nextTab = readTabFromUrl();
+         const nextSubTab = readSubTabFromUrl();
+         const nextClassId = readClassIdFromUrl();
+         const nextClassroomMode = readClassroomModeFromUrl();
  
-         const clickAt = Date.now();
-         const tempId = `temp-${clickAt}-${userId}`;
-         const optimisticAt = Date.now();
-         const tempMessage = {
-             id: tempId,
-             roomId,
-             senderId: userId,
-             senderRole: userRole,
-             senderName: '나',
-             text,
-             messageType: attachment?.file ? (attachment.file.type === 'application/pdf' ? 'file' : 'image') : 'text',
-             attachments: attachment?.file ? [{ type: attachment.file.type === 'application/pdf' ? 'pdf' : 'image', name: attachment.file.name, url: '', path: '', size: attachment.file.size, contentType: attachment.file.type }] : [],
-             createdAt: new Date(),
-diff --git a/src/domain/messenger/messenger.service.js b/src/domain/messenger/messenger.service.js
-index 2480af1c55faf117cade04c10bfd9403fed78228..a501933222cc6773bb28aa653f8390b2410f3414 100644
---- a/src/domain/messenger/messenger.service.js
-+++ b/src/domain/messenger/messenger.service.js
-@@ -1,44 +1,95 @@
- import {
-     collection,
-     doc,
-     getDoc,
-     limit,
-     onSnapshot,
-     orderBy,
-     query,
-     serverTimestamp,
-     where,
-     writeBatch,
- } from 'firebase/firestore';
- import { httpsCallable } from 'firebase/functions';
- import { db, functions } from '../../firebase/client';
- import { uploadChatAttachment } from '../../components/chatAttachments';
+         if (nextTab !== activeTab) _setActiveTab(nextTab);
+         if (nextSubTab !== initialLearningTab) _setInitialLearningTab(nextSubTab);
+         if ((nextClassId || null) !== (selectedClassId || null)) _setSelectedClassId(nextClassId || null);
+         if (nextClassroomMode !== classroomMode) _setClassroomMode(nextClassroomMode);
+         // eslint-disable-next-line react-hooks/exhaustive-deps
+     }, [searchParams]);
  
- const createOrGetChatRoomCallable = httpsCallable(functions, 'createOrGetChatRoom');
- const broadcastChatMessageCallable = httpsCallable(functions, 'broadcastChatMessage');
+     // ✅ state -> URL (앱 내부 동작은 아래 래퍼 함수를 통해서만 변경)
+     const setActiveTab = useCallback((tab, { replace = false } = {}) => {
+         _setActiveTab(tab);
++        if (embedded) return;
+         setSearchParams(prev => {
+             const next = new URLSearchParams(prev);
+             next.set('tab', tab);
  
+             // learning 이외 탭으로 이동하면 subTab은 정리 (원하면 정책 변경 가능)
+             if (tab !== 'learning') next.delete('subTab');
+ 
+             // 탭 이동 시 classId는 유지하지 않음(클래스 화면은 별도 상태)
+             if (tab !== 'class') next.delete('classId');
+             if (tab !== 'class') {
+                 next.delete('mode');
+                 next.delete('conceptId');
+                 _setClassroomMode('class');
+             }
+ 
+             return next;
+         }, { replace });
+-    }, [setSearchParams]);
++    }, [setSearchParams, embedded]);
+     const setClassroomMode = useCallback((mode, { replace = false } = {}) => {
+         const value = mode === 'formula' ? 'formula' : 'class';
+         _setClassroomMode(value);
+         _setActiveTab('class');
+         _setSelectedClassId(null);
++        if (embedded) return;
+         setSearchParams(prev => {
+             const next = new URLSearchParams(prev);
+             next.set('tab', 'class');
+             next.delete('classId');
+             next.delete('subTab');
+             if (value === 'formula') next.set('mode', 'book');
+             else {
+                 next.delete('mode');
+                 next.delete('conceptId');
+             }
+             return next;
+         }, { replace });
+-    }, [setSearchParams]);
++    }, [setSearchParams, embedded]);
+ 
+     const setInitialLearningTab = useCallback((subTab, { replace = false } = {}) => {
+         const value = subTab || 'homework';
+         _setInitialLearningTab(value);
++        _setActiveTab('learning');
++        if (embedded) return;
+         setSearchParams(prev => {
+             const next = new URLSearchParams(prev);
+             next.set('tab', 'learning');
+             next.set('subTab', value);
+             next.delete('classId');
+             return next;
+         }, { replace });
+-        _setActiveTab('learning');
+-    }, [setSearchParams]);
++    }, [setSearchParams, embedded]);
+ 
+     const setSelectedClassId = useCallback((classId, { replace = false } = {}) => {
+         const value = classId === null || classId === undefined || classId === '' ? null : String(classId);
+         _setSelectedClassId(value);
++        if (value) _setActiveTab('class');
++        if (value) _setClassroomMode('class');
++        if (embedded) return;
+ 
+         setSearchParams(prev => {
+             const next = new URLSearchParams(prev);
+             if (value) {
+                 next.set('tab', 'class');
+                 next.set('classId', value);
+                 next.delete('subTab');
+             } else {
+                 next.delete('classId');
+             }
+             return next;
+         }, { replace });
+ 
+-        if (value) _setActiveTab('class');
+-        if (value) _setClassroomMode('class');
+-    }, [setSearchParams]);
++    }, [setSearchParams, embedded]);
+     const [isVideoModalOpen, setIsVideoModalOpen] = useState(false);
+     const [isNotificationOpen, setIsNotificationOpen] = useState(false);
+     const [visibleNotices, setVisibleNotices] = useState([]);
+     const [targetMemo, setTargetMemo] = useState(null);
+     const [isMessengerPage, setIsMessengerPage] = useState(false);
+     const viewerUid = student?.authUid || userId;
+     const studentDocId = studentId;
+     const studentAuthUid = student?.authUid || userId;
+     const rawMyClasses = useMemo(() => {
+         if (!Array.isArray(classes) || !studentId) return [];
+         const addClassIdFromItem = (targetSet, item) => {
+             if (!item) return;
+             if (typeof item === 'string') {
+                 targetSet.add(String(item));
+                 return;
+             }
+             if (typeof item !== 'object') return;
+             [item.id, item.classId, item.classDocId, item.classDocumentId, item.classRefId, item.docId, item.classCode, item.code, item.classKey]
+                 .filter(Boolean)
+                 .forEach((value) => targetSet.add(String(value)));
+         };
+         const studentClassIds = new Set();
+         [
+             ...(Array.isArray(student?.classIds) ? student.classIds : []),
+             ...(Array.isArray(student?.classes) ? student.classes : []),
+@@ -537,57 +542,57 @@ export default function StudentHome({
+ 
+     const sentLessonReports = useMemo(() => (Array.isArray(lessonReports) ? lessonReports : [])
+         .filter((report) => report?.status === 'sent' && String(report?.studentId || '') === String(studentId || '') && isVisibleClassItem(report))
+         .map((report) => ({ ...report, className: classes.find((c) => String(c.id) === String(report.classId))?.name || report.classId }))
+         .sort((a, b) => String(b.lessonDate || '').localeCompare(String(a.lessonDate || ''))), [lessonReports, studentId, isVisibleClassItem, classes]);
+ 
+     const navItems = [
+         { id: 'home', icon: 'home', label: '홈' },
+         { id: 'class', icon: 'fileText', label: '강의실' },
+         { id: 'learning', icon: 'clipboardCheck', label: '학습관리' },
+         { id: 'schedule', icon: 'calendar', label: '일정' },
+         { id: 'menu', icon: 'menu', label: '전체' },
+     ];
+ 
+     if (isMessengerPage) {
+         return (
+             <StudentMessengerPage
+                 studentId={studentId}
+                 student={student}
+                 onBack={() => setIsMessengerPage(false)}
+             />
+         );
+     }
+ 
+     return (
+-        <div className="bg-gray-50 min-h-screen flex flex-col relative font-sans">
++        <div className={`bg-gray-50 flex flex-col relative font-sans ${embedded ? 'h-full min-h-0' : 'min-h-screen'}`}>
+             <StudentHeader student={student} onOpenNotifications={handleOpenNotification} onOpenMessages={() => setIsMessengerPage(true)} hasUnread={hasUnread} />
+             {/* <div style={{position:'fixed', top:10, right:10, zIndex:9999, background:'#fff', padding:6}}>
+                 activeTab: {activeTab}
+             </div> */}
+ 
+-            <main className="flex-1 w-full max-w-md mx-auto p-4 pb-24 overflow-y-auto custom-scrollbar md:max-w-7xl">
++            <main className={`flex-1 w-full max-w-md mx-auto p-4 overflow-y-auto custom-scrollbar md:max-w-7xl ${embedded ? 'min-h-0 pb-4' : 'pb-24'}`}>
+                 {!student ? (
+                     <div className="p-6 text-center text-gray-500">
+                         학생 정보를 불러오는 중이거나
+                         <br />
+                         계정이 아직 학원에 연결되지 않았습니다.
+                         <br />
+                         관리자에게 문의해주세요.
+                     </div>
+                 ) : selectedClassId ? (
+                     <ClassroomView
+                         classes={classes}
+                         lessonLogs={filteredLessonLogs}
+                         attendanceLogs={filteredAttendanceLogs}
+                         studentDocId={studentDocId}
+                         studentAuthUid={studentAuthUid}
+                         selectedClassId={selectedClassId}
+                         setSelectedClassId={setSelectedClassId}
+                         videoProgress={filteredVideoProgress}
+                         onSaveVideoProgress={onSaveVideoProgress}
+                         videoMemos={videoMemos}
+                         onAddMemo={onAddMemo}
+                         onUpdateMemo={onUpdateMemo}
+                         onDeleteMemo={onDeleteMemo}
+                         onVideoModalChange={setIsVideoModalOpen}
+                         targetMemo={targetMemo}
+@@ -663,73 +668,73 @@ export default function StudentHome({
+                                 attendanceLogs={filteredAttendanceLogs}
+                                 student={student}
+                                 tests={filteredTests}
+                                 grades={grades}
+                                 classTestStats={classTestStats}
+                                 lessonReports={sentLessonReports}
+                             />
+                         )}
+                         {activeTab === 'board' && <BoardTab notices={visibleNotices} />}
+                         {activeTab === 'menu' && (
+                             <MenuTab 
+                                 student={student} onUpdateStudent={onUpdateStudent} onLogout={onLogout}
+                                 videoMemos={videoMemos} lessonLogs={filteredLessonLogs} onLinkToMemo={handleNavigateToMemo} notices={visibleNotices}
+                                 onOpenNotifications={handleOpenNotification}
+                                 onOpenMessages={() => setIsMessengerPage(true)}
+                                 onOpenFormulaBook={() => setClassroomMode('formula')}
+                                 studentAuthUid={studentAuthUid}
+                                 myClasses={ongoingClasses}
+                             />
+                         )}
+                     </div>
+                 )}
+             </main>
+ 
+             {student && !selectedClassId && (
+-                <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 z-40 pb-safe shadow-[0_-4px_10px_rgba(0,0,0,0.03)] h-[calc(60px+env(safe-area-inset-bottom))]">
++                <div className={`${embedded ? 'sticky bottom-0' : 'fixed bottom-0 left-0 right-0'} bg-white border-t border-gray-200 z-40 pb-safe shadow-[0_-4px_10px_rgba(0,0,0,0.03)] h-[calc(60px+env(safe-area-inset-bottom))]`}>
+                     <div className="max-w-md mx-auto flex justify-around items-center h-[60px] md:max-w-7xl">
+                         {navItems.map(item => (
+                             <button 
+                                 key={item.id} 
+                                 onClick={() => setActiveTab(item.id)} 
+                                 className={`flex flex-col items-center justify-center w-full h-full transition-all duration-200 active:scale-95 active:bg-gray-50 ${
+                                     activeTab === item.id || (item.id === 'menu' && activeTab === 'board') ? 'text-brand-main' : 'text-gray-400 hover:text-gray-600'
+                                 }`}
+                             >
+                                 <div className={`mb-1 transition-transform duration-200 ${activeTab === item.id ? '-translate-y-0.5' : ''}`}>
+                                     <Icon name={item.icon} className={`w-6 h-6 ${activeTab === item.id ? 'fill-current' : ''}`} strokeWidth={activeTab === item.id ? 2.5 : 2} />
+                                 </div>
+                                 <span className={`text-[10px] ${activeTab === item.id ? 'font-bold' : 'font-medium'}`}>{item.label}</span>
+                             </button>
+                         ))}
+                     </div>
+                 </div>
+             )}
+             
+             {/* ✅ [수정] 플로팅 버튼 통합 컨테이너 */}
+             {FEATURES.ENABLE_FLOATING_NOTIFICATIONS_FOR_VIEWERS && (
+-                <div className={`fixed bottom-24 right-5 z-[60] flex flex-col gap-3 items-center transition-all duration-300 ${isVideoModalOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
++                <div className={`${embedded ? 'absolute bottom-24 right-5' : 'fixed bottom-24 right-5'} z-[60] flex flex-col gap-3 items-center transition-all duration-300 ${isVideoModalOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
+                     {/* 1. 알림 버튼 */}
+                     <button
+                         onClick={handleOpenNotification}
+                         className="bg-white text-brand-main border border-brand-main/20 p-3 rounded-full shadow-lg hover:bg-gray-50 active:scale-90 flex items-center justify-center relative w-12 h-12"
+                     >
+                         <NotificationsIcon style={{ fontSize: 24 }} />
+                         {hasUnread && <span className="absolute top-2 right-2.5 w-2 h-2 bg-brand-red rounded-full ring-1 ring-white"></span>}
+                     </button>
+                 </div>
+             )}
+             {student && (
+                 <NotificationList
+                     isOpen={isNotificationOpen}
+                     onClose={() => setIsNotificationOpen(false)}
+                     notifications={notifications}
+                     onNotificationClick={handleNotificationClick}
+                     onMarkAllRead={handleMarkAllRead}
+                     unreadCount={unreadCount}
+                     lastReadAt={lastReadAt}
+                     isLoading={isLoading || isMetaLoading}
+                 />
+             )}
+         </div>
+     );
+ }
+diff --git a/src/pages/admin/MasterViewPage.jsx b/src/pages/admin/MasterViewPage.jsx
+index 74f29178e6e6911cac3f604dc676808a792c7fb0..be505e6f7e6b91932fe2770fb1bf8dcdc32f3658 100644
+--- a/src/pages/admin/MasterViewPage.jsx
++++ b/src/pages/admin/MasterViewPage.jsx
+@@ -12,99 +12,140 @@ const countStudentClasses = (student, classes = []) => {
+ const isExcludedFromMasterView = (student = {}) => {
+   const status = String(student?.status || '').trim().toLowerCase();
+   return student?.role !== 'student'
+     || student?.active === false
+     || student?.deletion_requested === true
+     || student?.deletionRequested === true
+     || status === 'withdrawn'
+     || status === 'deletion_requested';
+ };
+ 
+ const getStudentStatusLabel = (student = {}) => {
+   if (student?.active === false) return '비활성';
+   if (student?.deletion_requested || student?.deletionRequested || String(student?.status || '').toLowerCase() === 'deletion_requested') return '탈퇴 요청';
+   if (String(student?.status || '').toLowerCase() === 'withdrawn') return '퇴원';
+   return student?.status || '재원';
+ };
+ 
+ const MasterBanner = ({ mode }) => (
+   <div className="sticky top-0 z-50 bg-amber-100 border border-amber-300 text-amber-900 px-4 py-2 text-sm font-semibold rounded-lg mb-3">
+     {mode === 'parent'
+       ? '관리자 마스터뷰로 보고 있습니다. 실제 학부모 계정이 아닙니다.'
+       : '관리자 마스터뷰로 보고 있습니다. 실제 학생 계정이 아닙니다.'}
+   </div>
+ );
+ 
+-export default function MasterViewPage({ students = [], classes = [], userId }) {
++export default function MasterViewPage({
++  students = [], classes = [], userId, homeworkAssignments = [], homeworkResults = {},
++  attendanceLogs = [], lessonLogs = [], notices = [], tests = [], grades = {}, classTestStats = {},
++  videoProgress = {}, videoMemos = {}, externalSchedules = [], clinicLogs = [], closures = [], lessonReports = [],
++}) {
+   const [searchTerm, setSearchTerm] = useState('');
+   const [selectedStudentId, setSelectedStudentId] = useState('');
+   const [previewMode, setPreviewMode] = useState('student');
+ 
+   const filteredStudents = useMemo(() => {
+     const term = searchTerm.trim().toLowerCase();
+     const base = students.filter((student) => !isExcludedFromMasterView(student)).slice(0, 800);
+     if (!term) return base;
+     return base.filter((student) => [student.name, student.school, getStudentGradeLabel(student), student.grade, student.phone, student.phoneNumber, student.parentPhone]
+       .some((value) => String(value || '').toLowerCase().includes(term)));
+   }, [students, searchTerm]);
+ 
+   const selectedStudent = useMemo(() => students.filter((student) => !isExcludedFromMasterView(student)).find((student) => String(student.id) === String(selectedStudentId)) || null, [students, selectedStudentId]);
+-  const selectedClasses = useMemo(() => selectedStudent ? classes.filter((cls) => {
+-    const ids = new Set([...(selectedStudent.classes || []), ...(selectedStudent.classIds || [])].map(String));
+-    return ids.has(String(cls.id)) || (cls.students || []).map(String).includes(String(selectedStudent.id));
+-  }) : [], [classes, selectedStudent]);
+   const previewStudents = selectedStudent ? [selectedStudent] : [];
+ 
++  const blockPreviewMutation = (event) => {
++    const target = event.target?.closest?.('button, a, input, select, textarea');
++    if (!target) return;
 +
-+const normalizeString = (value) => String(value || '').trim();
-+
-+const getInternalRoomTypeForTargetRole = (targetRole) => (
-+    String(targetRole || '').toLowerCase() === 'parent' ? 'parent_institute' : 'student_institute'
-+);
-+
-+const getRoomType = (room = {}) => normalizeString(room?.roomType || room?.channel || room?.type);
-+
-+const getRoomParticipantIds = (room = {}) => (
-+    Array.isArray(room?.participantIds) ? room.participantIds.map(normalizeString).filter(Boolean) : []
-+);
-+
-+const roomHasTarget = (room = {}, target = {}) => {
-+    const targetAuthUid = normalizeString(target.targetAuthUid);
-+    const targetUserDocId = normalizeString(target.targetUserDocId);
-+    const targetStudentId = normalizeString(target.studentId);
-+    const targetParentId = normalizeString(target.parentId);
-+    const participants = getRoomParticipantIds(room);
-+    const participantUserDocIds = room?.participantUserDocIds && typeof room.participantUserDocIds === 'object'
-+        ? room.participantUserDocIds
-+        : {};
-+
-+    if (targetAuthUid && participants.includes(targetAuthUid)) return true;
-+    if (targetUserDocId && Object.values(participantUserDocIds).map(normalizeString).includes(targetUserDocId)) return true;
-+
-+    const roomStudentIds = [room?.studentId, room?.studentDocId, ...(Array.isArray(room?.studentIds) ? room.studentIds : [])]
-+        .map(normalizeString)
-+        .filter(Boolean);
-+
-+    if (targetStudentId && roomStudentIds.length > 0 && !roomStudentIds.includes(targetStudentId)) return false;
-+
-+    if (String(target.targetRole || '').toLowerCase() === 'parent') {
-+        return Boolean(targetParentId) && [room?.parentId, room?.parentUid, ...(Array.isArray(room?.parentUids) ? room.parentUids : [])]
-+            .map(normalizeString)
-+            .includes(targetParentId);
++    const tag = target.tagName?.toLowerCase();
++    const type = String(target.getAttribute('type') || '').toLowerCase();
++    if (tag === 'input' || tag === 'select' || tag === 'textarea') {
++      if (['checkbox', 'radio', 'file', 'submit'].includes(type) || tag !== 'input') {
++        event.preventDefault();
++        event.stopPropagation();
++      }
++      return;
 +    }
 +
-+    return Boolean(targetStudentId) && roomStudentIds.includes(targetStudentId);
-+};
++    const actionText = [target.innerText, target.getAttribute('aria-label'), target.getAttribute('title')]
++      .filter(Boolean)
++      .join(' ')
++      .trim();
++    const isMutationAction = /(저장|삭제|수정|등록|전송|제출|완료|추가|예약|취소|로그아웃|변경|업데이트|작성|보내기|save|delete|edit|submit|send|update|add|register)/i.test(actionText);
++    if (isMutationAction) {
++      event.preventDefault();
++      event.stopPropagation();
++    }
++  };
 +
-+export const findExistingInternalRoom = (rooms = [], target = {}) => {
-+    const expectedRoomType = normalizeString(target.roomType) || getInternalRoomTypeForTargetRole(target.targetRole);
-+    return (Array.isArray(rooms) ? rooms : []).find((room) => (
-+        room?.id
-+        && room?.internalOnly === true
-+        && getRoomType(room) === expectedRoomType
-+        && roomHasTarget(room, target)
-+    )) || null;
-+};
++  const blockPreviewSubmit = (event) => {
++    event.preventDefault();
++    event.stopPropagation();
++  };
 +
- const uniqueStrings = (values = []) => Array.from(new Set(values.map((value) => String(value || '').trim()).filter(Boolean)));
- 
- const pickCounterpartUid = (participantIds, participantUid) => participantIds.find((uid) => uid !== participantUid) || '';
- 
- const buildUserChatRoomIndexData = ({ roomId, roomData = {}, participantUid, lastMessageText, timestamp }) => {
-     const participantIds = uniqueStrings(Array.isArray(roomData.participantIds) ? roomData.participantIds : []);
-     return {
-         roomId,
-         roomType: roomData.roomType || roomData.channel || roomData.type || '',
-         channel: roomData.channel || roomData.roomType || '',
-         slot: roomData.slot || '',
-         counterpartUid: roomData.counterpartUid && String(roomData.counterpartUid) !== String(participantUid)
-             ? String(roomData.counterpartUid)
-             : pickCounterpartUid(participantIds, String(participantUid)),
-         lastMessageText,
-         lastMessageAt: timestamp,
-         updatedAt: timestamp,
-         studentId: roomData.studentId || '',
-         parentId: roomData.parentId || '',
-         parentUid: roomData.parentUid || '',
-         staffAuthUid: roomData.staffAuthUid || '',
-         teacherAuthUid: roomData.teacherAuthUid || '',
-     };
- };
- 
-@@ -63,59 +114,69 @@ const normalizeMessage = (docSnapshot) => ({
-     ...docSnapshot.data(),
- });
- 
- export const createOrGetChatRoom = async ({
-     targetAuthUid,
-     targetUserDocId = null,
-     targetRole = null,
-     targetName = null,
-     studentId = null,
-     parentId = null,
- }) => {
-     const result = await createOrGetChatRoomCallable({
-         targetAuthUid,
-         targetUserDocId,
-         targetRole,
-         targetName,
-         studentId,
-         parentId,
-     });
- 
-     return result?.data || null;
- };
- 
- export const createOrOpenRoom = async ({
-     roomId = null,
-+    existingRooms = [],
-     targetAuthUid,
-     targetUserDocId = null,
-     targetRole = null,
-     targetName = null,
-     studentId = null,
-     parentId = null,
- }) => {
-     if (roomId) return { roomId, status: 'existing' };
- 
-+    const existingRoom = findExistingInternalRoom(existingRooms, {
-+        targetAuthUid,
-+        targetUserDocId,
-+        targetRole,
-+        studentId,
-+        parentId,
-+    });
-+    if (existingRoom?.id) return { roomId: existingRoom.id, status: 'existing' };
++  const blockPreviewInputChange = (event) => {
++    event.preventDefault();
++    event.stopPropagation();
++  };
 +
-     return createOrGetChatRoom({
-         targetAuthUid,
-         targetUserDocId,
-         targetRole,
-         targetName,
-         studentId,
-         parentId,
-     });
- };
+   const parentContextValue = useMemo(() => ({
+     activeStudentId: selectedStudentId || null,
+     studentIds: selectedStudentId ? [selectedStudentId] : [],
+     loading: false,
+     setActiveStudentId: async () => {},
+   }), [selectedStudentId]);
  
- export const sendMessageDirect = async ({
-     roomId,
-     text,
-     messageType = 'text',
-     attachments = [],
-     senderMeta = {},
-     clientTempId = null,
- }) => {
-     const now = Date.now();
-     const roomRef = doc(db, 'chatRooms', roomId);
-     const uploadedAttachment = attachments?.[0]?.file ? await uploadChatAttachment({
-         roomId,
-         messageId: clientTempId || String(now),
-         file: attachments[0].file,
-         uploaderUid: senderMeta?.senderId || '',
+-  const emptyMap = {};
+   const noop = async () => undefined;
+ 
+   return (
+     <div className="space-y-5">
+       <div>
+         <h1 className="text-2xl font-bold text-gray-900">마스터뷰</h1>
+         <p className="mt-1 text-sm text-gray-500">관리자 전용 학생/학부모 화면 확인 도구입니다.</p>
+       </div>
+       <section className="bg-white rounded-2xl border border-gray-100 p-4 space-y-3">
+         <input className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm" placeholder="학생 이름, 학교, 학년, 전화번호 검색" value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} />
+         <div className="flex gap-2">
+           <button type="button" onClick={() => setPreviewMode('student')} className={`px-3 py-2 rounded-lg text-sm ${previewMode === 'student' ? 'bg-[#455fab] text-white' : 'bg-gray-100'}`}>학생 화면으로 보기</button>
+           <button type="button" onClick={() => setPreviewMode('parent')} className={`px-3 py-2 rounded-lg text-sm ${previewMode === 'parent' ? 'bg-[#455fab] text-white' : 'bg-gray-100'}`}>학부모 화면으로 보기</button>
+         </div>
+         <div className="max-h-72 overflow-y-auto divide-y divide-gray-100 border rounded-xl">
+           {filteredStudents.map((student) => (
+             <button key={student.id} type="button" onClick={() => setSelectedStudentId(student.id)} className={`w-full text-left px-4 py-3 ${selectedStudentId === student.id ? 'bg-blue-50' : 'bg-white hover:bg-gray-50'}`}>
+               <div className="flex items-center justify-between gap-3">
+                 <div className="font-semibold text-gray-900">{student.name || '이름 없음'}</div>
+                 <span className="shrink-0 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">{getStudentStatusLabel(student)}</span>
+               </div>
+               <div className="text-xs text-gray-500">{student.school || '학교 정보 없음'} · {getStudentGradeLabel(student)} · 수강 중 클래스 {countStudentClasses(student, classes)}개</div>
+             </button>
+           ))}
+         </div>
+       </section>
+       {selectedStudent && (
+         <section className="bg-white rounded-2xl border border-gray-100 p-3">
+           <MasterBanner mode={previewMode} />
+-          <div className="relative border rounded-2xl overflow-hidden bg-gray-50 master-preview-readonly">
+-            <style>{`.master-preview-readonly button, .master-preview-readonly input, .master-preview-readonly textarea, .master-preview-readonly select, .master-preview-readonly a { pointer-events: none !important; }`}</style>
+-            <div className="select-none max-h-[75vh] overflow-y-auto">
++          <div
++            className="relative border rounded-2xl overflow-hidden bg-gray-50 master-preview-readonly"
++            onClickCapture={blockPreviewMutation}
++            onSubmitCapture={blockPreviewSubmit}
++            onChangeCapture={blockPreviewInputChange}
++            onInputCapture={blockPreviewInputChange}
++            onKeyDownCapture={blockPreviewInputChange}
++          >
++            <style>{`.master-preview-readonly input, .master-preview-readonly textarea, .master-preview-readonly select { caret-color: transparent; }`}</style>
++            <div className="select-none h-[75vh] overflow-y-auto">
+               {previewMode === 'student' ? (
+-                <StudentHome student={selectedStudent} studentId={selectedStudent.id} userId={userId} students={previewStudents} classes={selectedClasses} homeworkAssignments={[]} homeworkResults={emptyMap} attendanceLogs={[]} lessonLogs={[]} notices={[]} tests={[]} grades={emptyMap} classTestStats={emptyMap} videoProgress={emptyMap} videoMemos={emptyMap} onSaveVideoProgress={noop} onAddMemo={noop} onUpdateMemo={noop} onDeleteMemo={noop} externalSchedules={[]} onSaveExternalSchedule={noop} onDeleteExternalSchedule={noop} clinicLogs={[]} closures={[]} lessonReports={[]} onUpdateStudent={noop} onLogout={noop} />
++                <StudentHome student={selectedStudent} studentId={selectedStudent.id} userId={userId} students={previewStudents} classes={classes} homeworkAssignments={homeworkAssignments} homeworkResults={homeworkResults} attendanceLogs={attendanceLogs} lessonLogs={lessonLogs} notices={notices} tests={tests} grades={grades} classTestStats={classTestStats} videoProgress={videoProgress} videoMemos={videoMemos} onSaveVideoProgress={noop} onAddMemo={noop} onUpdateMemo={noop} onDeleteMemo={noop} externalSchedules={externalSchedules} onSaveExternalSchedule={noop} onDeleteExternalSchedule={noop} clinicLogs={clinicLogs} closures={closures} lessonReports={lessonReports} onUpdateStudent={noop} onLogout={noop} embedded />
+               ) : (
+                 <ParentContext.Provider value={parentContextValue}>
+-                  <ParentHome userId={userId} students={previewStudents} classes={selectedClasses} homeworkAssignments={[]} homeworkResults={emptyMap} attendanceLogs={[]} lessonLogs={[]} notices={[]} tests={[]} grades={emptyMap} classTestStats={emptyMap} videoProgress={emptyMap} clinicLogs={[]} lessonReports={[]} onLogout={noop} externalSchedules={[]} onSaveExternalSchedule={noop} onDeleteExternalSchedule={noop} closures={[]} />
++                  <ParentHome userId={userId} students={previewStudents} classes={classes} homeworkAssignments={homeworkAssignments} homeworkResults={homeworkResults} attendanceLogs={attendanceLogs} lessonLogs={lessonLogs} notices={notices} tests={tests} grades={grades} classTestStats={classTestStats} videoProgress={videoProgress} clinicLogs={clinicLogs} lessonReports={lessonReports} onLogout={noop} externalSchedules={externalSchedules} onSaveExternalSchedule={noop} onDeleteExternalSchedule={noop} closures={closures} embedded />
+                 </ParentContext.Provider>
+               )}
+             </div>
+           </div>
+         </section>
+       )}
+     </div>
+   );
+ }

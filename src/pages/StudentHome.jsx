@@ -191,7 +191,8 @@ export default function StudentHome({
     clinicLogs, onUpdateStudent,
     closures,
     lessonReports = [],
-    onLogout
+    onLogout,
+    embedded = false,
 }) {
     // ✅ URL(querystring)로 탭/상세 상태를 동기화해서 "뒤로가기"가 탭 전환/이전 화면으로 동작하게 함
     const [searchParams, setSearchParams] = useSearchParams();
@@ -227,6 +228,7 @@ export default function StudentHome({
     // ✅ state -> URL (앱 내부 동작은 아래 래퍼 함수를 통해서만 변경)
     const setActiveTab = useCallback((tab, { replace = false } = {}) => {
         _setActiveTab(tab);
+        if (embedded) return;
         setSearchParams(prev => {
             const next = new URLSearchParams(prev);
             next.set('tab', tab);
@@ -244,12 +246,13 @@ export default function StudentHome({
 
             return next;
         }, { replace });
-    }, [setSearchParams]);
+    }, [setSearchParams, embedded]);
     const setClassroomMode = useCallback((mode, { replace = false } = {}) => {
         const value = mode === 'formula' ? 'formula' : 'class';
         _setClassroomMode(value);
         _setActiveTab('class');
         _setSelectedClassId(null);
+        if (embedded) return;
         setSearchParams(prev => {
             const next = new URLSearchParams(prev);
             next.set('tab', 'class');
@@ -262,11 +265,13 @@ export default function StudentHome({
             }
             return next;
         }, { replace });
-    }, [setSearchParams]);
+    }, [setSearchParams, embedded]);
 
     const setInitialLearningTab = useCallback((subTab, { replace = false } = {}) => {
         const value = subTab || 'homework';
         _setInitialLearningTab(value);
+        _setActiveTab('learning');
+        if (embedded) return;
         setSearchParams(prev => {
             const next = new URLSearchParams(prev);
             next.set('tab', 'learning');
@@ -274,12 +279,14 @@ export default function StudentHome({
             next.delete('classId');
             return next;
         }, { replace });
-        _setActiveTab('learning');
-    }, [setSearchParams]);
+    }, [setSearchParams, embedded]);
 
     const setSelectedClassId = useCallback((classId, { replace = false } = {}) => {
         const value = classId === null || classId === undefined || classId === '' ? null : String(classId);
         _setSelectedClassId(value);
+        if (value) _setActiveTab('class');
+        if (value) _setClassroomMode('class');
+        if (embedded) return;
 
         setSearchParams(prev => {
             const next = new URLSearchParams(prev);
@@ -293,9 +300,7 @@ export default function StudentHome({
             return next;
         }, { replace });
 
-        if (value) _setActiveTab('class');
-        if (value) _setClassroomMode('class');
-    }, [setSearchParams]);
+    }, [setSearchParams, embedded]);
     const [isVideoModalOpen, setIsVideoModalOpen] = useState(false);
     const [isNotificationOpen, setIsNotificationOpen] = useState(false);
     const [visibleNotices, setVisibleNotices] = useState([]);
@@ -559,13 +564,13 @@ export default function StudentHome({
     }
 
     return (
-        <div className="bg-gray-50 min-h-screen flex flex-col relative font-sans">
+        <div className={`bg-gray-50 flex flex-col relative font-sans ${embedded ? 'h-full min-h-0' : 'min-h-screen'}`}>
             <StudentHeader student={student} onOpenNotifications={handleOpenNotification} onOpenMessages={() => setIsMessengerPage(true)} hasUnread={hasUnread} />
             {/* <div style={{position:'fixed', top:10, right:10, zIndex:9999, background:'#fff', padding:6}}>
                 activeTab: {activeTab}
             </div> */}
 
-            <main className="flex-1 w-full max-w-md mx-auto p-4 pb-24 overflow-y-auto custom-scrollbar md:max-w-7xl">
+            <main className={`flex-1 w-full max-w-md mx-auto p-4 overflow-y-auto custom-scrollbar md:max-w-7xl ${embedded ? 'min-h-0 pb-4' : 'pb-24'}`}>
                 {!student ? (
                     <div className="p-6 text-center text-gray-500">
                         학생 정보를 불러오는 중이거나
@@ -685,7 +690,7 @@ export default function StudentHome({
             </main>
 
             {student && !selectedClassId && (
-                <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 z-40 pb-safe shadow-[0_-4px_10px_rgba(0,0,0,0.03)] h-[calc(60px+env(safe-area-inset-bottom))]">
+                <div className={`${embedded ? 'sticky bottom-0' : 'fixed bottom-0 left-0 right-0'} bg-white border-t border-gray-200 z-40 pb-safe shadow-[0_-4px_10px_rgba(0,0,0,0.03)] h-[calc(60px+env(safe-area-inset-bottom))]`}>
                     <div className="max-w-md mx-auto flex justify-around items-center h-[60px] md:max-w-7xl">
                         {navItems.map(item => (
                             <button 
@@ -707,7 +712,7 @@ export default function StudentHome({
             
             {/* ✅ [수정] 플로팅 버튼 통합 컨테이너 */}
             {FEATURES.ENABLE_FLOATING_NOTIFICATIONS_FOR_VIEWERS && (
-                <div className={`fixed bottom-24 right-5 z-[60] flex flex-col gap-3 items-center transition-all duration-300 ${isVideoModalOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
+                <div className={`${embedded ? 'absolute bottom-24 right-5' : 'fixed bottom-24 right-5'} z-[60] flex flex-col gap-3 items-center transition-all duration-300 ${isVideoModalOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
                     {/* 1. 알림 버튼 */}
                     <button
                         onClick={handleOpenNotification}

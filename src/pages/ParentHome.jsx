@@ -491,6 +491,7 @@ export default function ParentHome({
     videoProgress, clinicLogs, lessonReports = [], onLogout,
     externalSchedules, onSaveExternalSchedule, onDeleteExternalSchedule,
     closures,
+    embedded = false,
 }) {
     const { activeStudentId, studentIds, setActiveStudentId } = useParentContext();
     // 1. 자녀 데이터 및 선택 로직
@@ -625,8 +626,9 @@ export default function ParentHome({
         _setActiveTab(tab);
         requestAnimationFrame(() => {
             mainScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
-            window.scrollTo({ top: 0, behavior: 'smooth' });
+            if (!embedded) window.scrollTo({ top: 0, behavior: 'smooth' });
         });
+        if (embedded) return;
         setSearchParams(prev => {
             const next = new URLSearchParams(prev);
             next.set('tab', tab);
@@ -638,13 +640,14 @@ export default function ParentHome({
             }
             return next;
         }, { replace });
-    }, [setSearchParams]);
+    }, [setSearchParams, embedded]);
 
     const setSelectedClassroomId = useCallback((classId, { replace = false } = {}) => {
         const value = classId === null || classId === undefined || classId === '' ? null : String(classId);
         _setSelectedClassroomId(value);
         // classroom 선택은 report 탭 컨텍스트
         if (value) _setActiveTab('report');
+        if (embedded) return;
 
         setSearchParams(prev => {
             const next = new URLSearchParams(prev);
@@ -657,13 +660,14 @@ export default function ParentHome({
             }
             return next;
         }, { replace });
-    }, [setSearchParams]);
+    }, [setSearchParams, embedded]);
 
     const setSelectedReportId = useCallback((reportId, { replace = false } = {}) => {
         const value = reportId === null || reportId === undefined || reportId === '' ? null : String(reportId);
         _setSelectedReportId(value);
         // report 선택은 report 탭 컨텍스트
         if (value) _setActiveTab('report');
+        if (embedded) return;
 
         setSearchParams(prev => {
             const next = new URLSearchParams(prev);
@@ -676,7 +680,7 @@ export default function ParentHome({
             }
             return next;
         }, { replace });
-    }, [setSearchParams]);
+    }, [setSearchParams, embedded]);
 
     
     const mainScrollRef = useRef(null);
@@ -722,6 +726,7 @@ export default function ParentHome({
         setClassFilter('ongoing');
         _setActiveTab('home');
         setClinicPageSize(3);
+        if (embedded) return;
         setSearchParams((prev) => {
             const next = new URLSearchParams(prev);
             next.set('tab', 'home');
@@ -729,7 +734,7 @@ export default function ParentHome({
             next.delete('reportId');
             return next;
         }, { replace: true });
-    }, [activeStudentId, setSearchParams]);
+    }, [activeStudentId, setSearchParams, embedded]);
 
     // 알림 관련
     const [isNotificationOpen, setIsNotificationOpen] = useState(false);
@@ -1223,7 +1228,7 @@ export default function ParentHome({
     }
 
     return (
-        <div className="bg-gray-50 min-h-screen flex flex-col relative font-sans">
+        <div className={`bg-gray-50 flex flex-col relative font-sans ${embedded ? 'h-full min-h-0' : 'min-h-screen'}`}>
             {/* 헤더 & 자녀 선택 */}
             <div className="bg-white sticky top-0 z-30 shadow-sm">
                 <div className="flex items-center justify-between px-4 py-2 border-b border-gray-100 bg-white">
@@ -1250,7 +1255,7 @@ export default function ParentHome({
                 </div>
             </div>
 
-            <main ref={mainScrollRef} className="flex-1 w-full max-w-md mx-auto p-4 pb-24 overflow-y-auto custom-scrollbar md:max-w-7xl">
+            <main ref={mainScrollRef} className={`flex-1 w-full max-w-md mx-auto p-4 overflow-y-auto custom-scrollbar md:max-w-7xl ${embedded ? 'min-h-0 pb-4' : 'pb-24'}`}>
                 {/* [라우팅 분기 1] 리포트 상세 화면 */}
                 {selectedReportId ? (
                     <ParentSessionReport
@@ -1694,7 +1699,7 @@ export default function ParentHome({
             </main>
 
             {!selectedReportId && (
-                <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 z-40 pb-safe shadow-[0_-4px_10px_rgba(0,0,0,0.03)] h-[calc(60px+env(safe-area-inset-bottom))]">
+                <div className={`${embedded ? 'sticky bottom-0' : 'fixed bottom-0 left-0 right-0'} bg-white border-t border-gray-200 z-40 pb-safe shadow-[0_-4px_10px_rgba(0,0,0,0.03)] h-[calc(60px+env(safe-area-inset-bottom))]`}>
                     <div className="max-w-md mx-auto flex justify-around items-center h-[60px] md:max-w-7xl">
                         {navItems.map(item => (
                             <button 
@@ -1713,7 +1718,7 @@ export default function ParentHome({
             )}
             
             {FEATURES.ENABLE_FLOATING_NOTIFICATIONS_FOR_VIEWERS && (
-                <div className={`fixed bottom-24 right-5 z-[60] flex flex-col gap-3 items-center`}>
+                <div className={`${embedded ? 'absolute bottom-24 right-5' : 'fixed bottom-24 right-5'} z-[60] flex flex-col gap-3 items-center`}>
                     <button
                         onClick={() => setIsNotificationOpen(true)}
                         className="bg-white text-[#334a91] border border-[#cfd8ff] p-3 rounded-full shadow-lg hover:bg-gray-50 active:scale-90 flex items-center justify-center relative w-12 h-12"

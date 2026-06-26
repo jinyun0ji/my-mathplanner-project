@@ -1073,6 +1073,10 @@ video {
   height: calc(100vh - 130px);
 }
 
+.h-\[75vh\]{
+  height: 75vh;
+}
+
 .max-h-16{
   max-height: 4rem;
 }

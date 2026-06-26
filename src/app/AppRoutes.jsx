@@ -2194,7 +2194,7 @@ export default function AppRoutes({ user, role, studentIds }) {
                 path="master-view"
                 element={(
                     <AdminRoute>
-                        <MasterViewPage students={students} classes={classes} userId={userId} />
+                        <MasterViewPage students={students} classes={classes} userId={userId} homeworkAssignments={homeworkAssignments} homeworkResults={homeworkResults} attendanceLogs={attendanceLogs} lessonLogs={lessonLogs} notices={announcements} tests={tests} grades={grades} classTestStats={classTestStats} videoProgress={videoProgress} videoMemos={videoMemos} externalSchedules={externalSchedules} clinicLogs={clinicLogs} closures={closures} lessonReports={lessonReports} />
                     </AdminRoute>
                 )}
             />
