@@ -31,7 +31,7 @@ export default function ChatRoomList({
                                     <span className="text-sm font-medium text-gray-700 truncate">{counterpartName}</span>
                                     <span className="text-[11px] text-gray-400 shrink-0">{room.roomType || room.channel || room.type || 'individual'}</span>
                                 </div>
-                                <p className="text-xs text-gray-500 truncate mt-1">{room.lastMessageText || room.lastMessage || room.message || '메시지가 없습니다.'}</p>
+                                <p className="text-xs text-gray-500 truncate mt-1">{room.lastMessageText || room.lastMessage || room.message || '대화 내역이 없습니다.'}</p>
                             </button>
                         </li>
                     );

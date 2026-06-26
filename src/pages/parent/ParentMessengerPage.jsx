@@ -62,8 +62,54 @@ const isStudentIdCompatible = (room, studentId) => {
     return !roomStudentId || !studentId || roomStudentId === String(studentId || '');
 };
 
+
+
+const hasStudentParticipant = (room, participantKeyCandidates = []) => {
+    const participantIds = getParticipantIds(room);
+    return uniqueStrings(participantKeyCandidates).some((key) => participantIds.includes(key));
+};
+
+const hasCounterpartUid = (room, targetAuthUid, fields = []) => {
+    const target = String(targetAuthUid || '');
+    if (!target) return false;
+    return fields.some((field) => String(room?.[field] || '') === target) || getParticipantIds(room).includes(target);
+};
+
+const isTeacherRoomCandidate = (room, { authUid, targetAuthUid, studentId, participantKeyCandidates = [], teacherName = '' }) => {
+    if (!room) return false;
+    if (hasRoomTypeOrChannel(room, 'student_institute') || getRoomSlot(room) === INSTITUTE_SLOT) return false;
+    const teacherMarkers = [
+        normalizeText(room?.roomType) === 'student_teacher',
+        normalizeText(room?.channel) === 'student_teacher',
+        getRoomSlot(room) === TEACHER_SLOT,
+        String(room?.teacherAuthUid || '') === String(targetAuthUid || ''),
+        String(room?.counterpartUid || '') === String(targetAuthUid || ''),
+    ];
+    if (!teacherMarkers.some(Boolean)) return false;
+    if (!hasCounterpartUid(room, targetAuthUid, ['teacherAuthUid', 'counterpartUid'])) return false;
+    if (!hasStudentParticipant(room, uniqueStrings([authUid, participantKeyCandidates]))) return false;
+    if (!isStudentIdCompatible(room, studentId)) return false;
+    const roomTeacherName = normalizeText(room?.teacherName || room?.counterpartName);
+    const expectedTeacherName = normalizeText(teacherName);
+    if (room?.targetRole && String(room.targetRole) !== 'teacher') return false;
+    if (!room?.teacherAuthUid && !room?.counterpartUid && expectedTeacherName && roomTeacherName && roomTeacherName !== expectedTeacherName) return false;
+    return true;
+};
+
 const isStudentInstituteCandidate = (room, { authUid, targetAuthUid, studentId, participantKeyCandidates = [] }) => {
-    if (!isStandardSlotRoom(room, { viewerRole: 'student', slot: INSTITUTE_SLOT, authUid, targetAuthUid, studentId, participantKeyCandidates })) return false;
+    if (!room) return false;
+    if (hasRoomTypeOrChannel(room, 'student_teacher') || getRoomSlot(room) === TEACHER_SLOT) return false;
+    const instituteMarkers = [
+        normalizeText(room?.roomType) === 'student_institute',
+        normalizeText(room?.channel) === 'student_institute',
+        getRoomSlot(room) === INSTITUTE_SLOT,
+        String(room?.staffAuthUid || '') === String(targetAuthUid || ''),
+        String(room?.counterpartUid || '') === String(targetAuthUid || ''),
+    ];
+    if (!instituteMarkers.some(Boolean)) return false;
+    if (!hasCounterpartUid(room, targetAuthUid, ['staffAuthUid', 'counterpartUid'])) return false;
+    if (!hasStudentParticipant(room, uniqueStrings([authUid, participantKeyCandidates]))) return false;
+    if (!isStudentIdCompatible(room, studentId)) return false;
     return true;
 };
 
@@ -208,15 +254,24 @@ const getTeacherNameForDisplay = (teacherCandidates, teacherRoom = null) => {
 
 const buildMessengerSlots = (rooms, teacherCandidates, { viewerRole = 'parent', authUid = '', studentId = '', participantKeyCandidates = [] } = {}) => {
     const sortedRooms = sortRooms([...rooms]);
-    const teacherRoom = sortedRooms.find((room) => isStandardSlotRoom(room, {
-        viewerRole,
-        slot: TEACHER_SLOT,
-        authUid,
-        participantKeyCandidates,
-        targetAuthUid: TEACHER_AUTH_UID,
-        studentId,
-        teacherName: TEACHER_DISPLAY_NAME,
-    })) || null;
+    const teacherRoom = sortedRooms.find((room) => (viewerRole === 'student'
+        ? isTeacherRoomCandidate(room, {
+            authUid,
+            participantKeyCandidates,
+            targetAuthUid: TEACHER_AUTH_UID,
+            studentId,
+            teacherName: TEACHER_DISPLAY_NAME,
+        })
+        : isStandardSlotRoom(room, {
+            viewerRole,
+            slot: TEACHER_SLOT,
+            authUid,
+            participantKeyCandidates,
+            targetAuthUid: TEACHER_AUTH_UID,
+            studentId,
+            teacherName: TEACHER_DISPLAY_NAME,
+        })
+    )) || null;
 
     const instituteCandidates = sortedRooms
         .map((room) => {
@@ -310,6 +365,16 @@ export default function ParentMessengerPage({ studentId, student, ongoingClasses
     }), [rooms, teacherCandidates, viewerRole, authUid, activeStudentId, participantKeyCandidates]);
     const currentSlot = selectedSlot ? messengerSlots.find((slot) => slot.slot === selectedSlot.slot) || selectedSlot : null;
     const selectedRoomId = currentSlot?.room?.id || '';
+
+    useEffect(() => {
+        if (process.env.NODE_ENV !== 'development') return;
+        const teacherSlot = messengerSlots.find((slot) => slot.slot === TEACHER_SLOT);
+        if (!teacherSlot?.room) return;
+        console.log('[student messenger][teacher preview]', {
+            roomId: teacherSlot.room.id,
+            lastMessageText: getLastMessagePreview(teacherSlot.room),
+        });
+    }, [messengerSlots]);
     const handleSelectSlot = (slot) => {
         if (slot?.slot === INSTITUTE_SLOT && slot?.room) {
             console.log('[parent messenger] selected institute room', {
@@ -330,7 +395,7 @@ export default function ParentMessengerPage({ studentId, student, ongoingClasses
                 participantIds: getParticipantIds(slot.room),
                 selectedRoomId: slot.room.id,
                 messagesPath: `chatRooms/${slot.room.id}/messages`,
-                lastMessageText: slot.room.lastMessageText || '',
+                lastMessageText: getLastMessagePreview(slot.room),
             });
         }
         setSelectedSlot(slot);
@@ -441,6 +506,7 @@ export default function ParentMessengerPage({ studentId, student, ongoingClasses
                         chatSlot={currentSlot?.slot || ''}
                         roomCreationContext={{
                             slot: currentSlot?.slot || '',
+                            studentParticipantKeys: participantKeyCandidates,
                             targetAuthUid: currentSlotTargetAuthUid,
                             targetName: currentSlot?.slot === TEACHER_SLOT ? (currentSlot?.teacherName || TEACHER_DISPLAY_NAME) : INSTITUTE_NAME,
                             roomType: currentSlot?.roomType || getExpectedRoomType(viewerRole, currentSlot?.slot),
