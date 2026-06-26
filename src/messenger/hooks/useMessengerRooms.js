@@ -11,6 +11,16 @@ const log = (...args) => {
     if (process.env.NODE_ENV === 'development') console.log('[resolver]', ...args);
 };
 
+const logChatRoomsQuery = (role, authUid) => {
+    if (process.env.NODE_ENV !== 'development') return;
+    const queryShape = { collection: 'chatRooms', where: ['participantIds', 'array-contains', authUid] };
+    if (role === 'student') {
+        console.log('[student resolver] chatRooms query', queryShape);
+        return;
+    }
+    log('query', { role, queryShape });
+};
+
 export const useMessengerRooms = ({ role = 'student', authUid = '', student = {}, parent = {} } = {}) => {
     const [rawRooms, setRawRooms] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -31,7 +41,7 @@ export const useMessengerRooms = ({ role = 'student', authUid = '', student = {}
         setLoading(true);
         setError('');
         const roomQuery = query(collection(db, 'chatRooms'), where('participantIds', 'array-contains', authUid));
-        log('query', { role, queryShape: { collection: 'chatRooms', where: ['participantIds', 'array-contains', authUid] } });
+        logChatRoomsQuery(role, authUid);
         const unsubscribe = onSnapshot(roomQuery, (snap) => {
             const nextRooms = snap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
             log('snapshot', { role, count: nextRooms.length });
@@ -55,8 +65,8 @@ export const useMessengerRooms = ({ role = 'student', authUid = '', student = {}
     const resolved = useMemo(() => {
         if (role === 'parent') return resolveParentRooms({ rooms: rawRooms, participantKeys });
         if (role === 'staff') return { rooms: resolveStaffRooms({ rooms: rawRooms, participantKeys }) };
-        return resolveStudentRooms({ rooms: rawRooms, participantKeys });
-    }, [role, rawRooms, participantKeys]);
+        return resolveStudentRooms({ rooms: rawRooms, authUid });
+    }, [role, rawRooms, participantKeys, authUid]);
 
     return {
         rooms: sortRooms([...(resolved.rooms || rawRooms)]),
