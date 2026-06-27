@@ -5,6 +5,9 @@ import './output.css'; // 이 줄을 추가하세요!
 import './styles/print.css';
 import App from './App';
 import reportWebVitals from './reportWebVitals';
+import { setupCapacitorApp } from './capacitorApp';
+
+setupCapacitorApp();
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(

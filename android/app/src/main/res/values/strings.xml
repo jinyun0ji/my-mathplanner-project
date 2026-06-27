@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">채수용 수학</string>
+    <string name="title_activity_main">채수용 수학</string>
+    <string name="package_name">com.chaesooyong.management</string>
+    <string name="custom_url_scheme">com.chaesooyong.management</string>
+</resources>

@@ -1,250 +1,249 @@
-diff --git a/src/app/AppRoutes.jsx b/src/app/AppRoutes.jsx
-index 7e6b9f77e5dd73a27490d5de9d06c3acd863b2f9..a83c3e3cd2b66d57233ec90d5e1fc6e349fb6dd3 100644
---- a/src/app/AppRoutes.jsx
-+++ b/src/app/AppRoutes.jsx
-@@ -188,50 +188,61 @@ export default function AppRoutes({ user, role, studentIds }) {
-   const [workLogs, setWorkLogs] = useState([]);
-   const [announcements, setAnnouncements] = useState([]);
-   const [tests, setTests] = useState([]);
-   const [homeworkAssignments, setHomeworkAssignments] = useState([]);
-   const [paymentLogs, setPaymentLogs] = useState([]);
-   const [isPaymentLogsLoading, setIsPaymentLogsLoading] = useState(false);
-   const [externalSchedules, setExternalSchedules] = useState([]);
-   const [closures, setClosures] = useState([]);
-   const [lessonReports, setLessonReports] = useState([]);
- 
-   const [grades, setGrades] = useState({});
-   const [classTestStats, setClassTestStats] = useState({});
-   const [homeworkResults, setHomeworkResults] = useState({});
-   const [studentMemos, setStudentMemos] = useState({});
-   const [videoProgress, setVideoProgress] = useState({});
-   const [videoMemos, setVideoMemos] = useState({});
- 
-   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
- 
-   const processedAnnouncementIdsRef = useRef(new Set());
- 
-   useEffect(() => {
-       if (isAuthenticated) processedAnnouncementIdsRef.current = new Set();
-   }, [isAuthenticated, userId]);
- 
-+  useEffect(() => {
-+    if (!isAuthenticated || !role || !(isAdminRole(role) || isStaffRole(role) || isStaffOrTeachingRole(role))) return;
-+    loadStaffDataOnce({
-+        db,
-+        isLoggedIn: isAuthenticated,
-+        userRole: role,
-+        pageKey: null,
-+        setClasses,
-+    });
-+  }, [isAuthenticated, role]);
-+
-   useEffect(() => {
-     if (!isAuthenticated || !role || !(isAdminRole(role) || isStaffRole(role) || isStaffOrTeachingRole(role))) return;
-     const shouldLoadPayments = page === 'payment';
-     if (shouldLoadPayments) {
-         setIsPaymentLogsLoading(true);
-     }
-     let isActive = true;
-     loadStaffDataOnce({
-         db,
-         isLoggedIn: isAuthenticated,
-         userRole: role,
-         pageKey: page === '/master-view' ? 'master-view' : page,
-         setStudents: page === 'attendance' ? null : setStudents,
-         setParents,
-         setClasses,
-         setTests,
-         setLessonLogs,
-         setAttendanceLogs,
-         setClinicLogs,
-         setWorkLogs,
-         setAnnouncements,
-         setHomeworkAssignments,
-         setPaymentLogs,
-         setGrades,
-         setHomeworkResults,
-diff --git a/src/data/firestoreSync.js b/src/data/firestoreSync.js
-index a6f95345479f45c91da0daa846870a7072b78cfd..2524b13f0a6b6c77a2d9551b887b2815485da575 100644
---- a/src/data/firestoreSync.js
-+++ b/src/data/firestoreSync.js
-@@ -119,60 +119,62 @@ const fetchClassScopedDocs = async ({
- 
- 
- 
- export const safeIn = (arr, max = 10) => safeNonEmptyArray(arr).slice(0, max);
- 
- export function buildInQueryOrNull(values, max = 10) {
-     const v = safeIn(values, max);
-     return v.length > 0 ? v : null;
+diff --git a/android/.gitkeep b/android/.gitkeep
+new file mode 100644
+index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
+diff --git a/capacitor.config.json b/capacitor.config.json
+new file mode 100644
+index 0000000000000000000000000000000000000000..94c5dd608824467745c2417b40b29278330f8d10
+--- /dev/null
++++ b/capacitor.config.json
+@@ -0,0 +1,21 @@
++{
++  "appId": "com.chaesooyong.math",
++  "appName": "채수용 수학",
++  "webDir": "build",
++  "plugins": {
++    "StatusBar": {
++      "style": "DEFAULT",
++      "backgroundColor": "#ffffff"
++    },
++    "SplashScreen": {
++      "launchShowDuration": 2000,
++      "backgroundColor": "#ffffff",
++      "showSpinner": false
++    },
++    "Keyboard": {
++      "resize": "body",
++      "style": "default",
++      "resizeOnFullScreen": true
++    }
++  }
++}
+diff --git a/ios/.gitkeep b/ios/.gitkeep
+new file mode 100644
+index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
+diff --git a/package-lock.json b/package-lock.json
+index 9f79c5d2626d49d3da961f560ef40ce5117078ed..1e1c38ac74e561ffa7759688755965ffd543544c 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -8,51 +8,61 @@
+       "name": "management_ver_2",
+       "version": "0.1.0",
+       "dependencies": {
+         "@dnd-kit/core": "^6.3.1",
+         "@dnd-kit/sortable": "^10.0.0",
+         "@dnd-kit/utilities": "^3.2.2",
+         "@emotion/react": "^11.14.0",
+         "@emotion/styled": "^11.14.1",
+         "@mui/icons-material": "^7.3.6",
+         "@mui/material": "^7.3.6",
+         "@testing-library/dom": "^10.4.0",
+         "@testing-library/jest-dom": "^6.6.3",
+         "@testing-library/react": "^16.3.0",
+         "@testing-library/user-event": "^13.5.0",
+         "firebase": "^12.7.0",
+         "katex": "^0.16.28",
+         "lucide-react": "^0.561.0",
+         "react": "^19.1.0",
+         "react-dom": "^19.1.0",
+         "react-katex": "^3.1.0",
+         "react-router-dom": "^6.24.1",
+         "react-scripts": "5.0.1",
+         "react-to-print": "^3.3.0",
+         "react-youtube": "^10.1.0",
+         "tailwind-scrollbar-hide": "^4.0.0",
+-        "web-vitals": "^2.1.4"
++        "web-vitals": "^2.1.4",
++        "@capacitor/core": "^8.4.0",
++        "@capacitor/app": "^8.4.0",
++        "@capacitor/status-bar": "^8.4.0",
++        "@capacitor/splash-screen": "^8.4.0",
++        "@capacitor/keyboard": "^8.4.0"
++      },
++      "devDependencies": {
++        "@capacitor/cli": "^8.4.0",
++        "@capacitor/android": "^8.4.0",
++        "@capacitor/ios": "^8.4.0"
+       }
+     },
+     "node_modules/@adobe/css-tools": {
+       "version": "4.4.3",
+       "resolved": "https://registry.npmjs.org/@adobe/css-tools/-/css-tools-4.4.3.tgz",
+       "integrity": "sha512-VQKMkwriZbaOgVCby1UDY/LDk5fIjhQicCvVPFqfe+69fWaPWydbWJ3wRt59/YzIwda1I81loas3oCoHxnqvdA=="
+     },
+     "node_modules/@alloc/quick-lru": {
+       "version": "5.2.0",
+       "resolved": "https://registry.npmjs.org/@alloc/quick-lru/-/quick-lru-5.2.0.tgz",
+       "integrity": "sha512-UrcABB+4bUrFABwbluTIBErXwvbsU/V7TZWfmbgJfbkwiBuziS9gxdODUyuiecfdGQ85jglMW6juS3+z5TsKLw==",
+       "engines": {
+         "node": ">=10"
+       },
+       "funding": {
+         "url": "https://github.com/sponsors/sindresorhus"
+       }
+     },
+     "node_modules/@ampproject/remapping": {
+       "version": "2.3.0",
+       "resolved": "https://registry.npmjs.org/@ampproject/remapping/-/remapping-2.3.0.tgz",
+       "integrity": "sha512-30iZtAPgz+LTIYoeivqYo853f02jBYSd5uGnGpkFV0M3xOt9aN73erkgYAmZU43x4VfqcnLxW9Kpg3R5LC4YYw==",
+       "dependencies": {
+         "@jridgewell/gen-mapping": "^0.3.5",
+         "@jridgewell/trace-mapping": "^0.3.24"
+diff --git a/package.json b/package.json
+index 9e43e61e5f8b334271b2c41a3905e5bd9f2724c3..08f0ad55177e5527b1265ff94ea23100d963f406 100644
+--- a/package.json
++++ b/package.json
+@@ -3,65 +3,80 @@
+   "version": "0.1.0",
+   "private": true,
+   "dependencies": {
+     "@dnd-kit/core": "^6.3.1",
+     "@dnd-kit/sortable": "^10.0.0",
+     "@dnd-kit/utilities": "^3.2.2",
+     "@emotion/react": "^11.14.0",
+     "@emotion/styled": "^11.14.1",
+     "@mui/icons-material": "^7.3.6",
+     "@mui/material": "^7.3.6",
+     "@testing-library/dom": "^10.4.0",
+     "@testing-library/jest-dom": "^6.6.3",
+     "@testing-library/react": "^16.3.0",
+     "@testing-library/user-event": "^13.5.0",
+     "firebase": "^12.7.0",
+     "katex": "^0.16.28",
+     "lucide-react": "^0.561.0",
+     "react": "^19.1.0",
+     "react-dom": "^19.1.0",
+     "react-katex": "^3.1.0",
+     "react-router-dom": "^6.24.1",
+     "react-scripts": "5.0.1",
+     "react-to-print": "^3.3.0",
+     "react-youtube": "^10.1.0",
+     "tailwind-scrollbar-hide": "^4.0.0",
+-    "web-vitals": "^2.1.4"
++    "web-vitals": "^2.1.4",
++    "@capacitor/core": "^8.4.0",
++    "@capacitor/app": "^8.4.0",
++    "@capacitor/status-bar": "^8.4.0",
++    "@capacitor/splash-screen": "^8.4.0",
++    "@capacitor/keyboard": "^8.4.0"
+   },
+   "scripts": {
+     "start": "react-scripts start",
+     "build": "react-scripts build",
++    "cap:init": "cap init \"채수용 수학\" com.chaesooyong.math --web-dir build",
++    "cap:sync": "cap sync",
++    "cap:android": "cap open android",
++    "cap:ios": "cap open ios",
++    "build:cap": "npm run build && cap sync",
+     "test": "react-scripts test",
+     "eject": "react-scripts eject",
+     "migrate:memos": "node functions/scripts/migrateStudentMemosToStaffMemos.js",
+     "migrate:homework-question-keys:dry": "node functions/scripts/migrateHomeworkResultQuestionNumbers.js",
+     "migrate:homework-question-keys:write": "node functions/scripts/migrateHomeworkResultQuestionNumbers.js --write",
+     "backfill:chat-parent-participants:dry": "node functions/scripts/backfillChatParticipantIdsForParents.js",
+     "backfill:chat-parent-participants:write": "node functions/scripts/backfillChatParticipantIdsForParents.js --write",
+     "backfill:chat-room-types:dry": "node functions/scripts/backfillChatRoomTypes.js",
+     "backfill:chat-room-types:write": "node functions/scripts/backfillChatRoomTypes.js --write",
+     "backfill:student-birth-year:dry": "node functions/scripts/backfillStudentBirthYearFromGrade.js",
+     "backfill:student-birth-year:write": "node functions/scripts/backfillStudentBirthYearFromGrade.js --write",
+     "backfill:class-test-stats:dry": "node functions/scripts/backfillClassTestStats.js",
+     "backfill:class-test-stats:write": "node functions/scripts/backfillClassTestStats.js --write",
+     "backfill:user-chat-rooms:dry": "node functions/scripts/backfillUserChatRooms.js",
+     "backfill:user-chat-rooms:write": "node functions/scripts/backfillUserChatRooms.js --write"
+   },
+   "eslintConfig": {
+     "extends": [
+       "react-app",
+       "react-app/jest"
+     ]
+   },
+   "browserslist": {
+     "production": [
+       ">0.2%",
+       "not dead",
+       "not op_mini all"
+     ],
+     "development": [
+       "last 1 chrome version",
+       "last 1 firefox version",
+       "last 1 safari version"
+     ]
++  },
++  "devDependencies": {
++    "@capacitor/cli": "^8.4.0",
++    "@capacitor/android": "^8.4.0",
++    "@capacitor/ios": "^8.4.0"
+   }
  }
- 
- const fetchListSafe = async (q, isCancelled = () => false, mapper = null) => {
-     if (!q) return [];
-     const snap = await getDocs(q);
-     if (isCancelled()) return [];
-     const baseItems = snap.docs.map((d) => normalizeAuthUid({ id: d.id, ...d.data() }));
-     return mapper ? baseItems.map(mapper) : baseItems;
- };
- 
- 
- // 직원 화면 Firestore read 1차 절감 메모
- // - 기존 loadStaffDataOnce는 직원 pageKey 변경마다 users/classes/closures 및 일부 대용량 컬렉션을 반복 조회했다.
- // - 아래 메모리 캐시는 같은 브라우저 세션/같은 pageKey에서 이미 읽은 slice를 재사용해 탭 왕복 read를 줄인다.
- // - 대용량 attendanceLogs/grades/homeworkResults/clinicLogs는 pageKey 조건을 좁혀 전체 컬렉션성 로딩을 최소화한다.
- const staffDataCache = new Map();
- const STAFF_GLOBAL_CACHE_SLICES = new Set(['classes']);
--const STAFF_DEFAULT_CACHE_TTL_MS = 60 * 1000;
--const STAFF_SENSITIVE_CACHE_TTL_MS = 30 * 1000;
-+// 학생/학부모 화면과 동일하게 탭 최초 진입 후 메모리 캐시를 유지한다.
-+// 명시적인 invalidateStaffDataCache 호출(저장/삭제/새로고침/resume 처리) 때만 다시 읽는다.
-+const STAFF_DEFAULT_CACHE_TTL_MS = Number.POSITIVE_INFINITY;
-+const STAFF_SENSITIVE_CACHE_TTL_MS = Number.POSITIVE_INFINITY;
- const STAFF_SENSITIVE_PAGES = new Set(['attendance', 'payment']);
- const getStaffCacheTtl = (pageKey) => STAFF_SENSITIVE_PAGES.has(pageKey) ? STAFF_SENSITIVE_CACHE_TTL_MS : STAFF_DEFAULT_CACHE_TTL_MS;
- const getStaffCacheKey = (pageKey, slice, queryKey = '') => `${STAFF_GLOBAL_CACHE_SLICES.has(slice) ? 'global' : (pageKey || 'all')}:${slice}:${queryKey || 'default'}`;
- const readStaffCache = (pageKey, slice, queryKey = '') => {
-     const key = getStaffCacheKey(pageKey, slice, queryKey);
-     const cached = staffDataCache.get(key);
-     if (!cached) return undefined;
--    if (Date.now() - cached.cachedAt > cached.ttl) {
-+    if (Number.isFinite(cached.ttl) && Date.now() - cached.cachedAt > cached.ttl) {
-         staffDataCache.delete(key);
-         return undefined;
-     }
-     return cached.value;
- };
- const writeStaffCache = (pageKey, slice, value, queryKey = '', ttl = getStaffCacheTtl(pageKey)) => {
-     staffDataCache.set(getStaffCacheKey(pageKey, slice, queryKey), { value, cachedAt: Date.now(), ttl });
-     return value;
- };
- export const invalidateStaffDataCache = (pageKey = null, slices = []) => {
-     const targetSlices = Array.isArray(slices) ? slices.filter(Boolean) : [slices].filter(Boolean);
-     for (const key of Array.from(staffDataCache.keys())) {
-         const [cachedPage, slice] = key.split(':');
-         const pageMatches = !pageKey || cachedPage === pageKey || cachedPage === 'global';
-         const sliceMatches = targetSlices.length === 0 || targetSlices.includes(slice);
-         if (pageMatches && sliceMatches) staffDataCache.delete(key);
-     }
- };
- const staffDataDebug = (message, payload = {}) => {
-     if (isDevelopment()) console.log(`[staffData] ${message}`, payload);
- };
- const getTodayDateString = () => new Date().toISOString().slice(0, 10);
- 
- const viewerDetailCache = {
-     lessonLogs: new Map(),
-@@ -801,54 +803,58 @@ export const loadStaffDataOnce = async ({
-                     );
-                     snap.docs.forEach((d) => merged.set(d.id, { id: d.id, ...d.data() }));
-                 } catch (e) {
-                     try {
-                         const snap2 = await getDocs(
-                             query(
-                                 collection(db, 'closures'),
-                                 where('scope', '==', 'class'),
-                                 where('classId', 'in', ch),
-                                 limit(500),
-                             ),
-                         );
-                         snap2.docs.forEach((d) => merged.set(d.id, { id: d.id, ...d.data() }));
-                     } catch (e2) {
-                         console.warn('[staff] closures class load failed', e2);
-                     }
-                 }
-             }
-         }
- 
-         return Array.from(merged.values()).sort((a, b) =>
-             String(b?.startDate || '').localeCompare(String(a?.startDate || '')),
-         );
-     };
- 
-+    const timerLabel = `[staff] ${pageKey || 'common'} load`;
-+    if (isDevelopment()) console.time(timerLabel);
+diff --git a/src/capacitorApp.js b/src/capacitorApp.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..7d94b9637abad44e48fc9751cd704c3f89897845
+--- /dev/null
++++ b/src/capacitorApp.js
+@@ -0,0 +1,30 @@
++const getCapacitorBridge = () => window.Capacitor;
 +
-     try {
-         const today = getTodayDateString();
--        const pageNeedsStudents = ['home', 'lessons', 'lessonReports', 'grades', 'homework', 'clinic', 'payment', 'students', 'master-view'].includes(pageKey) || !pageKey;
--        const pageNeedsClasses = ['home', 'lessons', 'lessonReports', 'grades', 'homework', 'clinic', 'attendance', 'closures', 'master-view'].includes(pageKey) || !pageKey;
-+        const pageNeedsStudents = ['home', 'lessons', 'lessonReports', 'grades', 'homework', 'clinic', 'payment', 'students', 'master-view'].includes(pageKey);
-+        // classes는 로그인 직후 공통 최소 데이터로 한 번 읽고 전역 캐시를 재사용한다.
-+        const pageNeedsClasses = ['home', 'lessons', 'lessonReports', 'grades', 'homework', 'clinic', 'attendance', 'closures', 'schedule', 'master-view'].includes(pageKey) || !pageKey;
-         const loadingCollections = [];
++const callPluginMethod = async (plugin, method, options) => {
++  try {
++    if (plugin?.[method]) {
++      await plugin[method](options);
++    }
++  } catch (error) {
++    // Native plugin calls are best-effort during bootstrap and should not
++    // affect the existing web application flow.
++  }
++};
++
++export function setupCapacitorApp() {
++  const capacitor = getCapacitorBridge();
++
++  if (!capacitor?.isNativePlatform?.()) {
++    return;
++  }
++
++  const { App, Keyboard, SplashScreen, StatusBar } = capacitor.Plugins ?? {};
++
++  callPluginMethod(StatusBar, 'setStyle', { style: 'DEFAULT' });
++  callPluginMethod(SplashScreen, 'hide');
++  callPluginMethod(Keyboard, 'setResizeMode', { mode: 'body' });
++
++  App?.addListener?.('resume', () => {
++    window.dispatchEvent(new Event('capacitor:resume'));
++  });
++}
+diff --git a/src/index.js b/src/index.js
+index 452a91a79e30886fd00f889db5571962ff2a2b82..f8d2e101c262a4ba8da1d6c01f5a761885d0760c 100644
+--- a/src/index.js
++++ b/src/index.js
+@@ -1,19 +1,22 @@
+ import React from 'react';
+ import ReactDOM from 'react-dom/client';
+ import './index.css';
+ import './output.css'; // 이 줄을 추가하세요!
+ import './styles/print.css';
+ import App from './App';
+ import reportWebVitals from './reportWebVitals';
++import { setupCapacitorApp } from './capacitorApp';
++
++setupCapacitorApp();
  
-         if (setStudents && pageNeedsStudents) {
-             loadingCollections.push(pageKey === 'home' ? 'students(limit)' : 'students(limit)');
-             staffStudents = await loadCachedSlice('students', applyStudents, () => fetchList(
-                 db,
-                 'users',
-                 () => {},
-                 query(collection(db, 'users'), where('role', '==', ROLE.STUDENT), limit(pageKey === 'home' ? 300 : 800)),
-                 () => false,
-                 normalizeStudentUser,
-             ), pageKey === 'home' ? 'limit300' : 'limit800');
-         }
+ const root = ReactDOM.createRoot(document.getElementById('root'));
+ root.render(
+   <React.StrictMode>
+     <App />
+   </React.StrictMode>
+ );
  
-         if (setParents && pageKey === 'students') {
-             loadingCollections.push('parents(limit)');
-             const parentRoles = [ROLE.PARENT, '학부모'];
-             await loadCachedSlice('parents', setParents, async () => {
-                 try {
-                     return await fetchList(
-                         db,
-                         'users',
-                         () => {},
-                         query(collection(db, 'users'), where('role', 'in', parentRoles), limit(500)),
-                         () => false,
-@@ -991,50 +997,52 @@ export const loadStaffDataOnce = async ({
-                 });
-                 return mappedResults;
-             }, 'recent500');
-         }
- 
-         if (setExternalSchedules && shouldLoad('schedule')) {
-             loadingCollections.push('externalSchedules(recent500)');
-             await loadCachedSlice('externalSchedules', setExternalSchedules, () => fetchList(
-                 db,
-                 'externalSchedules',
-                 () => {},
-                 query(collection(db, 'externalSchedules'), orderBy('startDate', 'desc'), limit(500)),
-                 () => false,
-             ), 'recent500');
-         }
- 
-         if (setClosures && shouldLoad('closures')) {
-             loadingCollections.push('closures(global/class)');
-             const closures = await loadCachedSlice('closures', setClosures, () => fetchClosuresForStaff(staffClasses), 'scoped500');
-             setClosures(closures);
-         }
- 
-         staffDataDebug(`pageKey=${pageKey || 'all'} loading collections: ${loadingCollections.join(', ') || 'none'}`);
-     } catch (error) {
-         console.error('[FirestoreSync] staff 데이터 로드 실패:', error);
-+    } finally {
-+        if (isDevelopment()) console.timeEnd(timerLabel);
-     }
- };
- 
- export const loadViewerDataOnce = async ({
-     db,
-     isLoggedIn,
-     userRole,
-     userId,
-     studentIds = [],
-     activeStudentId = null,
-     setStudents,
-     setClasses,
-     setLessonLogs,
-     setAttendanceLogs,
-     setClinicLogs,
-     setHomeworkAssignments,
-     setAnnouncements,
-     setTests,
-     setVideoProgress,
-     setVideoMemos,
-     setExternalSchedules,
-     setHomeworkResults,
-     setGrades,
-     setClosures,
- 
+ // If you want to start measuring performance in your app, pass a function
+ // to log results (for example: reportWebVitals(console.log))
+ // or send to an analytics endpoint. Learn more: https://bit.ly/CRA-vitals
+ reportWebVitals();

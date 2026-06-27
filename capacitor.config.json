@@ -1,0 +1,21 @@
+{
+  "appId": "com.chaesooyong.management",
+  "appName": "채수용 수학",
+  "webDir": "build",
+  "plugins": {
+    "StatusBar": {
+      "style": "DEFAULT",
+      "backgroundColor": "#ffffff"
+    },
+    "SplashScreen": {
+      "launchShowDuration": 2000,
+      "backgroundColor": "#ffffff",
+      "showSpinner": false
+    },
+    "Keyboard": {
+      "resize": "body",
+      "style": "default",
+      "resizeOnFullScreen": true
+    }
+  }
+}
