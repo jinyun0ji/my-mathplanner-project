@@ -17,6 +17,8 @@ import { isDeletionRequestedProfile } from '../accountDeletion';
 const AuthContext = createContext(null);
 
 const LOCAL_STORAGE_KEYS = ['parent.activeStudentId'];
+const AUTH_INIT_TIMEOUT_MS = 5000;
+const IS_DEV = process.env.NODE_ENV === 'development';
 
 const clearAuthStorage = () => {
   try {
@@ -25,6 +27,21 @@ const clearAuthStorage = () => {
 };
 
 const normalizeRole = (role) => (ALLOWED_ROLES.includes(role) ? role : null);
+
+const logAuthDebug = (label, payload) => {
+  if (!IS_DEV) return;
+  console.info(label, payload);
+};
+
+const getPlatformInfo = () => {
+  const capacitor = window.Capacitor;
+  const platform = capacitor?.getPlatform?.() ?? 'web';
+
+  return {
+    isNativePlatform: platform !== 'web' || Boolean(capacitor?.isNativePlatform?.()),
+    platform,
+  };
+};
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
@@ -39,6 +56,7 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     let isMounted = true;
+    let timeoutId = null;
 
     const resetProfileState = () => {
       setRole(null);
@@ -49,6 +67,23 @@ export function AuthProvider({ children }) {
       setActiveStudentId(null);
     };
 
+    const finishLoading = () => {
+      if (isMounted) setLoading(false);
+    };
+
+    const clearAuthTimeout = () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+    };
+
+    const forceUnauthenticated = () => {
+      setUser(null);
+      resetProfileState();
+      finishLoading();
+    };
+
     const logProfileErrorOnce = (err) => {
       if (!errorLoggedRef.current) {
         console.error('[useAuth] profile load error:', err);
@@ -56,28 +91,74 @@ export function AuthProvider({ children }) {
       }
     };
 
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+    logAuthDebug('[auth:init]', {
+      href: window.location.href,
+      origin: window.location.origin,
+      userAgent: navigator.userAgent,
+      ...getPlatformInfo(),
+    });
+
+    timeoutId = setTimeout(() => {
       if (!isMounted) return;
+
+      logAuthDebug('[auth:timeout]', { fired: true, hasCurrentUser: Boolean(auth.currentUser) });
+
+      if (!auth.currentUser) {
+        forceUnauthenticated();
+        return;
+      }
+
+      setUser(auth.currentUser);
+      setProfileError('인증 초기화 시간이 초과되었습니다. 다시 로그인해주세요.');
+      finishLoading();
+    }, AUTH_INIT_TIMEOUT_MS);
+
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      let profileTimeoutId = null;
+
+      if (!isMounted) return;
+
+      clearAuthTimeout();
+      logAuthDebug('[auth:onAuthStateChanged]', {
+        called: true,
+        hasUser: Boolean(currentUser),
+        uid: currentUser?.uid ?? null,
+      });
 
       setUser(currentUser);
       resetProfileState();
       errorLoggedRef.current = false;
 
       if (!currentUser) {
-        setLoading(false);
+        finishLoading();
         return;
       }
 
       setLoading(true);
+      profileTimeoutId = setTimeout(() => {
+        if (!isMounted) return;
+
+        logAuthDebug('[auth:timeout]', {
+          fired: true,
+          scope: 'profile',
+          hasCurrentUser: Boolean(auth.currentUser),
+          uid: currentUser.uid,
+        });
+        setProfileError('프로필 초기화 시간이 초과되었습니다. 다시 로그인해주세요.');
+        finishLoading();
+      }, AUTH_INIT_TIMEOUT_MS);
 
       try {
         const authUid = currentUser.uid;
+        logAuthDebug('[auth:profile]', { start: true, uid: authUid });
 
         /* =========================================================
            1️⃣ userAuthIndex 먼저 시도 (학생 / 학부모)
         ========================================================= */
         const indexRef = doc(db, 'userAuthIndex', authUid);
         const indexSnap = await getDoc(indexRef);
+
+        if (!isMounted) return;
 
         if (indexSnap.exists()) {
           const { userDocId, role: indexRole } = indexSnap.data();
@@ -88,12 +169,14 @@ export function AuthProvider({ children }) {
           }
 
           const profileSnap = await getDoc(doc(db, 'users', userDocId));
+          if (!isMounted) return;
           if (!profileSnap.exists()) {
             throw new Error('Linked user profile not found');
           }
 
           const data = profileSnap.data();
 
+          setProfileError(null);
           setUserProfile({
             authUid,
             profileDocId: profileSnap.id,
@@ -117,7 +200,7 @@ export function AuthProvider({ children }) {
             setActiveStudentId(data.activeStudentId ?? null);
           }
 
-          setLoading(false);
+          logAuthDebug('[auth:profile]', { success: true, source: 'userAuthIndex', uid: authUid });
           return;
         }
 
@@ -125,9 +208,10 @@ export function AuthProvider({ children }) {
            2️⃣ index 없음 → 관리자 / 직원 / 강사 fallback
         ========================================================= */
         const legacySnap = await getDoc(doc(db, 'users', authUid));
+        if (!isMounted) return;
         if (!legacySnap.exists()) {
           setProfileError('프로필을 찾을 수 없습니다. 초대 코드로 가입을 진행해주세요.');
-          setLoading(false);
+          logAuthDebug('[auth:profile]', { failed: true, reason: 'profile-not-found', uid: authUid });
           return;
         }
 
@@ -136,10 +220,11 @@ export function AuthProvider({ children }) {
 
         if (!legacyRole) {
           setProfileError('프로필 역할 정보가 올바르지 않습니다.');
-          setLoading(false);
+          logAuthDebug('[auth:profile]', { failed: true, reason: 'invalid-role', uid: authUid });
           return;
         }
 
+        setProfileError(null);
         setUserProfile({
           authUid,
           profileDocId: legacySnap.id,
@@ -156,16 +241,21 @@ export function AuthProvider({ children }) {
         setProfileDocId(legacySnap.id);
         setStudentIds([]);
         setActiveStudentId(null);
-        setLoading(false);
+        logAuthDebug('[auth:profile]', { success: true, source: 'users', uid: authUid });
       } catch (err) {
         logProfileErrorOnce(err);
+        logAuthDebug('[auth:profile]', { failed: true, error: err?.message ?? String(err) });
         setProfileError('프로필을 불러올 수 없습니다.');
-        setLoading(false);
+      } finally {
+        if (profileTimeoutId) clearTimeout(profileTimeoutId);
+        logAuthDebug('[auth:profile]', { finally: true, uid: currentUser?.uid ?? null });
+        finishLoading();
       }
     });
 
     return () => {
       isMounted = false;
+      clearAuthTimeout();
       unsubscribe();
     };
   }, []);

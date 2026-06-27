@@ -1,249 +1,294 @@
-diff --git a/android/.gitkeep b/android/.gitkeep
-new file mode 100644
-index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
-diff --git a/capacitor.config.json b/capacitor.config.json
-new file mode 100644
-index 0000000000000000000000000000000000000000..94c5dd608824467745c2417b40b29278330f8d10
---- /dev/null
-+++ b/capacitor.config.json
-@@ -0,0 +1,21 @@
-+{
-+  "appId": "com.chaesooyong.math",
-+  "appName": "채수용 수학",
-+  "webDir": "build",
-+  "plugins": {
-+    "StatusBar": {
-+      "style": "DEFAULT",
-+      "backgroundColor": "#ffffff"
-+    },
-+    "SplashScreen": {
-+      "launchShowDuration": 2000,
-+      "backgroundColor": "#ffffff",
-+      "showSpinner": false
-+    },
-+    "Keyboard": {
-+      "resize": "body",
-+      "style": "default",
-+      "resizeOnFullScreen": true
-+    }
-+  }
-+}
-diff --git a/ios/.gitkeep b/ios/.gitkeep
-new file mode 100644
-index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
-diff --git a/package-lock.json b/package-lock.json
-index 9f79c5d2626d49d3da961f560ef40ce5117078ed..1e1c38ac74e561ffa7759688755965ffd543544c 100644
---- a/package-lock.json
-+++ b/package-lock.json
-@@ -8,51 +8,61 @@
-       "name": "management_ver_2",
-       "version": "0.1.0",
-       "dependencies": {
-         "@dnd-kit/core": "^6.3.1",
-         "@dnd-kit/sortable": "^10.0.0",
-         "@dnd-kit/utilities": "^3.2.2",
-         "@emotion/react": "^11.14.0",
-         "@emotion/styled": "^11.14.1",
-         "@mui/icons-material": "^7.3.6",
-         "@mui/material": "^7.3.6",
-         "@testing-library/dom": "^10.4.0",
-         "@testing-library/jest-dom": "^6.6.3",
-         "@testing-library/react": "^16.3.0",
-         "@testing-library/user-event": "^13.5.0",
-         "firebase": "^12.7.0",
-         "katex": "^0.16.28",
-         "lucide-react": "^0.561.0",
-         "react": "^19.1.0",
-         "react-dom": "^19.1.0",
-         "react-katex": "^3.1.0",
-         "react-router-dom": "^6.24.1",
-         "react-scripts": "5.0.1",
-         "react-to-print": "^3.3.0",
-         "react-youtube": "^10.1.0",
-         "tailwind-scrollbar-hide": "^4.0.0",
--        "web-vitals": "^2.1.4"
-+        "web-vitals": "^2.1.4",
-+        "@capacitor/core": "^8.4.0",
-+        "@capacitor/app": "^8.4.0",
-+        "@capacitor/status-bar": "^8.4.0",
-+        "@capacitor/splash-screen": "^8.4.0",
-+        "@capacitor/keyboard": "^8.4.0"
-+      },
-+      "devDependencies": {
-+        "@capacitor/cli": "^8.4.0",
-+        "@capacitor/android": "^8.4.0",
-+        "@capacitor/ios": "^8.4.0"
-       }
-     },
-     "node_modules/@adobe/css-tools": {
-       "version": "4.4.3",
-       "resolved": "https://registry.npmjs.org/@adobe/css-tools/-/css-tools-4.4.3.tgz",
-       "integrity": "sha512-VQKMkwriZbaOgVCby1UDY/LDk5fIjhQicCvVPFqfe+69fWaPWydbWJ3wRt59/YzIwda1I81loas3oCoHxnqvdA=="
-     },
-     "node_modules/@alloc/quick-lru": {
-       "version": "5.2.0",
-       "resolved": "https://registry.npmjs.org/@alloc/quick-lru/-/quick-lru-5.2.0.tgz",
-       "integrity": "sha512-UrcABB+4bUrFABwbluTIBErXwvbsU/V7TZWfmbgJfbkwiBuziS9gxdODUyuiecfdGQ85jglMW6juS3+z5TsKLw==",
-       "engines": {
-         "node": ">=10"
-       },
-       "funding": {
-         "url": "https://github.com/sponsors/sindresorhus"
-       }
-     },
-     "node_modules/@ampproject/remapping": {
-       "version": "2.3.0",
-       "resolved": "https://registry.npmjs.org/@ampproject/remapping/-/remapping-2.3.0.tgz",
-       "integrity": "sha512-30iZtAPgz+LTIYoeivqYo853f02jBYSd5uGnGpkFV0M3xOt9aN73erkgYAmZU43x4VfqcnLxW9Kpg3R5LC4YYw==",
-       "dependencies": {
-         "@jridgewell/gen-mapping": "^0.3.5",
-         "@jridgewell/trace-mapping": "^0.3.24"
-diff --git a/package.json b/package.json
-index 9e43e61e5f8b334271b2c41a3905e5bd9f2724c3..08f0ad55177e5527b1265ff94ea23100d963f406 100644
---- a/package.json
-+++ b/package.json
-@@ -3,65 +3,80 @@
-   "version": "0.1.0",
-   "private": true,
-   "dependencies": {
-     "@dnd-kit/core": "^6.3.1",
-     "@dnd-kit/sortable": "^10.0.0",
-     "@dnd-kit/utilities": "^3.2.2",
-     "@emotion/react": "^11.14.0",
-     "@emotion/styled": "^11.14.1",
-     "@mui/icons-material": "^7.3.6",
-     "@mui/material": "^7.3.6",
-     "@testing-library/dom": "^10.4.0",
-     "@testing-library/jest-dom": "^6.6.3",
-     "@testing-library/react": "^16.3.0",
-     "@testing-library/user-event": "^13.5.0",
-     "firebase": "^12.7.0",
-     "katex": "^0.16.28",
-     "lucide-react": "^0.561.0",
-     "react": "^19.1.0",
-     "react-dom": "^19.1.0",
-     "react-katex": "^3.1.0",
-     "react-router-dom": "^6.24.1",
-     "react-scripts": "5.0.1",
-     "react-to-print": "^3.3.0",
-     "react-youtube": "^10.1.0",
-     "tailwind-scrollbar-hide": "^4.0.0",
--    "web-vitals": "^2.1.4"
-+    "web-vitals": "^2.1.4",
-+    "@capacitor/core": "^8.4.0",
-+    "@capacitor/app": "^8.4.0",
-+    "@capacitor/status-bar": "^8.4.0",
-+    "@capacitor/splash-screen": "^8.4.0",
-+    "@capacitor/keyboard": "^8.4.0"
-   },
-   "scripts": {
-     "start": "react-scripts start",
-     "build": "react-scripts build",
-+    "cap:init": "cap init \"채수용 수학\" com.chaesooyong.math --web-dir build",
-+    "cap:sync": "cap sync",
-+    "cap:android": "cap open android",
-+    "cap:ios": "cap open ios",
-+    "build:cap": "npm run build && cap sync",
-     "test": "react-scripts test",
-     "eject": "react-scripts eject",
-     "migrate:memos": "node functions/scripts/migrateStudentMemosToStaffMemos.js",
-     "migrate:homework-question-keys:dry": "node functions/scripts/migrateHomeworkResultQuestionNumbers.js",
-     "migrate:homework-question-keys:write": "node functions/scripts/migrateHomeworkResultQuestionNumbers.js --write",
-     "backfill:chat-parent-participants:dry": "node functions/scripts/backfillChatParticipantIdsForParents.js",
-     "backfill:chat-parent-participants:write": "node functions/scripts/backfillChatParticipantIdsForParents.js --write",
-     "backfill:chat-room-types:dry": "node functions/scripts/backfillChatRoomTypes.js",
-     "backfill:chat-room-types:write": "node functions/scripts/backfillChatRoomTypes.js --write",
-     "backfill:student-birth-year:dry": "node functions/scripts/backfillStudentBirthYearFromGrade.js",
-     "backfill:student-birth-year:write": "node functions/scripts/backfillStudentBirthYearFromGrade.js --write",
-     "backfill:class-test-stats:dry": "node functions/scripts/backfillClassTestStats.js",
-     "backfill:class-test-stats:write": "node functions/scripts/backfillClassTestStats.js --write",
-     "backfill:user-chat-rooms:dry": "node functions/scripts/backfillUserChatRooms.js",
-     "backfill:user-chat-rooms:write": "node functions/scripts/backfillUserChatRooms.js --write"
-   },
-   "eslintConfig": {
-     "extends": [
-       "react-app",
-       "react-app/jest"
-     ]
-   },
-   "browserslist": {
-     "production": [
-       ">0.2%",
-       "not dead",
-       "not op_mini all"
-     ],
-     "development": [
-       "last 1 chrome version",
-       "last 1 firefox version",
-       "last 1 safari version"
-     ]
-+  },
-+  "devDependencies": {
-+    "@capacitor/cli": "^8.4.0",
-+    "@capacitor/android": "^8.4.0",
-+    "@capacitor/ios": "^8.4.0"
-   }
- }
-diff --git a/src/capacitorApp.js b/src/capacitorApp.js
-new file mode 100644
-index 0000000000000000000000000000000000000000..7d94b9637abad44e48fc9751cd704c3f89897845
---- /dev/null
-+++ b/src/capacitorApp.js
-@@ -0,0 +1,30 @@
-+const getCapacitorBridge = () => window.Capacitor;
-+
-+const callPluginMethod = async (plugin, method, options) => {
-+  try {
-+    if (plugin?.[method]) {
-+      await plugin[method](options);
-+    }
-+  } catch (error) {
-+    // Native plugin calls are best-effort during bootstrap and should not
-+    // affect the existing web application flow.
-+  }
+diff --git a/src/auth/useAuth.js b/src/auth/useAuth.js
+index b6f27cbba79d61a8d72c582701a43c2570e9810f..f2602e695ab2fb4954fb97ffb48139329bea8684 100644
+--- a/src/auth/useAuth.js
++++ b/src/auth/useAuth.js
+@@ -1,193 +1,283 @@
+ import React, {
+   createContext,
+   useCallback,
+   useContext,
+   useEffect,
+   useMemo,
+   useRef,
+   useState,
+ } from 'react';
+ import { onAuthStateChanged } from 'firebase/auth';
+ import { doc, getDoc } from 'firebase/firestore';
+ import { auth, db } from '../firebase/client';
+ import { signOutUser } from './authService';
+ import { ALLOWED_ROLES, ROLE, isParentRole } from '../constants/roles';
+ import { isDeletionRequestedProfile } from '../accountDeletion';
+ 
+ const AuthContext = createContext(null);
+ 
+ const LOCAL_STORAGE_KEYS = ['parent.activeStudentId'];
++const AUTH_INIT_TIMEOUT_MS = 5000;
++const IS_DEV = process.env.NODE_ENV === 'development';
+ 
+ const clearAuthStorage = () => {
+   try {
+     LOCAL_STORAGE_KEYS.forEach((key) => localStorage.removeItem(key));
+   } catch {}
+ };
+ 
+ const normalizeRole = (role) => (ALLOWED_ROLES.includes(role) ? role : null);
+ 
++const logAuthDebug = (label, payload) => {
++  if (!IS_DEV) return;
++  console.info(label, payload);
 +};
 +
-+export function setupCapacitorApp() {
-+  const capacitor = getCapacitorBridge();
++const getPlatformInfo = () => {
++  const capacitor = window.Capacitor;
++  const platform = capacitor?.getPlatform?.() ?? 'web';
 +
-+  if (!capacitor?.isNativePlatform?.()) {
-+    return;
-+  }
++  return {
++    isNativePlatform: platform !== 'web' || Boolean(capacitor?.isNativePlatform?.()),
++    platform,
++  };
++};
 +
-+  const { App, Keyboard, SplashScreen, StatusBar } = capacitor.Plugins ?? {};
-+
-+  callPluginMethod(StatusBar, 'setStyle', { style: 'DEFAULT' });
-+  callPluginMethod(SplashScreen, 'hide');
-+  callPluginMethod(Keyboard, 'setResizeMode', { mode: 'body' });
-+
-+  App?.addListener?.('resume', () => {
-+    window.dispatchEvent(new Event('capacitor:resume'));
-+  });
-+}
-diff --git a/src/index.js b/src/index.js
-index 452a91a79e30886fd00f889db5571962ff2a2b82..f8d2e101c262a4ba8da1d6c01f5a761885d0760c 100644
---- a/src/index.js
-+++ b/src/index.js
-@@ -1,19 +1,22 @@
- import React from 'react';
- import ReactDOM from 'react-dom/client';
- import './index.css';
- import './output.css'; // 이 줄을 추가하세요!
- import './styles/print.css';
- import App from './App';
- import reportWebVitals from './reportWebVitals';
-+import { setupCapacitorApp } from './capacitorApp';
-+
-+setupCapacitorApp();
+ export function AuthProvider({ children }) {
+   const [user, setUser] = useState(null);
+   const [role, setRole] = useState(null);
+   const [profileDocId, setProfileDocId] = useState(null);
+   const [userProfile, setUserProfile] = useState(null);
+   const [profileError, setProfileError] = useState(null);
+   const [studentIds, setStudentIds] = useState([]);
+   const [activeStudentId, setActiveStudentId] = useState(null);
+   const [loading, setLoading] = useState(true);
+   const errorLoggedRef = useRef(false);
  
- const root = ReactDOM.createRoot(document.getElementById('root'));
- root.render(
-   <React.StrictMode>
-     <App />
-   </React.StrictMode>
- );
+   useEffect(() => {
+     let isMounted = true;
++    let timeoutId = null;
  
- // If you want to start measuring performance in your app, pass a function
- // to log results (for example: reportWebVitals(console.log))
- // or send to an analytics endpoint. Learn more: https://bit.ly/CRA-vitals
- reportWebVitals();
+     const resetProfileState = () => {
+       setRole(null);
+       setProfileDocId(null);
+       setUserProfile(null);
+       setProfileError(null);
+       setStudentIds([]);
+       setActiveStudentId(null);
+     };
+ 
++    const finishLoading = () => {
++      if (isMounted) setLoading(false);
++    };
++
++    const clearAuthTimeout = () => {
++      if (timeoutId) {
++        clearTimeout(timeoutId);
++        timeoutId = null;
++      }
++    };
++
++    const forceUnauthenticated = () => {
++      setUser(null);
++      resetProfileState();
++      finishLoading();
++    };
++
+     const logProfileErrorOnce = (err) => {
+       if (!errorLoggedRef.current) {
+         console.error('[useAuth] profile load error:', err);
+         errorLoggedRef.current = true;
+       }
+     };
+ 
++    logAuthDebug('[auth:init]', {
++      href: window.location.href,
++      origin: window.location.origin,
++      userAgent: navigator.userAgent,
++      ...getPlatformInfo(),
++    });
++
++    timeoutId = setTimeout(() => {
++      if (!isMounted) return;
++
++      logAuthDebug('[auth:timeout]', { fired: true, hasCurrentUser: Boolean(auth.currentUser) });
++
++      if (!auth.currentUser) {
++        forceUnauthenticated();
++        return;
++      }
++
++      setUser(auth.currentUser);
++      setProfileError('인증 초기화 시간이 초과되었습니다. 다시 로그인해주세요.');
++      finishLoading();
++    }, AUTH_INIT_TIMEOUT_MS);
++
+     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
++      let profileTimeoutId = null;
++
+       if (!isMounted) return;
+ 
++      clearAuthTimeout();
++      logAuthDebug('[auth:onAuthStateChanged]', {
++        called: true,
++        hasUser: Boolean(currentUser),
++        uid: currentUser?.uid ?? null,
++      });
++
+       setUser(currentUser);
+       resetProfileState();
+       errorLoggedRef.current = false;
+ 
+       if (!currentUser) {
+-        setLoading(false);
++        finishLoading();
+         return;
+       }
+ 
+       setLoading(true);
++      profileTimeoutId = setTimeout(() => {
++        if (!isMounted) return;
++
++        logAuthDebug('[auth:timeout]', {
++          fired: true,
++          scope: 'profile',
++          hasCurrentUser: Boolean(auth.currentUser),
++          uid: currentUser.uid,
++        });
++        setProfileError('프로필 초기화 시간이 초과되었습니다. 다시 로그인해주세요.');
++        finishLoading();
++      }, AUTH_INIT_TIMEOUT_MS);
+ 
+       try {
+         const authUid = currentUser.uid;
++        logAuthDebug('[auth:profile]', { start: true, uid: authUid });
+ 
+         /* =========================================================
+            1️⃣ userAuthIndex 먼저 시도 (학생 / 학부모)
+         ========================================================= */
+         const indexRef = doc(db, 'userAuthIndex', authUid);
+         const indexSnap = await getDoc(indexRef);
+ 
++        if (!isMounted) return;
++
+         if (indexSnap.exists()) {
+           const { userDocId, role: indexRole } = indexSnap.data();
+           const normalizedRole = normalizeRole(indexRole);
+ 
+           if (!userDocId || !normalizedRole) {
+             throw new Error('Invalid userAuthIndex');
+           }
+ 
+           const profileSnap = await getDoc(doc(db, 'users', userDocId));
++          if (!isMounted) return;
+           if (!profileSnap.exists()) {
+             throw new Error('Linked user profile not found');
+           }
+ 
+           const data = profileSnap.data();
+ 
++          setProfileError(null);
+           setUserProfile({
+             authUid,
+             profileDocId: profileSnap.id,
+             role: normalizedRole,
+             displayName: data.displayName ?? data.name ?? '',
+             email: data.email ?? '',
+             active: data.active !== false,
+             status: data.status ?? null,
+             deletionRequested: data.deletionRequested === true,
+             deletionAccessBlocked: isDeletionRequestedProfile(data),
+           });
+ 
+           setRole(normalizedRole);
+           setProfileDocId(profileSnap.id);
+ 
+           if (normalizedRole === ROLE.STUDENT) {
+             setStudentIds([profileSnap.id]);
+             setActiveStudentId(profileSnap.id);
+           } else if (isParentRole(normalizedRole)) {
+             setStudentIds(data.studentIds ?? []);
+             setActiveStudentId(data.activeStudentId ?? null);
+           }
+ 
+-          setLoading(false);
++          logAuthDebug('[auth:profile]', { success: true, source: 'userAuthIndex', uid: authUid });
+           return;
+         }
+ 
+         /* =========================================================
+            2️⃣ index 없음 → 관리자 / 직원 / 강사 fallback
+         ========================================================= */
+         const legacySnap = await getDoc(doc(db, 'users', authUid));
++        if (!isMounted) return;
+         if (!legacySnap.exists()) {
+           setProfileError('프로필을 찾을 수 없습니다. 초대 코드로 가입을 진행해주세요.');
+-          setLoading(false);
++          logAuthDebug('[auth:profile]', { failed: true, reason: 'profile-not-found', uid: authUid });
+           return;
+         }
+ 
+         const data = legacySnap.data();
+         const legacyRole = normalizeRole(data.role);
+ 
+         if (!legacyRole) {
+           setProfileError('프로필 역할 정보가 올바르지 않습니다.');
+-          setLoading(false);
++          logAuthDebug('[auth:profile]', { failed: true, reason: 'invalid-role', uid: authUid });
+           return;
+         }
+ 
++        setProfileError(null);
+         setUserProfile({
+           authUid,
+           profileDocId: legacySnap.id,
+           role: legacyRole,
+           displayName: data.displayName ?? data.name ?? '',
+           email: data.email ?? '',
+           active: data.active !== false,
+           status: data.status ?? null,
+           deletionRequested: data.deletionRequested === true,
+           deletionAccessBlocked: isDeletionRequestedProfile(data),
+         });
+ 
+         setRole(legacyRole);
+         setProfileDocId(legacySnap.id);
+         setStudentIds([]);
+         setActiveStudentId(null);
+-        setLoading(false);
++        logAuthDebug('[auth:profile]', { success: true, source: 'users', uid: authUid });
+       } catch (err) {
+         logProfileErrorOnce(err);
++        logAuthDebug('[auth:profile]', { failed: true, error: err?.message ?? String(err) });
+         setProfileError('프로필을 불러올 수 없습니다.');
+-        setLoading(false);
++      } finally {
++        if (profileTimeoutId) clearTimeout(profileTimeoutId);
++        logAuthDebug('[auth:profile]', { finally: true, uid: currentUser?.uid ?? null });
++        finishLoading();
+       }
+     });
+ 
+     return () => {
+       isMounted = false;
++      clearAuthTimeout();
+       unsubscribe();
+     };
+   }, []);
+ 
+   const logout = useCallback(async () => {
+     try {
+       await signOutUser();
+     } finally {
+       clearAuthStorage();
+     }
+   }, []);
+ 
+   const value = useMemo(
+     () => ({
+       user,
+       role,
+       userProfile,
+       profileError,
+       studentIds,
+       activeStudentId,
+       loading,
+       logout,
+       profileDocId,
+     }),
+     [user, role, userProfile, profileError, studentIds, activeStudentId, loading, logout, profileDocId]

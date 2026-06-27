@@ -3756,6 +3756,22 @@ video {
   transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+.\[auth\:init\]{
+  auth: init;
+}
+
+.\[auth\:onAuthStateChanged\]{
+  auth: onAuthStateChanged;
+}
+
+.\[auth\:profile\]{
+  auth: profile;
+}
+
+.\[auth\:timeout\]{
+  auth: timeout;
+}
+
 .\[videoMemo\:add\]{
   video-memo: add;
 }
