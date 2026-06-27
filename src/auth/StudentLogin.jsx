@@ -7,6 +7,9 @@ import { ROLE, isParentRole, isStudentRole } from '../constants/roles';
 import useAuth from './useAuth';
 import { getDefaultRouteForRole } from './authRedirects';
 
+const AUTH_INDEX_MISSING_MESSAGE = '심사용 계정 연결 정보가 없습니다. 관리자에게 문의해주세요.';
+const PROFILE_MISSING_MESSAGE = '사용자 정보를 찾을 수 없습니다. 관리자에게 문의해주세요.';
+
 export default function StudentLogin() {
     const { user, role, loading } = useAuth();
     const [email, setEmail] = useState('');
@@ -47,9 +50,23 @@ export default function StudentLogin() {
                 return;
             }
 
-            const userDoc = await getDoc(doc(db, 'users', loggedInUser.uid));
+            const indexSnap = await getDoc(doc(db, 'userAuthIndex', loggedInUser.uid));
+            if (!indexSnap.exists()) {
+                setError(AUTH_INDEX_MISSING_MESSAGE);
+                await signOut(auth);
+                return;
+            }
+
+            const { userDocId } = indexSnap.data();
+            if (!userDocId) {
+                setError(AUTH_INDEX_MISSING_MESSAGE);
+                await signOut(auth);
+                return;
+            }
+
+            const userDoc = await getDoc(doc(db, 'users', userDocId));
             if (!userDoc.exists()) {
-                setError('초대 기반 가입이 필요합니다. 관리자에게 문의하세요.');
+                setError(PROFILE_MISSING_MESSAGE);
                 await signOut(auth);
                 return;
             }

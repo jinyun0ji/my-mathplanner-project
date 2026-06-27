@@ -27,6 +27,8 @@ const clearAuthStorage = () => {
 };
 
 const normalizeRole = (role) => (ALLOWED_ROLES.includes(role) ? role : null);
+const AUTH_INDEX_MISSING_MESSAGE = '심사용 계정 연결 정보가 없습니다. 관리자에게 문의해주세요.';
+const PROFILE_MISSING_MESSAGE = '사용자 정보를 찾을 수 없습니다. 관리자에게 문의해주세요.';
 
 const logAuthDebug = (label, payload) => {
   if (!IS_DEV) return;
@@ -165,13 +167,13 @@ export function AuthProvider({ children }) {
           const normalizedRole = normalizeRole(indexRole);
 
           if (!userDocId || !normalizedRole) {
-            throw new Error('Invalid userAuthIndex');
+            throw new Error(AUTH_INDEX_MISSING_MESSAGE);
           }
 
           const profileSnap = await getDoc(doc(db, 'users', userDocId));
           if (!isMounted) return;
           if (!profileSnap.exists()) {
-            throw new Error('Linked user profile not found');
+            throw new Error(PROFILE_MISSING_MESSAGE);
           }
 
           const data = profileSnap.data();
@@ -245,7 +247,7 @@ export function AuthProvider({ children }) {
       } catch (err) {
         logProfileErrorOnce(err);
         logAuthDebug('[auth:profile]', { failed: true, error: err?.message ?? String(err) });
-        setProfileError('프로필을 불러올 수 없습니다.');
+        setProfileError(err?.message || '프로필을 불러올 수 없습니다.');
       } finally {
         if (profileTimeoutId) clearTimeout(profileTimeoutId);
         logAuthDebug('[auth:profile]', { finally: true, uid: currentUser?.uid ?? null });

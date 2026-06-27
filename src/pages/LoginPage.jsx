@@ -5,6 +5,9 @@ import { Link } from 'react-router-dom';
 
 const getReviewLoginMessage = (error) => {
     const code = error?.code || '';
+    if (code.startsWith('review-login/')) {
+        return error?.message || '심사용 계정 정보를 확인할 수 없습니다. 관리자에게 문의해주세요.';
+    }
     if (code === 'auth/user-disabled') {
         return '심사용 계정이 아직 활성화되지 않았습니다. 관리자에게 문의해주세요.';
     }

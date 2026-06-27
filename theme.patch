@@ -1,12 +1,330 @@
+diff --git a/functions/scripts/setupDemoAuthIndex.js b/functions/scripts/setupDemoAuthIndex.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..b4fb42b30cb3a85c0ca236a0d0ea0aae4f0c57a4
+--- /dev/null
++++ b/functions/scripts/setupDemoAuthIndex.js
+@@ -0,0 +1,58 @@
++/* eslint-disable no-console */
++const admin = require('firebase-admin');
++
++const args = new Set(process.argv.slice(2));
++const dryRun = !args.has('--write');
++
++const projectId = process.env.GOOGLE_CLOUD_PROJECT || process.env.GCLOUD_PROJECT;
++
++if (!admin.apps.length) {
++    admin.initializeApp(projectId ? { projectId } : undefined);
++}
++
++const db = admin.firestore();
++const { FieldValue } = admin.firestore;
++
++const DEMO_AUTH_INDEX_ENTRIES = [
++    {
++        authUid: 'v2wTP8NiWMQwsVvwL6uDbPotkFz1',
++        userDocId: 'ulloGGaEVgfhYlDJX6zi',
++        role: 'student',
++    },
++    {
++        authUid: 'qKIVPaoWfWaDhggNJ3ttyefZ59s1',
++        userDocId: 'AEI9gfytJRPufKUp1AA1cKfNVh03',
++        role: 'parent',
++    },
++];
++
++async function main() {
++    console.log(`[setupDemoAuthIndex] projectId=${projectId || '(default credentials)'} mode=${dryRun ? 'dry-run' : 'write'}`);
++
++    for (const entry of DEMO_AUTH_INDEX_ENTRIES) {
++        const ref = db.collection('userAuthIndex').doc(entry.authUid);
++        const patch = {
++            userDocId: entry.userDocId,
++            role: entry.role,
++            updatedAt: FieldValue.serverTimestamp(),
++        };
++
++        if (dryRun) {
++            console.log('[setupDemoAuthIndex] would merge', ref.path, patch);
++            continue;
++        }
++
++        await ref.set(patch, { merge: true });
++        console.log('[setupDemoAuthIndex] merged', ref.path, {
++            userDocId: entry.userDocId,
++            role: entry.role,
++        });
++    }
++
++    console.log('[setupDemoAuthIndex] done');
++}
++
++main().catch((error) => {
++    console.error('[setupDemoAuthIndex] failed', error);
++    process.exitCode = 1;
++});
+diff --git a/src/app/AuthGate.jsx b/src/app/AuthGate.jsx
+index 9ad18810b92598389a7edf213884e4199c414b63..9cf099aaa312bf0060f1c1a48a98125e9657ba4d 100644
+--- a/src/app/AuthGate.jsx
++++ b/src/app/AuthGate.jsx
+@@ -1,38 +1,38 @@
+ import React, { useEffect } from 'react';
+ import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+ 
+ import AppRoutes from './AppRoutes';
+ import OnboardingPage from '../pages/OnboardingPage';
+ import LoginPage from '../pages/LoginPage';
+ import InviteSignupPage from '../pages/InviteSignupPage';
+ import useAuth from '../auth/useAuth';
+ import { isParentRole, isStudentRole } from '../constants/roles';
+ import { claimStudentLinkCode } from '../parent/linkCodeService';
+ import { ParentProvider } from '../parent';
+ import { redirectToKakao, redirectToNaver } from '../auth/socialRedirect';
+-import { signInWithGoogle } from '../auth/authService';
++import { signInWithGoogle, signInWithReviewEmail } from '../auth/authService';
+ import { initForegroundMessageListener } from '../firebase/messaging';
+ import { getDefaultRouteForRole } from '../auth/authRedirects';
+ import { DELETION_REQUESTED_MESSAGE } from '../accountDeletion';
+ 
+ export default function AuthGate() {
+     const navigate = useNavigate();
+     const location = useLocation();
+     const pathname = location.pathname;
+ 
+     const isOnboardingPage = pathname === '/onboarding';
+     const isLoginPage = pathname === '/login';
+     const isSignupPage = pathname.startsWith('/signup');
+     const isAuthCallbackPage = pathname === '/auth/callback';
+     const isStudentDetailPage = pathname.startsWith('/students/');
+     const isMessengerRoute = pathname.startsWith('/chat') || pathname.startsWith('/messages');
+     const isFormulaQrRoute = pathname === '/classroom' && new URLSearchParams(location.search).get('conceptId');
+ 
+     const {
+         user,
+         role,
+         studentIds,
+         activeStudentId,
+         loading,
+         profileError,
+         userProfile,
+@@ -113,51 +113,51 @@ export default function AuthGate() {
+         needsParentOnboarding,
+         pathname,
+         isDeletionBlockedViewer,
+         role,
+         user,
+     ]);
+ 
+     const handleSocialLogin = async (providerName) => {
+         if (providerName === 'google') return signInWithGoogle();
+         if (providerName === 'kakao') return redirectToKakao();
+         if (providerName === 'naver') return redirectToNaver();
+         throw new Error('지원되지 않는 소셜 로그인입니다.');
+     };
+ 
+     const handleClaimLinkCode = async (code) => {
+         await claimStudentLinkCode(code);
+     };
+ 
+     if (loading) {
+         return <div className="min-h-screen flex items-center justify-center">로딩 중...</div>;
+     }
+ 
+     if (!user) {
+         return (
+             <Routes>
+-                <Route path="/login" element={<LoginPage onSocialLogin={handleSocialLogin} />} />
++                <Route path="/login" element={<LoginPage onSocialLogin={handleSocialLogin} onEmailLogin={signInWithReviewEmail} />} />
+                 <Route path="/signup" element={<Navigate to="/signup/invite" replace />} />
+                 <Route path="/signup/invite" element={<InviteSignupPage />} />
+                 <Route path="*" element={<Navigate to="/login" replace />} />
+             </Routes>
+         );
+     }
+ 
+     // ✅ 로그인은 됐는데 프로필(역할) 로딩 중 또는 아직 연결 안 된 상태
+     if (role === null) {
+         if (profileError) {
+             return (
+                 <div className="min-h-screen flex flex-col items-center justify-center gap-4 text-gray-600">
+                     <p>{profileError || '프로필을 불러오지 못했습니다. 다시 로그인해주세요.'}</p>
+                     <button
+                         type="button"
+                         onClick={async () => {
+                             await logout();
+                             navigate('/login', { replace: true });
+                         }}
+                         className="px-4 py-2 rounded-md bg-[#455fab] text-white"
+                     >
+                         로그아웃
+                     </button>
+                 </div>
+             );
+diff --git a/src/auth/StudentLogin.jsx b/src/auth/StudentLogin.jsx
+index eb5385645108ffa2a0f52b21899a19a2167b5bae..415d959ce4ffb254a633996cb7b13195b4afd03e 100644
+--- a/src/auth/StudentLogin.jsx
++++ b/src/auth/StudentLogin.jsx
+@@ -1,77 +1,94 @@
+ import React, { useCallback, useEffect, useState } from 'react';
+ import { signInWithEmailAndPassword, signOut } from 'firebase/auth';
+ import { doc, getDoc } from 'firebase/firestore';
+ import { useLocation, useNavigate } from 'react-router-dom';
+ import { auth, db } from '../firebase/client';
+ import { ROLE, isParentRole, isStudentRole } from '../constants/roles';
+ import useAuth from './useAuth';
+ import { getDefaultRouteForRole } from './authRedirects';
+ 
++const AUTH_INDEX_MISSING_MESSAGE = '심사용 계정 연결 정보가 없습니다. 관리자에게 문의해주세요.';
++const PROFILE_MISSING_MESSAGE = '사용자 정보를 찾을 수 없습니다. 관리자에게 문의해주세요.';
++
+ export default function StudentLogin() {
+     const { user, role, loading } = useAuth();
+     const [email, setEmail] = useState('');
+     const [password, setPassword] = useState('');
+     const [error, setError] = useState('');
+     const [pending, setPending] = useState(false);
+     const navigate = useNavigate();
+     const location = useLocation();
+ 
+     const getFormulaRedirectPath = useCallback((fallbackSearch = '') => {
+         const stored = sessionStorage.getItem('formulaQrRedirect');
+         const search = stored?.split('?')[1] || fallbackSearch.replace(/^\?/, '');
+         const params = new URLSearchParams(search);
+         const conceptId = params.get('conceptId');
+         if (!conceptId) return '';
+         sessionStorage.removeItem('formulaQrRedirect');
+         return `/student/home?tab=class&mode=book&conceptId=${encodeURIComponent(conceptId)}`;
+     }, []);
+ 
+     useEffect(() => {
+         if (loading) return;
+         if (!user) return;
+ 
+         const redirectPath = isStudentRole(role) ? (getFormulaRedirectPath(location.search) || getDefaultRouteForRole(role) || '/home') : (getDefaultRouteForRole(role) || '/home');
+         navigate(redirectPath, { replace: true });
+     }, [getFormulaRedirectPath, loading, location.search, navigate, role, user]);
+ 
+     const handleLogin = useCallback(async () => {
+         setError('');
+         setPending(true);
+ 
+         try {
+             const credential = await signInWithEmailAndPassword(auth, email.trim(), password);
+             const { user: loggedInUser } = credential;
+ 
+             if (!loggedInUser?.uid) {
+                 setError('로그인에 실패했습니다. 다시 시도해주세요.');
+                 return;
+             }
+ 
+-            const userDoc = await getDoc(doc(db, 'users', loggedInUser.uid));
++            const indexSnap = await getDoc(doc(db, 'userAuthIndex', loggedInUser.uid));
++            if (!indexSnap.exists()) {
++                setError(AUTH_INDEX_MISSING_MESSAGE);
++                await signOut(auth);
++                return;
++            }
++
++            const { userDocId } = indexSnap.data();
++            if (!userDocId) {
++                setError(AUTH_INDEX_MISSING_MESSAGE);
++                await signOut(auth);
++                return;
++            }
++
++            const userDoc = await getDoc(doc(db, 'users', userDocId));
+             if (!userDoc.exists()) {
+-                setError('초대 기반 가입이 필요합니다. 관리자에게 문의하세요.');
++                setError(PROFILE_MISSING_MESSAGE);
+                 await signOut(auth);
+                 return;
+             }
+ 
+             const userData = userDoc.data();
+             const userRole = userData?.role;
+ 
+             if (!isStudentRole(userRole) && !isParentRole(userRole)) {
+                 setError('학생/학부모 전용 페이지입니다.');
+                 await signOut(auth);
+                 return;
+             }
+ 
+             const redirectPath = userRole === ROLE.PARENT ? '/parent/home' : (getFormulaRedirectPath(location.search) || '/student/home');
+             navigate(redirectPath, { replace: true });
+         } catch (loginError) {
+             setError('로그인에 실패했습니다. 이메일과 비밀번호를 확인해주세요.');
+         } finally {
+             setPending(false);
+         }
+     }, [email, getFormulaRedirectPath, location.search, navigate, password]);
+ 
+     const handleSubmit = (event) => {
+         event.preventDefault();
+         if (pending) return;
+diff --git a/src/auth/authService.js b/src/auth/authService.js
+index 3815c0872fdec73edda73c5da3d0fbf6ddf98bf8..64618ff2fc23d9b0b343e03051219823d1e44589 100644
+--- a/src/auth/authService.js
++++ b/src/auth/authService.js
+@@ -1,23 +1,54 @@
+ // src/auth/authService.js
+ import { signInWithEmailAndPassword, signInWithPopup, signOut, GoogleAuthProvider } from 'firebase/auth';
+-import { auth } from '../firebase/client';
++import { doc, getDoc } from 'firebase/firestore';
++import { auth, db } from '../firebase/client';
++
++export const REVIEW_LOGIN_AUTH_INDEX_MISSING_MESSAGE = '심사용 계정 연결 정보가 없습니다. 관리자에게 문의해주세요.';
++export const REVIEW_LOGIN_PROFILE_MISSING_MESSAGE = '사용자 정보를 찾을 수 없습니다. 관리자에게 문의해주세요.';
++
++const createReviewLoginError = (message, code) => {
++    const error = new Error(message);
++    error.code = code;
++    return error;
++};
+ 
+ export const signInWithGoogle = async () => {
+     const provider = new GoogleAuthProvider();
+ 
+     const { user } = await signInWithPopup(auth, provider);
+ 
+     if (!user?.uid) return null;
+     return user;
+ };
+ 
+ export const signInWithReviewEmail = async (email, password) => {
+     const { user } = await signInWithEmailAndPassword(auth, email, password);
+ 
+     if (!user?.uid) return null;
++
++    try {
++        const indexSnap = await getDoc(doc(db, 'userAuthIndex', user.uid));
++        if (!indexSnap.exists()) {
++            throw createReviewLoginError(REVIEW_LOGIN_AUTH_INDEX_MISSING_MESSAGE, 'review-login/auth-index-missing');
++        }
++
++        const { userDocId } = indexSnap.data();
++        if (!userDocId) {
++            throw createReviewLoginError(REVIEW_LOGIN_AUTH_INDEX_MISSING_MESSAGE, 'review-login/auth-index-invalid');
++        }
++
++        const profileSnap = await getDoc(doc(db, 'users', userDocId));
++        if (!profileSnap.exists()) {
++            throw createReviewLoginError(REVIEW_LOGIN_PROFILE_MISSING_MESSAGE, 'review-login/profile-missing');
++        }
++    } catch (error) {
++        await signOut(auth);
++        throw error;
++    }
++
+     return user;
+ };
+ 
+ export const signOutUser = async () => {
+     await signOut(auth);
+ };
 diff --git a/src/auth/useAuth.js b/src/auth/useAuth.js
-index b6f27cbba79d61a8d72c582701a43c2570e9810f..f2602e695ab2fb4954fb97ffb48139329bea8684 100644
+index f2602e695ab2fb4954fb97ffb48139329bea8684..4ea727b2457d9aaceb069ea49416a8d092870b2b 100644
 --- a/src/auth/useAuth.js
 +++ b/src/auth/useAuth.js
-@@ -1,193 +1,283 @@
- import React, {
-   createContext,
-   useCallback,
-   useContext,
+@@ -5,50 +5,52 @@ import React, {
    useEffect,
    useMemo,
    useRef,
@@ -22,8 +340,8 @@ index b6f27cbba79d61a8d72c582701a43c2570e9810f..f2602e695ab2fb4954fb97ffb4813932
  const AuthContext = createContext(null);
  
  const LOCAL_STORAGE_KEYS = ['parent.activeStudentId'];
-+const AUTH_INIT_TIMEOUT_MS = 5000;
-+const IS_DEV = process.env.NODE_ENV === 'development';
+ const AUTH_INIT_TIMEOUT_MS = 5000;
+ const IS_DEV = process.env.NODE_ENV === 'development';
  
  const clearAuthStorage = () => {
    try {
@@ -32,22 +350,24 @@ index b6f27cbba79d61a8d72c582701a43c2570e9810f..f2602e695ab2fb4954fb97ffb4813932
  };
  
  const normalizeRole = (role) => (ALLOWED_ROLES.includes(role) ? role : null);
++const AUTH_INDEX_MISSING_MESSAGE = '심사용 계정 연결 정보가 없습니다. 관리자에게 문의해주세요.';
++const PROFILE_MISSING_MESSAGE = '사용자 정보를 찾을 수 없습니다. 관리자에게 문의해주세요.';
  
-+const logAuthDebug = (label, payload) => {
-+  if (!IS_DEV) return;
-+  console.info(label, payload);
-+};
-+
-+const getPlatformInfo = () => {
-+  const capacitor = window.Capacitor;
-+  const platform = capacitor?.getPlatform?.() ?? 'web';
-+
-+  return {
-+    isNativePlatform: platform !== 'web' || Boolean(capacitor?.isNativePlatform?.()),
-+    platform,
-+  };
-+};
-+
+ const logAuthDebug = (label, payload) => {
+   if (!IS_DEV) return;
+   console.info(label, payload);
+ };
+ 
+ const getPlatformInfo = () => {
+   const capacitor = window.Capacitor;
+   const platform = capacitor?.getPlatform?.() ?? 'web';
+ 
+   return {
+     isNativePlatform: platform !== 'web' || Boolean(capacitor?.isNativePlatform?.()),
+     platform,
+   };
+ };
+ 
  export function AuthProvider({ children }) {
    const [user, setUser] = useState(null);
    const [role, setRole] = useState(null);
@@ -57,106 +377,18 @@ index b6f27cbba79d61a8d72c582701a43c2570e9810f..f2602e695ab2fb4954fb97ffb4813932
    const [studentIds, setStudentIds] = useState([]);
    const [activeStudentId, setActiveStudentId] = useState(null);
    const [loading, setLoading] = useState(true);
-   const errorLoggedRef = useRef(false);
- 
-   useEffect(() => {
-     let isMounted = true;
-+    let timeoutId = null;
- 
-     const resetProfileState = () => {
-       setRole(null);
-       setProfileDocId(null);
-       setUserProfile(null);
-       setProfileError(null);
-       setStudentIds([]);
-       setActiveStudentId(null);
-     };
- 
-+    const finishLoading = () => {
-+      if (isMounted) setLoading(false);
-+    };
-+
-+    const clearAuthTimeout = () => {
-+      if (timeoutId) {
-+        clearTimeout(timeoutId);
-+        timeoutId = null;
-+      }
-+    };
-+
-+    const forceUnauthenticated = () => {
-+      setUser(null);
-+      resetProfileState();
-+      finishLoading();
-+    };
-+
-     const logProfileErrorOnce = (err) => {
-       if (!errorLoggedRef.current) {
-         console.error('[useAuth] profile load error:', err);
-         errorLoggedRef.current = true;
-       }
-     };
- 
-+    logAuthDebug('[auth:init]', {
-+      href: window.location.href,
-+      origin: window.location.origin,
-+      userAgent: navigator.userAgent,
-+      ...getPlatformInfo(),
-+    });
-+
-+    timeoutId = setTimeout(() => {
-+      if (!isMounted) return;
-+
-+      logAuthDebug('[auth:timeout]', { fired: true, hasCurrentUser: Boolean(auth.currentUser) });
-+
-+      if (!auth.currentUser) {
-+        forceUnauthenticated();
-+        return;
-+      }
-+
-+      setUser(auth.currentUser);
-+      setProfileError('인증 초기화 시간이 초과되었습니다. 다시 로그인해주세요.');
-+      finishLoading();
-+    }, AUTH_INIT_TIMEOUT_MS);
-+
-     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-+      let profileTimeoutId = null;
-+
-       if (!isMounted) return;
- 
-+      clearAuthTimeout();
-+      logAuthDebug('[auth:onAuthStateChanged]', {
-+        called: true,
-+        hasUser: Boolean(currentUser),
-+        uid: currentUser?.uid ?? null,
-+      });
-+
-       setUser(currentUser);
-       resetProfileState();
-       errorLoggedRef.current = false;
- 
-       if (!currentUser) {
--        setLoading(false);
-+        finishLoading();
-         return;
-       }
- 
-       setLoading(true);
-+      profileTimeoutId = setTimeout(() => {
-+        if (!isMounted) return;
-+
-+        logAuthDebug('[auth:timeout]', {
-+          fired: true,
-+          scope: 'profile',
-+          hasCurrentUser: Boolean(auth.currentUser),
-+          uid: currentUser.uid,
-+        });
-+        setProfileError('프로필 초기화 시간이 초과되었습니다. 다시 로그인해주세요.');
-+        finishLoading();
-+      }, AUTH_INIT_TIMEOUT_MS);
+@@ -143,57 +145,57 @@ export function AuthProvider({ children }) {
+           scope: 'profile',
+           hasCurrentUser: Boolean(auth.currentUser),
+           uid: currentUser.uid,
+         });
+         setProfileError('프로필 초기화 시간이 초과되었습니다. 다시 로그인해주세요.');
+         finishLoading();
+       }, AUTH_INIT_TIMEOUT_MS);
  
        try {
          const authUid = currentUser.uid;
-+        logAuthDebug('[auth:profile]', { start: true, uid: authUid });
+         logAuthDebug('[auth:profile]', { start: true, uid: authUid });
  
          /* =========================================================
             1️⃣ userAuthIndex 먼저 시도 (학생 / 학부모)
@@ -164,25 +396,27 @@ index b6f27cbba79d61a8d72c582701a43c2570e9810f..f2602e695ab2fb4954fb97ffb4813932
          const indexRef = doc(db, 'userAuthIndex', authUid);
          const indexSnap = await getDoc(indexRef);
  
-+        if (!isMounted) return;
-+
+         if (!isMounted) return;
+ 
          if (indexSnap.exists()) {
            const { userDocId, role: indexRole } = indexSnap.data();
            const normalizedRole = normalizeRole(indexRole);
  
            if (!userDocId || !normalizedRole) {
-             throw new Error('Invalid userAuthIndex');
+-            throw new Error('Invalid userAuthIndex');
++            throw new Error(AUTH_INDEX_MISSING_MESSAGE);
            }
  
            const profileSnap = await getDoc(doc(db, 'users', userDocId));
-+          if (!isMounted) return;
+           if (!isMounted) return;
            if (!profileSnap.exists()) {
-             throw new Error('Linked user profile not found');
+-            throw new Error('Linked user profile not found');
++            throw new Error(PROFILE_MISSING_MESSAGE);
            }
  
            const data = profileSnap.data();
  
-+          setProfileError(null);
+           setProfileError(null);
            setUserProfile({
              authUid,
              profileDocId: profileSnap.id,
@@ -203,37 +437,12 @@ index b6f27cbba79d61a8d72c582701a43c2570e9810f..f2602e695ab2fb4954fb97ffb4813932
              setActiveStudentId(profileSnap.id);
            } else if (isParentRole(normalizedRole)) {
              setStudentIds(data.studentIds ?? []);
-             setActiveStudentId(data.activeStudentId ?? null);
-           }
- 
--          setLoading(false);
-+          logAuthDebug('[auth:profile]', { success: true, source: 'userAuthIndex', uid: authUid });
+@@ -223,51 +225,51 @@ export function AuthProvider({ children }) {
+           logAuthDebug('[auth:profile]', { failed: true, reason: 'invalid-role', uid: authUid });
            return;
          }
  
-         /* =========================================================
-            2️⃣ index 없음 → 관리자 / 직원 / 강사 fallback
-         ========================================================= */
-         const legacySnap = await getDoc(doc(db, 'users', authUid));
-+        if (!isMounted) return;
-         if (!legacySnap.exists()) {
-           setProfileError('프로필을 찾을 수 없습니다. 초대 코드로 가입을 진행해주세요.');
--          setLoading(false);
-+          logAuthDebug('[auth:profile]', { failed: true, reason: 'profile-not-found', uid: authUid });
-           return;
-         }
- 
-         const data = legacySnap.data();
-         const legacyRole = normalizeRole(data.role);
- 
-         if (!legacyRole) {
-           setProfileError('프로필 역할 정보가 올바르지 않습니다.');
--          setLoading(false);
-+          logAuthDebug('[auth:profile]', { failed: true, reason: 'invalid-role', uid: authUid });
-           return;
-         }
- 
-+        setProfileError(null);
+         setProfileError(null);
          setUserProfile({
            authUid,
            profileDocId: legacySnap.id,
@@ -250,23 +459,22 @@ index b6f27cbba79d61a8d72c582701a43c2570e9810f..f2602e695ab2fb4954fb97ffb4813932
          setProfileDocId(legacySnap.id);
          setStudentIds([]);
          setActiveStudentId(null);
--        setLoading(false);
-+        logAuthDebug('[auth:profile]', { success: true, source: 'users', uid: authUid });
+         logAuthDebug('[auth:profile]', { success: true, source: 'users', uid: authUid });
        } catch (err) {
          logProfileErrorOnce(err);
-+        logAuthDebug('[auth:profile]', { failed: true, error: err?.message ?? String(err) });
-         setProfileError('프로필을 불러올 수 없습니다.');
--        setLoading(false);
-+      } finally {
-+        if (profileTimeoutId) clearTimeout(profileTimeoutId);
-+        logAuthDebug('[auth:profile]', { finally: true, uid: currentUser?.uid ?? null });
-+        finishLoading();
+         logAuthDebug('[auth:profile]', { failed: true, error: err?.message ?? String(err) });
+-        setProfileError('프로필을 불러올 수 없습니다.');
++        setProfileError(err?.message || '프로필을 불러올 수 없습니다.');
+       } finally {
+         if (profileTimeoutId) clearTimeout(profileTimeoutId);
+         logAuthDebug('[auth:profile]', { finally: true, uid: currentUser?.uid ?? null });
+         finishLoading();
        }
      });
  
      return () => {
        isMounted = false;
-+      clearAuthTimeout();
+       clearAuthTimeout();
        unsubscribe();
      };
    }, []);
@@ -282,13 +490,43 @@ index b6f27cbba79d61a8d72c582701a43c2570e9810f..f2602e695ab2fb4954fb97ffb4813932
    const value = useMemo(
      () => ({
        user,
-       role,
-       userProfile,
-       profileError,
-       studentIds,
-       activeStudentId,
-       loading,
-       logout,
-       profileDocId,
-     }),
-     [user, role, userProfile, profileError, studentIds, activeStudentId, loading, logout, profileDocId]
+diff --git a/src/pages/LoginPage.jsx b/src/pages/LoginPage.jsx
+index b3533da7d5acfb94f1ca221238bd4b57e9986628..591883e048984c26fb43182ac19396443241fd3d 100644
+--- a/src/pages/LoginPage.jsx
++++ b/src/pages/LoginPage.jsx
+@@ -1,32 +1,35 @@
+ // src/pages/LoginPage.jsx
+ import React, { useState } from 'react';
+ import logoHorizontal from '../assets/logo/logo-horizontal.png';
+ import { Link } from 'react-router-dom';
+ 
+ const getReviewLoginMessage = (error) => {
+     const code = error?.code || '';
++    if (code.startsWith('review-login/')) {
++        return error?.message || '심사용 계정 정보를 확인할 수 없습니다. 관리자에게 문의해주세요.';
++    }
+     if (code === 'auth/user-disabled') {
+         return '심사용 계정이 아직 활성화되지 않았습니다. 관리자에게 문의해주세요.';
+     }
+     return '이메일 또는 비밀번호를 확인해주세요.';
+ };
+ 
+ export default function LoginPage({ onSocialLogin, onEmailLogin }) {
+     const [isReviewLoginOpen, setIsReviewLoginOpen] = useState(false);
+     const [email, setEmail] = useState('');
+     const [password, setPassword] = useState('');
+     const [errorMessage, setErrorMessage] = useState('');
+     const [isSubmitting, setIsSubmitting] = useState(false);
+ 
+     const handleReviewLogin = async (event) => {
+         event.preventDefault();
+         if (!onEmailLogin || isSubmitting) return;
+ 
+         setErrorMessage('');
+         setIsSubmitting(true);
+ 
+         try {
+             await onEmailLogin(email.trim(), password);
+         } catch (error) {
+             setErrorMessage(getReviewLoginMessage(error));
+         } finally {

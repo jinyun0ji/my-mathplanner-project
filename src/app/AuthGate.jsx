@@ -10,7 +10,7 @@ import { isParentRole, isStudentRole } from '../constants/roles';
 import { claimStudentLinkCode } from '../parent/linkCodeService';
 import { ParentProvider } from '../parent';
 import { redirectToKakao, redirectToNaver } from '../auth/socialRedirect';
-import { signInWithGoogle } from '../auth/authService';
+import { signInWithGoogle, signInWithReviewEmail } from '../auth/authService';
 import { initForegroundMessageListener } from '../firebase/messaging';
 import { getDefaultRouteForRole } from '../auth/authRedirects';
 import { DELETION_REQUESTED_MESSAGE } from '../accountDeletion';
@@ -135,7 +135,7 @@ export default function AuthGate() {
     if (!user) {
         return (
             <Routes>
-                <Route path="/login" element={<LoginPage onSocialLogin={handleSocialLogin} />} />
+                <Route path="/login" element={<LoginPage onSocialLogin={handleSocialLogin} onEmailLogin={signInWithReviewEmail} />} />
                 <Route path="/signup" element={<Navigate to="/signup/invite" replace />} />
                 <Route path="/signup/invite" element={<InviteSignupPage />} />
                 <Route path="*" element={<Navigate to="/login" replace />} />
