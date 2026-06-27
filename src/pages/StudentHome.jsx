@@ -192,6 +192,10 @@ export default function StudentHome({
     closures,
     lessonReports = [],
     onLogout,
+    masterView = false,
+    masterViewStudentId = '',
+    masterViewStudentAuthUid = '',
+    readOnly = false,
     embedded = false,
 }) {
     // ✅ URL(querystring)로 탭/상세 상태를 동기화해서 "뒤로가기"가 탭 전환/이전 화면으로 동작하게 함
@@ -306,9 +310,13 @@ export default function StudentHome({
     const [visibleNotices, setVisibleNotices] = useState([]);
     const [targetMemo, setTargetMemo] = useState(null);
     const [isMessengerPage, setIsMessengerPage] = useState(false);
-    const viewerUid = student?.authUid || userId;
-    const studentDocId = studentId;
-    const studentAuthUid = student?.authUid || userId;
+    const isMasterPreview = Boolean(masterView);
+    const viewerUid = isMasterPreview ? (masterViewStudentAuthUid || student?.authUid || userId) : (student?.authUid || userId);
+    const studentDocId = isMasterPreview ? (masterViewStudentId || studentId) : studentId;
+    const studentAuthUid = isMasterPreview ? (masterViewStudentAuthUid || student?.authUid || userId) : (student?.authUid || userId);
+    const showMasterViewUnavailable = useCallback((featureName) => {
+        window.alert(`마스터뷰에서는 ${featureName}을(를) 사용할 수 없습니다.`);
+    }, []);
     const rawMyClasses = useMemo(() => {
         if (!Array.isArray(classes) || !studentId) return [];
         const addClassIdFromItem = (targetSet, item) => {
@@ -486,7 +494,20 @@ export default function StudentHome({
         setVisibleNotices(combinedNotices);
     }, [notices, student, studentId, userId, visibleClassIds]);
 
-    const handleOpenNotification = () => { setIsNotificationOpen(true); };
+    const handleOpenNotification = () => {
+        if (isMasterPreview || readOnly) {
+            showMasterViewUnavailable('알림');
+            return;
+        }
+        setIsNotificationOpen(true);
+    };
+    const handleOpenMessages = () => {
+        if (isMasterPreview || readOnly) {
+            showMasterViewUnavailable('메신저');
+            return;
+        }
+        setIsMessengerPage(true);
+    };
 
     const handleNavigateToMemo = (classId, lessonId, time) => {
         setSelectedClassId(classId);
@@ -510,6 +531,7 @@ export default function StudentHome({
                 }
 
                 if (refCollection === 'chats') {
+                    if (isMasterPreview || readOnly) return;
                     setSelectedClassId(null);
                     setActiveTab('menu');
                     setIsMessengerPage(true);
@@ -521,6 +543,11 @@ export default function StudentHome({
 
     const handleMarkAllRead = async () => {
         console.log('[notifications] markAllRead clicked');
+
+        if (isMasterPreview || readOnly) {
+            showMasterViewUnavailable('알림 읽음 처리');
+            return;
+        }
 
         if (!viewerUid) {
             console.warn('[notifications] no viewerUid');
@@ -565,7 +592,7 @@ export default function StudentHome({
 
     return (
         <div className={`bg-gray-50 flex flex-col relative font-sans ${embedded ? 'h-full min-h-0' : 'min-h-screen'}`}>
-            <StudentHeader student={student} onOpenNotifications={handleOpenNotification} onOpenMessages={() => setIsMessengerPage(true)} hasUnread={hasUnread} />
+            <StudentHeader student={student} onOpenNotifications={handleOpenNotification} onOpenMessages={handleOpenMessages} hasUnread={hasUnread} />
             {/* <div style={{position:'fixed', top:10, right:10, zIndex:9999, background:'#fff', padding:6}}>
                 activeTab: {activeTab}
             </div> */}
@@ -679,7 +706,7 @@ export default function StudentHome({
                                 student={student} onUpdateStudent={onUpdateStudent} onLogout={onLogout}
                                 videoMemos={videoMemos} lessonLogs={filteredLessonLogs} onLinkToMemo={handleNavigateToMemo} notices={visibleNotices}
                                 onOpenNotifications={handleOpenNotification}
-                                onOpenMessages={() => setIsMessengerPage(true)}
+                                onOpenMessages={handleOpenMessages}
                                 onOpenFormulaBook={() => setClassroomMode('formula')}
                                 studentAuthUid={studentAuthUid}
                                 myClasses={ongoingClasses}

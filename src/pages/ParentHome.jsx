@@ -491,6 +491,10 @@ export default function ParentHome({
     videoProgress, clinicLogs, lessonReports = [], onLogout,
     externalSchedules, onSaveExternalSchedule, onDeleteExternalSchedule,
     closures,
+    masterView = false,
+    masterViewStudentId = '',
+    masterViewStudentAuthUid = '',
+    readOnly = false,
     embedded = false,
 }) {
     const { activeStudentId, studentIds, setActiveStudentId } = useParentContext();
@@ -745,7 +749,11 @@ export default function ParentHome({
             setMoreView('menu');
         }
     }, [activeTab]);
-    const viewerUid = activeChild?.authUid || userId;
+    const isMasterPreview = Boolean(masterView);
+    const viewerUid = isMasterPreview ? (masterViewStudentAuthUid || activeChild?.authUid || userId) : (activeChild?.authUid || userId);
+    const showMasterViewUnavailable = useCallback((featureName) => {
+        window.alert(`마스터뷰에서는 ${featureName}을(를) 사용할 수 없습니다.`);
+    }, []);
     const { notifications, hasUnread, unreadCount, lastReadAt, isLoading, isMetaLoading, setNotifications } = useNotifications(viewerUid, 20, {
         viewerRole: 'parent',
         unreadOnly: true,
@@ -848,7 +856,7 @@ export default function ParentHome({
         }) || null;
     }, [parents, userId]);
 
-    const parentAuthUid = auth.currentUser?.uid || currentParent?.authUid || currentParent?.uid || userId || '';
+    const parentAuthUid = isMasterPreview ? (masterViewStudentAuthUid || activeChild?.authUid || userId || '') : (auth.currentUser?.uid || currentParent?.authUid || currentParent?.uid || userId || '');
 
     const visibleNotices = useMemo(() => {
         const normalizeTargetValue = (value) => String(value || '').trim();
@@ -860,7 +868,7 @@ export default function ParentHome({
         const viewerAudienceKeys = new Set([
             parentAuthUid,
             userId,
-            auth.currentUser?.uid,
+            ...(isMasterPreview ? [] : [auth.currentUser?.uid]),
             activeChild?.authUid,
             activeChildId,
         ].map(normalizeTargetValue).filter(Boolean));
@@ -963,7 +971,7 @@ export default function ParentHome({
                 viewerAudienceKeys: [
                     parentAuthUid,
                     userId,
-                    auth.currentUser?.uid,
+                    ...(isMasterPreview ? [] : [auth.currentUser?.uid]),
                     activeChild?.authUid,
                     activeChildId,
                 ].map((v) => String(v || '').trim()).filter(Boolean),
@@ -975,6 +983,10 @@ export default function ParentHome({
     }, [visibleClassIds, activeChildId, parentAuthUid, visibleNotices, sortedVisibleNotices, userId, activeChild]);
 
     const handleNotificationClick = async (notification) => {
+        if (isMasterPreview || readOnly) {
+            showMasterViewUnavailable('알림');
+            return;
+        }
         const targetStudentId = notification?.studentId;
         const canSwitchStudent = targetStudentId
             && targetStudentId !== activeStudentId
@@ -1017,6 +1029,7 @@ export default function ParentHome({
                 }
 
                 if (refCollection === 'chats') {
+                    if (isMasterPreview || readOnly) return;
                     setIsMessengerPage(true);
                     return;
                 }
@@ -1027,6 +1040,10 @@ export default function ParentHome({
 
     const handleMarkAllRead = async () => {
         console.log('[notifications] markAllRead clicked');
+        if (isMasterPreview || readOnly) {
+            showMasterViewUnavailable('알림 읽음 처리');
+            return;
+        }
         if (!viewerUid) {
             console.warn('[notifications] no viewerUid');
             return;
@@ -1244,11 +1261,11 @@ export default function ParentHome({
                         </div>
                     </div>
                     <div className="flex items-center gap-2">
-                        <button type="button" onClick={() => setIsNotificationOpen(true)} className="relative p-2 rounded-lg border border-gray-200 text-gray-600">
+                        <button type="button" onClick={() => (isMasterPreview || readOnly ? showMasterViewUnavailable('알림') : setIsNotificationOpen(true))} className="relative p-2 rounded-lg border border-gray-200 text-gray-600">
                             <NotificationsIcon style={{ fontSize: 20 }} />
                             {hasUnread && <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />}
                         </button>
-                        <button type="button" onClick={() => setIsMessengerPage(true)} className="relative p-2 rounded-lg border border-gray-200 text-gray-600">
+                        <button type="button" onClick={() => (isMasterPreview || readOnly ? showMasterViewUnavailable('메신저') : setIsMessengerPage(true))} className="relative p-2 rounded-lg border border-gray-200 text-gray-600">
                             <ChatBubbleOutlineIcon style={{ fontSize: 20 }} />
                         </button>
                     </div>
@@ -1689,8 +1706,8 @@ export default function ParentHome({
                                 accountInfo={accountInfo}
                                 myClasses={myClasses}
                                 ongoingClasses={ongoingClasses}
-                                onOpenNotifications={() => setIsNotificationOpen(true)}
-                                onOpenMessages={() => setIsMessengerPage(true)}
+                                onOpenNotifications={() => (isMasterPreview || readOnly ? showMasterViewUnavailable('알림') : setIsNotificationOpen(true))}
+                                onOpenMessages={() => (isMasterPreview || readOnly ? showMasterViewUnavailable('메신저') : setIsMessengerPage(true))}
                                 onLogout={onLogout}
                             />
                         )}
@@ -1720,7 +1737,7 @@ export default function ParentHome({
             {FEATURES.ENABLE_FLOATING_NOTIFICATIONS_FOR_VIEWERS && (
                 <div className={`${embedded ? 'absolute bottom-24 right-5' : 'fixed bottom-24 right-5'} z-[60] flex flex-col gap-3 items-center`}>
                     <button
-                        onClick={() => setIsNotificationOpen(true)}
+                        onClick={() => (isMasterPreview || readOnly ? showMasterViewUnavailable('알림') : setIsNotificationOpen(true))}
                         className="bg-white text-[#334a91] border border-[#cfd8ff] p-3 rounded-full shadow-lg hover:bg-gray-50 active:scale-90 flex items-center justify-center relative w-12 h-12"
                     >
                         <NotificationsIcon style={{ fontSize: 24 }} />

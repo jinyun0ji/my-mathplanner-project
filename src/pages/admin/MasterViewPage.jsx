@@ -1,8 +1,11 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import StudentHome from '../StudentHome';
 import ParentHome from '../ParentHome';
 import ParentContext from '../../parent/ParentContext';
 import { getStudentGradeLabel } from '../../utils/gradeUtils';
+import { db } from '../../firebase/client';
+import { loadViewerDataOnce } from '../../data/firestoreSync';
+import { ROLE } from '../../constants/roles';
 
 const countStudentClasses = (student, classes = []) => {
   const ids = new Set([...(student?.classes || []), ...(student?.classIds || [])].map(String));
@@ -52,7 +55,97 @@ export default function MasterViewPage({
   }, [students, searchTerm]);
 
   const selectedStudent = useMemo(() => students.filter((student) => !isExcludedFromMasterView(student)).find((student) => String(student.id) === String(selectedStudentId)) || null, [students, selectedStudentId]);
-  const previewStudents = selectedStudent ? [selectedStudent] : [];
+  const [previewData, setPreviewData] = useState({
+    students: [],
+    classes: [],
+    homeworkAssignments: [],
+    homeworkResults: {},
+    attendanceLogs: [],
+    lessonLogs: [],
+    notices: [],
+    tests: [],
+    grades: {},
+    classTestStats: {},
+    videoProgress: [],
+    videoMemos: {},
+    externalSchedules: [],
+    clinicLogs: [],
+    closures: [],
+    lessonReports: [],
+    loading: false,
+    error: '',
+  });
+
+  useEffect(() => {
+    if (!selectedStudent?.id) {
+      setPreviewData((prev) => ({ ...prev, students: [], loading: false, error: '' }));
+      return undefined;
+    }
+
+    const state = { cancelled: false };
+    const selectedAuthUid = selectedStudent.authUid || selectedStudent.userUid || selectedStudent.uid || '';
+    setPreviewData((prev) => ({
+      ...prev,
+      students: [selectedStudent],
+      classes: [],
+      homeworkAssignments: [],
+      homeworkResults: {},
+      attendanceLogs: [],
+      lessonLogs: [],
+      notices: [],
+      tests: [],
+      grades: {},
+      classTestStats: {},
+      videoProgress: [],
+      videoMemos: {},
+      externalSchedules: [],
+      clinicLogs: [],
+      closures: [],
+      lessonReports: [],
+      loading: true,
+      error: '',
+    }));
+
+    loadViewerDataOnce({
+      db,
+      isLoggedIn: true,
+      userRole: ROLE.STUDENT,
+      userId: selectedAuthUid,
+      studentIds: [selectedStudent.id],
+      activeStudentId: selectedStudent.id,
+      setStudents: (value) => setPreviewData((prev) => ({ ...prev, students: Array.isArray(value) && value.length ? value : [selectedStudent] })),
+      setClasses: (value) => setPreviewData((prev) => ({ ...prev, classes: value || [] })),
+      setLessonLogs: (value) => setPreviewData((prev) => ({ ...prev, lessonLogs: value || [] })),
+      setAttendanceLogs: (value) => setPreviewData((prev) => ({ ...prev, attendanceLogs: value || [] })),
+      setClinicLogs: (value) => setPreviewData((prev) => ({ ...prev, clinicLogs: value || [] })),
+      setHomeworkAssignments: (value) => setPreviewData((prev) => ({ ...prev, homeworkAssignments: value || [] })),
+      setAnnouncements: (value) => setPreviewData((prev) => ({ ...prev, notices: value || [] })),
+      setTests: (value) => setPreviewData((prev) => ({ ...prev, tests: value || [] })),
+      setVideoProgress: (value) => setPreviewData((prev) => ({ ...prev, videoProgress: value || [] })),
+      setVideoMemos: (value) => setPreviewData((prev) => ({ ...prev, videoMemos: value || {} })),
+      setExternalSchedules: (value) => setPreviewData((prev) => ({ ...prev, externalSchedules: value || [] })),
+      setHomeworkResults: (value) => setPreviewData((prev) => ({ ...prev, homeworkResults: value || {} })),
+      setGrades: (value) => setPreviewData((prev) => ({ ...prev, grades: value || {} })),
+      setClosures: (value) => setPreviewData((prev) => ({ ...prev, closures: value || [] })),
+      setClassTestStats: (value) => setPreviewData((prev) => ({ ...prev, classTestStats: value || {} })),
+      setLessonReports: (value) => setPreviewData((prev) => ({ ...prev, lessonReports: value || [] })),
+      isCancelled: () => state.cancelled,
+    })
+      .catch((error) => {
+        console.error('[masterView] selected student viewer data load failed', error);
+        if (!state.cancelled) setPreviewData((prev) => ({ ...prev, error: '선택 학생 데이터를 불러오지 못했습니다.' }));
+      })
+      .finally(() => {
+        if (!state.cancelled) setPreviewData((prev) => ({ ...prev, loading: false }));
+      });
+
+    return () => { state.cancelled = true; };
+  }, [selectedStudent]);
+
+  const previewStudents = previewData.students.length ? previewData.students : (selectedStudent ? [selectedStudent] : []);
+  const previewStudent = previewStudents[0] || selectedStudent;
+  const previewStudentAuthUid = previewStudent?.authUid || previewStudent?.userUid || previewStudent?.uid || '';
+  const previewClasses = previewData.classes.length ? previewData.classes : classes.filter((cls) => countStudentClasses(selectedStudent || {}, [cls]) > 0);
 
   const blockPreviewMutation = (event) => {
     const target = event.target?.closest?.('button, a, input, select, textarea');
@@ -125,6 +218,8 @@ export default function MasterViewPage({
       {selectedStudent && (
         <section className="bg-white rounded-2xl border border-gray-100 p-3">
           <MasterBanner mode={previewMode} />
+          {previewData.loading && <div className="mb-3 rounded-lg bg-blue-50 px-3 py-2 text-sm text-blue-700">선택 학생 데이터를 불러오는 중입니다.</div>}
+          {previewData.error && <div className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{previewData.error}</div>}
           <div
             className="relative border rounded-2xl overflow-hidden bg-gray-50 master-preview-readonly"
             onClickCapture={blockPreviewMutation}
@@ -136,10 +231,10 @@ export default function MasterViewPage({
             <style>{`.master-preview-readonly input, .master-preview-readonly textarea, .master-preview-readonly select { caret-color: transparent; }`}</style>
             <div className="select-none h-[75vh] overflow-y-auto">
               {previewMode === 'student' ? (
-                <StudentHome student={selectedStudent} studentId={selectedStudent.id} userId={userId} students={previewStudents} classes={classes} homeworkAssignments={homeworkAssignments} homeworkResults={homeworkResults} attendanceLogs={attendanceLogs} lessonLogs={lessonLogs} notices={notices} tests={tests} grades={grades} classTestStats={classTestStats} videoProgress={videoProgress} videoMemos={videoMemos} onSaveVideoProgress={noop} onAddMemo={noop} onUpdateMemo={noop} onDeleteMemo={noop} externalSchedules={externalSchedules} onSaveExternalSchedule={noop} onDeleteExternalSchedule={noop} clinicLogs={clinicLogs} closures={closures} lessonReports={lessonReports} onUpdateStudent={noop} onLogout={noop} embedded />
+                <StudentHome student={previewStudent} studentId={previewStudent.id} userId={previewStudentAuthUid} students={previewStudents} classes={previewClasses} homeworkAssignments={previewData.homeworkAssignments} homeworkResults={previewData.homeworkResults} attendanceLogs={previewData.attendanceLogs} lessonLogs={previewData.lessonLogs} notices={previewData.notices} tests={previewData.tests} grades={previewData.grades} classTestStats={previewData.classTestStats} videoProgress={previewData.videoProgress} videoMemos={previewData.videoMemos} onSaveVideoProgress={noop} onAddMemo={noop} onUpdateMemo={noop} onDeleteMemo={noop} externalSchedules={previewData.externalSchedules} onSaveExternalSchedule={noop} onDeleteExternalSchedule={noop} clinicLogs={previewData.clinicLogs} closures={previewData.closures} lessonReports={previewData.lessonReports} onUpdateStudent={noop} onLogout={noop} masterView masterViewStudentId={previewStudent.id} masterViewStudentAuthUid={previewStudentAuthUid} readOnly embedded />
               ) : (
                 <ParentContext.Provider value={parentContextValue}>
-                  <ParentHome userId={userId} students={previewStudents} classes={classes} homeworkAssignments={homeworkAssignments} homeworkResults={homeworkResults} attendanceLogs={attendanceLogs} lessonLogs={lessonLogs} notices={notices} tests={tests} grades={grades} classTestStats={classTestStats} videoProgress={videoProgress} clinicLogs={clinicLogs} lessonReports={lessonReports} onLogout={noop} externalSchedules={externalSchedules} onSaveExternalSchedule={noop} onDeleteExternalSchedule={noop} closures={closures} embedded />
+                  <ParentHome userId={previewStudentAuthUid} students={previewStudents} classes={previewClasses} homeworkAssignments={previewData.homeworkAssignments} homeworkResults={previewData.homeworkResults} attendanceLogs={previewData.attendanceLogs} lessonLogs={previewData.lessonLogs} notices={previewData.notices} tests={previewData.tests} grades={previewData.grades} classTestStats={previewData.classTestStats} videoProgress={previewData.videoProgress} clinicLogs={previewData.clinicLogs} lessonReports={previewData.lessonReports} onLogout={noop} externalSchedules={previewData.externalSchedules} onSaveExternalSchedule={noop} onDeleteExternalSchedule={noop} closures={previewData.closures} masterView masterViewStudentId={previewStudent.id} masterViewStudentAuthUid={previewStudentAuthUid} readOnly embedded />
                 </ParentContext.Provider>
               )}
             </div>
