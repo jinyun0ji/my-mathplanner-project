@@ -1,9 +1,39 @@
 // src/pages/LoginPage.jsx
-import React from 'react';
+import React, { useState } from 'react';
 import logoHorizontal from '../assets/logo/logo-horizontal.png';
 import { Link } from 'react-router-dom';
 
-export default function LoginPage({ onSocialLogin }) {
+const getReviewLoginMessage = (error) => {
+    const code = error?.code || '';
+    if (code === 'auth/user-disabled') {
+        return '심사용 계정이 아직 활성화되지 않았습니다. 관리자에게 문의해주세요.';
+    }
+    return '이메일 또는 비밀번호를 확인해주세요.';
+};
+
+export default function LoginPage({ onSocialLogin, onEmailLogin }) {
+    const [isReviewLoginOpen, setIsReviewLoginOpen] = useState(false);
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [errorMessage, setErrorMessage] = useState('');
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
+    const handleReviewLogin = async (event) => {
+        event.preventDefault();
+        if (!onEmailLogin || isSubmitting) return;
+
+        setErrorMessage('');
+        setIsSubmitting(true);
+
+        try {
+            await onEmailLogin(email.trim(), password);
+        } catch (error) {
+            setErrorMessage(getReviewLoginMessage(error));
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
     return (
         <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4 sm:px-6 lg:px-8 font-sans">
             <div className="max-w-md w-full space-y-8 bg-white p-10 rounded-2xl shadow-xl border border-gray-100">
@@ -55,15 +85,75 @@ export default function LoginPage({ onSocialLogin }) {
                         </button>
                     </div>
                 </div>
+
+                <div className="mt-4 border-t border-gray-100 pt-4">
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setIsReviewLoginOpen((current) => !current);
+                            setErrorMessage('');
+                        }}
+                        className="mx-auto flex items-center justify-center text-xs font-semibold text-gray-500 underline-offset-4 hover:text-[#455fab] hover:underline"
+                        aria-expanded={isReviewLoginOpen}
+                    >
+                        심사용 이메일 로그인
+                    </button>
+
+                    {isReviewLoginOpen && (
+                        <form onSubmit={handleReviewLogin} className="mt-4 space-y-3 rounded-xl bg-gray-50 p-4 text-left">
+                            <div>
+                                <label htmlFor="review-email" className="block text-xs font-semibold text-gray-600">
+                                    이메일
+                                </label>
+                                <input
+                                    id="review-email"
+                                    type="email"
+                                    autoComplete="email"
+                                    value={email}
+                                    onChange={(event) => setEmail(event.target.value)}
+                                    className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-[#455fab] focus:outline-none focus:ring-2 focus:ring-[#455fab]/20"
+                                    required
+                                />
+                            </div>
+                            <div>
+                                <label htmlFor="review-password" className="block text-xs font-semibold text-gray-600">
+                                    비밀번호
+                                </label>
+                                <input
+                                    id="review-password"
+                                    type="password"
+                                    autoComplete="current-password"
+                                    value={password}
+                                    onChange={(event) => setPassword(event.target.value)}
+                                    className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-[#455fab] focus:outline-none focus:ring-2 focus:ring-[#455fab]/20"
+                                    required
+                                />
+                            </div>
+                            {errorMessage && (
+                                <p className="text-xs font-semibold text-rose-600" role="alert">
+                                    {errorMessage}
+                                </p>
+                            )}
+                            <button
+                                type="submit"
+                                disabled={isSubmitting}
+                                className="w-full rounded-lg bg-gray-700 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:bg-gray-400"
+                            >
+                                {isSubmitting ? '로그인 중...' : '로그인'}
+                            </button>
+                        </form>
+                    )}
+                </div>
+
                 <div className="mt-6 text-center text-sm text-gray-500 space-y-1">
-                        <div>
-                            <span>처음 이용하시나요?</span>{' '}
-                            <Link to="/signup/invite" className="font-semibold text-[#455fab] hover:text-[#334a91]">
-                                초대 코드로 가입하기
-                            </Link>
-                        </div>
-                        <p className="text-xs text-gray-400">학생/학부모는 초대 코드로 최초 1회 가입 후 이용합니다.</p>
+                    <div>
+                        <span>처음 이용하시나요?</span>{' '}
+                        <Link to="/signup/invite" className="font-semibold text-[#455fab] hover:text-[#334a91]">
+                            초대 코드로 가입하기
+                        </Link>
                     </div>
+                    <p className="text-xs text-gray-400">학생/학부모는 초대 코드로 최초 1회 가입 후 이용합니다.</p>
+                </div>
             </div>
             <p className="fixed bottom-6 text-xs text-gray-400">© 2025 Chaesooyong Math Academy. All rights reserved.</p>
         </div>

@@ -1,5 +1,5 @@
 // src/auth/authService.js
-import { signInWithPopup, signOut, GoogleAuthProvider } from 'firebase/auth';
+import { signInWithEmailAndPassword, signInWithPopup, signOut, GoogleAuthProvider } from 'firebase/auth';
 import { auth } from '../firebase/client';
 
 export const signInWithGoogle = async () => {
@@ -8,7 +8,14 @@ export const signInWithGoogle = async () => {
     const { user } = await signInWithPopup(auth, provider);
 
     if (!user?.uid) return null;
-return user;
+    return user;
+};
+
+export const signInWithReviewEmail = async (email, password) => {
+    const { user } = await signInWithEmailAndPassword(auth, email, password);
+
+    if (!user?.uid) return null;
+    return user;
 };
 
 export const signOutUser = async () => {

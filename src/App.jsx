@@ -10,7 +10,7 @@ import { UserProvider } from './auth/UserContext';
 import LoginPage from './pages/LoginPage';
 import InviteSignupPage from './pages/InviteSignupPage';
 import { redirectToKakao, redirectToNaver } from './auth/socialRedirect';
-import { signInWithGoogle } from './auth/authService';
+import { signInWithGoogle, signInWithReviewEmail } from './auth/authService';
 import StudentLogin from './auth/StudentLogin';
 import useAuth from './auth/useAuth';
 import { getDefaultRouteForRole } from './auth/authRedirects';
@@ -66,7 +66,7 @@ function LoginRoute() {
         );
     }
 
-    return <LoginPage onSocialLogin={handleSocialLogin} />;
+    return <LoginPage onSocialLogin={handleSocialLogin} onEmailLogin={signInWithReviewEmail} />;
 }
 
 function AppRouter() {
