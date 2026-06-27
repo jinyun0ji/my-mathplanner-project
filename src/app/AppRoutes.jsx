@@ -212,6 +212,17 @@ export default function AppRoutes({ user, role, studentIds }) {
 
   useEffect(() => {
     if (!isAuthenticated || !role || !(isAdminRole(role) || isStaffRole(role) || isStaffOrTeachingRole(role))) return;
+    loadStaffDataOnce({
+        db,
+        isLoggedIn: isAuthenticated,
+        userRole: role,
+        pageKey: null,
+        setClasses,
+    });
+  }, [isAuthenticated, role]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !role || !(isAdminRole(role) || isStaffRole(role) || isStaffOrTeachingRole(role))) return;
     const shouldLoadPayments = page === 'payment';
     if (shouldLoadPayments) {
         setIsPaymentLogsLoading(true);

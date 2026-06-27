@@ -141,8 +141,10 @@ const fetchListSafe = async (q, isCancelled = () => false, mapper = null) => {
 // - 대용량 attendanceLogs/grades/homeworkResults/clinicLogs는 pageKey 조건을 좁혀 전체 컬렉션성 로딩을 최소화한다.
 const staffDataCache = new Map();
 const STAFF_GLOBAL_CACHE_SLICES = new Set(['classes']);
-const STAFF_DEFAULT_CACHE_TTL_MS = 60 * 1000;
-const STAFF_SENSITIVE_CACHE_TTL_MS = 30 * 1000;
+// 학생/학부모 화면과 동일하게 탭 최초 진입 후 메모리 캐시를 유지한다.
+// 명시적인 invalidateStaffDataCache 호출(저장/삭제/새로고침/resume 처리) 때만 다시 읽는다.
+const STAFF_DEFAULT_CACHE_TTL_MS = Number.POSITIVE_INFINITY;
+const STAFF_SENSITIVE_CACHE_TTL_MS = Number.POSITIVE_INFINITY;
 const STAFF_SENSITIVE_PAGES = new Set(['attendance', 'payment']);
 const getStaffCacheTtl = (pageKey) => STAFF_SENSITIVE_PAGES.has(pageKey) ? STAFF_SENSITIVE_CACHE_TTL_MS : STAFF_DEFAULT_CACHE_TTL_MS;
 const getStaffCacheKey = (pageKey, slice, queryKey = '') => `${STAFF_GLOBAL_CACHE_SLICES.has(slice) ? 'global' : (pageKey || 'all')}:${slice}:${queryKey || 'default'}`;
@@ -150,7 +152,7 @@ const readStaffCache = (pageKey, slice, queryKey = '') => {
     const key = getStaffCacheKey(pageKey, slice, queryKey);
     const cached = staffDataCache.get(key);
     if (!cached) return undefined;
-    if (Date.now() - cached.cachedAt > cached.ttl) {
+    if (Number.isFinite(cached.ttl) && Date.now() - cached.cachedAt > cached.ttl) {
         staffDataCache.delete(key);
         return undefined;
     }
@@ -823,10 +825,14 @@ export const loadStaffDataOnce = async ({
         );
     };
 
+    const timerLabel = `[staff] ${pageKey || 'common'} load`;
+    if (isDevelopment()) console.time(timerLabel);
+
     try {
         const today = getTodayDateString();
-        const pageNeedsStudents = ['home', 'lessons', 'lessonReports', 'grades', 'homework', 'clinic', 'payment', 'students', 'master-view'].includes(pageKey) || !pageKey;
-        const pageNeedsClasses = ['home', 'lessons', 'lessonReports', 'grades', 'homework', 'clinic', 'attendance', 'closures', 'master-view'].includes(pageKey) || !pageKey;
+        const pageNeedsStudents = ['home', 'lessons', 'lessonReports', 'grades', 'homework', 'clinic', 'payment', 'students', 'master-view'].includes(pageKey);
+        // classes는 로그인 직후 공통 최소 데이터로 한 번 읽고 전역 캐시를 재사용한다.
+        const pageNeedsClasses = ['home', 'lessons', 'lessonReports', 'grades', 'homework', 'clinic', 'attendance', 'closures', 'schedule', 'master-view'].includes(pageKey) || !pageKey;
         const loadingCollections = [];
 
         if (setStudents && pageNeedsStudents) {
@@ -1013,6 +1019,8 @@ export const loadStaffDataOnce = async ({
         staffDataDebug(`pageKey=${pageKey || 'all'} loading collections: ${loadingCollections.join(', ') || 'none'}`);
     } catch (error) {
         console.error('[FirestoreSync] staff 데이터 로드 실패:', error);
+    } finally {
+        if (isDevelopment()) console.timeEnd(timerLabel);
     }
 };
 
