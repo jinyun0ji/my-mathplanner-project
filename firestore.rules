@@ -325,9 +325,13 @@ service cloud.firestore {
         && (
           isStaffOrAdminOrTeacher()
           || isChatRoomParticipant(data)
-          || (('parentUid' in data) && data.parentUid == uid())
-          || (('studentAuthUid' in data) && data.studentAuthUid == uid())
-          || (('studentUid' in data) && data.studentUid == uid())
+          || (data.participantIds is list && myProfileDocId() in data.participantIds)
+          || (isStudent() && (('studentId' in data) && data.studentId == myProfileDocId()))
+          || (isStudent() && (('studentUid' in data) && data.studentUid == uid()))
+          || (isStudent() && (('studentAuthUid' in data) && data.studentAuthUid == uid()))
+          || (isParent() && (('parentId' in data) && data.parentId == myProfileDocId()))
+          || (isParent() && (('parentUid' in data) && data.parentUid == uid()))
+          || (isParent() && (('studentId' in data) && data.studentId in parentStudentUids()))
         );
     }
 

@@ -12,7 +12,7 @@ import { getUserChatRoomsQueryShape, subscribeUserChatRooms } from '../../messen
 const getParticipantIds = (room) => (Array.isArray(room?.participantIds) ? room.participantIds.map(String) : []);
 const hasTarget = (room, targetUid, fields = []) => fields.some((field) => String(room?.[field] || '') === targetUid) || getParticipantIds(room).includes(targetUid);
 const hasViewerParticipant = (room, participantKeys = []) => participantKeys.some((key) => getParticipantIds(room).includes(String(key)));
-const hasAuthParticipant = (room, authUid) => Boolean(authUid) && getParticipantIds(room).includes(String(authUid));
+
 
 const sameStudent = (room, studentId) => !room?.studentId || !studentId || String(room.studentId) === String(studentId);
 
@@ -58,7 +58,7 @@ export default function ParentMessengerPage({ studentId, student, onBack }) {
             authUid,
             role: 'parent',
             onNext: (myRooms) => {
-                setRooms(sortRooms(myRooms.filter((room) => hasAuthParticipant(room, authUid))));
+                setRooms(sortRooms(myRooms));
                 setLoading(false);
                 setError('');
             },

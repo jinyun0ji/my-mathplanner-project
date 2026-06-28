@@ -68,7 +68,7 @@ export const useMessengerRooms = ({ role = 'student', authUid = '', student = {}
     const resolved = useMemo(() => {
         if (role === 'parent') return resolveParentRooms({ rooms: rawRooms, participantKeys });
         if (role === 'staff') return { rooms: resolveStaffRooms({ rooms: rawRooms, participantKeys }) };
-        return resolveStudentRooms({ rooms: rawRooms, authUid });
+        return resolveStudentRooms({ rooms: rawRooms, authUid, participantKeys });
     }, [role, rawRooms, participantKeys, authUid]);
 
     return {

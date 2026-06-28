@@ -2,15 +2,15 @@ import { INSTITUTE_AUTH_UID, ROOM_TYPES, SLOTS, TEACHER_AUTH_UID } from '../cons
 import { getParticipantIds } from '../utils/participantKeys';
 import { normalizeText, sortRooms } from '../utils/roomMatcher';
 
-const hasAuthParticipant = (room, authUid) => Boolean(authUid) && getParticipantIds(room).includes(String(authUid));
+const hasAuthParticipant = (room, authUid = '', participantKeys = []) => [authUid, ...participantKeys].filter(Boolean).some((key) => getParticipantIds(room).includes(String(key)) || String(room?.studentId || '') === String(key));
 const hasTargetParticipant = (room, targetAuthUid) => Boolean(targetAuthUid) && getParticipantIds(room).includes(String(targetAuthUid));
 const hasAnyValue = (room, fields, expectedValues) => {
     const values = new Set(expectedValues.map(String));
     return fields.some((field) => values.has(normalizeText(room?.[field])));
 };
 
-export const isStudentTeacherRoom = (room, authUid = '') => (
-    hasAuthParticipant(room, authUid)
+export const isStudentTeacherRoom = (room, authUid = '', participantKeys = []) => (
+    hasAuthParticipant(room, authUid, participantKeys)
     && hasTargetParticipant(room, TEACHER_AUTH_UID)
     && hasAnyValue(room, ['channel', 'roomType', 'slot', 'teacherAuthUid', 'counterpartUid'], [
         SLOTS.TEACHER,
@@ -19,8 +19,8 @@ export const isStudentTeacherRoom = (room, authUid = '') => (
     ])
 );
 
-export const isStudentInstituteRoom = (room, authUid = '') => (
-    hasAuthParticipant(room, authUid)
+export const isStudentInstituteRoom = (room, authUid = '', participantKeys = []) => (
+    hasAuthParticipant(room, authUid, participantKeys)
     && hasTargetParticipant(room, INSTITUTE_AUTH_UID)
     && hasAnyValue(room, ['channel', 'roomType', 'slot', 'staffAuthUid', 'counterpartUid'], [
         SLOTS.INSTITUTE,
@@ -29,11 +29,11 @@ export const isStudentInstituteRoom = (room, authUid = '') => (
     ])
 );
 
-export const resolveStudentRooms = ({ rooms = [], authUid = '' } = {}) => {
+export const resolveStudentRooms = ({ rooms = [], authUid = '', participantKeys = [] } = {}) => {
     const sortedRooms = sortRooms([...rooms]);
     return {
-        teacherRoom: sortedRooms.find((room) => isStudentTeacherRoom(room, authUid)) || null,
-        instituteRoom: sortedRooms.find((room) => isStudentInstituteRoom(room, authUid)) || null,
-        rooms: sortedRooms.filter((room) => isStudentTeacherRoom(room, authUid) || isStudentInstituteRoom(room, authUid)),
+        teacherRoom: sortedRooms.find((room) => isStudentTeacherRoom(room, authUid, participantKeys)) || null,
+        instituteRoom: sortedRooms.find((room) => isStudentInstituteRoom(room, authUid, participantKeys)) || null,
+        rooms: sortedRooms.filter((room) => isStudentTeacherRoom(room, authUid, participantKeys) || isStudentInstituteRoom(room, authUid, participantKeys)),
     };
 };

@@ -4,6 +4,9 @@ const config: CapacitorConfig = {
   appId: 'com.chaesooyong.management',
   appName: '채수용 수학',
   webDir: 'build',
+  server: {
+    iosScheme: 'https'
+  },
 
   ios: {
     isInspectable: true

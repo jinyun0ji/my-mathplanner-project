@@ -12,7 +12,7 @@ import { auth, db } from '../firebase/client';
 import { formatAttachmentSize, uploadChatAttachment, validateChatAttachment } from '../messenger/services/attachmentService';
 import { buildDeterministicRoomId, createRoomIfMissing } from '../messenger/services/roomFactory';
 import { sendRoomMessage, subscribeRoomMessages } from '../messenger/services/messageService';
-import { fetchRoomsForIndexes } from '../messenger/services/userChatRoomsService';
+import { fetchParentFallbackRooms, fetchRoomsForIndexes, fetchStudentFallbackRooms } from '../messenger/services/userChatRoomsService';
 
 // TODO(video_embed): allow only admin/staff/teacher to send YouTube watch/youtu.be/embed links,
 // normalize them to youtube-nocookie URLs, store messageType: 'video_embed',
@@ -136,11 +136,8 @@ const resolveChatRoom = async ({ viewerUid, targetAuthUid, roomType, studentId =
         .filter((room) => isResolvedRoomCandidate(room, { viewerUid: authUid, targetAuthUid, roomType, studentId, participantKeys: linkedParticipantKeys }))
         .sort((left, right) => getMessageSortTime({ createdAt: right.lastMessageAt || right.updatedAt || right.createdAt }) - getMessageSortTime({ createdAt: left.lastMessageAt || left.updatedAt || left.createdAt }))[0] || null;
     try {
-        const indexSnaps = await Promise.all(linkedParticipantKeys.map((key) => getDocs(collection(db, 'userChatRooms', key, 'rooms')).then((snap) => ({ key, snap })).catch((error) => {
-            logFirestoreQueryFailure('resolve userChatRooms room', error, { collection: `userChatRooms/${key}/rooms` });
-            return null;
-        })));
-        const indexDocs = indexSnaps.filter(Boolean).flatMap(({ snap }) => snap.docs);
+        const indexSnap = await getDocs(collection(db, 'userChatRooms', authUid, 'rooms'));
+        const indexDocs = indexSnap.docs;
         if (process.env.NODE_ENV === 'development') {
             console.log('[resolver] userChatRooms snapshot', {
                 role: normalizedRoleFromRoomType(roomType),
@@ -153,6 +150,9 @@ const resolveChatRoom = async ({ viewerUid, targetAuthUid, roomType, studentId =
         const rooms = await fetchRoomsForIndexes(indexDocs.map((item) => ({ id: item.id, ...item.data() })));
         const indexedMatch = findMatchingRoom(rooms);
         if (indexedMatch) return indexedMatch;
+        const fallbackRooms = roomType.startsWith('parent_') ? await fetchParentFallbackRooms(authUid) : await fetchStudentFallbackRooms(authUid);
+        const fallbackMatch = findMatchingRoom(fallbackRooms);
+        if (fallbackMatch) return fallbackMatch;
         return findMatchingRoom(await fetchCandidateRoomsByParticipantKeys(linkedParticipantKeys));
     } catch (resolveError) {
         logFirestoreQueryFailure('resolve chat room', resolveError, { authUid, participantKeys: linkedParticipantKeys });
