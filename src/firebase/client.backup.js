@@ -51,7 +51,6 @@ const createFirestore = () => {
   try {
     const firestore = initializeFirestore(firebaseApp, {
       experimentalForceLongPolling: true,
-      experimentalAutoDetectLongPolling: false,
       useFetchStreams: false,
     });
     console.log('[firebase] firestore native long polling initialized');
