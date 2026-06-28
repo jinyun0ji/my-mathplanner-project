@@ -174,7 +174,7 @@ export default function MenuTab({ student, onUpdateStudent, onLogout, videoMemos
 
     return (
         <div className="space-y-4 bg-gray-50 pb-24 animate-fade-in-up">
-            {!isMenu && (
+            {!isMenu && moreView !== 'board' && (
                 <header className="flex items-center gap-3 px-1">
                     <button
                         type="button"
