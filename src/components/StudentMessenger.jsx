@@ -4,7 +4,9 @@ import {
     doc,
     getDoc,
     getDocs,
+    query,
     serverTimestamp,
+    where,
 } from 'firebase/firestore';
 import { auth, db } from '../firebase/client';
 import { formatAttachmentSize, uploadChatAttachment, validateChatAttachment } from '../messenger/services/attachmentService';
@@ -45,6 +47,51 @@ const buildStandardRoomId = (roomType, ownerUid, counterpartUid, studentId = '')
 
 const getParticipantIds = (room) => (Array.isArray(room?.participantIds) ? room.participantIds.map(String) : []);
 
+
+const getRoomIdentityValues = (room) => uniqueStrings([
+    getParticipantIds(room),
+    room?.studentAuthUid,
+    room?.studentUid,
+    room?.parentUid,
+    room?.parentId,
+    room?.studentId,
+    room?.participantUserDocIds ? Object.values(room.participantUserDocIds) : [],
+]);
+
+const getUserDocLinkedKeys = async (authUid) => {
+    const currentAuthUid = String(authUid || '').trim();
+    if (!currentAuthUid) return [];
+    const keys = [currentAuthUid];
+    try {
+        const indexSnap = await getDoc(doc(db, 'userAuthIndex', currentAuthUid));
+        const userDocId = indexSnap.exists() ? String(indexSnap.data()?.userDocId || '').trim() : '';
+        if (userDocId) {
+            keys.push(userDocId);
+            const userSnap = await getDoc(doc(db, 'users', userDocId));
+            if (userSnap.exists()) {
+                const user = userSnap.data() || {};
+                keys.push(user.authUid, user.userUid, user.uid, user.parentUid, user.studentId);
+            }
+        }
+    } catch (error) {
+        logFirestoreQueryFailure('load linked user keys', error, { authUid: currentAuthUid, collections: ['userAuthIndex', 'users'] });
+    }
+    return uniqueStrings(keys);
+};
+
+const fetchCandidateRoomsByParticipantKeys = async (participantKeys = []) => {
+    const keys = uniqueStrings(participantKeys).slice(0, 30);
+    const chunks = [];
+    for (let index = 0; index < keys.length; index += 10) chunks.push(keys.slice(index, index + 10));
+    const roomsById = new Map();
+    await Promise.all(chunks.map(async (chunk) => {
+        const roomsQuery = query(collection(db, 'chatRooms'), where('participantIds', 'array-contains-any', chunk));
+        const snap = await getDocs(roomsQuery);
+        snap.docs.forEach((roomDoc) => roomsById.set(roomDoc.id, { id: roomDoc.id, ...roomDoc.data() }));
+    }));
+    return Array.from(roomsById.values());
+};
+
 const getRoomSlot = (room) => {
     const explicitSlot = String(room?.slot || '').trim();
     if (explicitSlot) return explicitSlot;
@@ -66,8 +113,9 @@ const isResolvedRoomCandidate = (room, { viewerUid, targetAuthUid, roomType, stu
     const expectedSlot = roomType.endsWith('_teacher') ? 'teacher' : 'institute';
     const roomSlot = getRoomSlot(room);
     const participantIds = getParticipantIds(room);
+    const roomIdentityValues = getRoomIdentityValues(room);
     const viewerKeys = uniqueStrings([viewerUid, participantKeys]);
-    if (!viewerKeys.some((key) => participantIds.includes(key))) return false;
+    if (!viewerKeys.some((key) => roomIdentityValues.includes(key) || participantIds.includes(key))) return false;
     if (!participantIds.includes(String(targetAuthUid)) && String(room?.counterpartUid || '') !== String(targetAuthUid) && String(room?.teacherAuthUid || '') !== String(targetAuthUid) && String(room?.staffAuthUid || '') !== String(targetAuthUid)) return false;
     if (roomSlot && roomSlot !== expectedSlot) return false;
     if (!hasRoomTypeOrChannel(room, roomType) && getRoomSlot(room) !== expectedSlot) return false;
@@ -83,22 +131,31 @@ const isResolvedRoomCandidate = (room, { viewerUid, targetAuthUid, roomType, stu
 const resolveChatRoom = async ({ viewerUid, targetAuthUid, roomType, studentId = '', participantKeys = [] }) => {
     const authUid = String(auth.currentUser?.uid || viewerUid || '').trim();
     if (!authUid || !targetAuthUid || !roomType) return null;
+    const linkedParticipantKeys = uniqueStrings([participantKeys, await getUserDocLinkedKeys(authUid)]);
+    const findMatchingRoom = (rooms) => rooms
+        .filter((room) => isResolvedRoomCandidate(room, { viewerUid: authUid, targetAuthUid, roomType, studentId, participantKeys: linkedParticipantKeys }))
+        .sort((left, right) => getMessageSortTime({ createdAt: right.lastMessageAt || right.updatedAt || right.createdAt }) - getMessageSortTime({ createdAt: left.lastMessageAt || left.updatedAt || left.createdAt }))[0] || null;
     try {
-        const indexSnap = await getDocs(collection(db, 'userChatRooms', authUid, 'rooms'));
+        const indexSnaps = await Promise.all(linkedParticipantKeys.map((key) => getDocs(collection(db, 'userChatRooms', key, 'rooms')).then((snap) => ({ key, snap })).catch((error) => {
+            logFirestoreQueryFailure('resolve userChatRooms room', error, { collection: `userChatRooms/${key}/rooms` });
+            return null;
+        })));
+        const indexDocs = indexSnaps.filter(Boolean).flatMap(({ snap }) => snap.docs);
         if (process.env.NODE_ENV === 'development') {
             console.log('[resolver] userChatRooms snapshot', {
                 role: normalizedRoleFromRoomType(roomType),
                 authUid,
-                count: indexSnap.docs.length,
-                ids: indexSnap.docs.map((item) => item.id),
+                participantKeys: linkedParticipantKeys,
+                count: indexDocs.length,
+                ids: indexDocs.map((item) => item.id),
             });
         }
-        const rooms = await fetchRoomsForIndexes(indexSnap.docs.map((item) => ({ id: item.id, ...item.data() })));
-        return rooms
-            .filter((room) => isResolvedRoomCandidate(room, { viewerUid: authUid, targetAuthUid, roomType, studentId, participantKeys }))
-            .sort((left, right) => getMessageSortTime({ createdAt: right.lastMessageAt || right.updatedAt || right.createdAt }) - getMessageSortTime({ createdAt: left.lastMessageAt || left.updatedAt || left.createdAt }))[0] || null;
+        const rooms = await fetchRoomsForIndexes(indexDocs.map((item) => ({ id: item.id, ...item.data() })));
+        const indexedMatch = findMatchingRoom(rooms);
+        if (indexedMatch) return indexedMatch;
+        return findMatchingRoom(await fetchCandidateRoomsByParticipantKeys(linkedParticipantKeys));
     } catch (resolveError) {
-        logFirestoreQueryFailure('resolve userChatRooms room', resolveError, { collection: `userChatRooms/${authUid}/rooms` });
+        logFirestoreQueryFailure('resolve chat room', resolveError, { authUid, participantKeys: linkedParticipantKeys });
         return null;
     }
 };
@@ -424,6 +481,16 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
         const isChatRoomMode = userRole === 'student' || Boolean(selectedRoomId || canCreateChatRoom || String(expectedRoomType || '').includes('institute'));
         let resolvedRoomId = selectedRoomId ? String(selectedRoomId) : roomId || null;
         let shouldCreateStandardRoom = false;
+        if (!resolvedRoomId && canCreateChatRoom) {
+            const existingRoom = await resolveChatRoom({
+                viewerUid,
+                targetAuthUid: targetAuthUidForRoom,
+                roomType: expectedRoomType,
+                studentId,
+                participantKeys: roomStudentParticipantKeys,
+            });
+            if (existingRoom?.id) resolvedRoomId = String(existingRoom.id);
+        }
         if (!resolvedRoomId && canCreateChatRoom) {
             resolvedRoomId = buildStandardRoomId(expectedRoomType, viewerUid, targetAuthUidForRoom, studentId);
             shouldCreateStandardRoom = Boolean(resolvedRoomId);

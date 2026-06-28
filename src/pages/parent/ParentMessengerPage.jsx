@@ -103,17 +103,6 @@ export default function ParentMessengerPage({ studentId, student, onBack }) {
     if (currentSlot) {
         const targetAuthUid = currentSlot.slot === SLOTS.TEACHER ? TEACHER_AUTH_UID : INSTITUTE_AUTH_UID;
         const currentRoomId = String(currentSlot.room?.roomId || currentSlot.room?.id || '').trim();
-        if (!currentRoomId) {
-            return (
-                <div className="mobile-screen h-screen min-h-screen bg-gray-50 flex flex-col overflow-hidden">
-                    <header className="mobile-header bg-white border-b border-gray-100 px-4 flex items-center gap-3">
-                        <button type="button" onClick={() => setSelectedSlot(null)} className="mobile-back-button text-gray-700"><ArrowBackIosNewIcon style={{ fontSize: 18 }} /></button>
-                        <h1 className="text-base font-semibold text-gray-900 truncate">{currentSlot.title}</h1>
-                    </header>
-                    <div className="flex-1 flex items-center justify-center text-sm text-gray-500">대화방을 찾을 수 없습니다.</div>
-                </div>
-            );
-        }
         return (
             <div className="mobile-screen h-screen min-h-screen bg-gray-50 flex flex-col overflow-hidden">
                 <header className="mobile-header bg-white border-b border-gray-100 px-4 flex items-center gap-3">

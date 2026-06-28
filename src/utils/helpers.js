@@ -14,7 +14,7 @@ import {
     MapPin, Phone, Mail, Award, TrendingUp, TrendingDown, Activity,
     Edit, List, Folder, Download, CreditCard, Smartphone,
     AlertTriangle, MessageCircle, CheckSquare, CalendarPlus,
-    RefreshCw, UserX, Eye
+    RefreshCw, UserX, Eye, Megaphone
 } from 'lucide-react';
 
 export const Icon = ({ name, className, ...props }) => {
@@ -39,7 +39,7 @@ export const Icon = ({ name, className, ...props }) => {
         creditCard: CreditCard, smartphone: Smartphone,
         alertTriangle: AlertTriangle, messageCircle: MessageCircle,
         checkSquare: CheckSquare, calendarPlus: CalendarPlus,
-        refreshCw: RefreshCw, userX: UserX, eye: Eye
+        refreshCw: RefreshCw, userX: UserX, eye: Eye, megaphone: Megaphone
     };
     const LucideIcon = icons[name] || Home;
     return <LucideIcon className={className} {...props} />;

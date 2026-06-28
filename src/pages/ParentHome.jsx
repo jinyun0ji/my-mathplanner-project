@@ -1326,7 +1326,7 @@ export default function ParentHome({
                                         <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4">
                                             <div className="flex items-center justify-between mb-2">
                                                 <h3 className="text-sm font-bold text-gray-800 flex items-center gap-2">
-                                                    <Icon name="bell" className="w-4 h-4 text-[#455fab]" />
+                                                    <Icon name="megaphone" className="w-4 h-4 text-[#455fab]" />
                                                     게시판
                                                 </h3>
                                                 <button onClick={openBoardTab} className="text-xs text-[#455fab] font-semibold hover:underline">전체 보기</button>
@@ -1343,7 +1343,7 @@ export default function ParentHome({
                                                         <p className="text-[11px] text-gray-400 mt-1">{notice.author || '채수용 수학'} • {formatNoticeDate(getNoticeDateValue(notice))}</p>
                                                     </button>
                                                 )) : (
-                                                    <p className="text-xs text-gray-500 py-2">등록된 게시글이 없습니다.</p>
+                                                    <p className="text-xs text-gray-500 py-2 text-center">등록된 게시글이 없습니다.</p>
                                                 )}
                                             </div>
                                         </div>
