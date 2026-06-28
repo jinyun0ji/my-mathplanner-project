@@ -51,14 +51,20 @@ const createFirestore = () => {
   try {
     const firestore = initializeFirestore(firebaseApp, {
       experimentalForceLongPolling: true,
-      experimentalAutoDetectLongPolling: false,
       useFetchStreams: false,
     });
     console.log('[firebase] firestore native long polling initialized');
     return firestore;
   } catch (error) {
-    console.warn('[firebase] initializeFirestore failed, fallback getFirestore', error);
-    return getFirestore(firebaseApp);
+    if (String(error.message || '').includes('already been initialized')) {
+      console.warn(
+        '[firebase] firestore native already initialized; using existing Firestore instance',
+        error
+      );
+      return getFirestore(firebaseApp);
+    }
+
+    throw error;
   }
 };
 
