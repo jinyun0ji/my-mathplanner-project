@@ -43,56 +43,23 @@ if (process.env.NODE_ENV === 'development' && typeof window !== 'undefined') {
   console.log('[capacitor] origin =', window.location.origin);
 }
 
-// const createFirestore = () => {
-//   if (!Capacitor.isNativePlatform()) {
-//     return getFirestore(firebaseApp);
-//   }
-
-//   try {
-//     const firestore = initializeFirestore(firebaseApp, {
-//       experimentalForceLongPolling: true,
-//       experimentalAutoDetectLongPolling: false,
-//       useFetchStreams: false,
-//     });
-//     console.log('[firebase] firestore native long polling initialized');
-//     return firestore;
-//   } catch (error) {
-//     if (String(error.message || '').includes('already been initialized')) {
-//       console.warn(
-//         '[firebase] firestore native already initialized; using existing Firestore instance',
-//         error
-//       );
-//       return getFirestore(firebaseApp);
-//     }
-
-//     throw error;
-//   }
-// };
-
-// export const db = createFirestore();
-
 const createFirestore = () => {
-  // 🌟 주소창에 localhost나 capacitor://가 포함되어 있다면 100% 앱 환경으로 간주합니다.
-  const isAppEnvironment = typeof window !== 'undefined' && 
-    (!!window.Capacitor || 
-     window.location.origin.includes('capacitor://') || 
-     window.location.href.includes('localhost'));
+  // 🌟 시뮬레이터 CORS 차단을 원천 봉쇄하기 위해 무조건 true(앱 환경)로 강제 설정합니다.
+  const isAppEnvironment = true; 
 
   if (!isAppEnvironment) {
-    // 일반 크롬, 사파리 웹 브라우저 환경
     return getFirestore(firebaseApp);
   }
 
-  // 🚀 Xcode 시뮬레이터 및 실제 아이폰 앱 환경 (CORS 차단 완벽 우회 강제 가동)
+  // 🚀 Xcode 시뮬레이터 전용 강제 롱 폴링 우회 가동!
   try {
-    console.log('[Firebase] App WebView environment detected. Forcing Long Polling bypass...');
+    console.log('[Firebase] Forcing Long Polling bypass for iOS Simulator...');
     return initializeFirestore(firebaseApp, {
       experimentalForceLongPolling: true,
       experimentalAutoDetectLongPolling: false,
       useFetchStreams: false
     });
   } catch (error) {
-    // 이미 초기화되었다는 에러 발생 시 기존 인스턴스 반환
     return getFirestore(firebaseApp);
   }
 };
