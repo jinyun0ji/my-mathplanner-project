@@ -10,6 +10,10 @@ import { getDefaultRouteForRole } from './authRedirects';
 const AUTH_INDEX_MISSING_MESSAGE = '심사용 계정 연결 정보가 없습니다. 관리자에게 문의해주세요.';
 const PROFILE_MISSING_MESSAGE = '사용자 정보를 찾을 수 없습니다. 관리자에게 문의해주세요.';
 
+const logStudentEmailLogin = (label, payload) => {
+    console.info(label, payload);
+};
+
 export default function StudentLogin() {
     const { user, role, loading } = useAuth();
     const [email, setEmail] = useState('');
@@ -42,7 +46,10 @@ export default function StudentLogin() {
         setPending(true);
 
         try {
-            const credential = await signInWithEmailAndPassword(auth, email.trim(), password);
+            const normalizedEmail = email.trim();
+            logStudentEmailLogin('[student-email-login] start', { email: normalizedEmail });
+            const credential = await signInWithEmailAndPassword(auth, normalizedEmail, password);
+            logStudentEmailLogin('[student-email-login] auth success', { uid: credential.user?.uid ?? null });
             const { user: loggedInUser } = credential;
 
             if (!loggedInUser?.uid) {
@@ -50,7 +57,9 @@ export default function StudentLogin() {
                 return;
             }
 
+            logStudentEmailLogin('[student-email-login] userAuthIndex start', { uid: loggedInUser.uid });
             const indexSnap = await getDoc(doc(db, 'userAuthIndex', loggedInUser.uid));
+            logStudentEmailLogin('[student-email-login] userAuthIndex success', { exists: indexSnap.exists() });
             if (!indexSnap.exists()) {
                 setError(AUTH_INDEX_MISSING_MESSAGE);
                 await signOut(auth);
@@ -64,7 +73,9 @@ export default function StudentLogin() {
                 return;
             }
 
+            logStudentEmailLogin('[student-email-login] users doc start', { userDocId });
             const userDoc = await getDoc(doc(db, 'users', userDocId));
+            logStudentEmailLogin('[student-email-login] users doc success', { exists: userDoc.exists() });
             if (!userDoc.exists()) {
                 setError(PROFILE_MISSING_MESSAGE);
                 await signOut(auth);
@@ -83,8 +94,13 @@ export default function StudentLogin() {
             const redirectPath = userRole === ROLE.PARENT ? '/parent/home' : (getFormulaRedirectPath(location.search) || '/student/home');
             navigate(redirectPath, { replace: true });
         } catch (loginError) {
-            setError('로그인에 실패했습니다. 이메일과 비밀번호를 확인해주세요.');
+            logStudentEmailLogin('[student-email-login] failed', {
+                code: loginError?.code ?? null,
+                message: loginError?.message ?? String(loginError),
+            });
+            setError(loginError?.message || '로그인에 실패했습니다. 이메일과 비밀번호를 확인해주세요.');
         } finally {
+            logStudentEmailLogin('[student-email-login] finally');
             setPending(false);
         }
     }, [email, getFormulaRedirectPath, location.search, navigate, password]);

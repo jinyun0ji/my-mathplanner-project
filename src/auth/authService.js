@@ -6,15 +6,12 @@ import { auth, db } from '../firebase/client';
 
 export const REVIEW_LOGIN_AUTH_INDEX_MISSING_MESSAGE = '심사용 계정 연결 정보가 없습니다. 관리자에게 문의해주세요.';
 export const REVIEW_LOGIN_PROFILE_MISSING_MESSAGE = '사용자 정보를 찾을 수 없습니다. 관리자에게 문의해주세요.';
-export const NATIVE_GOOGLE_LOGIN_UNAVAILABLE_MESSAGE = '앱에서는 심사용 이메일 로그인을 사용해주세요.';
-
-const IS_DEV = process.env.NODE_ENV === 'development';
+export const NATIVE_GOOGLE_LOGIN_UNAVAILABLE_MESSAGE = '앱에서는 심사용 이메일 로그인을 사용해 주세요. Google 로그인은 웹에서 이용할 수 있습니다.';
 
 export const isNativePlatform = () => Capacitor.isNativePlatform();
 export const isGoogleLoginAvailable = () => !isNativePlatform();
 
 const logEmailLoginDebug = (label, payload) => {
-    if (!IS_DEV) return;
     console.info(label, payload);
 };
 
