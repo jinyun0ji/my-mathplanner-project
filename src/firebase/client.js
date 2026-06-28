@@ -47,13 +47,13 @@ const createFirestore = () => {
   try {
     const firestore = initializeFirestore(firebaseApp, {
       experimentalForceLongPolling: true,
+      experimentalAutoDetectLongPolling: false,
       useFetchStreams: false,
     });
-    if (process.env.NODE_ENV === 'development') {
-      console.log('[firebase] firestore native longPolling enabled');
-    }
+    console.log('[firebase] firestore native long polling initialized');
     return firestore;
   } catch (error) {
+    console.warn('[firebase] initializeFirestore failed, fallback getFirestore', error);
     return getFirestore(firebaseApp);
   }
 };
