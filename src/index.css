@@ -51,3 +51,41 @@ body {
 .animate-fade-in {
   animation: fadeIn 0.3s ease-out forwards;
 }
+:root {
+  --app-safe-top: env(safe-area-inset-top, 0px);
+  --app-safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+body.capacitor-native,
+html.capacitor-native {
+  background: #f8fafc;
+}
+
+.capacitor-native .mobile-screen {
+  min-height: 100dvh;
+}
+
+.capacitor-native .mobile-header {
+  padding-top: var(--app-safe-top);
+  min-height: calc(56px + var(--app-safe-top));
+}
+
+.capacitor-native .mobile-header-content {
+  min-height: 56px;
+}
+
+.back-button,
+.mobile-back-button {
+  min-width: 44px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  z-index: 20;
+  pointer-events: auto;
+}
+
+.capacitor-native .mobile-bottom-safe {
+  padding-bottom: var(--app-safe-bottom);
+}

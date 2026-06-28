@@ -1245,10 +1245,10 @@ export default function ParentHome({
     }
 
     return (
-        <div className={`bg-gray-50 flex flex-col relative font-sans ${embedded ? 'h-full min-h-0' : 'min-h-screen'}`}>
+        <div className={`mobile-screen bg-gray-50 flex flex-col relative font-sans ${embedded ? 'h-full min-h-0' : 'min-h-screen'}`}>
             {/* 헤더 & 자녀 선택 */}
-            <div className="bg-white sticky top-0 z-30 shadow-sm">
-                <div className="flex items-center justify-between px-4 py-2 border-b border-gray-100 bg-white">
+            <div className="mobile-header bg-white sticky top-0 z-30 shadow-sm">
+                <div className="mobile-header-content flex items-center justify-between px-4 py-2 border-b border-gray-100 bg-white">
                     <div className="flex items-center gap-2 min-w-0">
                         <img
                             src={logoHorizontal}
@@ -1261,11 +1261,11 @@ export default function ParentHome({
                         </div>
                     </div>
                     <div className="flex items-center gap-2">
-                        <button type="button" onClick={() => (isMasterPreview || readOnly ? showMasterViewUnavailable('알림') : setIsNotificationOpen(true))} className="relative p-2 rounded-lg border border-gray-200 text-gray-600">
+                        <button type="button" onClick={() => (isMasterPreview || readOnly ? showMasterViewUnavailable('알림') : setIsNotificationOpen(true))} className="relative min-w-11 min-h-11 p-2 rounded-lg border border-gray-200 text-gray-600">
                             <NotificationsIcon style={{ fontSize: 20 }} />
                             {hasUnread && <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />}
                         </button>
-                        <button type="button" onClick={() => (isMasterPreview || readOnly ? showMasterViewUnavailable('메신저') : setIsMessengerPage(true))} className="relative p-2 rounded-lg border border-gray-200 text-gray-600">
+                        <button type="button" onClick={() => (isMasterPreview || readOnly ? showMasterViewUnavailable('메신저') : setIsMessengerPage(true))} className="relative min-w-11 min-h-11 p-2 rounded-lg border border-gray-200 text-gray-600">
                             <ChatBubbleOutlineIcon style={{ fontSize: 20 }} />
                         </button>
                     </div>

@@ -305,7 +305,7 @@ export default function ClassroomView({
         return (
             <div className="animate-fade-in-up pb-20 space-y-6 relative">
                 <div className="flex items-center gap-3">
-                    <button onClick={() => setSelectedClassId(null)} className="p-2 bg-white rounded-xl text-gray-600 hover:bg-gray-100 transition-colors shadow-sm active:scale-95">
+                    <button onClick={() => setSelectedClassId(null)} className="mobile-back-button p-2 bg-white rounded-xl text-gray-600 hover:bg-gray-100 transition-colors shadow-sm active:scale-95">
                         <Icon name="chevronLeft" className="w-6 h-6" />
                     </button>
                     <div>
@@ -351,9 +351,9 @@ export default function ClassroomView({
 
     // 2. 플레이어 뷰
     return (
-        <div className="fixed inset-0 z-50 bg-white flex flex-col animate-fade-in-up">
-            <div className="flex-none h-14 flex items-center gap-3 px-4 border-b border-gray-200 bg-white shadow-sm z-20">
-                <button onClick={() => { setViewMode('list'); onClearTargetMemo(); }} className="p-2 bg-gray-100 rounded-lg text-gray-600 hover:bg-gray-200 transition-colors active:scale-95"><Icon name="chevronLeft" className="w-5 h-5" /></button>
+        <div className="mobile-screen fixed inset-0 z-50 bg-white flex flex-col animate-fade-in-up">
+            <div className="mobile-header flex-none h-14 flex items-center gap-3 px-4 border-b border-gray-200 bg-white shadow-sm z-20">
+                <button onClick={() => { setViewMode('list'); onClearTargetMemo(); }} className="mobile-back-button p-2 bg-gray-100 rounded-lg text-gray-600 hover:bg-gray-200 transition-colors active:scale-95"><Icon name="chevronLeft" className="w-5 h-5" /></button>
                 <div className="flex-1 min-w-0"><h2 className="text-base font-bold text-gray-900 truncate"><span className="text-[#455fab] mr-2">[{currentLesson?.date}]</span>{currentLesson?.progress}</h2></div>
             </div>
 

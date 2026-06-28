@@ -226,7 +226,7 @@ export default function ParentClassroomView({
             {/* 헤더 */}
             <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-3">
-                    <button onClick={() => setSelectedClassId(null)} className="p-2 bg-white border border-gray-200 rounded-xl text-gray-600 active:bg-gray-100 transition-colors shadow-sm">
+                    <button onClick={() => setSelectedClassId(null)} className="mobile-back-button p-2 bg-white border border-gray-200 rounded-xl text-gray-600 active:bg-gray-100 transition-colors shadow-sm">
                         <Icon name="chevronLeft" className="w-5 h-5" /> 
                     </button>
                     <div>

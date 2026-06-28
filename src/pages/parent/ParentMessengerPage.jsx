@@ -105,9 +105,9 @@ export default function ParentMessengerPage({ studentId, student, onBack }) {
         const currentRoomId = String(currentSlot.room?.roomId || currentSlot.room?.id || '').trim();
         if (!currentRoomId) {
             return (
-                <div className="h-screen min-h-screen bg-gray-50 flex flex-col overflow-hidden">
-                    <header className="h-14 bg-white border-b border-gray-100 px-4 flex items-center gap-3">
-                        <button type="button" onClick={() => setSelectedSlot(null)} className="text-gray-700"><ArrowBackIosNewIcon style={{ fontSize: 18 }} /></button>
+                <div className="mobile-screen h-screen min-h-screen bg-gray-50 flex flex-col overflow-hidden">
+                    <header className="mobile-header h-14 bg-white border-b border-gray-100 px-4 flex items-center gap-3">
+                        <button type="button" onClick={() => setSelectedSlot(null)} className="mobile-back-button text-gray-700"><ArrowBackIosNewIcon style={{ fontSize: 18 }} /></button>
                         <h1 className="text-base font-semibold text-gray-900 truncate">{currentSlot.title}</h1>
                     </header>
                     <div className="flex-1 flex items-center justify-center text-sm text-gray-500">대화방을 찾을 수 없습니다.</div>
@@ -115,9 +115,9 @@ export default function ParentMessengerPage({ studentId, student, onBack }) {
             );
         }
         return (
-            <div className="h-screen min-h-screen bg-gray-50 flex flex-col overflow-hidden">
-                <header className="h-14 bg-white border-b border-gray-100 px-4 flex items-center gap-3">
-                    <button type="button" onClick={() => setSelectedSlot(null)} className="text-gray-700"><ArrowBackIosNewIcon style={{ fontSize: 18 }} /></button>
+            <div className="mobile-screen h-screen min-h-screen bg-gray-50 flex flex-col overflow-hidden">
+                <header className="mobile-header h-14 bg-white border-b border-gray-100 px-4 flex items-center gap-3">
+                    <button type="button" onClick={() => setSelectedSlot(null)} className="mobile-back-button text-gray-700"><ArrowBackIosNewIcon style={{ fontSize: 18 }} /></button>
                     <h1 className="text-base font-semibold text-gray-900 truncate">{currentSlot.title}</h1>
                 </header>
                 <div className="flex-1 min-h-0">
@@ -144,9 +144,9 @@ export default function ParentMessengerPage({ studentId, student, onBack }) {
     }
 
     return (
-        <div className="h-screen min-h-screen bg-gray-50 overflow-y-auto">
-            <header className="h-14 bg-white border-b border-gray-100 px-4 flex items-center gap-3 sticky top-0">
-                <button type="button" onClick={onBack} className="text-gray-700"><ArrowBackIosNewIcon style={{ fontSize: 18 }} /></button>
+        <div className="mobile-screen h-screen min-h-screen bg-gray-50 overflow-y-auto">
+            <header className="mobile-header h-14 bg-white border-b border-gray-100 px-4 flex items-center gap-3 sticky top-0 z-30">
+                <button type="button" onClick={onBack} className="mobile-back-button text-gray-700"><ArrowBackIosNewIcon style={{ fontSize: 18 }} /></button>
                 <h1 className="text-base font-semibold text-gray-900">메신저</h1>
             </header>
             <section className="py-2">

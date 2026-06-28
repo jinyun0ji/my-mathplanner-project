@@ -14,8 +14,8 @@ export default function StudentHeader({
     const profileText = [student?.school, student ? getStudentGradeLabel(student) : ''].filter(Boolean).join(' ');
 
     return (
-        <header className="bg-white border-b border-gray-100 sticky top-0 z-30 shadow-sm shrink-0">
-            <div className="flex items-center justify-between px-4 py-2 bg-white">
+        <header className="mobile-header bg-white border-b border-gray-100 sticky top-0 z-30 shadow-sm shrink-0">
+            <div className="mobile-header-content flex items-center justify-between px-4 py-2 bg-white">
                 <div className="flex items-center gap-2 min-w-0 text-brand-dark">
                     <img
                         src={logoHorizontal}
@@ -32,7 +32,7 @@ export default function StudentHeader({
                     <button
                         type="button"
                         onClick={onOpenNotifications}
-                        className="relative p-2 rounded-lg border border-gray-200 text-gray-600 active:scale-95 hover:bg-gray-50"
+                        className="relative min-w-11 min-h-11 p-2 rounded-lg border border-gray-200 text-gray-600 active:scale-95 hover:bg-gray-50"
                         aria-label="알림센터 열기"
                     >
                         <NotificationsIcon style={{ fontSize: 20 }} />
@@ -41,7 +41,7 @@ export default function StudentHeader({
                     <button
                         type="button"
                         onClick={onOpenMessages}
-                        className="relative p-2 rounded-lg border border-gray-200 text-gray-600 active:scale-95 hover:bg-gray-50"
+                        className="relative min-w-11 min-h-11 p-2 rounded-lg border border-gray-200 text-gray-600 active:scale-95 hover:bg-gray-50"
                         aria-label="메시지 열기"
                     >
                         <ChatBubbleOutlineIcon style={{ fontSize: 20 }} />

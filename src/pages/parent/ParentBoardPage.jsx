@@ -18,7 +18,7 @@ export default function ParentBoardPage({ notices = [], onBack }) {
                     <button
                         type="button"
                         onClick={onBack}
-                        className="w-10 h-10 rounded-full border border-gray-200 bg-white text-gray-700 shadow-sm flex items-center justify-center active:scale-95"
+                        className="mobile-back-button w-11 h-11 rounded-full border border-gray-200 bg-white text-gray-700 shadow-sm flex items-center justify-center active:scale-95"
                         aria-label="이전 화면으로 돌아가기"
                     >
                         ←

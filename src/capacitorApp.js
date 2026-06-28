@@ -18,8 +18,12 @@ export function setupCapacitorApp() {
     return;
   }
 
+  document.documentElement.classList.add('capacitor-native');
+  document.body?.classList.add('capacitor-native');
+
   const { App, Keyboard, SplashScreen, StatusBar } = capacitor.Plugins ?? {};
 
+  callPluginMethod(StatusBar, 'setOverlaysWebView', { overlay: false });
   callPluginMethod(StatusBar, 'setStyle', { style: 'DEFAULT' });
   callPluginMethod(SplashScreen, 'hide');
   callPluginMethod(Keyboard, 'setResizeMode', { mode: 'body' });

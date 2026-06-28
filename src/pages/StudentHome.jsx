@@ -591,7 +591,7 @@ export default function StudentHome({
     }
 
     return (
-        <div className={`bg-gray-50 flex flex-col relative font-sans ${embedded ? 'h-full min-h-0' : 'min-h-screen'}`}>
+        <div className={`mobile-screen bg-gray-50 flex flex-col relative font-sans ${embedded ? 'h-full min-h-0' : 'min-h-screen'}`}>
             <StudentHeader student={student} onOpenNotifications={handleOpenNotification} onOpenMessages={handleOpenMessages} hasUnread={hasUnread} />
             {/* <div style={{position:'fixed', top:10, right:10, zIndex:9999, background:'#fff', padding:6}}>
                 activeTab: {activeTab}
