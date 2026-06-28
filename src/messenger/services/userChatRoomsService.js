@@ -47,7 +47,7 @@ const collectRoom = (map, docSnap) => map.set(docSnap.id, { id: docSnap.id, ...d
 export const fetchStudentFallbackRooms = async (authUid) => {
     const { authUid: currentAuthUid, userDocId, profile } = await getUserProfileForAuthUid(authUid);
     if (!currentAuthUid || !userDocId) return [];
-    const candidateKeys = uniqueStrings([currentAuthUid, userDocId, profile.authUid, profile.userUid, profile.uid, profile.studentId]);
+    const candidateKeys = uniqueStrings([currentAuthUid, userDocId, profile.authUid, profile.userUid, profile.uid, profile.parentUid, profile.studentAuthUid, profile.studentId]);
     const roomsById = new Map();
     const snap = await getDocs(query(collection(db, 'chatRooms'), where('studentId', '==', userDocId)));
     snap.docs.forEach((roomDoc) => collectRoom(roomsById, roomDoc));
@@ -68,6 +68,7 @@ export const fetchParentFallbackRooms = async (authUid) => {
     const { authUid: currentAuthUid, userDocId: parentDocId, profile } = await getUserProfileForAuthUid(authUid);
     if (!currentAuthUid || !parentDocId) return [];
     const studentIds = Array.isArray(profile.studentIds) ? profile.studentIds.map(String).filter(Boolean).slice(0, 10) : [];
+    const candidateKeys = uniqueStrings([currentAuthUid, parentDocId, profile.authUid, profile.userUid, profile.uid, profile.parentUid, profile.studentAuthUid]);
     const roomsById = new Map();
     const parentSnap = await getDocs(query(collection(db, 'chatRooms'), where('parentId', '==', parentDocId)));
     parentSnap.docs.forEach((roomDoc) => collectRoom(roomsById, roomDoc));
@@ -79,8 +80,10 @@ export const fetchParentFallbackRooms = async (authUid) => {
         const roomType = String(room?.roomType || room?.channel || '').trim();
         const slot = String(room?.slot || '').trim();
         const isParentRoom = ['parent_institute', 'parent_teacher'].includes(roomType) || ['institute', 'teacher'].includes(slot);
+        const roomParticipantIds = Array.isArray(room?.participantIds) ? room.participantIds.map(String) : [];
         const hasParentIdentity = String(room?.parentId || '') === parentDocId
-            || String(room?.parentUid || '') === currentAuthUid
+            || candidateKeys.includes(String(room?.parentUid || ''))
+            || candidateKeys.some((key) => roomParticipantIds.includes(key))
             || (studentIds.length > 0 && studentIds.includes(String(room?.studentId || '')));
         return isParentRoom && hasParentIdentity;
     }));
@@ -106,14 +109,15 @@ export const subscribeUserChatRooms = ({ authUid, role = '', onNext, onError }) 
             }
             const indexes = snap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
             const indexedRooms = await fetchRoomsForIndexes(indexes);
-            if (role === 'staff') {
+            if (role === 'staff' || indexedRooms.length > 0) {
                 onNext(indexedRooms, indexes);
                 return;
             }
+            if (process.env.NODE_ENV === 'development') {
+                console.log('[resolver] userChatRooms empty; using chatRooms fallback', { role, authUid });
+            }
             const fallbackRooms = role === 'parent' ? await fetchParentFallbackRooms(authUid) : await fetchStudentFallbackRooms(authUid);
-            const roomsById = new Map(indexedRooms.map((room) => [String(room?.id || room?.roomId || ''), room]));
-            fallbackRooms.forEach((room) => roomsById.set(String(room?.id || room?.roomId || ''), room));
-            onNext(sortRoomsByActivity(Array.from(roomsById.values()).filter(Boolean)), indexes);
+            onNext(sortRoomsByActivity(fallbackRooms), indexes);
         } catch (error) {
             onError?.(error);
         }

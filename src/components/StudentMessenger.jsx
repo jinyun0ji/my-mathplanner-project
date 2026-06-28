@@ -70,13 +70,35 @@ const getUserDocLinkedKeys = async (authUid) => {
             const userSnap = await getDoc(doc(db, 'users', userDocId));
             if (userSnap.exists()) {
                 const user = userSnap.data() || {};
-                keys.push(user.authUid, user.userUid, user.uid, user.parentUid, user.studentId);
+                keys.push(user.authUid, user.userUid, user.uid, user.parentUid, user.studentAuthUid, user.studentId);
             }
         }
     } catch (error) {
         logFirestoreQueryFailure('load linked user keys', error, { authUid: currentAuthUid, collections: ['userAuthIndex', 'users'] });
     }
     return uniqueStrings(keys);
+};
+
+
+const getMySenderIds = async (authUid) => {
+    const currentAuthUid = String(authUid || '').trim();
+    if (!currentAuthUid) return [];
+    const senderIds = [currentAuthUid];
+    try {
+        const indexSnap = await getDoc(doc(db, 'userAuthIndex', currentAuthUid));
+        const userDocId = indexSnap.exists() ? String(indexSnap.data()?.userDocId || '').trim() : '';
+        if (userDocId) {
+            senderIds.push(userDocId);
+            const userSnap = await getDoc(doc(db, 'users', userDocId));
+            if (userSnap.exists()) {
+                const user = userSnap.data() || {};
+                senderIds.push(user.authUid, user.userUid, user.uid, user.parentUid, user.studentAuthUid);
+            }
+        }
+    } catch (error) {
+        logFirestoreQueryFailure('load my sender ids', error, { authUid: currentAuthUid, collections: ['userAuthIndex', 'users'] });
+    }
+    return uniqueStrings(senderIds);
 };
 
 const fetchCandidateRoomsByParticipantKeys = async (participantKeys = []) => {
@@ -299,6 +321,7 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
     const [error, setError] = useState('');
     const [imageModal, setImageModal] = useState(null);
     const [myProfileDocId, setMyProfileDocId] = useState('');
+    const [mySenderIds, setMySenderIds] = useState([]);
     const messagesEndRef = useRef(null);
     const normalizedChatSlot = String(chatSlot || roomCreationContext?.slot || '');
     const roomStudentParticipantKeys = useMemo(() => uniqueStrings([roomCreationContext?.studentParticipantKeys]), [roomCreationContext?.studentParticipantKeys]);
@@ -315,16 +338,22 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
         const authUid = auth.currentUser?.uid || '';
         if (!authUid) {
             setMyProfileDocId('');
+            setMySenderIds([]);
             return undefined;
         }
 
         let mounted = true;
         getDoc(doc(db, 'userAuthIndex', authUid)).then((indexSnap) => {
             if (!mounted) return;
-            setMyProfileDocId(indexSnap.exists() ? String(indexSnap.data()?.userDocId || '') : '');
+            const userDocId = indexSnap.exists() ? String(indexSnap.data()?.userDocId || '') : '';
+            setMyProfileDocId(userDocId);
+            return getMySenderIds(authUid).then((ids) => { if (mounted) setMySenderIds(ids); });
         }).catch((indexError) => {
             logFirestoreQueryFailure('load userAuthIndex', indexError, { doc: ['userAuthIndex', authUid] });
-            if (mounted) setMyProfileDocId('');
+            if (mounted) {
+                setMyProfileDocId('');
+                setMySenderIds([authUid].filter(Boolean));
+            }
         });
 
         return () => {
@@ -375,7 +404,7 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
         let fallbackUnsub = null;
 
         const applySnapshot = (snap) => {
-            const myIds = new Set([auth.currentUser?.uid, myProfileDocId].filter(Boolean).map(String));
+            const myIds = new Set(uniqueStrings([auth.currentUser?.uid, myProfileDocId, mySenderIds]));
             const fallbackSenderName = teacherName || '메시지';
             setError('');
             const snapshotItems = snap.docs.map((item) => ({
@@ -428,7 +457,7 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
             unsub && unsub();
             fallbackUnsub && fallbackUnsub();
         };
-    }, [roomId, selectedRoomId, canCreateChatRoom, expectedRoomType, normalizedChatSlot, myProfileDocId, teacherName, userRole, studentId, studentAuthUid, roomStudentParticipantKeys]);
+    }, [roomId, selectedRoomId, canCreateChatRoom, expectedRoomType, normalizedChatSlot, myProfileDocId, mySenderIds, teacherName, userRole, studentId, studentAuthUid, roomStudentParticipantKeys]);
 
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -519,7 +548,7 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
             pending: true,
             clientTempId,
         };
-        const myIds = new Set([auth.currentUser?.uid, myProfileDocId].filter(Boolean).map(String));
+        const myIds = new Set(uniqueStrings([auth.currentUser?.uid, myProfileDocId, mySenderIds]));
         setOptimisticMessages((prev) => {
             const next = sortMessageItems(dedupeMessages([
                 ...prev.map((item) => ({ id: item.id, raw: item })),

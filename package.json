@@ -57,7 +57,9 @@
     "backfill:class-test-stats:dry": "node functions/scripts/backfillClassTestStats.js",
     "backfill:class-test-stats:write": "node functions/scripts/backfillClassTestStats.js --write",
     "backfill:user-chat-rooms:dry": "node functions/scripts/backfillUserChatRooms.js",
-    "backfill:user-chat-rooms:write": "node functions/scripts/backfillUserChatRooms.js --write"
+    "backfill:user-chat-rooms:write": "node functions/scripts/backfillUserChatRooms.js --write",
+    "repair:hong-user-chat-rooms:dry": "node functions/scripts/repairHongUserChatRooms.js",
+    "repair:hong-user-chat-rooms:write": "node functions/scripts/repairHongUserChatRooms.js --write"
   },
   "eslintConfig": {
     "extends": [

@@ -39,6 +39,10 @@ const createAuth = () => {
 
 export const auth = createAuth();
 
+if (process.env.NODE_ENV === 'development' && typeof window !== 'undefined') {
+  console.log('[capacitor] origin =', window.location.origin);
+}
+
 const createFirestore = () => {
   if (!Capacitor.isNativePlatform()) {
     return getFirestore(firebaseApp);
