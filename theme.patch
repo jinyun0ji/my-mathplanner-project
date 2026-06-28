@@ -1,183 +1,53 @@
-diff --git a/src/auth/StudentLogin.jsx b/src/auth/StudentLogin.jsx
-index 415d959ce4ffb254a633996cb7b13195b4afd03e..ac2858dad0ed162c642327cceb4bf0f9fe3d0f8c 100644
---- a/src/auth/StudentLogin.jsx
-+++ b/src/auth/StudentLogin.jsx
-@@ -1,112 +1,128 @@
- import React, { useCallback, useEffect, useState } from 'react';
- import { signInWithEmailAndPassword, signOut } from 'firebase/auth';
- import { doc, getDoc } from 'firebase/firestore';
- import { useLocation, useNavigate } from 'react-router-dom';
- import { auth, db } from '../firebase/client';
- import { ROLE, isParentRole, isStudentRole } from '../constants/roles';
- import useAuth from './useAuth';
- import { getDefaultRouteForRole } from './authRedirects';
+diff --git a/src/firebase/client.js b/src/firebase/client.js
+index 73a246cc24dff4337b0ff5962299808cc53a2226..d9835d96bb2869cd27344dd63cec70c22844030c 100644
+--- a/src/firebase/client.js
++++ b/src/firebase/client.js
+@@ -1,25 +1,44 @@
+ // src/firebase/client.js
++import { Capacitor } from '@capacitor/core';
+ import { initializeApp, getApp, getApps } from "firebase/app";
+-import { getAuth } from "firebase/auth";
++import {
++  getAuth,
++  indexedDBLocalPersistence,
++  initializeAuth,
++} from "firebase/auth";
+ import { getFirestore } from "firebase/firestore";
+ import { getFunctions } from "firebase/functions";
+ import { getStorage } from "firebase/storage";
  
- const AUTH_INDEX_MISSING_MESSAGE = '심사용 계정 연결 정보가 없습니다. 관리자에게 문의해주세요.';
- const PROFILE_MISSING_MESSAGE = '사용자 정보를 찾을 수 없습니다. 관리자에게 문의해주세요.';
+ const firebaseConfig = {
+   apiKey: "AIzaSyAjjR2yJwmwGeOMjxr_jGumpkchXpFzmcQ",
+   authDomain: "my-mathplanner-project.firebaseapp.com",
+   projectId: "my-mathplanner-project",
+   storageBucket: "my-mathplanner-project.firebasestorage.app",
+   messagingSenderId: "197602408828",
+   appId: "1:197602408828:web:c0eae7df35a06fbe070cf9",
+   measurementId: "G-ZH2BMBYE86"
+ };
  
-+const logStudentEmailLogin = (label, payload) => {
-+    console.info(label, payload);
+ export const firebaseApp =
+   getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+ 
+-export const auth = getAuth(firebaseApp);
++const createAuth = () => {
++  if (!Capacitor.isNativePlatform()) {
++    return getAuth(firebaseApp);
++  }
++
++  try {
++    return initializeAuth(firebaseApp, {
++      persistence: indexedDBLocalPersistence,
++    });
++  } catch (error) {
++    return getAuth(firebaseApp);
++  }
 +};
 +
- export default function StudentLogin() {
-     const { user, role, loading } = useAuth();
-     const [email, setEmail] = useState('');
-     const [password, setPassword] = useState('');
-     const [error, setError] = useState('');
-     const [pending, setPending] = useState(false);
-     const navigate = useNavigate();
-     const location = useLocation();
++export const auth = createAuth();
+ export const db = getFirestore(firebaseApp);
  
-     const getFormulaRedirectPath = useCallback((fallbackSearch = '') => {
-         const stored = sessionStorage.getItem('formulaQrRedirect');
-         const search = stored?.split('?')[1] || fallbackSearch.replace(/^\?/, '');
-         const params = new URLSearchParams(search);
-         const conceptId = params.get('conceptId');
-         if (!conceptId) return '';
-         sessionStorage.removeItem('formulaQrRedirect');
-         return `/student/home?tab=class&mode=book&conceptId=${encodeURIComponent(conceptId)}`;
-     }, []);
- 
-     useEffect(() => {
-         if (loading) return;
-         if (!user) return;
- 
-         const redirectPath = isStudentRole(role) ? (getFormulaRedirectPath(location.search) || getDefaultRouteForRole(role) || '/home') : (getDefaultRouteForRole(role) || '/home');
-         navigate(redirectPath, { replace: true });
-     }, [getFormulaRedirectPath, loading, location.search, navigate, role, user]);
- 
-     const handleLogin = useCallback(async () => {
-         setError('');
-         setPending(true);
- 
-         try {
--            const credential = await signInWithEmailAndPassword(auth, email.trim(), password);
-+            const normalizedEmail = email.trim();
-+            logStudentEmailLogin('[student-email-login] start', { email: normalizedEmail });
-+            const credential = await signInWithEmailAndPassword(auth, normalizedEmail, password);
-+            logStudentEmailLogin('[student-email-login] auth success', { uid: credential.user?.uid ?? null });
-             const { user: loggedInUser } = credential;
- 
-             if (!loggedInUser?.uid) {
-                 setError('로그인에 실패했습니다. 다시 시도해주세요.');
-                 return;
-             }
- 
-+            logStudentEmailLogin('[student-email-login] userAuthIndex start', { uid: loggedInUser.uid });
-             const indexSnap = await getDoc(doc(db, 'userAuthIndex', loggedInUser.uid));
-+            logStudentEmailLogin('[student-email-login] userAuthIndex success', { exists: indexSnap.exists() });
-             if (!indexSnap.exists()) {
-                 setError(AUTH_INDEX_MISSING_MESSAGE);
-                 await signOut(auth);
-                 return;
-             }
- 
-             const { userDocId } = indexSnap.data();
-             if (!userDocId) {
-                 setError(AUTH_INDEX_MISSING_MESSAGE);
-                 await signOut(auth);
-                 return;
-             }
- 
-+            logStudentEmailLogin('[student-email-login] users doc start', { userDocId });
-             const userDoc = await getDoc(doc(db, 'users', userDocId));
-+            logStudentEmailLogin('[student-email-login] users doc success', { exists: userDoc.exists() });
-             if (!userDoc.exists()) {
-                 setError(PROFILE_MISSING_MESSAGE);
-                 await signOut(auth);
-                 return;
-             }
- 
-             const userData = userDoc.data();
-             const userRole = userData?.role;
- 
-             if (!isStudentRole(userRole) && !isParentRole(userRole)) {
-                 setError('학생/학부모 전용 페이지입니다.');
-                 await signOut(auth);
-                 return;
-             }
- 
-             const redirectPath = userRole === ROLE.PARENT ? '/parent/home' : (getFormulaRedirectPath(location.search) || '/student/home');
-             navigate(redirectPath, { replace: true });
-         } catch (loginError) {
--            setError('로그인에 실패했습니다. 이메일과 비밀번호를 확인해주세요.');
-+            logStudentEmailLogin('[student-email-login] failed', {
-+                code: loginError?.code ?? null,
-+                message: loginError?.message ?? String(loginError),
-+            });
-+            setError(loginError?.message || '로그인에 실패했습니다. 이메일과 비밀번호를 확인해주세요.');
-         } finally {
-+            logStudentEmailLogin('[student-email-login] finally');
-             setPending(false);
-         }
-     }, [email, getFormulaRedirectPath, location.search, navigate, password]);
- 
-     const handleSubmit = (event) => {
-         event.preventDefault();
-         if (pending) return;
-         handleLogin();
-     };
- 
-     return (
-         <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4 sm:px-6 lg:px-8 font-sans">
-             <div className="max-w-md w-full space-y-6 bg-white p-8 rounded-2xl shadow-lg border border-gray-100">
-                 <div className="text-center space-y-2">
-                     <h2 className="text-2xl font-bold text-gray-900">학생/학부모 로그인</h2>
-                     <p className="text-sm text-gray-500">이메일과 비밀번호로 로그인해주세요.</p>
-                 </div>
- 
-                 <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
-                     <div>
-                         <label className="block text-sm font-medium text-gray-700">이메일</label>
-                         <input
-                             type="email"
-                             value={email}
-                             onChange={(e) => setEmail(e.target.value)}
-diff --git a/src/auth/authService.js b/src/auth/authService.js
-index f612f7bc692fa9932de3000d0a90307295a60c4f..1d5cd789571b85e6058aea5faae28620002def4c 100644
---- a/src/auth/authService.js
-+++ b/src/auth/authService.js
-@@ -1,42 +1,39 @@
- // src/auth/authService.js
- import { Capacitor } from '@capacitor/core';
- import { signInWithEmailAndPassword, signOut } from 'firebase/auth';
- import { doc, getDoc } from 'firebase/firestore';
- import { auth, db } from '../firebase/client';
- 
- export const REVIEW_LOGIN_AUTH_INDEX_MISSING_MESSAGE = '심사용 계정 연결 정보가 없습니다. 관리자에게 문의해주세요.';
- export const REVIEW_LOGIN_PROFILE_MISSING_MESSAGE = '사용자 정보를 찾을 수 없습니다. 관리자에게 문의해주세요.';
--export const NATIVE_GOOGLE_LOGIN_UNAVAILABLE_MESSAGE = '앱에서는 심사용 이메일 로그인을 사용해주세요.';
--
--const IS_DEV = process.env.NODE_ENV === 'development';
-+export const NATIVE_GOOGLE_LOGIN_UNAVAILABLE_MESSAGE = '앱에서는 심사용 이메일 로그인을 사용해 주세요. Google 로그인은 웹에서 이용할 수 있습니다.';
- 
- export const isNativePlatform = () => Capacitor.isNativePlatform();
- export const isGoogleLoginAvailable = () => !isNativePlatform();
- 
- const logEmailLoginDebug = (label, payload) => {
--    if (!IS_DEV) return;
-     console.info(label, payload);
- };
- 
- const createReviewLoginError = (message, code) => {
-     const error = new Error(message);
-     error.code = code;
-     return error;
- };
- 
- export const createNativeGoogleLoginUnavailableError = () => (
-     createReviewLoginError(NATIVE_GOOGLE_LOGIN_UNAVAILABLE_MESSAGE, 'google-login/native-unavailable')
- );
- 
- export const signInWithGoogle = async () => {
-     if (!isGoogleLoginAvailable()) {
-         throw createNativeGoogleLoginUnavailableError();
-     }
- 
-     const { GoogleAuthProvider, signInWithPopup } = await import('firebase/auth');
-     const provider = new GoogleAuthProvider();
- 
-     const { user } = await signInWithPopup(auth, provider);
- 
-     if (!user?.uid) return null;
-     return user;
+ export const functions = getFunctions(firebaseApp, "us-central1");
+-export const storage = getStorage(firebaseApp);
+\ No newline at end of file
++export const storage = getStorage(firebaseApp);

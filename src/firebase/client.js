@@ -1,6 +1,11 @@
 // src/firebase/client.js
+import { Capacitor } from '@capacitor/core';
 import { initializeApp, getApp, getApps } from "firebase/app";
-import { getAuth } from "firebase/auth";
+import {
+  getAuth,
+  indexedDBLocalPersistence,
+  initializeAuth,
+} from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { getFunctions } from "firebase/functions";
 import { getStorage } from "firebase/storage";
@@ -18,7 +23,21 @@ const firebaseConfig = {
 export const firebaseApp =
   getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 
-export const auth = getAuth(firebaseApp);
+const createAuth = () => {
+  if (!Capacitor.isNativePlatform()) {
+    return getAuth(firebaseApp);
+  }
+
+  try {
+    return initializeAuth(firebaseApp, {
+      persistence: indexedDBLocalPersistence,
+    });
+  } catch (error) {
+    return getAuth(firebaseApp);
+  }
+};
+
+export const auth = createAuth();
 export const db = getFirestore(firebaseApp);
 
 export const functions = getFunctions(firebaseApp, "us-central1");
