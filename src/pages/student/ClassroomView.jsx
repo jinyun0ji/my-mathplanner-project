@@ -352,7 +352,7 @@ export default function ClassroomView({
     // 2. 플레이어 뷰
     return (
         <div className="mobile-screen fixed inset-0 z-50 bg-white flex flex-col animate-fade-in-up">
-            <div className="mobile-header flex-none h-14 flex items-center gap-3 px-4 border-b border-gray-200 bg-white shadow-sm z-20">
+            <div className="mobile-header flex-none flex items-center gap-3 px-4 border-b border-gray-200 bg-white shadow-sm z-20">
                 <button onClick={() => { setViewMode('list'); onClearTargetMemo(); }} className="mobile-back-button p-2 bg-gray-100 rounded-lg text-gray-600 hover:bg-gray-200 transition-colors active:scale-95"><Icon name="chevronLeft" className="w-5 h-5" /></button>
                 <div className="flex-1 min-w-0"><h2 className="text-base font-bold text-gray-900 truncate"><span className="text-[#455fab] mr-2">[{currentLesson?.date}]</span>{currentLesson?.progress}</h2></div>
             </div>

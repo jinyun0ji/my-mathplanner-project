@@ -1247,7 +1247,7 @@ export default function ParentHome({
     return (
         <div className={`mobile-screen bg-gray-50 flex flex-col relative font-sans ${embedded ? 'h-full min-h-0' : 'min-h-screen'}`}>
             {/* 헤더 & 자녀 선택 */}
-            <div className="mobile-header bg-white sticky top-0 z-30 shadow-sm">
+            <div className="parent-mobile-header mobile-header bg-white sticky top-0 z-30 shadow-sm">
                 <div className="mobile-header-content flex items-center justify-between px-4 py-2 border-b border-gray-100 bg-white">
                     <div className="flex items-center gap-2 min-w-0">
                         <img

@@ -1,10 +1,51 @@
+diff --git a/public/index.html b/public/index.html
+index 3f88fa55949deac1cd7633f4a4bfcdf1c77cd489..e92a63bd1064dc54b7da21057692b30edb0ddd54 100644
+--- a/public/index.html
++++ b/public/index.html
+@@ -1,33 +1,33 @@
+ <!DOCTYPE html>
+ <html lang="ko">
+   <head>
+     <meta charset="utf-8" />
+     <link rel="icon" type="image/svg+xml" href="%PUBLIC_URL%/favicon.svg" />
+     <link rel="alternate icon" href="%PUBLIC_URL%/favicon.ico" />
+     <meta http-equiv="content-language" content="ko">
+-    <meta name="viewport" content="width=device-width, initial-scale=1" />
++    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+     <meta name="theme-color" content="#1e3a8a" />
+     <meta
+       name="description"
+       content="학원 수업·공지·학습 관리를 위한 Math Planner 시스템"
+     />
+     <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo192.png" />
+     <script src="https://cdn.portone.io/v2/browser-sdk.js"></script>
+     <!--
+       manifest.json provides metadata used when your web app is installed on a
+       user's mobile device or desktop. See https://developers.google.com/web/fundamentals/web-app-manifest/
+     -->
+     <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
+     <!--
+       Notice the use of %PUBLIC_URL% in the tags above.
+       It will be replaced with the URL of the `public` folder during the build.
+       Only files inside the `public` folder can be referenced from the HTML.
+ 
+       Unlike "/favicon.ico" or "favicon.ico", "%PUBLIC_URL%/favicon.ico" will
+       work correctly both with client-side routing and a non-root public URL.
+       Learn how to configure a non-root public URL by running `npm run build`.
+     -->
+     <title>채수용 수학</title>
+   </head>
+   <body>
+     <noscript>You need to enable JavaScript to run this app.</noscript>
 diff --git a/src/capacitorApp.js b/src/capacitorApp.js
-index 55627ffabc3191bd185651057488dcbeb3cc1c86..27ea94ab66b95f9cdbc8a4c5275556073547c079 100644
+index 27ea94ab66b95f9cdbc8a4c5275556073547c079..9330bc1d40c4cce379a3811bdeb8930829a00ac4 100644
 --- a/src/capacitorApp.js
 +++ b/src/capacitorApp.js
-@@ -1,30 +1,34 @@
+@@ -1,34 +1,46 @@
  const getCapacitorBridge = () => window.Capacitor;
  
++const isDevelopment = process.env.NODE_ENV === 'development';
++
  const callPluginMethod = async (plugin, method, options) => {
    try {
      if (plugin?.[method]) {
@@ -23,13 +64,25 @@ index 55627ffabc3191bd185651057488dcbeb3cc1c86..27ea94ab66b95f9cdbc8a4c527555607
      return;
    }
  
-+  document.documentElement.classList.add('capacitor-native');
-+  document.body?.classList.add('capacitor-native');
+   document.documentElement.classList.add('capacitor-native');
+   document.body?.classList.add('capacitor-native');
+ 
++  if (isDevelopment) {
++    console.log('[capacitor] native class applied');
++    requestAnimationFrame(() => {
++      const safeTopValue = getComputedStyle(document.documentElement).getPropertyValue('--app-safe-top').trim();
++      console.log('[capacitor] safeTop value', safeTopValue || '0px');
++    });
++  }
 +
    const { App, Keyboard, SplashScreen, StatusBar } = capacitor.Plugins ?? {};
  
-+  callPluginMethod(StatusBar, 'setOverlaysWebView', { overlay: false });
-   callPluginMethod(StatusBar, 'setStyle', { style: 'DEFAULT' });
+-  callPluginMethod(StatusBar, 'setOverlaysWebView', { overlay: false });
+-  callPluginMethod(StatusBar, 'setStyle', { style: 'DEFAULT' });
++  if (capacitor.getPlatform?.() === 'ios') {
++    callPluginMethod(StatusBar, 'setOverlaysWebView', { overlay: false });
++    callPluginMethod(StatusBar, 'setStyle', { style: 'DEFAULT' });
++  }
    callPluginMethod(SplashScreen, 'hide');
    callPluginMethod(Keyboard, 'setResizeMode', { mode: 'body' });
  
@@ -39,10 +92,10 @@ index 55627ffabc3191bd185651057488dcbeb3cc1c86..27ea94ab66b95f9cdbc8a4c527555607
  }
 \ No newline at end of file
 diff --git a/src/components/StudentHeader.jsx b/src/components/StudentHeader.jsx
-index 4a68bf758f76f8a0e1be970f0c33f93ad46a781e..a11226e41b2cdcad54463a2a9e2abc3bb48429c5 100644
+index a11226e41b2cdcad54463a2a9e2abc3bb48429c5..42d0a0525d9032b247a3385df9a56345066a1d3d 100644
 --- a/src/components/StudentHeader.jsx
 +++ b/src/components/StudentHeader.jsx
-@@ -1,53 +1,53 @@
+@@ -1,42 +1,42 @@
  // src/components/StudentHeader.jsx
  import React from 'react';
  import NotificationsIcon from '@mui/icons-material/Notifications';
@@ -59,10 +112,9 @@ index 4a68bf758f76f8a0e1be970f0c33f93ad46a781e..a11226e41b2cdcad54463a2a9e2abc3b
      const profileText = [student?.school, student ? getStudentGradeLabel(student) : ''].filter(Boolean).join(' ');
  
      return (
--        <header className="bg-white border-b border-gray-100 sticky top-0 z-30 shadow-sm shrink-0">
--            <div className="flex items-center justify-between px-4 py-2 bg-white">
-+        <header className="mobile-header bg-white border-b border-gray-100 sticky top-0 z-30 shadow-sm shrink-0">
-+            <div className="mobile-header-content flex items-center justify-between px-4 py-2 bg-white">
+-        <header className="mobile-header bg-white border-b border-gray-100 sticky top-0 z-30 shadow-sm shrink-0">
++        <header className="student-mobile-header mobile-header bg-white border-b border-gray-100 sticky top-0 z-30 shadow-sm shrink-0">
+             <div className="mobile-header-content flex items-center justify-between px-4 py-2 bg-white">
                  <div className="flex items-center gap-2 min-w-0 text-brand-dark">
                      <img
                          src={logoHorizontal}
@@ -79,8 +131,7 @@ index 4a68bf758f76f8a0e1be970f0c33f93ad46a781e..a11226e41b2cdcad54463a2a9e2abc3b
                      <button
                          type="button"
                          onClick={onOpenNotifications}
--                        className="relative p-2 rounded-lg border border-gray-200 text-gray-600 active:scale-95 hover:bg-gray-50"
-+                        className="relative min-w-11 min-h-11 p-2 rounded-lg border border-gray-200 text-gray-600 active:scale-95 hover:bg-gray-50"
+                         className="relative min-w-11 min-h-11 p-2 rounded-lg border border-gray-200 text-gray-600 active:scale-95 hover:bg-gray-50"
                          aria-label="알림센터 열기"
                      >
                          <NotificationsIcon style={{ fontSize: 20 }} />
@@ -88,38 +139,82 @@ index 4a68bf758f76f8a0e1be970f0c33f93ad46a781e..a11226e41b2cdcad54463a2a9e2abc3b
                      </button>
                      <button
                          type="button"
-                         onClick={onOpenMessages}
--                        className="relative p-2 rounded-lg border border-gray-200 text-gray-600 active:scale-95 hover:bg-gray-50"
-+                        className="relative min-w-11 min-h-11 p-2 rounded-lg border border-gray-200 text-gray-600 active:scale-95 hover:bg-gray-50"
-                         aria-label="메시지 열기"
-                     >
-                         <ChatBubbleOutlineIcon style={{ fontSize: 20 }} />
-                     </button>
-                 </div>
-             </div>
-         </header>
-     );
- }
+diff --git a/src/firebase/client.js b/src/firebase/client.js
+index d9835d96bb2869cd27344dd63cec70c22844030c..2e30f2c1b5adf0f509263b578723a8d486b9aec2 100644
+--- a/src/firebase/client.js
++++ b/src/firebase/client.js
+@@ -1,44 +1,64 @@
+ // src/firebase/client.js
+ import { Capacitor } from '@capacitor/core';
+ import { initializeApp, getApp, getApps } from "firebase/app";
+ import {
+   getAuth,
+   indexedDBLocalPersistence,
+   initializeAuth,
+ } from "firebase/auth";
+-import { getFirestore } from "firebase/firestore";
++import { getFirestore, initializeFirestore } from "firebase/firestore";
+ import { getFunctions } from "firebase/functions";
+ import { getStorage } from "firebase/storage";
+ 
+ const firebaseConfig = {
+   apiKey: "AIzaSyAjjR2yJwmwGeOMjxr_jGumpkchXpFzmcQ",
+   authDomain: "my-mathplanner-project.firebaseapp.com",
+   projectId: "my-mathplanner-project",
+   storageBucket: "my-mathplanner-project.firebasestorage.app",
+   messagingSenderId: "197602408828",
+   appId: "1:197602408828:web:c0eae7df35a06fbe070cf9",
+   measurementId: "G-ZH2BMBYE86"
+ };
+ 
+ export const firebaseApp =
+   getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+ 
+ const createAuth = () => {
+   if (!Capacitor.isNativePlatform()) {
+     return getAuth(firebaseApp);
+   }
+ 
+   try {
+     return initializeAuth(firebaseApp, {
+       persistence: indexedDBLocalPersistence,
+     });
+   } catch (error) {
+     return getAuth(firebaseApp);
+   }
+ };
+ 
+ export const auth = createAuth();
+-export const db = getFirestore(firebaseApp);
++
++const createFirestore = () => {
++  if (!Capacitor.isNativePlatform()) {
++    return getFirestore(firebaseApp);
++  }
++
++  try {
++    const firestore = initializeFirestore(firebaseApp, {
++      experimentalForceLongPolling: true,
++      useFetchStreams: false,
++    });
++    if (process.env.NODE_ENV === 'development') {
++      console.log('[firebase] firestore native longPolling enabled');
++    }
++    return firestore;
++  } catch (error) {
++    return getFirestore(firebaseApp);
++  }
++};
++
++export const db = createFirestore();
+ 
+ export const functions = getFunctions(firebaseApp, "us-central1");
+ export const storage = getStorage(firebaseApp);
 diff --git a/src/index.css b/src/index.css
-index 4961271fb9d3f46afed856d7d41607e09178acc2..fe2fd88bcf8bc5e109ba220c77efc32bc265744b 100644
+index fe2fd88bcf8bc5e109ba220c77efc32bc265744b..b4fea6c6f1fa290aaf5313d7ccdca0beb8b5703b 100644
 --- a/src/index.css
 +++ b/src/index.css
-@@ -28,26 +28,64 @@ body {
- .custom-scrollbar::-webkit-scrollbar-track {
-   @apply bg-transparent;
- }
- .custom-scrollbar::-webkit-scrollbar-thumb {
-   @apply bg-brand-gray/50 rounded-full;
- }
- .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-   @apply bg-brand-gray;
- }
- 
- /* 애니메이션 */
- @keyframes fadeInUp {
-   from { opacity: 0; transform: translateY(10px); }
-   to { opacity: 1; transform: translateY(0); }
- }
+@@ -43,49 +43,54 @@ body {
  .animate-fade-in-up {
    animation: fadeInUp 0.4s ease-out forwards;
  }
@@ -130,54 +225,142 @@ index 4961271fb9d3f46afed856d7d41607e09178acc2..fe2fd88bcf8bc5e109ba220c77efc32b
  }
  .animate-fade-in {
    animation: fadeIn 0.3s ease-out forwards;
--}
-\ No newline at end of file
-+}
-+:root {
-+  --app-safe-top: env(safe-area-inset-top, 0px);
-+  --app-safe-bottom: env(safe-area-inset-bottom, 0px);
-+}
-+
-+body.capacitor-native,
-+html.capacitor-native {
-+  background: #f8fafc;
-+}
-+
-+.capacitor-native .mobile-screen {
-+  min-height: 100dvh;
-+}
-+
-+.capacitor-native .mobile-header {
-+  padding-top: var(--app-safe-top);
-+  min-height: calc(56px + var(--app-safe-top));
-+}
-+
-+.capacitor-native .mobile-header-content {
-+  min-height: 56px;
-+}
-+
-+.back-button,
-+.mobile-back-button {
-+  min-width: 44px;
-+  min-height: 44px;
-+  display: flex;
-+  align-items: center;
-+  justify-content: center;
-+  position: relative;
-+  z-index: 20;
-+  pointer-events: auto;
-+}
-+
-+.capacitor-native .mobile-bottom-safe {
-+  padding-bottom: var(--app-safe-bottom);
-+}
+ }
+ :root {
+   --app-safe-top: env(safe-area-inset-top, 0px);
+   --app-safe-bottom: env(safe-area-inset-bottom, 0px);
+ }
+ 
+ body.capacitor-native,
+ html.capacitor-native {
+   background: #f8fafc;
+ }
+ 
+ .capacitor-native .mobile-screen {
+   min-height: 100dvh;
+ }
+ 
++.capacitor-native .student-mobile-header,
++.capacitor-native .parent-mobile-header,
+ .capacitor-native .mobile-header {
+-  padding-top: var(--app-safe-top);
+-  min-height: calc(56px + var(--app-safe-top));
++  padding-top: max(var(--app-safe-top), 44px);
++  min-height: calc(64px + max(var(--app-safe-top), 44px));
++  height: auto;
++  box-sizing: border-box;
+ }
+ 
+ .capacitor-native .mobile-header-content {
+-  min-height: 56px;
++  min-height: 64px;
+ }
+ 
+ .back-button,
+ .mobile-back-button {
+   min-width: 44px;
+   min-height: 44px;
+   display: flex;
+   align-items: center;
+   justify-content: center;
+   position: relative;
+-  z-index: 20;
++  z-index: 50;
+   pointer-events: auto;
++  flex-shrink: 0;
+ }
+ 
+ .capacitor-native .mobile-bottom-safe {
+   padding-bottom: var(--app-safe-bottom);
+ }
+diff --git a/src/output.css b/src/output.css
+index 4dcf73be6cd5df5cf0e22185df8a483e54789f40..4b924e33e9d643b02bdf9c4599b05f4de786904f 100644
+--- a/src/output.css
++++ b/src/output.css
+@@ -3733,69 +3733,74 @@ body{
+   }
+ 
+   to {
+     opacity: 1;
+   }
+ }
+ 
+ .animate-fade-in {
+   animation: fadeIn 0.3s ease-out forwards;
+ }
+ 
+ :root {
+   --app-safe-top: env(safe-area-inset-top, 0px);
+   --app-safe-bottom: env(safe-area-inset-bottom, 0px);
+ }
+ 
+ body.capacitor-native,
+ html.capacitor-native {
+   background: #f8fafc;
+ }
+ 
+ .capacitor-native .mobile-screen {
+   min-height: 100dvh;
+ }
+ 
++.capacitor-native .student-mobile-header,
++.capacitor-native .parent-mobile-header,
+ .capacitor-native .mobile-header {
+-  padding-top: var(--app-safe-top);
+-  min-height: calc(56px + var(--app-safe-top));
++  padding-top: max(var(--app-safe-top), 44px);
++  min-height: calc(64px + max(var(--app-safe-top), 44px));
++  height: auto;
++  box-sizing: border-box;
+ }
+ 
+ .capacitor-native .mobile-header-content {
+-  min-height: 56px;
++  min-height: 64px;
+ }
+ 
+ .back-button,
+ .mobile-back-button {
+   min-width: 44px;
+   min-height: 44px;
+   display: flex;
+   align-items: center;
+   justify-content: center;
+   position: relative;
+-  z-index: 20;
++  z-index: 50;
+   pointer-events: auto;
++  flex-shrink: 0;
+ }
+ 
+ .capacitor-native .mobile-bottom-safe {
+   padding-bottom: var(--app-safe-bottom);
+ }
+ 
+ .first\:border-t-0:first-child{
+   border-top-width: 0px;
+ }
+ 
+ .last\:border-b-0:last-child{
+   border-bottom-width: 0px;
+ }
+ 
+ .focus-within\:border-\[\#334a91\]:focus-within{
+   --tw-border-opacity: 1;
+   border-color: rgb(51 74 145 / var(--tw-border-opacity, 1));
+ }
+ 
+ .focus-within\:ring-2:focus-within{
+   --tw-ring-offset-shadow: var(--tw-ring-inset) 0 0 0 var(--tw-ring-offset-width) var(--tw-ring-offset-color);
+   --tw-ring-shadow: var(--tw-ring-inset) 0 0 0 calc(2px + var(--tw-ring-offset-width)) var(--tw-ring-color);
+   box-shadow: var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow, 0 0 #0000);
+ }
+ 
 diff --git a/src/pages/ParentHome.jsx b/src/pages/ParentHome.jsx
-index ab6853787c2fba8d55b422aeaa2357800c62822c..f5e00676c6d83fb8d1818afdcca526eec19701df 100644
+index f5e00676c6d83fb8d1818afdcca526eec19701df..7d18e68a83f40ee151d567f40235add10908c287 100644
 --- a/src/pages/ParentHome.jsx
 +++ b/src/pages/ParentHome.jsx
-@@ -1223,71 +1223,71 @@ export default function ParentHome({
-         { id: 'learning', icon: 'clipboardCheck', label: '학습관리' },
-         { id: 'schedule', icon: 'calendar', label: '일정' },
+@@ -1225,51 +1225,51 @@ export default function ParentHome({
          { id: 'more', icon: 'menu', label: '전체' },
      ];
  
@@ -201,13 +384,11 @@ index ab6853787c2fba8d55b422aeaa2357800c62822c..f5e00676c6d83fb8d1818afdcca526ee
      }
  
      return (
--        <div className={`bg-gray-50 flex flex-col relative font-sans ${embedded ? 'h-full min-h-0' : 'min-h-screen'}`}>
-+        <div className={`mobile-screen bg-gray-50 flex flex-col relative font-sans ${embedded ? 'h-full min-h-0' : 'min-h-screen'}`}>
+         <div className={`mobile-screen bg-gray-50 flex flex-col relative font-sans ${embedded ? 'h-full min-h-0' : 'min-h-screen'}`}>
              {/* 헤더 & 자녀 선택 */}
--            <div className="bg-white sticky top-0 z-30 shadow-sm">
--                <div className="flex items-center justify-between px-4 py-2 border-b border-gray-100 bg-white">
-+            <div className="mobile-header bg-white sticky top-0 z-30 shadow-sm">
-+                <div className="mobile-header-content flex items-center justify-between px-4 py-2 border-b border-gray-100 bg-white">
+-            <div className="mobile-header bg-white sticky top-0 z-30 shadow-sm">
++            <div className="parent-mobile-header mobile-header bg-white sticky top-0 z-30 shadow-sm">
+                 <div className="mobile-header-content flex items-center justify-between px-4 py-2 border-b border-gray-100 bg-white">
                      <div className="flex items-center gap-2 min-w-0">
                          <img
                              src={logoHorizontal}
@@ -220,13 +401,11 @@ index ab6853787c2fba8d55b422aeaa2357800c62822c..f5e00676c6d83fb8d1818afdcca526ee
                          </div>
                      </div>
                      <div className="flex items-center gap-2">
--                        <button type="button" onClick={() => (isMasterPreview || readOnly ? showMasterViewUnavailable('알림') : setIsNotificationOpen(true))} className="relative p-2 rounded-lg border border-gray-200 text-gray-600">
-+                        <button type="button" onClick={() => (isMasterPreview || readOnly ? showMasterViewUnavailable('알림') : setIsNotificationOpen(true))} className="relative min-w-11 min-h-11 p-2 rounded-lg border border-gray-200 text-gray-600">
+                         <button type="button" onClick={() => (isMasterPreview || readOnly ? showMasterViewUnavailable('알림') : setIsNotificationOpen(true))} className="relative min-w-11 min-h-11 p-2 rounded-lg border border-gray-200 text-gray-600">
                              <NotificationsIcon style={{ fontSize: 20 }} />
                              {hasUnread && <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />}
                          </button>
--                        <button type="button" onClick={() => (isMasterPreview || readOnly ? showMasterViewUnavailable('메신저') : setIsMessengerPage(true))} className="relative p-2 rounded-lg border border-gray-200 text-gray-600">
-+                        <button type="button" onClick={() => (isMasterPreview || readOnly ? showMasterViewUnavailable('메신저') : setIsMessengerPage(true))} className="relative min-w-11 min-h-11 p-2 rounded-lg border border-gray-200 text-gray-600">
+                         <button type="button" onClick={() => (isMasterPreview || readOnly ? showMasterViewUnavailable('메신저') : setIsMessengerPage(true))} className="relative min-w-11 min-h-11 p-2 rounded-lg border border-gray-200 text-gray-600">
                              <ChatBubbleOutlineIcon style={{ fontSize: 20 }} />
                          </button>
                      </div>
@@ -234,196 +413,11 @@ index ab6853787c2fba8d55b422aeaa2357800c62822c..f5e00676c6d83fb8d1818afdcca526ee
              </div>
  
              <main ref={mainScrollRef} className={`flex-1 w-full max-w-md mx-auto p-4 overflow-y-auto custom-scrollbar md:max-w-7xl ${embedded ? 'min-h-0 pb-4' : 'pb-24'}`}>
-                 {/* [라우팅 분기 1] 리포트 상세 화면 */}
-                 {selectedReportId ? (
-                     <ParentSessionReport
-                         report={activeReport}
-                         onBack={() => setSelectedReportId(null)}
-                     />
-                 ) : selectedClassroomId ? (
-                     /* [라우팅 분기 2] 강의실 화면 */
-                     <ParentClassroomView
-                         cclasses={classes} lessonLogs={filteredLessonLogs} attendanceLogs={filteredAttendanceLogs}
-                         selectedClassId={selectedClassroomId} setSelectedClassId={setSelectedClassroomId}
-                         videoProgress={filteredVideoProgress} homeworkAssignments={filteredHomeworkAssignments} homeworkResults={homeworkResults}
-                         tests={filteredTests} grades={grades}
-                         onNavigateToTab={() => { setSelectedClassroomId(null); setActiveTab('report'); }}
-                         onOpenReport={(sessionId) => setSelectedReportId(sessionId)}
-                         activeStudentName={activeChildName}
-                     />
-                 ) : (
-diff --git a/src/pages/StudentHome.jsx b/src/pages/StudentHome.jsx
-index 5385db9b7695cb4d962de7379f9777181e511aad..b6e259cab6602fd62663a109c122c1b1296d1c83 100644
---- a/src/pages/StudentHome.jsx
-+++ b/src/pages/StudentHome.jsx
-@@ -569,51 +569,51 @@ export default function StudentHome({
- 
-     const sentLessonReports = useMemo(() => (Array.isArray(lessonReports) ? lessonReports : [])
-         .filter((report) => report?.status === 'sent' && String(report?.studentId || '') === String(studentId || '') && isVisibleClassItem(report))
-         .map((report) => ({ ...report, className: classes.find((c) => String(c.id) === String(report.classId))?.name || report.classId }))
-         .sort((a, b) => String(b.lessonDate || '').localeCompare(String(a.lessonDate || ''))), [lessonReports, studentId, isVisibleClassItem, classes]);
- 
-     const navItems = [
-         { id: 'home', icon: 'home', label: '홈' },
-         { id: 'class', icon: 'fileText', label: '강의실' },
-         { id: 'learning', icon: 'clipboardCheck', label: '학습관리' },
-         { id: 'schedule', icon: 'calendar', label: '일정' },
-         { id: 'menu', icon: 'menu', label: '전체' },
-     ];
- 
-     if (isMessengerPage) {
-         return (
-             <StudentMessengerPage
-                 studentId={studentId}
-                 student={student}
-                 onBack={() => setIsMessengerPage(false)}
-             />
-         );
-     }
- 
-     return (
--        <div className={`bg-gray-50 flex flex-col relative font-sans ${embedded ? 'h-full min-h-0' : 'min-h-screen'}`}>
-+        <div className={`mobile-screen bg-gray-50 flex flex-col relative font-sans ${embedded ? 'h-full min-h-0' : 'min-h-screen'}`}>
-             <StudentHeader student={student} onOpenNotifications={handleOpenNotification} onOpenMessages={handleOpenMessages} hasUnread={hasUnread} />
-             {/* <div style={{position:'fixed', top:10, right:10, zIndex:9999, background:'#fff', padding:6}}>
-                 activeTab: {activeTab}
-             </div> */}
- 
-             <main className={`flex-1 w-full max-w-md mx-auto p-4 overflow-y-auto custom-scrollbar md:max-w-7xl ${embedded ? 'min-h-0 pb-4' : 'pb-24'}`}>
-                 {!student ? (
-                     <div className="p-6 text-center text-gray-500">
-                         학생 정보를 불러오는 중이거나
-                         <br />
-                         계정이 아직 학원에 연결되지 않았습니다.
-                         <br />
-                         관리자에게 문의해주세요.
-                     </div>
-                 ) : selectedClassId ? (
-                     <ClassroomView
-                         classes={classes}
-                         lessonLogs={filteredLessonLogs}
-                         attendanceLogs={filteredAttendanceLogs}
-                         studentDocId={studentDocId}
-                         studentAuthUid={studentAuthUid}
-                         selectedClassId={selectedClassId}
-                         setSelectedClassId={setSelectedClassId}
-                         videoProgress={filteredVideoProgress}
-                         onSaveVideoProgress={onSaveVideoProgress}
-diff --git a/src/pages/parent/ParentBoardPage.jsx b/src/pages/parent/ParentBoardPage.jsx
-index c693e218a860aac95e1b58b5e6bdf46f72d9ac58..f887e26912b426bfef06d92e5f7a4ad2760a307b 100644
---- a/src/pages/parent/ParentBoardPage.jsx
-+++ b/src/pages/parent/ParentBoardPage.jsx
-@@ -1,46 +1,46 @@
- import React, { useMemo, useState } from 'react';
- import { Icon } from '../../utils/helpers';
- import {
-     formatNoticeDate,
-     getNoticeDateValue,
-     getNoticePreviewText,
-     sortNoticesForDisplay,
- } from '../../utils/notices';
- 
- export default function ParentBoardPage({ notices = [], onBack }) {
-     const [expandedNoticeId, setExpandedNoticeId] = useState(null);
-     const sortedNotices = useMemo(() => sortNoticesForDisplay(notices), [notices]);
- 
-     return (
-         <section className="space-y-4">
-             <div className="flex items-center gap-3">
-                 {onBack && (
-                     <button
-                         type="button"
-                         onClick={onBack}
--                        className="w-10 h-10 rounded-full border border-gray-200 bg-white text-gray-700 shadow-sm flex items-center justify-center active:scale-95"
-+                        className="mobile-back-button w-11 h-11 rounded-full border border-gray-200 bg-white text-gray-700 shadow-sm flex items-center justify-center active:scale-95"
-                         aria-label="이전 화면으로 돌아가기"
-                     >
-                         ←
-                     </button>
-                 )}
-                 <div>
-                     <h2 className="text-xl font-extrabold text-gray-900">게시판</h2>
-                     <p className="text-xs text-gray-500">학원에서 전달한 안내와 게시글을 확인하세요.</p>
-                 </div>
-             </div>
- 
-             {sortedNotices.length > 0 ? (
-                 <div className="space-y-3">
-                     {sortedNotices.map((notice, index) => {
-                         const noticeId = notice.id || `${notice.title || 'notice'}-${index}`;
-                         const isExpanded = expandedNoticeId === noticeId;
-                         return (
-                             <article
-                                 key={noticeId}
-                                 className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm space-y-3"
-                             >
-                                 <button
-                                     type="button"
-                                     onClick={() => setExpandedNoticeId(isExpanded ? null : noticeId)}
-                                     className="w-full text-left space-y-2"
-diff --git a/src/pages/parent/ParentClassroomView.jsx b/src/pages/parent/ParentClassroomView.jsx
-index c91937903a04ff3c9a37fb38c578058ed38f2eae..a858e2f2318bb403edf5a4305b1fb4bb7fe5b030 100644
---- a/src/pages/parent/ParentClassroomView.jsx
-+++ b/src/pages/parent/ParentClassroomView.jsx
-@@ -204,51 +204,51 @@ export default function ParentClassroomView({
-                                     </a>
-                                 ) : (
-                                     <span
-                                         key={idx}
-                                         className="flex items-center gap-2 p-2 rounded-lg bg-gray-100 text-gray-500"
-                                     >
-                                         <Icon name="download" className="w-4 h-4 text-gray-400" />
-                                         <span className="text-xs font-medium truncate">
-                                             {mat.name} (출결 확인 후 다운로드 가능)
-                                         </span>
-                                     </span>
-                                 )
-                             ))}
-                         </div>
-                     </div>
-                 )}
-             </div>
-         );
-     };
- 
-     return (
-         <div className="animate-fade-in-up pb-20 space-y-6 relative">
-             {/* 헤더 */}
-             <div className="flex items-center justify-between gap-3">
-                 <div className="flex items-center gap-3">
--                    <button onClick={() => setSelectedClassId(null)} className="p-2 bg-white border border-gray-200 rounded-xl text-gray-600 active:bg-gray-100 transition-colors shadow-sm">
-+                    <button onClick={() => setSelectedClassId(null)} className="mobile-back-button p-2 bg-white border border-gray-200 rounded-xl text-gray-600 active:bg-gray-100 transition-colors shadow-sm">
-                         <Icon name="chevronLeft" className="w-5 h-5" /> 
-                     </button>
-                     <div>
-                         <h2 className="text-lg font-bold text-gray-900">{selectedClass?.name}</h2>
-                         <p className="text-xs text-gray-500">{formatClassScheduleKo(selectedClass) || '시간 미정'}</p>
-                     </div>
-                 </div>
-                 <button
-                     type="button"
-                     disabled
-                     className="text-xs font-semibold text-gray-400 border border-gray-200 px-3 py-1.5 rounded-full cursor-not-allowed"
-                 >
-                     {activeStudentName ? `${activeStudentName} (전환 준비 중)` : '자녀 전환 준비 중'}
-                 </button>
-             </div>
- 
-             {/* [A] 상단 상태 요약 (3단 레이아웃) */}
-             <div className="grid grid-cols-3 gap-3">
-                 {/* 1. 출결 */}
-                 <div className={`p-4 rounded-2xl shadow-sm border flex flex-col items-center justify-center text-center
-                     ${stats.attendance.status === 'danger' ? 'bg-red-50 border-red-100' : 'bg-white border-gray-100'}`}>
-                     <div className={`p-2 rounded-full mb-2 ${stats.attendance.status === 'danger' ? 'bg-red-100 text-red-600' : 'bg-gray-50 text-gray-600'}`}>
-                         <Icon name="user" className="w-5 h-5" />
-                     </div>
-                     <span className="text-xs text-gray-500 font-bold mb-0.5">최근 4회 출결</span>
 diff --git a/src/pages/parent/ParentMessengerPage.jsx b/src/pages/parent/ParentMessengerPage.jsx
-index 288c42e22a5ff5b51abf43540f0f94259b1ff7ac..92967c0ea1a6bebf43f6ac795b81054734cc1f4b 100644
+index 92967c0ea1a6bebf43f6ac795b81054734cc1f4b..905586cea1b52d095d7602177fa73a9f5963716f 100644
 --- a/src/pages/parent/ParentMessengerPage.jsx
 +++ b/src/pages/parent/ParentMessengerPage.jsx
-@@ -83,86 +83,86 @@ export default function ParentMessengerPage({ studentId, student, onBack }) {
-         { slot: SLOTS.TEACHER, room: teacherRoom, id: teacherRoom?.id || 'parent-teacher-placeholder', title: getTeacherDisplayName(), roomType: ROOM_TYPES.PARENT_TEACHER },
+@@ -84,85 +84,85 @@ export default function ParentMessengerPage({ studentId, student, onBack }) {
      ], [teacherRoom, instituteRoom]);
  
      const handleOpenRoom = (slot) => {
@@ -448,12 +442,10 @@ index 288c42e22a5ff5b51abf43540f0f94259b1ff7ac..92967c0ea1a6bebf43f6ac795b810547
          const currentRoomId = String(currentSlot.room?.roomId || currentSlot.room?.id || '').trim();
          if (!currentRoomId) {
              return (
--                <div className="h-screen min-h-screen bg-gray-50 flex flex-col overflow-hidden">
--                    <header className="h-14 bg-white border-b border-gray-100 px-4 flex items-center gap-3">
--                        <button type="button" onClick={() => setSelectedSlot(null)} className="text-gray-700"><ArrowBackIosNewIcon style={{ fontSize: 18 }} /></button>
-+                <div className="mobile-screen h-screen min-h-screen bg-gray-50 flex flex-col overflow-hidden">
-+                    <header className="mobile-header h-14 bg-white border-b border-gray-100 px-4 flex items-center gap-3">
-+                        <button type="button" onClick={() => setSelectedSlot(null)} className="mobile-back-button text-gray-700"><ArrowBackIosNewIcon style={{ fontSize: 18 }} /></button>
+                 <div className="mobile-screen h-screen min-h-screen bg-gray-50 flex flex-col overflow-hidden">
+-                    <header className="mobile-header h-14 bg-white border-b border-gray-100 px-4 flex items-center gap-3">
++                    <header className="mobile-header bg-white border-b border-gray-100 px-4 flex items-center gap-3">
+                         <button type="button" onClick={() => setSelectedSlot(null)} className="mobile-back-button text-gray-700"><ArrowBackIosNewIcon style={{ fontSize: 18 }} /></button>
                          <h1 className="text-base font-semibold text-gray-900 truncate">{currentSlot.title}</h1>
                      </header>
                      <div className="flex-1 flex items-center justify-center text-sm text-gray-500">대화방을 찾을 수 없습니다.</div>
@@ -461,12 +453,10 @@ index 288c42e22a5ff5b51abf43540f0f94259b1ff7ac..92967c0ea1a6bebf43f6ac795b810547
              );
          }
          return (
--            <div className="h-screen min-h-screen bg-gray-50 flex flex-col overflow-hidden">
--                <header className="h-14 bg-white border-b border-gray-100 px-4 flex items-center gap-3">
--                    <button type="button" onClick={() => setSelectedSlot(null)} className="text-gray-700"><ArrowBackIosNewIcon style={{ fontSize: 18 }} /></button>
-+            <div className="mobile-screen h-screen min-h-screen bg-gray-50 flex flex-col overflow-hidden">
-+                <header className="mobile-header h-14 bg-white border-b border-gray-100 px-4 flex items-center gap-3">
-+                    <button type="button" onClick={() => setSelectedSlot(null)} className="mobile-back-button text-gray-700"><ArrowBackIosNewIcon style={{ fontSize: 18 }} /></button>
+             <div className="mobile-screen h-screen min-h-screen bg-gray-50 flex flex-col overflow-hidden">
+-                <header className="mobile-header h-14 bg-white border-b border-gray-100 px-4 flex items-center gap-3">
++                <header className="mobile-header bg-white border-b border-gray-100 px-4 flex items-center gap-3">
+                     <button type="button" onClick={() => setSelectedSlot(null)} className="mobile-back-button text-gray-700"><ArrowBackIosNewIcon style={{ fontSize: 18 }} /></button>
                      <h1 className="text-base font-semibold text-gray-900 truncate">{currentSlot.title}</h1>
                  </header>
                  <div className="flex-1 min-h-0">
@@ -493,12 +483,10 @@ index 288c42e22a5ff5b51abf43540f0f94259b1ff7ac..92967c0ea1a6bebf43f6ac795b810547
      }
  
      return (
--        <div className="h-screen min-h-screen bg-gray-50 overflow-y-auto">
--            <header className="h-14 bg-white border-b border-gray-100 px-4 flex items-center gap-3 sticky top-0">
--                <button type="button" onClick={onBack} className="text-gray-700"><ArrowBackIosNewIcon style={{ fontSize: 18 }} /></button>
-+        <div className="mobile-screen h-screen min-h-screen bg-gray-50 overflow-y-auto">
-+            <header className="mobile-header h-14 bg-white border-b border-gray-100 px-4 flex items-center gap-3 sticky top-0 z-30">
-+                <button type="button" onClick={onBack} className="mobile-back-button text-gray-700"><ArrowBackIosNewIcon style={{ fontSize: 18 }} /></button>
+         <div className="mobile-screen h-screen min-h-screen bg-gray-50 overflow-y-auto">
+-            <header className="mobile-header h-14 bg-white border-b border-gray-100 px-4 flex items-center gap-3 sticky top-0 z-30">
++            <header className="mobile-header bg-white border-b border-gray-100 px-4 flex items-center gap-3 sticky top-0 z-30">
+                 <button type="button" onClick={onBack} className="mobile-back-button text-gray-700"><ArrowBackIosNewIcon style={{ fontSize: 18 }} /></button>
                  <h1 className="text-base font-semibold text-gray-900">메신저</h1>
              </header>
              <section className="py-2">
@@ -518,108 +506,11 @@ index 288c42e22a5ff5b51abf43540f0f94259b1ff7ac..92967c0ea1a6bebf43f6ac795b810547
          </div>
      );
  }
-diff --git a/src/pages/parent/ParentSessionReport.jsx b/src/pages/parent/ParentSessionReport.jsx
-index 4e707735a76d7ab99a482ec856c836392d62112d..8a22609f883f28c43730fb1233be28633d5cc35a 100644
---- a/src/pages/parent/ParentSessionReport.jsx
-+++ b/src/pages/parent/ParentSessionReport.jsx
-@@ -1,43 +1,43 @@
- import React from 'react';
- import { Icon } from '../../utils/helpers';
- 
- export default function ParentSessionReport({ report, onBack }) {
-     if (!report) return null;
- 
-     // 상태별 색상 매핑 헬퍼
-     const getStatusColor = (val) => {
-         if (['결석', '미제출', '미응시'].includes(val)) return 'text-red-600 bg-red-50 border-red-100';
-         if (['지각', '숙제 출제'].includes(val)) return 'text-orange-600 bg-orange-50 border-orange-100';
-         return 'text-[#455fab] bg-[#f1f4ff] border-[#eef2ff]';
-     };
- 
-     return (
-         <div className="animate-fade-in-up pb-20 space-y-6">
-             {/* 4-1. 헤더 영역 */}
-             <div className="flex items-center gap-3 mb-2">
--                <button onClick={onBack} className="p-2 bg-white border border-gray-200 rounded-xl text-gray-600 active:bg-gray-100 transition-colors shadow-sm">
-+                <button onClick={onBack} className="mobile-back-button p-2 bg-white border border-gray-200 rounded-xl text-gray-600 active:bg-gray-100 transition-colors shadow-sm">
-                     <Icon name="chevronLeft" className="w-5 h-5" />
-                 </button>
-                 <div>
-                     <h2 className="text-xl font-bold text-gray-900">수업 리포트</h2>
-                     <p className="text-xs text-gray-500">{report.date} | {report.className}</p>
-                 </div>
-             </div>
- 
-             {/* 4-2. 상단 요약 카드 (2x2 Grid) */}
-             <div className="grid grid-cols-2 gap-3">
-                 <SummaryCard label="출결" value={report.attendance} colorClass={getStatusColor(report.attendance)} icon="user" />
-                 <SummaryCard label="과제" value={report.homeworkStatus} colorClass={getStatusColor(report.homeworkStatus)} icon="fileText" />
-                 <SummaryCard label="진도" value={report.progressTopic} colorClass="text-gray-800 bg-white border-gray-200" icon="book" />
-                 <SummaryCard label="오늘 테스트" value={report.testScore} colorClass={report.testScore === '테스트 없음' ? 'text-gray-400 bg-gray-50' : 'text-[#455fab] bg-blue-50 border-blue-100'} icon="edit" />
-             </div>
- 
- 
-             {Array.isArray(report.testDetails) && report.testDetails.length > 0 && (
-                 <Section title="시험">
-                     <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm text-sm text-gray-700 space-y-1">
-                         <p className="font-semibold text-gray-900">{report.testDetails[0]}</p>
-                         {report.testDetails.slice(1).map((line, index) => (
-                             <p key={`test-detail-${index}`}>{line}</p>
-                         ))}
-                     </div>
 diff --git a/src/pages/student/ClassroomView.jsx b/src/pages/student/ClassroomView.jsx
-index e55e66a377e8a8f5465d5a64e36dd8a069afe6ea..8cdead93c88c1bfe7484b47df2bfab6466a843e4 100644
+index 8cdead93c88c1bfe7484b47df2bfab6466a843e4..05d9d0bd042bcdd044763f734ce8278f37d3a5bc 100644
 --- a/src/pages/student/ClassroomView.jsx
 +++ b/src/pages/student/ClassroomView.jsx
-@@ -283,99 +283,99 @@ export default function ClassroomView({
-                                 ) : (
-                                     <span
-                                         key={idx}
-                                         className="flex items-center gap-3 p-3 rounded-xl bg-gray-100 border border-gray-200 text-gray-500"
-                                     >
-                                         <div className="w-8 h-8 rounded-lg bg-gray-200 flex items-center justify-center flex-shrink-0 text-gray-400">
-                                             <Icon name="download" className="w-4 h-4" />
-                                         </div>
-                                         <span className="text-sm font-medium truncate flex-1">
-                                             {mat.name} (출결 확인 후 다운로드 가능)
-                                         </span>
-                                     </span>
-                                 )
-                             ))}
-                         </div>
-                     </div>
-                 )}
-             </div>
-         );
-     };
- 
-     if (viewMode === 'list') {
-         return (
-             <div className="animate-fade-in-up pb-20 space-y-6 relative">
-                 <div className="flex items-center gap-3">
--                    <button onClick={() => setSelectedClassId(null)} className="p-2 bg-white rounded-xl text-gray-600 hover:bg-gray-100 transition-colors shadow-sm active:scale-95">
-+                    <button onClick={() => setSelectedClassId(null)} className="mobile-back-button p-2 bg-white rounded-xl text-gray-600 hover:bg-gray-100 transition-colors shadow-sm active:scale-95">
-                         <Icon name="chevronLeft" className="w-6 h-6" />
-                     </button>
-                     <div>
-                         <h2 className="text-xl font-bold text-gray-900">{selectedClass?.name}</h2>
-                         <p className="text-xs text-gray-500">{formatClassScheduleKo(selectedClass) || '시간 미정'}</p>
-                     </div>
-                 </div>
- 
- 
-                 <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                     <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-                         {/* ✅ [수정] 복습 영상 아이콘: list -> video */}
-                         <h3 className="font-bold text-gray-800 flex items-center gap-2"><Icon name="video" className="w-5 h-5 text-[#455fab]" />복습 영상 ({sortedLogs.length})</h3>
-                     </div>
-                     <div className="divide-y divide-gray-100">
-                         {sortedLogs.length > 0 ? sortedLogs.map(log => renderLogItem(log)) : (<div className="p-10 text-center text-gray-400 text-sm">등록된 강의가 없습니다.</div>)}
-                     </div>
-                 </div>
- 
-                 {isAttendanceDetailOpen && (
-                     <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => setIsAttendanceDetailOpen(false)}>
+@@ -330,51 +330,51 @@ export default function ClassroomView({
                          <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl animate-fade-in-up max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
                              <div className="flex justify-between items-center mb-4 pb-4 border-b border-gray-100">
                                  <h3 className="text-lg font-bold text-gray-900">출결 상세 기록</h3>
@@ -644,12 +535,10 @@ index e55e66a377e8a8f5465d5a64e36dd8a069afe6ea..8cdead93c88c1bfe7484b47df2bfab64
  
      // 2. 플레이어 뷰
      return (
--        <div className="fixed inset-0 z-50 bg-white flex flex-col animate-fade-in-up">
--            <div className="flex-none h-14 flex items-center gap-3 px-4 border-b border-gray-200 bg-white shadow-sm z-20">
--                <button onClick={() => { setViewMode('list'); onClearTargetMemo(); }} className="p-2 bg-gray-100 rounded-lg text-gray-600 hover:bg-gray-200 transition-colors active:scale-95"><Icon name="chevronLeft" className="w-5 h-5" /></button>
-+        <div className="mobile-screen fixed inset-0 z-50 bg-white flex flex-col animate-fade-in-up">
-+            <div className="mobile-header flex-none h-14 flex items-center gap-3 px-4 border-b border-gray-200 bg-white shadow-sm z-20">
-+                <button onClick={() => { setViewMode('list'); onClearTargetMemo(); }} className="mobile-back-button p-2 bg-gray-100 rounded-lg text-gray-600 hover:bg-gray-200 transition-colors active:scale-95"><Icon name="chevronLeft" className="w-5 h-5" /></button>
+         <div className="mobile-screen fixed inset-0 z-50 bg-white flex flex-col animate-fade-in-up">
+-            <div className="mobile-header flex-none h-14 flex items-center gap-3 px-4 border-b border-gray-200 bg-white shadow-sm z-20">
++            <div className="mobile-header flex-none flex items-center gap-3 px-4 border-b border-gray-200 bg-white shadow-sm z-20">
+                 <button onClick={() => { setViewMode('list'); onClearTargetMemo(); }} className="mobile-back-button p-2 bg-gray-100 rounded-lg text-gray-600 hover:bg-gray-200 transition-colors active:scale-95"><Icon name="chevronLeft" className="w-5 h-5" /></button>
                  <div className="flex-1 min-w-0"><h2 className="text-base font-bold text-gray-900 truncate"><span className="text-[#455fab] mr-2">[{currentLesson?.date}]</span>{currentLesson?.progress}</h2></div>
              </div>
  
@@ -674,13 +563,11 @@ index e55e66a377e8a8f5465d5a64e36dd8a069afe6ea..8cdead93c88c1bfe7484b47df2bfab64
  
                          {hasMultipleLessonVideos && (
                                  <div className="bg-gray-900 border-t border-gray-800 shrink-0">
-                                     <div className="px-4 py-3 flex items-center justify-between text-gray-100">
 diff --git a/src/pages/student/StudentMessengerPage.jsx b/src/pages/student/StudentMessengerPage.jsx
-index e755713c44d85722449820fd654456680cd417bd..c310e7542a3292c973f3349a91fc795df3dc8046 100644
+index c310e7542a3292c973f3349a91fc795df3dc8046..aa4c3ab88a69ea57e504b179403604c8533e5367 100644
 --- a/src/pages/student/StudentMessengerPage.jsx
 +++ b/src/pages/student/StudentMessengerPage.jsx
-@@ -30,86 +30,86 @@ export default function StudentMessengerPage({ studentId, student, onBack }) {
-         { slot: SLOTS.TEACHER, id: teacherRoom?.id || 'teacher-placeholder', title: getTeacherDisplayName(), room: teacherRoom, roomType: ROOM_TYPES.STUDENT_TEACHER },
+@@ -31,85 +31,85 @@ export default function StudentMessengerPage({ studentId, student, onBack }) {
      ], [teacherRoom, instituteRoom]);
  
      const handleOpenRoom = (slot) => {
@@ -705,12 +592,10 @@ index e755713c44d85722449820fd654456680cd417bd..c310e7542a3292c973f3349a91fc795d
          const canCreateCurrentRoom = Boolean(targetAuthUid && getExpectedRoomType(currentSlot.slot));
          if (!currentRoomId && !canCreateCurrentRoom) {
              return (
--                <div className="h-screen min-h-screen bg-gray-50 flex flex-col overflow-hidden">
--                    <header className="h-14 bg-white border-b border-gray-100 px-4 flex items-center gap-3">
--                        <button type="button" onClick={() => setSelectedSlot(null)} className="text-gray-700"><ArrowBackIosNewIcon style={{ fontSize: 18 }} /></button>
-+                <div className="mobile-screen h-screen min-h-screen bg-gray-50 flex flex-col overflow-hidden">
-+                    <header className="mobile-header h-14 bg-white border-b border-gray-100 px-4 flex items-center gap-3">
-+                        <button type="button" onClick={() => setSelectedSlot(null)} className="mobile-back-button text-gray-700"><ArrowBackIosNewIcon style={{ fontSize: 18 }} /></button>
+                 <div className="mobile-screen h-screen min-h-screen bg-gray-50 flex flex-col overflow-hidden">
+-                    <header className="mobile-header h-14 bg-white border-b border-gray-100 px-4 flex items-center gap-3">
++                    <header className="mobile-header bg-white border-b border-gray-100 px-4 flex items-center gap-3">
+                         <button type="button" onClick={() => setSelectedSlot(null)} className="mobile-back-button text-gray-700"><ArrowBackIosNewIcon style={{ fontSize: 18 }} /></button>
                          <h1 className="text-base font-semibold text-gray-900 truncate">{currentSlot.title}</h1>
                      </header>
                      <div className="flex-1 flex items-center justify-center text-sm text-gray-500">대화방을 준비 중입니다.</div>
@@ -718,12 +603,10 @@ index e755713c44d85722449820fd654456680cd417bd..c310e7542a3292c973f3349a91fc795d
              );
          }
          return (
--            <div className="h-screen min-h-screen bg-gray-50 flex flex-col overflow-hidden">
--                <header className="h-14 bg-white border-b border-gray-100 px-4 flex items-center gap-3">
--                    <button type="button" onClick={() => setSelectedSlot(null)} className="text-gray-700"><ArrowBackIosNewIcon style={{ fontSize: 18 }} /></button>
-+            <div className="mobile-screen h-screen min-h-screen bg-gray-50 flex flex-col overflow-hidden">
-+                <header className="mobile-header h-14 bg-white border-b border-gray-100 px-4 flex items-center gap-3">
-+                    <button type="button" onClick={() => setSelectedSlot(null)} className="mobile-back-button text-gray-700"><ArrowBackIosNewIcon style={{ fontSize: 18 }} /></button>
+             <div className="mobile-screen h-screen min-h-screen bg-gray-50 flex flex-col overflow-hidden">
+-                <header className="mobile-header h-14 bg-white border-b border-gray-100 px-4 flex items-center gap-3">
++                <header className="mobile-header bg-white border-b border-gray-100 px-4 flex items-center gap-3">
+                     <button type="button" onClick={() => setSelectedSlot(null)} className="mobile-back-button text-gray-700"><ArrowBackIosNewIcon style={{ fontSize: 18 }} /></button>
                      <h1 className="text-base font-semibold text-gray-900 truncate">{currentSlot.title}</h1>
                  </header>
                  <div className="flex-1 min-h-0">
@@ -750,12 +633,10 @@ index e755713c44d85722449820fd654456680cd417bd..c310e7542a3292c973f3349a91fc795d
      }
  
      return (
--        <div className="h-screen min-h-screen bg-gray-50 overflow-y-auto">
--            <header className="h-14 bg-white border-b border-gray-100 px-4 flex items-center gap-3 sticky top-0">
--                <button type="button" onClick={onBack} className="text-gray-700"><ArrowBackIosNewIcon style={{ fontSize: 18 }} /></button>
-+        <div className="mobile-screen h-screen min-h-screen bg-gray-50 overflow-y-auto">
-+            <header className="mobile-header h-14 bg-white border-b border-gray-100 px-4 flex items-center gap-3 sticky top-0 z-30">
-+                <button type="button" onClick={onBack} className="mobile-back-button text-gray-700"><ArrowBackIosNewIcon style={{ fontSize: 18 }} /></button>
+         <div className="mobile-screen h-screen min-h-screen bg-gray-50 overflow-y-auto">
+-            <header className="mobile-header h-14 bg-white border-b border-gray-100 px-4 flex items-center gap-3 sticky top-0 z-30">
++            <header className="mobile-header bg-white border-b border-gray-100 px-4 flex items-center gap-3 sticky top-0 z-30">
+                 <button type="button" onClick={onBack} className="mobile-back-button text-gray-700"><ArrowBackIosNewIcon style={{ fontSize: 18 }} /></button>
                  <h1 className="text-base font-semibold text-gray-900">메신저</h1>
              </header>
              <section className="py-2">

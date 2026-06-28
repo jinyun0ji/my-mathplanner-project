@@ -6,7 +6,7 @@ import {
   indexedDBLocalPersistence,
   initializeAuth,
 } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+import { getFirestore, initializeFirestore } from "firebase/firestore";
 import { getFunctions } from "firebase/functions";
 import { getStorage } from "firebase/storage";
 
@@ -38,7 +38,27 @@ const createAuth = () => {
 };
 
 export const auth = createAuth();
-export const db = getFirestore(firebaseApp);
+
+const createFirestore = () => {
+  if (!Capacitor.isNativePlatform()) {
+    return getFirestore(firebaseApp);
+  }
+
+  try {
+    const firestore = initializeFirestore(firebaseApp, {
+      experimentalForceLongPolling: true,
+      useFetchStreams: false,
+    });
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[firebase] firestore native longPolling enabled');
+    }
+    return firestore;
+  } catch (error) {
+    return getFirestore(firebaseApp);
+  }
+};
+
+export const db = createFirestore();
 
 export const functions = getFunctions(firebaseApp, "us-central1");
 export const storage = getStorage(firebaseApp);

@@ -14,7 +14,7 @@ export default function StudentHeader({
     const profileText = [student?.school, student ? getStudentGradeLabel(student) : ''].filter(Boolean).join(' ');
 
     return (
-        <header className="mobile-header bg-white border-b border-gray-100 sticky top-0 z-30 shadow-sm shrink-0">
+        <header className="student-mobile-header mobile-header bg-white border-b border-gray-100 sticky top-0 z-30 shadow-sm shrink-0">
             <div className="mobile-header-content flex items-center justify-between px-4 py-2 bg-white">
                 <div className="flex items-center gap-2 min-w-0 text-brand-dark">
                     <img

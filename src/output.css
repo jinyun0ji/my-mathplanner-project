@@ -3755,13 +3755,17 @@ html.capacitor-native {
   min-height: 100dvh;
 }
 
+.capacitor-native .student-mobile-header,
+.capacitor-native .parent-mobile-header,
 .capacitor-native .mobile-header {
-  padding-top: var(--app-safe-top);
-  min-height: calc(56px + var(--app-safe-top));
+  padding-top: max(var(--app-safe-top), 44px);
+  min-height: calc(64px + max(var(--app-safe-top), 44px));
+  height: auto;
+  box-sizing: border-box;
 }
 
 .capacitor-native .mobile-header-content {
-  min-height: 56px;
+  min-height: 64px;
 }
 
 .back-button,
@@ -3772,8 +3776,9 @@ html.capacitor-native {
   align-items: center;
   justify-content: center;
   position: relative;
-  z-index: 20;
+  z-index: 50;
   pointer-events: auto;
+  flex-shrink: 0;
 }
 
 .capacitor-native .mobile-bottom-safe {

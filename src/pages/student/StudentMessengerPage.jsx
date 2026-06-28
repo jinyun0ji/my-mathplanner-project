@@ -53,7 +53,7 @@ export default function StudentMessengerPage({ studentId, student, onBack }) {
         if (!currentRoomId && !canCreateCurrentRoom) {
             return (
                 <div className="mobile-screen h-screen min-h-screen bg-gray-50 flex flex-col overflow-hidden">
-                    <header className="mobile-header h-14 bg-white border-b border-gray-100 px-4 flex items-center gap-3">
+                    <header className="mobile-header bg-white border-b border-gray-100 px-4 flex items-center gap-3">
                         <button type="button" onClick={() => setSelectedSlot(null)} className="mobile-back-button text-gray-700"><ArrowBackIosNewIcon style={{ fontSize: 18 }} /></button>
                         <h1 className="text-base font-semibold text-gray-900 truncate">{currentSlot.title}</h1>
                     </header>
@@ -63,7 +63,7 @@ export default function StudentMessengerPage({ studentId, student, onBack }) {
         }
         return (
             <div className="mobile-screen h-screen min-h-screen bg-gray-50 flex flex-col overflow-hidden">
-                <header className="mobile-header h-14 bg-white border-b border-gray-100 px-4 flex items-center gap-3">
+                <header className="mobile-header bg-white border-b border-gray-100 px-4 flex items-center gap-3">
                     <button type="button" onClick={() => setSelectedSlot(null)} className="mobile-back-button text-gray-700"><ArrowBackIosNewIcon style={{ fontSize: 18 }} /></button>
                     <h1 className="text-base font-semibold text-gray-900 truncate">{currentSlot.title}</h1>
                 </header>
@@ -92,7 +92,7 @@ export default function StudentMessengerPage({ studentId, student, onBack }) {
 
     return (
         <div className="mobile-screen h-screen min-h-screen bg-gray-50 overflow-y-auto">
-            <header className="mobile-header h-14 bg-white border-b border-gray-100 px-4 flex items-center gap-3 sticky top-0 z-30">
+            <header className="mobile-header bg-white border-b border-gray-100 px-4 flex items-center gap-3 sticky top-0 z-30">
                 <button type="button" onClick={onBack} className="mobile-back-button text-gray-700"><ArrowBackIosNewIcon style={{ fontSize: 18 }} /></button>
                 <h1 className="text-base font-semibold text-gray-900">메신저</h1>
             </header>
