@@ -143,12 +143,13 @@ export default function AuthGate() {
         );
     }
 
-    // ✅ 로그인은 됐는데 프로필(역할) 로딩 중 또는 아직 연결 안 된 상태
+    // ✅ 로그인은 됐는데 프로필(역할) 매핑에 실패한 상태도 명확한 오류로 처리
     if (role === null) {
-        if (profileError) {
+        const unresolvedProfileError = profileError || '프로필을 불러오지 못했습니다. 다시 로그인해주세요.';
+        if (!loading) {
             return (
                 <div className="min-h-screen flex flex-col items-center justify-center gap-4 text-gray-600">
-                    <p>{profileError || '프로필을 불러오지 못했습니다. 다시 로그인해주세요.'}</p>
+                    <p>{unresolvedProfileError}</p>
                     <button
                         type="button"
                         onClick={async () => {

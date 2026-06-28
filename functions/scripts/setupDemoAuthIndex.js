@@ -31,19 +31,30 @@ async function main() {
 
     for (const entry of DEMO_AUTH_INDEX_ENTRIES) {
         const ref = db.collection('userAuthIndex').doc(entry.authUid);
+        const snapshot = await ref.get();
+        const existing = snapshot.exists ? snapshot.data() : null;
         const patch = {
             userDocId: entry.userDocId,
             role: entry.role,
             updatedAt: FieldValue.serverTimestamp(),
         };
 
+        if (snapshot.exists) {
+            console.log('[setupDemoAuthIndex] exists', ref.path, {
+                userDocId: existing?.userDocId,
+                role: existing?.role,
+                matchesExpected: existing?.userDocId === entry.userDocId && existing?.role === entry.role,
+            });
+            continue;
+        }
+
         if (dryRun) {
-            console.log('[setupDemoAuthIndex] would merge', ref.path, patch);
+            console.log('[setupDemoAuthIndex] missing; would create', ref.path, patch);
             continue;
         }
 
         await ref.set(patch, { merge: true });
-        console.log('[setupDemoAuthIndex] merged', ref.path, {
+        console.log('[setupDemoAuthIndex] created', ref.path, {
             userDocId: entry.userDocId,
             role: entry.role,
         });

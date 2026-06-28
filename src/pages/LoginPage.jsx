@@ -3,6 +3,14 @@ import React, { useState } from 'react';
 import logoHorizontal from '../assets/logo/logo-horizontal.png';
 import { Link } from 'react-router-dom';
 
+const getLoginMessage = (error) => {
+    if (error?.code === 'google-login/native-unavailable') {
+        return error.message;
+    }
+
+    return getReviewLoginMessage(error);
+};
+
 const getReviewLoginMessage = (error) => {
     const code = error?.code || '';
     if (code.startsWith('review-login/')) {
@@ -20,6 +28,7 @@ export default function LoginPage({ onSocialLogin, onEmailLogin }) {
     const [password, setPassword] = useState('');
     const [errorMessage, setErrorMessage] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [isSocialSubmitting, setIsSocialSubmitting] = useState(false);
 
     const handleReviewLogin = async (event) => {
         event.preventDefault();
@@ -34,6 +43,22 @@ export default function LoginPage({ onSocialLogin, onEmailLogin }) {
             setErrorMessage(getReviewLoginMessage(error));
         } finally {
             setIsSubmitting(false);
+        }
+    };
+
+
+    const handleGoogleLogin = async () => {
+        if (!onSocialLogin || isSocialSubmitting) return;
+
+        setErrorMessage('');
+        setIsSocialSubmitting(true);
+
+        try {
+            await onSocialLogin('google');
+        } catch (error) {
+            setErrorMessage(getLoginMessage(error));
+        } finally {
+            setIsSocialSubmitting(false);
         }
     };
 
@@ -58,8 +83,9 @@ export default function LoginPage({ onSocialLogin, onEmailLogin }) {
                     <div className="mt-6">
                         <button
                             type="button"
-                            onClick={() => onSocialLogin('google')}
-                            className="w-full inline-flex items-center justify-center gap-3 py-3 px-4 border border-gray-300 rounded-xl shadow-sm bg-white text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors"
+                            onClick={handleGoogleLogin}
+                            disabled={isSocialSubmitting}
+                            className="w-full inline-flex items-center justify-center gap-3 py-3 px-4 border border-gray-300 rounded-xl shadow-sm bg-white text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors disabled:cursor-not-allowed disabled:opacity-60"
                         >
                             <span className="sr-only">Sign in with Google</span>
                             <svg
@@ -84,8 +110,13 @@ export default function LoginPage({ onSocialLogin, onEmailLogin }) {
                                     d="M24 48c6.1 0 11.6-2 15.5-5.4l-7.8-6.1c-2.1 1.4-5 2.4-7.7 2.4-6.3 0-11.8-3.6-13.7-8.8l-7.8 3.7C6.5 42.6 14.6 48 24 48z"
                                 />
                             </svg>
-                            Google로 로그인
+                            {isSocialSubmitting ? '로그인 중...' : 'Google로 로그인'}
                         </button>
+                        {errorMessage && !isReviewLoginOpen && (
+                            <p className="mt-3 text-xs font-semibold text-rose-600" role="alert">
+                                {errorMessage}
+                            </p>
+                        )}
                     </div>
                 </div>
 

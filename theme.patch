@@ -1,120 +1,76 @@
 diff --git a/functions/scripts/setupDemoAuthIndex.js b/functions/scripts/setupDemoAuthIndex.js
-new file mode 100644
-index 0000000000000000000000000000000000000000..b4fb42b30cb3a85c0ca236a0d0ea0aae4f0c57a4
---- /dev/null
+index b4fb42b30cb3a85c0ca236a0d0ea0aae4f0c57a4..9f0c4874a5312136f303c0a98d58147853eec7d9 100644
+--- a/functions/scripts/setupDemoAuthIndex.js
 +++ b/functions/scripts/setupDemoAuthIndex.js
-@@ -0,0 +1,58 @@
-+/* eslint-disable no-console */
-+const admin = require('firebase-admin');
-+
-+const args = new Set(process.argv.slice(2));
-+const dryRun = !args.has('--write');
-+
-+const projectId = process.env.GOOGLE_CLOUD_PROJECT || process.env.GCLOUD_PROJECT;
-+
-+if (!admin.apps.length) {
-+    admin.initializeApp(projectId ? { projectId } : undefined);
-+}
-+
-+const db = admin.firestore();
-+const { FieldValue } = admin.firestore;
-+
-+const DEMO_AUTH_INDEX_ENTRIES = [
-+    {
-+        authUid: 'v2wTP8NiWMQwsVvwL6uDbPotkFz1',
-+        userDocId: 'ulloGGaEVgfhYlDJX6zi',
-+        role: 'student',
-+    },
-+    {
-+        authUid: 'qKIVPaoWfWaDhggNJ3ttyefZ59s1',
-+        userDocId: 'AEI9gfytJRPufKUp1AA1cKfNVh03',
-+        role: 'parent',
-+    },
-+];
-+
-+async function main() {
-+    console.log(`[setupDemoAuthIndex] projectId=${projectId || '(default credentials)'} mode=${dryRun ? 'dry-run' : 'write'}`);
-+
-+    for (const entry of DEMO_AUTH_INDEX_ENTRIES) {
-+        const ref = db.collection('userAuthIndex').doc(entry.authUid);
-+        const patch = {
-+            userDocId: entry.userDocId,
-+            role: entry.role,
-+            updatedAt: FieldValue.serverTimestamp(),
-+        };
-+
-+        if (dryRun) {
-+            console.log('[setupDemoAuthIndex] would merge', ref.path, patch);
+@@ -9,50 +9,61 @@ const projectId = process.env.GOOGLE_CLOUD_PROJECT || process.env.GCLOUD_PROJECT
+ if (!admin.apps.length) {
+     admin.initializeApp(projectId ? { projectId } : undefined);
+ }
+ 
+ const db = admin.firestore();
+ const { FieldValue } = admin.firestore;
+ 
+ const DEMO_AUTH_INDEX_ENTRIES = [
+     {
+         authUid: 'v2wTP8NiWMQwsVvwL6uDbPotkFz1',
+         userDocId: 'ulloGGaEVgfhYlDJX6zi',
+         role: 'student',
+     },
+     {
+         authUid: 'qKIVPaoWfWaDhggNJ3ttyefZ59s1',
+         userDocId: 'AEI9gfytJRPufKUp1AA1cKfNVh03',
+         role: 'parent',
+     },
+ ];
+ 
+ async function main() {
+     console.log(`[setupDemoAuthIndex] projectId=${projectId || '(default credentials)'} mode=${dryRun ? 'dry-run' : 'write'}`);
+ 
+     for (const entry of DEMO_AUTH_INDEX_ENTRIES) {
+         const ref = db.collection('userAuthIndex').doc(entry.authUid);
++        const snapshot = await ref.get();
++        const existing = snapshot.exists ? snapshot.data() : null;
+         const patch = {
+             userDocId: entry.userDocId,
+             role: entry.role,
+             updatedAt: FieldValue.serverTimestamp(),
+         };
+ 
++        if (snapshot.exists) {
++            console.log('[setupDemoAuthIndex] exists', ref.path, {
++                userDocId: existing?.userDocId,
++                role: existing?.role,
++                matchesExpected: existing?.userDocId === entry.userDocId && existing?.role === entry.role,
++            });
 +            continue;
 +        }
 +
-+        await ref.set(patch, { merge: true });
-+        console.log('[setupDemoAuthIndex] merged', ref.path, {
-+            userDocId: entry.userDocId,
-+            role: entry.role,
-+        });
-+    }
-+
-+    console.log('[setupDemoAuthIndex] done');
-+}
-+
-+main().catch((error) => {
-+    console.error('[setupDemoAuthIndex] failed', error);
-+    process.exitCode = 1;
-+});
+         if (dryRun) {
+-            console.log('[setupDemoAuthIndex] would merge', ref.path, patch);
++            console.log('[setupDemoAuthIndex] missing; would create', ref.path, patch);
+             continue;
+         }
+ 
+         await ref.set(patch, { merge: true });
+-        console.log('[setupDemoAuthIndex] merged', ref.path, {
++        console.log('[setupDemoAuthIndex] created', ref.path, {
+             userDocId: entry.userDocId,
+             role: entry.role,
+         });
+     }
+ 
+     console.log('[setupDemoAuthIndex] done');
+ }
+ 
+ main().catch((error) => {
+     console.error('[setupDemoAuthIndex] failed', error);
+     process.exitCode = 1;
+ });
 diff --git a/src/app/AuthGate.jsx b/src/app/AuthGate.jsx
-index 9ad18810b92598389a7edf213884e4199c414b63..9cf099aaa312bf0060f1c1a48a98125e9657ba4d 100644
+index 9cf099aaa312bf0060f1c1a48a98125e9657ba4d..85b18b2887be35aa27cdb932c57a3183a98f93cd 100644
 --- a/src/app/AuthGate.jsx
 +++ b/src/app/AuthGate.jsx
-@@ -1,38 +1,38 @@
- import React, { useEffect } from 'react';
- import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
- 
- import AppRoutes from './AppRoutes';
- import OnboardingPage from '../pages/OnboardingPage';
- import LoginPage from '../pages/LoginPage';
- import InviteSignupPage from '../pages/InviteSignupPage';
- import useAuth from '../auth/useAuth';
- import { isParentRole, isStudentRole } from '../constants/roles';
- import { claimStudentLinkCode } from '../parent/linkCodeService';
- import { ParentProvider } from '../parent';
- import { redirectToKakao, redirectToNaver } from '../auth/socialRedirect';
--import { signInWithGoogle } from '../auth/authService';
-+import { signInWithGoogle, signInWithReviewEmail } from '../auth/authService';
- import { initForegroundMessageListener } from '../firebase/messaging';
- import { getDefaultRouteForRole } from '../auth/authRedirects';
- import { DELETION_REQUESTED_MESSAGE } from '../accountDeletion';
- 
- export default function AuthGate() {
-     const navigate = useNavigate();
-     const location = useLocation();
-     const pathname = location.pathname;
- 
-     const isOnboardingPage = pathname === '/onboarding';
-     const isLoginPage = pathname === '/login';
-     const isSignupPage = pathname.startsWith('/signup');
-     const isAuthCallbackPage = pathname === '/auth/callback';
-     const isStudentDetailPage = pathname.startsWith('/students/');
-     const isMessengerRoute = pathname.startsWith('/chat') || pathname.startsWith('/messages');
-     const isFormulaQrRoute = pathname === '/classroom' && new URLSearchParams(location.search).get('conceptId');
- 
-     const {
-         user,
-         role,
-         studentIds,
-         activeStudentId,
-         loading,
-         profileError,
-         userProfile,
-@@ -113,51 +113,51 @@ export default function AuthGate() {
-         needsParentOnboarding,
-         pathname,
-         isDeletionBlockedViewer,
-         role,
-         user,
-     ]);
- 
-     const handleSocialLogin = async (providerName) => {
+@@ -121,56 +121,57 @@ export default function AuthGate() {
          if (providerName === 'google') return signInWithGoogle();
          if (providerName === 'kakao') return redirectToKakao();
          if (providerName === 'naver') return redirectToNaver();
@@ -132,8 +88,7 @@ index 9ad18810b92598389a7edf213884e4199c414b63..9cf099aaa312bf0060f1c1a48a98125e
      if (!user) {
          return (
              <Routes>
--                <Route path="/login" element={<LoginPage onSocialLogin={handleSocialLogin} />} />
-+                <Route path="/login" element={<LoginPage onSocialLogin={handleSocialLogin} onEmailLogin={signInWithReviewEmail} />} />
+                 <Route path="/login" element={<LoginPage onSocialLogin={handleSocialLogin} onEmailLogin={signInWithReviewEmail} />} />
                  <Route path="/signup" element={<Navigate to="/signup/invite" replace />} />
                  <Route path="/signup/invite" element={<InviteSignupPage />} />
                  <Route path="*" element={<Navigate to="/login" replace />} />
@@ -141,12 +96,16 @@ index 9ad18810b92598389a7edf213884e4199c414b63..9cf099aaa312bf0060f1c1a48a98125e
          );
      }
  
-     // ✅ 로그인은 됐는데 프로필(역할) 로딩 중 또는 아직 연결 안 된 상태
+-    // ✅ 로그인은 됐는데 프로필(역할) 로딩 중 또는 아직 연결 안 된 상태
++    // ✅ 로그인은 됐는데 프로필(역할) 매핑에 실패한 상태도 명확한 오류로 처리
      if (role === null) {
-         if (profileError) {
+-        if (profileError) {
++        const unresolvedProfileError = profileError || '프로필을 불러오지 못했습니다. 다시 로그인해주세요.';
++        if (!loading) {
              return (
                  <div className="min-h-screen flex flex-col items-center justify-center gap-4 text-gray-600">
-                     <p>{profileError || '프로필을 불러오지 못했습니다. 다시 로그인해주세요.'}</p>
+-                    <p>{profileError || '프로필을 불러오지 못했습니다. 다시 로그인해주세요.'}</p>
++                    <p>{unresolvedProfileError}</p>
                      <button
                          type="button"
                          onClick={async () => {
@@ -159,128 +118,52 @@ index 9ad18810b92598389a7edf213884e4199c414b63..9cf099aaa312bf0060f1c1a48a98125e
                      </button>
                  </div>
              );
-diff --git a/src/auth/StudentLogin.jsx b/src/auth/StudentLogin.jsx
-index eb5385645108ffa2a0f52b21899a19a2167b5bae..415d959ce4ffb254a633996cb7b13195b4afd03e 100644
---- a/src/auth/StudentLogin.jsx
-+++ b/src/auth/StudentLogin.jsx
-@@ -1,77 +1,94 @@
- import React, { useCallback, useEffect, useState } from 'react';
- import { signInWithEmailAndPassword, signOut } from 'firebase/auth';
- import { doc, getDoc } from 'firebase/firestore';
- import { useLocation, useNavigate } from 'react-router-dom';
- import { auth, db } from '../firebase/client';
- import { ROLE, isParentRole, isStudentRole } from '../constants/roles';
- import useAuth from './useAuth';
- import { getDefaultRouteForRole } from './authRedirects';
- 
-+const AUTH_INDEX_MISSING_MESSAGE = '심사용 계정 연결 정보가 없습니다. 관리자에게 문의해주세요.';
-+const PROFILE_MISSING_MESSAGE = '사용자 정보를 찾을 수 없습니다. 관리자에게 문의해주세요.';
-+
- export default function StudentLogin() {
-     const { user, role, loading } = useAuth();
-     const [email, setEmail] = useState('');
-     const [password, setPassword] = useState('');
-     const [error, setError] = useState('');
-     const [pending, setPending] = useState(false);
-     const navigate = useNavigate();
-     const location = useLocation();
- 
-     const getFormulaRedirectPath = useCallback((fallbackSearch = '') => {
-         const stored = sessionStorage.getItem('formulaQrRedirect');
-         const search = stored?.split('?')[1] || fallbackSearch.replace(/^\?/, '');
-         const params = new URLSearchParams(search);
-         const conceptId = params.get('conceptId');
-         if (!conceptId) return '';
-         sessionStorage.removeItem('formulaQrRedirect');
-         return `/student/home?tab=class&mode=book&conceptId=${encodeURIComponent(conceptId)}`;
-     }, []);
- 
-     useEffect(() => {
-         if (loading) return;
-         if (!user) return;
- 
-         const redirectPath = isStudentRole(role) ? (getFormulaRedirectPath(location.search) || getDefaultRouteForRole(role) || '/home') : (getDefaultRouteForRole(role) || '/home');
-         navigate(redirectPath, { replace: true });
-     }, [getFormulaRedirectPath, loading, location.search, navigate, role, user]);
- 
-     const handleLogin = useCallback(async () => {
-         setError('');
-         setPending(true);
- 
-         try {
-             const credential = await signInWithEmailAndPassword(auth, email.trim(), password);
-             const { user: loggedInUser } = credential;
- 
-             if (!loggedInUser?.uid) {
-                 setError('로그인에 실패했습니다. 다시 시도해주세요.');
-                 return;
-             }
- 
--            const userDoc = await getDoc(doc(db, 'users', loggedInUser.uid));
-+            const indexSnap = await getDoc(doc(db, 'userAuthIndex', loggedInUser.uid));
-+            if (!indexSnap.exists()) {
-+                setError(AUTH_INDEX_MISSING_MESSAGE);
-+                await signOut(auth);
-+                return;
-+            }
-+
-+            const { userDocId } = indexSnap.data();
-+            if (!userDocId) {
-+                setError(AUTH_INDEX_MISSING_MESSAGE);
-+                await signOut(auth);
-+                return;
-+            }
-+
-+            const userDoc = await getDoc(doc(db, 'users', userDocId));
-             if (!userDoc.exists()) {
--                setError('초대 기반 가입이 필요합니다. 관리자에게 문의하세요.');
-+                setError(PROFILE_MISSING_MESSAGE);
-                 await signOut(auth);
-                 return;
-             }
- 
-             const userData = userDoc.data();
-             const userRole = userData?.role;
- 
-             if (!isStudentRole(userRole) && !isParentRole(userRole)) {
-                 setError('학생/학부모 전용 페이지입니다.');
-                 await signOut(auth);
-                 return;
-             }
- 
-             const redirectPath = userRole === ROLE.PARENT ? '/parent/home' : (getFormulaRedirectPath(location.search) || '/student/home');
-             navigate(redirectPath, { replace: true });
-         } catch (loginError) {
-             setError('로그인에 실패했습니다. 이메일과 비밀번호를 확인해주세요.');
-         } finally {
-             setPending(false);
          }
-     }, [email, getFormulaRedirectPath, location.search, navigate, password]);
  
-     const handleSubmit = (event) => {
-         event.preventDefault();
-         if (pending) return;
+         return (
+             <div className="min-h-screen flex items-center justify-center text-gray-600">
+                 프로필 설정 중입니다...
+             </div>
+         );
+     }
+ 
+ 
+     if (isDeletionBlockedViewer) {
+         return (
+             <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-gray-50 px-6 text-center text-gray-700">
 diff --git a/src/auth/authService.js b/src/auth/authService.js
-index 3815c0872fdec73edda73c5da3d0fbf6ddf98bf8..64618ff2fc23d9b0b343e03051219823d1e44589 100644
+index 64618ff2fc23d9b0b343e03051219823d1e44589..4ede13156c9484e514b638281c6fdfd6b3e6f068 100644
 --- a/src/auth/authService.js
 +++ b/src/auth/authService.js
-@@ -1,23 +1,54 @@
+@@ -1,54 +1,102 @@
  // src/auth/authService.js
++import { Capacitor } from '@capacitor/core';
  import { signInWithEmailAndPassword, signInWithPopup, signOut, GoogleAuthProvider } from 'firebase/auth';
--import { auth } from '../firebase/client';
-+import { doc, getDoc } from 'firebase/firestore';
-+import { auth, db } from '../firebase/client';
+ import { doc, getDoc } from 'firebase/firestore';
+ import { auth, db } from '../firebase/client';
+ 
+ export const REVIEW_LOGIN_AUTH_INDEX_MISSING_MESSAGE = '심사용 계정 연결 정보가 없습니다. 관리자에게 문의해주세요.';
+ export const REVIEW_LOGIN_PROFILE_MISSING_MESSAGE = '사용자 정보를 찾을 수 없습니다. 관리자에게 문의해주세요.';
++export const NATIVE_GOOGLE_LOGIN_UNAVAILABLE_MESSAGE = '앱에서는 심사용 이메일 로그인을 사용해 주세요. Google 로그인은 웹에서 이용할 수 있습니다.';
 +
-+export const REVIEW_LOGIN_AUTH_INDEX_MISSING_MESSAGE = '심사용 계정 연결 정보가 없습니다. 관리자에게 문의해주세요.';
-+export const REVIEW_LOGIN_PROFILE_MISSING_MESSAGE = '사용자 정보를 찾을 수 없습니다. 관리자에게 문의해주세요.';
++const IS_DEV = process.env.NODE_ENV === 'development';
 +
-+const createReviewLoginError = (message, code) => {
-+    const error = new Error(message);
-+    error.code = code;
-+    return error;
++const logEmailLoginDebug = (label, payload) => {
++    if (!IS_DEV) return;
++    console.info(label, payload);
 +};
  
+ const createReviewLoginError = (message, code) => {
+     const error = new Error(message);
+     error.code = code;
+     return error;
+ };
+ 
  export const signInWithGoogle = async () => {
++    if (Capacitor.isNativePlatform()) {
++        throw createReviewLoginError(NATIVE_GOOGLE_LOGIN_UNAVAILABLE_MESSAGE, 'google-login/native-unavailable');
++    }
++
      const provider = new GoogleAuthProvider();
  
      const { user } = await signInWithPopup(auth, provider);
@@ -290,221 +173,105 @@ index 3815c0872fdec73edda73c5da3d0fbf6ddf98bf8..64618ff2fc23d9b0b343e03051219823
  };
  
  export const signInWithReviewEmail = async (email, password) => {
-     const { user } = await signInWithEmailAndPassword(auth, email, password);
+-    const { user } = await signInWithEmailAndPassword(auth, email, password);
++    const normalizedEmail = email.trim();
++    let signedInUser = null;
  
-     if (!user?.uid) return null;
+-    if (!user?.uid) return null;
++    logEmailLoginDebug('[email-login] start', { email: normalizedEmail });
+ 
+     try {
++        const { user } = await signInWithEmailAndPassword(auth, normalizedEmail, password);
++        signedInUser = user;
 +
-+    try {
-+        const indexSnap = await getDoc(doc(db, 'userAuthIndex', user.uid));
-+        if (!indexSnap.exists()) {
++        logEmailLoginDebug('[email-login] auth success', {
++            uid: user?.uid ?? null,
++            email: user?.email ?? normalizedEmail,
++        });
++
++        if (!user?.uid) return null;
++
++        logEmailLoginDebug('[email-login] userAuthIndex start', { uid: user.uid });
+         const indexSnap = await getDoc(doc(db, 'userAuthIndex', user.uid));
+-        if (!indexSnap.exists()) {
+-            throw createReviewLoginError(REVIEW_LOGIN_AUTH_INDEX_MISSING_MESSAGE, 'review-login/auth-index-missing');
+-        }
++        const indexData = indexSnap.exists() ? indexSnap.data() : {};
++        const userDocId = indexData?.userDocId ?? null;
++        const indexRole = indexData?.role ?? null;
++
++        logEmailLoginDebug('[email-login] userAuthIndex result', {
++            exists: indexSnap.exists(),
++            userDocId,
++            role: indexRole,
++        });
+ 
+-        const { userDocId } = indexSnap.data();
+-        if (!userDocId) {
+-            throw createReviewLoginError(REVIEW_LOGIN_AUTH_INDEX_MISSING_MESSAGE, 'review-login/auth-index-invalid');
++        if (!indexSnap.exists() || !userDocId) {
 +            throw createReviewLoginError(REVIEW_LOGIN_AUTH_INDEX_MISSING_MESSAGE, 'review-login/auth-index-missing');
-+        }
+         }
+ 
++        logEmailLoginDebug('[email-login] user doc start', { userDocId });
+         const profileSnap = await getDoc(doc(db, 'users', userDocId));
++        const profileRole = profileSnap.exists() ? (profileSnap.data()?.role ?? null) : null;
 +
-+        const { userDocId } = indexSnap.data();
-+        if (!userDocId) {
-+            throw createReviewLoginError(REVIEW_LOGIN_AUTH_INDEX_MISSING_MESSAGE, 'review-login/auth-index-invalid');
-+        }
++        logEmailLoginDebug('[email-login] user doc result', {
++            exists: profileSnap.exists(),
++            role: profileRole,
++        });
 +
-+        const profileSnap = await getDoc(doc(db, 'users', userDocId));
-+        if (!profileSnap.exists()) {
-+            throw createReviewLoginError(REVIEW_LOGIN_PROFILE_MISSING_MESSAGE, 'review-login/profile-missing');
-+        }
-+    } catch (error) {
-+        await signOut(auth);
-+        throw error;
-+    }
+         if (!profileSnap.exists()) {
+             throw createReviewLoginError(REVIEW_LOGIN_PROFILE_MISSING_MESSAGE, 'review-login/profile-missing');
+         }
 +
-     return user;
++        logEmailLoginDebug('[email-login] redirect start', { role: profileRole ?? indexRole });
++        return user;
+     } catch (error) {
+-        await signOut(auth);
++        logEmailLoginDebug('[email-login] failed', {
++            code: error?.code ?? null,
++            message: error?.message ?? String(error),
++        });
++
++        if (signedInUser?.uid || auth.currentUser?.uid) {
++            await signOut(auth);
++        }
+         throw error;
++    } finally {
++        logEmailLoginDebug('[email-login] finally');
+     }
+-
+-    return user;
  };
  
  export const signOutUser = async () => {
      await signOut(auth);
  };
-diff --git a/src/auth/useAuth.js b/src/auth/useAuth.js
-index f2602e695ab2fb4954fb97ffb48139329bea8684..4ea727b2457d9aaceb069ea49416a8d092870b2b 100644
---- a/src/auth/useAuth.js
-+++ b/src/auth/useAuth.js
-@@ -5,50 +5,52 @@ import React, {
-   useEffect,
-   useMemo,
-   useRef,
-   useState,
- } from 'react';
- import { onAuthStateChanged } from 'firebase/auth';
- import { doc, getDoc } from 'firebase/firestore';
- import { auth, db } from '../firebase/client';
- import { signOutUser } from './authService';
- import { ALLOWED_ROLES, ROLE, isParentRole } from '../constants/roles';
- import { isDeletionRequestedProfile } from '../accountDeletion';
- 
- const AuthContext = createContext(null);
- 
- const LOCAL_STORAGE_KEYS = ['parent.activeStudentId'];
- const AUTH_INIT_TIMEOUT_MS = 5000;
- const IS_DEV = process.env.NODE_ENV === 'development';
- 
- const clearAuthStorage = () => {
-   try {
-     LOCAL_STORAGE_KEYS.forEach((key) => localStorage.removeItem(key));
-   } catch {}
- };
- 
- const normalizeRole = (role) => (ALLOWED_ROLES.includes(role) ? role : null);
-+const AUTH_INDEX_MISSING_MESSAGE = '심사용 계정 연결 정보가 없습니다. 관리자에게 문의해주세요.';
-+const PROFILE_MISSING_MESSAGE = '사용자 정보를 찾을 수 없습니다. 관리자에게 문의해주세요.';
- 
- const logAuthDebug = (label, payload) => {
-   if (!IS_DEV) return;
-   console.info(label, payload);
- };
- 
- const getPlatformInfo = () => {
-   const capacitor = window.Capacitor;
-   const platform = capacitor?.getPlatform?.() ?? 'web';
- 
-   return {
-     isNativePlatform: platform !== 'web' || Boolean(capacitor?.isNativePlatform?.()),
-     platform,
-   };
- };
- 
- export function AuthProvider({ children }) {
-   const [user, setUser] = useState(null);
-   const [role, setRole] = useState(null);
-   const [profileDocId, setProfileDocId] = useState(null);
-   const [userProfile, setUserProfile] = useState(null);
-   const [profileError, setProfileError] = useState(null);
-   const [studentIds, setStudentIds] = useState([]);
-   const [activeStudentId, setActiveStudentId] = useState(null);
-   const [loading, setLoading] = useState(true);
-@@ -143,57 +145,57 @@ export function AuthProvider({ children }) {
-           scope: 'profile',
-           hasCurrentUser: Boolean(auth.currentUser),
-           uid: currentUser.uid,
-         });
-         setProfileError('프로필 초기화 시간이 초과되었습니다. 다시 로그인해주세요.');
-         finishLoading();
-       }, AUTH_INIT_TIMEOUT_MS);
- 
-       try {
-         const authUid = currentUser.uid;
-         logAuthDebug('[auth:profile]', { start: true, uid: authUid });
- 
-         /* =========================================================
-            1️⃣ userAuthIndex 먼저 시도 (학생 / 학부모)
-         ========================================================= */
-         const indexRef = doc(db, 'userAuthIndex', authUid);
-         const indexSnap = await getDoc(indexRef);
- 
-         if (!isMounted) return;
- 
-         if (indexSnap.exists()) {
-           const { userDocId, role: indexRole } = indexSnap.data();
-           const normalizedRole = normalizeRole(indexRole);
- 
-           if (!userDocId || !normalizedRole) {
--            throw new Error('Invalid userAuthIndex');
-+            throw new Error(AUTH_INDEX_MISSING_MESSAGE);
-           }
- 
-           const profileSnap = await getDoc(doc(db, 'users', userDocId));
-           if (!isMounted) return;
-           if (!profileSnap.exists()) {
--            throw new Error('Linked user profile not found');
-+            throw new Error(PROFILE_MISSING_MESSAGE);
-           }
- 
-           const data = profileSnap.data();
- 
-           setProfileError(null);
-           setUserProfile({
-             authUid,
-             profileDocId: profileSnap.id,
-             role: normalizedRole,
-             displayName: data.displayName ?? data.name ?? '',
-             email: data.email ?? '',
-             active: data.active !== false,
-             status: data.status ?? null,
-             deletionRequested: data.deletionRequested === true,
-             deletionAccessBlocked: isDeletionRequestedProfile(data),
-           });
- 
-           setRole(normalizedRole);
-           setProfileDocId(profileSnap.id);
- 
-           if (normalizedRole === ROLE.STUDENT) {
-             setStudentIds([profileSnap.id]);
-             setActiveStudentId(profileSnap.id);
-           } else if (isParentRole(normalizedRole)) {
-             setStudentIds(data.studentIds ?? []);
-@@ -223,51 +225,51 @@ export function AuthProvider({ children }) {
-           logAuthDebug('[auth:profile]', { failed: true, reason: 'invalid-role', uid: authUid });
-           return;
-         }
- 
-         setProfileError(null);
-         setUserProfile({
-           authUid,
-           profileDocId: legacySnap.id,
-           role: legacyRole,
-           displayName: data.displayName ?? data.name ?? '',
-           email: data.email ?? '',
-           active: data.active !== false,
-           status: data.status ?? null,
-           deletionRequested: data.deletionRequested === true,
-           deletionAccessBlocked: isDeletionRequestedProfile(data),
-         });
- 
-         setRole(legacyRole);
-         setProfileDocId(legacySnap.id);
-         setStudentIds([]);
-         setActiveStudentId(null);
-         logAuthDebug('[auth:profile]', { success: true, source: 'users', uid: authUid });
-       } catch (err) {
-         logProfileErrorOnce(err);
-         logAuthDebug('[auth:profile]', { failed: true, error: err?.message ?? String(err) });
--        setProfileError('프로필을 불러올 수 없습니다.');
-+        setProfileError(err?.message || '프로필을 불러올 수 없습니다.');
-       } finally {
-         if (profileTimeoutId) clearTimeout(profileTimeoutId);
-         logAuthDebug('[auth:profile]', { finally: true, uid: currentUser?.uid ?? null });
-         finishLoading();
-       }
-     });
- 
-     return () => {
-       isMounted = false;
-       clearAuthTimeout();
-       unsubscribe();
-     };
-   }, []);
- 
-   const logout = useCallback(async () => {
-     try {
-       await signOutUser();
-     } finally {
-       clearAuthStorage();
-     }
-   }, []);
- 
-   const value = useMemo(
-     () => ({
-       user,
 diff --git a/src/pages/LoginPage.jsx b/src/pages/LoginPage.jsx
-index b3533da7d5acfb94f1ca221238bd4b57e9986628..591883e048984c26fb43182ac19396443241fd3d 100644
+index 591883e048984c26fb43182ac19396443241fd3d..c8cad3dcc75ff04ec4e30b2371e12d7b8cde3430 100644
 --- a/src/pages/LoginPage.jsx
 +++ b/src/pages/LoginPage.jsx
-@@ -1,32 +1,35 @@
+@@ -1,113 +1,144 @@
  // src/pages/LoginPage.jsx
  import React, { useState } from 'react';
  import logoHorizontal from '../assets/logo/logo-horizontal.png';
  import { Link } from 'react-router-dom';
  
++const getLoginMessage = (error) => {
++    if (error?.code === 'google-login/native-unavailable') {
++        return error.message;
++    }
++
++    return getReviewLoginMessage(error);
++};
++
  const getReviewLoginMessage = (error) => {
      const code = error?.code || '';
-+    if (code.startsWith('review-login/')) {
-+        return error?.message || '심사용 계정 정보를 확인할 수 없습니다. 관리자에게 문의해주세요.';
-+    }
+     if (code.startsWith('review-login/')) {
+         return error?.message || '심사용 계정 정보를 확인할 수 없습니다. 관리자에게 문의해주세요.';
+     }
      if (code === 'auth/user-disabled') {
          return '심사용 계정이 아직 활성화되지 않았습니다. 관리자에게 문의해주세요.';
      }
@@ -517,6 +284,7 @@ index b3533da7d5acfb94f1ca221238bd4b57e9986628..591883e048984c26fb43182ac1939644
      const [password, setPassword] = useState('');
      const [errorMessage, setErrorMessage] = useState('');
      const [isSubmitting, setIsSubmitting] = useState(false);
++    const [isSocialSubmitting, setIsSocialSubmitting] = useState(false);
  
      const handleReviewLogin = async (event) => {
          event.preventDefault();
@@ -530,3 +298,106 @@ index b3533da7d5acfb94f1ca221238bd4b57e9986628..591883e048984c26fb43182ac1939644
          } catch (error) {
              setErrorMessage(getReviewLoginMessage(error));
          } finally {
+             setIsSubmitting(false);
+         }
+     };
+ 
++
++    const handleGoogleLogin = async () => {
++        if (!onSocialLogin || isSocialSubmitting) return;
++
++        setErrorMessage('');
++        setIsSocialSubmitting(true);
++
++        try {
++            await onSocialLogin('google');
++        } catch (error) {
++            setErrorMessage(getLoginMessage(error));
++        } finally {
++            setIsSocialSubmitting(false);
++        }
++    };
++
+     return (
+         <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4 sm:px-6 lg:px-8 font-sans">
+             <div className="max-w-md w-full space-y-8 bg-white p-10 rounded-2xl shadow-xl border border-gray-100">
+                 <div className="text-center">
+                     <img
+                         src={logoHorizontal}
+                         alt="채수용 수학"
+                         className="mx-auto max-h-[72px] w-auto max-w-[280px] object-contain"
+                     />
+                     <h2 className="sr-only">채수용 수학</h2>
+                     <p className="mt-3 text-sm text-gray-500">통합 학습 관리 시스템</p>
+                 </div>
+ 
+                 <div className="mt-8">
+                     <div className="relative">
+                         <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-gray-200"></div></div>
+                         <div className="relative flex justify-center text-sm"><span className="px-2 bg-white text-gray-500">간편 로그인</span></div>
+                     </div>
+                     <div className="mt-6">
+                         <button
+                             type="button"
+-                            onClick={() => onSocialLogin('google')}
+-                            className="w-full inline-flex items-center justify-center gap-3 py-3 px-4 border border-gray-300 rounded-xl shadow-sm bg-white text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors"
++                            onClick={handleGoogleLogin}
++                            disabled={isSocialSubmitting}
++                            className="w-full inline-flex items-center justify-center gap-3 py-3 px-4 border border-gray-300 rounded-xl shadow-sm bg-white text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+                         >
+                             <span className="sr-only">Sign in with Google</span>
+                             <svg
+                                 className="h-5 w-5"
+                                 viewBox="0 0 48 48"
+                                 aria-hidden="true"
+                             >
+                                 <path
+                                     fill="#EA4335"
+                                     d="M24 9.5c3.5 0 6.6 1.2 9 3.2l6.7-6.7C35.6 2.3 30.1 0 24 0 14.6 0 6.5 5.4 2.5 13.2l7.8 6.1C12.2 13.1 17.7 9.5 24 9.5z"
+                                 />
+                                 <path
+                                     fill="#4285F4"
+                                     d="M47.6 24.6c0-1.6-.1-2.8-.4-4H24v7.6h13.5c-.3 2.1-1.8 5.3-5.1 7.4l7.8 6.1c4.6-4.3 7.4-10.7 7.4-17.1z"
+                                 />
+                                 <path
+                                     fill="#FBBC05"
+                                     d="M10.3 28.9c-.6-1.8-1-3.7-1-5.7s.4-3.9 1-5.7L2.5 11.4C.9 14.6 0 18.2 0 22c0 3.8.9 7.4 2.5 10.6l7.8-3.7z"
+                                 />
+                                 <path
+                                     fill="#34A853"
+                                     d="M24 48c6.1 0 11.6-2 15.5-5.4l-7.8-6.1c-2.1 1.4-5 2.4-7.7 2.4-6.3 0-11.8-3.6-13.7-8.8l-7.8 3.7C6.5 42.6 14.6 48 24 48z"
+                                 />
+                             </svg>
+-                            Google로 로그인
++                            {isSocialSubmitting ? '로그인 중...' : 'Google로 로그인'}
+                         </button>
++                        {errorMessage && !isReviewLoginOpen && (
++                            <p className="mt-3 text-xs font-semibold text-rose-600" role="alert">
++                                {errorMessage}
++                            </p>
++                        )}
+                     </div>
+                 </div>
+ 
+                 <div className="mt-4 border-t border-gray-100 pt-4">
+                     <button
+                         type="button"
+                         onClick={() => {
+                             setIsReviewLoginOpen((current) => !current);
+                             setErrorMessage('');
+                         }}
+                         className="mx-auto flex items-center justify-center text-xs font-semibold text-gray-500 underline-offset-4 hover:text-[#455fab] hover:underline"
+                         aria-expanded={isReviewLoginOpen}
+                     >
+                         심사용 이메일 로그인
+                     </button>
+ 
+                     {isReviewLoginOpen && (
+                         <form onSubmit={handleReviewLogin} className="mt-4 space-y-3 rounded-xl bg-gray-50 p-4 text-left">
+                             <div>
+                                 <label htmlFor="review-email" className="block text-xs font-semibold text-gray-600">
+                                     이메일
+                                 </label>
+                                 <input
+                                     id="review-email"
+                                     type="email"
