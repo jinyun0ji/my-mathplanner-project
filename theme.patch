@@ -1,664 +1,586 @@
-diff --git a/functions/scripts/repairHongUserChatRooms.js b/functions/scripts/repairHongUserChatRooms.js
-new file mode 100644
-index 0000000000000000000000000000000000000000..4a2e645127494f9e4890e4db9a8649a59df77491
---- /dev/null
-+++ b/functions/scripts/repairHongUserChatRooms.js
-@@ -0,0 +1,99 @@
-+const admin = require('firebase-admin');
-+
-+if (!admin.apps.length) {
-+    admin.initializeApp();
-+}
-+
-+const db = admin.firestore();
-+const dryRun = !process.argv.includes('--write');
-+const batchLimit = 450;
-+
-+const TARGETS = [
-+    {
-+        label: 'hong-student',
-+        userDocId: 'ulloGGaEVgfhYlDJX6zi',
-+        aliases: ['7MRv5ErsCpdJtuw8hgSOovXQz4x2', 'v2wTP8NiWMQwsVvwL6uDbPotkFz1'],
-+    },
-+    {
-+        label: 'hong-parent',
-+        userDocId: 'AEI9gfytJRPufKUp1AA1cKfNVh03',
-+        aliases: ['AEI9gfytJRPufKUp1AA1cKfNVh03', 'qKIVPaoWfWaDhggNJ3ttyefZ59s1'],
-+    },
-+];
-+
-+const uniqueStrings = (values = []) => Array.from(new Set(values.flat(Infinity).map((value) => String(value || '').trim()).filter(Boolean)));
-+
-+const roomIdentityValues = (room = {}) => uniqueStrings([
-+    Array.isArray(room.participantIds) ? room.participantIds : [],
-+    room.studentId,
-+    room.parentId,
-+    room.parentUid,
-+    room.studentAuthUid,
-+    room.studentUid,
-+]);
-+
-+const matchesTarget = (room, target) => {
-+    const identities = roomIdentityValues(room);
-+    return uniqueStrings([target.userDocId, target.aliases]).some((key) => identities.includes(key));
-+};
-+
-+const buildIndexData = ({ roomId, room }) => ({
-+    roomId,
-+    roomType: room.roomType || room.channel || '',
-+    channel: room.channel || '',
-+    slot: room.slot || '',
-+    counterpartUid: room.counterpartUid || room.staffAuthUid || room.teacherAuthUid || '',
-+    lastMessageText: room.lastMessageText || room.lastMessage || room.message || '',
-+    lastMessageAt: room.lastMessageAt || room.updatedAt || room.createdAt || null,
-+    updatedAt: room.updatedAt || room.lastMessageAt || room.createdAt || null,
-+    studentId: room.studentId || '',
-+    parentId: room.parentId || '',
-+    parentUid: room.parentUid || '',
-+    studentAuthUid: room.studentAuthUid || room.studentUid || '',
-+    staffAuthUid: room.staffAuthUid || '',
-+    teacherAuthUid: room.teacherAuthUid || '',
-+});
-+
-+const main = async () => {
-+    console.log(`[repair:hong-userChatRooms] start (${dryRun ? 'dry-run' : 'write'})`);
-+    const snapshot = await db.collection('chatRooms').get();
-+    let batch = db.batch();
-+    let pendingWrites = 0;
-+    let scannedRooms = 0;
-+    let matchedRooms = 0;
-+    let indexWrites = 0;
-+
-+    for (const roomDoc of snapshot.docs) {
-+        scannedRooms += 1;
-+        const room = roomDoc.data() || {};
-+        const matchedTargets = TARGETS.filter((target) => matchesTarget(room, target));
-+        if (!matchedTargets.length) continue;
-+        matchedRooms += 1;
-+        const indexData = buildIndexData({ roomId: roomDoc.id, room });
-+
-+        for (const target of matchedTargets) {
-+            for (const alias of target.aliases) {
-+                const indexRef = db.collection('userChatRooms').doc(alias).collection('rooms').doc(roomDoc.id);
-+                indexWrites += 1;
-+                console.log('[repair:hong-userChatRooms] mirror index', { target: target.label, alias, roomDocId: roomDoc.id, roomType: indexData.roomType });
-+                if (!dryRun) {
-+                    batch.set(indexRef, indexData, { merge: true });
-+                    pendingWrites += 1;
-+                    if (pendingWrites >= batchLimit) {
-+                        await batch.commit();
-+                        batch = db.batch();
-+                        pendingWrites = 0;
-+                    }
-+                }
-+            }
-+        }
-+    }
-+
-+    if (!dryRun && pendingWrites > 0) await batch.commit();
-+    console.log(`[repair:hong-userChatRooms] complete scannedRooms=${scannedRooms} matchedRooms=${matchedRooms} ${dryRun ? 'wouldWrite' : 'wrote'}=${indexWrites}`);
-+};
-+
-+main().catch((error) => {
-+    console.error('[repair:hong-userChatRooms] failed', error);
-+    process.exitCode = 1;
-+});
-diff --git a/package.json b/package.json
-index 8873ec2c5fab9a211752e356d53ef2862e324c24..45b67aaca0f87c573e0956c31af8f5cd6b46fa74 100644
---- a/package.json
-+++ b/package.json
-@@ -35,51 +35,53 @@
-     "@capacitor/splash-screen": "^8.4.0",
-     "@capacitor/keyboard": "^8.4.0"
-   },
-   "scripts": {
-     "start": "react-scripts start",
-     "build": "react-scripts build",
-     "cap:init": "cap init \"채수용 수학\" com.chaesooyong.management --web-dir build",
-     "cap:sync": "cap sync",
-     "cap:android": "cap open android",
-     "cap:ios": "cap open ios",
-     "build:cap": "npm run build && cap sync",
-     "test": "react-scripts test",
-     "eject": "react-scripts eject",
-     "migrate:memos": "node functions/scripts/migrateStudentMemosToStaffMemos.js",
-     "migrate:homework-question-keys:dry": "node functions/scripts/migrateHomeworkResultQuestionNumbers.js",
-     "migrate:homework-question-keys:write": "node functions/scripts/migrateHomeworkResultQuestionNumbers.js --write",
-     "backfill:chat-parent-participants:dry": "node functions/scripts/backfillChatParticipantIdsForParents.js",
-     "backfill:chat-parent-participants:write": "node functions/scripts/backfillChatParticipantIdsForParents.js --write",
-     "backfill:chat-room-types:dry": "node functions/scripts/backfillChatRoomTypes.js",
-     "backfill:chat-room-types:write": "node functions/scripts/backfillChatRoomTypes.js --write",
-     "backfill:student-birth-year:dry": "node functions/scripts/backfillStudentBirthYearFromGrade.js",
-     "backfill:student-birth-year:write": "node functions/scripts/backfillStudentBirthYearFromGrade.js --write",
-     "backfill:class-test-stats:dry": "node functions/scripts/backfillClassTestStats.js",
-     "backfill:class-test-stats:write": "node functions/scripts/backfillClassTestStats.js --write",
-     "backfill:user-chat-rooms:dry": "node functions/scripts/backfillUserChatRooms.js",
--    "backfill:user-chat-rooms:write": "node functions/scripts/backfillUserChatRooms.js --write"
-+    "backfill:user-chat-rooms:write": "node functions/scripts/backfillUserChatRooms.js --write",
-+    "repair:hong-user-chat-rooms:dry": "node functions/scripts/repairHongUserChatRooms.js",
-+    "repair:hong-user-chat-rooms:write": "node functions/scripts/repairHongUserChatRooms.js --write"
-   },
-   "eslintConfig": {
-     "extends": [
-       "react-app",
-       "react-app/jest"
-     ]
-   },
-   "browserslist": {
-     "production": [
-       ">0.2%",
-       "not dead",
-       "not op_mini all"
-     ],
-     "development": [
-       "last 1 chrome version",
-       "last 1 firefox version",
-       "last 1 safari version"
-     ]
-     },
-   "devDependencies": {
-     "@capacitor/cli": "^8.4.0",
-     "@capacitor/android": "^8.4.0",
-     "@capacitor/ios": "^8.4.0"
-   }
- }
-diff --git a/src/components/StudentMessenger.jsx b/src/components/StudentMessenger.jsx
-index 3622125193ca99f5f1ffd61de9616135fd451fac..268557b69b74380eeab0504b37583d4148113b2e 100644
---- a/src/components/StudentMessenger.jsx
-+++ b/src/components/StudentMessenger.jsx
-@@ -48,59 +48,81 @@ const buildStandardRoomId = (roomType, ownerUid, counterpartUid, studentId = '')
- const getParticipantIds = (room) => (Array.isArray(room?.participantIds) ? room.participantIds.map(String) : []);
+diff --git a/src/domain/lessonReport/lessonReport.service.js b/src/domain/lessonReport/lessonReport.service.js
+index d0c03235b576755c2c2ce847d6e73d9a9c1cf503..5c22002aa234beb5d97e55909a9ff31be5118260 100644
+--- a/src/domain/lessonReport/lessonReport.service.js
++++ b/src/domain/lessonReport/lessonReport.service.js
+@@ -48,124 +48,142 @@ const toKoreanDateTag = (value) => {
+ };
  
- 
- const getRoomIdentityValues = (room) => uniqueStrings([
-     getParticipantIds(room),
-     room?.studentAuthUid,
-     room?.studentUid,
-     room?.parentUid,
-     room?.parentId,
-     room?.studentId,
-     room?.participantUserDocIds ? Object.values(room.participantUserDocIds) : [],
- ]);
- 
- const getUserDocLinkedKeys = async (authUid) => {
-     const currentAuthUid = String(authUid || '').trim();
-     if (!currentAuthUid) return [];
-     const keys = [currentAuthUid];
-     try {
-         const indexSnap = await getDoc(doc(db, 'userAuthIndex', currentAuthUid));
-         const userDocId = indexSnap.exists() ? String(indexSnap.data()?.userDocId || '').trim() : '';
-         if (userDocId) {
-             keys.push(userDocId);
-             const userSnap = await getDoc(doc(db, 'users', userDocId));
-             if (userSnap.exists()) {
-                 const user = userSnap.data() || {};
--                keys.push(user.authUid, user.userUid, user.uid, user.parentUid, user.studentId);
-+                keys.push(user.authUid, user.userUid, user.uid, user.parentUid, user.studentAuthUid, user.studentId);
-             }
-         }
-     } catch (error) {
-         logFirestoreQueryFailure('load linked user keys', error, { authUid: currentAuthUid, collections: ['userAuthIndex', 'users'] });
+ const normalizeResult = (result) => {
+     if (!result) return null;
+     if (typeof result === 'number') return { completionRate: result };
+     if (typeof result === 'string') {
+         const numeric = Number(result.replace('%', ''));
+         if (Number.isFinite(numeric)) return { completionRate: numeric };
+         return { status: result };
      }
-     return uniqueStrings(keys);
+     return result;
  };
  
-+
-+const getMySenderIds = async (authUid) => {
-+    const currentAuthUid = String(authUid || '').trim();
-+    if (!currentAuthUid) return [];
-+    const senderIds = [currentAuthUid];
-+    try {
-+        const indexSnap = await getDoc(doc(db, 'userAuthIndex', currentAuthUid));
-+        const userDocId = indexSnap.exists() ? String(indexSnap.data()?.userDocId || '').trim() : '';
-+        if (userDocId) {
-+            senderIds.push(userDocId);
-+            const userSnap = await getDoc(doc(db, 'users', userDocId));
-+            if (userSnap.exists()) {
-+                const user = userSnap.data() || {};
-+                senderIds.push(user.authUid, user.userUid, user.uid, user.parentUid, user.studentAuthUid);
-+            }
-+        }
-+    } catch (error) {
-+        logFirestoreQueryFailure('load my sender ids', error, { authUid: currentAuthUid, collections: ['userAuthIndex', 'users'] });
+ const toFiniteNumber = (value) => {
+     if (Number.isFinite(value)) return value;
+     const numeric = Number(value);
+     return Number.isFinite(numeric) ? numeric : null;
+ };
+ 
+ const toCandidateStudentKeys = ({ student = null, studentId = '' }) => {
+     const keys = [
+         studentId,
+         student?.id,
+         student?.studentId,
+         student?.studentDocId,
++        student?.docId,
+         student?.authUid,
++        student?.userUid,
+         student?.studentUid,
+         student?.uid,
+     ]
+         .filter((value) => value !== null && value !== undefined)
+         .map((value) => String(value).trim())
+         .filter(Boolean);
+ 
+     return Array.from(new Set(keys));
+ };
+ 
+ export const getGradeForLessonReportStudent = ({ student = null, studentId = '', grades = {}, testId }) => {
+     if (!testId || !grades || typeof grades !== 'object') return null;
+ 
+     const keys = toCandidateStudentKeys({ student, studentId });
+     for (const key of keys) {
+         const byKey = grades?.[key]?.[testId];
+         if (byKey) return byKey;
+     }
+ 
+     const keySet = new Set(keys);
+     for (const studentGrades of Object.values(grades)) {
+         if (!studentGrades || typeof studentGrades !== 'object') continue;
+         const byTest = studentGrades?.[testId];
+         if (!byTest) continue;
+         const refIds = [
+             byTest?.studentId,
+             byTest?.studentDocId,
+             byTest?.authUid,
+             byTest?.studentUid,
++            byTest?.userUid,
+             byTest?.uid,
+         ]
+             .filter((value) => value !== null && value !== undefined)
+             .map((value) => String(value));
+ 
+         if (refIds.some((refId) => keySet.has(refId))) {
+             return byTest;
+         }
+     }
+ 
+     return null;
+ };
+ 
+ const buildTestTitle = (test = {}) => {
+     const dateTag = toKoreanDateTag(test?.date || test?.testDate || test?.lessonDate || test?.createdAt || test?.updatedAt);
+     const rawName = String(test?.name || '시험');
+     const name = dateTag && rawName.startsWith(dateTag)
+         ? rawName.slice(dateTag.length).trim()
+         : rawName;
+     return dateTag ? `${dateTag} ${name}` : name;
+ };
+ 
+ const getHomeworkResultByStudent = ({ homeworkResults = {}, assignmentId, studentId = '', student = null }) => {
+     const candidateKeys = toCandidateStudentKeys({ student, studentId });
+     for (const key of candidateKeys) {
+         const byCandidate = homeworkResults?.[key]?.[assignmentId];
+         if (byCandidate !== undefined && byCandidate !== null) return byCandidate;
+     }
+ 
+     const keySet = new Set(candidateKeys);
+     for (const perStudentResults of Object.values(homeworkResults || {})) {
+         if (!perStudentResults || typeof perStudentResults !== 'object') continue;
+         const byAssignment = perStudentResults?.[assignmentId];
+         if (!byAssignment || typeof byAssignment !== 'object') continue;
+         const refs = [
+             byAssignment?.studentId,
+             byAssignment?.studentDocId,
+             byAssignment?.authUid,
+             byAssignment?.studentUid,
++            byAssignment?.userUid,
+             byAssignment?.uid,
+         ].filter(Boolean).map(String);
+         if (refs.some((ref) => keySet.has(ref))) return byAssignment;
+     }
+ 
++    for (const result of Object.values(homeworkResults || {})) {
++        if (!result || typeof result !== 'object') continue;
++        if (String(result?.assignmentId || '') !== String(assignmentId || '')) continue;
++        const refs = [
++            result?.studentId,
++            result?.studentDocId,
++            result?.authUid,
++            result?.studentUid,
++            result?.userUid,
++            result?.uid,
++        ].filter(Boolean).map(String);
++        if (refs.some((ref) => keySet.has(ref))) return result;
 +    }
-+    return uniqueStrings(senderIds);
-+};
 +
- const fetchCandidateRoomsByParticipantKeys = async (participantKeys = []) => {
-     const keys = uniqueStrings(participantKeys).slice(0, 30);
-     const chunks = [];
-     for (let index = 0; index < keys.length; index += 10) chunks.push(keys.slice(index, index + 10));
-     const roomsById = new Map();
-     await Promise.all(chunks.map(async (chunk) => {
-         const roomsQuery = query(collection(db, 'chatRooms'), where('participantIds', 'array-contains-any', chunk));
-         const snap = await getDocs(roomsQuery);
-         snap.docs.forEach((roomDoc) => roomsById.set(roomDoc.id, { id: roomDoc.id, ...roomDoc.data() }));
-     }));
-     return Array.from(roomsById.values());
+     return null;
  };
  
- const getRoomSlot = (room) => {
-     const explicitSlot = String(room?.slot || '').trim();
-     if (explicitSlot) return explicitSlot;
-     const roomType = String(room?.roomType || room?.channel || '').trim();
-     if (roomType === 'institute' || roomType.endsWith('_institute')) return 'institute';
-     if (roomType === 'teacher' || roomType.endsWith('_teacher')) return 'teacher';
-     return '';
- };
- 
- const normalizedRoleFromRoomType = (roomType) => (String(roomType || '').startsWith('parent_') ? 'parent' : 'student');
- 
- const hasRoomTypeOrChannel = (room, expectedRoomType) => (
-@@ -277,127 +299,134 @@ const normalizeMessage = (id, data, myIds, fallbackSenderName = '메시지') =>
-         senderName: isMe ? '나' : (data?.senderName || fallbackSenderName || '메시지'),
-         createdAt: createdAtDate,
-         date: formatDateKey(createdAtDate),
-         dateLabel: formatDateDivider(createdAtDate),
-         time: formatMessageTime(createdAtDate),
-         clientTempId: data?.clientTempId || '',
-         localCreatedAtMs: data?.localCreatedAtMs || null,
-         pending: Boolean(data?.pending),
-         messageType: data?.messageType || (Array.isArray(data?.attachments) && data.attachments.length ? (data.attachments[0]?.type === 'image' ? 'image' : 'file') : 'text'),
-         attachments: Array.isArray(data?.attachments) ? data.attachments : [],
-     };
- };
- 
- export default function StudentMessenger({ studentId, studentAuthUid = '', selectedRoomId = '', teacherName = '메시지', userRole = 'parent', isFloating = false, allowLegacyResolve = true, emptyMessage = '아직 대화 내역이 없습니다.', chatSlot = '', roomCreationContext = null }) {
-     const [roomId, setRoomId] = useState(null);
-     const [messages, setMessages] = useState([]);
-     const [optimisticMessages, setOptimisticMessages] = useState([]);
-     const optimisticMessagesRef = useRef([]);
-     const [inputText, setInputText] = useState('');
-     const [attachmentFile, setAttachmentFile] = useState(null);
-     const [attachmentPreviewUrl, setAttachmentPreviewUrl] = useState('');
-     const [isSending, setIsSending] = useState(false);
-     const [error, setError] = useState('');
-     const [imageModal, setImageModal] = useState(null);
-     const [myProfileDocId, setMyProfileDocId] = useState('');
-+    const [mySenderIds, setMySenderIds] = useState([]);
-     const messagesEndRef = useRef(null);
-     const normalizedChatSlot = String(chatSlot || roomCreationContext?.slot || '');
-     const roomStudentParticipantKeys = useMemo(() => uniqueStrings([roomCreationContext?.studentParticipantKeys]), [roomCreationContext?.studentParticipantKeys]);
-     const expectedRoomType = userRole === 'parent' && normalizedChatSlot === 'institute'
-         ? 'parent_institute'
-         : getExpectedRoomType(userRole, roomCreationContext?.roomType || normalizedChatSlot);
-     const canCreateChatRoom = Boolean(roomCreationContext?.targetAuthUid && expectedRoomType);
- 
-     useEffect(() => {
-         optimisticMessagesRef.current = optimisticMessages;
-     }, [optimisticMessages]);
- 
-     useEffect(() => {
-         const authUid = auth.currentUser?.uid || '';
-         if (!authUid) {
-             setMyProfileDocId('');
-+            setMySenderIds([]);
-             return undefined;
-         }
- 
-         let mounted = true;
-         getDoc(doc(db, 'userAuthIndex', authUid)).then((indexSnap) => {
-             if (!mounted) return;
--            setMyProfileDocId(indexSnap.exists() ? String(indexSnap.data()?.userDocId || '') : '');
-+            const userDocId = indexSnap.exists() ? String(indexSnap.data()?.userDocId || '') : '';
-+            setMyProfileDocId(userDocId);
-+            return getMySenderIds(authUid).then((ids) => { if (mounted) setMySenderIds(ids); });
-         }).catch((indexError) => {
-             logFirestoreQueryFailure('load userAuthIndex', indexError, { doc: ['userAuthIndex', authUid] });
--            if (mounted) setMyProfileDocId('');
-+            if (mounted) {
-+                setMyProfileDocId('');
-+                setMySenderIds([authUid].filter(Boolean));
-+            }
-         });
- 
-         return () => {
-             mounted = false;
-         };
-     }, []);
- 
-     useEffect(() => {
-         if (selectedRoomId) {
-             if (process.env.NODE_ENV === 'development') console.log('[StudentMessenger] selected roomId', { roomId: String(selectedRoomId) });
-             setMessages([]);
-             setOptimisticMessages([]);
-             setRoomId(String(selectedRoomId));
-             return undefined;
-         }
- 
-         let cancelled = false;
-         setRoomId(null);
-         setMessages([]);
-         setOptimisticMessages([]);
-         setError('');
- 
-         const viewerUid = auth.currentUser?.uid || '';
-         const targetAuthUid = String(roomCreationContext?.targetAuthUid || '');
-         if (!viewerUid || !targetAuthUid || !expectedRoomType) return () => { cancelled = true; };
- 
-         resolveChatRoom({
-             viewerUid,
-             targetAuthUid,
-             roomType: expectedRoomType,
-             studentId,
-             participantKeys: roomStudentParticipantKeys,
-         }).then((resolvedRoom) => {
-             if (cancelled || !resolvedRoom?.id) return;
-             if (process.env.NODE_ENV === 'development') console.log('[student messenger] resolved room', { roomId: resolvedRoom.id, messagesPath: `chatRooms/${resolvedRoom.id}/messages` });
-             setRoomId(String(resolvedRoom.id));
-         });
- 
-         return () => {
-             cancelled = true;
-         };
-     }, [studentId, studentAuthUid, selectedRoomId, allowLegacyResolve, canCreateChatRoom, expectedRoomType, roomCreationContext?.targetAuthUid, normalizedChatSlot, userRole, roomStudentParticipantKeys]);
- 
-     useEffect(() => {
-         if (!roomId) return undefined;
-         
-         const collectionPath = `chatRooms/${roomId}/messages`;
-         let fallbackUnsub = null;
- 
-         const applySnapshot = (snap) => {
--            const myIds = new Set([auth.currentUser?.uid, myProfileDocId].filter(Boolean).map(String));
-+            const myIds = new Set(uniqueStrings([auth.currentUser?.uid, myProfileDocId, mySenderIds]));
-             const fallbackSenderName = teacherName || '메시지';
-             setError('');
-             const snapshotItems = snap.docs.map((item) => ({
-                 id: item.id,
-                 raw: {
-                     ...item.data(),
-                     pending: item.metadata?.hasPendingWrites || Boolean(item.data()?.pending),
-                 },
-             }));
-             const unresolvedOptimisticItems = optimisticMessagesRef.current
-                 .filter((item) => String(item.roomId || '') === String(roomId))
-                 .filter((optimistic) => !snapshotItems.some((serverItem) => isSameLogicalMessage(serverItem.raw, optimistic)))
-                 .map((item) => ({ id: item.id, raw: item }));
-             const mergedItems = sortMessageItems(dedupeMessages([...snapshotItems, ...unresolvedOptimisticItems]));
- 
-             setOptimisticMessages((prev) => {
-                 const next = prev.filter((optimistic) => (
-                     String(optimistic.roomId || '') !== String(roomId)
-                     || !snapshotItems.some((serverItem) => isSameLogicalMessage(serverItem.raw, optimistic))
-                 ));
-                 if (next.length === prev.length) return prev;
-                 optimisticMessagesRef.current = next;
-                 return next;
+ export const summarizeHomework = ({
+     selectedHomeworkProgressIds = [],
+     selectedHomeworkIds = [],
+     homeworkAssignments = [],
+     homeworkResults = {},
+     studentId,
+     student = null,
+ }) => {
+     const targetHomeworkIds = selectedHomeworkProgressIds.length > 0
+         ? selectedHomeworkProgressIds
+         : selectedHomeworkIds;
+     const items = targetHomeworkIds
+         .map((id) => homeworkAssignments.find((hw) => String(hw.id) === String(id)))
+         .filter(Boolean)
+         .map((assignment) => {
+             const rawResult = getHomeworkResultByStudent({
+                 homeworkResults,
+                 assignmentId: assignment.id,
+                 studentId,
+                 student,
              });
-             setMessages(mergedItems
-@@ -406,51 +435,51 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
-         };
+             const questionNumbers = getAssignmentQuestionNumbers(assignment);
+diff --git a/src/pages/LessonReportManagement.jsx b/src/pages/LessonReportManagement.jsx
+index 9f5b715aad87a3cdf05fc4f8e718708ac066523a..69f4a91d840c547e7d0ab3107b9c5b107104749e 100644
+--- a/src/pages/LessonReportManagement.jsx
++++ b/src/pages/LessonReportManagement.jsx
+@@ -40,50 +40,67 @@ const resolveAttendanceDate = (item) => toYmd(item?.date || item?.lessonDate ||
+ const resolveHomeworkDate = (item) => toYmd(item?.date || item?.assignedDate || item?.lessonDate || item?.createdAt || item?.updatedAt);
+ const resolveTestDate = (item) => toYmd(item?.date || item?.testDate || item?.lessonDate || item?.createdAt || item?.updatedAt);
+ const resolveLessonLogProgress = (log) => String(log?.progress || log?.learnedTopics || log?.lessonSummary || log?.topic || '');
  
-         const subscribe = (withOrderBy) => {
-             const queryShape = withOrderBy
-                 ? { collection: collectionPath, orderBy: ['createdAt', 'asc'] }
-                 : { collection: collectionPath, orderBy: null, clientSort: ['createdAt', 'asc'] };
-             if (process.env.NODE_ENV === 'development') {
-                 console.log('[StudentMessenger] subscribe messages', { roomId, path: collectionPath });
-                 console.log('[student messenger][messages path]', { authUid: auth.currentUser?.uid || '', studentId: String(studentId || ''), studentAuthUid: String(studentAuthUid || ''), selectedRoomId: String(selectedRoomId || roomId || ''), roomType: expectedRoomType, channel: expectedRoomType, slot: normalizedChatSlot, participantIds: roomStudentParticipantKeys, lastMessageText: '', messagesPath: collectionPath, queryShape });
-             }
-             return subscribeRoomMessages({ roomId, withOrderBy, onNext: applySnapshot, onError: (snapshotError) => {
-                 if (process.env.NODE_ENV === 'development') logFirestoreQueryFailure('subscribe messages', snapshotError, queryShape);
-                 if (withOrderBy) {
-                     fallbackUnsub = subscribe(false);
-                     return;
-                 }
-                 setError('메시지를 불러올 권한이 없습니다. 관리자에게 문의해주세요.');
-             } });
-         };
- 
-         const unsub = subscribe(true);
-         return () => {
-             unsub && unsub();
-             fallbackUnsub && fallbackUnsub();
-         };
--    }, [roomId, selectedRoomId, canCreateChatRoom, expectedRoomType, normalizedChatSlot, myProfileDocId, teacherName, userRole, studentId, studentAuthUid, roomStudentParticipantKeys]);
-+    }, [roomId, selectedRoomId, canCreateChatRoom, expectedRoomType, normalizedChatSlot, myProfileDocId, mySenderIds, teacherName, userRole, studentId, studentAuthUid, roomStudentParticipantKeys]);
- 
-     useEffect(() => {
-         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-     }, [messages]);
- 
-     const placeholder = useMemo(() => (userRole === 'parent' ? '메시지 보내기...' : '메시지 입력'), [userRole]);
- 
-     useEffect(() => () => {
-         if (attachmentPreviewUrl) URL.revokeObjectURL(attachmentPreviewUrl);
-     }, [attachmentPreviewUrl]);
- 
-     const clearAttachment = () => {
-         if (attachmentPreviewUrl) URL.revokeObjectURL(attachmentPreviewUrl);
-         setAttachmentPreviewUrl('');
-         setAttachmentFile(null);
-     };
- 
-     const handleAttachmentChange = (event) => {
-         const file = event.target.files?.[0] || null;
-         event.target.value = '';
-         if (!file) return;
-         const validation = validateChatAttachment(file);
-         if (!validation.ok) {
-             setError(validation.message);
-             clearAttachment();
-@@ -497,51 +526,51 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
-         }
-         if (!resolvedRoomId && !canCreateChatRoom) return;
-         const localCreatedAtMs = Date.now();
-         const clientTempId = `client-${localCreatedAtMs}-${Math.random().toString(36).slice(2, 10)}`;
-         const optimisticMessage = {
-             id: clientTempId,
-             roomId: resolvedRoomId,
-             text,
-             messageType: fileToUpload ? (fileToUpload.type === 'application/pdf' ? 'file' : 'image') : 'text',
-             attachments: fileToUpload ? [{
-                 type: fileToUpload.type === 'application/pdf' ? 'pdf' : 'image',
-                 name: fileToUpload.name,
-                 url: attachmentPreviewUrl,
-                 path: '',
-                 size: fileToUpload.size,
-                 contentType: fileToUpload.type,
-             }] : [],
-             senderId: viewerUid,
-             senderRole: isChatRoomMode ? userRole : userRole,
-             senderName: buildSenderName(),
-             createdAt: new Date(localCreatedAtMs),
-             localCreatedAtMs,
-             pending: true,
-             clientTempId,
-         };
--        const myIds = new Set([auth.currentUser?.uid, myProfileDocId].filter(Boolean).map(String));
-+        const myIds = new Set(uniqueStrings([auth.currentUser?.uid, myProfileDocId, mySenderIds]));
-         setOptimisticMessages((prev) => {
-             const next = sortMessageItems(dedupeMessages([
-                 ...prev.map((item) => ({ id: item.id, raw: item })),
-                 { id: optimisticMessage.id, raw: optimisticMessage },
-             ])).map((item) => item.raw);
-             optimisticMessagesRef.current = next;
-             return next;
-         });
-         setMessages((prev) => sortMessageItems(dedupeMessages([
-             ...prev.map((item) => ({ id: item.id, raw: item })),
-             { id: optimisticMessage.id, raw: optimisticMessage },
-         ])).map((item) => normalizeMessage(item.id, item.raw, myIds, teacherName || '메시지')).filter((item) => item.text || item.attachments.length));
-         setInputText('');
-         clearAttachment();
- 
-         try {
-             if (isChatRoomMode) {
-                 if (canCreateChatRoom && shouldCreateStandardRoom) {
-                     let parentDocId = myProfileDocId;
-                     if (!parentDocId && viewerUid) {
-                         try {
-                             const indexSnap = await getDoc(doc(db, 'userAuthIndex', viewerUid));
-                             parentDocId = indexSnap.exists() ? String(indexSnap.data()?.userDocId || viewerUid) : String(viewerUid);
-                             setMyProfileDocId(parentDocId);
-                         } catch (indexError) {
-diff --git a/src/firebase/client.js b/src/firebase/client.js
-index 7e252f47e90ef008cc220be3a80ed4572760c4dc..0d8b2b19f2b99c624c42c8043d7d57bd4c02ddee 100644
---- a/src/firebase/client.js
-+++ b/src/firebase/client.js
-@@ -17,48 +17,52 @@ const firebaseConfig = {
-   storageBucket: "my-mathplanner-project.firebasestorage.app",
-   messagingSenderId: "197602408828",
-   appId: "1:197602408828:web:c0eae7df35a06fbe070cf9",
-   measurementId: "G-ZH2BMBYE86"
+ const statusLabel = (status, sendStatus, scheduledSendAt) => {
+   if (status === LESSON_REPORT_STATUS.SENT) return '발송완료';
+   if (sendStatus === LESSON_REPORT_SEND_STATUS.SCHEDULED || Boolean(scheduledSendAt)) return '예약됨';
+   if (status === LESSON_REPORT_STATUS.DRAFT) return '초안';
+   return '미생성';
  };
  
- export const firebaseApp =
-   getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
- 
- const createAuth = () => {
-   if (!Capacitor.isNativePlatform()) {
-     return getAuth(firebaseApp);
-   }
- 
-   try {
-     return initializeAuth(firebaseApp, {
-       persistence: indexedDBLocalPersistence,
-     });
-   } catch (error) {
-     return getAuth(firebaseApp);
-   }
+ const statusClassName = (status, sendStatus, scheduledSendAt) => {
+   if (status === LESSON_REPORT_STATUS.SENT) return 'bg-green-100 text-green-700';
+   if (sendStatus === LESSON_REPORT_SEND_STATUS.SCHEDULED || Boolean(scheduledSendAt)) return 'bg-yellow-100 text-yellow-700';
+   if (status === LESSON_REPORT_STATUS.DRAFT) return 'bg-amber-100 text-amber-700';
+   return 'bg-gray-100 text-gray-600';
  };
  
- export const auth = createAuth();
+ const getStudentClassIds = (student) => {
+   if (!student) return [];
+   if (Array.isArray(student.classIds)) return student.classIds.map(String);
+   if (Array.isArray(student.classes)) return student.classes.map(String);
+   return [];
+ };
  
-+if (process.env.NODE_ENV === 'development' && typeof window !== 'undefined') {
-+  console.log('[capacitor] origin =', window.location.origin);
-+}
++const buildStudentKeys = (student = null) => Array.from(new Set([
++  student?.id,
++  student?.uid,
++  student?.userUid,
++  student?.authUid,
++  student?.studentId,
++  student?.docId,
++].filter((value) => value !== null && value !== undefined).map((value) => String(value).trim()).filter(Boolean)));
 +
- const createFirestore = () => {
-   if (!Capacitor.isNativePlatform()) {
-     return getFirestore(firebaseApp);
-   }
- 
-   try {
-     const firestore = initializeFirestore(firebaseApp, {
-       experimentalForceLongPolling: true,
-       experimentalAutoDetectLongPolling: false,
-       useFetchStreams: false,
++const hasAnyStudentKey = (values = [], studentKeys = []) => {
++  const keySet = new Set(studentKeys.map(String));
++  return values
++    .filter((value) => value !== null && value !== undefined)
++    .map((value) => String(value).trim())
++    .some((value) => keySet.has(value));
++};
++
+ export default function LessonReportManagement({
+   students = [],
+   classes = [],
+   lessonLogs = [],
+   attendanceLogs = [],
+   homeworkAssignments = [],
+   tests = [],
+   homeworkResults = {},
+   grades = {},
+   lessonReports = [],
+   closures = [],
+   classTestStats = {},
+ }) {
+   const { studentId: routeStudentId } = useParams();
+   const [searchParams] = useSearchParams();
+   const navigate = useNavigate();
+   const { profileDocId } = useAuth();
+   
+   const preselectedStudentId = String(routeStudentId || searchParams.get('studentId') || '');
+   const [selectedClassId, setSelectedClassId] = useState('');
+   const [selectedDate, setSelectedDate] = useState(todayYmd);
+   const [selectedStudentId, setSelectedStudentId] = useState(preselectedStudentId);
+   const [draft, setDraft] = useState(null);
+   const [draftError, setDraftError] = useState('');
+   const [reportSaving, setReportSaving] = useState(false);
+@@ -151,185 +168,233 @@ export default function LessonReportManagement({
+         studentId: report.studentId,
+         classId: report.classId,
+         lessonDate: toYmd(report.lessonDate),
+       });
+       if (key) map.set(key, report);
      });
-     console.log('[firebase] firestore native long polling initialized');
-     return firestore;
-   } catch (error) {
-     console.warn('[firebase] initializeFirestore failed, fallback getFirestore', error);
-     return getFirestore(firebaseApp);
-   }
- };
+     return map;
+   }, [lessonReports]);
  
- export const db = createFirestore();
+   const reportMap = useMemo(() => {
+     const merged = new Map(baseReportMap);
+     Object.values(localReportMap || {}).forEach((report) => {
+       const key = buildLessonReportId({
+         studentId: report?.studentId,
+         classId: report?.classId,
+         lessonDate: toYmd(report?.lessonDate),
+       });
+       if (key) merged.set(key, report);
+     });
+     return merged;
+   }, [baseReportMap, localReportMap]);
  
- export const functions = getFunctions(firebaseApp, "us-central1");
- export const storage = getStorage(firebaseApp);
-diff --git a/src/messenger/services/userChatRoomsService.js b/src/messenger/services/userChatRoomsService.js
-index fab5683153ae3476b023ea27c561c82ad5c73fc9..7981e819e1f6fef9ca9f0ebe46a6a34a641559ad 100644
---- a/src/messenger/services/userChatRoomsService.js
-+++ b/src/messenger/services/userChatRoomsService.js
-@@ -25,97 +25,101 @@ export const mergeRoomWithIndex = (room, index) => ({
-     id: room?.id || index?.roomId || index?.id || '',
-     roomId: room?.roomId || index?.roomId || index?.id || '',
-     indexLastMessageText: index?.lastMessageText || '',
-     indexLastMessageAt: index?.lastMessageAt || null,
-     indexUpdatedAt: index?.updatedAt || null,
-     lastMessageText: index?.lastMessageText || room?.lastMessageText || '',
-     lastMessageAt: index?.lastMessageAt || room?.lastMessageAt || null,
-     updatedAt: index?.updatedAt || room?.updatedAt || null,
- });
+   const selectedLessonDate = toYmd(draft?.lessonDate || selectedDate || '');
+   const selectedDraftClassId = String(draft?.classId || selectedClassId || '');
+   const selectedDraftStudentId = String(draft?.studentId || selectedStudentId || '');
++  const selectedDraftStudent = useMemo(
++    () => students.find((student) => String(student.id) === selectedDraftStudentId) || null,
++    [selectedDraftStudentId, students],
++  );
++  const selectedStudentKeys = useMemo(() => buildStudentKeys(selectedDraftStudent), [selectedDraftStudent]);
  
- const getUserProfileForAuthUid = async (authUid) => {
-     const currentAuthUid = String(authUid || '').trim();
-     if (!currentAuthUid) return { authUid: '', userDocId: '', profile: {} };
-     const indexSnap = await getDoc(doc(db, 'userAuthIndex', currentAuthUid));
-     const userDocId = indexSnap.exists() ? String(indexSnap.data()?.userDocId || '').trim() : '';
-     if (!userDocId) return { authUid: currentAuthUid, userDocId: '', profile: {} };
-     const userSnap = await getDoc(doc(db, 'users', userDocId));
-     return { authUid: currentAuthUid, userDocId, profile: userSnap.exists() ? userSnap.data() || {} : {} };
- };
+   const toDateDistance = (a, b) => {
+     if (!a || !b) return Number.MAX_SAFE_INTEGER;
+     const aTime = new Date(`${a}T00:00:00`).getTime();
+     const bTime = new Date(`${b}T00:00:00`).getTime();
+     if (Number.isNaN(aTime) || Number.isNaN(bTime)) return Number.MAX_SAFE_INTEGER;
+     return Math.abs(aTime - bTime);
+   };
  
- const collectRoom = (map, docSnap) => map.set(docSnap.id, { id: docSnap.id, ...docSnap.data() });
+   const candidateLessonLogs = useMemo(() => (lessonLogs || []).filter((log) => (
+     resolveClassId(log) === selectedDraftClassId
+     && resolveLessonLogDate(log) === selectedLessonDate
+   )), [lessonLogs, selectedDraftClassId, selectedLessonDate]);
  
- export const fetchStudentFallbackRooms = async (authUid) => {
-     const { authUid: currentAuthUid, userDocId, profile } = await getUserProfileForAuthUid(authUid);
-     if (!currentAuthUid || !userDocId) return [];
--    const candidateKeys = uniqueStrings([currentAuthUid, userDocId, profile.authUid, profile.userUid, profile.uid, profile.studentId]);
-+    const candidateKeys = uniqueStrings([currentAuthUid, userDocId, profile.authUid, profile.userUid, profile.uid, profile.parentUid, profile.studentAuthUid, profile.studentId]);
-     const roomsById = new Map();
-     const snap = await getDocs(query(collection(db, 'chatRooms'), where('studentId', '==', userDocId)));
-     snap.docs.forEach((roomDoc) => collectRoom(roomsById, roomDoc));
-     return sortRoomsByActivity(Array.from(roomsById.values()).filter((room) => {
-         const roomType = String(room?.roomType || room?.channel || '').trim();
-         const slot = String(room?.slot || '').trim();
-         const isStudentRoom = ['student_institute', 'student_teacher'].includes(roomType) || ['institute', 'teacher'].includes(slot);
-         const hasStudentIdentity = String(room?.studentId || '') === userDocId
-             || String(room?.studentUid || '') === currentAuthUid
-             || String(room?.studentAuthUid || '') === currentAuthUid
-             || (Array.isArray(room?.participantIds) && candidateKeys.some((key) => room.participantIds.map(String).includes(key)));
-         const hasExpectedCounterpart = Boolean(room?.staffAuthUid || room?.teacherAuthUid || room?.counterpartUid || (Array.isArray(room?.participantIds) && room.participantIds.length > 1));
-         return isStudentRoom && hasStudentIdentity && hasExpectedCounterpart;
-     }));
- };
+   const currentLessonLog = useMemo(
+     () => candidateLessonLogs[0] || null,
+     [candidateLessonLogs],
+   );
  
- export const fetchParentFallbackRooms = async (authUid) => {
-     const { authUid: currentAuthUid, userDocId: parentDocId, profile } = await getUserProfileForAuthUid(authUid);
-     if (!currentAuthUid || !parentDocId) return [];
-     const studentIds = Array.isArray(profile.studentIds) ? profile.studentIds.map(String).filter(Boolean).slice(0, 10) : [];
-+    const candidateKeys = uniqueStrings([currentAuthUid, parentDocId, profile.authUid, profile.userUid, profile.uid, profile.parentUid, profile.studentAuthUid]);
-     const roomsById = new Map();
-     const parentSnap = await getDocs(query(collection(db, 'chatRooms'), where('parentId', '==', parentDocId)));
-     parentSnap.docs.forEach((roomDoc) => collectRoom(roomsById, roomDoc));
-     if (studentIds.length > 0) {
-         const studentSnap = await getDocs(query(collection(db, 'chatRooms'), where('studentId', 'in', studentIds)));
-         studentSnap.docs.forEach((roomDoc) => collectRoom(roomsById, roomDoc));
+   const currentAutoFilledLearnedTopics = useMemo(
+     () => resolveLessonLogProgress(currentLessonLog),
+     [currentLessonLog],
+   );
+ 
+-  const candidateHomeworkAssignments = useMemo(() => (homeworkAssignments || [])
++  const classHomeworkAssignments = useMemo(() => (homeworkAssignments || [])
+     .filter((item) => resolveClassId(item) === selectedDraftClassId)
++    .map((item) => ({
++      ...item,
++      __candidate_distance: toDateDistance(resolveHomeworkDate(item), selectedLessonDate),
++    }))
++    .sort((a, b) => {
++      if (a.__candidate_distance !== b.__candidate_distance) return a.__candidate_distance - b.__candidate_distance;
++      return String(resolveHomeworkDate(b) || '').localeCompare(String(resolveHomeworkDate(a) || ''));
++    }), [homeworkAssignments, selectedDraftClassId, selectedLessonDate]);
++
++  const candidateHomeworkAssignments = useMemo(() => classHomeworkAssignments
+     .map((item) => {
+       const targets = [
+         ...(Array.isArray(item.targetStudents) ? item.targetStudents : []),
+         ...(Array.isArray(item.assignedStudentIds) ? item.assignedStudentIds : []),
+         ...(Array.isArray(item.students) ? item.students : []),
+-      ].map(String);
+-      const isTargeted = targets.length === 0 || targets.includes(selectedDraftStudentId);
+-      return {
+-        ...item,
+-        __candidate_isTargeted: isTargeted,
+-        __candidate_distance: toDateDistance(resolveHomeworkDate(item), selectedLessonDate),
+-      };
++      ];
++      const isTargeted = targets.length === 0 || hasAnyStudentKey(targets, selectedStudentKeys);
++      return { ...item, __candidate_isTargeted: isTargeted, __candidate_targetKeys: targets.map(String) };
+     })
+-    .filter((item) => item.__candidate_isTargeted)
+-    .sort((a, b) => {
+-      if (a.__candidate_distance !== b.__candidate_distance) return a.__candidate_distance - b.__candidate_distance;
+-      return String(resolveHomeworkDate(b) || '').localeCompare(String(resolveHomeworkDate(a) || ''));
+-    }), [homeworkAssignments, selectedDraftClassId, selectedDraftStudentId, selectedLessonDate]);
++    .filter((item) => item.__candidate_isTargeted), [classHomeworkAssignments, selectedStudentKeys]);
+ 
+-  const selectableHomeworkProgress = useMemo(
+-    () => candidateHomeworkAssignments.filter((item) => {
+-      const assignmentDate = resolveHomeworkDate(item);
+-      if (!assignmentDate || !selectedLessonDate) return true;
+-      return assignmentDate < selectedLessonDate;
+-    }),
+-    [candidateHomeworkAssignments, selectedLessonDate],
+-  );
++  const selectableHomeworkProgress = candidateHomeworkAssignments;
+ 
+-  const selectableAssignedHomework = useMemo(
+-    () => candidateHomeworkAssignments.filter((item) => {
+-      const assignmentDate = resolveHomeworkDate(item);
+-      if (!assignmentDate || !selectedLessonDate) return true;
+-      return assignmentDate >= selectedLessonDate;
+-    }),
+-    [candidateHomeworkAssignments, selectedLessonDate],
+-  );
++  const selectableAssignedHomework = classHomeworkAssignments;
+ 
+   const candidateTests = useMemo(() => {
+     if (!selectedDraftClassId) return [];
+     return (tests || [])
+       .filter((item) => resolveClassId(item) === selectedDraftClassId)
+       .map((item) => {
+-        const selectedStudent = students.find((student) => String(student.id) === selectedDraftStudentId) || null;
+         const grade = getGradeForLessonReportStudent({
+-          student: selectedStudent,
++          student: selectedDraftStudent,
+           studentId: selectedDraftStudentId,
+           grades,
+           testId: item.id,
+         });
+         return {
+           ...item,
+           __sort_hasGrade: Boolean(grade),
+           __sort_distance: toDateDistance(resolveTestDate(item), selectedLessonDate),
+         };
+       })
+       .sort((a, b) => {
+         if (a.__sort_hasGrade !== b.__sort_hasGrade) return a.__sort_hasGrade ? -1 : 1;
+         if (a.__sort_distance !== b.__sort_distance) return a.__sort_distance - b.__sort_distance;
+         return String(resolveTestDate(b) || '').localeCompare(String(resolveTestDate(a) || ''));
+       });
+-  }, [grades, selectedDraftClassId, selectedDraftStudentId, selectedLessonDate, students, tests]);
++  }, [grades, selectedDraftClassId, selectedDraftStudent, selectedLessonDate, tests]);
+ 
+   const selectableTests = candidateTests;
+ 
+   useEffect(() => {
++    if (process.env.NODE_ENV === 'production') return;
+     console.log('[lesson-report debug:data-sources]', {
+       selectedStudentId: selectedDraftStudentId,
++      selectedStudent: selectedDraftStudent,
++      studentKeys: selectedStudentKeys,
+       selectedClassId: selectedDraftClassId,
+       selectedDate: selectedLessonDate,
+       lessonLogsCount: Array.isArray(lessonLogs) ? lessonLogs.length : null,
+       homeworkAssignmentsCount: Array.isArray(homeworkAssignments) ? homeworkAssignments.length : null,
+       testsCount: Array.isArray(tests) ? tests.length : null,
+       attendanceLogsCount: Array.isArray(attendanceLogs) ? attendanceLogs.length : null,
++      homeworkResultsMatchedCount: Object.values(homeworkResults || {}).filter((value) => value && typeof value === 'object').length,
++      gradesMatchedCount: Object.values(grades || {}).filter((value) => value && typeof value === 'object').length,
+       lessonLogsSample: lessonLogs?.slice?.(0, 3),
+       homeworkAssignmentsSample: homeworkAssignments?.slice?.(0, 3),
+       testsSample: tests?.slice?.(0, 3),
+       candidateLessonLogsCount: candidateLessonLogs.length,
+       candidateLessonLogsSample: candidateLessonLogs.slice(0, 3),
+     });
+   }, [
+     attendanceLogs,
+     candidateLessonLogs,
+     homeworkAssignments,
+     lessonLogs,
+     selectedDraftClassId,
+     selectedDraftStudentId,
++    selectedDraftStudent,
+     selectedLessonDate,
++    selectedStudentKeys,
+     tests,
+   ]);
+ 
+   useEffect(() => {
++    if (process.env.NODE_ENV === 'production') return;
+     console.log('[lesson-report debug:homework-candidates]', {
+       selectedStudentId: selectedDraftStudentId,
++      selectedStudent: selectedDraftStudent,
++      studentKeys: selectedStudentKeys,
+       selectedClassId: selectedDraftClassId,
+       selectedDate: selectedLessonDate,
+       totalAssignments: homeworkAssignments?.length,
+       candidateAssignments: candidateHomeworkAssignments,
+     });
+-  }, [candidateHomeworkAssignments, homeworkAssignments?.length, selectedDraftClassId, selectedDraftStudentId, selectedLessonDate]);
++  }, [candidateHomeworkAssignments, homeworkAssignments?.length, selectedDraftClassId, selectedDraftStudent, selectedDraftStudentId, selectedLessonDate, selectedStudentKeys]);
+ 
+   useEffect(() => {
++    if (process.env.NODE_ENV === 'production') return;
+     console.log('[lesson-report debug:test-candidates]', {
+       selectedStudentId: selectedDraftStudentId,
++      selectedStudent: selectedDraftStudent,
++      studentKeys: selectedStudentKeys,
+       selectedClassId: selectedDraftClassId,
+       selectedDate: selectedLessonDate,
+       totalTests: tests?.length,
+       candidateTests,
+     });
+-  }, [candidateTests, selectedDraftClassId, selectedDraftStudentId, selectedLessonDate, tests?.length]);
++  }, [candidateTests, selectedDraftClassId, selectedDraftStudent, selectedDraftStudentId, selectedLessonDate, selectedStudentKeys, tests?.length]);
++
++
++
++  useEffect(() => {
++    if (process.env.NODE_ENV === 'production') return;
++    const attendanceMatches = (attendanceLogs || []).filter((item) => hasAnyStudentKey([item.studentId, item.studentUid], selectedStudentKeys)
++      && resolveClassId(item) === selectedDraftClassId
++      && resolveAttendanceDate(item) === selectedLessonDate);
++    const homeworkResultMatches = candidateHomeworkAssignments.filter((assignment) => {
++      const assignmentId = String(assignment.id || '');
++      const nestedMatch = selectedStudentKeys.some((key) => homeworkResults?.[key]?.[assignmentId] !== undefined && homeworkResults?.[key]?.[assignmentId] !== null);
++      if (nestedMatch) return true;
++      return Object.values(homeworkResults || {}).some((value) => {
++        if (!value || typeof value !== 'object') return false;
++        const byAssignment = value?.[assignmentId];
++        if (byAssignment && hasAnyStudentKey([byAssignment.studentId, byAssignment.authUid, byAssignment.studentUid, byAssignment.uid, byAssignment.userUid], selectedStudentKeys)) return true;
++        return String(value?.assignmentId || '') === assignmentId
++          && hasAnyStudentKey([value.studentId, value.authUid, value.studentUid, value.uid, value.userUid], selectedStudentKeys);
++      });
++    });
++    const gradeMatches = candidateTests.filter((test) => getGradeForLessonReportStudent({
++      student: selectedDraftStudent,
++      studentId: selectedDraftStudentId,
++      grades,
++      testId: test.id,
++    }));
++    console.log('[lesson-report debug:matching]', {
++      selectedStudent: selectedDraftStudent,
++      studentKeys: selectedStudentKeys,
++      counts: {
++        attendance: attendanceMatches.length,
++        homeworkAssignments: candidateHomeworkAssignments.length,
++        homeworkResults: homeworkResultMatches.length,
++        tests: candidateTests.length,
++        grades: gradeMatches.length,
++      },
++      comparedKeysOnEmpty: {
++        attendance: attendanceMatches.length ? [] : (attendanceLogs || []).slice(0, 5).map((item) => ({ id: item.id, studentId: item.studentId, studentUid: item.studentUid, classId: resolveClassId(item), date: resolveAttendanceDate(item) })),
++        homeworkAssignments: candidateHomeworkAssignments.length ? [] : classHomeworkAssignments.slice(0, 5).map((item) => ({ id: item.id, assignedStudentIds: item.assignedStudentIds, targetStudents: item.targetStudents, classId: resolveClassId(item) })),
++        grades: gradeMatches.length ? [] : candidateTests.slice(0, 5).map((test) => ({ testId: test.id, gradeStudentKeys: Object.keys(grades || {}).slice(0, 10) })),
++      },
++    });
++  }, [attendanceLogs, candidateHomeworkAssignments, candidateTests, classHomeworkAssignments, grades, homeworkResults, selectedDraftClassId, selectedDraftStudent, selectedDraftStudentId, selectedLessonDate, selectedStudentKeys]);
+ 
+   const previewHomeworkSummary = useMemo(
+     () => summarizeHomework({
+       selectedHomeworkProgressIds: draft?.selectedHomeworkProgressIds || draft?.selectedHomeworkIds || [],
+       homeworkAssignments,
+       homeworkResults,
+       studentId: draft?.studentId,
+       student: students.find((item) => String(item.id) === String(draft?.studentId || '')) || null,
+     }),
+     [draft?.selectedHomeworkIds, draft?.selectedHomeworkProgressIds, draft?.studentId, homeworkAssignments, homeworkResults, students],
+   );
+   const previewAssignedHomeworkSummary = useMemo(
+     () => summarizeAssignedHomework({
+       selectedAssignedHomeworkIds: draft?.selectedAssignedHomeworkIds || draft?.selectedHomeworkIds || [],
+       homeworkAssignments,
+     }),
+     [draft?.selectedAssignedHomeworkIds, draft?.selectedHomeworkIds, homeworkAssignments],
+   );
+   const previewTestSummary = useMemo(
+     () => summarizeTests({
+       selectedTestIds: draft?.selectedTestIds || [],
+       tests,
+       grades,
+       studentId: draft?.studentId,
+       student: students.find((item) => String(item.id) === String(draft?.studentId || '')) || null,
+@@ -392,93 +457,96 @@ export default function LessonReportManagement({
+       };
+     });
+   }, [currentAutoFilledLearnedTopics, currentLessonLog?.id, draft?.classId, draft?.lessonDate, draft?.studentId]);
+ 
+   const openDraftForStudent = (targetStudentId, existingReport = null) => {
+     try {
+       setDraftError('');
+       const student = students.find((item) => String(item.id) === String(targetStudentId));
+       if (!student) {
+         setDraftError('학생 정보를 찾을 수 없습니다. 페이지를 새로고침 후 다시 시도해 주세요.');
+         return;
+       }
+ 
+       const classId = String(selectedClassId || getStudentClassIds(student)[0] || '');
+       const lessonDate = existingReport ? toYmd(existingReport.lessonDate) : String(selectedDate || todayYmd());
+       const reportId = existingReport?.id || buildLessonReportId({
+         studentId: targetStudentId,
+         classId,
+         lessonDate,
+       });
+       if (!reportId) {
+         setDraftError('리포트 ID 생성에 실패했습니다. 클래스/학생/날짜 선택을 확인해 주세요.');
+         return;
+       }
+       const lessonLog = (lessonLogs || []).find((log) => resolveClassId(log) === classId && resolveLessonLogDate(log) === lessonDate);
+-      const attendance = attendanceLogs.find((item) => String(item.studentId) === String(targetStudentId)
++      const studentKeys = buildStudentKeys(student);
++      const attendance = attendanceLogs.find((item) => hasAnyStudentKey([item.studentId, item.studentUid], studentKeys)
+         && resolveClassId(item) === classId
+         && resolveAttendanceDate(item) === lessonDate);
+ 
+       setSelectedStudentId(String(targetStudentId));
+       setActiveTab('edit');
+       setDraft({
+         ...(existingReport || {}),
+         id: reportId,
+         studentId: String(targetStudentId),
+         classId,
+         lessonDate,
+         lessonLogId: existingReport?.lessonLogId || lessonLog?.id || null,
+         attendanceStatus: existingReport?.attendanceStatus || attendance?.attendance || attendance?.status || '미기록',
+         learnedTopics: existingReport?.learnedTopics ?? resolveLessonLogProgress(lessonLog),
+         autoFilledLearnedTopics: resolveLessonLogProgress(lessonLog),
+         isLearnedTopicsManuallyEdited: false,
+         selectedHomeworkIds: existingReport?.selectedHomeworkIds || [],
+         selectedHomeworkProgressIds: existingReport?.selectedHomeworkProgressIds || existingReport?.selectedHomeworkIds || [],
+         selectedAssignedHomeworkIds: existingReport?.selectedAssignedHomeworkIds || existingReport?.selectedHomeworkIds || [],
+         selectedTestIds: existingReport?.selectedTestIds || [],
+         comment: existingReport?.comment || '',
+         status: existingReport?.status || LESSON_REPORT_STATUS.DRAFT,
+         sendStatus: existingReport?.sendStatus || LESSON_REPORT_SEND_STATUS.DRAFT,
+         sendMode: existingReport?.sendMode || 'now',
+         scheduledSendAt: existingReport?.scheduledSendAt || null,
+         studentNotificationSent: Boolean(existingReport?.studentNotificationSent),
+         parentNotificationSent: Boolean(existingReport?.parentNotificationSent),
+       });
+     } catch (error) {
+       setDraftError(error?.message || '리포트 초안 생성 중 오류가 발생했습니다.');
      }
-     return sortRoomsByActivity(Array.from(roomsById.values()).filter((room) => {
-         const roomType = String(room?.roomType || room?.channel || '').trim();
-         const slot = String(room?.slot || '').trim();
-         const isParentRoom = ['parent_institute', 'parent_teacher'].includes(roomType) || ['institute', 'teacher'].includes(slot);
-+        const roomParticipantIds = Array.isArray(room?.participantIds) ? room.participantIds.map(String) : [];
-         const hasParentIdentity = String(room?.parentId || '') === parentDocId
--            || String(room?.parentUid || '') === currentAuthUid
-+            || candidateKeys.includes(String(room?.parentUid || ''))
-+            || candidateKeys.some((key) => roomParticipantIds.includes(key))
-             || (studentIds.length > 0 && studentIds.includes(String(room?.studentId || '')));
-         return isParentRoom && hasParentIdentity;
-     }));
- };
+   };
  
- export const fetchRoomsForIndexes = async (indexes = []) => {
-     const rooms = await Promise.all(sortUserRoomIndexes(indexes).map(async (index) => {
-         const roomId = String(index?.roomId || index?.id || '').trim();
-         if (!roomId) return null;
-         const roomSnap = await getDoc(doc(db, 'chatRooms', roomId));
-         if (!roomSnap.exists()) return mergeRoomWithIndex({ id: roomId }, index);
-         return mergeRoomWithIndex({ id: roomSnap.id, ...roomSnap.data() }, index);
-     }));
-     return rooms.filter(Boolean);
- };
+   const handleDraftSelectionChange = (changes) => {
+     setDraft((prev) => {
+       if (!prev) return prev;
+       const nextClassId = String(changes.classId ?? prev.classId);
+       const nextLessonDate = String(changes.lessonDate ?? prev.lessonDate);
+       const nextStudentId = String(changes.studentId ?? prev.studentId);
+       const nextId = buildLessonReportId({ studentId: nextStudentId, classId: nextClassId, lessonDate: nextLessonDate });
+       const existing = reportMap.get(nextId);
+-      const attendance = attendanceLogs.find((item) => String(item.studentId) === nextStudentId
++      const nextStudent = students.find((item) => String(item.id) === nextStudentId) || null;
++      const nextStudentKeys = buildStudentKeys(nextStudent);
++      const attendance = attendanceLogs.find((item) => hasAnyStudentKey([item.studentId, item.studentUid], nextStudentKeys)
+         && resolveClassId(item) === nextClassId
+         && resolveAttendanceDate(item) === nextLessonDate);
+       const lessonLog = (lessonLogs || []).find((log) => resolveClassId(log) === nextClassId && resolveLessonLogDate(log) === nextLessonDate);
+       if (existing) {
+         return {
+           ...prev,
+           ...existing,
+           ...changes,
+           id: nextId,
+           studentId: nextStudentId,
+           classId: nextClassId,
+           lessonDate: nextLessonDate,
+           attendanceStatus: changes.attendanceStatus ?? existing.attendanceStatus ?? attendance?.attendance ?? attendance?.status ?? '미기록',
+           selectedHomeworkProgressIds: existing.selectedHomeworkProgressIds || existing.selectedHomeworkIds || [],
+           selectedAssignedHomeworkIds: existing.selectedAssignedHomeworkIds || existing.selectedHomeworkIds || [],
+           autoFilledLearnedTopics: resolveLessonLogProgress(lessonLog),
+           isLearnedTopicsManuallyEdited: false,
+         };
+       }
  
- export const subscribeUserChatRooms = ({ authUid, role = '', onNext, onError }) => {
-     const indexQuery = query(collection(db, 'userChatRooms', authUid, 'rooms'));
-     return onSnapshot(indexQuery, async (snap) => {
-         try {
-             if (process.env.NODE_ENV === 'development') {
-                 console.log('[resolver] userChatRooms snapshot', { role, authUid, count: snap.docs.length, ids: snap.docs.map((docSnap) => docSnap.id) });
-             }
-             const indexes = snap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
-             const indexedRooms = await fetchRoomsForIndexes(indexes);
--            if (role === 'staff') {
-+            if (role === 'staff' || indexedRooms.length > 0) {
-                 onNext(indexedRooms, indexes);
-                 return;
-             }
-+            if (process.env.NODE_ENV === 'development') {
-+                console.log('[resolver] userChatRooms empty; using chatRooms fallback', { role, authUid });
-+            }
-             const fallbackRooms = role === 'parent' ? await fetchParentFallbackRooms(authUid) : await fetchStudentFallbackRooms(authUid);
--            const roomsById = new Map(indexedRooms.map((room) => [String(room?.id || room?.roomId || ''), room]));
--            fallbackRooms.forEach((room) => roomsById.set(String(room?.id || room?.roomId || ''), room));
--            onNext(sortRoomsByActivity(Array.from(roomsById.values()).filter(Boolean)), indexes);
-+            onNext(sortRoomsByActivity(fallbackRooms), indexes);
-         } catch (error) {
-             onError?.(error);
-         }
-     }, onError);
- };
+         return {
+         ...prev,
+         ...changes,
+         id: nextId,
+         studentId: nextStudentId,

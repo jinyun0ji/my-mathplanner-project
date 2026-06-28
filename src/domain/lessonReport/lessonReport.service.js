@@ -70,7 +70,9 @@ const toCandidateStudentKeys = ({ student = null, studentId = '' }) => {
         student?.id,
         student?.studentId,
         student?.studentDocId,
+        student?.docId,
         student?.authUid,
+        student?.userUid,
         student?.studentUid,
         student?.uid,
     ]
@@ -100,6 +102,7 @@ export const getGradeForLessonReportStudent = ({ student = null, studentId = '',
             byTest?.studentDocId,
             byTest?.authUid,
             byTest?.studentUid,
+            byTest?.userUid,
             byTest?.uid,
         ]
             .filter((value) => value !== null && value !== undefined)
@@ -139,9 +142,24 @@ const getHomeworkResultByStudent = ({ homeworkResults = {}, assignmentId, studen
             byAssignment?.studentDocId,
             byAssignment?.authUid,
             byAssignment?.studentUid,
+            byAssignment?.userUid,
             byAssignment?.uid,
         ].filter(Boolean).map(String);
         if (refs.some((ref) => keySet.has(ref))) return byAssignment;
+    }
+
+    for (const result of Object.values(homeworkResults || {})) {
+        if (!result || typeof result !== 'object') continue;
+        if (String(result?.assignmentId || '') !== String(assignmentId || '')) continue;
+        const refs = [
+            result?.studentId,
+            result?.studentDocId,
+            result?.authUid,
+            result?.studentUid,
+            result?.userUid,
+            result?.uid,
+        ].filter(Boolean).map(String);
+        if (refs.some((ref) => keySet.has(ref))) return result;
     }
 
     return null;
