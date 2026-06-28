@@ -67,7 +67,7 @@ export default function NotificationList({
         ref={panelRef}
         className="absolute top-0 right-0 h-full w-full md:w-96 max-w-full bg-brand-bg shadow-2xl flex flex-col"
       >
-        <div className="bg-white px-5 py-4 flex justify-between items-center border-b border-brand-gray/30 shadow-sm shrink-0">
+        <div className="notification-mobile-header bg-white px-5 py-4 flex justify-between items-center border-b border-brand-gray/30 shadow-sm shrink-0">
           <h3 className="font-bold text-brand-black text-lg flex items-center gap-2">
             <div className="bg-brand-red/10 text-brand-red p-1.5 rounded-lg flex items-center justify-center">
               <NotificationsIcon className="w-5 h-5" style={{ fontSize: 20 }} />
@@ -79,14 +79,14 @@ export default function NotificationList({
               type="button"
               onClick={onMarkAllRead}
               disabled={!onMarkAllRead || unreadCount === 0}
-              className="text-xs font-semibold text-brand-main bg-brand-light/60 border border-brand-main/20 px-3 py-1 rounded-full disabled:opacity-50 disabled:cursor-not-allowed"
+              className="min-h-11 min-w-11 text-xs font-semibold text-brand-main bg-brand-light/60 border border-brand-main/20 px-3 py-1 rounded-full disabled:opacity-50 disabled:cursor-not-allowed"
             >
               모두 읽음
             </button>
             <button
               type="button"
               onClick={onClose}
-              className="p-2 text-brand-gray hover:text-brand-black rounded-full hover:bg-brand-bg transition-colors"
+              className="min-h-11 min-w-11 p-2 text-brand-gray hover:text-brand-black rounded-full hover:bg-brand-bg transition-colors flex items-center justify-center"
             >
               <Icon name="x" className="w-6 h-6" />
             </button>

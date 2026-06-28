@@ -36,14 +36,14 @@ export default function StudentNotifications({ isOpen, onClose, notices = [], on
                 ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}
             >
                 {/* 헤더 */}
-                <div className="bg-white px-5 py-4 flex justify-between items-center border-b border-brand-gray/30 shadow-sm shrink-0">
+                <div className="notification-mobile-header bg-white px-5 py-4 flex justify-between items-center border-b border-brand-gray/30 shadow-sm shrink-0">
                     <h3 className="font-bold text-brand-black text-lg flex items-center gap-2">
                         <div className="bg-brand-red/10 text-brand-red p-1.5 rounded-lg flex items-center justify-center">
                             <NotificationsIcon className="w-5 h-5" style={{ fontSize: 20 }} />
                         </div>
                         알림 센터
                     </h3>
-                    <button onClick={onClose} className="p-2 text-brand-gray hover:text-brand-black rounded-full hover:bg-brand-bg transition-colors">
+                    <button onClick={onClose} className="min-h-11 min-w-11 p-2 text-brand-gray hover:text-brand-black rounded-full hover:bg-brand-bg transition-colors flex items-center justify-center">
                         <Icon name="x" className="w-6 h-6" />
                     </button>
                 </div>
@@ -81,7 +81,7 @@ export default function StudentNotifications({ isOpen, onClose, notices = [], on
                                     e.stopPropagation(); 
                                     onDelete(notice.id);
                                 }}
-                                className="absolute top-3 right-3 p-1.5 text-brand-gray hover:text-brand-red hover:bg-brand-red/10 rounded-full opacity-0 group-hover:opacity-100 transition-all"
+                                className="absolute top-3 right-3 min-h-11 min-w-11 p-1.5 text-brand-gray hover:text-brand-red hover:bg-brand-red/10 rounded-full opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center"
                             >
                                 <Icon name="trash" className="w-4 h-4" />
                             </button>

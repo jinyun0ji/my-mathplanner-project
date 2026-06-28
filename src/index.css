@@ -78,6 +78,12 @@ html.capacitor-native {
   min-height: 64px;
 }
 
+.capacitor-native .notification-mobile-header {
+  padding-top: max(var(--app-safe-top), 44px);
+  min-height: calc(64px + max(var(--app-safe-top), 44px));
+  box-sizing: border-box;
+}
+
 .back-button,
 .mobile-back-button {
   min-width: 44px;
