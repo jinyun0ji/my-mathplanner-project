@@ -2,7 +2,7 @@ import React, { useCallback, useMemo, useState } from 'react';
 import { httpsCallable } from 'firebase/functions';
 import { Link } from 'react-router-dom';
 import { functions } from '../firebase/client';
-import { signInWithGoogle } from '../auth/authService';
+import { isGoogleLoginAvailable, NATIVE_GOOGLE_LOGIN_UNAVAILABLE_MESSAGE, signInWithGoogle } from '../auth/authService';
 import logoHorizontal from '../assets/logo/logo-horizontal.png';
 
 const normalizeInviteCode = (value) => (value || '').trim();
@@ -30,6 +30,7 @@ export default function InviteSignupPage() {
     const [status, setStatus] = useState('');
     const [submitting, setSubmitting] = useState(false);
     const [checkingInvite, setCheckingInvite] = useState(false);
+    const canUseGoogleLogin = isGoogleLoginAvailable();
 
     const inviteCodeValue = useMemo(() => normalizeInviteCode(inviteCode), [inviteCode]);
 
@@ -74,6 +75,11 @@ export default function InviteSignupPage() {
     const handleSubmit = async (e) => {
         e.preventDefault();
         setStatus('');
+
+        if (!canUseGoogleLogin) {
+            setStatus(NATIVE_GOOGLE_LOGIN_UNAVAILABLE_MESSAGE);
+            return;
+        }
 
         if (!inviteCodeValue) {
             setStatus('초대 코드를 입력해주세요.');
@@ -169,7 +175,9 @@ export default function InviteSignupPage() {
                             ? '가입 처리 중...'
                             : checkingInvite
                                 ? '초대 코드 확인 중...'
-                                : 'Google로 가입하기'}
+                                : canUseGoogleLogin
+                                    ? 'Google로 가입하기'
+                                    : NATIVE_GOOGLE_LOGIN_UNAVAILABLE_MESSAGE}
                     </button>
                 </form>
 

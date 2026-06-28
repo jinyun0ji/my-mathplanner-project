@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import logoHorizontal from '../assets/logo/logo-horizontal.png';
 import { Link } from 'react-router-dom';
+import { isGoogleLoginAvailable, NATIVE_GOOGLE_LOGIN_UNAVAILABLE_MESSAGE } from '../auth/authService';
 
 const getLoginMessage = (error) => {
     if (error?.code === 'google-login/native-unavailable') {
@@ -29,6 +30,7 @@ export default function LoginPage({ onSocialLogin, onEmailLogin }) {
     const [errorMessage, setErrorMessage] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isSocialSubmitting, setIsSocialSubmitting] = useState(false);
+    const canUseGoogleLogin = isGoogleLoginAvailable();
 
     const handleReviewLogin = async (event) => {
         event.preventDefault();
@@ -48,6 +50,10 @@ export default function LoginPage({ onSocialLogin, onEmailLogin }) {
 
 
     const handleGoogleLogin = async () => {
+        if (!canUseGoogleLogin) {
+            setErrorMessage(NATIVE_GOOGLE_LOGIN_UNAVAILABLE_MESSAGE);
+            return;
+        }
         if (!onSocialLogin || isSocialSubmitting) return;
 
         setErrorMessage('');
@@ -110,7 +116,7 @@ export default function LoginPage({ onSocialLogin, onEmailLogin }) {
                                     d="M24 48c6.1 0 11.6-2 15.5-5.4l-7.8-6.1c-2.1 1.4-5 2.4-7.7 2.4-6.3 0-11.8-3.6-13.7-8.8l-7.8 3.7C6.5 42.6 14.6 48 24 48z"
                                 />
                             </svg>
-                            {isSocialSubmitting ? '로그인 중...' : 'Google로 로그인'}
+                            {canUseGoogleLogin ? (isSocialSubmitting ? '로그인 중...' : 'Google로 로그인') : NATIVE_GOOGLE_LOGIN_UNAVAILABLE_MESSAGE}
                         </button>
                         {errorMessage && !isReviewLoginOpen && (
                             <p className="mt-3 text-xs font-semibold text-rose-600" role="alert">
