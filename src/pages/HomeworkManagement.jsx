@@ -5,7 +5,7 @@ import ClassSelectionPanel from '../components/Shared/ClassSelectionPanel';
 import HomeworkStatisticsPanel from '../components/Homework/HomeworkStatisticsPanel';
 import { HomeworkAssignmentModal } from '../utils/modals/HomeworkAssignmentModal';
 import HomeworkResultsModal from '../utils/modals/HomeworkResultsModal';
-import { buildAssignmentSummary, classifyHomeworkResultKeyMode, computeHomeworkProgress, getAssignmentQuestionNumbers, getClassAssignments, getSelectedAssignment, normalizeHomeworkResultMapForDisplay, resolveAssignmentStudentIds, resolveAssignmentTypeLabel, resolveAssignmentType, isHomeworkCompleteByCounts } from '../domain/homework/homework.service';
+import { buildAssignmentSummary, classifyHomeworkResultKeyMode, computeHomeworkProgress, getAssignmentQuestionNumbers, getClassAssignments, getSelectedAssignment, normalizeHomeworkResultMapForDisplay, resolveAssignmentStudentIds, resolveAssignmentTypeLabel, resolveHomeworkAssignmentTitle, resolveAssignmentType, isHomeworkCompleteByCounts } from '../domain/homework/homework.service';
 import { buildHomeworkWrongNoteText } from '../domain/homework/homeworkWrongNote.service';
 import { db } from '../firebase/client';
 import { getDefaultClassId, isClosedClass } from '../utils/classStatus';
@@ -57,17 +57,14 @@ const compareByDateDescThenName = (a, b) => {
     const classDiff = String(a?.className || '').localeCompare(String(b?.className || ''), 'ko');
     if (classDiff !== 0) return classDiff;
 
-    const titleA = String(a?.book || a?.title || a?.content || '');
-    const titleB = String(b?.book || b?.title || b?.content || '');
+    const titleA = String(resolveHomeworkAssignmentTitle(a));
+    const titleB = String(resolveHomeworkAssignmentTitle(b));
     return titleA.localeCompare(titleB, 'ko');
 };
 
 const normalizeSearchText = (value) => String(value || '').trim().toLowerCase().replace(/\s+/g, '');
 
-const getHomeworkDisplayTitle = (assignment) => {
-    const title = assignment?.title || assignment?.book || '';
-    return String(title).trim() || '과제';
-};
+const getHomeworkDisplayTitle = resolveHomeworkAssignmentTitle;
 
 export default function HomeworkManagement({
     classes, homeworkAssignments, homeworkResults,
@@ -324,7 +321,7 @@ export default function HomeworkManagement({
             if (isDev) {
                 console.log('[homework completion debug]', {
                     assignmentId: selectedAssignment?.id,
-                    title: selectedAssignment?.title || selectedAssignment?.book || selectedAssignment?.content,
+                    title: resolveHomeworkAssignmentTitle(selectedAssignment),
                     questionNumbers,
                     rawKeys: Object.keys(mergedResultMap || {}),
                     normalizedKeys: Object.keys(normalizedResultMap || {}),

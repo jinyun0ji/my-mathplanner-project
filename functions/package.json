@@ -12,6 +12,7 @@
     "node-fetch": "^2.7.0"
   },
   "scripts": {
-    "normalize:clinic": "node ./scripts/normalizeClinicLogs.js"
+    "normalize:clinic": "node ./scripts/normalizeClinicLogs.js",
+    "backfill:homework-inspection-status": "node ./scripts/backfillHomeworkInspectionStatus.js"
   }
 }

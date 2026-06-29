@@ -1,92 +1,502 @@
-diff --git a/src/firebase/client.js b/src/firebase/client.js
-index 177ca30847e2d39ad2f9c004211b24cfbfd358c3..e3dadb61fc8cb8fe841960ffa788d754b1f5fee0 100644
---- a/src/firebase/client.js
-+++ b/src/firebase/client.js
-@@ -21,50 +21,58 @@ const firebaseConfig = {
- };
- 
- export const firebaseApp =
-   getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
- 
- const createAuth = () => {
-   if (!Capacitor.isNativePlatform()) {
-     return getAuth(firebaseApp);
+diff --git a/functions/package.json b/functions/package.json
+index 97f233f9f191b04d22edcbcdbed1c21fa3b41b21..76ca38965fbac4715c64901c06abc81d9de9b66a 100644
+--- a/functions/package.json
++++ b/functions/package.json
+@@ -1,17 +1,18 @@
+ {
+   "name": "functions",
+   "engines": {
+     "node": "20"
+   },
+   "main": "index.js",
+   "dependencies": {
+     "cors": "^2.8.5",
+     "express": "^4.18.2",
+     "firebase-admin": "^12.6.0",
+     "firebase-functions": "^4.8.0",
+     "node-fetch": "^2.7.0"
+   },
+   "scripts": {
+-    "normalize:clinic": "node ./scripts/normalizeClinicLogs.js"
++    "normalize:clinic": "node ./scripts/normalizeClinicLogs.js",
++    "backfill:homework-inspection-status": "node ./scripts/backfillHomeworkInspectionStatus.js"
    }
- 
-   try {
-     return initializeAuth(firebaseApp, {
-       persistence: indexedDBLocalPersistence,
-     });
-   } catch (error) {
-     return getAuth(firebaseApp);
-   }
- };
- 
- export const auth = createAuth();
- 
- if (process.env.NODE_ENV === 'development' && typeof window !== 'undefined') {
-   console.log('[capacitor] origin =', window.location.origin);
- }
- 
-+const isCapacitorAppEnvironment = () => {
-+  if (Capacitor.isNativePlatform()) return true;
-+  if (typeof window === 'undefined') return false;
+-}
+\ No newline at end of file
++}
+diff --git a/functions/scripts/backfillHomeworkInspectionStatus.js b/functions/scripts/backfillHomeworkInspectionStatus.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..191f6a456e02d1d5ae8af5ee3cedd599b2173189
+--- /dev/null
++++ b/functions/scripts/backfillHomeworkInspectionStatus.js
+@@ -0,0 +1,46 @@
++const admin = require('firebase-admin');
 +
-+  return window.location.protocol === 'capacitor:'
-+    || window.location.origin === 'https://localhost';
++const shouldWrite = process.argv.includes('--write');
++
++if (!admin.apps.length) {
++  admin.initializeApp();
++}
++
++const db = admin.firestore();
++
++async function main() {
++  const snapshot = await db.collection('homeworkAssignments').get();
++  const targets = snapshot.docs.filter((doc) => {
++    const data = doc.data() || {};
++    return data.inspectionStatus === undefined || data.inspectionStatus === null || String(data.inspectionStatus).trim() === '';
++  });
++
++  console.log(`[backfillHomeworkInspectionStatus] mode=${shouldWrite ? 'write' : 'dry-run'} total=${snapshot.size} missing=${targets.length}`);
++
++  if (!shouldWrite) {
++    targets.slice(0, 20).forEach((doc) => console.log(`[dry-run] would update homeworkAssignments/${doc.id}`));
++    if (targets.length > 20) console.log(`[dry-run] ...and ${targets.length - 20} more`);
++    console.log('[dry-run] No writes performed. Re-run with --write to update documents.');
++    return;
++  }
++
++  for (let index = 0; index < targets.length; index += 500) {
++    const batch = db.batch();
++    targets.slice(index, index + 500).forEach((doc) => {
++      batch.update(doc.ref, {
++        inspectionStatus: 'pending',
++        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
++        updatedBy: 'backfillHomeworkInspectionStatus',
++      });
++    });
++    await batch.commit();
++    console.log(`[write] updated ${Math.min(index + 500, targets.length)}/${targets.length}`);
++  }
++}
++
++main()
++  .then(() => process.exit(0))
++  .catch((error) => {
++    console.error('[backfillHomeworkInspectionStatus] failed', error);
++    process.exit(1);
++  });
+diff --git a/src/components/tabs/dashboard/DashboardTab.jsx b/src/components/tabs/dashboard/DashboardTab.jsx
+index 11a66832b69027f6307506a0501a220c3e167cd6..601255118eec64763cba4dc4434079b7a12eae03 100644
+--- a/src/components/tabs/dashboard/DashboardTab.jsx
++++ b/src/components/tabs/dashboard/DashboardTab.jsx
+@@ -1,27 +1,28 @@
+ import React from 'react';
+ import { Icon, normalizeClassSchedule, getWeekdayKeyFromDate } from '../../../utils/helpers';
++import { resolveHomeworkAssignmentTitle } from '../../../domain/homework/homework.service';
+ 
+ export default function DashboardTab({
+     student,
+     myClasses = [],
+     attendanceLogs = [],
+     clinicLogs = [],
+     homeworkStats = [],
+     notices = [],
+     setActiveTab,
+     externalSchedules = [],
+     isParent = false,
+     today: todayOverride,
+     todayDayName: todayDayNameOverride,
+     filteredTodayItems: filteredTodayItemsOverride,
+ }) {
+     const hasStudent = Boolean(student);
+     const isDev = process.env.NODE_ENV !== 'production';
+ 
+     if (isDev) {
+         console.debug('[DashboardTab] render', {
+             hasStudent,
+             myClassesLength: myClasses.length,
+             attendanceLogsLength: attendanceLogs.length,
+             clinicLogsLength: clinicLogs.length,
+             homeworkStatsLength: homeworkStats.length,
+@@ -146,40 +147,40 @@ export default function DashboardTab({
+                                     </div>
+                                     <div className="text-xs text-gray-500">{item.sub}</div>
+                                 </div>
+                             </div>
+                         ))
+                     ) : (
+                         <div className="py-6 text-center text-gray-400 text-xs sm:col-span-2">
+                             예정된 학원 일정이 없습니다.
+                         </div>
+                     )}
+                 </div>
+             </section>
+             <div><div className="flex justify-between items-end mb-3 px-1"><h3 className="text-sm font-bold text-gray-800 flex items-center"><Icon name="clipboardCheck" className="w-5 h-5 mr-2 text-brand-red" />놓치면 안 돼요!</h3><button onClick={() => setActiveTab('learning')} className="text-xs text-gray-500 underline active:text-gray-800">전체보기</button></div><div className="flex gap-3 overflow-x-auto pb-4 -mx-4 px-4 snap-x scrollbar-hide">{homeworkStats.filter(h => !h.isComplete).length > 0 ? (homeworkStats.filter(h => !h.isComplete).map(hw => {
+                 const isNotStarted = (hw.checkedCount || 0) === 0;
+                 const isReviewing = (hw.checkedCount || 0) >= (hw.totalQuestions || 0) && (hw.incorrectCount || 0) > 0;
+                 const accentClass = isNotStarted ? 'bg-brand-red' : isReviewing ? 'bg-amber-500' : 'bg-brand-main';
+                 const badgeClass = isNotStarted ? 'bg-red-100 text-red-600' : isReviewing ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-[#455fab]';
+                 const assignedDate = hw.assignedDate || hw.date || '';
+                 return (
+                     <div key={hw.id} className="snap-center shrink-0 w-60 bg-white p-3 rounded-xl shadow-sm border border-gray-200 relative overflow-hidden active:scale-95 transition-transform">
+                         <div className={`absolute top-0 left-0 w-1.5 h-full ${accentClass}`}></div>
+                         <div className="flex justify-between items-start mb-2 pl-2">
+                             <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${badgeClass}`}>{hw.status}</span>
+                             <span className="text-[10px] text-gray-400">~{assignedDate ? assignedDate.slice(5) : ''}</span>
+                         </div>
+-                        <h4 className="font-bold text-gray-900 text-sm mb-1 pl-2 truncate">{hw.content}</h4>
++                        <h4 className="font-bold text-gray-900 text-sm mb-1 pl-2 truncate">{resolveHomeworkAssignmentTitle(hw)}</h4>
+                         <p className="text-xs text-gray-500 pl-2 mb-3">{hw.book}</p>
+                         <div className="pl-2">
+                             <div className="w-full bg-gray-100 rounded-full h-1.5">
+                                 <div className="bg-brand-main h-1.5 rounded-full" style={{ width: `${hw.completionRate}%` }}></div>
+                             </div>
+                             <p className="text-[10px] text-right text-gray-400 mt-1">{hw.completionRate}% 달성</p>
+                         </div>
+                     </div>
+                 );
+             })) : (<div className="w-full bg-white p-4 rounded-xl border border-gray-100 text-center"><p className="text-sm text-gray-500">모든 과제를 완료했습니다.</p></div>)}</div></div>
+             <div><div className="flex justify-between items-center mb-2 px-1"><h3 className="text-sm font-bold text-gray-800">게시판</h3><button onClick={() => setActiveTab('board')} className="text-xs text-gray-500 underline active:text-gray-800">전체보기</button></div><div className="bg-white rounded-xl shadow-sm border border-gray-200 divide-y divide-gray-100">{notices.slice(0, 3).map(notice => (<div key={notice.id} onClick={() => setActiveTab('board')} className="p-3 flex justify-between items-center cursor-pointer active:bg-gray-50 transition-colors"><div className="flex-1 min-w-0 mr-4"><div className="flex items-center gap-2 mb-1">{notice.isPinned && <span className="text-[10px] bg-brand-red text-white px-1 rounded">필독</span>}<h4 className="text-sm font-bold text-gray-900 truncate">{notice.title}</h4></div><p className="text-xs text-gray-400">{notice.date}</p></div><Icon name="chevronRight" className="w-4 h-4 text-gray-300" /></div>))}{notices.length === 0 && (<div className="p-3 text-center text-gray-500 text-sm">등록된 게시글이 없습니다.</div>)}</div></div>
+         </div>
+     );
+-};
+\ No newline at end of file
 +};
-+
- const createFirestore = () => {
--  // 🌟 시뮬레이터 CORS 차단을 원천 봉쇄하기 위해 무조건 true(앱 환경)로 강제 설정합니다.
--  const isAppEnvironment = true; 
-+  const isAppEnvironment = isCapacitorAppEnvironment();
+diff --git a/src/components/tabs/learning/HomeworkTab.jsx b/src/components/tabs/learning/HomeworkTab.jsx
+index b659af0973525241d16b0e94cad004d0dcb47cf4..593416eb99013f778c7cfb5f0cf3ab6ceb4ff311 100644
+--- a/src/components/tabs/learning/HomeworkTab.jsx
++++ b/src/components/tabs/learning/HomeworkTab.jsx
+@@ -1,55 +1,55 @@
+ import React, { useState } from 'react';
+-import { resolveAssignmentType, resolveAssignmentTypeLabel } from '../../../domain/homework/homework.service';
++import { resolveAssignmentType, resolveAssignmentTypeLabel, resolveHomeworkAssignmentTitle } from '../../../domain/homework/homework.service';
  
-   if (!isAppEnvironment) {
-     return getFirestore(firebaseApp);
-   }
+ export default function HomeworkTab({ myHomeworkStats }) {
+     const [selectedHwId, setSelectedHwId] = useState(null);
+     const toggleDetails = (id) => setSelectedHwId(selectedHwId === id ? null : id);
  
--  // 🚀 Xcode 시뮬레이터 전용 강제 롱 폴링 우회 가동!
-   try {
--    console.log('[Firebase] Forcing Long Polling bypass for iOS Simulator...');
-+    if (process.env.NODE_ENV === 'development') {
-+      console.log('[Firebase] Forcing Long Polling bypass for iOS Simulator...');
-+    }
-     return initializeFirestore(firebaseApp, {
-       experimentalForceLongPolling: true,
-       experimentalAutoDetectLongPolling: false,
-       useFetchStreams: false
-     });
-   } catch (error) {
-     return getFirestore(firebaseApp);
-   }
+     return (
+         <div className="space-y-3">
+             {myHomeworkStats.length === 0 && <div className="text-center py-10 text-gray-400 text-sm bg-white rounded-2xl border border-dashed border-gray-200">등록된 과제가 없습니다.</div>}
+             {myHomeworkStats.map(hw => {
+                 const assignmentType = resolveAssignmentType(hw);
+                 const typeLabel = resolveAssignmentTypeLabel(hw);
+                 const issuedDate =
+                     typeof hw.date === 'string'
+                         ? hw.date
+                         : hw.date?.toDate?.()
+                             ? hw.date.toDate().toISOString().slice(0, 10)
+                             : hw.date
+                                 ? new Date(hw.date).toISOString().slice(0, 10)
+                                 : '';
+ 
+                 return (
+                     <div key={hw.id} onClick={() => toggleDetails(hw.id)} className={`bg-white p-3 rounded-xl shadow-sm border border-gray-100 transition-all cursor-pointer ${selectedHwId === hw.id ? 'ring-2 ring-[#455fab]' : ''}`}>
+                         <div className="flex justify-between items-start mb-2">
+                             <span className={`text-xs font-bold px-2 py-0.5 rounded ${hw.status === '완료' ? 'bg-green-100 text-green-700' : hw.status === '미시작' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-[#334a91]'}`}>{hw.status}</span>
+                             <span className="text-xs text-gray-500 font-semibold">출제일: {issuedDate || '-'}</span>
+                         </div>
+                         <div className="flex items-center gap-2 mb-1">
+-                            <h4 className="font-bold text-gray-900">{hw.book || hw.title || hw.name || hw.bookName || hw.content || '과제'}</h4>
++                            <h4 className="font-bold text-gray-900">{resolveHomeworkAssignmentTitle(hw)}</h4>
+                             <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-700 border border-gray-200">
+                                 {typeLabel}
+                             </span>
+                         </div>
+                         <p className="text-xs text-gray-500 mb-4">
+                             {assignmentType === 'video_makeup'
+                                 ? (hw.content || '동영상 과제')
+                                 : `${hw.content || '과제 내용 없음'} (총 ${hw.totalQuestions}문제)`}
+                         </p>
+                         <div className="w-full bg-gray-100 rounded-full h-2 mb-2 overflow-hidden flex">
+                             <div className="bg-green-500 h-2" style={{ width: `${((hw.correctCount || 0) / Math.max(hw.totalQuestions || 0, 1)) * 100}%` }} />
+                             <div className="bg-red-500 h-2" style={{ width: `${((hw.incorrectCount || 0) / Math.max(hw.totalQuestions || 0, 1)) * 100}%` }} />
+                             <div className="bg-blue-500 h-2" style={{ width: `${((hw.fixedCount || 0) / Math.max(hw.totalQuestions || 0, 1)) * 100}%` }} />
+                             <div className="bg-gray-300 h-2" style={{ width: `${((hw.uncheckedCount || 0) / Math.max(hw.totalQuestions || 0, 1)) * 100}%` }} />
+                         </div>
+                         <p className="text-xs text-gray-500 mb-2">맞음 {hw.correctCount || 0} / 틀림 {hw.incorrectCount || 0} / 고침 {hw.fixedCount || 0} / 남음 {hw.uncheckedCount || 0}</p>
+                         {selectedHwId === hw.id && (
+                             <div className="mt-4 pt-4 border-t border-gray-100 animate-fade-in-down">
+                                 <div className="flex justify-around mb-4 text-center">
+                                     <div>
+                                         <p className="text-xs text-gray-500">맞음</p>
+                                         <p className="font-bold text-green-600">{hw.correctCount || 0}</p>
+                                     </div>
+                                     <div>
+                                         <p className="text-xs text-gray-500">틀림</p>
+diff --git a/src/domain/homework/homework.service.js b/src/domain/homework/homework.service.js
+index b82fade2805e0ccd8ea83e2175c76b57a822a988..584f08178faf64011209a10e9a4f834f036350f7 100644
+--- a/src/domain/homework/homework.service.js
++++ b/src/domain/homework/homework.service.js
+@@ -4,55 +4,54 @@ const resolveDateString = (value) => {
+     if (typeof value?.toDate === 'function') return value.toDate().toISOString().slice(0, 10);
+     try { return new Date(value).toISOString().slice(0, 10); } catch { return null; }
  };
  
- export const db = createFirestore();
+ const resolveAssignedDate = (assignment) => (
+     resolveDateString(assignment?.assignedDate)
+     || resolveDateString(assignment?.date)
+     || resolveDateString(assignment?.createdAt)
+ );
  
- export const functions = getFunctions(firebaseApp, "us-central1");
- export const storage = getStorage(firebaseApp);
+ export const resolveHomeworkAssignmentId = (result = {}) => (
+     result.assignmentId
+     || result.homeworkAssignmentId
+     || result.homeworkId
+     || (
+         result.studentId && String(result.id || '').startsWith(`${result.studentId}_`)
+             ? String(result.id).slice(String(result.studentId).length + 1)
+             : (String(result.id || '').includes('_') ? String(result.id).split('_').at(-1) : '')
+     )
+     || ''
+ );
+ 
+ export const resolveHomeworkAssignmentTitle = (assignment = {}) => (
+     assignment.title
+     || assignment.name
+-    || assignment.assignmentTitle
+-    || assignment.book
+-    || assignment.bookName
++    || assignment.assignmentName
++    || assignment.homeworkName
+     || assignment.content
+-    || '과제명 없음'
++    || '숙제'
+ );
+ 
+ export const resolveHomeworkQuestionSummary = (assignment = {}, result = {}) => {
+     const questionNumbers = getAssignmentQuestionNumbers(assignment);
+     const normalized = normalizeHomeworkResultMapForDisplay(result, questionNumbers, {
+         assignmentId: assignment?.id,
+     });
+     const values = Object.values(normalized);
+     const normalize = (value) => typeof value === 'string' ? value.trim().toLowerCase() : value;
+     const correctValues = new Set([true, 1, '1', 'o', '맞음', 'correct']);
+     const wrongValues = new Set([false, 0, '0', 'x', '틀림', 'wrong', 'incorrect']);
+     const fixedValues = new Set(['고침', 'fixed', 'revised']);
+     const correct = Number(result?.correctCount) || values.filter((value) => correctValues.has(normalize(value))).length;
+     const wrong = Number(result?.wrongCount) || values.filter((value) => wrongValues.has(normalize(value))).length;
+     const fixed = Number(result?.fixedCount) || values.filter((value) => fixedValues.has(normalize(value))).length;
+     const explicitTotal = Number(assignment?.totalQuestions ?? assignment?.questionCount ?? result?.totalQuestions);
+     const total = Number.isFinite(explicitTotal) && explicitTotal >= 0
+         ? explicitTotal
+         : (questionNumbers.length || Object.keys(normalized).length);
+     const unanswered = Math.max(0, total - correct - wrong - fixed);
+     return `맞음 ${correct} / 틀림 ${wrong} / 고침 ${fixed} / 안 풂 ${unanswered}`;
+ };
+ 
+ export const getClassAssignments = (assignments = [], classId) => {
+     if (!classId) return [];
+diff --git a/src/domain/lessonReport/lessonReport.service.js b/src/domain/lessonReport/lessonReport.service.js
+index f22e6600c44d194a5689dd38a6000602d439f669..c4ffd83da2e69bf0441f452d302624bb3f6b3d54 100644
+--- a/src/domain/lessonReport/lessonReport.service.js
++++ b/src/domain/lessonReport/lessonReport.service.js
+@@ -1,34 +1,36 @@
+ import { getTotalScore } from '../grade/grade.service';
+ import {
+     computeHomeworkProgress,
+     getAssignmentQuestionNumbers,
+     normalizeHomeworkResultMapForDisplay,
++    resolveHomeworkAssignmentTitle,
+ } from '../homework/homework.service';
+ import { formatRoundedPercent } from '../../utils/numberFormat';
+ import {
+     buildTestDisplayLines,
++    buildTestStatParts,
+     getTestStatsForDisplay,
+     isAbsentGradeRecord,
+     pickScoreValue,
+     toFiniteScoreNumber,
+ } from '../../utils/scoreDisplay';
+ 
+ export const LESSON_REPORT_STATUS = {
+     DRAFT: 'draft',
+     SENT: 'sent',
+ };
+ 
+ export const LESSON_REPORT_SEND_STATUS = {
+     DRAFT: 'draft',
+     SCHEDULED: 'scheduled',
+     SENT: 'sent',
+ };
+ 
+ export const buildLessonReportId = ({ studentId, classId, lessonDate }) => {
+     const s = String(studentId || '').trim();
+     const c = String(classId || '').trim();
+     const d = String(lessonDate || '').trim();
+     if (!s || !c || !d) return '';
+     return `${s}_${c}_${d}`;
+ };
+ 
+@@ -185,91 +187,93 @@ export const summarizeHomework = ({
+                 assignmentId: assignment.id,
+                 studentId,
+                 student,
+             });
+             const questionNumbers = getAssignmentQuestionNumbers(assignment);
+             const normalizedMap = normalizeHomeworkResultMapForDisplay(rawResult, questionNumbers, {
+                 assignmentId: assignment.id,
+                 studentId,
+             });
+             const progress = computeHomeworkProgress({ results: normalizedMap }, questionNumbers);
+             const completionRate = Number.isFinite(progress?.completionRate)
+                 ? Math.max(0, Math.min(100, progress.completionRate))
+                 : null;
+             const fallbackNormalized = normalizeResult(rawResult);
+             const fallbackRate = Number.isFinite(fallbackNormalized?.completionRate)
+                 ? Math.max(0, Math.min(100, fallbackNormalized.completionRate))
+                 : null;
+             const hasResult = rawResult !== null && rawResult !== undefined;
+             const resolvedRate = Number.isFinite(completionRate) && (hasResult || questionNumbers.length > 0)
+                 ? completionRate
+                 : fallbackRate;
+             const completionText = Number.isFinite(resolvedRate) ? formatRoundedPercent(resolvedRate) : null;
+ 
+             return {
+                 homeworkId: assignment.id,
+-                title: assignment.title || assignment.content || assignment.book || '숙제',
++                title: resolveHomeworkAssignmentTitle(assignment),
+                 completionRate: Number.isFinite(resolvedRate) ? Math.round(resolvedRate) : null,
+                 status: completionText ? null : '미제출',
+-                summary: completionText ? `${assignment.title || assignment.content || assignment.book || '숙제'} ${completionText}` : `${assignment.title || assignment.content || assignment.book || '숙제'} 미제출`,
++                summary: completionText ? `${resolveHomeworkAssignmentTitle(assignment)} ${completionText}` : `${resolveHomeworkAssignmentTitle(assignment)} 미제출`,
+             };
+         });
+ 
+     return {
+         items,
+         text: items.map((item) => item.summary),
+     };
+ };
+ 
+ export const summarizeAssignedHomework = ({
+     selectedAssignedHomeworkIds = [],
+     selectedHomeworkIds = [],
+     homeworkAssignments = [],
+ }) => ({
+     items: (selectedAssignedHomeworkIds.length > 0 ? selectedAssignedHomeworkIds : selectedHomeworkIds)
+         .map((id) => homeworkAssignments.find((hw) => String(hw.id) === String(id)))
+         .filter(Boolean)
+         .map((assignment) => ({
+         homeworkId: assignment.id,
+-        title: assignment.title || assignment.content || assignment.book || '숙제',
++        title: resolveHomeworkAssignmentTitle(assignment),
+         assignedDate: toYmd(assignment.assignedDate || assignment.date || assignment.createdAt),
+         dueDate: toYmd(assignment.dueDate || assignment.deadline),
+     })),
+ });
+ 
+ export const summarizeTests = ({ selectedTestIds = [], tests = [], grades = {}, studentId, student = null, classTestStats = {} }) => {
+     const items = selectedTestIds
+         .map((id) => tests.find((test) => String(test.id) === String(id)))
+         .filter(Boolean)
+         .map((test) => {
+             const grade = getGradeForLessonReportStudent({ student, studentId, grades, testId: test.id });
+             const title = buildTestTitle(test);
+             const stats = getTestStatsForDisplay(test, classTestStats);
+             const absent = isAbsentGradeRecord(grade);
+             const directScore = absent ? null : toFiniteScoreNumber(pickScoreValue(grade));
+             const computedScore = directScore ?? (absent ? null : getTotalScore(grade, test));
+ 
+             const questionCount = toFiniteNumber(grade?.questionCount) ?? toFiniteNumber(test?.totalQuestions);
+             const correctCount = toFiniteNumber(grade?.correctCount);
+-            const displayLines = buildTestDisplayLines({ title, gradeRecord: grade, stats });
++            const displayLines = grade
++                ? buildTestDisplayLines({ title, gradeRecord: grade, stats })
++                : [title, '학생: 점수 미입력', ...buildTestStatParts(stats, { includeUnit: true }).map((part) => part.replace(' ', ': '))];
+ 
+             const summary = displayLines.join('\n');
+ 
+             return {
+                 testId: test.id,
+                 name: test.name || '시험',
+                 title,
+                 grade,
+                 attempted: grade?.attempted === true && !absent,
+                 score: Number.isFinite(computedScore) ? computedScore : null,
+                 average: stats.average,
+                 highestScore: stats.highest,
+                 maxScore: stats.perfect,
+                 totalQuestions: Number.isFinite(questionCount) ? questionCount : null,
+                 correctCount: Number.isFinite(correctCount) ? correctCount : null,
+                 displayLines,
+                 summary,
+             };
+         });
+ 
+     return { items, text: items.map((item) => item.summary) };
+ };
 \ No newline at end of file
 diff --git a/src/pages/HomeworkManagement.jsx b/src/pages/HomeworkManagement.jsx
-index c2025e216354ff6e93354a28c385819ba4d7f498..1d29ba324e6b76f19ea1dcb79d4f331d2fb8cf2c 100644
+index 1d29ba324e6b76f19ea1dcb79d4f331d2fb8cf2c..a7391a7dbbfa08b5600e724869f9b8d05515e0e4 100644
 --- a/src/pages/HomeworkManagement.jsx
 +++ b/src/pages/HomeworkManagement.jsx
-@@ -55,104 +55,132 @@ const compareByDateDescThenName = (a, b) => {
+@@ -1,33 +1,33 @@
+ import React, { useState, useMemo, useEffect, useCallback } from 'react';
+ import { collection, query, where, getDocs, limit } from 'firebase/firestore';
+ import { Icon, getLastCheckedDate } from '../utils/helpers';
+ import ClassSelectionPanel from '../components/Shared/ClassSelectionPanel';
+ import HomeworkStatisticsPanel from '../components/Homework/HomeworkStatisticsPanel';
+ import { HomeworkAssignmentModal } from '../utils/modals/HomeworkAssignmentModal';
+ import HomeworkResultsModal from '../utils/modals/HomeworkResultsModal';
+-import { buildAssignmentSummary, classifyHomeworkResultKeyMode, computeHomeworkProgress, getAssignmentQuestionNumbers, getClassAssignments, getSelectedAssignment, normalizeHomeworkResultMapForDisplay, resolveAssignmentStudentIds, resolveAssignmentTypeLabel, resolveAssignmentType, isHomeworkCompleteByCounts } from '../domain/homework/homework.service';
++import { buildAssignmentSummary, classifyHomeworkResultKeyMode, computeHomeworkProgress, getAssignmentQuestionNumbers, getClassAssignments, getSelectedAssignment, normalizeHomeworkResultMapForDisplay, resolveAssignmentStudentIds, resolveAssignmentTypeLabel, resolveHomeworkAssignmentTitle, resolveAssignmentType, isHomeworkCompleteByCounts } from '../domain/homework/homework.service';
+ import { buildHomeworkWrongNoteText } from '../domain/homework/homeworkWrongNote.service';
+ import { db } from '../firebase/client';
+ import { getDefaultClassId, isClosedClass } from '../utils/classStatus';
+ import { useClassStudents } from '../utils/useClassStudents';
+ import { filterRosterByWithdrawDate } from '../utils/rosterFilter';
+ import { buildStudentParentPhoneLast4Map, formatStudentNameWithParentLast4 } from '../utils/parentPhone';
+ import { Modal } from '../components/common/Modal';
+ 
+ const isSameStudent = (result, student) => {
+     if (!result || !student) return false;
+ 
+     const resultStudentIds = [
+         result.studentId,
+         result.studentDocId,
+         result.studentUid,
+         result.authUid,
+     ].filter(Boolean).map(String);
+ 
+     const studentIds = [
+         student.id,
+         student.authUid,
+     ].filter(Boolean).map(String);
+ 
+     return resultStudentIds.some(rid => studentIds.includes(rid));
+ };
+@@ -35,61 +35,58 @@ const isSameStudent = (result, student) => {
+ const toDateSafe = (value) => {
+     if (!value) return null;
+     if (typeof value?.toDate === 'function') return value.toDate();
+     const next = value instanceof Date ? value : new Date(value);
+     return Number.isNaN(next.getTime()) ? null : next;
+ };
+ 
+ const toYmd = (value) => {
+     const date = toDateSafe(value);
+     if (!date) return '';
+     const year = date.getFullYear();
+     const month = String(date.getMonth() + 1).padStart(2, '0');
+     const day = String(date.getDate()).padStart(2, '0');
+     return `${year}-${month}-${day}`;
+ };
+ 
+ const compareByDateDescThenName = (a, b) => {
+     const aDate = toDateSafe(a?.assignedDate || a?.date);
+     const bDate = toDateSafe(b?.assignedDate || b?.date);
+     const timeDiff = (bDate?.getTime() || 0) - (aDate?.getTime() || 0);
      if (timeDiff !== 0) return timeDiff;
  
      const classDiff = String(a?.className || '').localeCompare(String(b?.className || ''), 'ko');
      if (classDiff !== 0) return classDiff;
  
-     const titleA = String(a?.book || a?.title || a?.content || '');
-     const titleB = String(b?.book || b?.title || b?.content || '');
+-    const titleA = String(a?.book || a?.title || a?.content || '');
+-    const titleB = String(b?.book || b?.title || b?.content || '');
++    const titleA = String(resolveHomeworkAssignmentTitle(a));
++    const titleB = String(resolveHomeworkAssignmentTitle(b));
      return titleA.localeCompare(titleB, 'ko');
  };
  
  const normalizeSearchText = (value) => String(value || '').trim().toLowerCase().replace(/\s+/g, '');
  
- const getHomeworkDisplayTitle = (assignment) => {
-     const title = assignment?.title || assignment?.book || '';
-     return String(title).trim() || '과제';
- };
+-const getHomeworkDisplayTitle = (assignment) => {
+-    const title = assignment?.title || assignment?.book || '';
+-    return String(title).trim() || '과제';
+-};
++const getHomeworkDisplayTitle = resolveHomeworkAssignmentTitle;
  
  export default function HomeworkManagement({
      classes, homeworkAssignments, homeworkResults,
@@ -96,173 +506,511 @@ index c2025e216354ff6e93354a28c385819ba4d7f498..1d29ba324e6b76f19ea1dcb79d4f331d
      students = [],
      parents = [],
  }) {
--    const activeClasses = useMemo(
--        () => (Array.isArray(classes) ? classes : []).filter((cls) => !isClosedClass(cls)),
-+    const rawClasses = useMemo(
-+        () => (Array.isArray(classes) ? classes : []),
+     const rawClasses = useMemo(
+         () => (Array.isArray(classes) ? classes : []),
          [classes],
      );
--    const [selectedClassId, setSelectedClassId] = useState(() => getDefaultClassId(activeClasses));
-+    const activeClasses = useMemo(
-+        () => rawClasses.filter((cls) => !isClosedClass(cls)),
-+        [rawClasses],
-+    );
-+    const classOptions = useMemo(
-+        () => rawClasses,
-+        [rawClasses],
-+    );
-+    const [selectedClassId, setSelectedClassId] = useState(() => getDefaultClassId(classOptions));
+     const activeClasses = useMemo(
+         () => rawClasses.filter((cls) => !isClosedClass(cls)),
+         [rawClasses],
+     );
+     const classOptions = useMemo(
+         () => rawClasses,
+         [rawClasses],
+     );
+     const [selectedClassId, setSelectedClassId] = useState(() => getDefaultClassId(classOptions));
      const [isAssignmentModalOpen, setIsAssignmentModalOpen] = useState(false);
      const [assignmentToEdit, setAssignmentToEdit] = useState(null);
      const [selectedAssignmentId, setSelectedAssignmentId] = useState(null);
-     const [isHomeworkResultsModalOpen, setIsHomeworkResultsModalOpen] = useState(false);
-     const [activeStudentId, setActiveStudentId] = useState(null);
-     const [activeAssignment, setActiveAssignment] = useState(null);
-     const { students: classStudents, isLoading: isLoadingStudents } = useClassStudents(selectedClassId);
-     const [scopedHomeworkResults, setScopedHomeworkResults] = useState(null);
-     const [isLoadingScopedResults, setIsLoadingScopedResults] = useState(false);
-     const [draftHomeworkOverlay, setDraftHomeworkOverlay] = useState({});
-     const [isWrongNoteModalOpen, setIsWrongNoteModalOpen] = useState(false);
-     const [wrongNoteText, setWrongNoteText] = useState('');
-     const [searchTerm, setSearchTerm] = useState('');
-     
-     const [checkedDate, setCheckedDate] = useState(() => new Date().toISOString().slice(0, 10));
+@@ -302,51 +299,51 @@ export default function HomeworkManagement({
+                     parentLast4Map,
+                 ) || item.studentName,
+             }));
+     }, [selectedAssignment, rosterForHomework, normalizedHomeworkResults, parentLast4Map]);
  
-     const parentLast4Map = useMemo(
-         () => buildStudentParentPhoneLast4Map(students, parents),
-         [students, parents],
-     );
+     const completionRateByStudentId = useMemo(() => {
+         const questionNumbers = getAssignmentQuestionNumbers(selectedAssignment);
+         const totalQuestions = questionNumbers.length;
+         const isDev = (typeof window !== 'undefined' && typeof window.__DEV__ !== 'undefined')
+             ? window.__DEV__
+             : process.env.NODE_ENV !== 'production';
  
-     useEffect(() => {
--        if (activeClasses.length === 0) {
-+        if (classOptions.length === 0) {
-             setSelectedClassId(null);
-             return;
-         }
--        if (selectedClassId && activeClasses.some(c => String(c.id) === String(selectedClassId))) return;
--        setSelectedClassId(getDefaultClassId(activeClasses));
--    }, [activeClasses, selectedClassId]);
-+        if (selectedClassId && classOptions.some(c => String(c.id) === String(selectedClassId))) return;
-+        setSelectedClassId(getDefaultClassId(classOptions));
-+    }, [classOptions, selectedClassId]);
-+
-+    useEffect(() => {
-+        if (process.env.NODE_ENV === 'production') return;
-+
-+        const filteredOut = rawClasses
-+            .filter((cls) => isClosedClass(cls))
-+            .slice(0, 3)
-+            .map((cls) => ({
-+                id: cls?.id,
-+                name: cls?.name,
-+                status: cls?.status || cls?.classStatus || cls?.state || cls?.lifecycleStatus || '',
-+                active: cls?.active,
-+                endDate: cls?.endDate || cls?.endedAt || cls?.finishedAt || cls?.finishDate || cls?.closeDate || cls?.closedAt || cls?.endAt || '',
-+                reason: 'closed_or_inactive',
-+            }));
-+
-+        console.log('[homework classes raw count]', rawClasses.length);
-+        console.log('[homework filtered class count]', activeClasses.length);
-+        console.log('[homework filtered out reason sample]', filteredOut);
-+    }, [rawClasses, activeClasses]);
+         return assignmentSummary.reduce((acc, student) => {
+             const sid = String(student.studentId);
+             const aid = String(selectedAssignment?.id || '');
+             const overlay = draftHomeworkOverlay?.[sid]?.[aid];
+             const mergedResultMap = overlay?.results || student.resultMap || {};
+             const normalizedResultMap = normalizeHomeworkResultMapForDisplay(mergedResultMap, questionNumbers, {
+                 assignmentId: selectedAssignment?.id,
+                 studentId: student.studentId,
+             });
  
--    const selectedClass = activeClasses.find(c => String(c.id) === String(selectedClassId));
-+    const selectedClass = classOptions.find(c => String(c.id) === String(selectedClassId));
-     const classAssignments = useMemo(
-         () => getClassAssignments(homeworkAssignments, selectedClassId),
-         [homeworkAssignments, selectedClassId]
-     );
+             if (isDev) {
+                 console.log('[homework completion debug]', {
+                     assignmentId: selectedAssignment?.id,
+-                    title: selectedAssignment?.title || selectedAssignment?.book || selectedAssignment?.content,
++                    title: resolveHomeworkAssignmentTitle(selectedAssignment),
+                     questionNumbers,
+                     rawKeys: Object.keys(mergedResultMap || {}),
+                     normalizedKeys: Object.keys(normalizedResultMap || {}),
+                     mode: classifyHomeworkResultKeyMode(mergedResultMap, questionNumbers),
+                 });
+             }
  
-     const allAssignments = useMemo(() => {
--        const classById = new Map(activeClasses.map((cls) => [String(cls.id), cls]));
-+        const classById = new Map(classOptions.map((cls) => [String(cls.id), cls]));
-         return (Array.isArray(homeworkAssignments) ? homeworkAssignments : []).map((assignment, index) => {
-             const classId = String(assignment?.classId || assignment?.class || '');
-             const cls = classById.get(classId);
-             return {
-                 ...assignment,
-                 __index: index,
-                 classId,
-                 className: cls?.name || '',
-             };
-         }).filter((assignment) => classById.has(assignment.classId));
--    }, [homeworkAssignments, activeClasses]);
-+    }, [homeworkAssignments, classOptions]);
+             const progress = computeHomeworkProgress(normalizedResultMap, questionNumbers);
+             const answeredCount = progress.checkedCount;
+             const completionPercentRaw = progress.completionRate;
+             const hasWrong = progress.incorrectCount > 0;
+             const wrongProgress = completionPercentRaw === 99;
+             const completed = isHomeworkCompleteByCounts({ wrongCount: progress.incorrectCount, remainingCount: progress.uncheckedCount });
+             const completionPercentDisplay = overlay && typeof overlay.completionRate === 'number'
+                 ? overlay.completionRate
+                 : completionPercentRaw;
  
-     const selectedAssignment = useMemo(
-         () => getSelectedAssignment(classAssignments, selectedAssignmentId),
-         [classAssignments, selectedAssignmentId]
-     );
+             acc[student.studentId] = {
+                 raw: completionPercentRaw,
+                 display: completionPercentDisplay,
+                 done: answeredCount,
+                 total: totalQuestions,
+                 hasWrong,
+                 wrongProgress,
+                 completed,
+diff --git a/src/pages/LessonReportManagement.jsx b/src/pages/LessonReportManagement.jsx
+index 221999439ea5ab06180e19c9d67850fee6ab364a..33605c9011021ae007eb0683a4a5f407d20e0494 100644
+--- a/src/pages/LessonReportManagement.jsx
++++ b/src/pages/LessonReportManagement.jsx
+@@ -1,39 +1,40 @@
+ import React, { useEffect, useMemo, useState } from 'react';
+ import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+ import { addDoc, collection, doc, getDoc, getDocs, query, serverTimestamp, setDoc, where, writeBatch } from 'firebase/firestore';
+ import { db } from '../firebase/client';
+ import useAuth from '../auth/useAuth';
+ import {
+   buildLessonReportId,
+   LESSON_REPORT_SEND_STATUS,
+   LESSON_REPORT_STATUS,
+   getGradeForLessonReportStudent,
+   summarizeAssignedHomework,
+   summarizeHomework,
+   summarizeTests,
+ } from '../domain/lessonReport/lessonReport.service';
++import { resolveHomeworkAssignmentTitle } from '../domain/homework/homework.service';
+ import { getLinkedParentAuthUids } from '../utils/parentLinking';
+ import { filterRosterByWithdrawDate } from '../utils/rosterFilter';
+ import { hasClassOnDate, isClosedForClass } from '../utils/helpers';
+ import { formatClassLabel, sortClassesWithClosedLast } from '../utils/classStatus';
+ import { FEATURES } from '../config/features';
  
-     const rosterForHomework = useMemo(() => {
-         const targetDate = selectedAssignment?.assignedDate || selectedAssignment?.date || checkedDate;
-         return filterRosterByWithdrawDate(classStudents, selectedClassId, targetDate);
-     }, [classStudents, selectedAssignment, selectedClassId, checkedDate]);
+ const pad2 = (value) => String(value).padStart(2, '0');
  
-     const effectiveHomeworkResults = scopedHomeworkResults ?? homeworkResults;
+ const toYmd = (value) => {
+   if (!value) return '';
+   if (typeof value === 'string') {
+     const match = value.match(/\d{4}-\d{2}-\d{2}/);
+     if (match) return match[0];
+   }
  
-     const normalizedHomeworkResults = useMemo(() => {
-         if (!effectiveHomeworkResults) return {};
+   const dateValue = typeof value?.toDate === 'function' ? value.toDate() : value;
+   const parsed = new Date(dateValue);
+   if (Number.isNaN(parsed.getTime())) return '';
+   return `${parsed.getFullYear()}-${pad2(parsed.getMonth() + 1)}-${pad2(parsed.getDate())}`;
+ };
  
-         const entries = Object.entries(effectiveHomeworkResults);
-         const normalized = {};
+ const todayYmd = () => toYmd(new Date());
+ const resolveClassId = (item) => String(item?.classId || item?.classDocId || item?.class?.id || '');
+ const resolveLessonLogDate = (item) => toYmd(item?.date || item?.lessonDate || item?.dateKey || item?.createdAt || item?.updatedAt);
+ const resolveAttendanceDate = (item) => toYmd(item?.date || item?.lessonDate || item?.dateKey || item?.createdAt || item?.updatedAt);
+@@ -179,67 +180,50 @@ const getHomeworkAssignmentsForStudent = ({ homeworkAssignments = [], student, c
+     .filter((item) => resolveClassId(item) === String(classId || ''))
+     .map((item) => ({ ...item, __candidate_distance: Math.abs(new Date(`${resolveHomeworkDate(item)}T00:00:00`).getTime() - new Date(`${lessonDate}T00:00:00`).getTime()) || Number.MAX_SAFE_INTEGER }))
+     .sort((a, b) => a.__candidate_distance - b.__candidate_distance)
+     .filter((item) => {
+       if (!onlyTargeted) return true;
+       const targets = [
+         ...(Array.isArray(item.targetStudents) ? item.targetStudents : []),
+         ...(Array.isArray(item.assignedStudentIds) ? item.assignedStudentIds : []),
+         ...(Array.isArray(item.students) ? item.students : []),
+       ];
+       return targets.length === 0 || hasAnyStudentKey(targets, studentKeys);
+     });
+ };
  
-         rosterForHomework.forEach((student) => {
-             const matches = entries.filter(([key, value]) => {
-                 if (isSameStudent({ studentId: key }, student)) return true;
-                 if (value && typeof value === 'object') {
-                     const sample = Object.values(value).find(Boolean);
-                     return isSameStudent(sample, student);
-@@ -558,51 +586,51 @@ export default function HomeworkManagement({
+ const getTestsForStudent = ({ tests = [], grades = {}, student, studentId, classId, lessonDate }) => (
+   (tests || [])
+     .filter((item) => resolveClassId(item) === String(classId || ''))
+     .map((item) => ({
+       ...item,
+       __sort_hasGrade: Boolean(getGradeForLessonReportStudent({ student, studentId, grades, testId: item.id })),
+       __sort_distance: Math.abs(new Date(`${resolveTestDate(item)}T00:00:00`).getTime() - new Date(`${lessonDate}T00:00:00`).getTime()) || Number.MAX_SAFE_INTEGER,
+     }))
+     .sort((a, b) => (a.__sort_hasGrade === b.__sort_hasGrade ? a.__sort_distance - b.__sort_distance : (a.__sort_hasGrade ? -1 : 1)))
+ );
  
-                 <div className="flex flex-wrap gap-3 items-center justify-end">
-                     <button
-                         type="button"
-                         onClick={handleOpenWrongNoteModal}
-                         disabled={!selectedAssignment && !activeAssignment}
-                         className="px-3 py-1.5 text-xs font-semibold rounded-md bg-amber-600 text-white hover:bg-amber-700 disabled:bg-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed"
-                     >
-                         오답노트 텍스트 추출
-                     </button>
-                     <label className="text-xs font-semibold text-gray-700 flex items-center gap-2">
-                         <span>검사일</span>
+-const buildAutoComment = ({ attendanceStatus, homeworkSummary, testIds = [] }) => {
+-  const normalizedAttendance = String(attendanceStatus || '');
+-  const homeworkItems = homeworkSummary?.items || [];
+-  const hasIncompleteHomework = homeworkItems.some((item) => item.status === '미제출' || (Number.isFinite(item.completionRate) && item.completionRate < 80));
+-  const lines = [];
+-  if (normalizedAttendance.includes('결석')) {
+-    lines.push('오늘은 결석했습니다.', '복습 영상을 참고해 주세요.');
+-  } else if (normalizedAttendance.includes('지각')) {
+-    lines.push('지각했지만 수업에는 잘 참여했습니다.');
+-  } else {
+-    lines.push('오늘도 성실하게 수업에 참여했습니다.');
+-  }
+-  if (hasIncompleteHomework) lines.push('과제 수행이 부족했습니다.', '다음 수업 전까지 보완이 필요합니다.');
+-  else if (homeworkItems.length > 0) lines.push('과제도 잘 수행했습니다.');
+-  if (testIds.length > 0) lines.push('시험 결과를 확인해 주세요.');
+-  return lines.join('\n');
+-};
+ 
+ 
+ export default function LessonReportManagement({
+   students = [],
+   classes = [],
+   lessonLogs = [],
+   attendanceLogs = [],
+   homeworkAssignments = [],
+   tests = [],
+   homeworkResults = {},
+   grades = {},
+   lessonReports = [],
+   closures = [],
+   classTestStats = {},
+ }) {
+   const { studentId: routeStudentId } = useParams();
+   const [searchParams] = useSearchParams();
+   const navigate = useNavigate();
+   const { profileDocId } = useAuth();
+   
+   const preselectedStudentId = String(routeStudentId || searchParams.get('studentId') || '');
+   const [selectedClassId, setSelectedClassId] = useState('');
+   const [selectedDate, setSelectedDate] = useState(todayYmd);
+   const [selectedStudentId, setSelectedStudentId] = useState(preselectedStudentId);
+   const [draft, setDraft] = useState(null);
+@@ -626,51 +610,54 @@ export default function LessonReportManagement({
+         setDraftError('리포트 ID 생성에 실패했습니다. 클래스/학생/날짜 선택을 확인해 주세요.');
+         return;
+       }
+       const lessonLog = (lessonLogs || []).find((log) => resolveClassId(log) === classId && resolveLessonLogDate(log) === lessonDate);
+       const studentKeys = buildStudentKeys(student);
+       const attendance = attendanceLogs.find((item) => hasAnyStudentKey([item.studentId, item.studentUid], studentKeys)
+         && resolveClassId(item) === classId
+         && resolveAttendanceDate(item) === lessonDate);
+ 
+       setSelectedStudentId(String(targetStudentId));
+       setActiveTab('edit');
+       setDraft({
+         ...(existingReport || {}),
+         id: reportId,
+         studentId: String(targetStudentId),
+         classId,
+         lessonDate,
+         lessonLogId: existingReport?.lessonLogId || lessonLog?.id || null,
+         attendanceStatus: existingReport?.attendanceStatus || attendance?.attendance || attendance?.status || '미기록',
+         learnedTopics: existingReport?.learnedTopics ?? resolveLessonLogProgress(lessonLog),
+         autoFilledLearnedTopics: resolveLessonLogProgress(lessonLog),
+         isLearnedTopicsManuallyEdited: false,
+         selectedHomeworkIds: existingReport?.selectedHomeworkIds || [],
+         selectedHomeworkProgressIds: existingReport?.selectedHomeworkProgressIds || existingReport?.selectedHomeworkIds || [],
+         selectedAssignedHomeworkIds: existingReport?.selectedAssignedHomeworkIds || existingReport?.selectedHomeworkIds || [],
+-        selectedTestIds: existingReport?.selectedTestIds || [],
++        selectedTestIds: existingReport?.selectedTestIds || getTestsForStudent({ tests, grades, student, studentId: targetStudentId, classId, lessonDate })
++          .filter((test) => isTestHeldOnLessonDate(test, lessonDate))
++          .map((item) => item.id)
++          .filter(Boolean),
+         comment: existingReport?.comment || '',
+         status: existingReport?.status || LESSON_REPORT_STATUS.DRAFT,
+         sendStatus: existingReport?.sendStatus || LESSON_REPORT_SEND_STATUS.DRAFT,
+         sendMode: existingReport?.sendMode || 'now',
+         scheduledSendAt: existingReport?.scheduledSendAt || null,
+         studentNotificationSent: Boolean(existingReport?.studentNotificationSent),
+         parentNotificationSent: Boolean(existingReport?.parentNotificationSent),
+       });
+     } catch (error) {
+       setDraftError(error?.message || '리포트 초안 생성 중 오류가 발생했습니다.');
+     }
+   };
+ 
+   const handleDraftSelectionChange = (changes) => {
+     setDraft((prev) => {
+       if (!prev) return prev;
+       const nextClassId = String(changes.classId ?? prev.classId);
+       const nextLessonDate = String(changes.lessonDate ?? prev.lessonDate);
+       const nextStudentId = String(changes.studentId ?? prev.studentId);
+       const nextId = buildLessonReportId({ studentId: nextStudentId, classId: nextClassId, lessonDate: nextLessonDate });
+       const existing = reportMap.get(nextId);
+       const nextStudent = students.find((item) => String(item.id) === nextStudentId) || null;
+       const nextStudentKeys = buildStudentKeys(nextStudent);
+       const attendance = attendanceLogs.find((item) => hasAnyStudentKey([item.studentId, item.studentUid], nextStudentKeys)
+         && resolveClassId(item) === nextClassId
+@@ -686,50 +673,54 @@ export default function LessonReportManagement({
+           classId: nextClassId,
+           lessonDate: nextLessonDate,
+           attendanceStatus: changes.attendanceStatus ?? existing.attendanceStatus ?? attendance?.attendance ?? attendance?.status ?? '미기록',
+           selectedHomeworkProgressIds: existing.selectedHomeworkProgressIds || existing.selectedHomeworkIds || [],
+           selectedAssignedHomeworkIds: existing.selectedAssignedHomeworkIds || existing.selectedHomeworkIds || [],
+           autoFilledLearnedTopics: resolveLessonLogProgress(lessonLog),
+           isLearnedTopicsManuallyEdited: false,
+         };
+       }
+ 
+         return {
+         ...prev,
+         ...changes,
+         id: nextId,
+         studentId: nextStudentId,
+         classId: nextClassId,
+         lessonDate: nextLessonDate,
+         status: LESSON_REPORT_STATUS.DRAFT,
+         sendStatus: LESSON_REPORT_SEND_STATUS.DRAFT,
+         sendMode: 'now',
+         scheduledSendAt: null,
+         attendanceStatus: changes.attendanceStatus ?? prev.attendanceStatus ?? attendance?.attendance ?? attendance?.status ?? '미기록',
+         lessonLogId: lessonLog?.id || null,
+         autoFilledLearnedTopics: resolveLessonLogProgress(lessonLog),
+         learnedTopics: prev.isLearnedTopicsManuallyEdited ? prev.learnedTopics : (resolveLessonLogProgress(lessonLog) || prev.learnedTopics || ''),
++        selectedTestIds: getTestsForStudent({ tests, grades, student: nextStudent, studentId: nextStudentId, classId: nextClassId, lessonDate: nextLessonDate })
++          .filter((test) => isTestHeldOnLessonDate(test, nextLessonDate))
++          .map((item) => item.id)
++          .filter(Boolean),
+       };
+     });
+   };
+ 
+   const toDraftForSend = (report) => ({
+     ...report,
+     status: report?.status || LESSON_REPORT_STATUS.DRAFT,
+     sendStatus: report?.sendStatus || LESSON_REPORT_SEND_STATUS.DRAFT,
+   });
+ 
+   const buildPayload = ({ reportDraft, previous, action }) => {
+     const student = students.find((item) => String(item.id) === String(reportDraft.studentId));
+     const now = serverTimestamp();
+     const isScheduled = action === 'schedule';
+     const isSendNow = action === 'send';
+     const isFirstSend = isSendNow && previous?.status !== LESSON_REPORT_STATUS.SENT;
+ 
+     const homeworkSummary = summarizeHomework({
+       selectedHomeworkProgressIds: reportDraft.selectedHomeworkProgressIds || reportDraft.selectedHomeworkIds,
+       homeworkAssignments,
+       homeworkResults,
+       studentId: reportDraft.studentId,
+       student,
+     });
+     const assignedHomeworkSummary = summarizeAssignedHomework({
+@@ -895,51 +886,51 @@ export default function LessonReportManagement({
+       learnedTopics: resolveLessonLogProgress(lessonLog),
+       selectedHomeworkProgressIds,
+       selectedAssignedHomeworkIds,
+       selectedHomeworkIds: Array.from(new Set([...selectedHomeworkProgressIds, ...selectedAssignedHomeworkIds])),
+       selectedTestIds,
+       status: LESSON_REPORT_STATUS.DRAFT,
+       sendStatus: LESSON_REPORT_SEND_STATUS.DRAFT,
+       sendMode: 'now',
+       scheduledSendAt: null,
+       studentNotificationSent: false,
+       parentNotificationSent: false,
+       isBulkDraftGenerated: true,
+       isModified: false,
+       autoInputStatus: {
+         attendance: Boolean(attendance),
+         homework: selectedHomeworkProgressIds.length > 0 || selectedAssignedHomeworkIds.length > 0,
+         test: selectedTestIds.length > 0,
+       },
+     };
+     const homeworkSummary = summarizeHomework({ selectedHomeworkProgressIds, homeworkAssignments, homeworkResults, studentId: student.id, student });
+     return {
+       ...reportDraft,
+       homeworkSummary,
+       assignedHomeworkSummary: summarizeAssignedHomework({ selectedAssignedHomeworkIds, homeworkAssignments }),
+       testSummary: summarizeTests({ selectedTestIds, tests, grades, studentId: student.id, student, classTestStats }),
+-      comment: buildAutoComment({ attendanceStatus: reportDraft.attendanceStatus, homeworkSummary, testIds: selectedTestIds }),
++      comment: '',
+     };
+   };
+ 
+   const handleCreateClassDrafts = async () => {
+     if (!selectedClassId || !selectedDate) {
+       setDraftError('클래스와 날짜를 먼저 선택해 주세요.');
+       return;
+     }
+     setBulkDraftCreating(true);
+     setDraftError('');
+     try {
+       const now = serverTimestamp();
+       const draftsToCreate = classStudents
+         .map((student) => buildAutoDraftForStudent(student))
+         .filter((reportDraft) => reportDraft.id && !reportMap.has(reportDraft.id));
+ 
+       for (let index = 0; index < draftsToCreate.length; index += 500) {
+         const batch = writeBatch(db);
+         draftsToCreate.slice(index, index + 500).forEach((reportDraft) => {
+           batch.set(doc(db, 'lessonReports', reportDraft.id), {
+             ...reportDraft,
+             createdAt: now,
+             createdBy: profileDocId || 'staff',
+             updatedAt: now,
+             updatedBy: profileDocId || 'staff',
+@@ -1203,75 +1194,75 @@ export default function LessonReportManagement({
+                 <input value={draft.attendanceStatus || ''} onChange={(e) => handleDraftSelectionChange({ attendanceStatus: e.target.value })} className="border rounded p-2 text-sm w-full" placeholder="출결" />
+                 <textarea
+                   value={draft.learnedTopics || ''}
+                   onChange={(e) => setDraft((prev) => ({ ...prev, learnedTopics: e.target.value, isLearnedTopicsManuallyEdited: true }))}
+                   className="border rounded p-2 text-sm w-full"
+                   rows={4}
+                   placeholder="진도"
+                 />
+                 <p className="text-xs text-gray-500">자동 채움 기준: {draft.classId} · {draft.lessonDate} · {draft.studentId}</p>
+ 
+                 <div>
+                   <p className="text-sm font-semibold mb-1">과제 수행 정도 선택</p>
+                   <div className="space-y-1 max-h-32 overflow-auto">
+                     {selectableHomeworkProgress.map((hw) => (
+                       <label key={hw.id} className="flex items-center gap-2 text-sm">
                          <input
-                             type="date"
-                             value={checkedDate}
-                             onChange={(e) => setCheckedDate(e.target.value)}
-                             className="border rounded-md px-2 py-1 text-xs"
+                           type="checkbox"
+                           checked={(draft.selectedHomeworkProgressIds || []).includes(hw.id)}
+                           onChange={(e) => setDraft((prev) => ({
+                             ...prev,
+                             selectedHomeworkProgressIds: e.target.checked
+                               ? [...(prev.selectedHomeworkProgressIds || []), hw.id]
+                               : (prev.selectedHomeworkProgressIds || []).filter((id) => id !== hw.id),
+                           }))}
                          />
-                     </label>
+-                        <span>{hw.title || hw.content || '숙제'}{isPendingHomeworkInspection(hw) ? ' · 검사 대기' : ' · 검사 완료'}</span>
++                        <span>{resolveHomeworkAssignmentTitle(hw)}{getHomeworkResultForStudentAssignment({ homeworkResults, assignmentId: hw.id, student: selectedDraftStudent, studentId: selectedDraftStudentId }) ? ' · 결과 있음' : (isPendingHomeworkInspection(hw) ? ' · 검사 대기' : ' · 검사 완료')}</span>
+                       </label>
+                     ))}
+                     {selectableHomeworkProgress.length === 0 && (
+                       <p className="text-xs text-gray-500">선택 가능한 과제 수행 항목 없음</p>
+                     )}
+                   </div>
                  </div>
-             </div>
  
-             <div className="grid gap-4 xl:grid-cols-[320px,1fr]">
-                 <div className="space-y-4">
-                     <ClassSelectionPanel
--                        classes={activeClasses}
-+                        classes={classOptions}
-                         selectedClassId={selectedClassId}
-                         setSelectedClassId={handleClassSelectWrapper}
-                         handleClassSave={handleSaveClass}
-                         calculateClassSessions={calculateClassSessions}
-                         showSessions={false}
-                         showEditButton={true}
-                     />
-                     <div className="bg-white p-4 rounded-xl shadow-md space-y-3 border border-gray-200">
-                         <div className='flex justify-between items-center border-b pb-2'>
-                             <h4 className="text-lg font-bold text-gray-800">과제 목록</h4>
-                             <button
-                                 onClick={handleNewAssignment}
-                                 disabled={!selectedClassId}
-                                 className="text-[#334a91] hover:text-[#334a91] text-sm font-bold flex items-center disabled:text-gray-400"
-                             >
-                                 <Icon name="plus" className="w-4 h-4 mr-1" />
-                                 새 과제
-                             </button>
-                         </div>
-                         <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 space-y-2">
-                             <input
-                                 type="text"
-                                 value={searchTerm}
-                                 onChange={(e) => setSearchTerm(e.target.value)}
-                                 placeholder="과제명 검색"
+                 <div>
+                   <p className="text-sm font-semibold mb-1">이번 수업 숙제 선택</p>
+                   <div className="space-y-1 max-h-32 overflow-auto">
+                     {selectableAssignedHomework.map((hw) => (
+                       <label key={`assigned-${hw.id}`} className="flex items-center gap-2 text-sm">
+                         <input
+                           type="checkbox"
+                           checked={(draft.selectedAssignedHomeworkIds || []).includes(hw.id)}
+                           onChange={(e) => setDraft((prev) => ({
+                             ...prev,
+                             selectedAssignedHomeworkIds: e.target.checked
+                               ? [...(prev.selectedAssignedHomeworkIds || []), hw.id]
+                               : (prev.selectedAssignedHomeworkIds || []).filter((id) => id !== hw.id),
+                           }))}
+                         />
+-                        {hw.title || hw.content || '숙제'}
++                        {resolveHomeworkAssignmentTitle(hw)}
+                       </label>
+                     ))}
+                     {selectableAssignedHomework.length === 0 && (
+                       <p className="text-xs text-gray-500">선택 가능한 숙제 항목 없음</p>
+                     )}
+                   </div>
+                 </div>
+ 
+                 <div>
+                   <p className="text-sm font-semibold mb-1">시험 선택</p>
+                   <div className="space-y-1 max-h-32 overflow-auto">
+                     {selectableTests.map((test) => (
+                       <label key={test.id} className="flex items-center gap-2 text-sm">
+                         <input
+                           type="checkbox"
+                           checked={(draft.selectedTestIds || []).includes(test.id)}
+                           onChange={(e) => setDraft((prev) => ({
+                             ...prev,
+                             selectedTestIds: e.target.checked
+                               ? [...(prev.selectedTestIds || []), test.id]
+                               : (prev.selectedTestIds || []).filter((id) => id !== test.id),
+                           }))}
+                         />
+                         {test.name}
+                       </label>
+diff --git a/src/pages/ParentHome.jsx b/src/pages/ParentHome.jsx
+index 524b652f04aa00597a0f767e0c2a2aead3ad8c6d..fd14ba5dd047217e8fcb2859b260a8b67cc9bd52 100644
+--- a/src/pages/ParentHome.jsx
++++ b/src/pages/ParentHome.jsx
+@@ -1,25 +1,26 @@
++import { resolveHomeworkAssignmentTitle } from '../domain/homework/homework.service';
+ // src/pages/ParentHome.jsx
+ import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+ import { useSearchParams } from 'react-router-dom';
+ import { ScheduleTab } from '../components/StudentTabs';
+ import { httpsCallable } from 'firebase/functions';
+ import ParentClassroomView from './parent/ParentClassroomView';
+ import {
+     Icon,
+     calculateHomeworkStats,
+     calculateGradeComparison,
+     getClinicComment,
+     getClinicDisplayStatus,
+     calculateDurationMinutes,
+     formatDuration,
+ } from '../utils/helpers';
+ import NotificationsIcon from '@mui/icons-material/Notifications';
+ import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
+ import ParentSessionReport from './parent/ParentSessionReport'; // ✅ 신규 리포트 컴포넌트
+ import ParentMessengerPage from './parent/ParentMessengerPage';
+ import ParentBoardPage from './parent/ParentBoardPage';
+ import ParentMorePage from './parent/ParentMorePage';
+ import { generateSessionReport } from '../utils/reportHelper'; // ✅ 리포트 데이터 생성 헬퍼
+ import useNotifications from '../notifications/useNotifications';
+ import NotificationList from '../notifications/NotificationList';
+ import openNotification from '../notifications/openNotification';
+@@ -1508,51 +1509,51 @@ export default function ParentHome({
+                                     
+ 
+                                 {learningMode === 'regular' && learningSubTab === 'homework' && (
+                                     <div ref={(el) => { learningSectionRefs.current.homework = el; }} className="space-y-3">
+                                         {(classFilter === 'all' ? learningDataByClass : learningDataByClass.filter((section) => section.classId === classFilter)).map((section) => (
+                                             <section key={section.classId} className="bg-white rounded-xl border border-gray-100 p-3 shadow-sm space-y-2">
+                                                 <h3 className="text-sm font-semibold text-gray-900">{section.classInfo?.name || section.classId}</h3>
+                                                 {section.homework.length === 0 ? (
+                                                     <p className="text-sm text-gray-500">과제 기록이 없습니다.</p>
+                                                 ) : section.homework.map((hw) => {
+                                                     const counts = {
+                                                         correct: Number(hw.correctCount ?? hw.correct ?? 0),
+                                                         wrong: Number(hw.wrongCount ?? hw.incorrectCount ?? hw.wrong ?? 0),
+                                                         fixed: Number(hw.fixedCount ?? hw.revisedCount ?? hw.fixed ?? 0),
+                                                         };
+                                                     const completedCount = counts.correct + counts.wrong + counts.fixed;
+                                                     const totalCount = Number(hw.totalCount ?? hw.totalQuestions ?? hw.questionNumbers?.length ?? 0);
+                                                     counts.remaining = Math.max(totalCount - completedCount, 0);
+                                                     const total = Number.isFinite(totalCount) && totalCount > 0
+                                                         ? totalCount
+                                                         : Object.values(counts).reduce((sum, value) => sum + (Number.isFinite(value) ? value : 0), 0);
+                                                     const width = (value) => (total > 0 ? `${(value / total) * 100}%` : '0%');
+                                                     return (
+                                                         <article key={hw.id} className="rounded-xl border border-gray-200 p-2.5 space-y-2">
+                                                             <div className="flex items-start justify-between gap-2">
+-                                                                <p className="text-sm font-semibold text-gray-900">{hw.book || hw.title || hw.name || hw.bookName || hw.content || '과제'}</p>
++                                                                <p className="text-sm font-semibold text-gray-900">{resolveHomeworkAssignmentTitle(hw)}</p>
+                                                                 <span className="text-[11px] font-semibold text-[#334a91] bg-[#f1f4ff] border border-[#eef2ff] rounded-full px-2 py-0.5">
+                                                                     완성률 {hw.completionRate ?? 0}%
+                                                                 </span>
+                                                             </div>
+                                                             <p className="text-xs text-gray-500">출제일 {hw.date || hw.assignedDate || "-"}</p>
+                                                             <div className="w-full h-2 rounded-full overflow-hidden bg-gray-100 flex">
+                                                                 <div className="bg-emerald-400" style={{ width: width(counts.correct) }} />
+                                                                 <div className="bg-rose-400" style={{ width: width(counts.wrong) }} />
+                                                                 <div className="bg-sky-400" style={{ width: width(counts.fixed) }} />
+                                                                 <div className="bg-slate-300" style={{ width: width(counts.remaining) }} />
+                                                             </div>
+                                                            <p className="text-xs font-semibold">
+                                                                 <span className="text-emerald-600">맞음 {counts.correct}</span> / <span className="text-red-500">틀림 {counts.wrong}</span> / <span className="text-sky-500">고침 {counts.fixed}</span> / <span className="text-gray-400">남음 {counts.remaining}</span>
+                                                             </p>
+                                                         </article>
+                                                     );
+                                                 })}
+                                             </section>
+                                         ))}
+                                     </div>
+                                 )}
+ 
+                                 {learningMode === 'regular' && learningSubTab === 'grades' && (
+                                     <div ref={(el) => { learningSectionRefs.current.grades = el; }} className="space-y-3">
+                                         {(classFilter === 'all' ? learningDataByClass : learningDataByClass.filter((section) => section.classId === classFilter)).map((section) => (

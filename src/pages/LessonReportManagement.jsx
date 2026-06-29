@@ -12,6 +12,7 @@ import {
   summarizeHomework,
   summarizeTests,
 } from '../domain/lessonReport/lessonReport.service';
+import { resolveHomeworkAssignmentTitle } from '../domain/homework/homework.service';
 import { getLinkedParentAuthUids } from '../utils/parentLinking';
 import { filterRosterByWithdrawDate } from '../utils/rosterFilter';
 import { hasClassOnDate, isClosedForClass } from '../utils/helpers';
@@ -201,23 +202,6 @@ const getTestsForStudent = ({ tests = [], grades = {}, student, studentId, class
     .sort((a, b) => (a.__sort_hasGrade === b.__sort_hasGrade ? a.__sort_distance - b.__sort_distance : (a.__sort_hasGrade ? -1 : 1)))
 );
 
-const buildAutoComment = ({ attendanceStatus, homeworkSummary, testIds = [] }) => {
-  const normalizedAttendance = String(attendanceStatus || '');
-  const homeworkItems = homeworkSummary?.items || [];
-  const hasIncompleteHomework = homeworkItems.some((item) => item.status === '미제출' || (Number.isFinite(item.completionRate) && item.completionRate < 80));
-  const lines = [];
-  if (normalizedAttendance.includes('결석')) {
-    lines.push('오늘은 결석했습니다.', '복습 영상을 참고해 주세요.');
-  } else if (normalizedAttendance.includes('지각')) {
-    lines.push('지각했지만 수업에는 잘 참여했습니다.');
-  } else {
-    lines.push('오늘도 성실하게 수업에 참여했습니다.');
-  }
-  if (hasIncompleteHomework) lines.push('과제 수행이 부족했습니다.', '다음 수업 전까지 보완이 필요합니다.');
-  else if (homeworkItems.length > 0) lines.push('과제도 잘 수행했습니다.');
-  if (testIds.length > 0) lines.push('시험 결과를 확인해 주세요.');
-  return lines.join('\n');
-};
 
 
 export default function LessonReportManagement({
@@ -648,7 +632,10 @@ export default function LessonReportManagement({
         selectedHomeworkIds: existingReport?.selectedHomeworkIds || [],
         selectedHomeworkProgressIds: existingReport?.selectedHomeworkProgressIds || existingReport?.selectedHomeworkIds || [],
         selectedAssignedHomeworkIds: existingReport?.selectedAssignedHomeworkIds || existingReport?.selectedHomeworkIds || [],
-        selectedTestIds: existingReport?.selectedTestIds || [],
+        selectedTestIds: existingReport?.selectedTestIds || getTestsForStudent({ tests, grades, student, studentId: targetStudentId, classId, lessonDate })
+          .filter((test) => isTestHeldOnLessonDate(test, lessonDate))
+          .map((item) => item.id)
+          .filter(Boolean),
         comment: existingReport?.comment || '',
         status: existingReport?.status || LESSON_REPORT_STATUS.DRAFT,
         sendStatus: existingReport?.sendStatus || LESSON_REPORT_SEND_STATUS.DRAFT,
@@ -708,6 +695,10 @@ export default function LessonReportManagement({
         lessonLogId: lessonLog?.id || null,
         autoFilledLearnedTopics: resolveLessonLogProgress(lessonLog),
         learnedTopics: prev.isLearnedTopicsManuallyEdited ? prev.learnedTopics : (resolveLessonLogProgress(lessonLog) || prev.learnedTopics || ''),
+        selectedTestIds: getTestsForStudent({ tests, grades, student: nextStudent, studentId: nextStudentId, classId: nextClassId, lessonDate: nextLessonDate })
+          .filter((test) => isTestHeldOnLessonDate(test, nextLessonDate))
+          .map((item) => item.id)
+          .filter(Boolean),
       };
     });
   };
@@ -917,7 +908,7 @@ export default function LessonReportManagement({
       homeworkSummary,
       assignedHomeworkSummary: summarizeAssignedHomework({ selectedAssignedHomeworkIds, homeworkAssignments }),
       testSummary: summarizeTests({ selectedTestIds, tests, grades, studentId: student.id, student, classTestStats }),
-      comment: buildAutoComment({ attendanceStatus: reportDraft.attendanceStatus, homeworkSummary, testIds: selectedTestIds }),
+      comment: '',
     };
   };
 
@@ -1225,7 +1216,7 @@ export default function LessonReportManagement({
                               : (prev.selectedHomeworkProgressIds || []).filter((id) => id !== hw.id),
                           }))}
                         />
-                        <span>{hw.title || hw.content || '숙제'}{isPendingHomeworkInspection(hw) ? ' · 검사 대기' : ' · 검사 완료'}</span>
+                        <span>{resolveHomeworkAssignmentTitle(hw)}{getHomeworkResultForStudentAssignment({ homeworkResults, assignmentId: hw.id, student: selectedDraftStudent, studentId: selectedDraftStudentId }) ? ' · 결과 있음' : (isPendingHomeworkInspection(hw) ? ' · 검사 대기' : ' · 검사 완료')}</span>
                       </label>
                     ))}
                     {selectableHomeworkProgress.length === 0 && (
@@ -1249,7 +1240,7 @@ export default function LessonReportManagement({
                               : (prev.selectedAssignedHomeworkIds || []).filter((id) => id !== hw.id),
                           }))}
                         />
-                        {hw.title || hw.content || '숙제'}
+                        {resolveHomeworkAssignmentTitle(hw)}
                       </label>
                     ))}
                     {selectableAssignedHomework.length === 0 && (

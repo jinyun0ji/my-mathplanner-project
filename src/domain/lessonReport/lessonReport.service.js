@@ -3,10 +3,12 @@ import {
     computeHomeworkProgress,
     getAssignmentQuestionNumbers,
     normalizeHomeworkResultMapForDisplay,
+    resolveHomeworkAssignmentTitle,
 } from '../homework/homework.service';
 import { formatRoundedPercent } from '../../utils/numberFormat';
 import {
     buildTestDisplayLines,
+    buildTestStatParts,
     getTestStatsForDisplay,
     isAbsentGradeRecord,
     pickScoreValue,
@@ -207,10 +209,10 @@ export const summarizeHomework = ({
 
             return {
                 homeworkId: assignment.id,
-                title: assignment.title || assignment.content || assignment.book || '숙제',
+                title: resolveHomeworkAssignmentTitle(assignment),
                 completionRate: Number.isFinite(resolvedRate) ? Math.round(resolvedRate) : null,
                 status: completionText ? null : '미제출',
-                summary: completionText ? `${assignment.title || assignment.content || assignment.book || '숙제'} ${completionText}` : `${assignment.title || assignment.content || assignment.book || '숙제'} 미제출`,
+                summary: completionText ? `${resolveHomeworkAssignmentTitle(assignment)} ${completionText}` : `${resolveHomeworkAssignmentTitle(assignment)} 미제출`,
             };
         });
 
@@ -230,7 +232,7 @@ export const summarizeAssignedHomework = ({
         .filter(Boolean)
         .map((assignment) => ({
         homeworkId: assignment.id,
-        title: assignment.title || assignment.content || assignment.book || '숙제',
+        title: resolveHomeworkAssignmentTitle(assignment),
         assignedDate: toYmd(assignment.assignedDate || assignment.date || assignment.createdAt),
         dueDate: toYmd(assignment.dueDate || assignment.deadline),
     })),
@@ -250,7 +252,9 @@ export const summarizeTests = ({ selectedTestIds = [], tests = [], grades = {}, 
 
             const questionCount = toFiniteNumber(grade?.questionCount) ?? toFiniteNumber(test?.totalQuestions);
             const correctCount = toFiniteNumber(grade?.correctCount);
-            const displayLines = buildTestDisplayLines({ title, gradeRecord: grade, stats });
+            const displayLines = grade
+                ? buildTestDisplayLines({ title, gradeRecord: grade, stats })
+                : [title, '학생: 점수 미입력', ...buildTestStatParts(stats, { includeUnit: true }).map((part) => part.replace(' ', ': '))];
 
             const summary = displayLines.join('\n');
 

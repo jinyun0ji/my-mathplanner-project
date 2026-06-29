@@ -26,11 +26,10 @@ export const resolveHomeworkAssignmentId = (result = {}) => (
 export const resolveHomeworkAssignmentTitle = (assignment = {}) => (
     assignment.title
     || assignment.name
-    || assignment.assignmentTitle
-    || assignment.book
-    || assignment.bookName
+    || assignment.assignmentName
+    || assignment.homeworkName
     || assignment.content
-    || '과제명 없음'
+    || '숙제'
 );
 
 export const resolveHomeworkQuestionSummary = (assignment = {}, result = {}) => {

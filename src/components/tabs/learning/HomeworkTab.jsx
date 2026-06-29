@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { resolveAssignmentType, resolveAssignmentTypeLabel } from '../../../domain/homework/homework.service';
+import { resolveAssignmentType, resolveAssignmentTypeLabel, resolveHomeworkAssignmentTitle } from '../../../domain/homework/homework.service';
 
 export default function HomeworkTab({ myHomeworkStats }) {
     const [selectedHwId, setSelectedHwId] = useState(null);
@@ -27,7 +27,7 @@ export default function HomeworkTab({ myHomeworkStats }) {
                             <span className="text-xs text-gray-500 font-semibold">출제일: {issuedDate || '-'}</span>
                         </div>
                         <div className="flex items-center gap-2 mb-1">
-                            <h4 className="font-bold text-gray-900">{hw.book || hw.title || hw.name || hw.bookName || hw.content || '과제'}</h4>
+                            <h4 className="font-bold text-gray-900">{resolveHomeworkAssignmentTitle(hw)}</h4>
                             <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-700 border border-gray-200">
                                 {typeLabel}
                             </span>

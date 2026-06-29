@@ -1,3 +1,4 @@
+import { resolveHomeworkAssignmentTitle } from '../domain/homework/homework.service';
 // src/pages/ParentHome.jsx
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -1530,7 +1531,7 @@ export default function ParentHome({
                                                     return (
                                                         <article key={hw.id} className="rounded-xl border border-gray-200 p-2.5 space-y-2">
                                                             <div className="flex items-start justify-between gap-2">
-                                                                <p className="text-sm font-semibold text-gray-900">{hw.book || hw.title || hw.name || hw.bookName || hw.content || '과제'}</p>
+                                                                <p className="text-sm font-semibold text-gray-900">{resolveHomeworkAssignmentTitle(hw)}</p>
                                                                 <span className="text-[11px] font-semibold text-[#334a91] bg-[#f1f4ff] border border-[#eef2ff] rounded-full px-2 py-0.5">
                                                                     완성률 {hw.completionRate ?? 0}%
                                                                 </span>

@@ -1,5 +1,6 @@
 import React from 'react';
 import { Icon, normalizeClassSchedule, getWeekdayKeyFromDate } from '../../../utils/helpers';
+import { resolveHomeworkAssignmentTitle } from '../../../domain/homework/homework.service';
 
 export default function DashboardTab({
     student,
@@ -168,7 +169,7 @@ export default function DashboardTab({
                             <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${badgeClass}`}>{hw.status}</span>
                             <span className="text-[10px] text-gray-400">~{assignedDate ? assignedDate.slice(5) : ''}</span>
                         </div>
-                        <h4 className="font-bold text-gray-900 text-sm mb-1 pl-2 truncate">{hw.content}</h4>
+                        <h4 className="font-bold text-gray-900 text-sm mb-1 pl-2 truncate">{resolveHomeworkAssignmentTitle(hw)}</h4>
                         <p className="text-xs text-gray-500 pl-2 mb-3">{hw.book}</p>
                         <div className="pl-2">
                             <div className="w-full bg-gray-100 rounded-full h-1.5">
