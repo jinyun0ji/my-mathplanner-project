@@ -449,7 +449,7 @@ export default function HomeworkManagement({
                     const typeLabel = resolveAssignmentTypeLabel(assignment);
                     const assignmentType = resolveAssignmentType(assignment);
                     const detailText = assignmentType === 'video_makeup'
-                        ? (assignment.content || assignment.title || '동영상 보강')
+                        ? (resolveHomeworkAssignmentTitle(assignment) || '동영상 보강')
                         : `${assignment.assignedDate || assignment.date}: ${assignment.content}`;
 
                     return (

@@ -21,7 +21,10 @@ const resolveAssignmentId = (assignment) => {
 };
 
 const resolveAssignmentTitle = (assignment) => {
-    return assignment?.title || assignment?.name || assignment?.assignmentName || assignment?.homeworkName || assignment?.content || '숙제';
+    const bookTitle = typeof assignment?.book === 'string'
+        ? assignment.book
+        : (assignment?.book?.title || assignment?.book?.name || assignment?.book?.bookName || '');
+    return bookTitle || assignment?.title || assignment?.name || assignment?.assignmentName || assignment?.homeworkName || assignment?.content || '숙제';
 };
 
 export const normalizeHomeworkTitleForWrongNote = (title) => {

@@ -262,7 +262,7 @@ export default function LessonReportManagement({
   const { studentId: routeStudentId } = useParams();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { profileDocId } = useAuth();
+  const { profileDocId, user } = useAuth();
   
   const preselectedStudentId = String(routeStudentId || searchParams.get('studentId') || '');
   const [selectedClassId, setSelectedClassId] = useState('');
@@ -1310,8 +1310,16 @@ export default function LessonReportManagement({
       }
 
       if (sentReports.length > 0) {
-        const assignmentIds = Array.from(new Set(sentReports.flatMap((report) => report.selectedHomeworkProgressIds || report.selectedHomeworkIds || []).filter(Boolean).map(String)));
-        const pendingAssignmentIds = assignmentIds.filter((assignmentId) => {
+        const assignmentLessonDateMap = new Map();
+        sentReports.forEach((report) => {
+          (report.selectedHomeworkProgressIds || []).filter(Boolean).forEach((assignmentId) => {
+            const key = String(assignmentId);
+            if (!assignmentLessonDateMap.has(key)) {
+              assignmentLessonDateMap.set(key, report.lessonDate || selectedDate);
+            }
+          });
+        });
+        const pendingAssignmentIds = Array.from(assignmentLessonDateMap.keys()).filter((assignmentId) => {
           const assignment = (homeworkAssignments || []).find((item) => String(item.id) === assignmentId);
           return !assignment || isPendingHomeworkInspection(assignment);
         });
@@ -1320,9 +1328,9 @@ export default function LessonReportManagement({
           pendingAssignmentIds.slice(index, index + 500).forEach((assignmentId) => {
             batch.update(doc(db, 'homeworkAssignments', assignmentId), {
               inspectionStatus: 'completed',
-              checkedLessonDate: selectedDate,
+              checkedLessonDate: assignmentLessonDateMap.get(assignmentId) || selectedDate,
               checkedAt: serverTimestamp(),
-              checkedBy: profileDocId || 'staff',
+              checkedBy: profileDocId || user?.uid || 'staff',
             });
           });
           await batch.commit();

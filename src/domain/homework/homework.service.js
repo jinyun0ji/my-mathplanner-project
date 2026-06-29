@@ -23,8 +23,16 @@ export const resolveHomeworkAssignmentId = (result = {}) => (
     || ''
 );
 
+const resolveBookTitle = (book) => {
+    if (!book) return '';
+    if (typeof book === 'string') return book;
+    if (typeof book === 'object') return book.title || book.name || book.bookName || '';
+    return '';
+};
+
 export const resolveHomeworkAssignmentTitle = (assignment = {}) => (
-    assignment.title
+    resolveBookTitle(assignment.book)
+    || assignment.title
     || assignment.name
     || assignment.assignmentName
     || assignment.homeworkName
