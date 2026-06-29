@@ -77,11 +77,19 @@ export default function HomeworkManagement({
     students = [],
     parents = [],
 }) {
-    const activeClasses = useMemo(
-        () => (Array.isArray(classes) ? classes : []).filter((cls) => !isClosedClass(cls)),
+    const rawClasses = useMemo(
+        () => (Array.isArray(classes) ? classes : []),
         [classes],
     );
-    const [selectedClassId, setSelectedClassId] = useState(() => getDefaultClassId(activeClasses));
+    const activeClasses = useMemo(
+        () => rawClasses.filter((cls) => !isClosedClass(cls)),
+        [rawClasses],
+    );
+    const classOptions = useMemo(
+        () => rawClasses,
+        [rawClasses],
+    );
+    const [selectedClassId, setSelectedClassId] = useState(() => getDefaultClassId(classOptions));
     const [isAssignmentModalOpen, setIsAssignmentModalOpen] = useState(false);
     const [assignmentToEdit, setAssignmentToEdit] = useState(null);
     const [selectedAssignmentId, setSelectedAssignmentId] = useState(null);
@@ -104,22 +112,42 @@ export default function HomeworkManagement({
     );
 
     useEffect(() => {
-        if (activeClasses.length === 0) {
+        if (classOptions.length === 0) {
             setSelectedClassId(null);
             return;
         }
-        if (selectedClassId && activeClasses.some(c => String(c.id) === String(selectedClassId))) return;
-        setSelectedClassId(getDefaultClassId(activeClasses));
-    }, [activeClasses, selectedClassId]);
+        if (selectedClassId && classOptions.some(c => String(c.id) === String(selectedClassId))) return;
+        setSelectedClassId(getDefaultClassId(classOptions));
+    }, [classOptions, selectedClassId]);
 
-    const selectedClass = activeClasses.find(c => String(c.id) === String(selectedClassId));
+    useEffect(() => {
+        if (process.env.NODE_ENV === 'production') return;
+
+        const filteredOut = rawClasses
+            .filter((cls) => isClosedClass(cls))
+            .slice(0, 3)
+            .map((cls) => ({
+                id: cls?.id,
+                name: cls?.name,
+                status: cls?.status || cls?.classStatus || cls?.state || cls?.lifecycleStatus || '',
+                active: cls?.active,
+                endDate: cls?.endDate || cls?.endedAt || cls?.finishedAt || cls?.finishDate || cls?.closeDate || cls?.closedAt || cls?.endAt || '',
+                reason: 'closed_or_inactive',
+            }));
+
+        console.log('[homework classes raw count]', rawClasses.length);
+        console.log('[homework filtered class count]', activeClasses.length);
+        console.log('[homework filtered out reason sample]', filteredOut);
+    }, [rawClasses, activeClasses]);
+
+    const selectedClass = classOptions.find(c => String(c.id) === String(selectedClassId));
     const classAssignments = useMemo(
         () => getClassAssignments(homeworkAssignments, selectedClassId),
         [homeworkAssignments, selectedClassId]
     );
 
     const allAssignments = useMemo(() => {
-        const classById = new Map(activeClasses.map((cls) => [String(cls.id), cls]));
+        const classById = new Map(classOptions.map((cls) => [String(cls.id), cls]));
         return (Array.isArray(homeworkAssignments) ? homeworkAssignments : []).map((assignment, index) => {
             const classId = String(assignment?.classId || assignment?.class || '');
             const cls = classById.get(classId);
@@ -130,7 +158,7 @@ export default function HomeworkManagement({
                 className: cls?.name || '',
             };
         }).filter((assignment) => classById.has(assignment.classId));
-    }, [homeworkAssignments, activeClasses]);
+    }, [homeworkAssignments, classOptions]);
 
     const selectedAssignment = useMemo(
         () => getSelectedAssignment(classAssignments, selectedAssignmentId),
@@ -580,7 +608,7 @@ export default function HomeworkManagement({
             <div className="grid gap-4 xl:grid-cols-[320px,1fr]">
                 <div className="space-y-4">
                     <ClassSelectionPanel
-                        classes={activeClasses}
+                        classes={classOptions}
                         selectedClassId={selectedClassId}
                         setSelectedClassId={handleClassSelectWrapper}
                         handleClassSave={handleSaveClass}

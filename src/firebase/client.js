@@ -43,17 +43,25 @@ if (process.env.NODE_ENV === 'development' && typeof window !== 'undefined') {
   console.log('[capacitor] origin =', window.location.origin);
 }
 
+const isCapacitorAppEnvironment = () => {
+  if (Capacitor.isNativePlatform()) return true;
+  if (typeof window === 'undefined') return false;
+
+  return window.location.protocol === 'capacitor:'
+    || window.location.origin === 'https://localhost';
+};
+
 const createFirestore = () => {
-  // 🌟 시뮬레이터 CORS 차단을 원천 봉쇄하기 위해 무조건 true(앱 환경)로 강제 설정합니다.
-  const isAppEnvironment = true; 
+  const isAppEnvironment = isCapacitorAppEnvironment();
 
   if (!isAppEnvironment) {
     return getFirestore(firebaseApp);
   }
 
-  // 🚀 Xcode 시뮬레이터 전용 강제 롱 폴링 우회 가동!
   try {
-    console.log('[Firebase] Forcing Long Polling bypass for iOS Simulator...');
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[Firebase] Forcing Long Polling bypass for iOS Simulator...');
+    }
     return initializeFirestore(firebaseApp, {
       experimentalForceLongPolling: true,
       experimentalAutoDetectLongPolling: false,
