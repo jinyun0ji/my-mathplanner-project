@@ -101,7 +101,9 @@ const getHomeworkResultForStudentAssignment = ({ homeworkResults = {}, assignmen
     if (nestedResult !== undefined && nestedResult !== null) return nestedResult;
   }
 
-  for (const value of Object.values(homeworkResults || {})) {
+  const resultCandidates = [homeworkResults, ...Object.values(homeworkResults || {})];
+
+  for (const value of resultCandidates) {
     if (!value || typeof value !== 'object') continue;
 
     const nestedResult = value?.[assignmentId];
