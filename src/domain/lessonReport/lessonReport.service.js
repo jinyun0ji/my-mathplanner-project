@@ -221,19 +221,28 @@ export const summarizeHomework = ({
 
 export const summarizeAssignedHomework = ({
     selectedAssignedHomeworkIds = [],
-    selectedHomeworkIds = [],
     homeworkAssignments = [],
-}) => ({
-    items: (selectedAssignedHomeworkIds.length > 0 ? selectedAssignedHomeworkIds : selectedHomeworkIds)
+}) => {
+    const items = selectedAssignedHomeworkIds
         .map((id) => homeworkAssignments.find((hw) => String(hw.id) === String(id)))
         .filter(Boolean)
-        .map((assignment) => ({
-        homeworkId: assignment.id,
-        title: assignment.title || assignment.content || assignment.book || '숙제',
-        assignedDate: toYmd(assignment.assignedDate || assignment.date || assignment.createdAt),
-        dueDate: toYmd(assignment.dueDate || assignment.deadline),
-    })),
-});
+        .map((assignment) => {
+            const title = assignment.title || assignment.content || assignment.book || '숙제';
+            const dueDate = toYmd(assignment.dueDate || assignment.deadline);
+            return {
+                homeworkId: assignment.id,
+                title,
+                assignedDate: toYmd(assignment.assignedDate || assignment.date || assignment.createdAt),
+                dueDate,
+                summary: dueDate ? `${title} (마감 ${dueDate})` : title,
+            };
+        });
+
+    return {
+        items,
+        text: items.map((item) => item.summary),
+    };
+};
 
 export const summarizeTests = ({ selectedTestIds = [], tests = [], grades = {}, studentId, student = null, classTestStats = {} }) => {
     const items = selectedTestIds
