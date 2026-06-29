@@ -199,7 +199,8 @@ export const summarizeHomework = ({
             const fallbackRate = Number.isFinite(fallbackNormalized?.completionRate)
                 ? Math.max(0, Math.min(100, fallbackNormalized.completionRate))
                 : null;
-            const resolvedRate = Number.isFinite(completionRate) && Object.keys(normalizedMap || {}).length > 0
+            const hasResult = rawResult !== null && rawResult !== undefined;
+            const resolvedRate = Number.isFinite(completionRate) && (hasResult || questionNumbers.length > 0)
                 ? completionRate
                 : fallbackRate;
             const completionText = Number.isFinite(resolvedRate) ? formatRoundedPercent(resolvedRate) : null;

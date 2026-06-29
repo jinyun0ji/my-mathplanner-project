@@ -1005,7 +1005,8 @@ export default function AppRoutes({ user, role, studentIds }) {
   const handleSaveHomeworkAssignment = async (data, isEdit) => {
       ensureFirestoreContext();
       try {
-          const payload = { type: data?.type || 'homework', ...stripId(data) };
+          const basePayload = { type: data?.type || 'homework', ...stripId(data) };
+          const payload = isEdit ? basePayload : { ...basePayload, inspectionStatus: basePayload.inspectionStatus || 'pending' };
           if (isEdit) {
               if (!data.id) throw new Error('과제 ID가 없습니다.');
               await updateDoc(doc(db, 'homeworkAssignments', data.id), {
@@ -1854,6 +1855,10 @@ export default function AppRoutes({ user, role, studentIds }) {
 
       if (existingSnap.empty) {
           const docRef = await addDoc(collection(db, 'homeworkAssignments'), {
+              inspectionStatus: 'pending',
+              checkedLessonDate: null,
+              checkedAt: null,
+              checkedBy: null,
               ...assignmentBase,
               createdAt: serverTimestamp(),
               createdBy: userId,

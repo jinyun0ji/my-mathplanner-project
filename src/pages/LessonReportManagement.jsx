@@ -144,6 +144,20 @@ const isHomeworkAssignedOnLessonDate = (assignment, lessonDate) => (
   getDateMatches(assignment, ['assignedDate', 'date', 'lessonDate', 'createdAt'], lessonDate).length > 0
 );
 
+const normalizeInspectionStatus = (assignment) => String(assignment?.inspectionStatus || 'pending').trim() || 'pending';
+const isPendingHomeworkInspection = (assignment) => normalizeInspectionStatus(assignment) !== 'completed';
+const getHomeworkTargetKeys = (assignment) => [
+  ...(Array.isArray(assignment?.targetStudents) ? assignment.targetStudents : []),
+  ...(Array.isArray(assignment?.assignedStudentIds) ? assignment.assignedStudentIds : []),
+  ...(Array.isArray(assignment?.students) ? assignment.students : []),
+];
+const isHomeworkTargetedToStudent = (assignment, student) => {
+  const targets = getHomeworkTargetKeys(assignment);
+  if (targets.length === 0) return true;
+  return hasAnyStudentKey(targets, buildStudentKeys(student));
+};
+
+
 const isTestHeldOnLessonDate = (test, lessonDate) => (
   getDateMatches(test, ['date', 'testDate', 'lessonDate'], lessonDate).length > 0
 );
@@ -370,7 +384,13 @@ export default function LessonReportManagement({
     })
     .filter((item) => item.__candidate_isTargeted), [classHomeworkAssignments, selectedStudentKeys]);
 
-  const selectableHomeworkProgress = candidateHomeworkAssignments;
+  const selectableHomeworkProgress = candidateHomeworkAssignments
+    .map((item) => ({ ...item, __candidate_isPendingInspection: isPendingHomeworkInspection(item) }))
+    .sort((a, b) => {
+      if (a.__candidate_isPendingInspection !== b.__candidate_isPendingInspection) return a.__candidate_isPendingInspection ? -1 : 1;
+      if (a.__candidate_distance !== b.__candidate_distance) return a.__candidate_distance - b.__candidate_distance;
+      return String(resolveHomeworkDate(b) || '').localeCompare(String(resolveHomeworkDate(a) || ''));
+    });
 
   const selectableAssignedHomework = classHomeworkAssignments;
 
@@ -853,10 +873,8 @@ export default function LessonReportManagement({
     const lessonLog = getLessonLogForClassDate({ lessonLogs, classId, lessonDate });
     const attendance = getAttendanceForStudent({ attendanceLogs, student, classId, lessonDate });
     const selectedHomeworkProgressIds = getHomeworkAssignmentsForStudent({ homeworkAssignments, student, classId, lessonDate, onlyTargeted: true })
-      .filter((assignment) => isHomeworkResultNewForLesson(
-        getHomeworkResultForStudentAssignment({ homeworkResults, assignmentId: assignment.id, student, studentId: student.id }),
-        lessonDate,
-      ))
+      .filter((assignment) => isPendingHomeworkInspection(assignment))
+      .filter((assignment) => isHomeworkTargetedToStudent(assignment, student))
       .map((item) => item.id)
       .filter(Boolean);
     const selectedAssignedHomeworkIds = getHomeworkAssignmentsForStudent({ homeworkAssignments, student, classId, lessonDate, onlyTargeted: false })
@@ -981,6 +999,7 @@ export default function LessonReportManagement({
 
     try {
       const failures = [];
+      const sentReports = [];
       for (const studentId of selectedStudentIdsForBulk) {
         const reportId = buildLessonReportId({ studentId, classId: selectedClassId, lessonDate: selectedDate });
         const report = reportMap.get(reportId);
@@ -991,7 +1010,29 @@ export default function LessonReportManagement({
         if (report.status === LESSON_REPORT_STATUS.SENT) {
           continue;
         }
-        await sendReport({ reportDraft: toDraftForSend(report), closeDraft: false });
+        const reportDraft = toDraftForSend(report);
+        await sendReport({ reportDraft, closeDraft: false });
+        if (!isScheduledMode) sentReports.push(reportDraft);
+      }
+
+      if (sentReports.length > 0) {
+        const assignmentIds = Array.from(new Set(sentReports.flatMap((report) => report.selectedHomeworkProgressIds || report.selectedHomeworkIds || []).filter(Boolean).map(String)));
+        const pendingAssignmentIds = assignmentIds.filter((assignmentId) => {
+          const assignment = (homeworkAssignments || []).find((item) => String(item.id) === assignmentId);
+          return !assignment || isPendingHomeworkInspection(assignment);
+        });
+        for (let index = 0; index < pendingAssignmentIds.length; index += 500) {
+          const batch = writeBatch(db);
+          pendingAssignmentIds.slice(index, index + 500).forEach((assignmentId) => {
+            batch.update(doc(db, 'homeworkAssignments', assignmentId), {
+              inspectionStatus: 'completed',
+              checkedLessonDate: selectedDate,
+              checkedAt: serverTimestamp(),
+              checkedBy: profileDocId || 'staff',
+            });
+          });
+          await batch.commit();
+        }
       }
 
       if (failures.length > 0) {
@@ -1184,7 +1225,7 @@ export default function LessonReportManagement({
                               : (prev.selectedHomeworkProgressIds || []).filter((id) => id !== hw.id),
                           }))}
                         />
-                        {hw.title || hw.content || '숙제'}
+                        <span>{hw.title || hw.content || '숙제'}{isPendingHomeworkInspection(hw) ? ' · 검사 대기' : ' · 검사 완료'}</span>
                       </label>
                     ))}
                     {selectableHomeworkProgress.length === 0 && (

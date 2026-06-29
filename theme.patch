@@ -1,52 +1,179 @@
-diff --git a/src/pages/LessonReportManagement.jsx b/src/pages/LessonReportManagement.jsx
-index 7025bd71fb1dc26579662b04923f392564e0ddad..cba5cc43e23d241c55a267ee31da28ee1a83ed76 100644
---- a/src/pages/LessonReportManagement.jsx
-+++ b/src/pages/LessonReportManagement.jsx
-@@ -79,51 +79,53 @@ const hasAnyStudentKey = (values = [], studentKeys = []) => {
-     .map((value) => String(value).trim())
-     .some((value) => keySet.has(value));
+diff --git a/src/app/AppRoutes.jsx b/src/app/AppRoutes.jsx
+index a83c3e3cd2b66d57233ec90d5e1fc6e349fb6dd3..d3fe0569f9d1ab1411674fba8a4eb4b58634d6ad 100644
+--- a/src/app/AppRoutes.jsx
++++ b/src/app/AppRoutes.jsx
+@@ -983,51 +983,52 @@ export default function AppRoutes({ user, role, studentIds }) {
+           logNotification('success', '출결 저장', '출결 기록이 저장되었습니다.');
+       } catch (error) {
+         await logClientError({
+               scope: 'attendance',
+               action: 'saveAttendance',
+               message: error?.message || 'unknown attendance write error',
+               code: error?.code || '',
+               context: {
+                   recordCount: Array.isArray(records) ? records.length : 0,
+                   classId: Array.isArray(records) && records[0]?.classId ? String(records[0].classId) : '',
+                   date: Array.isArray(records) && records[0]?.date ? String(records[0].date) : '',
+               },
+               userId,
+               userRole: role,
+               route: routePath,
+               app: 'staff',
+           });
+           console.error('[Firestore WRITE ERROR]', error);
+           alert('출결 저장에 실패했습니다. 권한 또는 네트워크를 확인하세요.');
+       }
+   };
+ 
+   const handleSaveHomeworkAssignment = async (data, isEdit) => {
+       ensureFirestoreContext();
+       try {
+-          const payload = { type: data?.type || 'homework', ...stripId(data) };
++          const basePayload = { type: data?.type || 'homework', ...stripId(data) };
++          const payload = isEdit ? basePayload : { ...basePayload, inspectionStatus: basePayload.inspectionStatus || 'pending' };
+           if (isEdit) {
+               if (!data.id) throw new Error('과제 ID가 없습니다.');
+               await updateDoc(doc(db, 'homeworkAssignments', data.id), {
+                   ...payload,
+                   updatedAt: serverTimestamp(),
+                   updatedBy: userId,
+               });
+               setHomeworkAssignments(prev => prev.map(h => h.id === data.id ? { ...h, ...payload } : h));
+           } else {
+               const docRef = await addDoc(collection(db, 'homeworkAssignments'), {
+                   ...payload,
+                   createdAt: serverTimestamp(),
+                   createdBy: userId,
+                   updatedAt: serverTimestamp(),
+                   updatedBy: userId,
+               });
+               setHomeworkAssignments(prev => [{ id: docRef.id, ...payload }, ...prev]);
+           }
+       } catch (error) {
+         await logClientError({
+               scope: 'homework',
+               action: isEdit ? 'updateHomeworkAssignment' : 'createHomeworkAssignment',
+               message: error?.message || 'unknown homework assignment write error',
+               code: error?.code || '',
+               context: {
+@@ -1832,50 +1833,54 @@ export default function AppRoutes({ user, role, studentIds }) {
+ 
+       const assignmentBase = {
+           type: 'video_makeup',
+           title: schedulePayload.courseName || schedulePayload.academyName || '동영상 보강',
+           content: schedulePayload.note || schedulePayload.courseName || '동영상 보강',
+           classId,
+           targetStudents,
+           assignedStudentIds: targetStudents,
+           students: targetStudents,
+           assignedDate: schedulePayload.startDate || schedulePayload.date || new Date().toISOString().slice(0, 10),
+           totalQuestions: 0,
+           video: schedulePayload.video || schedulePayload.videoMeta || null,
+           source: { externalScheduleId },
+       };
+ 
+       const existingSnap = await getDocs(
+           query(
+               collection(db, 'homeworkAssignments'),
+               where('source.externalScheduleId', '==', externalScheduleId),
+               limit(1),
+           ),
+       );
+ 
+       if (existingSnap.empty) {
+           const docRef = await addDoc(collection(db, 'homeworkAssignments'), {
++              inspectionStatus: 'pending',
++              checkedLessonDate: null,
++              checkedAt: null,
++              checkedBy: null,
+               ...assignmentBase,
+               createdAt: serverTimestamp(),
+               createdBy: userId,
+               updatedAt: serverTimestamp(),
+               updatedBy: userId,
+           });
+           setHomeworkAssignments((prev) => [{ id: docRef.id, ...assignmentBase }, ...prev]);
+       } else {
+           const targetDoc = existingSnap.docs[0];
+           await updateDoc(doc(db, 'homeworkAssignments', targetDoc.id), {
+               ...assignmentBase,
+               updatedAt: serverTimestamp(),
+               updatedBy: userId,
+           });
+           setHomeworkAssignments((prev) => {
+               const rest = prev.filter((h) => h.id !== targetDoc.id);
+               return [{ id: targetDoc.id, ...targetDoc.data(), ...assignmentBase }, ...rest];
+           });
+       }
+   }, [classes, resolveDefaultClassIdForStudent, userId]);
+ 
+   const removeVideoMakeupAssignment = useCallback(async (externalScheduleId) => {
+       if (!externalScheduleId) return;
+       const snap = await getDocs(
+           query(
+diff --git a/src/domain/lessonReport/lessonReport.service.js b/src/domain/lessonReport/lessonReport.service.js
+index 5c22002aa234beb5d97e55909a9ff31be5118260..f22e6600c44d194a5689dd38a6000602d439f669 100644
+--- a/src/domain/lessonReport/lessonReport.service.js
++++ b/src/domain/lessonReport/lessonReport.service.js
+@@ -177,51 +177,52 @@ export const summarizeHomework = ({
+         ? selectedHomeworkProgressIds
+         : selectedHomeworkIds;
+     const items = targetHomeworkIds
+         .map((id) => homeworkAssignments.find((hw) => String(hw.id) === String(id)))
+         .filter(Boolean)
+         .map((assignment) => {
+             const rawResult = getHomeworkResultByStudent({
+                 homeworkResults,
+                 assignmentId: assignment.id,
+                 studentId,
+                 student,
+             });
+             const questionNumbers = getAssignmentQuestionNumbers(assignment);
+             const normalizedMap = normalizeHomeworkResultMapForDisplay(rawResult, questionNumbers, {
+                 assignmentId: assignment.id,
+                 studentId,
+             });
+             const progress = computeHomeworkProgress({ results: normalizedMap }, questionNumbers);
+             const completionRate = Number.isFinite(progress?.completionRate)
+                 ? Math.max(0, Math.min(100, progress.completionRate))
+                 : null;
+             const fallbackNormalized = normalizeResult(rawResult);
+             const fallbackRate = Number.isFinite(fallbackNormalized?.completionRate)
+                 ? Math.max(0, Math.min(100, fallbackNormalized.completionRate))
+                 : null;
+-            const resolvedRate = Number.isFinite(completionRate) && Object.keys(normalizedMap || {}).length > 0
++            const hasResult = rawResult !== null && rawResult !== undefined;
++            const resolvedRate = Number.isFinite(completionRate) && (hasResult || questionNumbers.length > 0)
+                 ? completionRate
+                 : fallbackRate;
+             const completionText = Number.isFinite(resolvedRate) ? formatRoundedPercent(resolvedRate) : null;
+ 
+             return {
+                 homeworkId: assignment.id,
+                 title: assignment.title || assignment.content || assignment.book || '숙제',
+                 completionRate: Number.isFinite(resolvedRate) ? Math.round(resolvedRate) : null,
+                 status: completionText ? null : '미제출',
+                 summary: completionText ? `${assignment.title || assignment.content || assignment.book || '숙제'} ${completionText}` : `${assignment.title || assignment.content || assignment.book || '숙제'} 미제출`,
+             };
+         });
+ 
+     return {
+         items,
+         text: items.map((item) => item.summary),
+     };
  };
  
- 
- const getDateMatches = (item, fields = [], lessonDate) => fields
-   .map((field) => toYmd(item?.[field]))
-   .filter(Boolean)
-   .filter((date) => date === String(lessonDate || ''));
- 
- const resolveHomeworkResultDate = (item) => toYmd(item?.date || item?.lessonDate || item?.createdAt || item?.updatedAt || item?.submittedAt || item?.completedAt);
- const resolveScheduledTestDate = (item) => toYmd(item?.date || item?.testDate || item?.lessonDate);
- 
- const getHomeworkResultForStudentAssignment = ({ homeworkResults = {}, assignmentId, student, studentId = '' }) => {
-   if (!assignmentId) return null;
-   const studentKeys = Array.from(new Set([
-     ...buildStudentKeys(student),
-     studentId,
-   ].filter((value) => value !== null && value !== undefined).map((value) => String(value).trim()).filter(Boolean)));
- 
-   for (const key of studentKeys) {
-     const nestedResult = homeworkResults?.[key]?.[assignmentId];
-     if (nestedResult !== undefined && nestedResult !== null) return nestedResult;
-   }
- 
--  for (const value of Object.values(homeworkResults || {})) {
-+  const resultCandidates = [homeworkResults, ...Object.values(homeworkResults || {})];
-+
-+  for (const value of resultCandidates) {
-     if (!value || typeof value !== 'object') continue;
- 
-     const nestedResult = value?.[assignmentId];
-     if (nestedResult && typeof nestedResult === 'object' && hasAnyStudentKey([
-       nestedResult.studentId,
-       nestedResult.studentDocId,
-       nestedResult.authUid,
-       nestedResult.studentUid,
-       nestedResult.userUid,
-       nestedResult.uid,
-     ], studentKeys)) {
-       return nestedResult;
-     }
- 
-     if (String(value?.assignmentId || '') === String(assignmentId)
+ export const summarizeAssignedHomework = ({
+     selectedAssignedHomeworkIds = [],
+     selectedHomeworkIds = [],
+     homeworkAssignments = [],
+ }) => ({
+     items: (selectedAssignedHomeworkIds.length > 0 ? selectedAssignedHomeworkIds : selectedHomeworkIds)
+diff --git a/src/pages/LessonReportManagement.jsx b/src/pages/LessonReportManagement.jsx
+index cba5cc43e23d241c55a267ee31da28ee1a83ed76..221999439ea5ab06180e19c9d67850fee6ab364a 100644
+--- a/src/pages/LessonReportManagement.jsx
++++ b/src/pages/LessonReportManagement.jsx
+@@ -122,50 +122,64 @@ const getHomeworkResultForStudentAssignment = ({ homeworkResults = {}, assignmen
        && hasAnyStudentKey([
          value.studentId,
          value.studentDocId,
@@ -57,3 +184,312 @@ index 7025bd71fb1dc26579662b04923f392564e0ddad..cba5cc43e23d241c55a267ee31da28ee
        ], studentKeys)) {
        return value;
      }
+   }
+ 
+   return null;
+ };
+ 
+ const isHomeworkResultNewForLesson = (result, lessonDate) => {
+   if (!result) return false;
+   const resultDate = resolveHomeworkResultDate(result);
+   return !resultDate || resultDate === String(lessonDate || '');
+ };
+ 
+ const isHomeworkAssignedOnLessonDate = (assignment, lessonDate) => (
+   getDateMatches(assignment, ['assignedDate', 'date', 'lessonDate', 'createdAt'], lessonDate).length > 0
+ );
+ 
++const normalizeInspectionStatus = (assignment) => String(assignment?.inspectionStatus || 'pending').trim() || 'pending';
++const isPendingHomeworkInspection = (assignment) => normalizeInspectionStatus(assignment) !== 'completed';
++const getHomeworkTargetKeys = (assignment) => [
++  ...(Array.isArray(assignment?.targetStudents) ? assignment.targetStudents : []),
++  ...(Array.isArray(assignment?.assignedStudentIds) ? assignment.assignedStudentIds : []),
++  ...(Array.isArray(assignment?.students) ? assignment.students : []),
++];
++const isHomeworkTargetedToStudent = (assignment, student) => {
++  const targets = getHomeworkTargetKeys(assignment);
++  if (targets.length === 0) return true;
++  return hasAnyStudentKey(targets, buildStudentKeys(student));
++};
++
++
+ const isTestHeldOnLessonDate = (test, lessonDate) => (
+   getDateMatches(test, ['date', 'testDate', 'lessonDate'], lessonDate).length > 0
+ );
+ 
+ const getAttendanceForStudent = ({ attendanceLogs = [], student, classId, lessonDate }) => {
+   const studentKeys = buildStudentKeys(student);
+   return attendanceLogs.find((item) => hasAnyStudentKey([item.studentId, item.studentUid], studentKeys)
+     && resolveClassId(item) === String(classId || '')
+     && resolveAttendanceDate(item) === String(lessonDate || '')) || null;
+ };
+ 
+ const getLessonLogForClassDate = ({ lessonLogs = [], classId, lessonDate }) => (
+   (lessonLogs || []).find((log) => resolveClassId(log) === String(classId || '') && resolveLessonLogDate(log) === String(lessonDate || '')) || null
+ );
+ 
+ const getHomeworkAssignmentsForStudent = ({ homeworkAssignments = [], student, classId, lessonDate, onlyTargeted = false }) => {
+   const studentKeys = buildStudentKeys(student);
+   return (homeworkAssignments || [])
+     .filter((item) => resolveClassId(item) === String(classId || ''))
+     .map((item) => ({ ...item, __candidate_distance: Math.abs(new Date(`${resolveHomeworkDate(item)}T00:00:00`).getTime() - new Date(`${lessonDate}T00:00:00`).getTime()) || Number.MAX_SAFE_INTEGER }))
+     .sort((a, b) => a.__candidate_distance - b.__candidate_distance)
+     .filter((item) => {
+       if (!onlyTargeted) return true;
+       const targets = [
+         ...(Array.isArray(item.targetStudents) ? item.targetStudents : []),
+@@ -348,51 +362,57 @@ export default function LessonReportManagement({
+   );
+ 
+   const classHomeworkAssignments = useMemo(() => (homeworkAssignments || [])
+     .filter((item) => resolveClassId(item) === selectedDraftClassId)
+     .map((item) => ({
+       ...item,
+       __candidate_distance: toDateDistance(resolveHomeworkDate(item), selectedLessonDate),
+     }))
+     .sort((a, b) => {
+       if (a.__candidate_distance !== b.__candidate_distance) return a.__candidate_distance - b.__candidate_distance;
+       return String(resolveHomeworkDate(b) || '').localeCompare(String(resolveHomeworkDate(a) || ''));
+     }), [homeworkAssignments, selectedDraftClassId, selectedLessonDate]);
+ 
+   const candidateHomeworkAssignments = useMemo(() => classHomeworkAssignments
+     .map((item) => {
+       const targets = [
+         ...(Array.isArray(item.targetStudents) ? item.targetStudents : []),
+         ...(Array.isArray(item.assignedStudentIds) ? item.assignedStudentIds : []),
+         ...(Array.isArray(item.students) ? item.students : []),
+       ];
+       const isTargeted = targets.length === 0 || hasAnyStudentKey(targets, selectedStudentKeys);
+       return { ...item, __candidate_isTargeted: isTargeted, __candidate_targetKeys: targets.map(String) };
+     })
+     .filter((item) => item.__candidate_isTargeted), [classHomeworkAssignments, selectedStudentKeys]);
+ 
+-  const selectableHomeworkProgress = candidateHomeworkAssignments;
++  const selectableHomeworkProgress = candidateHomeworkAssignments
++    .map((item) => ({ ...item, __candidate_isPendingInspection: isPendingHomeworkInspection(item) }))
++    .sort((a, b) => {
++      if (a.__candidate_isPendingInspection !== b.__candidate_isPendingInspection) return a.__candidate_isPendingInspection ? -1 : 1;
++      if (a.__candidate_distance !== b.__candidate_distance) return a.__candidate_distance - b.__candidate_distance;
++      return String(resolveHomeworkDate(b) || '').localeCompare(String(resolveHomeworkDate(a) || ''));
++    });
+ 
+   const selectableAssignedHomework = classHomeworkAssignments;
+ 
+   const candidateTests = useMemo(() => {
+     if (!selectedDraftClassId) return [];
+     return (tests || [])
+       .filter((item) => resolveClassId(item) === selectedDraftClassId)
+       .map((item) => {
+         const grade = getGradeForLessonReportStudent({
+           student: selectedDraftStudent,
+           studentId: selectedDraftStudentId,
+           grades,
+           testId: item.id,
+         });
+         return {
+           ...item,
+           __sort_hasGrade: Boolean(grade),
+           __sort_distance: toDateDistance(resolveTestDate(item), selectedLessonDate),
+         };
+       })
+       .sort((a, b) => {
+         if (a.__sort_hasGrade !== b.__sort_hasGrade) return a.__sort_hasGrade ? -1 : 1;
+         if (a.__sort_distance !== b.__sort_distance) return a.__sort_distance - b.__sort_distance;
+         return String(resolveTestDate(b) || '').localeCompare(String(resolveTestDate(a) || ''));
+       });
+@@ -831,54 +851,52 @@ export default function LessonReportManagement({
+       await persistReport({ reportDraft: draft, action: 'save', closeDraft: false });
+     } catch (error) {
+       setDraftError(error?.message || '수업 리포트 저장에 실패했습니다. 다시 시도해 주세요.');
+     } finally {
+       setReportSaving(false);
+     }
+   };
+ 
+   const sendReport = async ({ reportDraft, closeDraft = true }) => {
+     if (!reportDraft) return;
+     const action = sendMode === 'scheduled' ? 'schedule' : 'send';
+     if (action === 'schedule' && !scheduledSendAt) {
+       throw new Error('예약 전송 시간을 입력해 주세요.');
+     }
+     await persistReport({ reportDraft, action, closeDraft });
+   };
+ 
+ 
+   const buildAutoDraftForStudent = (student) => {
+     const classId = String(selectedClassId || '');
+     const lessonDate = String(selectedDate || todayYmd());
+     const reportId = buildLessonReportId({ studentId: student.id, classId, lessonDate });
+     const lessonLog = getLessonLogForClassDate({ lessonLogs, classId, lessonDate });
+     const attendance = getAttendanceForStudent({ attendanceLogs, student, classId, lessonDate });
+     const selectedHomeworkProgressIds = getHomeworkAssignmentsForStudent({ homeworkAssignments, student, classId, lessonDate, onlyTargeted: true })
+-      .filter((assignment) => isHomeworkResultNewForLesson(
+-        getHomeworkResultForStudentAssignment({ homeworkResults, assignmentId: assignment.id, student, studentId: student.id }),
+-        lessonDate,
+-      ))
++      .filter((assignment) => isPendingHomeworkInspection(assignment))
++      .filter((assignment) => isHomeworkTargetedToStudent(assignment, student))
+       .map((item) => item.id)
+       .filter(Boolean);
+     const selectedAssignedHomeworkIds = getHomeworkAssignmentsForStudent({ homeworkAssignments, student, classId, lessonDate, onlyTargeted: false })
+       .filter((assignment) => isHomeworkAssignedOnLessonDate(assignment, lessonDate))
+       .map((item) => item.id)
+       .filter(Boolean);
+     const selectedTestIds = getTestsForStudent({ tests, grades, student, studentId: student.id, classId, lessonDate })
+       .filter((test) => isTestHeldOnLessonDate(test, lessonDate))
+       .map((item) => item.id)
+       .filter(Boolean);
+     const reportDraft = {
+       id: reportId,
+       studentId: String(student.id),
+       classId,
+       lessonDate,
+       lessonLogId: lessonLog?.id || null,
+       attendanceStatus: attendance?.attendance || attendance?.status || '미기록',
+       learnedTopics: resolveLessonLogProgress(lessonLog),
+       selectedHomeworkProgressIds,
+       selectedAssignedHomeworkIds,
+       selectedHomeworkIds: Array.from(new Set([...selectedHomeworkProgressIds, ...selectedAssignedHomeworkIds])),
+       selectedTestIds,
+       status: LESSON_REPORT_STATUS.DRAFT,
+       sendStatus: LESSON_REPORT_SEND_STATUS.DRAFT,
+       sendMode: 'now',
+@@ -959,61 +977,84 @@ export default function LessonReportManagement({
+   const canSelectForBulkSend = (report) => Boolean(report) && report?.status !== LESSON_REPORT_STATUS.SENT;
+ 
+   const toggleStudentForBulk = (studentId) => {
+     setSelectedStudentIdsForBulk((prev) => (
+       prev.includes(studentId)
+         ? prev.filter((id) => id !== studentId)
+         : [...prev, studentId]
+     ));
+   };
+ 
+   const handleBulkSend = async () => {
+     if (selectedStudentIdsForBulk.length === 0) {
+       setDraftError('일괄 전송할 학생을 선택해 주세요.');
+       return;
+     }
+     if (isScheduledMode && !scheduledSendAt) {
+       setDraftError('예약 전송 시간을 입력해 주세요.');
+       return;
+     }
+ 
+     setReportSaving(true);
+     setDraftError('');
+ 
+     try {
+       const failures = [];
++      const sentReports = [];
+       for (const studentId of selectedStudentIdsForBulk) {
+         const reportId = buildLessonReportId({ studentId, classId: selectedClassId, lessonDate: selectedDate });
+         const report = reportMap.get(reportId);
+         if (!report) {
+           failures.push(`${studentId}: 초안 없음`);
+           continue;
+         }
+         if (report.status === LESSON_REPORT_STATUS.SENT) {
+           continue;
+         }
+-        await sendReport({ reportDraft: toDraftForSend(report), closeDraft: false });
++        const reportDraft = toDraftForSend(report);
++        await sendReport({ reportDraft, closeDraft: false });
++        if (!isScheduledMode) sentReports.push(reportDraft);
++      }
++
++      if (sentReports.length > 0) {
++        const assignmentIds = Array.from(new Set(sentReports.flatMap((report) => report.selectedHomeworkProgressIds || report.selectedHomeworkIds || []).filter(Boolean).map(String)));
++        const pendingAssignmentIds = assignmentIds.filter((assignmentId) => {
++          const assignment = (homeworkAssignments || []).find((item) => String(item.id) === assignmentId);
++          return !assignment || isPendingHomeworkInspection(assignment);
++        });
++        for (let index = 0; index < pendingAssignmentIds.length; index += 500) {
++          const batch = writeBatch(db);
++          pendingAssignmentIds.slice(index, index + 500).forEach((assignmentId) => {
++            batch.update(doc(db, 'homeworkAssignments', assignmentId), {
++              inspectionStatus: 'completed',
++              checkedLessonDate: selectedDate,
++              checkedAt: serverTimestamp(),
++              checkedBy: profileDocId || 'staff',
++            });
++          });
++          await batch.commit();
++        }
+       }
+ 
+       if (failures.length > 0) {
+         setDraftError(`일부 전송 실패 - ${failures.join(', ')}`);
+       }
+       setSelectedStudentIdsForBulk([]);
+     } catch (error) {
+       setDraftError(error?.message || '일괄 전송 중 오류가 발생했습니다.');
+     } finally {
+       setReportSaving(false);
+     }
+   };
+ 
+   return (
+     <div className="space-y-4">
+       <div className="flex flex-wrap items-center justify-between gap-2">
+         <div>
+           <h2 className="text-xl font-bold">수업 리포트 관리</h2>
+           <p className="text-sm text-gray-500">클래스/날짜 기준으로 학생 리포트를 한 번에 처리하세요.</p>
+         </div>
+         <div className="flex gap-2">
+           <button className="px-3 py-2 rounded bg-gray-100" onClick={() => navigate('/students')}>학생 관리</button>
+         </div>
+       </div>
+ 
+@@ -1162,51 +1203,51 @@ export default function LessonReportManagement({
+                 <input value={draft.attendanceStatus || ''} onChange={(e) => handleDraftSelectionChange({ attendanceStatus: e.target.value })} className="border rounded p-2 text-sm w-full" placeholder="출결" />
+                 <textarea
+                   value={draft.learnedTopics || ''}
+                   onChange={(e) => setDraft((prev) => ({ ...prev, learnedTopics: e.target.value, isLearnedTopicsManuallyEdited: true }))}
+                   className="border rounded p-2 text-sm w-full"
+                   rows={4}
+                   placeholder="진도"
+                 />
+                 <p className="text-xs text-gray-500">자동 채움 기준: {draft.classId} · {draft.lessonDate} · {draft.studentId}</p>
+ 
+                 <div>
+                   <p className="text-sm font-semibold mb-1">과제 수행 정도 선택</p>
+                   <div className="space-y-1 max-h-32 overflow-auto">
+                     {selectableHomeworkProgress.map((hw) => (
+                       <label key={hw.id} className="flex items-center gap-2 text-sm">
+                         <input
+                           type="checkbox"
+                           checked={(draft.selectedHomeworkProgressIds || []).includes(hw.id)}
+                           onChange={(e) => setDraft((prev) => ({
+                             ...prev,
+                             selectedHomeworkProgressIds: e.target.checked
+                               ? [...(prev.selectedHomeworkProgressIds || []), hw.id]
+                               : (prev.selectedHomeworkProgressIds || []).filter((id) => id !== hw.id),
+                           }))}
+                         />
+-                        {hw.title || hw.content || '숙제'}
++                        <span>{hw.title || hw.content || '숙제'}{isPendingHomeworkInspection(hw) ? ' · 검사 대기' : ' · 검사 완료'}</span>
+                       </label>
+                     ))}
+                     {selectableHomeworkProgress.length === 0 && (
+                       <p className="text-xs text-gray-500">선택 가능한 과제 수행 항목 없음</p>
+                     )}
+                   </div>
+                 </div>
+ 
+                 <div>
+                   <p className="text-sm font-semibold mb-1">이번 수업 숙제 선택</p>
+                   <div className="space-y-1 max-h-32 overflow-auto">
+                     {selectableAssignedHomework.map((hw) => (
+                       <label key={`assigned-${hw.id}`} className="flex items-center gap-2 text-sm">
+                         <input
+                           type="checkbox"
+                           checked={(draft.selectedAssignedHomeworkIds || []).includes(hw.id)}
+                           onChange={(e) => setDraft((prev) => ({
+                             ...prev,
+                             selectedAssignedHomeworkIds: e.target.checked
+                               ? [...(prev.selectedAssignedHomeworkIds || []), hw.id]
+                               : (prev.selectedAssignedHomeworkIds || []).filter((id) => id !== hw.id),
+                           }))}
+                         />
+                         {hw.title || hw.content || '숙제'}
+                       </label>
