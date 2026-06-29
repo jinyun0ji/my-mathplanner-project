@@ -1,172 +1,8 @@
-diff --git a/src/domain/lessonReport/lessonReport.service.js b/src/domain/lessonReport/lessonReport.service.js
-index d0c03235b576755c2c2ce847d6e73d9a9c1cf503..5c22002aa234beb5d97e55909a9ff31be5118260 100644
---- a/src/domain/lessonReport/lessonReport.service.js
-+++ b/src/domain/lessonReport/lessonReport.service.js
-@@ -48,124 +48,142 @@ const toKoreanDateTag = (value) => {
- };
- 
- const normalizeResult = (result) => {
-     if (!result) return null;
-     if (typeof result === 'number') return { completionRate: result };
-     if (typeof result === 'string') {
-         const numeric = Number(result.replace('%', ''));
-         if (Number.isFinite(numeric)) return { completionRate: numeric };
-         return { status: result };
-     }
-     return result;
- };
- 
- const toFiniteNumber = (value) => {
-     if (Number.isFinite(value)) return value;
-     const numeric = Number(value);
-     return Number.isFinite(numeric) ? numeric : null;
- };
- 
- const toCandidateStudentKeys = ({ student = null, studentId = '' }) => {
-     const keys = [
-         studentId,
-         student?.id,
-         student?.studentId,
-         student?.studentDocId,
-+        student?.docId,
-         student?.authUid,
-+        student?.userUid,
-         student?.studentUid,
-         student?.uid,
-     ]
-         .filter((value) => value !== null && value !== undefined)
-         .map((value) => String(value).trim())
-         .filter(Boolean);
- 
-     return Array.from(new Set(keys));
- };
- 
- export const getGradeForLessonReportStudent = ({ student = null, studentId = '', grades = {}, testId }) => {
-     if (!testId || !grades || typeof grades !== 'object') return null;
- 
-     const keys = toCandidateStudentKeys({ student, studentId });
-     for (const key of keys) {
-         const byKey = grades?.[key]?.[testId];
-         if (byKey) return byKey;
-     }
- 
-     const keySet = new Set(keys);
-     for (const studentGrades of Object.values(grades)) {
-         if (!studentGrades || typeof studentGrades !== 'object') continue;
-         const byTest = studentGrades?.[testId];
-         if (!byTest) continue;
-         const refIds = [
-             byTest?.studentId,
-             byTest?.studentDocId,
-             byTest?.authUid,
-             byTest?.studentUid,
-+            byTest?.userUid,
-             byTest?.uid,
-         ]
-             .filter((value) => value !== null && value !== undefined)
-             .map((value) => String(value));
- 
-         if (refIds.some((refId) => keySet.has(refId))) {
-             return byTest;
-         }
-     }
- 
-     return null;
- };
- 
- const buildTestTitle = (test = {}) => {
-     const dateTag = toKoreanDateTag(test?.date || test?.testDate || test?.lessonDate || test?.createdAt || test?.updatedAt);
-     const rawName = String(test?.name || '시험');
-     const name = dateTag && rawName.startsWith(dateTag)
-         ? rawName.slice(dateTag.length).trim()
-         : rawName;
-     return dateTag ? `${dateTag} ${name}` : name;
- };
- 
- const getHomeworkResultByStudent = ({ homeworkResults = {}, assignmentId, studentId = '', student = null }) => {
-     const candidateKeys = toCandidateStudentKeys({ student, studentId });
-     for (const key of candidateKeys) {
-         const byCandidate = homeworkResults?.[key]?.[assignmentId];
-         if (byCandidate !== undefined && byCandidate !== null) return byCandidate;
-     }
- 
-     const keySet = new Set(candidateKeys);
-     for (const perStudentResults of Object.values(homeworkResults || {})) {
-         if (!perStudentResults || typeof perStudentResults !== 'object') continue;
-         const byAssignment = perStudentResults?.[assignmentId];
-         if (!byAssignment || typeof byAssignment !== 'object') continue;
-         const refs = [
-             byAssignment?.studentId,
-             byAssignment?.studentDocId,
-             byAssignment?.authUid,
-             byAssignment?.studentUid,
-+            byAssignment?.userUid,
-             byAssignment?.uid,
-         ].filter(Boolean).map(String);
-         if (refs.some((ref) => keySet.has(ref))) return byAssignment;
-     }
- 
-+    for (const result of Object.values(homeworkResults || {})) {
-+        if (!result || typeof result !== 'object') continue;
-+        if (String(result?.assignmentId || '') !== String(assignmentId || '')) continue;
-+        const refs = [
-+            result?.studentId,
-+            result?.studentDocId,
-+            result?.authUid,
-+            result?.studentUid,
-+            result?.userUid,
-+            result?.uid,
-+        ].filter(Boolean).map(String);
-+        if (refs.some((ref) => keySet.has(ref))) return result;
-+    }
-+
-     return null;
- };
- 
- export const summarizeHomework = ({
-     selectedHomeworkProgressIds = [],
-     selectedHomeworkIds = [],
-     homeworkAssignments = [],
-     homeworkResults = {},
-     studentId,
-     student = null,
- }) => {
-     const targetHomeworkIds = selectedHomeworkProgressIds.length > 0
-         ? selectedHomeworkProgressIds
-         : selectedHomeworkIds;
-     const items = targetHomeworkIds
-         .map((id) => homeworkAssignments.find((hw) => String(hw.id) === String(id)))
-         .filter(Boolean)
-         .map((assignment) => {
-             const rawResult = getHomeworkResultByStudent({
-                 homeworkResults,
-                 assignmentId: assignment.id,
-                 studentId,
-                 student,
-             });
-             const questionNumbers = getAssignmentQuestionNumbers(assignment);
 diff --git a/src/pages/LessonReportManagement.jsx b/src/pages/LessonReportManagement.jsx
-index 9f5b715aad87a3cdf05fc4f8e718708ac066523a..69f4a91d840c547e7d0ab3107b9c5b107104749e 100644
+index 69f4a91d840c547e7d0ab3107b9c5b107104749e..5e97fbc04bcb673bd55745164d7a561fe4829dc4 100644
 --- a/src/pages/LessonReportManagement.jsx
 +++ b/src/pages/LessonReportManagement.jsx
-@@ -40,50 +40,67 @@ const resolveAttendanceDate = (item) => toYmd(item?.date || item?.lessonDate ||
- const resolveHomeworkDate = (item) => toYmd(item?.date || item?.assignedDate || item?.lessonDate || item?.createdAt || item?.updatedAt);
- const resolveTestDate = (item) => toYmd(item?.date || item?.testDate || item?.lessonDate || item?.createdAt || item?.updatedAt);
- const resolveLessonLogProgress = (log) => String(log?.progress || log?.learnedTopics || log?.lessonSummary || log?.topic || '');
- 
- const statusLabel = (status, sendStatus, scheduledSendAt) => {
-   if (status === LESSON_REPORT_STATUS.SENT) return '발송완료';
-   if (sendStatus === LESSON_REPORT_SEND_STATUS.SCHEDULED || Boolean(scheduledSendAt)) return '예약됨';
-   if (status === LESSON_REPORT_STATUS.DRAFT) return '초안';
-   return '미생성';
- };
- 
- const statusClassName = (status, sendStatus, scheduledSendAt) => {
-   if (status === LESSON_REPORT_STATUS.SENT) return 'bg-green-100 text-green-700';
-   if (sendStatus === LESSON_REPORT_SEND_STATUS.SCHEDULED || Boolean(scheduledSendAt)) return 'bg-yellow-100 text-yellow-700';
-   if (status === LESSON_REPORT_STATUS.DRAFT) return 'bg-amber-100 text-amber-700';
-   return 'bg-gray-100 text-gray-600';
- };
+@@ -57,50 +57,71 @@ const statusClassName = (status, sendStatus, scheduledSendAt) => {
  
  const getStudentClassIds = (student) => {
    if (!student) return [];
@@ -175,22 +11,43 @@ index 9f5b715aad87a3cdf05fc4f8e718708ac066523a..69f4a91d840c547e7d0ab3107b9c5b10
    return [];
  };
  
-+const buildStudentKeys = (student = null) => Array.from(new Set([
-+  student?.id,
-+  student?.uid,
-+  student?.userUid,
-+  student?.authUid,
-+  student?.studentId,
-+  student?.docId,
-+].filter((value) => value !== null && value !== undefined).map((value) => String(value).trim()).filter(Boolean)));
+ const buildStudentKeys = (student = null) => Array.from(new Set([
+   student?.id,
+   student?.uid,
+   student?.userUid,
+   student?.authUid,
+   student?.studentId,
+   student?.docId,
+ ].filter((value) => value !== null && value !== undefined).map((value) => String(value).trim()).filter(Boolean)));
+ 
+ const hasAnyStudentKey = (values = [], studentKeys = []) => {
+   const keySet = new Set(studentKeys.map(String));
+   return values
+     .filter((value) => value !== null && value !== undefined)
+     .map((value) => String(value).trim())
+     .some((value) => keySet.has(value));
+ };
+ 
++const debugStudentSnapshot = (student) => ({
++  selectedStudent: student,
++  id: student?.id,
++  uid: student?.uid,
++  userUid: student?.userUid,
++  authUid: student?.authUid,
++  studentId: student?.studentId,
++  docId: student?.docId,
++  classIds: student?.classIds,
++});
 +
-+const hasAnyStudentKey = (values = [], studentKeys = []) => {
-+  const keySet = new Set(studentKeys.map(String));
-+  return values
-+    .filter((value) => value !== null && value !== undefined)
-+    .map((value) => String(value).trim())
-+    .some((value) => keySet.has(value));
-+};
++const debugSkip = (collectionName, reason, expected, actual, item) => ({
++  collectionName,
++  [`${collectionName} skip`]: reason,
++  reason,
++  expected,
++  actual,
++  id: item?.id,
++  item,
++});
 +
  export default function LessonReportManagement({
    students = [],
@@ -217,126 +74,12 @@ index 9f5b715aad87a3cdf05fc4f8e718708ac066523a..69f4a91d840c547e7d0ab3107b9c5b10
    const [draft, setDraft] = useState(null);
    const [draftError, setDraftError] = useState('');
    const [reportSaving, setReportSaving] = useState(false);
-@@ -151,185 +168,233 @@ export default function LessonReportManagement({
-         studentId: report.studentId,
-         classId: report.classId,
-         lessonDate: toYmd(report.lessonDate),
-       });
-       if (key) map.set(key, report);
-     });
-     return map;
-   }, [lessonReports]);
- 
-   const reportMap = useMemo(() => {
-     const merged = new Map(baseReportMap);
-     Object.values(localReportMap || {}).forEach((report) => {
-       const key = buildLessonReportId({
-         studentId: report?.studentId,
-         classId: report?.classId,
-         lessonDate: toYmd(report?.lessonDate),
-       });
-       if (key) merged.set(key, report);
-     });
-     return merged;
-   }, [baseReportMap, localReportMap]);
- 
-   const selectedLessonDate = toYmd(draft?.lessonDate || selectedDate || '');
-   const selectedDraftClassId = String(draft?.classId || selectedClassId || '');
-   const selectedDraftStudentId = String(draft?.studentId || selectedStudentId || '');
-+  const selectedDraftStudent = useMemo(
-+    () => students.find((student) => String(student.id) === selectedDraftStudentId) || null,
-+    [selectedDraftStudentId, students],
-+  );
-+  const selectedStudentKeys = useMemo(() => buildStudentKeys(selectedDraftStudent), [selectedDraftStudent]);
- 
-   const toDateDistance = (a, b) => {
-     if (!a || !b) return Number.MAX_SAFE_INTEGER;
-     const aTime = new Date(`${a}T00:00:00`).getTime();
-     const bTime = new Date(`${b}T00:00:00`).getTime();
-     if (Number.isNaN(aTime) || Number.isNaN(bTime)) return Number.MAX_SAFE_INTEGER;
-     return Math.abs(aTime - bTime);
-   };
- 
-   const candidateLessonLogs = useMemo(() => (lessonLogs || []).filter((log) => (
-     resolveClassId(log) === selectedDraftClassId
-     && resolveLessonLogDate(log) === selectedLessonDate
-   )), [lessonLogs, selectedDraftClassId, selectedLessonDate]);
- 
-   const currentLessonLog = useMemo(
-     () => candidateLessonLogs[0] || null,
-     [candidateLessonLogs],
-   );
- 
-   const currentAutoFilledLearnedTopics = useMemo(
-     () => resolveLessonLogProgress(currentLessonLog),
-     [currentLessonLog],
-   );
- 
--  const candidateHomeworkAssignments = useMemo(() => (homeworkAssignments || [])
-+  const classHomeworkAssignments = useMemo(() => (homeworkAssignments || [])
-     .filter((item) => resolveClassId(item) === selectedDraftClassId)
-+    .map((item) => ({
-+      ...item,
-+      __candidate_distance: toDateDistance(resolveHomeworkDate(item), selectedLessonDate),
-+    }))
-+    .sort((a, b) => {
-+      if (a.__candidate_distance !== b.__candidate_distance) return a.__candidate_distance - b.__candidate_distance;
-+      return String(resolveHomeworkDate(b) || '').localeCompare(String(resolveHomeworkDate(a) || ''));
-+    }), [homeworkAssignments, selectedDraftClassId, selectedLessonDate]);
-+
-+  const candidateHomeworkAssignments = useMemo(() => classHomeworkAssignments
-     .map((item) => {
-       const targets = [
-         ...(Array.isArray(item.targetStudents) ? item.targetStudents : []),
-         ...(Array.isArray(item.assignedStudentIds) ? item.assignedStudentIds : []),
-         ...(Array.isArray(item.students) ? item.students : []),
--      ].map(String);
--      const isTargeted = targets.length === 0 || targets.includes(selectedDraftStudentId);
--      return {
--        ...item,
--        __candidate_isTargeted: isTargeted,
--        __candidate_distance: toDateDistance(resolveHomeworkDate(item), selectedLessonDate),
--      };
-+      ];
-+      const isTargeted = targets.length === 0 || hasAnyStudentKey(targets, selectedStudentKeys);
-+      return { ...item, __candidate_isTargeted: isTargeted, __candidate_targetKeys: targets.map(String) };
-     })
--    .filter((item) => item.__candidate_isTargeted)
--    .sort((a, b) => {
--      if (a.__candidate_distance !== b.__candidate_distance) return a.__candidate_distance - b.__candidate_distance;
--      return String(resolveHomeworkDate(b) || '').localeCompare(String(resolveHomeworkDate(a) || ''));
--    }), [homeworkAssignments, selectedDraftClassId, selectedDraftStudentId, selectedLessonDate]);
-+    .filter((item) => item.__candidate_isTargeted), [classHomeworkAssignments, selectedStudentKeys]);
- 
--  const selectableHomeworkProgress = useMemo(
--    () => candidateHomeworkAssignments.filter((item) => {
--      const assignmentDate = resolveHomeworkDate(item);
--      if (!assignmentDate || !selectedLessonDate) return true;
--      return assignmentDate < selectedLessonDate;
--    }),
--    [candidateHomeworkAssignments, selectedLessonDate],
--  );
-+  const selectableHomeworkProgress = candidateHomeworkAssignments;
- 
--  const selectableAssignedHomework = useMemo(
--    () => candidateHomeworkAssignments.filter((item) => {
--      const assignmentDate = resolveHomeworkDate(item);
--      if (!assignmentDate || !selectedLessonDate) return true;
--      return assignmentDate >= selectedLessonDate;
--    }),
--    [candidateHomeworkAssignments, selectedLessonDate],
--  );
-+  const selectableAssignedHomework = classHomeworkAssignments;
- 
-   const candidateTests = useMemo(() => {
-     if (!selectedDraftClassId) return [];
+@@ -251,150 +272,259 @@ export default function LessonReportManagement({
      return (tests || [])
        .filter((item) => resolveClassId(item) === selectedDraftClassId)
        .map((item) => {
--        const selectedStudent = students.find((student) => String(student.id) === selectedDraftStudentId) || null;
          const grade = getGradeForLessonReportStudent({
--          student: selectedStudent,
-+          student: selectedDraftStudent,
+           student: selectedDraftStudent,
            studentId: selectedDraftStudentId,
            grades,
            testId: item.id,
@@ -352,25 +95,26 @@ index 9f5b715aad87a3cdf05fc4f8e718708ac066523a..69f4a91d840c547e7d0ab3107b9c5b10
          if (a.__sort_distance !== b.__sort_distance) return a.__sort_distance - b.__sort_distance;
          return String(resolveTestDate(b) || '').localeCompare(String(resolveTestDate(a) || ''));
        });
--  }, [grades, selectedDraftClassId, selectedDraftStudentId, selectedLessonDate, students, tests]);
-+  }, [grades, selectedDraftClassId, selectedDraftStudent, selectedLessonDate, tests]);
+   }, [grades, selectedDraftClassId, selectedDraftStudent, selectedLessonDate, tests]);
  
    const selectableTests = candidateTests;
  
    useEffect(() => {
-+    if (process.env.NODE_ENV === 'production') return;
+-    if (process.env.NODE_ENV === 'production') return;
++    if (process.env.NODE_ENV !== 'development') return;
      console.log('[lesson-report debug:data-sources]', {
++      ...debugStudentSnapshot(selectedDraftStudent),
        selectedStudentId: selectedDraftStudentId,
-+      selectedStudent: selectedDraftStudent,
-+      studentKeys: selectedStudentKeys,
+-      selectedStudent: selectedDraftStudent,
+       studentKeys: selectedStudentKeys,
        selectedClassId: selectedDraftClassId,
        selectedDate: selectedLessonDate,
        lessonLogsCount: Array.isArray(lessonLogs) ? lessonLogs.length : null,
        homeworkAssignmentsCount: Array.isArray(homeworkAssignments) ? homeworkAssignments.length : null,
        testsCount: Array.isArray(tests) ? tests.length : null,
        attendanceLogsCount: Array.isArray(attendanceLogs) ? attendanceLogs.length : null,
-+      homeworkResultsMatchedCount: Object.values(homeworkResults || {}).filter((value) => value && typeof value === 'object').length,
-+      gradesMatchedCount: Object.values(grades || {}).filter((value) => value && typeof value === 'object').length,
+       homeworkResultsMatchedCount: Object.values(homeworkResults || {}).filter((value) => value && typeof value === 'object').length,
+       gradesMatchedCount: Object.values(grades || {}).filter((value) => value && typeof value === 'object').length,
        lessonLogsSample: lessonLogs?.slice?.(0, 3),
        homeworkAssignmentsSample: homeworkAssignments?.slice?.(0, 3),
        testsSample: tests?.slice?.(0, 3),
@@ -380,86 +124,203 @@ index 9f5b715aad87a3cdf05fc4f8e718708ac066523a..69f4a91d840c547e7d0ab3107b9c5b10
    }, [
      attendanceLogs,
      candidateLessonLogs,
++    grades,
      homeworkAssignments,
++    homeworkResults,
      lessonLogs,
      selectedDraftClassId,
      selectedDraftStudentId,
-+    selectedDraftStudent,
+     selectedDraftStudent,
      selectedLessonDate,
-+    selectedStudentKeys,
+     selectedStudentKeys,
      tests,
    ]);
  
    useEffect(() => {
-+    if (process.env.NODE_ENV === 'production') return;
+-    if (process.env.NODE_ENV === 'production') return;
++    if (process.env.NODE_ENV !== 'development') return;
      console.log('[lesson-report debug:homework-candidates]', {
++      ...debugStudentSnapshot(selectedDraftStudent),
        selectedStudentId: selectedDraftStudentId,
-+      selectedStudent: selectedDraftStudent,
-+      studentKeys: selectedStudentKeys,
+-      selectedStudent: selectedDraftStudent,
+       studentKeys: selectedStudentKeys,
        selectedClassId: selectedDraftClassId,
        selectedDate: selectedLessonDate,
        totalAssignments: homeworkAssignments?.length,
        candidateAssignments: candidateHomeworkAssignments,
      });
--  }, [candidateHomeworkAssignments, homeworkAssignments?.length, selectedDraftClassId, selectedDraftStudentId, selectedLessonDate]);
-+  }, [candidateHomeworkAssignments, homeworkAssignments?.length, selectedDraftClassId, selectedDraftStudent, selectedDraftStudentId, selectedLessonDate, selectedStudentKeys]);
+   }, [candidateHomeworkAssignments, homeworkAssignments?.length, selectedDraftClassId, selectedDraftStudent, selectedDraftStudentId, selectedLessonDate, selectedStudentKeys]);
  
    useEffect(() => {
-+    if (process.env.NODE_ENV === 'production') return;
+-    if (process.env.NODE_ENV === 'production') return;
++    if (process.env.NODE_ENV !== 'development') return;
      console.log('[lesson-report debug:test-candidates]', {
++      ...debugStudentSnapshot(selectedDraftStudent),
        selectedStudentId: selectedDraftStudentId,
-+      selectedStudent: selectedDraftStudent,
-+      studentKeys: selectedStudentKeys,
+-      selectedStudent: selectedDraftStudent,
+       studentKeys: selectedStudentKeys,
        selectedClassId: selectedDraftClassId,
        selectedDate: selectedLessonDate,
        totalTests: tests?.length,
        candidateTests,
      });
--  }, [candidateTests, selectedDraftClassId, selectedDraftStudentId, selectedLessonDate, tests?.length]);
-+  }, [candidateTests, selectedDraftClassId, selectedDraftStudent, selectedDraftStudentId, selectedLessonDate, selectedStudentKeys, tests?.length]);
-+
-+
-+
-+  useEffect(() => {
-+    if (process.env.NODE_ENV === 'production') return;
-+    const attendanceMatches = (attendanceLogs || []).filter((item) => hasAnyStudentKey([item.studentId, item.studentUid], selectedStudentKeys)
-+      && resolveClassId(item) === selectedDraftClassId
-+      && resolveAttendanceDate(item) === selectedLessonDate);
-+    const homeworkResultMatches = candidateHomeworkAssignments.filter((assignment) => {
-+      const assignmentId = String(assignment.id || '');
-+      const nestedMatch = selectedStudentKeys.some((key) => homeworkResults?.[key]?.[assignmentId] !== undefined && homeworkResults?.[key]?.[assignmentId] !== null);
-+      if (nestedMatch) return true;
-+      return Object.values(homeworkResults || {}).some((value) => {
-+        if (!value || typeof value !== 'object') return false;
-+        const byAssignment = value?.[assignmentId];
-+        if (byAssignment && hasAnyStudentKey([byAssignment.studentId, byAssignment.authUid, byAssignment.studentUid, byAssignment.uid, byAssignment.userUid], selectedStudentKeys)) return true;
-+        return String(value?.assignmentId || '') === assignmentId
-+          && hasAnyStudentKey([value.studentId, value.authUid, value.studentUid, value.uid, value.userUid], selectedStudentKeys);
-+      });
+   }, [candidateTests, selectedDraftClassId, selectedDraftStudent, selectedDraftStudentId, selectedLessonDate, selectedStudentKeys, tests?.length]);
+ 
+ 
+ 
+   useEffect(() => {
+-    if (process.env.NODE_ENV === 'production') return;
+-    const attendanceMatches = (attendanceLogs || []).filter((item) => hasAnyStudentKey([item.studentId, item.studentUid], selectedStudentKeys)
+-      && resolveClassId(item) === selectedDraftClassId
+-      && resolveAttendanceDate(item) === selectedLessonDate);
++    if (process.env.NODE_ENV !== 'development') return;
++    const attendanceDebug = (attendanceLogs || []).map((item) => {
++      const actualStudentKeys = [item.studentId, item.studentUid].filter((value) => value !== null && value !== undefined).map(String);
++      const actualClassId = resolveClassId(item);
++      const actualDate = resolveAttendanceDate(item);
++      if (!hasAnyStudentKey(actualStudentKeys, selectedStudentKeys)) {
++        return { item, match: false, skip: debugSkip('attendance', 'studentId mismatch', selectedStudentKeys, actualStudentKeys, item) };
++      }
++      if (actualClassId !== selectedDraftClassId) {
++        return { item, match: false, skip: debugSkip('attendance', 'classId mismatch', selectedDraftClassId, actualClassId, item) };
++      }
++      if (actualDate !== selectedLessonDate) {
++        return { item, match: false, skip: debugSkip('attendance', 'date mismatch', selectedLessonDate, actualDate, item) };
++      }
++      return { item, match: true, skip: null };
 +    });
-+    const gradeMatches = candidateTests.filter((test) => getGradeForLessonReportStudent({
-+      student: selectedDraftStudent,
-+      studentId: selectedDraftStudentId,
-+      grades,
-+      testId: test.id,
++    const attendanceMatches = attendanceDebug.filter((entry) => entry.match).map((entry) => entry.item);
++    const homeworkAssignmentDebug = (homeworkAssignments || []).map((item) => {
++      const actualClassId = resolveClassId(item);
++      const targets = [
++        ...(Array.isArray(item.targetStudents) ? item.targetStudents : []),
++        ...(Array.isArray(item.assignedStudentIds) ? item.assignedStudentIds : []),
++        ...(Array.isArray(item.students) ? item.students : []),
++      ].map(String);
++      if (actualClassId !== selectedDraftClassId) {
++        return { item, match: false, skip: debugSkip('homeworkAssignments', 'classId mismatch', selectedDraftClassId, actualClassId, item) };
++      }
++      if (targets.length > 0 && !hasAnyStudentKey(targets, selectedStudentKeys)) {
++        return { item, match: false, skip: debugSkip('homeworkAssignments', 'studentId mismatch', selectedStudentKeys, targets, item) };
++      }
++      return { item, match: true, skip: null };
++    });
++    const testDebug = (tests || []).map((item) => {
++      const actualClassId = resolveClassId(item);
++      if (actualClassId !== selectedDraftClassId) {
++        return { item, match: false, skip: debugSkip('tests', 'classId mismatch', selectedDraftClassId, actualClassId, item) };
++      }
++      return { item, match: true, skip: null };
++    });
+     const homeworkResultMatches = candidateHomeworkAssignments.filter((assignment) => {
+       const assignmentId = String(assignment.id || '');
+       const nestedMatch = selectedStudentKeys.some((key) => homeworkResults?.[key]?.[assignmentId] !== undefined && homeworkResults?.[key]?.[assignmentId] !== null);
+       if (nestedMatch) return true;
+       return Object.values(homeworkResults || {}).some((value) => {
+         if (!value || typeof value !== 'object') return false;
+         const byAssignment = value?.[assignmentId];
+         if (byAssignment && hasAnyStudentKey([byAssignment.studentId, byAssignment.authUid, byAssignment.studentUid, byAssignment.uid, byAssignment.userUid], selectedStudentKeys)) return true;
+         return String(value?.assignmentId || '') === assignmentId
+           && hasAnyStudentKey([value.studentId, value.authUid, value.studentUid, value.uid, value.userUid], selectedStudentKeys);
+       });
+     });
+     const gradeMatches = candidateTests.filter((test) => getGradeForLessonReportStudent({
+       student: selectedDraftStudent,
+       studentId: selectedDraftStudentId,
+       grades,
+       testId: test.id,
+     }));
++    const homeworkResultDocs = Object.entries(homeworkResults || {}).flatMap(([studentKey, value]) => {
++      if (!value || typeof value !== 'object') return [];
++      if (value.assignmentId) return [{ studentKey, result: value }];
++      return Object.entries(value).map(([assignmentId, result]) => ({ studentKey, assignmentId, result }));
++    });
++    const homeworkResultDebug = homeworkResultDocs.map(({ studentKey, assignmentId, result }) => {
++      const actualStudentKeys = [studentKey, result?.studentId, result?.authUid, result?.studentUid, result?.uid, result?.userUid].filter((value) => value !== null && value !== undefined).map(String);
++      const actualAssignmentId = String(result?.assignmentId || assignmentId || '');
++      const expectedAssignmentIds = candidateHomeworkAssignments.map((assignment) => String(assignment.id || ''));
++      if (!hasAnyStudentKey(actualStudentKeys, selectedStudentKeys)) {
++        return { result, match: false, skip: debugSkip('homeworkResults', 'studentId mismatch', selectedStudentKeys, actualStudentKeys, result) };
++      }
++      if (!expectedAssignmentIds.includes(actualAssignmentId)) {
++        return { result, match: false, skip: debugSkip('homeworkResults', 'assignmentId mismatch', expectedAssignmentIds, actualAssignmentId, result) };
++      }
++      return { result, match: true, skip: null };
++    });
++    const gradeDebug = candidateTests.flatMap((test) => Object.entries(grades || {}).map(([studentKey, value]) => {
++      const grade = value?.[test.id] || (value?.testId && String(value.testId) === String(test.id) ? value : null);
++      const actualStudentKeys = [studentKey, grade?.studentId, grade?.authUid, grade?.studentUid, grade?.uid, grade?.userUid].filter((item) => item !== null && item !== undefined).map(String);
++      if (!grade) {
++        return { test, match: false, skip: debugSkip('grades', 'testId mismatch', test.id, value?.testId || Object.keys(value || {}), value) };
++      }
++      if (!hasAnyStudentKey(actualStudentKeys, selectedStudentKeys)) {
++        return { test, grade, match: false, skip: debugSkip('grades', 'studentId mismatch', selectedStudentKeys, actualStudentKeys, grade) };
++      }
++      return { test, grade, match: true, skip: null };
 +    }));
-+    console.log('[lesson-report debug:matching]', {
-+      selectedStudent: selectedDraftStudent,
-+      studentKeys: selectedStudentKeys,
-+      counts: {
-+        attendance: attendanceMatches.length,
-+        homeworkAssignments: candidateHomeworkAssignments.length,
-+        homeworkResults: homeworkResultMatches.length,
-+        tests: candidateTests.length,
-+        grades: gradeMatches.length,
+     console.log('[lesson-report debug:matching]', {
+-      selectedStudent: selectedDraftStudent,
++      ...debugStudentSnapshot(selectedDraftStudent),
+       studentKeys: selectedStudentKeys,
++      compared: {
++        attendanceLogs: {
++          studentKey: selectedStudentKeys,
++          classId: selectedDraftClassId,
++          date: selectedLessonDate,
++          candidateCount: Array.isArray(attendanceLogs) ? attendanceLogs.length : null,
++          filteredCount: attendanceMatches.length,
++          skips: attendanceDebug.filter((entry) => !entry.match).slice(0, 20).map((entry) => entry.skip),
++        },
++        homeworkAssignments: {
++          studentKey: selectedStudentKeys,
++          classId: selectedDraftClassId,
++          date: selectedLessonDate,
++          candidateCount: Array.isArray(homeworkAssignments) ? homeworkAssignments.length : null,
++          filteredCount: candidateHomeworkAssignments.length,
++          skips: homeworkAssignmentDebug.filter((entry) => !entry.match).slice(0, 20).map((entry) => entry.skip),
++        },
++        homeworkResults: {
++          studentKey: selectedStudentKeys,
++          classId: selectedDraftClassId,
++          date: selectedLessonDate,
++          assignmentIds: candidateHomeworkAssignments.map((assignment) => String(assignment.id || '')),
++          candidateCount: homeworkResultDocs.length,
++          filteredCount: homeworkResultMatches.length,
++          skips: homeworkResultDebug.filter((entry) => !entry.match).slice(0, 20).map((entry) => entry.skip),
++        },
++        tests: {
++          studentKey: selectedStudentKeys,
++          classId: selectedDraftClassId,
++          date: selectedLessonDate,
++          candidateCount: Array.isArray(tests) ? tests.length : null,
++          filteredCount: candidateTests.length,
++          skips: testDebug.filter((entry) => !entry.match).slice(0, 20).map((entry) => entry.skip),
++        },
++        grades: {
++          studentKey: selectedStudentKeys,
++          classId: selectedDraftClassId,
++          date: selectedLessonDate,
++          testIds: candidateTests.map((test) => String(test.id || '')),
++          candidateCount: gradeDebug.length,
++          filteredCount: gradeMatches.length,
++          skips: gradeDebug.filter((entry) => !entry.match).slice(0, 20).map((entry) => entry.skip),
++        },
 +      },
-+      comparedKeysOnEmpty: {
-+        attendance: attendanceMatches.length ? [] : (attendanceLogs || []).slice(0, 5).map((item) => ({ id: item.id, studentId: item.studentId, studentUid: item.studentUid, classId: resolveClassId(item), date: resolveAttendanceDate(item) })),
-+        homeworkAssignments: candidateHomeworkAssignments.length ? [] : classHomeworkAssignments.slice(0, 5).map((item) => ({ id: item.id, assignedStudentIds: item.assignedStudentIds, targetStudents: item.targetStudents, classId: resolveClassId(item) })),
-+        grades: gradeMatches.length ? [] : candidateTests.slice(0, 5).map((test) => ({ testId: test.id, gradeStudentKeys: Object.keys(grades || {}).slice(0, 10) })),
-+      },
-+    });
-+  }, [attendanceLogs, candidateHomeworkAssignments, candidateTests, classHomeworkAssignments, grades, homeworkResults, selectedDraftClassId, selectedDraftStudent, selectedDraftStudentId, selectedLessonDate, selectedStudentKeys]);
+       counts: {
+         attendance: attendanceMatches.length,
+         homeworkAssignments: candidateHomeworkAssignments.length,
+         homeworkResults: homeworkResultMatches.length,
+         tests: candidateTests.length,
+         grades: gradeMatches.length,
+       },
+       comparedKeysOnEmpty: {
+         attendance: attendanceMatches.length ? [] : (attendanceLogs || []).slice(0, 5).map((item) => ({ id: item.id, studentId: item.studentId, studentUid: item.studentUid, classId: resolveClassId(item), date: resolveAttendanceDate(item) })),
+         homeworkAssignments: candidateHomeworkAssignments.length ? [] : classHomeworkAssignments.slice(0, 5).map((item) => ({ id: item.id, assignedStudentIds: item.assignedStudentIds, targetStudents: item.targetStudents, classId: resolveClassId(item) })),
+         grades: gradeMatches.length ? [] : candidateTests.slice(0, 5).map((test) => ({ testId: test.id, gradeStudentKeys: Object.keys(grades || {}).slice(0, 10) })),
+       },
+     });
+-  }, [attendanceLogs, candidateHomeworkAssignments, candidateTests, classHomeworkAssignments, grades, homeworkResults, selectedDraftClassId, selectedDraftStudent, selectedDraftStudentId, selectedLessonDate, selectedStudentKeys]);
++  }, [attendanceLogs, candidateHomeworkAssignments, candidateTests, classHomeworkAssignments, grades, homeworkAssignments, homeworkResults, selectedDraftClassId, selectedDraftStudent, selectedDraftStudentId, selectedLessonDate, selectedStudentKeys, tests]);
  
    const previewHomeworkSummary = useMemo(
      () => summarizeHomework({
@@ -485,102 +346,3 @@ index 9f5b715aad87a3cdf05fc4f8e718708ac066523a..69f4a91d840c547e7d0ab3107b9c5b10
        grades,
        studentId: draft?.studentId,
        student: students.find((item) => String(item.id) === String(draft?.studentId || '')) || null,
-@@ -392,93 +457,96 @@ export default function LessonReportManagement({
-       };
-     });
-   }, [currentAutoFilledLearnedTopics, currentLessonLog?.id, draft?.classId, draft?.lessonDate, draft?.studentId]);
- 
-   const openDraftForStudent = (targetStudentId, existingReport = null) => {
-     try {
-       setDraftError('');
-       const student = students.find((item) => String(item.id) === String(targetStudentId));
-       if (!student) {
-         setDraftError('학생 정보를 찾을 수 없습니다. 페이지를 새로고침 후 다시 시도해 주세요.');
-         return;
-       }
- 
-       const classId = String(selectedClassId || getStudentClassIds(student)[0] || '');
-       const lessonDate = existingReport ? toYmd(existingReport.lessonDate) : String(selectedDate || todayYmd());
-       const reportId = existingReport?.id || buildLessonReportId({
-         studentId: targetStudentId,
-         classId,
-         lessonDate,
-       });
-       if (!reportId) {
-         setDraftError('리포트 ID 생성에 실패했습니다. 클래스/학생/날짜 선택을 확인해 주세요.');
-         return;
-       }
-       const lessonLog = (lessonLogs || []).find((log) => resolveClassId(log) === classId && resolveLessonLogDate(log) === lessonDate);
--      const attendance = attendanceLogs.find((item) => String(item.studentId) === String(targetStudentId)
-+      const studentKeys = buildStudentKeys(student);
-+      const attendance = attendanceLogs.find((item) => hasAnyStudentKey([item.studentId, item.studentUid], studentKeys)
-         && resolveClassId(item) === classId
-         && resolveAttendanceDate(item) === lessonDate);
- 
-       setSelectedStudentId(String(targetStudentId));
-       setActiveTab('edit');
-       setDraft({
-         ...(existingReport || {}),
-         id: reportId,
-         studentId: String(targetStudentId),
-         classId,
-         lessonDate,
-         lessonLogId: existingReport?.lessonLogId || lessonLog?.id || null,
-         attendanceStatus: existingReport?.attendanceStatus || attendance?.attendance || attendance?.status || '미기록',
-         learnedTopics: existingReport?.learnedTopics ?? resolveLessonLogProgress(lessonLog),
-         autoFilledLearnedTopics: resolveLessonLogProgress(lessonLog),
-         isLearnedTopicsManuallyEdited: false,
-         selectedHomeworkIds: existingReport?.selectedHomeworkIds || [],
-         selectedHomeworkProgressIds: existingReport?.selectedHomeworkProgressIds || existingReport?.selectedHomeworkIds || [],
-         selectedAssignedHomeworkIds: existingReport?.selectedAssignedHomeworkIds || existingReport?.selectedHomeworkIds || [],
-         selectedTestIds: existingReport?.selectedTestIds || [],
-         comment: existingReport?.comment || '',
-         status: existingReport?.status || LESSON_REPORT_STATUS.DRAFT,
-         sendStatus: existingReport?.sendStatus || LESSON_REPORT_SEND_STATUS.DRAFT,
-         sendMode: existingReport?.sendMode || 'now',
-         scheduledSendAt: existingReport?.scheduledSendAt || null,
-         studentNotificationSent: Boolean(existingReport?.studentNotificationSent),
-         parentNotificationSent: Boolean(existingReport?.parentNotificationSent),
-       });
-     } catch (error) {
-       setDraftError(error?.message || '리포트 초안 생성 중 오류가 발생했습니다.');
-     }
-   };
- 
-   const handleDraftSelectionChange = (changes) => {
-     setDraft((prev) => {
-       if (!prev) return prev;
-       const nextClassId = String(changes.classId ?? prev.classId);
-       const nextLessonDate = String(changes.lessonDate ?? prev.lessonDate);
-       const nextStudentId = String(changes.studentId ?? prev.studentId);
-       const nextId = buildLessonReportId({ studentId: nextStudentId, classId: nextClassId, lessonDate: nextLessonDate });
-       const existing = reportMap.get(nextId);
--      const attendance = attendanceLogs.find((item) => String(item.studentId) === nextStudentId
-+      const nextStudent = students.find((item) => String(item.id) === nextStudentId) || null;
-+      const nextStudentKeys = buildStudentKeys(nextStudent);
-+      const attendance = attendanceLogs.find((item) => hasAnyStudentKey([item.studentId, item.studentUid], nextStudentKeys)
-         && resolveClassId(item) === nextClassId
-         && resolveAttendanceDate(item) === nextLessonDate);
-       const lessonLog = (lessonLogs || []).find((log) => resolveClassId(log) === nextClassId && resolveLessonLogDate(log) === nextLessonDate);
-       if (existing) {
-         return {
-           ...prev,
-           ...existing,
-           ...changes,
-           id: nextId,
-           studentId: nextStudentId,
-           classId: nextClassId,
-           lessonDate: nextLessonDate,
-           attendanceStatus: changes.attendanceStatus ?? existing.attendanceStatus ?? attendance?.attendance ?? attendance?.status ?? '미기록',
-           selectedHomeworkProgressIds: existing.selectedHomeworkProgressIds || existing.selectedHomeworkIds || [],
-           selectedAssignedHomeworkIds: existing.selectedAssignedHomeworkIds || existing.selectedHomeworkIds || [],
-           autoFilledLearnedTopics: resolveLessonLogProgress(lessonLog),
-           isLearnedTopicsManuallyEdited: false,
-         };
-       }
- 
-         return {
-         ...prev,
-         ...changes,
-         id: nextId,
-         studentId: nextStudentId,

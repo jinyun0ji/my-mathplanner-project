@@ -79,6 +79,27 @@ const hasAnyStudentKey = (values = [], studentKeys = []) => {
     .some((value) => keySet.has(value));
 };
 
+const debugStudentSnapshot = (student) => ({
+  selectedStudent: student,
+  id: student?.id,
+  uid: student?.uid,
+  userUid: student?.userUid,
+  authUid: student?.authUid,
+  studentId: student?.studentId,
+  docId: student?.docId,
+  classIds: student?.classIds,
+});
+
+const debugSkip = (collectionName, reason, expected, actual, item) => ({
+  collectionName,
+  [`${collectionName} skip`]: reason,
+  reason,
+  expected,
+  actual,
+  id: item?.id,
+  item,
+});
+
 export default function LessonReportManagement({
   students = [],
   classes = [],
@@ -273,10 +294,10 @@ export default function LessonReportManagement({
   const selectableTests = candidateTests;
 
   useEffect(() => {
-    if (process.env.NODE_ENV === 'production') return;
+    if (process.env.NODE_ENV !== 'development') return;
     console.log('[lesson-report debug:data-sources]', {
+      ...debugStudentSnapshot(selectedDraftStudent),
       selectedStudentId: selectedDraftStudentId,
-      selectedStudent: selectedDraftStudent,
       studentKeys: selectedStudentKeys,
       selectedClassId: selectedDraftClassId,
       selectedDate: selectedLessonDate,
@@ -295,7 +316,9 @@ export default function LessonReportManagement({
   }, [
     attendanceLogs,
     candidateLessonLogs,
+    grades,
     homeworkAssignments,
+    homeworkResults,
     lessonLogs,
     selectedDraftClassId,
     selectedDraftStudentId,
@@ -306,10 +329,10 @@ export default function LessonReportManagement({
   ]);
 
   useEffect(() => {
-    if (process.env.NODE_ENV === 'production') return;
+    if (process.env.NODE_ENV !== 'development') return;
     console.log('[lesson-report debug:homework-candidates]', {
+      ...debugStudentSnapshot(selectedDraftStudent),
       selectedStudentId: selectedDraftStudentId,
-      selectedStudent: selectedDraftStudent,
       studentKeys: selectedStudentKeys,
       selectedClassId: selectedDraftClassId,
       selectedDate: selectedLessonDate,
@@ -319,10 +342,10 @@ export default function LessonReportManagement({
   }, [candidateHomeworkAssignments, homeworkAssignments?.length, selectedDraftClassId, selectedDraftStudent, selectedDraftStudentId, selectedLessonDate, selectedStudentKeys]);
 
   useEffect(() => {
-    if (process.env.NODE_ENV === 'production') return;
+    if (process.env.NODE_ENV !== 'development') return;
     console.log('[lesson-report debug:test-candidates]', {
+      ...debugStudentSnapshot(selectedDraftStudent),
       selectedStudentId: selectedDraftStudentId,
-      selectedStudent: selectedDraftStudent,
       studentKeys: selectedStudentKeys,
       selectedClassId: selectedDraftClassId,
       selectedDate: selectedLessonDate,
@@ -334,10 +357,45 @@ export default function LessonReportManagement({
 
 
   useEffect(() => {
-    if (process.env.NODE_ENV === 'production') return;
-    const attendanceMatches = (attendanceLogs || []).filter((item) => hasAnyStudentKey([item.studentId, item.studentUid], selectedStudentKeys)
-      && resolveClassId(item) === selectedDraftClassId
-      && resolveAttendanceDate(item) === selectedLessonDate);
+    if (process.env.NODE_ENV !== 'development') return;
+    const attendanceDebug = (attendanceLogs || []).map((item) => {
+      const actualStudentKeys = [item.studentId, item.studentUid].filter((value) => value !== null && value !== undefined).map(String);
+      const actualClassId = resolveClassId(item);
+      const actualDate = resolveAttendanceDate(item);
+      if (!hasAnyStudentKey(actualStudentKeys, selectedStudentKeys)) {
+        return { item, match: false, skip: debugSkip('attendance', 'studentId mismatch', selectedStudentKeys, actualStudentKeys, item) };
+      }
+      if (actualClassId !== selectedDraftClassId) {
+        return { item, match: false, skip: debugSkip('attendance', 'classId mismatch', selectedDraftClassId, actualClassId, item) };
+      }
+      if (actualDate !== selectedLessonDate) {
+        return { item, match: false, skip: debugSkip('attendance', 'date mismatch', selectedLessonDate, actualDate, item) };
+      }
+      return { item, match: true, skip: null };
+    });
+    const attendanceMatches = attendanceDebug.filter((entry) => entry.match).map((entry) => entry.item);
+    const homeworkAssignmentDebug = (homeworkAssignments || []).map((item) => {
+      const actualClassId = resolveClassId(item);
+      const targets = [
+        ...(Array.isArray(item.targetStudents) ? item.targetStudents : []),
+        ...(Array.isArray(item.assignedStudentIds) ? item.assignedStudentIds : []),
+        ...(Array.isArray(item.students) ? item.students : []),
+      ].map(String);
+      if (actualClassId !== selectedDraftClassId) {
+        return { item, match: false, skip: debugSkip('homeworkAssignments', 'classId mismatch', selectedDraftClassId, actualClassId, item) };
+      }
+      if (targets.length > 0 && !hasAnyStudentKey(targets, selectedStudentKeys)) {
+        return { item, match: false, skip: debugSkip('homeworkAssignments', 'studentId mismatch', selectedStudentKeys, targets, item) };
+      }
+      return { item, match: true, skip: null };
+    });
+    const testDebug = (tests || []).map((item) => {
+      const actualClassId = resolveClassId(item);
+      if (actualClassId !== selectedDraftClassId) {
+        return { item, match: false, skip: debugSkip('tests', 'classId mismatch', selectedDraftClassId, actualClassId, item) };
+      }
+      return { item, match: true, skip: null };
+    });
     const homeworkResultMatches = candidateHomeworkAssignments.filter((assignment) => {
       const assignmentId = String(assignment.id || '');
       const nestedMatch = selectedStudentKeys.some((key) => homeworkResults?.[key]?.[assignmentId] !== undefined && homeworkResults?.[key]?.[assignmentId] !== null);
@@ -356,9 +414,81 @@ export default function LessonReportManagement({
       grades,
       testId: test.id,
     }));
+    const homeworkResultDocs = Object.entries(homeworkResults || {}).flatMap(([studentKey, value]) => {
+      if (!value || typeof value !== 'object') return [];
+      if (value.assignmentId) return [{ studentKey, result: value }];
+      return Object.entries(value).map(([assignmentId, result]) => ({ studentKey, assignmentId, result }));
+    });
+    const homeworkResultDebug = homeworkResultDocs.map(({ studentKey, assignmentId, result }) => {
+      const actualStudentKeys = [studentKey, result?.studentId, result?.authUid, result?.studentUid, result?.uid, result?.userUid].filter((value) => value !== null && value !== undefined).map(String);
+      const actualAssignmentId = String(result?.assignmentId || assignmentId || '');
+      const expectedAssignmentIds = candidateHomeworkAssignments.map((assignment) => String(assignment.id || ''));
+      if (!hasAnyStudentKey(actualStudentKeys, selectedStudentKeys)) {
+        return { result, match: false, skip: debugSkip('homeworkResults', 'studentId mismatch', selectedStudentKeys, actualStudentKeys, result) };
+      }
+      if (!expectedAssignmentIds.includes(actualAssignmentId)) {
+        return { result, match: false, skip: debugSkip('homeworkResults', 'assignmentId mismatch', expectedAssignmentIds, actualAssignmentId, result) };
+      }
+      return { result, match: true, skip: null };
+    });
+    const gradeDebug = candidateTests.flatMap((test) => Object.entries(grades || {}).map(([studentKey, value]) => {
+      const grade = value?.[test.id] || (value?.testId && String(value.testId) === String(test.id) ? value : null);
+      const actualStudentKeys = [studentKey, grade?.studentId, grade?.authUid, grade?.studentUid, grade?.uid, grade?.userUid].filter((item) => item !== null && item !== undefined).map(String);
+      if (!grade) {
+        return { test, match: false, skip: debugSkip('grades', 'testId mismatch', test.id, value?.testId || Object.keys(value || {}), value) };
+      }
+      if (!hasAnyStudentKey(actualStudentKeys, selectedStudentKeys)) {
+        return { test, grade, match: false, skip: debugSkip('grades', 'studentId mismatch', selectedStudentKeys, actualStudentKeys, grade) };
+      }
+      return { test, grade, match: true, skip: null };
+    }));
     console.log('[lesson-report debug:matching]', {
-      selectedStudent: selectedDraftStudent,
+      ...debugStudentSnapshot(selectedDraftStudent),
       studentKeys: selectedStudentKeys,
+      compared: {
+        attendanceLogs: {
+          studentKey: selectedStudentKeys,
+          classId: selectedDraftClassId,
+          date: selectedLessonDate,
+          candidateCount: Array.isArray(attendanceLogs) ? attendanceLogs.length : null,
+          filteredCount: attendanceMatches.length,
+          skips: attendanceDebug.filter((entry) => !entry.match).slice(0, 20).map((entry) => entry.skip),
+        },
+        homeworkAssignments: {
+          studentKey: selectedStudentKeys,
+          classId: selectedDraftClassId,
+          date: selectedLessonDate,
+          candidateCount: Array.isArray(homeworkAssignments) ? homeworkAssignments.length : null,
+          filteredCount: candidateHomeworkAssignments.length,
+          skips: homeworkAssignmentDebug.filter((entry) => !entry.match).slice(0, 20).map((entry) => entry.skip),
+        },
+        homeworkResults: {
+          studentKey: selectedStudentKeys,
+          classId: selectedDraftClassId,
+          date: selectedLessonDate,
+          assignmentIds: candidateHomeworkAssignments.map((assignment) => String(assignment.id || '')),
+          candidateCount: homeworkResultDocs.length,
+          filteredCount: homeworkResultMatches.length,
+          skips: homeworkResultDebug.filter((entry) => !entry.match).slice(0, 20).map((entry) => entry.skip),
+        },
+        tests: {
+          studentKey: selectedStudentKeys,
+          classId: selectedDraftClassId,
+          date: selectedLessonDate,
+          candidateCount: Array.isArray(tests) ? tests.length : null,
+          filteredCount: candidateTests.length,
+          skips: testDebug.filter((entry) => !entry.match).slice(0, 20).map((entry) => entry.skip),
+        },
+        grades: {
+          studentKey: selectedStudentKeys,
+          classId: selectedDraftClassId,
+          date: selectedLessonDate,
+          testIds: candidateTests.map((test) => String(test.id || '')),
+          candidateCount: gradeDebug.length,
+          filteredCount: gradeMatches.length,
+          skips: gradeDebug.filter((entry) => !entry.match).slice(0, 20).map((entry) => entry.skip),
+        },
+      },
       counts: {
         attendance: attendanceMatches.length,
         homeworkAssignments: candidateHomeworkAssignments.length,
@@ -372,7 +502,7 @@ export default function LessonReportManagement({
         grades: gradeMatches.length ? [] : candidateTests.slice(0, 5).map((test) => ({ testId: test.id, gradeStudentKeys: Object.keys(grades || {}).slice(0, 10) })),
       },
     });
-  }, [attendanceLogs, candidateHomeworkAssignments, candidateTests, classHomeworkAssignments, grades, homeworkResults, selectedDraftClassId, selectedDraftStudent, selectedDraftStudentId, selectedLessonDate, selectedStudentKeys]);
+  }, [attendanceLogs, candidateHomeworkAssignments, candidateTests, classHomeworkAssignments, grades, homeworkAssignments, homeworkResults, selectedDraftClassId, selectedDraftStudent, selectedDraftStudentId, selectedLessonDate, selectedStudentKeys, tests]);
 
   const previewHomeworkSummary = useMemo(
     () => summarizeHomework({
