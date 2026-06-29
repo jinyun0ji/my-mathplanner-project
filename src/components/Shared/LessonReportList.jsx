@@ -1,4 +1,5 @@
 import React from 'react';
+import { resolveHomeworkAssignmentTitle } from '../../domain/homework/homework.service';
 
 const toTextLines = (value) => {
     if (!value) return [];
@@ -39,7 +40,7 @@ export default function LessonReportList({ reports = [] }) {
                             </div>
                         )}
                         {assignedHomework.length > 0 && (
-                            <p className="text-sm text-gray-700">이번 수업 숙제: {assignedHomework.map((item) => item.title).join(', ')}</p>
+                            <p className="text-sm text-gray-700">이번 수업 숙제: {assignedHomework.map((item) => resolveHomeworkAssignmentTitle(item)).join(', ')}</p>
                         )}
                         {report.comment && <p className="text-sm text-[#334a91]">코멘트: {report.comment}</p>}
                     </article>

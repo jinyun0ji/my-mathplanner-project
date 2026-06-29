@@ -21,7 +21,7 @@ const resolveAssignmentId = (assignment) => {
 };
 
 const resolveAssignmentTitle = (assignment) => {
-    return assignment?.title ?? assignment?.name ?? assignment?.content ?? '과제';
+    return assignment?.title || assignment?.name || assignment?.assignmentName || assignment?.homeworkName || assignment?.content || '숙제';
 };
 
 export const normalizeHomeworkTitleForWrongNote = (title) => {

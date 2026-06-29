@@ -303,12 +303,24 @@ export default function LessonReportManagement({
   const baseReportMap = useMemo(() => {
     const map = new Map();
     lessonReports.forEach((report) => {
+      const normalizedLessonDate = toYmd(report.lessonDate);
       const key = buildLessonReportId({
         studentId: report.studentId,
         classId: report.classId,
-        lessonDate: toYmd(report.lessonDate),
+        lessonDate: normalizedLessonDate,
       });
-      if (key) map.set(key, report);
+      if (process.env.NODE_ENV === 'development') {
+        console.debug('[lesson-report map] firestore report', {
+          reportId: report?.id,
+          studentId: report?.studentId,
+          classId: report?.classId,
+          lessonDate: normalizedLessonDate || report?.lessonDate,
+          generatedKey: key,
+          status: report?.status,
+          sendStatus: report?.sendStatus,
+        });
+      }
+      if (key) map.set(key, { ...report, id: report.id || key, lessonDate: normalizedLessonDate || report.lessonDate });
     });
     return map;
   }, [lessonReports]);
@@ -316,12 +328,24 @@ export default function LessonReportManagement({
   const reportMap = useMemo(() => {
     const merged = new Map(baseReportMap);
     Object.values(localReportMap || {}).forEach((report) => {
+      const normalizedLessonDate = toYmd(report?.lessonDate);
       const key = buildLessonReportId({
         studentId: report?.studentId,
         classId: report?.classId,
-        lessonDate: toYmd(report?.lessonDate),
+        lessonDate: normalizedLessonDate,
       });
-      if (key) merged.set(key, report);
+      if (process.env.NODE_ENV === 'development') {
+        console.debug('[lesson-report map] local report', {
+          reportId: report?.id,
+          studentId: report?.studentId,
+          classId: report?.classId,
+          lessonDate: normalizedLessonDate || report?.lessonDate,
+          generatedKey: key,
+          status: report?.status,
+          sendStatus: report?.sendStatus,
+        });
+      }
+      if (key) merged.set(key, { ...report, id: report.id || key, lessonDate: normalizedLessonDate || report.lessonDate });
     });
     return merged;
   }, [baseReportMap, localReportMap]);
@@ -743,6 +767,14 @@ export default function LessonReportManagement({
 
   const buildPayload = ({ reportDraft, previous, action }) => {
     const student = students.find((item) => String(item.id) === String(reportDraft.studentId));
+    const canonicalStudentId = String(student?.id || reportDraft.studentId || '').trim();
+    const canonicalClassId = String(reportDraft.classId || '').trim();
+    const canonicalLessonDate = toYmd(reportDraft.lessonDate);
+    const canonicalReportId = buildLessonReportId({
+      studentId: canonicalStudentId,
+      classId: canonicalClassId,
+      lessonDate: canonicalLessonDate,
+    }) || String(reportDraft.id || '').trim();
     const now = serverTimestamp();
     const isScheduled = action === 'schedule';
     const isSendNow = action === 'send';
@@ -770,6 +802,10 @@ export default function LessonReportManagement({
 
     const payload = {
       ...reportDraft,
+      id: canonicalReportId,
+      studentId: canonicalStudentId,
+      classId: canonicalClassId,
+      lessonDate: canonicalLessonDate,
       selectedHomeworkProgressIds: reportDraft.selectedHomeworkProgressIds || reportDraft.selectedHomeworkIds || [],
       selectedAssignedHomeworkIds: reportDraft.selectedAssignedHomeworkIds || reportDraft.selectedHomeworkIds || [],
       selectedHomeworkIds: Array.from(new Set([
@@ -842,22 +878,31 @@ export default function LessonReportManagement({
 
   const persistReport = async ({ reportDraft, action, closeDraft = true }) => {
     if (!reportDraft?.id) throw new Error('리포트 ID가 없어 저장할 수 없습니다.');
-    const previous = reportMap.get(reportDraft.id);
+    const draftKey = buildLessonReportId({ studentId: reportDraft.studentId, classId: reportDraft.classId, lessonDate: toYmd(reportDraft.lessonDate) }) || reportDraft.id;
+    const previous = reportMap.get(draftKey) || reportMap.get(reportDraft.id);
     const isCreate = !previous;
-    console.log('[lesson-report save] click', { action, reportId: reportDraft.id, isCreate, reportDraft });
     const { payload, student, isFirstSend } = buildPayload({ reportDraft, previous, action });
-    console.log('[lesson-report save] payload', payload);
-    console.log('[lesson-report save] branch', { isCreate, action, reportId: reportDraft.id });
+    if (process.env.NODE_ENV === 'development') {
+      console.debug('[lesson-report save] payload', {
+        reportId: payload.id,
+        payloadId: payload.id,
+        studentId: payload.studentId,
+        classId: payload.classId,
+        lessonDate: payload.lessonDate,
+        status: payload.status,
+        sendStatus: payload.sendStatus,
+        selectedAssignedHomeworkIds: payload.selectedAssignedHomeworkIds,
+        assignedHomeworkSummary: payload.assignedHomeworkSummary,
+      });
+    }
 
-    await setDoc(doc(db, 'lessonReports', reportDraft.id), payload, { merge: true });
-    console.log('[lesson-report save] doc persisted', { reportId: reportDraft.id });
+    await setDoc(doc(db, 'lessonReports', payload.id), payload, { merge: true });
 
     if (isFirstSend && action === 'send') {
-      await notifyForFirstSend({ reportDraft, student });
+      await notifyForFirstSend({ reportDraft: payload, student });
     }
 
     setLocalReportMap((prev) => ({ ...prev, [payload.id]: payload }));
-    console.log('[lesson-report save] ui state updated', { reportId: reportDraft.id, nextStatus: payload.status, nextSendStatus: payload.sendStatus });
 
     if (closeDraft) {
       setDraft(null);
