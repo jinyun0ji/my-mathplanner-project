@@ -141,9 +141,13 @@ const isHomeworkResultNewForLesson = (result, lessonDate) => {
   return !resultDate || resultDate === String(lessonDate || '');
 };
 
-const isHomeworkAssignedOnLessonDate = (assignment, lessonDate) => (
-  getDateMatches(assignment, ['assignedDate', 'date', 'lessonDate', 'createdAt'], lessonDate).length > 0
+const HOMEWORK_LESSON_LINK_DATE_FIELDS = ['lessonDate', 'assignedDate', 'date', 'dueDate', 'deadline', 'createdAt'];
+
+const isHomeworkLinkedToLessonDate = (assignment, lessonDate) => (
+  getDateMatches(assignment, HOMEWORK_LESSON_LINK_DATE_FIELDS, lessonDate).length > 0
 );
+
+const isHomeworkAssignedOnLessonDate = isHomeworkLinkedToLessonDate;
 
 const normalizeInspectionStatus = (assignment) => String(assignment?.inspectionStatus || 'pending').trim() || 'pending';
 const isPendingHomeworkInspection = (assignment) => normalizeInspectionStatus(assignment) !== 'completed';
@@ -156,6 +160,15 @@ const isHomeworkTargetedToStudent = (assignment, student) => {
   const targets = getHomeworkTargetKeys(assignment);
   if (targets.length === 0) return true;
   return hasAnyStudentKey(targets, buildStudentKeys(student));
+};
+
+
+const getHomeworkFilterReason = ({ assignment, lessonDate, student, studentId, homeworkResults }) => {
+  if (!isHomeworkLinkedToLessonDate(assignment, lessonDate)) return 'lesson-date-mismatch';
+  if (!isHomeworkTargetedToStudent(assignment, student)) return 'student-not-targeted';
+  const hasResult = Boolean(getHomeworkResultForStudentAssignment({ homeworkResults, assignmentId: assignment?.id, student, studentId }));
+  if (!isPendingHomeworkInspection(assignment) && !hasResult) return 'completed-without-result';
+  return 'included';
 };
 
 
@@ -439,16 +452,35 @@ export default function LessonReportManagement({
 
   useEffect(() => {
     if (process.env.NODE_ENV === 'production') return;
+    const classMatchedAssignments = (homeworkAssignments || []).filter((item) => resolveClassId(item) === selectedDraftClassId);
+    const filteredAssignments = classMatchedAssignments.map((assignment) => ({
+      id: assignment.id,
+      title: resolveHomeworkAssignmentTitle(assignment),
+      lessonDate: assignment.lessonDate,
+      assignedDate: assignment.assignedDate,
+      dueDate: assignment.dueDate || assignment.deadline,
+      createdAt: assignment.createdAt,
+      filteredReason: getHomeworkFilterReason({
+        assignment,
+        lessonDate: selectedLessonDate,
+        student: selectedDraftStudent,
+        studentId: selectedDraftStudentId,
+        homeworkResults,
+      }),
+    }));
     console.log('[lesson-report debug:homework-candidates]', {
+      reportLessonDate: selectedLessonDate,
       selectedStudentId: selectedDraftStudentId,
       selectedStudent: selectedDraftStudent,
       studentKeys: selectedStudentKeys,
       selectedClassId: selectedDraftClassId,
-      selectedDate: selectedLessonDate,
-      totalAssignments: homeworkAssignments?.length,
+      homeworkTotalCount: homeworkAssignments?.length,
+      matchedHomeworkCount: classMatchedAssignments.length,
+      filteredHomeworkCount: filteredAssignments.filter((item) => item.filteredReason === 'included').length,
+      filteredReasons: filteredAssignments,
       candidateAssignments: candidateHomeworkAssignments,
     });
-  }, [candidateHomeworkAssignments, homeworkAssignments?.length, selectedDraftClassId, selectedDraftStudent, selectedDraftStudentId, selectedLessonDate, selectedStudentKeys]);
+  }, [candidateHomeworkAssignments, homeworkAssignments, homeworkResults, selectedDraftClassId, selectedDraftStudent, selectedDraftStudentId, selectedLessonDate, selectedStudentKeys]);
 
   useEffect(() => {
     if (process.env.NODE_ENV === 'production') return;
@@ -864,8 +896,13 @@ export default function LessonReportManagement({
     const lessonLog = getLessonLogForClassDate({ lessonLogs, classId, lessonDate });
     const attendance = getAttendanceForStudent({ attendanceLogs, student, classId, lessonDate });
     const selectedHomeworkProgressIds = getHomeworkAssignmentsForStudent({ homeworkAssignments, student, classId, lessonDate, onlyTargeted: true })
-      .filter((assignment) => isPendingHomeworkInspection(assignment))
-      .filter((assignment) => isHomeworkTargetedToStudent(assignment, student))
+      .filter((assignment) => getHomeworkFilterReason({
+        assignment,
+        lessonDate,
+        student,
+        studentId: student.id,
+        homeworkResults,
+      }) === 'included')
       .map((item) => item.id)
       .filter(Boolean);
     const selectedAssignedHomeworkIds = getHomeworkAssignmentsForStudent({ homeworkAssignments, student, classId, lessonDate, onlyTargeted: false })

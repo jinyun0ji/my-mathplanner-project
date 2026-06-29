@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Modal } from '../../components/common/Modal';
-import { getAssignmentQuestionNumbers, normalizeHomeworkResultMapForDisplay } from '../../domain/homework/homework.service';
+import { getAssignmentQuestionNumbers, normalizeHomeworkResultMapForDisplay, resolveHomeworkAssignmentTitle } from '../../domain/homework/homework.service';
 
 const STATUS_ORDER = [null, '맞음', '틀림', '고침'];
 const STATUS_STYLE = {
@@ -76,7 +76,7 @@ export default function HomeworkResultEntryModal({
             <div className="space-y-4">
                 <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
                     <p className="text-sm font-semibold text-gray-800">{student.studentName || student.name}</p>
-                    <p className="text-xs text-gray-600 mt-1">{assignment.book || assignment.title || '과제'} · {assignment.assignedDate || assignment.date}</p>
+                    <p className="text-xs text-gray-600 mt-1">{resolveHomeworkAssignmentTitle(assignment)} · {assignment.assignedDate || assignment.date}</p>
                 </div>
 
                 <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-2">

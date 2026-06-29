@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Modal } from '../../components/common/Modal';
-import { computeHomeworkProgress, getAssignmentQuestionNumbers, normalizeHomeworkResultMapForDisplay } from '../../domain/homework/homework.service';
+import { computeHomeworkProgress, getAssignmentQuestionNumbers, normalizeHomeworkResultMapForDisplay, resolveHomeworkAssignmentTitle } from '../../domain/homework/homework.service';
 
 
 const toStatus = (value) => {
@@ -268,7 +268,7 @@ export default function HomeworkResultsModal({
                             <div className="flex items-center justify-between mb-4">
                                 <div>
                                     <p className="text-lg font-bold text-gray-800">{selectedStudent.studentName}</p>
-                                    <p className="text-xs text-gray-500">{assignment.book || assignment.title || '과제'} · {assignment.assignedDate || assignment.date}</p>
+                                    <p className="text-xs text-gray-500">{resolveHomeworkAssignmentTitle(assignment)} · {assignment.assignedDate || assignment.date}</p>
                                 </div>
                                 <p className="text-sm font-bold text-[#334a91]">
                                     {selectedProgress ? `${selectedProgress.completionPercentDisplay}%` : '-'}
