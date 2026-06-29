@@ -750,6 +750,7 @@ export const loadStaffDataOnce = async ({
     if (!isStaffOrTeachingRole(userRole)) return;
 
     const shouldLoad = (key) => !pageKey || pageKey === key;
+    const shouldLoadLessonReportSource = !pageKey || pageKey === 'lessonReports';
     const applyStudents = (items) => setStudents?.(dedupeStudentsByAuthUid(items));
     const loadCachedSlice = async (slice, setter, loader, queryKey = '') => {
         const cached = readStaffCache(pageKey, slice, queryKey);
@@ -910,9 +911,11 @@ export const loadStaffDataOnce = async ({
         if (setAttendanceLogs && shouldLoad('home')) {
             loadingCollections.push('attendanceLogs(today)');
             await loadCachedSlice('attendanceLogs', setAttendanceLogs, () => fetchList(db, 'attendanceLogs', () => {}, query(collection(db, 'attendanceLogs'), where('date', '==', today), limit(300)), () => false), `date:${today}`);
-        } else if (setAttendanceLogs && shouldLoad('attendance')) {
-            loadingCollections.push('attendanceLogs(recent300)');
-            await loadCachedSlice('attendanceLogs', setAttendanceLogs, () => fetchList(db, 'attendanceLogs', () => {}, query(collection(db, 'attendanceLogs'), orderBy('date', 'desc'), limit(300)), () => false), 'recent300');
+        } else if (setAttendanceLogs && (shouldLoad('attendance') || shouldLoadLessonReportSource)) {
+            const queryKey = shouldLoadLessonReportSource ? 'recent500' : 'recent300';
+            const queryLimit = shouldLoadLessonReportSource ? 500 : 300;
+            loadingCollections.push(`attendanceLogs(${queryKey})`);
+            await loadCachedSlice('attendanceLogs', setAttendanceLogs, () => fetchList(db, 'attendanceLogs', () => {}, query(collection(db, 'attendanceLogs'), orderBy('date', 'desc'), limit(queryLimit)), () => false), queryKey);
         }
 
         if (setClinicLogs && shouldLoad('clinic')) {
@@ -943,9 +946,11 @@ export const loadStaffDataOnce = async ({
             await loadCachedSlice('announcements', setAnnouncements, () => fetchList(db, 'announcements', () => {}, query(collection(db, 'announcements'), orderBy('date', 'desc'), limit(150)), () => false), 'recent150');
         }
 
-        if (setHomeworkAssignments && shouldLoad('homework')) {
-            loadingCollections.push('homeworkAssignments(recent150)');
-            await loadCachedSlice('homeworkAssignments', setHomeworkAssignments, () => fetchList(db, 'homeworkAssignments', () => {}, query(collection(db, 'homeworkAssignments'), orderBy('date', 'desc'), limit(150)), () => false), 'recent150');
+        if (setHomeworkAssignments && (shouldLoad('homework') || shouldLoadLessonReportSource)) {
+            const queryKey = shouldLoadLessonReportSource ? 'recent300' : 'recent150';
+            const queryLimit = shouldLoadLessonReportSource ? 300 : 150;
+            loadingCollections.push(`homeworkAssignments(${queryKey})`);
+            await loadCachedSlice('homeworkAssignments', setHomeworkAssignments, () => fetchList(db, 'homeworkAssignments', () => {}, query(collection(db, 'homeworkAssignments'), orderBy('date', 'desc'), limit(queryLimit)), () => false), queryKey);
         }
 
         if (setPaymentLogs && shouldLoad('payment')) {
@@ -977,7 +982,7 @@ export const loadStaffDataOnce = async ({
             }, 'recent500');
         }
 
-        if (setHomeworkResults && shouldLoad('homework')) {
+        if (setHomeworkResults && (shouldLoad('homework') || shouldLoadLessonReportSource)) {
             loadingCollections.push('homeworkResults(recent500)');
             await loadCachedSlice('homeworkResults', setHomeworkResults, async () => {
                 const docs = await fetchListSafe(query(collection(db, 'homeworkResults'), orderBy('updatedAt', 'desc'), limit(500)), () => false);

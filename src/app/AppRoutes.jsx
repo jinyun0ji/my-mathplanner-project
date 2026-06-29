@@ -980,6 +980,7 @@ export default function AppRoutes({ user, role, studentIds }) {
           setAttendanceLogs(nextLogs);
           invalidateStaffDataCache('attendance', ['attendanceLogs']);
           invalidateStaffDataCache('home', ['attendanceLogs']);
+          invalidateStaffDataCache('lessonReports', ['attendanceLogs']);
           logNotification('success', '출결 저장', '출결 기록이 저장되었습니다.');
       } catch (error) {
         await logClientError({
@@ -1024,6 +1025,8 @@ export default function AppRoutes({ user, role, studentIds }) {
               });
               setHomeworkAssignments(prev => [{ id: docRef.id, ...payload }, ...prev]);
           }
+          invalidateStaffDataCache('homework', ['homeworkAssignments']);
+          invalidateStaffDataCache('lessonReports', ['homeworkAssignments']);
       } catch (error) {
         await logClientError({
               scope: 'homework',
@@ -1049,6 +1052,8 @@ export default function AppRoutes({ user, role, studentIds }) {
           ensureFirestoreContext();
           await deleteDoc(doc(db, 'homeworkAssignments', id));
           setHomeworkAssignments(prev => prev.filter(h => h.id !== id));
+          invalidateStaffDataCache('homework', ['homeworkAssignments']);
+          invalidateStaffDataCache('lessonReports', ['homeworkAssignments']);
       } catch (error) {
           console.error('[Firestore WRITE ERROR]', error);
           alert('과제 삭제에 실패했습니다. 권한 또는 네트워크를 확인하세요.');
@@ -1153,6 +1158,7 @@ export default function AppRoutes({ user, role, studentIds }) {
 
           setHomeworkResults(nextResults);
           invalidateStaffDataCache('homework', ['homeworkResults']);
+          invalidateStaffDataCache('lessonReports', ['homeworkResults']);
       } catch (error) {
         await logClientError({
               scope: 'homework',
