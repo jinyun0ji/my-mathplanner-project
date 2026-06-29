@@ -734,10 +734,10 @@ export default function LessonReportManagement({
   );
   const previewAssignedHomeworkSummary = useMemo(
     () => summarizeAssignedHomework({
-      selectedAssignedHomeworkIds: draft?.selectedAssignedHomeworkIds || draft?.selectedHomeworkIds || [],
+      selectedAssignedHomeworkIds: draft?.selectedAssignedHomeworkIds || [],
       homeworkAssignments,
     }),
-    [draft?.selectedAssignedHomeworkIds, draft?.selectedHomeworkIds, homeworkAssignments],
+    [draft?.selectedAssignedHomeworkIds, homeworkAssignments],
   );
   const previewTestSummary = useMemo(
     () => summarizeTests({
@@ -750,6 +750,14 @@ export default function LessonReportManagement({
     }),
     [classTestStats, draft?.selectedTestIds, draft?.studentId, grades, students, tests],
   );
+
+  useEffect(() => {
+    if (process.env.NODE_ENV !== 'development' || !draft) return;
+    console.debug('[lesson-report draft] assigned homework', {
+      selectedAssignedHomeworkIds: draft.selectedAssignedHomeworkIds || [],
+      assignedHomeworkSummary: previewAssignedHomeworkSummary,
+    });
+  }, [draft, previewAssignedHomeworkSummary]);
 
 
   useEffect(() => {
@@ -847,7 +855,7 @@ export default function LessonReportManagement({
         isLearnedTopicsManuallyEdited: false,
         selectedHomeworkIds: existingReport?.selectedHomeworkIds || [],
         selectedHomeworkProgressIds: existingReport?.selectedHomeworkProgressIds || existingReport?.selectedHomeworkIds || [],
-        selectedAssignedHomeworkIds: existingReport?.selectedAssignedHomeworkIds || existingReport?.selectedHomeworkIds || [],
+        selectedAssignedHomeworkIds: existingReport?.selectedAssignedHomeworkIds || [],
         selectedTestIds: existingReport?.selectedTestIds || getTestsForStudent({ tests, grades, student, studentId: targetStudentId, classId, lessonDate })
           .filter((test) => isTestHeldOnLessonDate(test, lessonDate))
           .map((item) => item.id)
@@ -890,7 +898,7 @@ export default function LessonReportManagement({
           lessonDate: nextLessonDate,
           attendanceStatus: changes.attendanceStatus ?? existing.attendanceStatus ?? attendance?.attendance ?? attendance?.status ?? '미기록',
           selectedHomeworkProgressIds: existing.selectedHomeworkProgressIds || existing.selectedHomeworkIds || [],
-          selectedAssignedHomeworkIds: existing.selectedAssignedHomeworkIds || existing.selectedHomeworkIds || [],
+          selectedAssignedHomeworkIds: existing.selectedAssignedHomeworkIds || [],
           autoFilledLearnedTopics: resolveLessonLogProgress(lessonLog),
           isLearnedTopicsManuallyEdited: false,
         };
@@ -948,7 +956,7 @@ export default function LessonReportManagement({
       student,
     });
     const assignedHomeworkSummary = summarizeAssignedHomework({
-      selectedAssignedHomeworkIds: reportDraft.selectedAssignedHomeworkIds || reportDraft.selectedHomeworkIds,
+      selectedAssignedHomeworkIds: reportDraft.selectedAssignedHomeworkIds || [],
       homeworkAssignments,
     });
     const testSummary = summarizeTests({
@@ -967,7 +975,7 @@ export default function LessonReportManagement({
       classId: canonicalClassId,
       lessonDate: canonicalLessonDate,
       selectedHomeworkProgressIds: reportDraft.selectedHomeworkProgressIds || reportDraft.selectedHomeworkIds || [],
-      selectedAssignedHomeworkIds: reportDraft.selectedAssignedHomeworkIds || reportDraft.selectedHomeworkIds || [],
+      selectedAssignedHomeworkIds: reportDraft.selectedAssignedHomeworkIds || [],
       selectedHomeworkIds: Array.from(new Set([
         ...(reportDraft.selectedHomeworkProgressIds || []),
         ...(reportDraft.selectedAssignedHomeworkIds || []),
@@ -998,39 +1006,92 @@ export default function LessonReportManagement({
     return { payload, student, isFirstSend };
   };
 
+  const resolveUserAuthUidById = async (userId) => {
+    const normalizedUserId = String(userId || '').trim();
+    if (!normalizedUserId) return '';
+
+    try {
+      const userSnap = await getDoc(doc(db, 'users', normalizedUserId));
+      if (!userSnap.exists()) return normalizedUserId;
+      const userData = userSnap.data() || {};
+      return String(userData.authUid || userData.userUid || userData.uid || normalizedUserId).trim();
+    } catch (error) {
+      console.debug('[notifications] lesson report user auth lookup failed', { userId: normalizedUserId, error });
+      return normalizedUserId;
+    }
+  };
+
   const notifyForFirstSend = async ({ reportDraft, student }) => {
+    console.debug('[notifications] notifyForFirstSend called', {
+      reportId: reportDraft?.id,
+      studentId: reportDraft?.studentId,
+      notificationSendingEnabled: FEATURES.ENABLE_NOTIFICATION_SENDING,
+    });
+
     if (!FEATURES.ENABLE_NOTIFICATION_SENDING) {
       console.debug('[notifications] lesson report skipped: notification_disabled');
       return { success: true, sent: false, skipped: true, reason: 'notification_disabled' };
     }
 
-    const parentAuthUids = await getLinkedParentAuthUids(reportDraft.studentId, student?.parentAuthUids || []);
-    const targetAuthUids = [student?.authUid, ...parentAuthUids].filter(Boolean);
-    await Promise.all(targetAuthUids.map((uid) => addDoc(collection(db, 'notifications', uid, 'items'), {
-      type: 'lesson_report',
-      category: 'lessonReport',
-      refCollection: 'lessonReports',
-      refId: reportDraft.id,
-      ref: `lessonReports/${reportDraft.id}`,
-      title: '새 수업 리포트가 도착했습니다.',
-      body: `${student?.name || '학생'} 학생의 수업 리포트가 도착했습니다.`,
-      isRead: false,
-      createdAt: serverTimestamp(),
-      payload: {
-        reportId: reportDraft.id,
-        studentId: reportDraft.studentId,
-        classId: reportDraft.classId,
-        lessonDate: reportDraft.lessonDate,
-        type: 'lesson_report',
-        refCollection: 'lessonReports',
-      },
-    })));
+    const studentAuthCandidates = [
+      student?.authUid,
+      student?.userUid,
+      student?.uid,
+    ].filter(Boolean).map(String);
+
+    const directParentCandidates = [
+      student?.parentAuthUid,
+      student?.parentAuthUids,
+      student?.parentUid,
+      student?.parentUids,
+      student?.parentIds,
+    ].flat().filter(Boolean).map(String);
+    const linkedParentCandidates = getLinkedParentAuthUids(student, []);
+    const parentAuthCandidates = Array.from(new Set([...directParentCandidates, ...linkedParentCandidates]));
+    const resolvedParentAuthUids = (await Promise.all(parentAuthCandidates.map(resolveUserAuthUidById))).filter(Boolean);
+
+    const targetAuthUids = Array.from(new Set([
+      ...studentAuthCandidates,
+      ...resolvedParentAuthUids,
+    ].map((value) => String(value || '').trim()).filter(Boolean)));
+
+    console.debug('[notifications] student auth candidates', studentAuthCandidates);
+    console.debug('[notifications] parent auth candidates', { directParentCandidates, linkedParentCandidates, resolvedParentAuthUids });
+    console.debug('[notifications] final targetAuthUids', targetAuthUids);
+
+    await Promise.all(targetAuthUids.map(async (uid) => {
+      try {
+        await addDoc(collection(db, 'notifications', uid, 'items'), {
+          type: 'lesson_report',
+          category: 'lessonReport',
+          refCollection: 'lessonReports',
+          refId: reportDraft.id,
+          ref: `lessonReports/${reportDraft.id}`,
+          title: '새 수업 리포트가 도착했습니다.',
+          body: `${student?.name || '학생'} 학생의 수업 리포트가 도착했습니다.`,
+          isRead: false,
+          createdAt: serverTimestamp(),
+          payload: {
+            reportId: reportDraft.id,
+            studentId: reportDraft.studentId,
+            classId: reportDraft.classId,
+            lessonDate: reportDraft.lessonDate,
+            type: 'lesson_report',
+            refCollection: 'lessonReports',
+          },
+        });
+        console.debug('[notifications] add notification success', { uid, reportId: reportDraft.id });
+      } catch (error) {
+        console.error('[notifications] add notification failure', { uid, reportId: reportDraft.id, error });
+        throw error;
+      }
+    }));
 
     await setDoc(
       doc(db, 'lessonReports', reportDraft.id),
       {
-        studentNotificationSent: Boolean(student?.authUid),
-        parentNotificationSent: parentAuthUids.length > 0,
+        studentNotificationSent: studentAuthCandidates.length > 0,
+        parentNotificationSent: resolvedParentAuthUids.length > 0,
       },
       { merge: true },
     );

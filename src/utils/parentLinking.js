@@ -6,6 +6,7 @@ export const getLinkedParentAuthUids = (student, parents = []) => {
         .concat(student.parentUid || [])
         .concat(student.parentAuthUids || [])
         .concat(student.parentUids || [])
+        .concat(student.parentIds || [])
         .concat(student.parents || [])
         .concat(student.parentAuthUID || [])
         .concat(student.parentUID || [])
@@ -52,7 +53,7 @@ export const getLinkedParentAuthUids = (student, parents = []) => {
     });
 
     const uids = matchedParents
-        .flatMap((parent) => [parent?.authUid, parent?.uid, parent?.id].filter(Boolean))
+        .flatMap((parent) => [parent?.authUid, parent?.userUid, parent?.uid, parent?.id].filter(Boolean))
         .map(String);
 
     return Array.from(new Set(uids));

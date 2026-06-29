@@ -21,7 +21,10 @@ export default function LessonReportList({ reports = [] }) {
                 const testLines = toTextLines(report?.testSummary);
                 const assignedHomework = Array.isArray(report?.assignedHomeworkSummary?.items)
                     ? report.assignedHomeworkSummary.items
-                    : [];
+                    : (Array.isArray(report?.assignedHomework) ? report.assignedHomework : []);
+                const assignedHomeworkLines = assignedHomework.length > 0
+                    ? assignedHomework.map((item) => resolveHomeworkAssignmentTitle(item))
+                    : toTextLines(report?.assignedHomeworkSummary);
                 return (
                     <article key={report.id} className="rounded-xl border border-gray-200 bg-white p-4 space-y-2">
                         <div className="flex items-center justify-between">
@@ -39,8 +42,8 @@ export default function LessonReportList({ reports = [] }) {
                                 </ul>
                             </div>
                         )}
-                        {assignedHomework.length > 0 && (
-                            <p className="text-sm text-gray-700">이번 수업 숙제: {assignedHomework.map((item) => resolveHomeworkAssignmentTitle(item)).join(', ')}</p>
+                        {assignedHomeworkLines.length > 0 && (
+                            <p className="text-sm text-gray-700">이번 수업 숙제: {assignedHomeworkLines.join(', ')}</p>
                         )}
                         {report.comment && <p className="text-sm text-[#334a91]">코멘트: {report.comment}</p>}
                     </article>
