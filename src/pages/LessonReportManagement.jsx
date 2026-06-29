@@ -80,6 +80,72 @@ const hasAnyStudentKey = (values = [], studentKeys = []) => {
     .some((value) => keySet.has(value));
 };
 
+
+const getDateMatches = (item, fields = [], lessonDate) => fields
+  .map((field) => toYmd(item?.[field]))
+  .filter(Boolean)
+  .filter((date) => date === String(lessonDate || ''));
+
+const resolveHomeworkResultDate = (item) => toYmd(item?.date || item?.lessonDate || item?.createdAt || item?.updatedAt || item?.submittedAt || item?.completedAt);
+const resolveScheduledTestDate = (item) => toYmd(item?.date || item?.testDate || item?.lessonDate);
+
+const getHomeworkResultForStudentAssignment = ({ homeworkResults = {}, assignmentId, student, studentId = '' }) => {
+  if (!assignmentId) return null;
+  const studentKeys = Array.from(new Set([
+    ...buildStudentKeys(student),
+    studentId,
+  ].filter((value) => value !== null && value !== undefined).map((value) => String(value).trim()).filter(Boolean)));
+
+  for (const key of studentKeys) {
+    const nestedResult = homeworkResults?.[key]?.[assignmentId];
+    if (nestedResult !== undefined && nestedResult !== null) return nestedResult;
+  }
+
+  for (const value of Object.values(homeworkResults || {})) {
+    if (!value || typeof value !== 'object') continue;
+
+    const nestedResult = value?.[assignmentId];
+    if (nestedResult && typeof nestedResult === 'object' && hasAnyStudentKey([
+      nestedResult.studentId,
+      nestedResult.studentDocId,
+      nestedResult.authUid,
+      nestedResult.studentUid,
+      nestedResult.userUid,
+      nestedResult.uid,
+    ], studentKeys)) {
+      return nestedResult;
+    }
+
+    if (String(value?.assignmentId || '') === String(assignmentId)
+      && hasAnyStudentKey([
+        value.studentId,
+        value.studentDocId,
+        value.authUid,
+        value.studentUid,
+        value.userUid,
+        value.uid,
+      ], studentKeys)) {
+      return value;
+    }
+  }
+
+  return null;
+};
+
+const isHomeworkResultNewForLesson = (result, lessonDate) => {
+  if (!result) return false;
+  const resultDate = resolveHomeworkResultDate(result);
+  return !resultDate || resultDate === String(lessonDate || '');
+};
+
+const isHomeworkAssignedOnLessonDate = (assignment, lessonDate) => (
+  getDateMatches(assignment, ['assignedDate', 'date', 'lessonDate', 'createdAt'], lessonDate).length > 0
+);
+
+const isTestHeldOnLessonDate = (test, lessonDate) => (
+  getDateMatches(test, ['date', 'testDate', 'lessonDate'], lessonDate).length > 0
+);
+
 const getAttendanceForStudent = ({ attendanceLogs = [], student, classId, lessonDate }) => {
   const studentKeys = buildStudentKeys(student);
   return attendanceLogs.find((item) => hasAnyStudentKey([item.studentId, item.studentUid], studentKeys)
@@ -784,9 +850,21 @@ export default function LessonReportManagement({
     const reportId = buildLessonReportId({ studentId: student.id, classId, lessonDate });
     const lessonLog = getLessonLogForClassDate({ lessonLogs, classId, lessonDate });
     const attendance = getAttendanceForStudent({ attendanceLogs, student, classId, lessonDate });
-    const selectedHomeworkProgressIds = getHomeworkAssignmentsForStudent({ homeworkAssignments, student, classId, lessonDate, onlyTargeted: true }).map((item) => item.id).filter(Boolean);
-    const selectedAssignedHomeworkIds = getHomeworkAssignmentsForStudent({ homeworkAssignments, student, classId, lessonDate, onlyTargeted: false }).map((item) => item.id).filter(Boolean);
-    const selectedTestIds = getTestsForStudent({ tests, grades, student, studentId: student.id, classId, lessonDate }).map((item) => item.id).filter(Boolean);
+    const selectedHomeworkProgressIds = getHomeworkAssignmentsForStudent({ homeworkAssignments, student, classId, lessonDate, onlyTargeted: true })
+      .filter((assignment) => isHomeworkResultNewForLesson(
+        getHomeworkResultForStudentAssignment({ homeworkResults, assignmentId: assignment.id, student, studentId: student.id }),
+        lessonDate,
+      ))
+      .map((item) => item.id)
+      .filter(Boolean);
+    const selectedAssignedHomeworkIds = getHomeworkAssignmentsForStudent({ homeworkAssignments, student, classId, lessonDate, onlyTargeted: false })
+      .filter((assignment) => isHomeworkAssignedOnLessonDate(assignment, lessonDate))
+      .map((item) => item.id)
+      .filter(Boolean);
+    const selectedTestIds = getTestsForStudent({ tests, grades, student, studentId: student.id, classId, lessonDate })
+      .filter((test) => isTestHeldOnLessonDate(test, lessonDate))
+      .map((item) => item.id)
+      .filter(Boolean);
     const reportDraft = {
       id: reportId,
       studentId: String(student.id),
