@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { addDoc, collection, doc, serverTimestamp, setDoc } from 'firebase/firestore';
+import { addDoc, collection, doc, getDoc, getDocs, query, serverTimestamp, setDoc, where } from 'firebase/firestore';
 import { db } from '../firebase/client';
 import useAuth from '../auth/useAuth';
 import {
@@ -71,6 +71,25 @@ const buildStudentKeys = (student = null) => Array.from(new Set([
   student?.docId,
 ].filter((value) => value !== null && value !== undefined).map((value) => String(value).trim()).filter(Boolean)));
 
+const uniqueStrings = (values = []) => Array.from(new Set(
+  values.flatMap((value) => (Array.isArray(value) ? value : [value]))
+    .filter((value) => value !== null && value !== undefined)
+    .map((value) => String(value).trim())
+    .filter(Boolean),
+));
+
+const normalizeLinkedIds = (value) => uniqueStrings(Array.isArray(value) ? value.map((item) => {
+  if (!item || typeof item !== 'object') return item;
+  if (item.id) return item.id;
+  if (item.path) {
+    const parts = String(item.path).split('/');
+    return parts[parts.length - 1];
+  }
+  return null;
+}) : value);
+
+const pickAuthUidFromParent = (parent = {}) => parent?.userUid || parent?.authUid || parent?.uid || parent?.id || '';
+
 const hasAnyStudentKey = (values = [], studentKeys = []) => {
   const keySet = new Set(studentKeys.map(String));
   return values
@@ -112,6 +131,7 @@ export default function LessonReportManagement({
   lessonReports = [],
   closures = [],
   classTestStats = {},
+  parents = [],
 }) {
   const { studentId: routeStudentId } = useParams();
   const [searchParams] = useSearchParams();
@@ -506,7 +526,7 @@ export default function LessonReportManagement({
 
   const previewHomeworkSummary = useMemo(
     () => summarizeHomework({
-      selectedHomeworkProgressIds: draft?.selectedHomeworkProgressIds || draft?.selectedHomeworkIds || [],
+      selectedHomeworkProgressIds: draft?.selectedHomeworkProgressIds || [],
       homeworkAssignments,
       homeworkResults,
       studentId: draft?.studentId,
@@ -516,10 +536,10 @@ export default function LessonReportManagement({
   );
   const previewAssignedHomeworkSummary = useMemo(
     () => summarizeAssignedHomework({
-      selectedAssignedHomeworkIds: draft?.selectedAssignedHomeworkIds || draft?.selectedHomeworkIds || [],
+      selectedAssignedHomeworkIds: draft?.selectedAssignedHomeworkIds || [],
       homeworkAssignments,
     }),
-    [draft?.selectedAssignedHomeworkIds, draft?.selectedHomeworkIds, homeworkAssignments],
+    [draft?.selectedAssignedHomeworkIds, homeworkAssignments],
   );
   const previewTestSummary = useMemo(
     () => summarizeTests({
@@ -708,14 +728,14 @@ export default function LessonReportManagement({
     const isFirstSend = isSendNow && previous?.status !== LESSON_REPORT_STATUS.SENT;
 
     const homeworkSummary = summarizeHomework({
-      selectedHomeworkProgressIds: reportDraft.selectedHomeworkProgressIds || reportDraft.selectedHomeworkIds,
+      selectedHomeworkProgressIds: reportDraft.selectedHomeworkProgressIds || [],
       homeworkAssignments,
       homeworkResults,
       studentId: reportDraft.studentId,
       student,
     });
     const assignedHomeworkSummary = summarizeAssignedHomework({
-      selectedAssignedHomeworkIds: reportDraft.selectedAssignedHomeworkIds || reportDraft.selectedHomeworkIds,
+      selectedAssignedHomeworkIds: reportDraft.selectedAssignedHomeworkIds || [],
       homeworkAssignments,
     });
     const testSummary = summarizeTests({
@@ -729,8 +749,8 @@ export default function LessonReportManagement({
 
     const payload = {
       ...reportDraft,
-      selectedHomeworkProgressIds: reportDraft.selectedHomeworkProgressIds || reportDraft.selectedHomeworkIds || [],
-      selectedAssignedHomeworkIds: reportDraft.selectedAssignedHomeworkIds || reportDraft.selectedHomeworkIds || [],
+      selectedHomeworkProgressIds: reportDraft.selectedHomeworkProgressIds || [],
+      selectedAssignedHomeworkIds: reportDraft.selectedAssignedHomeworkIds || [],
       selectedHomeworkIds: Array.from(new Set([
         ...(reportDraft.selectedHomeworkProgressIds || []),
         ...(reportDraft.selectedAssignedHomeworkIds || []),
@@ -766,8 +786,57 @@ export default function LessonReportManagement({
       return { success: true, sent: false, skipped: true, reason: 'notification_disabled' };
     }
 
-    const parentAuthUids = await getLinkedParentAuthUids(reportDraft.studentId, student?.parentAuthUids || []);
-    const targetAuthUids = [student?.authUid, ...parentAuthUids].filter(Boolean);
+    const studentKeys = uniqueStrings(buildStudentKeys(student).concat(reportDraft.studentId));
+    const directParentAuthCandidates = uniqueStrings([
+      student?.parentAuthUids,
+      student?.parentAuthUid,
+    ]);
+    const directParentDocCandidates = uniqueStrings([student?.parentUid, student?.parentUids, student?.parentIds, student?.parents]);
+    const linkedParentAuthUids = getLinkedParentAuthUids(student, parents);
+    const directLocalParentDocs = (Array.isArray(parents) ? parents : []).filter((parent) => (
+      directParentDocCandidates.some((id) => [parent?.id, parent?.uid, parent?.authUid, parent?.userUid].filter(Boolean).map(String).includes(id))
+    ));
+    let parentAuthUids = uniqueStrings([
+      ...directParentAuthCandidates,
+      ...linkedParentAuthUids,
+      ...directLocalParentDocs.map(pickAuthUidFromParent),
+    ]);
+
+    const linkedParentDocs = (Array.isArray(parents) ? parents : []).filter((parent) => {
+      const linkedIds = ['studentIds', 'childrenIds', 'studentDocIds', 'students', 'childIds', 'linkedStudentIds']
+        .flatMap((key) => normalizeLinkedIds(parent?.[key]));
+      return linkedIds.some((id) => studentKeys.includes(id));
+    });
+    parentAuthUids = uniqueStrings([...parentAuthUids, ...linkedParentDocs.map(pickAuthUidFromParent)]);
+
+    if (parentAuthUids.length === 0 && studentKeys.length > 0) {
+      const parentSnaps = await Promise.all([
+        ...directParentDocCandidates.map((key) => getDoc(doc(db, 'users', key)).catch(() => null)),
+        ...studentKeys.map((key) => getDoc(doc(db, 'users', key)).catch(() => null)),
+        ...['studentIds', 'childrenIds', 'studentDocIds', 'childIds', 'linkedStudentIds'].flatMap((field) => (
+          studentKeys.map((key) => getDocs(query(collection(db, 'users'), where(field, 'array-contains', key))).catch(() => null))
+        )),
+      ]);
+      const queriedParents = parentSnaps.flatMap((snap) => {
+        if (!snap) return [];
+        if (typeof snap.docs !== 'undefined') return snap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
+        if (typeof snap.exists === 'function' && snap.exists()) return [{ id: snap.id, ...snap.data() }];
+        return [];
+      }).filter((parent) => ['parent', 'guardian'].includes(String(parent?.role || '').toLowerCase()));
+      parentAuthUids = uniqueStrings(queriedParents.map(pickAuthUidFromParent));
+    }
+
+    const studentAuthUid = uniqueStrings([student?.authUid, student?.userUid])[0];
+    const targetAuthUids = uniqueStrings([studentAuthUid, ...parentAuthUids]);
+    if (process.env.NODE_ENV === 'development') {
+      console.debug('[notifications] lesson report targets', {
+        reportId: reportDraft.id,
+        studentAuthUid,
+        parentAuthUids,
+        targetAuthUids,
+      });
+    }
+
     await Promise.all(targetAuthUids.map((uid) => addDoc(collection(db, 'notifications', uid, 'items'), {
       type: 'lesson_report',
       category: 'lessonReport',
@@ -791,7 +860,7 @@ export default function LessonReportManagement({
     await setDoc(
       doc(db, 'lessonReports', reportDraft.id),
       {
-        studentNotificationSent: Boolean(student?.authUid),
+        studentNotificationSent: Boolean(studentAuthUid),
         parentNotificationSent: parentAuthUids.length > 0,
       },
       { merge: true },

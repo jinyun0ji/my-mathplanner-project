@@ -1,14 +1,14 @@
 export const getLinkedParentAuthUids = (student, parents = []) => {
     if (!student) return [];
 
+    if (typeof student === 'string') {
+        return Array.isArray(parents) ? Array.from(new Set(parents.filter(Boolean).map(String))) : [];
+    }
+
     const directCandidates = []
         .concat(student.parentAuthUid || [])
-        .concat(student.parentUid || [])
         .concat(student.parentAuthUids || [])
-        .concat(student.parentUids || [])
-        .concat(student.parents || [])
         .concat(student.parentAuthUID || [])
-        .concat(student.parentUID || [])
         .filter(Boolean)
         .map(String);
 
@@ -46,13 +46,23 @@ export const getLinkedParentAuthUids = (student, parents = []) => {
         return [];
     };
 
+    const directParentIds = normalizeLinkedIds([
+        student.parentUid,
+        student.parentUids,
+        student.parentIds,
+        student.parents,
+        student.parentUID,
+    ].flatMap((value) => (Array.isArray(value) ? value : [value])));
+
     const matchedParents = (parents || []).filter((parent) => {
+        const parentIds = [parent?.id, parent?.uid, parent?.authUid, parent?.userUid].filter(Boolean).map(String);
+        if (directParentIds.some((id) => parentIds.includes(id))) return true;
         const ids = pickArray(parent, ['studentIds', 'childrenIds', 'studentDocIds', 'students', 'childIds', 'linkedStudentIds']);
         return ids.includes(studentId);
     });
 
     const uids = matchedParents
-        .flatMap((parent) => [parent?.authUid, parent?.uid, parent?.id].filter(Boolean))
+        .flatMap((parent) => [parent?.userUid, parent?.authUid, parent?.uid, parent?.id].filter(Boolean))
         .map(String);
 
     return Array.from(new Set(uids));
