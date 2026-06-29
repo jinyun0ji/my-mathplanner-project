@@ -81,6 +81,31 @@ const hasAnyStudentKey = (values = [], studentKeys = []) => {
     .some((value) => keySet.has(value));
 };
 
+const mergeById = (base = [], extra = []) => {
+  const merged = new Map();
+  [...(Array.isArray(base) ? base : []), ...(Array.isArray(extra) ? extra : [])].forEach((item) => {
+    if (!item) return;
+    const key = String(item.id || '');
+    if (!key) return;
+    merged.set(key, { ...(merged.get(key) || {}), ...item });
+  });
+  return Array.from(merged.values());
+};
+
+const mergeNestedResults = (base = {}, extra = {}) => {
+  const merged = { ...(base || {}) };
+  Object.entries(extra || {}).forEach(([studentKey, assignments]) => {
+    merged[studentKey] = { ...(merged[studentKey] || {}), ...(assignments || {}) };
+  });
+  return merged;
+};
+
+const chunkArray = (items, size = 10) => {
+  const chunks = [];
+  for (let i = 0; i < items.length; i += size) chunks.push(items.slice(i, i + size));
+  return chunks;
+};
+
 
 const getDateMatches = (item, fields = [], lessonDate) => fields
   .map((field) => toYmd(item?.[field]))
@@ -171,6 +196,10 @@ const getHomeworkFilterReason = ({ assignment, lessonDate, student, studentId, h
   return 'included';
 };
 
+const isHomeworkCandidateForLessonReport = (assignment, lessonDate) => (
+  isPendingHomeworkInspection(assignment) || isHomeworkLinkedToLessonDate(assignment, lessonDate)
+);
+
 
 const isTestHeldOnLessonDate = (test, lessonDate) => (
   getDateMatches(test, ['date', 'testDate', 'lessonDate'], lessonDate).length > 0
@@ -221,11 +250,11 @@ export default function LessonReportManagement({
   students = [],
   classes = [],
   lessonLogs = [],
-  attendanceLogs = [],
-  homeworkAssignments = [],
-  tests = [],
-  homeworkResults = {},
-  grades = {},
+  attendanceLogs: propAttendanceLogs = [],
+  homeworkAssignments: propHomeworkAssignments = [],
+  tests: propTests = [],
+  homeworkResults: propHomeworkResults = {},
+  grades: propGrades = {},
   lessonReports = [],
   closures = [],
   classTestStats = {},
@@ -248,6 +277,34 @@ export default function LessonReportManagement({
   const [scheduledSendAt, setScheduledSendAt] = useState('');
   const [localReportMap, setLocalReportMap] = useState({});
   const [bulkDraftCreating, setBulkDraftCreating] = useState(false);
+  const [directLessonReportData, setDirectLessonReportData] = useState({
+    attendanceLogs: [],
+    homeworkAssignments: [],
+    homeworkResults: {},
+    tests: [],
+    grades: {},
+  });
+
+  const attendanceLogs = useMemo(
+    () => mergeById(propAttendanceLogs, directLessonReportData.attendanceLogs),
+    [directLessonReportData.attendanceLogs, propAttendanceLogs],
+  );
+  const homeworkAssignments = useMemo(
+    () => mergeById(propHomeworkAssignments, directLessonReportData.homeworkAssignments),
+    [directLessonReportData.homeworkAssignments, propHomeworkAssignments],
+  );
+  const tests = useMemo(
+    () => mergeById(propTests, directLessonReportData.tests),
+    [directLessonReportData.tests, propTests],
+  );
+  const homeworkResults = useMemo(
+    () => mergeNestedResults(propHomeworkResults, directLessonReportData.homeworkResults),
+    [directLessonReportData.homeworkResults, propHomeworkResults],
+  );
+  const grades = useMemo(
+    () => mergeNestedResults(propGrades, directLessonReportData.grades),
+    [directLessonReportData.grades, propGrades],
+  );
 
   const availableClasses = useMemo(
     () => sortClassesWithClosedLast(classes).filter((item) => item?.id),
@@ -359,6 +416,86 @@ export default function LessonReportManagement({
   );
   const selectedStudentKeys = useMemo(() => buildStudentKeys(selectedDraftStudent), [selectedDraftStudent]);
 
+  useEffect(() => {
+    let cancelled = false;
+    const loadDirectLessonReportData = async () => {
+      if (!selectedDraftClassId || !selectedLessonDate) {
+        setDirectLessonReportData({ attendanceLogs: [], homeworkAssignments: [], homeworkResults: {}, tests: [], grades: {} });
+        return;
+      }
+
+      try {
+        const [attendanceSnap, homeworkSnap, testsSnap] = await Promise.all([
+          getDocs(query(
+            collection(db, 'attendanceLogs'),
+            where('classId', '==', selectedDraftClassId),
+            where('date', '==', selectedLessonDate),
+          )),
+          getDocs(query(collection(db, 'homeworkAssignments'), where('classId', '==', selectedDraftClassId))),
+          getDocs(query(collection(db, 'tests'), where('classId', '==', selectedDraftClassId))),
+        ]);
+
+        const directAttendanceLogs = attendanceSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        const directHomeworkAssignments = homeworkSnap.docs
+          .map((d) => ({ id: d.id, ...d.data() }))
+          .filter((assignment) => isHomeworkCandidateForLessonReport(assignment, selectedLessonDate));
+        const directTests = testsSnap.docs
+          .map((d) => ({ id: d.id, ...d.data() }))
+          .filter((test) => isTestHeldOnLessonDate(test, selectedLessonDate));
+
+        const assignmentIds = directHomeworkAssignments.map((assignment) => String(assignment.id)).filter(Boolean);
+        const testIds = directTests.map((test) => String(test.id)).filter(Boolean);
+        const [homeworkResultDocs, gradeDocs] = await Promise.all([
+          Promise.all(chunkArray(assignmentIds, 10).map((ids) => getDocs(query(
+            collection(db, 'homeworkResults'),
+            where('assignmentId', 'in', ids),
+          )))),
+          Promise.all(chunkArray(testIds, 10).map((ids) => getDocs(query(
+            collection(db, 'grades'),
+            where('testId', 'in', ids),
+          )))),
+        ]);
+
+        const directHomeworkResults = {};
+        homeworkResultDocs.flatMap((snap) => snap.docs).forEach((d) => {
+          const data = { id: d.id, ...d.data() };
+          const assignmentId = data.assignmentId || data.homeworkAssignmentId || data.homeworkId;
+          const studentKey = data.studentId || data.studentDocId || data.authUid || data.studentUid || data.userUid || data.uid;
+          if (!assignmentId || !studentKey) return;
+          if (!directHomeworkResults[String(studentKey)]) directHomeworkResults[String(studentKey)] = {};
+          directHomeworkResults[String(studentKey)][String(assignmentId)] = data.results || data;
+        });
+
+        const directGrades = {};
+        gradeDocs.flatMap((snap) => snap.docs).forEach((d) => {
+          const data = { id: d.id, ...d.data() };
+          const studentKey = data.studentId || data.studentDocId || data.authUid || data.studentUid || data.userUid || data.uid;
+          const testId = data.testId;
+          if (!studentKey || !testId) return;
+          if (!directGrades[String(studentKey)]) directGrades[String(studentKey)] = {};
+          directGrades[String(studentKey)][String(testId)] = data;
+        });
+
+        if (!cancelled) {
+          setDirectLessonReportData({
+            attendanceLogs: directAttendanceLogs,
+            homeworkAssignments: directHomeworkAssignments,
+            homeworkResults: directHomeworkResults,
+            tests: directTests,
+            grades: directGrades,
+          });
+        }
+      } catch (error) {
+        console.warn('[lesson-report] selected class/date scoped load failed', error);
+      }
+    };
+
+    loadDirectLessonReportData();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedDraftClassId, selectedLessonDate]);
+
   const toDateDistance = (a, b) => {
     if (!a || !b) return Number.MAX_SAFE_INTEGER;
     const aTime = new Date(`${a}T00:00:00`).getTime();
@@ -444,17 +581,31 @@ export default function LessonReportManagement({
   useEffect(() => {
     if (process.env.NODE_ENV === 'production') return;
     console.log('[lesson-report debug:data-sources]', {
+      props: {
+        studentsCount: Array.isArray(students) ? students.length : null,
+        classesCount: Array.isArray(classes) ? classes.length : null,
+        lessonLogsCount: Array.isArray(lessonLogs) ? lessonLogs.length : null,
+        attendanceLogsCount: Array.isArray(propAttendanceLogs) ? propAttendanceLogs.length : null,
+        homeworkAssignmentsCount: Array.isArray(propHomeworkAssignments) ? propHomeworkAssignments.length : null,
+        homeworkResultsCount: Object.values(propHomeworkResults || {}).filter((value) => value && typeof value === 'object').length,
+        testsCount: Array.isArray(propTests) ? propTests.length : null,
+        gradesCount: Object.values(propGrades || {}).filter((value) => value && typeof value === 'object').length,
+        lessonReportsCount: Array.isArray(lessonReports) ? lessonReports.length : null,
+      },
       selectedStudentId: selectedDraftStudentId,
-      selectedStudent: selectedDraftStudent,
-      studentKeys: selectedStudentKeys,
       selectedClassId: selectedDraftClassId,
       selectedDate: selectedLessonDate,
+      selectedStudent: selectedDraftStudent,
+      selectedStudentKeys,
+      studentsCount: Array.isArray(students) ? students.length : null,
+      classesCount: Array.isArray(classes) ? classes.length : null,
       lessonLogsCount: Array.isArray(lessonLogs) ? lessonLogs.length : null,
       homeworkAssignmentsCount: Array.isArray(homeworkAssignments) ? homeworkAssignments.length : null,
       testsCount: Array.isArray(tests) ? tests.length : null,
       attendanceLogsCount: Array.isArray(attendanceLogs) ? attendanceLogs.length : null,
       homeworkResultsMatchedCount: Object.values(homeworkResults || {}).filter((value) => value && typeof value === 'object').length,
       gradesMatchedCount: Object.values(grades || {}).filter((value) => value && typeof value === 'object').length,
+      lessonReportsCount: Array.isArray(lessonReports) ? lessonReports.length : null,
       lessonLogsSample: lessonLogs?.slice?.(0, 3),
       homeworkAssignmentsSample: homeworkAssignments?.slice?.(0, 3),
       testsSample: tests?.slice?.(0, 3),
@@ -464,14 +615,22 @@ export default function LessonReportManagement({
   }, [
     attendanceLogs,
     candidateLessonLogs,
+    classes,
     homeworkAssignments,
     lessonLogs,
+    lessonReports,
+    propAttendanceLogs,
+    propGrades,
+    propHomeworkAssignments,
+    propHomeworkResults,
+    propTests,
     selectedDraftClassId,
     selectedDraftStudentId,
     selectedDraftStudent,
     selectedLessonDate,
     selectedStudentKeys,
     tests,
+    students,
   ]);
 
   useEffect(() => {
@@ -548,11 +707,12 @@ export default function LessonReportManagement({
       selectedStudent: selectedDraftStudent,
       studentKeys: selectedStudentKeys,
       counts: {
-        attendance: attendanceMatches.length,
-        homeworkAssignments: candidateHomeworkAssignments.length,
-        homeworkResults: homeworkResultMatches.length,
-        tests: candidateTests.length,
-        grades: gradeMatches.length,
+        candidateAttendanceCount: attendanceMatches.length,
+        candidateHomeworkProgressCount: candidateHomeworkAssignments.length,
+        candidateAssignedHomeworkCount: classHomeworkAssignments.length,
+        candidateTestsCount: candidateTests.length,
+        candidateGradesCount: gradeMatches.length,
+        candidateHomeworkResultsCount: homeworkResultMatches.length,
       },
       comparedKeysOnEmpty: {
         attendance: attendanceMatches.length ? [] : (attendanceLogs || []).slice(0, 5).map((item) => ({ id: item.id, studentId: item.studentId, studentUid: item.studentUid, classId: resolveClassId(item), date: resolveAttendanceDate(item) })),

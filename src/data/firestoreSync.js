@@ -885,7 +885,7 @@ export const loadStaffDataOnce = async ({
             ));
         }
 
-        if (setTests && shouldLoad('grades')) {
+        if (setTests && (shouldLoad('grades') || shouldLoad('lessonReports'))) {
             loadingCollections.push('tests(limit200)');
             const tests = await loadCachedSlice('tests', setTests, () => fetchList(db, 'tests', () => {}, query(collection(db, 'tests'), orderBy('date', 'desc'), limit(200)), () => false), 'recent200');
             warnOnQuestionScores(tests, 'staff');
@@ -910,7 +910,7 @@ export const loadStaffDataOnce = async ({
         if (setAttendanceLogs && shouldLoad('home')) {
             loadingCollections.push('attendanceLogs(today)');
             await loadCachedSlice('attendanceLogs', setAttendanceLogs, () => fetchList(db, 'attendanceLogs', () => {}, query(collection(db, 'attendanceLogs'), where('date', '==', today), limit(300)), () => false), `date:${today}`);
-        } else if (setAttendanceLogs && shouldLoad('attendance')) {
+        } else if (setAttendanceLogs && (shouldLoad('attendance') || shouldLoad('lessonReports'))) {
             loadingCollections.push('attendanceLogs(recent300)');
             await loadCachedSlice('attendanceLogs', setAttendanceLogs, () => fetchList(db, 'attendanceLogs', () => {}, query(collection(db, 'attendanceLogs'), orderBy('date', 'desc'), limit(300)), () => false), 'recent300');
         }
@@ -943,7 +943,7 @@ export const loadStaffDataOnce = async ({
             await loadCachedSlice('announcements', setAnnouncements, () => fetchList(db, 'announcements', () => {}, query(collection(db, 'announcements'), orderBy('date', 'desc'), limit(150)), () => false), 'recent150');
         }
 
-        if (setHomeworkAssignments && shouldLoad('homework')) {
+        if (setHomeworkAssignments && (shouldLoad('homework') || shouldLoad('lessonReports'))) {
             loadingCollections.push('homeworkAssignments(recent150)');
             await loadCachedSlice('homeworkAssignments', setHomeworkAssignments, () => fetchList(db, 'homeworkAssignments', () => {}, query(collection(db, 'homeworkAssignments'), orderBy('date', 'desc'), limit(150)), () => false), 'recent150');
         }
@@ -960,7 +960,7 @@ export const loadStaffDataOnce = async ({
             ), 'recent150');
         }
 
-        if (setGrades && shouldLoad('grades')) {
+        if (setGrades && (shouldLoad('grades') || shouldLoad('lessonReports'))) {
             loadingCollections.push('grades(recent500)');
             await loadCachedSlice('grades', setGrades, async () => {
                 const grades = await fetchListSafe(query(collection(db, 'grades'), orderBy('updatedAt', 'desc'), limit(500)), () => false);
@@ -977,7 +977,7 @@ export const loadStaffDataOnce = async ({
             }, 'recent500');
         }
 
-        if (setHomeworkResults && shouldLoad('homework')) {
+        if (setHomeworkResults && (shouldLoad('homework') || shouldLoad('lessonReports'))) {
             loadingCollections.push('homeworkResults(recent500)');
             await loadCachedSlice('homeworkResults', setHomeworkResults, async () => {
                 const docs = await fetchListSafe(query(collection(db, 'homeworkResults'), orderBy('updatedAt', 'desc'), limit(500)), () => false);

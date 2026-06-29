@@ -1,193 +1,414 @@
-diff --git a/src/components/Shared/LessonReportList.jsx b/src/components/Shared/LessonReportList.jsx
-index 0cd12b63c077ce3d0dcfc15269a4823c4c8fd75a..52cc6858397069325dae2196ef9a988f5ae470eb 100644
---- a/src/components/Shared/LessonReportList.jsx
-+++ b/src/components/Shared/LessonReportList.jsx
-@@ -1,50 +1,51 @@
- import React from 'react';
-+import { resolveHomeworkAssignmentTitle } from '../../domain/homework/homework.service';
+diff --git a/src/data/firestoreSync.js b/src/data/firestoreSync.js
+index 2524b13f0a6b6c77a2d9551b887b2815485da575..2f5e12681bf2ef24224ab35e2b8cc97683d8a14f 100644
+--- a/src/data/firestoreSync.js
++++ b/src/data/firestoreSync.js
+@@ -863,143 +863,143 @@ export const loadStaffDataOnce = async ({
+                     console.warn('[staff] parent role in query failed, fallback to client filter', error);
+                     const users = await fetchList(
+                         db,
+                         'users',
+                         () => {},
+                         query(collection(db, 'users'), limit(500)),
+                         () => false,
+                     );
+                     const roleSet = new Set(parentRoles);
+                     return users.filter((user) => roleSet.has(user?.role));
+                 }
+             }, 'limit500');
+         }
  
- const toTextLines = (value) => {
-     if (!value) return [];
-     if (Array.isArray(value)) return value.filter(Boolean).map(String);
-     if (typeof value === 'string') return [value];
-     if (Array.isArray(value?.text)) return value.text.filter(Boolean).map(String);
-     return [];
- };
+         if (setClasses && pageNeedsClasses) {
+             loadingCollections.push('classes');
+             staffClasses = await loadCachedSlice('classes', setClasses, () => fetchList(
+                 db,
+                 'classes',
+                 () => {},
+                 query(collection(db, 'classes'), orderBy('name')),
+                 () => false,
+             ));
+         }
  
- export default function LessonReportList({ reports = [] }) {
-     if (!reports.length) {
-         return <p className="text-sm text-gray-500">발송된 수업 리포트가 없습니다.</p>;
-     }
+-        if (setTests && shouldLoad('grades')) {
++        if (setTests && (shouldLoad('grades') || shouldLoad('lessonReports'))) {
+             loadingCollections.push('tests(limit200)');
+             const tests = await loadCachedSlice('tests', setTests, () => fetchList(db, 'tests', () => {}, query(collection(db, 'tests'), orderBy('date', 'desc'), limit(200)), () => false), 'recent200');
+             warnOnQuestionScores(tests, 'staff');
+         }
  
-     return (
-         <div className="space-y-3">
-             {reports.map((report) => {
-                 const homeworkLines = toTextLines(report?.homeworkSummary);
-                 const testLines = toTextLines(report?.testSummary);
-                 const assignedHomework = Array.isArray(report?.assignedHomeworkSummary?.items)
-                     ? report.assignedHomeworkSummary.items
-                     : [];
-                 return (
-                     <article key={report.id} className="rounded-xl border border-gray-200 bg-white p-4 space-y-2">
-                         <div className="flex items-center justify-between">
-                             <p className="text-xs font-semibold text-gray-500">{report.lessonDate} · {report.className || report.classId}</p>
-                             <span className="text-[11px] px-2 py-1 rounded-full bg-emerald-50 text-emerald-700 font-semibold">발송됨</span>
-                         </div>
-                         {report.learnedTopics && <p className="text-sm text-gray-700">진도: {report.learnedTopics}</p>}
-                         {report.attendanceStatus && <p className="text-sm text-gray-700">출결: {report.attendanceStatus}</p>}
-                         {homeworkLines.length > 0 && <p className="text-sm text-gray-700">과제 수행: {homeworkLines.join(' · ')}</p>}
-                         {testLines.length > 0 && (
-                             <div className="text-sm text-gray-700">
-                                 <p className="font-semibold">시험</p>
-                                 <ul className="list-disc pl-5">
-                                     {testLines.map((line, index) => <li key={`test-line-${report.id}-${index}`} className="whitespace-pre-line">{line}</li>)}
-                                 </ul>
-                             </div>
-                         )}
-                         {assignedHomework.length > 0 && (
--                            <p className="text-sm text-gray-700">이번 수업 숙제: {assignedHomework.map((item) => item.title).join(', ')}</p>
-+                            <p className="text-sm text-gray-700">이번 수업 숙제: {assignedHomework.map((item) => resolveHomeworkAssignmentTitle(item)).join(', ')}</p>
-                         )}
-                         {report.comment && <p className="text-sm text-[#334a91]">코멘트: {report.comment}</p>}
-                     </article>
+         if (setLessonLogs && shouldLoad('home')) {
+             loadingCollections.push('lessonLogs(today)');
+             await loadCachedSlice('lessonLogs', setLessonLogs, () => fetchList(db, 'lessonLogs', () => {}, query(collection(db, 'lessonLogs'), where('date', '==', today), limit(100)), () => false), `date:${today}`);
+         } else if (setLessonLogs && (shouldLoad('lessons') || shouldLoad('lessonReports'))) {
+             loadingCollections.push('lessonLogs(recent150)');
+             await loadCachedSlice('lessonLogs', setLessonLogs, () => fetchList(db, 'lessonLogs', () => {}, query(collection(db, 'lessonLogs'), orderBy('date', 'desc'), limit(150)), () => false), 'recent150');
+         }
+ 
+         if (setLessonReports && shouldLoad('home')) {
+             loadingCollections.push('lessonReports(today)');
+             await loadCachedSlice('lessonReports', setLessonReports, () => fetchList(db, 'lessonReports', () => {}, query(collection(db, 'lessonReports'), where('lessonDate', '==', today), limit(100)), () => false), `lessonDate:${today}`);
+         } else if (setLessonReports && shouldLoad('lessonReports')) {
+             loadingCollections.push('lessonReports(recent300)');
+             await loadCachedSlice('lessonReports', setLessonReports, () => fetchList(db, 'lessonReports', () => {}, query(collection(db, 'lessonReports'), orderBy('lessonDate', 'desc'), limit(300)), () => false), 'recent300');
+         }
+ 
+         if (setAttendanceLogs && shouldLoad('home')) {
+             loadingCollections.push('attendanceLogs(today)');
+             await loadCachedSlice('attendanceLogs', setAttendanceLogs, () => fetchList(db, 'attendanceLogs', () => {}, query(collection(db, 'attendanceLogs'), where('date', '==', today), limit(300)), () => false), `date:${today}`);
+-        } else if (setAttendanceLogs && shouldLoad('attendance')) {
++        } else if (setAttendanceLogs && (shouldLoad('attendance') || shouldLoad('lessonReports'))) {
+             loadingCollections.push('attendanceLogs(recent300)');
+             await loadCachedSlice('attendanceLogs', setAttendanceLogs, () => fetchList(db, 'attendanceLogs', () => {}, query(collection(db, 'attendanceLogs'), orderBy('date', 'desc'), limit(300)), () => false), 'recent300');
+         }
+ 
+         if (setClinicLogs && shouldLoad('clinic')) {
+             loadingCollections.push('clinicLogs/recent + clinicReservations/recent');
+             const queryKey = 'recent300-reservations500';
+             const cachedClinicLogs = readStaffCache(pageKey, 'clinicLogs', queryKey);
+             if (cachedClinicLogs !== undefined) {
+                 setClinicLogs?.(cachedClinicLogs);
+                 staffDataDebug(`cache hit pageKey=${pageKey}`, { slice: 'clinicLogs', count: cachedClinicLogs.length });
+             } else {
+                 const [lightLogs, lightReservations] = await Promise.all([
+                     fetchClinicLogsLight(db, () => false, 300),
+                     fetchClinicReservationsLight(db, () => false, 500),
+                 ]);
+                 const mergedClinicDocs = writeStaffCache(pageKey, 'clinicLogs', mergeClinicDocs(lightLogs, lightReservations), queryKey);
+                 setClinicLogs?.(mergedClinicDocs);
+                 staffDataDebug('clinic logs loaded', { clinicLogs: lightLogs.length, clinicReservations: lightReservations.length, merged: mergedClinicDocs.length });
+             }
+         }
+ 
+         if (setWorkLogs && shouldLoad('communication')) {
+             loadingCollections.push('workLogs(recent150)');
+             await loadCachedSlice('workLogs', setWorkLogs, () => fetchList(db, 'workLogs', () => {}, query(collection(db, 'workLogs'), orderBy('date', 'desc'), limit(150)), () => false), 'recent150');
+         }
+ 
+         if (setAnnouncements && shouldLoad('communication')) {
+             loadingCollections.push('announcements(recent150)');
+             await loadCachedSlice('announcements', setAnnouncements, () => fetchList(db, 'announcements', () => {}, query(collection(db, 'announcements'), orderBy('date', 'desc'), limit(150)), () => false), 'recent150');
+         }
+ 
+-        if (setHomeworkAssignments && shouldLoad('homework')) {
++        if (setHomeworkAssignments && (shouldLoad('homework') || shouldLoad('lessonReports'))) {
+             loadingCollections.push('homeworkAssignments(recent150)');
+             await loadCachedSlice('homeworkAssignments', setHomeworkAssignments, () => fetchList(db, 'homeworkAssignments', () => {}, query(collection(db, 'homeworkAssignments'), orderBy('date', 'desc'), limit(150)), () => false), 'recent150');
+         }
+ 
+         if (setPaymentLogs && shouldLoad('payment')) {
+             loadingCollections.push('payments(recent150)');
+             await loadCachedSlice('payments', setPaymentLogs, () => fetchList(
+                 db,
+                 'payments',
+                 () => {},
+                 query(collection(db, 'payments'), orderBy('createdAt', 'desc'), limit(150)),
+                 () => false,
+                 normalizePaymentLog,
+             ), 'recent150');
+         }
+ 
+-        if (setGrades && shouldLoad('grades')) {
++        if (setGrades && (shouldLoad('grades') || shouldLoad('lessonReports'))) {
+             loadingCollections.push('grades(recent500)');
+             await loadCachedSlice('grades', setGrades, async () => {
+                 const grades = await fetchListSafe(query(collection(db, 'grades'), orderBy('updatedAt', 'desc'), limit(500)), () => false);
+                 const mappedGrades = {};
+                 grades.forEach((raw) => {
+                     const data = normalizeAuthUid(raw);
+                     const sId = data.studentId;
+                     const testId = data.testId;
+                     if (!sId || !testId) return;
+                     if (!mappedGrades[sId]) mappedGrades[sId] = {};
+                     mappedGrades[sId][testId] = data;
+                 });
+                 return mappedGrades;
+             }, 'recent500');
+         }
+ 
+-        if (setHomeworkResults && shouldLoad('homework')) {
++        if (setHomeworkResults && (shouldLoad('homework') || shouldLoad('lessonReports'))) {
+             loadingCollections.push('homeworkResults(recent500)');
+             await loadCachedSlice('homeworkResults', setHomeworkResults, async () => {
+                 const docs = await fetchListSafe(query(collection(db, 'homeworkResults'), orderBy('updatedAt', 'desc'), limit(500)), () => false);
+                 const mappedResults = {};
+                 const authUidToStudentDocId = new Map(
+                     (staffStudents || [])
+                         .filter((student) => student?.authUid && student?.id)
+                         .map((student) => [String(student.authUid), String(student.id)]),
                  );
-             })}
-         </div>
-     );
- }
-\ No newline at end of file
-diff --git a/src/domain/homework/homeworkWrongNote.service.js b/src/domain/homework/homeworkWrongNote.service.js
-index a1d380384f088bf1e99978726bcc2ec025ddd0b4..2403112a9e8992abce3debe427fcb0cd16ec9b10 100644
---- a/src/domain/homework/homeworkWrongNote.service.js
-+++ b/src/domain/homework/homeworkWrongNote.service.js
-@@ -1,49 +1,49 @@
- import {
-     classifyHomeworkResultKeyMode,
-     getAssignmentQuestionNumbers,
-     normalizeHomeworkResultMapForDisplay,
- } from './homework.service';
+                 docs.forEach((data) => {
+                     const assignmentId = data.assignmentId || data.homeworkAssignmentId || null;
+                     const rawKey = data.studentId || data.studentDocId || data.authUid || data.studentUid || null;
+                     const sKey = rawKey && authUidToStudentDocId.get(String(rawKey)) ? authUidToStudentDocId.get(String(rawKey)) : rawKey;
+                     if (!sKey || !assignmentId) return;
+                     if (!mappedResults[sKey]) mappedResults[sKey] = {};
+                     mappedResults[sKey][assignmentId] = data.results || data;
+                 });
+                 return mappedResults;
+             }, 'recent500');
+         }
  
- export const isWrongOrCorrectedAnswer = (value) => {
-     return value === '틀림'
-         || value === '고침'
-         || value === 2
-         || value === 3
-         || value === '2'
-         || value === '3'
-         || value === false;
- };
- 
- const isPlainObject = (value) => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
- 
- const resolveAssignmentId = (assignment) => {
-     return assignment?.id || assignment?.assignmentId || assignment?.homeworkAssignmentId || null;
- };
- 
- const resolveAssignmentTitle = (assignment) => {
--    return assignment?.title ?? assignment?.name ?? assignment?.content ?? '과제';
-+    return assignment?.title || assignment?.name || assignment?.assignmentName || assignment?.homeworkName || assignment?.content || '숙제';
- };
- 
- export const normalizeHomeworkTitleForWrongNote = (title) => {
-     if (typeof title !== 'string') return '';
- 
-     return title.replace(/\s+/g, '').trim();
- };
- 
- const resolveStudentName = (student) => {
-     return student?.name || student?.studentName || '이름없음';
- };
- 
- const isDevEnvironment = () => (
-     (typeof window !== 'undefined' && typeof window.__DEV__ !== 'undefined' && window.__DEV__)
-     || process.env.NODE_ENV !== 'production'
- );
- 
- const unwrapResultMap = (value) => {
-     if (!isPlainObject(value)) return {};
- 
-     if (isPlainObject(value.results)) {
-         return value.results;
-     }
- 
-     return value;
+         if (setExternalSchedules && shouldLoad('schedule')) {
+             loadingCollections.push('externalSchedules(recent500)');
+             await loadCachedSlice('externalSchedules', setExternalSchedules, () => fetchList(
+                 db,
 diff --git a/src/pages/LessonReportManagement.jsx b/src/pages/LessonReportManagement.jsx
-index f8f4dee8b6e67df3ce84f687edb05541a05e7100..cff0dab1852886838517d000beec56616ef33e8a 100644
+index cff0dab1852886838517d000beec56616ef33e8a..04b48dea0a0289d94fd9d967d04200ca40b4b190 100644
 --- a/src/pages/LessonReportManagement.jsx
 +++ b/src/pages/LessonReportManagement.jsx
-@@ -281,69 +281,93 @@ export default function LessonReportManagement({
-     const baseStudents = students
-       .filter((student) => getStudentClassIds(student).includes(String(selectedClassId)));
-     return filterRosterByWithdrawDate(baseStudents, selectedClassId, selectedDate)
-       .sort((a, b) => String(a?.name || '').localeCompare(String(b?.name || ''), 'ko'));
-   }, [isSelectedDateLessonDay, selectedClassId, selectedDate, students]);
+@@ -59,50 +59,75 @@ const statusClassName = (status, sendStatus, scheduledSendAt) => {
  
-   useEffect(() => {
-     if (!selectedStudentId) return;
-     if (!classStudents.some((student) => String(student.id) === String(selectedStudentId))) {
-       setSelectedStudentId('');
-     }
-   }, [classStudents, selectedStudentId]);
+ const getStudentClassIds = (student) => {
+   if (!student) return [];
+   if (Array.isArray(student.classIds)) return student.classIds.map(String);
+   if (Array.isArray(student.classes)) return student.classes.map(String);
+   return [];
+ };
  
-   useEffect(() => {
-     if (selectedStudentId || classStudents.length === 0) return;
-     setSelectedStudentId(String(classStudents[0].id));
-   }, [classStudents, selectedStudentId]);
+ const buildStudentKeys = (student = null) => Array.from(new Set([
+   student?.id,
+   student?.uid,
+   student?.userUid,
+   student?.authUid,
+   student?.studentId,
+   student?.docId,
+ ].filter((value) => value !== null && value !== undefined).map((value) => String(value).trim()).filter(Boolean)));
  
-   useEffect(() => {
-     setSelectedStudentIdsForBulk([]);
-   }, [selectedClassId, selectedDate]);
+ const hasAnyStudentKey = (values = [], studentKeys = []) => {
+   const keySet = new Set(studentKeys.map(String));
+   return values
+     .filter((value) => value !== null && value !== undefined)
+     .map((value) => String(value).trim())
+     .some((value) => keySet.has(value));
+ };
  
-   const baseReportMap = useMemo(() => {
-     const map = new Map();
-     lessonReports.forEach((report) => {
-+      const normalizedLessonDate = toYmd(report.lessonDate);
-       const key = buildLessonReportId({
-         studentId: report.studentId,
-         classId: report.classId,
--        lessonDate: toYmd(report.lessonDate),
-+        lessonDate: normalizedLessonDate,
-       });
--      if (key) map.set(key, report);
-+      if (process.env.NODE_ENV === 'development') {
-+        console.debug('[lesson-report map] firestore report', {
-+          reportId: report?.id,
-+          studentId: report?.studentId,
-+          classId: report?.classId,
-+          lessonDate: normalizedLessonDate || report?.lessonDate,
-+          generatedKey: key,
-+          status: report?.status,
-+          sendStatus: report?.sendStatus,
-+        });
-+      }
-+      if (key) map.set(key, { ...report, id: report.id || key, lessonDate: normalizedLessonDate || report.lessonDate });
++const mergeById = (base = [], extra = []) => {
++  const merged = new Map();
++  [...(Array.isArray(base) ? base : []), ...(Array.isArray(extra) ? extra : [])].forEach((item) => {
++    if (!item) return;
++    const key = String(item.id || '');
++    if (!key) return;
++    merged.set(key, { ...(merged.get(key) || {}), ...item });
++  });
++  return Array.from(merged.values());
++};
++
++const mergeNestedResults = (base = {}, extra = {}) => {
++  const merged = { ...(base || {}) };
++  Object.entries(extra || {}).forEach(([studentKey, assignments]) => {
++    merged[studentKey] = { ...(merged[studentKey] || {}), ...(assignments || {}) };
++  });
++  return merged;
++};
++
++const chunkArray = (items, size = 10) => {
++  const chunks = [];
++  for (let i = 0; i < items.length; i += size) chunks.push(items.slice(i, i + size));
++  return chunks;
++};
++
+ 
+ const getDateMatches = (item, fields = [], lessonDate) => fields
+   .map((field) => toYmd(item?.[field]))
+   .filter(Boolean)
+   .filter((date) => date === String(lessonDate || ''));
+ 
+ const resolveHomeworkResultDate = (item) => toYmd(item?.date || item?.lessonDate || item?.createdAt || item?.updatedAt || item?.submittedAt || item?.completedAt);
+ const resolveScheduledTestDate = (item) => toYmd(item?.date || item?.testDate || item?.lessonDate);
+ 
+ const getHomeworkResultForStudentAssignment = ({ homeworkResults = {}, assignmentId, student, studentId = '' }) => {
+   if (!assignmentId) return null;
+   const studentKeys = Array.from(new Set([
+     ...buildStudentKeys(student),
+     studentId,
+   ].filter((value) => value !== null && value !== undefined).map((value) => String(value).trim()).filter(Boolean)));
+ 
+   for (const key of studentKeys) {
+     const nestedResult = homeworkResults?.[key]?.[assignmentId];
+     if (nestedResult !== undefined && nestedResult !== null) return nestedResult;
+   }
+ 
+   const resultCandidates = [homeworkResults, ...Object.values(homeworkResults || {})];
+ 
+   for (const value of resultCandidates) {
+     if (!value || typeof value !== 'object') continue;
+@@ -149,127 +174,159 @@ const isHomeworkLinkedToLessonDate = (assignment, lessonDate) => (
+ 
+ const isHomeworkAssignedOnLessonDate = isHomeworkLinkedToLessonDate;
+ 
+ const normalizeInspectionStatus = (assignment) => String(assignment?.inspectionStatus || 'pending').trim() || 'pending';
+ const isPendingHomeworkInspection = (assignment) => normalizeInspectionStatus(assignment) !== 'completed';
+ const getHomeworkTargetKeys = (assignment) => [
+   ...(Array.isArray(assignment?.targetStudents) ? assignment.targetStudents : []),
+   ...(Array.isArray(assignment?.assignedStudentIds) ? assignment.assignedStudentIds : []),
+   ...(Array.isArray(assignment?.students) ? assignment.students : []),
+ ];
+ const isHomeworkTargetedToStudent = (assignment, student) => {
+   const targets = getHomeworkTargetKeys(assignment);
+   if (targets.length === 0) return true;
+   return hasAnyStudentKey(targets, buildStudentKeys(student));
+ };
+ 
+ 
+ const getHomeworkFilterReason = ({ assignment, lessonDate, student, studentId, homeworkResults }) => {
+   if (!isHomeworkLinkedToLessonDate(assignment, lessonDate)) return 'lesson-date-mismatch';
+   if (!isHomeworkTargetedToStudent(assignment, student)) return 'student-not-targeted';
+   const hasResult = Boolean(getHomeworkResultForStudentAssignment({ homeworkResults, assignmentId: assignment?.id, student, studentId }));
+   if (!isPendingHomeworkInspection(assignment) && !hasResult) return 'completed-without-result';
+   return 'included';
+ };
+ 
++const isHomeworkCandidateForLessonReport = (assignment, lessonDate) => (
++  isPendingHomeworkInspection(assignment) || isHomeworkLinkedToLessonDate(assignment, lessonDate)
++);
++
+ 
+ const isTestHeldOnLessonDate = (test, lessonDate) => (
+   getDateMatches(test, ['date', 'testDate', 'lessonDate'], lessonDate).length > 0
+ );
+ 
+ const getAttendanceForStudent = ({ attendanceLogs = [], student, classId, lessonDate }) => {
+   const studentKeys = buildStudentKeys(student);
+   return attendanceLogs.find((item) => hasAnyStudentKey([item.studentId, item.studentUid], studentKeys)
+     && resolveClassId(item) === String(classId || '')
+     && resolveAttendanceDate(item) === String(lessonDate || '')) || null;
+ };
+ 
+ const getLessonLogForClassDate = ({ lessonLogs = [], classId, lessonDate }) => (
+   (lessonLogs || []).find((log) => resolveClassId(log) === String(classId || '') && resolveLessonLogDate(log) === String(lessonDate || '')) || null
+ );
+ 
+ const getHomeworkAssignmentsForStudent = ({ homeworkAssignments = [], student, classId, lessonDate, onlyTargeted = false }) => {
+   const studentKeys = buildStudentKeys(student);
+   return (homeworkAssignments || [])
+     .filter((item) => resolveClassId(item) === String(classId || ''))
+     .map((item) => ({ ...item, __candidate_distance: Math.abs(new Date(`${resolveHomeworkDate(item)}T00:00:00`).getTime() - new Date(`${lessonDate}T00:00:00`).getTime()) || Number.MAX_SAFE_INTEGER }))
+     .sort((a, b) => a.__candidate_distance - b.__candidate_distance)
+     .filter((item) => {
+       if (!onlyTargeted) return true;
+       const targets = [
+         ...(Array.isArray(item.targetStudents) ? item.targetStudents : []),
+         ...(Array.isArray(item.assignedStudentIds) ? item.assignedStudentIds : []),
+         ...(Array.isArray(item.students) ? item.students : []),
+       ];
+       return targets.length === 0 || hasAnyStudentKey(targets, studentKeys);
      });
-     return map;
-   }, [lessonReports]);
+ };
  
-   const reportMap = useMemo(() => {
-     const merged = new Map(baseReportMap);
-     Object.values(localReportMap || {}).forEach((report) => {
-+      const normalizedLessonDate = toYmd(report?.lessonDate);
-       const key = buildLessonReportId({
-         studentId: report?.studentId,
-         classId: report?.classId,
--        lessonDate: toYmd(report?.lessonDate),
-+        lessonDate: normalizedLessonDate,
-       });
--      if (key) merged.set(key, report);
-+      if (process.env.NODE_ENV === 'development') {
-+        console.debug('[lesson-report map] local report', {
-+          reportId: report?.id,
-+          studentId: report?.studentId,
-+          classId: report?.classId,
-+          lessonDate: normalizedLessonDate || report?.lessonDate,
-+          generatedKey: key,
-+          status: report?.status,
-+          sendStatus: report?.sendStatus,
-+        });
-+      }
-+      if (key) merged.set(key, { ...report, id: report.id || key, lessonDate: normalizedLessonDate || report.lessonDate });
+ const getTestsForStudent = ({ tests = [], grades = {}, student, studentId, classId, lessonDate }) => (
+   (tests || [])
+     .filter((item) => resolveClassId(item) === String(classId || ''))
+     .map((item) => ({
+       ...item,
+       __sort_hasGrade: Boolean(getGradeForLessonReportStudent({ student, studentId, grades, testId: item.id })),
+       __sort_distance: Math.abs(new Date(`${resolveTestDate(item)}T00:00:00`).getTime() - new Date(`${lessonDate}T00:00:00`).getTime()) || Number.MAX_SAFE_INTEGER,
+     }))
+     .sort((a, b) => (a.__sort_hasGrade === b.__sort_hasGrade ? a.__sort_distance - b.__sort_distance : (a.__sort_hasGrade ? -1 : 1)))
+ );
+ 
+ 
+ 
+ export default function LessonReportManagement({
+   students = [],
+   classes = [],
+   lessonLogs = [],
+-  attendanceLogs = [],
+-  homeworkAssignments = [],
+-  tests = [],
+-  homeworkResults = {},
+-  grades = {},
++  attendanceLogs: propAttendanceLogs = [],
++  homeworkAssignments: propHomeworkAssignments = [],
++  tests: propTests = [],
++  homeworkResults: propHomeworkResults = {},
++  grades: propGrades = {},
+   lessonReports = [],
+   closures = [],
+   classTestStats = {},
+ }) {
+   const { studentId: routeStudentId } = useParams();
+   const [searchParams] = useSearchParams();
+   const navigate = useNavigate();
+   const { profileDocId } = useAuth();
+   
+   const preselectedStudentId = String(routeStudentId || searchParams.get('studentId') || '');
+   const [selectedClassId, setSelectedClassId] = useState('');
+   const [selectedDate, setSelectedDate] = useState(todayYmd);
+   const [selectedStudentId, setSelectedStudentId] = useState(preselectedStudentId);
+   const [draft, setDraft] = useState(null);
+   const [draftError, setDraftError] = useState('');
+   const [reportSaving, setReportSaving] = useState(false);
+   const [activeTab, setActiveTab] = useState('edit');
+   const [selectedStudentIdsForBulk, setSelectedStudentIdsForBulk] = useState([]);
+   const [sendMode, setSendMode] = useState('now');
+   const [scheduledSendAt, setScheduledSendAt] = useState('');
+   const [localReportMap, setLocalReportMap] = useState({});
+   const [bulkDraftCreating, setBulkDraftCreating] = useState(false);
++  const [directLessonReportData, setDirectLessonReportData] = useState({
++    attendanceLogs: [],
++    homeworkAssignments: [],
++    homeworkResults: {},
++    tests: [],
++    grades: {},
++  });
++
++  const attendanceLogs = useMemo(
++    () => mergeById(propAttendanceLogs, directLessonReportData.attendanceLogs),
++    [directLessonReportData.attendanceLogs, propAttendanceLogs],
++  );
++  const homeworkAssignments = useMemo(
++    () => mergeById(propHomeworkAssignments, directLessonReportData.homeworkAssignments),
++    [directLessonReportData.homeworkAssignments, propHomeworkAssignments],
++  );
++  const tests = useMemo(
++    () => mergeById(propTests, directLessonReportData.tests),
++    [directLessonReportData.tests, propTests],
++  );
++  const homeworkResults = useMemo(
++    () => mergeNestedResults(propHomeworkResults, directLessonReportData.homeworkResults),
++    [directLessonReportData.homeworkResults, propHomeworkResults],
++  );
++  const grades = useMemo(
++    () => mergeNestedResults(propGrades, directLessonReportData.grades),
++    [directLessonReportData.grades, propGrades],
++  );
+ 
+   const availableClasses = useMemo(
+     () => sortClassesWithClosedLast(classes).filter((item) => item?.id),
+     [classes],
+   );
+ 
+   useEffect(() => {
+     if (selectedClassId) return;
+     if (availableClasses.length === 0) return;
+ 
+     const fromStudent = students.find((item) => String(item.id) === preselectedStudentId);
+     const preferredClassId = getStudentClassIds(fromStudent)[0];
+     setSelectedClassId(String(preferredClassId || availableClasses[0].id));
+   }, [availableClasses, preselectedStudentId, selectedClassId, students]);
+ 
+   const selectedClass = useMemo(
+     () => availableClasses.find((item) => String(item.id) === String(selectedClassId)) || null,
+     [availableClasses, selectedClassId],
+   );
+ 
+   const isSelectedDateLessonDay = useMemo(() => {
+     if (!selectedClass || !selectedDate) return true;
+     if (!hasClassOnDate(selectedClass, selectedDate)) return false;
+     if (isClosedForClass(selectedDate, selectedClass.id, closures)) return false;
+     return true;
+@@ -337,50 +394,130 @@ export default function LessonReportManagement({
+       if (process.env.NODE_ENV === 'development') {
+         console.debug('[lesson-report map] local report', {
+           reportId: report?.id,
+           studentId: report?.studentId,
+           classId: report?.classId,
+           lessonDate: normalizedLessonDate || report?.lessonDate,
+           generatedKey: key,
+           status: report?.status,
+           sendStatus: report?.sendStatus,
+         });
+       }
+       if (key) merged.set(key, { ...report, id: report.id || key, lessonDate: normalizedLessonDate || report.lessonDate });
      });
      return merged;
    }, [baseReportMap, localReportMap]);
@@ -201,6 +422,86 @@ index f8f4dee8b6e67df3ce84f687edb05541a05e7100..cff0dab1852886838517d000beec5661
    );
    const selectedStudentKeys = useMemo(() => buildStudentKeys(selectedDraftStudent), [selectedDraftStudent]);
  
++  useEffect(() => {
++    let cancelled = false;
++    const loadDirectLessonReportData = async () => {
++      if (!selectedDraftClassId || !selectedLessonDate) {
++        setDirectLessonReportData({ attendanceLogs: [], homeworkAssignments: [], homeworkResults: {}, tests: [], grades: {} });
++        return;
++      }
++
++      try {
++        const [attendanceSnap, homeworkSnap, testsSnap] = await Promise.all([
++          getDocs(query(
++            collection(db, 'attendanceLogs'),
++            where('classId', '==', selectedDraftClassId),
++            where('date', '==', selectedLessonDate),
++          )),
++          getDocs(query(collection(db, 'homeworkAssignments'), where('classId', '==', selectedDraftClassId))),
++          getDocs(query(collection(db, 'tests'), where('classId', '==', selectedDraftClassId))),
++        ]);
++
++        const directAttendanceLogs = attendanceSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
++        const directHomeworkAssignments = homeworkSnap.docs
++          .map((d) => ({ id: d.id, ...d.data() }))
++          .filter((assignment) => isHomeworkCandidateForLessonReport(assignment, selectedLessonDate));
++        const directTests = testsSnap.docs
++          .map((d) => ({ id: d.id, ...d.data() }))
++          .filter((test) => isTestHeldOnLessonDate(test, selectedLessonDate));
++
++        const assignmentIds = directHomeworkAssignments.map((assignment) => String(assignment.id)).filter(Boolean);
++        const testIds = directTests.map((test) => String(test.id)).filter(Boolean);
++        const [homeworkResultDocs, gradeDocs] = await Promise.all([
++          Promise.all(chunkArray(assignmentIds, 10).map((ids) => getDocs(query(
++            collection(db, 'homeworkResults'),
++            where('assignmentId', 'in', ids),
++          )))),
++          Promise.all(chunkArray(testIds, 10).map((ids) => getDocs(query(
++            collection(db, 'grades'),
++            where('testId', 'in', ids),
++          )))),
++        ]);
++
++        const directHomeworkResults = {};
++        homeworkResultDocs.flatMap((snap) => snap.docs).forEach((d) => {
++          const data = { id: d.id, ...d.data() };
++          const assignmentId = data.assignmentId || data.homeworkAssignmentId || data.homeworkId;
++          const studentKey = data.studentId || data.studentDocId || data.authUid || data.studentUid || data.userUid || data.uid;
++          if (!assignmentId || !studentKey) return;
++          if (!directHomeworkResults[String(studentKey)]) directHomeworkResults[String(studentKey)] = {};
++          directHomeworkResults[String(studentKey)][String(assignmentId)] = data.results || data;
++        });
++
++        const directGrades = {};
++        gradeDocs.flatMap((snap) => snap.docs).forEach((d) => {
++          const data = { id: d.id, ...d.data() };
++          const studentKey = data.studentId || data.studentDocId || data.authUid || data.studentUid || data.userUid || data.uid;
++          const testId = data.testId;
++          if (!studentKey || !testId) return;
++          if (!directGrades[String(studentKey)]) directGrades[String(studentKey)] = {};
++          directGrades[String(studentKey)][String(testId)] = data;
++        });
++
++        if (!cancelled) {
++          setDirectLessonReportData({
++            attendanceLogs: directAttendanceLogs,
++            homeworkAssignments: directHomeworkAssignments,
++            homeworkResults: directHomeworkResults,
++            tests: directTests,
++            grades: directGrades,
++          });
++        }
++      } catch (error) {
++        console.warn('[lesson-report] selected class/date scoped load failed', error);
++      }
++    };
++
++    loadDirectLessonReportData();
++    return () => {
++      cancelled = true;
++    };
++  }, [selectedDraftClassId, selectedLessonDate]);
++
    const toDateDistance = (a, b) => {
      if (!a || !b) return Number.MAX_SAFE_INTEGER;
      const aTime = new Date(`${a}T00:00:00`).getTime();
@@ -213,177 +514,181 @@ index f8f4dee8b6e67df3ce84f687edb05541a05e7100..cff0dab1852886838517d000beec5661
      resolveClassId(log) === selectedDraftClassId
      && resolveLessonLogDate(log) === selectedLessonDate
    )), [lessonLogs, selectedDraftClassId, selectedLessonDate]);
-@@ -721,77 +745,89 @@ export default function LessonReportManagement({
-         lessonDate: nextLessonDate,
-         status: LESSON_REPORT_STATUS.DRAFT,
-         sendStatus: LESSON_REPORT_SEND_STATUS.DRAFT,
-         sendMode: 'now',
-         scheduledSendAt: null,
-         attendanceStatus: changes.attendanceStatus ?? prev.attendanceStatus ?? attendance?.attendance ?? attendance?.status ?? '미기록',
-         lessonLogId: lessonLog?.id || null,
-         autoFilledLearnedTopics: resolveLessonLogProgress(lessonLog),
-         learnedTopics: prev.isLearnedTopicsManuallyEdited ? prev.learnedTopics : (resolveLessonLogProgress(lessonLog) || prev.learnedTopics || ''),
-         selectedTestIds: getTestsForStudent({ tests, grades, student: nextStudent, studentId: nextStudentId, classId: nextClassId, lessonDate: nextLessonDate })
-           .filter((test) => isTestHeldOnLessonDate(test, nextLessonDate))
-           .map((item) => item.id)
-           .filter(Boolean),
-       };
+ 
+   const currentLessonLog = useMemo(
+     () => candidateLessonLogs[0] || null,
+     [candidateLessonLogs],
+   );
+ 
+   const currentAutoFilledLearnedTopics = useMemo(
+     () => resolveLessonLogProgress(currentLessonLog),
+     [currentLessonLog],
+   );
+ 
+   const classHomeworkAssignments = useMemo(() => (homeworkAssignments || [])
+     .filter((item) => resolveClassId(item) === selectedDraftClassId)
+@@ -422,78 +559,100 @@ export default function LessonReportManagement({
+       .map((item) => {
+         const grade = getGradeForLessonReportStudent({
+           student: selectedDraftStudent,
+           studentId: selectedDraftStudentId,
+           grades,
+           testId: item.id,
+         });
+         return {
+           ...item,
+           __sort_hasGrade: Boolean(grade),
+           __sort_distance: toDateDistance(resolveTestDate(item), selectedLessonDate),
+         };
+       })
+       .sort((a, b) => {
+         if (a.__sort_hasGrade !== b.__sort_hasGrade) return a.__sort_hasGrade ? -1 : 1;
+         if (a.__sort_distance !== b.__sort_distance) return a.__sort_distance - b.__sort_distance;
+         return String(resolveTestDate(b) || '').localeCompare(String(resolveTestDate(a) || ''));
+       });
+   }, [grades, selectedDraftClassId, selectedDraftStudent, selectedLessonDate, tests]);
+ 
+   const selectableTests = candidateTests;
+ 
+   useEffect(() => {
+     if (process.env.NODE_ENV === 'production') return;
+     console.log('[lesson-report debug:data-sources]', {
++      props: {
++        studentsCount: Array.isArray(students) ? students.length : null,
++        classesCount: Array.isArray(classes) ? classes.length : null,
++        lessonLogsCount: Array.isArray(lessonLogs) ? lessonLogs.length : null,
++        attendanceLogsCount: Array.isArray(propAttendanceLogs) ? propAttendanceLogs.length : null,
++        homeworkAssignmentsCount: Array.isArray(propHomeworkAssignments) ? propHomeworkAssignments.length : null,
++        homeworkResultsCount: Object.values(propHomeworkResults || {}).filter((value) => value && typeof value === 'object').length,
++        testsCount: Array.isArray(propTests) ? propTests.length : null,
++        gradesCount: Object.values(propGrades || {}).filter((value) => value && typeof value === 'object').length,
++        lessonReportsCount: Array.isArray(lessonReports) ? lessonReports.length : null,
++      },
+       selectedStudentId: selectedDraftStudentId,
+-      selectedStudent: selectedDraftStudent,
+-      studentKeys: selectedStudentKeys,
+       selectedClassId: selectedDraftClassId,
+       selectedDate: selectedLessonDate,
++      selectedStudent: selectedDraftStudent,
++      selectedStudentKeys,
++      studentsCount: Array.isArray(students) ? students.length : null,
++      classesCount: Array.isArray(classes) ? classes.length : null,
+       lessonLogsCount: Array.isArray(lessonLogs) ? lessonLogs.length : null,
+       homeworkAssignmentsCount: Array.isArray(homeworkAssignments) ? homeworkAssignments.length : null,
+       testsCount: Array.isArray(tests) ? tests.length : null,
+       attendanceLogsCount: Array.isArray(attendanceLogs) ? attendanceLogs.length : null,
+       homeworkResultsMatchedCount: Object.values(homeworkResults || {}).filter((value) => value && typeof value === 'object').length,
+       gradesMatchedCount: Object.values(grades || {}).filter((value) => value && typeof value === 'object').length,
++      lessonReportsCount: Array.isArray(lessonReports) ? lessonReports.length : null,
+       lessonLogsSample: lessonLogs?.slice?.(0, 3),
+       homeworkAssignmentsSample: homeworkAssignments?.slice?.(0, 3),
+       testsSample: tests?.slice?.(0, 3),
+       candidateLessonLogsCount: candidateLessonLogs.length,
+       candidateLessonLogsSample: candidateLessonLogs.slice(0, 3),
      });
-   };
+   }, [
+     attendanceLogs,
+     candidateLessonLogs,
++    classes,
+     homeworkAssignments,
+     lessonLogs,
++    lessonReports,
++    propAttendanceLogs,
++    propGrades,
++    propHomeworkAssignments,
++    propHomeworkResults,
++    propTests,
+     selectedDraftClassId,
+     selectedDraftStudentId,
+     selectedDraftStudent,
+     selectedLessonDate,
+     selectedStudentKeys,
+     tests,
++    students,
+   ]);
  
-   const toDraftForSend = (report) => ({
-     ...report,
-     status: report?.status || LESSON_REPORT_STATUS.DRAFT,
-     sendStatus: report?.sendStatus || LESSON_REPORT_SEND_STATUS.DRAFT,
-   });
+   useEffect(() => {
+     if (process.env.NODE_ENV === 'production') return;
+     const classMatchedAssignments = (homeworkAssignments || []).filter((item) => resolveClassId(item) === selectedDraftClassId);
+     const filteredAssignments = classMatchedAssignments.map((assignment) => ({
+       id: assignment.id,
+       title: resolveHomeworkAssignmentTitle(assignment),
+       lessonDate: assignment.lessonDate,
+       assignedDate: assignment.assignedDate,
+       dueDate: assignment.dueDate || assignment.deadline,
+       createdAt: assignment.createdAt,
+       filteredReason: getHomeworkFilterReason({
+         assignment,
+         lessonDate: selectedLessonDate,
+         student: selectedDraftStudent,
+         studentId: selectedDraftStudentId,
+         homeworkResults,
+       }),
+     }));
+     console.log('[lesson-report debug:homework-candidates]', {
+       reportLessonDate: selectedLessonDate,
+       selectedStudentId: selectedDraftStudentId,
+       selectedStudent: selectedDraftStudent,
+       studentKeys: selectedStudentKeys,
+@@ -526,55 +685,56 @@ export default function LessonReportManagement({
+     const attendanceMatches = (attendanceLogs || []).filter((item) => hasAnyStudentKey([item.studentId, item.studentUid], selectedStudentKeys)
+       && resolveClassId(item) === selectedDraftClassId
+       && resolveAttendanceDate(item) === selectedLessonDate);
+     const homeworkResultMatches = candidateHomeworkAssignments.filter((assignment) => {
+       const assignmentId = String(assignment.id || '');
+       const nestedMatch = selectedStudentKeys.some((key) => homeworkResults?.[key]?.[assignmentId] !== undefined && homeworkResults?.[key]?.[assignmentId] !== null);
+       if (nestedMatch) return true;
+       return Object.values(homeworkResults || {}).some((value) => {
+         if (!value || typeof value !== 'object') return false;
+         const byAssignment = value?.[assignmentId];
+         if (byAssignment && hasAnyStudentKey([byAssignment.studentId, byAssignment.authUid, byAssignment.studentUid, byAssignment.uid, byAssignment.userUid], selectedStudentKeys)) return true;
+         return String(value?.assignmentId || '') === assignmentId
+           && hasAnyStudentKey([value.studentId, value.authUid, value.studentUid, value.uid, value.userUid], selectedStudentKeys);
+       });
+     });
+     const gradeMatches = candidateTests.filter((test) => getGradeForLessonReportStudent({
+       student: selectedDraftStudent,
+       studentId: selectedDraftStudentId,
+       grades,
+       testId: test.id,
+     }));
+     console.log('[lesson-report debug:matching]', {
+       selectedStudent: selectedDraftStudent,
+       studentKeys: selectedStudentKeys,
+       counts: {
+-        attendance: attendanceMatches.length,
+-        homeworkAssignments: candidateHomeworkAssignments.length,
+-        homeworkResults: homeworkResultMatches.length,
+-        tests: candidateTests.length,
+-        grades: gradeMatches.length,
++        candidateAttendanceCount: attendanceMatches.length,
++        candidateHomeworkProgressCount: candidateHomeworkAssignments.length,
++        candidateAssignedHomeworkCount: classHomeworkAssignments.length,
++        candidateTestsCount: candidateTests.length,
++        candidateGradesCount: gradeMatches.length,
++        candidateHomeworkResultsCount: homeworkResultMatches.length,
+       },
+       comparedKeysOnEmpty: {
+         attendance: attendanceMatches.length ? [] : (attendanceLogs || []).slice(0, 5).map((item) => ({ id: item.id, studentId: item.studentId, studentUid: item.studentUid, classId: resolveClassId(item), date: resolveAttendanceDate(item) })),
+         homeworkAssignments: candidateHomeworkAssignments.length ? [] : classHomeworkAssignments.slice(0, 5).map((item) => ({ id: item.id, assignedStudentIds: item.assignedStudentIds, targetStudents: item.targetStudents, classId: resolveClassId(item) })),
+         grades: gradeMatches.length ? [] : candidateTests.slice(0, 5).map((test) => ({ testId: test.id, gradeStudentKeys: Object.keys(grades || {}).slice(0, 10) })),
+       },
+     });
+   }, [attendanceLogs, candidateHomeworkAssignments, candidateTests, classHomeworkAssignments, grades, homeworkResults, selectedDraftClassId, selectedDraftStudent, selectedDraftStudentId, selectedLessonDate, selectedStudentKeys]);
  
-   const buildPayload = ({ reportDraft, previous, action }) => {
-     const student = students.find((item) => String(item.id) === String(reportDraft.studentId));
-+    const canonicalStudentId = String(student?.id || reportDraft.studentId || '').trim();
-+    const canonicalClassId = String(reportDraft.classId || '').trim();
-+    const canonicalLessonDate = toYmd(reportDraft.lessonDate);
-+    const canonicalReportId = buildLessonReportId({
-+      studentId: canonicalStudentId,
-+      classId: canonicalClassId,
-+      lessonDate: canonicalLessonDate,
-+    }) || String(reportDraft.id || '').trim();
-     const now = serverTimestamp();
-     const isScheduled = action === 'schedule';
-     const isSendNow = action === 'send';
-     const isFirstSend = isSendNow && previous?.status !== LESSON_REPORT_STATUS.SENT;
- 
-     const homeworkSummary = summarizeHomework({
-       selectedHomeworkProgressIds: reportDraft.selectedHomeworkProgressIds || reportDraft.selectedHomeworkIds,
+   const previewHomeworkSummary = useMemo(
+     () => summarizeHomework({
+       selectedHomeworkProgressIds: draft?.selectedHomeworkProgressIds || draft?.selectedHomeworkIds || [],
        homeworkAssignments,
        homeworkResults,
-       studentId: reportDraft.studentId,
-       student,
-     });
-     const assignedHomeworkSummary = summarizeAssignedHomework({
-       selectedAssignedHomeworkIds: reportDraft.selectedAssignedHomeworkIds || reportDraft.selectedHomeworkIds,
+       studentId: draft?.studentId,
+       student: students.find((item) => String(item.id) === String(draft?.studentId || '')) || null,
+     }),
+     [draft?.selectedHomeworkIds, draft?.selectedHomeworkProgressIds, draft?.studentId, homeworkAssignments, homeworkResults, students],
+   );
+   const previewAssignedHomeworkSummary = useMemo(
+     () => summarizeAssignedHomework({
+       selectedAssignedHomeworkIds: draft?.selectedAssignedHomeworkIds || draft?.selectedHomeworkIds || [],
        homeworkAssignments,
-     });
-     const testSummary = summarizeTests({
-       selectedTestIds: reportDraft.selectedTestIds,
-       tests,
-       grades,
-       studentId: reportDraft.studentId,
-       student,
-       classTestStats,
-     });
- 
-     const payload = {
-       ...reportDraft,
-+      id: canonicalReportId,
-+      studentId: canonicalStudentId,
-+      classId: canonicalClassId,
-+      lessonDate: canonicalLessonDate,
-       selectedHomeworkProgressIds: reportDraft.selectedHomeworkProgressIds || reportDraft.selectedHomeworkIds || [],
-       selectedAssignedHomeworkIds: reportDraft.selectedAssignedHomeworkIds || reportDraft.selectedHomeworkIds || [],
-       selectedHomeworkIds: Array.from(new Set([
-         ...(reportDraft.selectedHomeworkProgressIds || []),
-         ...(reportDraft.selectedAssignedHomeworkIds || []),
-         ...(reportDraft.selectedHomeworkIds || []),
-       ])),
-       homeworkSummary,
-       assignedHomeworkSummary,
-       testSummary,
-       status: isSendNow ? LESSON_REPORT_STATUS.SENT : (previous?.status || LESSON_REPORT_STATUS.DRAFT),
-       isModified: action === 'save' ? true : Boolean(reportDraft.isModified || previous?.isModified),
-       sendStatus: isSendNow
-         ? LESSON_REPORT_SEND_STATUS.SENT
-         : (isScheduled ? LESSON_REPORT_SEND_STATUS.SCHEDULED : LESSON_REPORT_SEND_STATUS.DRAFT),
-       sendMode: isScheduled ? 'scheduled' : 'now',
-       scheduledSendAt: isScheduled ? new Date(scheduledSendAt) : null,
-       scheduledBy: isScheduled ? (profileDocId || 'staff') : null,
-       updatedAt: now,
-       updatedBy: profileDocId || 'staff',
-       createdAt: previous?.createdAt || now,
-       createdBy: previous?.createdBy || profileDocId || 'staff',
-       sentAt: previous?.sentAt || (isFirstSend ? now : null),
-       sentBy: previous?.sentBy || (isFirstSend ? (profileDocId || 'staff') : null),
-       lastEditedAfterSentAt: previous?.status === LESSON_REPORT_STATUS.SENT ? now : null,
-@@ -820,66 +856,75 @@ export default function LessonReportManagement({
-       body: `${student?.name || '학생'} 학생의 수업 리포트가 도착했습니다.`,
-       isRead: false,
-       createdAt: serverTimestamp(),
-       payload: {
-         reportId: reportDraft.id,
-         studentId: reportDraft.studentId,
-         classId: reportDraft.classId,
-         lessonDate: reportDraft.lessonDate,
-         type: 'lesson_report',
-         refCollection: 'lessonReports',
-       },
-     })));
- 
-     await setDoc(
-       doc(db, 'lessonReports', reportDraft.id),
-       {
-         studentNotificationSent: Boolean(student?.authUid),
-         parentNotificationSent: parentAuthUids.length > 0,
-       },
-       { merge: true },
-     );
-   };
- 
-   const persistReport = async ({ reportDraft, action, closeDraft = true }) => {
-     if (!reportDraft?.id) throw new Error('리포트 ID가 없어 저장할 수 없습니다.');
--    const previous = reportMap.get(reportDraft.id);
-+    const draftKey = buildLessonReportId({ studentId: reportDraft.studentId, classId: reportDraft.classId, lessonDate: toYmd(reportDraft.lessonDate) }) || reportDraft.id;
-+    const previous = reportMap.get(draftKey) || reportMap.get(reportDraft.id);
-     const isCreate = !previous;
--    console.log('[lesson-report save] click', { action, reportId: reportDraft.id, isCreate, reportDraft });
-     const { payload, student, isFirstSend } = buildPayload({ reportDraft, previous, action });
--    console.log('[lesson-report save] payload', payload);
--    console.log('[lesson-report save] branch', { isCreate, action, reportId: reportDraft.id });
-+    if (process.env.NODE_ENV === 'development') {
-+      console.debug('[lesson-report save] payload', {
-+        reportId: payload.id,
-+        payloadId: payload.id,
-+        studentId: payload.studentId,
-+        classId: payload.classId,
-+        lessonDate: payload.lessonDate,
-+        status: payload.status,
-+        sendStatus: payload.sendStatus,
-+        selectedAssignedHomeworkIds: payload.selectedAssignedHomeworkIds,
-+        assignedHomeworkSummary: payload.assignedHomeworkSummary,
-+      });
-+    }
- 
--    await setDoc(doc(db, 'lessonReports', reportDraft.id), payload, { merge: true });
--    console.log('[lesson-report save] doc persisted', { reportId: reportDraft.id });
-+    await setDoc(doc(db, 'lessonReports', payload.id), payload, { merge: true });
- 
-     if (isFirstSend && action === 'send') {
--      await notifyForFirstSend({ reportDraft, student });
-+      await notifyForFirstSend({ reportDraft: payload, student });
-     }
- 
-     setLocalReportMap((prev) => ({ ...prev, [payload.id]: payload }));
--    console.log('[lesson-report save] ui state updated', { reportId: reportDraft.id, nextStatus: payload.status, nextSendStatus: payload.sendStatus });
- 
-     if (closeDraft) {
-       setDraft(null);
-     } else {
-       setDraft(payload);
-     }
-     setDraftError('');
-   };
- 
-   const saveReport = async () => {
-     if (!draft) return;
-     setReportSaving(true);
-     try {
-       await persistReport({ reportDraft: draft, action: 'save', closeDraft: false });
-     } catch (error) {
-       setDraftError(error?.message || '수업 리포트 저장에 실패했습니다. 다시 시도해 주세요.');
-     } finally {
-       setReportSaving(false);
-     }
-   };
- 
-   const sendReport = async ({ reportDraft, closeDraft = true }) => {
-     if (!reportDraft) return;
-     const action = sendMode === 'scheduled' ? 'schedule' : 'send';
-     if (action === 'schedule' && !scheduledSendAt) {
+     }),
+     [draft?.selectedAssignedHomeworkIds, draft?.selectedHomeworkIds, homeworkAssignments],
