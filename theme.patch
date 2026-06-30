@@ -1,12 +1,78 @@
+diff --git a/firestore.rules b/firestore.rules
+index 4020be7df9635e90eca144751452446fa02e45e5..a79be76f72eeab6e8a54f8f4485c08ffff677fc7 100644
+--- a/firestore.rules
++++ b/firestore.rules
+@@ -510,50 +510,63 @@ service cloud.firestore {
+           'deletionRequested',
+           'deletionRequestedAt',
+           'deletionRequestedBy',
+           'active',
+           'updatedAt'
+         ])
+         && request.resource.data.status == 'deletion_requested'
+         && request.resource.data.deletionRequested == true
+         && request.resource.data.deletionRequestedBy == uid()
+         && request.resource.data.active == false;
+     }
+ 
+     /* =========================
+        users
+     ========================= */
+     match /users/{userId} {
+       allow read: if signedIn();
+       allow write: if isStaffOrAdminOrTeacher();
+       allow update: if isAccountDeletionUpdate(userId);
+     }
+     
+     match /users/{studentId}/staffMemos/{memoId} {
+       allow read, write: if request.auth != null && isStaffOrAdminOrTeacher();
+     }
+ 
++    match /accountDeletionRequests/{requestId} {
++      allow create: if signedIn()
++        && request.resource.data.requesterAuthUid == uid()
++        && request.resource.data.status == 'pending';
++      allow read, list: if isStaffOrAdmin();
++      allow update: if isStaffOrAdmin()
++        && resource.data.status == 'pending'
++        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'completedAt', 'completedBy'])
++        && request.resource.data.status == 'completed'
++        && request.resource.data.completedBy == uid();
++      allow delete: if false;
++    }
++
+     // ✅ userAuthIndex 읽기 허용 유지
+     match /userAuthIndex/{u} { allow read: if request.auth.uid == u; }
+ 
+     /* =========================
+        classes
+     ========================= */
+     // 정책: classes.students에는 studentDocId(users 문서ID)만 저장을 권장.
+     // 레거시(authUid) 조회는 당분간 유지하지만, 데이터는 점진적으로 정리한다.
+     match /classes/{classId} {
+       allow read: if signedIn();
+       allow write: if isStaffOrAdminOrTeacher();
+     }
+     
+     match /closures/{closureId} {
+       allow read: if signedIn();
+       allow create, update, delete: if isStaffOrAdminOrTeacher();
+     }
+ 
+     /* =========================
+        tests / lessonLogs / homeworkAssignments 등
+        (여기는 기존대로 두되, isClassMember가 B안 대응되었기 때문에 대부분 살아남)
+     ========================= */
+     match /tests/{docId} {
+       allow read: if signedIn();
+       allow write: if isStaffOrAdminOrTeacher();
 diff --git a/src/accountDeletion.js b/src/accountDeletion.js
-index cd0a61dfbf39100eabbe2ab5b96e23feb183afc9..b88d257a78df5a6a31679289ec41dc5701ca79b2 100644
+index b88d257a78df5a6a31679289ec41dc5701ca79b2..8f1411a0aa46d9199d6d8b23271a7578008859b0 100644
 --- a/src/accountDeletion.js
 +++ b/src/accountDeletion.js
-@@ -1,16 +1,41 @@
--import { httpsCallable } from 'firebase/functions';
--import { functions } from './firebase/client';
-+import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
-+import { auth, db } from './firebase/client';
+@@ -1,37 +1,37 @@
+ import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
+ import { auth, db } from './firebase/client';
  
  export const DELETION_REQUESTED_MESSAGE = '탈퇴 요청이 접수된 계정입니다. 재이용을 원하시면 학원에 문의해주세요.';
  
@@ -16,220 +82,457 @@ index cd0a61dfbf39100eabbe2ab5b96e23feb183afc9..b88d257a78df5a6a31679289ec41dc57
    || profile?.status === 'deletion_requested'
  );
  
--export const requestAccountDeletion = async () => {
--  const callable = httpsCallable(functions, 'requestAccountDeletion');
--  const result = await callable();
--  return result?.data || { success: true };
-+export const ACCOUNT_DELETION_SUCCESS_MESSAGE = '계정 삭제 요청이 접수되었습니다. 처리 완료 후 안내드리겠습니다.';
+-export const ACCOUNT_DELETION_SUCCESS_MESSAGE = '계정 삭제 요청이 접수되었습니다. 처리 완료 후 안내드리겠습니다.';
++export const ACCOUNT_DELETION_SUCCESS_MESSAGE = '계정 연결 및 개인정보 삭제 요청이 접수되었습니다. 처리에는 영업일 기준 최대 7일이 소요될 수 있습니다.';
+ 
+ const resolveDisplayName = (profile = {}, fallbackUser = null) => (
+   profile.displayName
+   || profile.name
+   || fallbackUser?.displayName
+   || ''
+ );
+ 
+ export const requestAccountDeletion = async ({ user = auth.currentUser, userProfile = null, role = '', profileDocId = '' } = {}) => {
+   if (!user?.uid) {
+     throw new Error('로그인 정보가 없어 계정 삭제 요청을 접수할 수 없습니다.');
+   }
+ 
+   const requesterRole = role || userProfile?.role || '';
+   const userDocId = profileDocId || userProfile?.profileDocId || userProfile?.userDocId || user.uid;
+ 
+   await addDoc(collection(db, 'accountDeletionRequests'), {
+     requesterAuthUid: user.uid,
+     userDocId,
+     role: requesterRole,
+     email: userProfile?.email || user.email || '',
+     displayName: resolveDisplayName(userProfile, user),
+     status: 'pending',
+     requestedAt: serverTimestamp(),
+     source: 'mobile_app',
+diff --git a/src/admin/accountDeletionRequestsService.js b/src/admin/accountDeletionRequestsService.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..5387a1cf95bb4fe79b660fde807e283f42932788
+--- /dev/null
++++ b/src/admin/accountDeletionRequestsService.js
+@@ -0,0 +1,31 @@
++import { collection, doc, getDocs, query, serverTimestamp, updateDoc, where } from 'firebase/firestore';
++import { auth, db } from '../firebase/client';
 +
-+const resolveDisplayName = (profile = {}, fallbackUser = null) => (
-+  profile.displayName
-+  || profile.name
-+  || fallbackUser?.displayName
-+  || ''
-+);
++const REQUEST_COLLECTION = 'accountDeletionRequests';
 +
-+export const requestAccountDeletion = async ({ user = auth.currentUser, userProfile = null, role = '', profileDocId = '' } = {}) => {
-+  if (!user?.uid) {
-+    throw new Error('로그인 정보가 없어 계정 삭제 요청을 접수할 수 없습니다.');
++export const getPendingAccountDeletionRequests = async () => {
++  const snapshot = await getDocs(query(
++    collection(db, REQUEST_COLLECTION),
++    where('status', '==', 'pending')
++  ));
++
++  return snapshot.docs
++    .map((requestDoc) => ({ id: requestDoc.id, ...requestDoc.data() }))
++    .sort((a, b) => {
++      const aMs = a.requestedAt?.toMillis?.() || 0;
++      const bMs = b.requestedAt?.toMillis?.() || 0;
++      return bMs - aMs;
++    });
++};
++
++export const completeAccountDeletionRequest = async (requestId, completedBy = auth.currentUser?.uid || '') => {
++  if (!requestId) {
++    throw new Error('삭제 요청 문서 ID가 없습니다.');
 +  }
 +
-+  const requesterRole = role || userProfile?.role || '';
-+  const userDocId = profileDocId || userProfile?.profileDocId || userProfile?.userDocId || user.uid;
-+
-+  await addDoc(collection(db, 'accountDeletionRequests'), {
-+    requesterAuthUid: user.uid,
-+    userDocId,
-+    role: requesterRole,
-+    email: userProfile?.email || user.email || '',
-+    displayName: resolveDisplayName(userProfile, user),
-+    status: 'pending',
-+    requestedAt: serverTimestamp(),
-+    source: 'mobile_app',
++  await updateDoc(doc(db, REQUEST_COLLECTION, requestId), {
++    status: 'completed',
++    completedAt: serverTimestamp(),
++    completedBy,
 +  });
-+
-+  return { success: true };
++};
+diff --git a/src/app/AppRoutes.jsx b/src/app/AppRoutes.jsx
+index 0bb0743992c8c7134aeec645da0513ed20a9f743..b83c2606019de331d65a313b965dd84039a51ea9 100644
+--- a/src/app/AppRoutes.jsx
++++ b/src/app/AppRoutes.jsx
+@@ -5,50 +5,51 @@ import AppShell from './AppShell';
+ import {
+     calculateClassSessions, calculateGradeComparison,
+     calculateHomeworkStats
+ } from '../utils/helpers';
+ import StudentHome from '../pages/StudentHome';
+ import Home from '../pages/Home';
+ import StudentManagement from '../pages/StudentManagement';
+ import StudentDetail from '../pages/StudentDetail';
+ import LessonReportManagement from '../pages/LessonReportManagement';
+ import LessonManagement from '../pages/LessonManagement';
+ import AttendanceManagement from '../pages/AttendanceManagement';
+ import HomeworkManagement from '../pages/HomeworkManagement';
+ import GradeManagement from '../pages/GradeManagement';
+ import ClinicManagement from '../pages/ClinicManagement';
+ import ClosureManagement from '../pages/ClosureManagement';
+ import InternalCommunication from '../pages/InternalCommunication';
+ import PaymentManagement from '../pages/PaymentManagement';
+ import ParentHome from '../pages/ParentHome';
+ import ParentStudentPicker from '../pages/parent/ParentStudentPicker';
+ import OnboardingPage from '../pages/OnboardingPage';
+ import StaffManagement from '../pages/admin/StaffManagement';
+ import AdminNotificationsPage from '../pages/admin/AdminNotificationsPage';
+ import AdminPaymentsPage from '../pages/admin/AdminPaymentsPage';
+ import AdminSettingsPage from '../pages/admin/AdminSettingsPage';
+ import AdminLogsPage from '../pages/admin/AdminLogsPage';
++import AccountDeletionRequestsPage from '../pages/admin/AccountDeletionRequestsPage';
+ import MasterViewPage from '../pages/admin/MasterViewPage';
+ import InviteManagementPage from '../pages/admin/InviteManagementPage';
+ import FormulaBookManagement from '../pages/FormulaBookManagement';
+ import StaffMobileMessengerPage from '../pages/StaffMobileMessengerPage';
+ import AdminRoute from '../routes/AdminRoute';
+ import StaffOrTeachingRoute from '../routes/StaffOrTeachingRoute';
+ import useAuth from '../auth/useAuth';
+ import {
+     ROLE,
+     isParentRole,
+     isStudentRole,
+     isAdminRole,
+     isStaffRole,
+     isStaffOrTeachingRole,
+     isViewerGroupRole,
+ } from '../constants/roles';
+ import { db, functions } from '../firebase/client';
+ import { invalidateStaffDataCache, loadStaffDataOnce, loadViewerDataOnce } from '../data/firestoreSync';
+ import { createLinkCode, createStaffUser } from '../admin/staffService';
+ import { claimStudentLinkCode } from '../parent/linkCodeService';
+ import { useParentContext } from '../parent';
+ import { logClientError } from '../utils/errorLogger';
+ import { isCapacitorNativeEnvironment, STAFF_MOBILE_MESSENGER_ROUTE } from '../utils/capacitorEnvironment';
+ import { addVideoMemo, deleteVideoMemo, updateVideoMemo } from '../domain/memo/videoMemo.service';
+ import { getAssignmentQuestionNumbers, normalizeHomeworkResultMapForDisplay } from '../domain/homework/homework.service';
+@@ -73,50 +74,51 @@ import {
+     writeBatch,
+ } from 'firebase/firestore';
+ import { httpsCallable } from 'firebase/functions';
+ 
+ const PAGE_ROUTES = {
+     home: '/home',
+     lessons: '/lessons',
+     lessonReports: '/lesson-reports',
+     students: '/students',
+     attendance: '/attendance',
+     grades: '/grades',
+     homework: '/homework',
+     clinic: '/clinic',
+     payment: '/payment',
+     communication: '/communication',
+     closures: '/closures',
  };
-diff --git a/src/components/common/AccountDeletionRequestButton.jsx b/src/components/common/AccountDeletionRequestButton.jsx
-index 63ec37785e74ac472300b6acdc1042e9759c35d3..110e4b3c85584546216396d996dd10ae800e55c3 100644
---- a/src/components/common/AccountDeletionRequestButton.jsx
-+++ b/src/components/common/AccountDeletionRequestButton.jsx
-@@ -1,100 +1,91 @@
- import React, { useState } from 'react';
- import ModalPortal from './ModalPortal';
- import { Icon } from '../../utils/helpers';
--import { requestAccountDeletion } from '../../accountDeletion';
-+import useAuth from '../../auth/useAuth';
-+import { ACCOUNT_DELETION_SUCCESS_MESSAGE, requestAccountDeletion } from '../../accountDeletion';
  
--const GUIDE_TEXT = '탈퇴 요청 시 계정은 즉시 서비스 이용이 제한되며, 학습 기록은 개인정보처리방침에 따른 보관 기간 동안 분리 보관 후 삭제될 수 있습니다.';
-+const GUIDE_TEXT = '계정 연결 및 개인정보 삭제를 요청합니다. 처리에는 영업일 기준 최대 7일이 소요될 수 있습니다.';
+ const ADMIN_ROUTES = new Set([
+     '/admin/staff',
+     '/admin/invites',
+     '/admin/notifications',
+     '/admin/payments',
+     '/admin/settings',
+     '/admin/logs',
++    '/admin/account-deletion-requests',
+     '/master-view',
+     '/staff/invites',
+     '/formula-books',
+ ]);
  
- export default function AccountDeletionRequestButton({ onAfterRequested, className = '' }) {
-+  const { user, userProfile, role, profileDocId } = useAuth();
-   const [isOpen, setIsOpen] = useState(false);
--  const [checked, setChecked] = useState(false);
-   const [submitting, setSubmitting] = useState(false);
-   const [error, setError] = useState('');
+ const getPageKeyFromPath = (pathname) => {
+     if (pathname === '/lesson-reports' || pathname.startsWith('/lesson-reports/')) return 'lessonReports';
+     if (pathname.startsWith('/students/')) return 'students';
+     if (ADMIN_ROUTES.has(pathname)) return pathname;
+     const entry = Object.entries(PAGE_ROUTES).find(([, path]) => path === pathname);
+     if (entry) return entry[0];
+     return 'lessons';
+ };
  
-   const close = () => {
-     if (submitting) return;
-     setIsOpen(false);
--    setChecked(false);
-     setError('');
-   };
+ const getPathForPage = (pageKey, studentId) => {
+     if (!pageKey) return PAGE_ROUTES.lessons;
+     if (pageKey.startsWith('/')) return pageKey;
+     if (pageKey === 'students' && studentId) return `${PAGE_ROUTES.students}/${studentId}`;
+     return PAGE_ROUTES[pageKey] || PAGE_ROUTES.lessons;
+ };
  
-   const handleSubmit = async () => {
--    if (!checked || submitting) return;
-+    if (submitting) return;
-     setSubmitting(true);
-     setError('');
-     try {
--      await requestAccountDeletion();
-+      await requestAccountDeletion({ user, userProfile, role, profileDocId });
-+      alert(ACCOUNT_DELETION_SUCCESS_MESSAGE);
-       await onAfterRequested?.();
-     } catch (err) {
-       console.error('[AccountDeletionRequestButton] request failed:', err);
-       setError(err?.message || '탈퇴 요청 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.');
-       setSubmitting(false);
-     }
-   };
+ const AppShellLayout = ({
+     page,
+     notifications,
+     students,
+@@ -2210,38 +2212,46 @@ export default function AppRoutes({ user, role, studentIds }) {
+             <Route
+                 path="admin/payments"
+                 element={(
+                     <AdminRoute>
+                         <AdminPaymentsPage />
+                     </AdminRoute>
+                 )}
+             />
+             <Route
+                 path="admin/settings"
+                 element={(
+                     <AdminRoute>
+                         <AdminSettingsPage />
+                     </AdminRoute>
+                 )}
+             />
  
-   return (
-     <>
-       <button
-         type="button"
-         onClick={() => setIsOpen(true)}
-         className={className || 'flex w-full items-center justify-center gap-2 rounded-2xl border border-rose-200 bg-white px-4 py-3 text-sm font-bold text-rose-600 shadow-sm active:scale-[0.99]'}
-       >
-         <Icon name="trash" className="h-4 w-4" />
--        계정 탈퇴 요청
-+        계정 삭제 요청
-       </button>
- 
-       {isOpen && (
-         <ModalPortal>
-           <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm" onClick={close}>
-             <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-               <div className="mb-4 flex items-start justify-between gap-4">
-                 <div>
--                  <h3 className="text-lg font-extrabold text-gray-900">계정 탈퇴 요청</h3>
--                  <p className="mt-1 text-xs text-gray-500">요청 즉시 서비스 이용이 제한됩니다.</p>
-+                  <h3 className="text-lg font-extrabold text-gray-900">계정 삭제 요청</h3>
-                 </div>
-                 <button type="button" onClick={close} className="text-gray-400 hover:text-gray-700" aria-label="닫기">
-                   <Icon name="x" className="h-5 w-5" />
-                 </button>
-               </div>
- 
-               <p className="rounded-xl border border-rose-100 bg-rose-50 p-4 text-sm leading-6 text-rose-800">
-                 {GUIDE_TEXT}
-               </p>
- 
--              <label className="mt-4 flex cursor-pointer items-center gap-3 rounded-xl border border-gray-200 p-3 text-sm font-semibold text-gray-700">
--                <input
--                  type="checkbox"
--                  checked={checked}
--                  onChange={(e) => setChecked(e.target.checked)}
--                  className="h-4 w-4 rounded border-gray-300 text-rose-600 focus:ring-rose-500"
--                />
--                위 내용을 확인했습니다.
--              </label>
- 
-               {error && <p className="mt-3 text-sm font-semibold text-rose-600">{error}</p>}
- 
-               <div className="mt-5 grid grid-cols-2 gap-2">
-                 <button
-                   type="button"
-                   onClick={close}
-                   disabled={submitting}
-                   className="rounded-xl border border-gray-200 px-4 py-3 text-sm font-bold text-gray-700 disabled:opacity-60"
-                 >
-                   취소
-                 </button>
-                 <button
-                   type="button"
-                   onClick={handleSubmit}
--                  disabled={!checked || submitting}
-+                  disabled={submitting}
-                   className="rounded-xl bg-rose-600 px-4 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-gray-300"
-                 >
--                  {submitting ? '요청 중...' : '탈퇴 요청'}
-+                  {submitting ? '요청 중...' : '요청하기'}
-                 </button>
-               </div>
-             </div>
-           </div>
-         </ModalPortal>
-       )}
-     </>
+             <Route
+                 path="admin/logs"
+                 element={(
+                     <AdminRoute>
+                         <AdminLogsPage />
+                     </AdminRoute>
+                 )}
+             />
++            <Route
++                path="admin/account-deletion-requests"
++                element={(
++                    <AdminRoute>
++                        <AccountDeletionRequestsPage />
++                    </AdminRoute>
++                )}
++            />
+             <Route
+                 path="master-view"
+                 element={(
+                     <AdminRoute>
+                         <MasterViewPage students={students} classes={classes} userId={userId} homeworkAssignments={homeworkAssignments} homeworkResults={homeworkResults} attendanceLogs={attendanceLogs} lessonLogs={lessonLogs} notices={announcements} tests={tests} grades={grades} classTestStats={classTestStats} videoProgress={videoProgress} videoMemos={videoMemos} externalSchedules={externalSchedules} clinicLogs={clinicLogs} closures={closures} lessonReports={lessonReports} />
+                     </AdminRoute>
+                 )}
+             />
+             <Route path="*" element={<Navigate to={PAGE_ROUTES.lessons} replace />} />
+         </Route>
+     </Routes>
    );
  }
-diff --git a/src/pages/StaffMobileMessengerPage.jsx b/src/pages/StaffMobileMessengerPage.jsx
-index 42062d47768d25dd477cd9aeaaf16389dec154fa..fc21a54cf8e2f46efe757f3e907124f9beb51122 100644
---- a/src/pages/StaffMobileMessengerPage.jsx
-+++ b/src/pages/StaffMobileMessengerPage.jsx
-@@ -1,40 +1,55 @@
- import React from 'react';
-+import { useNavigate } from 'react-router-dom';
- import InternalMessengerPanel from '../components/messenger/InternalMessengerPanel';
-+import AccountDeletionRequestButton from '../components/common/AccountDeletionRequestButton';
+diff --git a/src/layout/Header.jsx b/src/layout/Header.jsx
+index d2a9c5b1b32fabc0bb24092b80acf2e20358e68e..7eeca8b9192d79097092e9a25645414ad21b4988 100644
+--- a/src/layout/Header.jsx
++++ b/src/layout/Header.jsx
+@@ -14,50 +14,51 @@ export default function Header({ page }) {
+         [ROLE.ADMIN]: '관리자',
+         [ROLE.STAFF]: '직원',
+         [ROLE.TEACHER]: '강사',
+         [ROLE.PARENT]: '학부모',
+         [ROLE.STUDENT]: '학생',
+     };
+     const roleLabel = roleLabels[role] || '권한 확인 중';
+     const avatarLabel = displayName?.[0] || '?';
  
- export default function StaffMobileMessengerPage({
-   userId,
-   userRole,
-   students = [],
-   parents = [],
-   classes = [],
-   onLogout,
-   profileDocId = '',
- }) {
-+  const navigate = useNavigate();
+     const getPageTitle = (pageKey) => {
+         const titles = {
+             home: '대시보드',
+             students: '학생 관리',
+             lessons: '수업 관리',
+             attendance: '출결 관리',
+             grades: '성적 관리',
+             homework: '과제 관리',
+             clinic: '클리닉 관리',
+             communication: '내부 소통',
+             payment: '교재 및 수납',
+             '/admin/staff': '직원 관리',
+             '/admin/invites': '초대 코드 관리',
+             '/admin/notifications': '알림 로그',
+             '/admin/payments': '결제 관리',
+             '/admin/settings': '시스템 설정',
++            '/admin/account-deletion-requests': '계정 삭제 요청 관리',
+         };
+         return titles[pageKey] || '페이지';
+     };
+ 
+     return (
+         <header className="h-14 sm:h-16 bg-white border-b border-gray-200 flex items-center justify-between px-4 sm:px-8 sticky top-0 z-10 shadow-sm">
+             {/* 좌측: 페이지 타이틀 */}
+             <div className="flex items-center">
+                 <h2 className="text-xl font-bold text-gray-800 tracking-tight">
+                     {getPageTitle(page)}
+                 </h2>
+             </div>
+ 
+             {/* 우측: 유틸리티 버튼 */}
+             <div className="flex items-center space-x-3 sm:space-x-4">
+ 
+                 <div className="flex items-center space-x-2 sm:space-x-3 cursor-pointer p-1.5 rounded-lg hover:bg-gray-50 transition">
+                     <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-[#eef2ff] flex items-center justify-center text-[#455fab] font-bold text-sm border border-[#cfd8ff]">
+                         {avatarLabel}
+                     </div>
+                     <div className="text-sm">
+                         <p className="font-bold text-gray-700 leading-none">{displayName}</p>
+                         <p className="text-xs text-gray-400 mt-0.5 sm:mt-1">{roleLabel}</p>
+                     </div>
+                 </div>
+diff --git a/src/layout/Sidebar.jsx b/src/layout/Sidebar.jsx
+index 9280ec619fd86f625963f4fd89168c485ce75b09..79278c19f1b657be753b4bb9f4bdc9457f51c3eb 100644
+--- a/src/layout/Sidebar.jsx
++++ b/src/layout/Sidebar.jsx
+@@ -7,50 +7,51 @@ import logoHorizontal from '../assets/logo/logo-horizontal.png';
+ 
+ export default function Sidebar({ page, setPage, onLogout, isOpen, onClose }) {
+     const { role } = useAuth();
+     const isAdmin = isAdminRole(role);
+     const isStaffGroup = isStaffGroupRole(role);
+     const isTeachingGroup = isTeachingGroupRole(role);
+     const canAccessInvites = isStaffGroup || isTeachingGroup;
+     const roleLabel = isAdminRole(role) ? '관리자' : '직원';
+     // ... (menuItems는 그대로 유지) ...
+     const menuItems = [
+         { name: '대시보드', key: 'home', icon: 'dashboard' },
+         { name: '수업 관리', key: 'lessons', icon: 'fileText' },
+         { name: '학생 관리', key: 'students', icon: 'users' },
+         { name: '수업 리포트 관리', key: 'lessonReports', icon: 'clipboardCheck' },
+         { name: '출결 관리', key: 'attendance', icon: 'calendar' },
+         { name: '성적 관리', key: 'grades', icon: 'barChart' },
+         { name: '과제 관리', key: 'homework', icon: 'clipboardCheck' },
+         { name: '클리닉 관리', key: 'clinic', icon: 'clock' },
+         { name: '휴강 관리', key: 'closures', icon: 'calendarPlus' },
+         { name: '교재/수납', key: 'payment', icon: 'wallet' },
+         { name: '내부 소통', key: 'communication', icon: 'messageSquare' },
+     ];
+     const staffTools = [
+         { name: '공식집 관리', key: '/formula-books', icon: 'book' },
+         { name: '초대 코드', key: '/staff/invites', icon: 'link' },
++        { name: '삭제 요청', key: '/admin/account-deletion-requests', icon: 'trash' },
+     ];
+     const adminMenuItems = [
+         { name: '마스터뷰', key: '/master-view', icon: 'eye' },
+         { name: '직원 관리', key: '/admin/staff', icon: 'users' },
+         { name: '알림 로그', key: '/admin/notifications', icon: 'bell' },
+         { name: '운영 로그', key: '/admin/logs', icon: 'activity' },
+         { name: '결제 관리', key: '/admin/payments', icon: 'creditCard' },
+         { name: '시스템 설정', key: '/admin/settings', icon: 'settings' },
+     ];
+     const adminSectionItems = isAdmin
+         ? [...staffTools, ...adminMenuItems]
+         : isStaffGroup
+             ? staffTools
+             : canAccessInvites
+                 ? staffTools
+                 : [];
+     
+     return (
+         <aside 
+             className={`
+                 /* 기본 스타일 (모바일/태블릿 세로 모드) */
+                 fixed inset-y-0 left-0 z-50 w-64 bg-white h-screen border-r border-gray-200 
+                 flex flex-col justify-between transition-transform duration-300 ease-in-out
+                 
+                 /* 닫혀있으면 왼쪽으로 숨김, 열리면 보임 */
+diff --git a/src/pages/admin/AccountDeletionRequestsPage.jsx b/src/pages/admin/AccountDeletionRequestsPage.jsx
+new file mode 100644
+index 0000000000000000000000000000000000000000..537eefc6e174867f38bc2bdd62703964c86b541a
+--- /dev/null
++++ b/src/pages/admin/AccountDeletionRequestsPage.jsx
+@@ -0,0 +1,117 @@
++import React, { useEffect, useState } from 'react';
++import useAuth from '../../auth/useAuth';
++import { completeAccountDeletionRequest, getPendingAccountDeletionRequests } from '../../admin/accountDeletionRequestsService';
 +
-+  const handleAfterDeletionRequested = async () => {
-+    await onLogout?.();
-+    navigate('/login', { replace: true });
++const formatTimestamp = (value) => {
++  const date = value?.toDate?.();
++  if (!date) return '-';
++  return new Intl.DateTimeFormat('ko-KR', {
++    year: 'numeric',
++    month: '2-digit',
++    day: '2-digit',
++    hour: '2-digit',
++    minute: '2-digit',
++  }).format(date);
++};
++
++const EMPTY_TEXT = '대기 중인 계정 삭제 요청이 없습니다.';
++
++export default function AccountDeletionRequestsPage() {
++  const { user } = useAuth();
++  const [requests, setRequests] = useState([]);
++  const [loading, setLoading] = useState(true);
++  const [error, setError] = useState('');
++  const [completingId, setCompletingId] = useState('');
++
++  const loadRequests = async () => {
++    setLoading(true);
++    setError('');
++    try {
++      const pendingRequests = await getPendingAccountDeletionRequests();
++      setRequests(pendingRequests);
++    } catch (err) {
++      console.error('[AccountDeletionRequestsPage] load failed:', err);
++      setError('계정 삭제 요청 목록을 불러오지 못했습니다. 권한 또는 네트워크를 확인해주세요.');
++    } finally {
++      setLoading(false);
++    }
 +  };
 +
-   return (
-     <main className="flex h-[100dvh] min-h-0 flex-col bg-gray-50 text-gray-900 pt-[env(safe-area-inset-top)]">
-       <header className="sticky top-0 z-20 border-b border-gray-200 bg-white/95 px-3 py-2 backdrop-blur">
-         <div className="flex items-center justify-between gap-3">
-           <h1 className="text-base font-bold text-gray-900">메신저</h1>
--          <button
--            type="button"
--            onClick={onLogout}
--            className="rounded-full border border-gray-300 bg-white px-2.5 py-1 text-xs font-semibold text-gray-700 active:bg-gray-100"
--          >
--            로그아웃
--          </button>
-+          <div className="flex items-center gap-2">
-+            <AccountDeletionRequestButton
-+              onAfterRequested={handleAfterDeletionRequested}
-+              className="rounded-full border border-rose-200 bg-white px-2.5 py-1 text-xs font-semibold text-rose-600 active:bg-rose-50"
-+            />
-+            <button
-+              type="button"
-+              onClick={onLogout}
-+              className="rounded-full border border-gray-300 bg-white px-2.5 py-1 text-xs font-semibold text-gray-700 active:bg-gray-100"
-+            >
-+              로그아웃
-+            </button>
++  useEffect(() => {
++    loadRequests();
++  }, []);
++
++  const handleComplete = async (request) => {
++    if (!window.confirm(`${request.displayName || request.email || request.id} 요청을 처리 완료로 변경할까요?`)) return;
++
++    setCompletingId(request.id);
++    setError('');
++    try {
++      await completeAccountDeletionRequest(request.id, user?.uid || '');
++      setRequests((current) => current.filter((item) => item.id !== request.id));
++    } catch (err) {
++      console.error('[AccountDeletionRequestsPage] complete failed:', err);
++      setError('처리 완료 저장에 실패했습니다. 권한 또는 네트워크를 확인해주세요.');
++    } finally {
++      setCompletingId('');
++    }
++  };
++
++  return (
++    <div className="space-y-6">
++      <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
++        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
++          <div>
++            <h1 className="text-2xl font-extrabold text-gray-900">계정 삭제 요청 관리</h1>
++            <p className="mt-2 text-sm text-gray-500">pending 상태의 계정 연결 및 개인정보 삭제 요청을 확인하고 완료 처리합니다.</p>
 +          </div>
-         </div>
-       </header>
-       <section className="min-h-0 flex-1 px-0 py-0">
-         <InternalMessengerPanel
-           userId={userId}
-           userRole={userRole}
-           students={students}
-           parents={parents}
-           classes={classes}
-           mobileMessengerOnly
-           profileDocId={profileDocId}
-         />
-       </section>
-     </main>
-   );
- }
++          <button
++            type="button"
++            onClick={loadRequests}
++            disabled={loading}
++            className="rounded-xl border border-gray-200 px-4 py-2 text-sm font-bold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
++          >
++            새로고침
++          </button>
++        </div>
++        {error && <p className="mt-4 rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-600">{error}</p>}
++      </div>
++
++      <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
++        <div className="overflow-x-auto">
++          <table className="min-w-full divide-y divide-gray-100 text-sm">
++            <thead className="bg-gray-50 text-left text-xs font-bold uppercase tracking-wide text-gray-500">
++              <tr>
++                {['요청일', '이름', '이메일', '역할', 'userDocId', 'requesterAuthUid', '상태', '관리'].map((header) => (
++                  <th key={header} className="whitespace-nowrap px-4 py-3">{header}</th>
++                ))}
++              </tr>
++            </thead>
++            <tbody className="divide-y divide-gray-100 bg-white">
++              {loading ? (
++                <tr><td colSpan="8" className="px-4 py-10 text-center font-semibold text-gray-500">불러오는 중...</td></tr>
++              ) : requests.length === 0 ? (
++                <tr><td colSpan="8" className="px-4 py-10 text-center font-semibold text-gray-500">{EMPTY_TEXT}</td></tr>
++              ) : requests.map((request) => (
++                <tr key={request.id} className="hover:bg-gray-50">
++                  <td className="whitespace-nowrap px-4 py-3 text-gray-700">{formatTimestamp(request.requestedAt)}</td>
++                  <td className="whitespace-nowrap px-4 py-3 font-semibold text-gray-900">{request.displayName || '-'}</td>
++                  <td className="whitespace-nowrap px-4 py-3 text-gray-700">{request.email || '-'}</td>
++                  <td className="whitespace-nowrap px-4 py-3 text-gray-700">{request.role || '-'}</td>
++                  <td className="whitespace-nowrap px-4 py-3 font-mono text-xs text-gray-600">{request.userDocId || '-'}</td>
++                  <td className="whitespace-nowrap px-4 py-3 font-mono text-xs text-gray-600">{request.requesterAuthUid || '-'}</td>
++                  <td className="whitespace-nowrap px-4 py-3"><span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-bold text-amber-700">{request.status || '-'}</span></td>
++                  <td className="whitespace-nowrap px-4 py-3">
++                    <button type="button" onClick={() => handleComplete(request)} disabled={completingId === request.id} className="rounded-lg bg-[#455fab] px-3 py-2 text-xs font-bold text-white disabled:bg-gray-300">
++                      {completingId === request.id ? '저장 중...' : '처리 완료'}
++                    </button>
++                  </td>
++                </tr>
++              ))}
++            </tbody>
++          </table>
++        </div>
++      </div>
++    </div>
++  );
++}

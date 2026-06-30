@@ -36,6 +36,7 @@ export default function Header({ page }) {
             '/admin/notifications': '알림 로그',
             '/admin/payments': '결제 관리',
             '/admin/settings': '시스템 설정',
+            '/admin/account-deletion-requests': '계정 삭제 요청 관리',
         };
         return titles[pageKey] || '페이지';
     };

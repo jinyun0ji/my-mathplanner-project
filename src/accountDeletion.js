@@ -9,7 +9,7 @@ export const isDeletionRequestedProfile = (profile) => Boolean(
   || profile?.status === 'deletion_requested'
 );
 
-export const ACCOUNT_DELETION_SUCCESS_MESSAGE = '계정 삭제 요청이 접수되었습니다. 처리 완료 후 안내드리겠습니다.';
+export const ACCOUNT_DELETION_SUCCESS_MESSAGE = '계정 연결 및 개인정보 삭제 요청이 접수되었습니다. 처리에는 영업일 기준 최대 7일이 소요될 수 있습니다.';
 
 const resolveDisplayName = (profile = {}, fallbackUser = null) => (
   profile.displayName

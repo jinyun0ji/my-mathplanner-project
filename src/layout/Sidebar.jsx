@@ -29,6 +29,7 @@ export default function Sidebar({ page, setPage, onLogout, isOpen, onClose }) {
     const staffTools = [
         { name: '공식집 관리', key: '/formula-books', icon: 'book' },
         { name: '초대 코드', key: '/staff/invites', icon: 'link' },
+        { name: '삭제 요청', key: '/admin/account-deletion-requests', icon: 'trash' },
     ];
     const adminMenuItems = [
         { name: '마스터뷰', key: '/master-view', icon: 'eye' },

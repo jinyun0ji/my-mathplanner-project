@@ -27,6 +27,7 @@ import AdminNotificationsPage from '../pages/admin/AdminNotificationsPage';
 import AdminPaymentsPage from '../pages/admin/AdminPaymentsPage';
 import AdminSettingsPage from '../pages/admin/AdminSettingsPage';
 import AdminLogsPage from '../pages/admin/AdminLogsPage';
+import AccountDeletionRequestsPage from '../pages/admin/AccountDeletionRequestsPage';
 import MasterViewPage from '../pages/admin/MasterViewPage';
 import InviteManagementPage from '../pages/admin/InviteManagementPage';
 import FormulaBookManagement from '../pages/FormulaBookManagement';
@@ -95,6 +96,7 @@ const ADMIN_ROUTES = new Set([
     '/admin/payments',
     '/admin/settings',
     '/admin/logs',
+    '/admin/account-deletion-requests',
     '/master-view',
     '/staff/invites',
     '/formula-books',
@@ -2229,6 +2231,14 @@ export default function AppRoutes({ user, role, studentIds }) {
                 element={(
                     <AdminRoute>
                         <AdminLogsPage />
+                    </AdminRoute>
+                )}
+            />
+            <Route
+                path="admin/account-deletion-requests"
+                element={(
+                    <AdminRoute>
+                        <AccountDeletionRequestsPage />
                     </AdminRoute>
                 )}
             />
