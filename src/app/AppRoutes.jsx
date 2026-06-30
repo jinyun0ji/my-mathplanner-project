@@ -30,6 +30,7 @@ import AdminLogsPage from '../pages/admin/AdminLogsPage';
 import MasterViewPage from '../pages/admin/MasterViewPage';
 import InviteManagementPage from '../pages/admin/InviteManagementPage';
 import FormulaBookManagement from '../pages/FormulaBookManagement';
+import StaffMobileMessengerPage from '../pages/StaffMobileMessengerPage';
 import AdminRoute from '../routes/AdminRoute';
 import StaffOrTeachingRoute from '../routes/StaffOrTeachingRoute';
 import useAuth from '../auth/useAuth';
@@ -48,6 +49,7 @@ import { createLinkCode, createStaffUser } from '../admin/staffService';
 import { claimStudentLinkCode } from '../parent/linkCodeService';
 import { useParentContext } from '../parent';
 import { logClientError } from '../utils/errorLogger';
+import { STAFF_MOBILE_MESSENGER_ROUTE } from '../utils/capacitorEnvironment';
 import { addVideoMemo, deleteVideoMemo, updateVideoMemo } from '../domain/memo/videoMemo.service';
 import { getAssignmentQuestionNumbers, normalizeHomeworkResultMapForDisplay } from '../domain/homework/homework.service';
 import { recomputeClassTestStats } from '../domain/grade/classTestStats.service';
@@ -2095,6 +2097,19 @@ export default function AppRoutes({ user, role, studentIds }) {
 
   return (
     <Routes>
+        <Route
+            path={STAFF_MOBILE_MESSENGER_ROUTE.slice(1)}
+            element={(
+                <StaffMobileMessengerPage
+                    userId={userId}
+                    userRole={role}
+                    students={students}
+                    parents={parents}
+                    classes={classes}
+                    onLogout={handleLogout}
+                />
+            )}
+        />
         <Route
             element={(
                 <AppShellLayout

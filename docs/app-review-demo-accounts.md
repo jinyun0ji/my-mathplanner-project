@@ -8,6 +8,7 @@ Google 로그인은 실제 사용자용입니다.
 
 - 학생 데모 계정: `demo.student@chaesooyongmath.com` / `<비밀번호는 콘솔에 별도 기재>`
 - 학부모 데모 계정: `demo.parent@chaesooyongmath.com` / `<비밀번호는 콘솔에 별도 기재>`
+- 학부모 데모 계정: `demo.staff@chaesooyongmath.com` / `<비밀번호는 콘솔에 별도 기재>`
 
 ## 운영 전제
 

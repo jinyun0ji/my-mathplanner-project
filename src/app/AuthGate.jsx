@@ -6,13 +6,14 @@ import OnboardingPage from '../pages/OnboardingPage';
 import LoginPage from '../pages/LoginPage';
 import InviteSignupPage from '../pages/InviteSignupPage';
 import useAuth from '../auth/useAuth';
-import { isParentRole, isStudentRole } from '../constants/roles';
+import { isParentRole, isStaffOrTeachingRole, isStudentRole } from '../constants/roles';
 import { claimStudentLinkCode } from '../parent/linkCodeService';
 import { ParentProvider } from '../parent';
 import { redirectToKakao, redirectToNaver } from '../auth/socialRedirect';
 import { signInWithGoogle, signInWithReviewEmail } from '../auth/authService';
 import { initForegroundMessageListener } from '../firebase/messaging';
 import { getDefaultRouteForRole } from '../auth/authRedirects';
+import { isCapacitorNativeEnvironment, STAFF_MOBILE_MESSENGER_ROUTE } from '../utils/capacitorEnvironment';
 import { DELETION_REQUESTED_MESSAGE } from '../accountDeletion';
 
 export default function AuthGate() {
@@ -27,6 +28,7 @@ export default function AuthGate() {
     const isStudentDetailPage = pathname.startsWith('/students/');
     const isMessengerRoute = pathname.startsWith('/chat') || pathname.startsWith('/messages');
     const isFormulaQrRoute = pathname === '/classroom' && new URLSearchParams(location.search).get('conceptId');
+    const isStaffMobileMessengerRoute = pathname === STAFF_MOBILE_MESSENGER_ROUTE;
 
     const {
         user,
@@ -74,6 +76,11 @@ export default function AuthGate() {
 
         if (isDeletionBlockedViewer) return;
 
+        if (role && isCapacitorNativeEnvironment() && isStaffOrTeachingRole(role) && !isStaffMobileMessengerRoute) {
+            navigate(STAFF_MOBILE_MESSENGER_ROUTE, { replace: true });
+            return;
+        }
+
         if (needsParentOnboarding && pathname !== '/onboarding') {
             navigate('/onboarding', { replace: true });
             return;
@@ -106,6 +113,7 @@ export default function AuthGate() {
         isOnboardingPage,
         isSignupPage,
         isStudentDetailPage,
+        isStaffMobileMessengerRoute,
         isFormulaQrRoute,
         location.search,
         loading,

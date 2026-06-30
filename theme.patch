@@ -1,372 +1,595 @@
-diff --git a/src/domain/homework/homework.service.js b/src/domain/homework/homework.service.js
-index 584f08178faf64011209a10e9a4f834f036350f7..56ba58f2284af92a4ce4af852950c7bafd7900ae 100644
---- a/src/domain/homework/homework.service.js
-+++ b/src/domain/homework/homework.service.js
-@@ -1,52 +1,60 @@
- const resolveDateString = (value) => {
-     if (!value) return null;
-     if (typeof value === 'string') return value;
-     if (typeof value?.toDate === 'function') return value.toDate().toISOString().slice(0, 10);
-     try { return new Date(value).toISOString().slice(0, 10); } catch { return null; }
- };
- 
- const resolveAssignedDate = (assignment) => (
-     resolveDateString(assignment?.assignedDate)
-     || resolveDateString(assignment?.date)
-     || resolveDateString(assignment?.createdAt)
- );
- 
- export const resolveHomeworkAssignmentId = (result = {}) => (
-     result.assignmentId
-     || result.homeworkAssignmentId
-     || result.homeworkId
-     || (
-         result.studentId && String(result.id || '').startsWith(`${result.studentId}_`)
-             ? String(result.id).slice(String(result.studentId).length + 1)
-             : (String(result.id || '').includes('_') ? String(result.id).split('_').at(-1) : '')
-     )
-     || ''
- );
- 
-+const resolveBookTitle = (book) => {
-+    if (!book) return '';
-+    if (typeof book === 'string') return book;
-+    if (typeof book === 'object') return book.title || book.name || book.bookName || '';
-+    return '';
-+};
-+
- export const resolveHomeworkAssignmentTitle = (assignment = {}) => (
--    assignment.title
-+    resolveBookTitle(assignment.book)
-+    || assignment.title
-     || assignment.name
-     || assignment.assignmentName
-     || assignment.homeworkName
-     || assignment.content
-     || '숙제'
- );
- 
- export const resolveHomeworkQuestionSummary = (assignment = {}, result = {}) => {
-     const questionNumbers = getAssignmentQuestionNumbers(assignment);
-     const normalized = normalizeHomeworkResultMapForDisplay(result, questionNumbers, {
-         assignmentId: assignment?.id,
-     });
-     const values = Object.values(normalized);
-     const normalize = (value) => typeof value === 'string' ? value.trim().toLowerCase() : value;
-     const correctValues = new Set([true, 1, '1', 'o', '맞음', 'correct']);
-     const wrongValues = new Set([false, 0, '0', 'x', '틀림', 'wrong', 'incorrect']);
-     const fixedValues = new Set(['고침', 'fixed', 'revised']);
-     const correct = Number(result?.correctCount) || values.filter((value) => correctValues.has(normalize(value))).length;
-     const wrong = Number(result?.wrongCount) || values.filter((value) => wrongValues.has(normalize(value))).length;
-     const fixed = Number(result?.fixedCount) || values.filter((value) => fixedValues.has(normalize(value))).length;
-     const explicitTotal = Number(assignment?.totalQuestions ?? assignment?.questionCount ?? result?.totalQuestions);
-     const total = Number.isFinite(explicitTotal) && explicitTotal >= 0
-         ? explicitTotal
-         : (questionNumbers.length || Object.keys(normalized).length);
-     const unanswered = Math.max(0, total - correct - wrong - fixed);
-diff --git a/src/domain/homework/homeworkWrongNote.service.js b/src/domain/homework/homeworkWrongNote.service.js
-index 2403112a9e8992abce3debe427fcb0cd16ec9b10..a9782d01741d6d89cd6686e0453cc59edfedf7e7 100644
---- a/src/domain/homework/homeworkWrongNote.service.js
-+++ b/src/domain/homework/homeworkWrongNote.service.js
-@@ -1,49 +1,52 @@
+diff --git a/src/app/AppRoutes.jsx b/src/app/AppRoutes.jsx
+index d3fe0569f9d1ab1411674fba8a4eb4b58634d6ad..2c18db59c85a53e213f49ee3ecee14daaacaddc9 100644
+--- a/src/app/AppRoutes.jsx
++++ b/src/app/AppRoutes.jsx
+@@ -8,68 +8,70 @@ import {
+ } from '../utils/helpers';
+ import StudentHome from '../pages/StudentHome';
+ import Home from '../pages/Home';
+ import StudentManagement from '../pages/StudentManagement';
+ import StudentDetail from '../pages/StudentDetail';
+ import LessonReportManagement from '../pages/LessonReportManagement';
+ import LessonManagement from '../pages/LessonManagement';
+ import AttendanceManagement from '../pages/AttendanceManagement';
+ import HomeworkManagement from '../pages/HomeworkManagement';
+ import GradeManagement from '../pages/GradeManagement';
+ import ClinicManagement from '../pages/ClinicManagement';
+ import ClosureManagement from '../pages/ClosureManagement';
+ import InternalCommunication from '../pages/InternalCommunication';
+ import PaymentManagement from '../pages/PaymentManagement';
+ import ParentHome from '../pages/ParentHome';
+ import ParentStudentPicker from '../pages/parent/ParentStudentPicker';
+ import OnboardingPage from '../pages/OnboardingPage';
+ import StaffManagement from '../pages/admin/StaffManagement';
+ import AdminNotificationsPage from '../pages/admin/AdminNotificationsPage';
+ import AdminPaymentsPage from '../pages/admin/AdminPaymentsPage';
+ import AdminSettingsPage from '../pages/admin/AdminSettingsPage';
+ import AdminLogsPage from '../pages/admin/AdminLogsPage';
+ import MasterViewPage from '../pages/admin/MasterViewPage';
+ import InviteManagementPage from '../pages/admin/InviteManagementPage';
+ import FormulaBookManagement from '../pages/FormulaBookManagement';
++import StaffMobileMessengerPage from '../pages/StaffMobileMessengerPage';
+ import AdminRoute from '../routes/AdminRoute';
+ import StaffOrTeachingRoute from '../routes/StaffOrTeachingRoute';
+ import useAuth from '../auth/useAuth';
  import {
-     classifyHomeworkResultKeyMode,
-     getAssignmentQuestionNumbers,
-     normalizeHomeworkResultMapForDisplay,
- } from './homework.service';
+     ROLE,
+     isParentRole,
+     isStudentRole,
+     isAdminRole,
+     isStaffRole,
+     isStaffOrTeachingRole,
+     isViewerGroupRole,
+ } from '../constants/roles';
+ import { db, functions } from '../firebase/client';
+ import { invalidateStaffDataCache, loadStaffDataOnce, loadViewerDataOnce } from '../data/firestoreSync';
+ import { createLinkCode, createStaffUser } from '../admin/staffService';
+ import { claimStudentLinkCode } from '../parent/linkCodeService';
+ import { useParentContext } from '../parent';
+ import { logClientError } from '../utils/errorLogger';
++import { STAFF_MOBILE_MESSENGER_ROUTE } from '../utils/capacitorEnvironment';
+ import { addVideoMemo, deleteVideoMemo, updateVideoMemo } from '../domain/memo/videoMemo.service';
+ import { getAssignmentQuestionNumbers, normalizeHomeworkResultMapForDisplay } from '../domain/homework/homework.service';
+ import { recomputeClassTestStats } from '../domain/grade/classTestStats.service';
+ import {
+     addDoc,
+     arrayRemove,
+     arrayUnion,
+     collection,
+     deleteDoc,
+     doc,
+     getDoc,
+     getDocs,
+     limit,
+     orderBy,
+     query,
+     setDoc,
+     serverTimestamp,
+     Timestamp,
+     where,
+     updateDoc,
+     writeBatch,
+ } from 'firebase/firestore';
+ import { httpsCallable } from 'firebase/functions';
  
- export const isWrongOrCorrectedAnswer = (value) => {
-     return value === '틀림'
-         || value === '고침'
-         || value === 2
-         || value === 3
-         || value === '2'
-         || value === '3'
-         || value === false;
- };
- 
- const isPlainObject = (value) => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
- 
- const resolveAssignmentId = (assignment) => {
-     return assignment?.id || assignment?.assignmentId || assignment?.homeworkAssignmentId || null;
- };
- 
- const resolveAssignmentTitle = (assignment) => {
--    return assignment?.title || assignment?.name || assignment?.assignmentName || assignment?.homeworkName || assignment?.content || '숙제';
-+    const bookTitle = typeof assignment?.book === 'string'
-+        ? assignment.book
-+        : (assignment?.book?.title || assignment?.book?.name || assignment?.book?.bookName || '');
-+    return bookTitle || assignment?.title || assignment?.name || assignment?.assignmentName || assignment?.homeworkName || assignment?.content || '숙제';
- };
- 
- export const normalizeHomeworkTitleForWrongNote = (title) => {
-     if (typeof title !== 'string') return '';
- 
-     return title.replace(/\s+/g, '').trim();
- };
- 
- const resolveStudentName = (student) => {
-     return student?.name || student?.studentName || '이름없음';
- };
- 
- const isDevEnvironment = () => (
-     (typeof window !== 'undefined' && typeof window.__DEV__ !== 'undefined' && window.__DEV__)
-     || process.env.NODE_ENV !== 'production'
- );
- 
- const unwrapResultMap = (value) => {
-     if (!isPlainObject(value)) return {};
- 
-     if (isPlainObject(value.results)) {
-         return value.results;
-     }
- 
-     return value;
-diff --git a/src/pages/HomeworkManagement.jsx b/src/pages/HomeworkManagement.jsx
-index a7391a7dbbfa08b5600e724869f9b8d05515e0e4..ed6f4a8ab80021d8b9f181e55a9d395b9097b261 100644
---- a/src/pages/HomeworkManagement.jsx
-+++ b/src/pages/HomeworkManagement.jsx
-@@ -427,51 +427,51 @@ export default function HomeworkManagement({
-         if (nextAssignment?.classId && String(nextAssignment.classId) !== String(selectedClassId || '')) {
-             setSelectedClassId(nextAssignment.classId);
-         }
-         setSelectedAssignmentId(id);
-         setIsGlobalDirty(false);
-     }, [setIsGlobalDirty, allAssignments, selectedClassId]);
- 
-     const handleClassSelectWrapper = useCallback((id) => {
-         setSelectedClassId(id);
-         setSelectedAssignmentId(null);
-         setIsGlobalDirty(false);
-     }, [setIsGlobalDirty]);
-     
-     const assignmentPanelContent = useMemo(() => {
-         if (!selectedClass) return <p className="text-sm text-gray-500">클래스를 선택해주세요.</p>;
-         
-         return (
-             <div className="max-h-[70vh] overflow-y-auto pr-2">
-                 {filteredAssignments.map(assignment => {
-                     const rangeDisplay = assignment.rangeString
-                         ? assignment.rangeString
-                         : (assignment.startQuestion ? `${assignment.startQuestion}~${assignment.endQuestion}` : '범위 없음');
-                     const typeLabel = resolveAssignmentTypeLabel(assignment);
-                     const assignmentType = resolveAssignmentType(assignment);
-                     const detailText = assignmentType === 'video_makeup'
--                        ? (assignment.content || assignment.title || '동영상 보강')
-+                        ? (resolveHomeworkAssignmentTitle(assignment) || '동영상 보강')
-                         : `${assignment.assignedDate || assignment.date}: ${assignment.content}`;
- 
-                     return (
-                         <div
-                             key={assignment.id}
-                             onClick={() => handleAssignmentSelect(assignment.id)}
-                             className={`p-3 mb-2 rounded-lg cursor-pointer border transition duration-150 ${
-                                 assignment.id === selectedAssignmentId
-                                     ? 'bg-[#f1f4ff] border-[#cfd8ff] shadow-sm'
-                                     : 'bg-white border-gray-200 hover:bg-gray-50'
-                             }`}
-                         >
-                             <div className="flex items-center gap-2">
-                                 <p className="text-sm font-bold text-gray-800">{getHomeworkDisplayTitle(assignment)}</p>
-                                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-700 border border-gray-200">{typeLabel}</span>
-                                 <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-50 text-[#334a91] border border-blue-100">
-                                     {assignmentStatusById[String(assignment.id)] || '미완료'}
-                                 </span>
-                             </div>
-                             <p className="text-xs text-gray-600 mt-1">
-                                 {assignmentType === 'video_makeup'
-                                     ? detailText
-                                     : `${assignment.assignedDate || assignment.date}: ${assignment.content} (${rangeDisplay} 총 ${assignment.totalQuestions}문항)`}
-                             </p>
-                             <p className="text-[11px] text-gray-500 mt-1">{assignment.className || '클래스 미지정'}</p>
-diff --git a/src/pages/LessonReportManagement.jsx b/src/pages/LessonReportManagement.jsx
-index 0256d14b64b5cb32c0e39c90298b3ae7f6b11529..4a70ce990de633562adab67405bfda97d5a2e3c5 100644
---- a/src/pages/LessonReportManagement.jsx
-+++ b/src/pages/LessonReportManagement.jsx
-@@ -240,51 +240,51 @@ const getTestsForStudent = ({ tests = [], grades = {}, student, studentId, class
-       ...item,
-       __sort_hasGrade: Boolean(getGradeForLessonReportStudent({ student, studentId, grades, testId: item.id })),
-       __sort_distance: Math.abs(new Date(`${resolveTestDate(item)}T00:00:00`).getTime() - new Date(`${lessonDate}T00:00:00`).getTime()) || Number.MAX_SAFE_INTEGER,
-     }))
-     .sort((a, b) => (a.__sort_hasGrade === b.__sort_hasGrade ? a.__sort_distance - b.__sort_distance : (a.__sort_hasGrade ? -1 : 1)))
- );
- 
- 
- 
- export default function LessonReportManagement({
-   students = [],
-   classes = [],
-   lessonLogs = [],
-   attendanceLogs: propAttendanceLogs = [],
-   homeworkAssignments: propHomeworkAssignments = [],
-   tests: propTests = [],
-   homeworkResults: propHomeworkResults = {},
-   grades: propGrades = {},
-   lessonReports = [],
-   closures = [],
-   classTestStats = {},
- }) {
-   const { studentId: routeStudentId } = useParams();
-   const [searchParams] = useSearchParams();
-   const navigate = useNavigate();
--  const { profileDocId } = useAuth();
-+  const { profileDocId, user } = useAuth();
-   
-   const preselectedStudentId = String(routeStudentId || searchParams.get('studentId') || '');
-   const [selectedClassId, setSelectedClassId] = useState('');
-   const [selectedDate, setSelectedDate] = useState(todayYmd);
-   const [selectedStudentId, setSelectedStudentId] = useState(preselectedStudentId);
-   const [draft, setDraft] = useState(null);
-   const [draftError, setDraftError] = useState('');
-   const [reportSaving, setReportSaving] = useState(false);
-   const [activeTab, setActiveTab] = useState('edit');
-   const [selectedStudentIdsForBulk, setSelectedStudentIdsForBulk] = useState([]);
-   const [sendMode, setSendMode] = useState('now');
-   const [scheduledSendAt, setScheduledSendAt] = useState('');
-   const [localReportMap, setLocalReportMap] = useState({});
-   const [bulkDraftCreating, setBulkDraftCreating] = useState(false);
-   const [directLessonReportData, setDirectLessonReportData] = useState({
-     attendanceLogs: [],
-     homeworkAssignments: [],
-     homeworkResults: {},
-     tests: [],
-     grades: {},
-   });
- 
-   const attendanceLogs = useMemo(
-     () => mergeById(propAttendanceLogs, directLessonReportData.attendanceLogs),
-     [directLessonReportData.attendanceLogs, propAttendanceLogs],
-@@ -1288,63 +1288,71 @@ export default function LessonReportManagement({
-       return;
-     }
- 
-     setReportSaving(true);
-     setDraftError('');
- 
-     try {
-       const failures = [];
-       const sentReports = [];
-       for (const studentId of selectedStudentIdsForBulk) {
-         const reportId = buildLessonReportId({ studentId, classId: selectedClassId, lessonDate: selectedDate });
-         const report = reportMap.get(reportId);
-         if (!report) {
-           failures.push(`${studentId}: 초안 없음`);
-           continue;
-         }
-         if (report.status === LESSON_REPORT_STATUS.SENT) {
-           continue;
-         }
-         const reportDraft = toDraftForSend(report);
-         await sendReport({ reportDraft, closeDraft: false });
-         if (!isScheduledMode) sentReports.push(reportDraft);
-       }
- 
-       if (sentReports.length > 0) {
--        const assignmentIds = Array.from(new Set(sentReports.flatMap((report) => report.selectedHomeworkProgressIds || report.selectedHomeworkIds || []).filter(Boolean).map(String)));
--        const pendingAssignmentIds = assignmentIds.filter((assignmentId) => {
-+        const assignmentLessonDateMap = new Map();
-+        sentReports.forEach((report) => {
-+          (report.selectedHomeworkProgressIds || []).filter(Boolean).forEach((assignmentId) => {
-+            const key = String(assignmentId);
-+            if (!assignmentLessonDateMap.has(key)) {
-+              assignmentLessonDateMap.set(key, report.lessonDate || selectedDate);
-+            }
-+          });
-+        });
-+        const pendingAssignmentIds = Array.from(assignmentLessonDateMap.keys()).filter((assignmentId) => {
-           const assignment = (homeworkAssignments || []).find((item) => String(item.id) === assignmentId);
-           return !assignment || isPendingHomeworkInspection(assignment);
-         });
-         for (let index = 0; index < pendingAssignmentIds.length; index += 500) {
-           const batch = writeBatch(db);
-           pendingAssignmentIds.slice(index, index + 500).forEach((assignmentId) => {
-             batch.update(doc(db, 'homeworkAssignments', assignmentId), {
-               inspectionStatus: 'completed',
--              checkedLessonDate: selectedDate,
-+              checkedLessonDate: assignmentLessonDateMap.get(assignmentId) || selectedDate,
-               checkedAt: serverTimestamp(),
--              checkedBy: profileDocId || 'staff',
-+              checkedBy: profileDocId || user?.uid || 'staff',
-             });
-           });
-           await batch.commit();
-         }
-       }
- 
-       if (failures.length > 0) {
-         setDraftError(`일부 전송 실패 - ${failures.join(', ')}`);
-       }
-       setSelectedStudentIdsForBulk([]);
-     } catch (error) {
-       setDraftError(error?.message || '일괄 전송 중 오류가 발생했습니다.');
-     } finally {
-       setReportSaving(false);
-     }
+ const PAGE_ROUTES = {
+@@ -2073,50 +2075,63 @@ export default function AppRoutes({ user, role, studentIds }) {
+     paymentLogs,
+     isPaymentLogsLoading,
+     getClassesNames,
+     handleSaveStudent, handleDeleteStudent, handleSaveClass, handleSaveLessonLog, handleDeleteLessonLog,
+     handleSaveAttendance, handleSaveHomeworkAssignment, handleDeleteHomeworkAssignment, handleUpdateHomeworkResult,
+     handleSaveTest, handleDeleteTest, handleUpdateGrade, handleSaveMemo,
+     handleSaveAnnouncement, handleDeleteAnnouncement, handleSaveWorkLog, handleDeleteWorkLog, handleSaveClinicLog, handleDeleteClinicLog,
+     handleSavePayment, handleUpdatePayment, refreshPaymentLogs,
+     calculateClassSessions: calculateClassSessionsWithClosures, handlePageChange, logNotification, notifications,
+     calculateGradeComparison, calculateHomeworkStats,
+     setIsGlobalDirty, studentSearchTerm, setStudentSearchTerm, handleSendStudentNotification,
+     externalSchedules, pendingQuickAction, clearPendingQuickAction: () => setPendingQuickAction(null), onQuickAction: handleQuickAction,
+     onCreateStaffUser: isAdminRole(role) ? handleCreateStaffUser : null,
+     onCreateLinkCode: isStaffRole(role) ? handleCreateLinkCode : null,
+     handleUpdateStudentClassStatus,
+     userRole: role,
+     userId,
+     lessonReports,
+     classTestStats,
+     closures,
+     setClosures,
    };
  
    return (
-     <div className="space-y-4">
-       <div className="flex flex-wrap items-center justify-between gap-2">
-         <div>
-           <h2 className="text-xl font-bold">수업 리포트 관리</h2>
-           <p className="text-sm text-gray-500">클래스/날짜 기준으로 학생 리포트를 한 번에 처리하세요.</p>
-         </div>
-         <div className="flex gap-2">
-diff --git a/src/pages/ParentHome.jsx b/src/pages/ParentHome.jsx
-index fd14ba5dd047217e8fcb2859b260a8b67cc9bd52..90c08d25ecae1b0a3460756593471e9c9b903400 100644
---- a/src/pages/ParentHome.jsx
-+++ b/src/pages/ParentHome.jsx
-@@ -1378,50 +1378,53 @@ export default function ParentHome({
-                                             전체 클래스
-                                         </button>
-                                         {lessonReportClassOptions.map((option) => (
-                                             <button
-                                                 key={option.id}
-                                                 type="button"
-                                                 onClick={() => {
-                                                     setLessonReportClassFilter(option.id);
-                                                     setShowAllLessonReports(false);
-                                                 }}
-                                                 className={lessonReportClassFilter === option.id
-                                                     ? 'text-xs font-semibold text-[#334a91] bg-[#f1f4ff] px-3 py-1.5 rounded-full border border-[#eef2ff]'
-                                                     : 'text-xs font-semibold text-gray-500 bg-gray-50 px-3 py-1.5 rounded-full border border-gray-200'}
-                                             >
-                                                 {option.name}
-                                             </button>
-                                         ))}
-                                     </div>
-                                     <div className="space-y-3">
-                                         {visibleLessonReports.map((report) => (
-                                             <div key={report.id} className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm space-y-2">
-                                                 <p className="text-[11px] text-gray-400 font-semibold">{report.lessonDate} • {report.className}</p>
-                                                 {report.learnedTopics && <p className="text-sm text-gray-700">진도: {report.learnedTopics}</p>}
-                                                 {report.attendanceStatus && <p className="text-sm text-gray-700">출결: {report.attendanceStatus}</p>}
-                                                 {Array.isArray(report?.homeworkSummary?.text) && report.homeworkSummary.text.length > 0 && <p className="text-sm text-gray-700">과제 수행: {report.homeworkSummary.text.join(' · ')}</p>}
-+                                                {Array.isArray(report?.assignedHomeworkSummary?.items) && report.assignedHomeworkSummary.items.length > 0 && (
-+                                                    <p className="text-sm text-gray-700">이번 수업 숙제: {report.assignedHomeworkSummary.items.map((item) => item.title).filter(Boolean).join(', ')}</p>
-+                                                )}
-                                                 {Array.isArray(report?.testSummary?.text) && report.testSummary.text.length > 0 && (
-                                                     <div className="text-sm text-gray-700">
-                                                         <p className="font-semibold">시험</p>
-                                                         <ul className="list-disc pl-5">
-                                                             {report.testSummary.text.map((line, index) => (
-                                                                 <li key={`report-test-${report.id}-${index}`} className="whitespace-pre-line">{line}</li>
-                                                             ))}
-                                                         </ul>
-                                                     </div>
-                                                 )}
-                                                 {report.comment && <p className="text-sm text-[#334a91]">코멘트: {report.comment}</p>}
-                                             </div>
-                                         ))}
-                                         {filteredLessonReports.length === 0 && (
-                                             <div className="p-6 text-center bg-white border border-dashed border-gray-200 rounded-2xl text-sm text-gray-400">
-                                                 발송된 수업 리포트가 아직 없습니다.
-                                             </div>
-                                         )}
-                                         {filteredLessonReports.length > 3 && (
-                                             <div className="px-1">
-                                                 <button
-                                                     type="button"
-                                                     onClick={() => setShowAllLessonReports((prev) => !prev)}
-                                                     className="text-xs font-semibold text-gray-700 bg-gray-100 px-3 py-1.5 rounded-full border border-gray-200 hover:bg-gray-200 active:scale-95 transition"
-                                                 >
+     <Routes>
++        <Route
++            path={STAFF_MOBILE_MESSENGER_ROUTE.slice(1)}
++            element={(
++                <StaffMobileMessengerPage
++                    userId={userId}
++                    userRole={role}
++                    students={students}
++                    parents={parents}
++                    classes={classes}
++                    onLogout={handleLogout}
++                />
++            )}
++        />
+         <Route
+             element={(
+                 <AppShellLayout
+                     page={page}
+                     notifications={notifications}
+                     students={students}
+                     parents={parents}
+                     classes={classes}
+                     userId={userId}
+                     userRole={role}
+                     isSidebarOpen={isSidebarOpen}
+                     isMessengerOpen={isMessengerOpen}
+                     hasNewNotifications={hasNewNotifications}
+                     hasNewMessages={hasNewMessages}
+                     isMobileMenuOpen={isMobileMenuOpen}
+                     setIsMobileMenuOpen={setIsMobileMenuOpen}
+                     setHasNewNotifications={setHasNewNotifications}
+                     setHasNewMessages={setHasNewMessages}
+                     toggleSidebar={toggleSidebar}
+                     toggleMessenger={toggleMessenger}
+                     handlePageChange={handlePageChange}
+                     handleLogout={handleLogout}
+                 />
+             )}
+         >
+diff --git a/src/app/AuthGate.jsx b/src/app/AuthGate.jsx
+index 85b18b2887be35aa27cdb932c57a3183a98f93cd..549768ddd13348cff225dd82985c7ef893b7f1bb 100644
+--- a/src/app/AuthGate.jsx
++++ b/src/app/AuthGate.jsx
+@@ -1,133 +1,141 @@
+ import React, { useEffect } from 'react';
+ import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+ 
+ import AppRoutes from './AppRoutes';
+ import OnboardingPage from '../pages/OnboardingPage';
+ import LoginPage from '../pages/LoginPage';
+ import InviteSignupPage from '../pages/InviteSignupPage';
+ import useAuth from '../auth/useAuth';
+-import { isParentRole, isStudentRole } from '../constants/roles';
++import { isParentRole, isStaffOrTeachingRole, isStudentRole } from '../constants/roles';
+ import { claimStudentLinkCode } from '../parent/linkCodeService';
+ import { ParentProvider } from '../parent';
+ import { redirectToKakao, redirectToNaver } from '../auth/socialRedirect';
+ import { signInWithGoogle, signInWithReviewEmail } from '../auth/authService';
+ import { initForegroundMessageListener } from '../firebase/messaging';
+ import { getDefaultRouteForRole } from '../auth/authRedirects';
++import { isCapacitorNativeEnvironment, STAFF_MOBILE_MESSENGER_ROUTE } from '../utils/capacitorEnvironment';
+ import { DELETION_REQUESTED_MESSAGE } from '../accountDeletion';
+ 
+ export default function AuthGate() {
+     const navigate = useNavigate();
+     const location = useLocation();
+     const pathname = location.pathname;
+ 
+     const isOnboardingPage = pathname === '/onboarding';
+     const isLoginPage = pathname === '/login';
+     const isSignupPage = pathname.startsWith('/signup');
+     const isAuthCallbackPage = pathname === '/auth/callback';
+     const isStudentDetailPage = pathname.startsWith('/students/');
+     const isMessengerRoute = pathname.startsWith('/chat') || pathname.startsWith('/messages');
+     const isFormulaQrRoute = pathname === '/classroom' && new URLSearchParams(location.search).get('conceptId');
++    const isStaffMobileMessengerRoute = pathname === STAFF_MOBILE_MESSENGER_ROUTE;
+ 
+     const {
+         user,
+         role,
+         studentIds,
+         activeStudentId,
+         loading,
+         profileError,
+         userProfile,
+         logout,
+     } = useAuth();
+ 
+     const needsParentOnboarding =
+         isParentRole(role) && (!Array.isArray(studentIds) || studentIds.length === 0);
+ 
+     const isDeletionBlockedViewer = (isParentRole(role) || isStudentRole(role))
+         && Boolean(userProfile?.deletionAccessBlocked);
+ 
+     useEffect(() => {
+         let unsubscribe = null;
+ 
+         if (!user) return undefined;
+ 
+         initForegroundMessageListener()
+             .then((stop) => { unsubscribe = stop; })
+             .catch(() => {});
+ 
+         return () => {
+             if (typeof unsubscribe === 'function') unsubscribe();
+         };
+     }, [user]);
+ 
+     useEffect(() => {
+         if (loading) return;
+ 
+         const redirectPath = role ? (getDefaultRouteForRole(role) || '/home') : null;
+ 
+         if (!user) {
+             if (!isLoginPage && !isSignupPage && !isAuthCallbackPage) {
+                 if (isFormulaQrRoute) sessionStorage.setItem('formulaQrRedirect', `${pathname}${location.search}`);
+                 navigate('/login', { replace: true });
+             }
+             return;
+         }
+ 
+         if (isDeletionBlockedViewer) return;
+ 
++        if (role && isCapacitorNativeEnvironment() && isStaffOrTeachingRole(role) && !isStaffMobileMessengerRoute) {
++            navigate(STAFF_MOBILE_MESSENGER_ROUTE, { replace: true });
++            return;
++        }
++
+         if (needsParentOnboarding && pathname !== '/onboarding') {
+             navigate('/onboarding', { replace: true });
+             return;
+         }
+ 
+         if (role && isMessengerRoute && (isParentRole(role) || isStudentRole(role))) {
+             navigate(redirectPath || '/home', { replace: true });
+             return;
+         }
+ 
+         if (
+             role &&
+             !needsParentOnboarding &&
+             !isStudentDetailPage &&
+             (isOnboardingPage || isLoginPage || isSignupPage)
+         ) {
+             const formulaQrRedirect = sessionStorage.getItem('formulaQrRedirect');
+             if (formulaQrRedirect && isStudentRole(role)) {
+                 sessionStorage.removeItem('formulaQrRedirect');
+                 const params = new URLSearchParams(formulaQrRedirect.split('?')[1] || '');
+                 navigate(`/student/home?tab=class&mode=book&conceptId=${encodeURIComponent(params.get('conceptId') || '')}`, { replace: true });
+                 return;
+             }
+             navigate(redirectPath || '/home', { replace: true });
+         }
+     }, [
+         isAuthCallbackPage,
+         isLoginPage,
+         isMessengerRoute,
+         isOnboardingPage,
+         isSignupPage,
+         isStudentDetailPage,
++        isStaffMobileMessengerRoute,
+         isFormulaQrRoute,
+         location.search,
+         loading,
+         navigate,
+         needsParentOnboarding,
+         pathname,
+         isDeletionBlockedViewer,
+         role,
+         user,
+     ]);
+ 
+     const handleSocialLogin = async (providerName) => {
+         if (providerName === 'google') return signInWithGoogle();
+         if (providerName === 'kakao') return redirectToKakao();
+         if (providerName === 'naver') return redirectToNaver();
+         throw new Error('지원되지 않는 소셜 로그인입니다.');
+     };
+ 
+     const handleClaimLinkCode = async (code) => {
+         await claimStudentLinkCode(code);
+     };
+ 
+     if (loading) {
+         return <div className="min-h-screen flex items-center justify-center">로딩 중...</div>;
+     }
+diff --git a/src/auth/authRedirects.js b/src/auth/authRedirects.js
+index 9cf1c8117ef1856f50771cfaf17165df1c77c8e3..4b6a4559ade94bbbe7420fb6e12330adc1ca19b4 100644
+--- a/src/auth/authRedirects.js
++++ b/src/auth/authRedirects.js
+@@ -1,16 +1,21 @@
+-import { ROLE } from '../constants/roles';
++import { ROLE, isStaffOrTeachingRole } from '../constants/roles';
++import { isCapacitorNativeEnvironment, STAFF_MOBILE_MESSENGER_ROUTE } from '../utils/capacitorEnvironment';
+ 
+ export const getDefaultRouteForRole = (role) => {
++    if (isCapacitorNativeEnvironment() && isStaffOrTeachingRole(role)) {
++        return STAFF_MOBILE_MESSENGER_ROUTE;
++    }
++
+     switch (role) {
+         case ROLE.ADMIN:
+         case ROLE.STAFF:
+         case ROLE.TEACHER:
+             return '/home';
+         case ROLE.PARENT:
+             return '/parent/home';
+         case ROLE.STUDENT:
+             return '/student/home';
+         default:
+             return null;
+     }
+ };
+\ No newline at end of file
+diff --git a/src/components/messenger/InternalMessengerPanel.jsx b/src/components/messenger/InternalMessengerPanel.jsx
+index f285a65a04564849d5e0ef7b53e92bc9acb94817..42a630f5d67635c4b072dd21b208b585e2bbcbc3 100644
+--- a/src/components/messenger/InternalMessengerPanel.jsx
++++ b/src/components/messenger/InternalMessengerPanel.jsx
+@@ -2,50 +2,51 @@ import React, { useEffect, useMemo, useState } from 'react';
+ import { collection, getDocs, query, where } from 'firebase/firestore';
+ import { db } from '../../firebase/client';
+ import {
+     broadcastChatMessage,
+     createOrOpenRoom,
+     findExistingInternalRoom,
+     sendMessageDirect,
+     subscribeChatMessages,
+     subscribeInternalChatRooms,
+ } from '../../domain/messenger/messenger.service';
+ import { isStaffOrTeachingRole } from '../../constants/roles';
+ import ChatRoomList from './ChatRoomList';
+ import ChatMessagePane from './ChatMessagePane';
+ import {
+     buildMessengerTargets,
+     groupStudentTargetsByClass,
+     splitStudentTargetsByStatus,
+ } from './messengerTargets';
+ 
+ export default function InternalMessengerPanel({
+     userId,
+     userRole,
+     students = [],
+     parents = [],
+     classes = [],
++    mobileMessengerOnly = false,
+ }) {
+     const [rooms, setRooms] = useState([]);
+     const [selectedRoom, setSelectedRoom] = useState(null);
+     const [messages, setMessages] = useState([]);
+     const [, setOptimisticByRoom] = useState({});
+     const [targetUid, setTargetUid] = useState('');
+     const [broadcastText, setBroadcastText] = useState('');
+     const [statusMessage, setStatusMessage] = useState('');
+     const [selectedTargetUids, setSelectedTargetUids] = useState([]);
+     const [studentSearchQuery, setStudentSearchQuery] = useState('');
+     const [fallbackStudents, setFallbackStudents] = useState([]);
+     const [fallbackParents, setFallbackParents] = useState([]);
+ 
+     useEffect(() => {
+         if (Array.isArray(students) && students.length > 0 && Array.isArray(parents) && parents.length > 0) {
+             setFallbackStudents([]);
+             setFallbackParents([]);
+             return undefined;
+         }
+         if (!isStaffOrTeachingRole(userRole)) return undefined;
+ 
+         let mounted = true;
+         Promise.all([
+             Array.isArray(students) && students.length > 0
+                 ? Promise.resolve(null)
+@@ -411,50 +412,77 @@ export default function InternalMessengerPanel({
+ 
+         const confirmed = window.confirm(`선택한 ${targetUserIds.length}명에게 동일 메시지를 발송할까요?`);
+         if (!confirmed) return;
+ 
+         try {
+             const result = await broadcastChatMessage({
+                 text,
+                 targetUserIds,
+                 targetType: 'custom',
+             });
+             setStatusMessage(`선택 발송 완료: ${result?.successCount || 0}건`);
+             setBroadcastText('');
+             setSelectedTargetUids([]);
+         } catch (error) {
+             console.error('[internal-messenger] broadcast failed', error);
+             setStatusMessage(`선택 발송 실패: ${error.message}`);
+         }
+     };
+ 
+     if (!isStaffOrTeachingRole(userRole)) {
+         return <div className="bg-white p-4 rounded-xl shadow text-sm text-gray-500">내부 운영자만 접근 가능합니다.</div>;
+     }
+ 
+     const hasTargets = targetOptions.length > 0;
+ 
++    if (mobileMessengerOnly) {
++        return (
++            <div className="grid min-h-[520px] grid-cols-1 gap-3 overflow-hidden md:grid-cols-[minmax(0,1fr)_18rem]"
++                style={{ height: 'calc(100dvh - 110px - env(safe-area-inset-top) - env(safe-area-inset-bottom))' }}>
++                <div className="min-h-0 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm [&>div]:!h-full [&>div]:!max-h-none [&>div]:!border-0">
++                    <ChatMessagePane
++                        room={selectedRoomResolved}
++                        messages={messages}
++                        myUid={userId}
++                        onSend={handleSendMessage}
++                        onRetryMessage={handleRetryMessage}
++                        contextData={roomDisplayContext}
++                    />
++                </div>
++                <div className="min-h-[180px] overflow-y-auto rounded-xl border border-gray-200 bg-white p-1 shadow-sm custom-scrollbar [&>div]:!h-full [&>div]:!max-h-none [&>div]:!border-0">
++                    <ChatRoomList
++                        rooms={rooms}
++                        selectedRoomId={selectedRoom?.id || null}
++                        onSelectRoom={setSelectedRoom}
++                        myUid={userId}
++                        contextData={roomDisplayContext}
++                    />
++                </div>
++            </div>
++        );
++    }
++
+     return (
+         /* ✅ 그리드 높이를 뷰포트 기준으로 꽉 채우도록 설정 (h-[calc(...)]) */
+         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 h-[calc(100vh-130px)] min-h-[600px]">
+             
+             {/* 1열: 실시간 대화창 (강제 높이 확장) */}
+             {/* ✅ [&>div]:!h-full & [&>div]:!max-h-none 를 사용하여 ChatMessagePane 내부의 420px 고정 높이를 강제로 무시하고 세로로 꽉 채웁니다. */}
+             <div className="lg:col-span-2 h-full rounded-xl shadow-sm overflow-hidden [&>div]:!h-full [&>div]:!max-h-none [&>div]:!border-0 border border-gray-200">
+                 <ChatMessagePane
+                     room={selectedRoomResolved}
+                     messages={messages}
+                     myUid={userId}
+                     onSend={handleSendMessage}
+                     onRetryMessage={handleRetryMessage}
+                     contextData={roomDisplayContext}
+                 />
+             </div>
+ 
+             {/* 2열: 컨트롤 카드 및 리스트 (상하단 분리) */}
+             <div className="lg:col-span-1 flex flex-col gap-4 h-full min-h-0">
+                 
+                 {/* 2열-상단: 메신저 대상 선택 카드 (높이 고정, 스크롤 가능) */}
+                 <div className="bg-white rounded-xl shadow border border-gray-200 p-4 space-y-3 shrink-0">
+                     <p className="text-sm font-semibold text-gray-700">메신저 대상 선택 (내부 운영용)</p>
+ 
+                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+diff --git a/src/firebase/client.js b/src/firebase/client.js
+index e3dadb61fc8cb8fe841960ffa788d754b1f5fee0..4cad250c003f98e23051ddae9214f919e98e778e 100644
+--- a/src/firebase/client.js
++++ b/src/firebase/client.js
+@@ -1,78 +1,71 @@
+ // src/firebase/client.js
+ import { Capacitor } from '@capacitor/core';
+ import { initializeApp, getApp, getApps } from "firebase/app";
+ import {
+   getAuth,
+   indexedDBLocalPersistence,
+   initializeAuth,
+ } from "firebase/auth";
+ import { getFirestore, initializeFirestore } from "firebase/firestore";
+ import { getFunctions } from "firebase/functions";
+ import { getStorage } from "firebase/storage";
++import { isCapacitorNativeEnvironment } from '../utils/capacitorEnvironment';
+ 
+ const firebaseConfig = {
+   apiKey: "AIzaSyAjjR2yJwmwGeOMjxr_jGumpkchXpFzmcQ",
+   authDomain: "my-mathplanner-project.firebaseapp.com",
+   projectId: "my-mathplanner-project",
+   storageBucket: "my-mathplanner-project.firebasestorage.app",
+   messagingSenderId: "197602408828",
+   appId: "1:197602408828:web:c0eae7df35a06fbe070cf9",
+   measurementId: "G-ZH2BMBYE86"
+ };
+ 
+ export const firebaseApp =
+   getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+ 
+ const createAuth = () => {
+   if (!Capacitor.isNativePlatform()) {
+     return getAuth(firebaseApp);
+   }
+ 
+   try {
+     return initializeAuth(firebaseApp, {
+       persistence: indexedDBLocalPersistence,
+     });
+   } catch (error) {
+     return getAuth(firebaseApp);
+   }
+ };
+ 
+ export const auth = createAuth();
+ 
+ if (process.env.NODE_ENV === 'development' && typeof window !== 'undefined') {
+   console.log('[capacitor] origin =', window.location.origin);
+ }
+ 
+-const isCapacitorAppEnvironment = () => {
+-  if (Capacitor.isNativePlatform()) return true;
+-  if (typeof window === 'undefined') return false;
+-
+-  return window.location.protocol === 'capacitor:'
+-    || window.location.origin === 'https://localhost';
+-};
+-
+ const createFirestore = () => {
+-  const isAppEnvironment = isCapacitorAppEnvironment();
++  const isAppEnvironment = isCapacitorNativeEnvironment();
+ 
+   if (!isAppEnvironment) {
+     return getFirestore(firebaseApp);
+   }
+ 
+   try {
+     if (process.env.NODE_ENV === 'development') {
+       console.log('[Firebase] Forcing Long Polling bypass for iOS Simulator...');
+     }
+     return initializeFirestore(firebaseApp, {
+       experimentalForceLongPolling: true,
+       experimentalAutoDetectLongPolling: false,
+       useFetchStreams: false
+     });
+   } catch (error) {
+     return getFirestore(firebaseApp);
+   }
+ };
+ 
+ export const db = createFirestore();
+ 
+ export const functions = getFunctions(firebaseApp, "us-central1");
+ export const storage = getStorage(firebaseApp);
+\ No newline at end of file
+diff --git a/src/pages/StaffMobileMessengerPage.jsx b/src/pages/StaffMobileMessengerPage.jsx
+new file mode 100644
+index 0000000000000000000000000000000000000000..5413c30eb5a8e4a00048c698b3d6a6810263c4b5
+--- /dev/null
++++ b/src/pages/StaffMobileMessengerPage.jsx
+@@ -0,0 +1,38 @@
++import React from 'react';
++import InternalMessengerPanel from '../components/messenger/InternalMessengerPanel';
++
++export default function StaffMobileMessengerPage({
++  userId,
++  userRole,
++  students = [],
++  parents = [],
++  classes = [],
++  onLogout,
++}) {
++  return (
++    <main className="min-h-screen bg-gray-50 text-gray-900 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
++      <header className="sticky top-0 z-20 border-b border-gray-200 bg-white/95 px-4 py-3 shadow-sm backdrop-blur pt-[calc(env(safe-area-inset-top)+0.75rem)]">
++        <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
++          <h1 className="text-lg font-bold text-gray-900">메신저</h1>
++          <button
++            type="button"
++            onClick={onLogout}
++            className="rounded-full border border-gray-300 bg-white px-3 py-1.5 text-sm font-semibold text-gray-700 shadow-sm active:bg-gray-100"
++          >
++            로그아웃
++          </button>
++        </div>
++      </header>
++      <section className="mx-auto max-w-5xl px-3 py-3">
++        <InternalMessengerPanel
++          userId={userId}
++          userRole={userRole}
++          students={students}
++          parents={parents}
++          classes={classes}
++          mobileMessengerOnly
++        />
++      </section>
++    </main>
++  );
++}
+diff --git a/src/utils/capacitorEnvironment.js b/src/utils/capacitorEnvironment.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..0e8d0928af22571a0d5228c99aef539b25315cfe
+--- /dev/null
++++ b/src/utils/capacitorEnvironment.js
+@@ -0,0 +1,11 @@
++import { Capacitor } from '@capacitor/core';
++
++export const STAFF_MOBILE_MESSENGER_ROUTE = '/staff-mobile-messenger';
++
++export const isCapacitorNativeEnvironment = () => {
++  if (Capacitor.isNativePlatform()) return true;
++  if (typeof window === 'undefined') return false;
++
++  return window.location.protocol === 'capacitor:'
++    || window.location.origin === 'https://localhost';
++};

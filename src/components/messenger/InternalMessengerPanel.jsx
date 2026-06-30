@@ -24,6 +24,7 @@ export default function InternalMessengerPanel({
     students = [],
     parents = [],
     classes = [],
+    mobileMessengerOnly = false,
 }) {
     const [rooms, setRooms] = useState([]);
     const [selectedRoom, setSelectedRoom] = useState(null);
@@ -432,6 +433,33 @@ export default function InternalMessengerPanel({
     }
 
     const hasTargets = targetOptions.length > 0;
+
+    if (mobileMessengerOnly) {
+        return (
+            <div className="grid min-h-[520px] grid-cols-1 gap-3 overflow-hidden md:grid-cols-[minmax(0,1fr)_18rem]"
+                style={{ height: 'calc(100dvh - 110px - env(safe-area-inset-top) - env(safe-area-inset-bottom))' }}>
+                <div className="min-h-0 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm [&>div]:!h-full [&>div]:!max-h-none [&>div]:!border-0">
+                    <ChatMessagePane
+                        room={selectedRoomResolved}
+                        messages={messages}
+                        myUid={userId}
+                        onSend={handleSendMessage}
+                        onRetryMessage={handleRetryMessage}
+                        contextData={roomDisplayContext}
+                    />
+                </div>
+                <div className="min-h-[180px] overflow-y-auto rounded-xl border border-gray-200 bg-white p-1 shadow-sm custom-scrollbar [&>div]:!h-full [&>div]:!max-h-none [&>div]:!border-0">
+                    <ChatRoomList
+                        rooms={rooms}
+                        selectedRoomId={selectedRoom?.id || null}
+                        onSelectRoom={setSelectedRoom}
+                        myUid={userId}
+                        contextData={roomDisplayContext}
+                    />
+                </div>
+            </div>
+        );
+    }
 
     return (
         /* ✅ 그리드 높이를 뷰포트 기준으로 꽉 채우도록 설정 (h-[calc(...)]) */

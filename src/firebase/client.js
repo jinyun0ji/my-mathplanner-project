@@ -9,6 +9,7 @@ import {
 import { getFirestore, initializeFirestore } from "firebase/firestore";
 import { getFunctions } from "firebase/functions";
 import { getStorage } from "firebase/storage";
+import { isCapacitorNativeEnvironment } from '../utils/capacitorEnvironment';
 
 const firebaseConfig = {
   apiKey: "AIzaSyAjjR2yJwmwGeOMjxr_jGumpkchXpFzmcQ",
@@ -43,16 +44,8 @@ if (process.env.NODE_ENV === 'development' && typeof window !== 'undefined') {
   console.log('[capacitor] origin =', window.location.origin);
 }
 
-const isCapacitorAppEnvironment = () => {
-  if (Capacitor.isNativePlatform()) return true;
-  if (typeof window === 'undefined') return false;
-
-  return window.location.protocol === 'capacitor:'
-    || window.location.origin === 'https://localhost';
-};
-
 const createFirestore = () => {
-  const isAppEnvironment = isCapacitorAppEnvironment();
+  const isAppEnvironment = isCapacitorNativeEnvironment();
 
   if (!isAppEnvironment) {
     return getFirestore(firebaseApp);

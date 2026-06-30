@@ -1240,6 +1240,14 @@ video {
   min-height: 100vh;
 }
 
+.min-h-\[180px\]{
+  min-height: 180px;
+}
+
+.min-h-\[520px\]{
+  min-height: 520px;
+}
+
 .w-0{
   width: 0px;
 }
@@ -2695,6 +2703,10 @@ video {
   background-color: rgb(254 252 232 / var(--tw-bg-opacity, 1));
 }
 
+.bg-white\/95{
+  background-color: rgb(255 255 255 / 0.95);
+}
+
 .bg-opacity-50{
   --tw-bg-opacity: 0.5;
 }
@@ -2967,6 +2979,18 @@ video {
 
 .pt-4{
   padding-top: 1rem;
+}
+
+.pb-\[env\(safe-area-inset-bottom\)\]{
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.pt-\[calc\(env\(safe-area-inset-top\)\+0\.75rem\)\]{
+  padding-top: calc(env(safe-area-inset-top) + 0.75rem);
+}
+
+.pt-\[env\(safe-area-inset-top\)\]{
+  padding-top: env(safe-area-inset-top);
 }
 
 .text-left{
@@ -4573,6 +4597,10 @@ html.capacitor-native {
 
   .md\:grid-cols-\[1\.5fr_2fr_1\.5fr_auto\]{
     grid-template-columns: 1.5fr 2fr 1.5fr auto;
+  }
+
+  .md\:grid-cols-\[minmax\(0\2c 1fr\)_18rem\]{
+    grid-template-columns: minmax(0,1fr) 18rem;
   }
 
   .md\:flex-row{
