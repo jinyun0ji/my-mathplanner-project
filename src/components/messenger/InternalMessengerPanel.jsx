@@ -16,6 +16,7 @@ import {
     buildMessengerTargets,
     groupStudentTargetsByClass,
     splitStudentTargetsByStatus,
+    getChatRoomDisplayTitle,
 } from './messengerTargets';
 
 export default function InternalMessengerPanel({
@@ -436,28 +437,49 @@ export default function InternalMessengerPanel({
     const hasTargets = targetOptions.length > 0;
 
     if (mobileMessengerOnly) {
+        if (selectedRoomResolved) {
+            return (
+                <div className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm"
+                    style={{ height: 'calc(100dvh - 110px - env(safe-area-inset-top) - env(safe-area-inset-bottom))' }}>
+                    <header className="flex shrink-0 items-center gap-3 border-b border-gray-100 bg-white px-4 py-3">
+                        <button
+                            type="button"
+                            onClick={() => setSelectedRoom(null)}
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-full text-xl font-semibold text-gray-700 active:bg-gray-100"
+                            aria-label="채팅방 목록으로 돌아가기"
+                        >
+                            ‹
+                        </button>
+                        <h2 className="min-w-0 flex-1 truncate text-base font-semibold text-gray-900">
+                            {getChatRoomDisplayTitle(selectedRoomResolved, userId, roomDisplayContext)}
+                        </h2>
+                    </header>
+                    <div className="min-h-0 flex-1 overflow-hidden [&>div]:!h-full [&>div]:!max-h-none [&>div]:!border-0">
+                        <ChatMessagePane
+                            room={selectedRoomResolved}
+                            messages={messages}
+                            myUid={userId}
+                            onSend={handleSendMessage}
+                            onRetryMessage={handleRetryMessage}
+                            contextData={roomDisplayContext}
+                        />
+                    </div>
+                </div>
+            );
+        }
+
         return (
-            <div className="grid min-h-[520px] grid-cols-1 gap-3 overflow-hidden md:grid-cols-[minmax(0,1fr)_18rem]"
+            <div className="min-h-0 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm [&>div]:!h-full [&>div]:!max-h-none [&>div]:!border-0"
                 style={{ height: 'calc(100dvh - 110px - env(safe-area-inset-top) - env(safe-area-inset-bottom))' }}>
-                <div className="min-h-0 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm [&>div]:!h-full [&>div]:!max-h-none [&>div]:!border-0">
-                    <ChatMessagePane
-                        room={selectedRoomResolved}
-                        messages={messages}
-                        myUid={userId}
-                        onSend={handleSendMessage}
-                        onRetryMessage={handleRetryMessage}
-                        contextData={roomDisplayContext}
-                    />
-                </div>
-                <div className="min-h-[180px] overflow-y-auto rounded-xl border border-gray-200 bg-white p-1 shadow-sm custom-scrollbar [&>div]:!h-full [&>div]:!max-h-none [&>div]:!border-0">
-                    <ChatRoomList
-                        rooms={rooms}
-                        selectedRoomId={selectedRoom?.id || null}
-                        onSelectRoom={setSelectedRoom}
-                        myUid={userId}
-                        contextData={roomDisplayContext}
-                    />
-                </div>
+                <ChatRoomList
+                    rooms={rooms}
+                    selectedRoomId={selectedRoom?.id || null}
+                    onSelectRoom={setSelectedRoom}
+                    myUid={userId}
+                    contextData={roomDisplayContext}
+                    mobile
+                    title="메신저"
+                />
             </div>
         );
     }

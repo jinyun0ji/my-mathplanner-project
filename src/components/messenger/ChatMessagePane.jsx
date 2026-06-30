@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getChatRoomDisplayTitle } from './messengerTargets';
 import { formatAttachmentSize, validateChatAttachment } from '../chatAttachments';
 
@@ -66,6 +66,21 @@ export default function ChatMessagePane({
     const [previewUrl, setPreviewUrl] = useState('');
     const [error, setError] = useState('');
     const [imageModal, setImageModal] = useState(null);
+    const messagesContainerRef = useRef(null);
+
+    const scrollMessagesToBottom = useCallback(() => {
+        const container = messagesContainerRef.current;
+        if (!container) return;
+        container.scrollTop = container.scrollHeight;
+    }, []);
+
+    const scheduleScrollToBottom = useCallback(() => {
+        scrollMessagesToBottom();
+        requestAnimationFrame(() => {
+            scrollMessagesToBottom();
+            setTimeout(scrollMessagesToBottom, 120);
+        });
+    }, [scrollMessagesToBottom]);
 
     const clearAttachment = () => {
         if (previewUrl) URL.revokeObjectURL(previewUrl);
@@ -97,6 +112,11 @@ export default function ChatMessagePane({
         });
     }, [messages]);
 
+    useEffect(() => {
+        if (!room?.id) return;
+        scheduleScrollToBottom();
+    }, [room?.id, sortedMessages.length, scheduleScrollToBottom]);
+
     const renderItems = useMemo(() => {
         const list = [];
         sortedMessages.forEach((message, index) => {
@@ -126,6 +146,7 @@ export default function ChatMessagePane({
         setDraft('');
         clearAttachment();
         await onSend(text, file ? { file } : null);
+        scheduleScrollToBottom();
     };
 
     const submit = async (event) => {
@@ -149,7 +170,7 @@ export default function ChatMessagePane({
             <div className="px-3 py-2 border-b text-sm font-semibold text-gray-700">
                 {getChatRoomDisplayTitle(room, myUid, contextData)}
             </div>
-            <div className="flex-1 overflow-y-auto p-3 space-y-2">
+            <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-3 space-y-2">
                 {sortedMessages.length === 0 && <p className="text-xs text-gray-400">아직 메시지가 없습니다.</p>}
                 {renderItems.map((item) => {
                     if (item.type === 'divider') {

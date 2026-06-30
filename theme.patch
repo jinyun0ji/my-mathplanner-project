@@ -1,117 +1,290 @@
-diff --git a/src/app/AppRoutes.jsx b/src/app/AppRoutes.jsx
-index 7b508caacad1226eb5ddcac5b03d55527f2ffa95..0bb0743992c8c7134aeec645da0513ed20a9f743 100644
---- a/src/app/AppRoutes.jsx
-+++ b/src/app/AppRoutes.jsx
-@@ -158,51 +158,51 @@ const AppShellLayout = ({
-         handlePageChange={handlePageChange}
-         handleLogout={handleLogout}
-     >
-         <Outlet />
-     </AppShell>
- );
+diff --git a/src/components/messenger/ChatMessagePane.jsx b/src/components/messenger/ChatMessagePane.jsx
+index 6ffdc588d9439cff39b6bda217460ebfbe7413e5..1fa4caada499d818def09eed60595e35ac7c93ab 100644
+--- a/src/components/messenger/ChatMessagePane.jsx
++++ b/src/components/messenger/ChatMessagePane.jsx
+@@ -1,26 +1,26 @@
+-import React, { useMemo, useState } from 'react';
++import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+ import { getChatRoomDisplayTitle } from './messengerTargets';
+ import { formatAttachmentSize, validateChatAttachment } from '../chatAttachments';
  
- const NativeStaffRouteGuard = ({ role, children }) => {
-     if (isCapacitorNativeEnvironment() && isStaffOrTeachingRole(role)) {
-         return <Navigate to={STAFF_MOBILE_MESSENGER_ROUTE} replace />;
+ const normalizeMessageDate = (value) => {
+     if (!value) return null;
+     if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+     if (typeof value?.toDate === 'function') {
+         const converted = value.toDate();
+         return Number.isNaN(converted?.getTime?.()) ? null : converted;
      }
- 
-     return children;
+     if (typeof value?.seconds === 'number') {
+         const ms = (value.seconds * 1000) + Math.floor((Number(value.nanoseconds || 0)) / 1_000_000);
+         const date = new Date(ms);
+         return Number.isNaN(date.getTime()) ? null : date;
+     }
+     const date = new Date(value);
+     return Number.isNaN(date.getTime()) ? null : date;
  };
  
- export default function AppRoutes({ user, role, studentIds }) {
-   const navigate = useNavigate();
-   const location = useLocation();
-   const routePath = location?.pathname || '';
-   const page = useMemo(() => getPageKeyFromPath(location.pathname), [location.pathname]);
-   const [notifications, setNotifications] = useState([]);
-   const [isGlobalDirty, setIsGlobalDirty] = useState(false);
-   const [studentSearchTerm, setStudentSearchTerm] = useState('');
-   const userId = user?.uid || null;
-   const isAuthenticated = Boolean(user);
--  const { logout } = useAuth();
-+  const { logout, profileDocId } = useAuth();
-   const {
-       activeStudentId: parentActiveStudentId,
-       studentIds: parentStudentIds,
-       loading: parentLoading,
-   } = useParentContext();
-   const parentStudentId = isParentRole(role) ? parentActiveStudentId : null;
+ const getMessageDateKey = (message) => {
+     const date = normalizeMessageDate(message?.createdAt);
+     if (!date) return 'unknown-date';
+     const year = date.getFullYear();
+     const month = String(date.getMonth() + 1).padStart(2, '0');
+     const day = String(date.getDate()).padStart(2, '0');
+@@ -44,134 +44,155 @@ const formatTime = (value) => {
+     if (!date || Number.isNaN(date.getTime())) return '';
+     return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+ };
  
-   const [students, setStudents] = useState([]);
-   const [parents, setParents] = useState([]);
-   const [classes, setClasses] = useState([]);
+ const getParticipantCount = (room) => {
+     const candidates = [room?.participantIds, room?.participants, room?.memberIds, room?.members];
+     const values = candidates.find((candidate) => Array.isArray(candidate));
+     return values ? values.length : 2;
+ };
  
-   const [lessonLogs, setLessonLogs] = useState([]);
-   const [attendanceLogs, setAttendanceLogs] = useState([]);
-   const [clinicLogs, setClinicLogs] = useState([]);
-   const [workLogs, setWorkLogs] = useState([]);
-   const [announcements, setAnnouncements] = useState([]);
-   const [tests, setTests] = useState([]);
-   const [homeworkAssignments, setHomeworkAssignments] = useState([]);
-   const [paymentLogs, setPaymentLogs] = useState([]);
-   const [isPaymentLogsLoading, setIsPaymentLogsLoading] = useState(false);
-   const [externalSchedules, setExternalSchedules] = useState([]);
-   const [closures, setClosures] = useState([]);
-   const [lessonReports, setLessonReports] = useState([]);
+ const shouldShowSenderName = (room) => getParticipantCount(room) > 2;
  
-   const [grades, setGrades] = useState({});
-@@ -2093,50 +2093,51 @@ export default function AppRoutes({ user, role, studentIds }) {
-     setIsGlobalDirty, studentSearchTerm, setStudentSearchTerm, handleSendStudentNotification,
-     externalSchedules, pendingQuickAction, clearPendingQuickAction: () => setPendingQuickAction(null), onQuickAction: handleQuickAction,
-     onCreateStaffUser: isAdminRole(role) ? handleCreateStaffUser : null,
-     onCreateLinkCode: isStaffRole(role) ? handleCreateLinkCode : null,
-     handleUpdateStudentClassStatus,
-     userRole: role,
-     userId,
-     lessonReports,
-     classTestStats,
-     closures,
-     setClosures,
-   };
+ export default function ChatMessagePane({
+     room,
+     messages = [],
+     myUid,
+     onSend,
+     onRetryMessage,
+     contextData = {},
+ }) {
+     const [draft, setDraft] = useState('');
+     const [attachmentFile, setAttachmentFile] = useState(null);
+     const [previewUrl, setPreviewUrl] = useState('');
+     const [error, setError] = useState('');
+     const [imageModal, setImageModal] = useState(null);
++    const messagesContainerRef = useRef(null);
++
++    const scrollMessagesToBottom = useCallback(() => {
++        const container = messagesContainerRef.current;
++        if (!container) return;
++        container.scrollTop = container.scrollHeight;
++    }, []);
++
++    const scheduleScrollToBottom = useCallback(() => {
++        scrollMessagesToBottom();
++        requestAnimationFrame(() => {
++            scrollMessagesToBottom();
++            setTimeout(scrollMessagesToBottom, 120);
++        });
++    }, [scrollMessagesToBottom]);
  
-   return (
-     <Routes>
-         <Route
-             path={STAFF_MOBILE_MESSENGER_ROUTE.slice(1)}
-             element={(
-                 <StaffMobileMessengerPage
-                     userId={userId}
-                     userRole={role}
-                     students={students}
-                     parents={parents}
-                     classes={classes}
-                     onLogout={handleLogout}
-+                    profileDocId={profileDocId}
-                 />
-             )}
-         />
-         <Route
-             element={(
-                 <NativeStaffRouteGuard role={role}>
-                     <AppShellLayout
-                         page={page}
-                         notifications={notifications}
-                         students={students}
-                         parents={parents}
-                         classes={classes}
-                         userId={userId}
-                         userRole={role}
-                         isSidebarOpen={isSidebarOpen}
-                         isMessengerOpen={isMessengerOpen}
-                         hasNewNotifications={hasNewNotifications}
-                         hasNewMessages={hasNewMessages}
-                         isMobileMenuOpen={isMobileMenuOpen}
-                         setIsMobileMenuOpen={setIsMobileMenuOpen}
-                         setHasNewNotifications={setHasNewNotifications}
-                         setHasNewMessages={setHasNewMessages}
-                         toggleSidebar={toggleSidebar}
-                         toggleMessenger={toggleMessenger}
-                         handlePageChange={handlePageChange}
+     const clearAttachment = () => {
+         if (previewUrl) URL.revokeObjectURL(previewUrl);
+         setPreviewUrl('');
+         setAttachmentFile(null);
+     };
+ 
+     const handleAttachmentChange = (event) => {
+         const file = event.target.files?.[0] || null;
+         event.target.value = '';
+         if (!file) return;
+         const validation = validateChatAttachment(file);
+         if (!validation.ok) {
+             setError(validation.message);
+             clearAttachment();
+             return;
+         }
+         if (previewUrl) URL.revokeObjectURL(previewUrl);
+         setAttachmentFile(file);
+         setPreviewUrl(validation.type === 'image' ? URL.createObjectURL(file) : '');
+         setError('');
+     };
+ 
+     const sortedMessages = useMemo(() => {
+         return [...messages].sort((a, b) => {
+             const av = normalizeMessageDate(a?.createdAt)?.getTime() || 0;
+             const bv = normalizeMessageDate(b?.createdAt)?.getTime() || 0;
+             return av - bv;
+         });
+     }, [messages]);
+ 
++    useEffect(() => {
++        if (!room?.id) return;
++        scheduleScrollToBottom();
++    }, [room?.id, sortedMessages.length, scheduleScrollToBottom]);
++
+     const renderItems = useMemo(() => {
+         const list = [];
+         sortedMessages.forEach((message, index) => {
+             const prevMessage = sortedMessages[index - 1] || null;
+             const isFirst = index === 0;
+             const hasDateChanged = getMessageDateKey(prevMessage) !== getMessageDateKey(message);
+             if (isFirst || hasDateChanged) {
+                 list.push({
+                     type: 'divider',
+                     key: `divider-${message?.id || index}-${getMessageDateKey(message)}`,
+                     label: formatMessageDateDivider(message),
+                 });
+             }
+             list.push({
+                 type: 'message',
+                 key: `message-${message?.id || index}`,
+                 message,
+             });
+         });
+         return list;
+     }, [sortedMessages]);
+ 
+     const submitText = async () => {
+         const text = draft.trim();
+         if ((!text && !attachmentFile) || !room?.id) return;
+         const file = attachmentFile;
+         setDraft('');
+         clearAttachment();
+         await onSend(text, file ? { file } : null);
++        scheduleScrollToBottom();
+     };
+ 
+     const submit = async (event) => {
+         event.preventDefault();
+         await submitText();
+     };
+ 
+     const handleKeyDown = async (event) => {
+         if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+             event.preventDefault();
+             await submitText();
+         }
+     };
+ 
+     if (!room) {
+         return <div className="border rounded-lg bg-white h-[420px] flex items-center justify-center text-sm text-gray-400">오른쪽에서 채팅방을 선택하세요.</div>;
+     }
+ 
+     return (
+         <div className="border rounded-lg bg-white h-[420px] flex flex-col">
+             <div className="px-3 py-2 border-b text-sm font-semibold text-gray-700">
+                 {getChatRoomDisplayTitle(room, myUid, contextData)}
+             </div>
+-            <div className="flex-1 overflow-y-auto p-3 space-y-2">
++            <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-3 space-y-2">
+                 {sortedMessages.length === 0 && <p className="text-xs text-gray-400">아직 메시지가 없습니다.</p>}
+                 {renderItems.map((item) => {
+                     if (item.type === 'divider') {
+                         return (
+                             <div key={item.key} className="flex items-center gap-3 py-1">
+                                 <div className="flex-1 h-px bg-gray-200" />
+                                 <p className="text-xs text-gray-400">{item.label}</p>
+                                 <div className="flex-1 h-px bg-gray-200" />
+                             </div>
+                         );
+                     }
+ 
+                     const message = item.message;
+                     const mine = String(message.senderId || message.createdBy || '') === String(myUid || '');
+                     const isSending = Boolean(message?.sending);
+                     const isFailed = Boolean(message?.failed);
+                     const senderName = message?.senderName && message.senderName !== '나' ? message.senderName : '메시지';
+                     const timeLabel = formatTime(message.createdAt);
+                     return (
+                         <div key={item.key}>
+                             {shouldShowSenderName(room) && !mine && senderName && (
+                                 <p className="mb-1 text-xs font-semibold text-gray-500">{senderName}</p>
+                             )}
+                             <div className={`flex items-end gap-1.5 ${mine ? 'justify-end' : 'justify-start'}`}>
+                                 {mine && <span className="text-xs text-gray-400 whitespace-nowrap self-end mb-1">{timeLabel}</span>}
+diff --git a/src/components/messenger/ChatRoomList.jsx b/src/components/messenger/ChatRoomList.jsx
+index 56b0673046305fa70b8eb385ac279aa1a01a3776..58bbe05bd22399a0973f7937383c9f89184a26fd 100644
+--- a/src/components/messenger/ChatRoomList.jsx
++++ b/src/components/messenger/ChatRoomList.jsx
+@@ -1,42 +1,79 @@
+ import React from 'react';
+ import { getChatRoomDisplayTitle } from './messengerTargets';
+ 
++const normalizeRoomDate = (value) => {
++    if (!value) return null;
++    if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
++    if (typeof value?.toDate === 'function') {
++        const converted = value.toDate();
++        return Number.isNaN(converted?.getTime?.()) ? null : converted;
++    }
++    if (typeof value?.seconds === 'number') {
++        const date = new Date((value.seconds * 1000) + Math.floor(Number(value.nanoseconds || 0) / 1_000_000));
++        return Number.isNaN(date.getTime()) ? null : date;
++    }
++    const date = new Date(value);
++    return Number.isNaN(date.getTime()) ? null : date;
++};
++
++const formatRoomTime = (room) => {
++    const date = normalizeRoomDate(room?.lastMessageAt || room?.updatedAt || room?.createdAt);
++    if (!date) return '';
++    return date.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
++};
++
++const getUnreadCount = (room, myUid) => {
++    const direct = Number(room?.unreadCount || room?.unreadMessageCount || room?.unread || 0);
++    if (direct > 0) return direct;
++    const perUser = room?.unreadCounts || room?.unreadByUser || room?.unreadByParticipant || {};
++    const keyed = Number(perUser?.[myUid] || 0);
++    return keyed > 0 ? keyed : 0;
++};
++
++const getRoomPreview = (room) => room?.lastMessageText || room?.lastMessage || room?.message || '대화 내역이 없습니다.';
++
+ export default function ChatRoomList({
+     rooms = [],
+     selectedRoomId = null,
+     onSelectRoom,
+     myUid,
+     contextData = {},
++    mobile = false,
++    title = '상담 채팅방',
+ }) {
+     return (
+         <div className="border rounded-lg overflow-hidden bg-white">
+-            <div className="px-3 py-2 border-b text-sm font-semibold text-gray-600">상담 채팅방</div>
+-            <ul className="max-h-[420px] overflow-y-auto">
++            <div className={`${mobile ? 'px-4 py-3' : 'px-3 py-2'} border-b text-sm font-semibold text-gray-600`}>{title}</div>
++            <ul className={mobile ? 'overflow-y-auto' : 'max-h-[420px] overflow-y-auto'}>
+                 {rooms.length === 0 && (
+                     <li className="px-3 py-6 text-sm text-gray-400">생성된 채팅방이 없습니다.</li>
+                 )}
+                 {rooms.map((room) => {
+                     const active = room.id === selectedRoomId;
+                     const counterpartName = getChatRoomDisplayTitle(room, myUid, contextData);
++                    const unreadCount = getUnreadCount(room, myUid);
+                     return (
+                         <li key={room.id}>
+                             <button
+                                 type="button"
+                                 onClick={() => onSelectRoom(room)}
+                                 className={`w-full text-left px-3 py-3 border-b transition ${
+                                     active ? 'bg-green-50' : 'hover:bg-gray-50'
+                                 }`}
+                             >
+-                                <div className="flex items-center justify-between gap-3">
+-                                    <span className="text-sm font-medium text-gray-700 truncate">{counterpartName}</span>
+-                                    <span className="text-[11px] text-gray-400 shrink-0">{room.roomType || room.channel || room.type || 'individual'}</span>
++                                <div className="flex items-start justify-between gap-3">
++                                    <span className={`${mobile ? 'text-sm font-semibold text-gray-900' : 'text-sm font-medium text-gray-700'} truncate`}>{counterpartName}</span>
++                                    <span className="text-[11px] text-gray-400 shrink-0">{mobile ? formatRoomTime(room) : (room.roomType || room.channel || room.type || 'individual')}</span>
++                                </div>
++                                <div className="mt-1 flex items-center justify-between gap-3">
++                                    <p className="min-w-0 flex-1 truncate text-xs text-gray-500">{getRoomPreview(room)}</p>
++                                    {unreadCount > 0 && <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white">{unreadCount > 99 ? '99+' : unreadCount}</span>}
+                                 </div>
+-                                <p className="text-xs text-gray-500 truncate mt-1">{room.lastMessageText || room.lastMessage || room.message || '대화 내역이 없습니다.'}</p>
+                             </button>
+                         </li>
+                     );
+                 })}
+             </ul>
+         </div>
+     );
+ }
+\ No newline at end of file
 diff --git a/src/components/messenger/InternalMessengerPanel.jsx b/src/components/messenger/InternalMessengerPanel.jsx
-index 42a630f5d67635c4b072dd21b208b585e2bbcbc3..938ef47f1aad9ec1d27aa6ad3f6d1d296667397c 100644
+index 938ef47f1aad9ec1d27aa6ad3f6d1d296667397c..8b1bbf2d9e9275e60f13b439cbb381310f9437e4 100644
 --- a/src/components/messenger/InternalMessengerPanel.jsx
 +++ b/src/components/messenger/InternalMessengerPanel.jsx
-@@ -3,50 +3,51 @@ import { collection, getDocs, query, where } from 'firebase/firestore';
+@@ -1,43 +1,44 @@
+ import React, { useEffect, useMemo, useState } from 'react';
+ import { collection, getDocs, query, where } from 'firebase/firestore';
  import { db } from '../../firebase/client';
  import {
      broadcastChatMessage,
@@ -128,6 +301,7 @@ index 42a630f5d67635c4b072dd21b208b585e2bbcbc3..938ef47f1aad9ec1d27aa6ad3f6d1d29
      buildMessengerTargets,
      groupStudentTargetsByClass,
      splitStudentTargetsByStatus,
++    getChatRoomDisplayTitle,
  } from './messengerTargets';
  
  export default function InternalMessengerPanel({
@@ -137,7 +311,7 @@ index 42a630f5d67635c4b072dd21b208b585e2bbcbc3..938ef47f1aad9ec1d27aa6ad3f6d1d29
      parents = [],
      classes = [],
      mobileMessengerOnly = false,
-+    profileDocId = '',
+     profileDocId = '',
  }) {
      const [rooms, setRooms] = useState([]);
      const [selectedRoom, setSelectedRoom] = useState(null);
@@ -153,406 +327,117 @@ index 42a630f5d67635c4b072dd21b208b585e2bbcbc3..938ef47f1aad9ec1d27aa6ad3f6d1d29
  
      useEffect(() => {
          if (Array.isArray(students) && students.length > 0 && Array.isArray(parents) && parents.length > 0) {
-             setFallbackStudents([]);
-             setFallbackParents([]);
-             return undefined;
+@@ -414,72 +415,93 @@ export default function InternalMessengerPanel({
+         const confirmed = window.confirm(`선택한 ${targetUserIds.length}명에게 동일 메시지를 발송할까요?`);
+         if (!confirmed) return;
+ 
+         try {
+             const result = await broadcastChatMessage({
+                 text,
+                 targetUserIds,
+                 targetType: 'custom',
+             });
+             setStatusMessage(`선택 발송 완료: ${result?.successCount || 0}건`);
+             setBroadcastText('');
+             setSelectedTargetUids([]);
+         } catch (error) {
+             console.error('[internal-messenger] broadcast failed', error);
+             setStatusMessage(`선택 발송 실패: ${error.message}`);
          }
-         if (!isStaffOrTeachingRole(userRole)) return undefined;
+     };
  
-         let mounted = true;
-         Promise.all([
-             Array.isArray(students) && students.length > 0
-                 ? Promise.resolve(null)
-@@ -101,52 +102,52 @@ export default function InternalMessengerPanel({
-     const { active: activeStudentTargets, withdrawn: withdrawnStudentTargets } = useMemo(() => (
-         splitStudentTargetsByStatus(filteredTargets)
-     ), [filteredTargets]);
- 
-     const studentSections = useMemo(() => (
-         groupStudentTargetsByClass(activeStudentTargets, classes)
-     ), [activeStudentTargets, classes]);
- 
-     const parentTargets = useMemo(() => (
-         filteredTargets
-             .filter((target) => target.role === 'parent')
-             .sort((left, right) => String(left.displayName || '').localeCompare(String(right.displayName || ''), 'ko'))
-     ), [filteredTargets]);
- 
-     const roomDisplayContext = useMemo(() => ({ students: effectiveStudents, parents: effectiveParents }), [effectiveStudents, effectiveParents]);
- 
-     const selectedRoomResolved = useMemo(() => {
-         if (!selectedRoom?.id) return null;
-         return rooms.find((room) => room.id === selectedRoom.id) || selectedRoom;
-     }, [rooms, selectedRoom]);
- 
-     useEffect(() => {
-         if (!isStaffOrTeachingRole(userRole) || !userId) return () => {};
-         return subscribeInternalChatRooms(userId, setRooms, (error) => {
-             console.error('[internal-messenger] room subscribe failed', error);
--        });
--    }, [userId, userRole]);
-+        }, { profileDocId });
-+    }, [profileDocId, userId, userRole]);
- 
-     useEffect(() => {
-         if (!selectedRoom?.id) {
-             setMessages([]);
-             return () => {};
-         }
- 
-         return subscribeChatMessages(selectedRoom.id, (serverMessages) => {
-             const roomId = selectedRoom.id;
-             const snapshotAt = Date.now();
-             let mergedMessages = serverMessages;
-             setOptimisticByRoom((prev) => {
-                 const optimisticMessages = Array.isArray(prev[roomId]) ? prev[roomId] : [];
-                 const unresolved = optimisticMessages.filter((tempMessage) => {
-                     if (tempMessage.failed) return true;
-                     return !serverMessages.some((serverMessage) => (
-                         serverMessage?.clientTempId
-                             ? serverMessage.clientTempId === tempMessage.id
-                             : (
-                                 serverMessage?.senderId === tempMessage.senderId
-                                 && String(serverMessage?.text || '') === String(tempMessage.text || '')
-                                 && Math.abs(
-                                     new Date(serverMessage?.createdAt?.toDate?.() || serverMessage?.createdAt || 0).getTime()
-                                     - new Date(tempMessage?.createdAt || 0).getTime(),
-                                 ) <= 15_000
-diff --git a/src/domain/messenger/messenger.service.js b/src/domain/messenger/messenger.service.js
-index a501933222cc6773bb28aa653f8390b2410f3414..7a19658c0d69bd690f9dfb90c6d323925e03c389 100644
---- a/src/domain/messenger/messenger.service.js
-+++ b/src/domain/messenger/messenger.service.js
-@@ -1,39 +1,40 @@
- import {
-     collection,
-     doc,
-     getDoc,
-+    getDocs,
-     limit,
-     onSnapshot,
-     orderBy,
-     query,
-     serverTimestamp,
-     where,
-     writeBatch,
- } from 'firebase/firestore';
- import { httpsCallable } from 'firebase/functions';
--import { db, functions } from '../../firebase/client';
-+import { auth, db, functions } from '../../firebase/client';
- import { uploadChatAttachment } from '../../components/chatAttachments';
- 
- const createOrGetChatRoomCallable = httpsCallable(functions, 'createOrGetChatRoom');
- const broadcastChatMessageCallable = httpsCallable(functions, 'broadcastChatMessage');
- 
- 
- const normalizeString = (value) => String(value || '').trim();
- 
- const getInternalRoomTypeForTargetRole = (targetRole) => (
-     String(targetRole || '').toLowerCase() === 'parent' ? 'parent_institute' : 'student_institute'
- );
- 
- const getRoomType = (room = {}) => normalizeString(room?.roomType || room?.channel || room?.type);
- 
- const getRoomParticipantIds = (room = {}) => (
-     Array.isArray(room?.participantIds) ? room.participantIds.map(normalizeString).filter(Boolean) : []
- );
- 
- const roomHasTarget = (room = {}, target = {}) => {
-     const targetAuthUid = normalizeString(target.targetAuthUid);
-     const targetUserDocId = normalizeString(target.targetUserDocId);
-     const targetStudentId = normalizeString(target.studentId);
-     const targetParentId = normalizeString(target.parentId);
-     const participants = getRoomParticipantIds(room);
-     const participantUserDocIds = room?.participantUserDocIds && typeof room.participantUserDocIds === 'object'
-@@ -46,51 +47,51 @@ const roomHasTarget = (room = {}, target = {}) => {
-     const roomStudentIds = [room?.studentId, room?.studentDocId, ...(Array.isArray(room?.studentIds) ? room.studentIds : [])]
-         .map(normalizeString)
-         .filter(Boolean);
- 
-     if (targetStudentId && roomStudentIds.length > 0 && !roomStudentIds.includes(targetStudentId)) return false;
- 
-     if (String(target.targetRole || '').toLowerCase() === 'parent') {
-         return Boolean(targetParentId) && [room?.parentId, room?.parentUid, ...(Array.isArray(room?.parentUids) ? room.parentUids : [])]
-             .map(normalizeString)
-             .includes(targetParentId);
+     if (!isStaffOrTeachingRole(userRole)) {
+         return <div className="bg-white p-4 rounded-xl shadow text-sm text-gray-500">내부 운영자만 접근 가능합니다.</div>;
      }
  
-     return Boolean(targetStudentId) && roomStudentIds.includes(targetStudentId);
- };
+     const hasTargets = targetOptions.length > 0;
  
- export const findExistingInternalRoom = (rooms = [], target = {}) => {
-     const expectedRoomType = normalizeString(target.roomType) || getInternalRoomTypeForTargetRole(target.targetRole);
-     return (Array.isArray(rooms) ? rooms : []).find((room) => (
-         room?.id
-         && room?.internalOnly === true
-         && getRoomType(room) === expectedRoomType
-         && roomHasTarget(room, target)
-     )) || null;
- };
- 
--const uniqueStrings = (values = []) => Array.from(new Set(values.map((value) => String(value || '').trim()).filter(Boolean)));
-+const uniqueStrings = (values = []) => Array.from(new Set(values.flat(Infinity).map((value) => String(value || '').trim()).filter(Boolean)));
- 
- const pickCounterpartUid = (participantIds, participantUid) => participantIds.find((uid) => uid !== participantUid) || '';
- 
- const buildUserChatRoomIndexData = ({ roomId, roomData = {}, participantUid, lastMessageText, timestamp }) => {
-     const participantIds = uniqueStrings(Array.isArray(roomData.participantIds) ? roomData.participantIds : []);
-     return {
-         roomId,
-         roomType: roomData.roomType || roomData.channel || roomData.type || '',
-         channel: roomData.channel || roomData.roomType || '',
-         slot: roomData.slot || '',
-         counterpartUid: roomData.counterpartUid && String(roomData.counterpartUid) !== String(participantUid)
-             ? String(roomData.counterpartUid)
-             : pickCounterpartUid(participantIds, String(participantUid)),
-         lastMessageText,
-         lastMessageAt: timestamp,
-         updatedAt: timestamp,
-         studentId: roomData.studentId || '',
-         parentId: roomData.parentId || '',
-         parentUid: roomData.parentUid || '',
-         staffAuthUid: roomData.staffAuthUid || '',
-         teacherAuthUid: roomData.teacherAuthUid || '',
-     };
- };
- 
- const upsertUserChatRoomIndexWrites = ({ batch, roomId, roomData = {}, lastMessageText, timestamp }) => {
-@@ -227,66 +228,169 @@ export const sendMessageDirect = async ({
-     return {
-         roomId,
-         messageId: messageRef.id,
-         acceptedAt: now,
-         lastMessageText: text || fallbackLastMessage,
-         lastMessageSenderId: senderMeta?.senderId || null,
-     };
- };
- 
- export const broadcastChatMessage = async ({
-     text,
-     targetUserIds = [],
-     targetType = 'custom',
-     targetClassIds = [],
- }) => {
-     const result = await broadcastChatMessageCallable({
-         text,
-         targetUserIds,
-         targetType,
-         targetClassIds,
-     });
- 
-     return result?.data || null;
- };
- 
--export const subscribeInternalChatRooms = (currentAuthUid, onChange, onError = null) => {
--    if (!currentAuthUid) return () => {};
-+const getTime = (value) => (typeof value?.toDate === 'function' ? value.toDate() : new Date(value || 0)).getTime() || 0;
-+
-+const sortInternalRooms = (rooms = []) => [...rooms]
-+    .filter((room) => room?.internalOnly === true)
-+    .sort((a, b) => getTime(b?.lastMessageAt || b?.updatedAt || b?.createdAt) - getTime(a?.lastMessageAt || a?.updatedAt || a?.createdAt))
-+    .slice(0, 100);
-+
-+const mergeRoomWithIndex = (room, index = {}) => ({
-+    ...(room || {}),
-+    id: room?.id || index?.roomId || index?.id || '',
-+    roomId: room?.roomId || index?.roomId || index?.id || '',
-+    lastMessageText: room?.lastMessageText || index?.lastMessageText || index?.lastMessage || '',
-+    lastMessage: room?.lastMessage || index?.lastMessage || '',
-+    lastMessageAt: room?.lastMessageAt || index?.lastMessageAt || null,
-+    updatedAt: room?.updatedAt || index?.updatedAt || null,
-+});
- 
--    const roomsQuery = query(
--        collection(db, 'chatRooms'),
--        where('participantIds', 'array-contains', currentAuthUid),
--    );
-+const fetchUserAuthIndexProfile = async (authUid) => {
-+    const currentAuthUid = normalizeString(authUid);
-+    if (!currentAuthUid) return { userDocId: '', profile: {} };
-+    const indexSnap = await getDoc(doc(db, 'userAuthIndex', currentAuthUid));
-+    const userDocId = indexSnap.exists() ? normalizeString(indexSnap.data()?.userDocId) : '';
-+    if (!userDocId) return { userDocId: '', profile: {} };
-+    const userSnap = await getDoc(doc(db, 'users', userDocId));
-+    return { userDocId, profile: userSnap.exists() ? userSnap.data() || {} : {} };
-+};
- 
--    return onSnapshot(
--        roomsQuery,
--        (snapshot) => {
--            onChange(snapshot.docs
--                .map(normalizeRoom)
--                .filter((room) => room?.internalOnly === true)
--                .sort((a, b) => {
--                    const getTime = (value) => (typeof value?.toDate === 'function' ? value.toDate() : new Date(value || 0)).getTime() || 0;
--                    return getTime(b?.lastMessageAt) - getTime(a?.lastMessageAt);
--                })
--                .slice(0, 100));
--        },
--        onError || (() => {}),
--    );
-+const fetchRoomsForInternalIndexes = async (indexes = []) => {
-+    const rooms = await Promise.all(indexes.map(async (index) => {
-+        const roomId = normalizeString(index?.roomId || index?.id);
-+        if (!roomId) return null;
-+        const roomSnap = await getDoc(doc(db, 'chatRooms', roomId));
-+        return mergeRoomWithIndex(roomSnap.exists() ? { id: roomSnap.id, ...roomSnap.data() } : { id: roomId }, index);
-+    }));
-+    return rooms.filter(Boolean);
-+};
-+
-+const fetchInternalUserChatRoomIndexes = async (keys = [], debug = {}) => {
-+    const indexesById = new Map();
-+    const pathsTried = [];
-+    for (const key of keys) {
-+        const path = `userChatRooms/${key}/rooms`;
-+        pathsTried.push(path);
-+        try {
-+            const snap = await getDocs(query(collection(db, 'userChatRooms', key, 'rooms')));
-+            snap.docs.forEach((docSnapshot) => indexesById.set(docSnapshot.id, { id: docSnapshot.id, ...docSnapshot.data() }));
-+        } catch (error) {
-+            console.warn('[staff messenger] userChatRooms read failed; continuing fallback', { path, code: error?.code, message: error?.message });
+     if (mobileMessengerOnly) {
++        if (selectedRoomResolved) {
++            return (
++                <div className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm"
++                    style={{ height: 'calc(100dvh - 110px - env(safe-area-inset-top) - env(safe-area-inset-bottom))' }}>
++                    <header className="flex shrink-0 items-center gap-3 border-b border-gray-100 bg-white px-4 py-3">
++                        <button
++                            type="button"
++                            onClick={() => setSelectedRoom(null)}
++                            className="inline-flex h-9 w-9 items-center justify-center rounded-full text-xl font-semibold text-gray-700 active:bg-gray-100"
++                            aria-label="채팅방 목록으로 돌아가기"
++                        >
++                            ‹
++                        </button>
++                        <h2 className="min-w-0 flex-1 truncate text-base font-semibold text-gray-900">
++                            {getChatRoomDisplayTitle(selectedRoomResolved, userId, roomDisplayContext)}
++                        </h2>
++                    </header>
++                    <div className="min-h-0 flex-1 overflow-hidden [&>div]:!h-full [&>div]:!max-h-none [&>div]:!border-0">
++                        <ChatMessagePane
++                            room={selectedRoomResolved}
++                            messages={messages}
++                            myUid={userId}
++                            onSend={handleSendMessage}
++                            onRetryMessage={handleRetryMessage}
++                            contextData={roomDisplayContext}
++                        />
++                    </div>
++                </div>
++            );
 +        }
-+    }
-+    if (process.env.NODE_ENV === 'development') {
-+        console.log('[staff messenger] userChatRooms paths tried', { ...debug, pathsTried, matchedCount: indexesById.size });
-+    }
-+    return { indexes: Array.from(indexesById.values()), pathsTried };
-+};
 +
-+const fetchInternalFallbackRooms = async (participantKeyCandidates = [], debug = {}) => {
-+    const chunk = uniqueStrings(participantKeyCandidates).slice(0, 10);
-+    if (!chunk.length) return [];
-+    try {
-+        const snap = await getDocs(query(
-+            collection(db, 'chatRooms'),
-+            where('participantIds', 'array-contains-any', chunk),
-+        ));
-+        const rooms = snap.docs.map(normalizeRoom);
-+        if (process.env.NODE_ENV === 'development') {
-+            console.log('[staff messenger] chatRooms fallback matched count', { ...debug, count: rooms.length });
-+        }
-+        return rooms;
-+    } catch (error) {
-+        console.warn('[staff messenger] chatRooms fallback failed', { ...debug, code: error?.code, message: error?.message });
-+        return [];
-+    }
-+};
-+
-+export const subscribeInternalChatRooms = (currentAuthUid, onChange, onError = null, options = {}) => {
-+    const authUid = normalizeString(auth.currentUser?.uid || currentAuthUid);
-+    if (!authUid) return () => {};
-+
-+    let cancelled = false;
-+
-+    const loadRooms = async () => {
-+        try {
-+            const { userDocId: indexedUserDocId, profile } = await fetchUserAuthIndexProfile(authUid);
-+            const profileDocId = normalizeString(options.profileDocId || indexedUserDocId);
-+            const userAuthIndexUserDocId = indexedUserDocId;
-+            const participantKeyCandidates = uniqueStrings([
-+                authUid,
-+                profileDocId,
-+                userAuthIndexUserDocId,
-+                profile?.uid,
-+                profile?.authUid,
-+                profile?.userUid,
-+                profile?.id,
-+            ]).slice(0, 10);
-+            const debug = { authUid, profileDocId, userAuthIndexUserDocId, participantKeyCandidates };
-+
-+            if (process.env.NODE_ENV === 'development') {
-+                console.log('[staff messenger] resolver identity', debug);
-+            }
-+
-+            const userChatRoomKeys = uniqueStrings([authUid, profileDocId, userAuthIndexUserDocId]);
-+            const { indexes } = await fetchInternalUserChatRoomIndexes(userChatRoomKeys, debug);
-+            const indexedRooms = await fetchRoomsForInternalIndexes(indexes);
-+            const fallbackRooms = await fetchInternalFallbackRooms(participantKeyCandidates, debug);
-+            const roomsById = new Map();
-+            indexedRooms.forEach((room) => roomsById.set(room.id, room));
-+            fallbackRooms.forEach((room) => roomsById.set(room.id, mergeRoomWithIndex(room, roomsById.get(room.id))));
-+            const finalRooms = sortInternalRooms(Array.from(roomsById.values()));
-+
-+            if (process.env.NODE_ENV === 'development') {
-+                console.log('[staff messenger] final room count', { ...debug, count: finalRooms.length });
-+            }
-+
-+            if (!cancelled) onChange(finalRooms);
-+        } catch (error) {
-+            if (!cancelled) onError?.(error);
-+        }
-+    };
-+
-+    loadRooms();
-+
-+    return () => {
-+        cancelled = true;
-+    };
- };
+         return (
+-            <div className="grid min-h-[520px] grid-cols-1 gap-3 overflow-hidden md:grid-cols-[minmax(0,1fr)_18rem]"
++            <div className="min-h-0 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm [&>div]:!h-full [&>div]:!max-h-none [&>div]:!border-0"
+                 style={{ height: 'calc(100dvh - 110px - env(safe-area-inset-top) - env(safe-area-inset-bottom))' }}>
+-                <div className="min-h-0 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm [&>div]:!h-full [&>div]:!max-h-none [&>div]:!border-0">
+-                    <ChatMessagePane
+-                        room={selectedRoomResolved}
+-                        messages={messages}
+-                        myUid={userId}
+-                        onSend={handleSendMessage}
+-                        onRetryMessage={handleRetryMessage}
+-                        contextData={roomDisplayContext}
+-                    />
+-                </div>
+-                <div className="min-h-[180px] overflow-y-auto rounded-xl border border-gray-200 bg-white p-1 shadow-sm custom-scrollbar [&>div]:!h-full [&>div]:!max-h-none [&>div]:!border-0">
+-                    <ChatRoomList
+-                        rooms={rooms}
+-                        selectedRoomId={selectedRoom?.id || null}
+-                        onSelectRoom={setSelectedRoom}
+-                        myUid={userId}
+-                        contextData={roomDisplayContext}
+-                    />
+-                </div>
++                <ChatRoomList
++                    rooms={rooms}
++                    selectedRoomId={selectedRoom?.id || null}
++                    onSelectRoom={setSelectedRoom}
++                    myUid={userId}
++                    contextData={roomDisplayContext}
++                    mobile
++                    title="메신저"
++                />
+             </div>
+         );
+     }
  
- export const subscribeChatMessages = (roomId, onChange, onError = null) => {
-     if (!roomId) return () => {};
+     return (
+         /* ✅ 그리드 높이를 뷰포트 기준으로 꽉 채우도록 설정 (h-[calc(...)]) */
+         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 h-[calc(100vh-130px)] min-h-[600px]">
+             
+             {/* 1열: 실시간 대화창 (강제 높이 확장) */}
+             {/* ✅ [&>div]:!h-full & [&>div]:!max-h-none 를 사용하여 ChatMessagePane 내부의 420px 고정 높이를 강제로 무시하고 세로로 꽉 채웁니다. */}
+             <div className="lg:col-span-2 h-full rounded-xl shadow-sm overflow-hidden [&>div]:!h-full [&>div]:!max-h-none [&>div]:!border-0 border border-gray-200">
+                 <ChatMessagePane
+                     room={selectedRoomResolved}
+                     messages={messages}
+                     myUid={userId}
+                     onSend={handleSendMessage}
+                     onRetryMessage={handleRetryMessage}
+                     contextData={roomDisplayContext}
+                 />
+             </div>
  
-     const messagesQuery = query(
-         collection(db, 'chatRooms', roomId, 'messages'),
--        orderBy('createdAt', 'asc'),
--        limit(200),
-+        orderBy('createdAt', 'desc'),
-+        limit(30),
-     );
- 
-     return onSnapshot(
-         messagesQuery,
-         (snapshot) => {
--            onChange(snapshot.docs.map(normalizeMessage));
-+            onChange(snapshot.docs.map(normalizeMessage).reverse());
-         },
-         onError || (() => {}),
-     );
- };
-\ No newline at end of file
-diff --git a/src/pages/StaffMobileMessengerPage.jsx b/src/pages/StaffMobileMessengerPage.jsx
-index 5413c30eb5a8e4a00048c698b3d6a6810263c4b5..8547f48b9d74ebb88c66e1762d2c388bacd6d189 100644
---- a/src/pages/StaffMobileMessengerPage.jsx
-+++ b/src/pages/StaffMobileMessengerPage.jsx
-@@ -1,38 +1,40 @@
- import React from 'react';
- import InternalMessengerPanel from '../components/messenger/InternalMessengerPanel';
- 
- export default function StaffMobileMessengerPage({
-   userId,
-   userRole,
-   students = [],
-   parents = [],
-   classes = [],
-   onLogout,
-+  profileDocId = '',
- }) {
-   return (
-     <main className="min-h-screen bg-gray-50 text-gray-900 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
-       <header className="sticky top-0 z-20 border-b border-gray-200 bg-white/95 px-4 py-3 shadow-sm backdrop-blur pt-[calc(env(safe-area-inset-top)+0.75rem)]">
-         <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
-           <h1 className="text-lg font-bold text-gray-900">메신저</h1>
-           <button
-             type="button"
-             onClick={onLogout}
-             className="rounded-full border border-gray-300 bg-white px-3 py-1.5 text-sm font-semibold text-gray-700 shadow-sm active:bg-gray-100"
-           >
-             로그아웃
-           </button>
-         </div>
-       </header>
-       <section className="mx-auto max-w-5xl px-3 py-3">
-         <InternalMessengerPanel
-           userId={userId}
-           userRole={userRole}
-           students={students}
-           parents={parents}
-           classes={classes}
-           mobileMessengerOnly
-+          profileDocId={profileDocId}
-         />
-       </section>
-     </main>
-   );
- }
+             {/* 2열: 컨트롤 카드 및 리스트 (상하단 분리) */}
+             <div className="lg:col-span-1 flex flex-col gap-4 h-full min-h-0">
+                 
+                 {/* 2열-상단: 메신저 대상 선택 카드 (높이 고정, 스크롤 가능) */}
