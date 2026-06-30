@@ -4376,6 +4376,11 @@ html.capacitor-native {
   background-color: rgb(185 28 28 / var(--tw-bg-opacity, 1));
 }
 
+.active\:bg-rose-50:active{
+  --tw-bg-opacity: 1;
+  background-color: rgb(255 241 242 / var(--tw-bg-opacity, 1));
+}
+
 .active\:text-gray-800:active{
   --tw-text-opacity: 1;
   color: rgb(31 41 55 / var(--tw-text-opacity, 1));
