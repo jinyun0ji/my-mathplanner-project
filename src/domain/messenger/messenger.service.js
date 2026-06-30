@@ -73,7 +73,7 @@ const uniqueStrings = (values = []) => Array.from(new Set(values.flat(Infinity).
 
 const pickCounterpartUid = (participantIds, participantUid) => participantIds.find((uid) => uid !== participantUid) || '';
 
-const buildUserChatRoomIndexData = ({ roomId, roomData = {}, participantUid, lastMessageText, timestamp }) => {
+const buildUserChatRoomIndexData = ({ roomId, roomData = {}, participantUid, lastMessageText, timestamp, lastSenderId }) => {
     const participantIds = uniqueStrings(Array.isArray(roomData.participantIds) ? roomData.participantIds : []);
     return {
         roomId,
@@ -85,6 +85,7 @@ const buildUserChatRoomIndexData = ({ roomId, roomData = {}, participantUid, las
             : pickCounterpartUid(participantIds, String(participantUid)),
         lastMessageText,
         lastMessageAt: timestamp,
+        lastSenderId,
         updatedAt: timestamp,
         studentId: roomData.studentId || '',
         parentId: roomData.parentId || '',
@@ -94,12 +95,12 @@ const buildUserChatRoomIndexData = ({ roomId, roomData = {}, participantUid, las
     };
 };
 
-const upsertUserChatRoomIndexWrites = ({ batch, roomId, roomData = {}, lastMessageText, timestamp }) => {
+const upsertUserChatRoomIndexWrites = ({ batch, roomId, roomData = {}, lastMessageText, timestamp, lastSenderId }) => {
     const participantIds = uniqueStrings(Array.isArray(roomData.participantIds) ? roomData.participantIds : []);
     participantIds.forEach((participantUid) => {
         batch.set(
             doc(db, 'userChatRooms', participantUid, 'rooms', roomId),
-            buildUserChatRoomIndexData({ roomId, roomData, participantUid, lastMessageText, timestamp }),
+            buildUserChatRoomIndexData({ roomId, roomData, participantUid, lastMessageText, timestamp, lastSenderId }),
             { merge: true },
         );
     });
@@ -203,6 +204,7 @@ export const sendMessageDirect = async ({
         lastMessageText: text || fallbackLastMessage,
         lastMessageAt: serverTimestamp(),
         lastMessageSenderId: senderMeta?.senderId || null,
+        lastSenderId: senderMeta?.senderId || null,
         updatedAt: serverTimestamp(),
         updatedBy: senderMeta?.senderId || null,
         // TODO: unreadCountByUser 업데이트는 후속 단계에서 최소 비용 방식으로 재설계
@@ -221,6 +223,7 @@ export const sendMessageDirect = async ({
         roomData,
         lastMessageText: text || fallbackLastMessage,
         timestamp: roomPatch.lastMessageAt,
+        lastSenderId: senderMeta?.senderId || null,
     });
 
     await batch.commit();
@@ -264,6 +267,7 @@ const mergeRoomWithIndex = (room, index = {}) => ({
     lastMessageText: room?.lastMessageText || index?.lastMessageText || index?.lastMessage || '',
     lastMessage: room?.lastMessage || index?.lastMessage || '',
     lastMessageAt: room?.lastMessageAt || index?.lastMessageAt || null,
+    lastSenderId: room?.lastSenderId || index?.lastSenderId || room?.lastMessageSenderId || '',
     updatedAt: room?.updatedAt || index?.updatedAt || null,
 });
 
@@ -361,7 +365,8 @@ export const subscribeInternalChatRooms = (currentAuthUid, onChange, onError = n
             const finalRooms = sortInternalRooms(Array.from(roomsById.values()));
 
             if (process.env.NODE_ENV === 'development') {
-                console.log('[staff messenger] final room count', { ...debug, count: finalRooms.length });
+                console.log('[staff messenger] room list count', { ...debug, count: finalRooms.length });
+                console.log('[staff messenger] rooms missing lastMessageText count', { ...debug, count: finalRooms.filter((room) => !room?.lastMessageText).length });
             }
 
             if (!cancelled) onChange(finalRooms);
@@ -379,6 +384,8 @@ export const subscribeInternalChatRooms = (currentAuthUid, onChange, onError = n
 
 export const subscribeChatMessages = (roomId, onChange, onError = null) => {
     if (!roomId) return () => {};
+    const startedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    if (process.env.NODE_ENV === 'development') console.log('[staff messenger] selected room id', { roomId });
 
     const messagesQuery = query(
         collection(db, 'chatRooms', roomId, 'messages'),
@@ -389,6 +396,8 @@ export const subscribeChatMessages = (roomId, onChange, onError = null) => {
     return onSnapshot(
         messagesQuery,
         (snapshot) => {
+            const finishedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
+            if (process.env.NODE_ENV === 'development') console.log('[staff messenger] initial messages loaded count', { roomId, count: snapshot.docs.length, loadTimeMs: Math.round(finishedAt - startedAt) });
             onChange(snapshot.docs.map(normalizeMessage).reverse());
         },
         onError || (() => {}),

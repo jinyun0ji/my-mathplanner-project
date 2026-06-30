@@ -1,4 +1,4 @@
-import { addDoc, collection, doc, getDoc, onSnapshot, orderBy, query, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
+import { addDoc, collection, doc, getDoc, limit, onSnapshot, orderBy, query, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../../firebase/client';
 
 const log = (...args) => {
@@ -7,10 +7,11 @@ const log = (...args) => {
 
 const uniqueStrings = (values = []) => Array.from(new Set(values.map((value) => String(value || '').trim()).filter(Boolean)));
 
-const buildUserRoomIndexData = ({ roomId, room = {}, lastMessageText, timestamp }) => ({
+const buildUserRoomIndexData = ({ roomId, room = {}, lastMessageText, timestamp, lastSenderId }) => ({
     roomId,
     lastMessageText,
     lastMessageAt: timestamp,
+    lastSenderId,
     updatedAt: timestamp,
     roomType: room.roomType || room.channel || '',
     channel: room.channel || '',
@@ -23,7 +24,7 @@ const buildUserRoomIndexData = ({ roomId, room = {}, lastMessageText, timestamp 
     teacherAuthUid: room.teacherAuthUid || '',
 });
 
-const updateUserChatRoomIndexes = async ({ roomId, lastMessageText, timestamp, roomData = null }) => {
+const updateUserChatRoomIndexes = async ({ roomId, lastMessageText, timestamp, lastSenderId, roomData = null }) => {
     try {
         let room = roomData || {};
         let participantIds = uniqueStrings(Array.isArray(room.participantIds) ? room.participantIds : []);
@@ -35,7 +36,7 @@ const updateUserChatRoomIndexes = async ({ roomId, lastMessageText, timestamp, r
         }
         await Promise.all(participantIds.map((participantUid) => setDoc(
             doc(db, 'userChatRooms', participantUid, 'rooms', roomId),
-            buildUserRoomIndexData({ roomId, room, lastMessageText, timestamp }),
+            buildUserRoomIndexData({ roomId, room, lastMessageText, timestamp, lastSenderId }),
             { merge: true }
         )));
     } catch (indexError) {
@@ -45,9 +46,14 @@ const updateUserChatRoomIndexes = async ({ roomId, lastMessageText, timestamp, r
 
 export const subscribeRoomMessages = ({ roomId, onNext, onError, withOrderBy = true }) => {
     const messagesRef = collection(db, 'chatRooms', roomId, 'messages');
-    const messagesQuery = withOrderBy ? query(messagesRef, orderBy('createdAt', 'asc')) : query(messagesRef);
-    log('subscribe', { messagesPath: `chatRooms/${roomId}/messages`, withOrderBy });
-    return onSnapshot(messagesQuery, onNext, onError);
+    const startedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    const messagesQuery = withOrderBy ? query(messagesRef, orderBy('createdAt', 'desc'), limit(30)) : query(messagesRef, limit(30));
+    log('subscribe', { messagesPath: `chatRooms/${roomId}/messages`, withOrderBy, orderBy: withOrderBy ? ['createdAt', 'desc'] : null, limit: 30 });
+    return onSnapshot(messagesQuery, (snap) => {
+        const finishedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
+        log('initial messages loaded', { roomId, count: snap.docs.length, loadTimeMs: Math.round(finishedAt - startedAt) });
+        onNext(snap);
+    }, onError);
 };
 
 export const sendRoomMessage = async ({ roomId, message, lastMessageText, updaterUid }) => {
@@ -62,10 +68,11 @@ export const sendRoomMessage = async ({ roomId, message, lastMessageText, update
         lastMessageText,
         lastMessageAt: timestamp,
         lastMessageSenderId: updaterUid,
+        lastSenderId: updaterUid,
         updatedAt: timestamp,
         updatedBy: updaterUid,
     });
-    await updateUserChatRoomIndexes({ roomId, lastMessageText, timestamp });
+    await updateUserChatRoomIndexes({ roomId, lastMessageText, timestamp, lastSenderId: updaterUid });
     log('sent', { roomId, messageId: messageRef.id });
     return messageRef;
 };

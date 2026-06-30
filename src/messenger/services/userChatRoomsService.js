@@ -29,6 +29,7 @@ export const mergeRoomWithIndex = (room, index) => ({
     indexUpdatedAt: index?.updatedAt || null,
     lastMessageText: index?.lastMessageText || room?.lastMessageText || '',
     lastMessageAt: index?.lastMessageAt || room?.lastMessageAt || null,
+    lastSenderId: index?.lastSenderId || room?.lastSenderId || room?.lastMessageSenderId || '',
     updatedAt: index?.updatedAt || room?.updatedAt || null,
 });
 
@@ -110,6 +111,10 @@ export const subscribeUserChatRooms = ({ authUid, role = '', onNext, onError }) 
             const indexes = snap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
             const indexedRooms = await fetchRoomsForIndexes(indexes);
             if (role === 'staff' || indexedRooms.length > 0) {
+                if (process.env.NODE_ENV === 'development') {
+                    console.log('[resolver] room list count', { role, authUid, count: indexedRooms.length });
+                    console.log('[resolver] rooms missing lastMessageText count', { role, authUid, count: indexedRooms.filter((room) => !room?.lastMessageText).length });
+                }
                 onNext(indexedRooms, indexes);
                 return;
             }
@@ -117,7 +122,12 @@ export const subscribeUserChatRooms = ({ authUid, role = '', onNext, onError }) 
                 console.log('[resolver] userChatRooms empty; using chatRooms fallback', { role, authUid });
             }
             const fallbackRooms = role === 'parent' ? await fetchParentFallbackRooms(authUid) : await fetchStudentFallbackRooms(authUid);
-            onNext(sortRoomsByActivity(fallbackRooms), indexes);
+            const sortedFallbackRooms = sortRoomsByActivity(fallbackRooms);
+            if (process.env.NODE_ENV === 'development') {
+                console.log('[resolver] room list count', { role, authUid, count: sortedFallbackRooms.length });
+                console.log('[resolver] rooms missing lastMessageText count', { role, authUid, count: sortedFallbackRooms.filter((room) => !room?.lastMessageText).length });
+            }
+            onNext(sortedFallbackRooms, indexes);
         } catch (error) {
             onError?.(error);
         }

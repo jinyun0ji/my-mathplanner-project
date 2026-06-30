@@ -135,7 +135,7 @@ const applyRoomMetadata = ({
 
 const pickCounterpartUid = (participantIds, participantId) => participantIds.find((uid) => uid && uid !== participantId) || '';
 
-const buildUserChatRoomIndexData = ({ roomId, roomData = {}, participantId, lastMessageText = null, lastMessageAt = null, updatedAt = null }) => {
+const buildUserChatRoomIndexData = ({ roomId, roomData = {}, participantId, lastMessageText = null, lastMessageAt = null, lastSenderId = null, updatedAt = null }) => {
     const participantIds = Array.isArray(roomData.participantIds) ? roomData.participantIds.map(String).filter(Boolean) : [];
     return {
         roomId,
@@ -147,21 +147,22 @@ const buildUserChatRoomIndexData = ({ roomId, roomData = {}, participantId, last
             : pickCounterpartUid(participantIds, String(participantId)),
         lastMessageText: lastMessageText ?? roomData.lastMessageText ?? roomData.lastMessage ?? roomData.message ?? '',
         lastMessageAt: lastMessageAt ?? roomData.lastMessageAt ?? roomData.updatedAt ?? null,
+        lastSenderId: lastSenderId ?? roomData.lastSenderId ?? roomData.lastMessageSenderId ?? '',
         updatedAt: updatedAt ?? roomData.updatedAt ?? null,
     };
 };
 
-const upsertUserChatRoomIndexesInBatch = ({ batch, roomId, roomData = {}, participantIds = null, lastMessageText = null, lastMessageAt = null, updatedAt = null }) => {
+const upsertUserChatRoomIndexesInBatch = ({ batch, roomId, roomData = {}, participantIds = null, lastMessageText = null, lastMessageAt = null, lastSenderId = null, updatedAt = null }) => {
     const ids = Array.from(new Set((participantIds || roomData.participantIds || []).map((value) => String(value || '').trim()).filter(Boolean)));
     ids.forEach((participantId) => {
         const indexRef = db.collection('userChatRooms').doc(participantId).collection('rooms').doc(roomId);
-        batch.set(indexRef, buildUserChatRoomIndexData({ roomId, roomData: { ...roomData, participantIds: ids }, participantId, lastMessageText, lastMessageAt, updatedAt }), { merge: true });
+        batch.set(indexRef, buildUserChatRoomIndexData({ roomId, roomData: { ...roomData, participantIds: ids }, participantId, lastMessageText, lastMessageAt, lastSenderId, updatedAt }), { merge: true });
     });
 };
 
-const upsertUserChatRoomIndexes = async ({ roomId, roomData = {}, participantIds = null, lastMessageText = null, lastMessageAt = null, updatedAt = null }) => {
+const upsertUserChatRoomIndexes = async ({ roomId, roomData = {}, participantIds = null, lastMessageText = null, lastMessageAt = null, lastSenderId = null, updatedAt = null }) => {
     const batch = db.batch();
-    upsertUserChatRoomIndexesInBatch({ batch, roomId, roomData, participantIds, lastMessageText, lastMessageAt, updatedAt });
+    upsertUserChatRoomIndexesInBatch({ batch, roomId, roomData, participantIds, lastMessageText, lastMessageAt, lastSenderId, updatedAt });
     await batch.commit();
 };
 
@@ -206,6 +207,7 @@ const writeMessageAndRoomState = async ({ roomId, roomData, sender, messagePaylo
         lastMessageText,
         lastMessageAt: now,
         lastMessageSenderId: sender.authUid,
+        lastSenderId: sender.authUid,
         updatedAt: now,
         updatedBy: sender.authUid,
         ...unreadPatch,
@@ -218,6 +220,7 @@ const writeMessageAndRoomState = async ({ roomId, roomData, sender, messagePaylo
         participantIds,
         lastMessageText,
         lastMessageAt: now,
+        lastSenderId: sender.authUid,
         updatedAt: now,
     });
 

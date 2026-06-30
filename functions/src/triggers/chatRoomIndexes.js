@@ -14,6 +14,7 @@ const onChatRoomWritten = functions.firestore
             participantIds,
             lastMessageText: roomData.lastMessageText || roomData.lastMessage || roomData.message || '',
             lastMessageAt: roomData.lastMessageAt || roomData.updatedAt || null,
+            lastSenderId: roomData.lastSenderId || roomData.lastMessageSenderId || '',
             updatedAt: roomData.updatedAt || null,
         });
         return null;

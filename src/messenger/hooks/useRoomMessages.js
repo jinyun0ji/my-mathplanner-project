@@ -10,7 +10,7 @@ export const useRoomMessages = (roomId) => {
         setLoading(true);
         let fallbackUnsub = null;
         const handleNext = (snap) => {
-            setMessages(snap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })));
+            setMessages(snap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })).reverse());
             setLoading(false);
             setError('');
         };

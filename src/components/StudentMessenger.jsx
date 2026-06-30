@@ -363,7 +363,7 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
 
     useEffect(() => {
         if (selectedRoomId) {
-            if (process.env.NODE_ENV === 'development') console.log('[StudentMessenger] selected roomId', { roomId: String(selectedRoomId) });
+            if (process.env.NODE_ENV === 'development') console.log('[StudentMessenger] selected room id', { roomId: String(selectedRoomId) });
             setMessages([]);
             setOptimisticMessages([]);
             setRoomId(String(selectedRoomId));
@@ -436,8 +436,8 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
 
         const subscribe = (withOrderBy) => {
             const queryShape = withOrderBy
-                ? { collection: collectionPath, orderBy: ['createdAt', 'asc'] }
-                : { collection: collectionPath, orderBy: null, clientSort: ['createdAt', 'asc'] };
+                ? { collection: collectionPath, orderBy: ['createdAt', 'desc'], limit: 30, clientSort: ['createdAt', 'asc'] }
+                : { collection: collectionPath, orderBy: null, limit: 30, clientSort: ['createdAt', 'asc'] };
             if (process.env.NODE_ENV === 'development') {
                 console.log('[StudentMessenger] subscribe messages', { roomId, path: collectionPath });
                 console.log('[student messenger][messages path]', { authUid: auth.currentUser?.uid || '', studentId: String(studentId || ''), studentAuthUid: String(studentAuthUid || ''), selectedRoomId: String(selectedRoomId || roomId || ''), roomType: expectedRoomType, channel: expectedRoomType, slot: normalizedChatSlot, participantIds: roomStudentParticipantKeys, lastMessageText: '', messagesPath: collectionPath, queryShape });
