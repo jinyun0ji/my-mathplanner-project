@@ -13,7 +13,11 @@ import { redirectToKakao, redirectToNaver } from '../auth/socialRedirect';
 import { signInWithGoogle, signInWithReviewEmail } from '../auth/authService';
 import { initForegroundMessageListener } from '../firebase/messaging';
 import { getDefaultRouteForRole } from '../auth/authRedirects';
-import { isCapacitorNativeEnvironment, STAFF_MOBILE_MESSENGER_ROUTE } from '../utils/capacitorEnvironment';
+import {
+    isCapacitorNativeEnvironment,
+    logCapacitorEnvironment,
+    STAFF_MOBILE_MESSENGER_ROUTE,
+} from '../utils/capacitorEnvironment';
 import { DELETION_REQUESTED_MESSAGE } from '../accountDeletion';
 
 export default function AuthGate() {
@@ -46,6 +50,10 @@ export default function AuthGate() {
 
     const isDeletionBlockedViewer = (isParentRole(role) || isStudentRole(role))
         && Boolean(userProfile?.deletionAccessBlocked);
+
+    useEffect(() => {
+        logCapacitorEnvironment('auth-gate');
+    }, []);
 
     useEffect(() => {
         let unsubscribe = null;

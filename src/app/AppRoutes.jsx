@@ -49,7 +49,7 @@ import { createLinkCode, createStaffUser } from '../admin/staffService';
 import { claimStudentLinkCode } from '../parent/linkCodeService';
 import { useParentContext } from '../parent';
 import { logClientError } from '../utils/errorLogger';
-import { STAFF_MOBILE_MESSENGER_ROUTE } from '../utils/capacitorEnvironment';
+import { isCapacitorNativeEnvironment, STAFF_MOBILE_MESSENGER_ROUTE } from '../utils/capacitorEnvironment';
 import { addVideoMemo, deleteVideoMemo, updateVideoMemo } from '../domain/memo/videoMemo.service';
 import { getAssignmentQuestionNumbers, normalizeHomeworkResultMapForDisplay } from '../domain/homework/homework.service';
 import { recomputeClassTestStats } from '../domain/grade/classTestStats.service';
@@ -161,6 +161,14 @@ const AppShellLayout = ({
         <Outlet />
     </AppShell>
 );
+
+const NativeStaffRouteGuard = ({ role, children }) => {
+    if (isCapacitorNativeEnvironment() && isStaffOrTeachingRole(role)) {
+        return <Navigate to={STAFF_MOBILE_MESSENGER_ROUTE} replace />;
+    }
+
+    return children;
+};
 
 export default function AppRoutes({ user, role, studentIds }) {
   const navigate = useNavigate();
@@ -2112,27 +2120,29 @@ export default function AppRoutes({ user, role, studentIds }) {
         />
         <Route
             element={(
-                <AppShellLayout
-                    page={page}
-                    notifications={notifications}
-                    students={students}
-                    parents={parents}
-                    classes={classes}
-                    userId={userId}
-                    userRole={role}
-                    isSidebarOpen={isSidebarOpen}
-                    isMessengerOpen={isMessengerOpen}
-                    hasNewNotifications={hasNewNotifications}
-                    hasNewMessages={hasNewMessages}
-                    isMobileMenuOpen={isMobileMenuOpen}
-                    setIsMobileMenuOpen={setIsMobileMenuOpen}
-                    setHasNewNotifications={setHasNewNotifications}
-                    setHasNewMessages={setHasNewMessages}
-                    toggleSidebar={toggleSidebar}
-                    toggleMessenger={toggleMessenger}
-                    handlePageChange={handlePageChange}
-                    handleLogout={handleLogout}
-                />
+                <NativeStaffRouteGuard role={role}>
+                    <AppShellLayout
+                        page={page}
+                        notifications={notifications}
+                        students={students}
+                        parents={parents}
+                        classes={classes}
+                        userId={userId}
+                        userRole={role}
+                        isSidebarOpen={isSidebarOpen}
+                        isMessengerOpen={isMessengerOpen}
+                        hasNewNotifications={hasNewNotifications}
+                        hasNewMessages={hasNewMessages}
+                        isMobileMenuOpen={isMobileMenuOpen}
+                        setIsMobileMenuOpen={setIsMobileMenuOpen}
+                        setHasNewNotifications={setHasNewNotifications}
+                        setHasNewMessages={setHasNewMessages}
+                        toggleSidebar={toggleSidebar}
+                        toggleMessenger={toggleMessenger}
+                        handlePageChange={handlePageChange}
+                        handleLogout={handleLogout}
+                    />
+                </NativeStaffRouteGuard>
             )}
         >
             <Route index element={<Navigate to={PAGE_ROUTES.lessons} replace />} />

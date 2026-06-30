@@ -1,34 +1,15 @@
 diff --git a/src/app/AppRoutes.jsx b/src/app/AppRoutes.jsx
-index d3fe0569f9d1ab1411674fba8a4eb4b58634d6ad..2c18db59c85a53e213f49ee3ecee14daaacaddc9 100644
+index 2c18db59c85a53e213f49ee3ecee14daaacaddc9..7b508caacad1226eb5ddcac5b03d55527f2ffa95 100644
 --- a/src/app/AppRoutes.jsx
 +++ b/src/app/AppRoutes.jsx
-@@ -8,68 +8,70 @@ import {
- } from '../utils/helpers';
- import StudentHome from '../pages/StudentHome';
- import Home from '../pages/Home';
- import StudentManagement from '../pages/StudentManagement';
- import StudentDetail from '../pages/StudentDetail';
- import LessonReportManagement from '../pages/LessonReportManagement';
- import LessonManagement from '../pages/LessonManagement';
- import AttendanceManagement from '../pages/AttendanceManagement';
- import HomeworkManagement from '../pages/HomeworkManagement';
- import GradeManagement from '../pages/GradeManagement';
- import ClinicManagement from '../pages/ClinicManagement';
- import ClosureManagement from '../pages/ClosureManagement';
- import InternalCommunication from '../pages/InternalCommunication';
- import PaymentManagement from '../pages/PaymentManagement';
- import ParentHome from '../pages/ParentHome';
- import ParentStudentPicker from '../pages/parent/ParentStudentPicker';
- import OnboardingPage from '../pages/OnboardingPage';
- import StaffManagement from '../pages/admin/StaffManagement';
- import AdminNotificationsPage from '../pages/admin/AdminNotificationsPage';
+@@ -27,51 +27,51 @@ import AdminNotificationsPage from '../pages/admin/AdminNotificationsPage';
  import AdminPaymentsPage from '../pages/admin/AdminPaymentsPage';
  import AdminSettingsPage from '../pages/admin/AdminSettingsPage';
  import AdminLogsPage from '../pages/admin/AdminLogsPage';
  import MasterViewPage from '../pages/admin/MasterViewPage';
  import InviteManagementPage from '../pages/admin/InviteManagementPage';
  import FormulaBookManagement from '../pages/FormulaBookManagement';
-+import StaffMobileMessengerPage from '../pages/StaffMobileMessengerPage';
+ import StaffMobileMessengerPage from '../pages/StaffMobileMessengerPage';
  import AdminRoute from '../routes/AdminRoute';
  import StaffOrTeachingRoute from '../routes/StaffOrTeachingRoute';
  import useAuth from '../auth/useAuth';
@@ -47,7 +28,8 @@ index d3fe0569f9d1ab1411674fba8a4eb4b58634d6ad..2c18db59c85a53e213f49ee3ecee14da
  import { claimStudentLinkCode } from '../parent/linkCodeService';
  import { useParentContext } from '../parent';
  import { logClientError } from '../utils/errorLogger';
-+import { STAFF_MOBILE_MESSENGER_ROUTE } from '../utils/capacitorEnvironment';
+-import { STAFF_MOBILE_MESSENGER_ROUTE } from '../utils/capacitorEnvironment';
++import { isCapacitorNativeEnvironment, STAFF_MOBILE_MESSENGER_ROUTE } from '../utils/capacitorEnvironment';
  import { addVideoMemo, deleteVideoMemo, updateVideoMemo } from '../domain/memo/videoMemo.service';
  import { getAssignmentQuestionNumbers, normalizeHomeworkResultMapForDisplay } from '../domain/homework/homework.service';
  import { recomputeClassTestStats } from '../domain/grade/classTestStats.service';
@@ -73,22 +55,66 @@ index d3fe0569f9d1ab1411674fba8a4eb4b58634d6ad..2c18db59c85a53e213f49ee3ecee14da
  import { httpsCallable } from 'firebase/functions';
  
  const PAGE_ROUTES = {
-@@ -2073,50 +2075,63 @@ export default function AppRoutes({ user, role, studentIds }) {
-     paymentLogs,
-     isPaymentLogsLoading,
-     getClassesNames,
-     handleSaveStudent, handleDeleteStudent, handleSaveClass, handleSaveLessonLog, handleDeleteLessonLog,
-     handleSaveAttendance, handleSaveHomeworkAssignment, handleDeleteHomeworkAssignment, handleUpdateHomeworkResult,
-     handleSaveTest, handleDeleteTest, handleUpdateGrade, handleSaveMemo,
-     handleSaveAnnouncement, handleDeleteAnnouncement, handleSaveWorkLog, handleDeleteWorkLog, handleSaveClinicLog, handleDeleteClinicLog,
-     handleSavePayment, handleUpdatePayment, refreshPaymentLogs,
-     calculateClassSessions: calculateClassSessionsWithClosures, handlePageChange, logNotification, notifications,
-     calculateGradeComparison, calculateHomeworkStats,
-     setIsGlobalDirty, studentSearchTerm, setStudentSearchTerm, handleSendStudentNotification,
-     externalSchedules, pendingQuickAction, clearPendingQuickAction: () => setPendingQuickAction(null), onQuickAction: handleQuickAction,
-     onCreateStaffUser: isAdminRole(role) ? handleCreateStaffUser : null,
-     onCreateLinkCode: isStaffRole(role) ? handleCreateLinkCode : null,
-     handleUpdateStudentClassStatus,
+@@ -140,50 +140,58 @@ const AppShellLayout = ({
+     <AppShell
+         page={page}
+         notifications={notifications}
+         students={students}
+         parents={parents}
+         classes={classes}
+         userId={userId}
+         userRole={userRole}
+         isSidebarOpen={isSidebarOpen}
+         isMessengerOpen={isMessengerOpen}
+         hasNewNotifications={hasNewNotifications}
+         hasNewMessages={hasNewMessages}
+         isMobileMenuOpen={isMobileMenuOpen}
+         setIsMobileMenuOpen={setIsMobileMenuOpen}
+         setHasNewNotifications={setHasNewNotifications}
+         setHasNewMessages={setHasNewMessages}
+         toggleSidebar={toggleSidebar}
+         toggleMessenger={toggleMessenger}
+         handlePageChange={handlePageChange}
+         handleLogout={handleLogout}
+     >
+         <Outlet />
+     </AppShell>
+ );
+ 
++const NativeStaffRouteGuard = ({ role, children }) => {
++    if (isCapacitorNativeEnvironment() && isStaffOrTeachingRole(role)) {
++        return <Navigate to={STAFF_MOBILE_MESSENGER_ROUTE} replace />;
++    }
++
++    return children;
++};
++
+ export default function AppRoutes({ user, role, studentIds }) {
+   const navigate = useNavigate();
+   const location = useLocation();
+   const routePath = location?.pathname || '';
+   const page = useMemo(() => getPageKeyFromPath(location.pathname), [location.pathname]);
+   const [notifications, setNotifications] = useState([]);
+   const [isGlobalDirty, setIsGlobalDirty] = useState(false);
+   const [studentSearchTerm, setStudentSearchTerm] = useState('');
+   const userId = user?.uid || null;
+   const isAuthenticated = Boolean(user);
+   const { logout } = useAuth();
+   const {
+       activeStudentId: parentActiveStudentId,
+       studentIds: parentStudentIds,
+       loading: parentLoading,
+   } = useParentContext();
+   const parentStudentId = isParentRole(role) ? parentActiveStudentId : null;
+ 
+   const [students, setStudents] = useState([]);
+   const [parents, setParents] = useState([]);
+   const [classes, setClasses] = useState([]);
+ 
+   const [lessonLogs, setLessonLogs] = useState([]);
+   const [attendanceLogs, setAttendanceLogs] = useState([]);
+   const [clinicLogs, setClinicLogs] = useState([]);
+@@ -2090,71 +2098,73 @@ export default function AppRoutes({ user, role, studentIds }) {
      userRole: role,
      userId,
      lessonReports,
@@ -99,49 +125,95 @@ index d3fe0569f9d1ab1411674fba8a4eb4b58634d6ad..2c18db59c85a53e213f49ee3ecee14da
  
    return (
      <Routes>
-+        <Route
-+            path={STAFF_MOBILE_MESSENGER_ROUTE.slice(1)}
-+            element={(
-+                <StaffMobileMessengerPage
-+                    userId={userId}
-+                    userRole={role}
-+                    students={students}
-+                    parents={parents}
-+                    classes={classes}
-+                    onLogout={handleLogout}
-+                />
-+            )}
-+        />
          <Route
+             path={STAFF_MOBILE_MESSENGER_ROUTE.slice(1)}
              element={(
-                 <AppShellLayout
-                     page={page}
-                     notifications={notifications}
+                 <StaffMobileMessengerPage
+                     userId={userId}
+                     userRole={role}
                      students={students}
                      parents={parents}
                      classes={classes}
-                     userId={userId}
-                     userRole={role}
-                     isSidebarOpen={isSidebarOpen}
-                     isMessengerOpen={isMessengerOpen}
-                     hasNewNotifications={hasNewNotifications}
-                     hasNewMessages={hasNewMessages}
-                     isMobileMenuOpen={isMobileMenuOpen}
-                     setIsMobileMenuOpen={setIsMobileMenuOpen}
-                     setHasNewNotifications={setHasNewNotifications}
-                     setHasNewMessages={setHasNewMessages}
-                     toggleSidebar={toggleSidebar}
-                     toggleMessenger={toggleMessenger}
-                     handlePageChange={handlePageChange}
-                     handleLogout={handleLogout}
+                     onLogout={handleLogout}
                  />
              )}
+         />
+         <Route
+             element={(
+-                <AppShellLayout
+-                    page={page}
+-                    notifications={notifications}
+-                    students={students}
+-                    parents={parents}
+-                    classes={classes}
+-                    userId={userId}
+-                    userRole={role}
+-                    isSidebarOpen={isSidebarOpen}
+-                    isMessengerOpen={isMessengerOpen}
+-                    hasNewNotifications={hasNewNotifications}
+-                    hasNewMessages={hasNewMessages}
+-                    isMobileMenuOpen={isMobileMenuOpen}
+-                    setIsMobileMenuOpen={setIsMobileMenuOpen}
+-                    setHasNewNotifications={setHasNewNotifications}
+-                    setHasNewMessages={setHasNewMessages}
+-                    toggleSidebar={toggleSidebar}
+-                    toggleMessenger={toggleMessenger}
+-                    handlePageChange={handlePageChange}
+-                    handleLogout={handleLogout}
+-                />
++                <NativeStaffRouteGuard role={role}>
++                    <AppShellLayout
++                        page={page}
++                        notifications={notifications}
++                        students={students}
++                        parents={parents}
++                        classes={classes}
++                        userId={userId}
++                        userRole={role}
++                        isSidebarOpen={isSidebarOpen}
++                        isMessengerOpen={isMessengerOpen}
++                        hasNewNotifications={hasNewNotifications}
++                        hasNewMessages={hasNewMessages}
++                        isMobileMenuOpen={isMobileMenuOpen}
++                        setIsMobileMenuOpen={setIsMobileMenuOpen}
++                        setHasNewNotifications={setHasNewNotifications}
++                        setHasNewMessages={setHasNewMessages}
++                        toggleSidebar={toggleSidebar}
++                        toggleMessenger={toggleMessenger}
++                        handlePageChange={handlePageChange}
++                        handleLogout={handleLogout}
++                    />
++                </NativeStaffRouteGuard>
+             )}
          >
+             <Route index element={<Navigate to={PAGE_ROUTES.lessons} replace />} />
+             <Route path="home" element={<Home {...managementProps} onQuickAction={handleQuickAction} onCreateStaffUser={managementProps.onCreateStaffUser} onCreateLinkCode={managementProps.onCreateLinkCode} userRole={role} />} />
+             <Route path="lessons" element={<LessonManagement {...managementProps} />} />
+             <Route path="attendance" element={<AttendanceManagement {...managementProps} />} />
+             <Route path="students" element={<StudentManagement {...managementProps} />} />
+             <Route path="students/:studentId" element={<StudentDetail />} />
+             <Route path="lesson-reports" element={<LessonReportManagement {...managementProps} />} />
+             <Route path="students/:studentId/lesson-reports" element={<LessonReportManagement {...managementProps} />} />
+             <Route path="grades" element={<GradeManagement {...managementProps} />} />
+             <Route path="homework" element={<HomeworkManagement {...managementProps} />} />
+             <Route path="clinic" element={<ClinicManagement {...managementProps} />} />
+             <Route path="communication" element={<InternalCommunication {...managementProps} />} />
+             <Route path="payment" element={<PaymentManagement {...managementProps} />} />
+             <Route
+                 path="closures"
+                 element={(
+                     <StaffOrTeachingRoute>
+                         <ClosureManagement {...managementProps} />
+                     </StaffOrTeachingRoute>
+                 )}
+             />
+             <Route
+                 path="admin/staff"
 diff --git a/src/app/AuthGate.jsx b/src/app/AuthGate.jsx
-index 85b18b2887be35aa27cdb932c57a3183a98f93cd..549768ddd13348cff225dd82985c7ef893b7f1bb 100644
+index 549768ddd13348cff225dd82985c7ef893b7f1bb..f16690347ea29737a08be1c5a6c8f5736d83db19 100644
 --- a/src/app/AuthGate.jsx
 +++ b/src/app/AuthGate.jsx
-@@ -1,133 +1,141 @@
+@@ -1,74 +1,82 @@
  import React, { useEffect } from 'react';
  import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
  
@@ -150,15 +222,19 @@ index 85b18b2887be35aa27cdb932c57a3183a98f93cd..549768ddd13348cff225dd82985c7ef8
  import LoginPage from '../pages/LoginPage';
  import InviteSignupPage from '../pages/InviteSignupPage';
  import useAuth from '../auth/useAuth';
--import { isParentRole, isStudentRole } from '../constants/roles';
-+import { isParentRole, isStaffOrTeachingRole, isStudentRole } from '../constants/roles';
+ import { isParentRole, isStaffOrTeachingRole, isStudentRole } from '../constants/roles';
  import { claimStudentLinkCode } from '../parent/linkCodeService';
  import { ParentProvider } from '../parent';
  import { redirectToKakao, redirectToNaver } from '../auth/socialRedirect';
  import { signInWithGoogle, signInWithReviewEmail } from '../auth/authService';
  import { initForegroundMessageListener } from '../firebase/messaging';
  import { getDefaultRouteForRole } from '../auth/authRedirects';
-+import { isCapacitorNativeEnvironment, STAFF_MOBILE_MESSENGER_ROUTE } from '../utils/capacitorEnvironment';
+-import { isCapacitorNativeEnvironment, STAFF_MOBILE_MESSENGER_ROUTE } from '../utils/capacitorEnvironment';
++import {
++    isCapacitorNativeEnvironment,
++    logCapacitorEnvironment,
++    STAFF_MOBILE_MESSENGER_ROUTE,
++} from '../utils/capacitorEnvironment';
  import { DELETION_REQUESTED_MESSAGE } from '../accountDeletion';
  
  export default function AuthGate() {
@@ -173,7 +249,7 @@ index 85b18b2887be35aa27cdb932c57a3183a98f93cd..549768ddd13348cff225dd82985c7ef8
      const isStudentDetailPage = pathname.startsWith('/students/');
      const isMessengerRoute = pathname.startsWith('/chat') || pathname.startsWith('/messages');
      const isFormulaQrRoute = pathname === '/classroom' && new URLSearchParams(location.search).get('conceptId');
-+    const isStaffMobileMessengerRoute = pathname === STAFF_MOBILE_MESSENGER_ROUTE;
+     const isStaffMobileMessengerRoute = pathname === STAFF_MOBILE_MESSENGER_ROUTE;
  
      const {
          user,
@@ -192,6 +268,10 @@ index 85b18b2887be35aa27cdb932c57a3183a98f93cd..549768ddd13348cff225dd82985c7ef8
      const isDeletionBlockedViewer = (isParentRole(role) || isStudentRole(role))
          && Boolean(userProfile?.deletionAccessBlocked);
  
++    useEffect(() => {
++        logCapacitorEnvironment('auth-gate');
++    }, []);
++
      useEffect(() => {
          let unsubscribe = null;
  
@@ -217,379 +297,75 @@ index 85b18b2887be35aa27cdb932c57a3183a98f93cd..549768ddd13348cff225dd82985c7ef8
                  navigate('/login', { replace: true });
              }
              return;
-         }
- 
-         if (isDeletionBlockedViewer) return;
- 
-+        if (role && isCapacitorNativeEnvironment() && isStaffOrTeachingRole(role) && !isStaffMobileMessengerRoute) {
-+            navigate(STAFF_MOBILE_MESSENGER_ROUTE, { replace: true });
-+            return;
-+        }
-+
-         if (needsParentOnboarding && pathname !== '/onboarding') {
-             navigate('/onboarding', { replace: true });
-             return;
-         }
- 
-         if (role && isMessengerRoute && (isParentRole(role) || isStudentRole(role))) {
-             navigate(redirectPath || '/home', { replace: true });
-             return;
-         }
- 
-         if (
-             role &&
-             !needsParentOnboarding &&
-             !isStudentDetailPage &&
-             (isOnboardingPage || isLoginPage || isSignupPage)
-         ) {
-             const formulaQrRedirect = sessionStorage.getItem('formulaQrRedirect');
-             if (formulaQrRedirect && isStudentRole(role)) {
-                 sessionStorage.removeItem('formulaQrRedirect');
-                 const params = new URLSearchParams(formulaQrRedirect.split('?')[1] || '');
-                 navigate(`/student/home?tab=class&mode=book&conceptId=${encodeURIComponent(params.get('conceptId') || '')}`, { replace: true });
-                 return;
-             }
-             navigate(redirectPath || '/home', { replace: true });
-         }
-     }, [
-         isAuthCallbackPage,
-         isLoginPage,
-         isMessengerRoute,
-         isOnboardingPage,
-         isSignupPage,
-         isStudentDetailPage,
-+        isStaffMobileMessengerRoute,
-         isFormulaQrRoute,
-         location.search,
-         loading,
-         navigate,
-         needsParentOnboarding,
-         pathname,
-         isDeletionBlockedViewer,
-         role,
-         user,
-     ]);
- 
-     const handleSocialLogin = async (providerName) => {
-         if (providerName === 'google') return signInWithGoogle();
-         if (providerName === 'kakao') return redirectToKakao();
-         if (providerName === 'naver') return redirectToNaver();
-         throw new Error('지원되지 않는 소셜 로그인입니다.');
-     };
- 
-     const handleClaimLinkCode = async (code) => {
-         await claimStudentLinkCode(code);
-     };
- 
-     if (loading) {
-         return <div className="min-h-screen flex items-center justify-center">로딩 중...</div>;
-     }
-diff --git a/src/auth/authRedirects.js b/src/auth/authRedirects.js
-index 9cf1c8117ef1856f50771cfaf17165df1c77c8e3..4b6a4559ade94bbbe7420fb6e12330adc1ca19b4 100644
---- a/src/auth/authRedirects.js
-+++ b/src/auth/authRedirects.js
-@@ -1,16 +1,21 @@
--import { ROLE } from '../constants/roles';
-+import { ROLE, isStaffOrTeachingRole } from '../constants/roles';
-+import { isCapacitorNativeEnvironment, STAFF_MOBILE_MESSENGER_ROUTE } from '../utils/capacitorEnvironment';
- 
- export const getDefaultRouteForRole = (role) => {
-+    if (isCapacitorNativeEnvironment() && isStaffOrTeachingRole(role)) {
-+        return STAFF_MOBILE_MESSENGER_ROUTE;
-+    }
-+
-     switch (role) {
-         case ROLE.ADMIN:
-         case ROLE.STAFF:
-         case ROLE.TEACHER:
-             return '/home';
-         case ROLE.PARENT:
-             return '/parent/home';
-         case ROLE.STUDENT:
-             return '/student/home';
-         default:
-             return null;
-     }
- };
-\ No newline at end of file
-diff --git a/src/components/messenger/InternalMessengerPanel.jsx b/src/components/messenger/InternalMessengerPanel.jsx
-index f285a65a04564849d5e0ef7b53e92bc9acb94817..42a630f5d67635c4b072dd21b208b585e2bbcbc3 100644
---- a/src/components/messenger/InternalMessengerPanel.jsx
-+++ b/src/components/messenger/InternalMessengerPanel.jsx
-@@ -2,50 +2,51 @@ import React, { useEffect, useMemo, useState } from 'react';
- import { collection, getDocs, query, where } from 'firebase/firestore';
- import { db } from '../../firebase/client';
- import {
-     broadcastChatMessage,
-     createOrOpenRoom,
-     findExistingInternalRoom,
-     sendMessageDirect,
-     subscribeChatMessages,
-     subscribeInternalChatRooms,
- } from '../../domain/messenger/messenger.service';
- import { isStaffOrTeachingRole } from '../../constants/roles';
- import ChatRoomList from './ChatRoomList';
- import ChatMessagePane from './ChatMessagePane';
- import {
-     buildMessengerTargets,
-     groupStudentTargetsByClass,
-     splitStudentTargetsByStatus,
- } from './messengerTargets';
- 
- export default function InternalMessengerPanel({
-     userId,
-     userRole,
-     students = [],
-     parents = [],
-     classes = [],
-+    mobileMessengerOnly = false,
- }) {
-     const [rooms, setRooms] = useState([]);
-     const [selectedRoom, setSelectedRoom] = useState(null);
-     const [messages, setMessages] = useState([]);
-     const [, setOptimisticByRoom] = useState({});
-     const [targetUid, setTargetUid] = useState('');
-     const [broadcastText, setBroadcastText] = useState('');
-     const [statusMessage, setStatusMessage] = useState('');
-     const [selectedTargetUids, setSelectedTargetUids] = useState([]);
-     const [studentSearchQuery, setStudentSearchQuery] = useState('');
-     const [fallbackStudents, setFallbackStudents] = useState([]);
-     const [fallbackParents, setFallbackParents] = useState([]);
- 
-     useEffect(() => {
-         if (Array.isArray(students) && students.length > 0 && Array.isArray(parents) && parents.length > 0) {
-             setFallbackStudents([]);
-             setFallbackParents([]);
-             return undefined;
-         }
-         if (!isStaffOrTeachingRole(userRole)) return undefined;
- 
-         let mounted = true;
-         Promise.all([
-             Array.isArray(students) && students.length > 0
-                 ? Promise.resolve(null)
-@@ -411,50 +412,77 @@ export default function InternalMessengerPanel({
- 
-         const confirmed = window.confirm(`선택한 ${targetUserIds.length}명에게 동일 메시지를 발송할까요?`);
-         if (!confirmed) return;
- 
-         try {
-             const result = await broadcastChatMessage({
-                 text,
-                 targetUserIds,
-                 targetType: 'custom',
-             });
-             setStatusMessage(`선택 발송 완료: ${result?.successCount || 0}건`);
-             setBroadcastText('');
-             setSelectedTargetUids([]);
-         } catch (error) {
-             console.error('[internal-messenger] broadcast failed', error);
-             setStatusMessage(`선택 발송 실패: ${error.message}`);
-         }
-     };
- 
-     if (!isStaffOrTeachingRole(userRole)) {
-         return <div className="bg-white p-4 rounded-xl shadow text-sm text-gray-500">내부 운영자만 접근 가능합니다.</div>;
-     }
- 
-     const hasTargets = targetOptions.length > 0;
- 
-+    if (mobileMessengerOnly) {
-+        return (
-+            <div className="grid min-h-[520px] grid-cols-1 gap-3 overflow-hidden md:grid-cols-[minmax(0,1fr)_18rem]"
-+                style={{ height: 'calc(100dvh - 110px - env(safe-area-inset-top) - env(safe-area-inset-bottom))' }}>
-+                <div className="min-h-0 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm [&>div]:!h-full [&>div]:!max-h-none [&>div]:!border-0">
-+                    <ChatMessagePane
-+                        room={selectedRoomResolved}
-+                        messages={messages}
-+                        myUid={userId}
-+                        onSend={handleSendMessage}
-+                        onRetryMessage={handleRetryMessage}
-+                        contextData={roomDisplayContext}
-+                    />
-+                </div>
-+                <div className="min-h-[180px] overflow-y-auto rounded-xl border border-gray-200 bg-white p-1 shadow-sm custom-scrollbar [&>div]:!h-full [&>div]:!max-h-none [&>div]:!border-0">
-+                    <ChatRoomList
-+                        rooms={rooms}
-+                        selectedRoomId={selectedRoom?.id || null}
-+                        onSelectRoom={setSelectedRoom}
-+                        myUid={userId}
-+                        contextData={roomDisplayContext}
-+                    />
-+                </div>
-+            </div>
-+        );
-+    }
-+
-     return (
-         /* ✅ 그리드 높이를 뷰포트 기준으로 꽉 채우도록 설정 (h-[calc(...)]) */
-         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 h-[calc(100vh-130px)] min-h-[600px]">
-             
-             {/* 1열: 실시간 대화창 (강제 높이 확장) */}
-             {/* ✅ [&>div]:!h-full & [&>div]:!max-h-none 를 사용하여 ChatMessagePane 내부의 420px 고정 높이를 강제로 무시하고 세로로 꽉 채웁니다. */}
-             <div className="lg:col-span-2 h-full rounded-xl shadow-sm overflow-hidden [&>div]:!h-full [&>div]:!max-h-none [&>div]:!border-0 border border-gray-200">
-                 <ChatMessagePane
-                     room={selectedRoomResolved}
-                     messages={messages}
-                     myUid={userId}
-                     onSend={handleSendMessage}
-                     onRetryMessage={handleRetryMessage}
-                     contextData={roomDisplayContext}
-                 />
-             </div>
- 
-             {/* 2열: 컨트롤 카드 및 리스트 (상하단 분리) */}
-             <div className="lg:col-span-1 flex flex-col gap-4 h-full min-h-0">
-                 
-                 {/* 2열-상단: 메신저 대상 선택 카드 (높이 고정, 스크롤 가능) */}
-                 <div className="bg-white rounded-xl shadow border border-gray-200 p-4 space-y-3 shrink-0">
-                     <p className="text-sm font-semibold text-gray-700">메신저 대상 선택 (내부 운영용)</p>
- 
-                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-diff --git a/src/firebase/client.js b/src/firebase/client.js
-index e3dadb61fc8cb8fe841960ffa788d754b1f5fee0..4cad250c003f98e23051ddae9214f919e98e778e 100644
---- a/src/firebase/client.js
-+++ b/src/firebase/client.js
-@@ -1,78 +1,71 @@
- // src/firebase/client.js
+diff --git a/src/utils/capacitorEnvironment.js b/src/utils/capacitorEnvironment.js
+index 0e8d0928af22571a0d5228c99aef539b25315cfe..e44f2c37d7a099235380e398b20eb98f1e2af02f 100644
+--- a/src/utils/capacitorEnvironment.js
++++ b/src/utils/capacitorEnvironment.js
+@@ -1,11 +1,63 @@
  import { Capacitor } from '@capacitor/core';
- import { initializeApp, getApp, getApps } from "firebase/app";
- import {
-   getAuth,
-   indexedDBLocalPersistence,
-   initializeAuth,
- } from "firebase/auth";
- import { getFirestore, initializeFirestore } from "firebase/firestore";
- import { getFunctions } from "firebase/functions";
- import { getStorage } from "firebase/storage";
-+import { isCapacitorNativeEnvironment } from '../utils/capacitorEnvironment';
  
- const firebaseConfig = {
-   apiKey: "AIzaSyAjjR2yJwmwGeOMjxr_jGumpkchXpFzmcQ",
-   authDomain: "my-mathplanner-project.firebaseapp.com",
-   projectId: "my-mathplanner-project",
-   storageBucket: "my-mathplanner-project.firebasestorage.app",
-   messagingSenderId: "197602408828",
-   appId: "1:197602408828:web:c0eae7df35a06fbe070cf9",
-   measurementId: "G-ZH2BMBYE86"
- };
+ export const STAFF_MOBILE_MESSENGER_ROUTE = '/staff-mobile-messenger';
  
- export const firebaseApp =
-   getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
- 
- const createAuth = () => {
-   if (!Capacitor.isNativePlatform()) {
-     return getAuth(firebaseApp);
-   }
- 
-   try {
-     return initializeAuth(firebaseApp, {
-       persistence: indexedDBLocalPersistence,
-     });
-   } catch (error) {
-     return getAuth(firebaseApp);
-   }
- };
- 
- export const auth = createAuth();
- 
- if (process.env.NODE_ENV === 'development' && typeof window !== 'undefined') {
-   console.log('[capacitor] origin =', window.location.origin);
- }
- 
--const isCapacitorAppEnvironment = () => {
++const getWindowCapacitor = () => {
++  if (typeof window === 'undefined') return null;
++  return window.Capacitor || null;
++};
++
++export const getCapacitorEnvironmentSnapshot = () => {
++  const windowCapacitor = getWindowCapacitor();
++  const location = typeof window !== 'undefined' ? window.location : null;
++  const capacitorPlatform = typeof Capacitor.getPlatform === 'function'
++    ? Capacitor.getPlatform()
++    : null;
++  const windowCapacitorPlatform = typeof windowCapacitor?.getPlatform === 'function'
++    ? windowCapacitor.getPlatform()
++    : null;
++  const capacitorIsNative = typeof Capacitor.isNativePlatform === 'function'
++    ? Capacitor.isNativePlatform()
++    : false;
++  const windowCapacitorIsNative = typeof windowCapacitor?.isNativePlatform === 'function'
++    ? windowCapacitor.isNativePlatform()
++    : false;
++  const protocol = location?.protocol || '';
++
++  return {
++    origin: location?.origin || '',
++    protocol,
++    hostname: location?.hostname || '',
++    href: location?.href || '',
++    capacitorPlatform,
++    windowCapacitorPlatform,
++    capacitorIsNative,
++    windowCapacitorIsNative,
++    hasWindowCapacitor: Boolean(windowCapacitor),
++    hasNativeBridge: Boolean(windowCapacitor?.isNative || windowCapacitor?.nativePromise),
++    hasCapacitorProtocol: protocol === 'capacitor:',
++  };
++};
++
+ export const isCapacitorNativeEnvironment = () => {
 -  if (Capacitor.isNativePlatform()) return true;
 -  if (typeof window === 'undefined') return false;
--
++  const snapshot = getCapacitorEnvironmentSnapshot();
++
++  return snapshot.capacitorIsNative
++    || snapshot.windowCapacitorIsNative
++    || snapshot.hasCapacitorProtocol
++    || snapshot.capacitorPlatform === 'ios'
++    || snapshot.capacitorPlatform === 'android'
++    || snapshot.windowCapacitorPlatform === 'ios'
++    || snapshot.windowCapacitorPlatform === 'android'
++    || snapshot.hasNativeBridge;
++};
++
++export const logCapacitorEnvironment = (scope = 'app') => {
++  if (typeof console === 'undefined') return;
+ 
 -  return window.location.protocol === 'capacitor:'
 -    || window.location.origin === 'https://localhost';
--};
--
- const createFirestore = () => {
--  const isAppEnvironment = isCapacitorAppEnvironment();
-+  const isAppEnvironment = isCapacitorNativeEnvironment();
- 
-   if (!isAppEnvironment) {
-     return getFirestore(firebaseApp);
-   }
- 
-   try {
-     if (process.env.NODE_ENV === 'development') {
-       console.log('[Firebase] Forcing Long Polling bypass for iOS Simulator...');
-     }
-     return initializeFirestore(firebaseApp, {
-       experimentalForceLongPolling: true,
-       experimentalAutoDetectLongPolling: false,
-       useFetchStreams: false
-     });
-   } catch (error) {
-     return getFirestore(firebaseApp);
-   }
++  const snapshot = getCapacitorEnvironmentSnapshot();
++  console.info(`[capacitor:${scope}] environment`, {
++    ...snapshot,
++    isNativeApp: isCapacitorNativeEnvironment(),
++  });
  };
- 
- export const db = createFirestore();
- 
- export const functions = getFunctions(firebaseApp, "us-central1");
- export const storage = getStorage(firebaseApp);
-\ No newline at end of file
-diff --git a/src/pages/StaffMobileMessengerPage.jsx b/src/pages/StaffMobileMessengerPage.jsx
-new file mode 100644
-index 0000000000000000000000000000000000000000..5413c30eb5a8e4a00048c698b3d6a6810263c4b5
---- /dev/null
-+++ b/src/pages/StaffMobileMessengerPage.jsx
-@@ -0,0 +1,38 @@
-+import React from 'react';
-+import InternalMessengerPanel from '../components/messenger/InternalMessengerPanel';
-+
-+export default function StaffMobileMessengerPage({
-+  userId,
-+  userRole,
-+  students = [],
-+  parents = [],
-+  classes = [],
-+  onLogout,
-+}) {
-+  return (
-+    <main className="min-h-screen bg-gray-50 text-gray-900 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
-+      <header className="sticky top-0 z-20 border-b border-gray-200 bg-white/95 px-4 py-3 shadow-sm backdrop-blur pt-[calc(env(safe-area-inset-top)+0.75rem)]">
-+        <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
-+          <h1 className="text-lg font-bold text-gray-900">메신저</h1>
-+          <button
-+            type="button"
-+            onClick={onLogout}
-+            className="rounded-full border border-gray-300 bg-white px-3 py-1.5 text-sm font-semibold text-gray-700 shadow-sm active:bg-gray-100"
-+          >
-+            로그아웃
-+          </button>
-+        </div>
-+      </header>
-+      <section className="mx-auto max-w-5xl px-3 py-3">
-+        <InternalMessengerPanel
-+          userId={userId}
-+          userRole={userRole}
-+          students={students}
-+          parents={parents}
-+          classes={classes}
-+          mobileMessengerOnly
-+        />
-+      </section>
-+    </main>
-+  );
-+}
-diff --git a/src/utils/capacitorEnvironment.js b/src/utils/capacitorEnvironment.js
-new file mode 100644
-index 0000000000000000000000000000000000000000..0e8d0928af22571a0d5228c99aef539b25315cfe
---- /dev/null
-+++ b/src/utils/capacitorEnvironment.js
-@@ -0,0 +1,11 @@
-+import { Capacitor } from '@capacitor/core';
-+
-+export const STAFF_MOBILE_MESSENGER_ROUTE = '/staff-mobile-messenger';
-+
-+export const isCapacitorNativeEnvironment = () => {
-+  if (Capacitor.isNativePlatform()) return true;
-+  if (typeof window === 'undefined') return false;
-+
-+  return window.location.protocol === 'capacitor:'
-+    || window.location.origin === 'https://localhost';
-+};
