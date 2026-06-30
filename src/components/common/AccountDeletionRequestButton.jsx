@@ -40,7 +40,7 @@ export default function AccountDeletionRequestButton({ onAfterRequested, classNa
         onClick={() => setIsOpen(true)}
         className={className || 'flex w-full items-center justify-center gap-2 rounded-2xl border border-rose-200 bg-white px-4 py-3 text-sm font-bold text-rose-600 shadow-sm active:scale-[0.99]'}
       >
-        <Icon name="trash" className="h-4 w-4" />
+        {/* <Icon name="trash" className="h-4 w-4" /> */}
         계정 삭제 요청
       </button>
 
