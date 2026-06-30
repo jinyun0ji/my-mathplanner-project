@@ -1,214 +1,8 @@
-diff --git a/src/components/messenger/ChatMessagePane.jsx b/src/components/messenger/ChatMessagePane.jsx
-index 1fa4caada499d818def09eed60595e35ac7c93ab..3cdc2d34ea85847b06ac6f9907245fc571be767f 100644
---- a/src/components/messenger/ChatMessagePane.jsx
-+++ b/src/components/messenger/ChatMessagePane.jsx
-@@ -38,50 +38,51 @@ const formatMessageDateDivider = (message) => {
-     }).format(date);
- };
- 
- const formatTime = (value) => {
-     if (!value) return '';
-     const date = normalizeMessageDate(value);
-     if (!date || Number.isNaN(date.getTime())) return '';
-     return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
- };
- 
- const getParticipantCount = (room) => {
-     const candidates = [room?.participantIds, room?.participants, room?.memberIds, room?.members];
-     const values = candidates.find((candidate) => Array.isArray(candidate));
-     return values ? values.length : 2;
- };
- 
- const shouldShowSenderName = (room) => getParticipantCount(room) > 2;
- 
- export default function ChatMessagePane({
-     room,
-     messages = [],
-     myUid,
-     onSend,
-     onRetryMessage,
-     contextData = {},
-+    mobileCompact = false,
- }) {
-     const [draft, setDraft] = useState('');
-     const [attachmentFile, setAttachmentFile] = useState(null);
-     const [previewUrl, setPreviewUrl] = useState('');
-     const [error, setError] = useState('');
-     const [imageModal, setImageModal] = useState(null);
-     const messagesContainerRef = useRef(null);
- 
-     const scrollMessagesToBottom = useCallback(() => {
-         const container = messagesContainerRef.current;
-         if (!container) return;
-         container.scrollTop = container.scrollHeight;
-     }, []);
- 
-     const scheduleScrollToBottom = useCallback(() => {
-         scrollMessagesToBottom();
-         requestAnimationFrame(() => {
-             scrollMessagesToBottom();
-             setTimeout(scrollMessagesToBottom, 120);
-         });
-     }, [scrollMessagesToBottom]);
- 
-     const clearAttachment = () => {
-         if (previewUrl) URL.revokeObjectURL(previewUrl);
-         setPreviewUrl('');
-@@ -140,128 +141,130 @@ export default function ChatMessagePane({
-     }, [sortedMessages]);
- 
-     const submitText = async () => {
-         const text = draft.trim();
-         if ((!text && !attachmentFile) || !room?.id) return;
-         const file = attachmentFile;
-         setDraft('');
-         clearAttachment();
-         await onSend(text, file ? { file } : null);
-         scheduleScrollToBottom();
-     };
- 
-     const submit = async (event) => {
-         event.preventDefault();
-         await submitText();
-     };
- 
-     const handleKeyDown = async (event) => {
-         if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
-             event.preventDefault();
-             await submitText();
-         }
-     };
- 
-     if (!room) {
--        return <div className="border rounded-lg bg-white h-[420px] flex items-center justify-center text-sm text-gray-400">오른쪽에서 채팅방을 선택하세요.</div>;
-+        return <div className={`${mobileCompact ? 'h-full border-0 rounded-none' : 'h-[420px] border rounded-lg'} bg-white flex items-center justify-center text-sm text-gray-400`}>오른쪽에서 채팅방을 선택하세요.</div>;
-     }
- 
-     return (
--        <div className="border rounded-lg bg-white h-[420px] flex flex-col">
--            <div className="px-3 py-2 border-b text-sm font-semibold text-gray-700">
--                {getChatRoomDisplayTitle(room, myUid, contextData)}
--            </div>
--            <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-3 space-y-2">
--                {sortedMessages.length === 0 && <p className="text-xs text-gray-400">아직 메시지가 없습니다.</p>}
-+        <div className={`${mobileCompact ? 'h-full border-0 rounded-none' : 'h-[420px] border rounded-lg'} bg-white flex flex-col`}>
-+            {!mobileCompact && (
-+                <div className="px-3 py-2 border-b text-sm font-semibold text-gray-700">
-+                    {getChatRoomDisplayTitle(room, myUid, contextData)}
-+                </div>
-+            )}
-+            <div ref={messagesContainerRef} className={`flex-1 min-h-0 overflow-y-auto bg-gray-50 custom-scrollbar ${mobileCompact ? 'px-3 py-2 space-y-1.5' : 'p-3 space-y-2'}`}>
-+                {sortedMessages.length === 0 && <p className="text-xs text-gray-400 whitespace-nowrap">아직 메시지가 없습니다.</p>}
-                 {renderItems.map((item) => {
-                     if (item.type === 'divider') {
-                         return (
--                            <div key={item.key} className="flex items-center gap-3 py-1">
-+                            <div key={item.key} className={`flex items-center gap-3 ${mobileCompact ? 'py-0.5' : 'py-1'}`}>
-                                 <div className="flex-1 h-px bg-gray-200" />
-                                 <p className="text-xs text-gray-400">{item.label}</p>
-                                 <div className="flex-1 h-px bg-gray-200" />
-                             </div>
-                         );
-                     }
- 
-                     const message = item.message;
-                     const mine = String(message.senderId || message.createdBy || '') === String(myUid || '');
-                     const isSending = Boolean(message?.sending);
-                     const isFailed = Boolean(message?.failed);
-                     const senderName = message?.senderName && message.senderName !== '나' ? message.senderName : '메시지';
-                     const timeLabel = formatTime(message.createdAt);
-                     return (
-                         <div key={item.key}>
-                             {shouldShowSenderName(room) && !mine && senderName && (
-                                 <p className="mb-1 text-xs font-semibold text-gray-500">{senderName}</p>
-                             )}
-                             <div className={`flex items-end gap-1.5 ${mine ? 'justify-end' : 'justify-start'}`}>
--                                {mine && <span className="text-xs text-gray-400 whitespace-nowrap self-end mb-1">{timeLabel}</span>}
--                                <div className={`max-w-[72%] rounded-2xl px-3 py-2 text-sm ${mine ? 'bg-[#455fab] text-white' : 'bg-white border border-gray-100 text-gray-900'} ${isSending ? 'opacity-70' : ''} ${isFailed ? 'border border-red-300 bg-red-50 text-red-700' : ''}`}>
-+                                {mine && <span className="text-[11px] text-gray-400 whitespace-nowrap self-end mb-1">{timeLabel}</span>}
-+                                <div className={`max-w-[70%] rounded-2xl px-3 py-2 text-sm ${mine ? 'bg-[#455fab] text-white' : 'bg-white border border-gray-100 text-gray-900'} ${isSending ? 'opacity-70' : ''} ${isFailed ? 'border border-red-300 bg-red-50 text-red-700' : ''}`}>
-                                     {message.text && <p className="whitespace-pre-wrap break-words">{message.text}</p>}
-                                     {(Array.isArray(message.attachments) ? message.attachments : []).map((attachment) => (
-                                         attachment.type === 'image' ? (
-                                             <button key={attachment.url || attachment.name} type="button" onClick={() => setImageModal(attachment)} className={`${message.text ? 'mt-2 ' : ''}block text-left`}>
-                                                 <img src={attachment.url} alt={attachment.name} className="max-h-48 rounded-lg object-cover" onError={(event) => { event.currentTarget.style.display = 'none'; }} />
-                                                 <span className="mt-1 block text-xs underline break-all">{attachment.name}</span>
-                                             </button>
-                                         ) : (
-                                             <a key={attachment.url || attachment.name} href={attachment.url} target="_blank" rel="noreferrer" className={`${message.text ? 'mt-2 ' : ''}flex items-center gap-2 rounded-lg border border-current/20 px-2 py-1.5 text-xs`}>
-                                                 <span>📄</span><span className="break-all">{attachment.name}</span><span className="whitespace-nowrap opacity-75">{formatAttachmentSize(attachment.size)}</span>
-                                             </a>
-                                         )
-                                     ))}
-                                     {isSending && <p className="text-[10px] text-gray-500 mt-1">전송 중…</p>}
-                                     {isFailed && (
-                                         <div className="mt-1 flex items-center justify-end gap-2">
-                                             <p className="text-[10px] text-red-500">전송 실패</p>
-                                             <button
-                                                 type="button"
-                                                 onClick={() => onRetryMessage?.(message)}
-                                                 className="text-[10px] px-1.5 py-0.5 rounded border border-red-300 text-red-600"
-                                             >
-                                                 재시도
-                                             </button>
-                                         </div>
-                                     )}
-                                 </div>
--                                {!mine && <span className="text-xs text-gray-400 whitespace-nowrap self-end mb-1">{timeLabel}</span>}
-+                                {!mine && <span className="text-[11px] text-gray-400 whitespace-nowrap self-end mb-1">{timeLabel}</span>}
-                             </div>
-                         </div>
-                     );
-                 })}
-             </div>
-             {error && <p className="border-t px-3 py-2 text-xs text-red-600">{error}</p>}
-             {attachmentFile && (
--                <div className="border-t px-3 py-2 flex items-center gap-3 text-xs">
-+                <div className="border-t bg-white px-3 py-2 flex items-center gap-3 text-xs">
-                     {previewUrl && <img src={previewUrl} alt="첨부 미리보기" className="h-12 w-12 rounded object-cover" />}
-                     <span className="flex-1 truncate">{attachmentFile.name} · {formatAttachmentSize(attachmentFile.size)}</span>
-                     <button type="button" onClick={clearAttachment} className="text-red-500">취소</button>
-                 </div>
-             )}
-             {imageModal && (
-                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => setImageModal(null)}>
-                     <div className="max-w-[96vw] max-h-[96vh] rounded-xl bg-white p-3 shadow-xl" onClick={(event) => event.stopPropagation()}>
-                         <div className="mb-2 flex items-center justify-between gap-3">
-                             <p className="truncate text-sm font-semibold text-gray-700">{imageModal.name || '이미지'}</p>
-                             <button type="button" onClick={() => setImageModal(null)} className="rounded border px-2 py-1 text-xs">닫기</button>
-                         </div>
-                         <img src={imageModal.url} alt={imageModal.name || '첨부 이미지'} className="max-h-[78vh] max-w-[90vw] rounded-lg object-contain" />
-                         {imageModal.url && <a href={imageModal.url} target="_blank" rel="noreferrer" className="mt-2 inline-block text-xs underline">원본 열기</a>}
-                     </div>
-                 </div>
-             )}
--            <form onSubmit={submit} className="border-t p-2 flex gap-2 items-end">
--                <label className="px-3 py-2 rounded border text-sm cursor-pointer">첨부<input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" onChange={handleAttachmentChange} className="hidden" /></label>
-+            <form onSubmit={submit} className={`${mobileCompact ? 'sticky bottom-0 p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] gap-1.5' : 'p-2 gap-2 items-end'} border-t bg-white flex`}>
-+                <label className={`${mobileCompact ? 'px-2.5 py-2 rounded-full text-xs' : 'px-3 py-2 rounded text-sm'} border border-gray-200 bg-white cursor-pointer shrink-0`}>첨부<input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" onChange={handleAttachmentChange} className="hidden" /></label>
-                 <textarea
-                     value={draft}
-                     onChange={(event) => setDraft(event.target.value)}
-                     onKeyDown={handleKeyDown}
-                     placeholder="메시지 입력"
--                    rows={2}
--                    className="flex-1 border rounded px-3 py-2 text-sm resize-y"
-+                    rows={mobileCompact ? 1 : 2}
-+                    className={`${mobileCompact ? 'min-h-10 max-h-24 rounded-full bg-gray-50 px-4 py-2 resize-none' : 'rounded px-3 py-2 resize-y'} flex-1 border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-gray-300`}
-                 />
--                <button type="submit" disabled={!draft.trim() && !attachmentFile} className="px-3 py-2 rounded bg-green-600 text-white text-sm disabled:bg-gray-300">전송</button>
-+                <button type="submit" disabled={!draft.trim() && !attachmentFile} className={`${mobileCompact ? 'px-3 py-2 rounded-full text-xs' : 'px-3 py-2 rounded text-sm'} bg-gray-900 text-white font-semibold disabled:bg-gray-300 shrink-0`}>전송</button>
-             </form>
-         </div>
-     );
- }
-\ No newline at end of file
 diff --git a/src/components/messenger/ChatRoomList.jsx b/src/components/messenger/ChatRoomList.jsx
-index 58bbe05bd22399a0973f7937383c9f89184a26fd..9ba8b60e47e70c5f933ff3bed9cfe1339ba2df8a 100644
+index 9ba8b60e47e70c5f933ff3bed9cfe1339ba2df8a..74554274bfa248e394d8eb5d790837c3aca8a1b6 100644
 --- a/src/components/messenger/ChatRoomList.jsx
 +++ b/src/components/messenger/ChatRoomList.jsx
-@@ -20,53 +20,53 @@ const formatRoomTime = (room) => {
-     const date = normalizeRoomDate(room?.lastMessageAt || room?.updatedAt || room?.createdAt);
+@@ -21,51 +21,51 @@ const formatRoomTime = (room) => {
      if (!date) return '';
      return date.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
  };
@@ -233,11 +27,10 @@ index 58bbe05bd22399a0973f7937383c9f89184a26fd..9ba8b60e47e70c5f933ff3bed9cfe133
      title = '상담 채팅방',
  }) {
      return (
--        <div className="border rounded-lg overflow-hidden bg-white">
-+        <div className={`${mobile ? 'h-full border-0 rounded-none' : 'border rounded-lg'} overflow-hidden bg-white flex flex-col`}>
-             <div className={`${mobile ? 'px-4 py-3' : 'px-3 py-2'} border-b text-sm font-semibold text-gray-600`}>{title}</div>
--            <ul className={mobile ? 'overflow-y-auto' : 'max-h-[420px] overflow-y-auto'}>
-+            <ul className={mobile ? 'min-h-0 flex-1 overflow-y-auto' : 'max-h-[420px] overflow-y-auto'}>
+         <div className={`${mobile ? 'h-full border-0 rounded-none' : 'border rounded-lg'} overflow-hidden bg-white flex flex-col`}>
+-            <div className={`${mobile ? 'px-4 py-3' : 'px-3 py-2'} border-b text-sm font-semibold text-gray-600`}>{title}</div>
++            {title ? <div className={`${mobile ? 'px-4 py-3' : 'px-3 py-2'} border-b text-sm font-semibold text-gray-600`}>{title}</div> : null}
+             <ul className={mobile ? 'min-h-0 flex-1 overflow-y-auto' : 'max-h-[420px] overflow-y-auto'}>
                  {rooms.length === 0 && (
                      <li className="px-3 py-6 text-sm text-gray-400">생성된 채팅방이 없습니다.</li>
                  )}
@@ -262,53 +55,11 @@ index 58bbe05bd22399a0973f7937383c9f89184a26fd..9ba8b60e47e70c5f933ff3bed9cfe133
                                      <p className="min-w-0 flex-1 truncate text-xs text-gray-500">{getRoomPreview(room)}</p>
                                      {unreadCount > 0 && <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white">{unreadCount > 99 ? '99+' : unreadCount}</span>}
                                  </div>
-                             </button>
 diff --git a/src/components/messenger/InternalMessengerPanel.jsx b/src/components/messenger/InternalMessengerPanel.jsx
-index 8b1bbf2d9e9275e60f13b439cbb381310f9437e4..b94e3dec5d23c7394ca7e795067581fa68071dcb 100644
+index b94e3dec5d23c7394ca7e795067581fa68071dcb..c1565dc1a3e6c2c8724fb30105538bc6c24f3577 100644
 --- a/src/components/messenger/InternalMessengerPanel.jsx
 +++ b/src/components/messenger/InternalMessengerPanel.jsx
-@@ -417,82 +417,81 @@ export default function InternalMessengerPanel({
- 
-         try {
-             const result = await broadcastChatMessage({
-                 text,
-                 targetUserIds,
-                 targetType: 'custom',
-             });
-             setStatusMessage(`선택 발송 완료: ${result?.successCount || 0}건`);
-             setBroadcastText('');
-             setSelectedTargetUids([]);
-         } catch (error) {
-             console.error('[internal-messenger] broadcast failed', error);
-             setStatusMessage(`선택 발송 실패: ${error.message}`);
-         }
-     };
- 
-     if (!isStaffOrTeachingRole(userRole)) {
-         return <div className="bg-white p-4 rounded-xl shadow text-sm text-gray-500">내부 운영자만 접근 가능합니다.</div>;
-     }
- 
-     const hasTargets = targetOptions.length > 0;
- 
-     if (mobileMessengerOnly) {
-         if (selectedRoomResolved) {
-             return (
--                <div className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm"
--                    style={{ height: 'calc(100dvh - 110px - env(safe-area-inset-top) - env(safe-area-inset-bottom))' }}>
--                    <header className="flex shrink-0 items-center gap-3 border-b border-gray-100 bg-white px-4 py-3">
-+                <div className="flex h-full min-h-0 flex-col overflow-hidden bg-white">
-+                    <header className="flex shrink-0 items-center gap-3 border-b border-gray-100 bg-white px-3 py-2">
-                         <button
-                             type="button"
-                             onClick={() => setSelectedRoom(null)}
-                             className="inline-flex h-9 w-9 items-center justify-center rounded-full text-xl font-semibold text-gray-700 active:bg-gray-100"
-                             aria-label="채팅방 목록으로 돌아가기"
-                         >
-                             ‹
-                         </button>
-                         <h2 className="min-w-0 flex-1 truncate text-base font-semibold text-gray-900">
-                             {getChatRoomDisplayTitle(selectedRoomResolved, userId, roomDisplayContext)}
-                         </h2>
+@@ -455,51 +455,51 @@ export default function InternalMessengerPanel({
                      </header>
                      <div className="min-h-0 flex-1 overflow-hidden [&>div]:!h-full [&>div]:!max-h-none [&>div]:!border-0">
                          <ChatMessagePane
@@ -318,7 +69,7 @@ index 8b1bbf2d9e9275e60f13b439cbb381310f9437e4..b94e3dec5d23c7394ca7e795067581fa
                              onSend={handleSendMessage}
                              onRetryMessage={handleRetryMessage}
                              contextData={roomDisplayContext}
-+                            mobileCompact
+                             mobileCompact
                          />
                      </div>
                  </div>
@@ -326,9 +77,7 @@ index 8b1bbf2d9e9275e60f13b439cbb381310f9437e4..b94e3dec5d23c7394ca7e795067581fa
          }
  
          return (
--            <div className="min-h-0 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm [&>div]:!h-full [&>div]:!max-h-none [&>div]:!border-0"
--                style={{ height: 'calc(100dvh - 110px - env(safe-area-inset-top) - env(safe-area-inset-bottom))' }}>
-+            <div className="h-full min-h-0 overflow-hidden bg-white [&>div]:!h-full [&>div]:!max-h-none [&>div]:!border-0">
+             <div className="h-full min-h-0 overflow-hidden bg-white [&>div]:!h-full [&>div]:!max-h-none [&>div]:!border-0">
                  <ChatRoomList
                      rooms={rooms}
                      selectedRoomId={selectedRoom?.id || null}
@@ -336,7 +85,8 @@ index 8b1bbf2d9e9275e60f13b439cbb381310f9437e4..b94e3dec5d23c7394ca7e795067581fa
                      myUid={userId}
                      contextData={roomDisplayContext}
                      mobile
-                     title="메신저"
+-                    title="메신저"
++                    title=""
                  />
              </div>
          );
@@ -354,54 +104,11 @@ index 8b1bbf2d9e9275e60f13b439cbb381310f9437e4..b94e3dec5d23c7394ca7e795067581fa
                      messages={messages}
                      myUid={userId}
                      onSend={handleSendMessage}
-diff --git a/src/pages/StaffMobileMessengerPage.jsx b/src/pages/StaffMobileMessengerPage.jsx
-index 8547f48b9d74ebb88c66e1762d2c388bacd6d189..42062d47768d25dd477cd9aeaaf16389dec154fa 100644
---- a/src/pages/StaffMobileMessengerPage.jsx
-+++ b/src/pages/StaffMobileMessengerPage.jsx
-@@ -1,40 +1,40 @@
- import React from 'react';
- import InternalMessengerPanel from '../components/messenger/InternalMessengerPanel';
+                     onRetryMessage={handleRetryMessage}
+                     contextData={roomDisplayContext}
+                 />
+             </div>
  
- export default function StaffMobileMessengerPage({
-   userId,
-   userRole,
-   students = [],
-   parents = [],
-   classes = [],
-   onLogout,
-   profileDocId = '',
- }) {
-   return (
--    <main className="min-h-screen bg-gray-50 text-gray-900 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
--      <header className="sticky top-0 z-20 border-b border-gray-200 bg-white/95 px-4 py-3 shadow-sm backdrop-blur pt-[calc(env(safe-area-inset-top)+0.75rem)]">
--        <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
--          <h1 className="text-lg font-bold text-gray-900">메신저</h1>
-+    <main className="flex h-[100dvh] min-h-0 flex-col bg-gray-50 text-gray-900 pt-[env(safe-area-inset-top)]">
-+      <header className="sticky top-0 z-20 border-b border-gray-200 bg-white/95 px-3 py-2 backdrop-blur">
-+        <div className="flex items-center justify-between gap-3">
-+          <h1 className="text-base font-bold text-gray-900">메신저</h1>
-           <button
-             type="button"
-             onClick={onLogout}
--            className="rounded-full border border-gray-300 bg-white px-3 py-1.5 text-sm font-semibold text-gray-700 shadow-sm active:bg-gray-100"
-+            className="rounded-full border border-gray-300 bg-white px-2.5 py-1 text-xs font-semibold text-gray-700 active:bg-gray-100"
-           >
-             로그아웃
-           </button>
-         </div>
-       </header>
--      <section className="mx-auto max-w-5xl px-3 py-3">
-+      <section className="min-h-0 flex-1 px-0 py-0">
-         <InternalMessengerPanel
-           userId={userId}
-           userRole={userRole}
-           students={students}
-           parents={parents}
-           classes={classes}
-           mobileMessengerOnly
-           profileDocId={profileDocId}
-         />
-       </section>
-     </main>
-   );
- }
+             {/* 2열: 컨트롤 카드 및 리스트 (상하단 분리) */}
+             <div className="lg:col-span-1 flex flex-col gap-4 h-full min-h-0">
+                 

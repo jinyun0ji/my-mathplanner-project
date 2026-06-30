@@ -477,7 +477,7 @@ export default function InternalMessengerPanel({
                     myUid={userId}
                     contextData={roomDisplayContext}
                     mobile
-                    title="메신저"
+                    title=""
                 />
             </div>
         );

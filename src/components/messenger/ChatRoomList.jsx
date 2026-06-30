@@ -43,7 +43,7 @@ export default function ChatRoomList({
 }) {
     return (
         <div className={`${mobile ? 'h-full border-0 rounded-none' : 'border rounded-lg'} overflow-hidden bg-white flex flex-col`}>
-            <div className={`${mobile ? 'px-4 py-3' : 'px-3 py-2'} border-b text-sm font-semibold text-gray-600`}>{title}</div>
+            {title ? <div className={`${mobile ? 'px-4 py-3' : 'px-3 py-2'} border-b text-sm font-semibold text-gray-600`}>{title}</div> : null}
             <ul className={mobile ? 'min-h-0 flex-1 overflow-y-auto' : 'max-h-[420px] overflow-y-auto'}>
                 {rooms.length === 0 && (
                     <li className="px-3 py-6 text-sm text-gray-400">생성된 채팅방이 없습니다.</li>
