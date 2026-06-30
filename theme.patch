@@ -1,79 +1,8 @@
 diff --git a/src/app/AppRoutes.jsx b/src/app/AppRoutes.jsx
-index 2c18db59c85a53e213f49ee3ecee14daaacaddc9..7b508caacad1226eb5ddcac5b03d55527f2ffa95 100644
+index 7b508caacad1226eb5ddcac5b03d55527f2ffa95..0bb0743992c8c7134aeec645da0513ed20a9f743 100644
 --- a/src/app/AppRoutes.jsx
 +++ b/src/app/AppRoutes.jsx
-@@ -27,51 +27,51 @@ import AdminNotificationsPage from '../pages/admin/AdminNotificationsPage';
- import AdminPaymentsPage from '../pages/admin/AdminPaymentsPage';
- import AdminSettingsPage from '../pages/admin/AdminSettingsPage';
- import AdminLogsPage from '../pages/admin/AdminLogsPage';
- import MasterViewPage from '../pages/admin/MasterViewPage';
- import InviteManagementPage from '../pages/admin/InviteManagementPage';
- import FormulaBookManagement from '../pages/FormulaBookManagement';
- import StaffMobileMessengerPage from '../pages/StaffMobileMessengerPage';
- import AdminRoute from '../routes/AdminRoute';
- import StaffOrTeachingRoute from '../routes/StaffOrTeachingRoute';
- import useAuth from '../auth/useAuth';
- import {
-     ROLE,
-     isParentRole,
-     isStudentRole,
-     isAdminRole,
-     isStaffRole,
-     isStaffOrTeachingRole,
-     isViewerGroupRole,
- } from '../constants/roles';
- import { db, functions } from '../firebase/client';
- import { invalidateStaffDataCache, loadStaffDataOnce, loadViewerDataOnce } from '../data/firestoreSync';
- import { createLinkCode, createStaffUser } from '../admin/staffService';
- import { claimStudentLinkCode } from '../parent/linkCodeService';
- import { useParentContext } from '../parent';
- import { logClientError } from '../utils/errorLogger';
--import { STAFF_MOBILE_MESSENGER_ROUTE } from '../utils/capacitorEnvironment';
-+import { isCapacitorNativeEnvironment, STAFF_MOBILE_MESSENGER_ROUTE } from '../utils/capacitorEnvironment';
- import { addVideoMemo, deleteVideoMemo, updateVideoMemo } from '../domain/memo/videoMemo.service';
- import { getAssignmentQuestionNumbers, normalizeHomeworkResultMapForDisplay } from '../domain/homework/homework.service';
- import { recomputeClassTestStats } from '../domain/grade/classTestStats.service';
- import {
-     addDoc,
-     arrayRemove,
-     arrayUnion,
-     collection,
-     deleteDoc,
-     doc,
-     getDoc,
-     getDocs,
-     limit,
-     orderBy,
-     query,
-     setDoc,
-     serverTimestamp,
-     Timestamp,
-     where,
-     updateDoc,
-     writeBatch,
- } from 'firebase/firestore';
- import { httpsCallable } from 'firebase/functions';
- 
- const PAGE_ROUTES = {
-@@ -140,50 +140,58 @@ const AppShellLayout = ({
-     <AppShell
-         page={page}
-         notifications={notifications}
-         students={students}
-         parents={parents}
-         classes={classes}
-         userId={userId}
-         userRole={userRole}
-         isSidebarOpen={isSidebarOpen}
-         isMessengerOpen={isMessengerOpen}
-         hasNewNotifications={hasNewNotifications}
-         hasNewMessages={hasNewMessages}
-         isMobileMenuOpen={isMobileMenuOpen}
-         setIsMobileMenuOpen={setIsMobileMenuOpen}
-         setHasNewNotifications={setHasNewNotifications}
-         setHasNewMessages={setHasNewMessages}
-         toggleSidebar={toggleSidebar}
-         toggleMessenger={toggleMessenger}
+@@ -158,51 +158,51 @@ const AppShellLayout = ({
          handlePageChange={handlePageChange}
          handleLogout={handleLogout}
      >
@@ -81,14 +10,14 @@ index 2c18db59c85a53e213f49ee3ecee14daaacaddc9..7b508caacad1226eb5ddcac5b03d5552
      </AppShell>
  );
  
-+const NativeStaffRouteGuard = ({ role, children }) => {
-+    if (isCapacitorNativeEnvironment() && isStaffOrTeachingRole(role)) {
-+        return <Navigate to={STAFF_MOBILE_MESSENGER_ROUTE} replace />;
-+    }
-+
-+    return children;
-+};
-+
+ const NativeStaffRouteGuard = ({ role, children }) => {
+     if (isCapacitorNativeEnvironment() && isStaffOrTeachingRole(role)) {
+         return <Navigate to={STAFF_MOBILE_MESSENGER_ROUTE} replace />;
+     }
+ 
+     return children;
+ };
+ 
  export default function AppRoutes({ user, role, studentIds }) {
    const navigate = useNavigate();
    const location = useLocation();
@@ -99,7 +28,8 @@ index 2c18db59c85a53e213f49ee3ecee14daaacaddc9..7b508caacad1226eb5ddcac5b03d5552
    const [studentSearchTerm, setStudentSearchTerm] = useState('');
    const userId = user?.uid || null;
    const isAuthenticated = Boolean(user);
-   const { logout } = useAuth();
+-  const { logout } = useAuth();
++  const { logout, profileDocId } = useAuth();
    const {
        activeStudentId: parentActiveStudentId,
        studentIds: parentStudentIds,
@@ -114,7 +44,23 @@ index 2c18db59c85a53e213f49ee3ecee14daaacaddc9..7b508caacad1226eb5ddcac5b03d5552
    const [lessonLogs, setLessonLogs] = useState([]);
    const [attendanceLogs, setAttendanceLogs] = useState([]);
    const [clinicLogs, setClinicLogs] = useState([]);
-@@ -2090,71 +2098,73 @@ export default function AppRoutes({ user, role, studentIds }) {
+   const [workLogs, setWorkLogs] = useState([]);
+   const [announcements, setAnnouncements] = useState([]);
+   const [tests, setTests] = useState([]);
+   const [homeworkAssignments, setHomeworkAssignments] = useState([]);
+   const [paymentLogs, setPaymentLogs] = useState([]);
+   const [isPaymentLogsLoading, setIsPaymentLogsLoading] = useState(false);
+   const [externalSchedules, setExternalSchedules] = useState([]);
+   const [closures, setClosures] = useState([]);
+   const [lessonReports, setLessonReports] = useState([]);
+ 
+   const [grades, setGrades] = useState({});
+@@ -2093,50 +2093,51 @@ export default function AppRoutes({ user, role, studentIds }) {
+     setIsGlobalDirty, studentSearchTerm, setStudentSearchTerm, handleSendStudentNotification,
+     externalSchedules, pendingQuickAction, clearPendingQuickAction: () => setPendingQuickAction(null), onQuickAction: handleQuickAction,
+     onCreateStaffUser: isAdminRole(role) ? handleCreateStaffUser : null,
+     onCreateLinkCode: isStaffRole(role) ? handleCreateLinkCode : null,
+     handleUpdateStudentClassStatus,
      userRole: role,
      userId,
      lessonReports,
@@ -135,237 +81,478 @@ index 2c18db59c85a53e213f49ee3ecee14daaacaddc9..7b508caacad1226eb5ddcac5b03d5552
                      parents={parents}
                      classes={classes}
                      onLogout={handleLogout}
++                    profileDocId={profileDocId}
                  />
              )}
          />
          <Route
              element={(
--                <AppShellLayout
--                    page={page}
--                    notifications={notifications}
--                    students={students}
--                    parents={parents}
--                    classes={classes}
--                    userId={userId}
--                    userRole={role}
--                    isSidebarOpen={isSidebarOpen}
--                    isMessengerOpen={isMessengerOpen}
--                    hasNewNotifications={hasNewNotifications}
--                    hasNewMessages={hasNewMessages}
--                    isMobileMenuOpen={isMobileMenuOpen}
--                    setIsMobileMenuOpen={setIsMobileMenuOpen}
--                    setHasNewNotifications={setHasNewNotifications}
--                    setHasNewMessages={setHasNewMessages}
--                    toggleSidebar={toggleSidebar}
--                    toggleMessenger={toggleMessenger}
--                    handlePageChange={handlePageChange}
--                    handleLogout={handleLogout}
--                />
-+                <NativeStaffRouteGuard role={role}>
-+                    <AppShellLayout
-+                        page={page}
-+                        notifications={notifications}
-+                        students={students}
-+                        parents={parents}
-+                        classes={classes}
-+                        userId={userId}
-+                        userRole={role}
-+                        isSidebarOpen={isSidebarOpen}
-+                        isMessengerOpen={isMessengerOpen}
-+                        hasNewNotifications={hasNewNotifications}
-+                        hasNewMessages={hasNewMessages}
-+                        isMobileMenuOpen={isMobileMenuOpen}
-+                        setIsMobileMenuOpen={setIsMobileMenuOpen}
-+                        setHasNewNotifications={setHasNewNotifications}
-+                        setHasNewMessages={setHasNewMessages}
-+                        toggleSidebar={toggleSidebar}
-+                        toggleMessenger={toggleMessenger}
-+                        handlePageChange={handlePageChange}
-+                        handleLogout={handleLogout}
-+                    />
-+                </NativeStaffRouteGuard>
-             )}
-         >
-             <Route index element={<Navigate to={PAGE_ROUTES.lessons} replace />} />
-             <Route path="home" element={<Home {...managementProps} onQuickAction={handleQuickAction} onCreateStaffUser={managementProps.onCreateStaffUser} onCreateLinkCode={managementProps.onCreateLinkCode} userRole={role} />} />
-             <Route path="lessons" element={<LessonManagement {...managementProps} />} />
-             <Route path="attendance" element={<AttendanceManagement {...managementProps} />} />
-             <Route path="students" element={<StudentManagement {...managementProps} />} />
-             <Route path="students/:studentId" element={<StudentDetail />} />
-             <Route path="lesson-reports" element={<LessonReportManagement {...managementProps} />} />
-             <Route path="students/:studentId/lesson-reports" element={<LessonReportManagement {...managementProps} />} />
-             <Route path="grades" element={<GradeManagement {...managementProps} />} />
-             <Route path="homework" element={<HomeworkManagement {...managementProps} />} />
-             <Route path="clinic" element={<ClinicManagement {...managementProps} />} />
-             <Route path="communication" element={<InternalCommunication {...managementProps} />} />
-             <Route path="payment" element={<PaymentManagement {...managementProps} />} />
-             <Route
-                 path="closures"
-                 element={(
-                     <StaffOrTeachingRoute>
-                         <ClosureManagement {...managementProps} />
-                     </StaffOrTeachingRoute>
-                 )}
-             />
-             <Route
-                 path="admin/staff"
-diff --git a/src/app/AuthGate.jsx b/src/app/AuthGate.jsx
-index 549768ddd13348cff225dd82985c7ef893b7f1bb..f16690347ea29737a08be1c5a6c8f5736d83db19 100644
---- a/src/app/AuthGate.jsx
-+++ b/src/app/AuthGate.jsx
-@@ -1,74 +1,82 @@
- import React, { useEffect } from 'react';
- import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+                 <NativeStaffRouteGuard role={role}>
+                     <AppShellLayout
+                         page={page}
+                         notifications={notifications}
+                         students={students}
+                         parents={parents}
+                         classes={classes}
+                         userId={userId}
+                         userRole={role}
+                         isSidebarOpen={isSidebarOpen}
+                         isMessengerOpen={isMessengerOpen}
+                         hasNewNotifications={hasNewNotifications}
+                         hasNewMessages={hasNewMessages}
+                         isMobileMenuOpen={isMobileMenuOpen}
+                         setIsMobileMenuOpen={setIsMobileMenuOpen}
+                         setHasNewNotifications={setHasNewNotifications}
+                         setHasNewMessages={setHasNewMessages}
+                         toggleSidebar={toggleSidebar}
+                         toggleMessenger={toggleMessenger}
+                         handlePageChange={handlePageChange}
+diff --git a/src/components/messenger/InternalMessengerPanel.jsx b/src/components/messenger/InternalMessengerPanel.jsx
+index 42a630f5d67635c4b072dd21b208b585e2bbcbc3..938ef47f1aad9ec1d27aa6ad3f6d1d296667397c 100644
+--- a/src/components/messenger/InternalMessengerPanel.jsx
++++ b/src/components/messenger/InternalMessengerPanel.jsx
+@@ -3,50 +3,51 @@ import { collection, getDocs, query, where } from 'firebase/firestore';
+ import { db } from '../../firebase/client';
+ import {
+     broadcastChatMessage,
+     createOrOpenRoom,
+     findExistingInternalRoom,
+     sendMessageDirect,
+     subscribeChatMessages,
+     subscribeInternalChatRooms,
+ } from '../../domain/messenger/messenger.service';
+ import { isStaffOrTeachingRole } from '../../constants/roles';
+ import ChatRoomList from './ChatRoomList';
+ import ChatMessagePane from './ChatMessagePane';
+ import {
+     buildMessengerTargets,
+     groupStudentTargetsByClass,
+     splitStudentTargetsByStatus,
+ } from './messengerTargets';
  
- import AppRoutes from './AppRoutes';
- import OnboardingPage from '../pages/OnboardingPage';
- import LoginPage from '../pages/LoginPage';
- import InviteSignupPage from '../pages/InviteSignupPage';
- import useAuth from '../auth/useAuth';
- import { isParentRole, isStaffOrTeachingRole, isStudentRole } from '../constants/roles';
- import { claimStudentLinkCode } from '../parent/linkCodeService';
- import { ParentProvider } from '../parent';
- import { redirectToKakao, redirectToNaver } from '../auth/socialRedirect';
- import { signInWithGoogle, signInWithReviewEmail } from '../auth/authService';
- import { initForegroundMessageListener } from '../firebase/messaging';
- import { getDefaultRouteForRole } from '../auth/authRedirects';
--import { isCapacitorNativeEnvironment, STAFF_MOBILE_MESSENGER_ROUTE } from '../utils/capacitorEnvironment';
-+import {
-+    isCapacitorNativeEnvironment,
-+    logCapacitorEnvironment,
-+    STAFF_MOBILE_MESSENGER_ROUTE,
-+} from '../utils/capacitorEnvironment';
- import { DELETION_REQUESTED_MESSAGE } from '../accountDeletion';
- 
- export default function AuthGate() {
-     const navigate = useNavigate();
-     const location = useLocation();
-     const pathname = location.pathname;
- 
-     const isOnboardingPage = pathname === '/onboarding';
-     const isLoginPage = pathname === '/login';
-     const isSignupPage = pathname.startsWith('/signup');
-     const isAuthCallbackPage = pathname === '/auth/callback';
-     const isStudentDetailPage = pathname.startsWith('/students/');
-     const isMessengerRoute = pathname.startsWith('/chat') || pathname.startsWith('/messages');
-     const isFormulaQrRoute = pathname === '/classroom' && new URLSearchParams(location.search).get('conceptId');
-     const isStaffMobileMessengerRoute = pathname === STAFF_MOBILE_MESSENGER_ROUTE;
- 
-     const {
-         user,
-         role,
-         studentIds,
-         activeStudentId,
-         loading,
-         profileError,
-         userProfile,
-         logout,
-     } = useAuth();
- 
-     const needsParentOnboarding =
-         isParentRole(role) && (!Array.isArray(studentIds) || studentIds.length === 0);
- 
-     const isDeletionBlockedViewer = (isParentRole(role) || isStudentRole(role))
-         && Boolean(userProfile?.deletionAccessBlocked);
- 
-+    useEffect(() => {
-+        logCapacitorEnvironment('auth-gate');
-+    }, []);
-+
-     useEffect(() => {
-         let unsubscribe = null;
- 
-         if (!user) return undefined;
- 
-         initForegroundMessageListener()
-             .then((stop) => { unsubscribe = stop; })
-             .catch(() => {});
- 
-         return () => {
-             if (typeof unsubscribe === 'function') unsubscribe();
-         };
-     }, [user]);
+ export default function InternalMessengerPanel({
+     userId,
+     userRole,
+     students = [],
+     parents = [],
+     classes = [],
+     mobileMessengerOnly = false,
++    profileDocId = '',
+ }) {
+     const [rooms, setRooms] = useState([]);
+     const [selectedRoom, setSelectedRoom] = useState(null);
+     const [messages, setMessages] = useState([]);
+     const [, setOptimisticByRoom] = useState({});
+     const [targetUid, setTargetUid] = useState('');
+     const [broadcastText, setBroadcastText] = useState('');
+     const [statusMessage, setStatusMessage] = useState('');
+     const [selectedTargetUids, setSelectedTargetUids] = useState([]);
+     const [studentSearchQuery, setStudentSearchQuery] = useState('');
+     const [fallbackStudents, setFallbackStudents] = useState([]);
+     const [fallbackParents, setFallbackParents] = useState([]);
  
      useEffect(() => {
-         if (loading) return;
+         if (Array.isArray(students) && students.length > 0 && Array.isArray(parents) && parents.length > 0) {
+             setFallbackStudents([]);
+             setFallbackParents([]);
+             return undefined;
+         }
+         if (!isStaffOrTeachingRole(userRole)) return undefined;
  
-         const redirectPath = role ? (getDefaultRouteForRole(role) || '/home') : null;
+         let mounted = true;
+         Promise.all([
+             Array.isArray(students) && students.length > 0
+                 ? Promise.resolve(null)
+@@ -101,52 +102,52 @@ export default function InternalMessengerPanel({
+     const { active: activeStudentTargets, withdrawn: withdrawnStudentTargets } = useMemo(() => (
+         splitStudentTargetsByStatus(filteredTargets)
+     ), [filteredTargets]);
  
-         if (!user) {
-             if (!isLoginPage && !isSignupPage && !isAuthCallbackPage) {
-                 if (isFormulaQrRoute) sessionStorage.setItem('formulaQrRedirect', `${pathname}${location.search}`);
-                 navigate('/login', { replace: true });
-             }
-             return;
-diff --git a/src/utils/capacitorEnvironment.js b/src/utils/capacitorEnvironment.js
-index 0e8d0928af22571a0d5228c99aef539b25315cfe..e44f2c37d7a099235380e398b20eb98f1e2af02f 100644
---- a/src/utils/capacitorEnvironment.js
-+++ b/src/utils/capacitorEnvironment.js
-@@ -1,11 +1,63 @@
- import { Capacitor } from '@capacitor/core';
+     const studentSections = useMemo(() => (
+         groupStudentTargetsByClass(activeStudentTargets, classes)
+     ), [activeStudentTargets, classes]);
  
- export const STAFF_MOBILE_MESSENGER_ROUTE = '/staff-mobile-messenger';
+     const parentTargets = useMemo(() => (
+         filteredTargets
+             .filter((target) => target.role === 'parent')
+             .sort((left, right) => String(left.displayName || '').localeCompare(String(right.displayName || ''), 'ko'))
+     ), [filteredTargets]);
  
-+const getWindowCapacitor = () => {
-+  if (typeof window === 'undefined') return null;
-+  return window.Capacitor || null;
-+};
-+
-+export const getCapacitorEnvironmentSnapshot = () => {
-+  const windowCapacitor = getWindowCapacitor();
-+  const location = typeof window !== 'undefined' ? window.location : null;
-+  const capacitorPlatform = typeof Capacitor.getPlatform === 'function'
-+    ? Capacitor.getPlatform()
-+    : null;
-+  const windowCapacitorPlatform = typeof windowCapacitor?.getPlatform === 'function'
-+    ? windowCapacitor.getPlatform()
-+    : null;
-+  const capacitorIsNative = typeof Capacitor.isNativePlatform === 'function'
-+    ? Capacitor.isNativePlatform()
-+    : false;
-+  const windowCapacitorIsNative = typeof windowCapacitor?.isNativePlatform === 'function'
-+    ? windowCapacitor.isNativePlatform()
-+    : false;
-+  const protocol = location?.protocol || '';
-+
-+  return {
-+    origin: location?.origin || '',
-+    protocol,
-+    hostname: location?.hostname || '',
-+    href: location?.href || '',
-+    capacitorPlatform,
-+    windowCapacitorPlatform,
-+    capacitorIsNative,
-+    windowCapacitorIsNative,
-+    hasWindowCapacitor: Boolean(windowCapacitor),
-+    hasNativeBridge: Boolean(windowCapacitor?.isNative || windowCapacitor?.nativePromise),
-+    hasCapacitorProtocol: protocol === 'capacitor:',
-+  };
-+};
-+
- export const isCapacitorNativeEnvironment = () => {
--  if (Capacitor.isNativePlatform()) return true;
--  if (typeof window === 'undefined') return false;
-+  const snapshot = getCapacitorEnvironmentSnapshot();
-+
-+  return snapshot.capacitorIsNative
-+    || snapshot.windowCapacitorIsNative
-+    || snapshot.hasCapacitorProtocol
-+    || snapshot.capacitorPlatform === 'ios'
-+    || snapshot.capacitorPlatform === 'android'
-+    || snapshot.windowCapacitorPlatform === 'ios'
-+    || snapshot.windowCapacitorPlatform === 'android'
-+    || snapshot.hasNativeBridge;
-+};
-+
-+export const logCapacitorEnvironment = (scope = 'app') => {
-+  if (typeof console === 'undefined') return;
+     const roomDisplayContext = useMemo(() => ({ students: effectiveStudents, parents: effectiveParents }), [effectiveStudents, effectiveParents]);
  
--  return window.location.protocol === 'capacitor:'
--    || window.location.origin === 'https://localhost';
-+  const snapshot = getCapacitorEnvironmentSnapshot();
-+  console.info(`[capacitor:${scope}] environment`, {
-+    ...snapshot,
-+    isNativeApp: isCapacitorNativeEnvironment(),
-+  });
+     const selectedRoomResolved = useMemo(() => {
+         if (!selectedRoom?.id) return null;
+         return rooms.find((room) => room.id === selectedRoom.id) || selectedRoom;
+     }, [rooms, selectedRoom]);
+ 
+     useEffect(() => {
+         if (!isStaffOrTeachingRole(userRole) || !userId) return () => {};
+         return subscribeInternalChatRooms(userId, setRooms, (error) => {
+             console.error('[internal-messenger] room subscribe failed', error);
+-        });
+-    }, [userId, userRole]);
++        }, { profileDocId });
++    }, [profileDocId, userId, userRole]);
+ 
+     useEffect(() => {
+         if (!selectedRoom?.id) {
+             setMessages([]);
+             return () => {};
+         }
+ 
+         return subscribeChatMessages(selectedRoom.id, (serverMessages) => {
+             const roomId = selectedRoom.id;
+             const snapshotAt = Date.now();
+             let mergedMessages = serverMessages;
+             setOptimisticByRoom((prev) => {
+                 const optimisticMessages = Array.isArray(prev[roomId]) ? prev[roomId] : [];
+                 const unresolved = optimisticMessages.filter((tempMessage) => {
+                     if (tempMessage.failed) return true;
+                     return !serverMessages.some((serverMessage) => (
+                         serverMessage?.clientTempId
+                             ? serverMessage.clientTempId === tempMessage.id
+                             : (
+                                 serverMessage?.senderId === tempMessage.senderId
+                                 && String(serverMessage?.text || '') === String(tempMessage.text || '')
+                                 && Math.abs(
+                                     new Date(serverMessage?.createdAt?.toDate?.() || serverMessage?.createdAt || 0).getTime()
+                                     - new Date(tempMessage?.createdAt || 0).getTime(),
+                                 ) <= 15_000
+diff --git a/src/domain/messenger/messenger.service.js b/src/domain/messenger/messenger.service.js
+index a501933222cc6773bb28aa653f8390b2410f3414..7a19658c0d69bd690f9dfb90c6d323925e03c389 100644
+--- a/src/domain/messenger/messenger.service.js
++++ b/src/domain/messenger/messenger.service.js
+@@ -1,39 +1,40 @@
+ import {
+     collection,
+     doc,
+     getDoc,
++    getDocs,
+     limit,
+     onSnapshot,
+     orderBy,
+     query,
+     serverTimestamp,
+     where,
+     writeBatch,
+ } from 'firebase/firestore';
+ import { httpsCallable } from 'firebase/functions';
+-import { db, functions } from '../../firebase/client';
++import { auth, db, functions } from '../../firebase/client';
+ import { uploadChatAttachment } from '../../components/chatAttachments';
+ 
+ const createOrGetChatRoomCallable = httpsCallable(functions, 'createOrGetChatRoom');
+ const broadcastChatMessageCallable = httpsCallable(functions, 'broadcastChatMessage');
+ 
+ 
+ const normalizeString = (value) => String(value || '').trim();
+ 
+ const getInternalRoomTypeForTargetRole = (targetRole) => (
+     String(targetRole || '').toLowerCase() === 'parent' ? 'parent_institute' : 'student_institute'
+ );
+ 
+ const getRoomType = (room = {}) => normalizeString(room?.roomType || room?.channel || room?.type);
+ 
+ const getRoomParticipantIds = (room = {}) => (
+     Array.isArray(room?.participantIds) ? room.participantIds.map(normalizeString).filter(Boolean) : []
+ );
+ 
+ const roomHasTarget = (room = {}, target = {}) => {
+     const targetAuthUid = normalizeString(target.targetAuthUid);
+     const targetUserDocId = normalizeString(target.targetUserDocId);
+     const targetStudentId = normalizeString(target.studentId);
+     const targetParentId = normalizeString(target.parentId);
+     const participants = getRoomParticipantIds(room);
+     const participantUserDocIds = room?.participantUserDocIds && typeof room.participantUserDocIds === 'object'
+@@ -46,51 +47,51 @@ const roomHasTarget = (room = {}, target = {}) => {
+     const roomStudentIds = [room?.studentId, room?.studentDocId, ...(Array.isArray(room?.studentIds) ? room.studentIds : [])]
+         .map(normalizeString)
+         .filter(Boolean);
+ 
+     if (targetStudentId && roomStudentIds.length > 0 && !roomStudentIds.includes(targetStudentId)) return false;
+ 
+     if (String(target.targetRole || '').toLowerCase() === 'parent') {
+         return Boolean(targetParentId) && [room?.parentId, room?.parentUid, ...(Array.isArray(room?.parentUids) ? room.parentUids : [])]
+             .map(normalizeString)
+             .includes(targetParentId);
+     }
+ 
+     return Boolean(targetStudentId) && roomStudentIds.includes(targetStudentId);
  };
+ 
+ export const findExistingInternalRoom = (rooms = [], target = {}) => {
+     const expectedRoomType = normalizeString(target.roomType) || getInternalRoomTypeForTargetRole(target.targetRole);
+     return (Array.isArray(rooms) ? rooms : []).find((room) => (
+         room?.id
+         && room?.internalOnly === true
+         && getRoomType(room) === expectedRoomType
+         && roomHasTarget(room, target)
+     )) || null;
+ };
+ 
+-const uniqueStrings = (values = []) => Array.from(new Set(values.map((value) => String(value || '').trim()).filter(Boolean)));
++const uniqueStrings = (values = []) => Array.from(new Set(values.flat(Infinity).map((value) => String(value || '').trim()).filter(Boolean)));
+ 
+ const pickCounterpartUid = (participantIds, participantUid) => participantIds.find((uid) => uid !== participantUid) || '';
+ 
+ const buildUserChatRoomIndexData = ({ roomId, roomData = {}, participantUid, lastMessageText, timestamp }) => {
+     const participantIds = uniqueStrings(Array.isArray(roomData.participantIds) ? roomData.participantIds : []);
+     return {
+         roomId,
+         roomType: roomData.roomType || roomData.channel || roomData.type || '',
+         channel: roomData.channel || roomData.roomType || '',
+         slot: roomData.slot || '',
+         counterpartUid: roomData.counterpartUid && String(roomData.counterpartUid) !== String(participantUid)
+             ? String(roomData.counterpartUid)
+             : pickCounterpartUid(participantIds, String(participantUid)),
+         lastMessageText,
+         lastMessageAt: timestamp,
+         updatedAt: timestamp,
+         studentId: roomData.studentId || '',
+         parentId: roomData.parentId || '',
+         parentUid: roomData.parentUid || '',
+         staffAuthUid: roomData.staffAuthUid || '',
+         teacherAuthUid: roomData.teacherAuthUid || '',
+     };
+ };
+ 
+ const upsertUserChatRoomIndexWrites = ({ batch, roomId, roomData = {}, lastMessageText, timestamp }) => {
+@@ -227,66 +228,169 @@ export const sendMessageDirect = async ({
+     return {
+         roomId,
+         messageId: messageRef.id,
+         acceptedAt: now,
+         lastMessageText: text || fallbackLastMessage,
+         lastMessageSenderId: senderMeta?.senderId || null,
+     };
+ };
+ 
+ export const broadcastChatMessage = async ({
+     text,
+     targetUserIds = [],
+     targetType = 'custom',
+     targetClassIds = [],
+ }) => {
+     const result = await broadcastChatMessageCallable({
+         text,
+         targetUserIds,
+         targetType,
+         targetClassIds,
+     });
+ 
+     return result?.data || null;
+ };
+ 
+-export const subscribeInternalChatRooms = (currentAuthUid, onChange, onError = null) => {
+-    if (!currentAuthUid) return () => {};
++const getTime = (value) => (typeof value?.toDate === 'function' ? value.toDate() : new Date(value || 0)).getTime() || 0;
++
++const sortInternalRooms = (rooms = []) => [...rooms]
++    .filter((room) => room?.internalOnly === true)
++    .sort((a, b) => getTime(b?.lastMessageAt || b?.updatedAt || b?.createdAt) - getTime(a?.lastMessageAt || a?.updatedAt || a?.createdAt))
++    .slice(0, 100);
++
++const mergeRoomWithIndex = (room, index = {}) => ({
++    ...(room || {}),
++    id: room?.id || index?.roomId || index?.id || '',
++    roomId: room?.roomId || index?.roomId || index?.id || '',
++    lastMessageText: room?.lastMessageText || index?.lastMessageText || index?.lastMessage || '',
++    lastMessage: room?.lastMessage || index?.lastMessage || '',
++    lastMessageAt: room?.lastMessageAt || index?.lastMessageAt || null,
++    updatedAt: room?.updatedAt || index?.updatedAt || null,
++});
+ 
+-    const roomsQuery = query(
+-        collection(db, 'chatRooms'),
+-        where('participantIds', 'array-contains', currentAuthUid),
+-    );
++const fetchUserAuthIndexProfile = async (authUid) => {
++    const currentAuthUid = normalizeString(authUid);
++    if (!currentAuthUid) return { userDocId: '', profile: {} };
++    const indexSnap = await getDoc(doc(db, 'userAuthIndex', currentAuthUid));
++    const userDocId = indexSnap.exists() ? normalizeString(indexSnap.data()?.userDocId) : '';
++    if (!userDocId) return { userDocId: '', profile: {} };
++    const userSnap = await getDoc(doc(db, 'users', userDocId));
++    return { userDocId, profile: userSnap.exists() ? userSnap.data() || {} : {} };
++};
+ 
+-    return onSnapshot(
+-        roomsQuery,
+-        (snapshot) => {
+-            onChange(snapshot.docs
+-                .map(normalizeRoom)
+-                .filter((room) => room?.internalOnly === true)
+-                .sort((a, b) => {
+-                    const getTime = (value) => (typeof value?.toDate === 'function' ? value.toDate() : new Date(value || 0)).getTime() || 0;
+-                    return getTime(b?.lastMessageAt) - getTime(a?.lastMessageAt);
+-                })
+-                .slice(0, 100));
+-        },
+-        onError || (() => {}),
+-    );
++const fetchRoomsForInternalIndexes = async (indexes = []) => {
++    const rooms = await Promise.all(indexes.map(async (index) => {
++        const roomId = normalizeString(index?.roomId || index?.id);
++        if (!roomId) return null;
++        const roomSnap = await getDoc(doc(db, 'chatRooms', roomId));
++        return mergeRoomWithIndex(roomSnap.exists() ? { id: roomSnap.id, ...roomSnap.data() } : { id: roomId }, index);
++    }));
++    return rooms.filter(Boolean);
++};
++
++const fetchInternalUserChatRoomIndexes = async (keys = [], debug = {}) => {
++    const indexesById = new Map();
++    const pathsTried = [];
++    for (const key of keys) {
++        const path = `userChatRooms/${key}/rooms`;
++        pathsTried.push(path);
++        try {
++            const snap = await getDocs(query(collection(db, 'userChatRooms', key, 'rooms')));
++            snap.docs.forEach((docSnapshot) => indexesById.set(docSnapshot.id, { id: docSnapshot.id, ...docSnapshot.data() }));
++        } catch (error) {
++            console.warn('[staff messenger] userChatRooms read failed; continuing fallback', { path, code: error?.code, message: error?.message });
++        }
++    }
++    if (process.env.NODE_ENV === 'development') {
++        console.log('[staff messenger] userChatRooms paths tried', { ...debug, pathsTried, matchedCount: indexesById.size });
++    }
++    return { indexes: Array.from(indexesById.values()), pathsTried };
++};
++
++const fetchInternalFallbackRooms = async (participantKeyCandidates = [], debug = {}) => {
++    const chunk = uniqueStrings(participantKeyCandidates).slice(0, 10);
++    if (!chunk.length) return [];
++    try {
++        const snap = await getDocs(query(
++            collection(db, 'chatRooms'),
++            where('participantIds', 'array-contains-any', chunk),
++        ));
++        const rooms = snap.docs.map(normalizeRoom);
++        if (process.env.NODE_ENV === 'development') {
++            console.log('[staff messenger] chatRooms fallback matched count', { ...debug, count: rooms.length });
++        }
++        return rooms;
++    } catch (error) {
++        console.warn('[staff messenger] chatRooms fallback failed', { ...debug, code: error?.code, message: error?.message });
++        return [];
++    }
++};
++
++export const subscribeInternalChatRooms = (currentAuthUid, onChange, onError = null, options = {}) => {
++    const authUid = normalizeString(auth.currentUser?.uid || currentAuthUid);
++    if (!authUid) return () => {};
++
++    let cancelled = false;
++
++    const loadRooms = async () => {
++        try {
++            const { userDocId: indexedUserDocId, profile } = await fetchUserAuthIndexProfile(authUid);
++            const profileDocId = normalizeString(options.profileDocId || indexedUserDocId);
++            const userAuthIndexUserDocId = indexedUserDocId;
++            const participantKeyCandidates = uniqueStrings([
++                authUid,
++                profileDocId,
++                userAuthIndexUserDocId,
++                profile?.uid,
++                profile?.authUid,
++                profile?.userUid,
++                profile?.id,
++            ]).slice(0, 10);
++            const debug = { authUid, profileDocId, userAuthIndexUserDocId, participantKeyCandidates };
++
++            if (process.env.NODE_ENV === 'development') {
++                console.log('[staff messenger] resolver identity', debug);
++            }
++
++            const userChatRoomKeys = uniqueStrings([authUid, profileDocId, userAuthIndexUserDocId]);
++            const { indexes } = await fetchInternalUserChatRoomIndexes(userChatRoomKeys, debug);
++            const indexedRooms = await fetchRoomsForInternalIndexes(indexes);
++            const fallbackRooms = await fetchInternalFallbackRooms(participantKeyCandidates, debug);
++            const roomsById = new Map();
++            indexedRooms.forEach((room) => roomsById.set(room.id, room));
++            fallbackRooms.forEach((room) => roomsById.set(room.id, mergeRoomWithIndex(room, roomsById.get(room.id))));
++            const finalRooms = sortInternalRooms(Array.from(roomsById.values()));
++
++            if (process.env.NODE_ENV === 'development') {
++                console.log('[staff messenger] final room count', { ...debug, count: finalRooms.length });
++            }
++
++            if (!cancelled) onChange(finalRooms);
++        } catch (error) {
++            if (!cancelled) onError?.(error);
++        }
++    };
++
++    loadRooms();
++
++    return () => {
++        cancelled = true;
++    };
+ };
+ 
+ export const subscribeChatMessages = (roomId, onChange, onError = null) => {
+     if (!roomId) return () => {};
+ 
+     const messagesQuery = query(
+         collection(db, 'chatRooms', roomId, 'messages'),
+-        orderBy('createdAt', 'asc'),
+-        limit(200),
++        orderBy('createdAt', 'desc'),
++        limit(30),
+     );
+ 
+     return onSnapshot(
+         messagesQuery,
+         (snapshot) => {
+-            onChange(snapshot.docs.map(normalizeMessage));
++            onChange(snapshot.docs.map(normalizeMessage).reverse());
+         },
+         onError || (() => {}),
+     );
+ };
+\ No newline at end of file
+diff --git a/src/pages/StaffMobileMessengerPage.jsx b/src/pages/StaffMobileMessengerPage.jsx
+index 5413c30eb5a8e4a00048c698b3d6a6810263c4b5..8547f48b9d74ebb88c66e1762d2c388bacd6d189 100644
+--- a/src/pages/StaffMobileMessengerPage.jsx
++++ b/src/pages/StaffMobileMessengerPage.jsx
+@@ -1,38 +1,40 @@
+ import React from 'react';
+ import InternalMessengerPanel from '../components/messenger/InternalMessengerPanel';
+ 
+ export default function StaffMobileMessengerPage({
+   userId,
+   userRole,
+   students = [],
+   parents = [],
+   classes = [],
+   onLogout,
++  profileDocId = '',
+ }) {
+   return (
+     <main className="min-h-screen bg-gray-50 text-gray-900 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
+       <header className="sticky top-0 z-20 border-b border-gray-200 bg-white/95 px-4 py-3 shadow-sm backdrop-blur pt-[calc(env(safe-area-inset-top)+0.75rem)]">
+         <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
+           <h1 className="text-lg font-bold text-gray-900">메신저</h1>
+           <button
+             type="button"
+             onClick={onLogout}
+             className="rounded-full border border-gray-300 bg-white px-3 py-1.5 text-sm font-semibold text-gray-700 shadow-sm active:bg-gray-100"
+           >
+             로그아웃
+           </button>
+         </div>
+       </header>
+       <section className="mx-auto max-w-5xl px-3 py-3">
+         <InternalMessengerPanel
+           userId={userId}
+           userRole={userRole}
+           students={students}
+           parents={parents}
+           classes={classes}
+           mobileMessengerOnly
++          profileDocId={profileDocId}
+         />
+       </section>
+     </main>
+   );
+ }

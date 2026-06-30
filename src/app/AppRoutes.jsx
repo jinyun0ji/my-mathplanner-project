@@ -180,7 +180,7 @@ export default function AppRoutes({ user, role, studentIds }) {
   const [studentSearchTerm, setStudentSearchTerm] = useState('');
   const userId = user?.uid || null;
   const isAuthenticated = Boolean(user);
-  const { logout } = useAuth();
+  const { logout, profileDocId } = useAuth();
   const {
       activeStudentId: parentActiveStudentId,
       studentIds: parentStudentIds,
@@ -2115,6 +2115,7 @@ export default function AppRoutes({ user, role, studentIds }) {
                     parents={parents}
                     classes={classes}
                     onLogout={handleLogout}
+                    profileDocId={profileDocId}
                 />
             )}
         />

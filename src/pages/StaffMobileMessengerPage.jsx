@@ -8,6 +8,7 @@ export default function StaffMobileMessengerPage({
   parents = [],
   classes = [],
   onLogout,
+  profileDocId = '',
 }) {
   return (
     <main className="min-h-screen bg-gray-50 text-gray-900 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
@@ -31,6 +32,7 @@ export default function StaffMobileMessengerPage({
           parents={parents}
           classes={classes}
           mobileMessengerOnly
+          profileDocId={profileDocId}
         />
       </section>
     </main>

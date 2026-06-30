@@ -2,6 +2,7 @@ import {
     collection,
     doc,
     getDoc,
+    getDocs,
     limit,
     onSnapshot,
     orderBy,
@@ -11,7 +12,7 @@ import {
     writeBatch,
 } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
-import { db, functions } from '../../firebase/client';
+import { auth, db, functions } from '../../firebase/client';
 import { uploadChatAttachment } from '../../components/chatAttachments';
 
 const createOrGetChatRoomCallable = httpsCallable(functions, 'createOrGetChatRoom');
@@ -68,7 +69,7 @@ export const findExistingInternalRoom = (rooms = [], target = {}) => {
     )) || null;
 };
 
-const uniqueStrings = (values = []) => Array.from(new Set(values.map((value) => String(value || '').trim()).filter(Boolean)));
+const uniqueStrings = (values = []) => Array.from(new Set(values.flat(Infinity).map((value) => String(value || '').trim()).filter(Boolean)));
 
 const pickCounterpartUid = (participantIds, participantUid) => participantIds.find((uid) => uid !== participantUid) || '';
 
@@ -249,28 +250,131 @@ export const broadcastChatMessage = async ({
     return result?.data || null;
 };
 
-export const subscribeInternalChatRooms = (currentAuthUid, onChange, onError = null) => {
-    if (!currentAuthUid) return () => {};
+const getTime = (value) => (typeof value?.toDate === 'function' ? value.toDate() : new Date(value || 0)).getTime() || 0;
 
-    const roomsQuery = query(
-        collection(db, 'chatRooms'),
-        where('participantIds', 'array-contains', currentAuthUid),
-    );
+const sortInternalRooms = (rooms = []) => [...rooms]
+    .filter((room) => room?.internalOnly === true)
+    .sort((a, b) => getTime(b?.lastMessageAt || b?.updatedAt || b?.createdAt) - getTime(a?.lastMessageAt || a?.updatedAt || a?.createdAt))
+    .slice(0, 100);
 
-    return onSnapshot(
-        roomsQuery,
-        (snapshot) => {
-            onChange(snapshot.docs
-                .map(normalizeRoom)
-                .filter((room) => room?.internalOnly === true)
-                .sort((a, b) => {
-                    const getTime = (value) => (typeof value?.toDate === 'function' ? value.toDate() : new Date(value || 0)).getTime() || 0;
-                    return getTime(b?.lastMessageAt) - getTime(a?.lastMessageAt);
-                })
-                .slice(0, 100));
-        },
-        onError || (() => {}),
-    );
+const mergeRoomWithIndex = (room, index = {}) => ({
+    ...(room || {}),
+    id: room?.id || index?.roomId || index?.id || '',
+    roomId: room?.roomId || index?.roomId || index?.id || '',
+    lastMessageText: room?.lastMessageText || index?.lastMessageText || index?.lastMessage || '',
+    lastMessage: room?.lastMessage || index?.lastMessage || '',
+    lastMessageAt: room?.lastMessageAt || index?.lastMessageAt || null,
+    updatedAt: room?.updatedAt || index?.updatedAt || null,
+});
+
+const fetchUserAuthIndexProfile = async (authUid) => {
+    const currentAuthUid = normalizeString(authUid);
+    if (!currentAuthUid) return { userDocId: '', profile: {} };
+    const indexSnap = await getDoc(doc(db, 'userAuthIndex', currentAuthUid));
+    const userDocId = indexSnap.exists() ? normalizeString(indexSnap.data()?.userDocId) : '';
+    if (!userDocId) return { userDocId: '', profile: {} };
+    const userSnap = await getDoc(doc(db, 'users', userDocId));
+    return { userDocId, profile: userSnap.exists() ? userSnap.data() || {} : {} };
+};
+
+const fetchRoomsForInternalIndexes = async (indexes = []) => {
+    const rooms = await Promise.all(indexes.map(async (index) => {
+        const roomId = normalizeString(index?.roomId || index?.id);
+        if (!roomId) return null;
+        const roomSnap = await getDoc(doc(db, 'chatRooms', roomId));
+        return mergeRoomWithIndex(roomSnap.exists() ? { id: roomSnap.id, ...roomSnap.data() } : { id: roomId }, index);
+    }));
+    return rooms.filter(Boolean);
+};
+
+const fetchInternalUserChatRoomIndexes = async (keys = [], debug = {}) => {
+    const indexesById = new Map();
+    const pathsTried = [];
+    for (const key of keys) {
+        const path = `userChatRooms/${key}/rooms`;
+        pathsTried.push(path);
+        try {
+            const snap = await getDocs(query(collection(db, 'userChatRooms', key, 'rooms')));
+            snap.docs.forEach((docSnapshot) => indexesById.set(docSnapshot.id, { id: docSnapshot.id, ...docSnapshot.data() }));
+        } catch (error) {
+            console.warn('[staff messenger] userChatRooms read failed; continuing fallback', { path, code: error?.code, message: error?.message });
+        }
+    }
+    if (process.env.NODE_ENV === 'development') {
+        console.log('[staff messenger] userChatRooms paths tried', { ...debug, pathsTried, matchedCount: indexesById.size });
+    }
+    return { indexes: Array.from(indexesById.values()), pathsTried };
+};
+
+const fetchInternalFallbackRooms = async (participantKeyCandidates = [], debug = {}) => {
+    const chunk = uniqueStrings(participantKeyCandidates).slice(0, 10);
+    if (!chunk.length) return [];
+    try {
+        const snap = await getDocs(query(
+            collection(db, 'chatRooms'),
+            where('participantIds', 'array-contains-any', chunk),
+        ));
+        const rooms = snap.docs.map(normalizeRoom);
+        if (process.env.NODE_ENV === 'development') {
+            console.log('[staff messenger] chatRooms fallback matched count', { ...debug, count: rooms.length });
+        }
+        return rooms;
+    } catch (error) {
+        console.warn('[staff messenger] chatRooms fallback failed', { ...debug, code: error?.code, message: error?.message });
+        return [];
+    }
+};
+
+export const subscribeInternalChatRooms = (currentAuthUid, onChange, onError = null, options = {}) => {
+    const authUid = normalizeString(auth.currentUser?.uid || currentAuthUid);
+    if (!authUid) return () => {};
+
+    let cancelled = false;
+
+    const loadRooms = async () => {
+        try {
+            const { userDocId: indexedUserDocId, profile } = await fetchUserAuthIndexProfile(authUid);
+            const profileDocId = normalizeString(options.profileDocId || indexedUserDocId);
+            const userAuthIndexUserDocId = indexedUserDocId;
+            const participantKeyCandidates = uniqueStrings([
+                authUid,
+                profileDocId,
+                userAuthIndexUserDocId,
+                profile?.uid,
+                profile?.authUid,
+                profile?.userUid,
+                profile?.id,
+            ]).slice(0, 10);
+            const debug = { authUid, profileDocId, userAuthIndexUserDocId, participantKeyCandidates };
+
+            if (process.env.NODE_ENV === 'development') {
+                console.log('[staff messenger] resolver identity', debug);
+            }
+
+            const userChatRoomKeys = uniqueStrings([authUid, profileDocId, userAuthIndexUserDocId]);
+            const { indexes } = await fetchInternalUserChatRoomIndexes(userChatRoomKeys, debug);
+            const indexedRooms = await fetchRoomsForInternalIndexes(indexes);
+            const fallbackRooms = await fetchInternalFallbackRooms(participantKeyCandidates, debug);
+            const roomsById = new Map();
+            indexedRooms.forEach((room) => roomsById.set(room.id, room));
+            fallbackRooms.forEach((room) => roomsById.set(room.id, mergeRoomWithIndex(room, roomsById.get(room.id))));
+            const finalRooms = sortInternalRooms(Array.from(roomsById.values()));
+
+            if (process.env.NODE_ENV === 'development') {
+                console.log('[staff messenger] final room count', { ...debug, count: finalRooms.length });
+            }
+
+            if (!cancelled) onChange(finalRooms);
+        } catch (error) {
+            if (!cancelled) onError?.(error);
+        }
+    };
+
+    loadRooms();
+
+    return () => {
+        cancelled = true;
+    };
 };
 
 export const subscribeChatMessages = (roomId, onChange, onError = null) => {
@@ -278,14 +382,14 @@ export const subscribeChatMessages = (roomId, onChange, onError = null) => {
 
     const messagesQuery = query(
         collection(db, 'chatRooms', roomId, 'messages'),
-        orderBy('createdAt', 'asc'),
-        limit(200),
+        orderBy('createdAt', 'desc'),
+        limit(30),
     );
 
     return onSnapshot(
         messagesQuery,
         (snapshot) => {
-            onChange(snapshot.docs.map(normalizeMessage));
+            onChange(snapshot.docs.map(normalizeMessage).reverse());
         },
         onError || (() => {}),
     );

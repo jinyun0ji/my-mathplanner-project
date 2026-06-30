@@ -25,6 +25,7 @@ export default function InternalMessengerPanel({
     parents = [],
     classes = [],
     mobileMessengerOnly = false,
+    profileDocId = '',
 }) {
     const [rooms, setRooms] = useState([]);
     const [selectedRoom, setSelectedRoom] = useState(null);
@@ -123,8 +124,8 @@ export default function InternalMessengerPanel({
         if (!isStaffOrTeachingRole(userRole) || !userId) return () => {};
         return subscribeInternalChatRooms(userId, setRooms, (error) => {
             console.error('[internal-messenger] room subscribe failed', error);
-        });
-    }, [userId, userRole]);
+        }, { profileDocId });
+    }, [profileDocId, userId, userRole]);
 
     useEffect(() => {
         if (!selectedRoom?.id) {
