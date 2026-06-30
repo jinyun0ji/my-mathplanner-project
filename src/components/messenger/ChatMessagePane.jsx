@@ -60,6 +60,7 @@ export default function ChatMessagePane({
     onSend,
     onRetryMessage,
     contextData = {},
+    mobileCompact = false,
 }) {
     const [draft, setDraft] = useState('');
     const [attachmentFile, setAttachmentFile] = useState(null);
@@ -162,20 +163,22 @@ export default function ChatMessagePane({
     };
 
     if (!room) {
-        return <div className="border rounded-lg bg-white h-[420px] flex items-center justify-center text-sm text-gray-400">오른쪽에서 채팅방을 선택하세요.</div>;
+        return <div className={`${mobileCompact ? 'h-full border-0 rounded-none' : 'h-[420px] border rounded-lg'} bg-white flex items-center justify-center text-sm text-gray-400`}>오른쪽에서 채팅방을 선택하세요.</div>;
     }
 
     return (
-        <div className="border rounded-lg bg-white h-[420px] flex flex-col">
-            <div className="px-3 py-2 border-b text-sm font-semibold text-gray-700">
-                {getChatRoomDisplayTitle(room, myUid, contextData)}
-            </div>
-            <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-3 space-y-2">
-                {sortedMessages.length === 0 && <p className="text-xs text-gray-400">아직 메시지가 없습니다.</p>}
+        <div className={`${mobileCompact ? 'h-full border-0 rounded-none' : 'h-[420px] border rounded-lg'} bg-white flex flex-col`}>
+            {!mobileCompact && (
+                <div className="px-3 py-2 border-b text-sm font-semibold text-gray-700">
+                    {getChatRoomDisplayTitle(room, myUid, contextData)}
+                </div>
+            )}
+            <div ref={messagesContainerRef} className={`flex-1 min-h-0 overflow-y-auto bg-gray-50 custom-scrollbar ${mobileCompact ? 'px-3 py-2 space-y-1.5' : 'p-3 space-y-2'}`}>
+                {sortedMessages.length === 0 && <p className="text-xs text-gray-400 whitespace-nowrap">아직 메시지가 없습니다.</p>}
                 {renderItems.map((item) => {
                     if (item.type === 'divider') {
                         return (
-                            <div key={item.key} className="flex items-center gap-3 py-1">
+                            <div key={item.key} className={`flex items-center gap-3 ${mobileCompact ? 'py-0.5' : 'py-1'}`}>
                                 <div className="flex-1 h-px bg-gray-200" />
                                 <p className="text-xs text-gray-400">{item.label}</p>
                                 <div className="flex-1 h-px bg-gray-200" />
@@ -195,8 +198,8 @@ export default function ChatMessagePane({
                                 <p className="mb-1 text-xs font-semibold text-gray-500">{senderName}</p>
                             )}
                             <div className={`flex items-end gap-1.5 ${mine ? 'justify-end' : 'justify-start'}`}>
-                                {mine && <span className="text-xs text-gray-400 whitespace-nowrap self-end mb-1">{timeLabel}</span>}
-                                <div className={`max-w-[72%] rounded-2xl px-3 py-2 text-sm ${mine ? 'bg-[#455fab] text-white' : 'bg-white border border-gray-100 text-gray-900'} ${isSending ? 'opacity-70' : ''} ${isFailed ? 'border border-red-300 bg-red-50 text-red-700' : ''}`}>
+                                {mine && <span className="text-[11px] text-gray-400 whitespace-nowrap self-end mb-1">{timeLabel}</span>}
+                                <div className={`max-w-[70%] rounded-2xl px-3 py-2 text-sm ${mine ? 'bg-[#455fab] text-white' : 'bg-white border border-gray-100 text-gray-900'} ${isSending ? 'opacity-70' : ''} ${isFailed ? 'border border-red-300 bg-red-50 text-red-700' : ''}`}>
                                     {message.text && <p className="whitespace-pre-wrap break-words">{message.text}</p>}
                                     {(Array.isArray(message.attachments) ? message.attachments : []).map((attachment) => (
                                         attachment.type === 'image' ? (
@@ -224,7 +227,7 @@ export default function ChatMessagePane({
                                         </div>
                                     )}
                                 </div>
-                                {!mine && <span className="text-xs text-gray-400 whitespace-nowrap self-end mb-1">{timeLabel}</span>}
+                                {!mine && <span className="text-[11px] text-gray-400 whitespace-nowrap self-end mb-1">{timeLabel}</span>}
                             </div>
                         </div>
                     );
@@ -232,7 +235,7 @@ export default function ChatMessagePane({
             </div>
             {error && <p className="border-t px-3 py-2 text-xs text-red-600">{error}</p>}
             {attachmentFile && (
-                <div className="border-t px-3 py-2 flex items-center gap-3 text-xs">
+                <div className="border-t bg-white px-3 py-2 flex items-center gap-3 text-xs">
                     {previewUrl && <img src={previewUrl} alt="첨부 미리보기" className="h-12 w-12 rounded object-cover" />}
                     <span className="flex-1 truncate">{attachmentFile.name} · {formatAttachmentSize(attachmentFile.size)}</span>
                     <button type="button" onClick={clearAttachment} className="text-red-500">취소</button>
@@ -250,17 +253,17 @@ export default function ChatMessagePane({
                     </div>
                 </div>
             )}
-            <form onSubmit={submit} className="border-t p-2 flex gap-2 items-end">
-                <label className="px-3 py-2 rounded border text-sm cursor-pointer">첨부<input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" onChange={handleAttachmentChange} className="hidden" /></label>
+            <form onSubmit={submit} className={`${mobileCompact ? 'sticky bottom-0 p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] gap-1.5' : 'p-2 gap-2 items-end'} border-t bg-white flex`}>
+                <label className={`${mobileCompact ? 'px-2.5 py-2 rounded-full text-xs' : 'px-3 py-2 rounded text-sm'} border border-gray-200 bg-white cursor-pointer shrink-0`}>첨부<input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" onChange={handleAttachmentChange} className="hidden" /></label>
                 <textarea
                     value={draft}
                     onChange={(event) => setDraft(event.target.value)}
                     onKeyDown={handleKeyDown}
                     placeholder="메시지 입력"
-                    rows={2}
-                    className="flex-1 border rounded px-3 py-2 text-sm resize-y"
+                    rows={mobileCompact ? 1 : 2}
+                    className={`${mobileCompact ? 'min-h-10 max-h-24 rounded-full bg-gray-50 px-4 py-2 resize-none' : 'rounded px-3 py-2 resize-y'} flex-1 border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-gray-300`}
                 />
-                <button type="submit" disabled={!draft.trim() && !attachmentFile} className="px-3 py-2 rounded bg-green-600 text-white text-sm disabled:bg-gray-300">전송</button>
+                <button type="submit" disabled={!draft.trim() && !attachmentFile} className={`${mobileCompact ? 'px-3 py-2 rounded-full text-xs' : 'px-3 py-2 rounded text-sm'} bg-gray-900 text-white font-semibold disabled:bg-gray-300 shrink-0`}>전송</button>
             </form>
         </div>
     );

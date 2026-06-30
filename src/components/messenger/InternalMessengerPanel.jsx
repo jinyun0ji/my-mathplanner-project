@@ -439,9 +439,8 @@ export default function InternalMessengerPanel({
     if (mobileMessengerOnly) {
         if (selectedRoomResolved) {
             return (
-                <div className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm"
-                    style={{ height: 'calc(100dvh - 110px - env(safe-area-inset-top) - env(safe-area-inset-bottom))' }}>
-                    <header className="flex shrink-0 items-center gap-3 border-b border-gray-100 bg-white px-4 py-3">
+                <div className="flex h-full min-h-0 flex-col overflow-hidden bg-white">
+                    <header className="flex shrink-0 items-center gap-3 border-b border-gray-100 bg-white px-3 py-2">
                         <button
                             type="button"
                             onClick={() => setSelectedRoom(null)}
@@ -462,6 +461,7 @@ export default function InternalMessengerPanel({
                             onSend={handleSendMessage}
                             onRetryMessage={handleRetryMessage}
                             contextData={roomDisplayContext}
+                            mobileCompact
                         />
                     </div>
                 </div>
@@ -469,8 +469,7 @@ export default function InternalMessengerPanel({
         }
 
         return (
-            <div className="min-h-0 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm [&>div]:!h-full [&>div]:!max-h-none [&>div]:!border-0"
-                style={{ height: 'calc(100dvh - 110px - env(safe-area-inset-top) - env(safe-area-inset-bottom))' }}>
+            <div className="h-full min-h-0 overflow-hidden bg-white [&>div]:!h-full [&>div]:!max-h-none [&>div]:!border-0">
                 <ChatRoomList
                     rooms={rooms}
                     selectedRoomId={selectedRoom?.id || null}
