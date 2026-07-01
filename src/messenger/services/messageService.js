@@ -1,4 +1,4 @@
-import { addDoc, collection, doc, getDoc, limit, onSnapshot, orderBy, query, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
+import { addDoc, collection, doc, getDoc, getDocs, limit, onSnapshot, orderBy, query, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../../firebase/client';
 
 const log = (...args) => {
@@ -23,6 +23,33 @@ const buildUserRoomIndexData = ({ roomId, room = {}, lastMessageText, timestamp,
     staffAuthUid: room.staffAuthUid || '',
     teacherAuthUid: room.teacherAuthUid || '',
 });
+
+
+const logCreatedAtOrderFailure = async ({ roomId, error }) => {
+    if (process.env.NODE_ENV !== 'development') return;
+    try {
+        const snap = await getDocs(query(collection(db, 'chatRooms', roomId, 'messages'), limit(30)));
+        const missingCreatedAt = snap.docs
+            .filter((docSnap) => !docSnap.data()?.createdAt)
+            .map((docSnap) => docSnap.id);
+        console.warn('[messages] createdAt orderBy failed; checked latest fallback batch for missing createdAt', {
+            roomId,
+            code: error?.code,
+            message: error?.message,
+            checkedCount: snap.docs.length,
+            missingCreatedAtCount: missingCreatedAt.length,
+            missingCreatedAtIds: missingCreatedAt,
+        });
+    } catch (diagnosticError) {
+        console.warn('[messages] createdAt orderBy failed; missing createdAt diagnostic failed', {
+            roomId,
+            code: error?.code,
+            message: error?.message,
+            diagnosticCode: diagnosticError?.code,
+            diagnosticMessage: diagnosticError?.message,
+        });
+    }
+};
 
 const updateUserChatRoomIndexes = async ({ roomId, lastMessageText, timestamp, lastSenderId, roomData = null }) => {
     try {
@@ -53,7 +80,10 @@ export const subscribeRoomMessages = ({ roomId, onNext, onError, withOrderBy = t
         const finishedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
         log('initial messages loaded', { roomId, count: snap.docs.length, loadTimeMs: Math.round(finishedAt - startedAt) });
         onNext(snap);
-    }, onError);
+    }, (error) => {
+        if (withOrderBy) logCreatedAtOrderFailure({ roomId, error });
+        onError?.(error);
+    });
 };
 
 export const sendRoomMessage = async ({ roomId, message, lastMessageText, updaterUid }) => {

@@ -1,5 +1,7 @@
-import { collection, doc, getDoc, getDocs, onSnapshot, query, where } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, limit, onSnapshot, orderBy, query, where } from 'firebase/firestore';
 import { db } from '../../firebase/client';
+import { getLastMessagePreview } from './roomPreviewService';
+import { normalizeText } from '../utils/roomMatcher';
 
 export const getUserChatRoomsQueryShape = (authUid) => ({ collection: `userChatRooms/${authUid}/rooms` });
 
@@ -31,6 +33,7 @@ export const mergeRoomWithIndex = (room, index) => ({
     lastMessageAt: index?.lastMessageAt || room?.lastMessageAt || null,
     lastSenderId: index?.lastSenderId || room?.lastSenderId || room?.lastMessageSenderId || '',
     updatedAt: index?.updatedAt || room?.updatedAt || null,
+    __source: index ? 'userChatRooms' : 'chatRooms_fallback',
 });
 
 const getUserProfileForAuthUid = async (authUid) => {
@@ -43,7 +46,56 @@ const getUserProfileForAuthUid = async (authUid) => {
     return { authUid: currentAuthUid, userDocId, profile: userSnap.exists() ? userSnap.data() || {} : {} };
 };
 
-const collectRoom = (map, docSnap) => map.set(docSnap.id, { id: docSnap.id, ...docSnap.data() });
+const collectRoom = (map, docSnap) => map.set(docSnap.id, { id: docSnap.id, __source: 'chatRooms_fallback', ...docSnap.data() });
+
+const readMessagePreview = (message = {}) => normalizeText(message?.text) || normalizeText(message?.content) || normalizeText(message?.body) || (Array.isArray(message?.attachments) && message.attachments.length ? '첨부파일' : '');
+
+const hasRoomPreview = (room) => Boolean(room && getLastMessagePreview(room) !== '대화 내역이 없습니다.');
+
+const enrichRoomWithLatestMessagePreview = async (room) => {
+    if (!room?.id || hasRoomPreview(room)) return room;
+    try {
+        const latestSnap = await getDocs(query(collection(db, 'chatRooms', room.id, 'messages'), orderBy('createdAt', 'desc'), limit(1)));
+        const latestDoc = latestSnap.docs[0];
+        if (!latestDoc) return room;
+        const message = latestDoc.data() || {};
+        return {
+            ...room,
+            __previewText: readMessagePreview(message),
+            __previewAt: message.createdAt || message.updatedAt || null,
+        };
+    } catch (error) {
+        if (process.env.NODE_ENV === 'development') console.warn('[mobile messenger room preview debug] latest message preview query failed', { roomId: room.id, code: error?.code, message: error?.message });
+        return room;
+    }
+};
+
+const enrichRoomsWithLatestMessagePreviews = async (rooms = []) => Promise.all(rooms.map(enrichRoomWithLatestMessagePreview));
+
+const logMobileRoomPreviewDebug = ({ role, authUid, rooms = [], source, indexes = [] }) => {
+    if (process.env.NODE_ENV !== 'development') return;
+    const indexSourceByRoomId = new Map(indexes.map((index) => [String(index?.roomId || index?.id || ''), 'userChatRooms']));
+    rooms.forEach((room) => {
+        console.log('[mobile messenger room preview debug]', {
+            role,
+            authUid,
+            roomId: room?.id || room?.roomId || '',
+            title: room?.title || room?.name || room?.roomName || room?.displayName || '',
+            keys: Object.keys(room || {}),
+            lastMessageText: room?.lastMessageText,
+            lastMessage: room?.lastMessage,
+            lastMessageAt: room?.lastMessageAt,
+            previewText: room?.previewText,
+            latestMessageText: room?.latestMessageText,
+            lastMessagePreview: room?.lastMessagePreview,
+            source: room?.source || room?.__source || indexSourceByRoomId.get(String(room?.id || room?.roomId || '')) || source,
+            dataPathSource: (room?.__source || source) === 'userChatRooms' ? 'userChatRooms' : 'chatRooms fallback',
+            __previewText: room?.__previewText,
+            __previewAt: room?.__previewAt,
+        });
+    });
+};
+
 
 export const fetchStudentFallbackRooms = async (authUid) => {
     const { authUid: currentAuthUid, userDocId, profile } = await getUserProfileForAuthUid(authUid);
@@ -109,12 +161,13 @@ export const subscribeUserChatRooms = ({ authUid, role = '', onNext, onError }) 
                 console.log('[resolver] userChatRooms snapshot', { role, authUid, count: snap.docs.length, ids: snap.docs.map((docSnap) => docSnap.id) });
             }
             const indexes = snap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
-            const indexedRooms = await fetchRoomsForIndexes(indexes);
+            const indexedRooms = await enrichRoomsWithLatestMessagePreviews(await fetchRoomsForIndexes(indexes));
             if (role === 'staff' || indexedRooms.length > 0) {
                 if (process.env.NODE_ENV === 'development') {
                     console.log('[resolver] room list count', { role, authUid, count: indexedRooms.length });
                     console.log('[resolver] rooms missing lastMessageText count', { role, authUid, count: indexedRooms.filter((room) => !room?.lastMessageText).length });
                 }
+                logMobileRoomPreviewDebug({ role, authUid, rooms: indexedRooms, source: 'userChatRooms', indexes });
                 onNext(indexedRooms, indexes);
                 return;
             }
@@ -122,11 +175,12 @@ export const subscribeUserChatRooms = ({ authUid, role = '', onNext, onError }) 
                 console.log('[resolver] userChatRooms empty; using chatRooms fallback', { role, authUid });
             }
             const fallbackRooms = role === 'parent' ? await fetchParentFallbackRooms(authUid) : await fetchStudentFallbackRooms(authUid);
-            const sortedFallbackRooms = sortRoomsByActivity(fallbackRooms);
+            const sortedFallbackRooms = sortRoomsByActivity(await enrichRoomsWithLatestMessagePreviews(fallbackRooms));
             if (process.env.NODE_ENV === 'development') {
                 console.log('[resolver] room list count', { role, authUid, count: sortedFallbackRooms.length });
                 console.log('[resolver] rooms missing lastMessageText count', { role, authUid, count: sortedFallbackRooms.filter((room) => !room?.lastMessageText).length });
             }
+            logMobileRoomPreviewDebug({ role, authUid, rooms: sortedFallbackRooms, source: 'chatRooms_fallback', indexes });
             onNext(sortedFallbackRooms, indexes);
         } catch (error) {
             onError?.(error);

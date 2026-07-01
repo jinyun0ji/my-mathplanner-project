@@ -14,6 +14,7 @@ export const getLastMessagePreviewCandidates = (room) => ({
     previewText: normalizeText(room?.previewText),
     latestMessageText: normalizeText(room?.latestMessageText),
     lastMessagePreview: normalizeText(room?.lastMessagePreview),
+    __previewText: normalizeText(room?.__previewText),
 });
 
 export const getLastMessagePreview = (room) => {
@@ -25,5 +26,6 @@ export const getLastMessagePreview = (room) => {
         || candidates.previewText
         || candidates.latestMessageText
         || candidates.lastMessagePreview
+        || candidates.__previewText
         || EMPTY_ROOM_PREVIEW;
 };
