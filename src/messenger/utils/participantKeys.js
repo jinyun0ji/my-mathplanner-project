@@ -21,6 +21,8 @@ export const buildParentParticipantKeys = ({ authUid = '', parent = {}, student 
     parent?.parentId,
     parent?.parentDocId,
     parent?.parentUid,
+    parent?.userUid,
+    parent?.studentIds,
     studentId,
     student?.parentId,
     student?.parentDocId,

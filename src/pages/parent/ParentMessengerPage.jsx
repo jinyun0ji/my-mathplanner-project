@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { doc, getDoc } from 'firebase/firestore';
 import ArrowBackIosNewIcon from '@mui/icons-material/ArrowBackIosNew';
 import StudentMessenger from '../../components/StudentMessenger';
-import { auth } from '../../firebase/client';
+import { auth, db } from '../../firebase/client';
 import { INSTITUTE_AUTH_UID, ROOM_TYPES, SLOTS, TEACHER_AUTH_UID } from '../../messenger/constants/messengerConstants';
 import { getInstituteDisplayName, getTeacherDisplayName } from '../../messenger/services/displayNameService';
 import { getLastMessagePreview, getLastMessagePreviewCandidates } from '../../messenger/services/roomPreviewService';
@@ -11,13 +12,20 @@ import { getUserChatRoomsQueryShape, subscribeUserChatRooms } from '../../messen
 
 const getParticipantIds = (room) => (Array.isArray(room?.participantIds) ? room.participantIds.map(String) : []);
 const hasTarget = (room, targetUid, fields = []) => fields.some((field) => String(room?.[field] || '') === targetUid) || getParticipantIds(room).includes(targetUid);
-const hasViewerParticipant = (room, participantKeys = []) => participantKeys.some((key) => getParticipantIds(room).includes(String(key)));
+const hasViewerParticipant = (room, participantKeys = [], linkedUserDocId = '') => {
+    const participantIds = getParticipantIds(room);
+    const keys = participantKeys.map(String);
+    return keys.some((key) => participantIds.includes(key))
+        || (linkedUserDocId && String(room?.parentId || '') === String(linkedUserDocId))
+        || keys.includes(String(room?.parentUid || ''))
+        || room?.__source === 'userChatRooms';
+};
 
 
-const sameStudent = (room, studentId) => !room?.studentId || !studentId || String(room.studentId) === String(studentId);
+const sameStudent = (room, studentId) => room?.__source === 'userChatRooms' || !room?.studentId || !studentId || String(room.studentId) === String(studentId);
 
-const isParentTeacherRoom = (room, participantKeys, studentId) => (
-    hasViewerParticipant(room, participantKeys)
+const isParentTeacherRoom = (room, participantKeys, studentId, linkedUserDocId) => (
+    hasViewerParticipant(room, participantKeys, linkedUserDocId)
     && sameStudent(room, studentId)
     && !hasRoomTypeOrChannel(room, ROOM_TYPES.STUDENT_TEACHER)
     && !hasRoomTypeOrChannel(room, ROOM_TYPES.STUDENT_INSTITUTE)
@@ -25,8 +33,8 @@ const isParentTeacherRoom = (room, participantKeys, studentId) => (
     && hasTarget(room, TEACHER_AUTH_UID, ['teacherAuthUid', 'counterpartUid'])
 );
 
-const isParentInstituteRoom = (room, participantKeys, studentId) => (
-    hasViewerParticipant(room, participantKeys)
+const isParentInstituteRoom = (room, participantKeys, studentId, linkedUserDocId) => (
+    hasViewerParticipant(room, participantKeys, linkedUserDocId)
     && sameStudent(room, studentId)
     && !hasRoomTypeOrChannel(room, ROOM_TYPES.STUDENT_TEACHER)
     && !hasRoomTypeOrChannel(room, ROOM_TYPES.STUDENT_INSTITUTE)
@@ -39,9 +47,48 @@ export default function ParentMessengerPage({ studentId, student, onBack }) {
     const [rooms, setRooms] = useState([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
+    const [linkedParent, setLinkedParent] = useState({ userDocId: '', profile: {} });
     const authUid = String(auth.currentUser?.uid || '');
     const activeStudentId = String(studentId || student?.id || student?.studentId || '');
-    const participantKeys = useMemo(() => buildParentParticipantKeys({ authUid, parent: { authUid, parentUid: authUid }, student, studentId: activeStudentId }), [authUid, student, activeStudentId]);
+    const participantKeys = useMemo(() => buildParentParticipantKeys({
+        authUid,
+        parent: {
+            id: linkedParent.userDocId,
+            parentId: linkedParent.userDocId,
+            parentDocId: linkedParent.userDocId,
+            authUid,
+            parentUid: authUid,
+            ...(linkedParent.profile || {}),
+        },
+        student,
+        studentId: activeStudentId,
+    }), [authUid, linkedParent, student, activeStudentId]);
+
+
+    useEffect(() => {
+        let cancelled = false;
+        if (!authUid) {
+            setLinkedParent({ userDocId: '', profile: {} });
+            return undefined;
+        }
+        const loadLinkedParent = async () => {
+            try {
+                const indexSnap = await getDoc(doc(db, 'userAuthIndex', authUid));
+                const userDocId = indexSnap.exists() ? String(indexSnap.data()?.userDocId || '').trim() : '';
+                let profile = {};
+                if (userDocId) {
+                    const userSnap = await getDoc(doc(db, 'users', userDocId));
+                    profile = userSnap.exists() ? userSnap.data() || {} : {};
+                }
+                if (!cancelled) setLinkedParent({ userDocId, profile });
+            } catch (loadError) {
+                if (process.env.NODE_ENV === 'development') console.warn('[parent messenger] failed to load linked parent profile', { authUid, code: loadError?.code, message: loadError?.message });
+                if (!cancelled) setLinkedParent({ userDocId: '', profile: {} });
+            }
+        };
+        loadLinkedParent();
+        return () => { cancelled = true; };
+    }, [authUid]);
 
     useEffect(() => {
         if (!authUid) {
@@ -75,13 +122,32 @@ export default function ParentMessengerPage({ studentId, student, onBack }) {
         return unsubscribe;
     }, [authUid]);
 
-    const teacherRoom = useMemo(() => rooms.find((room) => isParentTeacherRoom(room, participantKeys, activeStudentId)) || null, [rooms, participantKeys, activeStudentId]);
-    const instituteRoom = useMemo(() => rooms.find((room) => isParentInstituteRoom(room, participantKeys, activeStudentId)) || null, [rooms, participantKeys, activeStudentId]);
+    const teacherRoom = useMemo(() => rooms.find((room) => isParentTeacherRoom(room, participantKeys, activeStudentId, linkedParent.userDocId)) || null, [rooms, participantKeys, activeStudentId, linkedParent.userDocId]);
+    const instituteRoom = useMemo(() => rooms.find((room) => isParentInstituteRoom(room, participantKeys, activeStudentId, linkedParent.userDocId)) || null, [rooms, participantKeys, activeStudentId, linkedParent.userDocId]);
 
     const messengerSlots = useMemo(() => [
-        { slot: SLOTS.INSTITUTE, room: instituteRoom, id: instituteRoom?.id || 'parent-institute-placeholder', title: getInstituteDisplayName(), roomType: ROOM_TYPES.PARENT_INSTITUTE },
-        { slot: SLOTS.TEACHER, room: teacherRoom, id: teacherRoom?.id || 'parent-teacher-placeholder', title: getTeacherDisplayName(), roomType: ROOM_TYPES.PARENT_TEACHER },
+        { slot: SLOTS.INSTITUTE, room: instituteRoom, id: instituteRoom?.roomId || instituteRoom?.id || 'parent-institute-placeholder', title: getInstituteDisplayName(), roomType: ROOM_TYPES.PARENT_INSTITUTE },
+        { slot: SLOTS.TEACHER, room: teacherRoom, id: teacherRoom?.roomId || teacherRoom?.id || 'parent-teacher-placeholder', title: getTeacherDisplayName(), roomType: ROOM_TYPES.PARENT_TEACHER },
     ], [teacherRoom, instituteRoom]);
+
+    useEffect(() => {
+        if (process.env.NODE_ENV !== 'development') return;
+        console.log('[parent messenger] match debug', {
+            authUid,
+            linkedUserDocId: linkedParent.userDocId,
+            participantKeys,
+            roomsCount: rooms.length,
+            teacherRoomMatched: Boolean(teacherRoom),
+            teacherRoomId: teacherRoom?.roomId || teacherRoom?.id || '',
+            instituteRoomMatched: Boolean(instituteRoom),
+            instituteRoomId: instituteRoom?.roomId || instituteRoom?.id || '',
+            slots: messengerSlots.map((slot) => ({
+                slot: slot.slot,
+                selectedRoomId: String(slot.room?.roomId || slot.room?.id || '').trim(),
+                roomState: slot.room ? 'actual' : 'placeholder',
+            })),
+        });
+    }, [authUid, linkedParent.userDocId, participantKeys, rooms.length, teacherRoom, instituteRoom, messengerSlots]);
 
     const handleOpenRoom = (slot) => {
         const selectedRoomId = String(slot.room?.roomId || slot.room?.id || '').trim();
@@ -125,7 +191,7 @@ export default function ParentMessengerPage({ studentId, student, onBack }) {
                         selectedRoomId={currentRoomId}
                         teacherName={currentSlot.title}
                         userRole="parent"
-                        allowLegacyResolve={false}
+                        allowLegacyResolve={!currentRoomId}
                         emptyMessage="아직 대화 내역이 없습니다."
                         chatSlot={currentSlot.slot}
                         roomCreationContext={{
@@ -155,7 +221,7 @@ export default function ParentMessengerPage({ studentId, student, onBack }) {
                         <div className="w-10 h-10 rounded-full bg-gray-200" />
                         <div className="flex-1 min-w-0">
                             <p className="text-sm font-semibold text-gray-900 truncate">{slot.title}</p>
-                            <p className="text-xs text-gray-500 truncate">{String(getLastMessagePreview(slot.room))}</p>
+                            <p className="text-xs text-gray-500 truncate">{slot.room ? String(getLastMessagePreview(slot.room)) : '대화 내역이 없습니다.'}</p>
                         </div>
                         <div className="text-[11px] text-gray-400">{toDate(slot.room?.lastMessageAt || slot.room?.updatedAt || slot.room?.createdAt)?.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }) || ''}</div>
                     </button>
