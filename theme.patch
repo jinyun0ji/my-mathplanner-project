@@ -1,113 +1,8 @@
 diff --git a/src/components/StudentMessenger.jsx b/src/components/StudentMessenger.jsx
-index fae96220dbf9d56fc353aff072c8a27b2bbe0a7d..5bce7f710171e2d95a4d82b561510a3a7aaad422 100644
+index 5bce7f710171e2d95a4d82b561510a3a7aaad422..86a0cb4c4901d4b89b532ce6f85e537e9d4b5cf9 100644
 --- a/src/components/StudentMessenger.jsx
 +++ b/src/components/StudentMessenger.jsx
-@@ -1,66 +1,47 @@
- import React, { useState, useEffect, useMemo, useRef } from 'react';
- import {
-     collection,
-     doc,
-     getDoc,
-     getDocs,
-     query,
-     serverTimestamp,
-     where,
- } from 'firebase/firestore';
- import { auth, db } from '../firebase/client';
- import { formatAttachmentSize, uploadChatAttachment, validateChatAttachment } from '../messenger/services/attachmentService';
- import { buildDeterministicRoomId, createRoomIfMissing } from '../messenger/services/roomFactory';
- import { sendRoomMessage, subscribeRoomMessages } from '../messenger/services/messageService';
- import { fetchParentFallbackRooms, fetchRoomsForIndexes, fetchStudentFallbackRooms } from '../messenger/services/userChatRoomsService';
-+import { getExpectedRoomType, getRoomDebugInfo, isStrictRoomTypeMatch } from '../messenger/utils/roomMatcher';
- 
- // TODO(video_embed): allow only admin/staff/teacher to send YouTube watch/youtu.be/embed links,
- // normalize them to youtube-nocookie URLs, store messageType: 'video_embed',
- // render video cards in-room, and play them in an internal iframe modal.
- const CANDIDATE_ROOM_IDS = (studentId) => [String(studentId || '')].filter(Boolean);
- 
--const CHAT_ROOM_TYPES = {
--    student: {
--        institute: 'student_institute',
--        teacher: 'student_teacher',
--    },
--    parent: {
--        institute: 'parent_institute',
--        teacher: 'parent_teacher',
--    },
--};
--
--const getExpectedRoomType = (role, slotOrType) => {
--    const normalizedRole = String(role || '').trim();
--    const normalized = String(slotOrType || '').trim();
--    if (normalizedRole === 'parent' && (normalized === 'institute' || normalized === 'parent_institute')) return 'parent_institute';
--    if (['student_institute', 'student_teacher', 'parent_institute', 'parent_teacher'].includes(normalized)) return normalized;
--    return CHAT_ROOM_TYPES[normalizedRole]?.[normalized] || '';
--};
--
--
- const uniqueStrings = (values) => Array.from(new Set(
-     values.flat(Infinity).filter((value) => typeof value === 'string' && value.trim()).map((value) => value.trim())
- ));
- 
- const buildStandardRoomId = (roomType, ownerUid, counterpartUid, studentId = '') => buildDeterministicRoomId(roomType, ownerUid, counterpartUid, studentId);
- 
- const getParticipantIds = (room) => (Array.isArray(room?.participantIds) ? room.participantIds.map(String) : []);
- 
- 
- const getRoomIdentityValues = (room) => uniqueStrings([
-     getParticipantIds(room),
-     room?.studentAuthUid,
-     room?.studentUid,
-     room?.parentUid,
-     room?.parentId,
-     room?.studentId,
-     room?.participantUserDocIds ? Object.values(room.participantUserDocIds) : [],
- ]);
- 
- const getUserDocLinkedKeys = async (authUid) => {
-     const currentAuthUid = String(authUid || '').trim();
-     if (!currentAuthUid) return [];
-     const keys = [currentAuthUid];
-     try {
-         const indexSnap = await getDoc(doc(db, 'userAuthIndex', currentAuthUid));
-@@ -103,101 +84,117 @@ const getMySenderIds = async (authUid) => {
- 
- const fetchCandidateRoomsByParticipantKeys = async (participantKeys = []) => {
-     const keys = uniqueStrings(participantKeys).slice(0, 30);
-     const chunks = [];
-     for (let index = 0; index < keys.length; index += 10) chunks.push(keys.slice(index, index + 10));
-     const roomsById = new Map();
-     await Promise.all(chunks.map(async (chunk) => {
-         const roomsQuery = query(collection(db, 'chatRooms'), where('participantIds', 'array-contains-any', chunk));
-         const snap = await getDocs(roomsQuery);
-         snap.docs.forEach((roomDoc) => roomsById.set(roomDoc.id, { id: roomDoc.id, ...roomDoc.data() }));
-     }));
-     return Array.from(roomsById.values());
- };
- 
- const getRoomSlot = (room) => {
-     const explicitSlot = String(room?.slot || '').trim();
-     if (explicitSlot) return explicitSlot;
-     const roomType = String(room?.roomType || room?.channel || '').trim();
-     if (roomType === 'institute' || roomType.endsWith('_institute')) return 'institute';
-     if (roomType === 'teacher' || roomType.endsWith('_teacher')) return 'teacher';
-     return '';
- };
- 
- const normalizedRoleFromRoomType = (roomType) => (String(roomType || '').startsWith('parent_') ? 'parent' : 'student');
- 
--const hasRoomTypeOrChannel = (room, expectedRoomType) => (
--    String(room?.roomType || '').trim() === expectedRoomType
--    || String(room?.channel || '').trim() === expectedRoomType
--);
-+const hasRoomTypeOrChannel = isStrictRoomTypeMatch;
-+
-+const logRoomResolutionDebug = (event, details) => {
-+    if (process.env.NODE_ENV !== 'development') return;
-+    console.log(`[student messenger][room resolve] ${event}`, details);
-+};
- 
- const isResolvedRoomCandidate = (room, { viewerUid, targetAuthUid, roomType, studentId = '', participantKeys = [] }) => {
+@@ -117,119 +117,132 @@ const isResolvedRoomCandidate = (room, { viewerUid, targetAuthUid, roomType, stu
      if (!room || !viewerUid || !targetAuthUid || !roomType) return false;
      const expectedSlot = roomType.endsWith('_teacher') ? 'teacher' : 'institute';
      const roomSlot = getRoomSlot(room);
@@ -116,16 +11,14 @@ index fae96220dbf9d56fc353aff072c8a27b2bbe0a7d..5bce7f710171e2d95a4d82b561510a3a
      const viewerKeys = uniqueStrings([viewerUid, participantKeys]);
      if (!viewerKeys.some((key) => roomIdentityValues.includes(key) || participantIds.includes(key))) return false;
      if (!participantIds.includes(String(targetAuthUid)) && String(room?.counterpartUid || '') !== String(targetAuthUid) && String(room?.teacherAuthUid || '') !== String(targetAuthUid) && String(room?.staffAuthUid || '') !== String(targetAuthUid)) return false;
--    if (roomSlot && roomSlot !== expectedSlot) return false;
--    if (!hasRoomTypeOrChannel(room, roomType) && getRoomSlot(room) !== expectedSlot) return false;
-+    if (roomSlot && roomSlot !== expectedSlot) {
-+        logRoomResolutionDebug('rejected room', { role: normalizedRoleFromRoomType(roomType), expectedRoomType: roomType, rejectedRoomId: room?.id || room?.roomId || '', reason: 'slot mismatch', actual: getRoomDebugInfo(room) });
-+        return false;
-+    }
-+    if (!hasRoomTypeOrChannel(room, roomType)) {
-+        logRoomResolutionDebug('rejected room', { role: normalizedRoleFromRoomType(roomType), expectedRoomType: roomType, rejectedRoomId: room?.id || room?.roomId || '', reason: 'roomType/channel mismatch', actual: getRoomDebugInfo(room) });
-+        return false;
-+    }
+     if (roomSlot && roomSlot !== expectedSlot) {
+         logRoomResolutionDebug('rejected room', { role: normalizedRoleFromRoomType(roomType), expectedRoomType: roomType, rejectedRoomId: room?.id || room?.roomId || '', reason: 'slot mismatch', actual: getRoomDebugInfo(room) });
+         return false;
+     }
+     if (!hasRoomTypeOrChannel(room, roomType)) {
+         logRoomResolutionDebug('rejected room', { role: normalizedRoleFromRoomType(roomType), expectedRoomType: roomType, rejectedRoomId: room?.id || room?.roomId || '', reason: 'roomType/channel mismatch', actual: getRoomDebugInfo(room) });
+         return false;
+     }
      if (roomType.startsWith('student_') && (hasRoomTypeOrChannel(room, 'parent_teacher') || hasRoomTypeOrChannel(room, 'parent_institute'))) return false;
      if (roomType.startsWith('parent_') && (hasRoomTypeOrChannel(room, 'student_teacher') || hasRoomTypeOrChannel(room, 'student_institute'))) return false;
      if ((roomType === 'parent_teacher' || roomType === 'parent_institute') && studentId && room?.studentId && String(room.studentId) !== String(studentId)) return false;
@@ -135,6 +28,15 @@ index fae96220dbf9d56fc353aff072c8a27b2bbe0a7d..5bce7f710171e2d95a4d82b561510a3a
      return true;
  };
  
++
++const validateSelectedRoomForSubscription = (room, expectedRoomType) => {
++    if (!room || !expectedRoomType) return false;
++    const expectedSlot = String(expectedRoomType || '').endsWith('_teacher') ? 'teacher' : 'institute';
++    const actualSlot = getRoomSlot(room);
++    const slotMatches = !actualSlot || actualSlot === expectedSlot;
++    return slotMatches && hasRoomTypeOrChannel(room, expectedRoomType);
++};
++
  const resolveChatRoom = async ({ viewerUid, targetAuthUid, roomType, studentId = '', participantKeys = [] }) => {
      const authUid = String(auth.currentUser?.uid || viewerUid || '').trim();
      if (!authUid || !targetAuthUid || !roomType) return null;
@@ -156,22 +58,19 @@ index fae96220dbf9d56fc353aff072c8a27b2bbe0a7d..5bce7f710171e2d95a4d82b561510a3a
          }
          const rooms = await fetchRoomsForIndexes(indexDocs.map((item) => ({ id: item.id, ...item.data() })));
          const indexedMatch = findMatchingRoom(rooms);
--        if (indexedMatch) return indexedMatch;
-+        if (indexedMatch) {
-+            logRoomResolutionDebug('final resolved room', { role: normalizedRoleFromRoomType(roomType), expectedRoomType: roomType, selectedRoomId: '', finalRoomId: indexedMatch.id || indexedMatch.roomId || '', actual: getRoomDebugInfo(indexedMatch) });
-+            return indexedMatch;
-+        }
+         if (indexedMatch) {
+             logRoomResolutionDebug('final resolved room', { role: normalizedRoleFromRoomType(roomType), expectedRoomType: roomType, selectedRoomId: '', finalRoomId: indexedMatch.id || indexedMatch.roomId || '', actual: getRoomDebugInfo(indexedMatch) });
+             return indexedMatch;
+         }
          const fallbackRooms = roomType.startsWith('parent_') ? await fetchParentFallbackRooms(authUid) : await fetchStudentFallbackRooms(authUid);
          const fallbackMatch = findMatchingRoom(fallbackRooms);
--        if (fallbackMatch) return fallbackMatch;
--        return findMatchingRoom(await fetchCandidateRoomsByParticipantKeys(linkedParticipantKeys));
-+        if (fallbackMatch) {
-+            logRoomResolutionDebug('final resolved room', { role: normalizedRoleFromRoomType(roomType), expectedRoomType: roomType, selectedRoomId: '', finalRoomId: fallbackMatch.id || fallbackMatch.roomId || '', actual: getRoomDebugInfo(fallbackMatch) });
-+            return fallbackMatch;
-+        }
-+        const participantMatch = findMatchingRoom(await fetchCandidateRoomsByParticipantKeys(linkedParticipantKeys));
-+        logRoomResolutionDebug('final resolved room', { role: normalizedRoleFromRoomType(roomType), expectedRoomType: roomType, selectedRoomId: '', finalRoomId: participantMatch?.id || participantMatch?.roomId || '', actual: getRoomDebugInfo(participantMatch) });
-+        return participantMatch;
+         if (fallbackMatch) {
+             logRoomResolutionDebug('final resolved room', { role: normalizedRoleFromRoomType(roomType), expectedRoomType: roomType, selectedRoomId: '', finalRoomId: fallbackMatch.id || fallbackMatch.roomId || '', actual: getRoomDebugInfo(fallbackMatch) });
+             return fallbackMatch;
+         }
+         const participantMatch = findMatchingRoom(await fetchCandidateRoomsByParticipantKeys(linkedParticipantKeys));
+         logRoomResolutionDebug('final resolved room', { role: normalizedRoleFromRoomType(roomType), expectedRoomType: roomType, selectedRoomId: '', finalRoomId: participantMatch?.id || participantMatch?.roomId || '', actual: getRoomDebugInfo(participantMatch) });
+         return participantMatch;
      } catch (resolveError) {
          logFirestoreQueryFailure('resolve chat room', resolveError, { authUid, participantKeys: linkedParticipantKeys });
          return null;
@@ -186,6 +85,10 @@ index fae96220dbf9d56fc353aff072c8a27b2bbe0a7d..5bce7f710171e2d95a4d82b561510a3a
  };
  
  const getCreatedAtTime = (createdAt) => {
++    if (createdAt && typeof createdAt?.toMillis === 'function') {
++        const time = createdAt.toMillis();
++        if (Number.isFinite(time)) return time;
++    }
      if (createdAt && typeof createdAt?.toDate === 'function') {
          const time = createdAt.toDate().getTime();
          if (Number.isFinite(time)) return time;
@@ -197,21 +100,46 @@ index fae96220dbf9d56fc353aff072c8a27b2bbe0a7d..5bce7f710171e2d95a4d82b561510a3a
      if (typeof createdAt === 'number' && Number.isFinite(createdAt)) return createdAt;
      return 0;
  };
-@@ -340,66 +337,89 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
-             setMyProfileDocId('');
-             setMySenderIds([]);
-             return undefined;
-         }
  
-         let mounted = true;
-         getDoc(doc(db, 'userAuthIndex', authUid)).then((indexSnap) => {
-             if (!mounted) return;
-             const userDocId = indexSnap.exists() ? String(indexSnap.data()?.userDocId || '') : '';
-             setMyProfileDocId(userDocId);
-             return getMySenderIds(authUid).then((ids) => { if (mounted) setMySenderIds(ids); });
-         }).catch((indexError) => {
-             logFirestoreQueryFailure('load userAuthIndex', indexError, { doc: ['userAuthIndex', authUid] });
-             if (mounted) {
+ const getMessageSortTime = (message) => {
+-    const createdAtTime = getCreatedAtTime(message?.createdAt);
+-    if (createdAtTime) return createdAtTime;
+-
+     const localCreatedAtMs = Number(message?.localCreatedAtMs || 0);
+     if (Number.isFinite(localCreatedAtMs) && localCreatedAtMs > 0) return localCreatedAtMs;
+ 
++    const createdAtTime = getCreatedAtTime(message?.createdAt);
++    if (createdAtTime) return createdAtTime;
++
+     const clientTempIdTime = parseClientTempIdTime(message?.clientTempId || message?.id);
+-    return clientTempIdTime || Date.now();
++    return clientTempIdTime || 0;
+ };
+ 
+ const getMessageCreatedAtDate = (message) => new Date(getMessageSortTime(message));
+ 
+ const isSameLogicalMessage = (left, right) => {
+     if (!left || !right) return false;
+     if (left.clientTempId && right.clientTempId && left.clientTempId === right.clientTempId) return true;
+ 
+     const canUseFuzzyMatch = Boolean(left.clientTempId || right.clientTempId || left.pending || right.pending);
+     if (!canUseFuzzyMatch) return false;
+ 
+     const leftText = String(left.text || left.message || '').trim();
+     const rightText = String(right.text || right.message || '').trim();
+     if (!leftText || leftText !== rightText) return false;
+     if (String(left.senderId || '') !== String(right.senderId || '')) return false;
+ 
+     return Math.abs(getMessageSortTime(left) - getMessageSortTime(right)) <= 15_000;
+ };
+ 
+ const dedupeMessages = (items) => items.reduce((acc, item) => {
+     const existingIndex = acc.findIndex((candidate) => isSameLogicalMessage(candidate.raw, item.raw));
+     if (existingIndex === -1) return [...acc, item];
+ 
+     const existing = acc[existingIndex];
+     const existingPending = Boolean(existing.raw?.pending);
+@@ -351,62 +364,68 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
                  setMyProfileDocId('');
                  setMySenderIds([authUid].filter(Boolean));
              }
@@ -223,52 +151,56 @@ index fae96220dbf9d56fc353aff072c8a27b2bbe0a7d..5bce7f710171e2d95a4d82b561510a3a
      }, []);
  
      useEffect(() => {
-+        let cancelled = false;
-+        setRoomId(null);
-+
-+        const viewerUid = auth.currentUser?.uid || '';
-+        const targetAuthUid = String(roomCreationContext?.targetAuthUid || '');
-+
+         let cancelled = false;
+         setRoomId(null);
+ 
+         const viewerUid = auth.currentUser?.uid || '';
+         const targetAuthUid = String(roomCreationContext?.targetAuthUid || '');
+ 
          if (selectedRoomId) {
--            if (process.env.NODE_ENV === 'development') console.log('[StudentMessenger] selected room id', { roomId: String(selectedRoomId) });
-+            const selectedId = String(selectedRoomId).trim();
+             const selectedId = String(selectedRoomId).trim();
              setMessages([]);
              setOptimisticMessages([]);
--            setRoomId(String(selectedRoomId));
--            return undefined;
-+            if (process.env.NODE_ENV === 'development') console.log('[StudentMessenger] selected room id', { role: userRole, expectedRoomType, selectedRoomId: selectedId });
-+            getDoc(doc(db, 'chatRooms', selectedId)).then(async (selectedSnap) => {
-+                if (cancelled) return;
-+                const selectedRoom = selectedSnap.exists() ? { id: selectedSnap.id, ...selectedSnap.data() } : null;
-+                logRoomResolutionDebug('selected room validation', {
-+                    role: userRole,
+             if (process.env.NODE_ENV === 'development') console.log('[StudentMessenger] selected room id', { role: userRole, expectedRoomType, selectedRoomId: selectedId });
+             getDoc(doc(db, 'chatRooms', selectedId)).then(async (selectedSnap) => {
+                 if (cancelled) return;
+                 const selectedRoom = selectedSnap.exists() ? { id: selectedSnap.id, ...selectedSnap.data() } : null;
++                const actual = getRoomDebugInfo(selectedRoom);
++                const validationPassed = validateSelectedRoomForSubscription(selectedRoom, expectedRoomType);
+                 logRoomResolutionDebug('selected room validation', {
+                     role: userRole,
+-                    expectedRoomType,
+                     selectedRoomId: selectedId,
+-                    actual: getRoomDebugInfo(selectedRoom),
 +                    expectedRoomType,
-+                    selectedRoomId: selectedId,
-+                    actual: getRoomDebugInfo(selectedRoom),
-+                });
-+                if (selectedRoom && isResolvedRoomCandidate(selectedRoom, { viewerUid, targetAuthUid, roomType: expectedRoomType, studentId, participantKeys: roomStudentParticipantKeys })) {
-+                    logRoomResolutionDebug('final resolved room', { role: userRole, expectedRoomType, selectedRoomId: selectedId, finalRoomId: selectedId, actual: getRoomDebugInfo(selectedRoom) });
-+                    setRoomId(selectedId);
-+                    return;
-+                }
-+                logRoomResolutionDebug('rejected selected room', { role: userRole, expectedRoomType, selectedRoomId: selectedId, rejectedRoomId: selectedId, reason: selectedRoom ? 'selected room does not match expected room type/participants' : 'selected room not found', actual: getRoomDebugInfo(selectedRoom) });
-+                if (!viewerUid || !targetAuthUid || !expectedRoomType) return;
-+                const resolvedRoom = await resolveChatRoom({ viewerUid, targetAuthUid, roomType: expectedRoomType, studentId, participantKeys: roomStudentParticipantKeys });
-+                if (!cancelled && resolvedRoom?.id) setRoomId(String(resolvedRoom.id));
-+            }).catch((selectedError) => {
-+                logFirestoreQueryFailure('validate selected room', selectedError, { doc: ['chatRooms', selectedId], expectedRoomType });
-+            });
-+            return () => { cancelled = true; };
++                    actual,
++                    validation: validationPassed ? 'passed' : 'failed',
++                    validationPassed,
++                    messagesPath: `chatRooms/${selectedId}/messages`,
++                    subscribeStarted: validationPassed,
+                 });
+-                if (selectedRoom && isResolvedRoomCandidate(selectedRoom, { viewerUid, targetAuthUid, roomType: expectedRoomType, studentId, participantKeys: roomStudentParticipantKeys })) {
+-                    logRoomResolutionDebug('final resolved room', { role: userRole, expectedRoomType, selectedRoomId: selectedId, finalRoomId: selectedId, actual: getRoomDebugInfo(selectedRoom) });
++                if (validationPassed) {
++                    logRoomResolutionDebug('final resolved room', { role: userRole, expectedRoomType, selectedRoomId: selectedId, finalRoomId: selectedId, actual, validation: 'passed' });
+                     setRoomId(selectedId);
+                     return;
+                 }
+-                logRoomResolutionDebug('rejected selected room', { role: userRole, expectedRoomType, selectedRoomId: selectedId, rejectedRoomId: selectedId, reason: selectedRoom ? 'selected room does not match expected room type/participants' : 'selected room not found', actual: getRoomDebugInfo(selectedRoom) });
++                logRoomResolutionDebug('rejected selected room', { role: userRole, expectedRoomType, selectedRoomId: selectedId, rejectedRoomId: selectedId, reason: selectedRoom ? 'selected room type/channel/slot validation failed' : 'selected room not found', actual, validation: 'failed', messagesPath: `chatRooms/${selectedId}/messages`, subscribeStarted: false });
+                 if (!viewerUid || !targetAuthUid || !expectedRoomType) return;
+                 const resolvedRoom = await resolveChatRoom({ viewerUid, targetAuthUid, roomType: expectedRoomType, studentId, participantKeys: roomStudentParticipantKeys });
+                 if (!cancelled && resolvedRoom?.id) setRoomId(String(resolvedRoom.id));
+             }).catch((selectedError) => {
+                 logFirestoreQueryFailure('validate selected room', selectedError, { doc: ['chatRooms', selectedId], expectedRoomType });
+             });
+             return () => { cancelled = true; };
          }
  
--        let cancelled = false;
--        setRoomId(null);
          setMessages([]);
          setOptimisticMessages([]);
          setError('');
  
--        const viewerUid = auth.currentUser?.uid || '';
--        const targetAuthUid = String(roomCreationContext?.targetAuthUid || '');
          if (!viewerUid || !targetAuthUid || !expectedRoomType) return () => { cancelled = true; };
  
          resolveChatRoom({
@@ -281,480 +213,112 @@ index fae96220dbf9d56fc353aff072c8a27b2bbe0a7d..5bce7f710171e2d95a4d82b561510a3a
              if (cancelled || !resolvedRoom?.id) return;
              if (process.env.NODE_ENV === 'development') console.log('[student messenger] resolved room', { roomId: resolvedRoom.id, messagesPath: `chatRooms/${resolvedRoom.id}/messages` });
              setRoomId(String(resolvedRoom.id));
-         });
+@@ -437,52 +456,52 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
+             const unresolvedOptimisticItems = optimisticMessagesRef.current
+                 .filter((item) => String(item.roomId || '') === String(roomId))
+                 .filter((optimistic) => !snapshotItems.some((serverItem) => isSameLogicalMessage(serverItem.raw, optimistic)))
+                 .map((item) => ({ id: item.id, raw: item }));
+             const mergedItems = sortMessageItems(dedupeMessages([...snapshotItems, ...unresolvedOptimisticItems]));
  
-         return () => {
-             cancelled = true;
+             setOptimisticMessages((prev) => {
+                 const next = prev.filter((optimistic) => (
+                     String(optimistic.roomId || '') !== String(roomId)
+                     || !snapshotItems.some((serverItem) => isSameLogicalMessage(serverItem.raw, optimistic))
+                 ));
+                 if (next.length === prev.length) return prev;
+                 optimisticMessagesRef.current = next;
+                 return next;
+             });
+             setMessages(mergedItems
+                 .map((item) => normalizeMessage(item.id, item.raw, myIds, fallbackSenderName))
+                 .filter((item) => item.text || item.attachments.length));
          };
-     }, [studentId, studentAuthUid, selectedRoomId, allowLegacyResolve, canCreateChatRoom, expectedRoomType, roomCreationContext?.targetAuthUid, normalizedChatSlot, userRole, roomStudentParticipantKeys]);
+ 
+         const subscribe = (withOrderBy) => {
+             const queryShape = withOrderBy
+                 ? { collection: collectionPath, orderBy: ['createdAt', 'desc'], limit: 30, clientSort: ['createdAt', 'asc'] }
+                 : { collection: collectionPath, orderBy: null, limit: 30, clientSort: ['createdAt', 'asc'] };
+             if (process.env.NODE_ENV === 'development') {
+-                console.log('[StudentMessenger] subscribe messages', { roomId, path: collectionPath });
+-                console.log('[student messenger][messages path]', { authUid: auth.currentUser?.uid || '', studentId: String(studentId || ''), studentAuthUid: String(studentAuthUid || ''), selectedRoomId: String(selectedRoomId || roomId || ''), roomType: expectedRoomType, channel: expectedRoomType, slot: normalizedChatSlot, participantIds: roomStudentParticipantKeys, lastMessageText: '', messagesPath: collectionPath, queryShape });
++                console.log('[StudentMessenger] subscribe messages', { roomId, path: collectionPath, selectedRoomId: String(selectedRoomId || ''), expectedRoomType, subscribeStarted: true });
++                console.log('[student messenger][messages path]', { authUid: auth.currentUser?.uid || '', studentId: String(studentId || ''), studentAuthUid: String(studentAuthUid || ''), selectedRoomId: String(selectedRoomId || roomId || ''), expectedRoomType, roomType: expectedRoomType, channel: expectedRoomType, slot: normalizedChatSlot, participantIds: roomStudentParticipantKeys, lastMessageText: '', messagesPath: collectionPath, subscribeStarted: true, queryShape });
+             }
+             return subscribeRoomMessages({ roomId, withOrderBy, onNext: applySnapshot, onError: (snapshotError) => {
+                 if (process.env.NODE_ENV === 'development') logFirestoreQueryFailure('subscribe messages', snapshotError, queryShape);
+                 if (withOrderBy) {
+                     fallbackUnsub = subscribe(false);
+                     return;
+                 }
+                 setError('메시지를 불러올 권한이 없습니다. 관리자에게 문의해주세요.');
+             } });
+         };
+ 
+         const unsub = subscribe(true);
+         return () => {
+             unsub && unsub();
+             fallbackUnsub && fallbackUnsub();
+         };
+     }, [roomId, selectedRoomId, canCreateChatRoom, expectedRoomType, normalizedChatSlot, myProfileDocId, mySenderIds, teacherName, userRole, studentId, studentAuthUid, roomStudentParticipantKeys]);
  
      useEffect(() => {
-         if (!roomId) return undefined;
-         
-         const collectionPath = `chatRooms/${roomId}/messages`;
-         let fallbackUnsub = null;
+         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+     }, [messages]);
  
-@@ -485,53 +505,56 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
-             clearAttachment();
-             return;
-         }
-         if (attachmentPreviewUrl) URL.revokeObjectURL(attachmentPreviewUrl);
-         setAttachmentFile(file);
-         setAttachmentPreviewUrl(validation.type === 'image' ? URL.createObjectURL(file) : '');
-         setError('');
-     };
+     const placeholder = useMemo(() => (userRole === 'parent' ? '메시지 보내기...' : '메시지 입력'), [userRole]);
  
-     const handleSend = async (e) => {
-         e.preventDefault();
-         const text = inputText.trim();
-         const fileToUpload = attachmentFile;
-         if (!text && !fileToUpload) return;
-         if (fileToUpload) {
-             const validation = validateChatAttachment(fileToUpload);
-             if (!validation.ok) {
-                 setError(validation.message);
-                 return;
-             }
-         }
-         setIsSending(true);
- 
-         const viewerUid = auth.currentUser?.uid || 'parent-anonymous';
-         const targetAuthUidForRoom = String(roomCreationContext?.targetAuthUid || '');
--        const isChatRoomMode = userRole === 'student' || Boolean(selectedRoomId || canCreateChatRoom || String(expectedRoomType || '').includes('institute'));
--        let resolvedRoomId = selectedRoomId ? String(selectedRoomId) : roomId || null;
-+        const isChatRoomMode = userRole === 'student' || Boolean(roomId || canCreateChatRoom || String(expectedRoomType || '').includes('institute'));
-+        let resolvedRoomId = roomId || null;
-         let shouldCreateStandardRoom = false;
-+        if (!resolvedRoomId && selectedRoomId) {
-+            logRoomResolutionDebug('selected room unavailable at send time', { role: userRole, expectedRoomType, selectedRoomId: String(selectedRoomId), reason: 'validated roomId is empty' });
-+        }
-         if (!resolvedRoomId && canCreateChatRoom) {
-             const existingRoom = await resolveChatRoom({
-                 viewerUid,
-                 targetAuthUid: targetAuthUidForRoom,
-                 roomType: expectedRoomType,
-                 studentId,
-                 participantKeys: roomStudentParticipantKeys,
-             });
-             if (existingRoom?.id) resolvedRoomId = String(existingRoom.id);
-         }
-         if (!resolvedRoomId && canCreateChatRoom) {
-             resolvedRoomId = buildStandardRoomId(expectedRoomType, viewerUid, targetAuthUidForRoom, studentId);
-             shouldCreateStandardRoom = Boolean(resolvedRoomId);
-         }
-         if (!resolvedRoomId && !canCreateChatRoom) return;
-         const localCreatedAtMs = Date.now();
-         const clientTempId = `client-${localCreatedAtMs}-${Math.random().toString(36).slice(2, 10)}`;
-         const optimisticMessage = {
-             id: clientTempId,
-             roomId: resolvedRoomId,
-             text,
-             messageType: fileToUpload ? (fileToUpload.type === 'application/pdf' ? 'file' : 'image') : 'text',
-             attachments: fileToUpload ? [{
-                 type: fileToUpload.type === 'application/pdf' ? 'pdf' : 'image',
-                 name: fileToUpload.name,
-diff --git a/src/messenger/services/roomFactory.js b/src/messenger/services/roomFactory.js
-index 6b0775ac37bb5660b183a10b16e61b22f388eec5..bd70edaff6f24dba41aaa6727a1f3d0936aac7bb 100644
---- a/src/messenger/services/roomFactory.js
-+++ b/src/messenger/services/roomFactory.js
-@@ -1,55 +1,57 @@
- import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
- import { db } from '../../firebase/client';
- 
- const log = (...args) => {
-     if (process.env.NODE_ENV === 'development') console.log('[roomFactory]', ...args);
+     useEffect(() => () => {
+diff --git a/src/messenger/services/messageService.js b/src/messenger/services/messageService.js
+index 017f8b84832f78bb82b19fd2ad9067a52b10b1a8..159f19a299ef403116810130bf5ca3dd2ba20aa4 100644
+--- a/src/messenger/services/messageService.js
++++ b/src/messenger/services/messageService.js
+@@ -72,37 +72,41 @@ const updateUserChatRoomIndexes = async ({ roomId, lastMessageText, timestamp, l
  };
  
- const uniqueStrings = (values = []) => Array.from(new Set(values.map((value) => String(value || '').trim()).filter(Boolean)));
- 
- const buildUserRoomIndexData = ({ roomId, room = {}, timestamp }) => ({
-     roomId,
-     roomType: room.roomType || room.channel || '',
-     channel: room.channel || '',
-     slot: room.slot || '',
-     counterpartUid: room.counterpartUid || room.staffAuthUid || room.teacherAuthUid || '',
-     lastMessageText: room.lastMessageText || room.lastMessage || room.message || '',
-     lastMessageAt: room.lastMessageAt || room.updatedAt || room.createdAt || timestamp,
-     updatedAt: room.updatedAt || room.lastMessageAt || room.createdAt || timestamp,
-     studentId: room.studentId || '',
-+    parentId: room.parentId || '',
-     parentUid: room.parentUid || '',
-+    studentUid: room.studentUid || room.studentAuthUid || '',
-     studentAuthUid: room.studentAuthUid || room.studentUid || '',
-     staffAuthUid: room.staffAuthUid || '',
-     teacherAuthUid: room.teacherAuthUid || '',
- });
- 
- const createUserChatRoomIndexes = async ({ roomId, room, timestamp }) => {
-     const participantIds = uniqueStrings(Array.isArray(room?.participantIds) ? room.participantIds : []);
-     if (!participantIds.length) return;
-     await Promise.all(participantIds.map((participantUid) => setDoc(
-         doc(db, 'userChatRooms', participantUid, 'rooms', roomId),
-         buildUserRoomIndexData({ roomId, room, timestamp }),
-         { merge: true }
-     )));
- };
- 
- export const buildDeterministicRoomId = (roomType, ownerUid, counterpartUid, studentId = '') => {
-     if (!roomType || !ownerUid || !counterpartUid) return '';
-     if (roomType === 'parent_institute') return `direct_parent_institute_${ownerUid}_${counterpartUid}_${String(studentId || '').trim()}`;
-     return `direct_${roomType}_${ownerUid}_${counterpartUid}`;
- };
- 
- export const createRoomIfMissing = async ({ roomId, payload }) => {
-     const roomRef = doc(db, 'chatRooms', roomId);
-     const existing = await getDoc(roomRef);
-     if (existing.exists()) {
--        log('existing room reused', { roomId });
-+        log('existing room reused', { roomId, roomType: existing.data()?.roomType, channel: existing.data()?.channel, slot: existing.data()?.slot, studentId: existing.data()?.studentId, parentId: existing.data()?.parentId });
-         return { id: roomId, ...existing.data(), created: false };
-     }
-     const timestamp = serverTimestamp();
-     const roomPayload = { ...payload, createdAt: timestamp, updatedAt: timestamp };
-     await setDoc(roomRef, roomPayload);
-     await createUserChatRoomIndexes({ roomId, room: roomPayload, timestamp });
--    log('created room', { roomId, roomType: payload?.roomType, slot: payload?.slot });
-+    log('created room', { roomId, role: String(payload?.roomType || '').startsWith('parent_') ? 'parent' : 'student', expectedRoomType: payload?.roomType, roomType: payload?.roomType, channel: payload?.channel, slot: payload?.slot, studentId: payload?.studentId, parentId: payload?.parentId, studentUid: payload?.studentUid, parentUid: payload?.parentUid });
-     return { id: roomId, ...payload, created: true };
- };
-diff --git a/src/messenger/services/userChatRoomsService.js b/src/messenger/services/userChatRoomsService.js
-index 5136c4b4d2891c794dd2c7172131e79a613a87fc..b8a70aedff701ac8cea731270e47a46209a3b312 100644
---- a/src/messenger/services/userChatRoomsService.js
-+++ b/src/messenger/services/userChatRoomsService.js
-@@ -1,29 +1,29 @@
- import { collection, doc, getDoc, getDocs, limit, onSnapshot, orderBy, query, where } from 'firebase/firestore';
- import { db } from '../../firebase/client';
- import { getLastMessagePreview } from './roomPreviewService';
--import { normalizeText } from '../utils/roomMatcher';
-+import { isStrictRoomTypeMatch, normalizeText } from '../utils/roomMatcher';
- 
- export const getUserChatRoomsQueryShape = (authUid) => ({ collection: `userChatRooms/${authUid}/rooms` });
- 
- const uniqueStrings = (values) => Array.from(new Set(
-     values.flat(Infinity).filter((value) => typeof value === 'string' && value.trim()).map((value) => value.trim())
- ));
- 
- const toMillis = (value) => {
-     if (!value) return 0;
-     if (typeof value?.toMillis === 'function') return value.toMillis();
-     if (typeof value?.toDate === 'function') return value.toDate().getTime();
-     if (value instanceof Date) return value.getTime();
-     const parsed = new Date(value).getTime();
-     return Number.isFinite(parsed) ? parsed : 0;
- };
- 
- export const sortUserRoomIndexes = (indexes = []) => [...indexes].sort((left, right) => toMillis(right.lastMessageAt || right.updatedAt) - toMillis(left.lastMessageAt || left.updatedAt));
- 
- export const sortRoomsByActivity = (rooms = []) => [...rooms].sort((left, right) => toMillis(right.lastMessageAt || right.updatedAt || right.createdAt) - toMillis(left.lastMessageAt || left.updatedAt || left.createdAt));
- 
- export const mergeRoomWithIndex = (room, index) => ({
-     ...(room || {}),
-     id: room?.id || index?.roomId || index?.id || '',
-     roomId: room?.roomId || index?.roomId || index?.id || '',
-     indexLastMessageText: index?.lastMessageText || '',
-@@ -83,78 +83,74 @@ const logMobileRoomPreviewDebug = ({ role, authUid, rooms = [], source, indexes
-             title: room?.title || room?.name || room?.roomName || room?.displayName || '',
-             keys: Object.keys(room || {}),
-             lastMessageText: room?.lastMessageText,
-             lastMessage: room?.lastMessage,
-             lastMessageAt: room?.lastMessageAt,
-             previewText: room?.previewText,
-             latestMessageText: room?.latestMessageText,
-             lastMessagePreview: room?.lastMessagePreview,
-             source: room?.source || room?.__source || indexSourceByRoomId.get(String(room?.id || room?.roomId || '')) || source,
-             dataPathSource: (room?.__source || source) === 'userChatRooms' ? 'userChatRooms' : 'chatRooms fallback',
-             __previewText: room?.__previewText,
-             __previewAt: room?.__previewAt,
-         });
+ export const subscribeRoomMessages = ({ roomId, onNext, onError, withOrderBy = true }) => {
+     const messagesRef = collection(db, 'chatRooms', roomId, 'messages');
+     const startedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
+     const messagesQuery = withOrderBy ? query(messagesRef, orderBy('createdAt', 'desc'), limit(30)) : query(messagesRef, limit(30));
+     log('subscribe', { messagesPath: `chatRooms/${roomId}/messages`, withOrderBy, orderBy: withOrderBy ? ['createdAt', 'desc'] : null, limit: 30 });
+     return onSnapshot(messagesQuery, (snap) => {
+         const finishedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
+         log('initial messages loaded', { roomId, count: snap.docs.length, loadTimeMs: Math.round(finishedAt - startedAt) });
+         onNext(snap);
+     }, (error) => {
+         if (withOrderBy) logCreatedAtOrderFailure({ roomId, error });
+         onError?.(error);
      });
  };
  
- 
- export const fetchStudentFallbackRooms = async (authUid) => {
-     const { authUid: currentAuthUid, userDocId, profile } = await getUserProfileForAuthUid(authUid);
-     if (!currentAuthUid || !userDocId) return [];
-     const candidateKeys = uniqueStrings([currentAuthUid, userDocId, profile.authUid, profile.userUid, profile.uid, profile.parentUid, profile.studentAuthUid, profile.studentId]);
-     const roomsById = new Map();
-     const snap = await getDocs(query(collection(db, 'chatRooms'), where('studentId', '==', userDocId)));
-     snap.docs.forEach((roomDoc) => collectRoom(roomsById, roomDoc));
-     return sortRoomsByActivity(Array.from(roomsById.values()).filter((room) => {
--        const roomType = String(room?.roomType || room?.channel || '').trim();
--        const slot = String(room?.slot || '').trim();
--        const isStudentRoom = ['student_institute', 'student_teacher'].includes(roomType) || ['institute', 'teacher'].includes(slot);
-+        const isStudentRoom = ['student_institute', 'student_teacher'].some((expectedType) => isStrictRoomTypeMatch(room, expectedType));
-         const hasStudentIdentity = String(room?.studentId || '') === userDocId
-             || String(room?.studentUid || '') === currentAuthUid
-             || String(room?.studentAuthUid || '') === currentAuthUid
-             || (Array.isArray(room?.participantIds) && candidateKeys.some((key) => room.participantIds.map(String).includes(key)));
-         const hasExpectedCounterpart = Boolean(room?.staffAuthUid || room?.teacherAuthUid || room?.counterpartUid || (Array.isArray(room?.participantIds) && room.participantIds.length > 1));
-         return isStudentRoom && hasStudentIdentity && hasExpectedCounterpart;
-     }));
- };
- 
- export const fetchParentFallbackRooms = async (authUid) => {
-     const { authUid: currentAuthUid, userDocId: parentDocId, profile } = await getUserProfileForAuthUid(authUid);
-     if (!currentAuthUid || !parentDocId) return [];
-     const studentIds = Array.isArray(profile.studentIds) ? profile.studentIds.map(String).filter(Boolean).slice(0, 10) : [];
-     const candidateKeys = uniqueStrings([currentAuthUid, parentDocId, profile.authUid, profile.userUid, profile.uid, profile.parentUid, profile.studentAuthUid]);
-     const roomsById = new Map();
-     const parentSnap = await getDocs(query(collection(db, 'chatRooms'), where('parentId', '==', parentDocId)));
-     parentSnap.docs.forEach((roomDoc) => collectRoom(roomsById, roomDoc));
-     if (studentIds.length > 0) {
-         const studentSnap = await getDocs(query(collection(db, 'chatRooms'), where('studentId', 'in', studentIds)));
-         studentSnap.docs.forEach((roomDoc) => collectRoom(roomsById, roomDoc));
-     }
-     return sortRoomsByActivity(Array.from(roomsById.values()).filter((room) => {
--        const roomType = String(room?.roomType || room?.channel || '').trim();
--        const slot = String(room?.slot || '').trim();
--        const isParentRoom = ['parent_institute', 'parent_teacher'].includes(roomType) || ['institute', 'teacher'].includes(slot);
-+        const isParentRoom = ['parent_institute', 'parent_teacher'].some((expectedType) => isStrictRoomTypeMatch(room, expectedType));
-         const roomParticipantIds = Array.isArray(room?.participantIds) ? room.participantIds.map(String) : [];
-         const hasParentIdentity = String(room?.parentId || '') === parentDocId
-             || candidateKeys.includes(String(room?.parentUid || ''))
-             || candidateKeys.some((key) => roomParticipantIds.includes(key))
-             || (studentIds.length > 0 && studentIds.includes(String(room?.studentId || '')));
-         return isParentRoom && hasParentIdentity;
-     }));
- };
- 
- export const fetchRoomsForIndexes = async (indexes = []) => {
-     const rooms = await Promise.all(sortUserRoomIndexes(indexes).map(async (index) => {
-         const roomId = String(index?.roomId || index?.id || '').trim();
-         if (!roomId) return null;
-         const roomSnap = await getDoc(doc(db, 'chatRooms', roomId));
-         if (!roomSnap.exists()) return mergeRoomWithIndex({ id: roomId }, index);
-         return mergeRoomWithIndex({ id: roomSnap.id, ...roomSnap.data() }, index);
-     }));
-     return rooms.filter(Boolean);
- };
- 
- export const subscribeUserChatRooms = ({ authUid, role = '', onNext, onError }) => {
-     const indexQuery = query(collection(db, 'userChatRooms', authUid, 'rooms'));
-     return onSnapshot(indexQuery, async (snap) => {
-         try {
-             if (process.env.NODE_ENV === 'development') {
-diff --git a/src/messenger/utils/roomMatcher.js b/src/messenger/utils/roomMatcher.js
-index 97791985d1df960b05e984dfe7ac15f97b898d0f..a4baf51cb6752c838354f9a1f3fd141562642799 100644
---- a/src/messenger/utils/roomMatcher.js
-+++ b/src/messenger/utils/roomMatcher.js
-@@ -1,31 +1,52 @@
- import { SLOTS } from '../constants/messengerConstants';
- 
- export const normalizeText = (value) => String(value || '').trim();
- 
- export const toDate = (value) => {
-     if (!value) return null;
-     if (typeof value?.toDate === 'function') return value.toDate();
-     const parsed = new Date(value);
-     return Number.isNaN(parsed.getTime()) ? null : parsed;
- };
- 
- export const getRoomType = (room) => normalizeText(room?.roomType || room?.channel);
- export const hasRoomTypeOrChannel = (room, expectedRoomType) => normalizeText(room?.roomType) === expectedRoomType || normalizeText(room?.channel) === expectedRoomType;
- 
-+export const getExpectedRoomType = (role, slotOrType) => {
-+    const normalizedRole = normalizeText(role);
-+    const normalized = normalizeText(slotOrType);
-+    if (['student_institute', 'student_teacher', 'parent_institute', 'parent_teacher'].includes(normalized)) return normalized;
-+    if (normalizedRole === 'student' && normalized === SLOTS.INSTITUTE) return 'student_institute';
-+    if (normalizedRole === 'student' && normalized === SLOTS.TEACHER) return 'student_teacher';
-+    if (normalizedRole === 'parent' && normalized === SLOTS.INSTITUTE) return 'parent_institute';
-+    if (normalizedRole === 'parent' && normalized === SLOTS.TEACHER) return 'parent_teacher';
-+    return '';
-+};
-+
-+export const isStrictRoomTypeMatch = (room, expectedRoomType) => Boolean(expectedRoomType) && hasRoomTypeOrChannel(room, expectedRoomType);
-+
-+export const getRoomDebugInfo = (room) => ({
-+    roomType: normalizeText(room?.roomType),
-+    channel: normalizeText(room?.channel),
-+    slot: normalizeText(room?.slot),
-+    studentId: normalizeText(room?.studentId),
-+    parentId: normalizeText(room?.parentId),
-+});
-+
- export const getRoomSlot = (room) => {
-     const explicitSlot = normalizeText(room?.slot);
-     if (explicitSlot) return explicitSlot;
-     const roomType = getRoomType(room);
-     if (roomType === SLOTS.INSTITUTE || roomType.endsWith('_institute')) return SLOTS.INSTITUTE;
-     if (roomType === SLOTS.TEACHER || roomType.endsWith('_teacher')) return SLOTS.TEACHER;
-     return '';
- };
- 
- export const getRoomSortTime = (room) => (
-     toDate(room?.lastMessageAt)?.getTime()
-     || toDate(room?.updatedAt)?.getTime()
-     || toDate(room?.createdAt)?.getTime()
-     || 0
- );
- 
- export const sortRooms = (roomList) => roomList.sort((a, b) => getRoomSortTime(b) - getRoomSortTime(a));
-diff --git a/src/pages/parent/ParentMessengerPage.jsx b/src/pages/parent/ParentMessengerPage.jsx
-index 358cb17c7c5025536ecc95eb92f6c1ac2ded21a0..abeacef48dc92702732f1f1d48c24d4389d6be0a 100644
---- a/src/pages/parent/ParentMessengerPage.jsx
-+++ b/src/pages/parent/ParentMessengerPage.jsx
-@@ -1,68 +1,91 @@
- import React, { useEffect, useMemo, useState } from 'react';
- import { doc, getDoc } from 'firebase/firestore';
- import ArrowBackIosNewIcon from '@mui/icons-material/ArrowBackIosNew';
- import StudentMessenger from '../../components/StudentMessenger';
- import { auth, db } from '../../firebase/client';
- import { INSTITUTE_AUTH_UID, ROOM_TYPES, SLOTS, TEACHER_AUTH_UID } from '../../messenger/constants/messengerConstants';
- import { getInstituteDisplayName, getTeacherDisplayName } from '../../messenger/services/displayNameService';
- import { getLastMessagePreview, getLastMessagePreviewCandidates } from '../../messenger/services/roomPreviewService';
- import { buildParentParticipantKeys } from '../../messenger/utils/participantKeys';
--import { getRoomSlot, hasRoomTypeOrChannel, sortRooms, toDate } from '../../messenger/utils/roomMatcher';
-+import { getRoomDebugInfo, hasRoomTypeOrChannel, isStrictRoomTypeMatch, sortRooms, toDate } from '../../messenger/utils/roomMatcher';
- import { getUserChatRoomsQueryShape, subscribeUserChatRooms } from '../../messenger/services/userChatRoomsService';
- 
- const getParticipantIds = (room) => (Array.isArray(room?.participantIds) ? room.participantIds.map(String) : []);
- const hasTarget = (room, targetUid, fields = []) => fields.some((field) => String(room?.[field] || '') === targetUid) || getParticipantIds(room).includes(targetUid);
- const hasViewerParticipant = (room, participantKeys = [], linkedUserDocId = '') => {
-     const participantIds = getParticipantIds(room);
-     const keys = participantKeys.map(String);
-     return keys.some((key) => participantIds.includes(key))
-         || (linkedUserDocId && String(room?.parentId || '') === String(linkedUserDocId))
-         || keys.includes(String(room?.parentUid || ''))
-         || room?.__source === 'userChatRooms';
- };
- 
- 
--const sameStudent = (room, studentId) => room?.__source === 'userChatRooms' || !room?.studentId || !studentId || String(room.studentId) === String(studentId);
-+const sameStudent = (room, studentId) => !room?.studentId || !studentId || String(room.studentId) === String(studentId);
- 
--const isParentTeacherRoom = (room, participantKeys, studentId, linkedUserDocId) => (
--    hasViewerParticipant(room, participantKeys, linkedUserDocId)
--    && sameStudent(room, studentId)
--    && !hasRoomTypeOrChannel(room, ROOM_TYPES.STUDENT_TEACHER)
--    && !hasRoomTypeOrChannel(room, ROOM_TYPES.STUDENT_INSTITUTE)
--    && (hasRoomTypeOrChannel(room, ROOM_TYPES.PARENT_TEACHER) || getRoomSlot(room) === SLOTS.TEACHER)
--    && hasTarget(room, TEACHER_AUTH_UID, ['teacherAuthUid', 'counterpartUid'])
--);
-+const logParentRoomRejection = (room, expectedRoomType, reason, selectedRoomId = '') => {
-+    if (process.env.NODE_ENV !== 'development') return;
-+    console.log('[parent messenger] rejected room candidate', {
-+        role: 'parent',
-+        expectedRoomType,
-+        selectedRoomId,
-+        rejectedRoomId: room?.roomId || room?.id || '',
-+        reason,
-+        actual: getRoomDebugInfo(room),
-+    });
-+};
-+
-+const isParentRoomOfType = (room, expectedRoomType, targetUid, targetFields, participantKeys, studentId, linkedUserDocId) => {
-+    const selectedRoomId = String(room?.roomId || room?.id || '').trim();
-+    if (!isStrictRoomTypeMatch(room, expectedRoomType)) {
-+        logParentRoomRejection(room, expectedRoomType, 'roomType/channel mismatch', selectedRoomId);
-+        return false;
+ export const sendRoomMessage = async ({ roomId, message, lastMessageText, updaterUid }) => {
+     const messageRef = await addDoc(collection(db, 'chatRooms', roomId, 'messages'), {
+         ...message,
+         roomId,
+         createdAt: serverTimestamp(),
+         internalOnly: true,
+     });
+     const timestamp = serverTimestamp();
+-    await updateDoc(doc(db, 'chatRooms', roomId), {
+-        lastMessageText,
+-        lastMessageAt: timestamp,
+-        lastMessageSenderId: updaterUid,
+-        lastSenderId: updaterUid,
+-        updatedAt: timestamp,
+-        updatedBy: updaterUid,
+-    });
++    try {
++        await updateDoc(doc(db, 'chatRooms', roomId), {
++            lastMessageText,
++            lastMessageAt: timestamp,
++            lastMessageSenderId: updaterUid,
++            lastSenderId: updaterUid,
++            updatedAt: timestamp,
++            updatedBy: updaterUid,
++        });
++    } catch (roomIndexError) {
++        console.warn('[messages] failed to update chatRooms last-message index', { roomId, message: roomIndexError?.message, code: roomIndexError?.code });
 +    }
-+    if (hasRoomTypeOrChannel(room, ROOM_TYPES.STUDENT_TEACHER) || hasRoomTypeOrChannel(room, ROOM_TYPES.STUDENT_INSTITUTE)) {
-+        logParentRoomRejection(room, expectedRoomType, 'student room type is not allowed for parent role', selectedRoomId);
-+        return false;
-+    }
-+    if (!hasViewerParticipant(room, participantKeys, linkedUserDocId)) {
-+        logParentRoomRejection(room, expectedRoomType, 'parent participant not found', selectedRoomId);
-+        return false;
-+    }
-+    if (!sameStudent(room, studentId)) {
-+        logParentRoomRejection(room, expectedRoomType, 'studentId mismatch', selectedRoomId);
-+        return false;
-+    }
-+    if (!hasTarget(room, targetUid, targetFields)) {
-+        logParentRoomRejection(room, expectedRoomType, 'target participant mismatch', selectedRoomId);
-+        return false;
-+    }
-+    return true;
-+};
-+
-+const isParentTeacherRoom = (room, participantKeys, studentId, linkedUserDocId) => isParentRoomOfType(room, ROOM_TYPES.PARENT_TEACHER, TEACHER_AUTH_UID, ['teacherAuthUid', 'counterpartUid'], participantKeys, studentId, linkedUserDocId);
- 
--const isParentInstituteRoom = (room, participantKeys, studentId, linkedUserDocId) => (
--    hasViewerParticipant(room, participantKeys, linkedUserDocId)
--    && sameStudent(room, studentId)
--    && !hasRoomTypeOrChannel(room, ROOM_TYPES.STUDENT_TEACHER)
--    && !hasRoomTypeOrChannel(room, ROOM_TYPES.STUDENT_INSTITUTE)
--    && (hasRoomTypeOrChannel(room, ROOM_TYPES.PARENT_INSTITUTE) || getRoomSlot(room) === SLOTS.INSTITUTE)
--    && hasTarget(room, INSTITUTE_AUTH_UID, ['staffAuthUid', 'counterpartUid'])
--);
-+const isParentInstituteRoom = (room, participantKeys, studentId, linkedUserDocId) => isParentRoomOfType(room, ROOM_TYPES.PARENT_INSTITUTE, INSTITUTE_AUTH_UID, ['staffAuthUid', 'counterpartUid'], participantKeys, studentId, linkedUserDocId);
- 
- export default function ParentMessengerPage({ studentId, student, onBack }) {
-     const [selectedSlot, setSelectedSlot] = useState(null);
-     const [rooms, setRooms] = useState([]);
-     const [loading, setLoading] = useState(false);
-     const [error, setError] = useState('');
-     const [linkedParent, setLinkedParent] = useState({ userDocId: '', profile: {} });
-     const authUid = String(auth.currentUser?.uid || '');
-     const activeStudentId = String(studentId || student?.id || student?.studentId || '');
-     const participantKeys = useMemo(() => buildParentParticipantKeys({
-         authUid,
-         parent: {
-             id: linkedParent.userDocId,
-             parentId: linkedParent.userDocId,
-             parentDocId: linkedParent.userDocId,
-             authUid,
-             parentUid: authUid,
-             ...(linkedParent.profile || {}),
-         },
-         student,
-         studentId: activeStudentId,
-     }), [authUid, linkedParent, student, activeStudentId]);
- 
- 
-     useEffect(() => {
-@@ -145,51 +168,52 @@ export default function ParentMessengerPage({ studentId, student, onBack }) {
-                 slot: slot.slot,
-                 selectedRoomId: String(slot.room?.roomId || slot.room?.id || '').trim(),
-                 roomState: slot.room ? 'actual' : 'placeholder',
-             })),
-         });
-     }, [authUid, linkedParent.userDocId, participantKeys, rooms.length, teacherRoom, instituteRoom, messengerSlots]);
- 
-     const handleOpenRoom = (slot) => {
-         const selectedRoomId = String(slot.room?.roomId || slot.room?.id || '').trim();
-         if (process.env.NODE_ENV === 'development') {
-             console.log('[MessengerPage] room preview candidates', {
-                 role: 'parent',
-                 roomId: selectedRoomId,
-                 title: slot.title,
-                 userChatRoomsIndexPath: authUid && selectedRoomId ? `userChatRooms/${authUid}/rooms/${selectedRoomId}` : '',
-                 candidates: getLastMessagePreviewCandidates(slot.room),
-                 selectedPreview: getLastMessagePreview(slot.room),
-                 room: slot.room,
-             });
-             console.log('[MessengerPage] open room', {
-                 role: 'parent',
-                 selectedRoomId,
-                 roomIdFromIndex: String(slot.room?.roomId || ''),
-                 roomDocId: String(slot.room?.id || ''),
-                 slot: slot.slot,
--                roomType: slot.room?.roomType || slot.roomType || '',
-+                expectedRoomType: slot.roomType,
-+                actual: getRoomDebugInfo(slot.room),
-             });
-         }
-         setSelectedSlot(slot);
-     };
- 
-     const currentSlot = selectedSlot ? messengerSlots.find((slot) => slot.slot === selectedSlot.slot) || selectedSlot : null;
- 
-     if (currentSlot) {
-         const targetAuthUid = currentSlot.slot === SLOTS.TEACHER ? TEACHER_AUTH_UID : INSTITUTE_AUTH_UID;
-         const currentRoomId = String(currentSlot.room?.roomId || currentSlot.room?.id || '').trim();
-         return (
-             <div className="mobile-screen h-screen min-h-screen bg-gray-50 flex flex-col overflow-hidden">
-                 <header className="mobile-header bg-white border-b border-gray-100 px-4 flex items-center gap-3">
-                     <button type="button" onClick={() => setSelectedSlot(null)} className="mobile-back-button text-gray-700"><ArrowBackIosNewIcon style={{ fontSize: 18 }} /></button>
-                     <h1 className="text-base font-semibold text-gray-900 truncate">{currentSlot.title}</h1>
-                 </header>
-                 <div className="flex-1 min-h-0">
-                     <StudentMessenger
-                         studentId={activeStudentId}
-                         studentAuthUid={student?.authUid || student?.studentUid || student?.uid || ''}
-                         selectedRoomId={currentRoomId}
-                         teacherName={currentSlot.title}
-                         userRole="parent"
-                         allowLegacyResolve={!currentRoomId}
-                         emptyMessage="아직 대화 내역이 없습니다."
+     await updateUserChatRoomIndexes({ roomId, lastMessageText, timestamp, lastSenderId: updaterUid });
+     log('sent', { roomId, messageId: messageRef.id });
+     return messageRef;
+ };

@@ -139,6 +139,15 @@ const isResolvedRoomCandidate = (room, { viewerUid, targetAuthUid, roomType, stu
     return true;
 };
 
+
+const validateSelectedRoomForSubscription = (room, expectedRoomType) => {
+    if (!room || !expectedRoomType) return false;
+    const expectedSlot = String(expectedRoomType || '').endsWith('_teacher') ? 'teacher' : 'institute';
+    const actualSlot = getRoomSlot(room);
+    const slotMatches = !actualSlot || actualSlot === expectedSlot;
+    return slotMatches && hasRoomTypeOrChannel(room, expectedRoomType);
+};
+
 const resolveChatRoom = async ({ viewerUid, targetAuthUid, roomType, studentId = '', participantKeys = [] }) => {
     const authUid = String(auth.currentUser?.uid || viewerUid || '').trim();
     if (!authUid || !targetAuthUid || !roomType) return null;
@@ -187,6 +196,10 @@ const parseClientTempIdTime = (clientTempId) => {
 };
 
 const getCreatedAtTime = (createdAt) => {
+    if (createdAt && typeof createdAt?.toMillis === 'function') {
+        const time = createdAt.toMillis();
+        if (Number.isFinite(time)) return time;
+    }
     if (createdAt && typeof createdAt?.toDate === 'function') {
         const time = createdAt.toDate().getTime();
         if (Number.isFinite(time)) return time;
@@ -200,14 +213,14 @@ const getCreatedAtTime = (createdAt) => {
 };
 
 const getMessageSortTime = (message) => {
-    const createdAtTime = getCreatedAtTime(message?.createdAt);
-    if (createdAtTime) return createdAtTime;
-
     const localCreatedAtMs = Number(message?.localCreatedAtMs || 0);
     if (Number.isFinite(localCreatedAtMs) && localCreatedAtMs > 0) return localCreatedAtMs;
 
+    const createdAtTime = getCreatedAtTime(message?.createdAt);
+    if (createdAtTime) return createdAtTime;
+
     const clientTempIdTime = parseClientTempIdTime(message?.clientTempId || message?.id);
-    return clientTempIdTime || Date.now();
+    return clientTempIdTime || 0;
 };
 
 const getMessageCreatedAtDate = (message) => new Date(getMessageSortTime(message));
@@ -373,18 +386,24 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
             getDoc(doc(db, 'chatRooms', selectedId)).then(async (selectedSnap) => {
                 if (cancelled) return;
                 const selectedRoom = selectedSnap.exists() ? { id: selectedSnap.id, ...selectedSnap.data() } : null;
+                const actual = getRoomDebugInfo(selectedRoom);
+                const validationPassed = validateSelectedRoomForSubscription(selectedRoom, expectedRoomType);
                 logRoomResolutionDebug('selected room validation', {
                     role: userRole,
-                    expectedRoomType,
                     selectedRoomId: selectedId,
-                    actual: getRoomDebugInfo(selectedRoom),
+                    expectedRoomType,
+                    actual,
+                    validation: validationPassed ? 'passed' : 'failed',
+                    validationPassed,
+                    messagesPath: `chatRooms/${selectedId}/messages`,
+                    subscribeStarted: validationPassed,
                 });
-                if (selectedRoom && isResolvedRoomCandidate(selectedRoom, { viewerUid, targetAuthUid, roomType: expectedRoomType, studentId, participantKeys: roomStudentParticipantKeys })) {
-                    logRoomResolutionDebug('final resolved room', { role: userRole, expectedRoomType, selectedRoomId: selectedId, finalRoomId: selectedId, actual: getRoomDebugInfo(selectedRoom) });
+                if (validationPassed) {
+                    logRoomResolutionDebug('final resolved room', { role: userRole, expectedRoomType, selectedRoomId: selectedId, finalRoomId: selectedId, actual, validation: 'passed' });
                     setRoomId(selectedId);
                     return;
                 }
-                logRoomResolutionDebug('rejected selected room', { role: userRole, expectedRoomType, selectedRoomId: selectedId, rejectedRoomId: selectedId, reason: selectedRoom ? 'selected room does not match expected room type/participants' : 'selected room not found', actual: getRoomDebugInfo(selectedRoom) });
+                logRoomResolutionDebug('rejected selected room', { role: userRole, expectedRoomType, selectedRoomId: selectedId, rejectedRoomId: selectedId, reason: selectedRoom ? 'selected room type/channel/slot validation failed' : 'selected room not found', actual, validation: 'failed', messagesPath: `chatRooms/${selectedId}/messages`, subscribeStarted: false });
                 if (!viewerUid || !targetAuthUid || !expectedRoomType) return;
                 const resolvedRoom = await resolveChatRoom({ viewerUid, targetAuthUid, roomType: expectedRoomType, studentId, participantKeys: roomStudentParticipantKeys });
                 if (!cancelled && resolvedRoom?.id) setRoomId(String(resolvedRoom.id));
@@ -459,8 +478,8 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
                 ? { collection: collectionPath, orderBy: ['createdAt', 'desc'], limit: 30, clientSort: ['createdAt', 'asc'] }
                 : { collection: collectionPath, orderBy: null, limit: 30, clientSort: ['createdAt', 'asc'] };
             if (process.env.NODE_ENV === 'development') {
-                console.log('[StudentMessenger] subscribe messages', { roomId, path: collectionPath });
-                console.log('[student messenger][messages path]', { authUid: auth.currentUser?.uid || '', studentId: String(studentId || ''), studentAuthUid: String(studentAuthUid || ''), selectedRoomId: String(selectedRoomId || roomId || ''), roomType: expectedRoomType, channel: expectedRoomType, slot: normalizedChatSlot, participantIds: roomStudentParticipantKeys, lastMessageText: '', messagesPath: collectionPath, queryShape });
+                console.log('[StudentMessenger] subscribe messages', { roomId, path: collectionPath, selectedRoomId: String(selectedRoomId || ''), expectedRoomType, subscribeStarted: true });
+                console.log('[student messenger][messages path]', { authUid: auth.currentUser?.uid || '', studentId: String(studentId || ''), studentAuthUid: String(studentAuthUid || ''), selectedRoomId: String(selectedRoomId || roomId || ''), expectedRoomType, roomType: expectedRoomType, channel: expectedRoomType, slot: normalizedChatSlot, participantIds: roomStudentParticipantKeys, lastMessageText: '', messagesPath: collectionPath, subscribeStarted: true, queryShape });
             }
             return subscribeRoomMessages({ roomId, withOrderBy, onNext: applySnapshot, onError: (snapshotError) => {
                 if (process.env.NODE_ENV === 'development') logFirestoreQueryFailure('subscribe messages', snapshotError, queryShape);

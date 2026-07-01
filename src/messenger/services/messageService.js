@@ -94,14 +94,18 @@ export const sendRoomMessage = async ({ roomId, message, lastMessageText, update
         internalOnly: true,
     });
     const timestamp = serverTimestamp();
-    await updateDoc(doc(db, 'chatRooms', roomId), {
-        lastMessageText,
-        lastMessageAt: timestamp,
-        lastMessageSenderId: updaterUid,
-        lastSenderId: updaterUid,
-        updatedAt: timestamp,
-        updatedBy: updaterUid,
-    });
+    try {
+        await updateDoc(doc(db, 'chatRooms', roomId), {
+            lastMessageText,
+            lastMessageAt: timestamp,
+            lastMessageSenderId: updaterUid,
+            lastSenderId: updaterUid,
+            updatedAt: timestamp,
+            updatedBy: updaterUid,
+        });
+    } catch (roomIndexError) {
+        console.warn('[messages] failed to update chatRooms last-message index', { roomId, message: roomIndexError?.message, code: roomIndexError?.code });
+    }
     await updateUserChatRoomIndexes({ roomId, lastMessageText, timestamp, lastSenderId: updaterUid });
     log('sent', { roomId, messageId: messageRef.id });
     return messageRef;
