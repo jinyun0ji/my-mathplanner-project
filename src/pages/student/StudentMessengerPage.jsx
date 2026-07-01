@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import ArrowBackIosNewIcon from '@mui/icons-material/ArrowBackIosNew';
 import StudentMessenger from '../../components/StudentMessenger';
 import { auth } from '../../firebase/client';
@@ -29,6 +29,23 @@ export default function StudentMessengerPage({ studentId, student, onBack }) {
         { slot: SLOTS.INSTITUTE, id: instituteRoom?.id || 'institute-placeholder', title: getInstituteDisplayName(), room: instituteRoom, roomType: ROOM_TYPES.STUDENT_INSTITUTE },
         { slot: SLOTS.TEACHER, id: teacherRoom?.id || 'teacher-placeholder', title: getTeacherDisplayName(), room: teacherRoom, roomType: ROOM_TYPES.STUDENT_TEACHER },
     ], [teacherRoom, instituteRoom]);
+
+    useEffect(() => {
+        if (process.env.NODE_ENV !== 'development') return;
+        messengerSlots.forEach((slot) => {
+            console.log('[student messenger slot]', {
+                slot: slot.slot,
+                activeStudentId,
+                participantKeys: participantKeyCandidates,
+                finalRoomId: slot.room?.id || slot.room?.roomId || '',
+                finalPreviewSourceRoomId: slot.room && slot.roomType === ROOM_TYPES.STUDENT_INSTITUTE ? (slot.room.id || slot.room.roomId || '') : (slot.room?.id || slot.room?.roomId || ''),
+                preview: slot.room ? getLastMessagePreview(slot.room) : '대화 내역이 없습니다.',
+                roomType: slot.room?.roomType || '',
+                channel: slot.room?.channel || '',
+                roomSlot: slot.room?.slot || '',
+            });
+        });
+    }, [messengerSlots, activeStudentId, participantKeyCandidates]);
 
     const handleOpenRoom = (slot) => {
         const selectedRoomId = String(slot.room?.roomId || slot.room?.id || '').trim();
