@@ -4,7 +4,7 @@ import StudentMessenger from '../../components/StudentMessenger';
 import { auth } from '../../firebase/client';
 import { INSTITUTE_AUTH_UID, ROOM_TYPES, SLOTS, TEACHER_AUTH_UID } from '../../messenger/constants/messengerConstants';
 import { getInstituteDisplayName, getTeacherDisplayName } from '../../messenger/services/displayNameService';
-import { getLastMessagePreview } from '../../messenger/services/roomPreviewService';
+import { getLastMessagePreview, getLastMessagePreviewCandidates } from '../../messenger/services/roomPreviewService';
 import { buildParentParticipantKeys } from '../../messenger/utils/participantKeys';
 import { getRoomSlot, hasRoomTypeOrChannel, sortRooms, toDate } from '../../messenger/utils/roomMatcher';
 import { getUserChatRoomsQueryShape, subscribeUserChatRooms } from '../../messenger/services/userChatRoomsService';
@@ -86,6 +86,15 @@ export default function ParentMessengerPage({ studentId, student, onBack }) {
     const handleOpenRoom = (slot) => {
         const selectedRoomId = String(slot.room?.roomId || slot.room?.id || '').trim();
         if (process.env.NODE_ENV === 'development') {
+            console.log('[MessengerPage] room preview candidates', {
+                role: 'parent',
+                roomId: selectedRoomId,
+                title: slot.title,
+                userChatRoomsIndexPath: authUid && selectedRoomId ? `userChatRooms/${authUid}/rooms/${selectedRoomId}` : '',
+                candidates: getLastMessagePreviewCandidates(slot.room),
+                selectedPreview: getLastMessagePreview(slot.room),
+                room: slot.room,
+            });
             console.log('[MessengerPage] open room', {
                 role: 'parent',
                 selectedRoomId,

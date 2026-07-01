@@ -1,972 +1,323 @@
 diff --git a/functions/scripts/backfillChatRoomLastMessages.js b/functions/scripts/backfillChatRoomLastMessages.js
-new file mode 100644
-index 0000000000000000000000000000000000000000..8d07676aedd4a6755a550c1ea3e25fe27387f927
---- /dev/null
+index 8d07676aedd4a6755a550c1ea3e25fe27387f927..35b53013a44865be35cacfb2add9026d0b4fcf20 100644
+--- a/functions/scripts/backfillChatRoomLastMessages.js
 +++ b/functions/scripts/backfillChatRoomLastMessages.js
-@@ -0,0 +1,127 @@
-+const admin = require('firebase-admin');
-+
-+if (!admin.apps.length) {
-+    admin.initializeApp();
-+}
-+
-+const db = admin.firestore();
-+const isWriteMode = process.argv.includes('--write');
-+const dryRun = !isWriteMode;
-+const batchLimit = 450;
-+
-+const uniqueStrings = (values = []) => Array.from(new Set(values.map((value) => String(value || '').trim()).filter(Boolean)));
-+
-+const getLastMessageText = (message = {}) => {
-+    const text = String(message.text || message.message || message.body || '').trim();
-+    if (text) return text;
-+    const firstAttachment = Array.isArray(message.attachments) ? message.attachments[0] : null;
-+    if (!firstAttachment) return '';
-+    return firstAttachment.type === 'image' ? '사진 첨부' : 'PDF 첨부';
-+};
-+
-+const buildIndexData = ({ roomId, room, lastMessageText, lastMessageAt, lastSenderId }) => ({
-+    roomId,
-+    roomType: room.roomType || room.channel || '',
-+    channel: room.channel || room.roomType || '',
-+    slot: room.slot || '',
-+    counterpartUid: room.counterpartUid || room.staffAuthUid || room.teacherAuthUid || '',
-+    lastMessageText,
-+    lastMessageAt,
-+    lastSenderId,
-+    updatedAt: lastMessageAt || room.updatedAt || room.createdAt || null,
-+    studentId: room.studentId || '',
-+    parentId: room.parentId || '',
-+    parentUid: room.parentUid || '',
-+    studentAuthUid: room.studentAuthUid || room.studentUid || '',
-+    staffAuthUid: room.staffAuthUid || '',
-+    teacherAuthUid: room.teacherAuthUid || '',
-+});
-+
-+const commitBatch = async (batch, writes) => {
-+    if (!writes || dryRun) return;
-+    await batch.commit();
-+};
-+
-+const main = async () => {
-+    console.log(`[backfill:chatRoomLastMessages] start (${dryRun ? 'dry-run' : 'write'})`);
-+    const roomsSnap = await db.collection('chatRooms').get();
-+    let batch = db.batch();
-+    let pendingWrites = 0;
-+    let roomsScanned = 0;
-+    let roomsMissingLastMessageText = 0;
-+    let roomsWithoutMessages = 0;
-+    let roomWrites = 0;
-+    let indexWrites = 0;
-+
-+    for (const roomDoc of roomsSnap.docs) {
-+        roomsScanned += 1;
-+        const room = roomDoc.data() || {};
-+        if (String(room.lastMessageText || '').trim()) continue;
-+
-+        roomsMissingLastMessageText += 1;
-+        const latestMessagesSnap = await roomDoc.ref.collection('messages')
-+            .orderBy('createdAt', 'desc')
-+            .limit(1)
-+            .get();
-+
-+        if (latestMessagesSnap.empty) {
-+            roomsWithoutMessages += 1;
-+            console.log('[backfill:chatRoomLastMessages] skip empty room', { roomId: roomDoc.id });
-+            continue;
-+        }
-+
-+        const latestMessage = latestMessagesSnap.docs[0].data() || {};
-+        const lastMessageText = getLastMessageText(latestMessage);
-+        const lastMessageAt = latestMessage.createdAt || room.updatedAt || room.createdAt || null;
-+        const lastSenderId = String(latestMessage.senderId || latestMessage.createdBy || '').trim();
-+        const participantIds = uniqueStrings(Array.isArray(room.participantIds) ? room.participantIds : []);
-+        const roomPatch = {
-+            lastMessageText,
-+            lastMessageAt,
-+            lastSenderId,
-+            lastMessageSenderId: lastSenderId,
-+            updatedAt: room.updatedAt || lastMessageAt,
-+        };
-+
-+        console.log('[backfill:chatRoomLastMessages] room', {
-+            roomId: roomDoc.id,
-+            lastMessageText,
-+            lastSenderId,
-+            participantCount: participantIds.length,
-+        });
-+
-+        roomWrites += 1;
-+        if (dryRun) {
-+            console.log('[dry-run]', roomDoc.ref.path, roomPatch);
-+        } else {
-+            batch.set(roomDoc.ref, roomPatch, { merge: true });
-+            pendingWrites += 1;
-+        }
-+
-+        participantIds.forEach((participantId) => {
-+            const indexRef = db.collection('userChatRooms').doc(participantId).collection('rooms').doc(roomDoc.id);
-+            const indexData = buildIndexData({ roomId: roomDoc.id, room, lastMessageText, lastMessageAt, lastSenderId });
-+            indexWrites += 1;
-+            if (dryRun) {
-+                console.log('[dry-run]', indexRef.path, indexData);
-+                return;
-+            }
-+            batch.set(indexRef, indexData, { merge: true });
-+            pendingWrites += 1;
-+        });
-+
-+        if (pendingWrites >= batchLimit) {
-+            await commitBatch(batch, pendingWrites);
-+            batch = db.batch();
-+            pendingWrites = 0;
-+        }
-+    }
-+
-+    await commitBatch(batch, pendingWrites);
-+    console.log(`[backfill:chatRoomLastMessages] complete roomsScanned=${roomsScanned} missingLastMessageText=${roomsMissingLastMessageText} roomsWithoutMessages=${roomsWithoutMessages} ${dryRun ? 'wouldWriteRooms' : 'wroteRooms'}=${roomWrites} ${dryRun ? 'wouldWriteIndexes' : 'wroteIndexes'}=${indexWrites}`);
-+};
-+
-+main().catch((error) => {
-+    console.error('[backfill:chatRoomLastMessages] failed', error);
-+    process.exitCode = 1;
-+});
-diff --git a/functions/src/chat/chatHelpers.js b/functions/src/chat/chatHelpers.js
-index b7c7f4c5c2fdb7a5d251a01add652d595b7f7683..769245f223657a6dd8da20ec5b4855e3a553271d 100644
---- a/functions/src/chat/chatHelpers.js
-+++ b/functions/src/chat/chatHelpers.js
-@@ -113,130 +113,133 @@ const applyRoomMetadata = ({
-         slot: staffChannel,
-         participantIds,
-         participantRoles,
-         participantNames,
-         participantUserDocIds,
-         studentId,
-         parentId,
-         staffId: caller.authUid,
-         staffAuthUid: staffChannel === 'institute' ? caller.authUid : null,
-         teacherAuthUid: staffChannel === 'teacher' ? caller.authUid : null,
-         visibleToRoles: Array.from(new Set([callerRole, targetRole])),
-         status: 'active',
-         internalOnly: true,
-         updatedAt: now,
-         updatedBy: caller.authUid,
-         unreadCountByUser: {
-             [caller.authUid]: 0,
-             [target.authUid]: 0,
-         },
-     };
- };
- 
- 
- const pickCounterpartUid = (participantIds, participantId) => participantIds.find((uid) => uid && uid !== participantId) || '';
- 
--const buildUserChatRoomIndexData = ({ roomId, roomData = {}, participantId, lastMessageText = null, lastMessageAt = null, updatedAt = null }) => {
-+const buildUserChatRoomIndexData = ({ roomId, roomData = {}, participantId, lastMessageText = null, lastMessageAt = null, lastSenderId = null, updatedAt = null }) => {
-     const participantIds = Array.isArray(roomData.participantIds) ? roomData.participantIds.map(String).filter(Boolean) : [];
-     return {
-         roomId,
-         roomType: roomData.roomType || roomData.channel || roomData.type || '',
-         channel: roomData.channel || roomData.roomType || '',
-         slot: roomData.slot || '',
-         counterpartUid: roomData.counterpartUid && String(roomData.counterpartUid) !== String(participantId)
-             ? String(roomData.counterpartUid)
-             : pickCounterpartUid(participantIds, String(participantId)),
-         lastMessageText: lastMessageText ?? roomData.lastMessageText ?? roomData.lastMessage ?? roomData.message ?? '',
-         lastMessageAt: lastMessageAt ?? roomData.lastMessageAt ?? roomData.updatedAt ?? null,
-+        lastSenderId: lastSenderId ?? roomData.lastSenderId ?? roomData.lastMessageSenderId ?? '',
-         updatedAt: updatedAt ?? roomData.updatedAt ?? null,
-     };
- };
- 
--const upsertUserChatRoomIndexesInBatch = ({ batch, roomId, roomData = {}, participantIds = null, lastMessageText = null, lastMessageAt = null, updatedAt = null }) => {
-+const upsertUserChatRoomIndexesInBatch = ({ batch, roomId, roomData = {}, participantIds = null, lastMessageText = null, lastMessageAt = null, lastSenderId = null, updatedAt = null }) => {
-     const ids = Array.from(new Set((participantIds || roomData.participantIds || []).map((value) => String(value || '').trim()).filter(Boolean)));
-     ids.forEach((participantId) => {
-         const indexRef = db.collection('userChatRooms').doc(participantId).collection('rooms').doc(roomId);
--        batch.set(indexRef, buildUserChatRoomIndexData({ roomId, roomData: { ...roomData, participantIds: ids }, participantId, lastMessageText, lastMessageAt, updatedAt }), { merge: true });
-+        batch.set(indexRef, buildUserChatRoomIndexData({ roomId, roomData: { ...roomData, participantIds: ids }, participantId, lastMessageText, lastMessageAt, lastSenderId, updatedAt }), { merge: true });
-     });
- };
- 
--const upsertUserChatRoomIndexes = async ({ roomId, roomData = {}, participantIds = null, lastMessageText = null, lastMessageAt = null, updatedAt = null }) => {
-+const upsertUserChatRoomIndexes = async ({ roomId, roomData = {}, participantIds = null, lastMessageText = null, lastMessageAt = null, lastSenderId = null, updatedAt = null }) => {
-     const batch = db.batch();
--    upsertUserChatRoomIndexesInBatch({ batch, roomId, roomData, participantIds, lastMessageText, lastMessageAt, updatedAt });
-+    upsertUserChatRoomIndexesInBatch({ batch, roomId, roomData, participantIds, lastMessageText, lastMessageAt, lastSenderId, updatedAt });
-     await batch.commit();
- };
- 
- const writeMessageAndRoomState = async ({ roomId, roomData, sender, messagePayload }) => {
-     const now = FieldValue.serverTimestamp();
-     const participantIds = Array.isArray(roomData?.participantIds) ? roomData.participantIds : [];
-     const unreadPatch = {};
- 
-     participantIds.forEach((participantId) => {
-         unreadPatch[`unreadCountByUser.${participantId}`] = participantId === sender.authUid
-             ? 0
-             : FieldValue.increment(1);
-     });
- 
-     const roomRef = db.collection('chatRooms').doc(roomId);
-     const messageRef = roomRef.collection('messages').doc();
-     const batch = db.batch();
- 
-     batch.set(messageRef, {
-         roomId,
-         senderId: sender.authUid,
-         senderRole: normalizeRole(sender.role),
-         senderName: sender.name || sender.authUid,
-         messageType: messagePayload.messageType || 'text',
-         text: messagePayload.text || '',
-         attachments: Array.isArray(messagePayload.attachments) ? messagePayload.attachments : [],
-         clientTempId: typeof messagePayload.clientTempId === 'string' ? messagePayload.clientTempId : null,
-         createdAt: now,
-         editedAt: null,
-         deletedAt: null,
-         readBy: {
-             [sender.authUid]: now,
-         },
-         isBroadcastCopy: Boolean(messagePayload.isBroadcastCopy),
-         broadcastId: messagePayload.broadcastId || null,
-         internalOnly: true,
-     });
- 
-     const lastMessageText = messagePayload.text || '';
- 
-     batch.set(roomRef, {
-         lastMessageText,
-         lastMessageAt: now,
-         lastMessageSenderId: sender.authUid,
-+        lastSenderId: sender.authUid,
-         updatedAt: now,
-         updatedBy: sender.authUid,
-         ...unreadPatch,
-     }, { merge: true });
- 
-     upsertUserChatRoomIndexesInBatch({
-         batch,
-         roomId,
-         roomData,
-         participantIds,
-         lastMessageText,
-         lastMessageAt: now,
-+        lastSenderId: sender.authUid,
-         updatedAt: now,
-     });
- 
-     await batch.commit();
- 
-     return messageRef.id;
- };
- 
- module.exports = {
-     STAFF_ROLES,
-     VIEWER_ROLES,
-     normalizeRole,
-     getUserProfileByAuthUid,
-     assertStaffLikeCaller,
-     getDirectRoomId,
-     applyRoomMetadata,
-     writeMessageAndRoomState,
-     upsertUserChatRoomIndexes,
-     upsertUserChatRoomIndexesInBatch,
-     db,
-     FieldValue,
- };
-\ No newline at end of file
-diff --git a/functions/src/triggers/chatRoomIndexes.js b/functions/src/triggers/chatRoomIndexes.js
-index f282a0aae2873236a79b6f6d7eb562901383b4fb..7a7917b61aa13d29a2730d992c2e0bceae1ee0d3 100644
---- a/functions/src/triggers/chatRoomIndexes.js
-+++ b/functions/src/triggers/chatRoomIndexes.js
-@@ -1,24 +1,25 @@
- const functions = require('firebase-functions');
- const { upsertUserChatRoomIndexes } = require('../chat/chatHelpers');
- 
- const onChatRoomWritten = functions.firestore
-     .document('chatRooms/{roomId}')
-     .onWrite(async (change, context) => {
-         if (!change.after.exists) return null;
-         const roomData = change.after.data() || {};
-         const participantIds = Array.isArray(roomData.participantIds) ? roomData.participantIds : [];
-         if (!participantIds.length) return null;
-         await upsertUserChatRoomIndexes({
-             roomId: context.params.roomId,
-             roomData,
-             participantIds,
-             lastMessageText: roomData.lastMessageText || roomData.lastMessage || roomData.message || '',
-             lastMessageAt: roomData.lastMessageAt || roomData.updatedAt || null,
-+            lastSenderId: roomData.lastSenderId || roomData.lastMessageSenderId || '',
-             updatedAt: roomData.updatedAt || null,
-         });
-         return null;
-     });
- 
- module.exports = {
-     onChatRoomWritten,
- };
-diff --git a/package.json b/package.json
-index 9decafaed5aa43cd1e4c9131508da3a2fab5f340..531ba4ec7a3c96466a656ef15e295506104b9e4a 100644
---- a/package.json
-+++ b/package.json
-@@ -36,50 +36,52 @@
-     "web-vitals": "^2.1.4"
-   },
-   "scripts": {
-     "start": "react-scripts start",
-     "build": "react-scripts build",
-     "cap:init": "cap init \"채수용 수학\" com.chaesooyong.management --web-dir build",
-     "cap:sync": "cap sync",
-     "cap:android": "cap open android",
-     "cap:ios": "cap open ios",
-     "build:cap": "npm run build && cap sync",
-     "test": "react-scripts test",
-     "eject": "react-scripts eject",
-     "migrate:memos": "node functions/scripts/migrateStudentMemosToStaffMemos.js",
-     "migrate:homework-question-keys:dry": "node functions/scripts/migrateHomeworkResultQuestionNumbers.js",
-     "migrate:homework-question-keys:write": "node functions/scripts/migrateHomeworkResultQuestionNumbers.js --write",
-     "backfill:chat-parent-participants:dry": "node functions/scripts/backfillChatParticipantIdsForParents.js",
-     "backfill:chat-parent-participants:write": "node functions/scripts/backfillChatParticipantIdsForParents.js --write",
-     "backfill:chat-room-types:dry": "node functions/scripts/backfillChatRoomTypes.js",
-     "backfill:chat-room-types:write": "node functions/scripts/backfillChatRoomTypes.js --write",
-     "backfill:student-birth-year:dry": "node functions/scripts/backfillStudentBirthYearFromGrade.js",
-     "backfill:student-birth-year:write": "node functions/scripts/backfillStudentBirthYearFromGrade.js --write",
-     "backfill:class-test-stats:dry": "node functions/scripts/backfillClassTestStats.js",
-     "backfill:class-test-stats:write": "node functions/scripts/backfillClassTestStats.js --write",
-     "backfill:user-chat-rooms:dry": "node functions/scripts/backfillUserChatRooms.js",
-     "backfill:user-chat-rooms:write": "node functions/scripts/backfillUserChatRooms.js --write",
-+    "backfill:chat-room-last-messages:dry": "node functions/scripts/backfillChatRoomLastMessages.js",
-+    "backfill:chat-room-last-messages:write": "node functions/scripts/backfillChatRoomLastMessages.js --write",
-     "repair:hong-user-chat-rooms:dry": "node functions/scripts/repairHongUserChatRooms.js",
-     "repair:hong-user-chat-rooms:write": "node functions/scripts/repairHongUserChatRooms.js --write"
-   },
-   "eslintConfig": {
-     "extends": [
-       "react-app",
-       "react-app/jest"
-     ]
-   },
-   "browserslist": {
-     "production": [
-       ">0.2%",
-       "not dead",
-       "not op_mini all"
-     ],
-     "development": [
-       "last 1 chrome version",
-       "last 1 firefox version",
-       "last 1 safari version"
-     ]
-   },
-   "devDependencies": {
-     "@capacitor/cli": "^6.2.0",
-     "typescript": "^6.0.3"
-   }
-diff --git a/src/components/StudentMessenger.jsx b/src/components/StudentMessenger.jsx
-index 268557b69b74380eeab0504b37583d4148113b2e..fae96220dbf9d56fc353aff072c8a27b2bbe0a7d 100644
---- a/src/components/StudentMessenger.jsx
-+++ b/src/components/StudentMessenger.jsx
-@@ -341,51 +341,51 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
-             setMySenderIds([]);
-             return undefined;
-         }
- 
-         let mounted = true;
-         getDoc(doc(db, 'userAuthIndex', authUid)).then((indexSnap) => {
-             if (!mounted) return;
-             const userDocId = indexSnap.exists() ? String(indexSnap.data()?.userDocId || '') : '';
-             setMyProfileDocId(userDocId);
-             return getMySenderIds(authUid).then((ids) => { if (mounted) setMySenderIds(ids); });
-         }).catch((indexError) => {
-             logFirestoreQueryFailure('load userAuthIndex', indexError, { doc: ['userAuthIndex', authUid] });
-             if (mounted) {
-                 setMyProfileDocId('');
-                 setMySenderIds([authUid].filter(Boolean));
-             }
-         });
- 
-         return () => {
-             mounted = false;
-         };
-     }, []);
- 
-     useEffect(() => {
-         if (selectedRoomId) {
--            if (process.env.NODE_ENV === 'development') console.log('[StudentMessenger] selected roomId', { roomId: String(selectedRoomId) });
-+            if (process.env.NODE_ENV === 'development') console.log('[StudentMessenger] selected room id', { roomId: String(selectedRoomId) });
-             setMessages([]);
-             setOptimisticMessages([]);
-             setRoomId(String(selectedRoomId));
-             return undefined;
-         }
- 
-         let cancelled = false;
-         setRoomId(null);
-         setMessages([]);
-         setOptimisticMessages([]);
-         setError('');
- 
-         const viewerUid = auth.currentUser?.uid || '';
-         const targetAuthUid = String(roomCreationContext?.targetAuthUid || '');
-         if (!viewerUid || !targetAuthUid || !expectedRoomType) return () => { cancelled = true; };
- 
-         resolveChatRoom({
-             viewerUid,
-             targetAuthUid,
-             roomType: expectedRoomType,
-             studentId,
-             participantKeys: roomStudentParticipantKeys,
-         }).then((resolvedRoom) => {
-             if (cancelled || !resolvedRoom?.id) return;
-             if (process.env.NODE_ENV === 'development') console.log('[student messenger] resolved room', { roomId: resolvedRoom.id, messagesPath: `chatRooms/${resolvedRoom.id}/messages` });
-@@ -414,52 +414,52 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
-                     pending: item.metadata?.hasPendingWrites || Boolean(item.data()?.pending),
-                 },
-             }));
-             const unresolvedOptimisticItems = optimisticMessagesRef.current
-                 .filter((item) => String(item.roomId || '') === String(roomId))
-                 .filter((optimistic) => !snapshotItems.some((serverItem) => isSameLogicalMessage(serverItem.raw, optimistic)))
-                 .map((item) => ({ id: item.id, raw: item }));
-             const mergedItems = sortMessageItems(dedupeMessages([...snapshotItems, ...unresolvedOptimisticItems]));
- 
-             setOptimisticMessages((prev) => {
-                 const next = prev.filter((optimistic) => (
-                     String(optimistic.roomId || '') !== String(roomId)
-                     || !snapshotItems.some((serverItem) => isSameLogicalMessage(serverItem.raw, optimistic))
-                 ));
-                 if (next.length === prev.length) return prev;
-                 optimisticMessagesRef.current = next;
-                 return next;
-             });
-             setMessages(mergedItems
-                 .map((item) => normalizeMessage(item.id, item.raw, myIds, fallbackSenderName))
-                 .filter((item) => item.text || item.attachments.length));
-         };
- 
-         const subscribe = (withOrderBy) => {
-             const queryShape = withOrderBy
--                ? { collection: collectionPath, orderBy: ['createdAt', 'asc'] }
--                : { collection: collectionPath, orderBy: null, clientSort: ['createdAt', 'asc'] };
-+                ? { collection: collectionPath, orderBy: ['createdAt', 'desc'], limit: 30, clientSort: ['createdAt', 'asc'] }
-+                : { collection: collectionPath, orderBy: null, limit: 30, clientSort: ['createdAt', 'asc'] };
-             if (process.env.NODE_ENV === 'development') {
-                 console.log('[StudentMessenger] subscribe messages', { roomId, path: collectionPath });
-                 console.log('[student messenger][messages path]', { authUid: auth.currentUser?.uid || '', studentId: String(studentId || ''), studentAuthUid: String(studentAuthUid || ''), selectedRoomId: String(selectedRoomId || roomId || ''), roomType: expectedRoomType, channel: expectedRoomType, slot: normalizedChatSlot, participantIds: roomStudentParticipantKeys, lastMessageText: '', messagesPath: collectionPath, queryShape });
-             }
-             return subscribeRoomMessages({ roomId, withOrderBy, onNext: applySnapshot, onError: (snapshotError) => {
-                 if (process.env.NODE_ENV === 'development') logFirestoreQueryFailure('subscribe messages', snapshotError, queryShape);
-                 if (withOrderBy) {
-                     fallbackUnsub = subscribe(false);
-                     return;
-                 }
-                 setError('메시지를 불러올 권한이 없습니다. 관리자에게 문의해주세요.');
-             } });
-         };
- 
-         const unsub = subscribe(true);
-         return () => {
-             unsub && unsub();
-             fallbackUnsub && fallbackUnsub();
-         };
-     }, [roomId, selectedRoomId, canCreateChatRoom, expectedRoomType, normalizedChatSlot, myProfileDocId, mySenderIds, teacherName, userRole, studentId, studentAuthUid, roomStudentParticipantKeys]);
- 
-     useEffect(() => {
-         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-     }, [messages]);
- 
-diff --git a/src/domain/messenger/messenger.service.js b/src/domain/messenger/messenger.service.js
-index 7a19658c0d69bd690f9dfb90c6d323925e03c389..aa94143ff959461f804f78721722c60a18a32709 100644
---- a/src/domain/messenger/messenger.service.js
-+++ b/src/domain/messenger/messenger.service.js
-@@ -51,77 +51,78 @@ const roomHasTarget = (room = {}, target = {}) => {
-     if (targetStudentId && roomStudentIds.length > 0 && !roomStudentIds.includes(targetStudentId)) return false;
- 
-     if (String(target.targetRole || '').toLowerCase() === 'parent') {
-         return Boolean(targetParentId) && [room?.parentId, room?.parentUid, ...(Array.isArray(room?.parentUids) ? room.parentUids : [])]
-             .map(normalizeString)
-             .includes(targetParentId);
-     }
- 
-     return Boolean(targetStudentId) && roomStudentIds.includes(targetStudentId);
- };
- 
- export const findExistingInternalRoom = (rooms = [], target = {}) => {
-     const expectedRoomType = normalizeString(target.roomType) || getInternalRoomTypeForTargetRole(target.targetRole);
-     return (Array.isArray(rooms) ? rooms : []).find((room) => (
-         room?.id
-         && room?.internalOnly === true
-         && getRoomType(room) === expectedRoomType
-         && roomHasTarget(room, target)
-     )) || null;
- };
- 
- const uniqueStrings = (values = []) => Array.from(new Set(values.flat(Infinity).map((value) => String(value || '').trim()).filter(Boolean)));
- 
- const pickCounterpartUid = (participantIds, participantUid) => participantIds.find((uid) => uid !== participantUid) || '';
- 
--const buildUserChatRoomIndexData = ({ roomId, roomData = {}, participantUid, lastMessageText, timestamp }) => {
-+const buildUserChatRoomIndexData = ({ roomId, roomData = {}, participantUid, lastMessageText, timestamp, lastSenderId }) => {
-     const participantIds = uniqueStrings(Array.isArray(roomData.participantIds) ? roomData.participantIds : []);
-     return {
-         roomId,
-         roomType: roomData.roomType || roomData.channel || roomData.type || '',
-         channel: roomData.channel || roomData.roomType || '',
-         slot: roomData.slot || '',
-         counterpartUid: roomData.counterpartUid && String(roomData.counterpartUid) !== String(participantUid)
-             ? String(roomData.counterpartUid)
-             : pickCounterpartUid(participantIds, String(participantUid)),
-         lastMessageText,
-         lastMessageAt: timestamp,
-+        lastSenderId,
-         updatedAt: timestamp,
-         studentId: roomData.studentId || '',
-         parentId: roomData.parentId || '',
-         parentUid: roomData.parentUid || '',
-         staffAuthUid: roomData.staffAuthUid || '',
-         teacherAuthUid: roomData.teacherAuthUid || '',
-     };
- };
- 
--const upsertUserChatRoomIndexWrites = ({ batch, roomId, roomData = {}, lastMessageText, timestamp }) => {
-+const upsertUserChatRoomIndexWrites = ({ batch, roomId, roomData = {}, lastMessageText, timestamp, lastSenderId }) => {
-     const participantIds = uniqueStrings(Array.isArray(roomData.participantIds) ? roomData.participantIds : []);
-     participantIds.forEach((participantUid) => {
-         batch.set(
-             doc(db, 'userChatRooms', participantUid, 'rooms', roomId),
--            buildUserChatRoomIndexData({ roomId, roomData, participantUid, lastMessageText, timestamp }),
-+            buildUserChatRoomIndexData({ roomId, roomData, participantUid, lastMessageText, timestamp, lastSenderId }),
-             { merge: true },
-         );
-     });
- };
- 
- const normalizeRoom = (docSnapshot) => ({
-     id: docSnapshot.id,
-     ...docSnapshot.data(),
- });
- 
- const normalizeMessage = (docSnapshot) => ({
-     id: docSnapshot.id,
-     ...docSnapshot.data(),
- });
- 
- export const createOrGetChatRoom = async ({
-     targetAuthUid,
-     targetUserDocId = null,
-     targetRole = null,
-     targetName = null,
-     studentId = null,
-     parentId = null,
- }) => {
-     const result = await createOrGetChatRoomCallable({
-         targetAuthUid,
-@@ -181,111 +182,114 @@ export const sendMessageDirect = async ({
-         messageId: clientTempId || String(now),
-         file: attachments[0].file,
-         uploaderUid: senderMeta?.senderId || '',
-     }) : null;
-     const finalAttachments = uploadedAttachment ? [uploadedAttachment] : attachments.filter((item) => !item.file);
-     const finalMessageType = uploadedAttachment ? (uploadedAttachment.type === 'image' ? 'image' : 'file') : messageType;
-     const fallbackLastMessage = uploadedAttachment ? (uploadedAttachment.type === 'image' ? '사진 첨부' : 'PDF 첨부') : text;
- 
-     const messagePayload = {
-         roomId,
-         senderId: senderMeta?.senderId || null,
-         senderRole: senderMeta?.senderRole || null,
-         senderName: senderMeta?.senderName || null,
-         messageType: finalMessageType,
-         text,
-         attachments: finalAttachments,
-         createdAt: serverTimestamp(),
-         internalOnly: true,
-         clientTempId,
-     };
- 
-     const roomPatch = {
-         lastMessageText: text || fallbackLastMessage,
-         lastMessageAt: serverTimestamp(),
-         lastMessageSenderId: senderMeta?.senderId || null,
-+        lastSenderId: senderMeta?.senderId || null,
-         updatedAt: serverTimestamp(),
-         updatedBy: senderMeta?.senderId || null,
-         // TODO: unreadCountByUser 업데이트는 후속 단계에서 최소 비용 방식으로 재설계
-     };
- 
-     const roomSnapshot = await getDoc(roomRef);
-     const roomData = roomSnapshot.exists() ? roomSnapshot.data() || {} : {};
- 
-     const batch = writeBatch(db);
-     const messageRef = doc(collection(db, 'chatRooms', roomId, 'messages'));
-     batch.set(messageRef, messagePayload);
-     batch.update(roomRef, roomPatch);
-     upsertUserChatRoomIndexWrites({
-         batch,
-         roomId,
-         roomData,
-         lastMessageText: text || fallbackLastMessage,
-         timestamp: roomPatch.lastMessageAt,
-+        lastSenderId: senderMeta?.senderId || null,
-     });
- 
-     await batch.commit();
- 
-     return {
-         roomId,
-         messageId: messageRef.id,
-         acceptedAt: now,
-         lastMessageText: text || fallbackLastMessage,
-         lastMessageSenderId: senderMeta?.senderId || null,
-     };
- };
- 
- export const broadcastChatMessage = async ({
-     text,
-     targetUserIds = [],
-     targetType = 'custom',
-     targetClassIds = [],
- }) => {
-     const result = await broadcastChatMessageCallable({
-         text,
-         targetUserIds,
-         targetType,
-         targetClassIds,
-     });
- 
-     return result?.data || null;
- };
- 
- const getTime = (value) => (typeof value?.toDate === 'function' ? value.toDate() : new Date(value || 0)).getTime() || 0;
- 
- const sortInternalRooms = (rooms = []) => [...rooms]
-     .filter((room) => room?.internalOnly === true)
-     .sort((a, b) => getTime(b?.lastMessageAt || b?.updatedAt || b?.createdAt) - getTime(a?.lastMessageAt || a?.updatedAt || a?.createdAt))
-     .slice(0, 100);
- 
- const mergeRoomWithIndex = (room, index = {}) => ({
-     ...(room || {}),
-     id: room?.id || index?.roomId || index?.id || '',
-     roomId: room?.roomId || index?.roomId || index?.id || '',
-     lastMessageText: room?.lastMessageText || index?.lastMessageText || index?.lastMessage || '',
-     lastMessage: room?.lastMessage || index?.lastMessage || '',
-     lastMessageAt: room?.lastMessageAt || index?.lastMessageAt || null,
-+    lastSenderId: room?.lastSenderId || index?.lastSenderId || room?.lastMessageSenderId || '',
-     updatedAt: room?.updatedAt || index?.updatedAt || null,
- });
- 
- const fetchUserAuthIndexProfile = async (authUid) => {
-     const currentAuthUid = normalizeString(authUid);
-     if (!currentAuthUid) return { userDocId: '', profile: {} };
-     const indexSnap = await getDoc(doc(db, 'userAuthIndex', currentAuthUid));
-     const userDocId = indexSnap.exists() ? normalizeString(indexSnap.data()?.userDocId) : '';
-     if (!userDocId) return { userDocId: '', profile: {} };
-     const userSnap = await getDoc(doc(db, 'users', userDocId));
-     return { userDocId, profile: userSnap.exists() ? userSnap.data() || {} : {} };
- };
- 
- const fetchRoomsForInternalIndexes = async (indexes = []) => {
-     const rooms = await Promise.all(indexes.map(async (index) => {
-         const roomId = normalizeString(index?.roomId || index?.id);
-         if (!roomId) return null;
-         const roomSnap = await getDoc(doc(db, 'chatRooms', roomId));
-         return mergeRoomWithIndex(roomSnap.exists() ? { id: roomSnap.id, ...roomSnap.data() } : { id: roomId }, index);
-     }));
-     return rooms.filter(Boolean);
- };
- 
- const fetchInternalUserChatRoomIndexes = async (keys = [], debug = {}) => {
-     const indexesById = new Map();
-@@ -339,58 +343,63 @@ export const subscribeInternalChatRooms = (currentAuthUid, onChange, onError = n
-             const participantKeyCandidates = uniqueStrings([
-                 authUid,
-                 profileDocId,
-                 userAuthIndexUserDocId,
-                 profile?.uid,
-                 profile?.authUid,
-                 profile?.userUid,
-                 profile?.id,
-             ]).slice(0, 10);
-             const debug = { authUid, profileDocId, userAuthIndexUserDocId, participantKeyCandidates };
- 
-             if (process.env.NODE_ENV === 'development') {
-                 console.log('[staff messenger] resolver identity', debug);
-             }
- 
-             const userChatRoomKeys = uniqueStrings([authUid, profileDocId, userAuthIndexUserDocId]);
-             const { indexes } = await fetchInternalUserChatRoomIndexes(userChatRoomKeys, debug);
-             const indexedRooms = await fetchRoomsForInternalIndexes(indexes);
-             const fallbackRooms = await fetchInternalFallbackRooms(participantKeyCandidates, debug);
-             const roomsById = new Map();
-             indexedRooms.forEach((room) => roomsById.set(room.id, room));
-             fallbackRooms.forEach((room) => roomsById.set(room.id, mergeRoomWithIndex(room, roomsById.get(room.id))));
-             const finalRooms = sortInternalRooms(Array.from(roomsById.values()));
- 
-             if (process.env.NODE_ENV === 'development') {
--                console.log('[staff messenger] final room count', { ...debug, count: finalRooms.length });
-+                console.log('[staff messenger] room list count', { ...debug, count: finalRooms.length });
-+                console.log('[staff messenger] rooms missing lastMessageText count', { ...debug, count: finalRooms.filter((room) => !room?.lastMessageText).length });
-             }
- 
-             if (!cancelled) onChange(finalRooms);
-         } catch (error) {
-             if (!cancelled) onError?.(error);
-         }
-     };
- 
-     loadRooms();
- 
-     return () => {
-         cancelled = true;
-     };
- };
- 
- export const subscribeChatMessages = (roomId, onChange, onError = null) => {
-     if (!roomId) return () => {};
-+    const startedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
-+    if (process.env.NODE_ENV === 'development') console.log('[staff messenger] selected room id', { roomId });
- 
-     const messagesQuery = query(
-         collection(db, 'chatRooms', roomId, 'messages'),
-         orderBy('createdAt', 'desc'),
-         limit(30),
-     );
- 
-     return onSnapshot(
-         messagesQuery,
-         (snapshot) => {
-+            const finishedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
-+            if (process.env.NODE_ENV === 'development') console.log('[staff messenger] initial messages loaded count', { roomId, count: snapshot.docs.length, loadTimeMs: Math.round(finishedAt - startedAt) });
-             onChange(snapshot.docs.map(normalizeMessage).reverse());
-         },
-         onError || (() => {}),
-     );
- };
-\ No newline at end of file
-diff --git a/src/messenger/hooks/useRoomMessages.js b/src/messenger/hooks/useRoomMessages.js
-index 907b896a922dc2e3c087f65088c488a23fd02180..2788f7eaf13e06eb3d8e2e0c997266a5ab7106ad 100644
---- a/src/messenger/hooks/useRoomMessages.js
-+++ b/src/messenger/hooks/useRoomMessages.js
-@@ -1,27 +1,27 @@
- import { useEffect, useState } from 'react';
- import { subscribeRoomMessages } from '../services/messageService';
- 
- export const useRoomMessages = (roomId) => {
-     const [messages, setMessages] = useState([]);
-     const [loading, setLoading] = useState(false);
-     const [error, setError] = useState('');
-     useEffect(() => {
-         if (!roomId) return undefined;
-         setLoading(true);
-         let fallbackUnsub = null;
-         const handleNext = (snap) => {
--            setMessages(snap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })));
-+            setMessages(snap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })).reverse());
-             setLoading(false);
-             setError('');
-         };
-         const unsub = subscribeRoomMessages({
-             roomId,
-             onNext: handleNext,
-             onError: (err) => {
-                 fallbackUnsub = subscribeRoomMessages({ roomId, onNext: handleNext, onError: () => setError('메시지를 불러오지 못했습니다.'), withOrderBy: false });
-             },
-         });
-         return () => { unsub && unsub(); fallbackUnsub && fallbackUnsub(); };
-     }, [roomId]);
-     return { messages, loading, error };
- };
-diff --git a/src/messenger/services/messageService.js b/src/messenger/services/messageService.js
-index ee3c90032497d9329303dde22b54d79918db685c..f29080362ce677bc5d84bb943818f86aeb5e25e6 100644
---- a/src/messenger/services/messageService.js
-+++ b/src/messenger/services/messageService.js
-@@ -1,71 +1,78 @@
--import { addDoc, collection, doc, getDoc, onSnapshot, orderBy, query, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
-+import { addDoc, collection, doc, getDoc, limit, onSnapshot, orderBy, query, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
- import { db } from '../../firebase/client';
- 
- const log = (...args) => {
-     if (process.env.NODE_ENV === 'development') console.log('[messages]', ...args);
- };
- 
- const uniqueStrings = (values = []) => Array.from(new Set(values.map((value) => String(value || '').trim()).filter(Boolean)));
- 
--const buildUserRoomIndexData = ({ roomId, room = {}, lastMessageText, timestamp }) => ({
-+const buildUserRoomIndexData = ({ roomId, room = {}, lastMessageText, timestamp, lastSenderId }) => ({
-     roomId,
-     lastMessageText,
-     lastMessageAt: timestamp,
-+    lastSenderId,
-     updatedAt: timestamp,
-     roomType: room.roomType || room.channel || '',
-     channel: room.channel || '',
+@@ -26,102 +26,98 @@ const buildIndexData = ({ roomId, room, lastMessageText, lastMessageAt, lastSend
      slot: room.slot || '',
      counterpartUid: room.counterpartUid || room.staffAuthUid || room.teacherAuthUid || '',
+     lastMessageText,
+     lastMessageAt,
+     lastSenderId,
+     updatedAt: lastMessageAt || room.updatedAt || room.createdAt || null,
      studentId: room.studentId || '',
+     parentId: room.parentId || '',
      parentUid: room.parentUid || '',
      studentAuthUid: room.studentAuthUid || room.studentUid || '',
      staffAuthUid: room.staffAuthUid || '',
      teacherAuthUid: room.teacherAuthUid || '',
  });
  
--const updateUserChatRoomIndexes = async ({ roomId, lastMessageText, timestamp, roomData = null }) => {
-+const updateUserChatRoomIndexes = async ({ roomId, lastMessageText, timestamp, lastSenderId, roomData = null }) => {
-     try {
-         let room = roomData || {};
-         let participantIds = uniqueStrings(Array.isArray(room.participantIds) ? room.participantIds : []);
-         if (!participantIds.length) {
-             const roomSnap = await getDoc(doc(db, 'chatRooms', roomId));
-             if (!roomSnap.exists()) return;
-             room = roomSnap.data() || {};
-             participantIds = uniqueStrings(Array.isArray(room.participantIds) ? room.participantIds : []);
+ const commitBatch = async (batch, writes) => {
+     if (!writes || dryRun) return;
+     await batch.commit();
+ };
+ 
+ const main = async () => {
+     console.log(`[backfill:chatRoomLastMessages] start (${dryRun ? 'dry-run' : 'write'})`);
+     const roomsSnap = await db.collection('chatRooms').get();
+     let batch = db.batch();
+     let pendingWrites = 0;
+     let roomsScanned = 0;
+-    let roomsMissingLastMessageText = 0;
+     let roomsWithoutMessages = 0;
+     let roomWrites = 0;
+     let indexWrites = 0;
+ 
+     for (const roomDoc of roomsSnap.docs) {
+         roomsScanned += 1;
+         const room = roomDoc.data() || {};
+-        if (String(room.lastMessageText || '').trim()) continue;
+-
+-        roomsMissingLastMessageText += 1;
+         const latestMessagesSnap = await roomDoc.ref.collection('messages')
+             .orderBy('createdAt', 'desc')
+             .limit(1)
+             .get();
+ 
+         if (latestMessagesSnap.empty) {
+             roomsWithoutMessages += 1;
+             console.log('[backfill:chatRoomLastMessages] skip empty room', { roomId: roomDoc.id });
+             continue;
          }
-         await Promise.all(participantIds.map((participantUid) => setDoc(
-             doc(db, 'userChatRooms', participantUid, 'rooms', roomId),
--            buildUserRoomIndexData({ roomId, room, lastMessageText, timestamp }),
-+            buildUserRoomIndexData({ roomId, room, lastMessageText, timestamp, lastSenderId }),
-             { merge: true }
-         )));
-     } catch (indexError) {
-         console.warn('[messages] failed to update userChatRooms index', { roomId, message: indexError?.message, code: indexError?.code });
-     }
- };
  
- export const subscribeRoomMessages = ({ roomId, onNext, onError, withOrderBy = true }) => {
-     const messagesRef = collection(db, 'chatRooms', roomId, 'messages');
--    const messagesQuery = withOrderBy ? query(messagesRef, orderBy('createdAt', 'asc')) : query(messagesRef);
--    log('subscribe', { messagesPath: `chatRooms/${roomId}/messages`, withOrderBy });
--    return onSnapshot(messagesQuery, onNext, onError);
-+    const startedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
-+    const messagesQuery = withOrderBy ? query(messagesRef, orderBy('createdAt', 'desc'), limit(30)) : query(messagesRef, limit(30));
-+    log('subscribe', { messagesPath: `chatRooms/${roomId}/messages`, withOrderBy, orderBy: withOrderBy ? ['createdAt', 'desc'] : null, limit: 30 });
-+    return onSnapshot(messagesQuery, (snap) => {
-+        const finishedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
-+        log('initial messages loaded', { roomId, count: snap.docs.length, loadTimeMs: Math.round(finishedAt - startedAt) });
-+        onNext(snap);
-+    }, onError);
- };
+         const latestMessage = latestMessagesSnap.docs[0].data() || {};
+         const lastMessageText = getLastMessageText(latestMessage);
+         const lastMessageAt = latestMessage.createdAt || room.updatedAt || room.createdAt || null;
+         const lastSenderId = String(latestMessage.senderId || latestMessage.createdBy || '').trim();
+         const participantIds = uniqueStrings(Array.isArray(room.participantIds) ? room.participantIds : []);
+         const roomPatch = {
+             lastMessageText,
+             lastMessageAt,
+             lastSenderId,
+             lastMessageSenderId: lastSenderId,
+-            updatedAt: room.updatedAt || lastMessageAt,
++            updatedAt: lastMessageAt || room.updatedAt || room.createdAt || null,
+         };
  
- export const sendRoomMessage = async ({ roomId, message, lastMessageText, updaterUid }) => {
-     const messageRef = await addDoc(collection(db, 'chatRooms', roomId, 'messages'), {
-         ...message,
-         roomId,
-         createdAt: serverTimestamp(),
-         internalOnly: true,
-     });
-     const timestamp = serverTimestamp();
-     await updateDoc(doc(db, 'chatRooms', roomId), {
-         lastMessageText,
-         lastMessageAt: timestamp,
-         lastMessageSenderId: updaterUid,
-+        lastSenderId: updaterUid,
-         updatedAt: timestamp,
-         updatedBy: updaterUid,
-     });
--    await updateUserChatRoomIndexes({ roomId, lastMessageText, timestamp });
-+    await updateUserChatRoomIndexes({ roomId, lastMessageText, timestamp, lastSenderId: updaterUid });
-     log('sent', { roomId, messageId: messageRef.id });
-     return messageRef;
- };
-diff --git a/src/messenger/services/userChatRoomsService.js b/src/messenger/services/userChatRoomsService.js
-index 7981e819e1f6fef9ca9f0ebe46a6a34a641559ad..cb8a50a025b005299c9a748c39dffd405b6a43e7 100644
---- a/src/messenger/services/userChatRoomsService.js
-+++ b/src/messenger/services/userChatRoomsService.js
-@@ -7,50 +7,51 @@ const uniqueStrings = (values) => Array.from(new Set(
-     values.flat(Infinity).filter((value) => typeof value === 'string' && value.trim()).map((value) => value.trim())
- ));
+         console.log('[backfill:chatRoomLastMessages] room', {
+             roomId: roomDoc.id,
+             lastMessageText,
+             lastSenderId,
+             participantCount: participantIds.length,
+         });
  
- const toMillis = (value) => {
-     if (!value) return 0;
-     if (typeof value?.toMillis === 'function') return value.toMillis();
-     if (typeof value?.toDate === 'function') return value.toDate().getTime();
-     if (value instanceof Date) return value.getTime();
-     const parsed = new Date(value).getTime();
-     return Number.isFinite(parsed) ? parsed : 0;
- };
+         roomWrites += 1;
+         if (dryRun) {
+             console.log('[dry-run]', roomDoc.ref.path, roomPatch);
+         } else {
+             batch.set(roomDoc.ref, roomPatch, { merge: true });
+             pendingWrites += 1;
+         }
  
- export const sortUserRoomIndexes = (indexes = []) => [...indexes].sort((left, right) => toMillis(right.lastMessageAt || right.updatedAt) - toMillis(left.lastMessageAt || left.updatedAt));
- 
- export const sortRoomsByActivity = (rooms = []) => [...rooms].sort((left, right) => toMillis(right.lastMessageAt || right.updatedAt || right.createdAt) - toMillis(left.lastMessageAt || left.updatedAt || left.createdAt));
- 
- export const mergeRoomWithIndex = (room, index) => ({
-     ...(room || {}),
-     id: room?.id || index?.roomId || index?.id || '',
-     roomId: room?.roomId || index?.roomId || index?.id || '',
-     indexLastMessageText: index?.lastMessageText || '',
-     indexLastMessageAt: index?.lastMessageAt || null,
-     indexUpdatedAt: index?.updatedAt || null,
-     lastMessageText: index?.lastMessageText || room?.lastMessageText || '',
-     lastMessageAt: index?.lastMessageAt || room?.lastMessageAt || null,
-+    lastSenderId: index?.lastSenderId || room?.lastSenderId || room?.lastMessageSenderId || '',
-     updatedAt: index?.updatedAt || room?.updatedAt || null,
- });
- 
- const getUserProfileForAuthUid = async (authUid) => {
-     const currentAuthUid = String(authUid || '').trim();
-     if (!currentAuthUid) return { authUid: '', userDocId: '', profile: {} };
-     const indexSnap = await getDoc(doc(db, 'userAuthIndex', currentAuthUid));
-     const userDocId = indexSnap.exists() ? String(indexSnap.data()?.userDocId || '').trim() : '';
-     if (!userDocId) return { authUid: currentAuthUid, userDocId: '', profile: {} };
-     const userSnap = await getDoc(doc(db, 'users', userDocId));
-     return { authUid: currentAuthUid, userDocId, profile: userSnap.exists() ? userSnap.data() || {} : {} };
- };
- 
- const collectRoom = (map, docSnap) => map.set(docSnap.id, { id: docSnap.id, ...docSnap.data() });
- 
- export const fetchStudentFallbackRooms = async (authUid) => {
-     const { authUid: currentAuthUid, userDocId, profile } = await getUserProfileForAuthUid(authUid);
-     if (!currentAuthUid || !userDocId) return [];
-     const candidateKeys = uniqueStrings([currentAuthUid, userDocId, profile.authUid, profile.userUid, profile.uid, profile.parentUid, profile.studentAuthUid, profile.studentId]);
-     const roomsById = new Map();
-     const snap = await getDocs(query(collection(db, 'chatRooms'), where('studentId', '==', userDocId)));
-     snap.docs.forEach((roomDoc) => collectRoom(roomsById, roomDoc));
-     return sortRoomsByActivity(Array.from(roomsById.values()).filter((room) => {
-         const roomType = String(room?.roomType || room?.channel || '').trim();
-         const slot = String(room?.slot || '').trim();
-@@ -88,38 +89,47 @@ export const fetchParentFallbackRooms = async (authUid) => {
-         return isParentRoom && hasParentIdentity;
-     }));
- };
- 
- export const fetchRoomsForIndexes = async (indexes = []) => {
-     const rooms = await Promise.all(sortUserRoomIndexes(indexes).map(async (index) => {
-         const roomId = String(index?.roomId || index?.id || '').trim();
-         if (!roomId) return null;
-         const roomSnap = await getDoc(doc(db, 'chatRooms', roomId));
-         if (!roomSnap.exists()) return mergeRoomWithIndex({ id: roomId }, index);
-         return mergeRoomWithIndex({ id: roomSnap.id, ...roomSnap.data() }, index);
-     }));
-     return rooms.filter(Boolean);
- };
- 
- export const subscribeUserChatRooms = ({ authUid, role = '', onNext, onError }) => {
-     const indexQuery = query(collection(db, 'userChatRooms', authUid, 'rooms'));
-     return onSnapshot(indexQuery, async (snap) => {
-         try {
-             if (process.env.NODE_ENV === 'development') {
-                 console.log('[resolver] userChatRooms snapshot', { role, authUid, count: snap.docs.length, ids: snap.docs.map((docSnap) => docSnap.id) });
-             }
-             const indexes = snap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
-             const indexedRooms = await fetchRoomsForIndexes(indexes);
-             if (role === 'staff' || indexedRooms.length > 0) {
-+                if (process.env.NODE_ENV === 'development') {
-+                    console.log('[resolver] room list count', { role, authUid, count: indexedRooms.length });
-+                    console.log('[resolver] rooms missing lastMessageText count', { role, authUid, count: indexedRooms.filter((room) => !room?.lastMessageText).length });
-+                }
-                 onNext(indexedRooms, indexes);
+         participantIds.forEach((participantId) => {
+             const indexRef = db.collection('userChatRooms').doc(participantId).collection('rooms').doc(roomDoc.id);
+             const indexData = buildIndexData({ roomId: roomDoc.id, room, lastMessageText, lastMessageAt, lastSenderId });
+             indexWrites += 1;
+             if (dryRun) {
+                 console.log('[dry-run]', indexRef.path, indexData);
                  return;
              }
-             if (process.env.NODE_ENV === 'development') {
-                 console.log('[resolver] userChatRooms empty; using chatRooms fallback', { role, authUid });
-             }
-             const fallbackRooms = role === 'parent' ? await fetchParentFallbackRooms(authUid) : await fetchStudentFallbackRooms(authUid);
--            onNext(sortRoomsByActivity(fallbackRooms), indexes);
-+            const sortedFallbackRooms = sortRoomsByActivity(fallbackRooms);
-+            if (process.env.NODE_ENV === 'development') {
-+                console.log('[resolver] room list count', { role, authUid, count: sortedFallbackRooms.length });
-+                console.log('[resolver] rooms missing lastMessageText count', { role, authUid, count: sortedFallbackRooms.filter((room) => !room?.lastMessageText).length });
-+            }
-+            onNext(sortedFallbackRooms, indexes);
-         } catch (error) {
-             onError?.(error);
+             batch.set(indexRef, indexData, { merge: true });
+             pendingWrites += 1;
+         });
+ 
+         if (pendingWrites >= batchLimit) {
+             await commitBatch(batch, pendingWrites);
+             batch = db.batch();
+             pendingWrites = 0;
          }
-     }, onError);
+     }
+ 
+     await commitBatch(batch, pendingWrites);
+-    console.log(`[backfill:chatRoomLastMessages] complete roomsScanned=${roomsScanned} missingLastMessageText=${roomsMissingLastMessageText} roomsWithoutMessages=${roomsWithoutMessages} ${dryRun ? 'wouldWriteRooms' : 'wroteRooms'}=${roomWrites} ${dryRun ? 'wouldWriteIndexes' : 'wroteIndexes'}=${indexWrites}`);
++    console.log(`[backfill:chatRoomLastMessages] complete roomsScanned=${roomsScanned} roomsWithoutMessages=${roomsWithoutMessages} ${dryRun ? 'wouldWriteRooms' : 'wroteRooms'}=${roomWrites} ${dryRun ? 'wouldWriteIndexes' : 'wroteIndexes'}=${indexWrites}`);
  };
+ 
+ main().catch((error) => {
+     console.error('[backfill:chatRoomLastMessages] failed', error);
+     process.exitCode = 1;
+ });
+diff --git a/src/messenger/services/roomPreviewService.js b/src/messenger/services/roomPreviewService.js
+index 1ae92bdabe25b3f89c31c34e41a7632e3b91b38a..8a3a7c5462d2bf1df22fec47a1933ab7dfa26bdf 100644
+--- a/src/messenger/services/roomPreviewService.js
++++ b/src/messenger/services/roomPreviewService.js
+@@ -1,10 +1,29 @@
+ import { EMPTY_ROOM_PREVIEW } from '../constants/messengerConstants';
+ import { normalizeText } from '../utils/roomMatcher';
+ 
+-export const getLastMessagePreview = (room) => (
+-    normalizeText(room?.indexLastMessageText)
+-    || normalizeText(room?.lastMessageText)
+-    || normalizeText(room?.lastMessage)
+-    || normalizeText(room?.message)
+-    || EMPTY_ROOM_PREVIEW
+-);
++const readMessageObjectText = (message) => {
++    if (!message || typeof message !== 'object') return '';
++    return normalizeText(message.text) || normalizeText(message.content);
++};
++
++export const getLastMessagePreviewCandidates = (room) => ({
++    lastMessageText: normalizeText(room?.lastMessageText),
++    lastMessageTextFromObject: readMessageObjectText(room?.lastMessage),
++    lastMessageContentFromObject: room?.lastMessage && typeof room.lastMessage === 'object' ? normalizeText(room.lastMessage.content) : '',
++    lastMessage: typeof room?.lastMessage === 'object' ? '' : normalizeText(room?.lastMessage),
++    previewText: normalizeText(room?.previewText),
++    latestMessageText: normalizeText(room?.latestMessageText),
++    lastMessagePreview: normalizeText(room?.lastMessagePreview),
++});
++
++export const getLastMessagePreview = (room) => {
++    const candidates = getLastMessagePreviewCandidates(room);
++    return candidates.lastMessageText
++        || candidates.lastMessageTextFromObject
++        || candidates.lastMessageContentFromObject
++        || candidates.lastMessage
++        || candidates.previewText
++        || candidates.latestMessageText
++        || candidates.lastMessagePreview
++        || EMPTY_ROOM_PREVIEW;
++};
+diff --git a/src/pages/parent/ParentMessengerPage.jsx b/src/pages/parent/ParentMessengerPage.jsx
+index a35359ff7f5b3ca0c062b885160ecb1baad36407..9aaf0e53cd6613fbac0447662695f1252afff8be 100644
+--- a/src/pages/parent/ParentMessengerPage.jsx
++++ b/src/pages/parent/ParentMessengerPage.jsx
+@@ -1,32 +1,32 @@
+ import React, { useEffect, useMemo, useState } from 'react';
+ import ArrowBackIosNewIcon from '@mui/icons-material/ArrowBackIosNew';
+ import StudentMessenger from '../../components/StudentMessenger';
+ import { auth } from '../../firebase/client';
+ import { INSTITUTE_AUTH_UID, ROOM_TYPES, SLOTS, TEACHER_AUTH_UID } from '../../messenger/constants/messengerConstants';
+ import { getInstituteDisplayName, getTeacherDisplayName } from '../../messenger/services/displayNameService';
+-import { getLastMessagePreview } from '../../messenger/services/roomPreviewService';
++import { getLastMessagePreview, getLastMessagePreviewCandidates } from '../../messenger/services/roomPreviewService';
+ import { buildParentParticipantKeys } from '../../messenger/utils/participantKeys';
+ import { getRoomSlot, hasRoomTypeOrChannel, sortRooms, toDate } from '../../messenger/utils/roomMatcher';
+ import { getUserChatRoomsQueryShape, subscribeUserChatRooms } from '../../messenger/services/userChatRoomsService';
+ 
+ const getParticipantIds = (room) => (Array.isArray(room?.participantIds) ? room.participantIds.map(String) : []);
+ const hasTarget = (room, targetUid, fields = []) => fields.some((field) => String(room?.[field] || '') === targetUid) || getParticipantIds(room).includes(targetUid);
+ const hasViewerParticipant = (room, participantKeys = []) => participantKeys.some((key) => getParticipantIds(room).includes(String(key)));
+ 
+ 
+ const sameStudent = (room, studentId) => !room?.studentId || !studentId || String(room.studentId) === String(studentId);
+ 
+ const isParentTeacherRoom = (room, participantKeys, studentId) => (
+     hasViewerParticipant(room, participantKeys)
+     && sameStudent(room, studentId)
+     && !hasRoomTypeOrChannel(room, ROOM_TYPES.STUDENT_TEACHER)
+     && !hasRoomTypeOrChannel(room, ROOM_TYPES.STUDENT_INSTITUTE)
+     && (hasRoomTypeOrChannel(room, ROOM_TYPES.PARENT_TEACHER) || getRoomSlot(room) === SLOTS.TEACHER)
+     && hasTarget(room, TEACHER_AUTH_UID, ['teacherAuthUid', 'counterpartUid'])
+ );
+ 
+ const isParentInstituteRoom = (room, participantKeys, studentId) => (
+     hasViewerParticipant(room, participantKeys)
+     && sameStudent(room, studentId)
+     && !hasRoomTypeOrChannel(room, ROOM_TYPES.STUDENT_TEACHER)
+     && !hasRoomTypeOrChannel(room, ROOM_TYPES.STUDENT_INSTITUTE)
+@@ -64,50 +64,59 @@ export default function ParentMessengerPage({ studentId, student, onBack }) {
+             },
+             onError: (snapshotError) => {
+                 console.error('[parent messenger] failed to load userChatRooms', {
+                     code: snapshotError?.code,
+                     message: snapshotError?.message,
+                     queryShape,
+                 });
+                 setLoading(false);
+                 setError('대화 목록을 불러오지 못했습니다.');
+             },
+         });
+         return unsubscribe;
+     }, [authUid]);
+ 
+     const teacherRoom = useMemo(() => rooms.find((room) => isParentTeacherRoom(room, participantKeys, activeStudentId)) || null, [rooms, participantKeys, activeStudentId]);
+     const instituteRoom = useMemo(() => rooms.find((room) => isParentInstituteRoom(room, participantKeys, activeStudentId)) || null, [rooms, participantKeys, activeStudentId]);
+ 
+     const messengerSlots = useMemo(() => [
+         { slot: SLOTS.INSTITUTE, room: instituteRoom, id: instituteRoom?.id || 'parent-institute-placeholder', title: getInstituteDisplayName(), roomType: ROOM_TYPES.PARENT_INSTITUTE },
+         { slot: SLOTS.TEACHER, room: teacherRoom, id: teacherRoom?.id || 'parent-teacher-placeholder', title: getTeacherDisplayName(), roomType: ROOM_TYPES.PARENT_TEACHER },
+     ], [teacherRoom, instituteRoom]);
+ 
+     const handleOpenRoom = (slot) => {
+         const selectedRoomId = String(slot.room?.roomId || slot.room?.id || '').trim();
+         if (process.env.NODE_ENV === 'development') {
++            console.log('[MessengerPage] room preview candidates', {
++                role: 'parent',
++                roomId: selectedRoomId,
++                title: slot.title,
++                userChatRoomsIndexPath: authUid && selectedRoomId ? `userChatRooms/${authUid}/rooms/${selectedRoomId}` : '',
++                candidates: getLastMessagePreviewCandidates(slot.room),
++                selectedPreview: getLastMessagePreview(slot.room),
++                room: slot.room,
++            });
+             console.log('[MessengerPage] open room', {
+                 role: 'parent',
+                 selectedRoomId,
+                 roomIdFromIndex: String(slot.room?.roomId || ''),
+                 roomDocId: String(slot.room?.id || ''),
+                 slot: slot.slot,
+                 roomType: slot.room?.roomType || slot.roomType || '',
+             });
+         }
+         setSelectedSlot(slot);
+     };
+ 
+     const currentSlot = selectedSlot ? messengerSlots.find((slot) => slot.slot === selectedSlot.slot) || selectedSlot : null;
+ 
+     if (currentSlot) {
+         const targetAuthUid = currentSlot.slot === SLOTS.TEACHER ? TEACHER_AUTH_UID : INSTITUTE_AUTH_UID;
+         const currentRoomId = String(currentSlot.room?.roomId || currentSlot.room?.id || '').trim();
+         return (
+             <div className="mobile-screen h-screen min-h-screen bg-gray-50 flex flex-col overflow-hidden">
+                 <header className="mobile-header bg-white border-b border-gray-100 px-4 flex items-center gap-3">
+                     <button type="button" onClick={() => setSelectedSlot(null)} className="mobile-back-button text-gray-700"><ArrowBackIosNewIcon style={{ fontSize: 18 }} /></button>
+                     <h1 className="text-base font-semibold text-gray-900 truncate">{currentSlot.title}</h1>
+                 </header>
+                 <div className="flex-1 min-h-0">
+                     <StudentMessenger
+diff --git a/src/pages/student/StudentMessengerPage.jsx b/src/pages/student/StudentMessengerPage.jsx
+index aa4c3ab88a69ea57e504b179403604c8533e5367..630cea8b1c7620ca006122a31a01739d79b8800b 100644
+--- a/src/pages/student/StudentMessengerPage.jsx
++++ b/src/pages/student/StudentMessengerPage.jsx
+@@ -1,60 +1,69 @@
+ import React, { useMemo, useState } from 'react';
+ import ArrowBackIosNewIcon from '@mui/icons-material/ArrowBackIosNew';
+ import StudentMessenger from '../../components/StudentMessenger';
+ import { auth } from '../../firebase/client';
+ import { INSTITUTE_AUTH_UID, ROOM_TYPES, SLOTS, TEACHER_AUTH_UID } from '../../messenger/constants/messengerConstants';
+ import { useMessengerRooms } from '../../messenger/hooks/useMessengerRooms';
+ import { getInstituteDisplayName, getTeacherDisplayName } from '../../messenger/services/displayNameService';
+-import { getLastMessagePreview } from '../../messenger/services/roomPreviewService';
++import { getLastMessagePreview, getLastMessagePreviewCandidates } from '../../messenger/services/roomPreviewService';
+ import { buildStudentParticipantKeys } from '../../messenger/utils/participantKeys';
+ import { toDate } from '../../messenger/utils/roomMatcher';
+ 
+ const getExpectedRoomType = (slot) => (slot === SLOTS.INSTITUTE ? ROOM_TYPES.STUDENT_INSTITUTE : ROOM_TYPES.STUDENT_TEACHER);
+ 
+ export default function StudentMessengerPage({ studentId, student, onBack }) {
+     const [selectedSlot, setSelectedSlot] = useState(null);
+     const authUid = String(auth.currentUser?.uid || '');
+     const studentWithId = useMemo(() => ({ ...student, id: student?.id || studentId }), [student, studentId]);
+     const { loading, error, participantKeys, teacherRoom, instituteRoom } = useMessengerRooms({
+         role: 'student',
+         authUid,
+         student: studentWithId,
+     });
+     const participantKeyCandidates = useMemo(() => (
+         participantKeys?.length ? participantKeys : buildStudentParticipantKeys({ authUid, student, studentId })
+     ), [participantKeys, authUid, student, studentId]);
+     const activeStudentId = String(studentId || student?.id || student?.studentId || '');
+ 
+     const messengerSlots = useMemo(() => [
+         { slot: SLOTS.INSTITUTE, id: instituteRoom?.id || 'institute-placeholder', title: getInstituteDisplayName(), room: instituteRoom, roomType: ROOM_TYPES.STUDENT_INSTITUTE },
+         { slot: SLOTS.TEACHER, id: teacherRoom?.id || 'teacher-placeholder', title: getTeacherDisplayName(), room: teacherRoom, roomType: ROOM_TYPES.STUDENT_TEACHER },
+     ], [teacherRoom, instituteRoom]);
+ 
+     const handleOpenRoom = (slot) => {
+         const selectedRoomId = String(slot.room?.roomId || slot.room?.id || '').trim();
+         if (process.env.NODE_ENV === 'development') {
++            console.log('[MessengerPage] room preview candidates', {
++                role: 'student',
++                roomId: selectedRoomId,
++                title: slot.title,
++                userChatRoomsIndexPath: authUid && selectedRoomId ? `userChatRooms/${authUid}/rooms/${selectedRoomId}` : '',
++                candidates: getLastMessagePreviewCandidates(slot.room),
++                selectedPreview: getLastMessagePreview(slot.room),
++                room: slot.room,
++            });
+             console.log('[MessengerPage] open room', {
+                 role: 'student',
+                 selectedRoomId,
+                 roomIdFromIndex: String(slot.room?.roomId || ''),
+                 roomDocId: String(slot.room?.id || ''),
+                 slot: slot.slot,
+                 roomType: slot.room?.roomType || slot.roomType || '',
+             });
+         }
+         setSelectedSlot(slot);
+     };
+ 
+     const currentSlot = selectedSlot ? messengerSlots.find((slot) => slot.slot === selectedSlot.slot) || selectedSlot : null;
+     if (currentSlot) {
+         const targetAuthUid = currentSlot.slot === SLOTS.TEACHER ? TEACHER_AUTH_UID : INSTITUTE_AUTH_UID;
+         const currentRoomId = String(currentSlot.room?.roomId || currentSlot.room?.id || '').trim();
+         const canCreateCurrentRoom = Boolean(targetAuthUid && getExpectedRoomType(currentSlot.slot));
+         if (!currentRoomId && !canCreateCurrentRoom) {
+             return (
+                 <div className="mobile-screen h-screen min-h-screen bg-gray-50 flex flex-col overflow-hidden">
+                     <header className="mobile-header bg-white border-b border-gray-100 px-4 flex items-center gap-3">
+                         <button type="button" onClick={() => setSelectedSlot(null)} className="mobile-back-button text-gray-700"><ArrowBackIosNewIcon style={{ fontSize: 18 }} /></button>
+                         <h1 className="text-base font-semibold text-gray-900 truncate">{currentSlot.title}</h1>
+                     </header>
+                     <div className="flex-1 flex items-center justify-center text-sm text-gray-500">대화방을 준비 중입니다.</div>

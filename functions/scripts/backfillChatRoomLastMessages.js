@@ -48,7 +48,6 @@ const main = async () => {
     let batch = db.batch();
     let pendingWrites = 0;
     let roomsScanned = 0;
-    let roomsMissingLastMessageText = 0;
     let roomsWithoutMessages = 0;
     let roomWrites = 0;
     let indexWrites = 0;
@@ -56,9 +55,6 @@ const main = async () => {
     for (const roomDoc of roomsSnap.docs) {
         roomsScanned += 1;
         const room = roomDoc.data() || {};
-        if (String(room.lastMessageText || '').trim()) continue;
-
-        roomsMissingLastMessageText += 1;
         const latestMessagesSnap = await roomDoc.ref.collection('messages')
             .orderBy('createdAt', 'desc')
             .limit(1)
@@ -80,7 +76,7 @@ const main = async () => {
             lastMessageAt,
             lastSenderId,
             lastMessageSenderId: lastSenderId,
-            updatedAt: room.updatedAt || lastMessageAt,
+            updatedAt: lastMessageAt || room.updatedAt || room.createdAt || null,
         };
 
         console.log('[backfill:chatRoomLastMessages] room', {
@@ -118,7 +114,7 @@ const main = async () => {
     }
 
     await commitBatch(batch, pendingWrites);
-    console.log(`[backfill:chatRoomLastMessages] complete roomsScanned=${roomsScanned} missingLastMessageText=${roomsMissingLastMessageText} roomsWithoutMessages=${roomsWithoutMessages} ${dryRun ? 'wouldWriteRooms' : 'wroteRooms'}=${roomWrites} ${dryRun ? 'wouldWriteIndexes' : 'wroteIndexes'}=${indexWrites}`);
+    console.log(`[backfill:chatRoomLastMessages] complete roomsScanned=${roomsScanned} roomsWithoutMessages=${roomsWithoutMessages} ${dryRun ? 'wouldWriteRooms' : 'wroteRooms'}=${roomWrites} ${dryRun ? 'wouldWriteIndexes' : 'wroteIndexes'}=${indexWrites}`);
 };
 
 main().catch((error) => {
