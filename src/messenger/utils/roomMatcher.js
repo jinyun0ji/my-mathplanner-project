@@ -11,6 +11,7 @@ export const toDate = (value) => {
 
 export const getRoomType = (room) => normalizeText(room?.roomType || room?.channel);
 export const hasRoomTypeOrChannel = (room, expectedRoomType) => normalizeText(room?.roomType) === expectedRoomType || normalizeText(room?.channel) === expectedRoomType;
+export const getRoomId = (room) => normalizeText(room?.roomId || room?.id);
 
 export const getExpectedRoomType = (role, slotOrType) => {
     const normalizedRole = normalizeText(role);
@@ -25,7 +26,41 @@ export const getExpectedRoomType = (role, slotOrType) => {
 
 export const isStrictRoomTypeMatch = (room, expectedRoomType) => Boolean(expectedRoomType) && hasRoomTypeOrChannel(room, expectedRoomType);
 
+export const getExpectedSlot = (expectedRoomType) => {
+    const normalized = normalizeText(expectedRoomType);
+    if (normalized.endsWith('_institute') || normalized === SLOTS.INSTITUTE) return SLOTS.INSTITUTE;
+    if (normalized.endsWith('_teacher') || normalized === SLOTS.TEACHER) return SLOTS.TEACHER;
+    return '';
+};
+
+export const getExpectedRole = (expectedRoomType) => {
+    const normalized = normalizeText(expectedRoomType);
+    if (normalized.startsWith('student_')) return 'student';
+    if (normalized.startsWith('parent_')) return 'parent';
+    return '';
+};
+
+export const isLegacySlotRoomTypeMatch = (room, expectedRoomType) => {
+    const expectedSlot = getExpectedSlot(expectedRoomType);
+    const expectedRole = getExpectedRole(expectedRoomType);
+    const roomType = normalizeText(room?.roomType);
+    const channel = normalizeText(room?.channel);
+    const slot = normalizeText(room?.slot);
+
+    if (!expectedSlot || !expectedRole) return false;
+    if (roomType === expectedRoomType || channel === expectedRoomType) return true;
+
+    const explicitType = roomType || channel;
+    if (explicitType.startsWith('student_') && expectedRole !== 'student') return false;
+    if (explicitType.startsWith('parent_') && expectedRole !== 'parent') return false;
+    if (explicitType.endsWith('_institute') && expectedSlot !== SLOTS.INSTITUTE) return false;
+    if (explicitType.endsWith('_teacher') && expectedSlot !== SLOTS.TEACHER) return false;
+
+    return roomType === expectedSlot || channel === expectedSlot || slot === expectedSlot;
+};
+
 export const getRoomDebugInfo = (room) => ({
+    id: getRoomId(room),
     roomType: normalizeText(room?.roomType),
     channel: normalizeText(room?.channel),
     slot: normalizeText(room?.slot),

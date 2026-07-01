@@ -1,13 +1,13 @@
 import { INSTITUTE_AUTH_UID, ROOM_TYPES, SLOTS, TEACHER_AUTH_UID } from '../constants/messengerConstants';
 import { getParticipantIds, uniqueStrings } from '../utils/participantKeys';
-import { getRoomSlot, hasRoomTypeOrChannel, sortRooms } from '../utils/roomMatcher';
+import { isLegacySlotRoomTypeMatch, sortRooms } from '../utils/roomMatcher';
 
 const hasParticipant = (room, keys) => uniqueStrings(keys).some((key) => getParticipantIds(room).includes(key));
 const hasTarget = (room, target, fields) => fields.some((field) => String(room?.[field] || '') === target) || getParticipantIds(room).includes(target);
 const isParentRoom = (room, type, slot, target, fields, participantKeys) => (
     hasParticipant(room, participantKeys)
     && hasTarget(room, target, fields)
-    && (hasRoomTypeOrChannel(room, type) || getRoomSlot(room) === slot)
+    && isLegacySlotRoomTypeMatch(room, type)
 );
 
 export const resolveParentRooms = ({ rooms = [], participantKeys = [] } = {}) => {

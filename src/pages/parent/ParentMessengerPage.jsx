@@ -7,18 +7,18 @@ import { INSTITUTE_AUTH_UID, ROOM_TYPES, SLOTS, TEACHER_AUTH_UID } from '../../m
 import { getInstituteDisplayName, getTeacherDisplayName } from '../../messenger/services/displayNameService';
 import { getLastMessagePreview, getLastMessagePreviewCandidates } from '../../messenger/services/roomPreviewService';
 import { buildParentParticipantKeys } from '../../messenger/utils/participantKeys';
-import { getRoomDebugInfo, hasRoomTypeOrChannel, isStrictRoomTypeMatch, sortRooms, toDate } from '../../messenger/utils/roomMatcher';
+import { getRoomDebugInfo, getRoomId, isLegacySlotRoomTypeMatch, sortRooms, toDate } from '../../messenger/utils/roomMatcher';
 import { getUserChatRoomsQueryShape, subscribeUserChatRooms } from '../../messenger/services/userChatRoomsService';
 
 const getParticipantIds = (room) => (Array.isArray(room?.participantIds) ? room.participantIds.map(String) : []);
 const hasTarget = (room, targetUid, fields = []) => fields.some((field) => String(room?.[field] || '') === targetUid) || getParticipantIds(room).includes(targetUid);
-const hasViewerParticipant = (room, participantKeys = [], linkedUserDocId = '') => {
+const hasViewerParticipant = (room, participantKeys = [], linkedUserDocId = '', studentId = '') => {
     const participantIds = getParticipantIds(room);
     const keys = participantKeys.map(String);
     return keys.some((key) => participantIds.includes(key))
         || (linkedUserDocId && String(room?.parentId || '') === String(linkedUserDocId))
+        || (studentId && String(room?.studentId || '') === String(studentId))
         || keys.includes(String(room?.parentUid || ''))
-        || room?.__source === 'userChatRooms';
 };
 
 
@@ -37,16 +37,16 @@ const logParentRoomRejection = (room, expectedRoomType, reason, selectedRoomId =
 };
 
 const isParentRoomOfType = (room, expectedRoomType, targetUid, targetFields, participantKeys, studentId, linkedUserDocId) => {
-    const selectedRoomId = String(room?.roomId || room?.id || '').trim();
-    if (!isStrictRoomTypeMatch(room, expectedRoomType)) {
+    const selectedRoomId = getRoomId(room);
+    if (!isLegacySlotRoomTypeMatch(room, expectedRoomType)) {
         logParentRoomRejection(room, expectedRoomType, 'roomType/channel mismatch', selectedRoomId);
         return false;
     }
-    if (hasRoomTypeOrChannel(room, ROOM_TYPES.STUDENT_TEACHER) || hasRoomTypeOrChannel(room, ROOM_TYPES.STUDENT_INSTITUTE)) {
+    if (isLegacySlotRoomTypeMatch(room, ROOM_TYPES.STUDENT_TEACHER) || isLegacySlotRoomTypeMatch(room, ROOM_TYPES.STUDENT_INSTITUTE)) {
         logParentRoomRejection(room, expectedRoomType, 'student room type is not allowed for parent role', selectedRoomId);
         return false;
     }
-    if (!hasViewerParticipant(room, participantKeys, linkedUserDocId)) {
+    if (!hasViewerParticipant(room, participantKeys, linkedUserDocId, studentId)) {
         logParentRoomRejection(room, expectedRoomType, 'parent participant not found', selectedRoomId);
         return false;
     }
@@ -155,6 +155,15 @@ export default function ParentMessengerPage({ studentId, student, onBack }) {
 
     useEffect(() => {
         if (process.env.NODE_ENV !== 'development') return;
+        const rejectedBySlot = messengerSlots.map((slot) => ({
+            slot: slot.slot,
+            expectedRoomType: slot.roomType,
+            finalPreviewRoomId: getRoomId(slot.room),
+            finalPreviewText: slot.room ? getLastMessagePreview(slot.room) : '대화 내역이 없습니다.',
+            rejected: rooms
+                .filter((room) => getRoomId(room) !== getRoomId(slot.room))
+                .map((room) => ({ roomId: getRoomId(room), actual: getRoomDebugInfo(room) })),
+        }));
         console.log('[parent messenger] match debug', {
             authUid,
             linkedUserDocId: linkedParent.userDocId,
@@ -165,10 +174,15 @@ export default function ParentMessengerPage({ studentId, student, onBack }) {
             instituteRoomMatched: Boolean(instituteRoom),
             instituteRoomId: instituteRoom?.roomId || instituteRoom?.id || '',
             slots: messengerSlots.map((slot) => ({
+                role: 'parent',
                 slot: slot.slot,
-                selectedRoomId: String(slot.room?.roomId || slot.room?.id || '').trim(),
+                expectedRoomType: slot.roomType,
+                finalPreviewRoomId: getRoomId(slot.room),
+                finalPreviewText: slot.room ? getLastMessagePreview(slot.room) : '대화 내역이 없습니다.',
+                selectedRoomId: getRoomId(slot.room),
                 roomState: slot.room ? 'actual' : 'placeholder',
             })),
+            rejectedBySlot,
         });
     }, [authUid, linkedParent.userDocId, participantKeys, rooms.length, teacherRoom, instituteRoom, messengerSlots]);
 

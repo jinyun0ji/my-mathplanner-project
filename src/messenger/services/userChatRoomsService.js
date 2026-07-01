@@ -1,7 +1,7 @@
 import { collection, doc, getDoc, getDocs, limit, onSnapshot, orderBy, query, where } from 'firebase/firestore';
 import { db } from '../../firebase/client';
 import { getLastMessagePreview } from './roomPreviewService';
-import { isStrictRoomTypeMatch, normalizeText } from '../utils/roomMatcher';
+import { isLegacySlotRoomTypeMatch, normalizeText } from '../utils/roomMatcher';
 
 export const getUserChatRoomsQueryShape = (authUid) => ({ collection: `userChatRooms/${authUid}/rooms` });
 
@@ -105,7 +105,7 @@ export const fetchStudentFallbackRooms = async (authUid) => {
     const snap = await getDocs(query(collection(db, 'chatRooms'), where('studentId', '==', userDocId)));
     snap.docs.forEach((roomDoc) => collectRoom(roomsById, roomDoc));
     return sortRoomsByActivity(Array.from(roomsById.values()).filter((room) => {
-        const isStudentRoom = ['student_institute', 'student_teacher'].some((expectedType) => isStrictRoomTypeMatch(room, expectedType));
+        const isStudentRoom = ['student_institute', 'student_teacher'].some((expectedType) => isLegacySlotRoomTypeMatch(room, expectedType));
         const hasStudentIdentity = String(room?.studentId || '') === userDocId
             || String(room?.studentUid || '') === currentAuthUid
             || String(room?.studentAuthUid || '') === currentAuthUid
@@ -128,7 +128,7 @@ export const fetchParentFallbackRooms = async (authUid) => {
         studentSnap.docs.forEach((roomDoc) => collectRoom(roomsById, roomDoc));
     }
     return sortRoomsByActivity(Array.from(roomsById.values()).filter((room) => {
-        const isParentRoom = ['parent_institute', 'parent_teacher'].some((expectedType) => isStrictRoomTypeMatch(room, expectedType));
+        const isParentRoom = ['parent_institute', 'parent_teacher'].some((expectedType) => isLegacySlotRoomTypeMatch(room, expectedType));
         const roomParticipantIds = Array.isArray(room?.participantIds) ? room.participantIds.map(String) : [];
         const hasParentIdentity = String(room?.parentId || '') === parentDocId
             || candidateKeys.includes(String(room?.parentUid || ''))

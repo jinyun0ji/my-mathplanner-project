@@ -7,7 +7,7 @@ import { useMessengerRooms } from '../../messenger/hooks/useMessengerRooms';
 import { getInstituteDisplayName, getTeacherDisplayName } from '../../messenger/services/displayNameService';
 import { getLastMessagePreview, getLastMessagePreviewCandidates } from '../../messenger/services/roomPreviewService';
 import { buildStudentParticipantKeys } from '../../messenger/utils/participantKeys';
-import { toDate } from '../../messenger/utils/roomMatcher';
+import { getRoomDebugInfo, getRoomId, toDate } from '../../messenger/utils/roomMatcher';
 
 const getExpectedRoomType = (slot) => (slot === SLOTS.INSTITUTE ? ROOM_TYPES.STUDENT_INSTITUTE : ROOM_TYPES.STUDENT_TEACHER);
 
@@ -15,7 +15,7 @@ export default function StudentMessengerPage({ studentId, student, onBack }) {
     const [selectedSlot, setSelectedSlot] = useState(null);
     const authUid = String(auth.currentUser?.uid || '');
     const studentWithId = useMemo(() => ({ ...student, id: student?.id || studentId }), [student, studentId]);
-    const { loading, error, participantKeys, teacherRoom, instituteRoom } = useMessengerRooms({
+    const { loading, error, participantKeys, teacherRoom, instituteRoom, rooms = [] } = useMessengerRooms({
         role: 'student',
         authUid,
         student: studentWithId,
@@ -34,18 +34,23 @@ export default function StudentMessengerPage({ studentId, student, onBack }) {
         if (process.env.NODE_ENV !== 'development') return;
         messengerSlots.forEach((slot) => {
             console.log('[student messenger slot]', {
+                role: 'student',
                 slot: slot.slot,
+                expectedRoomType: slot.roomType,
                 activeStudentId,
                 participantKeys: participantKeyCandidates,
-                finalRoomId: slot.room?.id || slot.room?.roomId || '',
-                finalPreviewSourceRoomId: slot.room && slot.roomType === ROOM_TYPES.STUDENT_INSTITUTE ? (slot.room.id || slot.room.roomId || '') : (slot.room?.id || slot.room?.roomId || ''),
-                preview: slot.room ? getLastMessagePreview(slot.room) : '대화 내역이 없습니다.',
+                finalRoomId: getRoomId(slot.room),
+                finalPreviewRoomId: getRoomId(slot.room),
+                finalPreviewText: slot.room ? getLastMessagePreview(slot.room) : '대화 내역이 없습니다.',
+                rejected: rooms
+                    .filter((room) => getRoomId(room) !== getRoomId(slot.room))
+                    .map((room) => ({ roomId: getRoomId(room), reason: 'not selected for this slot', actual: getRoomDebugInfo(room) })),
                 roomType: slot.room?.roomType || '',
                 channel: slot.room?.channel || '',
                 roomSlot: slot.room?.slot || '',
             });
         });
-    }, [messengerSlots, activeStudentId, participantKeyCandidates]);
+    }, [messengerSlots, activeStudentId, participantKeyCandidates, rooms]);
 
     const handleOpenRoom = (slot) => {
         const selectedRoomId = String(slot.room?.roomId || slot.room?.id || '').trim();
@@ -100,7 +105,7 @@ export default function StudentMessengerPage({ studentId, student, onBack }) {
                         selectedRoomId={currentRoomId}
                         teacherName={currentSlot.title}
                         userRole="student"
-                        allowLegacyResolve={false}
+                        allowLegacyResolve={!currentRoomId}
                         emptyMessage="아직 대화 내역이 없습니다."
                         chatSlot={currentSlot.slot}
                         roomCreationContext={{
