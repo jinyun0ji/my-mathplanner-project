@@ -17,7 +17,9 @@ const buildUserRoomIndexData = ({ roomId, room = {}, timestamp }) => ({
     lastMessageAt: room.lastMessageAt || room.updatedAt || room.createdAt || timestamp,
     updatedAt: room.updatedAt || room.lastMessageAt || room.createdAt || timestamp,
     studentId: room.studentId || '',
+    parentId: room.parentId || '',
     parentUid: room.parentUid || '',
+    studentUid: room.studentUid || room.studentAuthUid || '',
     studentAuthUid: room.studentAuthUid || room.studentUid || '',
     staffAuthUid: room.staffAuthUid || '',
     teacherAuthUid: room.teacherAuthUid || '',
@@ -43,13 +45,13 @@ export const createRoomIfMissing = async ({ roomId, payload }) => {
     const roomRef = doc(db, 'chatRooms', roomId);
     const existing = await getDoc(roomRef);
     if (existing.exists()) {
-        log('existing room reused', { roomId });
+        log('existing room reused', { roomId, roomType: existing.data()?.roomType, channel: existing.data()?.channel, slot: existing.data()?.slot, studentId: existing.data()?.studentId, parentId: existing.data()?.parentId });
         return { id: roomId, ...existing.data(), created: false };
     }
     const timestamp = serverTimestamp();
     const roomPayload = { ...payload, createdAt: timestamp, updatedAt: timestamp };
     await setDoc(roomRef, roomPayload);
     await createUserChatRoomIndexes({ roomId, room: roomPayload, timestamp });
-    log('created room', { roomId, roomType: payload?.roomType, slot: payload?.slot });
+    log('created room', { roomId, role: String(payload?.roomType || '').startsWith('parent_') ? 'parent' : 'student', expectedRoomType: payload?.roomType, roomType: payload?.roomType, channel: payload?.channel, slot: payload?.slot, studentId: payload?.studentId, parentId: payload?.parentId, studentUid: payload?.studentUid, parentUid: payload?.parentUid });
     return { id: roomId, ...payload, created: true };
 };

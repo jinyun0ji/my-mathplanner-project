@@ -12,6 +12,27 @@ export const toDate = (value) => {
 export const getRoomType = (room) => normalizeText(room?.roomType || room?.channel);
 export const hasRoomTypeOrChannel = (room, expectedRoomType) => normalizeText(room?.roomType) === expectedRoomType || normalizeText(room?.channel) === expectedRoomType;
 
+export const getExpectedRoomType = (role, slotOrType) => {
+    const normalizedRole = normalizeText(role);
+    const normalized = normalizeText(slotOrType);
+    if (['student_institute', 'student_teacher', 'parent_institute', 'parent_teacher'].includes(normalized)) return normalized;
+    if (normalizedRole === 'student' && normalized === SLOTS.INSTITUTE) return 'student_institute';
+    if (normalizedRole === 'student' && normalized === SLOTS.TEACHER) return 'student_teacher';
+    if (normalizedRole === 'parent' && normalized === SLOTS.INSTITUTE) return 'parent_institute';
+    if (normalizedRole === 'parent' && normalized === SLOTS.TEACHER) return 'parent_teacher';
+    return '';
+};
+
+export const isStrictRoomTypeMatch = (room, expectedRoomType) => Boolean(expectedRoomType) && hasRoomTypeOrChannel(room, expectedRoomType);
+
+export const getRoomDebugInfo = (room) => ({
+    roomType: normalizeText(room?.roomType),
+    channel: normalizeText(room?.channel),
+    slot: normalizeText(room?.slot),
+    studentId: normalizeText(room?.studentId),
+    parentId: normalizeText(room?.parentId),
+});
+
 export const getRoomSlot = (room) => {
     const explicitSlot = normalizeText(room?.slot);
     if (explicitSlot) return explicitSlot;

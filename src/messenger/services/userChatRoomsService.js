@@ -1,7 +1,7 @@
 import { collection, doc, getDoc, getDocs, limit, onSnapshot, orderBy, query, where } from 'firebase/firestore';
 import { db } from '../../firebase/client';
 import { getLastMessagePreview } from './roomPreviewService';
-import { normalizeText } from '../utils/roomMatcher';
+import { isStrictRoomTypeMatch, normalizeText } from '../utils/roomMatcher';
 
 export const getUserChatRoomsQueryShape = (authUid) => ({ collection: `userChatRooms/${authUid}/rooms` });
 
@@ -105,9 +105,7 @@ export const fetchStudentFallbackRooms = async (authUid) => {
     const snap = await getDocs(query(collection(db, 'chatRooms'), where('studentId', '==', userDocId)));
     snap.docs.forEach((roomDoc) => collectRoom(roomsById, roomDoc));
     return sortRoomsByActivity(Array.from(roomsById.values()).filter((room) => {
-        const roomType = String(room?.roomType || room?.channel || '').trim();
-        const slot = String(room?.slot || '').trim();
-        const isStudentRoom = ['student_institute', 'student_teacher'].includes(roomType) || ['institute', 'teacher'].includes(slot);
+        const isStudentRoom = ['student_institute', 'student_teacher'].some((expectedType) => isStrictRoomTypeMatch(room, expectedType));
         const hasStudentIdentity = String(room?.studentId || '') === userDocId
             || String(room?.studentUid || '') === currentAuthUid
             || String(room?.studentAuthUid || '') === currentAuthUid
@@ -130,9 +128,7 @@ export const fetchParentFallbackRooms = async (authUid) => {
         studentSnap.docs.forEach((roomDoc) => collectRoom(roomsById, roomDoc));
     }
     return sortRoomsByActivity(Array.from(roomsById.values()).filter((room) => {
-        const roomType = String(room?.roomType || room?.channel || '').trim();
-        const slot = String(room?.slot || '').trim();
-        const isParentRoom = ['parent_institute', 'parent_teacher'].includes(roomType) || ['institute', 'teacher'].includes(slot);
+        const isParentRoom = ['parent_institute', 'parent_teacher'].some((expectedType) => isStrictRoomTypeMatch(room, expectedType));
         const roomParticipantIds = Array.isArray(room?.participantIds) ? room.participantIds.map(String) : [];
         const hasParentIdentity = String(room?.parentId || '') === parentDocId
             || candidateKeys.includes(String(room?.parentUid || ''))

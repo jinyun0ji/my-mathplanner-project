@@ -7,7 +7,7 @@ import { INSTITUTE_AUTH_UID, ROOM_TYPES, SLOTS, TEACHER_AUTH_UID } from '../../m
 import { getInstituteDisplayName, getTeacherDisplayName } from '../../messenger/services/displayNameService';
 import { getLastMessagePreview, getLastMessagePreviewCandidates } from '../../messenger/services/roomPreviewService';
 import { buildParentParticipantKeys } from '../../messenger/utils/participantKeys';
-import { getRoomSlot, hasRoomTypeOrChannel, sortRooms, toDate } from '../../messenger/utils/roomMatcher';
+import { getRoomDebugInfo, hasRoomTypeOrChannel, isStrictRoomTypeMatch, sortRooms, toDate } from '../../messenger/utils/roomMatcher';
 import { getUserChatRoomsQueryShape, subscribeUserChatRooms } from '../../messenger/services/userChatRoomsService';
 
 const getParticipantIds = (room) => (Array.isArray(room?.participantIds) ? room.participantIds.map(String) : []);
@@ -22,25 +22,48 @@ const hasViewerParticipant = (room, participantKeys = [], linkedUserDocId = '') 
 };
 
 
-const sameStudent = (room, studentId) => room?.__source === 'userChatRooms' || !room?.studentId || !studentId || String(room.studentId) === String(studentId);
+const sameStudent = (room, studentId) => !room?.studentId || !studentId || String(room.studentId) === String(studentId);
 
-const isParentTeacherRoom = (room, participantKeys, studentId, linkedUserDocId) => (
-    hasViewerParticipant(room, participantKeys, linkedUserDocId)
-    && sameStudent(room, studentId)
-    && !hasRoomTypeOrChannel(room, ROOM_TYPES.STUDENT_TEACHER)
-    && !hasRoomTypeOrChannel(room, ROOM_TYPES.STUDENT_INSTITUTE)
-    && (hasRoomTypeOrChannel(room, ROOM_TYPES.PARENT_TEACHER) || getRoomSlot(room) === SLOTS.TEACHER)
-    && hasTarget(room, TEACHER_AUTH_UID, ['teacherAuthUid', 'counterpartUid'])
-);
+const logParentRoomRejection = (room, expectedRoomType, reason, selectedRoomId = '') => {
+    if (process.env.NODE_ENV !== 'development') return;
+    console.log('[parent messenger] rejected room candidate', {
+        role: 'parent',
+        expectedRoomType,
+        selectedRoomId,
+        rejectedRoomId: room?.roomId || room?.id || '',
+        reason,
+        actual: getRoomDebugInfo(room),
+    });
+};
 
-const isParentInstituteRoom = (room, participantKeys, studentId, linkedUserDocId) => (
-    hasViewerParticipant(room, participantKeys, linkedUserDocId)
-    && sameStudent(room, studentId)
-    && !hasRoomTypeOrChannel(room, ROOM_TYPES.STUDENT_TEACHER)
-    && !hasRoomTypeOrChannel(room, ROOM_TYPES.STUDENT_INSTITUTE)
-    && (hasRoomTypeOrChannel(room, ROOM_TYPES.PARENT_INSTITUTE) || getRoomSlot(room) === SLOTS.INSTITUTE)
-    && hasTarget(room, INSTITUTE_AUTH_UID, ['staffAuthUid', 'counterpartUid'])
-);
+const isParentRoomOfType = (room, expectedRoomType, targetUid, targetFields, participantKeys, studentId, linkedUserDocId) => {
+    const selectedRoomId = String(room?.roomId || room?.id || '').trim();
+    if (!isStrictRoomTypeMatch(room, expectedRoomType)) {
+        logParentRoomRejection(room, expectedRoomType, 'roomType/channel mismatch', selectedRoomId);
+        return false;
+    }
+    if (hasRoomTypeOrChannel(room, ROOM_TYPES.STUDENT_TEACHER) || hasRoomTypeOrChannel(room, ROOM_TYPES.STUDENT_INSTITUTE)) {
+        logParentRoomRejection(room, expectedRoomType, 'student room type is not allowed for parent role', selectedRoomId);
+        return false;
+    }
+    if (!hasViewerParticipant(room, participantKeys, linkedUserDocId)) {
+        logParentRoomRejection(room, expectedRoomType, 'parent participant not found', selectedRoomId);
+        return false;
+    }
+    if (!sameStudent(room, studentId)) {
+        logParentRoomRejection(room, expectedRoomType, 'studentId mismatch', selectedRoomId);
+        return false;
+    }
+    if (!hasTarget(room, targetUid, targetFields)) {
+        logParentRoomRejection(room, expectedRoomType, 'target participant mismatch', selectedRoomId);
+        return false;
+    }
+    return true;
+};
+
+const isParentTeacherRoom = (room, participantKeys, studentId, linkedUserDocId) => isParentRoomOfType(room, ROOM_TYPES.PARENT_TEACHER, TEACHER_AUTH_UID, ['teacherAuthUid', 'counterpartUid'], participantKeys, studentId, linkedUserDocId);
+
+const isParentInstituteRoom = (room, participantKeys, studentId, linkedUserDocId) => isParentRoomOfType(room, ROOM_TYPES.PARENT_INSTITUTE, INSTITUTE_AUTH_UID, ['staffAuthUid', 'counterpartUid'], participantKeys, studentId, linkedUserDocId);
 
 export default function ParentMessengerPage({ studentId, student, onBack }) {
     const [selectedSlot, setSelectedSlot] = useState(null);
@@ -167,7 +190,8 @@ export default function ParentMessengerPage({ studentId, student, onBack }) {
                 roomIdFromIndex: String(slot.room?.roomId || ''),
                 roomDocId: String(slot.room?.id || ''),
                 slot: slot.slot,
-                roomType: slot.room?.roomType || slot.roomType || '',
+                expectedRoomType: slot.roomType,
+                actual: getRoomDebugInfo(slot.room),
             });
         }
         setSelectedSlot(slot);
