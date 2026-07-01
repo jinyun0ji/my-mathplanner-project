@@ -340,6 +340,10 @@ service cloud.firestore {
         );
     }
 
+    function isMyAuthOrProfileAlias(value) {
+      return value is string && hasMyLinkedUserAuthAlias(value);
+    }
+
     function canReadChatRoomViaStudentAliases(data) {
       return isStudent()
         && (
@@ -359,8 +363,12 @@ service cloud.firestore {
       return isParent()
         && (
           (('parentId' in data) && data.parentId == myProfileDocId())
+          || (('parentId' in data) && data.parentId == uid())
+          || (('parentUid' in data) && data.parentUid == myProfileDocId())
           || (('parentUid' in data) && hasMyLinkedUserAuthAlias(data.parentUid))
+          || (data.participantIds is list && myProfileDocId() in data.participantIds)
           || (('studentId' in data) && data.studentId in parentStudentUids())
+          || (('studentId' in data) && data.studentId in parentStudentIds())
         );
     }
 
@@ -470,14 +478,15 @@ service cloud.firestore {
     }
 
     function isAllowedChatRoomUpdateFieldSet() {
-      return request.resource.data.diff(resource.data).changedKeys()
-        .hasOnly(['updatedAt', 'updatedBy', 'lastMessageText', 'lastMessageAt', 'lastMessageSenderId', 'unreadCountByUser', 'status']);
+      return request.resource.data.diff(resource.data).affectedKeys()
+        .hasOnly(['updatedAt', 'updatedBy', 'lastMessageText', 'lastMessageAt', 'lastMessageSenderId', 'lastSenderId']);
     }
 
     function isValidDirectChatRoomPatch() {
       return isAllowedChatRoomUpdateFieldSet()
-        && request.resource.data.updatedBy == uid()
-        && request.resource.data.lastMessageSenderId == uid();
+        && (!('updatedBy' in request.resource.data) || isMyAuthOrProfileAlias(request.resource.data.updatedBy))
+        && (!('lastMessageSenderId' in request.resource.data) || isMyAuthOrProfileAlias(request.resource.data.lastMessageSenderId))
+        && (!('lastSenderId' in request.resource.data) || isMyAuthOrProfileAlias(request.resource.data.lastSenderId));
     }
 
     function isAllowedChatMessageCreateFields() {
@@ -527,7 +536,7 @@ service cloud.firestore {
     function isValidDirectChatMessageCreate(roomId) {
       return canAccessChatRoomById(roomId)
         && request.resource.data.roomId == roomId
-        && request.resource.data.senderId == uid()
+        && isMyAuthOrProfileAlias(request.resource.data.senderId)
         && request.resource.data.messageType in ['text', 'image', 'file']
         && request.resource.data.text is string
         && request.resource.data.text.size() <= 4000
@@ -866,7 +875,7 @@ service cloud.firestore {
       allow read: if canReadRoomMessages();
 
       allow create: if canReadRoomMessages()
-        && request.resource.data.senderId == uid()
+        && isMyAuthOrProfileAlias(request.resource.data.senderId)
         && request.resource.data.messageType in ['text', 'image', 'file']
         && request.resource.data.text is string
         && request.resource.data.text.size() <= 4000
