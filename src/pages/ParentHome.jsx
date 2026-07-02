@@ -746,6 +746,7 @@ export default function ParentHome({
     // 알림 관련
     const [isNotificationOpen, setIsNotificationOpen] = useState(false);
     const [isMessengerPage, setIsMessengerPage] = useState(false);
+    const [initialMessengerRoomId, setInitialMessengerRoomId] = useState('');
     const currentAuthUid = auth.currentUser?.uid || '';
 
     useEffect(() => {
@@ -806,10 +807,11 @@ export default function ParentHome({
         ? (currentParent?.authUid || currentParent?.uid || linkedParentDocId || userId || '')
         : (currentParent?.authUid || currentParent?.uid || linkedParentDocId || currentAuthUid || userId || '');
 
-    console.log('[parentNotificationUid]', {
-        authUid: auth.currentUser?.uid,
-        linkedParentDocId,
-        parentNotificationUid,
+    console.log('[notifications uid]', {
+        role: 'parent',
+        authUid: auth.currentUser?.uid || '',
+        linkedUserDocId: linkedParentDocId,
+        notificationViewerUid: parentNotificationUid,
     });
 
     const notificationViewerUid = parentNotificationUid;
@@ -1024,6 +1026,10 @@ export default function ParentHome({
     }, [visibleClassIds, activeChildId, parentAuthUid, visibleNotices, sortedVisibleNotices, userId, activeChild]);
 
     const handleNotificationClick = async (notification) => {
+        const refCollectionForLog = notification?.refCollection || (typeof notification?.ref === 'string' ? notification.ref.split('/').filter(Boolean)[0] : '');
+        const refIdForLog = notification?.refId || (typeof notification?.ref === 'string' ? notification.ref.split('/').filter(Boolean)[1] : '');
+        const roomIdForLog = notification?.roomId || notification?.chatRoomId || notification?.payload?.roomId || (['chatRooms', 'chats'].includes(refCollectionForLog) ? refIdForLog : '');
+        console.log('[notification click]', { notificationId: notification?.id, refCollection: refCollectionForLog, refId: refIdForLog, roomId: roomIdForLog });
         if (isMasterPreview || readOnly) {
             showMasterViewUnavailable('알림');
             return;
@@ -1079,6 +1085,8 @@ export default function ParentHome({
 
                 if (refCollection === 'chats' || refCollection === 'chatRooms') {
                     if (isMasterPreview || readOnly) return;
+                    const roomId = notification?.roomId || notification?.chatRoomId || notification?.payload?.roomId || refId;
+                    setInitialMessengerRoomId(roomId ? String(roomId) : '');
                     setIsMessengerPage(true);
                     return;
                 }
@@ -1286,6 +1294,7 @@ export default function ParentHome({
                 student={activeChild}
                 ongoingClasses={ongoingClasses}
                 notificationViewerUid={parentNotificationUid}
+                initialRoomId={initialMessengerRoomId}
                 notifications={notifications}
                 setNotifications={setNotifications}
                 onBack={() => setIsMessengerPage(false)}

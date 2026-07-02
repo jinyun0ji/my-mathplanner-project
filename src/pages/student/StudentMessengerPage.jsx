@@ -12,7 +12,7 @@ import { markChatRoomNotificationsRead } from '../../notifications/notificationR
 
 const getExpectedRoomType = (slot) => (slot === SLOTS.INSTITUTE ? ROOM_TYPES.STUDENT_INSTITUTE : ROOM_TYPES.STUDENT_TEACHER);
 
-export default function StudentMessengerPage({ studentId, student, onBack, notificationViewerUid = '', notifications = [], setNotifications = null }) {
+export default function StudentMessengerPage({ studentId, student, onBack, notificationViewerUid = '', initialRoomId = '', notifications = [], setNotifications = null }) {
     const [selectedSlot, setSelectedSlot] = useState(null);
     const authUid = String(auth.currentUser?.uid || '');
     const studentWithId = useMemo(() => ({ ...student, id: student?.id || studentId }), [student, studentId]);
@@ -52,6 +52,14 @@ export default function StudentMessengerPage({ studentId, student, onBack, notif
             });
         });
     }, [messengerSlots, activeStudentId, participantKeyCandidates, rooms]);
+
+    useEffect(() => {
+        const normalizedInitialRoomId = String(initialRoomId || '').trim();
+        if (!normalizedInitialRoomId || selectedSlot) return;
+        const targetSlot = messengerSlots.find((slot) => String(slot.room?.roomId || slot.room?.id || '').trim() === normalizedInitialRoomId);
+        if (targetSlot) handleOpenRoom(targetSlot);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [initialRoomId, messengerSlots, selectedSlot]);
 
     const handleOpenRoom = (slot) => {
         const selectedRoomId = String(slot.room?.roomId || slot.room?.id || '').trim();

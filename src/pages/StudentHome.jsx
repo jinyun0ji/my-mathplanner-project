@@ -1,5 +1,6 @@
 // src/pages/StudentHome.jsx
 import React, {useState, useMemo, useEffect, useCallback} from 'react';
+import { doc, getDoc } from 'firebase/firestore';
 import { useSearchParams } from 'react-router-dom';
 import {
     DashboardTab, ClassTab, ScheduleTab, LearningTab, MenuTab,
@@ -21,6 +22,7 @@ import NotificationList from '../notifications/NotificationList';
 import openNotification from '../notifications/openNotification';
 import { markAllNotificationsRead, markNotificationRead } from '../notifications/notificationReadActions';
 import { FEATURES } from '../config/features';
+import { auth, db } from '../firebase/client';
 import FormulaBookView from '../components/Student/formulaBook/FormulaBookView';
 
 const normalizeClassStatus = (value) => {
@@ -309,8 +311,33 @@ export default function StudentHome({
     const [visibleNotices, setVisibleNotices] = useState([]);
     const [targetMemo, setTargetMemo] = useState(null);
     const [isMessengerPage, setIsMessengerPage] = useState(false);
+    const [linkedUserDocId, setLinkedUserDocId] = useState('');
+    const [initialMessengerRoomId, setInitialMessengerRoomId] = useState('');
     const isMasterPreview = Boolean(masterView);
-    const viewerUid = isMasterPreview ? (masterViewStudentAuthUid || student?.authUid || userId) : (student?.authUid || userId);
+    const authUid = auth.currentUser?.uid || '';
+    useEffect(() => {
+        if (!authUid || !db) {
+            setLinkedUserDocId('');
+            return undefined;
+        }
+        let isMounted = true;
+        getDoc(doc(db, 'userAuthIndex', authUid))
+            .then((snapshot) => {
+                if (!isMounted) return;
+                const userDocId = snapshot.exists() ? snapshot.data()?.userDocId : '';
+                setLinkedUserDocId(userDocId ? String(userDocId).trim() : '');
+            })
+            .catch((error) => {
+                if (!isMounted) return;
+                console.warn('[student auth index] failed to load linked student doc id', error);
+                setLinkedUserDocId('');
+            });
+        return () => { isMounted = false; };
+    }, [authUid]);
+    const notificationViewerUid = isMasterPreview
+        ? (masterViewStudentAuthUid || student?.authUid || userId || '')
+        : (student?.authUid || linkedUserDocId || authUid || userId || '');
+    const viewerUid = notificationViewerUid;
     const studentDocId = isMasterPreview ? (masterViewStudentId || studentId) : studentId;
     const studentAuthUid = isMasterPreview ? (masterViewStudentAuthUid || student?.authUid || userId) : (student?.authUid || userId);
     const showMasterViewUnavailable = useCallback((featureName) => {
@@ -458,7 +485,16 @@ export default function StudentHome({
         return list.filter((item) => !shouldHideTodayItemByExit(item, studentClassExitMap));
     }, [todayItems, studentClassExitMap]);
 
-    const { notifications, hasUnread, unreadCount, lastReadAt, isLoading, isMetaLoading, setNotifications } = useNotifications(viewerUid);
+    useEffect(() => {
+        console.log('[notifications uid]', {
+            role: 'student',
+            authUid,
+            linkedUserDocId,
+            notificationViewerUid,
+        });
+    }, [authUid, linkedUserDocId, notificationViewerUid]);
+
+    const { notifications, hasUnread, unreadCount, lastReadAt, isLoading, isMetaLoading, setNotifications } = useNotifications(notificationViewerUid);
 
     const { ongoing: ongoingClasses } = useMemo(() => {
         const sorted = sortClassesByStatus(myClasses);
@@ -515,6 +551,10 @@ export default function StudentHome({
 
     const handleNotificationClick = async (notification) => {
         if (!notification) return;
+        const refCollectionForLog = notification?.refCollection || (typeof notification?.ref === 'string' ? notification.ref.split('/').filter(Boolean)[0] : '');
+        const refIdForLog = notification?.refId || (typeof notification?.ref === 'string' ? notification.ref.split('/').filter(Boolean)[1] : '');
+        const roomIdForLog = notification?.roomId || notification?.chatRoomId || notification?.payload?.roomId || (['chatRooms', 'chats'].includes(refCollectionForLog) ? refIdForLog : '');
+        console.log('[notification click]', { notificationId: notification.id, refCollection: refCollectionForLog, refId: refIdForLog, roomId: roomIdForLog });
         if (!isMasterPreview && !readOnly) {
             try {
                 await markNotificationRead({ viewerUid, notificationId: notification.id, setNotifications });
@@ -539,6 +579,8 @@ export default function StudentHome({
 
                 if (refCollection === 'chats' || refCollection === 'chatRooms') {
                     if (isMasterPreview || readOnly) return;
+                    const roomId = notification?.roomId || notification?.chatRoomId || notification?.payload?.roomId || refId;
+                    setInitialMessengerRoomId(roomId ? String(roomId) : '');
                     setSelectedClassId(null);
                     setActiveTab('menu');
                     setIsMessengerPage(true);
@@ -589,7 +631,8 @@ export default function StudentHome({
             <StudentMessengerPage
                 studentId={studentId}
                 student={student}
-                notificationViewerUid={viewerUid}
+                notificationViewerUid={notificationViewerUid}
+                initialRoomId={initialMessengerRoomId}
                 notifications={notifications}
                 setNotifications={setNotifications}
                 onBack={() => setIsMessengerPage(false)}

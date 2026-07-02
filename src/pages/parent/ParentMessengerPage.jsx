@@ -103,7 +103,7 @@ const isParentTeacherRoom = (room, participantKeys, studentId, linkedUserDocId) 
 
 const isParentInstituteRoom = (room, participantKeys, studentId, linkedUserDocId) => isParentRoomOfType(room, ROOM_TYPES.PARENT_INSTITUTE, INSTITUTE_AUTH_UID, ['staffAuthUid', 'counterpartUid'], participantKeys, studentId, linkedUserDocId);
 
-export default function ParentMessengerPage({ studentId, student, onBack, notificationViewerUid = '', notifications = [], setNotifications = null }) {
+export default function ParentMessengerPage({ studentId, student, onBack, notificationViewerUid = '', initialRoomId = '', notifications = [], setNotifications = null }) {
     const [selectedSlot, setSelectedSlot] = useState(null);
     const [rooms, setRooms] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -231,6 +231,14 @@ export default function ParentMessengerPage({ studentId, student, onBack, notifi
             rejectedBySlot,
         });
     }, [authUid, linkedParent.userDocId, participantKeys, rooms.length, teacherRoom, instituteRoom, messengerSlots]);
+
+    useEffect(() => {
+        const normalizedInitialRoomId = String(initialRoomId || '').trim();
+        if (!normalizedInitialRoomId || selectedSlot) return;
+        const targetSlot = messengerSlots.find((slot) => String(slot.room?.roomId || slot.room?.id || '').trim() === normalizedInitialRoomId);
+        if (targetSlot) handleOpenRoom(targetSlot);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [initialRoomId, messengerSlots, selectedSlot]);
 
     const handleOpenRoom = (slot) => {
         const selectedRoomId = String(slot.room?.roomId || slot.room?.id || '').trim();

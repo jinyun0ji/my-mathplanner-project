@@ -18,6 +18,7 @@ export const markNotificationRead = async ({ viewerUid, notificationId, function
     }
 
     const callable = httpsCallable(functions, 'markNotificationRead');
+    console.log('[notification read]', { viewerUid: normalizedViewerUid, notificationId: normalizedNotificationId });
     await callable({ viewerUid: normalizedViewerUid, notificationId: normalizedNotificationId });
     return true;
 };
@@ -44,17 +45,31 @@ export const getChatNotificationRoomId = (notification) => {
     if (collection === 'chatRooms' || collection === 'chats') {
         return normalizeId(notification?.refId);
     }
-    return normalizeId(notification?.roomId || notification?.chatRoomId);
+    return normalizeId(notification?.roomId || notification?.chatRoomId || notification?.payload?.roomId || notification?.payload?.chatRoomId);
 };
 
 export const markChatRoomNotificationsRead = async ({ viewerUid, roomId, notifications = [], functions = firebaseFunctions, setNotifications = null }) => {
+    const normalizedViewerUid = normalizeId(viewerUid);
     const normalizedRoomId = normalizeId(roomId);
-    if (!normalizeId(viewerUid) || !normalizedRoomId) return 0;
+    if (!normalizedViewerUid || !normalizedRoomId) return 0;
+
+    console.log('[chat notification read]', { viewerUid: normalizedViewerUid, roomId: normalizedRoomId });
 
     const targets = (Array.isArray(notifications) ? notifications : [])
         .filter((item) => item?.isRead !== true && !item?.readAt)
         .filter((item) => getChatNotificationRoomId(item) === normalizedRoomId);
 
-    await Promise.all(targets.map((item) => markNotificationRead({ viewerUid, notificationId: item.id, functions, setNotifications })));
-    return targets.length;
+    if (setNotifications && targets.length > 0) {
+        const targetIds = new Set(targets.map((item) => String(item.id || '')));
+        const now = new Date();
+        setNotifications((prev) => prev.map((item) => (
+            targetIds.has(String(item.id || ''))
+                ? { ...item, isRead: true, readAt: item.readAt || now }
+                : item
+        )));
+    }
+
+    const callable = httpsCallable(functions, 'markChatRoomNotificationsRead');
+    const result = await callable({ viewerUid: normalizedViewerUid, roomId: normalizedRoomId });
+    return result?.data?.updated ?? targets.length;
 };
