@@ -186,9 +186,9 @@ export const fetchRoomsForIndexes = async (indexes = [], context = {}) => {
             const roomSnap = await getDoc(doc(db, 'chatRooms', roomId));
             if (!roomSnap.exists()) return mergeRoomWithIndex({ id: roomId }, index);
             return mergeRoomWithIndex({ id: roomSnap.id, ...roomSnap.data() }, index);
-        } catch (error) {
-            console.warn('[resolver] chatRooms hydration skipped unreadable room', {
-                stage: 'chatRooms_hydration',
+        }  catch (error) {
+            console.warn('[resolver] skip unreadable chatRoom index', {
+                stage: 'chatRooms_hydration_room',
                 role,
                 authUid,
                 roomId,
