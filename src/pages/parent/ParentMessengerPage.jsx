@@ -31,11 +31,12 @@ const hasLinkedParent = (room, linkedUserDocId) => {
         || String(room?.parentUid || '') === parentDocId
         || getParticipantIds(room).includes(parentDocId);
 };
-const isLegacyTeacherParentShape = (room) => ['teacher'].some((teacherType) => (
-    String(room?.slot || '') === teacherType
-    || String(room?.channel || '') === teacherType
-    || String(room?.roomType || '') === teacherType
-));
+const isTeacherRoomShape = (room) => (
+    String(room?.slot || '') === 'teacher'
+    || String(room?.channel || '') === 'teacher'
+    || String(room?.roomType || '') === 'teacher'
+    || String(room?.roomType || '') === ROOM_TYPES.PARENT_TEACHER
+);
 
 const logParentRoomRejection = (room, expectedRoomType, reason, selectedRoomId = '') => {
     if (process.env.NODE_ENV !== 'development') return;
@@ -78,24 +79,25 @@ const isParentRoomOfType = (room, expectedRoomType, targetUid, targetFields, par
 };
 
 const isParentTeacherRoom = (room, participantKeys, studentId, linkedUserDocId) => {
-    if (isLegacyTeacherParentShape(room)) {
-        const selectedRoomId = getRoomId(room);
-        if (room?.__unreadableRoom && selectedRoomId) return true;
-        if (!hasTarget(room, TEACHER_AUTH_UID, ['teacherAuthUid', 'counterpartUid'])) {
-            logParentRoomRejection(room, ROOM_TYPES.PARENT_TEACHER, 'legacy teacher target participant mismatch', selectedRoomId);
-            return false;
-        }
-        if (!hasLinkedParent(room, linkedUserDocId)) {
-            logParentRoomRejection(room, ROOM_TYPES.PARENT_TEACHER, 'legacy teacher linked parent not found', selectedRoomId);
-            return false;
-        }
-        if (!hasExactStudent(room, studentId)) {
-            logParentRoomRejection(room, ROOM_TYPES.PARENT_TEACHER, 'legacy teacher studentId mismatch', selectedRoomId);
-            return false;
-        }
-        return true;
+    const selectedRoomId = getRoomId(room);
+    if (room?.__unreadableRoom && selectedRoomId) return true;
+    if (!isTeacherRoomShape(room)) {
+        logParentRoomRejection(room, ROOM_TYPES.PARENT_TEACHER, 'teacher room shape mismatch', selectedRoomId);
+        return false;
     }
-    return isParentRoomOfType(room, ROOM_TYPES.PARENT_TEACHER, TEACHER_AUTH_UID, ['teacherAuthUid', 'counterpartUid'], participantKeys, studentId, linkedUserDocId);
+    if (!hasTarget(room, TEACHER_AUTH_UID, ['teacherAuthUid', 'counterpartUid'])) {
+        logParentRoomRejection(room, ROOM_TYPES.PARENT_TEACHER, 'teacher target participant mismatch', selectedRoomId);
+        return false;
+    }
+    if (!hasLinkedParent(room, linkedUserDocId)) {
+        logParentRoomRejection(room, ROOM_TYPES.PARENT_TEACHER, 'linked parent not found', selectedRoomId);
+        return false;
+    }
+    if (!hasExactStudent(room, studentId)) {
+        logParentRoomRejection(room, ROOM_TYPES.PARENT_TEACHER, 'studentId mismatch', selectedRoomId);
+        return false;
+    }
+    return true;
 };
 
 const isParentInstituteRoom = (room, participantKeys, studentId, linkedUserDocId) => isParentRoomOfType(room, ROOM_TYPES.PARENT_INSTITUTE, INSTITUTE_AUTH_UID, ['staffAuthUid', 'counterpartUid'], participantKeys, studentId, linkedUserDocId);
@@ -250,6 +252,23 @@ export default function ParentMessengerPage({ studentId, student, onBack }) {
                 expectedRoomType: slot.roomType,
                 actual: getRoomDebugInfo(slot.room),
             });
+            if (slot.slot === SLOTS.TEACHER) {
+                const allowLegacyResolve = !selectedRoomId;
+                console.log('[parent messenger] teacher room click', {
+                    slot: slot.slot,
+                    currentRoomId: selectedRoomId,
+                    selectedRoomId,
+                    'room.id': String(slot.room?.id || ''),
+                    'room.roomId': String(slot.room?.roomId || ''),
+                    'room.channel': String(slot.room?.channel || ''),
+                    'room.roomType': String(slot.room?.roomType || ''),
+                    'room.slot': String(slot.room?.slot || ''),
+                    parentId: String(slot.room?.parentId || ''),
+                    parentUid: String(slot.room?.parentUid || ''),
+                    participantIds: getParticipantIds(slot.room),
+                    allowLegacyResolve,
+                });
+            }
         }
         setSelectedSlot(slot);
     };

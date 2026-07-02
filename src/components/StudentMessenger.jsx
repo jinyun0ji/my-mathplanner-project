@@ -153,10 +153,6 @@ const isResolvedRoomCandidate = (room, { viewerUid, targetAuthUid, roomType, stu
 };
 
 
-const validateSelectedRoomForSubscription = (room, expectedRoomType, { viewerUid = '', targetAuthUid = '', studentId = '', participantKeys = [] } = {}) => (
-    isResolvedRoomCandidate(room, { viewerUid, targetAuthUid, roomType: expectedRoomType, studentId, participantKeys })
-);
-
 const resolveChatRoom = async ({ viewerUid, targetAuthUid, roomType, studentId = '', participantKeys = [] }) => {
     const authUid = String(auth.currentUser?.uid || viewerUid || '').trim();
     if (!authUid || !targetAuthUid || !roomType) return null;
@@ -391,33 +387,12 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
             const selectedId = String(selectedRoomId).trim();
             setMessages([]);
             setOptimisticMessages([]);
-            if (process.env.NODE_ENV === 'development') console.log('[StudentMessenger] selected room id', { role: userRole, expectedRoomType, selectedRoomId: selectedId });
-            getDoc(doc(db, 'chatRooms', selectedId)).then(async (selectedSnap) => {
-                if (cancelled) return;
-                const selectedRoom = selectedSnap.exists() ? { id: selectedSnap.id, ...selectedSnap.data() } : null;
-                const actual = getRoomDebugInfo(selectedRoom);
-                const validationPassed = validateSelectedRoomForSubscription(selectedRoom, expectedRoomType, { viewerUid, targetAuthUid, studentId, participantKeys: roomStudentParticipantKeys });
-                logRoomResolutionDebug('selected room validation', {
-                    role: userRole,
-                    selectedRoomId: selectedId,
-                    expectedRoomType,
-                    actual,
-                    validation: validationPassed ? 'passed' : 'failed',
-                    validationPassed,
-                    messagesPath: `chatRooms/${selectedId}/messages`,
-                    subscribeStarted: validationPassed,
-                });
-                if (validationPassed) {
-                    logRoomResolutionDebug('final resolved room', { role: userRole, expectedRoomType, selectedRoomId: selectedId, finalRoomId: selectedId, actual, validation: 'passed' });
-                    setRoomId(selectedId);
-                    return;
-                }
-                logRoomResolutionDebug('rejected selected room', { role: userRole, expectedRoomType, selectedRoomId: selectedId, rejectedRoomId: selectedId, reason: selectedRoom ? 'selected room type/channel/slot validation failed' : 'selected room not found', actual, validation: 'failed', messagesPath: `chatRooms/${selectedId}/messages`, subscribeStarted: false });
-                if (!viewerUid || !targetAuthUid || !expectedRoomType) return;
-                logRoomResolutionDebug('selected room rejected; skipping legacy resolve', { role: userRole, expectedRoomType, selectedRoomId: selectedId, activeStudentId: studentId });
-            }).catch((selectedError) => {
-                logFirestoreQueryFailure('validate selected room', selectedError, { doc: ['chatRooms', selectedId], expectedRoomType });
-            });
+            setError('');
+            if (process.env.NODE_ENV === 'development') {
+                console.log('[StudentMessenger] selected room id', { role: userRole, expectedRoomType, selectedRoomId: selectedId, resolveChatRoomSkipped: true, fallbackQuerySkipped: true });
+                logRoomResolutionDebug('final resolved room', { role: userRole, expectedRoomType, selectedRoomId: selectedId, finalRoomId: selectedId, validation: 'skipped for explicit selectedRoomId', messagesPath: `chatRooms/${selectedId}/messages`, subscribeStarted: true });
+            }
+            setRoomId(selectedId);
             return () => { cancelled = true; };
         }
 
@@ -560,7 +535,7 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
         if (!resolvedRoomId && selectedRoomId) {
             logRoomResolutionDebug('selected room unavailable at send time', { role: userRole, expectedRoomType, selectedRoomId: String(selectedRoomId), reason: 'validated roomId is empty' });
         }
-        if (!resolvedRoomId && canCreateChatRoom) {
+        if (!resolvedRoomId && canCreateChatRoom && !selectedRoomId) {
             const existingRoom = await resolveChatRoom({
                 viewerUid,
                 targetAuthUid: targetAuthUidForRoom,

@@ -213,14 +213,15 @@ export const subscribeUserChatRooms = ({ authUid, role = '', onNext, onError }) 
                 console.log('[resolver] userChatRooms snapshot', { role, authUid, count: snap.docs.length, ids: snap.docs.map((docSnap) => docSnap.id) });
             }
             const indexes = snap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
-            const indexOnlyRooms = indexes.map((index) => mergeRoomWithIndex({
-                id: index.roomId || index.id,
-                roomId: index.roomId || index.id,
-            }, index));
+            const indexOnlyRooms = sortRoomsByActivity(
+                indexes.map((index) => mergeRoomWithIndex(
+                    { id: index.roomId || index.id, roomId: index.roomId || index.id },
+                    index
+                ))
+            );
             if (indexOnlyRooms.length > 0) {
-                const sortedIndexOnlyRooms = sortRoomsByActivity(indexOnlyRooms);
-                logMobileRoomPreviewDebug({ role, authUid, rooms: sortedIndexOnlyRooms, source: 'userChatRooms', indexes });
-                onNext(sortedIndexOnlyRooms, indexes);
+                logMobileRoomPreviewDebug({ role, authUid, rooms: indexOnlyRooms, source: 'userChatRooms', indexes });
+                onNext(indexOnlyRooms, indexes);
             }
             if (process.env.NODE_ENV === 'development') {
                 console.log('[resolver] hydrating chatRooms from userChatRooms indexes', { role, authUid, count: indexes.length });
@@ -238,31 +239,40 @@ export const subscribeUserChatRooms = ({ authUid, role = '', onNext, onError }) 
                 });
                 indexedRooms = indexOnlyRooms;
             }
-            let fallbackRoomsForRole = [];
-            try {
-                fallbackRoomsForRole = role === 'parent'
-                    ? await fetchParentFallbackRooms(authUid)
-                    : role === 'student'
-                        ? await fetchStudentFallbackRooms(authUid)
-                        : [];
-            } catch (fallbackError) {
-                console.warn('[resolver] fallback room query skipped', {
-                    stage: 'chatRooms_fallback_query',
-                    role,
-                    authUid,
-                    code: fallbackError?.code,
-                    message: fallbackError?.message,
-                });
-                fallbackRoomsForRole = [];
-            }
-            const roomsForRole = role === 'staff' ? indexedRooms : mergeRoomsById(indexedRooms, fallbackRoomsForRole);
-            if (role === 'staff' || roomsForRole.length > 0) {
+            const emitRooms = (roomsForRole) => {
                 if (process.env.NODE_ENV === 'development') {
                     console.log('[resolver] room list count', { role, authUid, count: roomsForRole.length });
                     console.log('[resolver] rooms missing lastMessageText count', { role, authUid, count: roomsForRole.filter((room) => !room?.lastMessageText).length });
                 }
                 logMobileRoomPreviewDebug({ role, authUid, rooms: roomsForRole, source: 'userChatRooms', indexes });
                 onNext(roomsForRole, indexes);
+            };
+            const loadFallbackRoomsForRole = async () => {
+                try {
+                    return role === 'parent'
+                        ? await fetchParentFallbackRooms(authUid)
+                        : role === 'student'
+                            ? await fetchStudentFallbackRooms(authUid)
+                            : [];
+                } catch (fallbackError) {
+                    console.warn('[resolver] fallback room query skipped', {
+                        stage: 'chatRooms_fallback_query',
+                        role,
+                        authUid,
+                        code: fallbackError?.code,
+                        message: fallbackError?.message,
+                    });
+                    return [];
+                }
+            };
+            if (role === 'staff' || indexedRooms.length > 0) {
+                emitRooms(role === 'staff' ? indexedRooms : mergeRoomsById(indexedRooms, []));
+                if ((role === 'parent' || role === 'student') && indexes.length > 0) {
+                    setTimeout(async () => {
+                        const fallbackRoomsForRole = await loadFallbackRoomsForRole();
+                        if (fallbackRoomsForRole.length > 0) emitRooms(mergeRoomsById(indexedRooms, fallbackRoomsForRole));
+                    }, 0);
+                }
                 return;
             }
             if (process.env.NODE_ENV === 'development') {
