@@ -3,6 +3,7 @@ import { resolveHomeworkAssignmentTitle } from '../domain/homework/homework.serv
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { ScheduleTab } from '../components/StudentTabs';
+import { doc, getDoc } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import ParentClassroomView from './parent/ParentClassroomView';
 import {
@@ -27,7 +28,7 @@ import openNotification from '../notifications/openNotification';
 import { useParentContext } from '../parent';
 import { sortClassesByStatus, getViewerVisibleClassIds } from '../utils/classStatus';
 import { formatNoticeDate, getNoticeDateValue, getNoticePreviewText, sortNoticesForDisplay } from '../utils/notices';
-import { auth, functions } from '../firebase/client';
+import { auth, db, functions } from '../firebase/client';
 import { formatStudentScore, formatTestStatsInline, getTestStatsForDisplay } from '../utils/scoreDisplay';
 import { getViewerTodayClassItems, toLocalYmd } from '../utils/viewerTodaySchedule';
 import { FEATURES } from '../config/features';
@@ -502,6 +503,7 @@ export default function ParentHome({
     // 1. 자녀 데이터 및 선택 로직
     const initialStudent = students.find(s => s.id === activeStudentId);
     const [activeChildId, setActiveChildId] = useState(activeStudentId);
+    const [linkedParentDocId, setLinkedParentDocId] = useState('');
     const pendingStudentSwitchRef = useRef(null);
     const activeChild = students.find(s => s.id === activeChildId) || initialStudent;
     const activeChildName = activeChild?.name || '학생';
@@ -744,6 +746,32 @@ export default function ParentHome({
     // 알림 관련
     const [isNotificationOpen, setIsNotificationOpen] = useState(false);
     const [isMessengerPage, setIsMessengerPage] = useState(false);
+    const currentAuthUid = auth.currentUser?.uid || '';
+
+    useEffect(() => {
+        if (!currentAuthUid || !db) {
+            setLinkedParentDocId('');
+            return undefined;
+        }
+
+        let isMounted = true;
+
+        getDoc(doc(db, 'userAuthIndex', currentAuthUid))
+            .then((snapshot) => {
+                if (!isMounted) return;
+                const userDocId = snapshot.exists() ? snapshot.data()?.userDocId : '';
+                setLinkedParentDocId(userDocId ? String(userDocId).trim() : '');
+            })
+            .catch((error) => {
+                if (!isMounted) return;
+                console.warn('[parent auth index] failed to load linked parent doc id', error);
+                setLinkedParentDocId('');
+            });
+
+        return () => {
+            isMounted = false;
+        };
+    }, [currentAuthUid]);
 
     useEffect(() => {
         if (activeTab === 'more') {
@@ -757,7 +785,7 @@ export default function ParentHome({
 
     const currentParent = useMemo(() => {
         const currentUser = auth.currentUser;
-        const identifiers = [userId, currentUser?.uid, currentUser?.email]
+        const identifiers = [userId, currentUser?.uid, currentUser?.email, linkedParentDocId]
             .filter(Boolean)
             .map((value) => String(value).trim().toLowerCase())
             .filter(Boolean);
@@ -772,11 +800,23 @@ export default function ParentHome({
 
             return parentIdentifiers.some((value) => identifiers.includes(value));
         }) || null;
-    }, [parents, userId]);
+    }, [parents, userId, linkedParentDocId]);
 
     const parentNotificationUid = isMasterPreview
-        ? (currentParent?.authUid || currentParent?.uid || userId || '')
-        : (currentParent?.authUid || currentParent?.uid || auth.currentUser?.uid || userId || '');
+        ? (currentParent?.authUid || currentParent?.uid || linkedParentDocId || userId || '')
+        : (currentParent?.authUid || currentParent?.uid || linkedParentDocId || currentAuthUid || userId || '');
+
+    console.log('[parent notifications uid]', {
+        authUid: currentAuthUid,
+        userId,
+        linkedParentDocId,
+        currentParentId: currentParent?.id || '',
+        currentParentAuthUid: currentParent?.authUid || '',
+        currentParentUid: currentParent?.uid || '',
+        parentNotificationUid,
+        path: parentNotificationUid ? `notifications/${parentNotificationUid}/items` : '',
+    });
+
     const notificationViewerUid = parentNotificationUid;
 
     const { notifications, hasUnread, unreadCount, lastReadAt, isLoading, isMetaLoading, setNotifications } = useNotifications(notificationViewerUid, 20, {

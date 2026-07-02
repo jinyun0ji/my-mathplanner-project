@@ -98,7 +98,7 @@ export default function useNotifications(uid, maxItems = DEFAULT_LIMIT, options 
             return undefined;
         }
 
-        console.log('[notifications] subscribe', {
+        console.log('[notifications] subscribe path', {
             uid: normalizedUid,
             viewerRole,
             unreadOnly,
