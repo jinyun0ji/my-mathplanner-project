@@ -1,79 +1,8 @@
 diff --git a/src/messenger/services/userChatRoomsService.js b/src/messenger/services/userChatRoomsService.js
-index a42cdb4b5e022bb2d23a158b07da89d89063a022..ebddbdf18f1d8b51a412b80c066833b2eec2dc32 100644
+index 130e3daeee5e9625a06ee61b6a2a0ae5a39b0c55..05ee5ac4c4b2d58a67010214e8c4db8359506639 100644
 --- a/src/messenger/services/userChatRoomsService.js
 +++ b/src/messenger/services/userChatRoomsService.js
-@@ -78,50 +78,61 @@ const mergeRoomsById = (primaryRooms = [], fallbackRooms = []) => {
-         if (id) roomsById.set(id, room);
-     });
-     return sortRoomsByActivity(Array.from(roomsById.values()));
- };
- 
- const enrichRoomWithLatestMessagePreview = async (room) => {
-     if (!room?.id || hasRoomPreview(room)) return room;
-     try {
-         const latestSnap = await getDocs(query(collection(db, 'chatRooms', room.id, 'messages'), orderBy('createdAt', 'desc'), limit(1)));
-         const latestDoc = latestSnap.docs[0];
-         if (!latestDoc) return room;
-         const message = latestDoc.data() || {};
-         return {
-             ...room,
-             __previewText: readMessagePreview(message),
-             __previewAt: message.createdAt || message.updatedAt || null,
-         };
-     } catch (error) {
-         if (process.env.NODE_ENV === 'development') console.warn('[mobile messenger room preview debug] latest message preview query failed', { roomId: room.id, code: error?.code, message: error?.message });
-         return room;
-     }
- };
- 
- const enrichRoomsWithLatestMessagePreviews = async (rooms = []) => Promise.all(rooms.map(enrichRoomWithLatestMessagePreview));
- 
-+const withErrorStage = (error, stage, context = {}) => Object.assign(
-+    error instanceof Error ? error : new Error(String(error || 'Unknown error')),
-+    {
-+        stage: error?.stage || stage,
-+        context: {
-+            ...(error?.context || {}),
-+            ...context,
-+        },
-+    }
-+);
-+
- const logMobileRoomPreviewDebug = ({ role, authUid, rooms = [], source, indexes = [] }) => {
-     if (process.env.NODE_ENV !== 'development') return;
-     const indexSourceByRoomId = new Map(indexes.map((index) => [String(index?.roomId || index?.id || ''), 'userChatRooms']));
-     rooms.forEach((room) => {
-         console.log('[mobile messenger room preview debug]', {
-             role,
-             authUid,
-             roomId: room?.id || room?.roomId || '',
-             title: room?.title || room?.name || room?.roomName || room?.displayName || '',
-             keys: Object.keys(room || {}),
-             lastMessageText: room?.lastMessageText,
-             lastMessage: room?.lastMessage,
-             lastMessageAt: room?.lastMessageAt,
-             previewText: room?.previewText,
-             latestMessageText: room?.latestMessageText,
-             lastMessagePreview: room?.lastMessagePreview,
-             source: room?.source || room?.__source || indexSourceByRoomId.get(String(room?.id || room?.roomId || '')) || source,
-             dataPathSource: (room?.__source || source) === 'userChatRooms' ? 'userChatRooms' : 'chatRooms fallback',
-             __previewText: room?.__previewText,
-             __previewAt: room?.__previewAt,
-         });
-     });
- };
- 
- 
-@@ -144,76 +155,122 @@ export const fetchStudentFallbackRooms = async (authUid) => {
- };
- 
- export const fetchParentFallbackRooms = async (authUid) => {
-     const { authUid: currentAuthUid, userDocId: parentDocId, profile } = await getUserProfileForAuthUid(authUid);
-     if (!currentAuthUid || !parentDocId) return [];
-     const studentIds = Array.isArray(profile.studentIds) ? profile.studentIds.map(String).filter(Boolean).slice(0, 10) : [];
-     const candidateKeys = uniqueStrings([currentAuthUid, parentDocId, profile.authUid, profile.userUid, profile.uid, profile.parentUid, profile.studentAuthUid]);
-     const roomsById = new Map();
-     const parentSnap = await getDocs(query(collection(db, 'chatRooms'), where('parentId', '==', parentDocId)));
+@@ -164,97 +164,124 @@ export const fetchParentFallbackRooms = async (authUid) => {
      parentSnap.docs.forEach((roomDoc) => collectRoom(roomsById, roomDoc));
      if (studentIds.length > 0) {
          const studentSnap = await getDocs(query(collection(db, 'chatRooms'), where('studentId', 'in', studentIds)));
@@ -90,31 +19,32 @@ index a42cdb4b5e022bb2d23a158b07da89d89063a022..ebddbdf18f1d8b51a412b80c066833b2
      }));
  };
  
--export const fetchRoomsForIndexes = async (indexes = []) => {
-+export const fetchRoomsForIndexes = async (indexes = [], context = {}) => {
-+    const { role = '', authUid = '' } = context;
+ export const fetchRoomsForIndexes = async (indexes = [], context = {}) => {
+     const { role = '', authUid = '' } = context;
      const rooms = await Promise.all(sortUserRoomIndexes(indexes).map(async (index) => {
          const roomId = String(index?.roomId || index?.id || '').trim();
          if (!roomId) return null;
--        const roomSnap = await getDoc(doc(db, 'chatRooms', roomId));
--        if (!roomSnap.exists()) return mergeRoomWithIndex({ id: roomId }, index);
--        return mergeRoomWithIndex({ id: roomSnap.id, ...roomSnap.data() }, index);
-+        try {
-+            const roomSnap = await getDoc(doc(db, 'chatRooms', roomId));
-+            if (!roomSnap.exists()) return mergeRoomWithIndex({ id: roomId }, index);
-+            return mergeRoomWithIndex({ id: roomSnap.id, ...roomSnap.data() }, index);
+         try {
+             const roomSnap = await getDoc(doc(db, 'chatRooms', roomId));
+             if (!roomSnap.exists()) return mergeRoomWithIndex({ id: roomId }, index);
+             return mergeRoomWithIndex({ id: roomSnap.id, ...roomSnap.data() }, index);
+-        }  catch (error) {
 +        } catch (error) {
-+            console.warn('[resolver] chatRooms hydration skipped unreadable room', {
-+                stage: 'chatRooms_hydration',
-+                role,
-+                authUid,
-+                roomId,
-+                index,
-+                code: error?.code,
-+                message: error?.message,
-+            });
-+            return null;
-+        }
+             console.warn('[resolver] skip unreadable chatRoom index', {
+                 stage: 'chatRooms_hydration_room',
+                 role,
+                 authUid,
+                 roomId,
+                 index,
+                 code: error?.code,
+                 message: error?.message,
+             });
+-            return null;
++            return {
++                ...mergeRoomWithIndex({ id: roomId, roomId }, index),
++                __unreadableRoom: true,
++            };
+         }
      }));
      return rooms.filter(Boolean);
  };
@@ -127,16 +57,32 @@ index a42cdb4b5e022bb2d23a158b07da89d89063a022..ebddbdf18f1d8b51a412b80c066833b2
                  console.log('[resolver] userChatRooms snapshot', { role, authUid, count: snap.docs.length, ids: snap.docs.map((docSnap) => docSnap.id) });
              }
              const indexes = snap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
--            const indexedRooms = await enrichRoomsWithLatestMessagePreviews(await fetchRoomsForIndexes(indexes));
-+            if (process.env.NODE_ENV === 'development') {
-+                console.log('[resolver] hydrating chatRooms from userChatRooms indexes', { role, authUid, count: indexes.length });
+             if (process.env.NODE_ENV === 'development') {
+                 console.log('[resolver] hydrating chatRooms from userChatRooms indexes', { role, authUid, count: indexes.length });
+             }
+             const indexedRooms = await enrichRoomsWithLatestMessagePreviews(await fetchRoomsForIndexes(indexes, { role, authUid }));
+-            const fallbackRoomsForRole = role === 'parent'
+-                ? await fetchParentFallbackRooms(authUid)
+-                : role === 'student'
+-                    ? await fetchStudentFallbackRooms(authUid)
+-                    : [];
++            let fallbackRoomsForRole = [];
++            try {
++                fallbackRoomsForRole = role === 'parent'
++                    ? await fetchParentFallbackRooms(authUid)
++                    : role === 'student'
++                        ? await fetchStudentFallbackRooms(authUid)
++                        : [];
++            } catch (fallbackError) {
++                console.warn('[resolver] fallback room query skipped', {
++                    stage: 'chatRooms_fallback_query',
++                    role,
++                    authUid,
++                    code: fallbackError?.code,
++                    message: fallbackError?.message,
++                });
++                fallbackRoomsForRole = [];
 +            }
-+            const indexedRooms = await enrichRoomsWithLatestMessagePreviews(await fetchRoomsForIndexes(indexes, { role, authUid }));
-             const fallbackRoomsForRole = role === 'parent'
-                 ? await fetchParentFallbackRooms(authUid)
-                 : role === 'student'
-                     ? await fetchStudentFallbackRooms(authUid)
-                     : [];
              const roomsForRole = role === 'staff' ? indexedRooms : mergeRoomsById(indexedRooms, fallbackRoomsForRole);
              if (role === 'staff' || roomsForRole.length > 0) {
                  if (process.env.NODE_ENV === 'development') {
@@ -150,7 +96,20 @@ index a42cdb4b5e022bb2d23a158b07da89d89063a022..ebddbdf18f1d8b51a412b80c066833b2
              if (process.env.NODE_ENV === 'development') {
                  console.log('[resolver] userChatRooms empty; using chatRooms fallback', { role, authUid });
              }
-             const fallbackRooms = role === 'parent' ? await fetchParentFallbackRooms(authUid) : await fetchStudentFallbackRooms(authUid);
+-            const fallbackRooms = role === 'parent' ? await fetchParentFallbackRooms(authUid) : await fetchStudentFallbackRooms(authUid);
++            let fallbackRooms = [];
++            try {
++                fallbackRooms = role === 'parent' ? await fetchParentFallbackRooms(authUid) : await fetchStudentFallbackRooms(authUid);
++            } catch (fallbackError) {
++                console.warn('[resolver] fallback room query skipped', {
++                    stage: 'chatRooms_fallback_query',
++                    role,
++                    authUid,
++                    code: fallbackError?.code,
++                    message: fallbackError?.message,
++                });
++                fallbackRooms = [];
++            }
              const sortedFallbackRooms = sortRoomsByActivity(await enrichRoomsWithLatestMessagePreviews(fallbackRooms));
              if (process.env.NODE_ENV === 'development') {
                  console.log('[resolver] room list count', { role, authUid, count: sortedFallbackRooms.length });
@@ -159,95 +118,78 @@ index a42cdb4b5e022bb2d23a158b07da89d89063a022..ebddbdf18f1d8b51a412b80c066833b2
              logMobileRoomPreviewDebug({ role, authUid, rooms: sortedFallbackRooms, source: 'chatRooms_fallback', indexes });
              onNext(sortedFallbackRooms, indexes);
          } catch (error) {
--            onError?.(error);
-+            const hydratedError = withErrorStage(error, 'chatRooms_hydration', {
-+                role,
-+                authUid,
-+                source: 'subscribeUserChatRooms snapshot callback',
-+            });
-+            console.error('[resolver] failed after userChatRooms snapshot while hydrating room list', {
-+                stage: hydratedError.stage,
-+                role,
-+                authUid,
-+                code: hydratedError?.code,
-+                message: hydratedError?.message,
-+                context: hydratedError.context,
-+            });
-+            onError?.(hydratedError);
+             const hydratedError = withErrorStage(error, 'chatRooms_hydration', {
+                 role,
+                 authUid,
+                 source: 'subscribeUserChatRooms snapshot callback',
+             });
+             console.error('[resolver] failed after userChatRooms snapshot while hydrating room list', {
+                 stage: hydratedError.stage,
+                 role,
+                 authUid,
+                 code: hydratedError?.code,
+                 message: hydratedError?.message,
+                 context: hydratedError.context,
+             });
+             onError?.(hydratedError);
          }
--    }, onError);
-+    }, (error) => {
-+        const snapshotError = withErrorStage(error, 'userChatRooms_snapshot', {
-+            role,
-+            authUid,
-+            queryShape: getUserChatRoomsQueryShape(authUid),
-+            source: 'subscribeUserChatRooms onSnapshot',
-+        });
-+        console.error('[resolver] userChatRooms snapshot listener failed', {
-+            stage: snapshotError.stage,
-+            role,
-+            authUid,
-+            code: snapshotError?.code,
-+            message: snapshotError?.message,
-+            context: snapshotError.context,
-+        });
-+        onError?.(snapshotError);
-+    });
- };
+     }, (error) => {
+         const snapshotError = withErrorStage(error, 'userChatRooms_snapshot', {
 diff --git a/src/pages/parent/ParentMessengerPage.jsx b/src/pages/parent/ParentMessengerPage.jsx
-index fff7cb6d21fb2335bbf9000f8e92d832f8bd5ab1..7bd2509f2f5f9d03416961a53769ffa1146a7553 100644
+index 7bd2509f2f5f9d03416961a53769ffa1146a7553..c4ca4e2a12dfa91c100e828aa492b8f2c586134e 100644
 --- a/src/pages/parent/ParentMessengerPage.jsx
 +++ b/src/pages/parent/ParentMessengerPage.jsx
-@@ -120,50 +120,52 @@ export default function ParentMessengerPage({ studentId, student, onBack }) {
-             setError('');
-             return undefined;
-         }
-         setLoading(true);
-         setError('');
-         const queryShape = getUserChatRoomsQueryShape(authUid);
-         const ownerUid = authUid;
-         console.log('[parent messenger] userChatRooms subscribe auth check', {
-             authCurrentUserUid: auth.currentUser?.uid || '',
-             queryOwnerUid: ownerUid,
-             authUidMatchesOwnerUid: auth.currentUser?.uid === ownerUid,
-         });
-         if (process.env.NODE_ENV === 'development') console.log('[parent messenger] userChatRooms query', queryShape);
-         const unsubscribe = subscribeUserChatRooms({
-             authUid,
-             role: 'parent',
-             onNext: (myRooms) => {
-                 setRooms(sortRooms(myRooms));
-                 setLoading(false);
-                 setError('');
-             },
-             onError: (snapshotError) => {
-                 console.error('[parent messenger] failed to load userChatRooms', {
-                     code: snapshotError?.code,
-                     message: snapshotError?.message,
-+                    stage: snapshotError?.stage,
-+                    context: snapshotError?.context,
-                     queryShape,
-                 });
-                 setLoading(false);
-                 setError('대화 목록을 불러오지 못했습니다.');
-             },
-         });
-         return unsubscribe;
-     }, [authUid]);
+@@ -20,50 +20,53 @@ const hasViewerParticipant = (room, participantKeys = [], linkedUserDocId = '',
+         || (studentId && String(room?.studentId || '') === String(studentId))
+         || keys.includes(String(room?.parentUid || ''))
+ };
  
-     const teacherRoom = useMemo(() => rooms.find((room) => isParentTeacherRoom(room, participantKeys, activeStudentId, linkedParent.userDocId)) || null, [rooms, participantKeys, activeStudentId, linkedParent.userDocId]);
-     const instituteRoom = useMemo(() => rooms.find((room) => isParentInstituteRoom(room, participantKeys, activeStudentId, linkedParent.userDocId)) || null, [rooms, participantKeys, activeStudentId, linkedParent.userDocId]);
  
-     const messengerSlots = useMemo(() => [
-         { slot: SLOTS.INSTITUTE, room: instituteRoom, id: instituteRoom?.roomId || instituteRoom?.id || 'parent-institute-placeholder', title: getInstituteDisplayName(), roomType: ROOM_TYPES.PARENT_INSTITUTE },
-         { slot: SLOTS.TEACHER, room: teacherRoom, id: teacherRoom?.roomId || teacherRoom?.id || 'parent-teacher-placeholder', title: getTeacherDisplayName(), roomType: ROOM_TYPES.PARENT_TEACHER },
-     ], [teacherRoom, instituteRoom]);
+ const sameStudent = (room, studentId) => !room?.studentId || !studentId || String(room.studentId) === String(studentId);
  
-     useEffect(() => {
-         if (process.env.NODE_ENV !== 'development') return;
-         const rejectedBySlot = messengerSlots.map((slot) => ({
-             slot: slot.slot,
-             expectedRoomType: slot.roomType,
-             finalPreviewRoomId: getRoomId(slot.room),
-             finalPreviewText: slot.room ? getLastMessagePreview(slot.room) : '대화 내역이 없습니다.',
-             rejected: rooms
+ const logParentRoomRejection = (room, expectedRoomType, reason, selectedRoomId = '') => {
+     if (process.env.NODE_ENV !== 'development') return;
+     console.log('[parent messenger] rejected room candidate', {
+         role: 'parent',
+         expectedRoomType,
+         selectedRoomId,
+         rejectedRoomId: room?.roomId || room?.id || '',
+         reason,
+         actual: getRoomDebugInfo(room),
+     });
+ };
+ 
+ const isParentRoomOfType = (room, expectedRoomType, targetUid, targetFields, participantKeys, studentId, linkedUserDocId) => {
+     const selectedRoomId = getRoomId(room);
+     if (!isLegacySlotRoomTypeMatch(room, expectedRoomType)) {
+         logParentRoomRejection(room, expectedRoomType, 'roomType/channel mismatch', selectedRoomId);
+         return false;
+     }
++    if (room?.__unreadableRoom && selectedRoomId) {
++        return true;
++    }
+     if (isLegacySlotRoomTypeMatch(room, ROOM_TYPES.STUDENT_TEACHER) || isLegacySlotRoomTypeMatch(room, ROOM_TYPES.STUDENT_INSTITUTE)) {
+         logParentRoomRejection(room, expectedRoomType, 'student room type is not allowed for parent role', selectedRoomId);
+         return false;
+     }
+     if (!hasViewerParticipant(room, participantKeys, linkedUserDocId, studentId)) {
+         logParentRoomRejection(room, expectedRoomType, 'parent participant not found', selectedRoomId);
+         return false;
+     }
+     if (!sameStudent(room, studentId)) {
+         logParentRoomRejection(room, expectedRoomType, 'studentId mismatch', selectedRoomId);
+         return false;
+     }
+     if (!hasTarget(room, targetUid, targetFields)) {
+         logParentRoomRejection(room, expectedRoomType, 'target participant mismatch', selectedRoomId);
+         return false;
+     }
+     return true;
+ };
+ 
+ const isParentTeacherRoom = (room, participantKeys, studentId, linkedUserDocId) => isParentRoomOfType(room, ROOM_TYPES.PARENT_TEACHER, TEACHER_AUTH_UID, ['teacherAuthUid', 'counterpartUid'], participantKeys, studentId, linkedUserDocId);
+ 
+ const isParentInstituteRoom = (room, participantKeys, studentId, linkedUserDocId) => isParentRoomOfType(room, ROOM_TYPES.PARENT_INSTITUTE, INSTITUTE_AUTH_UID, ['staffAuthUid', 'counterpartUid'], participantKeys, studentId, linkedUserDocId);
+ 
+ export default function ParentMessengerPage({ studentId, student, onBack }) {
+     const [selectedSlot, setSelectedSlot] = useState(null);

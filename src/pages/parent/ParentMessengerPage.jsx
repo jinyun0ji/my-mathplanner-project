@@ -42,6 +42,9 @@ const isParentRoomOfType = (room, expectedRoomType, targetUid, targetFields, par
         logParentRoomRejection(room, expectedRoomType, 'roomType/channel mismatch', selectedRoomId);
         return false;
     }
+    if (room?.__unreadableRoom && selectedRoomId) {
+        return true;
+    }
     if (isLegacySlotRoomTypeMatch(room, ROOM_TYPES.STUDENT_TEACHER) || isLegacySlotRoomTypeMatch(room, ROOM_TYPES.STUDENT_INSTITUTE)) {
         logParentRoomRejection(room, expectedRoomType, 'student room type is not allowed for parent role', selectedRoomId);
         return false;

@@ -186,7 +186,7 @@ export const fetchRoomsForIndexes = async (indexes = [], context = {}) => {
             const roomSnap = await getDoc(doc(db, 'chatRooms', roomId));
             if (!roomSnap.exists()) return mergeRoomWithIndex({ id: roomId }, index);
             return mergeRoomWithIndex({ id: roomSnap.id, ...roomSnap.data() }, index);
-        }  catch (error) {
+        } catch (error) {
             console.warn('[resolver] skip unreadable chatRoom index', {
                 stage: 'chatRooms_hydration_room',
                 role,
@@ -196,7 +196,10 @@ export const fetchRoomsForIndexes = async (indexes = [], context = {}) => {
                 code: error?.code,
                 message: error?.message,
             });
-            return null;
+            return {
+                ...mergeRoomWithIndex({ id: roomId, roomId }, index),
+                __unreadableRoom: true,
+            };
         }
     }));
     return rooms.filter(Boolean);
@@ -214,11 +217,23 @@ export const subscribeUserChatRooms = ({ authUid, role = '', onNext, onError }) 
                 console.log('[resolver] hydrating chatRooms from userChatRooms indexes', { role, authUid, count: indexes.length });
             }
             const indexedRooms = await enrichRoomsWithLatestMessagePreviews(await fetchRoomsForIndexes(indexes, { role, authUid }));
-            const fallbackRoomsForRole = role === 'parent'
-                ? await fetchParentFallbackRooms(authUid)
-                : role === 'student'
-                    ? await fetchStudentFallbackRooms(authUid)
-                    : [];
+            let fallbackRoomsForRole = [];
+            try {
+                fallbackRoomsForRole = role === 'parent'
+                    ? await fetchParentFallbackRooms(authUid)
+                    : role === 'student'
+                        ? await fetchStudentFallbackRooms(authUid)
+                        : [];
+            } catch (fallbackError) {
+                console.warn('[resolver] fallback room query skipped', {
+                    stage: 'chatRooms_fallback_query',
+                    role,
+                    authUid,
+                    code: fallbackError?.code,
+                    message: fallbackError?.message,
+                });
+                fallbackRoomsForRole = [];
+            }
             const roomsForRole = role === 'staff' ? indexedRooms : mergeRoomsById(indexedRooms, fallbackRoomsForRole);
             if (role === 'staff' || roomsForRole.length > 0) {
                 if (process.env.NODE_ENV === 'development') {
@@ -232,7 +247,19 @@ export const subscribeUserChatRooms = ({ authUid, role = '', onNext, onError }) 
             if (process.env.NODE_ENV === 'development') {
                 console.log('[resolver] userChatRooms empty; using chatRooms fallback', { role, authUid });
             }
-            const fallbackRooms = role === 'parent' ? await fetchParentFallbackRooms(authUid) : await fetchStudentFallbackRooms(authUid);
+            let fallbackRooms = [];
+            try {
+                fallbackRooms = role === 'parent' ? await fetchParentFallbackRooms(authUid) : await fetchStudentFallbackRooms(authUid);
+            } catch (fallbackError) {
+                console.warn('[resolver] fallback room query skipped', {
+                    stage: 'chatRooms_fallback_query',
+                    role,
+                    authUid,
+                    code: fallbackError?.code,
+                    message: fallbackError?.message,
+                });
+                fallbackRooms = [];
+            }
             const sortedFallbackRooms = sortRoomsByActivity(await enrichRoomsWithLatestMessagePreviews(fallbackRooms));
             if (process.env.NODE_ENV === 'development') {
                 console.log('[resolver] room list count', { role, authUid, count: sortedFallbackRooms.length });
