@@ -1,8 +1,8 @@
 diff --git a/src/notifications/useNotifications.js b/src/notifications/useNotifications.js
-index 612ffbe4c55edd9b08261741eff4733e68138185..4b3e8652ea8188f4506ba698e438c175ea144279 100644
+index 4b3e8652ea8188f4506ba698e438c175ea144279..2e83ad50049c0824fd6c31349f982aae6bc8cd93 100644
 --- a/src/notifications/useNotifications.js
 +++ b/src/notifications/useNotifications.js
-@@ -76,51 +76,51 @@ export default function useNotifications(uid, maxItems = DEFAULT_LIMIT, options
+@@ -76,66 +76,71 @@ export default function useNotifications(uid, maxItems = DEFAULT_LIMIT, options
              })
              .catch(() => {
                  if (!isMounted) {
@@ -28,12 +28,14 @@ index 612ffbe4c55edd9b08261741eff4733e68138185..4b3e8652ea8188f4506ba698e438c175
              return undefined;
          }
  
--        console.log('[notifications] subscribe', {
-+        console.log('[notifications] subscribe path', {
-             uid: normalizedUid,
+-        console.log('[notifications] subscribe path', {
+-            uid: normalizedUid,
++        console.log('[notifications subscribe]', {
++            uid,
              viewerRole,
              unreadOnly,
-             path: `notifications/${normalizedUid}/items`,
+-            path: `notifications/${normalizedUid}/items`,
++            path: uid ? `notifications/${uid}/items` : '(empty)',
          });
  
          setIsLoading(true);
@@ -44,7 +46,13 @@ index 612ffbe4c55edd9b08261741eff4733e68138185..4b3e8652ea8188f4506ba698e438c175
                  setIsLoading(false);
              },
              (error) => {
-                 console.error('Failed to subscribe to notifications', error);
+-                console.error('Failed to subscribe to notifications', error);
++                console.error('[notifications subscribe FAILED]', {
++                    uid,
++                    path: uid ? `notifications/${uid}/items` : '(empty)',
++                    code: error.code,
++                    message: error.message,
++                });
                  setIsLoading(false);
              }
          );
@@ -55,187 +63,31 @@ index 612ffbe4c55edd9b08261741eff4733e68138185..4b3e8652ea8188f4506ba698e438c175
      const visibleNotifications = useMemo(() => {
          if (!isParentViewer) {
              return notifications;
+         }
+         return filterParentNotifications(notifications, lastReadAt, { unreadOnly });
+     }, [notifications, isParentViewer, lastReadAt, unreadOnly]);
+ 
+     const hasUnread = useMemo(
+         () => visibleNotifications.some((notification) => isNotificationUnread(notification, lastReadAt)),
+         [visibleNotifications, lastReadAt]
+     );
+ 
+     const unreadCount = useMemo(() => (
+         visibleNotifications.reduce((count, notification) => (
+             isNotificationUnread(notification, lastReadAt) ? count + 1 : count
+         ), 0)
+     ), [visibleNotifications, lastReadAt]);
+ 
 diff --git a/src/pages/ParentHome.jsx b/src/pages/ParentHome.jsx
-index 3ebc487fe677440f11eb42200635d22c6c32347d..ada745644039cc0c0b2bfe5f35e240ed97a9f7cc 100644
+index ada745644039cc0c0b2bfe5f35e240ed97a9f7cc..667d929497d553adef68a38074639f702f149603 100644
 --- a/src/pages/ParentHome.jsx
 +++ b/src/pages/ParentHome.jsx
-@@ -1,55 +1,56 @@
- import { resolveHomeworkAssignmentTitle } from '../domain/homework/homework.service';
- // src/pages/ParentHome.jsx
- import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
- import { useSearchParams } from 'react-router-dom';
- import { ScheduleTab } from '../components/StudentTabs';
-+import { doc, getDoc } from 'firebase/firestore';
- import { httpsCallable } from 'firebase/functions';
- import ParentClassroomView from './parent/ParentClassroomView';
- import {
-     Icon,
-     calculateHomeworkStats,
-     calculateGradeComparison,
-     getClinicComment,
-     getClinicDisplayStatus,
-     calculateDurationMinutes,
-     formatDuration,
- } from '../utils/helpers';
- import NotificationsIcon from '@mui/icons-material/Notifications';
- import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
- import ParentSessionReport from './parent/ParentSessionReport'; // ✅ 신규 리포트 컴포넌트
- import ParentMessengerPage from './parent/ParentMessengerPage';
- import ParentBoardPage from './parent/ParentBoardPage';
- import ParentMorePage from './parent/ParentMorePage';
- import { generateSessionReport } from '../utils/reportHelper'; // ✅ 리포트 데이터 생성 헬퍼
- import useNotifications from '../notifications/useNotifications';
- import NotificationList from '../notifications/NotificationList';
- import openNotification from '../notifications/openNotification';
- import { useParentContext } from '../parent';
- import { sortClassesByStatus, getViewerVisibleClassIds } from '../utils/classStatus';
- import { formatNoticeDate, getNoticeDateValue, getNoticePreviewText, sortNoticesForDisplay } from '../utils/notices';
--import { auth, functions } from '../firebase/client';
-+import { auth, db, functions } from '../firebase/client';
- import { formatStudentScore, formatTestStatsInline, getTestStatsForDisplay } from '../utils/scoreDisplay';
- import { getViewerTodayClassItems, toLocalYmd } from '../utils/viewerTodaySchedule';
- import { FEATURES } from '../config/features';
- import MathText from '../components/common/MathText';
- import logoHorizontal from '../assets/logo/logo-horizontal.png';
- import { getStudentGradeLabel } from '../utils/gradeUtils';
- 
- 
- const getItemClassId = (item) => (
-     item?.classId
-     || item?.classDocId
-     || item?.classID
-     || item?.class?.id
-     || item?.class?.classId
-     || item?.class?.docId
-     || item?.class?.classDocId
-     || item?.classRef
-     || item?.class?.ref
-     || ''
- );
- 
- 
- const normalizeViewerClassStatus = (value) => {
-     if (value === 'withdrawn') return '퇴원';
-     if (value === 'active') return '진행중';
-@@ -480,50 +481,51 @@ const ParentDashboard = ({
-                         ))}
-                     </div>
-                 </section>
-             )}
-         </div>
-     );
- };
- 
- // --- 메인 페이지 컴포넌트 ---
- export default function ParentHome({
-     userId, students, parents = [], classes, homeworkAssignments, homeworkResults,
-     attendanceLogs, lessonLogs, notices, tests, grades, classTestStats,
-     videoProgress, clinicLogs, lessonReports = [], onLogout,
-     externalSchedules, onSaveExternalSchedule, onDeleteExternalSchedule,
-     closures,
-     masterView = false,
-     masterViewStudentId = '',
-     masterViewStudentAuthUid = '',
-     readOnly = false,
-     embedded = false,
- }) {
-     const { activeStudentId, studentIds, setActiveStudentId } = useParentContext();
-     // 1. 자녀 데이터 및 선택 로직
-     const initialStudent = students.find(s => s.id === activeStudentId);
-     const [activeChildId, setActiveChildId] = useState(activeStudentId);
-+    const [linkedParentDocId, setLinkedParentDocId] = useState('');
-     const pendingStudentSwitchRef = useRef(null);
-     const activeChild = students.find(s => s.id === activeChildId) || initialStudent;
-     const activeChildName = activeChild?.name || '학생';
-     const activeChildSchool = activeChild?.school || '학교 정보 없음';
-     const activeChildGrade = getStudentGradeLabel(activeChild);
-     // 2. 데이터 필터링
-     const rawMyClasses = useMemo(() => {
-         if (!Array.isArray(classes) || !activeChildId) return [];
-         const childClassIds = new Set([
-             ...(Array.isArray(activeChild?.classIds) ? activeChild.classIds : []),
-             ...(Array.isArray(activeChild?.classes) ? activeChild.classes.filter((item) => typeof item === 'string') : []),
-         ].map(String));
-         return classes.filter((c) => {
-             const classId = String(c?.id || c?.classId || '');
-             return (c.students || []).includes(activeChildId) || childClassIds.has(classId);
-         });
-     }, [classes, activeChildId, activeChild?.classIds, activeChild?.classes]);
-     const visibleClassIds = useMemo(() => getViewerVisibleClassIds(rawMyClasses, activeChild), [rawMyClasses, activeChild]);
-     const visibleClassIdSet = useMemo(() => new Set(visibleClassIds), [visibleClassIds]);
-     const myClasses = useMemo(
-         () => rawMyClasses.filter((cls) => visibleClassIdSet.has(String(cls?.id || cls?.classId || ''))),
-         [rawMyClasses, visibleClassIdSet],
-     );
-     const isVisibleClassItem = useCallback((item) => {
-         const classId = String(getItemClassId(item) || '');
-@@ -722,83 +724,121 @@ export default function ParentHome({
-         if (previousActiveStudentIdRef.current === activeStudentId) {
-             setActiveChildId(activeStudentId);
-             return;
-         }
- 
-         previousActiveStudentIdRef.current = activeStudentId;
-         setActiveChildId(activeStudentId);
-         _setSelectedClassroomId(null);
-         _setSelectedReportId(null);
-         setClassFilter('ongoing');
-         _setActiveTab('home');
-         setClinicPageSize(3);
-         if (embedded) return;
-         setSearchParams((prev) => {
-             const next = new URLSearchParams(prev);
-             next.set('tab', 'home');
-             next.delete('classroomId');
-             next.delete('reportId');
-             return next;
-         }, { replace: true });
-     }, [activeStudentId, setSearchParams, embedded]);
- 
-     // 알림 관련
-     const [isNotificationOpen, setIsNotificationOpen] = useState(false);
-     const [isMessengerPage, setIsMessengerPage] = useState(false);
-+    const currentAuthUid = auth.currentUser?.uid || '';
-+
-+    useEffect(() => {
-+        if (!currentAuthUid || !db) {
-+            setLinkedParentDocId('');
-+            return undefined;
-+        }
-+
-+        let isMounted = true;
-+
-+        getDoc(doc(db, 'userAuthIndex', currentAuthUid))
-+            .then((snapshot) => {
-+                if (!isMounted) return;
-+                const userDocId = snapshot.exists() ? snapshot.data()?.userDocId : '';
-+                setLinkedParentDocId(userDocId ? String(userDocId).trim() : '');
-+            })
-+            .catch((error) => {
-+                if (!isMounted) return;
-+                console.warn('[parent auth index] failed to load linked parent doc id', error);
-+                setLinkedParentDocId('');
-+            });
-+
-+        return () => {
-+            isMounted = false;
-+        };
-+    }, [currentAuthUid]);
- 
-     useEffect(() => {
-         if (activeTab === 'more') {
-             setMoreView('menu');
-         }
-     }, [activeTab]);
-     const isMasterPreview = Boolean(masterView);
-     const showMasterViewUnavailable = useCallback((featureName) => {
-         window.alert(`마스터뷰에서는 ${featureName}을(를) 사용할 수 없습니다.`);
+@@ -784,59 +784,54 @@ export default function ParentHome({
      }, []);
  
      const currentParent = useMemo(() => {
          const currentUser = auth.currentUser;
--        const identifiers = [userId, currentUser?.uid, currentUser?.email]
-+        const identifiers = [userId, currentUser?.uid, currentUser?.email, linkedParentDocId]
+         const identifiers = [userId, currentUser?.uid, currentUser?.email, linkedParentDocId]
              .filter(Boolean)
              .map((value) => String(value).trim().toLowerCase())
              .filter(Boolean);
@@ -250,26 +102,25 @@ index 3ebc487fe677440f11eb42200635d22c6c32347d..ada745644039cc0c0b2bfe5f35e240ed
  
              return parentIdentifiers.some((value) => identifiers.includes(value));
          }) || null;
--    }, [parents, userId]);
-+    }, [parents, userId, linkedParentDocId]);
+     }, [parents, userId, linkedParentDocId]);
  
      const parentNotificationUid = isMasterPreview
--        ? (currentParent?.authUid || currentParent?.uid || userId || '')
--        : (currentParent?.authUid || currentParent?.uid || auth.currentUser?.uid || userId || '');
-+        ? (currentParent?.authUid || currentParent?.uid || linkedParentDocId || userId || '')
-+        : (currentParent?.authUid || currentParent?.uid || linkedParentDocId || currentAuthUid || userId || '');
-+
-+    console.log('[parent notifications uid]', {
-+        authUid: currentAuthUid,
-+        userId,
-+        linkedParentDocId,
-+        currentParentId: currentParent?.id || '',
-+        currentParentAuthUid: currentParent?.authUid || '',
-+        currentParentUid: currentParent?.uid || '',
-+        parentNotificationUid,
-+        path: parentNotificationUid ? `notifications/${parentNotificationUid}/items` : '',
-+    });
-+
+         ? (currentParent?.authUid || currentParent?.uid || linkedParentDocId || userId || '')
+         : (currentParent?.authUid || currentParent?.uid || linkedParentDocId || currentAuthUid || userId || '');
+ 
+-    console.log('[parent notifications uid]', {
+-        authUid: currentAuthUid,
+-        userId,
++    console.log('[parentNotificationUid]', {
++        authUid: auth.currentUser?.uid,
+         linkedParentDocId,
+-        currentParentId: currentParent?.id || '',
+-        currentParentAuthUid: currentParent?.authUid || '',
+-        currentParentUid: currentParent?.uid || '',
+         parentNotificationUid,
+-        path: parentNotificationUid ? `notifications/${parentNotificationUid}/items` : '',
+     });
+ 
      const notificationViewerUid = parentNotificationUid;
  
      const { notifications, hasUnread, unreadCount, lastReadAt, isLoading, isMetaLoading, setNotifications } = useNotifications(notificationViewerUid, 20, {
@@ -293,5 +144,3 @@ index 3ebc487fe677440f11eb42200635d22c6c32347d..ada745644039cc0c0b2bfe5f35e240ed
  
      const getParentClinicStatusStyle = useCallback((status) => {
          if (status === '미참석') return 'bg-rose-50 text-rose-700 border-rose-200';
-         if (status === '완료' || status === '참석') return 'bg-teal-50 text-teal-700 border-teal-200';
-         if (status === '예약됨' || status === '입실 예정') return 'bg-sky-50 text-sky-700 border-sky-200';

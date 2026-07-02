@@ -806,15 +806,10 @@ export default function ParentHome({
         ? (currentParent?.authUid || currentParent?.uid || linkedParentDocId || userId || '')
         : (currentParent?.authUid || currentParent?.uid || linkedParentDocId || currentAuthUid || userId || '');
 
-    console.log('[parent notifications uid]', {
-        authUid: currentAuthUid,
-        userId,
+    console.log('[parentNotificationUid]', {
+        authUid: auth.currentUser?.uid,
         linkedParentDocId,
-        currentParentId: currentParent?.id || '',
-        currentParentAuthUid: currentParent?.authUid || '',
-        currentParentUid: currentParent?.uid || '',
         parentNotificationUid,
-        path: parentNotificationUid ? `notifications/${parentNotificationUid}/items` : '',
     });
 
     const notificationViewerUid = parentNotificationUid;

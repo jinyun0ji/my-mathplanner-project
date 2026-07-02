@@ -98,11 +98,11 @@ export default function useNotifications(uid, maxItems = DEFAULT_LIMIT, options 
             return undefined;
         }
 
-        console.log('[notifications] subscribe path', {
-            uid: normalizedUid,
+        console.log('[notifications subscribe]', {
+            uid,
             viewerRole,
             unreadOnly,
-            path: `notifications/${normalizedUid}/items`,
+            path: uid ? `notifications/${uid}/items` : '(empty)',
         });
 
         setIsLoading(true);
@@ -113,7 +113,12 @@ export default function useNotifications(uid, maxItems = DEFAULT_LIMIT, options 
                 setIsLoading(false);
             },
             (error) => {
-                console.error('Failed to subscribe to notifications', error);
+                console.error('[notifications subscribe FAILED]', {
+                    uid,
+                    path: uid ? `notifications/${uid}/items` : '(empty)',
+                    code: error.code,
+                    message: error.message,
+                });
                 setIsLoading(false);
             }
         );
