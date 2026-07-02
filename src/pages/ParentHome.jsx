@@ -1029,7 +1029,7 @@ export default function ParentHome({
                     return;
                 }
 
-                if (refCollection === 'chats') {
+                if (refCollection === 'chats' || refCollection === 'chatRooms') {
                     if (isMasterPreview || readOnly) return;
                     setIsMessengerPage(true);
                     return;

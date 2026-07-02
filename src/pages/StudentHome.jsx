@@ -530,7 +530,7 @@ export default function StudentHome({
                     return;
                 }
 
-                if (refCollection === 'chats') {
+                if (refCollection === 'chats' || refCollection === 'chatRooms') {
                     if (isMasterPreview || readOnly) return;
                     setSelectedClassId(null);
                     setActiveTab('menu');
