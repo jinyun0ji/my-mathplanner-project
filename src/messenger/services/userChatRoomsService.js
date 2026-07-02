@@ -213,10 +213,31 @@ export const subscribeUserChatRooms = ({ authUid, role = '', onNext, onError }) 
                 console.log('[resolver] userChatRooms snapshot', { role, authUid, count: snap.docs.length, ids: snap.docs.map((docSnap) => docSnap.id) });
             }
             const indexes = snap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
+            const indexOnlyRooms = indexes.map((index) => mergeRoomWithIndex({
+                id: index.roomId || index.id,
+                roomId: index.roomId || index.id,
+            }, index));
+            if (indexOnlyRooms.length > 0) {
+                const sortedIndexOnlyRooms = sortRoomsByActivity(indexOnlyRooms);
+                logMobileRoomPreviewDebug({ role, authUid, rooms: sortedIndexOnlyRooms, source: 'userChatRooms', indexes });
+                onNext(sortedIndexOnlyRooms, indexes);
+            }
             if (process.env.NODE_ENV === 'development') {
                 console.log('[resolver] hydrating chatRooms from userChatRooms indexes', { role, authUid, count: indexes.length });
             }
-            const indexedRooms = await enrichRoomsWithLatestMessagePreviews(await fetchRoomsForIndexes(indexes, { role, authUid }));
+            let indexedRooms = indexOnlyRooms;
+            try {
+                indexedRooms = await enrichRoomsWithLatestMessagePreviews(await fetchRoomsForIndexes(indexes, { role, authUid }));
+            } catch (hydrationError) {
+                console.warn('[resolver] chatRooms hydration skipped; keeping userChatRooms index list', {
+                    stage: 'chatRooms_hydration',
+                    role,
+                    authUid,
+                    code: hydrationError?.code,
+                    message: hydrationError?.message,
+                });
+                indexedRooms = indexOnlyRooms;
+            }
             let fallbackRoomsForRole = [];
             try {
                 fallbackRoomsForRole = role === 'parent'
@@ -273,6 +294,23 @@ export const subscribeUserChatRooms = ({ authUid, role = '', onNext, onError }) 
                 authUid,
                 source: 'subscribeUserChatRooms snapshot callback',
             });
+            if (snap.docs.length > 0) {
+                console.warn('[resolver] non-fatal room list hydration failed after userChatRooms indexes were received', {
+                    stage: hydratedError.stage,
+                    role,
+                    authUid,
+                    code: hydratedError?.code,
+                    message: hydratedError?.message,
+                    context: hydratedError.context,
+                });
+                const indexes = snap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
+                const indexOnlyRooms = sortRoomsByActivity(indexes.map((index) => mergeRoomWithIndex({
+                    id: index.roomId || index.id,
+                    roomId: index.roomId || index.id,
+                }, index)));
+                onNext(indexOnlyRooms, indexes);
+                return;
+            }
             console.error('[resolver] failed after userChatRooms snapshot while hydrating room list', {
                 stage: hydratedError.stage,
                 role,

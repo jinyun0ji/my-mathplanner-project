@@ -23,6 +23,19 @@ const hasViewerParticipant = (room, participantKeys = [], linkedUserDocId = '', 
 
 
 const sameStudent = (room, studentId) => !room?.studentId || !studentId || String(room.studentId) === String(studentId);
+const hasExactStudent = (room, studentId) => Boolean(studentId) && String(room?.studentId || '') === String(studentId);
+const hasLinkedParent = (room, linkedUserDocId) => {
+    const parentDocId = String(linkedUserDocId || '').trim();
+    if (!parentDocId) return false;
+    return String(room?.parentId || '') === parentDocId
+        || String(room?.parentUid || '') === parentDocId
+        || getParticipantIds(room).includes(parentDocId);
+};
+const isLegacyTeacherParentShape = (room) => ['teacher'].some((teacherType) => (
+    String(room?.slot || '') === teacherType
+    || String(room?.channel || '') === teacherType
+    || String(room?.roomType || '') === teacherType
+));
 
 const logParentRoomRejection = (room, expectedRoomType, reason, selectedRoomId = '') => {
     if (process.env.NODE_ENV !== 'development') return;
@@ -64,7 +77,26 @@ const isParentRoomOfType = (room, expectedRoomType, targetUid, targetFields, par
     return true;
 };
 
-const isParentTeacherRoom = (room, participantKeys, studentId, linkedUserDocId) => isParentRoomOfType(room, ROOM_TYPES.PARENT_TEACHER, TEACHER_AUTH_UID, ['teacherAuthUid', 'counterpartUid'], participantKeys, studentId, linkedUserDocId);
+const isParentTeacherRoom = (room, participantKeys, studentId, linkedUserDocId) => {
+    if (isLegacyTeacherParentShape(room)) {
+        const selectedRoomId = getRoomId(room);
+        if (room?.__unreadableRoom && selectedRoomId) return true;
+        if (!hasTarget(room, TEACHER_AUTH_UID, ['teacherAuthUid', 'counterpartUid'])) {
+            logParentRoomRejection(room, ROOM_TYPES.PARENT_TEACHER, 'legacy teacher target participant mismatch', selectedRoomId);
+            return false;
+        }
+        if (!hasLinkedParent(room, linkedUserDocId)) {
+            logParentRoomRejection(room, ROOM_TYPES.PARENT_TEACHER, 'legacy teacher linked parent not found', selectedRoomId);
+            return false;
+        }
+        if (!hasExactStudent(room, studentId)) {
+            logParentRoomRejection(room, ROOM_TYPES.PARENT_TEACHER, 'legacy teacher studentId mismatch', selectedRoomId);
+            return false;
+        }
+        return true;
+    }
+    return isParentRoomOfType(room, ROOM_TYPES.PARENT_TEACHER, TEACHER_AUTH_UID, ['teacherAuthUid', 'counterpartUid'], participantKeys, studentId, linkedUserDocId);
+};
 
 const isParentInstituteRoom = (room, participantKeys, studentId, linkedUserDocId) => isParentRoomOfType(room, ROOM_TYPES.PARENT_INSTITUTE, INSTITUTE_AUTH_UID, ['staffAuthUid', 'counterpartUid'], participantKeys, studentId, linkedUserDocId);
 
