@@ -9,6 +9,7 @@ import { getLastMessagePreview, getLastMessagePreviewCandidates } from '../../me
 import { buildParentParticipantKeys } from '../../messenger/utils/participantKeys';
 import { getRoomDebugInfo, getRoomId, isLegacySlotRoomTypeMatch, sortRooms, toDate } from '../../messenger/utils/roomMatcher';
 import { getUserChatRoomsQueryShape, subscribeUserChatRooms } from '../../messenger/services/userChatRoomsService';
+import { markChatRoomNotificationsRead } from '../../notifications/notificationReadActions';
 
 const getParticipantIds = (room) => (Array.isArray(room?.participantIds) ? room.participantIds.map(String) : []);
 const hasTarget = (room, targetUid, fields = []) => fields.some((field) => String(room?.[field] || '') === targetUid) || getParticipantIds(room).includes(targetUid);
@@ -102,7 +103,7 @@ const isParentTeacherRoom = (room, participantKeys, studentId, linkedUserDocId) 
 
 const isParentInstituteRoom = (room, participantKeys, studentId, linkedUserDocId) => isParentRoomOfType(room, ROOM_TYPES.PARENT_INSTITUTE, INSTITUTE_AUTH_UID, ['staffAuthUid', 'counterpartUid'], participantKeys, studentId, linkedUserDocId);
 
-export default function ParentMessengerPage({ studentId, student, onBack }) {
+export default function ParentMessengerPage({ studentId, student, onBack, notificationViewerUid = '', notifications = [], setNotifications = null }) {
     const [selectedSlot, setSelectedSlot] = useState(null);
     const [rooms, setRooms] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -271,6 +272,10 @@ export default function ParentMessengerPage({ studentId, student, onBack }) {
             }
         }
         setSelectedSlot(slot);
+        if (selectedRoomId && notificationViewerUid) {
+            markChatRoomNotificationsRead({ viewerUid: notificationViewerUid, roomId: selectedRoomId, notifications, setNotifications })
+                .catch((error) => console.error('[parent][notifications] mark chat room read failed', error));
+        }
     };
 
     const currentSlot = selectedSlot ? messengerSlots.find((slot) => slot.slot === selectedSlot.slot) || selectedSlot : null;
@@ -294,6 +299,9 @@ export default function ParentMessengerPage({ studentId, student, onBack }) {
                         allowLegacyResolve={!currentRoomId}
                         emptyMessage="아직 대화 내역이 없습니다."
                         chatSlot={currentSlot.slot}
+                        notificationViewerUid={notificationViewerUid}
+                        notifications={notifications}
+                        setNotifications={setNotifications}
                         roomCreationContext={{
                             slot: currentSlot.slot,
                             studentParticipantKeys: participantKeys,

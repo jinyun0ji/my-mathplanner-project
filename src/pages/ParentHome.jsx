@@ -4,7 +4,6 @@ import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom';
 import { ScheduleTab } from '../components/StudentTabs';
 import { doc, getDoc } from 'firebase/firestore';
-import { httpsCallable } from 'firebase/functions';
 import ParentClassroomView from './parent/ParentClassroomView';
 import {
     Icon,
@@ -25,10 +24,11 @@ import { generateSessionReport } from '../utils/reportHelper'; // ✅ 리포트 
 import useNotifications from '../notifications/useNotifications';
 import NotificationList from '../notifications/NotificationList';
 import openNotification from '../notifications/openNotification';
+import { markAllNotificationsRead, markNotificationRead } from '../notifications/notificationReadActions';
 import { useParentContext } from '../parent';
 import { sortClassesByStatus, getViewerVisibleClassIds } from '../utils/classStatus';
 import { formatNoticeDate, getNoticeDateValue, getNoticePreviewText, sortNoticesForDisplay } from '../utils/notices';
-import { auth, db, functions } from '../firebase/client';
+import { auth, db } from '../firebase/client';
 import { formatStudentScore, formatTestStatsInline, getTestStatsForDisplay } from '../utils/scoreDisplay';
 import { getViewerTodayClassItems, toLocalYmd } from '../utils/viewerTodaySchedule';
 import { FEATURES } from '../config/features';
@@ -1039,6 +1039,14 @@ export default function ParentHome({
             await waitForActiveStudentSwitch(targetStudentId);
         }
 
+        if (!isMasterPreview && !readOnly) {
+            try {
+                await markNotificationRead({ viewerUid: parentNotificationUid, notificationId: notification.id, setNotifications });
+            } catch (error) {
+                console.error('[parent][notifications] mark single read failed', error);
+            }
+        }
+
         await openNotification({
             notification,
             onNavigate: ({ refCollection, refId }) => {
@@ -1090,10 +1098,7 @@ export default function ParentHome({
             return;
         }
         try {
-            const callable = httpsCallable(functions, 'markAllNotificationsRead');
-            await callable({ viewerUid: parentNotificationUid });
-            const now = new Date();
-            setNotifications((prev) => prev.map((item) => ({ ...item, isRead: true, readAt: now })));
+            await markAllNotificationsRead({ viewerUid: parentNotificationUid, setNotifications });
             console.log('[notifications] markAllRead completed by callable');
         } catch (e) {
             console.error('[notifications] FAIL: markAllRead', e);
@@ -1280,6 +1285,9 @@ export default function ParentHome({
                 studentId={activeChildId}
                 student={activeChild}
                 ongoingClasses={ongoingClasses}
+                notificationViewerUid={parentNotificationUid}
+                notifications={notifications}
+                setNotifications={setNotifications}
                 onBack={() => setIsMessengerPage(false)}
             />
         );

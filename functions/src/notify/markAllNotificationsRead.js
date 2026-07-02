@@ -1,5 +1,6 @@
 const functions = require('firebase-functions');
 const admin = require('firebase-admin');
+const { assertCanReadViewerNotifications } = require('./markNotificationRead');
 
 const markAllNotificationsRead = functions.https.onCall(async (data, context) => {
   if (!context.auth?.uid) {
@@ -12,14 +13,9 @@ const markAllNotificationsRead = functions.https.onCall(async (data, context) =>
   }
 
   const requesterUid = String(context.auth.uid);
-  const role = String(context.auth.token?.role || '');
-  const isDemoRequester = Boolean(context.auth.token?.demo || context.auth.token?.isDemo);
-  const isPrivileged = ['staff', 'admin', 'teacher', 'master', 'demo'].includes(role) || isDemoRequester;
-  if (!isPrivileged && requesterUid !== viewerUid) {
-    throw new functions.https.HttpsError('permission-denied', '본인 알림만 처리할 수 있습니다.');
-  }
-
   const db = admin.firestore();
+  await assertCanReadViewerNotifications({ db, requesterUid, viewerUid });
+
   const itemsRef = db.collection('notifications').doc(viewerUid).collection('items');
   const snap = await itemsRef.orderBy('createdAt', 'desc').limit(500).get();
   const unreadDocs = snap.docs.filter((d) => {

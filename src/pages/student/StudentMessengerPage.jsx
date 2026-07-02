@@ -8,10 +8,11 @@ import { getInstituteDisplayName, getTeacherDisplayName } from '../../messenger/
 import { getLastMessagePreview, getLastMessagePreviewCandidates } from '../../messenger/services/roomPreviewService';
 import { buildStudentParticipantKeys } from '../../messenger/utils/participantKeys';
 import { getRoomDebugInfo, getRoomId, toDate } from '../../messenger/utils/roomMatcher';
+import { markChatRoomNotificationsRead } from '../../notifications/notificationReadActions';
 
 const getExpectedRoomType = (slot) => (slot === SLOTS.INSTITUTE ? ROOM_TYPES.STUDENT_INSTITUTE : ROOM_TYPES.STUDENT_TEACHER);
 
-export default function StudentMessengerPage({ studentId, student, onBack }) {
+export default function StudentMessengerPage({ studentId, student, onBack, notificationViewerUid = '', notifications = [], setNotifications = null }) {
     const [selectedSlot, setSelectedSlot] = useState(null);
     const authUid = String(auth.currentUser?.uid || '');
     const studentWithId = useMemo(() => ({ ...student, id: student?.id || studentId }), [student, studentId]);
@@ -74,6 +75,10 @@ export default function StudentMessengerPage({ studentId, student, onBack }) {
             });
         }
         setSelectedSlot(slot);
+        if (selectedRoomId && notificationViewerUid) {
+            markChatRoomNotificationsRead({ viewerUid: notificationViewerUid, roomId: selectedRoomId, notifications, setNotifications })
+                .catch((error) => console.error('[student][notifications] mark chat room read failed', error));
+        }
     };
 
     const currentSlot = selectedSlot ? messengerSlots.find((slot) => slot.slot === selectedSlot.slot) || selectedSlot : null;
@@ -108,6 +113,9 @@ export default function StudentMessengerPage({ studentId, student, onBack }) {
                         allowLegacyResolve={!currentRoomId}
                         emptyMessage="아직 대화 내역이 없습니다."
                         chatSlot={currentSlot.slot}
+                        notificationViewerUid={notificationViewerUid}
+                        notifications={notifications}
+                        setNotifications={setNotifications}
                         roomCreationContext={{
                             slot: currentSlot.slot,
                             studentParticipantKeys: participantKeyCandidates,

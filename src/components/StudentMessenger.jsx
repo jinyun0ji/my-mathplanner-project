@@ -15,6 +15,7 @@ import { sendRoomMessage, subscribeRoomMessages } from '../messenger/services/me
 import { fetchParentFallbackRooms, fetchRoomsForIndexes, fetchStudentFallbackRooms } from '../messenger/services/userChatRoomsService';
 import { INSTITUTE_AUTH_UID, ROOM_TYPES } from '../messenger/constants/messengerConstants';
 import { getExpectedRoomType, getRoomDebugInfo, isStrictRoomTypeMatch } from '../messenger/utils/roomMatcher';
+import { markChatRoomNotificationsRead } from '../notifications/notificationReadActions';
 
 // TODO(video_embed): allow only admin/staff/teacher to send YouTube watch/youtu.be/embed links,
 // normalize them to youtube-nocookie URLs, store messageType: 'video_embed',
@@ -324,7 +325,7 @@ const normalizeMessage = (id, data, myIds, fallbackSenderName = '메시지') => 
     };
 };
 
-export default function StudentMessenger({ studentId, studentAuthUid = '', selectedRoomId = '', teacherName = '메시지', userRole = 'parent', isFloating = false, allowLegacyResolve = true, emptyMessage = '아직 대화 내역이 없습니다.', chatSlot = '', roomCreationContext = null }) {
+export default function StudentMessenger({ studentId, studentAuthUid = '', selectedRoomId = '', teacherName = '메시지', userRole = 'parent', isFloating = false, allowLegacyResolve = true, emptyMessage = '아직 대화 내역이 없습니다.', chatSlot = '', roomCreationContext = null, notificationViewerUid = '', notifications = [], setNotifications = null }) {
     const [roomId, setRoomId] = useState(null);
     const [messages, setMessages] = useState([]);
     const [optimisticMessages, setOptimisticMessages] = useState([]);
@@ -418,6 +419,13 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
             cancelled = true;
         };
     }, [studentId, studentAuthUid, selectedRoomId, allowLegacyResolve, canCreateChatRoom, expectedRoomType, roomCreationContext?.targetAuthUid, normalizedChatSlot, userRole, roomStudentParticipantKeys]);
+
+
+    useEffect(() => {
+        if (!roomId || !notificationViewerUid) return;
+        markChatRoomNotificationsRead({ viewerUid: notificationViewerUid, roomId, notifications, setNotifications })
+            .catch((error) => console.error('[messenger][notifications] mark chat room read failed', error));
+    }, [roomId, notificationViewerUid, notifications, setNotifications]);
 
     useEffect(() => {
         if (!roomId) return undefined;

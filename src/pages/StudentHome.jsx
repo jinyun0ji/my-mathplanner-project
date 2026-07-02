@@ -19,8 +19,7 @@ import NotificationsIcon from '@mui/icons-material/Notifications';
 import useNotifications from '../notifications/useNotifications';
 import NotificationList from '../notifications/NotificationList';
 import openNotification from '../notifications/openNotification';
-import { functions } from '../firebase/client';
-import { httpsCallable } from 'firebase/functions';
+import { markAllNotificationsRead, markNotificationRead } from '../notifications/notificationReadActions';
 import { FEATURES } from '../config/features';
 import FormulaBookView from '../components/Student/formulaBook/FormulaBookView';
 
@@ -515,6 +514,14 @@ export default function StudentHome({
     };
 
     const handleNotificationClick = async (notification) => {
+        if (!notification) return;
+        if (!isMasterPreview && !readOnly) {
+            try {
+                await markNotificationRead({ viewerUid, notificationId: notification.id, setNotifications });
+            } catch (error) {
+                console.error('[student][notifications] mark single read failed', error);
+            }
+        }
         await openNotification({
             notification,
             onNavigate: ({ refCollection, refId, data }) => {
@@ -555,10 +562,7 @@ export default function StudentHome({
         }
 
         try {
-            const callable = httpsCallable(functions, 'markAllNotificationsRead');
-            const result = await callable({ viewerUid });
-            const now = new Date();
-            setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true, readAt: n.readAt || now })));
+            const result = await markAllNotificationsRead({ viewerUid, setNotifications });
             console.log('[student][notifications] markAllRead success', { viewerUid, updated: result?.data?.updated ?? null });
         } catch (error) {
             console.error('[student][notifications] markAllRead failed', error);
@@ -585,6 +589,9 @@ export default function StudentHome({
             <StudentMessengerPage
                 studentId={studentId}
                 student={student}
+                notificationViewerUid={viewerUid}
+                notifications={notifications}
+                setNotifications={setNotifications}
                 onBack={() => setIsMessengerPage(false)}
             />
         );
