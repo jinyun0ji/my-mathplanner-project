@@ -1,252 +1,203 @@
-diff --git a/firestore.rules b/firestore.rules
-index d70d0f2302f4a7430291210f42638c62e95a88fc..274327076a739a94d24933f1eda06ec0f3cf8599 100644
---- a/firestore.rules
-+++ b/firestore.rules
-@@ -318,71 +318,79 @@ service cloud.firestore {
-           || myProfileDocId() in data.participantIds
-         );
-     }
+diff --git a/src/messenger/services/userChatRoomsService.js b/src/messenger/services/userChatRoomsService.js
+index 1e67e7cabd67c318a84a07333febe5a1285e0abc..a42cdb4b5e022bb2d23a158b07da89d89063a022 100644
+--- a/src/messenger/services/userChatRoomsService.js
++++ b/src/messenger/services/userChatRoomsService.js
+@@ -7,73 +7,101 @@ export const getUserChatRoomsQueryShape = (authUid) => ({ collection: `userChatR
  
-     function myLinkedUserAuthAliases() {
-       return userDoc() != null
-         ? [
-             userDoc().data.authUid,
-             userDoc().data.userUid,
-             userDoc().data.uid,
-             userDoc().data.studentAuthUid,
-             userDoc().data.parentUid
-           ]
-         : [];
-     }
+ const uniqueStrings = (values) => Array.from(new Set(
+     values.flat(Infinity).filter((value) => typeof value === 'string' && value.trim()).map((value) => value.trim())
+ ));
  
-     function hasMyLinkedUserAuthAlias(value) {
-       return value is string
-         && (
-           value == uid()
-           || value == myProfileDocId()
-           || value in myLinkedUserAuthAliases()
-         );
-     }
+ const toMillis = (value) => {
+     if (!value) return 0;
+     if (typeof value?.toMillis === 'function') return value.toMillis();
+     if (typeof value?.toDate === 'function') return value.toDate().getTime();
+     if (value instanceof Date) return value.getTime();
+     const parsed = new Date(value).getTime();
+     return Number.isFinite(parsed) ? parsed : 0;
+ };
  
-+    function isMyAuthOrProfileAlias(value) {
-+      return value is string && hasMyLinkedUserAuthAlias(value);
-+    }
+ export const sortUserRoomIndexes = (indexes = []) => [...indexes].sort((left, right) => toMillis(right.lastMessageAt || right.updatedAt) - toMillis(left.lastMessageAt || left.updatedAt));
+ 
+ export const sortRoomsByActivity = (rooms = []) => [...rooms].sort((left, right) => toMillis(right.lastMessageAt || right.updatedAt || right.createdAt) - toMillis(left.lastMessageAt || left.updatedAt || left.createdAt));
+ 
+ export const mergeRoomWithIndex = (room, index) => ({
+     ...(room || {}),
+     id: room?.id || index?.roomId || index?.id || '',
+     roomId: room?.roomId || index?.roomId || index?.id || '',
+     indexLastMessageText: index?.lastMessageText || '',
+     indexLastMessageAt: index?.lastMessageAt || null,
+     indexUpdatedAt: index?.updatedAt || null,
+-    lastMessageText: index?.lastMessageText || room?.lastMessageText || '',
+-    lastMessageAt: index?.lastMessageAt || room?.lastMessageAt || null,
+-    lastSenderId: index?.lastSenderId || room?.lastSenderId || room?.lastMessageSenderId || '',
+-    updatedAt: index?.updatedAt || room?.updatedAt || null,
++    lastMessageText: room?.lastMessageText || index?.lastMessageText || '',
++    lastMessageAt: room?.lastMessageAt || index?.lastMessageAt || room?.updatedAt || index?.updatedAt || null,
++    lastSenderId: room?.lastSenderId || room?.lastMessageSenderId || index?.lastSenderId || '',
++    updatedAt: room?.updatedAt || index?.updatedAt || null,
+     __source: index ? 'userChatRooms' : 'chatRooms_fallback',
+ });
+ 
+ const getUserProfileForAuthUid = async (authUid) => {
+     const currentAuthUid = String(authUid || '').trim();
+     if (!currentAuthUid) return { authUid: '', userDocId: '', profile: {} };
+     const indexSnap = await getDoc(doc(db, 'userAuthIndex', currentAuthUid));
+     const userDocId = indexSnap.exists() ? String(indexSnap.data()?.userDocId || '').trim() : '';
+     if (!userDocId) return { authUid: currentAuthUid, userDocId: '', profile: {} };
+     const userSnap = await getDoc(doc(db, 'users', userDocId));
+     return { authUid: currentAuthUid, userDocId, profile: userSnap.exists() ? userSnap.data() || {} : {} };
+ };
+ 
+ const collectRoom = (map, docSnap) => map.set(docSnap.id, { id: docSnap.id, __source: 'chatRooms_fallback', ...docSnap.data() });
+ 
+ const readMessagePreview = (message = {}) => normalizeText(message?.text) || normalizeText(message?.content) || normalizeText(message?.body) || (Array.isArray(message?.attachments) && message.attachments.length ? '첨부파일' : '');
+ 
+ const hasRoomPreview = (room) => Boolean(room && getLastMessagePreview(room) !== '대화 내역이 없습니다.');
+ 
++const getTeacherCounterpartKey = (room) => normalizeText(room?.teacherAuthUid) || normalizeText(room?.staffAuthUid) || normalizeText(room?.counterpartUid);
 +
-     function canReadChatRoomViaStudentAliases(data) {
-       return isStudent()
-         && (
-           (('studentId' in data) && data.studentId == myProfileDocId())
-           || (
-             ('studentId' in data)
-             && data.studentId is string
-             && exists(/databases/$(database)/documents/users/$(data.studentId))
-             && get(/databases/$(database)/documents/users/$(data.studentId)).data.authUid == uid()
-           )
-           || (('studentUid' in data) && hasMyLinkedUserAuthAlias(data.studentUid))
-           || (('studentAuthUid' in data) && hasMyLinkedUserAuthAlias(data.studentAuthUid))
-         );
++const isParentFallbackRoomForType = (room, expectedType) => {
++    if (!isLegacySlotRoomTypeMatch(room, expectedType)) return false;
++    const explicitType = normalizeText(room?.roomType) || normalizeText(room?.channel);
++    const teacherCounterpartKey = getTeacherCounterpartKey(room);
++    if (expectedType === 'parent_teacher') {
++        return explicitType === 'parent_teacher' || explicitType === 'teacher' || normalizeText(room?.slot) === 'teacher' || Boolean(teacherCounterpartKey);
++    }
++    if (expectedType === 'parent_institute') {
++        return explicitType === 'parent_institute' || explicitType === 'institute' || normalizeText(room?.slot) === 'institute' || !teacherCounterpartKey;
++    }
++    return false;
++};
++
++const mergeRoomsById = (primaryRooms = [], fallbackRooms = []) => {
++    const roomsById = new Map();
++    fallbackRooms.forEach((room) => {
++        const id = String(room?.id || room?.roomId || '').trim();
++        if (id) roomsById.set(id, room);
++    });
++    primaryRooms.forEach((room) => {
++        const id = String(room?.id || room?.roomId || '').trim();
++        if (id) roomsById.set(id, room);
++    });
++    return sortRoomsByActivity(Array.from(roomsById.values()));
++};
++
+ const enrichRoomWithLatestMessagePreview = async (room) => {
+     if (!room?.id || hasRoomPreview(room)) return room;
+     try {
+         const latestSnap = await getDocs(query(collection(db, 'chatRooms', room.id, 'messages'), orderBy('createdAt', 'desc'), limit(1)));
+         const latestDoc = latestSnap.docs[0];
+         if (!latestDoc) return room;
+         const message = latestDoc.data() || {};
+         return {
+             ...room,
+             __previewText: readMessagePreview(message),
+             __previewAt: message.createdAt || message.updatedAt || null,
+         };
+     } catch (error) {
+         if (process.env.NODE_ENV === 'development') console.warn('[mobile messenger room preview debug] latest message preview query failed', { roomId: room.id, code: error?.code, message: error?.message });
+         return room;
      }
+ };
  
-     function canReadChatRoomViaParentAliases(data) {
-       return isParent()
-         && (
-           (('parentId' in data) && data.parentId == myProfileDocId())
-+          || (('parentId' in data) && data.parentId == uid())
-+          || (('parentUid' in data) && data.parentUid == myProfileDocId())
-           || (('parentUid' in data) && hasMyLinkedUserAuthAlias(data.parentUid))
-+          || (data.participantIds is list && myProfileDocId() in data.participantIds)
-           || (('studentId' in data) && data.studentId in parentStudentUids())
-+          || (('studentId' in data) && data.studentId in parentStudentIds())
-         );
+ const enrichRoomsWithLatestMessagePreviews = async (rooms = []) => Promise.all(rooms.map(enrichRoomWithLatestMessagePreview));
+ 
+ const logMobileRoomPreviewDebug = ({ role, authUid, rooms = [], source, indexes = [] }) => {
+     if (process.env.NODE_ENV !== 'development') return;
+     const indexSourceByRoomId = new Map(indexes.map((index) => [String(index?.roomId || index?.id || ''), 'userChatRooms']));
+     rooms.forEach((room) => {
+         console.log('[mobile messenger room preview debug]', {
+@@ -106,80 +134,86 @@ export const fetchStudentFallbackRooms = async (authUid) => {
+     snap.docs.forEach((roomDoc) => collectRoom(roomsById, roomDoc));
+     return sortRoomsByActivity(Array.from(roomsById.values()).filter((room) => {
+         const isStudentRoom = ['student_institute', 'student_teacher'].some((expectedType) => isLegacySlotRoomTypeMatch(room, expectedType));
+         const hasStudentIdentity = String(room?.studentId || '') === userDocId
+             || String(room?.studentUid || '') === currentAuthUid
+             || String(room?.studentAuthUid || '') === currentAuthUid
+             || (Array.isArray(room?.participantIds) && candidateKeys.some((key) => room.participantIds.map(String).includes(key)));
+         const hasExpectedCounterpart = Boolean(room?.staffAuthUid || room?.teacherAuthUid || room?.counterpartUid || (Array.isArray(room?.participantIds) && room.participantIds.length > 1));
+         return isStudentRoom && hasStudentIdentity && hasExpectedCounterpart;
+     }));
+ };
+ 
+ export const fetchParentFallbackRooms = async (authUid) => {
+     const { authUid: currentAuthUid, userDocId: parentDocId, profile } = await getUserProfileForAuthUid(authUid);
+     if (!currentAuthUid || !parentDocId) return [];
+     const studentIds = Array.isArray(profile.studentIds) ? profile.studentIds.map(String).filter(Boolean).slice(0, 10) : [];
+     const candidateKeys = uniqueStrings([currentAuthUid, parentDocId, profile.authUid, profile.userUid, profile.uid, profile.parentUid, profile.studentAuthUid]);
+     const roomsById = new Map();
+     const parentSnap = await getDocs(query(collection(db, 'chatRooms'), where('parentId', '==', parentDocId)));
+     parentSnap.docs.forEach((roomDoc) => collectRoom(roomsById, roomDoc));
+     if (studentIds.length > 0) {
+         const studentSnap = await getDocs(query(collection(db, 'chatRooms'), where('studentId', 'in', studentIds)));
+         studentSnap.docs.forEach((roomDoc) => collectRoom(roomsById, roomDoc));
      }
+     return sortRoomsByActivity(Array.from(roomsById.values()).filter((room) => {
+-        const isParentRoom = ['parent_institute', 'parent_teacher'].some((expectedType) => isLegacySlotRoomTypeMatch(room, expectedType));
++        const isParentRoom = ['parent_institute', 'parent_teacher'].some((expectedType) => isParentFallbackRoomForType(room, expectedType));
+         const roomParticipantIds = Array.isArray(room?.participantIds) ? room.participantIds.map(String) : [];
+         const hasParentIdentity = String(room?.parentId || '') === parentDocId
+             || candidateKeys.includes(String(room?.parentUid || ''))
+             || candidateKeys.some((key) => roomParticipantIds.includes(key))
+             || (studentIds.length > 0 && studentIds.includes(String(room?.studentId || '')));
+         return isParentRoom && hasParentIdentity;
+     }));
+ };
  
-     function canReadChatRoom(data) {
-       return isSignedIn()
-         && data != null
-         && (
-           isStaffOrAdminOrTeacher()
-           || isChatRoomParticipant(data)
-           || (data.participantIds is list && myProfileDocId() in data.participantIds)
-           || canReadChatRoomViaStudentAliases(data)
-           || canReadChatRoomViaParentAliases(data)
-         );
-     }
+ export const fetchRoomsForIndexes = async (indexes = []) => {
+     const rooms = await Promise.all(sortUserRoomIndexes(indexes).map(async (index) => {
+         const roomId = String(index?.roomId || index?.id || '').trim();
+         if (!roomId) return null;
+         const roomSnap = await getDoc(doc(db, 'chatRooms', roomId));
+         if (!roomSnap.exists()) return mergeRoomWithIndex({ id: roomId }, index);
+         return mergeRoomWithIndex({ id: roomSnap.id, ...roomSnap.data() }, index);
+     }));
+     return rooms.filter(Boolean);
+ };
  
-     function canAccessChatRoomData(data) {
-       return canReadChatRoom(data);
-     }
- 
-     function canAccessChatRoomDoc() {
-       return canReadChatRoom(resource.data);
-     }
- 
- 
-     function announcementAudienceAuthUids() {
-@@ -448,108 +456,109 @@ service cloud.firestore {
-         && request.resource.data.createdBy == uid()
-         && request.resource.data.updatedBy == uid()
-         && request.resource.data.roomType in ['parent_teacher', 'parent_institute']
-         && hasValidChatRoomTypeForSlot();
-     }
- 
- 
-     function isValidStudentDirectChatRoomCreate() {
-       return isStudent()
-         && request.resource.data.type == 'individual'
-         && request.resource.data.participantIds is list
-         && request.resource.data.participantIds.size() == 2
-         && uid() in request.resource.data.participantIds
-         && hasAllowedDirectChatCounterpart(request.resource.data.participantIds)
-         && request.resource.data.internalOnly == true
-         && request.resource.data.studentId == myProfileDocId()
-         && request.resource.data.studentUid == uid()
-         && request.resource.data.studentAuthUid == uid()
-         && request.resource.data.createdBy == uid()
-         && request.resource.data.updatedBy == uid()
-         && request.resource.data.roomType in ['student_teacher', 'student_institute']
-         && hasValidChatRoomTypeForSlot();
-     }
- 
-     function isAllowedChatRoomUpdateFieldSet() {
--      return request.resource.data.diff(resource.data).changedKeys()
--        .hasOnly(['updatedAt', 'updatedBy', 'lastMessageText', 'lastMessageAt', 'lastMessageSenderId', 'unreadCountByUser', 'status']);
-+      return request.resource.data.diff(resource.data).affectedKeys()
-+        .hasOnly(['updatedAt', 'updatedBy', 'lastMessageText', 'lastMessageAt', 'lastMessageSenderId', 'lastSenderId']);
-     }
- 
-     function isValidDirectChatRoomPatch() {
-       return isAllowedChatRoomUpdateFieldSet()
--        && request.resource.data.updatedBy == uid()
--        && request.resource.data.lastMessageSenderId == uid();
-+        && (!('updatedBy' in request.resource.data) || isMyAuthOrProfileAlias(request.resource.data.updatedBy))
-+        && (!('lastMessageSenderId' in request.resource.data) || isMyAuthOrProfileAlias(request.resource.data.lastMessageSenderId))
-+        && (!('lastSenderId' in request.resource.data) || isMyAuthOrProfileAlias(request.resource.data.lastSenderId));
-     }
- 
-     function isAllowedChatMessageCreateFields() {
-       return request.resource.data.keys().hasOnly([
-         'roomId',
-         'senderId',
-         'senderRole',
-         'senderName',
-         'messageType',
-         'text',
-         'attachments',
-         'createdAt',
-         'localCreatedAtMs',
-         'internalOnly',
-         'clientTempId',
-         'readBy',
-         'isBroadcastCopy',
-         'broadcastId',
-         'editedAt',
-         'deletedAt'
-       ]);
-     }
- 
- 
- 
-     function isValidChatAttachmentList() {
-       return request.resource.data.attachments is list
-         && request.resource.data.attachments.size() <= 1
-         && (
-           request.resource.data.attachments.size() == 0
-           || (
-             request.resource.data.attachments[0].keys().hasOnly(['type', 'name', 'url', 'path', 'size', 'contentType'])
-             && request.resource.data.attachments[0].type in ['image', 'pdf']
-             && request.resource.data.attachments[0].name is string
-             && request.resource.data.attachments[0].url is string
-             && request.resource.data.attachments[0].path is string
-             && request.resource.data.attachments[0].size is int
-             && request.resource.data.attachments[0].contentType in ['image/jpeg', 'image/png', 'image/webp', 'application/pdf']
-           )
-         );
-     }
- 
-     function hasMessageTextOrAttachment() {
-       return request.resource.data.text.size() > 0 || request.resource.data.attachments.size() > 0;
-     }
- 
-     function isValidDirectChatMessageCreate(roomId) {
-       return canAccessChatRoomById(roomId)
-         && request.resource.data.roomId == roomId
--        && request.resource.data.senderId == uid()
-+        && isMyAuthOrProfileAlias(request.resource.data.senderId)
-         && request.resource.data.messageType in ['text', 'image', 'file']
-         && request.resource.data.text is string
-         && request.resource.data.text.size() <= 4000
-         && isValidChatAttachmentList()
-         && hasMessageTextOrAttachment()
-         && request.resource.data.internalOnly == true
-         && (!('senderRole' in request.resource.data) || request.resource.data.senderRole is string || request.resource.data.senderRole == null)
-         && (!('senderName' in request.resource.data) || request.resource.data.senderName is string || request.resource.data.senderName == null)
-         && (!('clientTempId' in request.resource.data) || request.resource.data.clientTempId is string || request.resource.data.clientTempId == null)
-         && (!('localCreatedAtMs' in request.resource.data) || request.resource.data.localCreatedAtMs is int || request.resource.data.localCreatedAtMs is float || request.resource.data.localCreatedAtMs == null)
-         && (!('isBroadcastCopy' in request.resource.data) || request.resource.data.isBroadcastCopy == false || request.resource.data.isBroadcastCopy == null)
-         && (!('broadcastId' in request.resource.data) || request.resource.data.broadcastId == null);
-     }
- 
- 
-     function isAccountDeletionUpdate(userId) {
-       return signedIn()
-         && userId == myProfileDocId()
-         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-           'status',
-           'deletionRequested',
-           'deletionRequestedAt',
-           'deletionRequestedBy',
-           'active',
-           'updatedAt'
-@@ -844,51 +853,51 @@ service cloud.firestore {
-       allow update: if isSignedIn()
-         && (
-           isStaffOrAdminOrTeacher()
-           || (
-             canReadChatRoom(resource.data)
-             && isValidDirectChatRoomPatch()
-           )
-         );
- 
-       allow delete: if isStaffOrAdminOrTeacher();
-     }
- 
-     match /chatRooms/{roomId}/messages/{messageId} {
-       function roomDoc() {
-         return get(/databases/$(database)/documents/chatRooms/$(roomId));
-       }
- 
-       function canReadRoomMessages() {
-         return exists(/databases/$(database)/documents/chatRooms/$(roomId))
-           && canReadChatRoom(roomDoc().data);
-       }
- 
-       allow read: if canReadRoomMessages();
- 
-       allow create: if canReadRoomMessages()
--        && request.resource.data.senderId == uid()
-+        && isMyAuthOrProfileAlias(request.resource.data.senderId)
-         && request.resource.data.messageType in ['text', 'image', 'file']
-         && request.resource.data.text is string
-         && request.resource.data.text.size() <= 4000
-         && isValidChatAttachmentList()
-         && hasMessageTextOrAttachment()
-         && request.resource.data.internalOnly == true;
- 
-       allow update: if isStaffOrAdminOrTeacher();
-       allow delete: if false;
-     }
- 
-     match /chatBroadcastLogs/{broadcastId} {
-       allow read, write: if isStaffOrAdminOrTeacher();
-     }
- 
-     match /chats/{roomId} {
-       function isChatParticipant() {
-         return isSignedIn()
-           && resource.data.participantIds is list
-           && uid() in resource.data.participantIds;
-       }
- 
-       allow get, list: if isStaffOrAdminOrTeacher() || isChatParticipant();
- 
-       allow create: if isSignedIn();
+ export const subscribeUserChatRooms = ({ authUid, role = '', onNext, onError }) => {
+     const indexQuery = query(collection(db, 'userChatRooms', authUid, 'rooms'));
+     return onSnapshot(indexQuery, async (snap) => {
+         try {
+             if (process.env.NODE_ENV === 'development') {
+                 console.log('[resolver] userChatRooms snapshot', { role, authUid, count: snap.docs.length, ids: snap.docs.map((docSnap) => docSnap.id) });
+             }
+             const indexes = snap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
+             const indexedRooms = await enrichRoomsWithLatestMessagePreviews(await fetchRoomsForIndexes(indexes));
+-            if (role === 'staff' || indexedRooms.length > 0) {
++            const fallbackRoomsForRole = role === 'parent'
++                ? await fetchParentFallbackRooms(authUid)
++                : role === 'student'
++                    ? await fetchStudentFallbackRooms(authUid)
++                    : [];
++            const roomsForRole = role === 'staff' ? indexedRooms : mergeRoomsById(indexedRooms, fallbackRoomsForRole);
++            if (role === 'staff' || roomsForRole.length > 0) {
+                 if (process.env.NODE_ENV === 'development') {
+-                    console.log('[resolver] room list count', { role, authUid, count: indexedRooms.length });
+-                    console.log('[resolver] rooms missing lastMessageText count', { role, authUid, count: indexedRooms.filter((room) => !room?.lastMessageText).length });
++                    console.log('[resolver] room list count', { role, authUid, count: roomsForRole.length });
++                    console.log('[resolver] rooms missing lastMessageText count', { role, authUid, count: roomsForRole.filter((room) => !room?.lastMessageText).length });
+                 }
+-                logMobileRoomPreviewDebug({ role, authUid, rooms: indexedRooms, source: 'userChatRooms', indexes });
+-                onNext(indexedRooms, indexes);
++                logMobileRoomPreviewDebug({ role, authUid, rooms: roomsForRole, source: 'userChatRooms', indexes });
++                onNext(roomsForRole, indexes);
+                 return;
+             }
+             if (process.env.NODE_ENV === 'development') {
+                 console.log('[resolver] userChatRooms empty; using chatRooms fallback', { role, authUid });
+             }
+             const fallbackRooms = role === 'parent' ? await fetchParentFallbackRooms(authUid) : await fetchStudentFallbackRooms(authUid);
+             const sortedFallbackRooms = sortRoomsByActivity(await enrichRoomsWithLatestMessagePreviews(fallbackRooms));
+             if (process.env.NODE_ENV === 'development') {
+                 console.log('[resolver] room list count', { role, authUid, count: sortedFallbackRooms.length });
+                 console.log('[resolver] rooms missing lastMessageText count', { role, authUid, count: sortedFallbackRooms.filter((room) => !room?.lastMessageText).length });
+             }
+             logMobileRoomPreviewDebug({ role, authUid, rooms: sortedFallbackRooms, source: 'chatRooms_fallback', indexes });
+             onNext(sortedFallbackRooms, indexes);
+         } catch (error) {
+             onError?.(error);
+         }
+     }, onError);
+ };

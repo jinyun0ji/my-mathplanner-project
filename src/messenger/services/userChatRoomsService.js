@@ -29,10 +29,10 @@ export const mergeRoomWithIndex = (room, index) => ({
     indexLastMessageText: index?.lastMessageText || '',
     indexLastMessageAt: index?.lastMessageAt || null,
     indexUpdatedAt: index?.updatedAt || null,
-    lastMessageText: index?.lastMessageText || room?.lastMessageText || '',
-    lastMessageAt: index?.lastMessageAt || room?.lastMessageAt || null,
-    lastSenderId: index?.lastSenderId || room?.lastSenderId || room?.lastMessageSenderId || '',
-    updatedAt: index?.updatedAt || room?.updatedAt || null,
+    lastMessageText: room?.lastMessageText || index?.lastMessageText || '',
+    lastMessageAt: room?.lastMessageAt || index?.lastMessageAt || room?.updatedAt || index?.updatedAt || null,
+    lastSenderId: room?.lastSenderId || room?.lastMessageSenderId || index?.lastSenderId || '',
+    updatedAt: room?.updatedAt || index?.updatedAt || null,
     __source: index ? 'userChatRooms' : 'chatRooms_fallback',
 });
 
@@ -51,6 +51,34 @@ const collectRoom = (map, docSnap) => map.set(docSnap.id, { id: docSnap.id, __so
 const readMessagePreview = (message = {}) => normalizeText(message?.text) || normalizeText(message?.content) || normalizeText(message?.body) || (Array.isArray(message?.attachments) && message.attachments.length ? '첨부파일' : '');
 
 const hasRoomPreview = (room) => Boolean(room && getLastMessagePreview(room) !== '대화 내역이 없습니다.');
+
+const getTeacherCounterpartKey = (room) => normalizeText(room?.teacherAuthUid) || normalizeText(room?.staffAuthUid) || normalizeText(room?.counterpartUid);
+
+const isParentFallbackRoomForType = (room, expectedType) => {
+    if (!isLegacySlotRoomTypeMatch(room, expectedType)) return false;
+    const explicitType = normalizeText(room?.roomType) || normalizeText(room?.channel);
+    const teacherCounterpartKey = getTeacherCounterpartKey(room);
+    if (expectedType === 'parent_teacher') {
+        return explicitType === 'parent_teacher' || explicitType === 'teacher' || normalizeText(room?.slot) === 'teacher' || Boolean(teacherCounterpartKey);
+    }
+    if (expectedType === 'parent_institute') {
+        return explicitType === 'parent_institute' || explicitType === 'institute' || normalizeText(room?.slot) === 'institute' || !teacherCounterpartKey;
+    }
+    return false;
+};
+
+const mergeRoomsById = (primaryRooms = [], fallbackRooms = []) => {
+    const roomsById = new Map();
+    fallbackRooms.forEach((room) => {
+        const id = String(room?.id || room?.roomId || '').trim();
+        if (id) roomsById.set(id, room);
+    });
+    primaryRooms.forEach((room) => {
+        const id = String(room?.id || room?.roomId || '').trim();
+        if (id) roomsById.set(id, room);
+    });
+    return sortRoomsByActivity(Array.from(roomsById.values()));
+};
 
 const enrichRoomWithLatestMessagePreview = async (room) => {
     if (!room?.id || hasRoomPreview(room)) return room;
@@ -128,7 +156,7 @@ export const fetchParentFallbackRooms = async (authUid) => {
         studentSnap.docs.forEach((roomDoc) => collectRoom(roomsById, roomDoc));
     }
     return sortRoomsByActivity(Array.from(roomsById.values()).filter((room) => {
-        const isParentRoom = ['parent_institute', 'parent_teacher'].some((expectedType) => isLegacySlotRoomTypeMatch(room, expectedType));
+        const isParentRoom = ['parent_institute', 'parent_teacher'].some((expectedType) => isParentFallbackRoomForType(room, expectedType));
         const roomParticipantIds = Array.isArray(room?.participantIds) ? room.participantIds.map(String) : [];
         const hasParentIdentity = String(room?.parentId || '') === parentDocId
             || candidateKeys.includes(String(room?.parentUid || ''))
@@ -158,13 +186,19 @@ export const subscribeUserChatRooms = ({ authUid, role = '', onNext, onError }) 
             }
             const indexes = snap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
             const indexedRooms = await enrichRoomsWithLatestMessagePreviews(await fetchRoomsForIndexes(indexes));
-            if (role === 'staff' || indexedRooms.length > 0) {
+            const fallbackRoomsForRole = role === 'parent'
+                ? await fetchParentFallbackRooms(authUid)
+                : role === 'student'
+                    ? await fetchStudentFallbackRooms(authUid)
+                    : [];
+            const roomsForRole = role === 'staff' ? indexedRooms : mergeRoomsById(indexedRooms, fallbackRoomsForRole);
+            if (role === 'staff' || roomsForRole.length > 0) {
                 if (process.env.NODE_ENV === 'development') {
-                    console.log('[resolver] room list count', { role, authUid, count: indexedRooms.length });
-                    console.log('[resolver] rooms missing lastMessageText count', { role, authUid, count: indexedRooms.filter((room) => !room?.lastMessageText).length });
+                    console.log('[resolver] room list count', { role, authUid, count: roomsForRole.length });
+                    console.log('[resolver] rooms missing lastMessageText count', { role, authUid, count: roomsForRole.filter((room) => !room?.lastMessageText).length });
                 }
-                logMobileRoomPreviewDebug({ role, authUid, rooms: indexedRooms, source: 'userChatRooms', indexes });
-                onNext(indexedRooms, indexes);
+                logMobileRoomPreviewDebug({ role, authUid, rooms: roomsForRole, source: 'userChatRooms', indexes });
+                onNext(roomsForRole, indexes);
                 return;
             }
             if (process.env.NODE_ENV === 'development') {
