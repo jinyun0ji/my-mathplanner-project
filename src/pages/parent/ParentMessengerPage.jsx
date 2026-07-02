@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { doc, getDoc } from 'firebase/firestore';
 import ArrowBackIosNewIcon from '@mui/icons-material/ArrowBackIosNew';
 import StudentMessenger from '../../components/StudentMessenger';
@@ -105,6 +105,7 @@ const isParentInstituteRoom = (room, participantKeys, studentId, linkedUserDocId
 
 export default function ParentMessengerPage({ studentId, student, onBack, notificationViewerUid = '', initialRoomId = '', notifications = [], setNotifications = null }) {
     const [selectedSlot, setSelectedSlot] = useState(null);
+    const hasConsumedInitialRoomRef = useRef(false);
     const [rooms, setRooms] = useState([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
@@ -234,9 +235,16 @@ export default function ParentMessengerPage({ studentId, student, onBack, notifi
 
     useEffect(() => {
         const normalizedInitialRoomId = String(initialRoomId || '').trim();
-        if (!normalizedInitialRoomId || selectedSlot) return;
+        if (!normalizedInitialRoomId || selectedSlot || hasConsumedInitialRoomRef.current) return;
         const targetSlot = messengerSlots.find((slot) => String(slot.room?.roomId || slot.room?.id || '').trim() === normalizedInitialRoomId);
-        if (targetSlot) handleOpenRoom(targetSlot);
+        hasConsumedInitialRoomRef.current = true;
+        handleOpenRoom(targetSlot || {
+            slot: SLOTS.TEACHER,
+            id: normalizedInitialRoomId,
+            title: getTeacherDisplayName(),
+            roomType: ROOM_TYPES.PARENT_TEACHER,
+            room: { id: normalizedInitialRoomId, roomId: normalizedInitialRoomId },
+        });
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [initialRoomId, messengerSlots, selectedSlot]);
 
@@ -286,7 +294,10 @@ export default function ParentMessengerPage({ studentId, student, onBack, notifi
         }
     };
 
-    const currentSlot = selectedSlot ? messengerSlots.find((slot) => slot.slot === selectedSlot.slot) || selectedSlot : null;
+    const currentSlot = selectedSlot
+        ? messengerSlots.find((slot) => getRoomId(slot.room) && getRoomId(slot.room) === getRoomId(selectedSlot.room))
+            || (getRoomId(selectedSlot.room) ? selectedSlot : messengerSlots.find((slot) => slot.slot === selectedSlot.slot) || selectedSlot)
+        : null;
 
     if (currentSlot) {
         const targetAuthUid = currentSlot.slot === SLOTS.TEACHER ? TEACHER_AUTH_UID : INSTITUTE_AUTH_UID;
@@ -294,7 +305,7 @@ export default function ParentMessengerPage({ studentId, student, onBack, notifi
         return (
             <div className="mobile-screen h-screen min-h-screen bg-gray-50 flex flex-col overflow-hidden">
                 <header className="mobile-header bg-white border-b border-gray-100 px-4 flex items-center gap-3">
-                    <button type="button" onClick={() => setSelectedSlot(null)} className="mobile-back-button text-gray-700"><ArrowBackIosNewIcon style={{ fontSize: 18 }} /></button>
+                    <button type="button" onClick={() => { hasConsumedInitialRoomRef.current = true; setSelectedSlot(null); }} className="mobile-back-button text-gray-700"><ArrowBackIosNewIcon style={{ fontSize: 18 }} /></button>
                     <h1 className="text-base font-semibold text-gray-900 truncate">{currentSlot.title}</h1>
                 </header>
                 <div className="flex-1 min-h-0">

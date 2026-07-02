@@ -334,9 +334,10 @@ export default function StudentHome({
             });
         return () => { isMounted = false; };
     }, [authUid]);
+    const linkedStudentDocId = linkedUserDocId;
     const notificationViewerUid = isMasterPreview
-        ? (masterViewStudentAuthUid || student?.authUid || userId || '')
-        : (student?.authUid || linkedUserDocId || authUid || userId || '');
+        ? (masterViewStudentId || student?.id || studentId || masterViewStudentAuthUid || student?.authUid || userId || '')
+        : (linkedStudentDocId || student?.id || studentId || student?.authUid || authUid || userId || '');
     const viewerUid = notificationViewerUid;
     const studentDocId = isMasterPreview ? (masterViewStudentId || studentId) : studentId;
     const studentAuthUid = isMasterPreview ? (masterViewStudentAuthUid || student?.authUid || userId) : (student?.authUid || userId);
@@ -489,10 +490,12 @@ export default function StudentHome({
         console.log('[notifications uid]', {
             role: 'student',
             authUid,
-            linkedUserDocId,
+            linkedUserDocId: linkedStudentDocId,
+            studentId: student?.id || studentId || '',
+            studentAuthUid: student?.authUid || '',
             notificationViewerUid,
         });
-    }, [authUid, linkedUserDocId, notificationViewerUid]);
+    }, [authUid, linkedStudentDocId, student?.id, student?.authUid, studentId, notificationViewerUid]);
 
     const { notifications, hasUnread, unreadCount, lastReadAt, isLoading, isMetaLoading, setNotifications } = useNotifications(notificationViewerUid);
 

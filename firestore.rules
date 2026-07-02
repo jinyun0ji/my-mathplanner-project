@@ -817,7 +817,14 @@ service cloud.firestore {
     }
 
     function canAccessNotificationOwner(userUid) {
-      return isAuthUidOrLinkedUserDocId(userUid) || isStaffOrAdminOrTeacher();
+      return isAuthUidOrLinkedUserDocId(userUid)
+        || isStaffOrAdminOrTeacher()
+        || (isStudent() && userUid == myProfileDocId())
+        || (isStudent()
+          && userUid is string
+          && exists(/databases/$(database)/documents/users/$(userUid))
+          && get(/databases/$(database)/documents/users/$(userUid)).data.authUid == uid())
+        || (isParent() && userUid in parentStudentUids());
     }
 
     match /notifications/{logId} {

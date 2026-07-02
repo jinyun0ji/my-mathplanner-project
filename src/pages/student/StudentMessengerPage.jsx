@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import ArrowBackIosNewIcon from '@mui/icons-material/ArrowBackIosNew';
 import StudentMessenger from '../../components/StudentMessenger';
 import { auth } from '../../firebase/client';
@@ -14,6 +14,7 @@ const getExpectedRoomType = (slot) => (slot === SLOTS.INSTITUTE ? ROOM_TYPES.STU
 
 export default function StudentMessengerPage({ studentId, student, onBack, notificationViewerUid = '', initialRoomId = '', notifications = [], setNotifications = null }) {
     const [selectedSlot, setSelectedSlot] = useState(null);
+    const hasConsumedInitialRoomRef = useRef(false);
     const authUid = String(auth.currentUser?.uid || '');
     const studentWithId = useMemo(() => ({ ...student, id: student?.id || studentId }), [student, studentId]);
     const { loading, error, participantKeys, teacherRoom, instituteRoom, rooms = [] } = useMessengerRooms({
@@ -55,9 +56,16 @@ export default function StudentMessengerPage({ studentId, student, onBack, notif
 
     useEffect(() => {
         const normalizedInitialRoomId = String(initialRoomId || '').trim();
-        if (!normalizedInitialRoomId || selectedSlot) return;
+        if (!normalizedInitialRoomId || selectedSlot || hasConsumedInitialRoomRef.current) return;
         const targetSlot = messengerSlots.find((slot) => String(slot.room?.roomId || slot.room?.id || '').trim() === normalizedInitialRoomId);
-        if (targetSlot) handleOpenRoom(targetSlot);
+        hasConsumedInitialRoomRef.current = true;
+        handleOpenRoom(targetSlot || {
+            slot: SLOTS.TEACHER,
+            id: normalizedInitialRoomId,
+            title: getTeacherDisplayName(),
+            roomType: ROOM_TYPES.STUDENT_TEACHER,
+            room: { id: normalizedInitialRoomId, roomId: normalizedInitialRoomId },
+        });
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [initialRoomId, messengerSlots, selectedSlot]);
 
@@ -89,7 +97,10 @@ export default function StudentMessengerPage({ studentId, student, onBack, notif
         }
     };
 
-    const currentSlot = selectedSlot ? messengerSlots.find((slot) => slot.slot === selectedSlot.slot) || selectedSlot : null;
+    const currentSlot = selectedSlot
+        ? messengerSlots.find((slot) => getRoomId(slot.room) && getRoomId(slot.room) === getRoomId(selectedSlot.room))
+            || (getRoomId(selectedSlot.room) ? selectedSlot : messengerSlots.find((slot) => slot.slot === selectedSlot.slot) || selectedSlot)
+        : null;
     if (currentSlot) {
         const targetAuthUid = currentSlot.slot === SLOTS.TEACHER ? TEACHER_AUTH_UID : INSTITUTE_AUTH_UID;
         const currentRoomId = String(currentSlot.room?.roomId || currentSlot.room?.id || '').trim();
@@ -98,7 +109,7 @@ export default function StudentMessengerPage({ studentId, student, onBack, notif
             return (
                 <div className="mobile-screen h-screen min-h-screen bg-gray-50 flex flex-col overflow-hidden">
                     <header className="mobile-header bg-white border-b border-gray-100 px-4 flex items-center gap-3">
-                        <button type="button" onClick={() => setSelectedSlot(null)} className="mobile-back-button text-gray-700"><ArrowBackIosNewIcon style={{ fontSize: 18 }} /></button>
+                        <button type="button" onClick={() => { hasConsumedInitialRoomRef.current = true; setSelectedSlot(null); }} className="mobile-back-button text-gray-700"><ArrowBackIosNewIcon style={{ fontSize: 18 }} /></button>
                         <h1 className="text-base font-semibold text-gray-900 truncate">{currentSlot.title}</h1>
                     </header>
                     <div className="flex-1 flex items-center justify-center text-sm text-gray-500">대화방을 준비 중입니다.</div>
@@ -108,7 +119,7 @@ export default function StudentMessengerPage({ studentId, student, onBack, notif
         return (
             <div className="mobile-screen h-screen min-h-screen bg-gray-50 flex flex-col overflow-hidden">
                 <header className="mobile-header bg-white border-b border-gray-100 px-4 flex items-center gap-3">
-                    <button type="button" onClick={() => setSelectedSlot(null)} className="mobile-back-button text-gray-700"><ArrowBackIosNewIcon style={{ fontSize: 18 }} /></button>
+                    <button type="button" onClick={() => { hasConsumedInitialRoomRef.current = true; setSelectedSlot(null); }} className="mobile-back-button text-gray-700"><ArrowBackIosNewIcon style={{ fontSize: 18 }} /></button>
                     <h1 className="text-base font-semibold text-gray-900 truncate">{currentSlot.title}</h1>
                 </header>
                 <div className="flex-1 min-h-0">
