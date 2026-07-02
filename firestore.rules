@@ -833,11 +833,14 @@ service cloud.firestore {
     }
     
     
-    match /userChatRooms/{userUid}/rooms/{roomId} {
-      allow read, list: if request.auth != null
-        && request.auth.uid == userUid;
+    match /userChatRooms/{ownerUid} {
+      allow read: if isSelf(ownerUid) || isStaffOrAdminOrTeacher();
+      allow write: if isStaffOrAdminOrTeacher();
 
-      allow create, update, delete: if isStaffOrAdminOrTeacher();
+      match /rooms/{roomId} {
+        allow read, list: if isSelf(ownerUid) || isStaffOrAdminOrTeacher();
+        allow create, update, delete: if isStaffOrAdminOrTeacher();
+      }
     }
 
     match /chatRooms/{roomId} {
