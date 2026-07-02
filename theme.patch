@@ -1,271 +1,217 @@
-diff --git a/functions/src/triggers/chatMessages.js b/functions/src/triggers/chatMessages.js
-index ef87175bf9415c5de1f968f619777c969e5685d9..81df3cca9c6b1430b796a337bc86434e1fd07084 100644
---- a/functions/src/triggers/chatMessages.js
-+++ b/functions/src/triggers/chatMessages.js
-@@ -36,66 +36,80 @@ const buildChatRoomNotification = ({ roomId, messageId, messageData }) => ({
-         category: 'message',
-         roomId,
-         messageId,
-         refCollection: 'chatRooms',
-     },
- });
+diff --git a/src/pages/ParentHome.jsx b/src/pages/ParentHome.jsx
+index 6c74eccaa5274faacd7049cd5331ce7b53d581ca..3ebc487fe677440f11eb42200635d22c6c32347d 100644
+--- a/src/pages/ParentHome.jsx
++++ b/src/pages/ParentHome.jsx
+@@ -729,55 +729,79 @@ export default function ParentHome({
+         _setSelectedClassroomId(null);
+         _setSelectedReportId(null);
+         setClassFilter('ongoing');
+         _setActiveTab('home');
+         setClinicPageSize(3);
+         if (embedded) return;
+         setSearchParams((prev) => {
+             const next = new URLSearchParams(prev);
+             next.set('tab', 'home');
+             next.delete('classroomId');
+             next.delete('reportId');
+             return next;
+         }, { replace: true });
+     }, [activeStudentId, setSearchParams, embedded]);
  
- const onChatRoomMessageCreated = functions.firestore
-     .document('chatRooms/{roomId}/messages/{messageId}')
-     .onCreate(async (snapshot, context) => {
-         const messageData = snapshot.data() || {};
-         if (messageData.internalOnly !== true) {
-             return null;
+     // 알림 관련
+     const [isNotificationOpen, setIsNotificationOpen] = useState(false);
+     const [isMessengerPage, setIsMessengerPage] = useState(false);
+ 
+     useEffect(() => {
+         if (activeTab === 'more') {
+             setMoreView('menu');
          }
- 
-         const { roomId, messageId } = context.params;
-         const senderId = String(messageData.senderId || '').trim();
-         const roomSnapshot = await db.collection('chatRooms').doc(roomId).get();
-         if (!roomSnapshot.exists) {
-             console.warn('[notifications] chat room message skipped: room not found', { roomId, messageId });
-             return null;
-         }
- 
-         const roomData = roomSnapshot.data() || {};
-         const participantIds = uniqueStrings(Array.isArray(roomData.participantIds) ? roomData.participantIds : []);
--        const senderAuthUid = senderId ? await resolveParticipantAuthUid(senderId) : '';
--        const recipientAuthUids = uniqueStrings(await Promise.all(
--            participantIds
--                .filter((participantId) => participantId !== senderId)
--                .map(resolveParticipantAuthUid)
--        )).filter((authUid) => authUid && authUid !== senderAuthUid);
--
--        if (!recipientAuthUids.length) {
-+        const senderOwnerUids = uniqueStrings([
-+            senderId,
-+            senderId ? await resolveParticipantAuthUid(senderId) : '',
-+        ]);
-+        const senderOwnerUidSet = new Set(senderOwnerUids);
-+        const recipientOwnerUids = uniqueStrings((await Promise.all(
-+            participantIds.map(async (participantId) => ([
-+                participantId,
-+                await resolveParticipantAuthUid(participantId),
-+            ]))
-+        )).flat()).filter((ownerUid) => ownerUid && !senderOwnerUidSet.has(ownerUid));
+     }, [activeTab]);
+     const isMasterPreview = Boolean(masterView);
+-    const viewerUid = isMasterPreview ? (masterViewStudentAuthUid || activeChild?.authUid || userId) : (activeChild?.authUid || userId);
+     const showMasterViewUnavailable = useCallback((featureName) => {
+         window.alert(`마스터뷰에서는 ${featureName}을(를) 사용할 수 없습니다.`);
+     }, []);
+-    const { notifications, hasUnread, unreadCount, lastReadAt, isLoading, isMetaLoading, setNotifications } = useNotifications(viewerUid, 20, {
 +
-+        console.log('[notifications] chat room message recipients resolved', {
-+            roomId,
-+            messageId,
-+            senderId,
-+            participantIds,
-+            senderOwnerUids,
-+            recipientOwnerUids,
-+        });
++    const currentParent = useMemo(() => {
++        const currentUser = auth.currentUser;
++        const identifiers = [userId, currentUser?.uid, currentUser?.email]
++            .filter(Boolean)
++            .map((value) => String(value).trim().toLowerCase())
++            .filter(Boolean);
 +
-+        if (!recipientOwnerUids.length) {
-             return null;
-         }
- 
-         const batch = db.batch();
--        recipientAuthUids.forEach((recipientAuthUid) => {
-+        recipientOwnerUids.forEach((recipientOwnerUid) => {
-             const notificationRef = db
-                 .collection('notifications')
--                .doc(recipientAuthUid)
-+                .doc(recipientOwnerUid)
-                 .collection('items')
-                 .doc(`${roomId}_${messageId}`);
-             batch.set(notificationRef, buildChatRoomNotification({ roomId, messageId, messageData }), { merge: true });
-         });
- 
-         await batch.commit();
-         return null;
++        if (!Array.isArray(parents) || identifiers.length === 0) return null;
++
++        return parents.find((parent) => {
++            const parentIdentifiers = [parent?.authUid, parent?.uid, parent?.id, parent?.email]
++                .filter(Boolean)
++                .map((value) => String(value).trim().toLowerCase())
++                .filter(Boolean);
++
++            return parentIdentifiers.some((value) => identifiers.includes(value));
++        }) || null;
++    }, [parents, userId]);
++
++    const parentNotificationUid = isMasterPreview
++        ? (currentParent?.authUid || currentParent?.uid || userId || '')
++        : (currentParent?.authUid || currentParent?.uid || auth.currentUser?.uid || userId || '');
++    const notificationViewerUid = parentNotificationUid;
++
++    const { notifications, hasUnread, unreadCount, lastReadAt, isLoading, isMetaLoading, setNotifications } = useNotifications(notificationViewerUid, 20, {
+         viewerRole: 'parent',
+         unreadOnly: true,
      });
  
+     const buildClinicTeacher = useCallback((log) => (
+         log?.tutorName
+         || log?.tutor
+         || log?.assistantName
+         || log?.assistant
+         || log?.teacherName
+         || log?.teacher
+         || log?.updatedByName
+         || log?.createdByName
+         || '-'
+     ), []);
  
- const onChatMessageCreated = functions.firestore
-     .document('chats/{chatId}/messages/{messageId}')
-     .onCreate(async (snapshot, context) => {
-         const messageData = snapshot.data() || {};
-         const chatSnapshot = await db.collection('chats').doc(context.params.chatId).get();
-         const chatData = chatSnapshot.data() || {};
-         const participantIds = Array.isArray(chatData.participantIds) ? chatData.participantIds : [];
-         const senderId = messageData.senderId;
+     const buildClinicComment = useCallback((log) => getClinicComment(log), []);
  
-         const recipients = participantIds.filter((uid) => uid && uid !== senderId);
+     const getParentClinicStatusStyle = useCallback((status) => {
+         if (status === '미참석') return 'bg-rose-50 text-rose-700 border-rose-200';
+         if (status === '완료' || status === '참석') return 'bg-teal-50 text-teal-700 border-teal-200';
+         if (status === '예약됨' || status === '입실 예정') return 'bg-sky-50 text-sky-700 border-sky-200';
+         return 'bg-slate-50 text-slate-600 border-slate-200';
+     }, [setActiveTab]);
  
-         const refId = context.params.chatId;
-         const lastMessageText = messageData.text || messageData.body || '';
-         const lastMessageAt = messageData.createdAt || FieldValue.serverTimestamp();
-         const batch = db.batch();
-diff --git a/src/notifications/useNotifications.js b/src/notifications/useNotifications.js
-index 80ff2e9cf3592e71beaa2763fec57e71934e5eec..9289e253a1b0110b955d4c504d62e331721d0299 100644
---- a/src/notifications/useNotifications.js
-+++ b/src/notifications/useNotifications.js
-@@ -1,140 +1,145 @@
--import { useCallback, useEffect, useMemo, useState } from 'react';
-+import { useEffect, useMemo, useState } from 'react';
- import {
-     collection,
-     doc,
-     getDoc,
--    getDocs,
-+    onSnapshot,
-     limit,
-     orderBy,
-     query,
-     serverTimestamp,
-     setDoc,
-     Timestamp,
- } from 'firebase/firestore';
- import { db } from '../firebase/client';
- import { filterParentNotifications, isNotificationUnread } from './notificationFilters';
- 
- const DEFAULT_LIMIT = 20;
- 
- const mapNotification = (doc) => ({
-     id: doc.id,
-     ...doc.data(),
- });
- 
- export default function useNotifications(uid, maxItems = DEFAULT_LIMIT, options = {}) {
-     const { viewerRole = '', unreadOnly = false } = options || {};
-     const isParentViewer = String(viewerRole).toLowerCase() === 'parent';
-     const [notifications, setNotifications] = useState([]);
-     const [isLoading, setIsLoading] = useState(false);
-     const [lastReadAt, setLastReadAt] = useState(null);
-     const [isMetaLoading, setIsMetaLoading] = useState(false);
- 
--    const fetchNotifications = useCallback(async () => {
-+    const notificationsQuery = useMemo(() => {
-         if (!db || !uid) {
--            setNotifications([]);
--            setIsLoading(false);
--            return;
-+            return null;
-         }
- 
--        setIsLoading(true);
--
--        try {
--            const notificationsQuery = query(
--                collection(db, 'notifications', uid, 'items'),
--                orderBy('createdAt', 'desc'),
--                limit(isParentViewer ? Math.max(maxItems * 5, maxItems) : maxItems)
--            );
--
--            const snapshot = await getDocs(notificationsQuery);
--            setNotifications(snapshot.docs.map(mapNotification));
--        } catch (error) {
--            console.error('Failed to fetch notifications', error);
--        } finally {
--            setIsLoading(false);
--        }
-+        return query(
-+            collection(db, 'notifications', uid, 'items'),
-+            orderBy('createdAt', 'desc'),
-+            limit(isParentViewer ? Math.max(maxItems * 5, maxItems) : maxItems)
-+        );
-     }, [uid, maxItems, isParentViewer]);
- 
-     const metaRef = useMemo(() => {
-         if (!uid || !db) {
-             return null;
-         }
-         return doc(db, 'notifications', uid, 'meta', 'meta');
-     }, [uid]);
- 
-     useEffect(() => {
-         if (!metaRef) {
-             setLastReadAt(null);
-             return undefined;
-         }
- 
-         let isMounted = true;
-         setIsMetaLoading(true);
- 
-         getDoc(metaRef)
-             .then((snapshot) => {
-                 if (!isMounted) {
-                     return;
-                 }
-                 const data = snapshot.exists() ? snapshot.data() : {};
-                 setLastReadAt(data?.lastReadAt || null);
-             })
-             .catch(() => {
-                 if (!isMounted) {
-                     return;
-                 }
-                 setLastReadAt(null);
-             })
-             .finally(() => {
-                 if (isMounted) {
-                     setIsMetaLoading(false);
-                 }
+@@ -816,69 +840,50 @@ export default function ParentHome({
+                 return bDate - aDate;
              });
+     }, [myClinicLogs]);
  
-         return () => {
-             isMounted = false;
-         };
-     }, [metaRef]);
- 
-     useEffect(() => {
--        fetchNotifications();
--    }, [fetchNotifications]);
-+        if (!notificationsQuery) {
-+            setNotifications([]);
-+            setIsLoading(false);
-+            return undefined;
-+        }
-+
-+        setIsLoading(true);
-+        const unsubscribe = onSnapshot(
-+            notificationsQuery,
-+            (snapshot) => {
-+                setNotifications(snapshot.docs.map(mapNotification));
-+                setIsLoading(false);
-+            },
-+            (error) => {
-+                console.error('Failed to subscribe to notifications', error);
-+                setIsLoading(false);
-+            }
-+        );
-+
-+        return unsubscribe;
-+    }, [notificationsQuery]);
- 
-     const visibleNotifications = useMemo(() => {
-         if (!isParentViewer) {
-             return notifications;
-         }
-         return filterParentNotifications(notifications, lastReadAt, { unreadOnly });
-     }, [notifications, isParentViewer, lastReadAt, unreadOnly]);
- 
-     const hasUnread = useMemo(
-         () => visibleNotifications.some((notification) => isNotificationUnread(notification, lastReadAt)),
-         [visibleNotifications, lastReadAt]
+     const completedClinicsToShow = useMemo(
+         () => completedClinics.slice(0, clinicPageSize),
+         [completedClinics, clinicPageSize],
+     );
+     const visibleCompletedClinics = useMemo(
+         () => completedClinicsToShow,
+         [completedClinicsToShow],
      );
  
-     const unreadCount = useMemo(() => (
-         visibleNotifications.reduce((count, notification) => (
-             isNotificationUnread(notification, lastReadAt) ? count + 1 : count
-         ), 0)
-     ), [visibleNotifications, lastReadAt]);
+     const totalClinicMinutes = useMemo(() => completedClinics.reduce((acc, log) => {
+         if (getClinicDisplayStatus(log) === '미참석') return acc;
+         const duration = Number(log?.durationMinutes);
+         if (Number.isFinite(duration) && duration > 0) return acc + duration;
+         if (log?.checkIn && log?.checkOut) return acc + Math.max(0, calculateDurationMinutes(log.checkIn, log.checkOut));
+         return acc;
+     }, 0), [completedClinics]);
  
-     const markAllRead = async () => {
-         if (!metaRef) {
+     const reservedClinics = useMemo(() => myClinicLogs
+         .filter((log) => ['예약됨', '입실 예정'].includes(getClinicDisplayStatus(log)))
+         .sort((a, b) => new Date(`${a?.date || ''}T00:00:00`) - new Date(`${b?.date || ''}T00:00:00`)), [myClinicLogs]);
+ 
+-    const currentParent = useMemo(() => {
+-        const currentUser = auth.currentUser;
+-        const identifiers = [userId, currentUser?.uid, currentUser?.email]
+-            .filter(Boolean)
+-            .map((value) => String(value).trim().toLowerCase())
+-            .filter(Boolean);
+-
+-        if (!Array.isArray(parents) || identifiers.length === 0) return null;
+-
+-        return parents.find((parent) => {
+-            const parentIdentifiers = [parent?.authUid, parent?.uid, parent?.id, parent?.email]
+-                .filter(Boolean)
+-                .map((value) => String(value).trim().toLowerCase())
+-                .filter(Boolean);
+-
+-            return parentIdentifiers.some((value) => identifiers.includes(value));
+-        }) || null;
+-    }, [parents, userId]);
+-
+     const parentAuthUid = isMasterPreview ? (masterViewStudentAuthUid || activeChild?.authUid || userId || '') : (auth.currentUser?.uid || currentParent?.authUid || currentParent?.uid || userId || '');
+ 
+     const visibleNotices = useMemo(() => {
+         const normalizeTargetValue = (value) => String(value || '').trim();
+         const normalizeTargetSet = (values = []) => new Set(
+             (Array.isArray(values) ? values : [])
+                 .map(normalizeTargetValue)
+                 .filter(Boolean),
+         );
+         const viewerAudienceKeys = new Set([
+             parentAuthUid,
+             userId,
+             ...(isMasterPreview ? [] : [auth.currentUser?.uid]),
+             activeChild?.authUid,
+             activeChildId,
+         ].map(normalizeTargetValue).filter(Boolean));
+         const visibleClassIdSetForNotice = new Set((visibleClassIds || []).map(String));
+         const childId = String(activeChildId || '');
+         const myClassIds = new Set(
+             (Array.isArray(myClasses) ? myClasses : []).flatMap((cls) => ([
+                 cls?.id,
+                 cls?.classId,
+                 cls?.code,
+                 cls?.classCode,
+                 cls?.docId,
+@@ -1023,57 +1028,57 @@ export default function ParentHome({
+                     return;
+                 }
+ 
+                 if (refCollection === 'announcements' || refCollection === 'posts') {
+                     setBoardBackTab('home');
+                     setActiveTab('board');
+                     return;
+                 }
+ 
+                 if (refCollection === 'chats' || refCollection === 'chatRooms') {
+                     if (isMasterPreview || readOnly) return;
+                     setIsMessengerPage(true);
+                     return;
+                 }
+             },
+         });
+         setIsNotificationOpen(false);
+     };
+ 
+     const handleMarkAllRead = async () => {
+         console.log('[notifications] markAllRead clicked');
+         if (isMasterPreview || readOnly) {
+             showMasterViewUnavailable('알림 읽음 처리');
              return;
          }
-         await setDoc(metaRef, { lastReadAt: serverTimestamp() }, { merge: true });
-         setLastReadAt(Timestamp.now());
--        await fetchNotifications();
+-        if (!viewerUid) {
+-            console.warn('[notifications] no viewerUid');
++        if (!parentNotificationUid) {
++            console.warn('[notifications] no parentNotificationUid');
+             return;
+         }
+         try {
+             const callable = httpsCallable(functions, 'markAllNotificationsRead');
+-            await callable({ viewerUid });
++            await callable({ viewerUid: parentNotificationUid });
+             const now = new Date();
+             setNotifications((prev) => prev.map((item) => ({ ...item, isRead: true, readAt: now })));
+             console.log('[notifications] markAllRead completed by callable');
+         } catch (e) {
+             console.error('[notifications] FAIL: markAllRead', e);
+         }
      };
  
-     return {
-         notifications: visibleNotifications,
-         rawNotifications: notifications,
-         hasUnread,
-         isLoading,
-         isMetaLoading,
-         lastReadAt,
-         unreadCount,
-         markAllRead,
-         setNotifications,
-     };
- }
-\ No newline at end of file
+     const childAttendanceLogs = useMemo(() => {
+         const targetStudentId = String(activeChildId || '');
+         const targetStudentUid = String(activeChild?.studentUid || activeChild?.uid || '');
+         const targetAuthUid = String(activeChild?.authUid || '');
+ 
+         return filteredAttendanceLogs
+             .filter((log) => {
+                 if (targetStudentId && String(log?.studentId || '') === targetStudentId) return true;
+                 if (targetStudentUid && String(log?.studentUid || '') === targetStudentUid) return true;
+                 if (targetAuthUid && String(log?.authUid || '') === targetAuthUid) return true;
+                 return false;
+             })
+             .sort((a, b) => new Date(b.date || b.createdAt || b.updatedAt || 0) - new Date(a.date || a.createdAt || a.updatedAt || 0));
+     }, [filteredAttendanceLogs, activeChildId, activeChild?.studentUid, activeChild?.uid, activeChild?.authUid]);
+ 
+     const formatScoreDisplay = useCallback((value) => formatStudentScore(value, { includeUnit: true }), []);
+ 

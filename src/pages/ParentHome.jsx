@@ -751,11 +751,35 @@ export default function ParentHome({
         }
     }, [activeTab]);
     const isMasterPreview = Boolean(masterView);
-    const viewerUid = isMasterPreview ? (masterViewStudentAuthUid || activeChild?.authUid || userId) : (activeChild?.authUid || userId);
     const showMasterViewUnavailable = useCallback((featureName) => {
         window.alert(`마스터뷰에서는 ${featureName}을(를) 사용할 수 없습니다.`);
     }, []);
-    const { notifications, hasUnread, unreadCount, lastReadAt, isLoading, isMetaLoading, setNotifications } = useNotifications(viewerUid, 20, {
+
+    const currentParent = useMemo(() => {
+        const currentUser = auth.currentUser;
+        const identifiers = [userId, currentUser?.uid, currentUser?.email]
+            .filter(Boolean)
+            .map((value) => String(value).trim().toLowerCase())
+            .filter(Boolean);
+
+        if (!Array.isArray(parents) || identifiers.length === 0) return null;
+
+        return parents.find((parent) => {
+            const parentIdentifiers = [parent?.authUid, parent?.uid, parent?.id, parent?.email]
+                .filter(Boolean)
+                .map((value) => String(value).trim().toLowerCase())
+                .filter(Boolean);
+
+            return parentIdentifiers.some((value) => identifiers.includes(value));
+        }) || null;
+    }, [parents, userId]);
+
+    const parentNotificationUid = isMasterPreview
+        ? (currentParent?.authUid || currentParent?.uid || userId || '')
+        : (currentParent?.authUid || currentParent?.uid || auth.currentUser?.uid || userId || '');
+    const notificationViewerUid = parentNotificationUid;
+
+    const { notifications, hasUnread, unreadCount, lastReadAt, isLoading, isMetaLoading, setNotifications } = useNotifications(notificationViewerUid, 20, {
         viewerRole: 'parent',
         unreadOnly: true,
     });
@@ -837,25 +861,6 @@ export default function ParentHome({
     const reservedClinics = useMemo(() => myClinicLogs
         .filter((log) => ['예약됨', '입실 예정'].includes(getClinicDisplayStatus(log)))
         .sort((a, b) => new Date(`${a?.date || ''}T00:00:00`) - new Date(`${b?.date || ''}T00:00:00`)), [myClinicLogs]);
-
-    const currentParent = useMemo(() => {
-        const currentUser = auth.currentUser;
-        const identifiers = [userId, currentUser?.uid, currentUser?.email]
-            .filter(Boolean)
-            .map((value) => String(value).trim().toLowerCase())
-            .filter(Boolean);
-
-        if (!Array.isArray(parents) || identifiers.length === 0) return null;
-
-        return parents.find((parent) => {
-            const parentIdentifiers = [parent?.authUid, parent?.uid, parent?.id, parent?.email]
-                .filter(Boolean)
-                .map((value) => String(value).trim().toLowerCase())
-                .filter(Boolean);
-
-            return parentIdentifiers.some((value) => identifiers.includes(value));
-        }) || null;
-    }, [parents, userId]);
 
     const parentAuthUid = isMasterPreview ? (masterViewStudentAuthUid || activeChild?.authUid || userId || '') : (auth.currentUser?.uid || currentParent?.authUid || currentParent?.uid || userId || '');
 
@@ -1045,13 +1050,13 @@ export default function ParentHome({
             showMasterViewUnavailable('알림 읽음 처리');
             return;
         }
-        if (!viewerUid) {
-            console.warn('[notifications] no viewerUid');
+        if (!parentNotificationUid) {
+            console.warn('[notifications] no parentNotificationUid');
             return;
         }
         try {
             const callable = httpsCallable(functions, 'markAllNotificationsRead');
-            await callable({ viewerUid });
+            await callable({ viewerUid: parentNotificationUid });
             const now = new Date();
             setNotifications((prev) => prev.map((item) => ({ ...item, isRead: true, readAt: now })));
             console.log('[notifications] markAllRead completed by callable');
