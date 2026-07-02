@@ -1,9 +1,8 @@
 diff --git a/firestore.rules b/firestore.rules
-index 274327076a739a94d24933f1eda06ec0f3cf8599..b012fc76d88ec2d50431a05a578b7860773d4d96 100644
+index b012fc76d88ec2d50431a05a578b7860773d4d96..2b0dd4cbeda02ba40931243c4b8f8d1f061ba29e 100644
 --- a/firestore.rules
 +++ b/firestore.rules
-@@ -811,55 +811,58 @@ service cloud.firestore {
-     match /notifications/{userUid}/items/{notificationId} {
+@@ -812,55 +812,57 @@ service cloud.firestore {
        allow read: if signedIn()
          && (uid() == userUid || isStaffOrAdminOrTeacher());
  
@@ -28,18 +27,18 @@ index 274327076a739a94d24933f1eda06ec0f3cf8599..b012fc76d88ec2d50431a05a578b7860
      }
      
      
--    match /userChatRooms/{userUid}/rooms/{roomId} {
--      allow read, list: if request.auth != null
--        && request.auth.uid == userUid;
-+    match /userChatRooms/{ownerUid} {
-+      allow read: if isSelf(ownerUid) || isStaffOrAdminOrTeacher();
-+      allow write: if isStaffOrAdminOrTeacher();
+     match /userChatRooms/{ownerUid} {
+-      allow read: if isSelf(ownerUid) || isStaffOrAdminOrTeacher();
++      allow get, list, read: if request.auth != null
++        && (request.auth.uid == ownerUid || isStaffOrAdminOrTeacher());
+       allow write: if isStaffOrAdminOrTeacher();
  
--      allow create, update, delete: if isStaffOrAdminOrTeacher();
-+      match /rooms/{roomId} {
-+        allow read, list: if isSelf(ownerUid) || isStaffOrAdminOrTeacher();
-+        allow create, update, delete: if isStaffOrAdminOrTeacher();
-+      }
+       match /rooms/{roomId} {
+-        allow read, list: if isSelf(ownerUid) || isStaffOrAdminOrTeacher();
++        allow get, list, read: if request.auth != null
++          && (request.auth.uid == ownerUid || isStaffOrAdminOrTeacher());
+         allow create, update, delete: if isStaffOrAdminOrTeacher();
+       }
      }
  
      match /chatRooms/{roomId} {
@@ -63,5 +62,64 @@ index 274327076a739a94d24933f1eda06ec0f3cf8599..b012fc76d88ec2d50431a05a578b7860
  
        allow delete: if isStaffOrAdminOrTeacher();
      }
+diff --git a/src/pages/parent/ParentMessengerPage.jsx b/src/pages/parent/ParentMessengerPage.jsx
+index ba1f1b37d9ba4690d63b7688eaee7fe95fb3ff05..fff7cb6d21fb2335bbf9000f8e92d832f8bd5ab1 100644
+--- a/src/pages/parent/ParentMessengerPage.jsx
++++ b/src/pages/parent/ParentMessengerPage.jsx
+@@ -101,50 +101,56 @@ export default function ParentMessengerPage({ studentId, student, onBack }) {
+                 let profile = {};
+                 if (userDocId) {
+                     const userSnap = await getDoc(doc(db, 'users', userDocId));
+                     profile = userSnap.exists() ? userSnap.data() || {} : {};
+                 }
+                 if (!cancelled) setLinkedParent({ userDocId, profile });
+             } catch (loadError) {
+                 if (process.env.NODE_ENV === 'development') console.warn('[parent messenger] failed to load linked parent profile', { authUid, code: loadError?.code, message: loadError?.message });
+                 if (!cancelled) setLinkedParent({ userDocId: '', profile: {} });
+             }
+         };
+         loadLinkedParent();
+         return () => { cancelled = true; };
+     }, [authUid]);
  
-     match /chatRooms/{roomId}/messages/{messageId} {
+     useEffect(() => {
+         if (!authUid) {
+             setRooms([]);
+             setLoading(false);
+             setError('');
+             return undefined;
+         }
+         setLoading(true);
+         setError('');
+         const queryShape = getUserChatRoomsQueryShape(authUid);
++        const ownerUid = authUid;
++        console.log('[parent messenger] userChatRooms subscribe auth check', {
++            authCurrentUserUid: auth.currentUser?.uid || '',
++            queryOwnerUid: ownerUid,
++            authUidMatchesOwnerUid: auth.currentUser?.uid === ownerUid,
++        });
+         if (process.env.NODE_ENV === 'development') console.log('[parent messenger] userChatRooms query', queryShape);
+         const unsubscribe = subscribeUserChatRooms({
+             authUid,
+             role: 'parent',
+             onNext: (myRooms) => {
+                 setRooms(sortRooms(myRooms));
+                 setLoading(false);
+                 setError('');
+             },
+             onError: (snapshotError) => {
+                 console.error('[parent messenger] failed to load userChatRooms', {
+                     code: snapshotError?.code,
+                     message: snapshotError?.message,
+                     queryShape,
+                 });
+                 setLoading(false);
+                 setError('대화 목록을 불러오지 못했습니다.');
+             },
+         });
+         return unsubscribe;
+     }, [authUid]);
+ 
+     const teacherRoom = useMemo(() => rooms.find((room) => isParentTeacherRoom(room, participantKeys, activeStudentId, linkedParent.userDocId)) || null, [rooms, participantKeys, activeStudentId, linkedParent.userDocId]);
+     const instituteRoom = useMemo(() => rooms.find((room) => isParentInstituteRoom(room, participantKeys, activeStudentId, linkedParent.userDocId)) || null, [rooms, participantKeys, activeStudentId, linkedParent.userDocId]);
+ 

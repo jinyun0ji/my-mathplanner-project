@@ -123,6 +123,12 @@ export default function ParentMessengerPage({ studentId, student, onBack }) {
         setLoading(true);
         setError('');
         const queryShape = getUserChatRoomsQueryShape(authUid);
+        const ownerUid = authUid;
+        console.log('[parent messenger] userChatRooms subscribe auth check', {
+            authCurrentUserUid: auth.currentUser?.uid || '',
+            queryOwnerUid: ownerUid,
+            authUidMatchesOwnerUid: auth.currentUser?.uid === ownerUid,
+        });
         if (process.env.NODE_ENV === 'development') console.log('[parent messenger] userChatRooms query', queryShape);
         const unsubscribe = subscribeUserChatRooms({
             authUid,
