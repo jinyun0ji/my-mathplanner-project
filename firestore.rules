@@ -804,17 +804,31 @@ service cloud.firestore {
       allow create, update, delete: if false;
     }
 
+    function isAuthUidOrLinkedUserDocId(userUid) {
+      return signedIn()
+        && userUid is string
+        && (
+          uid() == userUid
+          || (
+            authIndex() != null
+            && authIndex().data.userDocId == userUid
+          )
+        );
+    }
+
+    function canAccessNotificationOwner(userUid) {
+      return isAuthUidOrLinkedUserDocId(userUid) || isStaffOrAdminOrTeacher();
+    }
+
     match /notifications/{logId} {
       allow read, write: if isStaffOrAdminOrTeacher();
     }
 
     match /notifications/{userUid}/items/{notificationId} {
-      allow read: if signedIn()
-        && (uid() == userUid || isStaffOrAdminOrTeacher());
+      allow read: if canAccessNotificationOwner(userUid);
 
-      // ✅ 본인: 읽음 처리용 update만 허용
-      allow update: if signedIn()
-        && uid() == userUid
+      // ✅ 본인: 읽음 처리용 update만 허용 (authUid 또는 연결된 userDocId 모두 허용)
+      allow update: if canAccessNotificationOwner(userUid)
         && request.resource.data.diff(resource.data).changedKeys()
             .hasOnly(['isRead', 'readAt', 'updatedAt']);
 
@@ -823,13 +837,11 @@ service cloud.firestore {
     }
 
     match /notifications/{userUid}/meta {
-      allow read, write: if signedIn()
-        && (uid() == userUid || isStaffOrAdminOrTeacher());
+      allow read, write: if canAccessNotificationOwner(userUid);
     }
     
     match /notifications/{userUid}/meta/{metaId} {
-      allow read, write: if signedIn()
-        && (uid() == userUid || isStaffOrAdminOrTeacher());
+      allow read, write: if canAccessNotificationOwner(userUid);
     }
     
     

@@ -1,146 +1,102 @@
-diff --git a/src/notifications/useNotifications.js b/src/notifications/useNotifications.js
-index 4b3e8652ea8188f4506ba698e438c175ea144279..2e83ad50049c0824fd6c31349f982aae6bc8cd93 100644
---- a/src/notifications/useNotifications.js
-+++ b/src/notifications/useNotifications.js
-@@ -76,66 +76,71 @@ export default function useNotifications(uid, maxItems = DEFAULT_LIMIT, options
-             })
-             .catch(() => {
-                 if (!isMounted) {
-                     return;
-                 }
-                 setLastReadAt(null);
-             })
-             .finally(() => {
-                 if (isMounted) {
-                     setIsMetaLoading(false);
-                 }
-             });
+diff --git a/firestore.rules b/firestore.rules
+index 2b0dd4cbeda02ba40931243c4b8f8d1f061ba29e..6fd52eed3c5c3c3aee58cb222a0ba8a0a93241ac 100644
+--- a/firestore.rules
++++ b/firestore.rules
+@@ -782,76 +782,88 @@ service cloud.firestore {
+             || (request.resource.data.studentId is string && isMyStudentUid(request.resource.data.studentId))
+           )
+         );
+     }
  
-         return () => {
-             isMounted = false;
-         };
-     }, [metaRef]);
+     match /invites/{inviteId} {
+       allow get: if signedIn();
+       allow list: if isStaffOrAdminOrTeacher();
+       allow create, delete: if isStaffOrAdminOrTeacher();
+       allow update: if isStaffOrAdminOrTeacher()
+         || (
+           signedIn()
+           && resource.data.consumed == false
+           && request.resource.data.consumed == true
+           && request.resource.data.consumedByAuthUid == uid()
+           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['consumed', 'consumedByAuthUid', 'consumedAt'])
+         );
+     }
  
-     useEffect(() => {
-         if (!notificationsQuery) {
-             setNotifications([]);
-             setIsLoading(false);
-             return undefined;
-         }
+     match /accountLinks/{authUid} {
+       allow get: if request.auth != null && request.auth.uid == authUid;
+       allow list: if false;
+       allow create, update, delete: if false;
+     }
  
--        console.log('[notifications] subscribe path', {
--            uid: normalizedUid,
-+        console.log('[notifications subscribe]', {
-+            uid,
-             viewerRole,
-             unreadOnly,
--            path: `notifications/${normalizedUid}/items`,
-+            path: uid ? `notifications/${uid}/items` : '(empty)',
-         });
++    function isAuthUidOrLinkedUserDocId(userUid) {
++      return signedIn()
++        && userUid is string
++        && (
++          uid() == userUid
++          || (
++            authIndex() != null
++            && authIndex().data.userDocId == userUid
++          )
++        );
++    }
++
++    function canAccessNotificationOwner(userUid) {
++      return isAuthUidOrLinkedUserDocId(userUid) || isStaffOrAdminOrTeacher();
++    }
++
+     match /notifications/{logId} {
+       allow read, write: if isStaffOrAdminOrTeacher();
+     }
  
-         setIsLoading(true);
-         const unsubscribe = onSnapshot(
-             notificationsQuery,
-             (snapshot) => {
-                 setNotifications(snapshot.docs.map(mapNotification));
-                 setIsLoading(false);
-             },
-             (error) => {
--                console.error('Failed to subscribe to notifications', error);
-+                console.error('[notifications subscribe FAILED]', {
-+                    uid,
-+                    path: uid ? `notifications/${uid}/items` : '(empty)',
-+                    code: error.code,
-+                    message: error.message,
-+                });
-                 setIsLoading(false);
-             }
+     match /notifications/{userUid}/items/{notificationId} {
+-      allow read: if signedIn()
+-        && (uid() == userUid || isStaffOrAdminOrTeacher());
++      allow read: if canAccessNotificationOwner(userUid);
+ 
+-      // ✅ 본인: 읽음 처리용 update만 허용
+-      allow update: if signedIn()
+-        && uid() == userUid
++      // ✅ 본인: 읽음 처리용 update만 허용 (authUid 또는 연결된 userDocId 모두 허용)
++      allow update: if canAccessNotificationOwner(userUid)
+         && request.resource.data.diff(resource.data).changedKeys()
+             .hasOnly(['isRead', 'readAt', 'updatedAt']);
+ 
+       // ✅ 직원/관리자/강사: 기존대로 full 권한
+       allow create, update, delete: if isStaffOrAdminOrTeacher();
+     }
+ 
+     match /notifications/{userUid}/meta {
+-      allow read, write: if signedIn()
+-        && (uid() == userUid || isStaffOrAdminOrTeacher());
++      allow read, write: if canAccessNotificationOwner(userUid);
+     }
+     
+     match /notifications/{userUid}/meta/{metaId} {
+-      allow read, write: if signedIn()
+-        && (uid() == userUid || isStaffOrAdminOrTeacher());
++      allow read, write: if canAccessNotificationOwner(userUid);
+     }
+     
+     
+     match /userChatRooms/{ownerUid} {
+       allow get, list, read: if request.auth != null
+         && (request.auth.uid == ownerUid || isStaffOrAdminOrTeacher());
+       allow write: if isStaffOrAdminOrTeacher();
+ 
+       match /rooms/{roomId} {
+         allow get, list, read: if request.auth != null
+           && (request.auth.uid == ownerUid || isStaffOrAdminOrTeacher());
+         allow create, update, delete: if isStaffOrAdminOrTeacher();
+       }
+     }
+ 
+     match /chatRooms/{roomId} {
+       allow get, list: if canReadChatRoom(resource.data);
+ 
+       allow create: if isSignedIn()
+         && (
+           isStaffOrAdminOrTeacher()
+           || isValidParentDirectChatRoomCreate()
+           || isValidStudentDirectChatRoomCreate()
          );
  
-         return unsubscribe;
-     }, [notificationsQuery, normalizedUid, viewerRole, unreadOnly]);
- 
-     const visibleNotifications = useMemo(() => {
-         if (!isParentViewer) {
-             return notifications;
-         }
-         return filterParentNotifications(notifications, lastReadAt, { unreadOnly });
-     }, [notifications, isParentViewer, lastReadAt, unreadOnly]);
- 
-     const hasUnread = useMemo(
-         () => visibleNotifications.some((notification) => isNotificationUnread(notification, lastReadAt)),
-         [visibleNotifications, lastReadAt]
-     );
- 
-     const unreadCount = useMemo(() => (
-         visibleNotifications.reduce((count, notification) => (
-             isNotificationUnread(notification, lastReadAt) ? count + 1 : count
-         ), 0)
-     ), [visibleNotifications, lastReadAt]);
- 
-diff --git a/src/pages/ParentHome.jsx b/src/pages/ParentHome.jsx
-index ada745644039cc0c0b2bfe5f35e240ed97a9f7cc..667d929497d553adef68a38074639f702f149603 100644
---- a/src/pages/ParentHome.jsx
-+++ b/src/pages/ParentHome.jsx
-@@ -784,59 +784,54 @@ export default function ParentHome({
-     }, []);
- 
-     const currentParent = useMemo(() => {
-         const currentUser = auth.currentUser;
-         const identifiers = [userId, currentUser?.uid, currentUser?.email, linkedParentDocId]
-             .filter(Boolean)
-             .map((value) => String(value).trim().toLowerCase())
-             .filter(Boolean);
- 
-         if (!Array.isArray(parents) || identifiers.length === 0) return null;
- 
-         return parents.find((parent) => {
-             const parentIdentifiers = [parent?.authUid, parent?.uid, parent?.id, parent?.email]
-                 .filter(Boolean)
-                 .map((value) => String(value).trim().toLowerCase())
-                 .filter(Boolean);
- 
-             return parentIdentifiers.some((value) => identifiers.includes(value));
-         }) || null;
-     }, [parents, userId, linkedParentDocId]);
- 
-     const parentNotificationUid = isMasterPreview
-         ? (currentParent?.authUid || currentParent?.uid || linkedParentDocId || userId || '')
-         : (currentParent?.authUid || currentParent?.uid || linkedParentDocId || currentAuthUid || userId || '');
- 
--    console.log('[parent notifications uid]', {
--        authUid: currentAuthUid,
--        userId,
-+    console.log('[parentNotificationUid]', {
-+        authUid: auth.currentUser?.uid,
-         linkedParentDocId,
--        currentParentId: currentParent?.id || '',
--        currentParentAuthUid: currentParent?.authUid || '',
--        currentParentUid: currentParent?.uid || '',
-         parentNotificationUid,
--        path: parentNotificationUid ? `notifications/${parentNotificationUid}/items` : '',
-     });
- 
-     const notificationViewerUid = parentNotificationUid;
- 
-     const { notifications, hasUnread, unreadCount, lastReadAt, isLoading, isMetaLoading, setNotifications } = useNotifications(notificationViewerUid, 20, {
-         viewerRole: 'parent',
-         unreadOnly: true,
-     });
- 
-     const buildClinicTeacher = useCallback((log) => (
-         log?.tutorName
-         || log?.tutor
-         || log?.assistantName
-         || log?.assistant
-         || log?.teacherName
-         || log?.teacher
-         || log?.updatedByName
-         || log?.createdByName
-         || '-'
-     ), []);
- 
-     const buildClinicComment = useCallback((log) => getClinicComment(log), []);
- 
-     const getParentClinicStatusStyle = useCallback((status) => {
-         if (status === '미참석') return 'bg-rose-50 text-rose-700 border-rose-200';
