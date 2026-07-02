@@ -142,6 +142,8 @@ export default function ParentMessengerPage({ studentId, student, onBack }) {
                 console.error('[parent messenger] failed to load userChatRooms', {
                     code: snapshotError?.code,
                     message: snapshotError?.message,
+                    stage: snapshotError?.stage,
+                    context: snapshotError?.context,
                     queryShape,
                 });
                 setLoading(false);

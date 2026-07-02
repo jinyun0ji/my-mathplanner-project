@@ -100,6 +100,17 @@ const enrichRoomWithLatestMessagePreview = async (room) => {
 
 const enrichRoomsWithLatestMessagePreviews = async (rooms = []) => Promise.all(rooms.map(enrichRoomWithLatestMessagePreview));
 
+const withErrorStage = (error, stage, context = {}) => Object.assign(
+    error instanceof Error ? error : new Error(String(error || 'Unknown error')),
+    {
+        stage: error?.stage || stage,
+        context: {
+            ...(error?.context || {}),
+            ...context,
+        },
+    }
+);
+
 const logMobileRoomPreviewDebug = ({ role, authUid, rooms = [], source, indexes = [] }) => {
     if (process.env.NODE_ENV !== 'development') return;
     const indexSourceByRoomId = new Map(indexes.map((index) => [String(index?.roomId || index?.id || ''), 'userChatRooms']));
@@ -166,13 +177,27 @@ export const fetchParentFallbackRooms = async (authUid) => {
     }));
 };
 
-export const fetchRoomsForIndexes = async (indexes = []) => {
+export const fetchRoomsForIndexes = async (indexes = [], context = {}) => {
+    const { role = '', authUid = '' } = context;
     const rooms = await Promise.all(sortUserRoomIndexes(indexes).map(async (index) => {
         const roomId = String(index?.roomId || index?.id || '').trim();
         if (!roomId) return null;
-        const roomSnap = await getDoc(doc(db, 'chatRooms', roomId));
-        if (!roomSnap.exists()) return mergeRoomWithIndex({ id: roomId }, index);
-        return mergeRoomWithIndex({ id: roomSnap.id, ...roomSnap.data() }, index);
+        try {
+            const roomSnap = await getDoc(doc(db, 'chatRooms', roomId));
+            if (!roomSnap.exists()) return mergeRoomWithIndex({ id: roomId }, index);
+            return mergeRoomWithIndex({ id: roomSnap.id, ...roomSnap.data() }, index);
+        } catch (error) {
+            console.warn('[resolver] chatRooms hydration skipped unreadable room', {
+                stage: 'chatRooms_hydration',
+                role,
+                authUid,
+                roomId,
+                index,
+                code: error?.code,
+                message: error?.message,
+            });
+            return null;
+        }
     }));
     return rooms.filter(Boolean);
 };
@@ -185,7 +210,10 @@ export const subscribeUserChatRooms = ({ authUid, role = '', onNext, onError }) 
                 console.log('[resolver] userChatRooms snapshot', { role, authUid, count: snap.docs.length, ids: snap.docs.map((docSnap) => docSnap.id) });
             }
             const indexes = snap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
-            const indexedRooms = await enrichRoomsWithLatestMessagePreviews(await fetchRoomsForIndexes(indexes));
+            if (process.env.NODE_ENV === 'development') {
+                console.log('[resolver] hydrating chatRooms from userChatRooms indexes', { role, authUid, count: indexes.length });
+            }
+            const indexedRooms = await enrichRoomsWithLatestMessagePreviews(await fetchRoomsForIndexes(indexes, { role, authUid }));
             const fallbackRoomsForRole = role === 'parent'
                 ? await fetchParentFallbackRooms(authUid)
                 : role === 'student'
@@ -213,7 +241,36 @@ export const subscribeUserChatRooms = ({ authUid, role = '', onNext, onError }) 
             logMobileRoomPreviewDebug({ role, authUid, rooms: sortedFallbackRooms, source: 'chatRooms_fallback', indexes });
             onNext(sortedFallbackRooms, indexes);
         } catch (error) {
-            onError?.(error);
+            const hydratedError = withErrorStage(error, 'chatRooms_hydration', {
+                role,
+                authUid,
+                source: 'subscribeUserChatRooms snapshot callback',
+            });
+            console.error('[resolver] failed after userChatRooms snapshot while hydrating room list', {
+                stage: hydratedError.stage,
+                role,
+                authUid,
+                code: hydratedError?.code,
+                message: hydratedError?.message,
+                context: hydratedError.context,
+            });
+            onError?.(hydratedError);
         }
-    }, onError);
+    }, (error) => {
+        const snapshotError = withErrorStage(error, 'userChatRooms_snapshot', {
+            role,
+            authUid,
+            queryShape: getUserChatRoomsQueryShape(authUid),
+            source: 'subscribeUserChatRooms onSnapshot',
+        });
+        console.error('[resolver] userChatRooms snapshot listener failed', {
+            stage: snapshotError.stage,
+            role,
+            authUid,
+            code: snapshotError?.code,
+            message: snapshotError?.message,
+            context: snapshotError.context,
+        });
+        onError?.(snapshotError);
+    });
 };
