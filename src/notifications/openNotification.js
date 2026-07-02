@@ -27,9 +27,12 @@ export default async function openNotification({ notification, db = firestoreDb,
         return null;
     }
 
-    const docRef = doc(db, refInfo.refCollection, refInfo.refId);
-    const snapshot = await getDoc(docRef);
-    const data = snapshot.exists() ? snapshot.data() : null;
+    const isChatNotification = refInfo.refCollection === 'chatRooms' || refInfo.refCollection === 'chats';
+    const data = isChatNotification ? null : await (async () => {
+        const docRef = doc(db, refInfo.refCollection, refInfo.refId);
+        const snapshot = await getDoc(docRef);
+        return snapshot.exists() ? snapshot.data() : null;
+    })();
 
     const payload = {
         ...refInfo,

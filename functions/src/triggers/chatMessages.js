@@ -58,16 +58,39 @@ const onChatRoomMessageCreated = functions.firestore
 
         const roomData = roomSnapshot.data() || {};
         const participantIds = uniqueStrings(Array.isArray(roomData.participantIds) ? roomData.participantIds : []);
+        const studentOwnerCandidates = uniqueStrings([
+            roomData.studentId,
+            roomData.studentUid,
+            roomData.studentAuthUid,
+        ]);
+        const parentOwnerCandidates = uniqueStrings([
+            roomData.parentId,
+            roomData.parentUid,
+            roomData.parentAuthUid,
+        ]);
+        const senderResolvedAuthUid = senderId ? await resolveParticipantAuthUid(senderId) : '';
+        const senderIsStudent = uniqueStrings([senderId, senderResolvedAuthUid]).some((uid) => studentOwnerCandidates.includes(uid));
+        const senderIsParent = uniqueStrings([senderId, senderResolvedAuthUid]).some((uid) => parentOwnerCandidates.includes(uid));
         const senderOwnerUids = uniqueStrings([
             senderId,
-            senderId ? await resolveParticipantAuthUid(senderId) : '',
+            senderResolvedAuthUid,
+            senderIsStudent ? roomData.studentId : '',
+            senderIsParent ? roomData.parentId : '',
         ]);
         const senderOwnerUidSet = new Set(senderOwnerUids);
         const recipientOwnerUids = uniqueStrings((await Promise.all(
-            participantIds.map(async (participantId) => ([
-                participantId,
-                await resolveParticipantAuthUid(participantId),
-            ]))
+            participantIds.map(async (participantId) => {
+                const resolvedAuthUid = await resolveParticipantAuthUid(participantId);
+                const participantKeys = uniqueStrings([participantId, resolvedAuthUid]);
+                const recipientIsStudent = participantKeys.some((uid) => studentOwnerCandidates.includes(uid));
+                const recipientIsParent = participantKeys.some((uid) => parentOwnerCandidates.includes(uid));
+                return [
+                    participantId,
+                    resolvedAuthUid,
+                    recipientIsStudent ? roomData.studentId : '',
+                    recipientIsParent ? roomData.parentId : '',
+                ];
+            })
         )).flat()).filter((ownerUid) => ownerUid && !senderOwnerUidSet.has(ownerUid));
 
         console.log('[notifications] chat room message recipients resolved', {

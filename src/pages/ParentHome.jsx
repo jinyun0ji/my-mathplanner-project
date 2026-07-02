@@ -1030,6 +1030,10 @@ export default function ParentHome({
         const refIdForLog = notification?.refId || (typeof notification?.ref === 'string' ? notification.ref.split('/').filter(Boolean)[1] : '');
         const roomIdForLog = notification?.roomId || notification?.chatRoomId || notification?.payload?.roomId || (['chatRooms', 'chats'].includes(refCollectionForLog) ? refIdForLog : '');
         console.log('[notification click]', { notificationId: notification?.id, refCollection: refCollectionForLog, refId: refIdForLog, roomId: roomIdForLog });
+        if (roomIdForLog) {
+            window.__notificationOpenTimingActive = true;
+            console.time('notification-open');
+        }
         if (isMasterPreview || readOnly) {
             showMasterViewUnavailable('알림');
             return;

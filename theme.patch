@@ -1,220 +1,215 @@
-diff --git a/firestore.rules b/firestore.rules
-index 6fd52eed3c5c3c3aee58cb222a0ba8a0a93241ac..8ea7f27b32f4316fe3822d9fa70567c96458589f 100644
---- a/firestore.rules
-+++ b/firestore.rules
-@@ -795,51 +795,58 @@ service cloud.firestore {
-           && request.resource.data.consumed == true
-           && request.resource.data.consumedByAuthUid == uid()
-           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['consumed', 'consumedByAuthUid', 'consumedAt'])
-         );
-     }
+diff --git a/functions/src/triggers/chatMessages.js b/functions/src/triggers/chatMessages.js
+index 81df3cca9c6b1430b796a337bc86434e1fd07084..5a9ec5228ef4effcc963f54082f5a9da208c2136 100644
+--- a/functions/src/triggers/chatMessages.js
++++ b/functions/src/triggers/chatMessages.js
+@@ -36,60 +36,83 @@ const buildChatRoomNotification = ({ roomId, messageId, messageData }) => ({
+         category: 'message',
+         roomId,
+         messageId,
+         refCollection: 'chatRooms',
+     },
+ });
  
-     match /accountLinks/{authUid} {
-       allow get: if request.auth != null && request.auth.uid == authUid;
-       allow list: if false;
-       allow create, update, delete: if false;
-     }
- 
-     function isAuthUidOrLinkedUserDocId(userUid) {
-       return signedIn()
-         && userUid is string
-         && (
-           uid() == userUid
-           || (
-             authIndex() != null
-             && authIndex().data.userDocId == userUid
-           )
-         );
-     }
- 
-     function canAccessNotificationOwner(userUid) {
--      return isAuthUidOrLinkedUserDocId(userUid) || isStaffOrAdminOrTeacher();
-+      return isAuthUidOrLinkedUserDocId(userUid)
-+        || isStaffOrAdminOrTeacher()
-+        || (isStudent() && userUid == myProfileDocId())
-+        || (isStudent()
-+          && userUid is string
-+          && exists(/databases/$(database)/documents/users/$(userUid))
-+          && get(/databases/$(database)/documents/users/$(userUid)).data.authUid == uid())
-+        || (isParent() && userUid in parentStudentUids());
-     }
- 
-     match /notifications/{logId} {
-       allow read, write: if isStaffOrAdminOrTeacher();
-     }
- 
-     match /notifications/{userUid}/items/{notificationId} {
-       allow read: if canAccessNotificationOwner(userUid);
- 
-       // ✅ 본인: 읽음 처리용 update만 허용 (authUid 또는 연결된 userDocId 모두 허용)
-       allow update: if canAccessNotificationOwner(userUid)
-         && request.resource.data.diff(resource.data).changedKeys()
-             .hasOnly(['isRead', 'readAt', 'updatedAt']);
- 
-       // ✅ 직원/관리자/강사: 기존대로 full 권한
-       allow create, update, delete: if isStaffOrAdminOrTeacher();
-     }
- 
-     match /notifications/{userUid}/meta {
-       allow read, write: if canAccessNotificationOwner(userUid);
-     }
-     
-     match /notifications/{userUid}/meta/{metaId} {
-       allow read, write: if canAccessNotificationOwner(userUid);
-     }
-diff --git a/src/pages/StudentHome.jsx b/src/pages/StudentHome.jsx
-index f2fa6e9bab8fb49d35d9c722b209d752e1ea4dbb..56bbd51d9ebcfdb9a5ce0dadaee633a412b35633 100644
---- a/src/pages/StudentHome.jsx
-+++ b/src/pages/StudentHome.jsx
-@@ -312,53 +312,54 @@ export default function StudentHome({
-     const [targetMemo, setTargetMemo] = useState(null);
-     const [isMessengerPage, setIsMessengerPage] = useState(false);
-     const [linkedUserDocId, setLinkedUserDocId] = useState('');
-     const [initialMessengerRoomId, setInitialMessengerRoomId] = useState('');
-     const isMasterPreview = Boolean(masterView);
-     const authUid = auth.currentUser?.uid || '';
-     useEffect(() => {
-         if (!authUid || !db) {
-             setLinkedUserDocId('');
-             return undefined;
+ const onChatRoomMessageCreated = functions.firestore
+     .document('chatRooms/{roomId}/messages/{messageId}')
+     .onCreate(async (snapshot, context) => {
+         const messageData = snapshot.data() || {};
+         if (messageData.internalOnly !== true) {
+             return null;
          }
-         let isMounted = true;
-         getDoc(doc(db, 'userAuthIndex', authUid))
-             .then((snapshot) => {
-                 if (!isMounted) return;
-                 const userDocId = snapshot.exists() ? snapshot.data()?.userDocId : '';
-                 setLinkedUserDocId(userDocId ? String(userDocId).trim() : '');
-             })
-             .catch((error) => {
-                 if (!isMounted) return;
-                 console.warn('[student auth index] failed to load linked student doc id', error);
-                 setLinkedUserDocId('');
-             });
-         return () => { isMounted = false; };
-     }, [authUid]);
-+    const linkedStudentDocId = linkedUserDocId;
-     const notificationViewerUid = isMasterPreview
--        ? (masterViewStudentAuthUid || student?.authUid || userId || '')
--        : (student?.authUid || linkedUserDocId || authUid || userId || '');
-+        ? (masterViewStudentId || student?.id || studentId || masterViewStudentAuthUid || student?.authUid || userId || '')
-+        : (linkedStudentDocId || student?.id || studentId || student?.authUid || authUid || userId || '');
-     const viewerUid = notificationViewerUid;
-     const studentDocId = isMasterPreview ? (masterViewStudentId || studentId) : studentId;
-     const studentAuthUid = isMasterPreview ? (masterViewStudentAuthUid || student?.authUid || userId) : (student?.authUid || userId);
-     const showMasterViewUnavailable = useCallback((featureName) => {
-         window.alert(`마스터뷰에서는 ${featureName}을(를) 사용할 수 없습니다.`);
-     }, []);
-     const rawMyClasses = useMemo(() => {
-         if (!Array.isArray(classes) || !studentId) return [];
-         const addClassIdFromItem = (targetSet, item) => {
-             if (!item) return;
-             if (typeof item === 'string') {
-                 targetSet.add(String(item));
-                 return;
-             }
-             if (typeof item !== 'object') return;
-             [item.id, item.classId, item.classDocId, item.classDocumentId, item.classRefId, item.docId, item.classCode, item.code, item.classKey]
-                 .filter(Boolean)
-                 .forEach((value) => targetSet.add(String(value)));
-         };
-         const studentClassIds = new Set();
-         [
-             ...(Array.isArray(student?.classIds) ? student.classIds : []),
-             ...(Array.isArray(student?.classes) ? student.classes : []),
-             ...(Array.isArray(student?.classStatuses) ? student.classStatuses : []),
-             ...(Array.isArray(student?.enrollments) ? student.enrollments : []),
-@@ -467,54 +468,56 @@ export default function StudentHome({
-             classes: myClasses,
-             date: today,
-             dateStr: todayStr,
-             closures,
-             visibleClassIds,
-             isClassRetiredOnDate: (classId, dateValue) => shouldHideTodayItemByExit({ classId, date: dateValue }, studentClassExitMap),
+ 
+         const { roomId, messageId } = context.params;
+         const senderId = String(messageData.senderId || '').trim();
+         const roomSnapshot = await db.collection('chatRooms').doc(roomId).get();
+         if (!roomSnapshot.exists) {
+             console.warn('[notifications] chat room message skipped: room not found', { roomId, messageId });
+             return null;
+         }
+ 
+         const roomData = roomSnapshot.data() || {};
+         const participantIds = uniqueStrings(Array.isArray(roomData.participantIds) ? roomData.participantIds : []);
++        const studentOwnerCandidates = uniqueStrings([
++            roomData.studentId,
++            roomData.studentUid,
++            roomData.studentAuthUid,
++        ]);
++        const parentOwnerCandidates = uniqueStrings([
++            roomData.parentId,
++            roomData.parentUid,
++            roomData.parentAuthUid,
++        ]);
++        const senderResolvedAuthUid = senderId ? await resolveParticipantAuthUid(senderId) : '';
++        const senderIsStudent = uniqueStrings([senderId, senderResolvedAuthUid]).some((uid) => studentOwnerCandidates.includes(uid));
++        const senderIsParent = uniqueStrings([senderId, senderResolvedAuthUid]).some((uid) => parentOwnerCandidates.includes(uid));
+         const senderOwnerUids = uniqueStrings([
+             senderId,
+-            senderId ? await resolveParticipantAuthUid(senderId) : '',
++            senderResolvedAuthUid,
++            senderIsStudent ? roomData.studentId : '',
++            senderIsParent ? roomData.parentId : '',
+         ]);
+         const senderOwnerUidSet = new Set(senderOwnerUids);
+         const recipientOwnerUids = uniqueStrings((await Promise.all(
+-            participantIds.map(async (participantId) => ([
+-                participantId,
+-                await resolveParticipantAuthUid(participantId),
+-            ]))
++            participantIds.map(async (participantId) => {
++                const resolvedAuthUid = await resolveParticipantAuthUid(participantId);
++                const participantKeys = uniqueStrings([participantId, resolvedAuthUid]);
++                const recipientIsStudent = participantKeys.some((uid) => studentOwnerCandidates.includes(uid));
++                const recipientIsParent = participantKeys.some((uid) => parentOwnerCandidates.includes(uid));
++                return [
++                    participantId,
++                    resolvedAuthUid,
++                    recipientIsStudent ? roomData.studentId : '',
++                    recipientIsParent ? roomData.parentId : '',
++                ];
++            })
+         )).flat()).filter((ownerUid) => ownerUid && !senderOwnerUidSet.has(ownerUid));
+ 
+         console.log('[notifications] chat room message recipients resolved', {
+             roomId,
+             messageId,
+             senderId,
+             participantIds,
+             senderOwnerUids,
+             recipientOwnerUids,
          });
  
-         const merged = [
-             ...todaysClasses,
-             ...todayClinics,
-             ...todayExternal,
-         ].sort((a, b) => String(a.time || '').localeCompare(String(b.time || '')));
-         console.log('[student][today] home count', { count: merged.length, classCount: todaysClasses.length, todayStr, visibleClassIds });
-         return merged;
-     }, [clinicLogs, externalSchedules, myClasses, studentId, today, todayDayName, todayStr, closures, visibleClassIds, studentClassExitMap]);
-     const filteredTodayItems = useMemo(() => {
-         const list = Array.isArray(todayItems) ? todayItems : [];
-         return list.filter((item) => !shouldHideTodayItemByExit(item, studentClassExitMap));
-     }, [todayItems, studentClassExitMap]);
+         if (!recipientOwnerUids.length) {
+             return null;
+         }
  
-     useEffect(() => {
-         console.log('[notifications uid]', {
-             role: 'student',
-             authUid,
--            linkedUserDocId,
-+            linkedUserDocId: linkedStudentDocId,
-+            studentId: student?.id || studentId || '',
-+            studentAuthUid: student?.authUid || '',
-             notificationViewerUid,
+         const batch = db.batch();
+         recipientOwnerUids.forEach((recipientOwnerUid) => {
+             const notificationRef = db
+                 .collection('notifications')
+                 .doc(recipientOwnerUid)
+                 .collection('items')
+                 .doc(`${roomId}_${messageId}`);
+             batch.set(notificationRef, buildChatRoomNotification({ roomId, messageId, messageData }), { merge: true });
          });
--    }, [authUid, linkedUserDocId, notificationViewerUid]);
-+    }, [authUid, linkedStudentDocId, student?.id, student?.authUid, studentId, notificationViewerUid]);
  
-     const { notifications, hasUnread, unreadCount, lastReadAt, isLoading, isMetaLoading, setNotifications } = useNotifications(notificationViewerUid);
+diff --git a/src/notifications/openNotification.js b/src/notifications/openNotification.js
+index a114c1b7fdd5d61c83c47e5bd3efee2484e33806..690aecd98d0f6ae56c68e345f023bcbb6b6f0d4b 100644
+--- a/src/notifications/openNotification.js
++++ b/src/notifications/openNotification.js
+@@ -5,41 +5,44 @@ const parseNotificationRef = (ref) => {
+     if (!ref || typeof ref !== 'string') {
+         return null;
+     }
  
-     const { ongoing: ongoingClasses } = useMemo(() => {
-         const sorted = sortClassesByStatus(myClasses);
-         return { ongoing: sorted?.ongoing || [] };
-     }, [myClasses]);
+     const parts = ref.split('/').filter(Boolean);
  
-     const myHomeworkStats = useMemo(() => {
-         if (!studentId) return [];
-         return calculateHomeworkStats(
-             studentId,
-             filteredHomeworkAssignments || [],
-             homeworkResults || [],
-             { activeViewerAuthUid: userId, studentAuthUid: student?.authUid, userId, students },
-         );
-     }, [studentId, filteredHomeworkAssignments, homeworkResults, student?.authUid, students, userId]);
+     if (parts.length < 2) {
+         return null;
+     }
  
-     const myGradeComparison = useMemo(() => {
-         if (!studentId) return [];
-         return calculateGradeComparison(studentId, classes || [], filteredTests || [], grades || {}, classTestStats || {});
-     }, [studentId, classes, filteredTests, grades, classTestStats]);
- 
-     const pendingHomeworkCount = useMemo(
-         () => myHomeworkStats.filter(h => !h.isComplete).length,
-diff --git a/src/pages/parent/ParentMessengerPage.jsx b/src/pages/parent/ParentMessengerPage.jsx
-index b33dd8dd8ae35b2859edefa667c6aa799657f8f8..b724406e3315231be0a6131fa8a5246cbdb2e1f5 100644
---- a/src/pages/parent/ParentMessengerPage.jsx
-+++ b/src/pages/parent/ParentMessengerPage.jsx
-@@ -1,26 +1,26 @@
--import React, { useEffect, useMemo, useState } from 'react';
-+import React, { useEffect, useMemo, useRef, useState } from 'react';
- import { doc, getDoc } from 'firebase/firestore';
- import ArrowBackIosNewIcon from '@mui/icons-material/ArrowBackIosNew';
- import StudentMessenger from '../../components/StudentMessenger';
- import { auth, db } from '../../firebase/client';
- import { INSTITUTE_AUTH_UID, ROOM_TYPES, SLOTS, TEACHER_AUTH_UID } from '../../messenger/constants/messengerConstants';
- import { getInstituteDisplayName, getTeacherDisplayName } from '../../messenger/services/displayNameService';
- import { getLastMessagePreview, getLastMessagePreviewCandidates } from '../../messenger/services/roomPreviewService';
- import { buildParentParticipantKeys } from '../../messenger/utils/participantKeys';
- import { getRoomDebugInfo, getRoomId, isLegacySlotRoomTypeMatch, sortRooms, toDate } from '../../messenger/utils/roomMatcher';
- import { getUserChatRoomsQueryShape, subscribeUserChatRooms } from '../../messenger/services/userChatRoomsService';
- import { markChatRoomNotificationsRead } from '../../notifications/notificationReadActions';
- 
- const getParticipantIds = (room) => (Array.isArray(room?.participantIds) ? room.participantIds.map(String) : []);
- const hasTarget = (room, targetUid, fields = []) => fields.some((field) => String(room?.[field] || '') === targetUid) || getParticipantIds(room).includes(targetUid);
- const hasViewerParticipant = (room, participantKeys = [], linkedUserDocId = '', studentId = '') => {
-     const participantIds = getParticipantIds(room);
-     const keys = participantKeys.map(String);
-     return keys.some((key) => participantIds.includes(key))
-         || (linkedUserDocId && String(room?.parentId || '') === String(linkedUserDocId))
-         || (studentId && String(room?.studentId || '') === String(studentId))
-         || keys.includes(String(room?.parentUid || ''))
+     return {
+         refCollection: parts[0],
+         refId: parts[1],
+     };
  };
  
+ export default async function openNotification({ notification, db = firestoreDb, onNavigate }) {
+     const refInfo = parseNotificationRef(notification?.ref) || (notification?.refCollection && notification?.refId
+         ? { refCollection: notification.refCollection, refId: notification.refId }
+         : null);
  
- const sameStudent = (room, studentId) => !room?.studentId || !studentId || String(room.studentId) === String(studentId);
-@@ -83,50 +83,51 @@ const isParentTeacherRoom = (room, participantKeys, studentId, linkedUserDocId)
+     if (!refInfo || !db) {
+         return null;
+     }
+ 
+-    const docRef = doc(db, refInfo.refCollection, refInfo.refId);
+-    const snapshot = await getDoc(docRef);
+-    const data = snapshot.exists() ? snapshot.data() : null;
++    const isChatNotification = refInfo.refCollection === 'chatRooms' || refInfo.refCollection === 'chats';
++    const data = isChatNotification ? null : await (async () => {
++        const docRef = doc(db, refInfo.refCollection, refInfo.refId);
++        const snapshot = await getDoc(docRef);
++        return snapshot.exists() ? snapshot.data() : null;
++    })();
+ 
+     const payload = {
+         ...refInfo,
+         data,
+         notification,
+     };
+ 
+     if (onNavigate) {
+         await onNavigate(payload);
+     }
+ 
+     return payload;
+ }
+\ No newline at end of file
+diff --git a/src/pages/ParentHome.jsx b/src/pages/ParentHome.jsx
+index b5cabdf201490858a621413ac3d6205d258da8b9..7e14e2ec0f1810a25feee94b65664fd909f72b03 100644
+--- a/src/pages/ParentHome.jsx
++++ b/src/pages/ParentHome.jsx
+@@ -1008,50 +1008,54 @@ export default function ParentHome({
+             total: visibleNotices.length,
+             sample: sortedVisibleNotices.slice(0, 3).map((n) => ({
+                 id: n.id,
+                 title: n.title,
+                 isPublic: n.isPublic,
+                 audienceAuthUidsCount: Array.isArray(n.audienceAuthUids) ? n.audienceAuthUids.length : 0,
+                 viewerAudienceKeys: [
+                     parentAuthUid,
+                     userId,
+                     ...(isMasterPreview ? [] : [auth.currentUser?.uid]),
+                     activeChild?.authUid,
+                     activeChildId,
+                 ].map((v) => String(v || '').trim()).filter(Boolean),
+                 targetClasses: n.targetClasses,
+                 targetStudents: n.targetStudents,
+                 targetAuthUids: n.targetAuthUids,
+             })),
+         });
+     }, [visibleClassIds, activeChildId, parentAuthUid, visibleNotices, sortedVisibleNotices, userId, activeChild]);
+ 
+     const handleNotificationClick = async (notification) => {
+         const refCollectionForLog = notification?.refCollection || (typeof notification?.ref === 'string' ? notification.ref.split('/').filter(Boolean)[0] : '');
+         const refIdForLog = notification?.refId || (typeof notification?.ref === 'string' ? notification.ref.split('/').filter(Boolean)[1] : '');
+         const roomIdForLog = notification?.roomId || notification?.chatRoomId || notification?.payload?.roomId || (['chatRooms', 'chats'].includes(refCollectionForLog) ? refIdForLog : '');
+         console.log('[notification click]', { notificationId: notification?.id, refCollection: refCollectionForLog, refId: refIdForLog, roomId: roomIdForLog });
++        if (roomIdForLog) {
++            window.__notificationOpenTimingActive = true;
++            console.time('notification-open');
++        }
+         if (isMasterPreview || readOnly) {
+             showMasterViewUnavailable('알림');
+             return;
+         }
+         const targetStudentId = notification?.studentId;
+         const canSwitchStudent = targetStudentId
+             && targetStudentId !== activeStudentId
+             && Array.isArray(studentIds)
+             && studentIds.includes(targetStudentId);
+ 
+         if (canSwitchStudent) {
+             await setActiveStudentId(targetStudentId);
+             await waitForActiveStudentSwitch(targetStudentId);
+         }
+ 
+         if (!isMasterPreview && !readOnly) {
+             try {
+                 await markNotificationRead({ viewerUid: parentNotificationUid, notificationId: notification.id, setNotifications });
+             } catch (error) {
+                 console.error('[parent][notifications] mark single read failed', error);
+             }
+         }
+ 
+         await openNotification({
+             notification,
+diff --git a/src/pages/parent/ParentMessengerPage.jsx b/src/pages/parent/ParentMessengerPage.jsx
+index b724406e3315231be0a6131fa8a5246cbdb2e1f5..119c41b7333165b9f8619264f902cd9334dd4340 100644
+--- a/src/pages/parent/ParentMessengerPage.jsx
++++ b/src/pages/parent/ParentMessengerPage.jsx
+@@ -81,192 +81,198 @@ const isParentRoomOfType = (room, expectedRoomType, targetUid, targetFields, par
+ 
+ const isParentTeacherRoom = (room, participantKeys, studentId, linkedUserDocId) => {
      const selectedRoomId = getRoomId(room);
      if (room?.__unreadableRoom && selectedRoomId) return true;
      if (!isTeacherRoomShape(room)) {
@@ -238,9 +233,22 @@ index b33dd8dd8ae35b2859edefa667c6aa799657f8f8..b724406e3315231be0a6131fa8a5246c
  
  const isParentInstituteRoom = (room, participantKeys, studentId, linkedUserDocId) => isParentRoomOfType(room, ROOM_TYPES.PARENT_INSTITUTE, INSTITUTE_AUTH_UID, ['staffAuthUid', 'counterpartUid'], participantKeys, studentId, linkedUserDocId);
  
++const buildInitialRoomSlot = (initialRoomId) => {
++    const normalizedInitialRoomId = String(initialRoomId || '').trim();
++    if (!normalizedInitialRoomId) return null;
++    return {
++        slot: SLOTS.TEACHER,
++        id: normalizedInitialRoomId,
++        title: getTeacherDisplayName(),
++        roomType: ROOM_TYPES.PARENT_TEACHER,
++        room: { id: normalizedInitialRoomId, roomId: normalizedInitialRoomId },
++    };
++};
++
  export default function ParentMessengerPage({ studentId, student, onBack, notificationViewerUid = '', initialRoomId = '', notifications = [], setNotifications = null }) {
-     const [selectedSlot, setSelectedSlot] = useState(null);
-+    const hasConsumedInitialRoomRef = useRef(false);
+-    const [selectedSlot, setSelectedSlot] = useState(null);
++    const [selectedSlot, setSelectedSlot] = useState(() => buildInitialRoomSlot(initialRoomId));
+     const hasConsumedInitialRoomRef = useRef(false);
      const [rooms, setRooms] = useState([]);
      const [loading, setLoading] = useState(false);
      const [error, setError] = useState('');
@@ -264,9 +272,91 @@ index b33dd8dd8ae35b2859edefa667c6aa799657f8f8..b724406e3315231be0a6131fa8a5246c
  
      useEffect(() => {
          let cancelled = false;
-         if (!authUid) {
+-        if (!authUid) {
++        if (!authUid || initialRoomId) {
              setLinkedParent({ userDocId: '', profile: {} });
-@@ -212,111 +213,121 @@ export default function ParentMessengerPage({ studentId, student, onBack, notifi
+             return undefined;
+         }
+         const loadLinkedParent = async () => {
+             try {
+                 const indexSnap = await getDoc(doc(db, 'userAuthIndex', authUid));
+                 const userDocId = indexSnap.exists() ? String(indexSnap.data()?.userDocId || '').trim() : '';
+                 let profile = {};
+                 if (userDocId) {
+                     const userSnap = await getDoc(doc(db, 'users', userDocId));
+                     profile = userSnap.exists() ? userSnap.data() || {} : {};
+                 }
+                 if (!cancelled) setLinkedParent({ userDocId, profile });
+             } catch (loadError) {
+                 if (process.env.NODE_ENV === 'development') console.warn('[parent messenger] failed to load linked parent profile', { authUid, code: loadError?.code, message: loadError?.message });
+                 if (!cancelled) setLinkedParent({ userDocId: '', profile: {} });
+             }
+         };
+         loadLinkedParent();
+         return () => { cancelled = true; };
+-    }, [authUid]);
++    }, [authUid, initialRoomId]);
+ 
+     useEffect(() => {
+-        if (!authUid) {
++        if (!authUid || initialRoomId) {
+             setRooms([]);
+             setLoading(false);
+             setError('');
+             return undefined;
+         }
+         setLoading(true);
+         setError('');
+         const queryShape = getUserChatRoomsQueryShape(authUid);
+         const ownerUid = authUid;
+         console.log('[parent messenger] userChatRooms subscribe auth check', {
+             authCurrentUserUid: auth.currentUser?.uid || '',
+             queryOwnerUid: ownerUid,
+             authUidMatchesOwnerUid: auth.currentUser?.uid === ownerUid,
+         });
+         if (process.env.NODE_ENV === 'development') console.log('[parent messenger] userChatRooms query', queryShape);
+         const unsubscribe = subscribeUserChatRooms({
+             authUid,
+             role: 'parent',
+             onNext: (myRooms) => {
+                 setRooms(sortRooms(myRooms));
+                 setLoading(false);
+                 setError('');
+             },
+             onError: (snapshotError) => {
+                 console.error('[parent messenger] failed to load userChatRooms', {
+                     code: snapshotError?.code,
+                     message: snapshotError?.message,
+                     stage: snapshotError?.stage,
+                     context: snapshotError?.context,
+                     queryShape,
+                 });
+                 setLoading(false);
+                 setError('대화 목록을 불러오지 못했습니다.');
+             },
+         });
+         return unsubscribe;
+-    }, [authUid]);
++    }, [authUid, initialRoomId]);
+ 
+     const teacherRoom = useMemo(() => rooms.find((room) => isParentTeacherRoom(room, participantKeys, activeStudentId, linkedParent.userDocId)) || null, [rooms, participantKeys, activeStudentId, linkedParent.userDocId]);
+     const instituteRoom = useMemo(() => rooms.find((room) => isParentInstituteRoom(room, participantKeys, activeStudentId, linkedParent.userDocId)) || null, [rooms, participantKeys, activeStudentId, linkedParent.userDocId]);
+ 
+     const messengerSlots = useMemo(() => [
+         { slot: SLOTS.INSTITUTE, room: instituteRoom, id: instituteRoom?.roomId || instituteRoom?.id || 'parent-institute-placeholder', title: getInstituteDisplayName(), roomType: ROOM_TYPES.PARENT_INSTITUTE },
+         { slot: SLOTS.TEACHER, room: teacherRoom, id: teacherRoom?.roomId || teacherRoom?.id || 'parent-teacher-placeholder', title: getTeacherDisplayName(), roomType: ROOM_TYPES.PARENT_TEACHER },
+     ], [teacherRoom, instituteRoom]);
+ 
+     useEffect(() => {
+         if (process.env.NODE_ENV !== 'development') return;
+         const rejectedBySlot = messengerSlots.map((slot) => ({
+             slot: slot.slot,
+             expectedRoomType: slot.roomType,
+             finalPreviewRoomId: getRoomId(slot.room),
+             finalPreviewText: slot.room ? getLastMessagePreview(slot.room) : '대화 내역이 없습니다.',
+             rejected: rooms
+                 .filter((room) => getRoomId(room) !== getRoomId(slot.room))
+                 .map((room) => ({ roomId: getRoomId(room), actual: getRoomDebugInfo(room) })),
          }));
          console.log('[parent messenger] match debug', {
              authUid,
@@ -292,18 +382,17 @@ index b33dd8dd8ae35b2859edefa667c6aa799657f8f8..b724406e3315231be0a6131fa8a5246c
  
      useEffect(() => {
          const normalizedInitialRoomId = String(initialRoomId || '').trim();
--        if (!normalizedInitialRoomId || selectedSlot) return;
-+        if (!normalizedInitialRoomId || selectedSlot || hasConsumedInitialRoomRef.current) return;
+         if (!normalizedInitialRoomId || selectedSlot || hasConsumedInitialRoomRef.current) return;
          const targetSlot = messengerSlots.find((slot) => String(slot.room?.roomId || slot.room?.id || '').trim() === normalizedInitialRoomId);
--        if (targetSlot) handleOpenRoom(targetSlot);
-+        hasConsumedInitialRoomRef.current = true;
-+        handleOpenRoom(targetSlot || {
-+            slot: SLOTS.TEACHER,
-+            id: normalizedInitialRoomId,
-+            title: getTeacherDisplayName(),
-+            roomType: ROOM_TYPES.PARENT_TEACHER,
-+            room: { id: normalizedInitialRoomId, roomId: normalizedInitialRoomId },
-+        });
+         hasConsumedInitialRoomRef.current = true;
+-        handleOpenRoom(targetSlot || {
+-            slot: SLOTS.TEACHER,
+-            id: normalizedInitialRoomId,
+-            title: getTeacherDisplayName(),
+-            roomType: ROOM_TYPES.PARENT_TEACHER,
+-            room: { id: normalizedInitialRoomId, roomId: normalizedInitialRoomId },
+-        });
++        handleOpenRoom(targetSlot || buildInitialRoomSlot(normalizedInitialRoomId));
      // eslint-disable-next-line react-hooks/exhaustive-deps
      }, [initialRoomId, messengerSlots, selectedSlot]);
  
@@ -329,10 +418,7 @@ index b33dd8dd8ae35b2859edefa667c6aa799657f8f8..b724406e3315231be0a6131fa8a5246c
                  actual: getRoomDebugInfo(slot.room),
              });
              if (slot.slot === SLOTS.TEACHER) {
-                 const allowLegacyResolve = !selectedRoomId;
-                 console.log('[parent messenger] teacher room click', {
-                     slot: slot.slot,
-                     currentRoomId: selectedRoomId,
+@@ -277,50 +283,57 @@ export default function ParentMessengerPage({ studentId, student, onBack, notifi
                      selectedRoomId,
                      'room.id': String(slot.room?.id || ''),
                      'room.roomId': String(slot.room?.roomId || ''),
@@ -353,20 +439,25 @@ index b33dd8dd8ae35b2859edefa667c6aa799657f8f8..b724406e3315231be0a6131fa8a5246c
          }
      };
  
--    const currentSlot = selectedSlot ? messengerSlots.find((slot) => slot.slot === selectedSlot.slot) || selectedSlot : null;
-+    const currentSlot = selectedSlot
-+        ? messengerSlots.find((slot) => getRoomId(slot.room) && getRoomId(slot.room) === getRoomId(selectedSlot.room))
-+            || (getRoomId(selectedSlot.room) ? selectedSlot : messengerSlots.find((slot) => slot.slot === selectedSlot.slot) || selectedSlot)
-+        : null;
+     const currentSlot = selectedSlot
+         ? messengerSlots.find((slot) => getRoomId(slot.room) && getRoomId(slot.room) === getRoomId(selectedSlot.room))
+             || (getRoomId(selectedSlot.room) ? selectedSlot : messengerSlots.find((slot) => slot.slot === selectedSlot.slot) || selectedSlot)
+         : null;
  
++    useEffect(() => {
++        const currentRoomId = String(currentSlot?.room?.roomId || currentSlot?.room?.id || '').trim();
++        if (!currentRoomId || !window.__notificationOpenTimingActive) return;
++        console.timeEnd('notification-open');
++        window.__notificationOpenTimingActive = false;
++    }, [currentSlot]);
++
      if (currentSlot) {
          const targetAuthUid = currentSlot.slot === SLOTS.TEACHER ? TEACHER_AUTH_UID : INSTITUTE_AUTH_UID;
          const currentRoomId = String(currentSlot.room?.roomId || currentSlot.room?.id || '').trim();
          return (
              <div className="mobile-screen h-screen min-h-screen bg-gray-50 flex flex-col overflow-hidden">
                  <header className="mobile-header bg-white border-b border-gray-100 px-4 flex items-center gap-3">
--                    <button type="button" onClick={() => setSelectedSlot(null)} className="mobile-back-button text-gray-700"><ArrowBackIosNewIcon style={{ fontSize: 18 }} /></button>
-+                    <button type="button" onClick={() => { hasConsumedInitialRoomRef.current = true; setSelectedSlot(null); }} className="mobile-back-button text-gray-700"><ArrowBackIosNewIcon style={{ fontSize: 18 }} /></button>
+                     <button type="button" onClick={() => { hasConsumedInitialRoomRef.current = true; setSelectedSlot(null); }} className="mobile-back-button text-gray-700"><ArrowBackIosNewIcon style={{ fontSize: 18 }} /></button>
                      <h1 className="text-base font-semibold text-gray-900 truncate">{currentSlot.title}</h1>
                  </header>
                  <div className="flex-1 min-h-0">
@@ -385,168 +476,3 @@ index b33dd8dd8ae35b2859edefa667c6aa799657f8f8..b724406e3315231be0a6131fa8a5246c
                          roomCreationContext={{
                              slot: currentSlot.slot,
                              studentParticipantKeys: participantKeys,
-                             targetAuthUid,
-                             targetName: currentSlot.title,
-                             roomType: currentSlot.roomType,
-                         }}
-                     />
-                 </div>
-             </div>
-diff --git a/src/pages/student/StudentMessengerPage.jsx b/src/pages/student/StudentMessengerPage.jsx
-index 6b136d64807376475ec84f0a85b823f9a433ed51..5014230a1931f7571a18451c1b3a0e610fb7cddb 100644
---- a/src/pages/student/StudentMessengerPage.jsx
-+++ b/src/pages/student/StudentMessengerPage.jsx
-@@ -1,136 +1,147 @@
--import React, { useEffect, useMemo, useState } from 'react';
-+import React, { useEffect, useMemo, useRef, useState } from 'react';
- import ArrowBackIosNewIcon from '@mui/icons-material/ArrowBackIosNew';
- import StudentMessenger from '../../components/StudentMessenger';
- import { auth } from '../../firebase/client';
- import { INSTITUTE_AUTH_UID, ROOM_TYPES, SLOTS, TEACHER_AUTH_UID } from '../../messenger/constants/messengerConstants';
- import { useMessengerRooms } from '../../messenger/hooks/useMessengerRooms';
- import { getInstituteDisplayName, getTeacherDisplayName } from '../../messenger/services/displayNameService';
- import { getLastMessagePreview, getLastMessagePreviewCandidates } from '../../messenger/services/roomPreviewService';
- import { buildStudentParticipantKeys } from '../../messenger/utils/participantKeys';
- import { getRoomDebugInfo, getRoomId, toDate } from '../../messenger/utils/roomMatcher';
- import { markChatRoomNotificationsRead } from '../../notifications/notificationReadActions';
- 
- const getExpectedRoomType = (slot) => (slot === SLOTS.INSTITUTE ? ROOM_TYPES.STUDENT_INSTITUTE : ROOM_TYPES.STUDENT_TEACHER);
- 
- export default function StudentMessengerPage({ studentId, student, onBack, notificationViewerUid = '', initialRoomId = '', notifications = [], setNotifications = null }) {
-     const [selectedSlot, setSelectedSlot] = useState(null);
-+    const hasConsumedInitialRoomRef = useRef(false);
-     const authUid = String(auth.currentUser?.uid || '');
-     const studentWithId = useMemo(() => ({ ...student, id: student?.id || studentId }), [student, studentId]);
-     const { loading, error, participantKeys, teacherRoom, instituteRoom, rooms = [] } = useMessengerRooms({
-         role: 'student',
-         authUid,
-         student: studentWithId,
-     });
-     const participantKeyCandidates = useMemo(() => (
-         participantKeys?.length ? participantKeys : buildStudentParticipantKeys({ authUid, student, studentId })
-     ), [participantKeys, authUid, student, studentId]);
-     const activeStudentId = String(studentId || student?.id || student?.studentId || '');
- 
-     const messengerSlots = useMemo(() => [
-         { slot: SLOTS.INSTITUTE, id: instituteRoom?.id || 'institute-placeholder', title: getInstituteDisplayName(), room: instituteRoom, roomType: ROOM_TYPES.STUDENT_INSTITUTE },
-         { slot: SLOTS.TEACHER, id: teacherRoom?.id || 'teacher-placeholder', title: getTeacherDisplayName(), room: teacherRoom, roomType: ROOM_TYPES.STUDENT_TEACHER },
-     ], [teacherRoom, instituteRoom]);
- 
-     useEffect(() => {
-         if (process.env.NODE_ENV !== 'development') return;
-         messengerSlots.forEach((slot) => {
-             console.log('[student messenger slot]', {
-                 role: 'student',
-                 slot: slot.slot,
-                 expectedRoomType: slot.roomType,
-                 activeStudentId,
-                 participantKeys: participantKeyCandidates,
-                 finalRoomId: getRoomId(slot.room),
-                 finalPreviewRoomId: getRoomId(slot.room),
-                 finalPreviewText: slot.room ? getLastMessagePreview(slot.room) : '대화 내역이 없습니다.',
-                 rejected: rooms
-                     .filter((room) => getRoomId(room) !== getRoomId(slot.room))
-                     .map((room) => ({ roomId: getRoomId(room), reason: 'not selected for this slot', actual: getRoomDebugInfo(room) })),
-                 roomType: slot.room?.roomType || '',
-                 channel: slot.room?.channel || '',
-                 roomSlot: slot.room?.slot || '',
-             });
-         });
-     }, [messengerSlots, activeStudentId, participantKeyCandidates, rooms]);
- 
-     useEffect(() => {
-         const normalizedInitialRoomId = String(initialRoomId || '').trim();
--        if (!normalizedInitialRoomId || selectedSlot) return;
-+        if (!normalizedInitialRoomId || selectedSlot || hasConsumedInitialRoomRef.current) return;
-         const targetSlot = messengerSlots.find((slot) => String(slot.room?.roomId || slot.room?.id || '').trim() === normalizedInitialRoomId);
--        if (targetSlot) handleOpenRoom(targetSlot);
-+        hasConsumedInitialRoomRef.current = true;
-+        handleOpenRoom(targetSlot || {
-+            slot: SLOTS.TEACHER,
-+            id: normalizedInitialRoomId,
-+            title: getTeacherDisplayName(),
-+            roomType: ROOM_TYPES.STUDENT_TEACHER,
-+            room: { id: normalizedInitialRoomId, roomId: normalizedInitialRoomId },
-+        });
-     // eslint-disable-next-line react-hooks/exhaustive-deps
-     }, [initialRoomId, messengerSlots, selectedSlot]);
- 
-     const handleOpenRoom = (slot) => {
-         const selectedRoomId = String(slot.room?.roomId || slot.room?.id || '').trim();
-         if (process.env.NODE_ENV === 'development') {
-             console.log('[MessengerPage] room preview candidates', {
-                 role: 'student',
-                 roomId: selectedRoomId,
-                 title: slot.title,
-                 userChatRoomsIndexPath: authUid && selectedRoomId ? `userChatRooms/${authUid}/rooms/${selectedRoomId}` : '',
-                 candidates: getLastMessagePreviewCandidates(slot.room),
-                 selectedPreview: getLastMessagePreview(slot.room),
-                 room: slot.room,
-             });
-             console.log('[MessengerPage] open room', {
-                 role: 'student',
-                 selectedRoomId,
-                 roomIdFromIndex: String(slot.room?.roomId || ''),
-                 roomDocId: String(slot.room?.id || ''),
-                 slot: slot.slot,
-                 roomType: slot.room?.roomType || slot.roomType || '',
-             });
-         }
-         setSelectedSlot(slot);
-         if (selectedRoomId && notificationViewerUid) {
-             markChatRoomNotificationsRead({ viewerUid: notificationViewerUid, roomId: selectedRoomId, notifications, setNotifications })
-                 .catch((error) => console.error('[student][notifications] mark chat room read failed', error));
-         }
-     };
- 
--    const currentSlot = selectedSlot ? messengerSlots.find((slot) => slot.slot === selectedSlot.slot) || selectedSlot : null;
-+    const currentSlot = selectedSlot
-+        ? messengerSlots.find((slot) => getRoomId(slot.room) && getRoomId(slot.room) === getRoomId(selectedSlot.room))
-+            || (getRoomId(selectedSlot.room) ? selectedSlot : messengerSlots.find((slot) => slot.slot === selectedSlot.slot) || selectedSlot)
-+        : null;
-     if (currentSlot) {
-         const targetAuthUid = currentSlot.slot === SLOTS.TEACHER ? TEACHER_AUTH_UID : INSTITUTE_AUTH_UID;
-         const currentRoomId = String(currentSlot.room?.roomId || currentSlot.room?.id || '').trim();
-         const canCreateCurrentRoom = Boolean(targetAuthUid && getExpectedRoomType(currentSlot.slot));
-         if (!currentRoomId && !canCreateCurrentRoom) {
-             return (
-                 <div className="mobile-screen h-screen min-h-screen bg-gray-50 flex flex-col overflow-hidden">
-                     <header className="mobile-header bg-white border-b border-gray-100 px-4 flex items-center gap-3">
--                        <button type="button" onClick={() => setSelectedSlot(null)} className="mobile-back-button text-gray-700"><ArrowBackIosNewIcon style={{ fontSize: 18 }} /></button>
-+                        <button type="button" onClick={() => { hasConsumedInitialRoomRef.current = true; setSelectedSlot(null); }} className="mobile-back-button text-gray-700"><ArrowBackIosNewIcon style={{ fontSize: 18 }} /></button>
-                         <h1 className="text-base font-semibold text-gray-900 truncate">{currentSlot.title}</h1>
-                     </header>
-                     <div className="flex-1 flex items-center justify-center text-sm text-gray-500">대화방을 준비 중입니다.</div>
-                 </div>
-             );
-         }
-         return (
-             <div className="mobile-screen h-screen min-h-screen bg-gray-50 flex flex-col overflow-hidden">
-                 <header className="mobile-header bg-white border-b border-gray-100 px-4 flex items-center gap-3">
--                    <button type="button" onClick={() => setSelectedSlot(null)} className="mobile-back-button text-gray-700"><ArrowBackIosNewIcon style={{ fontSize: 18 }} /></button>
-+                    <button type="button" onClick={() => { hasConsumedInitialRoomRef.current = true; setSelectedSlot(null); }} className="mobile-back-button text-gray-700"><ArrowBackIosNewIcon style={{ fontSize: 18 }} /></button>
-                     <h1 className="text-base font-semibold text-gray-900 truncate">{currentSlot.title}</h1>
-                 </header>
-                 <div className="flex-1 min-h-0">
-                     <StudentMessenger
-                         studentId={activeStudentId}
-                         studentAuthUid={student?.authUid || student?.studentUid || student?.uid || ''}
-                         selectedRoomId={currentRoomId}
-                         teacherName={currentSlot.title}
-                         userRole="student"
-                         allowLegacyResolve={!currentRoomId}
-                         emptyMessage="아직 대화 내역이 없습니다."
-                         chatSlot={currentSlot.slot}
-                         notificationViewerUid={notificationViewerUid}
-                         notifications={notifications}
-                         setNotifications={setNotifications}
-                         roomCreationContext={{
-                             slot: currentSlot.slot,
-                             studentParticipantKeys: participantKeyCandidates,
-                             targetAuthUid,
-                             targetName: currentSlot.title,
-                             roomType: getExpectedRoomType(currentSlot.slot),
-                         }}
-                     />
-                 </div>
-             </div>
