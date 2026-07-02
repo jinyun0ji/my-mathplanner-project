@@ -1,226 +1,8 @@
-diff --git a/functions/src/triggers/chatMessages.js b/functions/src/triggers/chatMessages.js
-index 81df3cca9c6b1430b796a337bc86434e1fd07084..5a9ec5228ef4effcc963f54082f5a9da208c2136 100644
---- a/functions/src/triggers/chatMessages.js
-+++ b/functions/src/triggers/chatMessages.js
-@@ -36,60 +36,83 @@ const buildChatRoomNotification = ({ roomId, messageId, messageData }) => ({
-         category: 'message',
-         roomId,
-         messageId,
-         refCollection: 'chatRooms',
-     },
- });
- 
- const onChatRoomMessageCreated = functions.firestore
-     .document('chatRooms/{roomId}/messages/{messageId}')
-     .onCreate(async (snapshot, context) => {
-         const messageData = snapshot.data() || {};
-         if (messageData.internalOnly !== true) {
-             return null;
-         }
- 
-         const { roomId, messageId } = context.params;
-         const senderId = String(messageData.senderId || '').trim();
-         const roomSnapshot = await db.collection('chatRooms').doc(roomId).get();
-         if (!roomSnapshot.exists) {
-             console.warn('[notifications] chat room message skipped: room not found', { roomId, messageId });
-             return null;
-         }
- 
-         const roomData = roomSnapshot.data() || {};
-         const participantIds = uniqueStrings(Array.isArray(roomData.participantIds) ? roomData.participantIds : []);
-+        const studentOwnerCandidates = uniqueStrings([
-+            roomData.studentId,
-+            roomData.studentUid,
-+            roomData.studentAuthUid,
-+        ]);
-+        const parentOwnerCandidates = uniqueStrings([
-+            roomData.parentId,
-+            roomData.parentUid,
-+            roomData.parentAuthUid,
-+        ]);
-+        const senderResolvedAuthUid = senderId ? await resolveParticipantAuthUid(senderId) : '';
-+        const senderIsStudent = uniqueStrings([senderId, senderResolvedAuthUid]).some((uid) => studentOwnerCandidates.includes(uid));
-+        const senderIsParent = uniqueStrings([senderId, senderResolvedAuthUid]).some((uid) => parentOwnerCandidates.includes(uid));
-         const senderOwnerUids = uniqueStrings([
-             senderId,
--            senderId ? await resolveParticipantAuthUid(senderId) : '',
-+            senderResolvedAuthUid,
-+            senderIsStudent ? roomData.studentId : '',
-+            senderIsParent ? roomData.parentId : '',
-         ]);
-         const senderOwnerUidSet = new Set(senderOwnerUids);
-         const recipientOwnerUids = uniqueStrings((await Promise.all(
--            participantIds.map(async (participantId) => ([
--                participantId,
--                await resolveParticipantAuthUid(participantId),
--            ]))
-+            participantIds.map(async (participantId) => {
-+                const resolvedAuthUid = await resolveParticipantAuthUid(participantId);
-+                const participantKeys = uniqueStrings([participantId, resolvedAuthUid]);
-+                const recipientIsStudent = participantKeys.some((uid) => studentOwnerCandidates.includes(uid));
-+                const recipientIsParent = participantKeys.some((uid) => parentOwnerCandidates.includes(uid));
-+                return [
-+                    participantId,
-+                    resolvedAuthUid,
-+                    recipientIsStudent ? roomData.studentId : '',
-+                    recipientIsParent ? roomData.parentId : '',
-+                ];
-+            })
-         )).flat()).filter((ownerUid) => ownerUid && !senderOwnerUidSet.has(ownerUid));
- 
-         console.log('[notifications] chat room message recipients resolved', {
-             roomId,
-             messageId,
-             senderId,
-             participantIds,
-             senderOwnerUids,
-             recipientOwnerUids,
-         });
- 
-         if (!recipientOwnerUids.length) {
-             return null;
-         }
- 
-         const batch = db.batch();
-         recipientOwnerUids.forEach((recipientOwnerUid) => {
-             const notificationRef = db
-                 .collection('notifications')
-                 .doc(recipientOwnerUid)
-                 .collection('items')
-                 .doc(`${roomId}_${messageId}`);
-             batch.set(notificationRef, buildChatRoomNotification({ roomId, messageId, messageData }), { merge: true });
-         });
- 
-diff --git a/src/notifications/openNotification.js b/src/notifications/openNotification.js
-index a114c1b7fdd5d61c83c47e5bd3efee2484e33806..690aecd98d0f6ae56c68e345f023bcbb6b6f0d4b 100644
---- a/src/notifications/openNotification.js
-+++ b/src/notifications/openNotification.js
-@@ -5,41 +5,44 @@ const parseNotificationRef = (ref) => {
-     if (!ref || typeof ref !== 'string') {
-         return null;
-     }
- 
-     const parts = ref.split('/').filter(Boolean);
- 
-     if (parts.length < 2) {
-         return null;
-     }
- 
-     return {
-         refCollection: parts[0],
-         refId: parts[1],
-     };
- };
- 
- export default async function openNotification({ notification, db = firestoreDb, onNavigate }) {
-     const refInfo = parseNotificationRef(notification?.ref) || (notification?.refCollection && notification?.refId
-         ? { refCollection: notification.refCollection, refId: notification.refId }
-         : null);
- 
-     if (!refInfo || !db) {
-         return null;
-     }
- 
--    const docRef = doc(db, refInfo.refCollection, refInfo.refId);
--    const snapshot = await getDoc(docRef);
--    const data = snapshot.exists() ? snapshot.data() : null;
-+    const isChatNotification = refInfo.refCollection === 'chatRooms' || refInfo.refCollection === 'chats';
-+    const data = isChatNotification ? null : await (async () => {
-+        const docRef = doc(db, refInfo.refCollection, refInfo.refId);
-+        const snapshot = await getDoc(docRef);
-+        return snapshot.exists() ? snapshot.data() : null;
-+    })();
- 
-     const payload = {
-         ...refInfo,
-         data,
-         notification,
-     };
- 
-     if (onNavigate) {
-         await onNavigate(payload);
-     }
- 
-     return payload;
- }
-\ No newline at end of file
-diff --git a/src/pages/ParentHome.jsx b/src/pages/ParentHome.jsx
-index b5cabdf201490858a621413ac3d6205d258da8b9..7e14e2ec0f1810a25feee94b65664fd909f72b03 100644
---- a/src/pages/ParentHome.jsx
-+++ b/src/pages/ParentHome.jsx
-@@ -1008,50 +1008,54 @@ export default function ParentHome({
-             total: visibleNotices.length,
-             sample: sortedVisibleNotices.slice(0, 3).map((n) => ({
-                 id: n.id,
-                 title: n.title,
-                 isPublic: n.isPublic,
-                 audienceAuthUidsCount: Array.isArray(n.audienceAuthUids) ? n.audienceAuthUids.length : 0,
-                 viewerAudienceKeys: [
-                     parentAuthUid,
-                     userId,
-                     ...(isMasterPreview ? [] : [auth.currentUser?.uid]),
-                     activeChild?.authUid,
-                     activeChildId,
-                 ].map((v) => String(v || '').trim()).filter(Boolean),
-                 targetClasses: n.targetClasses,
-                 targetStudents: n.targetStudents,
-                 targetAuthUids: n.targetAuthUids,
-             })),
-         });
-     }, [visibleClassIds, activeChildId, parentAuthUid, visibleNotices, sortedVisibleNotices, userId, activeChild]);
- 
-     const handleNotificationClick = async (notification) => {
-         const refCollectionForLog = notification?.refCollection || (typeof notification?.ref === 'string' ? notification.ref.split('/').filter(Boolean)[0] : '');
-         const refIdForLog = notification?.refId || (typeof notification?.ref === 'string' ? notification.ref.split('/').filter(Boolean)[1] : '');
-         const roomIdForLog = notification?.roomId || notification?.chatRoomId || notification?.payload?.roomId || (['chatRooms', 'chats'].includes(refCollectionForLog) ? refIdForLog : '');
-         console.log('[notification click]', { notificationId: notification?.id, refCollection: refCollectionForLog, refId: refIdForLog, roomId: roomIdForLog });
-+        if (roomIdForLog) {
-+            window.__notificationOpenTimingActive = true;
-+            console.time('notification-open');
-+        }
-         if (isMasterPreview || readOnly) {
-             showMasterViewUnavailable('알림');
-             return;
-         }
-         const targetStudentId = notification?.studentId;
-         const canSwitchStudent = targetStudentId
-             && targetStudentId !== activeStudentId
-             && Array.isArray(studentIds)
-             && studentIds.includes(targetStudentId);
- 
-         if (canSwitchStudent) {
-             await setActiveStudentId(targetStudentId);
-             await waitForActiveStudentSwitch(targetStudentId);
-         }
- 
-         if (!isMasterPreview && !readOnly) {
-             try {
-                 await markNotificationRead({ viewerUid: parentNotificationUid, notificationId: notification.id, setNotifications });
-             } catch (error) {
-                 console.error('[parent][notifications] mark single read failed', error);
-             }
-         }
- 
-         await openNotification({
-             notification,
 diff --git a/src/pages/parent/ParentMessengerPage.jsx b/src/pages/parent/ParentMessengerPage.jsx
-index b724406e3315231be0a6131fa8a5246cbdb2e1f5..119c41b7333165b9f8619264f902cd9334dd4340 100644
+index 119c41b7333165b9f8619264f902cd9334dd4340..21a8046780432b3781e4225a1ff837dd57d1f580 100644
 --- a/src/pages/parent/ParentMessengerPage.jsx
 +++ b/src/pages/parent/ParentMessengerPage.jsx
-@@ -81,192 +81,198 @@ const isParentRoomOfType = (room, expectedRoomType, targetUid, targetFields, par
- 
- const isParentTeacherRoom = (room, participantKeys, studentId, linkedUserDocId) => {
-     const selectedRoomId = getRoomId(room);
-     if (room?.__unreadableRoom && selectedRoomId) return true;
-     if (!isTeacherRoomShape(room)) {
-         logParentRoomRejection(room, ROOM_TYPES.PARENT_TEACHER, 'teacher room shape mismatch', selectedRoomId);
-         return false;
-     }
-     if (!hasTarget(room, TEACHER_AUTH_UID, ['teacherAuthUid', 'counterpartUid'])) {
-         logParentRoomRejection(room, ROOM_TYPES.PARENT_TEACHER, 'teacher target participant mismatch', selectedRoomId);
-         return false;
-     }
-     if (!hasLinkedParent(room, linkedUserDocId)) {
+@@ -94,187 +94,192 @@ const isParentTeacherRoom = (room, participantKeys, studentId, linkedUserDocId)
          logParentRoomRejection(room, ROOM_TYPES.PARENT_TEACHER, 'linked parent not found', selectedRoomId);
          return false;
      }
@@ -233,22 +15,29 @@ index b724406e3315231be0a6131fa8a5246cbdb2e1f5..119c41b7333165b9f8619264f902cd93
  
  const isParentInstituteRoom = (room, participantKeys, studentId, linkedUserDocId) => isParentRoomOfType(room, ROOM_TYPES.PARENT_INSTITUTE, INSTITUTE_AUTH_UID, ['staffAuthUid', 'counterpartUid'], participantKeys, studentId, linkedUserDocId);
  
-+const buildInitialRoomSlot = (initialRoomId) => {
-+    const normalizedInitialRoomId = String(initialRoomId || '').trim();
-+    if (!normalizedInitialRoomId) return null;
-+    return {
-+        slot: SLOTS.TEACHER,
-+        id: normalizedInitialRoomId,
-+        title: getTeacherDisplayName(),
-+        roomType: ROOM_TYPES.PARENT_TEACHER,
-+        room: { id: normalizedInitialRoomId, roomId: normalizedInitialRoomId },
-+    };
-+};
-+
+ const buildInitialRoomSlot = (initialRoomId) => {
+     const normalizedInitialRoomId = String(initialRoomId || '').trim();
+     if (!normalizedInitialRoomId) return null;
+     return {
+         slot: SLOTS.TEACHER,
+         id: normalizedInitialRoomId,
+         title: getTeacherDisplayName(),
+         roomType: ROOM_TYPES.PARENT_TEACHER,
+         room: { id: normalizedInitialRoomId, roomId: normalizedInitialRoomId },
+     };
+ };
+ 
  export default function ParentMessengerPage({ studentId, student, onBack, notificationViewerUid = '', initialRoomId = '', notifications = [], setNotifications = null }) {
--    const [selectedSlot, setSelectedSlot] = useState(null);
-+    const [selectedSlot, setSelectedSlot] = useState(() => buildInitialRoomSlot(initialRoomId));
-     const hasConsumedInitialRoomRef = useRef(false);
+-    const [selectedSlot, setSelectedSlot] = useState(() => buildInitialRoomSlot(initialRoomId));
+-    const hasConsumedInitialRoomRef = useRef(false);
++    const normalizedInitialRoomId = String(initialRoomId || '').trim();
++    const parentNotificationOpenTimingRef = useRef({ started: false, ended: false });
++    if (normalizedInitialRoomId && !parentNotificationOpenTimingRef.current.started) {
++        console.time('parent notification open');
++        parentNotificationOpenTimingRef.current.started = true;
++    }
++    const [selectedSlot, setSelectedSlot] = useState(() => buildInitialRoomSlot(normalizedInitialRoomId));
++    const hasConsumedInitialRoomRef = useRef(Boolean(normalizedInitialRoomId));
      const [rooms, setRooms] = useState([]);
      const [loading, setLoading] = useState(false);
      const [error, setError] = useState('');
@@ -272,8 +61,8 @@ index b724406e3315231be0a6131fa8a5246cbdb2e1f5..119c41b7333165b9f8619264f902cd93
  
      useEffect(() => {
          let cancelled = false;
--        if (!authUid) {
-+        if (!authUid || initialRoomId) {
+-        if (!authUid || initialRoomId) {
++        if (!authUid || normalizedInitialRoomId) {
              setLinkedParent({ userDocId: '', profile: {} });
              return undefined;
          }
@@ -294,12 +83,12 @@ index b724406e3315231be0a6131fa8a5246cbdb2e1f5..119c41b7333165b9f8619264f902cd93
          };
          loadLinkedParent();
          return () => { cancelled = true; };
--    }, [authUid]);
-+    }, [authUid, initialRoomId]);
+-    }, [authUid, initialRoomId]);
++    }, [authUid, normalizedInitialRoomId]);
  
      useEffect(() => {
--        if (!authUid) {
-+        if (!authUid || initialRoomId) {
+-        if (!authUid || initialRoomId) {
++        if (!authUid || normalizedInitialRoomId) {
              setRooms([]);
              setLoading(false);
              setError('');
@@ -336,8 +125,8 @@ index b724406e3315231be0a6131fa8a5246cbdb2e1f5..119c41b7333165b9f8619264f902cd93
              },
          });
          return unsubscribe;
--    }, [authUid]);
-+    }, [authUid, initialRoomId]);
+-    }, [authUid, initialRoomId]);
++    }, [authUid, normalizedInitialRoomId]);
  
      const teacherRoom = useMemo(() => rooms.find((room) => isParentTeacherRoom(room, participantKeys, activeStudentId, linkedParent.userDocId)) || null, [rooms, participantKeys, activeStudentId, linkedParent.userDocId]);
      const instituteRoom = useMemo(() => rooms.find((room) => isParentInstituteRoom(room, participantKeys, activeStudentId, linkedParent.userDocId)) || null, [rooms, participantKeys, activeStudentId, linkedParent.userDocId]);
@@ -381,20 +170,14 @@ index b724406e3315231be0a6131fa8a5246cbdb2e1f5..119c41b7333165b9f8619264f902cd93
      }, [authUid, linkedParent.userDocId, participantKeys, rooms.length, teacherRoom, instituteRoom, messengerSlots]);
  
      useEffect(() => {
-         const normalizedInitialRoomId = String(initialRoomId || '').trim();
+-        const normalizedInitialRoomId = String(initialRoomId || '').trim();
          if (!normalizedInitialRoomId || selectedSlot || hasConsumedInitialRoomRef.current) return;
          const targetSlot = messengerSlots.find((slot) => String(slot.room?.roomId || slot.room?.id || '').trim() === normalizedInitialRoomId);
          hasConsumedInitialRoomRef.current = true;
--        handleOpenRoom(targetSlot || {
--            slot: SLOTS.TEACHER,
--            id: normalizedInitialRoomId,
--            title: getTeacherDisplayName(),
--            roomType: ROOM_TYPES.PARENT_TEACHER,
--            room: { id: normalizedInitialRoomId, roomId: normalizedInitialRoomId },
--        });
-+        handleOpenRoom(targetSlot || buildInitialRoomSlot(normalizedInitialRoomId));
+         handleOpenRoom(targetSlot || buildInitialRoomSlot(normalizedInitialRoomId));
      // eslint-disable-next-line react-hooks/exhaustive-deps
-     }, [initialRoomId, messengerSlots, selectedSlot]);
+-    }, [initialRoomId, messengerSlots, selectedSlot]);
++    }, [normalizedInitialRoomId, messengerSlots, selectedSlot]);
  
      const handleOpenRoom = (slot) => {
          const selectedRoomId = String(slot.room?.roomId || slot.room?.id || '').trim();
@@ -418,7 +201,9 @@ index b724406e3315231be0a6131fa8a5246cbdb2e1f5..119c41b7333165b9f8619264f902cd93
                  actual: getRoomDebugInfo(slot.room),
              });
              if (slot.slot === SLOTS.TEACHER) {
-@@ -277,50 +283,57 @@ export default function ParentMessengerPage({ studentId, student, onBack, notifi
+                 const allowLegacyResolve = !selectedRoomId;
+                 console.log('[parent messenger] teacher room click', {
+@@ -283,56 +288,54 @@ export default function ParentMessengerPage({ studentId, student, onBack, notifi
                      selectedRoomId,
                      'room.id': String(slot.room?.id || ''),
                      'room.roomId': String(slot.room?.roomId || ''),
@@ -444,13 +229,17 @@ index b724406e3315231be0a6131fa8a5246cbdb2e1f5..119c41b7333165b9f8619264f902cd93
              || (getRoomId(selectedSlot.room) ? selectedSlot : messengerSlots.find((slot) => slot.slot === selectedSlot.slot) || selectedSlot)
          : null;
  
-+    useEffect(() => {
-+        const currentRoomId = String(currentSlot?.room?.roomId || currentSlot?.room?.id || '').trim();
-+        if (!currentRoomId || !window.__notificationOpenTimingActive) return;
-+        console.timeEnd('notification-open');
-+        window.__notificationOpenTimingActive = false;
-+    }, [currentSlot]);
-+
+-    useEffect(() => {
+-        const currentRoomId = String(currentSlot?.room?.roomId || currentSlot?.room?.id || '').trim();
+-        if (!currentRoomId || !window.__notificationOpenTimingActive) return;
+-        console.timeEnd('notification-open');
+-        window.__notificationOpenTimingActive = false;
+-    }, [currentSlot]);
++    if (currentSlot && parentNotificationOpenTimingRef.current.started && !parentNotificationOpenTimingRef.current.ended) {
++        console.timeEnd('parent notification open');
++        parentNotificationOpenTimingRef.current.ended = true;
++    }
+ 
      if (currentSlot) {
          const targetAuthUid = currentSlot.slot === SLOTS.TEACHER ? TEACHER_AUTH_UID : INSTITUTE_AUTH_UID;
          const currentRoomId = String(currentSlot.room?.roomId || currentSlot.room?.id || '').trim();
@@ -475,4 +264,3 @@ index b724406e3315231be0a6131fa8a5246cbdb2e1f5..119c41b7333165b9f8619264f902cd93
                          setNotifications={setNotifications}
                          roomCreationContext={{
                              slot: currentSlot.slot,
-                             studentParticipantKeys: participantKeys,

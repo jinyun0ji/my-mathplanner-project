@@ -116,8 +116,14 @@ const buildInitialRoomSlot = (initialRoomId) => {
 };
 
 export default function ParentMessengerPage({ studentId, student, onBack, notificationViewerUid = '', initialRoomId = '', notifications = [], setNotifications = null }) {
-    const [selectedSlot, setSelectedSlot] = useState(() => buildInitialRoomSlot(initialRoomId));
-    const hasConsumedInitialRoomRef = useRef(false);
+    const normalizedInitialRoomId = String(initialRoomId || '').trim();
+    const parentNotificationOpenTimingRef = useRef({ started: false, ended: false });
+    if (normalizedInitialRoomId && !parentNotificationOpenTimingRef.current.started) {
+        console.time('parent notification open');
+        parentNotificationOpenTimingRef.current.started = true;
+    }
+    const [selectedSlot, setSelectedSlot] = useState(() => buildInitialRoomSlot(normalizedInitialRoomId));
+    const hasConsumedInitialRoomRef = useRef(Boolean(normalizedInitialRoomId));
     const [rooms, setRooms] = useState([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
@@ -141,7 +147,7 @@ export default function ParentMessengerPage({ studentId, student, onBack, notifi
 
     useEffect(() => {
         let cancelled = false;
-        if (!authUid || initialRoomId) {
+        if (!authUid || normalizedInitialRoomId) {
             setLinkedParent({ userDocId: '', profile: {} });
             return undefined;
         }
@@ -162,10 +168,10 @@ export default function ParentMessengerPage({ studentId, student, onBack, notifi
         };
         loadLinkedParent();
         return () => { cancelled = true; };
-    }, [authUid, initialRoomId]);
+    }, [authUid, normalizedInitialRoomId]);
 
     useEffect(() => {
-        if (!authUid || initialRoomId) {
+        if (!authUid || normalizedInitialRoomId) {
             setRooms([]);
             setLoading(false);
             setError('');
@@ -202,7 +208,7 @@ export default function ParentMessengerPage({ studentId, student, onBack, notifi
             },
         });
         return unsubscribe;
-    }, [authUid, initialRoomId]);
+    }, [authUid, normalizedInitialRoomId]);
 
     const teacherRoom = useMemo(() => rooms.find((room) => isParentTeacherRoom(room, participantKeys, activeStudentId, linkedParent.userDocId)) || null, [rooms, participantKeys, activeStudentId, linkedParent.userDocId]);
     const instituteRoom = useMemo(() => rooms.find((room) => isParentInstituteRoom(room, participantKeys, activeStudentId, linkedParent.userDocId)) || null, [rooms, participantKeys, activeStudentId, linkedParent.userDocId]);
@@ -246,13 +252,12 @@ export default function ParentMessengerPage({ studentId, student, onBack, notifi
     }, [authUid, linkedParent.userDocId, participantKeys, rooms.length, teacherRoom, instituteRoom, messengerSlots]);
 
     useEffect(() => {
-        const normalizedInitialRoomId = String(initialRoomId || '').trim();
         if (!normalizedInitialRoomId || selectedSlot || hasConsumedInitialRoomRef.current) return;
         const targetSlot = messengerSlots.find((slot) => String(slot.room?.roomId || slot.room?.id || '').trim() === normalizedInitialRoomId);
         hasConsumedInitialRoomRef.current = true;
         handleOpenRoom(targetSlot || buildInitialRoomSlot(normalizedInitialRoomId));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [initialRoomId, messengerSlots, selectedSlot]);
+    }, [normalizedInitialRoomId, messengerSlots, selectedSlot]);
 
     const handleOpenRoom = (slot) => {
         const selectedRoomId = String(slot.room?.roomId || slot.room?.id || '').trim();
@@ -305,12 +310,10 @@ export default function ParentMessengerPage({ studentId, student, onBack, notifi
             || (getRoomId(selectedSlot.room) ? selectedSlot : messengerSlots.find((slot) => slot.slot === selectedSlot.slot) || selectedSlot)
         : null;
 
-    useEffect(() => {
-        const currentRoomId = String(currentSlot?.room?.roomId || currentSlot?.room?.id || '').trim();
-        if (!currentRoomId || !window.__notificationOpenTimingActive) return;
-        console.timeEnd('notification-open');
-        window.__notificationOpenTimingActive = false;
-    }, [currentSlot]);
+    if (currentSlot && parentNotificationOpenTimingRef.current.started && !parentNotificationOpenTimingRef.current.ended) {
+        console.timeEnd('parent notification open');
+        parentNotificationOpenTimingRef.current.ended = true;
+    }
 
     if (currentSlot) {
         const targetAuthUid = currentSlot.slot === SLOTS.TEACHER ? TEACHER_AUTH_UID : INSTITUTE_AUTH_UID;
