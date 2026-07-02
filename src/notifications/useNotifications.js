@@ -23,6 +23,7 @@ const mapNotification = (doc) => ({
 
 export default function useNotifications(uid, maxItems = DEFAULT_LIMIT, options = {}) {
     const { viewerRole = '', unreadOnly = false } = options || {};
+    const normalizedUid = String(uid || '').trim();
     const isParentViewer = String(viewerRole).toLowerCase() === 'parent';
     const [notifications, setNotifications] = useState([]);
     const [isLoading, setIsLoading] = useState(false);
@@ -30,23 +31,31 @@ export default function useNotifications(uid, maxItems = DEFAULT_LIMIT, options 
     const [isMetaLoading, setIsMetaLoading] = useState(false);
 
     const notificationsQuery = useMemo(() => {
-        if (!db || !uid) {
+        if (!db || !normalizedUid) {
+            if (!normalizedUid) {
+                console.warn('[notifications] subscribe skipped: missing uid', {
+                    uid,
+                    viewerRole,
+                    unreadOnly,
+                    path: null,
+                });
+            }
             return null;
         }
 
         return query(
-            collection(db, 'notifications', uid, 'items'),
+            collection(db, 'notifications', normalizedUid, 'items'),
             orderBy('createdAt', 'desc'),
             limit(isParentViewer ? Math.max(maxItems * 5, maxItems) : maxItems)
         );
-    }, [uid, maxItems, isParentViewer]);
+    }, [normalizedUid, uid, maxItems, isParentViewer, viewerRole, unreadOnly]);
 
     const metaRef = useMemo(() => {
-        if (!uid || !db) {
+        if (!normalizedUid || !db) {
             return null;
         }
-        return doc(db, 'notifications', uid, 'meta', 'meta');
-    }, [uid]);
+        return doc(db, 'notifications', normalizedUid, 'meta', 'meta');
+    }, [normalizedUid]);
 
     useEffect(() => {
         if (!metaRef) {
@@ -89,6 +98,13 @@ export default function useNotifications(uid, maxItems = DEFAULT_LIMIT, options 
             return undefined;
         }
 
+        console.log('[notifications] subscribe', {
+            uid: normalizedUid,
+            viewerRole,
+            unreadOnly,
+            path: `notifications/${normalizedUid}/items`,
+        });
+
         setIsLoading(true);
         const unsubscribe = onSnapshot(
             notificationsQuery,
@@ -103,7 +119,7 @@ export default function useNotifications(uid, maxItems = DEFAULT_LIMIT, options 
         );
 
         return unsubscribe;
-    }, [notificationsQuery]);
+    }, [notificationsQuery, normalizedUid, viewerRole, unreadOnly]);
 
     const visibleNotifications = useMemo(() => {
         if (!isParentViewer) {

@@ -13,7 +13,8 @@ const markAllNotificationsRead = functions.https.onCall(async (data, context) =>
 
   const requesterUid = String(context.auth.uid);
   const role = String(context.auth.token?.role || '');
-  const isPrivileged = ['staff', 'admin', 'teacher'].includes(role);
+  const isDemoRequester = Boolean(context.auth.token?.demo || context.auth.token?.isDemo);
+  const isPrivileged = ['staff', 'admin', 'teacher', 'master', 'demo'].includes(role) || isDemoRequester;
   if (!isPrivileged && requesterUid !== viewerUid) {
     throw new functions.https.HttpsError('permission-denied', '본인 알림만 처리할 수 있습니다.');
   }
