@@ -58,22 +58,36 @@ const onChatRoomMessageCreated = functions.firestore
 
         const roomData = roomSnapshot.data() || {};
         const participantIds = uniqueStrings(Array.isArray(roomData.participantIds) ? roomData.participantIds : []);
-        const senderAuthUid = senderId ? await resolveParticipantAuthUid(senderId) : '';
-        const recipientAuthUids = uniqueStrings(await Promise.all(
-            participantIds
-                .filter((participantId) => participantId !== senderId)
-                .map(resolveParticipantAuthUid)
-        )).filter((authUid) => authUid && authUid !== senderAuthUid);
+        const senderOwnerUids = uniqueStrings([
+            senderId,
+            senderId ? await resolveParticipantAuthUid(senderId) : '',
+        ]);
+        const senderOwnerUidSet = new Set(senderOwnerUids);
+        const recipientOwnerUids = uniqueStrings((await Promise.all(
+            participantIds.map(async (participantId) => ([
+                participantId,
+                await resolveParticipantAuthUid(participantId),
+            ]))
+        )).flat()).filter((ownerUid) => ownerUid && !senderOwnerUidSet.has(ownerUid));
 
-        if (!recipientAuthUids.length) {
+        console.log('[notifications] chat room message recipients resolved', {
+            roomId,
+            messageId,
+            senderId,
+            participantIds,
+            senderOwnerUids,
+            recipientOwnerUids,
+        });
+
+        if (!recipientOwnerUids.length) {
             return null;
         }
 
         const batch = db.batch();
-        recipientAuthUids.forEach((recipientAuthUid) => {
+        recipientOwnerUids.forEach((recipientOwnerUid) => {
             const notificationRef = db
                 .collection('notifications')
-                .doc(recipientAuthUid)
+                .doc(recipientOwnerUid)
                 .collection('items')
                 .doc(`${roomId}_${messageId}`);
             batch.set(notificationRef, buildChatRoomNotification({ roomId, messageId, messageData }), { merge: true });

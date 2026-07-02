@@ -1,163 +1,83 @@
-diff --git a/functions/src/index.js b/functions/src/index.js
-index feb1993e19398f16d025d0e1d8b863d73fd4e3d4..2e34b7312e41c9cd6abe7322a993dc478fc363d3 100644
---- a/functions/src/index.js
-+++ b/functions/src/index.js
-@@ -1,61 +1,62 @@
- const { api } = require('./api');
- const { createStaffUser } = require('./admin/createStaffUser');
- const { adminCreateLinkCode } = require('./admin/createLinkCode');
- const { deactivateStaff } = require('./admin/deactivateStaff');
- const { getStaffList } = require('./admin/getStaffList');
- const { updateStaffRole } = require('./admin/updateStaffRole');
- const { retryNotification } = require('./admin/retryNotification');
- const { ensureUserProfileDoc } = require('./auth/ensureUserProfileDoc');
- // const { kakaoLogin } = require('./auth/kakaoLogin');
- // const { naverLogin } = require('./auth/naverLogin');
- const { claimStudentLinkCode } = require('./link/claimStudentLinkCode');
- const { onLessonLogWritten } = require('./triggers/lessonLogs');
- const { onAttendanceLogWritten } = require('./triggers/attendanceLogs');
- const { onHomeworkResultWritten } = require('./triggers/homeworkResults');
- const { onGradeWritten } = require('./triggers/grades');
--const { onChatMessageCreated } = require('./triggers/chatMessages');
-+const { onChatMessageCreated, onChatRoomMessageCreated } = require('./triggers/chatMessages');
- const { onChatRoomWritten } = require('./triggers/chatRoomIndexes');
- const { createOrGetChatRoom } = require('./chat/createOrGetChatRoom');
- const { sendChatMessage } = require('./chat/sendChatMessage');
- const { broadcastChatMessage } = require('./chat/broadcastChatMessage');
- const { onAnnouncementCreated } = require('./triggers/announcements');
- const { resolveInviteCode } = require('./resolveInviteCode');
- const { acceptInviteAndCreateProfile } = require('./acceptInviteAndCreateProfile');
- const { createClinicReservation } = require('./clinic/createClinicReservation');
- const { markAllNotificationsRead } = require('./notify/markAllNotificationsRead');
- const { getViewerAnnouncements } = require('./viewer/getViewerAnnouncements');
- const { requestAccountDeletion } = require('./requestAccountDeletion');
- const auditLogs = require('./auditLogs');
- 
- exports.api = api;
- exports.createStaffUser = createStaffUser;
- exports.deactivateStaff = deactivateStaff;
- exports.adminCreateLinkCode = adminCreateLinkCode;
- exports.getStaffList = getStaffList;
- exports.updateStaffRole = updateStaffRole;
- exports.retryNotification = retryNotification;
- exports.ensureUserProfileDoc = ensureUserProfileDoc;
- // exports.kakaoLogin = kakaoLogin;
- // exports.naverLogin = naverLogin;
- exports.claimStudentLinkCode = claimStudentLinkCode;
- exports.onLessonLogWritten = onLessonLogWritten;
- exports.onAttendanceLogWritten = onAttendanceLogWritten;
- exports.onChatMessageCreated = onChatMessageCreated;
-+exports.onChatRoomMessageCreated = onChatRoomMessageCreated;
- exports.onChatRoomWritten = onChatRoomWritten;
- exports.createOrGetChatRoom = createOrGetChatRoom;
- exports.sendChatMessage = sendChatMessage;
- exports.broadcastChatMessage = broadcastChatMessage;
- exports.onHomeworkResultWritten = onHomeworkResultWritten;
- exports.onGradeWritten = onGradeWritten;
- exports.onAnnouncementCreated = onAnnouncementCreated;
- exports.resolveInviteCode = resolveInviteCode;
- exports.acceptInviteAndCreateProfile = acceptInviteAndCreateProfile;
- exports.createClinicReservation = createClinicReservation;
- exports.auditClinicLogs = auditLogs.auditClinicLogs;
- exports.auditAttendanceLogs = auditLogs.auditAttendanceLogs;
- exports.auditHomeworkResults = auditLogs.auditHomeworkResults;
- exports.auditGrades = auditLogs.auditGrades;
- exports.auditPayments = auditLogs.auditPayments;
- exports.markAllNotificationsRead = markAllNotificationsRead;
- exports.getViewerAnnouncements = getViewerAnnouncements;
- exports.requestAccountDeletion = requestAccountDeletion;
-\ No newline at end of file
 diff --git a/functions/src/triggers/chatMessages.js b/functions/src/triggers/chatMessages.js
-index 12f9c24e0585a21f68ec3c06acc24faf510cd3c6..ef87175bf9415c5de1f968f619777c969e5685d9 100644
+index ef87175bf9415c5de1f968f619777c969e5685d9..81df3cca9c6b1430b796a337bc86434e1fd07084 100644
 --- a/functions/src/triggers/chatMessages.js
 +++ b/functions/src/triggers/chatMessages.js
-@@ -1,32 +1,111 @@
- const functions = require('firebase-functions');
- const { getFirestore, FieldValue } = require('firebase-admin/firestore');
- const { notifyUsers } = require('../notify/notifications');
+@@ -36,66 +36,80 @@ const buildChatRoomNotification = ({ roomId, messageId, messageData }) => ({
+         category: 'message',
+         roomId,
+         messageId,
+         refCollection: 'chatRooms',
+     },
+ });
  
- const TYPE = 'CHAT_MESSAGE';
- const db = getFirestore();
+ const onChatRoomMessageCreated = functions.firestore
+     .document('chatRooms/{roomId}/messages/{messageId}')
+     .onCreate(async (snapshot, context) => {
+         const messageData = snapshot.data() || {};
+         if (messageData.internalOnly !== true) {
+             return null;
+         }
  
-+const uniqueStrings = (values = []) => Array.from(new Set(
-+    values.map((value) => String(value || '').trim()).filter(Boolean)
-+));
+         const { roomId, messageId } = context.params;
+         const senderId = String(messageData.senderId || '').trim();
+         const roomSnapshot = await db.collection('chatRooms').doc(roomId).get();
+         if (!roomSnapshot.exists) {
+             console.warn('[notifications] chat room message skipped: room not found', { roomId, messageId });
+             return null;
+         }
+ 
+         const roomData = roomSnapshot.data() || {};
+         const participantIds = uniqueStrings(Array.isArray(roomData.participantIds) ? roomData.participantIds : []);
+-        const senderAuthUid = senderId ? await resolveParticipantAuthUid(senderId) : '';
+-        const recipientAuthUids = uniqueStrings(await Promise.all(
+-            participantIds
+-                .filter((participantId) => participantId !== senderId)
+-                .map(resolveParticipantAuthUid)
+-        )).filter((authUid) => authUid && authUid !== senderAuthUid);
+-
+-        if (!recipientAuthUids.length) {
++        const senderOwnerUids = uniqueStrings([
++            senderId,
++            senderId ? await resolveParticipantAuthUid(senderId) : '',
++        ]);
++        const senderOwnerUidSet = new Set(senderOwnerUids);
++        const recipientOwnerUids = uniqueStrings((await Promise.all(
++            participantIds.map(async (participantId) => ([
++                participantId,
++                await resolveParticipantAuthUid(participantId),
++            ]))
++        )).flat()).filter((ownerUid) => ownerUid && !senderOwnerUidSet.has(ownerUid));
 +
-+const resolveParticipantAuthUid = async (participantId) => {
-+    const normalizedId = String(participantId || '').trim();
-+    if (!normalizedId) return '';
-+
-+    const userSnapshot = await db.collection('users').doc(normalizedId).get();
-+    const authUid = userSnapshot.exists ? String(userSnapshot.data()?.authUid || '').trim() : '';
-+    return authUid || normalizedId;
-+};
-+
-+const buildChatRoomNotification = ({ roomId, messageId, messageData }) => ({
-+    type: TYPE,
-+    category: 'message',
-+    title: '새 메시지',
-+    body: messageData.text || '첨부파일이 도착했습니다.',
-+    ref: `chatRooms/${roomId}`,
-+    refCollection: 'chatRooms',
-+    refId: roomId,
-+    roomId,
-+    senderId: messageData.senderId || '',
-+    senderName: messageData.senderName || '',
-+    createdAt: FieldValue.serverTimestamp(),
-+    isRead: false,
-+    payload: {
-+        type: TYPE,
-+        category: 'message',
-+        roomId,
-+        messageId,
-+        refCollection: 'chatRooms',
-+    },
-+});
-+
-+const onChatRoomMessageCreated = functions.firestore
-+    .document('chatRooms/{roomId}/messages/{messageId}')
-+    .onCreate(async (snapshot, context) => {
-+        const messageData = snapshot.data() || {};
-+        if (messageData.internalOnly !== true) {
-+            return null;
-+        }
-+
-+        const { roomId, messageId } = context.params;
-+        const senderId = String(messageData.senderId || '').trim();
-+        const roomSnapshot = await db.collection('chatRooms').doc(roomId).get();
-+        if (!roomSnapshot.exists) {
-+            console.warn('[notifications] chat room message skipped: room not found', { roomId, messageId });
-+            return null;
-+        }
-+
-+        const roomData = roomSnapshot.data() || {};
-+        const participantIds = uniqueStrings(Array.isArray(roomData.participantIds) ? roomData.participantIds : []);
-+        const senderAuthUid = senderId ? await resolveParticipantAuthUid(senderId) : '';
-+        const recipientAuthUids = uniqueStrings(await Promise.all(
-+            participantIds
-+                .filter((participantId) => participantId !== senderId)
-+                .map(resolveParticipantAuthUid)
-+        )).filter((authUid) => authUid && authUid !== senderAuthUid);
-+
-+        if (!recipientAuthUids.length) {
-+            return null;
-+        }
-+
-+        const batch = db.batch();
-+        recipientAuthUids.forEach((recipientAuthUid) => {
-+            const notificationRef = db
-+                .collection('notifications')
-+                .doc(recipientAuthUid)
-+                .collection('items')
-+                .doc(`${roomId}_${messageId}`);
-+            batch.set(notificationRef, buildChatRoomNotification({ roomId, messageId, messageData }), { merge: true });
++        console.log('[notifications] chat room message recipients resolved', {
++            roomId,
++            messageId,
++            senderId,
++            participantIds,
++            senderOwnerUids,
++            recipientOwnerUids,
 +        });
 +
-+        await batch.commit();
-+        return null;
-+    });
-+
-+
++        if (!recipientOwnerUids.length) {
+             return null;
+         }
+ 
+         const batch = db.batch();
+-        recipientAuthUids.forEach((recipientAuthUid) => {
++        recipientOwnerUids.forEach((recipientOwnerUid) => {
+             const notificationRef = db
+                 .collection('notifications')
+-                .doc(recipientAuthUid)
++                .doc(recipientOwnerUid)
+                 .collection('items')
+                 .doc(`${roomId}_${messageId}`);
+             batch.set(notificationRef, buildChatRoomNotification({ roomId, messageId, messageData }), { merge: true });
+         });
+ 
+         await batch.commit();
+         return null;
+     });
+ 
+ 
  const onChatMessageCreated = functions.firestore
      .document('chats/{chatId}/messages/{messageId}')
      .onCreate(async (snapshot, context) => {
@@ -173,156 +93,179 @@ index 12f9c24e0585a21f68ec3c06acc24faf510cd3c6..ef87175bf9415c5de1f968f619777c96
          const lastMessageText = messageData.text || messageData.body || '';
          const lastMessageAt = messageData.createdAt || FieldValue.serverTimestamp();
          const batch = db.batch();
+diff --git a/src/notifications/useNotifications.js b/src/notifications/useNotifications.js
+index 80ff2e9cf3592e71beaa2763fec57e71934e5eec..9289e253a1b0110b955d4c504d62e331721d0299 100644
+--- a/src/notifications/useNotifications.js
++++ b/src/notifications/useNotifications.js
+@@ -1,140 +1,145 @@
+-import { useCallback, useEffect, useMemo, useState } from 'react';
++import { useEffect, useMemo, useState } from 'react';
+ import {
+     collection,
+     doc,
+     getDoc,
+-    getDocs,
++    onSnapshot,
+     limit,
+     orderBy,
+     query,
+     serverTimestamp,
+     setDoc,
+     Timestamp,
+ } from 'firebase/firestore';
+ import { db } from '../firebase/client';
+ import { filterParentNotifications, isNotificationUnread } from './notificationFilters';
  
-         if (recipients.length === 0) {
-             await notifyUsers({
-                 userIds: [],
-                 payload: {
-                     type: TYPE,
-                     title: '새 메시지',
-                     body: '새 메시지가 도착했습니다.',
-                     ref: `chats/${refId}`,
-                 },
-@@ -47,26 +126,27 @@ const onChatMessageCreated = functions.firestore
-                 lastMessageText,
-             }, { merge: true });
-         });
+ const DEFAULT_LIMIT = 20;
  
-         await batch.commit();
+ const mapNotification = (doc) => ({
+     id: doc.id,
+     ...doc.data(),
+ });
  
-         await notifyUsers({
-             userIds: recipients,
-             payload: {
-                 type: TYPE,
-                 title: '새 메시지',
-                 body: '새 메시지가 도착했습니다.',
-                 ref: `chats/${refId}`,
-             },
-             fcmData: {
-                 type: TYPE,
-                 refCollection: 'chats',
-                 refId,
-             },
-         });
-         return null;
-     });
+ export default function useNotifications(uid, maxItems = DEFAULT_LIMIT, options = {}) {
+     const { viewerRole = '', unreadOnly = false } = options || {};
+     const isParentViewer = String(viewerRole).toLowerCase() === 'parent';
+     const [notifications, setNotifications] = useState([]);
+     const [isLoading, setIsLoading] = useState(false);
+     const [lastReadAt, setLastReadAt] = useState(null);
+     const [isMetaLoading, setIsMetaLoading] = useState(false);
  
- module.exports = {
-     onChatMessageCreated,
-+    onChatRoomMessageCreated,
- };
+-    const fetchNotifications = useCallback(async () => {
++    const notificationsQuery = useMemo(() => {
+         if (!db || !uid) {
+-            setNotifications([]);
+-            setIsLoading(false);
+-            return;
++            return null;
+         }
+ 
+-        setIsLoading(true);
+-
+-        try {
+-            const notificationsQuery = query(
+-                collection(db, 'notifications', uid, 'items'),
+-                orderBy('createdAt', 'desc'),
+-                limit(isParentViewer ? Math.max(maxItems * 5, maxItems) : maxItems)
+-            );
+-
+-            const snapshot = await getDocs(notificationsQuery);
+-            setNotifications(snapshot.docs.map(mapNotification));
+-        } catch (error) {
+-            console.error('Failed to fetch notifications', error);
+-        } finally {
+-            setIsLoading(false);
+-        }
++        return query(
++            collection(db, 'notifications', uid, 'items'),
++            orderBy('createdAt', 'desc'),
++            limit(isParentViewer ? Math.max(maxItems * 5, maxItems) : maxItems)
++        );
+     }, [uid, maxItems, isParentViewer]);
+ 
+     const metaRef = useMemo(() => {
+         if (!uid || !db) {
+             return null;
+         }
+         return doc(db, 'notifications', uid, 'meta', 'meta');
+     }, [uid]);
+ 
+     useEffect(() => {
+         if (!metaRef) {
+             setLastReadAt(null);
+             return undefined;
+         }
+ 
+         let isMounted = true;
+         setIsMetaLoading(true);
+ 
+         getDoc(metaRef)
+             .then((snapshot) => {
+                 if (!isMounted) {
+                     return;
+                 }
+                 const data = snapshot.exists() ? snapshot.data() : {};
+                 setLastReadAt(data?.lastReadAt || null);
+             })
+             .catch(() => {
+                 if (!isMounted) {
+                     return;
+                 }
+                 setLastReadAt(null);
+             })
+             .finally(() => {
+                 if (isMounted) {
+                     setIsMetaLoading(false);
+                 }
+             });
+ 
+         return () => {
+             isMounted = false;
+         };
+     }, [metaRef]);
+ 
+     useEffect(() => {
+-        fetchNotifications();
+-    }, [fetchNotifications]);
++        if (!notificationsQuery) {
++            setNotifications([]);
++            setIsLoading(false);
++            return undefined;
++        }
++
++        setIsLoading(true);
++        const unsubscribe = onSnapshot(
++            notificationsQuery,
++            (snapshot) => {
++                setNotifications(snapshot.docs.map(mapNotification));
++                setIsLoading(false);
++            },
++            (error) => {
++                console.error('Failed to subscribe to notifications', error);
++                setIsLoading(false);
++            }
++        );
++
++        return unsubscribe;
++    }, [notificationsQuery]);
+ 
+     const visibleNotifications = useMemo(() => {
+         if (!isParentViewer) {
+             return notifications;
+         }
+         return filterParentNotifications(notifications, lastReadAt, { unreadOnly });
+     }, [notifications, isParentViewer, lastReadAt, unreadOnly]);
+ 
+     const hasUnread = useMemo(
+         () => visibleNotifications.some((notification) => isNotificationUnread(notification, lastReadAt)),
+         [visibleNotifications, lastReadAt]
+     );
+ 
+     const unreadCount = useMemo(() => (
+         visibleNotifications.reduce((count, notification) => (
+             isNotificationUnread(notification, lastReadAt) ? count + 1 : count
+         ), 0)
+     ), [visibleNotifications, lastReadAt]);
+ 
+     const markAllRead = async () => {
+         if (!metaRef) {
+             return;
+         }
+         await setDoc(metaRef, { lastReadAt: serverTimestamp() }, { merge: true });
+         setLastReadAt(Timestamp.now());
+-        await fetchNotifications();
+     };
+ 
+     return {
+         notifications: visibleNotifications,
+         rawNotifications: notifications,
+         hasUnread,
+         isLoading,
+         isMetaLoading,
+         lastReadAt,
+         unreadCount,
+         markAllRead,
+         setNotifications,
+     };
+ }
 \ No newline at end of file
-diff --git a/src/pages/ParentHome.jsx b/src/pages/ParentHome.jsx
-index 90c08d25ecae1b0a3460756593471e9c9b903400..6c74eccaa5274faacd7049cd5331ce7b53d581ca 100644
---- a/src/pages/ParentHome.jsx
-+++ b/src/pages/ParentHome.jsx
-@@ -1007,51 +1007,51 @@ export default function ParentHome({
-                     setActiveTab('report');
-                     return;
-                 }
- 
-                 if (refCollection === 'attendanceLogs') {
-                     setActiveTab('report');
-                     return;
-                 }
- 
-                 if (refCollection === 'homeworkResults') {
-                     setActiveTab('report');
-                     return;
-                 }
- 
-                 if (refCollection === 'grades') {
-                     setActiveTab('report');
-                     return;
-                 }
- 
-                 if (refCollection === 'announcements' || refCollection === 'posts') {
-                     setBoardBackTab('home');
-                     setActiveTab('board');
-                     return;
-                 }
- 
--                if (refCollection === 'chats') {
-+                if (refCollection === 'chats' || refCollection === 'chatRooms') {
-                     if (isMasterPreview || readOnly) return;
-                     setIsMessengerPage(true);
-                     return;
-                 }
-             },
-         });
-         setIsNotificationOpen(false);
-     };
- 
-     const handleMarkAllRead = async () => {
-         console.log('[notifications] markAllRead clicked');
-         if (isMasterPreview || readOnly) {
-             showMasterViewUnavailable('알림 읽음 처리');
-             return;
-         }
-         if (!viewerUid) {
-             console.warn('[notifications] no viewerUid');
-             return;
-         }
-         try {
-             const callable = httpsCallable(functions, 'markAllNotificationsRead');
-             await callable({ viewerUid });
-             const now = new Date();
-             setNotifications((prev) => prev.map((item) => ({ ...item, isRead: true, readAt: now })));
-             console.log('[notifications] markAllRead completed by callable');
-diff --git a/src/pages/StudentHome.jsx b/src/pages/StudentHome.jsx
-index b6e259cab6602fd62663a109c122c1b1296d1c83..f7118a1bbaf11ec364ee21e088fa4fc7ce647ef9 100644
---- a/src/pages/StudentHome.jsx
-+++ b/src/pages/StudentHome.jsx
-@@ -508,51 +508,51 @@ export default function StudentHome({
-         }
-         setIsMessengerPage(true);
-     };
- 
-     const handleNavigateToMemo = (classId, lessonId, time) => {
-         setSelectedClassId(classId);
-         setTargetMemo({ lessonId, time });
-     };
- 
-     const handleNotificationClick = async (notification) => {
-         await openNotification({
-             notification,
-             onNavigate: ({ refCollection, refId, data }) => {
-                 if (refCollection === 'lessonLogs' && data?.classId) {
-                     setSelectedClassId(data.classId);
-                     setTargetMemo({ lessonId: refId, time: data?.date || null });
-                     return;
-                 }
- 
-                 if (['homeworkResults', 'grades', 'attendanceLogs'].includes(refCollection)) {
-                     setSelectedClassId(null);
-                     setInitialLearningTab('homework');
-                     return;
-                 }
- 
--                if (refCollection === 'chats') {
-+                if (refCollection === 'chats' || refCollection === 'chatRooms') {
-                     if (isMasterPreview || readOnly) return;
-                     setSelectedClassId(null);
-                     setActiveTab('menu');
-                     setIsMessengerPage(true);
-                 }
-             },
-         });
-         setIsNotificationOpen(false);
-     };
- 
-     const handleMarkAllRead = async () => {
-         console.log('[notifications] markAllRead clicked');
- 
-         if (isMasterPreview || readOnly) {
-             showMasterViewUnavailable('알림 읽음 처리');
-             return;
-         }
- 
-         if (!viewerUid) {
-             console.warn('[notifications] no viewerUid');
-             return;
-         }
- 
-         try {
-             const callable = httpsCallable(functions, 'markAllNotificationsRead');

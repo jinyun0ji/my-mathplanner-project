@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
     collection,
     doc,
     getDoc,
-    getDocs,
+    onSnapshot,
     limit,
     orderBy,
     query,
@@ -29,29 +29,16 @@ export default function useNotifications(uid, maxItems = DEFAULT_LIMIT, options 
     const [lastReadAt, setLastReadAt] = useState(null);
     const [isMetaLoading, setIsMetaLoading] = useState(false);
 
-    const fetchNotifications = useCallback(async () => {
+    const notificationsQuery = useMemo(() => {
         if (!db || !uid) {
-            setNotifications([]);
-            setIsLoading(false);
-            return;
+            return null;
         }
 
-        setIsLoading(true);
-
-        try {
-            const notificationsQuery = query(
-                collection(db, 'notifications', uid, 'items'),
-                orderBy('createdAt', 'desc'),
-                limit(isParentViewer ? Math.max(maxItems * 5, maxItems) : maxItems)
-            );
-
-            const snapshot = await getDocs(notificationsQuery);
-            setNotifications(snapshot.docs.map(mapNotification));
-        } catch (error) {
-            console.error('Failed to fetch notifications', error);
-        } finally {
-            setIsLoading(false);
-        }
+        return query(
+            collection(db, 'notifications', uid, 'items'),
+            orderBy('createdAt', 'desc'),
+            limit(isParentViewer ? Math.max(maxItems * 5, maxItems) : maxItems)
+        );
     }, [uid, maxItems, isParentViewer]);
 
     const metaRef = useMemo(() => {
@@ -96,8 +83,27 @@ export default function useNotifications(uid, maxItems = DEFAULT_LIMIT, options 
     }, [metaRef]);
 
     useEffect(() => {
-        fetchNotifications();
-    }, [fetchNotifications]);
+        if (!notificationsQuery) {
+            setNotifications([]);
+            setIsLoading(false);
+            return undefined;
+        }
+
+        setIsLoading(true);
+        const unsubscribe = onSnapshot(
+            notificationsQuery,
+            (snapshot) => {
+                setNotifications(snapshot.docs.map(mapNotification));
+                setIsLoading(false);
+            },
+            (error) => {
+                console.error('Failed to subscribe to notifications', error);
+                setIsLoading(false);
+            }
+        );
+
+        return unsubscribe;
+    }, [notificationsQuery]);
 
     const visibleNotifications = useMemo(() => {
         if (!isParentViewer) {
@@ -123,7 +129,6 @@ export default function useNotifications(uid, maxItems = DEFAULT_LIMIT, options 
         }
         await setDoc(metaRef, { lastReadAt: serverTimestamp() }, { merge: true });
         setLastReadAt(Timestamp.now());
-        await fetchNotifications();
     };
 
     return {
