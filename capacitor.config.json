@@ -17,5 +17,10 @@
       "style": "default",
       "resizeOnFullScreen": true
     }
+  },
+  "server": {
+    "iosScheme": "https",
+    "androidScheme": "https",
+    "hostname": "localhost"
   }
 }

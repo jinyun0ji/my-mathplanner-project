@@ -1,28 +1,102 @@
+diff --git a/capacitor.config.json b/capacitor.config.json
+index 9c0d97e9aba1492030164de6fd545346f1e220df..fe5c3630dc657393ed660a998a6a4fcbc5f1a8a3 100644
+--- a/capacitor.config.json
++++ b/capacitor.config.json
+@@ -1,21 +1,26 @@
+ {
+   "appId": "com.chaesooyong.management",
+   "appName": "채수용 수학",
+   "webDir": "build",
+   "plugins": {
+     "StatusBar": {
+       "style": "DEFAULT",
+       "backgroundColor": "#ffffff"
+     },
+     "SplashScreen": {
+       "launchShowDuration": 2000,
+       "backgroundColor": "#ffffff",
+       "showSpinner": false
+     },
+     "Keyboard": {
+       "resize": "body",
+       "style": "default",
+       "resizeOnFullScreen": true
+     }
++  },
++  "server": {
++    "iosScheme": "https",
++    "androidScheme": "https",
++    "hostname": "localhost"
+   }
+-}
+\ No newline at end of file
++}
+diff --git a/capacitor.config.ts b/capacitor.config.ts
+index 6a2c7e36a0bebb0bac241f212431c15292e9a52a..fc533cb7da27496c12e0e0ab50d3198d31db06b0 100644
+--- a/capacitor.config.ts
++++ b/capacitor.config.ts
+@@ -1,16 +1,18 @@
+ import type { CapacitorConfig } from '@capacitor/cli';
+ 
+ const config: CapacitorConfig = {
+   appId: 'com.chaesooyong.management',
+   appName: '채수용 수학',
+   webDir: 'build',
+   server: {
+-    iosScheme: 'https'
++    iosScheme: 'https',
++    androidScheme: 'https',
++    hostname: 'localhost',
+   },
+ 
+   ios: {
+     isInspectable: true
+   }
+ };
+ 
+ export default config;
 diff --git a/src/components/YouTubePlayer.jsx b/src/components/YouTubePlayer.jsx
-index 43d302426c3847375bd14e09046cdd239a3af851..8f5753bc6cf78254c537d3cdbc6a127a991be66b 100644
+index 8f5753bc6cf78254c537d3cdbc6a127a991be66b..3761e8eb2b2ce63034a1bfe3c746829d8ff3db43 100644
 --- a/src/components/YouTubePlayer.jsx
 +++ b/src/components/YouTubePlayer.jsx
-@@ -1,128 +1,175 @@
+@@ -1,38 +1,53 @@
  // src/components/YouTubePlayer.jsx
--import React, { useEffect, useRef, useImperativeHandle, forwardRef, useMemo, useCallback } from 'react';
-+import React, { useEffect, useRef, useImperativeHandle, forwardRef, useMemo, useCallback, useState } from 'react';
+ import React, { useEffect, useRef, useImperativeHandle, forwardRef, useMemo, useCallback, useState } from 'react';
  import YouTube from 'react-youtube';
-+import { isCapacitorNativeEnvironment } from '../utils/capacitorEnvironment';
+ import { isCapacitorNativeEnvironment } from '../utils/capacitorEnvironment';
  
  
++const CAPACITOR_YOUTUBE_ORIGIN = 'https://localhost';
++
  const resolveYouTubeOrigin = () => {
-     if (typeof window === 'undefined') return 'https://localhost';
+-    if (typeof window === 'undefined') return 'https://localhost';
++    if (typeof window === 'undefined') return CAPACITOR_YOUTUBE_ORIGIN;
++
++    const origin = window.location?.origin || '';
++    if (origin === CAPACITOR_YOUTUBE_ORIGIN) return origin;
  
      const protocol = String(window.location?.protocol || '');
-     if (protocol === 'capacitor:' || protocol === 'ionic:') return 'https://localhost';
+-    if (protocol === 'capacitor:' || protocol === 'ionic:') return 'https://localhost';
++    if (protocol === 'capacitor:' || protocol === 'ionic:') return CAPACITOR_YOUTUBE_ORIGIN;
++
++    return origin || CAPACITOR_YOUTUBE_ORIGIN;
++};
++
++const getIframeOriginParam = (iframeSrc) => {
++    if (!iframeSrc) return '';
  
-     return window.location?.origin || 'https://localhost';
+-    return window.location?.origin || 'https://localhost';
++    try {
++        return new URL(iframeSrc).searchParams.get('origin') || '';
++    } catch (error) {
++        return '';
++    }
  };
  
  const YouTubePlayer = forwardRef(({ videoId, initialSeconds, onWatchedTick }, ref) => {
      const playerRef = useRef(null);
      const timerRef = useRef(null);
-+    const [hasPlayerError, setHasPlayerError] = useState(false);
+     const [hasPlayerError, setHasPlayerError] = useState(false);
  
      // ✅ [핵심] 최신 콜백 함수를 유지하기 위한 ref
      const onWatchedTickRef = useRef(onWatchedTick);
@@ -42,174 +116,110 @@ index 43d302426c3847375bd14e09046cdd239a3af851..8f5753bc6cf78254c537d3cdbc6a127a
          }
      }), []);
  
-     const youtubeOrigin = useMemo(() => resolveYouTubeOrigin(), []);
-+    const youtubeUrl = useMemo(() => `https://www.youtube.com/watch?v=${videoId}`, [videoId]);
- 
-     const opts = useMemo(() => {
-         const playerVars = {
-             autoplay: 1,
-             rel: 0,
-             modestbranding: 1,
-             controls: 1,
-             playsinline: 1,
-             enablejsapi: 1,
-             origin: youtubeOrigin,
-             loop: 1,
-         };
- 
-         if (videoId) {
-             playerVars.playlist = videoId;
-         }
- 
-         return {
-             height: '100%',
-             width: '100%',
-             playerVars,
+@@ -62,99 +77,106 @@ const YouTubePlayer = forwardRef(({ videoId, initialSeconds, onWatchedTick }, re
          };
      }, [videoId, youtubeOrigin]);
  
--    const onReady = (event) => {
-+    const stopWatcher = useCallback(() => {
-+        if (timerRef.current) {
-+            clearInterval(timerRef.current);
-+            timerRef.current = null;
-+        }
-+    }, []);
-+
-+    const startWatcher = useCallback(() => {
-+        stopWatcher();
-+        timerRef.current = setInterval(() => {
-+            // ✅ [수정] ref.current를 통해 항상 '최신' 함수 호출
-+            if (playerRef.current && onWatchedTickRef.current) {
-+                const duration = playerRef.current.getDuration();
-+                const currentTime = playerRef.current.getCurrentTime();
-+                onWatchedTickRef.current(1, currentTime, duration); 
-+            }
-+        }, 1000);
-+    }, [stopWatcher]);
-+
-+    const onReady = useCallback((event) => {
-+        setHasPlayerError(false);
+     const stopWatcher = useCallback(() => {
+         if (timerRef.current) {
+             clearInterval(timerRef.current);
+             timerRef.current = null;
+         }
+     }, []);
+ 
+     const startWatcher = useCallback(() => {
+         stopWatcher();
+         timerRef.current = setInterval(() => {
+             // ✅ [수정] ref.current를 통해 항상 '최신' 함수 호출
+             if (playerRef.current && onWatchedTickRef.current) {
+                 const duration = playerRef.current.getDuration();
+                 const currentTime = playerRef.current.getCurrentTime();
+                 onWatchedTickRef.current(1, currentTime, duration); 
+             }
+         }, 1000);
+     }, [stopWatcher]);
+ 
+     const onReady = useCallback((event) => {
+         setHasPlayerError(false);
          playerRef.current = event.target;
++        const iframeSrc = event.target?.getIframe?.()?.src || '';
          console.info('[YouTubePlayer] YouTube player ready', {
              videoId,
              origin: youtubeOrigin,
++            iframeSrc,
++            iframeOriginParam: getIframeOriginParam(iframeSrc),
++            appOrigin: typeof window !== 'undefined' ? window.location.origin : '',
          });
          if (initialSeconds > 0) {
              event.target.seekTo(initialSeconds);
          }
--    };
-+    }, [initialSeconds, videoId, youtubeOrigin]);
+     }, [initialSeconds, videoId, youtubeOrigin]);
  
--    const onStateChange = (event) => {
-+    const onStateChange = useCallback((event) => {
+     const onStateChange = useCallback((event) => {
          // 재생 중(1)일 때 타이머 시작
          if (event.data === 1) {
              startWatcher();
          } else {
              stopWatcher();
          }
--    };
--
--    const startWatcher = () => {
--        stopWatcher();
--        timerRef.current = setInterval(() => {
--            // ✅ [수정] ref.current를 통해 항상 '최신' 함수 호출
--            if (playerRef.current && onWatchedTickRef.current) {
--                const duration = playerRef.current.getDuration();
--                const currentTime = playerRef.current.getCurrentTime();
--                onWatchedTickRef.current(1, currentTime, duration); 
--            }
--        }, 1000);
--    };
--    
--    const stopWatcher = () => {
--        if (timerRef.current) {
--            clearInterval(timerRef.current);
--            timerRef.current = null;
--        }
--    };
-+    }, [startWatcher, stopWatcher]);
+     }, [startWatcher, stopWatcher]);
  
      // ✅ onWatchedTick이 바뀔 때마다(부모 리렌더링 시) ref 업데이트
      useEffect(() => {
          onWatchedTickRef.current = onWatchedTick;
      }, [onWatchedTick]);
-+
-+    useEffect(() => {
-+        setHasPlayerError(false);
-+        playerRef.current = null;
-+        stopWatcher();
-+    }, [videoId, stopWatcher]);
-+
-+    useEffect(() => stopWatcher, [stopWatcher]);
-+
-+    const openInYouTube = useCallback(() => {
-+        const isNativeApp = isCapacitorNativeEnvironment();
-+        const openedWindow = window.open(
-+            youtubeUrl,
-+            '_blank',
-+            isNativeApp ? undefined : 'noopener,noreferrer'
-+        );
-+
-+        if (!isNativeApp && openedWindow) {
-+            openedWindow.opener = null;
-+        }
-+    }, [youtubeUrl]);
-+
+ 
+     useEffect(() => {
+         setHasPlayerError(false);
+         playerRef.current = null;
+         stopWatcher();
+     }, [videoId, stopWatcher]);
+ 
+     useEffect(() => stopWatcher, [stopWatcher]);
+ 
+     const openInYouTube = useCallback(() => {
+         const isNativeApp = isCapacitorNativeEnvironment();
+         const openedWindow = window.open(
+             youtubeUrl,
+             '_blank',
+             isNativeApp ? undefined : 'noopener,noreferrer'
+         );
+ 
+         if (!isNativeApp && openedWindow) {
+             openedWindow.opener = null;
+         }
+     }, [youtubeUrl]);
+ 
      const onError = useCallback((event) => {
          console.warn('[YouTubePlayer] YouTube player error', {
              errorCode: event?.data,
              videoId,
              origin: youtubeOrigin,
++            iframeSrc: event?.target?.getIframe?.()?.src || '',
++            iframeOriginParam: getIframeOriginParam(event?.target?.getIframe?.()?.src || ''),
++            appOrigin: typeof window !== 'undefined' ? window.location.origin : '',
          });
--    }, [videoId, youtubeOrigin]);
-+
-+        stopWatcher();
-+        playerRef.current = null;
-+        setHasPlayerError(true);
-+    }, [videoId, youtubeOrigin, stopWatcher]);
+ 
+         stopWatcher();
+         playerRef.current = null;
+         setHasPlayerError(true);
+     }, [videoId, youtubeOrigin, stopWatcher]);
  
      return (
          <div className="w-full h-full">
--            <YouTube
--                videoId={videoId}
--                opts={opts}
--                onReady={onReady}
--                onStateChange={onStateChange}
--                onError={onError}
--                className="w-full h-full"
--                iframeClassName="w-full h-full"
--            />
-+            {hasPlayerError ? (
-+                <div className="w-full h-full min-h-[220px] flex flex-col items-center justify-center bg-gray-950 text-white text-center px-6 py-8">
-+                    <div className="max-w-sm space-y-4">
-+                        <p className="text-sm sm:text-base font-semibold leading-relaxed">
-+                            앱 내 재생이 제한된 영상입니다. YouTube에서 영상을 열어주세요.
-+                        </p>
-+                        <button
-+                            type="button"
-+                            onClick={openInYouTube}
-+                            className="inline-flex items-center justify-center rounded-full bg-red-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-red-700 active:scale-95"
-+                        >
-+                            YouTube에서 보기
-+                        </button>
-+                    </div>
-+                </div>
-+            ) : (
-+                <YouTube
-+                    videoId={videoId}
-+                    opts={opts}
-+                    onReady={onReady}
-+                    onStateChange={onStateChange}
-+                    onError={onError}
-+                    className="w-full h-full"
-+                    iframeClassName="w-full h-full"
-+                />
-+            )}
-         </div>
-     );
- });
- 
- export default YouTubePlayer;
-\ No newline at end of file
+             {hasPlayerError ? (
+                 <div className="w-full h-full min-h-[220px] flex flex-col items-center justify-center bg-gray-950 text-white text-center px-6 py-8">
+                     <div className="max-w-sm space-y-4">
+                         <p className="text-sm sm:text-base font-semibold leading-relaxed">
+                             앱 내 재생이 제한된 영상입니다. YouTube에서 영상을 열어주세요.
+                         </p>
+                         <button
+                             type="button"
+                             onClick={openInYouTube}
+                             className="inline-flex items-center justify-center rounded-full bg-red-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-red-700 active:scale-95"
+                         >
+                             YouTube에서 보기
+                         </button>
+                     </div>
+                 </div>
+             ) : (

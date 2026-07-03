@@ -4,13 +4,28 @@ import YouTube from 'react-youtube';
 import { isCapacitorNativeEnvironment } from '../utils/capacitorEnvironment';
 
 
+const CAPACITOR_YOUTUBE_ORIGIN = 'https://localhost';
+
 const resolveYouTubeOrigin = () => {
-    if (typeof window === 'undefined') return 'https://localhost';
+    if (typeof window === 'undefined') return CAPACITOR_YOUTUBE_ORIGIN;
+
+    const origin = window.location?.origin || '';
+    if (origin === CAPACITOR_YOUTUBE_ORIGIN) return origin;
 
     const protocol = String(window.location?.protocol || '');
-    if (protocol === 'capacitor:' || protocol === 'ionic:') return 'https://localhost';
+    if (protocol === 'capacitor:' || protocol === 'ionic:') return CAPACITOR_YOUTUBE_ORIGIN;
 
-    return window.location?.origin || 'https://localhost';
+    return origin || CAPACITOR_YOUTUBE_ORIGIN;
+};
+
+const getIframeOriginParam = (iframeSrc) => {
+    if (!iframeSrc) return '';
+
+    try {
+        return new URL(iframeSrc).searchParams.get('origin') || '';
+    } catch (error) {
+        return '';
+    }
 };
 
 const YouTubePlayer = forwardRef(({ videoId, initialSeconds, onWatchedTick }, ref) => {
@@ -84,9 +99,13 @@ const YouTubePlayer = forwardRef(({ videoId, initialSeconds, onWatchedTick }, re
     const onReady = useCallback((event) => {
         setHasPlayerError(false);
         playerRef.current = event.target;
+        const iframeSrc = event.target?.getIframe?.()?.src || '';
         console.info('[YouTubePlayer] YouTube player ready', {
             videoId,
             origin: youtubeOrigin,
+            iframeSrc,
+            iframeOriginParam: getIframeOriginParam(iframeSrc),
+            appOrigin: typeof window !== 'undefined' ? window.location.origin : '',
         });
         if (initialSeconds > 0) {
             event.target.seekTo(initialSeconds);
@@ -133,6 +152,9 @@ const YouTubePlayer = forwardRef(({ videoId, initialSeconds, onWatchedTick }, re
             errorCode: event?.data,
             videoId,
             origin: youtubeOrigin,
+            iframeSrc: event?.target?.getIframe?.()?.src || '',
+            iframeOriginParam: getIframeOriginParam(event?.target?.getIframe?.()?.src || ''),
+            appOrigin: typeof window !== 'undefined' ? window.location.origin : '',
         });
 
         stopWatcher();

@@ -5,7 +5,9 @@ const config: CapacitorConfig = {
   appName: '채수용 수학',
   webDir: 'build',
   server: {
-    iosScheme: 'https'
+    iosScheme: 'https',
+    androidScheme: 'https',
+    hostname: 'localhost',
   },
 
   ios: {
