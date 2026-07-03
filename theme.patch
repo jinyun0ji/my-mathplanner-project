@@ -1,36 +1,173 @@
+diff --git a/public/youtube-player.html b/public/youtube-player.html
+new file mode 100644
+index 0000000000000000000000000000000000000000..e60bce15452c84f0e43d28f99188ac3aadc6864c
+--- /dev/null
++++ b/public/youtube-player.html
+@@ -0,0 +1,126 @@
++<!doctype html>
++<html lang="ko">
++<head>
++  <meta charset="utf-8" />
++  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
++  <title>YouTube Player</title>
++  <style>
++    html, body, #player {
++      width: 100%;
++      height: 100%;
++      margin: 0;
++      padding: 0;
++      overflow: hidden;
++      background: #000;
++    }
++    body { display: flex; }
++  </style>
++</head>
++<body>
++  <div id="player"></div>
++  <script>
++    (function () {
++      var YOUTUBE_ORIGIN = 'https://localhost';
++      var params = new URLSearchParams(window.location.search);
++      var videoId = params.get('videoId') || '';
++      var startSeconds = Number(params.get('startSeconds') || 0) || 0;
++      var player = null;
++      var tickTimer = null;
++
++      function sendMessage(payload) {
++        window.parent.postMessage(Object.assign({ source: 'youtube-proxy-player' }, payload), '*');
++      }
++
++      function getPlayerSnapshot() {
++        if (!player || typeof player.getCurrentTime !== 'function') {
++          return { currentTime: 0, duration: 0, state: null };
++        }
++
++        return {
++          currentTime: Number(player.getCurrentTime() || 0),
++          duration: Number(player.getDuration() || 0),
++          state: typeof player.getPlayerState === 'function' ? player.getPlayerState() : null,
++        };
++      }
++
++      function sendTick() {
++        sendMessage(Object.assign({ type: 'tick' }, getPlayerSnapshot()));
++      }
++
++      function startTicker() {
++        if (tickTimer) return;
++        tickTimer = window.setInterval(sendTick, 1000);
++      }
++
++      function stopTicker() {
++        if (!tickTimer) return;
++        window.clearInterval(tickTimer);
++        tickTimer = null;
++      }
++
++      function handleCommand(event) {
++        var data = event.data || {};
++        if (!data || data.source !== 'youtube-proxy-parent' || !player) return;
++
++        if (data.type === 'getCurrentTime') {
++          sendMessage({ type: 'currentTime', requestId: data.requestId, currentTime: getPlayerSnapshot().currentTime });
++          return;
++        }
++
++        if (data.type === 'getDuration') {
++          sendMessage({ type: 'duration', requestId: data.requestId, duration: getPlayerSnapshot().duration });
++          return;
++        }
++
++        if (data.type === 'seekTo' && typeof player.seekTo === 'function') {
++          player.seekTo(Number(data.seconds || 0), true);
++          sendTick();
++        }
++      }
++
++      window.onYouTubeIframeAPIReady = function () {
++        if (!videoId) {
++          sendMessage({ type: 'error', errorCode: 'missing-video-id' });
++          return;
++        }
++
++        player = new window.YT.Player('player', {
++          width: '100%',
++          height: '100%',
++          videoId: videoId,
++          playerVars: {
++            autoplay: 1,
++            controls: 1,
++            rel: 0,
++            modestbranding: 1,
++            playsinline: 1,
++            enablejsapi: 1,
++            origin: YOUTUBE_ORIGIN,
++            start: Math.max(0, Math.floor(startSeconds)),
++          },
++          events: {
++            onReady: function () {
++              sendMessage(Object.assign({ type: 'ready' }, getPlayerSnapshot()));
++              startTicker();
++            },
++            onStateChange: function (event) {
++              sendMessage(Object.assign({ type: 'state', state: event.data }, getPlayerSnapshot()));
++              startTicker();
++            },
++            onError: function (event) {
++              stopTicker();
++              sendMessage({ type: 'error', errorCode: event.data });
++            }
++          }
++        });
++      };
++
++      window.addEventListener('message', handleCommand);
++
++      var tag = document.createElement('script');
++      tag.src = 'https://www.youtube.com/iframe_api';
++      document.head.appendChild(tag);
++    }());
++  </script>
++</body>
++</html>
 diff --git a/src/components/YouTubePlayer.jsx b/src/components/YouTubePlayer.jsx
-index 3761e8eb2b2ce63034a1bfe3c746829d8ff3db43..fd6410770776834fbda07faea2554ad54ea54e9e 100644
+index fd6410770776834fbda07faea2554ad54ea54e9e..719bcffc2c46bdcccb7ce221405493a248d08731 100644
 --- a/src/components/YouTubePlayer.jsx
 +++ b/src/components/YouTubePlayer.jsx
-@@ -1,197 +1,242 @@
+@@ -1,102 +1,117 @@
  // src/components/YouTubePlayer.jsx
  import React, { useEffect, useRef, useImperativeHandle, forwardRef, useMemo, useCallback, useState } from 'react';
  import YouTube from 'react-youtube';
- import { isCapacitorNativeEnvironment } from '../utils/capacitorEnvironment';
+-import { isCapacitorNativeEnvironment } from '../utils/capacitorEnvironment';
++import { getCapacitorEnvironmentSnapshot, isCapacitorNativeEnvironment } from '../utils/capacitorEnvironment';
  
  
  const CAPACITOR_YOUTUBE_ORIGIN = 'https://localhost';
  
-+const isCapacitorWebViewProtocol = () => {
-+    if (typeof window === 'undefined') return false;
-+
-+    return window.location.protocol === 'capacitor:' || window.location.protocol === 'ionic:';
-+};
-+
-+const buildCapacitorIframeSrc = (videoId) => {
-+    const params = new URLSearchParams({
-+        autoplay: '1',
-+        rel: '0',
-+        modestbranding: '1',
-+        controls: '1',
-+        playsinline: '1',
-+        enablejsapi: '1',
-+        origin: CAPACITOR_YOUTUBE_ORIGIN,
-+    });
-+
-+    return `https://www.youtube.com/embed/${videoId}?${params.toString()}`;
-+};
-+
+ const isCapacitorWebViewProtocol = () => {
+     if (typeof window === 'undefined') return false;
+ 
+     return window.location.protocol === 'capacitor:' || window.location.protocol === 'ionic:';
+ };
+ 
+-const buildCapacitorIframeSrc = (videoId) => {
++const buildProxyPlayerSrc = (videoId, startSeconds = 0) => {
+     const params = new URLSearchParams({
+-        autoplay: '1',
+-        rel: '0',
+-        modestbranding: '1',
+-        controls: '1',
+-        playsinline: '1',
+-        enablejsapi: '1',
+-        origin: CAPACITOR_YOUTUBE_ORIGIN,
++        videoId: videoId || '',
++        startSeconds: String(Math.max(0, Math.floor(Number(startSeconds) || 0))),
+     });
+ 
+-    return `https://www.youtube.com/embed/${videoId}?${params.toString()}`;
++    return `/youtube-player.html?${params.toString()}`;
+ };
+ 
  const resolveYouTubeOrigin = () => {
      if (typeof window === 'undefined') return CAPACITOR_YOUTUBE_ORIGIN;
  
@@ -55,9 +192,17 @@ index 3761e8eb2b2ce63034a1bfe3c746829d8ff3db43..fd6410770776834fbda07faea2554ad5
  
  const YouTubePlayer = forwardRef(({ videoId, initialSeconds, onWatchedTick }, ref) => {
      const playerRef = useRef(null);
++    const proxyIframeRef = useRef(null);
++    const proxyStateRef = useRef({ currentTime: 0, duration: 0, state: null });
      const timerRef = useRef(null);
      const [hasPlayerError, setHasPlayerError] = useState(false);
-+    const isCapacitorWebView = useMemo(() => isCapacitorWebViewProtocol(), []);
+-    const isCapacitorWebView = useMemo(() => isCapacitorWebViewProtocol(), []);
++    const isCapacitorIosWebView = useMemo(() => {
++        const snapshot = getCapacitorEnvironmentSnapshot();
++        return snapshot.capacitorPlatform === 'ios'
++            || snapshot.windowCapacitorPlatform === 'ios'
++            || (isCapacitorWebViewProtocol() && /iPad|iPhone|iPod/.test(window.navigator?.userAgent || ''));
++    }, []);
  
      // ✅ [핵심] 최신 콜백 함수를 유지하기 위한 ref
      const onWatchedTickRef = useRef(onWatchedTick);
@@ -65,24 +210,36 @@ index 3761e8eb2b2ce63034a1bfe3c746829d8ff3db43..fd6410770776834fbda07faea2554ad5
      // 상위 컴포넌트에서 제어할 수 있는 함수 노출
      useImperativeHandle(ref, () => ({
          getCurrentTime: () => {
--            return playerRef.current ? playerRef.current.getCurrentTime() : 0;
-+            return playerRef.current?.getCurrentTime ? playerRef.current.getCurrentTime() : 0;
++            if (isCapacitorIosWebView) {
++                proxyIframeRef.current?.contentWindow?.postMessage({ source: 'youtube-proxy-parent', type: 'getCurrentTime' }, '*');
++                return proxyStateRef.current.currentTime || 0;
++            }
+             return playerRef.current?.getCurrentTime ? playerRef.current.getCurrentTime() : 0;
          },
          seekTo: (seconds) => {
--            if (playerRef.current) {
-+            if (playerRef.current?.seekTo) {
++            if (isCapacitorIosWebView) {
++                proxyIframeRef.current?.contentWindow?.postMessage({ source: 'youtube-proxy-parent', type: 'seekTo', seconds }, '*');
++                proxyStateRef.current.currentTime = Number(seconds || 0);
++                return;
++            }
+             if (playerRef.current?.seekTo) {
                  playerRef.current.seekTo(seconds, true);
              }
          },
          getDuration: () => {
--            return playerRef.current ? playerRef.current.getDuration() : 0;
-+            return playerRef.current?.getDuration ? playerRef.current.getDuration() : 0;
++            if (isCapacitorIosWebView) {
++                proxyIframeRef.current?.contentWindow?.postMessage({ source: 'youtube-proxy-parent', type: 'getDuration' }, '*');
++                return proxyStateRef.current.duration || 0;
++            }
+             return playerRef.current?.getDuration ? playerRef.current.getDuration() : 0;
          }
-     }), []);
+-    }), []);
++    }), [isCapacitorIosWebView]);
  
      const youtubeOrigin = useMemo(() => resolveYouTubeOrigin(), []);
      const youtubeUrl = useMemo(() => `https://www.youtube.com/watch?v=${videoId}`, [videoId]);
-+    const capacitorIframeSrc = useMemo(() => buildCapacitorIframeSrc(videoId), [videoId]);
+-    const capacitorIframeSrc = useMemo(() => buildCapacitorIframeSrc(videoId), [videoId]);
++    const proxyPlayerSrc = useMemo(() => buildProxyPlayerSrc(videoId, initialSeconds), [videoId, initialSeconds]);
  
      const opts = useMemo(() => {
          const playerVars = {
@@ -108,33 +265,7 @@ index 3761e8eb2b2ce63034a1bfe3c746829d8ff3db43..fd6410770776834fbda07faea2554ad5
      }, [videoId, youtubeOrigin]);
  
      const stopWatcher = useCallback(() => {
-         if (timerRef.current) {
-             clearInterval(timerRef.current);
-             timerRef.current = null;
-         }
-     }, []);
- 
-     const startWatcher = useCallback(() => {
-         stopWatcher();
-         timerRef.current = setInterval(() => {
-             // ✅ [수정] ref.current를 통해 항상 '최신' 함수 호출
--            if (playerRef.current && onWatchedTickRef.current) {
-+            if (playerRef.current?.getDuration && playerRef.current?.getCurrentTime && onWatchedTickRef.current) {
-                 const duration = playerRef.current.getDuration();
-                 const currentTime = playerRef.current.getCurrentTime();
-                 onWatchedTickRef.current(1, currentTime, duration); 
-             }
-         }, 1000);
-     }, [stopWatcher]);
- 
-     const onReady = useCallback((event) => {
-         setHasPlayerError(false);
-         playerRef.current = event.target;
-         const iframeSrc = event.target?.getIframe?.()?.src || '';
-         console.info('[YouTubePlayer] YouTube player ready', {
-             videoId,
-             origin: youtubeOrigin,
-             iframeSrc,
+@@ -129,114 +144,149 @@ const YouTubePlayer = forwardRef(({ videoId, initialSeconds, onWatchedTick }, re
              iframeOriginParam: getIframeOriginParam(iframeSrc),
              appOrigin: typeof window !== 'undefined' ? window.location.origin : '',
          });
@@ -160,23 +291,66 @@ index 3761e8eb2b2ce63034a1bfe3c746829d8ff3db43..fd6410770776834fbda07faea2554ad5
      useEffect(() => {
          setHasPlayerError(false);
          playerRef.current = null;
++        proxyStateRef.current = { currentTime: 0, duration: 0, state: null };
          stopWatcher();
      }, [videoId, stopWatcher]);
  
+     useEffect(() => {
+-        if (!isCapacitorWebView) return;
++        if (!isCapacitorIosWebView) return;
+ 
+-        const iframeOriginParam = getIframeOriginParam(capacitorIframeSrc);
+-        console.info('[YouTubePlayer] Capacitor iframe src', {
++        console.info('[YouTubePlayer] Capacitor iOS proxy player src', {
+             videoId,
+-            iframeSrc: capacitorIframeSrc,
+-            iframeOriginParam,
+-            usesExpectedHttpsOrigin: iframeOriginParam === CAPACITOR_YOUTUBE_ORIGIN,
+-            hasUnexpectedCapacitorOrigin: iframeOriginParam === 'capacitor://localhost',
++            iframeSrc: proxyPlayerSrc,
+             appOrigin: typeof window !== 'undefined' ? window.location.origin : '',
+         });
+-    }, [capacitorIframeSrc, isCapacitorWebView, videoId]);
++    }, [isCapacitorIosWebView, proxyPlayerSrc, videoId]);
++
 +    useEffect(() => {
-+        if (!isCapacitorWebView) return;
++        if (!isCapacitorIosWebView) return;
 +
-+        const iframeOriginParam = getIframeOriginParam(capacitorIframeSrc);
-+        console.info('[YouTubePlayer] Capacitor iframe src', {
-+            videoId,
-+            iframeSrc: capacitorIframeSrc,
-+            iframeOriginParam,
-+            usesExpectedHttpsOrigin: iframeOriginParam === CAPACITOR_YOUTUBE_ORIGIN,
-+            hasUnexpectedCapacitorOrigin: iframeOriginParam === 'capacitor://localhost',
-+            appOrigin: typeof window !== 'undefined' ? window.location.origin : '',
-+        });
-+    }, [capacitorIframeSrc, isCapacitorWebView, videoId]);
++        const handleProxyMessage = (event) => {
++            const data = event.data || {};
++            if (data.source !== 'youtube-proxy-player') return;
 +
++            if (data.type === 'error') {
++                console.warn('[YouTubePlayer] YouTube proxy player error', {
++                    errorCode: data.errorCode,
++                    videoId,
++                    appOrigin: typeof window !== 'undefined' ? window.location.origin : '',
++                });
++                setHasPlayerError(true);
++                return;
++            }
++
++            if (data.type === 'ready') {
++                setHasPlayerError(false);
++            }
++
++            const currentTime = Number(data.currentTime || 0);
++            const duration = Number(data.duration || 0);
++            proxyStateRef.current = {
++                currentTime,
++                duration,
++                state: data.state ?? proxyStateRef.current.state,
++            };
++
++            if (data.type === 'tick' && onWatchedTickRef.current) {
++                onWatchedTickRef.current(1, currentTime, duration);
++            }
++        };
++
++        window.addEventListener('message', handleProxyMessage);
++        return () => window.removeEventListener('message', handleProxyMessage);
++    }, [isCapacitorIosWebView, videoId]);
+ 
      useEffect(() => stopWatcher, [stopWatcher]);
  
      const openInYouTube = useCallback(() => {
@@ -224,15 +398,18 @@ index 3761e8eb2b2ce63034a1bfe3c746829d8ff3db43..fd6410770776834fbda07faea2554ad5
                          </button>
                      </div>
                  </div>
-+            ) : isCapacitorWebView ? (
-+                <iframe
-+                    ref={playerRef}
-+                    title={`YouTube video player ${videoId}`}
-+                    src={capacitorIframeSrc}
-+                    className="w-full h-full"
-+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-+                    allowFullScreen
-+                />
+-            ) : isCapacitorWebView ? (
++            ) : isCapacitorIosWebView ? (
+                 <iframe
+-                    ref={playerRef}
++                    ref={proxyIframeRef}
+                     title={`YouTube video player ${videoId}`}
+-                    src={capacitorIframeSrc}
++                    src={proxyPlayerSrc}
+                     className="w-full h-full"
+                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                     allowFullScreen
+                 />
              ) : (
                  <YouTube
                      videoId={videoId}
