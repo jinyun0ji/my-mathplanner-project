@@ -58,30 +58,42 @@ export const normalizeLessonVideos = (lessonLog = null) => {
     const normalized = rawVideos
         .map((video, idx) => {
             const rawUrl = video?.url || video?.link || extractUrlFromIframe(video?.iframeCode);
-            const videoId = video?.videoId || getYouTubeId(rawUrl) || null;
+            const directUrl = video?.videoUrl || video?.fileUrl || video?.hlsUrl || '';
+            const youtubeVideoId = video?.youtubeVideoId || video?.videoId || getYouTubeId(rawUrl) || null;
 
             return {
                 id: video?.id || video?.key || `${lessonLog.id || 'lesson'}-${idx}`,
                 title: video?.title || video?.name || `영상 ${idx + 1}`,
                 url: rawUrl,
+                videoUrl: video?.videoUrl || '',
+                fileUrl: video?.fileUrl || '',
+                hlsUrl: video?.hlsUrl || '',
+                directUrl,
                 iframeCode: video?.iframeCode || '',
-                videoId,
+                youtubeVideoId,
+                videoId: youtubeVideoId,
             };
         })
-        .filter(video => video.videoId || video.iframeCode || video.url);
+        .filter(video => video.directUrl || video.youtubeVideoId || video.iframeCode || video.url);
 
     if (normalized.length > 0) return normalized;
 
+    const fallbackDirectUrl = lessonLog.videoUrl || lessonLog.fileUrl || lessonLog.hlsUrl || '';
     const fallbackUrl = extractUrlFromIframe(lessonLog.iframeCode) || lessonLog.materialUrl || '';
-    const fallbackVideoId = getYouTubeId(fallbackUrl);
+    const fallbackVideoId = lessonLog.youtubeVideoId || lessonLog.videoId || getYouTubeId(fallbackUrl);
 
-    if (!fallbackUrl && !fallbackVideoId) return [];
+    if (!fallbackDirectUrl && !fallbackUrl && !fallbackVideoId) return [];
 
     return [{
         id: lessonLog.id || 'primary-video',
         title: lessonLog.progress || '수업 영상',
         url: fallbackUrl,
+        videoUrl: lessonLog.videoUrl || '',
+        fileUrl: lessonLog.fileUrl || '',
+        hlsUrl: lessonLog.hlsUrl || '',
+        directUrl: fallbackDirectUrl,
         iframeCode: lessonLog.iframeCode || '',
+        youtubeVideoId: fallbackVideoId,
         videoId: fallbackVideoId,
     }];
 };

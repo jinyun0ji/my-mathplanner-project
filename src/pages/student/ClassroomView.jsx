@@ -2,10 +2,12 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Icon, formatTime, formatClassScheduleKo } from '../../utils/helpers';
 import YouTubePlayer from '../../components/YouTubePlayer';
+import VideoFilePlayer from '../../components/VideoFilePlayer';
 import PlayCircleFilledWhiteIcon from '@mui/icons-material/PlayCircleFilledWhite';
 import { calculateVideoProgress, getCurrentLessonByDate, getSortedLessonLogs, normalizeLessonVideos } from '../../domain/lesson/lesson.service';
 import { buildClassroomStats } from '../../domain/classroom/classroom.service';
 import { canAccessLessonContent } from '../../utils/attendanceAccess';
+import { isCapacitorNativeEnvironment } from '../../utils/capacitorEnvironment';
 
 const normalizeAttendanceStatus = (status) => {
     if (!status) return null;
@@ -187,7 +189,73 @@ export default function ClassroomView({
         setIsVideoListOpen(false);
     }, [lessonVideos]);
 
-    const currentVideoId = selectedVideo?.videoId;
+    const currentVideoId = selectedVideo?.youtubeVideoId || selectedVideo?.videoId;
+    const currentDirectVideoUrl = selectedVideo?.videoUrl || selectedVideo?.fileUrl || selectedVideo?.hlsUrl || selectedVideo?.directUrl || '';
+    const isNativeApp = isCapacitorNativeEnvironment();
+
+
+    const handleVideoEnded = (currentTime, duration) => {
+        if (!currentLesson || duration <= 0) return;
+        onSaveVideoProgress(studentAuthUid, currentLesson.id, {
+            percent: 100,
+            seconds: currentTime || duration,
+            accumulated: duration,
+        });
+    };
+
+    const openSelectedVideoInYouTube = () => {
+        if (!currentVideoId) return;
+        window.open(`https://www.youtube.com/watch?v=${currentVideoId}`, '_blank');
+    };
+
+    const renderCurrentVideoPlayer = () => {
+        const initialSeconds = targetMemo?.time || progressData.seconds;
+
+        if (currentDirectVideoUrl) {
+            return (
+                <VideoFilePlayer
+                    ref={playerRef}
+                    src={currentDirectVideoUrl}
+                    initialSeconds={initialSeconds}
+                    onWatchedTick={handleWatchedTick}
+                    onEnded={handleVideoEnded}
+                />
+            );
+        }
+
+        if (currentVideoId && !isNativeApp) {
+            return (
+                <YouTubePlayer
+                    ref={playerRef}
+                    videoId={currentVideoId}
+                    initialSeconds={initialSeconds}
+                    onWatchedTick={handleWatchedTick}
+                    onEnded={handleVideoEnded}
+                />
+            );
+        }
+
+        if (currentVideoId && isNativeApp) {
+            return (
+                <div className="w-full h-full min-h-[220px] flex flex-col items-center justify-center bg-gray-950 text-white text-center px-6 py-8">
+                    <div className="max-w-sm space-y-4">
+                        <p className="text-sm sm:text-base font-semibold leading-relaxed">
+                            앱 내 재생이 제한된 영상입니다. 관리자에게 문의해주세요.
+                        </p>
+                        <button
+                            type="button"
+                            onClick={openSelectedVideoInYouTube}
+                            className="inline-flex items-center justify-center rounded-full bg-red-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-red-700 active:scale-95"
+                        >
+                            YouTube에서 보기
+                        </button>
+                    </div>
+                </div>
+            );
+        }
+
+        return (<div className="flex flex-col items-center justify-center text-gray-500"><Icon name="monitor" className="w-12 h-12 mb-2 opacity-50" /><p>재생할 영상이 없습니다.</p></div>);
+    };
 
     const toggleMaterials = (e, logId) => {
         e.stopPropagation();
@@ -371,9 +439,9 @@ export default function ClassroomView({
                                             영상 시청이 제한되어 있습니다.
                                         </p>
                                     </div>
-                                ) : currentVideoId ? (
-                                    <div className="w-full h-full max-w-full max-h-full aspect-video flex items-center justify-center"><YouTubePlayer ref={playerRef} videoId={currentVideoId} initialSeconds={targetMemo?.time || progressData.seconds} onWatchedTick={handleWatchedTick} /></div>
-                                ) : (<div className="flex flex-col items-center justify-center text-gray-500"><Icon name="monitor" className="w-12 h-12 mb-2 opacity-50" /><p>재생할 영상이 없습니다.</p></div>)}
+                                ) : (
+                                    <div className="w-full h-full max-w-full max-h-full aspect-video flex items-center justify-center">{renderCurrentVideoPlayer()}</div>
+                                )}
                             </div>
 
                         {hasMultipleLessonVideos && (

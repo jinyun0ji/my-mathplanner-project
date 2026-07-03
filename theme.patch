@@ -1,173 +1,265 @@
 diff --git a/public/youtube-player.html b/public/youtube-player.html
+deleted file mode 100644
+index e60bce15452c84f0e43d28f99188ac3aadc6864c..0000000000000000000000000000000000000000
+--- a/public/youtube-player.html
++++ /dev/null
+@@ -1,126 +0,0 @@
+-<!doctype html>
+-<html lang="ko">
+-<head>
+-  <meta charset="utf-8" />
+-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+-  <title>YouTube Player</title>
+-  <style>
+-    html, body, #player {
+-      width: 100%;
+-      height: 100%;
+-      margin: 0;
+-      padding: 0;
+-      overflow: hidden;
+-      background: #000;
+-    }
+-    body { display: flex; }
+-  </style>
+-</head>
+-<body>
+-  <div id="player"></div>
+-  <script>
+-    (function () {
+-      var YOUTUBE_ORIGIN = 'https://localhost';
+-      var params = new URLSearchParams(window.location.search);
+-      var videoId = params.get('videoId') || '';
+-      var startSeconds = Number(params.get('startSeconds') || 0) || 0;
+-      var player = null;
+-      var tickTimer = null;
+-
+-      function sendMessage(payload) {
+-        window.parent.postMessage(Object.assign({ source: 'youtube-proxy-player' }, payload), '*');
+-      }
+-
+-      function getPlayerSnapshot() {
+-        if (!player || typeof player.getCurrentTime !== 'function') {
+-          return { currentTime: 0, duration: 0, state: null };
+-        }
+-
+-        return {
+-          currentTime: Number(player.getCurrentTime() || 0),
+-          duration: Number(player.getDuration() || 0),
+-          state: typeof player.getPlayerState === 'function' ? player.getPlayerState() : null,
+-        };
+-      }
+-
+-      function sendTick() {
+-        sendMessage(Object.assign({ type: 'tick' }, getPlayerSnapshot()));
+-      }
+-
+-      function startTicker() {
+-        if (tickTimer) return;
+-        tickTimer = window.setInterval(sendTick, 1000);
+-      }
+-
+-      function stopTicker() {
+-        if (!tickTimer) return;
+-        window.clearInterval(tickTimer);
+-        tickTimer = null;
+-      }
+-
+-      function handleCommand(event) {
+-        var data = event.data || {};
+-        if (!data || data.source !== 'youtube-proxy-parent' || !player) return;
+-
+-        if (data.type === 'getCurrentTime') {
+-          sendMessage({ type: 'currentTime', requestId: data.requestId, currentTime: getPlayerSnapshot().currentTime });
+-          return;
+-        }
+-
+-        if (data.type === 'getDuration') {
+-          sendMessage({ type: 'duration', requestId: data.requestId, duration: getPlayerSnapshot().duration });
+-          return;
+-        }
+-
+-        if (data.type === 'seekTo' && typeof player.seekTo === 'function') {
+-          player.seekTo(Number(data.seconds || 0), true);
+-          sendTick();
+-        }
+-      }
+-
+-      window.onYouTubeIframeAPIReady = function () {
+-        if (!videoId) {
+-          sendMessage({ type: 'error', errorCode: 'missing-video-id' });
+-          return;
+-        }
+-
+-        player = new window.YT.Player('player', {
+-          width: '100%',
+-          height: '100%',
+-          videoId: videoId,
+-          playerVars: {
+-            autoplay: 1,
+-            controls: 1,
+-            rel: 0,
+-            modestbranding: 1,
+-            playsinline: 1,
+-            enablejsapi: 1,
+-            origin: YOUTUBE_ORIGIN,
+-            start: Math.max(0, Math.floor(startSeconds)),
+-          },
+-          events: {
+-            onReady: function () {
+-              sendMessage(Object.assign({ type: 'ready' }, getPlayerSnapshot()));
+-              startTicker();
+-            },
+-            onStateChange: function (event) {
+-              sendMessage(Object.assign({ type: 'state', state: event.data }, getPlayerSnapshot()));
+-              startTicker();
+-            },
+-            onError: function (event) {
+-              stopTicker();
+-              sendMessage({ type: 'error', errorCode: event.data });
+-            }
+-          }
+-        });
+-      };
+-
+-      window.addEventListener('message', handleCommand);
+-
+-      var tag = document.createElement('script');
+-      tag.src = 'https://www.youtube.com/iframe_api';
+-      document.head.appendChild(tag);
+-    }());
+-  </script>
+-</body>
+-</html>
+diff --git a/src/components/VideoFilePlayer.jsx b/src/components/VideoFilePlayer.jsx
 new file mode 100644
-index 0000000000000000000000000000000000000000..e60bce15452c84f0e43d28f99188ac3aadc6864c
+index 0000000000000000000000000000000000000000..065c08786a99aa0a6694b983467be758c0716f28
 --- /dev/null
-+++ b/public/youtube-player.html
-@@ -0,0 +1,126 @@
-+<!doctype html>
-+<html lang="ko">
-+<head>
-+  <meta charset="utf-8" />
-+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-+  <title>YouTube Player</title>
-+  <style>
-+    html, body, #player {
-+      width: 100%;
-+      height: 100%;
-+      margin: 0;
-+      padding: 0;
-+      overflow: hidden;
-+      background: #000;
-+    }
-+    body { display: flex; }
-+  </style>
-+</head>
-+<body>
-+  <div id="player"></div>
-+  <script>
-+    (function () {
-+      var YOUTUBE_ORIGIN = 'https://localhost';
-+      var params = new URLSearchParams(window.location.search);
-+      var videoId = params.get('videoId') || '';
-+      var startSeconds = Number(params.get('startSeconds') || 0) || 0;
-+      var player = null;
-+      var tickTimer = null;
++++ b/src/components/VideoFilePlayer.jsx
+@@ -0,0 +1,95 @@
++// src/components/VideoFilePlayer.jsx
++import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useRef } from 'react';
 +
-+      function sendMessage(payload) {
-+        window.parent.postMessage(Object.assign({ source: 'youtube-proxy-player' }, payload), '*');
-+      }
++const VideoFilePlayer = forwardRef(({ src, initialSeconds = 0, onWatchedTick, onEnded }, ref) => {
++    const videoRef = useRef(null);
++    const timerRef = useRef(null);
++    const hasAppliedInitialSeekRef = useRef(false);
++    const onWatchedTickRef = useRef(onWatchedTick);
++    const onEndedRef = useRef(onEnded);
 +
-+      function getPlayerSnapshot() {
-+        if (!player || typeof player.getCurrentTime !== 'function') {
-+          return { currentTime: 0, duration: 0, state: null };
++    useImperativeHandle(ref, () => ({
++        getCurrentTime: () => videoRef.current?.currentTime || 0,
++        seekTo: (seconds) => {
++            if (!videoRef.current) return;
++            videoRef.current.currentTime = Math.max(0, Number(seconds) || 0);
++        },
++        getDuration: () => videoRef.current?.duration || 0,
++    }), []);
++
++    const stopWatcher = useCallback(() => {
++        if (timerRef.current) {
++            clearInterval(timerRef.current);
++            timerRef.current = null;
 +        }
++    }, []);
 +
-+        return {
-+          currentTime: Number(player.getCurrentTime() || 0),
-+          duration: Number(player.getDuration() || 0),
-+          state: typeof player.getPlayerState === 'function' ? player.getPlayerState() : null,
-+        };
-+      }
++    const emitWatchedTick = useCallback((addedSeconds = 1) => {
++        const video = videoRef.current;
++        if (!video || !onWatchedTickRef.current) return;
 +
-+      function sendTick() {
-+        sendMessage(Object.assign({ type: 'tick' }, getPlayerSnapshot()));
-+      }
++        onWatchedTickRef.current(
++            addedSeconds,
++            video.currentTime || 0,
++            Number.isFinite(video.duration) ? video.duration : 0,
++        );
++    }, []);
 +
-+      function startTicker() {
-+        if (tickTimer) return;
-+        tickTimer = window.setInterval(sendTick, 1000);
-+      }
++    const startWatcher = useCallback(() => {
++        stopWatcher();
++        timerRef.current = setInterval(() => emitWatchedTick(1), 1000);
++    }, [emitWatchedTick, stopWatcher]);
 +
-+      function stopTicker() {
-+        if (!tickTimer) return;
-+        window.clearInterval(tickTimer);
-+        tickTimer = null;
-+      }
++    const handleLoadedMetadata = useCallback(() => {
++        if (hasAppliedInitialSeekRef.current || !videoRef.current) return;
 +
-+      function handleCommand(event) {
-+        var data = event.data || {};
-+        if (!data || data.source !== 'youtube-proxy-parent' || !player) return;
-+
-+        if (data.type === 'getCurrentTime') {
-+          sendMessage({ type: 'currentTime', requestId: data.requestId, currentTime: getPlayerSnapshot().currentTime });
-+          return;
++        const seekSeconds = Number(initialSeconds) || 0;
++        if (seekSeconds > 0) {
++            videoRef.current.currentTime = Math.max(0, seekSeconds);
 +        }
++        hasAppliedInitialSeekRef.current = true;
++    }, [initialSeconds]);
 +
-+        if (data.type === 'getDuration') {
-+          sendMessage({ type: 'duration', requestId: data.requestId, duration: getPlayerSnapshot().duration });
-+          return;
-+        }
++    const handleEnded = useCallback(() => {
++        stopWatcher();
++        emitWatchedTick(0);
 +
-+        if (data.type === 'seekTo' && typeof player.seekTo === 'function') {
-+          player.seekTo(Number(data.seconds || 0), true);
-+          sendTick();
-+        }
-+      }
++        const video = videoRef.current;
++        onEndedRef.current?.(
++            video?.currentTime || 0,
++            video && Number.isFinite(video.duration) ? video.duration : 0,
++        );
++    }, [emitWatchedTick, stopWatcher]);
 +
-+      window.onYouTubeIframeAPIReady = function () {
-+        if (!videoId) {
-+          sendMessage({ type: 'error', errorCode: 'missing-video-id' });
-+          return;
-+        }
++    useEffect(() => {
++        onWatchedTickRef.current = onWatchedTick;
++    }, [onWatchedTick]);
 +
-+        player = new window.YT.Player('player', {
-+          width: '100%',
-+          height: '100%',
-+          videoId: videoId,
-+          playerVars: {
-+            autoplay: 1,
-+            controls: 1,
-+            rel: 0,
-+            modestbranding: 1,
-+            playsinline: 1,
-+            enablejsapi: 1,
-+            origin: YOUTUBE_ORIGIN,
-+            start: Math.max(0, Math.floor(startSeconds)),
-+          },
-+          events: {
-+            onReady: function () {
-+              sendMessage(Object.assign({ type: 'ready' }, getPlayerSnapshot()));
-+              startTicker();
-+            },
-+            onStateChange: function (event) {
-+              sendMessage(Object.assign({ type: 'state', state: event.data }, getPlayerSnapshot()));
-+              startTicker();
-+            },
-+            onError: function (event) {
-+              stopTicker();
-+              sendMessage({ type: 'error', errorCode: event.data });
-+            }
-+          }
-+        });
-+      };
++    useEffect(() => {
++        onEndedRef.current = onEnded;
++    }, [onEnded]);
 +
-+      window.addEventListener('message', handleCommand);
++    useEffect(() => {
++        hasAppliedInitialSeekRef.current = false;
++        stopWatcher();
++    }, [src, stopWatcher]);
 +
-+      var tag = document.createElement('script');
-+      tag.src = 'https://www.youtube.com/iframe_api';
-+      document.head.appendChild(tag);
-+    }());
-+  </script>
-+</body>
-+</html>
++    useEffect(() => stopWatcher, [stopWatcher]);
++
++    return (
++        <video
++            ref={videoRef}
++            src={src}
++            controls
++            playsInline
++            preload="metadata"
++            className="w-full h-full bg-black"
++            onLoadedMetadata={handleLoadedMetadata}
++            onPlay={startWatcher}
++            onPause={stopWatcher}
++            onEnded={handleEnded}
++        />
++    );
++});
++
++export default VideoFilePlayer;
 diff --git a/src/components/YouTubePlayer.jsx b/src/components/YouTubePlayer.jsx
-index fd6410770776834fbda07faea2554ad54ea54e9e..719bcffc2c46bdcccb7ce221405493a248d08731 100644
+index 719bcffc2c46bdcccb7ce221405493a248d08731..378ae8f487b411247cc5c202cc6c04fceccb46dc 100644
 --- a/src/components/YouTubePlayer.jsx
 +++ b/src/components/YouTubePlayer.jsx
-@@ -1,102 +1,117 @@
+@@ -1,292 +1,198 @@
  // src/components/YouTubePlayer.jsx
  import React, { useEffect, useRef, useImperativeHandle, forwardRef, useMemo, useCallback, useState } from 'react';
  import YouTube from 'react-youtube';
--import { isCapacitorNativeEnvironment } from '../utils/capacitorEnvironment';
-+import { getCapacitorEnvironmentSnapshot, isCapacitorNativeEnvironment } from '../utils/capacitorEnvironment';
- 
+-import { getCapacitorEnvironmentSnapshot, isCapacitorNativeEnvironment } from '../utils/capacitorEnvironment';
+-
++import { isCapacitorNativeEnvironment } from '../utils/capacitorEnvironment';
  
  const CAPACITOR_YOUTUBE_ORIGIN = 'https://localhost';
  
- const isCapacitorWebViewProtocol = () => {
-     if (typeof window === 'undefined') return false;
- 
-     return window.location.protocol === 'capacitor:' || window.location.protocol === 'ionic:';
- };
- 
--const buildCapacitorIframeSrc = (videoId) => {
-+const buildProxyPlayerSrc = (videoId, startSeconds = 0) => {
-     const params = new URLSearchParams({
--        autoplay: '1',
--        rel: '0',
--        modestbranding: '1',
--        controls: '1',
--        playsinline: '1',
--        enablejsapi: '1',
--        origin: CAPACITOR_YOUTUBE_ORIGIN,
-+        videoId: videoId || '',
-+        startSeconds: String(Math.max(0, Math.floor(Number(startSeconds) || 0))),
-     });
- 
--    return `https://www.youtube.com/embed/${videoId}?${params.toString()}`;
-+    return `/youtube-player.html?${params.toString()}`;
- };
- 
+-const isCapacitorWebViewProtocol = () => {
+-    if (typeof window === 'undefined') return false;
+-
+-    return window.location.protocol === 'capacitor:' || window.location.protocol === 'ionic:';
+-};
+-
+-const buildProxyPlayerSrc = (videoId, startSeconds = 0) => {
+-    const params = new URLSearchParams({
+-        videoId: videoId || '',
+-        startSeconds: String(Math.max(0, Math.floor(Number(startSeconds) || 0))),
+-    });
+-
+-    return `/youtube-player.html?${params.toString()}`;
+-};
+-
  const resolveYouTubeOrigin = () => {
      if (typeof window === 'undefined') return CAPACITOR_YOUTUBE_ORIGIN;
  
@@ -190,56 +282,58 @@ index fd6410770776834fbda07faea2554ad54ea54e9e..719bcffc2c46bdcccb7ce221405493a2
      }
  };
  
- const YouTubePlayer = forwardRef(({ videoId, initialSeconds, onWatchedTick }, ref) => {
+-const YouTubePlayer = forwardRef(({ videoId, initialSeconds, onWatchedTick }, ref) => {
++const YouTubePlayer = forwardRef(({ videoId, initialSeconds, onWatchedTick, onEnded }, ref) => {
      const playerRef = useRef(null);
-+    const proxyIframeRef = useRef(null);
-+    const proxyStateRef = useRef({ currentTime: 0, duration: 0, state: null });
+-    const proxyIframeRef = useRef(null);
+-    const proxyStateRef = useRef({ currentTime: 0, duration: 0, state: null });
      const timerRef = useRef(null);
      const [hasPlayerError, setHasPlayerError] = useState(false);
--    const isCapacitorWebView = useMemo(() => isCapacitorWebViewProtocol(), []);
-+    const isCapacitorIosWebView = useMemo(() => {
-+        const snapshot = getCapacitorEnvironmentSnapshot();
-+        return snapshot.capacitorPlatform === 'ios'
-+            || snapshot.windowCapacitorPlatform === 'ios'
-+            || (isCapacitorWebViewProtocol() && /iPad|iPhone|iPod/.test(window.navigator?.userAgent || ''));
-+    }, []);
- 
-     // ✅ [핵심] 최신 콜백 함수를 유지하기 위한 ref
+-    const isCapacitorIosWebView = useMemo(() => {
+-        const snapshot = getCapacitorEnvironmentSnapshot();
+-        return snapshot.capacitorPlatform === 'ios'
+-            || snapshot.windowCapacitorPlatform === 'ios'
+-            || (isCapacitorWebViewProtocol() && /iPad|iPhone|iPod/.test(window.navigator?.userAgent || ''));
+-    }, []);
+-
+-    // ✅ [핵심] 최신 콜백 함수를 유지하기 위한 ref
      const onWatchedTickRef = useRef(onWatchedTick);
++    const onEndedRef = useRef(onEnded);
  
-     // 상위 컴포넌트에서 제어할 수 있는 함수 노출
+-    // 상위 컴포넌트에서 제어할 수 있는 함수 노출
      useImperativeHandle(ref, () => ({
-         getCurrentTime: () => {
-+            if (isCapacitorIosWebView) {
-+                proxyIframeRef.current?.contentWindow?.postMessage({ source: 'youtube-proxy-parent', type: 'getCurrentTime' }, '*');
-+                return proxyStateRef.current.currentTime || 0;
-+            }
-             return playerRef.current?.getCurrentTime ? playerRef.current.getCurrentTime() : 0;
-         },
+-        getCurrentTime: () => {
+-            if (isCapacitorIosWebView) {
+-                proxyIframeRef.current?.contentWindow?.postMessage({ source: 'youtube-proxy-parent', type: 'getCurrentTime' }, '*');
+-                return proxyStateRef.current.currentTime || 0;
+-            }
+-            return playerRef.current?.getCurrentTime ? playerRef.current.getCurrentTime() : 0;
+-        },
++        getCurrentTime: () => playerRef.current?.getCurrentTime ? playerRef.current.getCurrentTime() : 0,
          seekTo: (seconds) => {
-+            if (isCapacitorIosWebView) {
-+                proxyIframeRef.current?.contentWindow?.postMessage({ source: 'youtube-proxy-parent', type: 'seekTo', seconds }, '*');
-+                proxyStateRef.current.currentTime = Number(seconds || 0);
-+                return;
-+            }
+-            if (isCapacitorIosWebView) {
+-                proxyIframeRef.current?.contentWindow?.postMessage({ source: 'youtube-proxy-parent', type: 'seekTo', seconds }, '*');
+-                proxyStateRef.current.currentTime = Number(seconds || 0);
+-                return;
+-            }
              if (playerRef.current?.seekTo) {
                  playerRef.current.seekTo(seconds, true);
              }
          },
-         getDuration: () => {
-+            if (isCapacitorIosWebView) {
-+                proxyIframeRef.current?.contentWindow?.postMessage({ source: 'youtube-proxy-parent', type: 'getDuration' }, '*');
-+                return proxyStateRef.current.duration || 0;
-+            }
-             return playerRef.current?.getDuration ? playerRef.current.getDuration() : 0;
-         }
--    }), []);
-+    }), [isCapacitorIosWebView]);
+-        getDuration: () => {
+-            if (isCapacitorIosWebView) {
+-                proxyIframeRef.current?.contentWindow?.postMessage({ source: 'youtube-proxy-parent', type: 'getDuration' }, '*');
+-                return proxyStateRef.current.duration || 0;
+-            }
+-            return playerRef.current?.getDuration ? playerRef.current.getDuration() : 0;
+-        }
+-    }), [isCapacitorIosWebView]);
++        getDuration: () => playerRef.current?.getDuration ? playerRef.current.getDuration() : 0,
++    }), []);
  
      const youtubeOrigin = useMemo(() => resolveYouTubeOrigin(), []);
      const youtubeUrl = useMemo(() => `https://www.youtube.com/watch?v=${videoId}`, [videoId]);
--    const capacitorIframeSrc = useMemo(() => buildCapacitorIframeSrc(videoId), [videoId]);
-+    const proxyPlayerSrc = useMemo(() => buildProxyPlayerSrc(videoId, initialSeconds), [videoId, initialSeconds]);
+-    const proxyPlayerSrc = useMemo(() => buildProxyPlayerSrc(videoId, initialSeconds), [videoId, initialSeconds]);
  
      const opts = useMemo(() => {
          const playerVars = {
@@ -265,7 +359,33 @@ index fd6410770776834fbda07faea2554ad54ea54e9e..719bcffc2c46bdcccb7ce221405493a2
      }, [videoId, youtubeOrigin]);
  
      const stopWatcher = useCallback(() => {
-@@ -129,114 +144,149 @@ const YouTubePlayer = forwardRef(({ videoId, initialSeconds, onWatchedTick }, re
+         if (timerRef.current) {
+             clearInterval(timerRef.current);
+             timerRef.current = null;
+         }
+     }, []);
+ 
+     const startWatcher = useCallback(() => {
+         stopWatcher();
+         timerRef.current = setInterval(() => {
+-            // ✅ [수정] ref.current를 통해 항상 '최신' 함수 호출
+             if (playerRef.current?.getDuration && playerRef.current?.getCurrentTime && onWatchedTickRef.current) {
+                 const duration = playerRef.current.getDuration();
+                 const currentTime = playerRef.current.getCurrentTime();
+-                onWatchedTickRef.current(1, currentTime, duration); 
++                onWatchedTickRef.current(1, currentTime, duration);
+             }
+         }, 1000);
+     }, [stopWatcher]);
+ 
+     const onReady = useCallback((event) => {
+         setHasPlayerError(false);
+         playerRef.current = event.target;
+         const iframeSrc = event.target?.getIframe?.()?.src || '';
+         console.info('[YouTubePlayer] YouTube player ready', {
+             videoId,
+             origin: youtubeOrigin,
+             iframeSrc,
              iframeOriginParam: getIframeOriginParam(iframeSrc),
              appOrigin: typeof window !== 'undefined' ? window.location.origin : '',
          });
@@ -275,82 +395,87 @@ index fd6410770776834fbda07faea2554ad54ea54e9e..719bcffc2c46bdcccb7ce221405493a2
      }, [initialSeconds, videoId, youtubeOrigin]);
  
      const onStateChange = useCallback((event) => {
-         // 재생 중(1)일 때 타이머 시작
+-        // 재생 중(1)일 때 타이머 시작
          if (event.data === 1) {
              startWatcher();
-         } else {
-             stopWatcher();
+-        } else {
+-            stopWatcher();
++            return;
++        }
++
++        stopWatcher();
++        if (event.data === 0 && playerRef.current) {
++            onEndedRef.current?.(
++                playerRef.current.getCurrentTime?.() || 0,
++                playerRef.current.getDuration?.() || 0,
++            );
          }
      }, [startWatcher, stopWatcher]);
  
-     // ✅ onWatchedTick이 바뀔 때마다(부모 리렌더링 시) ref 업데이트
+-    // ✅ onWatchedTick이 바뀔 때마다(부모 리렌더링 시) ref 업데이트
      useEffect(() => {
          onWatchedTickRef.current = onWatchedTick;
      }, [onWatchedTick]);
  
++    useEffect(() => {
++        onEndedRef.current = onEnded;
++    }, [onEnded]);
++
      useEffect(() => {
          setHasPlayerError(false);
          playerRef.current = null;
-+        proxyStateRef.current = { currentTime: 0, duration: 0, state: null };
+-        proxyStateRef.current = { currentTime: 0, duration: 0, state: null };
          stopWatcher();
      }, [videoId, stopWatcher]);
  
-     useEffect(() => {
--        if (!isCapacitorWebView) return;
-+        if (!isCapacitorIosWebView) return;
- 
--        const iframeOriginParam = getIframeOriginParam(capacitorIframeSrc);
--        console.info('[YouTubePlayer] Capacitor iframe src', {
-+        console.info('[YouTubePlayer] Capacitor iOS proxy player src', {
-             videoId,
--            iframeSrc: capacitorIframeSrc,
--            iframeOriginParam,
--            usesExpectedHttpsOrigin: iframeOriginParam === CAPACITOR_YOUTUBE_ORIGIN,
--            hasUnexpectedCapacitorOrigin: iframeOriginParam === 'capacitor://localhost',
-+            iframeSrc: proxyPlayerSrc,
-             appOrigin: typeof window !== 'undefined' ? window.location.origin : '',
-         });
--    }, [capacitorIframeSrc, isCapacitorWebView, videoId]);
-+    }, [isCapacitorIosWebView, proxyPlayerSrc, videoId]);
-+
-+    useEffect(() => {
-+        if (!isCapacitorIosWebView) return;
-+
-+        const handleProxyMessage = (event) => {
-+            const data = event.data || {};
-+            if (data.source !== 'youtube-proxy-player') return;
-+
-+            if (data.type === 'error') {
-+                console.warn('[YouTubePlayer] YouTube proxy player error', {
-+                    errorCode: data.errorCode,
-+                    videoId,
-+                    appOrigin: typeof window !== 'undefined' ? window.location.origin : '',
-+                });
-+                setHasPlayerError(true);
-+                return;
-+            }
-+
-+            if (data.type === 'ready') {
-+                setHasPlayerError(false);
-+            }
-+
-+            const currentTime = Number(data.currentTime || 0);
-+            const duration = Number(data.duration || 0);
-+            proxyStateRef.current = {
-+                currentTime,
-+                duration,
-+                state: data.state ?? proxyStateRef.current.state,
-+            };
-+
-+            if (data.type === 'tick' && onWatchedTickRef.current) {
-+                onWatchedTickRef.current(1, currentTime, duration);
-+            }
-+        };
-+
-+        window.addEventListener('message', handleProxyMessage);
-+        return () => window.removeEventListener('message', handleProxyMessage);
-+    }, [isCapacitorIosWebView, videoId]);
- 
+-    useEffect(() => {
+-        if (!isCapacitorIosWebView) return;
+-
+-        console.info('[YouTubePlayer] Capacitor iOS proxy player src', {
+-            videoId,
+-            iframeSrc: proxyPlayerSrc,
+-            appOrigin: typeof window !== 'undefined' ? window.location.origin : '',
+-        });
+-    }, [isCapacitorIosWebView, proxyPlayerSrc, videoId]);
+-
+-    useEffect(() => {
+-        if (!isCapacitorIosWebView) return;
+-
+-        const handleProxyMessage = (event) => {
+-            const data = event.data || {};
+-            if (data.source !== 'youtube-proxy-player') return;
+-
+-            if (data.type === 'error') {
+-                console.warn('[YouTubePlayer] YouTube proxy player error', {
+-                    errorCode: data.errorCode,
+-                    videoId,
+-                    appOrigin: typeof window !== 'undefined' ? window.location.origin : '',
+-                });
+-                setHasPlayerError(true);
+-                return;
+-            }
+-
+-            if (data.type === 'ready') {
+-                setHasPlayerError(false);
+-            }
+-
+-            const currentTime = Number(data.currentTime || 0);
+-            const duration = Number(data.duration || 0);
+-            proxyStateRef.current = {
+-                currentTime,
+-                duration,
+-                state: data.state ?? proxyStateRef.current.state,
+-            };
+-
+-            if (data.type === 'tick' && onWatchedTickRef.current) {
+-                onWatchedTickRef.current(1, currentTime, duration);
+-            }
+-        };
+-
+-        window.addEventListener('message', handleProxyMessage);
+-        return () => window.removeEventListener('message', handleProxyMessage);
+-    }, [isCapacitorIosWebView, videoId]);
+-
      useEffect(() => stopWatcher, [stopWatcher]);
  
      const openInYouTube = useCallback(() => {
@@ -398,18 +523,15 @@ index fd6410770776834fbda07faea2554ad54ea54e9e..719bcffc2c46bdcccb7ce221405493a2
                          </button>
                      </div>
                  </div>
--            ) : isCapacitorWebView ? (
-+            ) : isCapacitorIosWebView ? (
-                 <iframe
--                    ref={playerRef}
-+                    ref={proxyIframeRef}
-                     title={`YouTube video player ${videoId}`}
--                    src={capacitorIframeSrc}
-+                    src={proxyPlayerSrc}
-                     className="w-full h-full"
-                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                     allowFullScreen
-                 />
+-            ) : isCapacitorIosWebView ? (
+-                <iframe
+-                    ref={proxyIframeRef}
+-                    title={`YouTube video player ${videoId}`}
+-                    src={proxyPlayerSrc}
+-                    className="w-full h-full"
+-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+-                    allowFullScreen
+-                />
              ) : (
                  <YouTube
                      videoId={videoId}
@@ -425,5 +547,297 @@ index fd6410770776834fbda07faea2554ad54ea54e9e..719bcffc2c46bdcccb7ce221405493a2
      );
  });
  
- export default YouTubePlayer;
+-export default YouTubePlayer;
 \ No newline at end of file
++export default YouTubePlayer;
+diff --git a/src/domain/lesson/lesson.service.js b/src/domain/lesson/lesson.service.js
+index f3fe1b740da50a28bf6ee6130650fff713070469..aff49c5ca37c0ff47ecbb4ab546fe6920b08c61e 100644
+--- a/src/domain/lesson/lesson.service.js
++++ b/src/domain/lesson/lesson.service.js
+@@ -36,52 +36,64 @@ export const buildLessonSessions = (sessions = [], classLogs = [], selectedDate
+     return [...sessions]
+         .reverse()
+         .map(session => {
+             const log = classLogs.find(l => l.date === session.date);
+             const isLogged = !!log;
+             const isSelected = session.date === selectedDate;
+ 
+             return {
+                 session,
+                 log,
+                 isLogged,
+                 isSelected,
+             };
+         })
+         .filter(item => item.isLogged || item.isSelected);
+         };
+ 
+ export const normalizeLessonVideos = (lessonLog = null) => {
+     if (!lessonLog) return [];
+ 
+     const rawVideos = Array.isArray(lessonLog.videos) ? lessonLog.videos : [];
+ 
+     const normalized = rawVideos
+         .map((video, idx) => {
+             const rawUrl = video?.url || video?.link || extractUrlFromIframe(video?.iframeCode);
+-            const videoId = video?.videoId || getYouTubeId(rawUrl) || null;
++            const directUrl = video?.videoUrl || video?.fileUrl || video?.hlsUrl || '';
++            const youtubeVideoId = video?.youtubeVideoId || video?.videoId || getYouTubeId(rawUrl) || null;
+ 
+             return {
+                 id: video?.id || video?.key || `${lessonLog.id || 'lesson'}-${idx}`,
+                 title: video?.title || video?.name || `영상 ${idx + 1}`,
+                 url: rawUrl,
++                videoUrl: video?.videoUrl || '',
++                fileUrl: video?.fileUrl || '',
++                hlsUrl: video?.hlsUrl || '',
++                directUrl,
+                 iframeCode: video?.iframeCode || '',
+-                videoId,
++                youtubeVideoId,
++                videoId: youtubeVideoId,
+             };
+         })
+-        .filter(video => video.videoId || video.iframeCode || video.url);
++        .filter(video => video.directUrl || video.youtubeVideoId || video.iframeCode || video.url);
+ 
+     if (normalized.length > 0) return normalized;
+ 
++    const fallbackDirectUrl = lessonLog.videoUrl || lessonLog.fileUrl || lessonLog.hlsUrl || '';
+     const fallbackUrl = extractUrlFromIframe(lessonLog.iframeCode) || lessonLog.materialUrl || '';
+-    const fallbackVideoId = getYouTubeId(fallbackUrl);
++    const fallbackVideoId = lessonLog.youtubeVideoId || lessonLog.videoId || getYouTubeId(fallbackUrl);
+ 
+-    if (!fallbackUrl && !fallbackVideoId) return [];
++    if (!fallbackDirectUrl && !fallbackUrl && !fallbackVideoId) return [];
+ 
+     return [{
+         id: lessonLog.id || 'primary-video',
+         title: lessonLog.progress || '수업 영상',
+         url: fallbackUrl,
++        videoUrl: lessonLog.videoUrl || '',
++        fileUrl: lessonLog.fileUrl || '',
++        hlsUrl: lessonLog.hlsUrl || '',
++        directUrl: fallbackDirectUrl,
+         iframeCode: lessonLog.iframeCode || '',
++        youtubeVideoId: fallbackVideoId,
+         videoId: fallbackVideoId,
+     }];
+ };
+\ No newline at end of file
+diff --git a/src/pages/student/ClassroomView.jsx b/src/pages/student/ClassroomView.jsx
+index 05d9d0bd042bcdd044763f734ce8278f37d3a5bc..02a03e338b13b8102e88dd14f3ae5a1b6a2d4757 100644
+--- a/src/pages/student/ClassroomView.jsx
++++ b/src/pages/student/ClassroomView.jsx
+@@ -1,33 +1,35 @@
+ // src/pages/student/ClassroomView.jsx
+ import React, { useState, useMemo, useEffect, useRef } from 'react';
+ import { Icon, formatTime, formatClassScheduleKo } from '../../utils/helpers';
+ import YouTubePlayer from '../../components/YouTubePlayer';
++import VideoFilePlayer from '../../components/VideoFilePlayer';
+ import PlayCircleFilledWhiteIcon from '@mui/icons-material/PlayCircleFilledWhite';
+ import { calculateVideoProgress, getCurrentLessonByDate, getSortedLessonLogs, normalizeLessonVideos } from '../../domain/lesson/lesson.service';
+ import { buildClassroomStats } from '../../domain/classroom/classroom.service';
+ import { canAccessLessonContent } from '../../utils/attendanceAccess';
++import { isCapacitorNativeEnvironment } from '../../utils/capacitorEnvironment';
+ 
+ const normalizeAttendanceStatus = (status) => {
+     if (!status) return null;
+     if (status === 'present' || status === 'absent' || status === 'video_makeup' || status === 'late') return status;
+ 
+     if (status === '출석') return 'present';
+     if (status === '결석') return 'absent';
+     if (status === '동영상보강') return 'video_makeup';
+     if (status === '지각') return 'late';
+ 
+     return null;
+ };
+ 
+ 
+ export default function ClassroomView({
+     classes, lessonLogs, attendanceLogs, studentDocId, studentAuthUid,
+     selectedClassId, setSelectedClassId,
+     videoProgress, onSaveVideoProgress,
+     videoMemos, onAddMemo, onUpdateMemo, onDeleteMemo,
+     onVideoModalChange,
+     targetMemo, onClearTargetMemo,
+     homeworkAssignments, homeworkResults,
+     tests, grades,
+     onNavigateToTab
+ }) {
+@@ -165,51 +167,117 @@ export default function ClassroomView({
+             }
+         } catch (error) {
+             console.error('[ClassroomView] delete memo failed', error);
+         }
+     };
+ 
+     const myMemos = useMemo(
+         () => (videoMemos?.[studentAuthUid] || []).filter((memo) => String(memo.lessonId) === String(currentLesson?.id)),
+         [videoMemos, studentAuthUid, currentLesson?.id],
+     );
+ 
+     const progressData = getProgress(currentLesson?.id);
+ 
+     const lessonVideos = useMemo(() => normalizeLessonVideos(currentLesson), [currentLesson]);
+     const hasLessonVideos = lessonVideos.length > 0;
+     const hasMultipleLessonVideos = lessonVideos.length > 1;
+     const canAccessCurrentLesson = canAccessLessonContent(
+         currentLesson ? attendanceMap[currentLesson.id] : null
+     );
+ 
+     useEffect(() => {
+         setSelectedVideo(lessonVideos[0] || null);
+         setIsVideoListOpen(false);
+     }, [lessonVideos]);
+ 
+-    const currentVideoId = selectedVideo?.videoId;
++    const currentVideoId = selectedVideo?.youtubeVideoId || selectedVideo?.videoId;
++    const currentDirectVideoUrl = selectedVideo?.videoUrl || selectedVideo?.fileUrl || selectedVideo?.hlsUrl || selectedVideo?.directUrl || '';
++    const isNativeApp = isCapacitorNativeEnvironment();
++
++
++    const handleVideoEnded = (currentTime, duration) => {
++        if (!currentLesson || duration <= 0) return;
++        onSaveVideoProgress(studentAuthUid, currentLesson.id, {
++            percent: 100,
++            seconds: currentTime || duration,
++            accumulated: duration,
++        });
++    };
++
++    const openSelectedVideoInYouTube = () => {
++        if (!currentVideoId) return;
++        window.open(`https://www.youtube.com/watch?v=${currentVideoId}`, '_blank');
++    };
++
++    const renderCurrentVideoPlayer = () => {
++        const initialSeconds = targetMemo?.time || progressData.seconds;
++
++        if (currentDirectVideoUrl) {
++            return (
++                <VideoFilePlayer
++                    ref={playerRef}
++                    src={currentDirectVideoUrl}
++                    initialSeconds={initialSeconds}
++                    onWatchedTick={handleWatchedTick}
++                    onEnded={handleVideoEnded}
++                />
++            );
++        }
++
++        if (currentVideoId && !isNativeApp) {
++            return (
++                <YouTubePlayer
++                    ref={playerRef}
++                    videoId={currentVideoId}
++                    initialSeconds={initialSeconds}
++                    onWatchedTick={handleWatchedTick}
++                    onEnded={handleVideoEnded}
++                />
++            );
++        }
++
++        if (currentVideoId && isNativeApp) {
++            return (
++                <div className="w-full h-full min-h-[220px] flex flex-col items-center justify-center bg-gray-950 text-white text-center px-6 py-8">
++                    <div className="max-w-sm space-y-4">
++                        <p className="text-sm sm:text-base font-semibold leading-relaxed">
++                            앱 내 재생이 제한된 영상입니다. 관리자에게 문의해주세요.
++                        </p>
++                        <button
++                            type="button"
++                            onClick={openSelectedVideoInYouTube}
++                            className="inline-flex items-center justify-center rounded-full bg-red-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-red-700 active:scale-95"
++                        >
++                            YouTube에서 보기
++                        </button>
++                    </div>
++                </div>
++            );
++        }
++
++        return (<div className="flex flex-col items-center justify-center text-gray-500"><Icon name="monitor" className="w-12 h-12 mb-2 opacity-50" /><p>재생할 영상이 없습니다.</p></div>);
++    };
+ 
+     const toggleMaterials = (e, logId) => {
+         e.stopPropagation();
+         setExpandedMaterialLogId(prev => prev === logId ? null : logId);
+     };
+ 
+     const playVideo = (log) => {
+         setCurrentLesson(log);
+         if (viewMode === 'list') setViewMode('player');
+     };
+ 
+     const renderLogItem = (log) => {
+         const { percent: prog } = getProgress(log.id);
+         const isSelected = currentLesson?.id === log.id;
+         const attachments = Array.isArray(log.attachments)
+             ? log.attachments
+             : (Array.isArray(log.materials) ? log.materials : []);
+         const hasMaterials = attachments.length > 0;
+         const isMaterialsExpanded = expandedMaterialLogId === log.id;
+         const canAccess = canAccessLessonContent(attendanceMap[log.id]);
+ 
+         return (
+             <div
+                 key={log.id}
+                 className={`p-4 rounded-xl transition-all border ${
+@@ -349,53 +417,53 @@ export default function ClassroomView({
+         );
+     }
+ 
+     // 2. 플레이어 뷰
+     return (
+         <div className="mobile-screen fixed inset-0 z-50 bg-white flex flex-col animate-fade-in-up">
+             <div className="mobile-header flex-none flex items-center gap-3 px-4 border-b border-gray-200 bg-white shadow-sm z-20">
+                 <button onClick={() => { setViewMode('list'); onClearTargetMemo(); }} className="mobile-back-button p-2 bg-gray-100 rounded-lg text-gray-600 hover:bg-gray-200 transition-colors active:scale-95"><Icon name="chevronLeft" className="w-5 h-5" /></button>
+                 <div className="flex-1 min-w-0"><h2 className="text-base font-bold text-gray-900 truncate"><span className="text-[#455fab] mr-2">[{currentLesson?.date}]</span>{currentLesson?.progress}</h2></div>
+             </div>
+ 
+             <div className={`flex-1 flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden ${hasLessonVideos ? 'bg-black' : 'bg-white'}`}>
+                 {hasLessonVideos && (
+                     <div className="flex-none lg:flex-1 flex flex-col overflow-visible lg:overflow-hidden bg-gray-50 lg:border-r lg:border-gray-200 relative pb-2 lg:pb-0">
+                         <div className="flex-none lg:flex-1 lg:min-h-0 bg-black flex flex-col overflow-visible lg:overflow-hidden">
+                             <div className="flex-none aspect-video lg:aspect-auto lg:flex-1 flex items-center justify-center w-full">
+                                 {!canAccessCurrentLesson ? (
+                                     <div className="flex flex-col items-center justify-center text-gray-300 text-center px-6">
+                                         <Icon name="lock" className="w-10 h-10 mb-3 opacity-70" />
+                                         <p className="text-sm leading-relaxed">
+                                             해당 수업은 출결이 확인되지 않아
+                                             <br />
+                                             영상 시청이 제한되어 있습니다.
+                                         </p>
+                                     </div>
+-                                ) : currentVideoId ? (
+-                                    <div className="w-full h-full max-w-full max-h-full aspect-video flex items-center justify-center"><YouTubePlayer ref={playerRef} videoId={currentVideoId} initialSeconds={targetMemo?.time || progressData.seconds} onWatchedTick={handleWatchedTick} /></div>
+-                                ) : (<div className="flex flex-col items-center justify-center text-gray-500"><Icon name="monitor" className="w-12 h-12 mb-2 opacity-50" /><p>재생할 영상이 없습니다.</p></div>)}
++                                ) : (
++                                    <div className="w-full h-full max-w-full max-h-full aspect-video flex items-center justify-center">{renderCurrentVideoPlayer()}</div>
++                                )}
+                             </div>
+ 
+                         {hasMultipleLessonVideos && (
+                                 <div className="bg-gray-900 border-t border-gray-800 shrink-0">
+                                     <div className="px-4 py-3 flex items-center justify-between text-gray-100">
+                                         <div>
+                                             <p className="text-[11px] uppercase tracking-wide text-gray-400">영상 선택</p>
+                                             <p className="text-sm font-bold">{selectedVideo?.title || '영상 선택'}</p>
+                                         </div>
+                                         <button
+                                             onClick={() => setIsVideoListOpen(!isVideoListOpen)}
+                                             className="flex items-center gap-2 text-xs font-bold px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 active:bg-gray-600 transition-colors"
+                                         >
+                                             {isVideoListOpen ? '목록 닫기' : `영상 ${lessonVideos.length}개`}
+                                             <Icon name={isVideoListOpen ? 'chevronDown' : 'chevronUp'} className="w-4 h-4" />
+                                         </button>
+                                     </div>
+                                     {isVideoListOpen && (
+                                         <div className="max-h-48 lg:max-h-64 overflow-y-auto custom-scrollbar bg-black/70 divide-y divide-gray-800">
+                                             {lessonVideos.map(video => (
+                                                 <button
+                                                     key={video.id}
+                                                     onClick={() => setSelectedVideo(video)}
+                                                     className={`w-full text-left px-4 py-3 flex items-center justify-between text-sm transition-colors ${selectedVideo?.id === video.id ? 'bg-gray-800 text-white' : 'text-gray-200 hover:bg-gray-800/70'}`}
+                                                 >

@@ -1,25 +1,9 @@
 // src/components/YouTubePlayer.jsx
 import React, { useEffect, useRef, useImperativeHandle, forwardRef, useMemo, useCallback, useState } from 'react';
 import YouTube from 'react-youtube';
-import { getCapacitorEnvironmentSnapshot, isCapacitorNativeEnvironment } from '../utils/capacitorEnvironment';
-
+import { isCapacitorNativeEnvironment } from '../utils/capacitorEnvironment';
 
 const CAPACITOR_YOUTUBE_ORIGIN = 'https://localhost';
-
-const isCapacitorWebViewProtocol = () => {
-    if (typeof window === 'undefined') return false;
-
-    return window.location.protocol === 'capacitor:' || window.location.protocol === 'ionic:';
-};
-
-const buildProxyPlayerSrc = (videoId, startSeconds = 0) => {
-    const params = new URLSearchParams({
-        videoId: videoId || '',
-        startSeconds: String(Math.max(0, Math.floor(Number(startSeconds) || 0))),
-    });
-
-    return `/youtube-player.html?${params.toString()}`;
-};
 
 const resolveYouTubeOrigin = () => {
     if (typeof window === 'undefined') return CAPACITOR_YOUTUBE_ORIGIN;
@@ -43,53 +27,25 @@ const getIframeOriginParam = (iframeSrc) => {
     }
 };
 
-const YouTubePlayer = forwardRef(({ videoId, initialSeconds, onWatchedTick }, ref) => {
+const YouTubePlayer = forwardRef(({ videoId, initialSeconds, onWatchedTick, onEnded }, ref) => {
     const playerRef = useRef(null);
-    const proxyIframeRef = useRef(null);
-    const proxyStateRef = useRef({ currentTime: 0, duration: 0, state: null });
     const timerRef = useRef(null);
     const [hasPlayerError, setHasPlayerError] = useState(false);
-    const isCapacitorIosWebView = useMemo(() => {
-        const snapshot = getCapacitorEnvironmentSnapshot();
-        return snapshot.capacitorPlatform === 'ios'
-            || snapshot.windowCapacitorPlatform === 'ios'
-            || (isCapacitorWebViewProtocol() && /iPad|iPhone|iPod/.test(window.navigator?.userAgent || ''));
-    }, []);
-
-    // ✅ [핵심] 최신 콜백 함수를 유지하기 위한 ref
     const onWatchedTickRef = useRef(onWatchedTick);
+    const onEndedRef = useRef(onEnded);
 
-    // 상위 컴포넌트에서 제어할 수 있는 함수 노출
     useImperativeHandle(ref, () => ({
-        getCurrentTime: () => {
-            if (isCapacitorIosWebView) {
-                proxyIframeRef.current?.contentWindow?.postMessage({ source: 'youtube-proxy-parent', type: 'getCurrentTime' }, '*');
-                return proxyStateRef.current.currentTime || 0;
-            }
-            return playerRef.current?.getCurrentTime ? playerRef.current.getCurrentTime() : 0;
-        },
+        getCurrentTime: () => playerRef.current?.getCurrentTime ? playerRef.current.getCurrentTime() : 0,
         seekTo: (seconds) => {
-            if (isCapacitorIosWebView) {
-                proxyIframeRef.current?.contentWindow?.postMessage({ source: 'youtube-proxy-parent', type: 'seekTo', seconds }, '*');
-                proxyStateRef.current.currentTime = Number(seconds || 0);
-                return;
-            }
             if (playerRef.current?.seekTo) {
                 playerRef.current.seekTo(seconds, true);
             }
         },
-        getDuration: () => {
-            if (isCapacitorIosWebView) {
-                proxyIframeRef.current?.contentWindow?.postMessage({ source: 'youtube-proxy-parent', type: 'getDuration' }, '*');
-                return proxyStateRef.current.duration || 0;
-            }
-            return playerRef.current?.getDuration ? playerRef.current.getDuration() : 0;
-        }
-    }), [isCapacitorIosWebView]);
+        getDuration: () => playerRef.current?.getDuration ? playerRef.current.getDuration() : 0,
+    }), []);
 
     const youtubeOrigin = useMemo(() => resolveYouTubeOrigin(), []);
     const youtubeUrl = useMemo(() => `https://www.youtube.com/watch?v=${videoId}`, [videoId]);
-    const proxyPlayerSrc = useMemo(() => buildProxyPlayerSrc(videoId, initialSeconds), [videoId, initialSeconds]);
 
     const opts = useMemo(() => {
         const playerVars = {
@@ -124,11 +80,10 @@ const YouTubePlayer = forwardRef(({ videoId, initialSeconds, onWatchedTick }, re
     const startWatcher = useCallback(() => {
         stopWatcher();
         timerRef.current = setInterval(() => {
-            // ✅ [수정] ref.current를 통해 항상 '최신' 함수 호출
             if (playerRef.current?.getDuration && playerRef.current?.getCurrentTime && onWatchedTickRef.current) {
                 const duration = playerRef.current.getDuration();
                 const currentTime = playerRef.current.getCurrentTime();
-                onWatchedTickRef.current(1, currentTime, duration); 
+                onWatchedTickRef.current(1, currentTime, duration);
             }
         }, 1000);
     }, [stopWatcher]);
@@ -150,73 +105,33 @@ const YouTubePlayer = forwardRef(({ videoId, initialSeconds, onWatchedTick }, re
     }, [initialSeconds, videoId, youtubeOrigin]);
 
     const onStateChange = useCallback((event) => {
-        // 재생 중(1)일 때 타이머 시작
         if (event.data === 1) {
             startWatcher();
-        } else {
-            stopWatcher();
+            return;
+        }
+
+        stopWatcher();
+        if (event.data === 0 && playerRef.current) {
+            onEndedRef.current?.(
+                playerRef.current.getCurrentTime?.() || 0,
+                playerRef.current.getDuration?.() || 0,
+            );
         }
     }, [startWatcher, stopWatcher]);
 
-    // ✅ onWatchedTick이 바뀔 때마다(부모 리렌더링 시) ref 업데이트
     useEffect(() => {
         onWatchedTickRef.current = onWatchedTick;
     }, [onWatchedTick]);
 
     useEffect(() => {
+        onEndedRef.current = onEnded;
+    }, [onEnded]);
+
+    useEffect(() => {
         setHasPlayerError(false);
         playerRef.current = null;
-        proxyStateRef.current = { currentTime: 0, duration: 0, state: null };
         stopWatcher();
     }, [videoId, stopWatcher]);
-
-    useEffect(() => {
-        if (!isCapacitorIosWebView) return;
-
-        console.info('[YouTubePlayer] Capacitor iOS proxy player src', {
-            videoId,
-            iframeSrc: proxyPlayerSrc,
-            appOrigin: typeof window !== 'undefined' ? window.location.origin : '',
-        });
-    }, [isCapacitorIosWebView, proxyPlayerSrc, videoId]);
-
-    useEffect(() => {
-        if (!isCapacitorIosWebView) return;
-
-        const handleProxyMessage = (event) => {
-            const data = event.data || {};
-            if (data.source !== 'youtube-proxy-player') return;
-
-            if (data.type === 'error') {
-                console.warn('[YouTubePlayer] YouTube proxy player error', {
-                    errorCode: data.errorCode,
-                    videoId,
-                    appOrigin: typeof window !== 'undefined' ? window.location.origin : '',
-                });
-                setHasPlayerError(true);
-                return;
-            }
-
-            if (data.type === 'ready') {
-                setHasPlayerError(false);
-            }
-
-            const currentTime = Number(data.currentTime || 0);
-            const duration = Number(data.duration || 0);
-            proxyStateRef.current = {
-                currentTime,
-                duration,
-                state: data.state ?? proxyStateRef.current.state,
-            };
-
-            if (data.type === 'tick' && onWatchedTickRef.current) {
-                onWatchedTickRef.current(1, currentTime, duration);
-            }
-        };
-
-        window.addEventListener('message', handleProxyMessage);
-        return () => window.removeEventListener('message', handleProxyMessage);
-    }, [isCapacitorIosWebView, videoId]);
 
     useEffect(() => stopWatcher, [stopWatcher]);
 
@@ -265,15 +180,6 @@ const YouTubePlayer = forwardRef(({ videoId, initialSeconds, onWatchedTick }, re
                         </button>
                     </div>
                 </div>
-            ) : isCapacitorIosWebView ? (
-                <iframe
-                    ref={proxyIframeRef}
-                    title={`YouTube video player ${videoId}`}
-                    src={proxyPlayerSrc}
-                    className="w-full h-full"
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                    allowFullScreen
-                />
             ) : (
                 <YouTube
                     videoId={videoId}
