@@ -1318,6 +1318,10 @@ video {
   min-height: 2.5rem;
 }
 
+.min-h-\[220px\]{
+  min-height: 220px;
+}
+
 .w-0{
   width: 0px;
 }
@@ -2793,6 +2797,11 @@ video {
 
 .bg-white\/95{
   background-color: rgb(255 255 255 / 0.95);
+}
+
+.bg-gray-950{
+  --tw-bg-opacity: 1;
+  background-color: rgb(3 7 18 / var(--tw-bg-opacity, 1));
 }
 
 .bg-opacity-50{

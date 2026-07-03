@@ -1,6 +1,7 @@
 // src/components/YouTubePlayer.jsx
-import React, { useEffect, useRef, useImperativeHandle, forwardRef, useMemo, useCallback } from 'react';
+import React, { useEffect, useRef, useImperativeHandle, forwardRef, useMemo, useCallback, useState } from 'react';
 import YouTube from 'react-youtube';
+import { isCapacitorNativeEnvironment } from '../utils/capacitorEnvironment';
 
 
 const resolveYouTubeOrigin = () => {
@@ -15,6 +16,7 @@ const resolveYouTubeOrigin = () => {
 const YouTubePlayer = forwardRef(({ videoId, initialSeconds, onWatchedTick }, ref) => {
     const playerRef = useRef(null);
     const timerRef = useRef(null);
+    const [hasPlayerError, setHasPlayerError] = useState(false);
 
     // ✅ [핵심] 최신 콜백 함수를 유지하기 위한 ref
     const onWatchedTickRef = useRef(onWatchedTick);
@@ -35,6 +37,7 @@ const YouTubePlayer = forwardRef(({ videoId, initialSeconds, onWatchedTick }, re
     }), []);
 
     const youtubeOrigin = useMemo(() => resolveYouTubeOrigin(), []);
+    const youtubeUrl = useMemo(() => `https://www.youtube.com/watch?v=${videoId}`, [videoId]);
 
     const opts = useMemo(() => {
         const playerVars = {
@@ -59,27 +62,14 @@ const YouTubePlayer = forwardRef(({ videoId, initialSeconds, onWatchedTick }, re
         };
     }, [videoId, youtubeOrigin]);
 
-    const onReady = (event) => {
-        playerRef.current = event.target;
-        console.info('[YouTubePlayer] YouTube player ready', {
-            videoId,
-            origin: youtubeOrigin,
-        });
-        if (initialSeconds > 0) {
-            event.target.seekTo(initialSeconds);
+    const stopWatcher = useCallback(() => {
+        if (timerRef.current) {
+            clearInterval(timerRef.current);
+            timerRef.current = null;
         }
-    };
+    }, []);
 
-    const onStateChange = (event) => {
-        // 재생 중(1)일 때 타이머 시작
-        if (event.data === 1) {
-            startWatcher();
-        } else {
-            stopWatcher();
-        }
-    };
-
-    const startWatcher = () => {
+    const startWatcher = useCallback(() => {
         stopWatcher();
         timerRef.current = setInterval(() => {
             // ✅ [수정] ref.current를 통해 항상 '최신' 함수 호출
@@ -89,38 +79,95 @@ const YouTubePlayer = forwardRef(({ videoId, initialSeconds, onWatchedTick }, re
                 onWatchedTickRef.current(1, currentTime, duration); 
             }
         }, 1000);
-    };
-    
-    const stopWatcher = () => {
-        if (timerRef.current) {
-            clearInterval(timerRef.current);
-            timerRef.current = null;
+    }, [stopWatcher]);
+
+    const onReady = useCallback((event) => {
+        setHasPlayerError(false);
+        playerRef.current = event.target;
+        console.info('[YouTubePlayer] YouTube player ready', {
+            videoId,
+            origin: youtubeOrigin,
+        });
+        if (initialSeconds > 0) {
+            event.target.seekTo(initialSeconds);
         }
-    };
+    }, [initialSeconds, videoId, youtubeOrigin]);
+
+    const onStateChange = useCallback((event) => {
+        // 재생 중(1)일 때 타이머 시작
+        if (event.data === 1) {
+            startWatcher();
+        } else {
+            stopWatcher();
+        }
+    }, [startWatcher, stopWatcher]);
 
     // ✅ onWatchedTick이 바뀔 때마다(부모 리렌더링 시) ref 업데이트
     useEffect(() => {
         onWatchedTickRef.current = onWatchedTick;
     }, [onWatchedTick]);
+
+    useEffect(() => {
+        setHasPlayerError(false);
+        playerRef.current = null;
+        stopWatcher();
+    }, [videoId, stopWatcher]);
+
+    useEffect(() => stopWatcher, [stopWatcher]);
+
+    const openInYouTube = useCallback(() => {
+        const isNativeApp = isCapacitorNativeEnvironment();
+        const openedWindow = window.open(
+            youtubeUrl,
+            '_blank',
+            isNativeApp ? undefined : 'noopener,noreferrer'
+        );
+
+        if (!isNativeApp && openedWindow) {
+            openedWindow.opener = null;
+        }
+    }, [youtubeUrl]);
+
     const onError = useCallback((event) => {
         console.warn('[YouTubePlayer] YouTube player error', {
             errorCode: event?.data,
             videoId,
             origin: youtubeOrigin,
         });
-    }, [videoId, youtubeOrigin]);
+
+        stopWatcher();
+        playerRef.current = null;
+        setHasPlayerError(true);
+    }, [videoId, youtubeOrigin, stopWatcher]);
 
     return (
         <div className="w-full h-full">
-            <YouTube
-                videoId={videoId}
-                opts={opts}
-                onReady={onReady}
-                onStateChange={onStateChange}
-                onError={onError}
-                className="w-full h-full"
-                iframeClassName="w-full h-full"
-            />
+            {hasPlayerError ? (
+                <div className="w-full h-full min-h-[220px] flex flex-col items-center justify-center bg-gray-950 text-white text-center px-6 py-8">
+                    <div className="max-w-sm space-y-4">
+                        <p className="text-sm sm:text-base font-semibold leading-relaxed">
+                            앱 내 재생이 제한된 영상입니다. YouTube에서 영상을 열어주세요.
+                        </p>
+                        <button
+                            type="button"
+                            onClick={openInYouTube}
+                            className="inline-flex items-center justify-center rounded-full bg-red-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-red-700 active:scale-95"
+                        >
+                            YouTube에서 보기
+                        </button>
+                    </div>
+                </div>
+            ) : (
+                <YouTube
+                    videoId={videoId}
+                    opts={opts}
+                    onReady={onReady}
+                    onStateChange={onStateChange}
+                    onError={onError}
+                    className="w-full h-full"
+                    iframeClassName="w-full h-full"
+                />
+            )}
         </div>
     );
 });
