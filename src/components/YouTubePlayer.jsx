@@ -6,6 +6,26 @@ import { isCapacitorNativeEnvironment } from '../utils/capacitorEnvironment';
 
 const CAPACITOR_YOUTUBE_ORIGIN = 'https://localhost';
 
+const isCapacitorWebViewProtocol = () => {
+    if (typeof window === 'undefined') return false;
+
+    return window.location.protocol === 'capacitor:' || window.location.protocol === 'ionic:';
+};
+
+const buildCapacitorIframeSrc = (videoId) => {
+    const params = new URLSearchParams({
+        autoplay: '1',
+        rel: '0',
+        modestbranding: '1',
+        controls: '1',
+        playsinline: '1',
+        enablejsapi: '1',
+        origin: CAPACITOR_YOUTUBE_ORIGIN,
+    });
+
+    return `https://www.youtube.com/embed/${videoId}?${params.toString()}`;
+};
+
 const resolveYouTubeOrigin = () => {
     if (typeof window === 'undefined') return CAPACITOR_YOUTUBE_ORIGIN;
 
@@ -32,6 +52,7 @@ const YouTubePlayer = forwardRef(({ videoId, initialSeconds, onWatchedTick }, re
     const playerRef = useRef(null);
     const timerRef = useRef(null);
     const [hasPlayerError, setHasPlayerError] = useState(false);
+    const isCapacitorWebView = useMemo(() => isCapacitorWebViewProtocol(), []);
 
     // ✅ [핵심] 최신 콜백 함수를 유지하기 위한 ref
     const onWatchedTickRef = useRef(onWatchedTick);
@@ -39,20 +60,21 @@ const YouTubePlayer = forwardRef(({ videoId, initialSeconds, onWatchedTick }, re
     // 상위 컴포넌트에서 제어할 수 있는 함수 노출
     useImperativeHandle(ref, () => ({
         getCurrentTime: () => {
-            return playerRef.current ? playerRef.current.getCurrentTime() : 0;
+            return playerRef.current?.getCurrentTime ? playerRef.current.getCurrentTime() : 0;
         },
         seekTo: (seconds) => {
-            if (playerRef.current) {
+            if (playerRef.current?.seekTo) {
                 playerRef.current.seekTo(seconds, true);
             }
         },
         getDuration: () => {
-            return playerRef.current ? playerRef.current.getDuration() : 0;
+            return playerRef.current?.getDuration ? playerRef.current.getDuration() : 0;
         }
     }), []);
 
     const youtubeOrigin = useMemo(() => resolveYouTubeOrigin(), []);
     const youtubeUrl = useMemo(() => `https://www.youtube.com/watch?v=${videoId}`, [videoId]);
+    const capacitorIframeSrc = useMemo(() => buildCapacitorIframeSrc(videoId), [videoId]);
 
     const opts = useMemo(() => {
         const playerVars = {
@@ -88,7 +110,7 @@ const YouTubePlayer = forwardRef(({ videoId, initialSeconds, onWatchedTick }, re
         stopWatcher();
         timerRef.current = setInterval(() => {
             // ✅ [수정] ref.current를 통해 항상 '최신' 함수 호출
-            if (playerRef.current && onWatchedTickRef.current) {
+            if (playerRef.current?.getDuration && playerRef.current?.getCurrentTime && onWatchedTickRef.current) {
                 const duration = playerRef.current.getDuration();
                 const currentTime = playerRef.current.getCurrentTime();
                 onWatchedTickRef.current(1, currentTime, duration); 
@@ -131,6 +153,20 @@ const YouTubePlayer = forwardRef(({ videoId, initialSeconds, onWatchedTick }, re
         playerRef.current = null;
         stopWatcher();
     }, [videoId, stopWatcher]);
+
+    useEffect(() => {
+        if (!isCapacitorWebView) return;
+
+        const iframeOriginParam = getIframeOriginParam(capacitorIframeSrc);
+        console.info('[YouTubePlayer] Capacitor iframe src', {
+            videoId,
+            iframeSrc: capacitorIframeSrc,
+            iframeOriginParam,
+            usesExpectedHttpsOrigin: iframeOriginParam === CAPACITOR_YOUTUBE_ORIGIN,
+            hasUnexpectedCapacitorOrigin: iframeOriginParam === 'capacitor://localhost',
+            appOrigin: typeof window !== 'undefined' ? window.location.origin : '',
+        });
+    }, [capacitorIframeSrc, isCapacitorWebView, videoId]);
 
     useEffect(() => stopWatcher, [stopWatcher]);
 
@@ -179,6 +215,15 @@ const YouTubePlayer = forwardRef(({ videoId, initialSeconds, onWatchedTick }, re
                         </button>
                     </div>
                 </div>
+            ) : isCapacitorWebView ? (
+                <iframe
+                    ref={playerRef}
+                    title={`YouTube video player ${videoId}`}
+                    src={capacitorIframeSrc}
+                    className="w-full h-full"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                    allowFullScreen
+                />
             ) : (
                 <YouTube
                     videoId={videoId}
