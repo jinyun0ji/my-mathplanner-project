@@ -1,6 +1,16 @@
 // src/components/YouTubePlayer.jsx
-import React, { useEffect, useRef, useImperativeHandle, forwardRef } from 'react';
+import React, { useEffect, useRef, useImperativeHandle, forwardRef, useMemo, useCallback } from 'react';
 import YouTube from 'react-youtube';
+
+
+const resolveYouTubeOrigin = () => {
+    if (typeof window === 'undefined') return 'https://localhost';
+
+    const protocol = String(window.location?.protocol || '');
+    if (protocol === 'capacitor:' || protocol === 'ionic:') return 'https://localhost';
+
+    return window.location?.origin || 'https://localhost';
+};
 
 const YouTubePlayer = forwardRef(({ videoId, initialSeconds, onWatchedTick }, ref) => {
     const playerRef = useRef(null);
@@ -24,21 +34,37 @@ const YouTubePlayer = forwardRef(({ videoId, initialSeconds, onWatchedTick }, re
         }
     }), []);
 
-    const opts = {
-        height: '100%',
-        width: '100%',
-        playerVars: {
+    const youtubeOrigin = useMemo(() => resolveYouTubeOrigin(), []);
+
+    const opts = useMemo(() => {
+        const playerVars = {
             autoplay: 1,
             rel: 0,
             modestbranding: 1,
             controls: 1,
+            playsinline: 1,
+            enablejsapi: 1,
+            origin: youtubeOrigin,
             loop: 1,
-            playlist: videoId,
-        },
-    };
+        };
+
+        if (videoId) {
+            playerVars.playlist = videoId;
+        }
+
+        return {
+            height: '100%',
+            width: '100%',
+            playerVars,
+        };
+    }, [videoId, youtubeOrigin]);
 
     const onReady = (event) => {
         playerRef.current = event.target;
+        console.info('[YouTubePlayer] YouTube player ready', {
+            videoId,
+            origin: youtubeOrigin,
+        });
         if (initialSeconds > 0) {
             event.target.seekTo(initialSeconds);
         }
@@ -76,12 +102,13 @@ const YouTubePlayer = forwardRef(({ videoId, initialSeconds, onWatchedTick }, re
     useEffect(() => {
         onWatchedTickRef.current = onWatchedTick;
     }, [onWatchedTick]);
-
-    useImperativeHandle(ref, () => ({
-        getCurrentTime: () => playerRef.current ? playerRef.current.getCurrentTime() : 0,
-        seekTo: (seconds) => { if (playerRef.current) playerRef.current.seekTo(seconds, true); },
-        getDuration: () => playerRef.current ? playerRef.current.getDuration() : 0
-    }), []);
+    const onError = useCallback((event) => {
+        console.warn('[YouTubePlayer] YouTube player error', {
+            errorCode: event?.data,
+            videoId,
+            origin: youtubeOrigin,
+        });
+    }, [videoId, youtubeOrigin]);
 
     return (
         <div className="w-full h-full">
@@ -90,6 +117,7 @@ const YouTubePlayer = forwardRef(({ videoId, initialSeconds, onWatchedTick }, re
                 opts={opts}
                 onReady={onReady}
                 onStateChange={onStateChange}
+                onError={onError}
                 className="w-full h-full"
                 iframeClassName="w-full h-full"
             />

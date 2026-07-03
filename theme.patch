@@ -1,266 +1,148 @@
-diff --git a/src/pages/parent/ParentMessengerPage.jsx b/src/pages/parent/ParentMessengerPage.jsx
-index 119c41b7333165b9f8619264f902cd9334dd4340..21a8046780432b3781e4225a1ff837dd57d1f580 100644
---- a/src/pages/parent/ParentMessengerPage.jsx
-+++ b/src/pages/parent/ParentMessengerPage.jsx
-@@ -94,187 +94,192 @@ const isParentTeacherRoom = (room, participantKeys, studentId, linkedUserDocId)
-         logParentRoomRejection(room, ROOM_TYPES.PARENT_TEACHER, 'linked parent not found', selectedRoomId);
-         return false;
-     }
-     if (!hasExactStudent(room, studentId)) {
-         logParentRoomRejection(room, ROOM_TYPES.PARENT_TEACHER, 'studentId mismatch', selectedRoomId);
-         return false;
-     }
-     return true;
- };
+diff --git a/src/components/YouTubePlayer.jsx b/src/components/YouTubePlayer.jsx
+index 8520c7d9b597db908ddff7ad161b6c83dfba9bc4..43d302426c3847375bd14e09046cdd239a3af851 100644
+--- a/src/components/YouTubePlayer.jsx
++++ b/src/components/YouTubePlayer.jsx
+@@ -1,100 +1,128 @@
+ // src/components/YouTubePlayer.jsx
+-import React, { useEffect, useRef, useImperativeHandle, forwardRef } from 'react';
++import React, { useEffect, useRef, useImperativeHandle, forwardRef, useMemo, useCallback } from 'react';
+ import YouTube from 'react-youtube';
  
- const isParentInstituteRoom = (room, participantKeys, studentId, linkedUserDocId) => isParentRoomOfType(room, ROOM_TYPES.PARENT_INSTITUTE, INSTITUTE_AUTH_UID, ['staffAuthUid', 'counterpartUid'], participantKeys, studentId, linkedUserDocId);
++
++const resolveYouTubeOrigin = () => {
++    if (typeof window === 'undefined') return 'https://localhost';
++
++    const protocol = String(window.location?.protocol || '');
++    if (protocol === 'capacitor:' || protocol === 'ionic:') return 'https://localhost';
++
++    return window.location?.origin || 'https://localhost';
++};
++
+ const YouTubePlayer = forwardRef(({ videoId, initialSeconds, onWatchedTick }, ref) => {
+     const playerRef = useRef(null);
+     const timerRef = useRef(null);
  
- const buildInitialRoomSlot = (initialRoomId) => {
-     const normalizedInitialRoomId = String(initialRoomId || '').trim();
-     if (!normalizedInitialRoomId) return null;
-     return {
-         slot: SLOTS.TEACHER,
-         id: normalizedInitialRoomId,
-         title: getTeacherDisplayName(),
-         roomType: ROOM_TYPES.PARENT_TEACHER,
-         room: { id: normalizedInitialRoomId, roomId: normalizedInitialRoomId },
-     };
- };
+     // ✅ [핵심] 최신 콜백 함수를 유지하기 위한 ref
+     const onWatchedTickRef = useRef(onWatchedTick);
  
- export default function ParentMessengerPage({ studentId, student, onBack, notificationViewerUid = '', initialRoomId = '', notifications = [], setNotifications = null }) {
--    const [selectedSlot, setSelectedSlot] = useState(() => buildInitialRoomSlot(initialRoomId));
--    const hasConsumedInitialRoomRef = useRef(false);
-+    const normalizedInitialRoomId = String(initialRoomId || '').trim();
-+    const parentNotificationOpenTimingRef = useRef({ started: false, ended: false });
-+    if (normalizedInitialRoomId && !parentNotificationOpenTimingRef.current.started) {
-+        console.time('parent notification open');
-+        parentNotificationOpenTimingRef.current.started = true;
-+    }
-+    const [selectedSlot, setSelectedSlot] = useState(() => buildInitialRoomSlot(normalizedInitialRoomId));
-+    const hasConsumedInitialRoomRef = useRef(Boolean(normalizedInitialRoomId));
-     const [rooms, setRooms] = useState([]);
-     const [loading, setLoading] = useState(false);
-     const [error, setError] = useState('');
-     const [linkedParent, setLinkedParent] = useState({ userDocId: '', profile: {} });
-     const authUid = String(auth.currentUser?.uid || '');
-     const activeStudentId = String(studentId || student?.id || student?.studentId || '');
-     const participantKeys = useMemo(() => buildParentParticipantKeys({
-         authUid,
-         parent: {
-             id: linkedParent.userDocId,
-             parentId: linkedParent.userDocId,
-             parentDocId: linkedParent.userDocId,
-             authUid,
-             parentUid: authUid,
-             ...(linkedParent.profile || {}),
+     // 상위 컴포넌트에서 제어할 수 있는 함수 노출
+     useImperativeHandle(ref, () => ({
+         getCurrentTime: () => {
+             return playerRef.current ? playerRef.current.getCurrentTime() : 0;
          },
-         student,
-         studentId: activeStudentId,
-     }), [authUid, linkedParent, student, activeStudentId]);
- 
- 
-     useEffect(() => {
-         let cancelled = false;
--        if (!authUid || initialRoomId) {
-+        if (!authUid || normalizedInitialRoomId) {
-             setLinkedParent({ userDocId: '', profile: {} });
-             return undefined;
-         }
-         const loadLinkedParent = async () => {
-             try {
-                 const indexSnap = await getDoc(doc(db, 'userAuthIndex', authUid));
-                 const userDocId = indexSnap.exists() ? String(indexSnap.data()?.userDocId || '').trim() : '';
-                 let profile = {};
-                 if (userDocId) {
-                     const userSnap = await getDoc(doc(db, 'users', userDocId));
-                     profile = userSnap.exists() ? userSnap.data() || {} : {};
-                 }
-                 if (!cancelled) setLinkedParent({ userDocId, profile });
-             } catch (loadError) {
-                 if (process.env.NODE_ENV === 'development') console.warn('[parent messenger] failed to load linked parent profile', { authUid, code: loadError?.code, message: loadError?.message });
-                 if (!cancelled) setLinkedParent({ userDocId: '', profile: {} });
+         seekTo: (seconds) => {
+             if (playerRef.current) {
+                 playerRef.current.seekTo(seconds, true);
              }
-         };
-         loadLinkedParent();
-         return () => { cancelled = true; };
--    }, [authUid, initialRoomId]);
-+    }, [authUid, normalizedInitialRoomId]);
- 
-     useEffect(() => {
--        if (!authUid || initialRoomId) {
-+        if (!authUid || normalizedInitialRoomId) {
-             setRooms([]);
-             setLoading(false);
-             setError('');
-             return undefined;
+         },
+         getDuration: () => {
+             return playerRef.current ? playerRef.current.getDuration() : 0;
          }
-         setLoading(true);
-         setError('');
-         const queryShape = getUserChatRoomsQueryShape(authUid);
-         const ownerUid = authUid;
-         console.log('[parent messenger] userChatRooms subscribe auth check', {
-             authCurrentUserUid: auth.currentUser?.uid || '',
-             queryOwnerUid: ownerUid,
-             authUidMatchesOwnerUid: auth.currentUser?.uid === ownerUid,
-         });
-         if (process.env.NODE_ENV === 'development') console.log('[parent messenger] userChatRooms query', queryShape);
-         const unsubscribe = subscribeUserChatRooms({
-             authUid,
-             role: 'parent',
-             onNext: (myRooms) => {
-                 setRooms(sortRooms(myRooms));
-                 setLoading(false);
-                 setError('');
-             },
-             onError: (snapshotError) => {
-                 console.error('[parent messenger] failed to load userChatRooms', {
-                     code: snapshotError?.code,
-                     message: snapshotError?.message,
-                     stage: snapshotError?.stage,
-                     context: snapshotError?.context,
-                     queryShape,
-                 });
-                 setLoading(false);
-                 setError('대화 목록을 불러오지 못했습니다.');
-             },
-         });
-         return unsubscribe;
--    }, [authUid, initialRoomId]);
-+    }, [authUid, normalizedInitialRoomId]);
+     }), []);
  
-     const teacherRoom = useMemo(() => rooms.find((room) => isParentTeacherRoom(room, participantKeys, activeStudentId, linkedParent.userDocId)) || null, [rooms, participantKeys, activeStudentId, linkedParent.userDocId]);
-     const instituteRoom = useMemo(() => rooms.find((room) => isParentInstituteRoom(room, participantKeys, activeStudentId, linkedParent.userDocId)) || null, [rooms, participantKeys, activeStudentId, linkedParent.userDocId]);
+-    const opts = {
+-        height: '100%',
+-        width: '100%',
+-        playerVars: {
++    const youtubeOrigin = useMemo(() => resolveYouTubeOrigin(), []);
++
++    const opts = useMemo(() => {
++        const playerVars = {
+             autoplay: 1,
+             rel: 0,
+             modestbranding: 1,
+             controls: 1,
++            playsinline: 1,
++            enablejsapi: 1,
++            origin: youtubeOrigin,
+             loop: 1,
+-            playlist: videoId,
+-        },
+-    };
++        };
++
++        if (videoId) {
++            playerVars.playlist = videoId;
++        }
++
++        return {
++            height: '100%',
++            width: '100%',
++            playerVars,
++        };
++    }, [videoId, youtubeOrigin]);
  
-     const messengerSlots = useMemo(() => [
-         { slot: SLOTS.INSTITUTE, room: instituteRoom, id: instituteRoom?.roomId || instituteRoom?.id || 'parent-institute-placeholder', title: getInstituteDisplayName(), roomType: ROOM_TYPES.PARENT_INSTITUTE },
-         { slot: SLOTS.TEACHER, room: teacherRoom, id: teacherRoom?.roomId || teacherRoom?.id || 'parent-teacher-placeholder', title: getTeacherDisplayName(), roomType: ROOM_TYPES.PARENT_TEACHER },
-     ], [teacherRoom, instituteRoom]);
- 
-     useEffect(() => {
-         if (process.env.NODE_ENV !== 'development') return;
-         const rejectedBySlot = messengerSlots.map((slot) => ({
-             slot: slot.slot,
-             expectedRoomType: slot.roomType,
-             finalPreviewRoomId: getRoomId(slot.room),
-             finalPreviewText: slot.room ? getLastMessagePreview(slot.room) : '대화 내역이 없습니다.',
-             rejected: rooms
-                 .filter((room) => getRoomId(room) !== getRoomId(slot.room))
-                 .map((room) => ({ roomId: getRoomId(room), actual: getRoomDebugInfo(room) })),
-         }));
-         console.log('[parent messenger] match debug', {
-             authUid,
-             linkedUserDocId: linkedParent.userDocId,
-             participantKeys,
-             roomsCount: rooms.length,
-             teacherRoomMatched: Boolean(teacherRoom),
-             teacherRoomId: teacherRoom?.roomId || teacherRoom?.id || '',
-             instituteRoomMatched: Boolean(instituteRoom),
-             instituteRoomId: instituteRoom?.roomId || instituteRoom?.id || '',
-             slots: messengerSlots.map((slot) => ({
-                 role: 'parent',
-                 slot: slot.slot,
-                 expectedRoomType: slot.roomType,
-                 finalPreviewRoomId: getRoomId(slot.room),
-                 finalPreviewText: slot.room ? getLastMessagePreview(slot.room) : '대화 내역이 없습니다.',
-                 selectedRoomId: getRoomId(slot.room),
-                 roomState: slot.room ? 'actual' : 'placeholder',
-             })),
-             rejectedBySlot,
-         });
-     }, [authUid, linkedParent.userDocId, participantKeys, rooms.length, teacherRoom, instituteRoom, messengerSlots]);
- 
-     useEffect(() => {
--        const normalizedInitialRoomId = String(initialRoomId || '').trim();
-         if (!normalizedInitialRoomId || selectedSlot || hasConsumedInitialRoomRef.current) return;
-         const targetSlot = messengerSlots.find((slot) => String(slot.room?.roomId || slot.room?.id || '').trim() === normalizedInitialRoomId);
-         hasConsumedInitialRoomRef.current = true;
-         handleOpenRoom(targetSlot || buildInitialRoomSlot(normalizedInitialRoomId));
-     // eslint-disable-next-line react-hooks/exhaustive-deps
--    }, [initialRoomId, messengerSlots, selectedSlot]);
-+    }, [normalizedInitialRoomId, messengerSlots, selectedSlot]);
- 
-     const handleOpenRoom = (slot) => {
-         const selectedRoomId = String(slot.room?.roomId || slot.room?.id || '').trim();
-         if (process.env.NODE_ENV === 'development') {
-             console.log('[MessengerPage] room preview candidates', {
-                 role: 'parent',
-                 roomId: selectedRoomId,
-                 title: slot.title,
-                 userChatRoomsIndexPath: authUid && selectedRoomId ? `userChatRooms/${authUid}/rooms/${selectedRoomId}` : '',
-                 candidates: getLastMessagePreviewCandidates(slot.room),
-                 selectedPreview: getLastMessagePreview(slot.room),
-                 room: slot.room,
-             });
-             console.log('[MessengerPage] open room', {
-                 role: 'parent',
-                 selectedRoomId,
-                 roomIdFromIndex: String(slot.room?.roomId || ''),
-                 roomDocId: String(slot.room?.id || ''),
-                 slot: slot.slot,
-                 expectedRoomType: slot.roomType,
-                 actual: getRoomDebugInfo(slot.room),
-             });
-             if (slot.slot === SLOTS.TEACHER) {
-                 const allowLegacyResolve = !selectedRoomId;
-                 console.log('[parent messenger] teacher room click', {
-@@ -283,56 +288,54 @@ export default function ParentMessengerPage({ studentId, student, onBack, notifi
-                     selectedRoomId,
-                     'room.id': String(slot.room?.id || ''),
-                     'room.roomId': String(slot.room?.roomId || ''),
-                     'room.channel': String(slot.room?.channel || ''),
-                     'room.roomType': String(slot.room?.roomType || ''),
-                     'room.slot': String(slot.room?.slot || ''),
-                     parentId: String(slot.room?.parentId || ''),
-                     parentUid: String(slot.room?.parentUid || ''),
-                     participantIds: getParticipantIds(slot.room),
-                     allowLegacyResolve,
-                 });
-             }
-         }
-         setSelectedSlot(slot);
-         if (selectedRoomId && notificationViewerUid) {
-             markChatRoomNotificationsRead({ viewerUid: notificationViewerUid, roomId: selectedRoomId, notifications, setNotifications })
-                 .catch((error) => console.error('[parent][notifications] mark chat room read failed', error));
+     const onReady = (event) => {
+         playerRef.current = event.target;
++        console.info('[YouTubePlayer] YouTube player ready', {
++            videoId,
++            origin: youtubeOrigin,
++        });
+         if (initialSeconds > 0) {
+             event.target.seekTo(initialSeconds);
          }
      };
  
-     const currentSlot = selectedSlot
-         ? messengerSlots.find((slot) => getRoomId(slot.room) && getRoomId(slot.room) === getRoomId(selectedSlot.room))
-             || (getRoomId(selectedSlot.room) ? selectedSlot : messengerSlots.find((slot) => slot.slot === selectedSlot.slot) || selectedSlot)
-         : null;
+     const onStateChange = (event) => {
+         // 재생 중(1)일 때 타이머 시작
+         if (event.data === 1) {
+             startWatcher();
+         } else {
+             stopWatcher();
+         }
+     };
  
--    useEffect(() => {
--        const currentRoomId = String(currentSlot?.room?.roomId || currentSlot?.room?.id || '').trim();
--        if (!currentRoomId || !window.__notificationOpenTimingActive) return;
--        console.timeEnd('notification-open');
--        window.__notificationOpenTimingActive = false;
--    }, [currentSlot]);
-+    if (currentSlot && parentNotificationOpenTimingRef.current.started && !parentNotificationOpenTimingRef.current.ended) {
-+        console.timeEnd('parent notification open');
-+        parentNotificationOpenTimingRef.current.ended = true;
-+    }
+     const startWatcher = () => {
+         stopWatcher();
+         timerRef.current = setInterval(() => {
+             // ✅ [수정] ref.current를 통해 항상 '최신' 함수 호출
+             if (playerRef.current && onWatchedTickRef.current) {
+                 const duration = playerRef.current.getDuration();
+                 const currentTime = playerRef.current.getCurrentTime();
+                 onWatchedTickRef.current(1, currentTime, duration); 
+             }
+         }, 1000);
+     };
+     
+     const stopWatcher = () => {
+         if (timerRef.current) {
+             clearInterval(timerRef.current);
+             timerRef.current = null;
+         }
+     };
  
-     if (currentSlot) {
-         const targetAuthUid = currentSlot.slot === SLOTS.TEACHER ? TEACHER_AUTH_UID : INSTITUTE_AUTH_UID;
-         const currentRoomId = String(currentSlot.room?.roomId || currentSlot.room?.id || '').trim();
-         return (
-             <div className="mobile-screen h-screen min-h-screen bg-gray-50 flex flex-col overflow-hidden">
-                 <header className="mobile-header bg-white border-b border-gray-100 px-4 flex items-center gap-3">
-                     <button type="button" onClick={() => { hasConsumedInitialRoomRef.current = true; setSelectedSlot(null); }} className="mobile-back-button text-gray-700"><ArrowBackIosNewIcon style={{ fontSize: 18 }} /></button>
-                     <h1 className="text-base font-semibold text-gray-900 truncate">{currentSlot.title}</h1>
-                 </header>
-                 <div className="flex-1 min-h-0">
-                     <StudentMessenger
-                         studentId={activeStudentId}
-                         studentAuthUid={student?.authUid || student?.studentUid || student?.uid || ''}
-                         selectedRoomId={currentRoomId}
-                         teacherName={currentSlot.title}
-                         userRole="parent"
-                         allowLegacyResolve={!currentRoomId}
-                         emptyMessage="아직 대화 내역이 없습니다."
-                         chatSlot={currentSlot.slot}
-                         notificationViewerUid={notificationViewerUid}
-                         notifications={notifications}
-                         setNotifications={setNotifications}
-                         roomCreationContext={{
-                             slot: currentSlot.slot,
+     // ✅ onWatchedTick이 바뀔 때마다(부모 리렌더링 시) ref 업데이트
+     useEffect(() => {
+         onWatchedTickRef.current = onWatchedTick;
+     }, [onWatchedTick]);
+-
+-    useImperativeHandle(ref, () => ({
+-        getCurrentTime: () => playerRef.current ? playerRef.current.getCurrentTime() : 0,
+-        seekTo: (seconds) => { if (playerRef.current) playerRef.current.seekTo(seconds, true); },
+-        getDuration: () => playerRef.current ? playerRef.current.getDuration() : 0
+-    }), []);
++    const onError = useCallback((event) => {
++        console.warn('[YouTubePlayer] YouTube player error', {
++            errorCode: event?.data,
++            videoId,
++            origin: youtubeOrigin,
++        });
++    }, [videoId, youtubeOrigin]);
+ 
+     return (
+         <div className="w-full h-full">
+             <YouTube
+                 videoId={videoId}
+                 opts={opts}
+                 onReady={onReady}
+                 onStateChange={onStateChange}
++                onError={onError}
+                 className="w-full h-full"
+                 iframeClassName="w-full h-full"
+             />
+         </div>
+     );
+ });
+ 
+ export default YouTubePlayer;
+\ No newline at end of file
