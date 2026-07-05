@@ -38,7 +38,11 @@ public class NativeYouTubePlugin: CAPPlugin, CAPBridgedPlugin {
 
             let playerViewController = NativeYouTubePlayerViewController(
                 videoId: videoId,
-                startSeconds: startSeconds
+                startSeconds: startSeconds,
+                onMemoAdded: { [weak self] memo in
+                    print("[NativeYouTubePlugin] memo added: \(memo)")
+                    self?.notifyListeners("youtubeMemoAdded", data: memo)
+                }
             )
 
             presenter.present(playerViewController, animated: true) {

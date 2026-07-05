@@ -5,10 +5,14 @@ final class NativeYouTubePlayerViewController: UIViewController, YTPlayerViewDel
     private let videoId: String
     private let startSeconds: Double
     private let playerView = YTPlayerView()
+    private var latestPlayTime: Double
+    private let onMemoAdded: (([String: Any]) -> Void)?
 
-    init(videoId: String, startSeconds: Double = 0) {
+    init(videoId: String, startSeconds: Double = 0, onMemoAdded: (([String: Any]) -> Void)? = nil) {
         self.videoId = videoId
         self.startSeconds = max(0, startSeconds)
+        self.latestPlayTime = max(0, startSeconds)
+        self.onMemoAdded = onMemoAdded
         super.init(nibName: nil, bundle: nil)
         modalPresentationStyle = .fullScreen
     }
@@ -21,6 +25,7 @@ final class NativeYouTubePlayerViewController: UIViewController, YTPlayerViewDel
         super.viewDidLoad()
         view.backgroundColor = .black
         configureCloseButton()
+        configureMemoButton()
         configurePlayerView()
         loadVideo()
     }
@@ -40,6 +45,24 @@ final class NativeYouTubePlayerViewController: UIViewController, YTPlayerViewDel
         NSLayoutConstraint.activate([
             closeButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 12),
             closeButton.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 16)
+        ])
+    }
+
+    private func configureMemoButton() {
+        let memoButton = UIButton(type: .system)
+        memoButton.translatesAutoresizingMaskIntoConstraints = false
+        memoButton.setTitle("메모", for: .normal)
+        memoButton.setTitleColor(.white, for: .normal)
+        memoButton.titleLabel?.font = .boldSystemFont(ofSize: 17)
+        memoButton.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.85)
+        memoButton.layer.cornerRadius = 18
+        memoButton.contentEdgeInsets = UIEdgeInsets(top: 8, left: 14, bottom: 8, right: 14)
+        memoButton.addTarget(self, action: #selector(memoTapped), for: .touchUpInside)
+        view.addSubview(memoButton)
+
+        NSLayoutConstraint.activate([
+            memoButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -16),
+            memoButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -16)
         ])
     }
 
@@ -77,6 +100,40 @@ final class NativeYouTubePlayerViewController: UIViewController, YTPlayerViewDel
         dismiss(animated: true)
     }
 
+    @objc private func memoTapped() {
+        let currentTime = max(0, latestPlayTime)
+        let alert = UIAlertController(title: "학습 메모", message: "현재 재생시간: \(formatTime(currentTime))", preferredStyle: .alert)
+        alert.addTextField { textField in
+            textField.placeholder = "메모를 입력하세요"
+            textField.clearButtonMode = .whileEditing
+        }
+        alert.addAction(UIAlertAction(title: "취소", style: .cancel))
+        alert.addAction(UIAlertAction(title: "저장", style: .default) { [weak self, weak alert] _ in
+            guard let self = self else { return }
+            let note = alert?.textFields?.first?.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            guard !note.isEmpty else { return }
+            self.onMemoAdded?([
+                "videoId": self.videoId,
+                "currentTime": currentTime,
+                "note": note
+            ])
+        })
+        present(alert, animated: true)
+    }
+
+    private func formatTime(_ seconds: Double) -> String {
+        let totalSeconds = Int(seconds.rounded(.down))
+        let hours = totalSeconds / 3600
+        let minutes = (totalSeconds % 3600) / 60
+        let secs = totalSeconds % 60
+
+        if hours > 0 {
+            return String(format: "%d:%02d:%02d", hours, minutes, secs)
+        }
+
+        return String(format: "%d:%02d", minutes, secs)
+    }
+
     func playerViewDidBecomeReady(_ playerView: YTPlayerView) {
         print("[NativeYouTubePlayerViewController] ready")
         if startSeconds > 0 {
@@ -93,6 +150,7 @@ final class NativeYouTubePlayerViewController: UIViewController, YTPlayerViewDel
     }
 
     func playerView(_ playerView: YTPlayerView, didPlayTime playTime: Float) {
+        latestPlayTime = Double(playTime)
         print("[NativeYouTubePlayerViewController] play time: \(playTime)")
     }
 }

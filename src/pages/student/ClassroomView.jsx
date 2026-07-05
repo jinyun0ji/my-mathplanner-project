@@ -128,6 +128,21 @@ export default function ClassroomView({
         }
     };
 
+    const handleAddNativeMemo = async ({ videoId, currentTime, note }) => {
+        if (!currentLesson || !studentAuthUid || !note?.trim()) return;
+        if (videoId && currentVideoId && String(videoId) !== String(currentVideoId)) return;
+
+        try {
+            await onAddMemo?.(studentAuthUid, {
+                lessonId: currentLesson.id,
+                time: Number(currentTime) || 0,
+                note: note.trim(),
+            });
+        } catch (error) {
+            console.error('[ClassroomView] add native memo failed', error);
+        }
+    };
+
     const handleSeekToMemo = (time) => {
         if (playerRef.current) playerRef.current.seekTo(time);
     };
@@ -243,6 +258,7 @@ export default function ClassroomView({
                 <NativeYouTubeLauncher
                     videoId={currentVideoId}
                     initialSeconds={initialSeconds}
+                    onAddNativeMemo={handleAddNativeMemo}
                 />
             );
         }

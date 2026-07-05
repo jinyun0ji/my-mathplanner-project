@@ -4,7 +4,7 @@ import { registerPlugin } from '@capacitor/core';
 const NativeYouTube = registerPlugin('NativeYouTube');
 console.log("NativeYouTube =", NativeYouTube);
 
-export default function NativeYouTubeLauncher({ videoId, initialSeconds = 0 }) {
+export default function NativeYouTubeLauncher({ videoId, initialSeconds = 0, onAddNativeMemo }) {
     const [failed, setFailed] = useState(false);
     const [isOpening, setIsOpening] = useState(false);
     const [debugLines, setDebugLines] = useState([]);
@@ -25,6 +25,28 @@ export default function NativeYouTubeLauncher({ videoId, initialSeconds = 0 }) {
         addDebug('window.location.href', window.location.href);
         addDebug('window.Capacitor exists', Boolean(window.Capacitor));
     }, [addDebug, initialSeconds, videoId]);
+
+    useEffect(() => {
+        if (typeof NativeYouTube.addListener !== 'function') return undefined;
+
+        let isMounted = true;
+        let listenerHandle;
+
+        NativeYouTube.addListener('youtubeMemoAdded', (memo) => {
+            if (!isMounted) return;
+            addDebug('memo event received', memo);
+            onAddNativeMemo?.(memo);
+        }).then((handle) => {
+            listenerHandle = handle;
+        }).catch((error) => {
+            addDebug(`memo listener failed: ${error?.message || String(error)}`);
+        });
+
+        return () => {
+            isMounted = false;
+            listenerHandle?.remove?.();
+        };
+    }, [addDebug, onAddNativeMemo]);
 
     const openNativePlayer = async () => {
         console.log("button clicked");
