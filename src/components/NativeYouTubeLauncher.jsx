@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
-import { Capacitor } from '@capacitor/core';
+import { registerPlugin } from '@capacitor/core';
+
+const NativeYouTube = registerPlugin('NativeYouTube');
 
 export default function NativeYouTubeLauncher({ videoId, initialSeconds = 0 }) {
     const [failed, setFailed] = useState(false);
@@ -11,12 +13,7 @@ export default function NativeYouTubeLauncher({ videoId, initialSeconds = 0 }) {
         setFailed(false);
 
         try {
-            const nativeYouTube = Capacitor.Plugins?.NativeYouTube;
-            if (!nativeYouTube?.open) {
-                throw new Error('NativeYouTube plugin is unavailable');
-            }
-
-            await nativeYouTube.open({
+            await NativeYouTube.open({
                 videoId,
                 startSeconds: initialSeconds || 0,
             });

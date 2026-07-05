@@ -54,9 +54,13 @@ export const isCapacitorNativeEnvironment = () => {
 
 export const isIosCapacitorNativeEnvironment = () => {
   const snapshot = getCapacitorEnvironmentSnapshot();
-  const isIos = snapshot.capacitorPlatform === 'ios' || snapshot.windowCapacitorPlatform === 'ios';
 
-  return isIos && isCapacitorNativeEnvironment();
+  return snapshot.capacitorPlatform === 'ios'
+    || snapshot.windowCapacitorPlatform === 'ios'
+    || getWindowCapacitor()?.platform === 'ios'
+    || snapshot.protocol === 'capacitor:'
+    || snapshot.href.startsWith('capacitor://')
+    || snapshot.hostname === 'app.chaesooyongmath.com';
 };
 
 export const logCapacitorEnvironment = (scope = 'app') => {

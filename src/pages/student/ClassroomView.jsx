@@ -8,6 +8,7 @@ import PlayCircleFilledWhiteIcon from '@mui/icons-material/PlayCircleFilledWhite
 import { calculateVideoProgress, getCurrentLessonByDate, getSortedLessonLogs, normalizeLessonVideos } from '../../domain/lesson/lesson.service';
 import { buildClassroomStats } from '../../domain/classroom/classroom.service';
 import { canAccessLessonContent } from '../../utils/attendanceAccess';
+import { Capacitor } from '@capacitor/core';
 import { isCapacitorNativeEnvironment, isIosCapacitorNativeEnvironment } from '../../utils/capacitorEnvironment';
 
 const normalizeAttendanceStatus = (status) => {
@@ -212,6 +213,18 @@ export default function ClassroomView({
 
     const renderCurrentVideoPlayer = () => {
         const initialSeconds = targetMemo?.time || progressData.seconds;
+
+        console.log('[video branch]', {
+            currentVideoId,
+            isNativeApp,
+            isIosNativeApp,
+            href: window.location.href,
+            origin: window.location.origin,
+            protocol: window.location.protocol,
+            hostname: window.location.hostname,
+            capacitorPlatform: Capacitor?.getPlatform?.(),
+            windowCapacitorPlatform: window.Capacitor?.getPlatform?.(),
+        });
 
         if (currentDirectVideoUrl) {
             return (
