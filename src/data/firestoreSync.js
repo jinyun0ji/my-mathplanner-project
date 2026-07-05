@@ -1192,6 +1192,33 @@ export const loadViewerDataOnce = async ({
 
         console.log('[viewer] scopedStudentAuthUids =', scopedStudentAuthUids);
 
+        const activeViewerAuthUid = userId ? String(userId) : null;
+
+        if (setVideoMemos) {
+            try {
+                if (!activeViewerAuthUid) {
+                    if (!isCancelled()) setVideoMemos({});
+                } else {
+                    const snap = await run(`videoMemos ${activeViewerAuthUid}`, () =>
+                        getDocs(
+                            query(
+                                collection(db, 'videoMemos', activeViewerAuthUid, 'items'),
+                                orderBy('updatedAt', 'desc'),
+                            ),
+                        ),
+                    );
+                    if (!isCancelled()) {
+                        setVideoMemos({
+                            [activeViewerAuthUid]: snap.docs.map((d) => ({ id: d.id, ...d.data() })),
+                        });
+                    }
+                }
+            } catch (e) {
+                console.warn('[viewer] videoMemos load failed (continue)', e);
+                if (!isCancelled()) setVideoMemos({});
+            }
+        }
+
         /* =========================
            classes (student.classIds 우선, classes.students는 fallback)
         ========================= */
@@ -1719,8 +1746,6 @@ export const loadViewerDataOnce = async ({
         const activeStudentDocId = scopedStudentUids[0] || null;
 
         // ✅ 실제 데이터 키로 쓸 authUid(7MR...) (videoProgress/externalSchedules 조회용)
-        const activeViewerAuthUid = userId ? String(userId) : null;
-
         console.log('[viewer] activeStudentDocId =', activeStudentDocId);
         console.log('[viewer] current auth.uid =', activeViewerAuthUid);
 
@@ -1794,44 +1819,6 @@ export const loadViewerDataOnce = async ({
         /* =========================
         videoProgress / externalSchedules  (✅ authUid 기준으로 조회)
         ========================= */
-
-        const viewerAuthUids = Array.from(new Set([
-            userId,
-            activeViewerAuthUid,
-            ...myStudents.map((s) => s?.authUid).filter(Boolean),
-        ]
-            .filter(Boolean)
-            .map(String)
-            .filter((uid) => uid === activeViewerAuthUid))).slice(0, 10);
-
-        if (setVideoMemos) {
-            try {
-                if (viewerAuthUids.length > 0) {
-                    const memoMap = {};
-                    await Promise.all(
-                        viewerAuthUids.map(async (uid) => {
-                            const snap = await run(`videoMemos ${uid}`, () =>
-                                getDocs(
-                                    query(
-                                        collection(db, 'videoMemos', uid, 'items'),
-                                        orderBy('updatedAt', 'desc'),
-                                    ),
-                                ),
-                            );
-                            memoMap[uid] = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-                        }),
-                    );
-
-                    if (!isCancelled()) {
-                        setVideoMemos(memoMap);
-                    }
-                } else if (!isCancelled()) {
-                    setVideoMemos({});
-                }
-            } catch (e) {
-                console.error('[viewer] FAIL videoMemos', e);
-            }
-        }
 
         // ✅ 여기부터는 authUid가 있어야 조회 가능
         if (activeViewerAuthUid) {

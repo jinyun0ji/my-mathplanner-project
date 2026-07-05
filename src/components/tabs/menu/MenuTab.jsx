@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Icon, formatTime, formatClassScheduleKo } from '../../../utils/helpers';
 import ModalPortal from '../../common/ModalPortal';
@@ -7,6 +7,7 @@ import ParentLegalPage from '../../../pages/parent/ParentLegalPage';
 import ParentBoardPage from '../../../pages/parent/ParentBoardPage';
 import { termsContent } from '../../../content/legal/terms';
 import { privacyContent } from '../../../content/legal/privacy';
+import { buildMemoListForMenu } from '../../../domain/memo/videoMemo.service';
 
 
 const ShortcutCard = ({ icon, title, description, onClick }) => (
@@ -132,44 +133,10 @@ export default function MenuTab({ student, onUpdateStudent, onLogout, videoMemos
         navigate('/login', { replace: true });
     };
 
-    const toMillis = (value) => {
-        if (!value) return 0;
-        if (typeof value === 'number') return value;
-        if (value instanceof Date) return value.getTime();
-        if (typeof value?.toDate === 'function') return value.toDate().getTime();
-        return 0;
-    };
-
-    const getMyMemos = () => {
-        const memoKeys = [studentAuthUid, student?.authUid, student?.uid, student?.studentUid, student?.id]
-            .filter(Boolean)
-            .map(String);
-        if (!memoKeys.length || !videoMemos) return [];
-
-        const seen = new Set();
-        const memos = memoKeys.flatMap((memoKey) => (Array.isArray(videoMemos[memoKey]) ? videoMemos[memoKey] : []))
-            .filter((memo) => {
-                const key = memo?.id || `${memo?.lessonId || ''}-${memo?.time || ''}-${memo?.note || ''}`;
-                if (seen.has(key)) return false;
-                seen.add(key);
-                return true;
-            });
-        return memos
-            .map((memo) => {
-                const lesson = lessonLogs?.find((l) => String(l.id) === String(memo.lessonId));
-                return {
-                    ...memo,
-                    lessonTitle: lesson?.progress || lesson?.title || memo?.lessonTitle || '강의 메모',
-                    lessonDate: lesson?.date || lesson?.lessonDate || memo?.lessonDate || '',
-                    classId: lesson?.classId || memo?.classId || memo?.classDocId,
-                    lessonId: lesson?.id || memo.lessonId,
-                    updatedAtMs: toMillis(memo.updatedAt) || 0,
-                };
-            })
-            .filter((memo) => memo.classId && memo.lessonId)
-            .sort((a, b) => (b.updatedAtMs - a.updatedAtMs) || ((Number(b.time) || 0) - (Number(a.time) || 0)));
-    };
-    const myMemos = getMyMemos();
+    const myMemos = useMemo(
+        () => buildMemoListForMenu(videoMemos, studentAuthUid, lessonLogs),
+        [videoMemos, studentAuthUid, lessonLogs],
+    );
     const isMenu = moreView === 'menu';
 
     return (

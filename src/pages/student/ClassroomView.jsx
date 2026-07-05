@@ -6,6 +6,7 @@ import NativeYouTubeLauncher from '../../components/NativeYouTubeLauncher';
 import VideoFilePlayer from '../../components/VideoFilePlayer';
 import PlayCircleFilledWhiteIcon from '@mui/icons-material/PlayCircleFilledWhite';
 import { calculateVideoProgress, getCurrentLessonByDate, getSortedLessonLogs, normalizeLessonVideos } from '../../domain/lesson/lesson.service';
+import { getLessonVideoMemosFromState } from '../../domain/memo/videoMemo.service';
 import { buildClassroomStats } from '../../domain/classroom/classroom.service';
 import { canAccessLessonContent } from '../../utils/attendanceAccess';
 import { Capacitor } from '@capacitor/core';
@@ -207,20 +208,8 @@ export default function ClassroomView({
 
     const myMemos = useMemo(() => {
         const lessonId = currentLesson?.id;
-        if (!lessonId || !videoMemos) return [];
-
-        const primaryKeys = [studentAuthUid, currentAuthUid].filter(Boolean).map(String);
-        for (const key of primaryKeys) {
-            const ownedMemos = Array.isArray(videoMemos?.[key]) ? videoMemos[key] : [];
-            const lessonMemos = ownedMemos.filter((memo) => String(memo.lessonId) === String(lessonId));
-            if (lessonMemos.length > 0) return lessonMemos;
-        }
-
-        return Object.values(videoMemos)
-            .filter(Array.isArray)
-            .flat()
-            .filter((memo) => String(memo.lessonId) === String(lessonId));
-    }, [videoMemos, studentAuthUid, currentAuthUid, currentLesson?.id]);
+        return getLessonVideoMemosFromState(videoMemos, memoOwnerUid, lessonId);
+    }, [videoMemos, memoOwnerUid, currentLesson?.id]);
 
     const progressData = getProgress(currentLesson?.id);
 
