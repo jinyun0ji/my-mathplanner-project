@@ -1796,10 +1796,13 @@ export const loadViewerDataOnce = async ({
         ========================= */
 
         const viewerAuthUids = Array.from(new Set([
-            ...(userRole === 'student' && userId ? [userId] : []),
-            ...myStudents.map((s) => s?.authUid).filter(Boolean),
+            userId,
             activeViewerAuthUid,
-        ].filter(Boolean))).slice(0, 10);
+            ...myStudents.map((s) => s?.authUid).filter(Boolean),
+        ]
+            .filter(Boolean)
+            .map(String)
+            .filter((uid) => uid === activeViewerAuthUid))).slice(0, 10);
 
         if (setVideoMemos) {
             try {

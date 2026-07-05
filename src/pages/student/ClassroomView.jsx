@@ -25,7 +25,7 @@ const normalizeAttendanceStatus = (status) => {
 
 
 export default function ClassroomView({
-    classes, lessonLogs, attendanceLogs, studentDocId, studentAuthUid,
+    classes, lessonLogs, attendanceLogs, studentDocId, studentAuthUid, currentAuthUid,
     selectedClassId, setSelectedClassId,
     videoProgress, onSaveVideoProgress,
     videoMemos, onAddMemo, onUpdateMemo, onDeleteMemo,
@@ -36,6 +36,7 @@ export default function ClassroomView({
     onNavigateToTab
 }) {
     const selectedClass = classes.find(c => String(c.id) === String(selectedClassId));
+    const memoOwnerUid = currentAuthUid || studentAuthUid || '';
 
     const sortedLogs = useMemo(
         () => getSortedLessonLogs(lessonLogs, selectedClassId),
@@ -118,10 +119,10 @@ export default function ClassroomView({
     );
 
     const handleAddMemo = async () => {
-        if (!playerRef.current || !bookmarkNote.trim() || !currentLesson || !studentAuthUid) return;
+        if (!playerRef.current || !bookmarkNote.trim() || !currentLesson || !memoOwnerUid) return;
         const currentTime = playerRef.current.getCurrentTime();
         try {
-            await onAddMemo?.(studentAuthUid, { lessonId: currentLesson.id, time: currentTime, note: bookmarkNote });
+            await onAddMemo?.(memoOwnerUid, { lessonId: currentLesson.id, time: currentTime, note: bookmarkNote });
             setBookmarkNote('');
         } catch (error) {
             console.error('[ClassroomView] add memo failed', error);
@@ -129,11 +130,11 @@ export default function ClassroomView({
     };
 
     const handleAddNativeMemo = async ({ videoId, currentTime, note }) => {
-        if (!currentLesson || !studentAuthUid || !note?.trim()) return;
+        if (!currentLesson || !memoOwnerUid || !note?.trim()) return;
         if (videoId && currentVideoId && String(videoId) !== String(currentVideoId)) return;
 
         try {
-            await onAddMemo?.(studentAuthUid, {
+            await onAddMemo?.(memoOwnerUid, {
                 lessonId: currentLesson.id,
                 time: Number(currentTime) || 0,
                 note: note.trim(),
@@ -163,9 +164,9 @@ export default function ClassroomView({
     };
 
     const handleSaveEditedMemo = async () => {
-        if (!editingMemoId || !studentAuthUid) return;
+        if (!editingMemoId || !memoOwnerUid) return;
         try {
-            await onUpdateMemo?.(studentAuthUid, editingMemoId, editFields);
+            await onUpdateMemo?.(memoOwnerUid, editingMemoId, editFields);
             setEditingMemoId(null);
             setEditFields({ note: '', time: '' });
         } catch (error) {
@@ -174,10 +175,10 @@ export default function ClassroomView({
     };
 
     const handleDeleteMemo = async (memoId) => {
-        if (!memoId || !studentAuthUid) return;
+        if (!memoId || !memoOwnerUid) return;
         if (!window.confirm('이 메모를 삭제하시겠어요?')) return;
         try {
-            await onDeleteMemo?.(studentAuthUid, memoId);
+            await onDeleteMemo?.(memoOwnerUid, memoId);
             if (editingMemoId === memoId) {
                 setEditingMemoId(null);
                 setEditFields({ note: '', time: '' });
@@ -187,10 +188,22 @@ export default function ClassroomView({
         }
     };
 
-    const myMemos = useMemo(
-        () => (videoMemos?.[studentAuthUid] || []).filter((memo) => String(memo.lessonId) === String(currentLesson?.id)),
-        [videoMemos, studentAuthUid, currentLesson?.id],
-    );
+    const myMemos = useMemo(() => {
+        const lessonId = currentLesson?.id;
+        if (!lessonId || !videoMemos) return [];
+
+        const primaryKeys = [studentAuthUid, currentAuthUid].filter(Boolean).map(String);
+        for (const key of primaryKeys) {
+            const ownedMemos = Array.isArray(videoMemos?.[key]) ? videoMemos[key] : [];
+            const lessonMemos = ownedMemos.filter((memo) => String(memo.lessonId) === String(lessonId));
+            if (lessonMemos.length > 0) return lessonMemos;
+        }
+
+        return Object.values(videoMemos)
+            .filter(Array.isArray)
+            .flat()
+            .filter((memo) => String(memo.lessonId) === String(lessonId));
+    }, [videoMemos, studentAuthUid, currentAuthUid, currentLesson?.id]);
 
     const progressData = getProgress(currentLesson?.id);
 

@@ -666,6 +666,7 @@ export default function StudentHome({
                         attendanceLogs={filteredAttendanceLogs}
                         studentDocId={studentDocId}
                         studentAuthUid={studentAuthUid}
+                        currentAuthUid={userId}
                         selectedClassId={selectedClassId}
                         setSelectedClassId={setSelectedClassId}
                         videoProgress={filteredVideoProgress}
