@@ -288,6 +288,7 @@ export default function ClassroomView({
                 <NativeYouTubeLauncher
                     videoId={currentVideoId}
                     initialSeconds={initialSeconds}
+                    memos={myMemos}
                     onAddNativeMemo={handleAddNativeMemo}
                 />
             );
@@ -469,6 +470,7 @@ export default function ClassroomView({
                         key={`${pendingNativeVideo.lessonId}-${pendingNativeVideo.videoId}-${pendingNativeVideo.initialSeconds}-${pendingNativeVideo.requestId}`}
                         videoId={pendingNativeVideo.videoId}
                         initialSeconds={pendingNativeVideo.initialSeconds}
+                        memos={myMemos}
                         onAddNativeMemo={handleAddNativeMemo}
                         autoOpen
                         renderControls={false}

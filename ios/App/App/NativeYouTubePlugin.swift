@@ -1,6 +1,12 @@
 import Capacitor
 import UIKit
 
+struct NativeMemo {
+    let id: String
+    let time: Double
+    let note: String
+}
+
 @objc(NativeYouTubePlugin)
 public class NativeYouTubePlugin: CAPPlugin, CAPBridgedPlugin {
     public let identifier = "NativeYouTubePlugin"
@@ -20,6 +26,26 @@ public class NativeYouTubePlugin: CAPPlugin, CAPBridgedPlugin {
         }
 
         let startSeconds = call.getDouble("startSeconds") ?? 0
+        let autoPlay = call.getBool("autoPlay") ?? false
+        let memos = (call.getArray("memos", JSObject.self) ?? []).compactMap { item -> NativeMemo? in
+            guard let note = item["note"] as? String else { return nil }
+            let trimmedNote = note.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmedNote.isEmpty else { return nil }
+
+            let id = (item["id"] as? String) ?? UUID().uuidString
+            let time: Double
+            if let numberTime = item["time"] as? NSNumber {
+                time = numberTime.doubleValue
+            } else if let doubleTime = item["time"] as? Double {
+                time = doubleTime
+            } else if let stringTime = item["time"] as? String, let parsedTime = Double(stringTime) {
+                time = parsedTime
+            } else {
+                time = 0
+            }
+
+            return NativeMemo(id: id, time: max(0, time), note: trimmedNote)
+        }
 
         DispatchQueue.main.async { [weak self] in
             guard let self = self else {
@@ -39,6 +65,8 @@ public class NativeYouTubePlugin: CAPPlugin, CAPBridgedPlugin {
             let playerViewController = NativeYouTubePlayerViewController(
                 videoId: videoId,
                 startSeconds: startSeconds,
+                autoPlay: autoPlay,
+                memos: memos,
                 onMemoAdded: { [weak self] memo in
                     print("[NativeYouTubePlugin] memo added: \(memo)")
                     self?.notifyListeners("youtubeMemoAdded", data: memo)

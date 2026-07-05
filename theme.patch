@@ -1,20 +1,321 @@
+diff --git a/ios/App/App/NativeYouTubePlayerViewController.swift b/ios/App/App/NativeYouTubePlayerViewController.swift
+index 361ab105441879622270be64e25b8835300c134c..9895ebe28a0105b7dc6d3c6fe520a765e9f4e3ee 100644
+--- a/ios/App/App/NativeYouTubePlayerViewController.swift
++++ b/ios/App/App/NativeYouTubePlayerViewController.swift
+@@ -1,75 +1,98 @@
+ import UIKit
+ import YouTubeiOSPlayerHelper
+ 
+ final class NativeYouTubePlayerViewController: UIViewController, YTPlayerViewDelegate {
+     private let videoId: String
+     private let startSeconds: Double
++    private let autoPlay: Bool
+     private let playerView = YTPlayerView()
+     private var latestPlayTime: Double
++    private var memos: [NativeMemo]
+     private let onMemoAdded: (([String: Any]) -> Void)?
+ 
+-    init(videoId: String, startSeconds: Double = 0, onMemoAdded: (([String: Any]) -> Void)? = nil) {
++    init(videoId: String, startSeconds: Double = 0, autoPlay: Bool = false, memos: [NativeMemo] = [], onMemoAdded: (([String: Any]) -> Void)? = nil) {
+         self.videoId = videoId
+         self.startSeconds = max(0, startSeconds)
++        self.autoPlay = autoPlay
+         self.latestPlayTime = max(0, startSeconds)
++        self.memos = memos.sorted { $0.time < $1.time }
+         self.onMemoAdded = onMemoAdded
+         super.init(nibName: nil, bundle: nil)
+         modalPresentationStyle = .fullScreen
+     }
+ 
+     required init?(coder: NSCoder) {
+         fatalError("init(coder:) has not been implemented")
+     }
+ 
+     override func viewDidLoad() {
+         super.viewDidLoad()
+         view.backgroundColor = .black
+         configureCloseButton()
++        configureMemoListButton()
+         configureMemoButton()
+         configurePlayerView()
+         loadVideo()
+     }
+ 
+     private func configureCloseButton() {
+         let closeButton = UIButton(type: .system)
+         closeButton.translatesAutoresizingMaskIntoConstraints = false
+         closeButton.setTitle("닫기", for: .normal)
+         closeButton.setTitleColor(.white, for: .normal)
+         closeButton.titleLabel?.font = .boldSystemFont(ofSize: 17)
+         closeButton.backgroundColor = UIColor.black.withAlphaComponent(0.55)
+         closeButton.layer.cornerRadius = 18
+         closeButton.contentEdgeInsets = UIEdgeInsets(top: 8, left: 14, bottom: 8, right: 14)
+         closeButton.addTarget(self, action: #selector(closeTapped), for: .touchUpInside)
+         view.addSubview(closeButton)
+ 
+         NSLayoutConstraint.activate([
+             closeButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 12),
+             closeButton.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 16)
+         ])
+     }
+ 
++    private func configureMemoListButton() {
++        let memoListButton = UIButton(type: .system)
++        memoListButton.translatesAutoresizingMaskIntoConstraints = false
++        memoListButton.setTitle("메모 목록", for: .normal)
++        memoListButton.setTitleColor(.white, for: .normal)
++        memoListButton.titleLabel?.font = .boldSystemFont(ofSize: 17)
++        memoListButton.backgroundColor = UIColor.black.withAlphaComponent(0.55)
++        memoListButton.layer.cornerRadius = 18
++        memoListButton.contentEdgeInsets = UIEdgeInsets(top: 8, left: 14, bottom: 8, right: 14)
++        memoListButton.addTarget(self, action: #selector(memoListTapped), for: .touchUpInside)
++        view.addSubview(memoListButton)
++
++        NSLayoutConstraint.activate([
++            memoListButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 12),
++            memoListButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -16)
++        ])
++    }
++
+     private func configureMemoButton() {
+         let memoButton = UIButton(type: .system)
+         memoButton.translatesAutoresizingMaskIntoConstraints = false
+         memoButton.setTitle("메모", for: .normal)
+         memoButton.setTitleColor(.white, for: .normal)
+         memoButton.titleLabel?.font = .boldSystemFont(ofSize: 17)
+         memoButton.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.85)
+         memoButton.layer.cornerRadius = 18
+         memoButton.contentEdgeInsets = UIEdgeInsets(top: 8, left: 14, bottom: 8, right: 14)
+         memoButton.addTarget(self, action: #selector(memoTapped), for: .touchUpInside)
+         view.addSubview(memoButton)
+ 
+         NSLayoutConstraint.activate([
+             memoButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -16),
+             memoButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -16)
+         ])
+     }
+ 
+     private func configurePlayerView() {
+         playerView.translatesAutoresizingMaskIntoConstraints = false
+         playerView.delegate = self
+         view.insertSubview(playerView, at: 0)
+ 
+         NSLayoutConstraint.activate([
+             playerView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+@@ -78,79 +101,109 @@ final class NativeYouTubePlayerViewController: UIViewController, YTPlayerViewDel
+             playerView.heightAnchor.constraint(equalTo: playerView.widthAnchor, multiplier: 9.0 / 16.0)
+         ])
+     }
+ 
+     private func loadVideo() {
+         var playerVars: [String: Any] = [
+             "playsinline": 1,
+             "controls": 1,
+             "rel": 0,
+             "modestbranding": 1
+         ]
+ 
+         if startSeconds > 0 {
+             playerVars["start"] = Int(startSeconds)
+         }
+ 
+         print("[NativeYouTubePlayerViewController] loading videoId=\(videoId), startSeconds=\(startSeconds)")
+         playerView.load(withVideoId: videoId, playerVars: playerVars)
+     }
+ 
+     @objc private func closeTapped() {
+         print("[NativeYouTubePlayerViewController] close tapped")
+         dismiss(animated: true)
+     }
+ 
++    @objc private func memoListTapped() {
++        let alert = UIAlertController(title: "메모 목록", message: memos.isEmpty ? "저장된 메모가 없습니다." : nil, preferredStyle: .actionSheet)
++
++        for memo in memos.sorted(by: { $0.time < $1.time }) {
++            let title = "\(formatTime(memo.time))   \(memo.note)"
++            alert.addAction(UIAlertAction(title: title, style: .default) { [weak self] _ in
++                self?.seekToMemo(memo)
++            })
++        }
++
++        alert.addAction(UIAlertAction(title: "닫기", style: .cancel))
++        if let popover = alert.popoverPresentationController {
++            popover.sourceView = view
++            popover.sourceRect = CGRect(x: view.bounds.midX, y: view.bounds.maxY, width: 0, height: 0)
++            popover.permittedArrowDirections = []
++        }
++        present(alert, animated: true)
++    }
++
++    private func seekToMemo(_ memo: NativeMemo) {
++        latestPlayTime = max(0, memo.time)
++        playerView.seek(toSeconds: Float(memo.time), allowSeekAhead: true)
++    }
++
+     @objc private func memoTapped() {
+         let currentTime = max(0, latestPlayTime)
+         let alert = UIAlertController(title: "학습 메모", message: "현재 재생시간: \(formatTime(currentTime))", preferredStyle: .alert)
+         alert.addTextField { textField in
+             textField.placeholder = "메모를 입력하세요"
+             textField.clearButtonMode = .whileEditing
+         }
+         alert.addAction(UIAlertAction(title: "취소", style: .cancel))
+         alert.addAction(UIAlertAction(title: "저장", style: .default) { [weak self, weak alert] _ in
+             guard let self = self else { return }
+             let note = alert?.textFields?.first?.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+             guard !note.isEmpty else { return }
++            let newMemo = NativeMemo(id: UUID().uuidString, time: currentTime, note: note)
++            self.memos.append(newMemo)
++            self.memos.sort { $0.time < $1.time }
+             self.onMemoAdded?([
+                 "videoId": self.videoId,
+                 "currentTime": currentTime,
+                 "note": note
+             ])
+         })
+         present(alert, animated: true)
+     }
+ 
+     private func formatTime(_ seconds: Double) -> String {
+         let totalSeconds = Int(seconds.rounded(.down))
+         let hours = totalSeconds / 3600
+         let minutes = (totalSeconds % 3600) / 60
+         let secs = totalSeconds % 60
+ 
+         if hours > 0 {
+             return String(format: "%d:%02d:%02d", hours, minutes, secs)
+         }
+ 
+         return String(format: "%d:%02d", minutes, secs)
+     }
+ 
+     func playerViewDidBecomeReady(_ playerView: YTPlayerView) {
+         print("[NativeYouTubePlayerViewController] ready")
+         if startSeconds > 0 {
+             playerView.seek(toSeconds: Float(startSeconds), allowSeekAhead: true)
+         }
++        if autoPlay {
++            playerView.playVideo()
++        }
+     }
+ 
+     func playerView(_ playerView: YTPlayerView, didChangeTo state: YTPlayerState) {
+         print("[NativeYouTubePlayerViewController] state changed: \(state.rawValue)")
+     }
+ 
+     func playerView(_ playerView: YTPlayerView, receivedError error: YTPlayerError) {
+         print("[NativeYouTubePlayerViewController] error: \(error.rawValue)")
+     }
+ 
+     func playerView(_ playerView: YTPlayerView, didPlayTime playTime: Float) {
+         latestPlayTime = Double(playTime)
+         print("[NativeYouTubePlayerViewController] play time: \(playTime)")
+     }
+ }
+diff --git a/ios/App/App/NativeYouTubePlugin.swift b/ios/App/App/NativeYouTubePlugin.swift
+index 15cc6aec7271bb3e9285ce9cdb2618f0b0d308fb..e8e597b47955ec717b6d32a0e405d38e464c2c5d 100644
+--- a/ios/App/App/NativeYouTubePlugin.swift
++++ b/ios/App/App/NativeYouTubePlugin.swift
+@@ -1,54 +1,82 @@
+ import Capacitor
+ import UIKit
+ 
++struct NativeMemo {
++    let id: String
++    let time: Double
++    let note: String
++}
++
+ @objc(NativeYouTubePlugin)
+ public class NativeYouTubePlugin: CAPPlugin, CAPBridgedPlugin {
+     public let identifier = "NativeYouTubePlugin"
+     public let jsName = "NativeYouTube"
+     public let pluginMethods: [CAPPluginMethod] = [
+         CAPPluginMethod(name: "open", returnType: CAPPluginReturnPromise)
+     ]
+ 
+     @objc func open(_ call: CAPPluginCall) {
+         print("[NativeYouTubePlugin] open requested")
+ 
+         guard let videoId = call.getString("videoId"), !videoId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+             let message = "videoId is required"
+             print("[NativeYouTubePlugin] failed: \(message)")
+             call.reject(message)
+             return
+         }
+ 
+         let startSeconds = call.getDouble("startSeconds") ?? 0
++        let autoPlay = call.getBool("autoPlay") ?? false
++        let memos = (call.getArray("memos", JSObject.self) ?? []).compactMap { item -> NativeMemo? in
++            guard let note = item["note"] as? String else { return nil }
++            let trimmedNote = note.trimmingCharacters(in: .whitespacesAndNewlines)
++            guard !trimmedNote.isEmpty else { return nil }
++
++            let id = (item["id"] as? String) ?? UUID().uuidString
++            let time: Double
++            if let numberTime = item["time"] as? NSNumber {
++                time = numberTime.doubleValue
++            } else if let doubleTime = item["time"] as? Double {
++                time = doubleTime
++            } else if let stringTime = item["time"] as? String, let parsedTime = Double(stringTime) {
++                time = parsedTime
++            } else {
++                time = 0
++            }
++
++            return NativeMemo(id: id, time: max(0, time), note: trimmedNote)
++        }
+ 
+         DispatchQueue.main.async { [weak self] in
+             guard let self = self else {
+                 let message = "Plugin instance was released"
+                 print("[NativeYouTubePlugin] failed: \(message)")
+                 call.reject(message)
+                 return
+             }
+ 
+             guard let presenter = self.bridge?.viewController else {
+                 let message = "Root view controller is unavailable"
+                 print("[NativeYouTubePlugin] failed: \(message)")
+                 call.reject(message)
+                 return
+             }
+ 
+             let playerViewController = NativeYouTubePlayerViewController(
+                 videoId: videoId,
+                 startSeconds: startSeconds,
++                autoPlay: autoPlay,
++                memos: memos,
+                 onMemoAdded: { [weak self] memo in
+                     print("[NativeYouTubePlugin] memo added: \(memo)")
+                     self?.notifyListeners("youtubeMemoAdded", data: memo)
+                 }
+             )
+ 
+             presenter.present(playerViewController, animated: true) {
+                 print("[NativeYouTubePlugin] presented")
+                 call.resolve()
+             }
+         }
+     }
+ }
 diff --git a/src/components/NativeYouTubeLauncher.jsx b/src/components/NativeYouTubeLauncher.jsx
-index c72c10c2ea0f788e4571bca397db287647b0e26f..309ff28336e392348aab1c83f7b7d2d55ba01caa 100644
+index 309ff28336e392348aab1c83f7b7d2d55ba01caa..479644afd15af47c0dc8e3e512f09f942d4c7cd8 100644
 --- a/src/components/NativeYouTubeLauncher.jsx
 +++ b/src/components/NativeYouTubeLauncher.jsx
-@@ -1,110 +1,120 @@
--import React, { useCallback, useEffect, useState } from 'react';
-+import React, { useCallback, useEffect, useRef, useState } from 'react';
+@@ -1,110 +1,124 @@
+ import React, { useCallback, useEffect, useRef, useState } from 'react';
  import { registerPlugin } from '@capacitor/core';
  
  const NativeYouTube = registerPlugin('NativeYouTube');
  console.log("NativeYouTube =", NativeYouTube);
  
--export default function NativeYouTubeLauncher({ videoId, initialSeconds = 0, onAddNativeMemo }) {
-+export default function NativeYouTubeLauncher({ videoId, initialSeconds = 0, onAddNativeMemo, autoOpen = false, renderControls = true }) {
+-export default function NativeYouTubeLauncher({ videoId, initialSeconds = 0, onAddNativeMemo, autoOpen = false, renderControls = true }) {
++export default function NativeYouTubeLauncher({ videoId, initialSeconds = 0, memos = [], onAddNativeMemo, autoOpen = false, renderControls = true }) {
      const [failed, setFailed] = useState(false);
      const [isOpening, setIsOpening] = useState(false);
-+    const isOpeningRef = useRef(false);
+     const isOpeningRef = useRef(false);
++    const autoOpenedRef = useRef(false);
      const [debugLines, setDebugLines] = useState([]);
  
      const addDebug = useCallback((message, data) => {
@@ -29,10 +330,12 @@ index c72c10c2ea0f788e4571bca397db287647b0e26f..309ff28336e392348aab1c83f7b7d2d5
      useEffect(() => {
          addDebug('videoId', videoId || '(empty)');
          addDebug('initialSeconds', initialSeconds || 0);
++        addDebug('memo count', Array.isArray(memos) ? memos.length : 0);
          addDebug('typeof NativeYouTube.open', typeof NativeYouTube.open);
          addDebug('window.location.href', window.location.href);
          addDebug('window.Capacitor exists', Boolean(window.Capacitor));
-     }, [addDebug, initialSeconds, videoId]);
+-    }, [addDebug, initialSeconds, videoId]);
++    }, [addDebug, initialSeconds, memos, videoId]);
  
      useEffect(() => {
          if (typeof NativeYouTube.addListener !== 'function') return undefined;
@@ -56,26 +359,35 @@ index c72c10c2ea0f788e4571bca397db287647b0e26f..309ff28336e392348aab1c83f7b7d2d5
          };
      }, [addDebug, onAddNativeMemo]);
  
--    const openNativePlayer = async () => {
-+    const openNativePlayer = useCallback(async () => {
+     const openNativePlayer = useCallback(async () => {
          console.log("button clicked");
          addDebug('button clicked');
  
--        if (!videoId || isOpening) return;
-+        if (!videoId || isOpeningRef.current) return;
-+        isOpeningRef.current = true;
+         if (!videoId || isOpeningRef.current) return;
+         isOpeningRef.current = true;
          setIsOpening(true);
          setFailed(false);
  
          try {
              console.log("calling plugin");
++            const nativeMemos = Array.isArray(memos)
++                ? memos.map((memo) => ({
++                    id: String(memo.id ?? ''),
++                    time: Number(memo.time) || 0,
++                    note: String(memo.note ?? ''),
++                })).filter((memo) => memo.note.trim())
++                : [];
              addDebug('calling NativeYouTube.open', {
                  videoId,
                  startSeconds: initialSeconds || 0,
++                memoCount: nativeMemos.length,
++                autoPlay: true,
              });
              await NativeYouTube.open({
                  videoId,
                  startSeconds: initialSeconds || 0,
++                autoPlay: true,
++                memos: nativeMemos,
              });
              addDebug('open resolved');
              console.info('[NativeYouTubeLauncher] native player opened', { videoId });
@@ -85,24 +397,26 @@ index c72c10c2ea0f788e4571bca397db287647b0e26f..309ff28336e392348aab1c83f7b7d2d5
              console.error('[NativeYouTubeLauncher] native player failed', error);
              setFailed(true);
          } finally {
-+            isOpeningRef.current = false;
+             isOpeningRef.current = false;
              setIsOpening(false);
          }
--    };
-+    }, [addDebug, initialSeconds, videoId]);
-+
-+    useEffect(() => {
-+        if (!autoOpen) return;
-+        openNativePlayer();
-+    }, [autoOpen, openNativePlayer]);
+-    }, [addDebug, initialSeconds, videoId]);
++    }, [addDebug, initialSeconds, memos, videoId]);
+ 
+     useEffect(() => {
+-        if (!autoOpen) return;
++        if (!autoOpen || autoOpenedRef.current) return;
++        autoOpenedRef.current = true;
+         openNativePlayer();
+     }, [autoOpen, openNativePlayer]);
  
      const openInYouTube = () => {
          if (!videoId) return;
          window.open(`https://www.youtube.com/watch?v=${videoId}`, '_blank');
      };
  
-+    if (!renderControls) return null;
-+
+     if (!renderControls) return null;
+ 
      return (
          <div className="w-full h-full min-h-[220px] flex flex-col items-center justify-center bg-black text-white text-center px-6 py-8">
              <div className="max-w-sm space-y-4">
@@ -118,254 +432,63 @@ index c72c10c2ea0f788e4571bca397db287647b0e26f..309ff28336e392348aab1c83f7b7d2d5
                      {isOpening ? '여는 중...' : '앱 내 플레이어로 재생'}
                  </button>
                  {failed && (
-                     <button
-                         type="button"
-                         onClick={openInYouTube}
-                         className="block mx-auto rounded-full border border-white/70 px-5 py-2.5 text-sm font-bold text-white transition-colors hover:bg-white hover:text-black"
-                     >
-                         YouTube에서 보기
-                     </button>
-                 )}
-             </div>
-             {debugLines.length > 0 && (
 diff --git a/src/pages/student/ClassroomView.jsx b/src/pages/student/ClassroomView.jsx
-index fa6707ce981604d9c5a68f75f2117a6d39a3c2eb..441bafc4aaf619778073ded2fe47882cd5017422 100644
+index 441bafc4aaf619778073ded2fe47882cd5017422..8eac3f089e51ca61df1f2fc93f399994e97d8072 100644
 --- a/src/pages/student/ClassroomView.jsx
 +++ b/src/pages/student/ClassroomView.jsx
-@@ -24,80 +24,97 @@ const normalizeAttendanceStatus = (status) => {
- };
- 
- 
- export default function ClassroomView({
-     classes, lessonLogs, attendanceLogs, studentDocId, studentAuthUid, currentAuthUid,
-     selectedClassId, setSelectedClassId,
-     videoProgress, onSaveVideoProgress,
-     videoMemos, onAddMemo, onUpdateMemo, onDeleteMemo,
-     onVideoModalChange,
-     targetMemo, onClearTargetMemo,
-     homeworkAssignments, homeworkResults,
-     tests, grades,
-     onNavigateToTab
- }) {
-     const selectedClass = classes.find(c => String(c.id) === String(selectedClassId));
-     const memoOwnerUid = currentAuthUid || studentAuthUid || '';
- 
-     const sortedLogs = useMemo(
-         () => getSortedLessonLogs(lessonLogs, selectedClassId),
-         [lessonLogs, selectedClassId]
-     );
- 
-     const [viewMode, setViewMode] = useState('list');
-     const [currentLesson, setCurrentLesson] = useState(null);
-     const [selectedVideo, setSelectedVideo] = useState(null);
-+    const [pendingNativeVideo, setPendingNativeVideo] = useState(null);
-     const playerRef = useRef(null);
-     const [isAttendanceDetailOpen, setIsAttendanceDetailOpen] = useState(false);
-     const [isVideoListOpen, setIsVideoListOpen] = useState(false);
- 
-     // 자료 리스트 펼침 상태 관리
-     const [expandedMaterialLogId, setExpandedMaterialLogId] = useState(null);
-     const attendanceMap = useMemo(() => {
-         const map = {};
-         sortedLogs.forEach((log) => {
-             const attendance = attendanceLogs.find(
-                 (attendanceLog) =>
-                     (attendanceLog.studentId || attendanceLog.studentUid) === studentDocId &&
-                     (attendanceLog.lessonLogId === log.id ||
-                         (!attendanceLog.lessonLogId &&
-                             attendanceLog.classId === log.classId &&
-                             attendanceLog.date === log.date))
-             );
-             const normalizedStatus = normalizeAttendanceStatus(attendance?.status);
-             if (normalizedStatus) {
-                 map[log.id] = { status: normalizedStatus };
-             }
+@@ -266,50 +266,51 @@ export default function ClassroomView({
+             href: window.location.href,
+             origin: window.location.origin,
+             protocol: window.location.protocol,
+             hostname: window.location.hostname,
+             capacitorPlatform: Capacitor?.getPlatform?.(),
+             windowCapacitorPlatform: window.Capacitor?.getPlatform?.(),
          });
-         return map;
-     }, [attendanceLogs, sortedLogs, studentDocId]);
  
-     useEffect(() => {
-         if (targetMemo && targetMemo.lessonId) {
-             const target = getCurrentLessonByDate(sortedLogs, null, targetMemo.lessonId);
-             if (target) {
-+                const targetVideos = normalizeLessonVideos(target);
-+                const targetVideo = targetVideos[0] || null;
-+                const targetVideoId = targetVideo?.youtubeVideoId || targetVideo?.videoId;
-+
-                 setCurrentLesson(target);
-+                setSelectedVideo(targetVideo);
-+
-+                if (isCapacitorNativeEnvironment() && targetVideoId) {
-+                    setPendingNativeVideo({
-+                        lessonId: target.id,
-+                        videoId: targetVideoId,
-+                        initialSeconds: targetMemo.time || 0,
-+                        requestId: Date.now(),
-+                    });
-+                    return;
-+                }
-+
-                 setViewMode('player');
-             }
+         if (currentDirectVideoUrl) {
+             return (
+                 <VideoFilePlayer
+                     ref={playerRef}
+                     src={currentDirectVideoUrl}
+                     initialSeconds={initialSeconds}
+                     onWatchedTick={handleWatchedTick}
+                     onEnded={handleVideoEnded}
+                 />
+             );
          }
-     }, [targetMemo, sortedLogs]);
  
-     useEffect(() => {
-         if (onVideoModalChange) {
-             onVideoModalChange(viewMode === 'player');
+         if (currentVideoId && isIosNativeApp) {
+             return (
+                 <NativeYouTubeLauncher
+                     videoId={currentVideoId}
+                     initialSeconds={initialSeconds}
++                    memos={myMemos}
+                     onAddNativeMemo={handleAddNativeMemo}
+                 />
+             );
          }
-     }, [viewMode, onVideoModalChange]);
  
-     const [bookmarkNote, setBookmarkNote] = useState('');
-     const [isListOpen, setIsListOpen] = useState(false);
-     const [editingMemoId, setEditingMemoId] = useState(null);
-     const [editFields, setEditFields] = useState({ note: '', time: '' });
+         if (currentVideoId && !isNativeApp) {
+             return (
+                 <YouTubePlayer
+                     ref={playerRef}
+                     videoId={currentVideoId}
+                     initialSeconds={initialSeconds}
+                     onWatchedTick={handleWatchedTick}
+                     onEnded={handleVideoEnded}
+                 />
+             );
+         }
  
-     useEffect(() => {
-         setEditingMemoId(null);
-         setEditFields({ note: '', time: '' });
-     }, [currentLesson?.id]);
- 
-     const getProgress = (lessonId) => {
-         const primary = calculateVideoProgress(videoProgress, studentAuthUid, lessonId);
-         if ((primary.percent || primary.seconds || primary.accumulated) && studentAuthUid) return primary;
-         return calculateVideoProgress(videoProgress, studentDocId, lessonId);
-@@ -294,104 +311,126 @@ export default function ClassroomView({
+         if (currentVideoId && isNativeApp) {
+             return (
+                 <div className="w-full h-full min-h-[220px] flex flex-col items-center justify-center bg-gray-950 text-white text-center px-6 py-8">
                      <div className="max-w-sm space-y-4">
                          <p className="text-sm sm:text-base font-semibold leading-relaxed">
                              앱 내 재생이 제한된 영상입니다. 관리자에게 문의해주세요.
                          </p>
                          <button
-                             type="button"
-                             onClick={openSelectedVideoInYouTube}
-                             className="inline-flex items-center justify-center rounded-full bg-red-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-red-700 active:scale-95"
-                         >
-                             YouTube에서 보기
-                         </button>
-                     </div>
-                 </div>
-             );
-         }
- 
-         return (<div className="flex flex-col items-center justify-center text-gray-500"><Icon name="monitor" className="w-12 h-12 mb-2 opacity-50" /><p>재생할 영상이 없습니다.</p></div>);
-     };
- 
-     const toggleMaterials = (e, logId) => {
-         e.stopPropagation();
-         setExpandedMaterialLogId(prev => prev === logId ? null : logId);
-     };
- 
-     const playVideo = (log) => {
-+        const videos = normalizeLessonVideos(log);
-+        const firstVideo = videos[0] || null;
-+        const videoId = firstVideo?.youtubeVideoId || firstVideo?.videoId;
-+
-         setCurrentLesson(log);
-+        setSelectedVideo(firstVideo);
-+
-+        if (isNativeApp && videoId) {
-+            const logProgress = getProgress(log.id);
-+            setPendingNativeVideo({
-+                lessonId: log.id,
-+                videoId,
-+                initialSeconds: targetMemo?.lessonId === log.id ? (targetMemo.time || 0) : (logProgress.seconds || 0),
-+                requestId: Date.now(),
-+            });
-+            return;
-+        }
-+
-         if (viewMode === 'list') setViewMode('player');
-     };
- 
-+    const handleCardBodyClick = (log) => {
-+        if (isNativeApp) return;
-+        playVideo(log);
-+    };
-+
-     const renderLogItem = (log) => {
-         const { percent: prog } = getProgress(log.id);
-         const isSelected = currentLesson?.id === log.id;
-         const attachments = Array.isArray(log.attachments)
-             ? log.attachments
-             : (Array.isArray(log.materials) ? log.materials : []);
-         const hasMaterials = attachments.length > 0;
-         const isMaterialsExpanded = expandedMaterialLogId === log.id;
-         const canAccess = canAccessLessonContent(attendanceMap[log.id]);
- 
-         return (
-             <div
-                 key={log.id}
-                 className={`p-4 rounded-xl transition-all border ${
-                     isSelected
-                         ? 'bg-[#f1f4ff] border-[#cfd8ff] shadow-sm'
-                         : 'bg-white border-gray-100 hover:bg-gray-50'
-                 }`}
-             >
-                 <div className="flex justify-between items-start">
-                     <div
--                        className="flex-1 min-w-0 pr-4 cursor-pointer"
--                        onClick={() => playVideo(log)}
-+                        className={`flex-1 min-w-0 pr-4 ${isNativeApp ? '' : 'cursor-pointer'}`}
-+                        onClick={() => handleCardBodyClick(log)}
-                     >
-                         <div className="flex items-center gap-2 mb-1.5">
-                             <span className="text-xs font-mono text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">{log.date}</span>
-                             {prog >= 100 && <span className="text-[10px] font-bold text-green-600 bg-green-50 px-1.5 py-0.5 rounded border border-green-100">완료</span>}
-                             {prog > 0 && prog < 100 && <span className="text-[10px] font-bold text-[#455fab] bg-[#f1f4ff] px-1.5 py-0.5 rounded border border-[#eef2ff]">{prog}%</span>}
-                         </div>
-                         <h4 className={`text-base font-bold truncate ${isSelected ? 'text-[#334a91]' : 'text-gray-800'}`}>{log.progress}</h4>
-                         <p className="text-xs text-gray-500 mt-1 truncate mb-2">{log.assignment}</p>
-                     </div>
- 
-                     <div className="flex items-center gap-3">
-                         {hasMaterials && (
-                             <button
-                                 onClick={(e) => toggleMaterials(e, log.id)}
-                                 className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${
-                                     isMaterialsExpanded
-                                         ? 'bg-gray-200 text-gray-800'
-                                         : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                                 }`}
-                                 title="강의 자료"
-                             >
-                                 {/* ✅ [수정] 자료 아이콘은 그대로 유지 */}
-                                 <Icon name="fileText" className="w-4 h-4" />
-                             </button>
-                         )}
-                         <button
--                            onClick={() => playVideo(log)}
-+                            onClick={(e) => { e.stopPropagation(); playVideo(log); }}
-                             className={`w-10 h-10 rounded-full flex items-center justify-center transition-all shadow-sm ${isSelected ? 'bg-[#eef2ff] text-[#455fab]' : 'bg-gray-50 text-gray-300'}`}
-                         >
-                             <PlayCircleFilledWhiteIcon className="w-7 h-7" />
-                         </button>
-                     </div>
-                 </div>
- 
-                 {isMaterialsExpanded && (
-                     <div className="mt-3 pt-3 border-t border-gray-200/60 animate-fade-in-down">
-                         <p className="text-xs font-bold text-gray-500 mb-2 flex items-center gap-1">
-                             <Icon name="folder" className="w-3 h-3" />
-                             강의 자료 ({attachments.length})
-                         </p>
-                         <div className="space-y-2">
-                             {attachments.map((mat, idx) => (
-                                 canAccess ? (
-                                     <a
-                                         key={idx}
-                                         href={mat.url}
-                                         target="_blank"
-                                         rel="noopener noreferrer"
-                                         className="flex items-center gap-3 p-3 rounded-xl bg-gray-50 border border-gray-100 active:bg-gray-200 transition-colors"
-                                         onClick={(e) => e.stopPropagation()}
-                                     >
-                                         <div className="w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center flex-shrink-0 text-red-500">
-@@ -403,50 +442,60 @@ export default function ClassroomView({
-                                     </a>
-                                 ) : (
-                                     <span
-                                         key={idx}
-                                         className="flex items-center gap-3 p-3 rounded-xl bg-gray-100 border border-gray-200 text-gray-500"
+@@ -447,50 +448,51 @@ export default function ClassroomView({
                                      >
                                          <div className="w-8 h-8 rounded-lg bg-gray-200 flex items-center justify-center flex-shrink-0 text-gray-400">
                                              <Icon name="download" className="w-4 h-4" />
@@ -386,16 +509,17 @@ index fa6707ce981604d9c5a68f75f2117a6d39a3c2eb..441bafc4aaf619778073ded2fe47882c
      if (viewMode === 'list') {
          return (
              <div className="animate-fade-in-up pb-20 space-y-6 relative">
-+                {pendingNativeVideo && (
-+                    <NativeYouTubeLauncher
-+                        key={`${pendingNativeVideo.lessonId}-${pendingNativeVideo.videoId}-${pendingNativeVideo.initialSeconds}-${pendingNativeVideo.requestId}`}
-+                        videoId={pendingNativeVideo.videoId}
-+                        initialSeconds={pendingNativeVideo.initialSeconds}
-+                        onAddNativeMemo={handleAddNativeMemo}
-+                        autoOpen
-+                        renderControls={false}
-+                    />
-+                )}
+                 {pendingNativeVideo && (
+                     <NativeYouTubeLauncher
+                         key={`${pendingNativeVideo.lessonId}-${pendingNativeVideo.videoId}-${pendingNativeVideo.initialSeconds}-${pendingNativeVideo.requestId}`}
+                         videoId={pendingNativeVideo.videoId}
+                         initialSeconds={pendingNativeVideo.initialSeconds}
++                        memos={myMemos}
+                         onAddNativeMemo={handleAddNativeMemo}
+                         autoOpen
+                         renderControls={false}
+                     />
+                 )}
                  <div className="flex items-center gap-3">
                      <button onClick={() => setSelectedClassId(null)} className="mobile-back-button p-2 bg-white rounded-xl text-gray-600 hover:bg-gray-100 transition-colors shadow-sm active:scale-95">
                          <Icon name="chevronLeft" className="w-6 h-6" />
@@ -416,8 +540,3 @@ index fa6707ce981604d9c5a68f75f2117a6d39a3c2eb..441bafc4aaf619778073ded2fe47882c
                          {sortedLogs.length > 0 ? sortedLogs.map(log => renderLogItem(log)) : (<div className="p-10 text-center text-gray-400 text-sm">등록된 강의가 없습니다.</div>)}
                      </div>
                  </div>
- 
-                 {isAttendanceDetailOpen && (
-                     <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => setIsAttendanceDetailOpen(false)}>
-                         <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl animate-fade-in-up max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
-                             <div className="flex justify-between items-center mb-4 pb-4 border-b border-gray-100">

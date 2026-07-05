@@ -4,10 +4,11 @@ import { registerPlugin } from '@capacitor/core';
 const NativeYouTube = registerPlugin('NativeYouTube');
 console.log("NativeYouTube =", NativeYouTube);
 
-export default function NativeYouTubeLauncher({ videoId, initialSeconds = 0, onAddNativeMemo, autoOpen = false, renderControls = true }) {
+export default function NativeYouTubeLauncher({ videoId, initialSeconds = 0, memos = [], onAddNativeMemo, autoOpen = false, renderControls = true }) {
     const [failed, setFailed] = useState(false);
     const [isOpening, setIsOpening] = useState(false);
     const isOpeningRef = useRef(false);
+    const autoOpenedRef = useRef(false);
     const [debugLines, setDebugLines] = useState([]);
 
     const addDebug = useCallback((message, data) => {
@@ -22,10 +23,11 @@ export default function NativeYouTubeLauncher({ videoId, initialSeconds = 0, onA
     useEffect(() => {
         addDebug('videoId', videoId || '(empty)');
         addDebug('initialSeconds', initialSeconds || 0);
+        addDebug('memo count', Array.isArray(memos) ? memos.length : 0);
         addDebug('typeof NativeYouTube.open', typeof NativeYouTube.open);
         addDebug('window.location.href', window.location.href);
         addDebug('window.Capacitor exists', Boolean(window.Capacitor));
-    }, [addDebug, initialSeconds, videoId]);
+    }, [addDebug, initialSeconds, memos, videoId]);
 
     useEffect(() => {
         if (typeof NativeYouTube.addListener !== 'function') return undefined;
@@ -60,13 +62,24 @@ export default function NativeYouTubeLauncher({ videoId, initialSeconds = 0, onA
 
         try {
             console.log("calling plugin");
+            const nativeMemos = Array.isArray(memos)
+                ? memos.map((memo) => ({
+                    id: String(memo.id ?? ''),
+                    time: Number(memo.time) || 0,
+                    note: String(memo.note ?? ''),
+                })).filter((memo) => memo.note.trim())
+                : [];
             addDebug('calling NativeYouTube.open', {
                 videoId,
                 startSeconds: initialSeconds || 0,
+                memoCount: nativeMemos.length,
+                autoPlay: true,
             });
             await NativeYouTube.open({
                 videoId,
                 startSeconds: initialSeconds || 0,
+                autoPlay: true,
+                memos: nativeMemos,
             });
             addDebug('open resolved');
             console.info('[NativeYouTubeLauncher] native player opened', { videoId });
@@ -79,10 +92,11 @@ export default function NativeYouTubeLauncher({ videoId, initialSeconds = 0, onA
             isOpeningRef.current = false;
             setIsOpening(false);
         }
-    }, [addDebug, initialSeconds, videoId]);
+    }, [addDebug, initialSeconds, memos, videoId]);
 
     useEffect(() => {
-        if (!autoOpen) return;
+        if (!autoOpen || autoOpenedRef.current) return;
+        autoOpenedRef.current = true;
         openNativePlayer();
     }, [autoOpen, openNativePlayer]);
 
