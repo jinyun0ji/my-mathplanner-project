@@ -21,6 +21,7 @@ export async function addVideoMemo(db, authUid, { lessonId, time, note }) {
     updatedAt: serverTimestamp(),
   };
   const created = await addDoc(ref, payload);
+  
   return { id: created.id, ...payload };
 }
 
