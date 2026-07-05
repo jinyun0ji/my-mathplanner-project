@@ -1,36 +1,60 @@
 diff --git a/src/components/NativeYouTubeLauncher.jsx b/src/components/NativeYouTubeLauncher.jsx
-index 22176bb8e97fc0e53b3f4285f24d6c919fd98270..8e15cac8a247d6dbaa0441ed908bacbcfe888ed5 100644
+index b0f082dde00cb9cb196adde0c91c09ca0972591d..958c4bab9bac01144ddb8c0f4a9a2d3ee031216c 100644
 --- a/src/components/NativeYouTubeLauncher.jsx
 +++ b/src/components/NativeYouTubeLauncher.jsx
-@@ -1,44 +1,41 @@
- import React, { useState } from 'react';
--import { Capacitor } from '@capacitor/core';
-+import { registerPlugin } from '@capacitor/core';
-+
-+const NativeYouTube = registerPlugin('NativeYouTube');
+@@ -1,64 +1,97 @@
+-import React, { useState } from 'react';
++import React, { useCallback, useEffect, useState } from 'react';
+ import { registerPlugin } from '@capacitor/core';
+ 
+ const NativeYouTube = registerPlugin('NativeYouTube');
+ console.log("NativeYouTube =", NativeYouTube);
  
  export default function NativeYouTubeLauncher({ videoId, initialSeconds = 0 }) {
      const [failed, setFailed] = useState(false);
      const [isOpening, setIsOpening] = useState(false);
++    const [debugLines, setDebugLines] = useState([]);
++
++    const addDebug = useCallback((message, data) => {
++        const formattedData = data === undefined
++            ? ''
++            : ` ${typeof data === 'string' ? data : JSON.stringify(data)}`;
++        const line = `${new Date().toLocaleTimeString()} ${message}${formattedData}`;
++        setDebugLines((lines) => [...lines, line]);
++        console.log(`[NativeYouTubeLauncher] ${message}`, data ?? '');
++    }, []);
++
++    useEffect(() => {
++        addDebug('videoId', videoId || '(empty)');
++        addDebug('initialSeconds', initialSeconds || 0);
++        addDebug('typeof NativeYouTube.open', typeof NativeYouTube.open);
++        addDebug('window.location.href', window.location.href);
++        addDebug('window.Capacitor exists', Boolean(window.Capacitor));
++    }, [addDebug, initialSeconds, videoId]);
  
      const openNativePlayer = async () => {
+         console.log("button clicked");
++        addDebug('button clicked');
+ 
          if (!videoId || isOpening) return;
          setIsOpening(true);
          setFailed(false);
  
          try {
--            const nativeYouTube = Capacitor.Plugins?.NativeYouTube;
--            if (!nativeYouTube?.open) {
--                throw new Error('NativeYouTube plugin is unavailable');
--            }
--
--            await nativeYouTube.open({
-+            await NativeYouTube.open({
+             console.log("calling plugin");
++            addDebug('calling NativeYouTube.open', {
++                videoId,
++                startSeconds: initialSeconds || 0,
++            });
+             await NativeYouTube.open({
                  videoId,
                  startSeconds: initialSeconds || 0,
              });
++            addDebug('open resolved');
              console.info('[NativeYouTubeLauncher] native player opened', { videoId });
          } catch (error) {
++            const errorMessage = error?.message || String(error);
++            addDebug(`open failed: ${errorMessage}`);
              console.error('[NativeYouTubeLauncher] native player failed', error);
              setFailed(true);
          } finally {
@@ -51,157 +75,29 @@ index 22176bb8e97fc0e53b3f4285f24d6c919fd98270..8e15cac8a247d6dbaa0441ed908bacbc
                  </p>
                  <button
                      type="button"
-diff --git a/src/pages/student/ClassroomView.jsx b/src/pages/student/ClassroomView.jsx
-index 2593561254276eaa122e2fe6d52b016e7daadd6e..80b1bb7b4f5485b8ea3d400ef85ece209ab7c10c 100644
---- a/src/pages/student/ClassroomView.jsx
-+++ b/src/pages/student/ClassroomView.jsx
-@@ -1,35 +1,36 @@
- // src/pages/student/ClassroomView.jsx
- import React, { useState, useMemo, useEffect, useRef } from 'react';
- import { Icon, formatTime, formatClassScheduleKo } from '../../utils/helpers';
- import YouTubePlayer from '../../components/YouTubePlayer';
- import NativeYouTubeLauncher from '../../components/NativeYouTubeLauncher';
- import VideoFilePlayer from '../../components/VideoFilePlayer';
- import PlayCircleFilledWhiteIcon from '@mui/icons-material/PlayCircleFilledWhite';
- import { calculateVideoProgress, getCurrentLessonByDate, getSortedLessonLogs, normalizeLessonVideos } from '../../domain/lesson/lesson.service';
- import { buildClassroomStats } from '../../domain/classroom/classroom.service';
- import { canAccessLessonContent } from '../../utils/attendanceAccess';
-+import { Capacitor } from '@capacitor/core';
- import { isCapacitorNativeEnvironment, isIosCapacitorNativeEnvironment } from '../../utils/capacitorEnvironment';
- 
- const normalizeAttendanceStatus = (status) => {
-     if (!status) return null;
-     if (status === 'present' || status === 'absent' || status === 'video_makeup' || status === 'late') return status;
- 
-     if (status === '출석') return 'present';
-     if (status === '결석') return 'absent';
-     if (status === '동영상보강') return 'video_makeup';
-     if (status === '지각') return 'late';
- 
-     return null;
- };
- 
- 
- export default function ClassroomView({
-     classes, lessonLogs, attendanceLogs, studentDocId, studentAuthUid,
-     selectedClassId, setSelectedClassId,
-     videoProgress, onSaveVideoProgress,
-     videoMemos, onAddMemo, onUpdateMemo, onDeleteMemo,
-     onVideoModalChange,
-     targetMemo, onClearTargetMemo,
-     homeworkAssignments, homeworkResults,
-     tests, grades,
-     onNavigateToTab
-@@ -191,50 +192,62 @@ export default function ClassroomView({
-     }, [lessonVideos]);
- 
-     const currentVideoId = selectedVideo?.youtubeVideoId || selectedVideo?.videoId;
-     const currentDirectVideoUrl = selectedVideo?.videoUrl || selectedVideo?.fileUrl || selectedVideo?.hlsUrl || selectedVideo?.directUrl || '';
-     const isNativeApp = isCapacitorNativeEnvironment();
-     const isIosNativeApp = isIosCapacitorNativeEnvironment();
- 
- 
-     const handleVideoEnded = (currentTime, duration) => {
-         if (!currentLesson || duration <= 0) return;
-         onSaveVideoProgress(studentAuthUid, currentLesson.id, {
-             percent: 100,
-             seconds: currentTime || duration,
-             accumulated: duration,
-         });
-     };
- 
-     const openSelectedVideoInYouTube = () => {
-         if (!currentVideoId) return;
-         window.open(`https://www.youtube.com/watch?v=${currentVideoId}`, '_blank');
-     };
- 
-     const renderCurrentVideoPlayer = () => {
-         const initialSeconds = targetMemo?.time || progressData.seconds;
- 
-+        console.log('[video branch]', {
-+            currentVideoId,
-+            isNativeApp,
-+            isIosNativeApp,
-+            href: window.location.href,
-+            origin: window.location.origin,
-+            protocol: window.location.protocol,
-+            hostname: window.location.hostname,
-+            capacitorPlatform: Capacitor?.getPlatform?.(),
-+            windowCapacitorPlatform: window.Capacitor?.getPlatform?.(),
-+        });
-+
-         if (currentDirectVideoUrl) {
-             return (
-                 <VideoFilePlayer
-                     ref={playerRef}
-                     src={currentDirectVideoUrl}
-                     initialSeconds={initialSeconds}
-                     onWatchedTick={handleWatchedTick}
-                     onEnded={handleVideoEnded}
-                 />
-             );
-         }
- 
-         if (currentVideoId && isIosNativeApp) {
-             return (
-                 <NativeYouTubeLauncher
-                     videoId={currentVideoId}
-                     initialSeconds={initialSeconds}
-                 />
-             );
-         }
- 
-         if (currentVideoId && !isNativeApp) {
-             return (
-                 <YouTubePlayer
-                     ref={playerRef}
-diff --git a/src/utils/capacitorEnvironment.js b/src/utils/capacitorEnvironment.js
-index 21e63f1f59bdf7058b38930cc2e28c525e489638..77f353f7430f20519dd2ddde2924efe2c3c83eb0 100644
---- a/src/utils/capacitorEnvironment.js
-+++ b/src/utils/capacitorEnvironment.js
-@@ -32,39 +32,43 @@ export const getCapacitorEnvironmentSnapshot = () => {
-     capacitorPlatform,
-     windowCapacitorPlatform,
-     capacitorIsNative,
-     windowCapacitorIsNative,
-     hasWindowCapacitor: Boolean(windowCapacitor),
-     hasNativeBridge: Boolean(windowCapacitor?.isNative || windowCapacitor?.nativePromise),
-     hasCapacitorProtocol: protocol === 'capacitor:',
-   };
- };
- 
- export const isCapacitorNativeEnvironment = () => {
-   const snapshot = getCapacitorEnvironmentSnapshot();
- 
-   return snapshot.capacitorIsNative
-     || snapshot.windowCapacitorIsNative
-     || snapshot.hasCapacitorProtocol
-     || snapshot.capacitorPlatform === 'ios'
-     || snapshot.capacitorPlatform === 'android'
-     || snapshot.windowCapacitorPlatform === 'ios'
-     || snapshot.windowCapacitorPlatform === 'android'
-     || snapshot.hasNativeBridge;
- };
- 
- export const isIosCapacitorNativeEnvironment = () => {
-   const snapshot = getCapacitorEnvironmentSnapshot();
--  const isIos = snapshot.capacitorPlatform === 'ios' || snapshot.windowCapacitorPlatform === 'ios';
- 
--  return isIos && isCapacitorNativeEnvironment();
-+  return snapshot.capacitorPlatform === 'ios'
-+    || snapshot.windowCapacitorPlatform === 'ios'
-+    || getWindowCapacitor()?.platform === 'ios'
-+    || snapshot.protocol === 'capacitor:'
-+    || snapshot.href.startsWith('capacitor://')
-+    || snapshot.hostname === 'app.chaesooyongmath.com';
- };
- 
- export const logCapacitorEnvironment = (scope = 'app') => {
-   if (typeof console === 'undefined') return;
- 
-   const snapshot = getCapacitorEnvironmentSnapshot();
-   console.info(`[capacitor:${scope}] environment`, {
-     ...snapshot,
-     isNativeApp: isCapacitorNativeEnvironment(),
-   });
- };
+                     onClick={openNativePlayer}
+                     disabled={isOpening || !videoId}
+                     className="inline-flex items-center justify-center rounded-full bg-red-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-red-700 active:scale-95 disabled:cursor-not-allowed disabled:bg-gray-600"
+                 >
+                     {isOpening ? '여는 중...' : '앱 내 플레이어로 재생'}
+                 </button>
+                 {failed && (
+                     <button
+                         type="button"
+                         onClick={openInYouTube}
+                         className="block mx-auto rounded-full border border-white/70 px-5 py-2.5 text-sm font-bold text-white transition-colors hover:bg-white hover:text-black"
+                     >
+                         YouTube에서 보기
+                     </button>
+                 )}
+             </div>
++            {debugLines.length > 0 && (
++                <div className="mt-6 w-full max-w-sm rounded-lg bg-white/10 p-3 text-left font-mono text-[10px] leading-relaxed text-white/80">
++                    {debugLines.map((line, index) => (
++                        <div key={`${line}-${index}`}>{line}</div>
++                    ))}
++                </div>
++            )}
+         </div>
+     );
+ }

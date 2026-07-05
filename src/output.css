@@ -2800,6 +2800,10 @@ video {
   background-color: rgb(254 252 232 / var(--tw-bg-opacity, 1));
 }
 
+.bg-white\/10{
+  background-color: rgb(255 255 255 / 0.1);
+}
+
 .bg-opacity-50{
   --tw-bg-opacity: 0.5;
 }
@@ -3516,6 +3520,10 @@ video {
 .text-yellow-800{
   --tw-text-opacity: 1;
   color: rgb(133 77 14 / var(--tw-text-opacity, 1));
+}
+
+.text-white\/80{
+  color: rgb(255 255 255 / 0.8);
 }
 
 .underline{

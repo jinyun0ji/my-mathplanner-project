@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { registerPlugin } from '@capacitor/core';
 
 const NativeYouTube = registerPlugin('NativeYouTube');
@@ -7,9 +7,28 @@ console.log("NativeYouTube =", NativeYouTube);
 export default function NativeYouTubeLauncher({ videoId, initialSeconds = 0 }) {
     const [failed, setFailed] = useState(false);
     const [isOpening, setIsOpening] = useState(false);
+    const [debugLines, setDebugLines] = useState([]);
+
+    const addDebug = useCallback((message, data) => {
+        const formattedData = data === undefined
+            ? ''
+            : ` ${typeof data === 'string' ? data : JSON.stringify(data)}`;
+        const line = `${new Date().toLocaleTimeString()} ${message}${formattedData}`;
+        setDebugLines((lines) => [...lines, line]);
+        console.log(`[NativeYouTubeLauncher] ${message}`, data ?? '');
+    }, []);
+
+    useEffect(() => {
+        addDebug('videoId', videoId || '(empty)');
+        addDebug('initialSeconds', initialSeconds || 0);
+        addDebug('typeof NativeYouTube.open', typeof NativeYouTube.open);
+        addDebug('window.location.href', window.location.href);
+        addDebug('window.Capacitor exists', Boolean(window.Capacitor));
+    }, [addDebug, initialSeconds, videoId]);
 
     const openNativePlayer = async () => {
         console.log("button clicked");
+        addDebug('button clicked');
 
         if (!videoId || isOpening) return;
         setIsOpening(true);
@@ -17,12 +36,19 @@ export default function NativeYouTubeLauncher({ videoId, initialSeconds = 0 }) {
 
         try {
             console.log("calling plugin");
+            addDebug('calling NativeYouTube.open', {
+                videoId,
+                startSeconds: initialSeconds || 0,
+            });
             await NativeYouTube.open({
                 videoId,
                 startSeconds: initialSeconds || 0,
             });
+            addDebug('open resolved');
             console.info('[NativeYouTubeLauncher] native player opened', { videoId });
         } catch (error) {
+            const errorMessage = error?.message || String(error);
+            addDebug(`open failed: ${errorMessage}`);
             console.error('[NativeYouTubeLauncher] native player failed', error);
             setFailed(true);
         } finally {
@@ -59,6 +85,13 @@ export default function NativeYouTubeLauncher({ videoId, initialSeconds = 0 }) {
                     </button>
                 )}
             </div>
+            {debugLines.length > 0 && (
+                <div className="mt-6 w-full max-w-sm rounded-lg bg-white/10 p-3 text-left font-mono text-[10px] leading-relaxed text-white/80">
+                    {debugLines.map((line, index) => (
+                        <div key={`${line}-${index}`}>{line}</div>
+                    ))}
+                </div>
+            )}
         </div>
     );
 }
