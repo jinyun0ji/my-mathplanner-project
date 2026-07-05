@@ -1,156 +1,143 @@
-diff --git a/src/data/firestoreSync.js b/src/data/firestoreSync.js
-index 2f5e12681bf2ef24224ab35e2b8cc97683d8a14f..224e7aefbe5d4f914a3c9498f6e13872c7ef7a4f 100644
---- a/src/data/firestoreSync.js
-+++ b/src/data/firestoreSync.js
-@@ -1774,54 +1774,57 @@ export const loadViewerDataOnce = async ({
-             console.log('[viewer] announcements loaded', {
-                 candidates: announcementAudienceUids,
-                 targetedCount,
-                 totalCount: loadedAnnouncements.length,
-                 sample: loadedAnnouncements.slice(0, 5).map((a) => ({
-                     id: a?.id,
-                     title: a?.title,
-                     isPublic: a?.isPublic === true,
-                     audienceAuthUidsCount: Array.isArray(a?.audienceAuthUids) ? a.audienceAuthUids.length : 0,
-                 })),
+diff --git a/src/components/NativeYouTubeLauncher.jsx b/src/components/NativeYouTubeLauncher.jsx
+index c72c10c2ea0f788e4571bca397db287647b0e26f..309ff28336e392348aab1c83f7b7d2d55ba01caa 100644
+--- a/src/components/NativeYouTubeLauncher.jsx
++++ b/src/components/NativeYouTubeLauncher.jsx
+@@ -1,110 +1,120 @@
+-import React, { useCallback, useEffect, useState } from 'react';
++import React, { useCallback, useEffect, useRef, useState } from 'react';
+ import { registerPlugin } from '@capacitor/core';
+ 
+ const NativeYouTube = registerPlugin('NativeYouTube');
+ console.log("NativeYouTube =", NativeYouTube);
+ 
+-export default function NativeYouTubeLauncher({ videoId, initialSeconds = 0, onAddNativeMemo }) {
++export default function NativeYouTubeLauncher({ videoId, initialSeconds = 0, onAddNativeMemo, autoOpen = false, renderControls = true }) {
+     const [failed, setFailed] = useState(false);
+     const [isOpening, setIsOpening] = useState(false);
++    const isOpeningRef = useRef(false);
+     const [debugLines, setDebugLines] = useState([]);
+ 
+     const addDebug = useCallback((message, data) => {
+         const formattedData = data === undefined
+             ? ''
+             : ` ${typeof data === 'string' ? data : JSON.stringify(data)}`;
+         const line = `${new Date().toLocaleTimeString()} ${message}${formattedData}`;
+         setDebugLines((lines) => [...lines, line]);
+         console.log(`[NativeYouTubeLauncher] ${message}`, data ?? '');
+     }, []);
+ 
+     useEffect(() => {
+         addDebug('videoId', videoId || '(empty)');
+         addDebug('initialSeconds', initialSeconds || 0);
+         addDebug('typeof NativeYouTube.open', typeof NativeYouTube.open);
+         addDebug('window.location.href', window.location.href);
+         addDebug('window.Capacitor exists', Boolean(window.Capacitor));
+     }, [addDebug, initialSeconds, videoId]);
+ 
+     useEffect(() => {
+         if (typeof NativeYouTube.addListener !== 'function') return undefined;
+ 
+         let isMounted = true;
+         let listenerHandle;
+ 
+         NativeYouTube.addListener('youtubeMemoAdded', (memo) => {
+             if (!isMounted) return;
+             addDebug('memo event received', memo);
+             onAddNativeMemo?.(memo);
+         }).then((handle) => {
+             listenerHandle = handle;
+         }).catch((error) => {
+             addDebug(`memo listener failed: ${error?.message || String(error)}`);
+         });
+ 
+         return () => {
+             isMounted = false;
+             listenerHandle?.remove?.();
+         };
+     }, [addDebug, onAddNativeMemo]);
+ 
+-    const openNativePlayer = async () => {
++    const openNativePlayer = useCallback(async () => {
+         console.log("button clicked");
+         addDebug('button clicked');
+ 
+-        if (!videoId || isOpening) return;
++        if (!videoId || isOpeningRef.current) return;
++        isOpeningRef.current = true;
+         setIsOpening(true);
+         setFailed(false);
+ 
+         try {
+             console.log("calling plugin");
+             addDebug('calling NativeYouTube.open', {
+                 videoId,
+                 startSeconds: initialSeconds || 0,
              });
-         } catch (announcementError) {
-             console.warn('[viewer] announcements load failed', announcementError);
-             if (!isCancelled()) setAnnouncements?.([]);
+             await NativeYouTube.open({
+                 videoId,
+                 startSeconds: initialSeconds || 0,
+             });
+             addDebug('open resolved');
+             console.info('[NativeYouTubeLauncher] native player opened', { videoId });
+         } catch (error) {
+             const errorMessage = error?.message || String(error);
+             addDebug(`open failed: ${errorMessage}`);
+             console.error('[NativeYouTubeLauncher] native player failed', error);
+             setFailed(true);
+         } finally {
++            isOpeningRef.current = false;
+             setIsOpening(false);
          }
+-    };
++    }, [addDebug, initialSeconds, videoId]);
++
++    useEffect(() => {
++        if (!autoOpen) return;
++        openNativePlayer();
++    }, [autoOpen, openNativePlayer]);
  
-         /* =========================
-            homeworkAssignments: 병렬 로딩 결과 사용
-         ========================= */
-         
-         /* =========================
-         videoProgress / externalSchedules  (✅ authUid 기준으로 조회)
-         ========================= */
+     const openInYouTube = () => {
+         if (!videoId) return;
+         window.open(`https://www.youtube.com/watch?v=${videoId}`, '_blank');
+     };
  
-         const viewerAuthUids = Array.from(new Set([
--            ...(userRole === 'student' && userId ? [userId] : []),
--            ...myStudents.map((s) => s?.authUid).filter(Boolean),
-+            userId,
-             activeViewerAuthUid,
--        ].filter(Boolean))).slice(0, 10);
-+            ...myStudents.map((s) => s?.authUid).filter(Boolean),
-+        ]
-+            .filter(Boolean)
-+            .map(String)
-+            .filter((uid) => uid === activeViewerAuthUid))).slice(0, 10);
- 
-         if (setVideoMemos) {
-             try {
-                 if (viewerAuthUids.length > 0) {
-                     const memoMap = {};
-                     await Promise.all(
-                         viewerAuthUids.map(async (uid) => {
-                             const snap = await run(`videoMemos ${uid}`, () =>
-                                 getDocs(
-                                     query(
-                                         collection(db, 'videoMemos', uid, 'items'),
-                                         orderBy('updatedAt', 'desc'),
-                                     ),
-                                 ),
-                             );
-                             memoMap[uid] = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-                         }),
-                     );
- 
-                     if (!isCancelled()) {
-                         setVideoMemos(memoMap);
-                     }
-                 } else if (!isCancelled()) {
-                     setVideoMemos({});
-                 }
-diff --git a/src/pages/StudentHome.jsx b/src/pages/StudentHome.jsx
-index 56bbd51d9ebcfdb9a5ce0dadaee633a412b35633..7a848f3c7b1d32196d22c552c4df11857d30ab72 100644
---- a/src/pages/StudentHome.jsx
-+++ b/src/pages/StudentHome.jsx
-@@ -644,50 +644,51 @@ export default function StudentHome({
-     }
- 
++    if (!renderControls) return null;
++
      return (
-         <div className={`mobile-screen bg-gray-50 flex flex-col relative font-sans ${embedded ? 'h-full min-h-0' : 'min-h-screen'}`}>
-             <StudentHeader student={student} onOpenNotifications={handleOpenNotification} onOpenMessages={handleOpenMessages} hasUnread={hasUnread} />
-             {/* <div style={{position:'fixed', top:10, right:10, zIndex:9999, background:'#fff', padding:6}}>
-                 activeTab: {activeTab}
-             </div> */}
- 
-             <main className={`flex-1 w-full max-w-md mx-auto p-4 overflow-y-auto custom-scrollbar md:max-w-7xl ${embedded ? 'min-h-0 pb-4' : 'pb-24'}`}>
-                 {!student ? (
-                     <div className="p-6 text-center text-gray-500">
-                         학생 정보를 불러오는 중이거나
-                         <br />
-                         계정이 아직 학원에 연결되지 않았습니다.
-                         <br />
-                         관리자에게 문의해주세요.
-                     </div>
-                 ) : selectedClassId ? (
-                     <ClassroomView
-                         classes={classes}
-                         lessonLogs={filteredLessonLogs}
-                         attendanceLogs={filteredAttendanceLogs}
-                         studentDocId={studentDocId}
-                         studentAuthUid={studentAuthUid}
-+                        currentAuthUid={userId}
-                         selectedClassId={selectedClassId}
-                         setSelectedClassId={setSelectedClassId}
-                         videoProgress={filteredVideoProgress}
-                         onSaveVideoProgress={onSaveVideoProgress}
-                         videoMemos={videoMemos}
-                         onAddMemo={onAddMemo}
-                         onUpdateMemo={onUpdateMemo}
-                         onDeleteMemo={onDeleteMemo}
-                         onVideoModalChange={setIsVideoModalOpen}
-                         targetMemo={targetMemo}
-                         onClearTargetMemo={() => setTargetMemo(null)}
-                         homeworkAssignments={filteredHomeworkAssignments}
-                         homeworkResults={homeworkResults}
-                         tests={filteredTests}
-                         grades={grades}
-                         onNavigateToTab={(tab, subTab = 'homework') => {
-                             setSelectedClassId(null);
-                             if (tab === 'learning') {
-                                 setInitialLearningTab(subTab);
-                             } else {
-                                 setActiveTab(tab);
-                             }
-                         }}
-                     />
-                 ) : (
+         <div className="w-full h-full min-h-[220px] flex flex-col items-center justify-center bg-black text-white text-center px-6 py-8">
+             <div className="max-w-sm space-y-4">
+                 <p className="text-sm sm:text-base font-semibold leading-relaxed">
+                     iOS 앱 내 YouTube 플레이어 실험을 실행합니다.
+                 </p>
+                 <button
+                     type="button"
+                     onClick={openNativePlayer}
+                     disabled={isOpening || !videoId}
+                     className="inline-flex items-center justify-center rounded-full bg-red-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-red-700 active:scale-95 disabled:cursor-not-allowed disabled:bg-gray-600"
+                 >
+                     {isOpening ? '여는 중...' : '앱 내 플레이어로 재생'}
+                 </button>
+                 {failed && (
+                     <button
+                         type="button"
+                         onClick={openInYouTube}
+                         className="block mx-auto rounded-full border border-white/70 px-5 py-2.5 text-sm font-bold text-white transition-colors hover:bg-white hover:text-black"
+                     >
+                         YouTube에서 보기
+                     </button>
+                 )}
+             </div>
+             {debugLines.length > 0 && (
 diff --git a/src/pages/student/ClassroomView.jsx b/src/pages/student/ClassroomView.jsx
-index 6a9a4adb4163bc089af6b180bd673c330f3fe39a..fa6707ce981604d9c5a68f75f2117a6d39a3c2eb 100644
+index fa6707ce981604d9c5a68f75f2117a6d39a3c2eb..441bafc4aaf619778073ded2fe47882cd5017422 100644
 --- a/src/pages/student/ClassroomView.jsx
 +++ b/src/pages/student/ClassroomView.jsx
-@@ -3,61 +3,62 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
- import { Icon, formatTime, formatClassScheduleKo } from '../../utils/helpers';
- import YouTubePlayer from '../../components/YouTubePlayer';
- import NativeYouTubeLauncher from '../../components/NativeYouTubeLauncher';
- import VideoFilePlayer from '../../components/VideoFilePlayer';
- import PlayCircleFilledWhiteIcon from '@mui/icons-material/PlayCircleFilledWhite';
- import { calculateVideoProgress, getCurrentLessonByDate, getSortedLessonLogs, normalizeLessonVideos } from '../../domain/lesson/lesson.service';
- import { buildClassroomStats } from '../../domain/classroom/classroom.service';
- import { canAccessLessonContent } from '../../utils/attendanceAccess';
- import { Capacitor } from '@capacitor/core';
- import { isCapacitorNativeEnvironment, isIosCapacitorNativeEnvironment } from '../../utils/capacitorEnvironment';
- 
- const normalizeAttendanceStatus = (status) => {
-     if (!status) return null;
-     if (status === 'present' || status === 'absent' || status === 'video_makeup' || status === 'late') return status;
- 
-     if (status === '출석') return 'present';
-     if (status === '결석') return 'absent';
-     if (status === '동영상보강') return 'video_makeup';
-     if (status === '지각') return 'late';
- 
-     return null;
+@@ -24,80 +24,97 @@ const normalizeAttendanceStatus = (status) => {
  };
  
  
  export default function ClassroomView({
--    classes, lessonLogs, attendanceLogs, studentDocId, studentAuthUid,
-+    classes, lessonLogs, attendanceLogs, studentDocId, studentAuthUid, currentAuthUid,
+     classes, lessonLogs, attendanceLogs, studentDocId, studentAuthUid, currentAuthUid,
      selectedClassId, setSelectedClassId,
      videoProgress, onSaveVideoProgress,
      videoMemos, onAddMemo, onUpdateMemo, onDeleteMemo,
@@ -161,7 +148,7 @@ index 6a9a4adb4163bc089af6b180bd673c330f3fe39a..fa6707ce981604d9c5a68f75f2117a6d
      onNavigateToTab
  }) {
      const selectedClass = classes.find(c => String(c.id) === String(selectedClassId));
-+    const memoOwnerUid = currentAuthUid || studentAuthUid || '';
+     const memoOwnerUid = currentAuthUid || studentAuthUid || '';
  
      const sortedLogs = useMemo(
          () => getSortedLessonLogs(lessonLogs, selectedClassId),
@@ -171,6 +158,7 @@ index 6a9a4adb4163bc089af6b180bd673c330f3fe39a..fa6707ce981604d9c5a68f75f2117a6d
      const [viewMode, setViewMode] = useState('list');
      const [currentLesson, setCurrentLesson] = useState(null);
      const [selectedVideo, setSelectedVideo] = useState(null);
++    const [pendingNativeVideo, setPendingNativeVideo] = useState(null);
      const playerRef = useRef(null);
      const [isAttendanceDetailOpen, setIsAttendanceDetailOpen] = useState(false);
      const [isVideoListOpen, setIsVideoListOpen] = useState(false);
@@ -187,7 +175,54 @@ index 6a9a4adb4163bc089af6b180bd673c330f3fe39a..fa6707ce981604d9c5a68f75f2117a6d
                          (!attendanceLog.lessonLogId &&
                              attendanceLog.classId === log.classId &&
                              attendanceLog.date === log.date))
-@@ -96,123 +97,135 @@ export default function ClassroomView({
+             );
+             const normalizedStatus = normalizeAttendanceStatus(attendance?.status);
+             if (normalizedStatus) {
+                 map[log.id] = { status: normalizedStatus };
+             }
+         });
+         return map;
+     }, [attendanceLogs, sortedLogs, studentDocId]);
+ 
+     useEffect(() => {
+         if (targetMemo && targetMemo.lessonId) {
+             const target = getCurrentLessonByDate(sortedLogs, null, targetMemo.lessonId);
+             if (target) {
++                const targetVideos = normalizeLessonVideos(target);
++                const targetVideo = targetVideos[0] || null;
++                const targetVideoId = targetVideo?.youtubeVideoId || targetVideo?.videoId;
++
+                 setCurrentLesson(target);
++                setSelectedVideo(targetVideo);
++
++                if (isCapacitorNativeEnvironment() && targetVideoId) {
++                    setPendingNativeVideo({
++                        lessonId: target.id,
++                        videoId: targetVideoId,
++                        initialSeconds: targetMemo.time || 0,
++                        requestId: Date.now(),
++                    });
++                    return;
++                }
++
+                 setViewMode('player');
+             }
+         }
+     }, [targetMemo, sortedLogs]);
+ 
+     useEffect(() => {
+         if (onVideoModalChange) {
+             onVideoModalChange(viewMode === 'player');
+         }
+     }, [viewMode, onVideoModalChange]);
+ 
+     const [bookmarkNote, setBookmarkNote] = useState('');
+     const [isListOpen, setIsListOpen] = useState(false);
+     const [editingMemoId, setEditingMemoId] = useState(null);
+     const [editFields, setEditFields] = useState({ note: '', time: '' });
+ 
+     useEffect(() => {
+         setEditingMemoId(null);
          setEditFields({ note: '', time: '' });
      }, [currentLesson?.id]);
  
@@ -195,143 +230,194 @@ index 6a9a4adb4163bc089af6b180bd673c330f3fe39a..fa6707ce981604d9c5a68f75f2117a6d
          const primary = calculateVideoProgress(videoProgress, studentAuthUid, lessonId);
          if ((primary.percent || primary.seconds || primary.accumulated) && studentAuthUid) return primary;
          return calculateVideoProgress(videoProgress, studentDocId, lessonId);
-     };
- 
-     // --- 통계 및 상태 계산 ---
-     const stats = useMemo(
-         () => buildClassroomStats({
-             attendanceLogs,
-             selectedClassId,
-             studentDocId,
-             studentAuthUid,
-             homeworkAssignments,
-             homeworkResults,
-             tests,
-             grades,
-         }),
-         [attendanceLogs, selectedClassId, studentDocId, studentAuthUid, homeworkAssignments, homeworkResults, tests, grades]
-     );
- 
-     const handleAddMemo = async () => {
--        if (!playerRef.current || !bookmarkNote.trim() || !currentLesson || !studentAuthUid) return;
-+        if (!playerRef.current || !bookmarkNote.trim() || !currentLesson || !memoOwnerUid) return;
-         const currentTime = playerRef.current.getCurrentTime();
-         try {
--            await onAddMemo?.(studentAuthUid, { lessonId: currentLesson.id, time: currentTime, note: bookmarkNote });
-+            await onAddMemo?.(memoOwnerUid, { lessonId: currentLesson.id, time: currentTime, note: bookmarkNote });
-             setBookmarkNote('');
-         } catch (error) {
-             console.error('[ClassroomView] add memo failed', error);
+@@ -294,104 +311,126 @@ export default function ClassroomView({
+                     <div className="max-w-sm space-y-4">
+                         <p className="text-sm sm:text-base font-semibold leading-relaxed">
+                             앱 내 재생이 제한된 영상입니다. 관리자에게 문의해주세요.
+                         </p>
+                         <button
+                             type="button"
+                             onClick={openSelectedVideoInYouTube}
+                             className="inline-flex items-center justify-center rounded-full bg-red-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-red-700 active:scale-95"
+                         >
+                             YouTube에서 보기
+                         </button>
+                     </div>
+                 </div>
+             );
          }
+ 
+         return (<div className="flex flex-col items-center justify-center text-gray-500"><Icon name="monitor" className="w-12 h-12 mb-2 opacity-50" /><p>재생할 영상이 없습니다.</p></div>);
      };
  
-     const handleAddNativeMemo = async ({ videoId, currentTime, note }) => {
--        if (!currentLesson || !studentAuthUid || !note?.trim()) return;
-+        if (!currentLesson || !memoOwnerUid || !note?.trim()) return;
-         if (videoId && currentVideoId && String(videoId) !== String(currentVideoId)) return;
- 
-         try {
--            await onAddMemo?.(studentAuthUid, {
-+            await onAddMemo?.(memoOwnerUid, {
-                 lessonId: currentLesson.id,
-                 time: Number(currentTime) || 0,
-                 note: note.trim(),
-             });
-         } catch (error) {
-             console.error('[ClassroomView] add native memo failed', error);
-         }
+     const toggleMaterials = (e, logId) => {
+         e.stopPropagation();
+         setExpandedMaterialLogId(prev => prev === logId ? null : logId);
      };
  
-     const handleSeekToMemo = (time) => {
-         if (playerRef.current) playerRef.current.seekTo(time);
-     };
- 
-     const handleWatchedTick = (addedSeconds, currentTime, duration) => {
-         if (!currentLesson || duration <= 0) return;
-         const prevData = getProgress(currentLesson.id);
-         const newAccumulated = (prevData.accumulated || 0) + addedSeconds;
-         const newPercent = Math.min(100, Math.floor((newAccumulated / duration) * 100));
-         onSaveVideoProgress(studentAuthUid, currentLesson.id, {
-             percent: newPercent, seconds: currentTime, accumulated: newAccumulated
-         });
-     };
- 
-     const startEditingMemo = (memo) => {
-         setEditingMemoId(memo.id);
-         setEditFields({ note: memo.note || '', time: memo.time ?? 0 });
-     };
- 
-     const handleSaveEditedMemo = async () => {
--        if (!editingMemoId || !studentAuthUid) return;
-+        if (!editingMemoId || !memoOwnerUid) return;
-         try {
--            await onUpdateMemo?.(studentAuthUid, editingMemoId, editFields);
-+            await onUpdateMemo?.(memoOwnerUid, editingMemoId, editFields);
-             setEditingMemoId(null);
-             setEditFields({ note: '', time: '' });
-         } catch (error) {
-             console.error('[ClassroomView] update memo failed', error);
-         }
-     };
- 
-     const handleDeleteMemo = async (memoId) => {
--        if (!memoId || !studentAuthUid) return;
-+        if (!memoId || !memoOwnerUid) return;
-         if (!window.confirm('이 메모를 삭제하시겠어요?')) return;
-         try {
--            await onDeleteMemo?.(studentAuthUid, memoId);
-+            await onDeleteMemo?.(memoOwnerUid, memoId);
-             if (editingMemoId === memoId) {
-                 setEditingMemoId(null);
-                 setEditFields({ note: '', time: '' });
-             }
-         } catch (error) {
-             console.error('[ClassroomView] delete memo failed', error);
-         }
-     };
- 
--    const myMemos = useMemo(
--        () => (videoMemos?.[studentAuthUid] || []).filter((memo) => String(memo.lessonId) === String(currentLesson?.id)),
--        [videoMemos, studentAuthUid, currentLesson?.id],
--    );
-+    const myMemos = useMemo(() => {
-+        const lessonId = currentLesson?.id;
-+        if (!lessonId || !videoMemos) return [];
+     const playVideo = (log) => {
++        const videos = normalizeLessonVideos(log);
++        const firstVideo = videos[0] || null;
++        const videoId = firstVideo?.youtubeVideoId || firstVideo?.videoId;
 +
-+        const primaryKeys = [studentAuthUid, currentAuthUid].filter(Boolean).map(String);
-+        for (const key of primaryKeys) {
-+            const ownedMemos = Array.isArray(videoMemos?.[key]) ? videoMemos[key] : [];
-+            const lessonMemos = ownedMemos.filter((memo) => String(memo.lessonId) === String(lessonId));
-+            if (lessonMemos.length > 0) return lessonMemos;
+         setCurrentLesson(log);
++        setSelectedVideo(firstVideo);
++
++        if (isNativeApp && videoId) {
++            const logProgress = getProgress(log.id);
++            setPendingNativeVideo({
++                lessonId: log.id,
++                videoId,
++                initialSeconds: targetMemo?.lessonId === log.id ? (targetMemo.time || 0) : (logProgress.seconds || 0),
++                requestId: Date.now(),
++            });
++            return;
 +        }
 +
-+        return Object.values(videoMemos)
-+            .filter(Array.isArray)
-+            .flat()
-+            .filter((memo) => String(memo.lessonId) === String(lessonId));
-+    }, [videoMemos, studentAuthUid, currentAuthUid, currentLesson?.id]);
+         if (viewMode === 'list') setViewMode('player');
+     };
  
-     const progressData = getProgress(currentLesson?.id);
++    const handleCardBodyClick = (log) => {
++        if (isNativeApp) return;
++        playVideo(log);
++    };
++
+     const renderLogItem = (log) => {
+         const { percent: prog } = getProgress(log.id);
+         const isSelected = currentLesson?.id === log.id;
+         const attachments = Array.isArray(log.attachments)
+             ? log.attachments
+             : (Array.isArray(log.materials) ? log.materials : []);
+         const hasMaterials = attachments.length > 0;
+         const isMaterialsExpanded = expandedMaterialLogId === log.id;
+         const canAccess = canAccessLessonContent(attendanceMap[log.id]);
  
-     const lessonVideos = useMemo(() => normalizeLessonVideos(currentLesson), [currentLesson]);
-     const hasLessonVideos = lessonVideos.length > 0;
-     const hasMultipleLessonVideos = lessonVideos.length > 1;
-     const canAccessCurrentLesson = canAccessLessonContent(
-         currentLesson ? attendanceMap[currentLesson.id] : null
-     );
+         return (
+             <div
+                 key={log.id}
+                 className={`p-4 rounded-xl transition-all border ${
+                     isSelected
+                         ? 'bg-[#f1f4ff] border-[#cfd8ff] shadow-sm'
+                         : 'bg-white border-gray-100 hover:bg-gray-50'
+                 }`}
+             >
+                 <div className="flex justify-between items-start">
+                     <div
+-                        className="flex-1 min-w-0 pr-4 cursor-pointer"
+-                        onClick={() => playVideo(log)}
++                        className={`flex-1 min-w-0 pr-4 ${isNativeApp ? '' : 'cursor-pointer'}`}
++                        onClick={() => handleCardBodyClick(log)}
+                     >
+                         <div className="flex items-center gap-2 mb-1.5">
+                             <span className="text-xs font-mono text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">{log.date}</span>
+                             {prog >= 100 && <span className="text-[10px] font-bold text-green-600 bg-green-50 px-1.5 py-0.5 rounded border border-green-100">완료</span>}
+                             {prog > 0 && prog < 100 && <span className="text-[10px] font-bold text-[#455fab] bg-[#f1f4ff] px-1.5 py-0.5 rounded border border-[#eef2ff]">{prog}%</span>}
+                         </div>
+                         <h4 className={`text-base font-bold truncate ${isSelected ? 'text-[#334a91]' : 'text-gray-800'}`}>{log.progress}</h4>
+                         <p className="text-xs text-gray-500 mt-1 truncate mb-2">{log.assignment}</p>
+                     </div>
  
-     useEffect(() => {
-         setSelectedVideo(lessonVideos[0] || null);
-         setIsVideoListOpen(false);
-     }, [lessonVideos]);
+                     <div className="flex items-center gap-3">
+                         {hasMaterials && (
+                             <button
+                                 onClick={(e) => toggleMaterials(e, log.id)}
+                                 className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${
+                                     isMaterialsExpanded
+                                         ? 'bg-gray-200 text-gray-800'
+                                         : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                                 }`}
+                                 title="강의 자료"
+                             >
+                                 {/* ✅ [수정] 자료 아이콘은 그대로 유지 */}
+                                 <Icon name="fileText" className="w-4 h-4" />
+                             </button>
+                         )}
+                         <button
+-                            onClick={() => playVideo(log)}
++                            onClick={(e) => { e.stopPropagation(); playVideo(log); }}
+                             className={`w-10 h-10 rounded-full flex items-center justify-center transition-all shadow-sm ${isSelected ? 'bg-[#eef2ff] text-[#455fab]' : 'bg-gray-50 text-gray-300'}`}
+                         >
+                             <PlayCircleFilledWhiteIcon className="w-7 h-7" />
+                         </button>
+                     </div>
+                 </div>
  
-     const currentVideoId = selectedVideo?.youtubeVideoId || selectedVideo?.videoId;
-     const currentDirectVideoUrl = selectedVideo?.videoUrl || selectedVideo?.fileUrl || selectedVideo?.hlsUrl || selectedVideo?.directUrl || '';
-     const isNativeApp = isCapacitorNativeEnvironment();
-     const isIosNativeApp = isIosCapacitorNativeEnvironment();
+                 {isMaterialsExpanded && (
+                     <div className="mt-3 pt-3 border-t border-gray-200/60 animate-fade-in-down">
+                         <p className="text-xs font-bold text-gray-500 mb-2 flex items-center gap-1">
+                             <Icon name="folder" className="w-3 h-3" />
+                             강의 자료 ({attachments.length})
+                         </p>
+                         <div className="space-y-2">
+                             {attachments.map((mat, idx) => (
+                                 canAccess ? (
+                                     <a
+                                         key={idx}
+                                         href={mat.url}
+                                         target="_blank"
+                                         rel="noopener noreferrer"
+                                         className="flex items-center gap-3 p-3 rounded-xl bg-gray-50 border border-gray-100 active:bg-gray-200 transition-colors"
+                                         onClick={(e) => e.stopPropagation()}
+                                     >
+                                         <div className="w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center flex-shrink-0 text-red-500">
+@@ -403,50 +442,60 @@ export default function ClassroomView({
+                                     </a>
+                                 ) : (
+                                     <span
+                                         key={idx}
+                                         className="flex items-center gap-3 p-3 rounded-xl bg-gray-100 border border-gray-200 text-gray-500"
+                                     >
+                                         <div className="w-8 h-8 rounded-lg bg-gray-200 flex items-center justify-center flex-shrink-0 text-gray-400">
+                                             <Icon name="download" className="w-4 h-4" />
+                                         </div>
+                                         <span className="text-sm font-medium truncate flex-1">
+                                             {mat.name} (출결 확인 후 다운로드 가능)
+                                         </span>
+                                     </span>
+                                 )
+                             ))}
+                         </div>
+                     </div>
+                 )}
+             </div>
+         );
+     };
+ 
+     if (viewMode === 'list') {
+         return (
+             <div className="animate-fade-in-up pb-20 space-y-6 relative">
++                {pendingNativeVideo && (
++                    <NativeYouTubeLauncher
++                        key={`${pendingNativeVideo.lessonId}-${pendingNativeVideo.videoId}-${pendingNativeVideo.initialSeconds}-${pendingNativeVideo.requestId}`}
++                        videoId={pendingNativeVideo.videoId}
++                        initialSeconds={pendingNativeVideo.initialSeconds}
++                        onAddNativeMemo={handleAddNativeMemo}
++                        autoOpen
++                        renderControls={false}
++                    />
++                )}
+                 <div className="flex items-center gap-3">
+                     <button onClick={() => setSelectedClassId(null)} className="mobile-back-button p-2 bg-white rounded-xl text-gray-600 hover:bg-gray-100 transition-colors shadow-sm active:scale-95">
+                         <Icon name="chevronLeft" className="w-6 h-6" />
+                     </button>
+                     <div>
+                         <h2 className="text-xl font-bold text-gray-900">{selectedClass?.name}</h2>
+                         <p className="text-xs text-gray-500">{formatClassScheduleKo(selectedClass) || '시간 미정'}</p>
+                     </div>
+                 </div>
  
  
-     const handleVideoEnded = (currentTime, duration) => {
-         if (!currentLesson || duration <= 0) return;
-         onSaveVideoProgress(studentAuthUid, currentLesson.id, {
-             percent: 100,
+                 <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                     <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+                         {/* ✅ [수정] 복습 영상 아이콘: list -> video */}
+                         <h3 className="font-bold text-gray-800 flex items-center gap-2"><Icon name="video" className="w-5 h-5 text-[#455fab]" />복습 영상 ({sortedLogs.length})</h3>
+                     </div>
+                     <div className="divide-y divide-gray-100">
+                         {sortedLogs.length > 0 ? sortedLogs.map(log => renderLogItem(log)) : (<div className="p-10 text-center text-gray-400 text-sm">등록된 강의가 없습니다.</div>)}
+                     </div>
+                 </div>
+ 
+                 {isAttendanceDetailOpen && (
+                     <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => setIsAttendanceDetailOpen(false)}>
+                         <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl animate-fade-in-up max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+                             <div className="flex justify-between items-center mb-4 pb-4 border-b border-gray-100">

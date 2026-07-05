@@ -1,12 +1,13 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { registerPlugin } from '@capacitor/core';
 
 const NativeYouTube = registerPlugin('NativeYouTube');
 console.log("NativeYouTube =", NativeYouTube);
 
-export default function NativeYouTubeLauncher({ videoId, initialSeconds = 0, onAddNativeMemo }) {
+export default function NativeYouTubeLauncher({ videoId, initialSeconds = 0, onAddNativeMemo, autoOpen = false, renderControls = true }) {
     const [failed, setFailed] = useState(false);
     const [isOpening, setIsOpening] = useState(false);
+    const isOpeningRef = useRef(false);
     const [debugLines, setDebugLines] = useState([]);
 
     const addDebug = useCallback((message, data) => {
@@ -48,11 +49,12 @@ export default function NativeYouTubeLauncher({ videoId, initialSeconds = 0, onA
         };
     }, [addDebug, onAddNativeMemo]);
 
-    const openNativePlayer = async () => {
+    const openNativePlayer = useCallback(async () => {
         console.log("button clicked");
         addDebug('button clicked');
 
-        if (!videoId || isOpening) return;
+        if (!videoId || isOpeningRef.current) return;
+        isOpeningRef.current = true;
         setIsOpening(true);
         setFailed(false);
 
@@ -74,14 +76,22 @@ export default function NativeYouTubeLauncher({ videoId, initialSeconds = 0, onA
             console.error('[NativeYouTubeLauncher] native player failed', error);
             setFailed(true);
         } finally {
+            isOpeningRef.current = false;
             setIsOpening(false);
         }
-    };
+    }, [addDebug, initialSeconds, videoId]);
+
+    useEffect(() => {
+        if (!autoOpen) return;
+        openNativePlayer();
+    }, [autoOpen, openNativePlayer]);
 
     const openInYouTube = () => {
         if (!videoId) return;
         window.open(`https://www.youtube.com/watch?v=${videoId}`, '_blank');
     };
+
+    if (!renderControls) return null;
 
     return (
         <div className="w-full h-full min-h-[220px] flex flex-col items-center justify-center bg-black text-white text-center px-6 py-8">

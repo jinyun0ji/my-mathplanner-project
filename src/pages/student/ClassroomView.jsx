@@ -46,6 +46,7 @@ export default function ClassroomView({
     const [viewMode, setViewMode] = useState('list');
     const [currentLesson, setCurrentLesson] = useState(null);
     const [selectedVideo, setSelectedVideo] = useState(null);
+    const [pendingNativeVideo, setPendingNativeVideo] = useState(null);
     const playerRef = useRef(null);
     const [isAttendanceDetailOpen, setIsAttendanceDetailOpen] = useState(false);
     const [isVideoListOpen, setIsVideoListOpen] = useState(false);
@@ -75,7 +76,23 @@ export default function ClassroomView({
         if (targetMemo && targetMemo.lessonId) {
             const target = getCurrentLessonByDate(sortedLogs, null, targetMemo.lessonId);
             if (target) {
+                const targetVideos = normalizeLessonVideos(target);
+                const targetVideo = targetVideos[0] || null;
+                const targetVideoId = targetVideo?.youtubeVideoId || targetVideo?.videoId;
+
                 setCurrentLesson(target);
+                setSelectedVideo(targetVideo);
+
+                if (isCapacitorNativeEnvironment() && targetVideoId) {
+                    setPendingNativeVideo({
+                        lessonId: target.id,
+                        videoId: targetVideoId,
+                        initialSeconds: targetMemo.time || 0,
+                        requestId: Date.now(),
+                    });
+                    return;
+                }
+
                 setViewMode('player');
             }
         }
@@ -316,8 +333,30 @@ export default function ClassroomView({
     };
 
     const playVideo = (log) => {
+        const videos = normalizeLessonVideos(log);
+        const firstVideo = videos[0] || null;
+        const videoId = firstVideo?.youtubeVideoId || firstVideo?.videoId;
+
         setCurrentLesson(log);
+        setSelectedVideo(firstVideo);
+
+        if (isNativeApp && videoId) {
+            const logProgress = getProgress(log.id);
+            setPendingNativeVideo({
+                lessonId: log.id,
+                videoId,
+                initialSeconds: targetMemo?.lessonId === log.id ? (targetMemo.time || 0) : (logProgress.seconds || 0),
+                requestId: Date.now(),
+            });
+            return;
+        }
+
         if (viewMode === 'list') setViewMode('player');
+    };
+
+    const handleCardBodyClick = (log) => {
+        if (isNativeApp) return;
+        playVideo(log);
     };
 
     const renderLogItem = (log) => {
@@ -341,8 +380,8 @@ export default function ClassroomView({
             >
                 <div className="flex justify-between items-start">
                     <div
-                        className="flex-1 min-w-0 pr-4 cursor-pointer"
-                        onClick={() => playVideo(log)}
+                        className={`flex-1 min-w-0 pr-4 ${isNativeApp ? '' : 'cursor-pointer'}`}
+                        onClick={() => handleCardBodyClick(log)}
                     >
                         <div className="flex items-center gap-2 mb-1.5">
                             <span className="text-xs font-mono text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">{log.date}</span>
@@ -369,7 +408,7 @@ export default function ClassroomView({
                             </button>
                         )}
                         <button
-                            onClick={() => playVideo(log)}
+                            onClick={(e) => { e.stopPropagation(); playVideo(log); }}
                             className={`w-10 h-10 rounded-full flex items-center justify-center transition-all shadow-sm ${isSelected ? 'bg-[#eef2ff] text-[#455fab]' : 'bg-gray-50 text-gray-300'}`}
                         >
                             <PlayCircleFilledWhiteIcon className="w-7 h-7" />
@@ -425,6 +464,16 @@ export default function ClassroomView({
     if (viewMode === 'list') {
         return (
             <div className="animate-fade-in-up pb-20 space-y-6 relative">
+                {pendingNativeVideo && (
+                    <NativeYouTubeLauncher
+                        key={`${pendingNativeVideo.lessonId}-${pendingNativeVideo.videoId}-${pendingNativeVideo.initialSeconds}-${pendingNativeVideo.requestId}`}
+                        videoId={pendingNativeVideo.videoId}
+                        initialSeconds={pendingNativeVideo.initialSeconds}
+                        onAddNativeMemo={handleAddNativeMemo}
+                        autoOpen
+                        renderControls={false}
+                    />
+                )}
                 <div className="flex items-center gap-3">
                     <button onClick={() => setSelectedClassId(null)} className="mobile-back-button p-2 bg-white rounded-xl text-gray-600 hover:bg-gray-100 transition-colors shadow-sm active:scale-95">
                         <Icon name="chevronLeft" className="w-6 h-6" />
