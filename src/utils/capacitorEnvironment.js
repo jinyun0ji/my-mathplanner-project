@@ -52,6 +52,13 @@ export const isCapacitorNativeEnvironment = () => {
     || snapshot.hasNativeBridge;
 };
 
+export const isIosCapacitorNativeEnvironment = () => {
+  const snapshot = getCapacitorEnvironmentSnapshot();
+  const isIos = snapshot.capacitorPlatform === 'ios' || snapshot.windowCapacitorPlatform === 'ios';
+
+  return isIos && isCapacitorNativeEnvironment();
+};
+
 export const logCapacitorEnvironment = (scope = 'app') => {
   if (typeof console === 'undefined') return;
 

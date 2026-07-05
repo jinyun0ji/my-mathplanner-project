@@ -1,0 +1,9 @@
+platform :ios, '15.0'
+use_frameworks!
+
+# Capacitor 6 project currently uses Swift Package Manager for Capacitor itself.
+# This Podfile is intentionally limited to the native YouTube player experiment.
+target 'App' do
+  # WKWebView-backed YouTube iframe helper for the native iOS experiment.
+  pod 'youtube-ios-player-helper'
+end

@@ -2,12 +2,13 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Icon, formatTime, formatClassScheduleKo } from '../../utils/helpers';
 import YouTubePlayer from '../../components/YouTubePlayer';
+import NativeYouTubeLauncher from '../../components/NativeYouTubeLauncher';
 import VideoFilePlayer from '../../components/VideoFilePlayer';
 import PlayCircleFilledWhiteIcon from '@mui/icons-material/PlayCircleFilledWhite';
 import { calculateVideoProgress, getCurrentLessonByDate, getSortedLessonLogs, normalizeLessonVideos } from '../../domain/lesson/lesson.service';
 import { buildClassroomStats } from '../../domain/classroom/classroom.service';
 import { canAccessLessonContent } from '../../utils/attendanceAccess';
-import { isCapacitorNativeEnvironment } from '../../utils/capacitorEnvironment';
+import { isCapacitorNativeEnvironment, isIosCapacitorNativeEnvironment } from '../../utils/capacitorEnvironment';
 
 const normalizeAttendanceStatus = (status) => {
     if (!status) return null;
@@ -192,6 +193,7 @@ export default function ClassroomView({
     const currentVideoId = selectedVideo?.youtubeVideoId || selectedVideo?.videoId;
     const currentDirectVideoUrl = selectedVideo?.videoUrl || selectedVideo?.fileUrl || selectedVideo?.hlsUrl || selectedVideo?.directUrl || '';
     const isNativeApp = isCapacitorNativeEnvironment();
+    const isIosNativeApp = isIosCapacitorNativeEnvironment();
 
 
     const handleVideoEnded = (currentTime, duration) => {
@@ -219,6 +221,15 @@ export default function ClassroomView({
                     initialSeconds={initialSeconds}
                     onWatchedTick={handleWatchedTick}
                     onEnded={handleVideoEnded}
+                />
+            );
+        }
+
+        if (currentVideoId && isIosNativeApp) {
+            return (
+                <NativeYouTubeLauncher
+                    videoId={currentVideoId}
+                    initialSeconds={initialSeconds}
                 />
             );
         }
