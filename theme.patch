@@ -1,103 +1,202 @@
-diff --git a/src/components/NativeYouTubeLauncher.jsx b/src/components/NativeYouTubeLauncher.jsx
-index b0f082dde00cb9cb196adde0c91c09ca0972591d..958c4bab9bac01144ddb8c0f4a9a2d3ee031216c 100644
---- a/src/components/NativeYouTubeLauncher.jsx
-+++ b/src/components/NativeYouTubeLauncher.jsx
-@@ -1,64 +1,97 @@
--import React, { useState } from 'react';
-+import React, { useCallback, useEffect, useState } from 'react';
- import { registerPlugin } from '@capacitor/core';
+diff --git a/ios/App/App.xcodeproj/project.pbxproj b/ios/App/App.xcodeproj/project.pbxproj
+index b198ce5a91bf49ff5cf37bb0b45e9cf4c59deae8..e228fb01b91b50178421b2800d2831c668a23a05 100644
+--- a/ios/App/App.xcodeproj/project.pbxproj
++++ b/ios/App/App.xcodeproj/project.pbxproj
+@@ -1,101 +1,104 @@
+ // !$*UTF8*$!
+ {
+ 	archiveVersion = 1;
+ 	classes = {
+ 	};
+ 	objectVersion = 60;
+ 	objects = {
  
- const NativeYouTube = registerPlugin('NativeYouTube');
- console.log("NativeYouTube =", NativeYouTube);
+ /* Begin PBXBuildFile section */
+ 		2FAD9763203C412B000D30F8 /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
+ 		40E8BF1C2FFAA1190052F7E1 /* YouTubeiOSPlayerHelper in Frameworks */ = {isa = PBXBuildFile; productRef = 40E8BF1B2FFAA1190052F7E1 /* YouTubeiOSPlayerHelper */; };
+ 		4D22ABE92AF431CB00220026 /* CapApp-SPM in Frameworks */ = {isa = PBXBuildFile; productRef = 4D22ABE82AF431CB00220026 /* CapApp-SPM */; };
+ 		50379B232058CBB4000EE86E /* capacitor.config.json in Resources */ = {isa = PBXBuildFile; fileRef = 50379B222058CBB4000EE86E /* capacitor.config.json */; };
+ 		504EC3081FED79650016851F /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 504EC3071FED79650016851F /* AppDelegate.swift */; };
+ 		504EC30D1FED79650016851F /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30B1FED79650016851F /* Main.storyboard */; };
+ 		504EC30F1FED79650016851F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30E1FED79650016851F /* Assets.xcassets */; };
+ 		504EC3121FED79650016851F /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
+ 		50B271D11FEDC1A000F3C39B /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
+ 		A10000000000000000000002 /* NativeYouTubePlayerViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000001 /* NativeYouTubePlayerViewController.swift */; };
+ 		A10000000000000000000004 /* NativeYouTubePlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000003 /* NativeYouTubePlugin.swift */; };
++		A10000000000000000000006 /* NativeYouTubeViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000005 /* NativeYouTubeViewController.swift */; };
+ /* End PBXBuildFile section */
  
- export default function NativeYouTubeLauncher({ videoId, initialSeconds = 0 }) {
-     const [failed, setFailed] = useState(false);
-     const [isOpening, setIsOpening] = useState(false);
-+    const [debugLines, setDebugLines] = useState([]);
+ /* Begin PBXFileReference section */
+ 		2C3CDE8C358E0238F4ACBC20 /* Pods_App.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_App.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+ 		2FAD9762203C412B000D30F8 /* config.xml */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = config.xml; sourceTree = "<group>"; };
+ 		50379B222058CBB4000EE86E /* capacitor.config.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = capacitor.config.json; sourceTree = "<group>"; };
+ 		504EC3041FED79650016851F /* App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = App.app; sourceTree = BUILT_PRODUCTS_DIR; };
+ 		504EC3071FED79650016851F /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+ 		504EC30C1FED79650016851F /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/Main.storyboard; sourceTree = "<group>"; };
+ 		504EC30E1FED79650016851F /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+ 		504EC3111FED79650016851F /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
+ 		504EC3131FED79650016851F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+ 		50B271D01FEDC1A000F3C39B /* public */ = {isa = PBXFileReference; lastKnownFileType = folder; path = public; sourceTree = "<group>"; };
+ 		958DCC722DB07C7200EA8C5F /* debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = debug.xcconfig; path = ../debug.xcconfig; sourceTree = SOURCE_ROOT; };
+ 		A10000000000000000000001 /* NativeYouTubePlayerViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeYouTubePlayerViewController.swift; sourceTree = "<group>"; };
+ 		A10000000000000000000003 /* NativeYouTubePlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeYouTubePlugin.swift; sourceTree = "<group>"; };
++		A10000000000000000000005 /* NativeYouTubeViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeYouTubeViewController.swift; sourceTree = "<group>"; };
+ /* End PBXFileReference section */
+ 
+ /* Begin PBXFrameworksBuildPhase section */
+ 		504EC3011FED79650016851F /* Frameworks */ = {
+ 			isa = PBXFrameworksBuildPhase;
+ 			buildActionMask = 2147483647;
+ 			files = (
+ 				4D22ABE92AF431CB00220026 /* CapApp-SPM in Frameworks */,
+ 				40E8BF1C2FFAA1190052F7E1 /* YouTubeiOSPlayerHelper in Frameworks */,
+ 			);
+ 			runOnlyForDeploymentPostprocessing = 0;
+ 		};
+ /* End PBXFrameworksBuildPhase section */
+ 
+ /* Begin PBXGroup section */
+ 		504EC2FB1FED79650016851F = {
+ 			isa = PBXGroup;
+ 			children = (
+ 				958DCC722DB07C7200EA8C5F /* debug.xcconfig */,
+ 				504EC3061FED79650016851F /* App */,
+ 				504EC3051FED79650016851F /* Products */,
+ 				E42EE442F6594071C4F668F1 /* Frameworks */,
+ 			);
+ 			sourceTree = "<group>";
+ 		};
+ 		504EC3051FED79650016851F /* Products */ = {
+ 			isa = PBXGroup;
+ 			children = (
+ 				504EC3041FED79650016851F /* App.app */,
+ 			);
+ 			name = Products;
+ 			sourceTree = "<group>";
+ 		};
+ 		504EC3061FED79650016851F /* App */ = {
+ 			isa = PBXGroup;
+ 			children = (
+ 				50379B222058CBB4000EE86E /* capacitor.config.json */,
+ 				504EC3071FED79650016851F /* AppDelegate.swift */,
+ 				A10000000000000000000001 /* NativeYouTubePlayerViewController.swift */,
+ 				A10000000000000000000003 /* NativeYouTubePlugin.swift */,
++				A10000000000000000000005 /* NativeYouTubeViewController.swift */,
+ 				504EC30B1FED79650016851F /* Main.storyboard */,
+ 				504EC30E1FED79650016851F /* Assets.xcassets */,
+ 				504EC3101FED79650016851F /* LaunchScreen.storyboard */,
+ 				504EC3131FED79650016851F /* Info.plist */,
+ 				2FAD9762203C412B000D30F8 /* config.xml */,
+ 				50B271D01FEDC1A000F3C39B /* public */,
+ 			);
+ 			path = App;
+ 			sourceTree = "<group>";
+ 		};
+ 		E42EE442F6594071C4F668F1 /* Frameworks */ = {
+ 			isa = PBXGroup;
+ 			children = (
+ 				2C3CDE8C358E0238F4ACBC20 /* Pods_App.framework */,
+ 			);
+ 			name = Frameworks;
+ 			sourceTree = "<group>";
+ 		};
+ /* End PBXGroup section */
+ 
+ /* Begin PBXNativeTarget section */
+ 		504EC3031FED79650016851F /* App */ = {
+ 			isa = PBXNativeTarget;
+ 			buildConfigurationList = 504EC3161FED79650016851F /* Build configuration list for PBXNativeTarget "App" */;
+ 			buildPhases = (
+@@ -156,50 +159,51 @@
+ 
+ /* Begin PBXResourcesBuildPhase section */
+ 		504EC3021FED79650016851F /* Resources */ = {
+ 			isa = PBXResourcesBuildPhase;
+ 			buildActionMask = 2147483647;
+ 			files = (
+ 				504EC3121FED79650016851F /* LaunchScreen.storyboard in Resources */,
+ 				50B271D11FEDC1A000F3C39B /* public in Resources */,
+ 				504EC30F1FED79650016851F /* Assets.xcassets in Resources */,
+ 				50379B232058CBB4000EE86E /* capacitor.config.json in Resources */,
+ 				504EC30D1FED79650016851F /* Main.storyboard in Resources */,
+ 				2FAD9763203C412B000D30F8 /* config.xml in Resources */,
+ 			);
+ 			runOnlyForDeploymentPostprocessing = 0;
+ 		};
+ /* End PBXResourcesBuildPhase section */
+ 
+ /* Begin PBXSourcesBuildPhase section */
+ 		504EC3001FED79650016851F /* Sources */ = {
+ 			isa = PBXSourcesBuildPhase;
+ 			buildActionMask = 2147483647;
+ 			files = (
+ 				504EC3081FED79650016851F /* AppDelegate.swift in Sources */,
+ 				A10000000000000000000002 /* NativeYouTubePlayerViewController.swift in Sources */,
+ 				A10000000000000000000004 /* NativeYouTubePlugin.swift in Sources */,
++				A10000000000000000000006 /* NativeYouTubeViewController.swift in Sources */,
+ 			);
+ 			runOnlyForDeploymentPostprocessing = 0;
+ 		};
+ /* End PBXSourcesBuildPhase section */
+ 
+ /* Begin PBXVariantGroup section */
+ 		504EC30B1FED79650016851F /* Main.storyboard */ = {
+ 			isa = PBXVariantGroup;
+ 			children = (
+ 				504EC30C1FED79650016851F /* Base */,
+ 			);
+ 			name = Main.storyboard;
+ 			sourceTree = "<group>";
+ 		};
+ 		504EC3101FED79650016851F /* LaunchScreen.storyboard */ = {
+ 			isa = PBXVariantGroup;
+ 			children = (
+ 				504EC3111FED79650016851F /* Base */,
+ 			);
+ 			name = LaunchScreen.storyboard;
+ 			sourceTree = "<group>";
+ 		};
+ /* End PBXVariantGroup section */
+ 
+ /* Begin XCBuildConfiguration section */
+diff --git a/ios/App/App/Base.lproj/Main.storyboard b/ios/App/App/Base.lproj/Main.storyboard
+index b44df7be8f82acfcd747fd8d77fcd7a87b788f6f..99d878f6e3cfe222e30447610b63d8f534ad8512 100644
+--- a/ios/App/App/Base.lproj/Main.storyboard
++++ b/ios/App/App/Base.lproj/Main.storyboard
+@@ -1,19 +1,19 @@
+ <?xml version="1.0" encoding="UTF-8"?>
+ <document type="com.apple.InterfaceBuilder3.CocoaTouch.Storyboard.XIB" version="3.0" toolsVersion="14111" targetRuntime="iOS.CocoaTouch" propertyAccessControl="none" useAutolayout="YES" useTraitCollections="YES" colorMatched="YES" initialViewController="BYZ-38-t0r">
+     <device id="retina4_7" orientation="portrait">
+         <adaptation id="fullscreen"/>
+     </device>
+     <dependencies>
+         <deployment identifier="iOS"/>
+         <plugIn identifier="com.apple.InterfaceBuilder.IBCocoaTouchPlugin" version="14088"/>
+     </dependencies>
+     <scenes>
+         <!--Bridge View Controller-->
+         <scene sceneID="tne-QT-ifu">
+             <objects>
+-                <viewController id="BYZ-38-t0r" customClass="CAPBridgeViewController" customModule="Capacitor" sceneMemberID="viewController"/>
++                <viewController id="BYZ-38-t0r" customClass="NativeYouTubeViewController" customModule="App" customModuleProvider="target" sceneMemberID="viewController"/>
+                 <placeholder placeholderIdentifier="IBFirstResponder" id="dkx-z0-nzr" sceneMemberID="firstResponder"/>
+             </objects>
+         </scene>
+     </scenes>
+ </document>
+diff --git a/ios/App/App/NativeYouTubeViewController.swift b/ios/App/App/NativeYouTubeViewController.swift
+new file mode 100644
+index 0000000000000000000000000000000000000000..ff47e4d0f16132475846fd6a738581c006ea1616
+--- /dev/null
++++ b/ios/App/App/NativeYouTubeViewController.swift
+@@ -0,0 +1,10 @@
++import Capacitor
++import UIKit
 +
-+    const addDebug = useCallback((message, data) => {
-+        const formattedData = data === undefined
-+            ? ''
-+            : ` ${typeof data === 'string' ? data : JSON.stringify(data)}`;
-+        const line = `${new Date().toLocaleTimeString()} ${message}${formattedData}`;
-+        setDebugLines((lines) => [...lines, line]);
-+        console.log(`[NativeYouTubeLauncher] ${message}`, data ?? '');
-+    }, []);
-+
-+    useEffect(() => {
-+        addDebug('videoId', videoId || '(empty)');
-+        addDebug('initialSeconds', initialSeconds || 0);
-+        addDebug('typeof NativeYouTube.open', typeof NativeYouTube.open);
-+        addDebug('window.location.href', window.location.href);
-+        addDebug('window.Capacitor exists', Boolean(window.Capacitor));
-+    }, [addDebug, initialSeconds, videoId]);
- 
-     const openNativePlayer = async () => {
-         console.log("button clicked");
-+        addDebug('button clicked');
- 
-         if (!videoId || isOpening) return;
-         setIsOpening(true);
-         setFailed(false);
- 
-         try {
-             console.log("calling plugin");
-+            addDebug('calling NativeYouTube.open', {
-+                videoId,
-+                startSeconds: initialSeconds || 0,
-+            });
-             await NativeYouTube.open({
-                 videoId,
-                 startSeconds: initialSeconds || 0,
-             });
-+            addDebug('open resolved');
-             console.info('[NativeYouTubeLauncher] native player opened', { videoId });
-         } catch (error) {
-+            const errorMessage = error?.message || String(error);
-+            addDebug(`open failed: ${errorMessage}`);
-             console.error('[NativeYouTubeLauncher] native player failed', error);
-             setFailed(true);
-         } finally {
-             setIsOpening(false);
-         }
-     };
- 
-     const openInYouTube = () => {
-         if (!videoId) return;
-         window.open(`https://www.youtube.com/watch?v=${videoId}`, '_blank');
-     };
- 
-     return (
-         <div className="w-full h-full min-h-[220px] flex flex-col items-center justify-center bg-black text-white text-center px-6 py-8">
-             <div className="max-w-sm space-y-4">
-                 <p className="text-sm sm:text-base font-semibold leading-relaxed">
-                     iOS 앱 내 YouTube 플레이어 실험을 실행합니다.
-                 </p>
-                 <button
-                     type="button"
-                     onClick={openNativePlayer}
-                     disabled={isOpening || !videoId}
-                     className="inline-flex items-center justify-center rounded-full bg-red-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-red-700 active:scale-95 disabled:cursor-not-allowed disabled:bg-gray-600"
-                 >
-                     {isOpening ? '여는 중...' : '앱 내 플레이어로 재생'}
-                 </button>
-                 {failed && (
-                     <button
-                         type="button"
-                         onClick={openInYouTube}
-                         className="block mx-auto rounded-full border border-white/70 px-5 py-2.5 text-sm font-bold text-white transition-colors hover:bg-white hover:text-black"
-                     >
-                         YouTube에서 보기
-                     </button>
-                 )}
-             </div>
-+            {debugLines.length > 0 && (
-+                <div className="mt-6 w-full max-w-sm rounded-lg bg-white/10 p-3 text-left font-mono text-[10px] leading-relaxed text-white/80">
-+                    {debugLines.map((line, index) => (
-+                        <div key={`${line}-${index}`}>{line}</div>
-+                    ))}
-+                </div>
-+            )}
-         </div>
-     );
- }
++class NativeYouTubeViewController: CAPBridgeViewController {
++    override func capacitorDidLoad() {
++        super.capacitorDidLoad()
++        bridge?.registerPluginInstance(NativeYouTubePlugin())
++        print("[NativeYouTubePlugin] registered")
++    }
++}
