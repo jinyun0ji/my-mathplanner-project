@@ -2,17 +2,21 @@ import React, { useState } from 'react';
 import { registerPlugin } from '@capacitor/core';
 
 const NativeYouTube = registerPlugin('NativeYouTube');
+console.log("NativeYouTube =", NativeYouTube);
 
 export default function NativeYouTubeLauncher({ videoId, initialSeconds = 0 }) {
     const [failed, setFailed] = useState(false);
     const [isOpening, setIsOpening] = useState(false);
 
     const openNativePlayer = async () => {
+        console.log("button clicked");
+
         if (!videoId || isOpening) return;
         setIsOpening(true);
         setFailed(false);
 
         try {
+            console.log("calling plugin");
             await NativeYouTube.open({
                 videoId,
                 startSeconds: initialSeconds || 0,
