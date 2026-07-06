@@ -339,16 +339,36 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
     const [myProfileDocId, setMyProfileDocId] = useState('');
     const [mySenderIds, setMySenderIds] = useState([]);
     const messagesEndRef = useRef(null);
+    const mySenderIdsRef = useRef([]);
+    const myProfileDocIdRef = useRef('');
+    const teacherNameRef = useRef(teacherName || '메시지');
+    const activeMessagesSubscriptionRef = useRef({ roomId: '', unsubscribe: null });
+    const lastAppliedSnapshotRef = useRef({ roomId: '', key: '' });
+    const normalizedSelectedRoomId = useMemo(() => String(selectedRoomId || '').trim(), [selectedRoomId]);
     const normalizedChatSlot = String(chatSlot || roomCreationContext?.slot || '');
     const roomStudentParticipantKeys = useMemo(() => uniqueStrings([roomCreationContext?.studentParticipantKeys]), [roomCreationContext?.studentParticipantKeys]);
     const expectedRoomType = userRole === 'parent' && normalizedChatSlot === 'institute'
         ? 'parent_institute'
         : getExpectedRoomType(userRole, roomCreationContext?.roomType || normalizedChatSlot);
     const canCreateChatRoom = Boolean(roomCreationContext?.targetAuthUid && expectedRoomType);
+    const roomStudentParticipantKeysSignature = useMemo(() => roomStudentParticipantKeys.join('\u001f'), [roomStudentParticipantKeys]);
+    const mySenderIdsSignature = useMemo(() => mySenderIds.join('\u001f'), [mySenderIds]);
 
     useEffect(() => {
         optimisticMessagesRef.current = optimisticMessages;
     }, [optimisticMessages]);
+
+    useEffect(() => {
+        myProfileDocIdRef.current = myProfileDocId;
+    }, [myProfileDocId]);
+
+    useEffect(() => {
+        mySenderIdsRef.current = mySenderIds;
+    }, [mySenderIdsSignature]);
+
+    useEffect(() => {
+        teacherNameRef.current = teacherName || '메시지';
+    }, [teacherName]);
 
     useEffect(() => {
         const authUid = auth.currentUser?.uid || '';
@@ -379,29 +399,39 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
 
     useEffect(() => {
         let cancelled = false;
-        setRoomId(null);
 
         const viewerUid = auth.currentUser?.uid || '';
         const targetAuthUid = String(roomCreationContext?.targetAuthUid || '');
 
-        if (selectedRoomId) {
-            const selectedId = String(selectedRoomId).trim();
+        if (normalizedSelectedRoomId) {
+            if (process.env.NODE_ENV === 'development') {
+                console.log('[StudentMessenger] selected room id', { role: userRole, expectedRoomType, selectedRoomId: normalizedSelectedRoomId, resolveChatRoomSkipped: true, fallbackQuerySkipped: true });
+                logRoomResolutionDebug('final resolved room', { role: userRole, expectedRoomType, selectedRoomId: normalizedSelectedRoomId, finalRoomId: normalizedSelectedRoomId, validation: 'skipped for explicit selectedRoomId', messagesPath: `chatRooms/${normalizedSelectedRoomId}/messages`, subscribeStarted: true });
+            }
+            setRoomId((prev) => {
+                if (String(prev || '') === normalizedSelectedRoomId) return prev;
+                setMessages([]);
+                setOptimisticMessages([]);
+                setError('');
+                lastAppliedSnapshotRef.current = { roomId: '', key: '' };
+                return normalizedSelectedRoomId;
+            });
+            return () => { cancelled = true; };
+        }
+
+        if (!allowLegacyResolve || !viewerUid || !targetAuthUid || !expectedRoomType) {
             setMessages([]);
             setOptimisticMessages([]);
             setError('');
-            if (process.env.NODE_ENV === 'development') {
-                console.log('[StudentMessenger] selected room id', { role: userRole, expectedRoomType, selectedRoomId: selectedId, resolveChatRoomSkipped: true, fallbackQuerySkipped: true });
-                logRoomResolutionDebug('final resolved room', { role: userRole, expectedRoomType, selectedRoomId: selectedId, finalRoomId: selectedId, validation: 'skipped for explicit selectedRoomId', messagesPath: `chatRooms/${selectedId}/messages`, subscribeStarted: true });
-            }
-            setRoomId(selectedId);
+            lastAppliedSnapshotRef.current = { roomId: '', key: '' };
+            setRoomId((prev) => (prev === null ? prev : null));
             return () => { cancelled = true; };
         }
 
         setMessages([]);
         setOptimisticMessages([]);
         setError('');
-
-        if (!viewerUid || !targetAuthUid || !expectedRoomType) return () => { cancelled = true; };
+        lastAppliedSnapshotRef.current = { roomId: '', key: '' };
 
         resolveChatRoom({
             viewerUid,
@@ -411,14 +441,19 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
             participantKeys: roomStudentParticipantKeys,
         }).then((resolvedRoom) => {
             if (cancelled || !resolvedRoom?.id) return;
-            if (process.env.NODE_ENV === 'development') console.log('[student messenger] resolved room', { roomId: resolvedRoom.id, messagesPath: `chatRooms/${resolvedRoom.id}/messages` });
-            setRoomId(String(resolvedRoom.id));
+            const resolvedRoomId = String(resolvedRoom.id);
+            if (process.env.NODE_ENV === 'development') console.log('[student messenger] resolved room', { roomId: resolvedRoomId, messagesPath: `chatRooms/${resolvedRoomId}/messages` });
+            setRoomId((prev) => {
+                if (String(prev || '') === resolvedRoomId) return prev;
+                lastAppliedSnapshotRef.current = { roomId: '', key: '' };
+                return resolvedRoomId;
+            });
         });
 
         return () => {
             cancelled = true;
         };
-    }, [studentId, studentAuthUid, selectedRoomId, allowLegacyResolve, canCreateChatRoom, expectedRoomType, roomCreationContext?.targetAuthUid, normalizedChatSlot, userRole, roomStudentParticipantKeys]);
+    }, [studentId, normalizedSelectedRoomId, allowLegacyResolve, expectedRoomType, roomCreationContext?.targetAuthUid, userRole, roomStudentParticipantKeysSignature]);
 
 
     useEffect(() => {
@@ -428,14 +463,29 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
     }, [roomId, notificationViewerUid, notifications, setNotifications]);
 
     useEffect(() => {
-        if (!roomId) return undefined;
+        const normalizedRoomId = String(roomId || '').trim();
+        if (!normalizedRoomId) return undefined;
+        if (activeMessagesSubscriptionRef.current.roomId === normalizedRoomId && activeMessagesSubscriptionRef.current.unsubscribe) return undefined;
         
-        const collectionPath = `chatRooms/${roomId}/messages`;
+        const collectionPath = `chatRooms/${normalizedRoomId}/messages`;
         let fallbackUnsub = null;
+        let primaryUnsub = null;
+        let cleanedUp = false;
+        const cleanupOnce = () => {
+            if (cleanedUp) return;
+            cleanedUp = true;
+            const unsubscribers = [primaryUnsub, fallbackUnsub].filter((fn) => typeof fn === 'function');
+            primaryUnsub = null;
+            fallbackUnsub = null;
+            if (activeMessagesSubscriptionRef.current.roomId === normalizedRoomId) {
+                activeMessagesSubscriptionRef.current = { roomId: '', unsubscribe: null };
+            }
+            unsubscribers.forEach((unsubscribe) => unsubscribe());
+        };
 
         const applySnapshot = (snap) => {
-            const myIds = new Set(uniqueStrings([auth.currentUser?.uid, myProfileDocId, mySenderIds]));
-            const fallbackSenderName = teacherName || '메시지';
+            const myIds = new Set(uniqueStrings([auth.currentUser?.uid, myProfileDocIdRef.current, mySenderIdsRef.current]));
+            const fallbackSenderName = teacherNameRef.current || '메시지';
             setError('');
             const snapshotItems = snap.docs.map((item) => ({
                 id: item.id,
@@ -445,20 +495,28 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
                 },
             }));
             const unresolvedOptimisticItems = optimisticMessagesRef.current
-                .filter((item) => String(item.roomId || '') === String(roomId))
+                .filter((item) => String(item.roomId || '') === normalizedRoomId)
                 .filter((optimistic) => !snapshotItems.some((serverItem) => isSameLogicalMessage(serverItem.raw, optimistic)))
                 .map((item) => ({ id: item.id, raw: item }));
             const mergedItems = sortMessageItems(dedupeMessages([...snapshotItems, ...unresolvedOptimisticItems]));
 
             setOptimisticMessages((prev) => {
                 const next = prev.filter((optimistic) => (
-                    String(optimistic.roomId || '') !== String(roomId)
+                    String(optimistic.roomId || '') !== normalizedRoomId
                     || !snapshotItems.some((serverItem) => isSameLogicalMessage(serverItem.raw, optimistic))
                 ));
                 if (next.length === prev.length) return prev;
                 optimisticMessagesRef.current = next;
                 return next;
             });
+            const snapshotKey = [
+                normalizedRoomId,
+                snapshotItems.map((item) => `${item.id}:${JSON.stringify(item.raw)}`).join('|'),
+                unresolvedOptimisticItems.map((item) => item.id).join('|'),
+            ].join('::');
+            if (lastAppliedSnapshotRef.current.roomId === normalizedRoomId && lastAppliedSnapshotRef.current.key === snapshotKey) return;
+            lastAppliedSnapshotRef.current = { roomId: normalizedRoomId, key: snapshotKey };
+
             setMessages(mergedItems
                 .map((item) => normalizeMessage(item.id, item.raw, myIds, fallbackSenderName))
                 .filter((item) => item.text || item.attachments.length));
@@ -469,25 +527,23 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
                 ? { collection: collectionPath, orderBy: ['createdAt', 'desc'], limit: 30, clientSort: ['createdAt', 'asc'] }
                 : { collection: collectionPath, orderBy: null, limit: 30, clientSort: ['createdAt', 'asc'] };
             if (process.env.NODE_ENV === 'development') {
-                console.log('[StudentMessenger] subscribe messages', { roomId, path: collectionPath, selectedRoomId: String(selectedRoomId || ''), expectedRoomType, subscribeStarted: true });
-                console.log('[student messenger][messages path]', { authUid: auth.currentUser?.uid || '', studentId: String(studentId || ''), studentAuthUid: String(studentAuthUid || ''), selectedRoomId: String(selectedRoomId || roomId || ''), expectedRoomType, roomType: expectedRoomType, channel: expectedRoomType, slot: normalizedChatSlot, participantIds: roomStudentParticipantKeys, lastMessageText: '', messagesPath: collectionPath, subscribeStarted: true, queryShape });
+                console.log('[StudentMessenger] subscribe messages', { roomId: normalizedRoomId, path: collectionPath, selectedRoomId: String(normalizedSelectedRoomId || ''), expectedRoomType, subscribeStarted: true });
+                console.log('[student messenger][messages path]', { authUid: auth.currentUser?.uid || '', studentId: String(studentId || ''), studentAuthUid: String(studentAuthUid || ''), selectedRoomId: String(normalizedSelectedRoomId || normalizedRoomId || ''), expectedRoomType, roomType: expectedRoomType, channel: expectedRoomType, slot: normalizedChatSlot, participantIds: roomStudentParticipantKeys, lastMessageText: '', messagesPath: collectionPath, subscribeStarted: true, queryShape });
             }
-            return subscribeRoomMessages({ roomId, withOrderBy, onNext: applySnapshot, onError: (snapshotError) => {
+            return subscribeRoomMessages({ roomId: normalizedRoomId, withOrderBy, onNext: applySnapshot, onError: (snapshotError) => {
                 if (process.env.NODE_ENV === 'development') logFirestoreQueryFailure('subscribe messages', snapshotError, queryShape);
                 if (withOrderBy) {
-                    fallbackUnsub = subscribe(false);
+                    if (!cleanedUp && !fallbackUnsub) fallbackUnsub = subscribe(false);
                     return;
                 }
                 setError('메시지를 불러올 권한이 없습니다. 관리자에게 문의해주세요.');
             } });
         };
 
-        const unsub = subscribe(true);
-        return () => {
-            unsub && unsub();
-            fallbackUnsub && fallbackUnsub();
-        };
-    }, [roomId, selectedRoomId, canCreateChatRoom, expectedRoomType, normalizedChatSlot, myProfileDocId, mySenderIds, teacherName, userRole, studentId, studentAuthUid, roomStudentParticipantKeys]);
+        primaryUnsub = subscribe(true);
+        activeMessagesSubscriptionRef.current = { roomId: normalizedRoomId, unsubscribe: cleanupOnce };
+        return cleanupOnce;
+    }, [roomId]);
 
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });

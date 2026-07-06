@@ -298,7 +298,11 @@ export default function ParentMessengerPage({ studentId, student, onBack, notifi
                 });
             }
         }
-        setSelectedSlot(slot);
+        setSelectedSlot((prev) => {
+            const previousRoomId = String(prev?.room?.roomId || prev?.room?.id || '').trim();
+            if (selectedRoomId && previousRoomId === selectedRoomId) return prev;
+            return slot;
+        });
         if (selectedRoomId && notificationViewerUid) {
             markChatRoomNotificationsRead({ viewerUid: notificationViewerUid, roomId: selectedRoomId, notifications, setNotifications })
                 .catch((error) => console.warn('[parent][notifications] mark chat room read failed', error));

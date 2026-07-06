@@ -90,7 +90,11 @@ export default function StudentMessengerPage({ studentId, student, onBack, notif
                 roomType: slot.room?.roomType || slot.roomType || '',
             });
         }
-        setSelectedSlot(slot);
+        setSelectedSlot((prev) => {
+            const previousRoomId = String(prev?.room?.roomId || prev?.room?.id || '').trim();
+            if (selectedRoomId && previousRoomId === selectedRoomId) return prev;
+            return slot;
+        });
         if (selectedRoomId && notificationViewerUid) {
             markChatRoomNotificationsRead({ viewerUid: notificationViewerUid, roomId: selectedRoomId, notifications, setNotifications })
                 .catch((error) => console.warn('[student][notifications] mark chat room read failed', error));

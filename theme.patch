@@ -1,11 +1,136 @@
 diff --git a/src/components/StudentMessenger.jsx b/src/components/StudentMessenger.jsx
-index 0080cdecf2222395e50baf61bee926f11e795baf..e9bf3c043a9de0dc1cd3e0f4fd9df4b5e7d74e63 100644
+index e9bf3c043a9de0dc1cd3e0f4fd9df4b5e7d74e63..6102374a77d44a99aab30b9f87057e81bda529ee 100644
 --- a/src/components/StudentMessenger.jsx
 +++ b/src/components/StudentMessenger.jsx
-@@ -402,51 +402,51 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
-         setError('');
+@@ -317,199 +317,255 @@ const normalizeMessage = (id, data, myIds, fallbackSenderName = '메시지') =>
+         date: formatDateKey(createdAtDate),
+         dateLabel: formatDateDivider(createdAtDate),
+         time: formatMessageTime(createdAtDate),
+         clientTempId: data?.clientTempId || '',
+         localCreatedAtMs: data?.localCreatedAtMs || null,
+         pending: Boolean(data?.pending),
+         messageType: data?.messageType || (Array.isArray(data?.attachments) && data.attachments.length ? (data.attachments[0]?.type === 'image' ? 'image' : 'file') : 'text'),
+         attachments: Array.isArray(data?.attachments) ? data.attachments : [],
+     };
+ };
  
-         if (!viewerUid || !targetAuthUid || !expectedRoomType) return () => { cancelled = true; };
+ export default function StudentMessenger({ studentId, studentAuthUid = '', selectedRoomId = '', teacherName = '메시지', userRole = 'parent', isFloating = false, allowLegacyResolve = true, emptyMessage = '아직 대화 내역이 없습니다.', chatSlot = '', roomCreationContext = null, notificationViewerUid = '', notifications = [], setNotifications = null }) {
+     const [roomId, setRoomId] = useState(null);
+     const [messages, setMessages] = useState([]);
+     const [optimisticMessages, setOptimisticMessages] = useState([]);
+     const optimisticMessagesRef = useRef([]);
+     const [inputText, setInputText] = useState('');
+     const [attachmentFile, setAttachmentFile] = useState(null);
+     const [attachmentPreviewUrl, setAttachmentPreviewUrl] = useState('');
+     const [isSending, setIsSending] = useState(false);
+     const [error, setError] = useState('');
+     const [imageModal, setImageModal] = useState(null);
+     const [myProfileDocId, setMyProfileDocId] = useState('');
+     const [mySenderIds, setMySenderIds] = useState([]);
+     const messagesEndRef = useRef(null);
++    const mySenderIdsRef = useRef([]);
++    const myProfileDocIdRef = useRef('');
++    const teacherNameRef = useRef(teacherName || '메시지');
++    const activeMessagesSubscriptionRef = useRef({ roomId: '', unsubscribe: null });
++    const lastAppliedSnapshotRef = useRef({ roomId: '', key: '' });
++    const normalizedSelectedRoomId = useMemo(() => String(selectedRoomId || '').trim(), [selectedRoomId]);
+     const normalizedChatSlot = String(chatSlot || roomCreationContext?.slot || '');
+     const roomStudentParticipantKeys = useMemo(() => uniqueStrings([roomCreationContext?.studentParticipantKeys]), [roomCreationContext?.studentParticipantKeys]);
+     const expectedRoomType = userRole === 'parent' && normalizedChatSlot === 'institute'
+         ? 'parent_institute'
+         : getExpectedRoomType(userRole, roomCreationContext?.roomType || normalizedChatSlot);
+     const canCreateChatRoom = Boolean(roomCreationContext?.targetAuthUid && expectedRoomType);
++    const roomStudentParticipantKeysSignature = useMemo(() => roomStudentParticipantKeys.join('\u001f'), [roomStudentParticipantKeys]);
++    const mySenderIdsSignature = useMemo(() => mySenderIds.join('\u001f'), [mySenderIds]);
+ 
+     useEffect(() => {
+         optimisticMessagesRef.current = optimisticMessages;
+     }, [optimisticMessages]);
+ 
++    useEffect(() => {
++        myProfileDocIdRef.current = myProfileDocId;
++    }, [myProfileDocId]);
++
++    useEffect(() => {
++        mySenderIdsRef.current = mySenderIds;
++    }, [mySenderIdsSignature]);
++
++    useEffect(() => {
++        teacherNameRef.current = teacherName || '메시지';
++    }, [teacherName]);
++
+     useEffect(() => {
+         const authUid = auth.currentUser?.uid || '';
+         if (!authUid) {
+             setMyProfileDocId('');
+             setMySenderIds([]);
+             return undefined;
+         }
+ 
+         let mounted = true;
+         getDoc(doc(db, 'userAuthIndex', authUid)).then((indexSnap) => {
+             if (!mounted) return;
+             const userDocId = indexSnap.exists() ? String(indexSnap.data()?.userDocId || '') : '';
+             setMyProfileDocId(userDocId);
+             return getMySenderIds(authUid).then((ids) => { if (mounted) setMySenderIds(ids); });
+         }).catch((indexError) => {
+             logFirestoreQueryFailure('load userAuthIndex', indexError, { doc: ['userAuthIndex', authUid] });
+             if (mounted) {
+                 setMyProfileDocId('');
+                 setMySenderIds([authUid].filter(Boolean));
+             }
+         });
+ 
+         return () => {
+             mounted = false;
+         };
+     }, []);
+ 
+     useEffect(() => {
+         let cancelled = false;
+-        setRoomId(null);
+ 
+         const viewerUid = auth.currentUser?.uid || '';
+         const targetAuthUid = String(roomCreationContext?.targetAuthUid || '');
+ 
+-        if (selectedRoomId) {
+-            const selectedId = String(selectedRoomId).trim();
++        if (normalizedSelectedRoomId) {
++            if (process.env.NODE_ENV === 'development') {
++                console.log('[StudentMessenger] selected room id', { role: userRole, expectedRoomType, selectedRoomId: normalizedSelectedRoomId, resolveChatRoomSkipped: true, fallbackQuerySkipped: true });
++                logRoomResolutionDebug('final resolved room', { role: userRole, expectedRoomType, selectedRoomId: normalizedSelectedRoomId, finalRoomId: normalizedSelectedRoomId, validation: 'skipped for explicit selectedRoomId', messagesPath: `chatRooms/${normalizedSelectedRoomId}/messages`, subscribeStarted: true });
++            }
++            setRoomId((prev) => {
++                if (String(prev || '') === normalizedSelectedRoomId) return prev;
++                setMessages([]);
++                setOptimisticMessages([]);
++                setError('');
++                lastAppliedSnapshotRef.current = { roomId: '', key: '' };
++                return normalizedSelectedRoomId;
++            });
++            return () => { cancelled = true; };
++        }
++
++        if (!allowLegacyResolve || !viewerUid || !targetAuthUid || !expectedRoomType) {
+             setMessages([]);
+             setOptimisticMessages([]);
+             setError('');
+-            if (process.env.NODE_ENV === 'development') {
+-                console.log('[StudentMessenger] selected room id', { role: userRole, expectedRoomType, selectedRoomId: selectedId, resolveChatRoomSkipped: true, fallbackQuerySkipped: true });
+-                logRoomResolutionDebug('final resolved room', { role: userRole, expectedRoomType, selectedRoomId: selectedId, finalRoomId: selectedId, validation: 'skipped for explicit selectedRoomId', messagesPath: `chatRooms/${selectedId}/messages`, subscribeStarted: true });
+-            }
+-            setRoomId(selectedId);
++            lastAppliedSnapshotRef.current = { roomId: '', key: '' };
++            setRoomId((prev) => (prev === null ? prev : null));
+             return () => { cancelled = true; };
+         }
+ 
+         setMessages([]);
+         setOptimisticMessages([]);
+         setError('');
+-
+-        if (!viewerUid || !targetAuthUid || !expectedRoomType) return () => { cancelled = true; };
++        lastAppliedSnapshotRef.current = { roomId: '', key: '' };
  
          resolveChatRoom({
              viewerUid,
@@ -15,32 +140,58 @@ index 0080cdecf2222395e50baf61bee926f11e795baf..e9bf3c043a9de0dc1cd3e0f4fd9df4b5
              participantKeys: roomStudentParticipantKeys,
          }).then((resolvedRoom) => {
              if (cancelled || !resolvedRoom?.id) return;
-             if (process.env.NODE_ENV === 'development') console.log('[student messenger] resolved room', { roomId: resolvedRoom.id, messagesPath: `chatRooms/${resolvedRoom.id}/messages` });
-             setRoomId(String(resolvedRoom.id));
+-            if (process.env.NODE_ENV === 'development') console.log('[student messenger] resolved room', { roomId: resolvedRoom.id, messagesPath: `chatRooms/${resolvedRoom.id}/messages` });
+-            setRoomId(String(resolvedRoom.id));
++            const resolvedRoomId = String(resolvedRoom.id);
++            if (process.env.NODE_ENV === 'development') console.log('[student messenger] resolved room', { roomId: resolvedRoomId, messagesPath: `chatRooms/${resolvedRoomId}/messages` });
++            setRoomId((prev) => {
++                if (String(prev || '') === resolvedRoomId) return prev;
++                lastAppliedSnapshotRef.current = { roomId: '', key: '' };
++                return resolvedRoomId;
++            });
          });
  
          return () => {
              cancelled = true;
          };
-     }, [studentId, studentAuthUid, selectedRoomId, allowLegacyResolve, canCreateChatRoom, expectedRoomType, roomCreationContext?.targetAuthUid, normalizedChatSlot, userRole, roomStudentParticipantKeys]);
+-    }, [studentId, studentAuthUid, selectedRoomId, allowLegacyResolve, canCreateChatRoom, expectedRoomType, roomCreationContext?.targetAuthUid, normalizedChatSlot, userRole, roomStudentParticipantKeys]);
++    }, [studentId, normalizedSelectedRoomId, allowLegacyResolve, expectedRoomType, roomCreationContext?.targetAuthUid, userRole, roomStudentParticipantKeysSignature]);
  
  
      useEffect(() => {
          if (!roomId || !notificationViewerUid) return;
          markChatRoomNotificationsRead({ viewerUid: notificationViewerUid, roomId, notifications, setNotifications })
--            .catch((error) => console.error('[messenger][notifications] mark chat room read failed', error));
-+            .catch((error) => console.warn('[messenger][notifications] mark chat room read failed', error));
+             .catch((error) => console.warn('[messenger][notifications] mark chat room read failed', error));
      }, [roomId, notificationViewerUid, notifications, setNotifications]);
  
      useEffect(() => {
-         if (!roomId) return undefined;
+-        if (!roomId) return undefined;
++        const normalizedRoomId = String(roomId || '').trim();
++        if (!normalizedRoomId) return undefined;
++        if (activeMessagesSubscriptionRef.current.roomId === normalizedRoomId && activeMessagesSubscriptionRef.current.unsubscribe) return undefined;
          
-         const collectionPath = `chatRooms/${roomId}/messages`;
+-        const collectionPath = `chatRooms/${roomId}/messages`;
++        const collectionPath = `chatRooms/${normalizedRoomId}/messages`;
          let fallbackUnsub = null;
++        let primaryUnsub = null;
++        let cleanedUp = false;
++        const cleanupOnce = () => {
++            if (cleanedUp) return;
++            cleanedUp = true;
++            const unsubscribers = [primaryUnsub, fallbackUnsub].filter((fn) => typeof fn === 'function');
++            primaryUnsub = null;
++            fallbackUnsub = null;
++            if (activeMessagesSubscriptionRef.current.roomId === normalizedRoomId) {
++                activeMessagesSubscriptionRef.current = { roomId: '', unsubscribe: null };
++            }
++            unsubscribers.forEach((unsubscribe) => unsubscribe());
++        };
  
          const applySnapshot = (snap) => {
-             const myIds = new Set(uniqueStrings([auth.currentUser?.uid, myProfileDocId, mySenderIds]));
-             const fallbackSenderName = teacherName || '메시지';
+-            const myIds = new Set(uniqueStrings([auth.currentUser?.uid, myProfileDocId, mySenderIds]));
+-            const fallbackSenderName = teacherName || '메시지';
++            const myIds = new Set(uniqueStrings([auth.currentUser?.uid, myProfileDocIdRef.current, mySenderIdsRef.current]));
++            const fallbackSenderName = teacherNameRef.current || '메시지';
              setError('');
              const snapshotItems = snap.docs.map((item) => ({
                  id: item.id,
@@ -50,280 +201,100 @@ index 0080cdecf2222395e50baf61bee926f11e795baf..e9bf3c043a9de0dc1cd3e0f4fd9df4b5
                  },
              }));
              const unresolvedOptimisticItems = optimisticMessagesRef.current
-                 .filter((item) => String(item.roomId || '') === String(roomId))
+-                .filter((item) => String(item.roomId || '') === String(roomId))
++                .filter((item) => String(item.roomId || '') === normalizedRoomId)
                  .filter((optimistic) => !snapshotItems.some((serverItem) => isSameLogicalMessage(serverItem.raw, optimistic)))
                  .map((item) => ({ id: item.id, raw: item }));
              const mergedItems = sortMessageItems(dedupeMessages([...snapshotItems, ...unresolvedOptimisticItems]));
  
-diff --git a/src/notifications/notificationReadActions.js b/src/notifications/notificationReadActions.js
-index 0f2102cd8f7927766b7441162283c6eab786b673..d558743c6647de74ef2c8879a07c00800bd37327 100644
---- a/src/notifications/notificationReadActions.js
-+++ b/src/notifications/notificationReadActions.js
-@@ -1,76 +1,86 @@
- import { httpsCallable } from 'firebase/functions';
- import { functions as firebaseFunctions } from '../firebase/client';
- 
- const normalizeId = (value) => String(value || '').trim();
- 
- export const markNotificationRead = async ({ viewerUid, notificationId, functions = firebaseFunctions, setNotifications = null }) => {
-     const normalizedViewerUid = normalizeId(viewerUid);
-     const normalizedNotificationId = normalizeId(notificationId);
-     if (!normalizedViewerUid || !normalizedNotificationId) return false;
- 
-     const now = new Date();
-     if (setNotifications) {
-         setNotifications((prev) => prev.map((item) => (
-             String(item.id || '') === normalizedNotificationId
-                 ? { ...item, isRead: true, readAt: item.readAt || now }
-                 : item
-         )));
-     }
- 
-     const callable = httpsCallable(functions, 'markNotificationRead');
-     console.log('[notification read]', { viewerUid: normalizedViewerUid, notificationId: normalizedNotificationId });
--    await callable({ viewerUid: normalizedViewerUid, notificationId: normalizedNotificationId });
--    return true;
-+    try {
-+        await callable({ viewerUid: normalizedViewerUid, notificationId: normalizedNotificationId });
-+        return true;
-+    } catch (error) {
-+        console.warn('[notification read] markNotificationRead failed', { viewerUid: normalizedViewerUid, notificationId: normalizedNotificationId, code: error?.code, message: error?.message });
-+        throw error;
-+    }
- };
- 
- export const markAllNotificationsRead = async ({ viewerUid, functions = firebaseFunctions, setNotifications = null }) => {
-     const normalizedViewerUid = normalizeId(viewerUid);
-     if (!normalizedViewerUid) return null;
- 
-     const now = new Date();
-     if (setNotifications) {
-         setNotifications((prev) => prev.map((item) => ({ ...item, isRead: true, readAt: item.readAt || now })));
-     }
- 
-     const callable = httpsCallable(functions, 'markAllNotificationsRead');
-     const result = await callable({ viewerUid: normalizedViewerUid });
-     return result;
- };
- 
- export const getChatNotificationRoomId = (notification) => {
-     const ref = normalizeId(notification?.ref);
-     if (ref.startsWith('chatRooms/') || ref.startsWith('chats/')) {
-         return normalizeId(ref.split('/')[1]);
-     }
-     const collection = normalizeId(notification?.refCollection);
-     if (collection === 'chatRooms' || collection === 'chats') {
-         return normalizeId(notification?.refId);
-     }
-     return normalizeId(notification?.roomId || notification?.chatRoomId || notification?.payload?.roomId || notification?.payload?.chatRoomId);
- };
- 
- export const markChatRoomNotificationsRead = async ({ viewerUid, roomId, notifications = [], functions = firebaseFunctions, setNotifications = null }) => {
-     const normalizedViewerUid = normalizeId(viewerUid);
-     const normalizedRoomId = normalizeId(roomId);
-     if (!normalizedViewerUid || !normalizedRoomId) return 0;
- 
-     console.log('[chat notification read]', { viewerUid: normalizedViewerUid, roomId: normalizedRoomId });
- 
-     const targets = (Array.isArray(notifications) ? notifications : [])
-         .filter((item) => item?.isRead !== true && !item?.readAt)
-         .filter((item) => getChatNotificationRoomId(item) === normalizedRoomId);
- 
-     if (setNotifications && targets.length > 0) {
-         const targetIds = new Set(targets.map((item) => String(item.id || '')));
-         const now = new Date();
-         setNotifications((prev) => prev.map((item) => (
-             targetIds.has(String(item.id || ''))
-                 ? { ...item, isRead: true, readAt: item.readAt || now }
-                 : item
-         )));
-     }
- 
-     const callable = httpsCallable(functions, 'markChatRoomNotificationsRead');
--    const result = await callable({ viewerUid: normalizedViewerUid, roomId: normalizedRoomId });
--    return result?.data?.updated ?? targets.length;
-+    try {
-+        const result = await callable({ viewerUid: normalizedViewerUid, roomId: normalizedRoomId });
-+        return result?.data?.updated ?? targets.length;
-+    } catch (error) {
-+        console.warn('[chat notification read] markChatRoomNotificationsRead failed', { viewerUid: normalizedViewerUid, roomId: normalizedRoomId, code: error?.code, message: error?.message });
-+        throw error;
-+    }
- };
-diff --git a/src/pages/StudentHome.jsx b/src/pages/StudentHome.jsx
-index f34101576ea830cad2763d70d90fb46eeb531758..1c61f767272ad72fd78624ed3817afd7082389a4 100644
---- a/src/pages/StudentHome.jsx
-+++ b/src/pages/StudentHome.jsx
-@@ -1,48 +1,48 @@
- // src/pages/StudentHome.jsx
- import React, {useState, useMemo, useEffect, useCallback} from 'react';
- import { doc, getDoc } from 'firebase/firestore';
- import { useSearchParams } from 'react-router-dom';
- import {
-     DashboardTab, ClassTab, ScheduleTab, LearningTab, MenuTab,
-     BoardTab
- } from '../components/StudentTabs';
- import ClassroomView from './student/ClassroomView';
- import StudentMessengerPage from './student/StudentMessengerPage';
- import StudentHeader from '../components/StudentHeader';
- import {
-     Icon,
-     calculateHomeworkStats,
-     calculateGradeComparison,
- } from '../utils/helpers';
- import { sortClassesByStatus, getViewerVisibleClassIds } from '../utils/classStatus';
- import { getViewerTodayClassItems, toLocalYmd } from '../utils/viewerTodaySchedule';
- import NotificationsIcon from '@mui/icons-material/Notifications';
- import useNotifications from '../notifications/useNotifications';
- import NotificationList from '../notifications/NotificationList';
- import openNotification from '../notifications/openNotification';
--import { markAllNotificationsRead, markNotificationRead } from '../notifications/notificationReadActions';
-+import { getChatNotificationRoomId, markAllNotificationsRead, markChatRoomNotificationsRead, markNotificationRead } from '../notifications/notificationReadActions';
- import { FEATURES } from '../config/features';
- import { auth, db } from '../firebase/client';
- import FormulaBookView from '../components/Student/formulaBook/FormulaBookView';
- 
- const normalizeClassStatus = (value) => {
-     if (value === 'withdrawn') return '퇴원';
-     if (value === 'active') return '진행중';
-     if (value === '재원') return '진행중';
-     return value;
- };
- 
- const isWithdrawnStatus = (value) => {
-     const normalized = normalizeClassStatus(value);
-     return ['퇴원', '중도퇴원', '전반', '전반퇴원'].includes(normalized);
- };
- 
- const toDayStartMs = (value) => {
-     const date = value ? new Date(value) : new Date();
-     const time = Number.isNaN(date.getTime()) ? new Date() : date;
-     return new Date(time.getFullYear(), time.getMonth(), time.getDate()).getTime();
- };
- 
- const getItemClassId = (item) => (
-     item?.classId
-     || item?.classDocId
-@@ -533,89 +533,99 @@ export default function StudentHome({
-         const combinedNotices = (Array.isArray(notices) ? notices : [])
-             .filter((notice) => isNoticeVisibleToStudent({ notice, studentKeys, classIds }));
-         setVisibleNotices(combinedNotices);
-     }, [notices, student, studentId, userId, visibleClassIds]);
- 
-     const handleOpenNotification = () => {
-         if (isMasterPreview || readOnly) {
-             showMasterViewUnavailable('알림');
-             return;
-         }
-         setIsNotificationOpen(true);
-     };
-     const handleOpenMessages = () => {
-         if (isMasterPreview || readOnly) {
-             showMasterViewUnavailable('메신저');
-             return;
-         }
-         setIsMessengerPage(true);
-     };
- 
-     const handleNavigateToMemo = (classId, lessonId, time) => {
-         setSelectedClassId(classId);
-         setTargetMemo({ lessonId, time });
-     };
- 
-+    const markNotificationReadInBackground = (notificationId, roomId = '') => {
-+        if (isMasterPreview || readOnly || !viewerUid) return;
-+        if (notificationId) {
-+            markNotificationRead({ viewerUid, notificationId, setNotifications })
-+                .catch((error) => console.warn('[student][notifications] mark single read failed', error));
-+        }
-+        if (roomId) {
-+            markChatRoomNotificationsRead({ viewerUid, roomId, notifications, setNotifications })
-+                .catch((error) => console.warn('[student][notifications] mark chat room read failed', error));
-+        }
-+    };
+             setOptimisticMessages((prev) => {
+                 const next = prev.filter((optimistic) => (
+-                    String(optimistic.roomId || '') !== String(roomId)
++                    String(optimistic.roomId || '') !== normalizedRoomId
+                     || !snapshotItems.some((serverItem) => isSameLogicalMessage(serverItem.raw, optimistic))
+                 ));
+                 if (next.length === prev.length) return prev;
+                 optimisticMessagesRef.current = next;
+                 return next;
+             });
++            const snapshotKey = [
++                normalizedRoomId,
++                snapshotItems.map((item) => `${item.id}:${JSON.stringify(item.raw)}`).join('|'),
++                unresolvedOptimisticItems.map((item) => item.id).join('|'),
++            ].join('::');
++            if (lastAppliedSnapshotRef.current.roomId === normalizedRoomId && lastAppliedSnapshotRef.current.key === snapshotKey) return;
++            lastAppliedSnapshotRef.current = { roomId: normalizedRoomId, key: snapshotKey };
 +
-     const handleNotificationClick = async (notification) => {
-         if (!notification) return;
-         const refCollectionForLog = notification?.refCollection || (typeof notification?.ref === 'string' ? notification.ref.split('/').filter(Boolean)[0] : '');
-         const refIdForLog = notification?.refId || (typeof notification?.ref === 'string' ? notification.ref.split('/').filter(Boolean)[1] : '');
--        const roomIdForLog = notification?.roomId || notification?.chatRoomId || notification?.payload?.roomId || (['chatRooms', 'chats'].includes(refCollectionForLog) ? refIdForLog : '');
-+        const roomIdForLog = getChatNotificationRoomId(notification) || (['chatRooms', 'chats'].includes(refCollectionForLog) ? refIdForLog : '');
-         console.log('[notification click]', { notificationId: notification.id, refCollection: refCollectionForLog, refId: refIdForLog, roomId: roomIdForLog });
--        if (!isMasterPreview && !readOnly) {
--            try {
--                await markNotificationRead({ viewerUid, notificationId: notification.id, setNotifications });
--            } catch (error) {
--                console.error('[student][notifications] mark single read failed', error);
-+
-+        if (roomIdForLog) {
-+            if (!isMasterPreview && !readOnly) {
-+                setInitialMessengerRoomId(String(roomIdForLog));
-+                setSelectedClassId(null);
-+                setActiveTab('menu');
-+                setIsMessengerPage(true);
+             setMessages(mergedItems
+                 .map((item) => normalizeMessage(item.id, item.raw, myIds, fallbackSenderName))
+                 .filter((item) => item.text || item.attachments.length));
+         };
+ 
+         const subscribe = (withOrderBy) => {
+             const queryShape = withOrderBy
+                 ? { collection: collectionPath, orderBy: ['createdAt', 'desc'], limit: 30, clientSort: ['createdAt', 'asc'] }
+                 : { collection: collectionPath, orderBy: null, limit: 30, clientSort: ['createdAt', 'asc'] };
+             if (process.env.NODE_ENV === 'development') {
+-                console.log('[StudentMessenger] subscribe messages', { roomId, path: collectionPath, selectedRoomId: String(selectedRoomId || ''), expectedRoomType, subscribeStarted: true });
+-                console.log('[student messenger][messages path]', { authUid: auth.currentUser?.uid || '', studentId: String(studentId || ''), studentAuthUid: String(studentAuthUid || ''), selectedRoomId: String(selectedRoomId || roomId || ''), expectedRoomType, roomType: expectedRoomType, channel: expectedRoomType, slot: normalizedChatSlot, participantIds: roomStudentParticipantKeys, lastMessageText: '', messagesPath: collectionPath, subscribeStarted: true, queryShape });
++                console.log('[StudentMessenger] subscribe messages', { roomId: normalizedRoomId, path: collectionPath, selectedRoomId: String(normalizedSelectedRoomId || ''), expectedRoomType, subscribeStarted: true });
++                console.log('[student messenger][messages path]', { authUid: auth.currentUser?.uid || '', studentId: String(studentId || ''), studentAuthUid: String(studentAuthUid || ''), selectedRoomId: String(normalizedSelectedRoomId || normalizedRoomId || ''), expectedRoomType, roomType: expectedRoomType, channel: expectedRoomType, slot: normalizedChatSlot, participantIds: roomStudentParticipantKeys, lastMessageText: '', messagesPath: collectionPath, subscribeStarted: true, queryShape });
              }
-+            setIsNotificationOpen(false);
-+            markNotificationReadInBackground(notification.id, roomIdForLog);
-+            return;
-         }
-+
-         await openNotification({
-             notification,
-             onNavigate: ({ refCollection, refId, data }) => {
-                 if (refCollection === 'lessonLogs' && data?.classId) {
-                     setSelectedClassId(data.classId);
-                     setTargetMemo({ lessonId: refId, time: data?.date || null });
+-            return subscribeRoomMessages({ roomId, withOrderBy, onNext: applySnapshot, onError: (snapshotError) => {
++            return subscribeRoomMessages({ roomId: normalizedRoomId, withOrderBy, onNext: applySnapshot, onError: (snapshotError) => {
+                 if (process.env.NODE_ENV === 'development') logFirestoreQueryFailure('subscribe messages', snapshotError, queryShape);
+                 if (withOrderBy) {
+-                    fallbackUnsub = subscribe(false);
++                    if (!cleanedUp && !fallbackUnsub) fallbackUnsub = subscribe(false);
                      return;
                  }
+                 setError('메시지를 불러올 권한이 없습니다. 관리자에게 문의해주세요.');
+             } });
+         };
  
-                 if (['homeworkResults', 'grades', 'attendanceLogs'].includes(refCollection)) {
-                     setSelectedClassId(null);
-                     setInitialLearningTab('homework');
-                     return;
-                 }
--
--                if (refCollection === 'chats' || refCollection === 'chatRooms') {
--                    if (isMasterPreview || readOnly) return;
--                    const roomId = notification?.roomId || notification?.chatRoomId || notification?.payload?.roomId || refId;
--                    setInitialMessengerRoomId(roomId ? String(roomId) : '');
--                    setSelectedClassId(null);
--                    setActiveTab('menu');
--                    setIsMessengerPage(true);
--                }
-             },
-         });
-         setIsNotificationOpen(false);
-+        markNotificationReadInBackground(notification.id);
+-        const unsub = subscribe(true);
+-        return () => {
+-            unsub && unsub();
+-            fallbackUnsub && fallbackUnsub();
+-        };
+-    }, [roomId, selectedRoomId, canCreateChatRoom, expectedRoomType, normalizedChatSlot, myProfileDocId, mySenderIds, teacherName, userRole, studentId, studentAuthUid, roomStudentParticipantKeys]);
++        primaryUnsub = subscribe(true);
++        activeMessagesSubscriptionRef.current = { roomId: normalizedRoomId, unsubscribe: cleanupOnce };
++        return cleanupOnce;
++    }, [roomId]);
+ 
+     useEffect(() => {
+         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+     }, [messages]);
+ 
+     const placeholder = useMemo(() => (userRole === 'parent' ? '메시지 보내기...' : '메시지 입력'), [userRole]);
+ 
+     useEffect(() => () => {
+         if (attachmentPreviewUrl) URL.revokeObjectURL(attachmentPreviewUrl);
+     }, [attachmentPreviewUrl]);
+ 
+     const clearAttachment = () => {
+         if (attachmentPreviewUrl) URL.revokeObjectURL(attachmentPreviewUrl);
+         setAttachmentPreviewUrl('');
+         setAttachmentFile(null);
      };
  
-     const handleMarkAllRead = async () => {
-         console.log('[notifications] markAllRead clicked');
- 
-         if (isMasterPreview || readOnly) {
-             showMasterViewUnavailable('알림 읽음 처리');
-             return;
-         }
- 
-         if (!viewerUid) {
-             console.warn('[notifications] no viewerUid');
-             return;
-         }
- 
-         try {
-             const result = await markAllNotificationsRead({ viewerUid, setNotifications });
-             console.log('[student][notifications] markAllRead success', { viewerUid, updated: result?.data?.updated ?? null });
-         } catch (error) {
-             console.error('[student][notifications] markAllRead failed', error);
-         }
-     };
- 
- 
- 
+     const handleAttachmentChange = (event) => {
+         const file = event.target.files?.[0] || null;
+         event.target.value = '';
+         if (!file) return;
+         const validation = validateChatAttachment(file);
+         if (!validation.ok) {
+             setError(validation.message);
+             clearAttachment();
 diff --git a/src/pages/parent/ParentMessengerPage.jsx b/src/pages/parent/ParentMessengerPage.jsx
-index 21a8046780432b3781e4225a1ff837dd57d1f580..9af0177d07da66831de4a5203bb2f2eaad3b74a9 100644
+index 9af0177d07da66831de4a5203bb2f2eaad3b74a9..31900e75a823e13e2efc007a698ad0acc186c291 100644
 --- a/src/pages/parent/ParentMessengerPage.jsx
 +++ b/src/pages/parent/ParentMessengerPage.jsx
-@@ -279,51 +279,51 @@ export default function ParentMessengerPage({ studentId, student, onBack, notifi
+@@ -276,51 +276,55 @@ export default function ParentMessengerPage({ studentId, student, onBack, notifi
+                 selectedRoomId,
+                 roomIdFromIndex: String(slot.room?.roomId || ''),
+                 roomDocId: String(slot.room?.id || ''),
                  slot: slot.slot,
                  expectedRoomType: slot.roomType,
                  actual: getRoomDebugInfo(slot.room),
@@ -346,11 +317,15 @@ index 21a8046780432b3781e4225a1ff837dd57d1f580..9af0177d07da66831de4a5203bb2f2ea
                  });
              }
          }
-         setSelectedSlot(slot);
+-        setSelectedSlot(slot);
++        setSelectedSlot((prev) => {
++            const previousRoomId = String(prev?.room?.roomId || prev?.room?.id || '').trim();
++            if (selectedRoomId && previousRoomId === selectedRoomId) return prev;
++            return slot;
++        });
          if (selectedRoomId && notificationViewerUid) {
              markChatRoomNotificationsRead({ viewerUid: notificationViewerUid, roomId: selectedRoomId, notifications, setNotifications })
--                .catch((error) => console.error('[parent][notifications] mark chat room read failed', error));
-+                .catch((error) => console.warn('[parent][notifications] mark chat room read failed', error));
+                 .catch((error) => console.warn('[parent][notifications] mark chat room read failed', error));
          }
      };
  
@@ -373,14 +348,14 @@ index 21a8046780432b3781e4225a1ff837dd57d1f580..9af0177d07da66831de4a5203bb2f2ea
                      <button type="button" onClick={() => { hasConsumedInitialRoomRef.current = true; setSelectedSlot(null); }} className="mobile-back-button text-gray-700"><ArrowBackIosNewIcon style={{ fontSize: 18 }} /></button>
                      <h1 className="text-base font-semibold text-gray-900 truncate">{currentSlot.title}</h1>
                  </header>
-                 <div className="flex-1 min-h-0">
-                     <StudentMessenger
-                         studentId={activeStudentId}
 diff --git a/src/pages/student/StudentMessengerPage.jsx b/src/pages/student/StudentMessengerPage.jsx
-index 5014230a1931f7571a18451c1b3a0e610fb7cddb..33efe7abb345a0ebbf9dd5fce6bdd0a6fd72c074 100644
+index 33efe7abb345a0ebbf9dd5fce6bdd0a6fd72c074..e4c398dab2b93a20b11da9304ec3e362a96173bb 100644
 --- a/src/pages/student/StudentMessengerPage.jsx
 +++ b/src/pages/student/StudentMessengerPage.jsx
-@@ -71,51 +71,51 @@ export default function StudentMessengerPage({ studentId, student, onBack, notif
+@@ -68,51 +68,55 @@ export default function StudentMessengerPage({ studentId, student, onBack, notif
+         });
+     // eslint-disable-next-line react-hooks/exhaustive-deps
+     }, [initialRoomId, messengerSlots, selectedSlot]);
  
      const handleOpenRoom = (slot) => {
          const selectedRoomId = String(slot.room?.roomId || slot.room?.id || '').trim();
@@ -403,11 +378,15 @@ index 5014230a1931f7571a18451c1b3a0e610fb7cddb..33efe7abb345a0ebbf9dd5fce6bdd0a6
                  roomType: slot.room?.roomType || slot.roomType || '',
              });
          }
-         setSelectedSlot(slot);
+-        setSelectedSlot(slot);
++        setSelectedSlot((prev) => {
++            const previousRoomId = String(prev?.room?.roomId || prev?.room?.id || '').trim();
++            if (selectedRoomId && previousRoomId === selectedRoomId) return prev;
++            return slot;
++        });
          if (selectedRoomId && notificationViewerUid) {
              markChatRoomNotificationsRead({ viewerUid: notificationViewerUid, roomId: selectedRoomId, notifications, setNotifications })
--                .catch((error) => console.error('[student][notifications] mark chat room read failed', error));
-+                .catch((error) => console.warn('[student][notifications] mark chat room read failed', error));
+                 .catch((error) => console.warn('[student][notifications] mark chat room read failed', error));
          }
      };
  
@@ -430,6 +409,3 @@ index 5014230a1931f7571a18451c1b3a0e610fb7cddb..33efe7abb345a0ebbf9dd5fce6bdd0a6
                  </div>
              );
          }
-         return (
-             <div className="mobile-screen h-screen min-h-screen bg-gray-50 flex flex-col overflow-hidden">
-                 <header className="mobile-header bg-white border-b border-gray-100 px-4 flex items-center gap-3">
