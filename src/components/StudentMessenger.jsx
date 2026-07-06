@@ -424,7 +424,7 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
     useEffect(() => {
         if (!roomId || !notificationViewerUid) return;
         markChatRoomNotificationsRead({ viewerUid: notificationViewerUid, roomId, notifications, setNotifications })
-            .catch((error) => console.error('[messenger][notifications] mark chat room read failed', error));
+            .catch((error) => console.warn('[messenger][notifications] mark chat room read failed', error));
     }, [roomId, notificationViewerUid, notifications, setNotifications]);
 
     useEffect(() => {

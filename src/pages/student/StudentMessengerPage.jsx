@@ -93,7 +93,7 @@ export default function StudentMessengerPage({ studentId, student, onBack, notif
         setSelectedSlot(slot);
         if (selectedRoomId && notificationViewerUid) {
             markChatRoomNotificationsRead({ viewerUid: notificationViewerUid, roomId: selectedRoomId, notifications, setNotifications })
-                .catch((error) => console.error('[student][notifications] mark chat room read failed', error));
+                .catch((error) => console.warn('[student][notifications] mark chat room read failed', error));
         }
     };
 

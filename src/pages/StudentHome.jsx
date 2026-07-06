@@ -20,7 +20,7 @@ import NotificationsIcon from '@mui/icons-material/Notifications';
 import useNotifications from '../notifications/useNotifications';
 import NotificationList from '../notifications/NotificationList';
 import openNotification from '../notifications/openNotification';
-import { markAllNotificationsRead, markNotificationRead } from '../notifications/notificationReadActions';
+import { getChatNotificationRoomId, markAllNotificationsRead, markChatRoomNotificationsRead, markNotificationRead } from '../notifications/notificationReadActions';
 import { FEATURES } from '../config/features';
 import { auth, db } from '../firebase/client';
 import FormulaBookView from '../components/Student/formulaBook/FormulaBookView';
@@ -555,19 +555,37 @@ export default function StudentHome({
         setTargetMemo({ lessonId, time });
     };
 
+    const markNotificationReadInBackground = (notificationId, roomId = '') => {
+        if (isMasterPreview || readOnly || !viewerUid) return;
+        if (notificationId) {
+            markNotificationRead({ viewerUid, notificationId, setNotifications })
+                .catch((error) => console.warn('[student][notifications] mark single read failed', error));
+        }
+        if (roomId) {
+            markChatRoomNotificationsRead({ viewerUid, roomId, notifications, setNotifications })
+                .catch((error) => console.warn('[student][notifications] mark chat room read failed', error));
+        }
+    };
+
     const handleNotificationClick = async (notification) => {
         if (!notification) return;
         const refCollectionForLog = notification?.refCollection || (typeof notification?.ref === 'string' ? notification.ref.split('/').filter(Boolean)[0] : '');
         const refIdForLog = notification?.refId || (typeof notification?.ref === 'string' ? notification.ref.split('/').filter(Boolean)[1] : '');
-        const roomIdForLog = notification?.roomId || notification?.chatRoomId || notification?.payload?.roomId || (['chatRooms', 'chats'].includes(refCollectionForLog) ? refIdForLog : '');
+        const roomIdForLog = getChatNotificationRoomId(notification) || (['chatRooms', 'chats'].includes(refCollectionForLog) ? refIdForLog : '');
         console.log('[notification click]', { notificationId: notification.id, refCollection: refCollectionForLog, refId: refIdForLog, roomId: roomIdForLog });
-        if (!isMasterPreview && !readOnly) {
-            try {
-                await markNotificationRead({ viewerUid, notificationId: notification.id, setNotifications });
-            } catch (error) {
-                console.error('[student][notifications] mark single read failed', error);
+
+        if (roomIdForLog) {
+            if (!isMasterPreview && !readOnly) {
+                setInitialMessengerRoomId(String(roomIdForLog));
+                setSelectedClassId(null);
+                setActiveTab('menu');
+                setIsMessengerPage(true);
             }
+            setIsNotificationOpen(false);
+            markNotificationReadInBackground(notification.id, roomIdForLog);
+            return;
         }
+
         await openNotification({
             notification,
             onNavigate: ({ refCollection, refId, data }) => {
@@ -582,18 +600,10 @@ export default function StudentHome({
                     setInitialLearningTab('homework');
                     return;
                 }
-
-                if (refCollection === 'chats' || refCollection === 'chatRooms') {
-                    if (isMasterPreview || readOnly) return;
-                    const roomId = notification?.roomId || notification?.chatRoomId || notification?.payload?.roomId || refId;
-                    setInitialMessengerRoomId(roomId ? String(roomId) : '');
-                    setSelectedClassId(null);
-                    setActiveTab('menu');
-                    setIsMessengerPage(true);
-                }
             },
         });
         setIsNotificationOpen(false);
+        markNotificationReadInBackground(notification.id);
     };
 
     const handleMarkAllRead = async () => {

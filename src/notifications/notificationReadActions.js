@@ -19,8 +19,13 @@ export const markNotificationRead = async ({ viewerUid, notificationId, function
 
     const callable = httpsCallable(functions, 'markNotificationRead');
     console.log('[notification read]', { viewerUid: normalizedViewerUid, notificationId: normalizedNotificationId });
-    await callable({ viewerUid: normalizedViewerUid, notificationId: normalizedNotificationId });
-    return true;
+    try {
+        await callable({ viewerUid: normalizedViewerUid, notificationId: normalizedNotificationId });
+        return true;
+    } catch (error) {
+        console.warn('[notification read] markNotificationRead failed', { viewerUid: normalizedViewerUid, notificationId: normalizedNotificationId, code: error?.code, message: error?.message });
+        throw error;
+    }
 };
 
 export const markAllNotificationsRead = async ({ viewerUid, functions = firebaseFunctions, setNotifications = null }) => {
@@ -71,6 +76,11 @@ export const markChatRoomNotificationsRead = async ({ viewerUid, roomId, notific
     }
 
     const callable = httpsCallable(functions, 'markChatRoomNotificationsRead');
-    const result = await callable({ viewerUid: normalizedViewerUid, roomId: normalizedRoomId });
-    return result?.data?.updated ?? targets.length;
+    try {
+        const result = await callable({ viewerUid: normalizedViewerUid, roomId: normalizedRoomId });
+        return result?.data?.updated ?? targets.length;
+    } catch (error) {
+        console.warn('[chat notification read] markChatRoomNotificationsRead failed', { viewerUid: normalizedViewerUid, roomId: normalizedRoomId, code: error?.code, message: error?.message });
+        throw error;
+    }
 };

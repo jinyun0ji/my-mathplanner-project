@@ -301,7 +301,7 @@ export default function ParentMessengerPage({ studentId, student, onBack, notifi
         setSelectedSlot(slot);
         if (selectedRoomId && notificationViewerUid) {
             markChatRoomNotificationsRead({ viewerUid: notificationViewerUid, roomId: selectedRoomId, notifications, setNotifications })
-                .catch((error) => console.error('[parent][notifications] mark chat room read failed', error));
+                .catch((error) => console.warn('[parent][notifications] mark chat room read failed', error));
         }
     };
 
