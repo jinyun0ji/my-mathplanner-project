@@ -1,411 +1,375 @@
-diff --git a/src/components/StudentMessenger.jsx b/src/components/StudentMessenger.jsx
-index e9bf3c043a9de0dc1cd3e0f4fd9df4b5e7d74e63..6102374a77d44a99aab30b9f87057e81bda529ee 100644
---- a/src/components/StudentMessenger.jsx
-+++ b/src/components/StudentMessenger.jsx
-@@ -317,199 +317,255 @@ const normalizeMessage = (id, data, myIds, fallbackSenderName = '메시지') =>
-         date: formatDateKey(createdAtDate),
-         dateLabel: formatDateDivider(createdAtDate),
-         time: formatMessageTime(createdAtDate),
-         clientTempId: data?.clientTempId || '',
-         localCreatedAtMs: data?.localCreatedAtMs || null,
-         pending: Boolean(data?.pending),
-         messageType: data?.messageType || (Array.isArray(data?.attachments) && data.attachments.length ? (data.attachments[0]?.type === 'image' ? 'image' : 'file') : 'text'),
-         attachments: Array.isArray(data?.attachments) ? data.attachments : [],
-     };
+diff --git a/src/data/firestoreSync.js b/src/data/firestoreSync.js
+index e7f66a0438467a8e5f976ef742d40e49e862343d..a072165e3de772603ff1920c5cdca43e4d0591c2 100644
+--- a/src/data/firestoreSync.js
++++ b/src/data/firestoreSync.js
+@@ -29,50 +29,184 @@ const chunkArray = (items, size = 10) => {
+         chunks.push(items.slice(i, i + size));
+     }
+     return chunks;
  };
  
- export default function StudentMessenger({ studentId, studentAuthUid = '', selectedRoomId = '', teacherName = '메시지', userRole = 'parent', isFloating = false, allowLegacyResolve = true, emptyMessage = '아직 대화 내역이 없습니다.', chatSlot = '', roomCreationContext = null, notificationViewerUid = '', notifications = [], setNotifications = null }) {
-     const [roomId, setRoomId] = useState(null);
-     const [messages, setMessages] = useState([]);
-     const [optimisticMessages, setOptimisticMessages] = useState([]);
-     const optimisticMessagesRef = useRef([]);
-     const [inputText, setInputText] = useState('');
-     const [attachmentFile, setAttachmentFile] = useState(null);
-     const [attachmentPreviewUrl, setAttachmentPreviewUrl] = useState('');
-     const [isSending, setIsSending] = useState(false);
-     const [error, setError] = useState('');
-     const [imageModal, setImageModal] = useState(null);
-     const [myProfileDocId, setMyProfileDocId] = useState('');
-     const [mySenderIds, setMySenderIds] = useState([]);
-     const messagesEndRef = useRef(null);
-+    const mySenderIdsRef = useRef([]);
-+    const myProfileDocIdRef = useRef('');
-+    const teacherNameRef = useRef(teacherName || '메시지');
-+    const activeMessagesSubscriptionRef = useRef({ roomId: '', unsubscribe: null });
-+    const lastAppliedSnapshotRef = useRef({ roomId: '', key: '' });
-+    const normalizedSelectedRoomId = useMemo(() => String(selectedRoomId || '').trim(), [selectedRoomId]);
-     const normalizedChatSlot = String(chatSlot || roomCreationContext?.slot || '');
-     const roomStudentParticipantKeys = useMemo(() => uniqueStrings([roomCreationContext?.studentParticipantKeys]), [roomCreationContext?.studentParticipantKeys]);
-     const expectedRoomType = userRole === 'parent' && normalizedChatSlot === 'institute'
-         ? 'parent_institute'
-         : getExpectedRoomType(userRole, roomCreationContext?.roomType || normalizedChatSlot);
-     const canCreateChatRoom = Boolean(roomCreationContext?.targetAuthUid && expectedRoomType);
-+    const roomStudentParticipantKeysSignature = useMemo(() => roomStudentParticipantKeys.join('\u001f'), [roomStudentParticipantKeys]);
-+    const mySenderIdsSignature = useMemo(() => mySenderIds.join('\u001f'), [mySenderIds]);
+ // ✅ Firestore 'in' / 'array-contains-any' 는 빈 배열이면 Invalid Query 발생
+ export function safeNonEmptyArray(arr) {
+     return Array.isArray(arr) ? arr.map(String).filter(Boolean) : [];
+ }
  
-     useEffect(() => {
-         optimisticMessagesRef.current = optimisticMessages;
-     }, [optimisticMessages]);
+ const nonEmpty = (arr) => Array.isArray(arr) && arr.filter(Boolean).length > 0;
+ const uniq = (arr) => Array.from(new Set((arr || []).filter(Boolean).map(String)));
+ const safeArray = (v) => (Array.isArray(v) ? v.filter(Boolean) : []);
+ const uniqById = (arr) => {
+     const m = new Map();
+     (arr || []).forEach((x) => {
+         if (!x) return;
+         const id = x.id || x._id || null;
+         if (!id) return;
+         if (!m.has(id)) m.set(id, x);
+     });
+     return Array.from(m.values());
+ };
  
-+    useEffect(() => {
-+        myProfileDocIdRef.current = myProfileDocId;
-+    }, [myProfileDocId]);
+ 
 +
-+    useEffect(() => {
-+        mySenderIdsRef.current = mySenderIds;
-+    }, [mySenderIdsSignature]);
++const VIEWER_ANNOUNCEMENTS_LIMIT = 100;
 +
-+    useEffect(() => {
-+        teacherNameRef.current = teacherName || '메시지';
-+    }, [teacherName]);
++const getAnnouncementSortTime = (announcement = {}) => {
++    const value = announcement?.date || announcement?.createdAt || announcement?.updatedAt;
++    if (!value) return 0;
++    if (typeof value?.toMillis === 'function') return value.toMillis();
++    if (typeof value?.toDate === 'function') return value.toDate().getTime();
++    const parsed = new Date(value).getTime();
++    return Number.isFinite(parsed) ? parsed : 0;
++};
 +
-     useEffect(() => {
-         const authUid = auth.currentUser?.uid || '';
-         if (!authUid) {
-             setMyProfileDocId('');
-             setMySenderIds([]);
-             return undefined;
-         }
- 
-         let mounted = true;
-         getDoc(doc(db, 'userAuthIndex', authUid)).then((indexSnap) => {
-             if (!mounted) return;
-             const userDocId = indexSnap.exists() ? String(indexSnap.data()?.userDocId || '') : '';
-             setMyProfileDocId(userDocId);
-             return getMySenderIds(authUid).then((ids) => { if (mounted) setMySenderIds(ids); });
-         }).catch((indexError) => {
-             logFirestoreQueryFailure('load userAuthIndex', indexError, { doc: ['userAuthIndex', authUid] });
-             if (mounted) {
-                 setMyProfileDocId('');
-                 setMySenderIds([authUid].filter(Boolean));
-             }
-         });
- 
-         return () => {
-             mounted = false;
-         };
-     }, []);
- 
-     useEffect(() => {
-         let cancelled = false;
--        setRoomId(null);
- 
-         const viewerUid = auth.currentUser?.uid || '';
-         const targetAuthUid = String(roomCreationContext?.targetAuthUid || '');
- 
--        if (selectedRoomId) {
--            const selectedId = String(selectedRoomId).trim();
-+        if (normalizedSelectedRoomId) {
-+            if (process.env.NODE_ENV === 'development') {
-+                console.log('[StudentMessenger] selected room id', { role: userRole, expectedRoomType, selectedRoomId: normalizedSelectedRoomId, resolveChatRoomSkipped: true, fallbackQuerySkipped: true });
-+                logRoomResolutionDebug('final resolved room', { role: userRole, expectedRoomType, selectedRoomId: normalizedSelectedRoomId, finalRoomId: normalizedSelectedRoomId, validation: 'skipped for explicit selectedRoomId', messagesPath: `chatRooms/${normalizedSelectedRoomId}/messages`, subscribeStarted: true });
++const sortViewerAnnouncements = (items = []) => [...items].sort((a, b) => {
++    const pinGap = Number(Boolean(b?.isPinned)) - Number(Boolean(a?.isPinned));
++    if (pinGap !== 0) return pinGap;
++    return getAnnouncementSortTime(b) - getAnnouncementSortTime(a);
++});
++
++const fetchAnnouncementQueryWithDateFallback = async ({ db, label, constraints }) => {
++    try {
++        return await getDocs(
++            query(
++                collection(db, 'announcements'),
++                ...constraints,
++                orderBy('date', 'desc'),
++                limit(VIEWER_ANNOUNCEMENTS_LIMIT),
++            ),
++        );
++    } catch (error) {
++        console.warn(`[viewer] announcements ${label} ordered query failed; retrying limited query`, error);
++        return getDocs(
++            query(
++                collection(db, 'announcements'),
++                ...constraints,
++                limit(VIEWER_ANNOUNCEMENTS_LIMIT),
++            ),
++        );
++    }
++};
++
++const loadViewerAnnouncementsFast = async ({
++    db,
++    userId,
++    activeViewerAuthUid,
++    scopedStudentUids = [],
++    scopedStudentAuthUids = [],
++    myStudents = [],
++    viewerClassIds = [],
++    setAnnouncements,
++    isCancelled = () => false,
++}) => {
++    if (!setAnnouncements) return [];
++
++    const startedAt = Date.now();
++    const announcementAudienceUids = uniq([
++        userId,
++        activeViewerAuthUid,
++        ...scopedStudentUids,
++        ...scopedStudentAuthUids,
++        ...myStudents.map((s) => s?.id),
++        ...myStudents.map((s) => s?.uid),
++        ...myStudents.map((s) => s?.authUid),
++    ]).slice(0, 20);
++    const visibleAnnouncementClassIds = uniq(viewerClassIds).slice(0, 20);
++
++    console.log('[viewer] announcements load start', {
++        audienceCount: announcementAudienceUids.length,
++        classCount: visibleAnnouncementClassIds.length,
++    });
++
++    try {
++        const queryTasks = [
++            fetchAnnouncementQueryWithDateFallback({
++                db,
++                label: 'public',
++                constraints: [where('isPublic', '==', true)],
++            }),
++            ...announcementAudienceUids.map((uid) => fetchAnnouncementQueryWithDateFallback({
++                db,
++                label: `audienceAuthUids:${uid}`,
++                constraints: [where('audienceAuthUids', 'array-contains', uid)],
++            })),
++            ...visibleAnnouncementClassIds.map((classId) => fetchAnnouncementQueryWithDateFallback({
++                db,
++                label: `targetClasses:${classId}`,
++                constraints: [where('targetClasses', 'array-contains', classId)],
++            })),
++            ...visibleAnnouncementClassIds.map((classId) => fetchAnnouncementQueryWithDateFallback({
++                db,
++                label: `targetClassIds:${classId}`,
++                constraints: [where('targetClassIds', 'array-contains', classId)],
++            })),
++        ];
++
++        const settled = await Promise.allSettled(queryTasks);
++        const mergedAnnouncements = new Map();
++        let loadedDocCount = 0;
++
++        settled.forEach((result) => {
++            if (result.status !== 'fulfilled') {
++                console.warn('[viewer] announcements scoped query failed', result.reason);
++                return;
 +            }
-+            setRoomId((prev) => {
-+                if (String(prev || '') === normalizedSelectedRoomId) return prev;
-+                setMessages([]);
-+                setOptimisticMessages([]);
-+                setError('');
-+                lastAppliedSnapshotRef.current = { roomId: '', key: '' };
-+                return normalizedSelectedRoomId;
++            loadedDocCount += result.value?.size || 0;
++            result.value?.docs?.forEach((d) => {
++                mergedAnnouncements.set(d.id, { id: d.id, ...d.data() });
 +            });
-+            return () => { cancelled = true; };
++        });
++
++        const loadedAnnouncements = sortViewerAnnouncements(Array.from(mergedAnnouncements.values()))
++            .slice(0, VIEWER_ANNOUNCEMENTS_LIMIT);
++
++        if (!isCancelled()) {
++            console.log('[viewer] announcements setAnnouncements', {
++                elapsedMs: Date.now() - startedAt,
++                loadedCount: loadedAnnouncements.length,
++                readCount: loadedDocCount,
++            });
++            setAnnouncements(loadedAnnouncements);
 +        }
 +
-+        if (!allowLegacyResolve || !viewerUid || !targetAuthUid || !expectedRoomType) {
-             setMessages([]);
-             setOptimisticMessages([]);
-             setError('');
--            if (process.env.NODE_ENV === 'development') {
--                console.log('[StudentMessenger] selected room id', { role: userRole, expectedRoomType, selectedRoomId: selectedId, resolveChatRoomSkipped: true, fallbackQuerySkipped: true });
--                logRoomResolutionDebug('final resolved room', { role: userRole, expectedRoomType, selectedRoomId: selectedId, finalRoomId: selectedId, validation: 'skipped for explicit selectedRoomId', messagesPath: `chatRooms/${selectedId}/messages`, subscribeStarted: true });
--            }
--            setRoomId(selectedId);
-+            lastAppliedSnapshotRef.current = { roomId: '', key: '' };
-+            setRoomId((prev) => (prev === null ? prev : null));
-             return () => { cancelled = true; };
-         }
- 
-         setMessages([]);
-         setOptimisticMessages([]);
-         setError('');
--
--        if (!viewerUid || !targetAuthUid || !expectedRoomType) return () => { cancelled = true; };
-+        lastAppliedSnapshotRef.current = { roomId: '', key: '' };
- 
-         resolveChatRoom({
-             viewerUid,
-             targetAuthUid,
-             roomType: expectedRoomType,
-             studentId,
-             participantKeys: roomStudentParticipantKeys,
-         }).then((resolvedRoom) => {
-             if (cancelled || !resolvedRoom?.id) return;
--            if (process.env.NODE_ENV === 'development') console.log('[student messenger] resolved room', { roomId: resolvedRoom.id, messagesPath: `chatRooms/${resolvedRoom.id}/messages` });
--            setRoomId(String(resolvedRoom.id));
-+            const resolvedRoomId = String(resolvedRoom.id);
-+            if (process.env.NODE_ENV === 'development') console.log('[student messenger] resolved room', { roomId: resolvedRoomId, messagesPath: `chatRooms/${resolvedRoomId}/messages` });
-+            setRoomId((prev) => {
-+                if (String(prev || '') === resolvedRoomId) return prev;
-+                lastAppliedSnapshotRef.current = { roomId: '', key: '' };
-+                return resolvedRoomId;
-+            });
-         });
- 
-         return () => {
-             cancelled = true;
-         };
--    }, [studentId, studentAuthUid, selectedRoomId, allowLegacyResolve, canCreateChatRoom, expectedRoomType, roomCreationContext?.targetAuthUid, normalizedChatSlot, userRole, roomStudentParticipantKeys]);
-+    }, [studentId, normalizedSelectedRoomId, allowLegacyResolve, expectedRoomType, roomCreationContext?.targetAuthUid, userRole, roomStudentParticipantKeysSignature]);
- 
- 
-     useEffect(() => {
-         if (!roomId || !notificationViewerUid) return;
-         markChatRoomNotificationsRead({ viewerUid: notificationViewerUid, roomId, notifications, setNotifications })
-             .catch((error) => console.warn('[messenger][notifications] mark chat room read failed', error));
-     }, [roomId, notificationViewerUid, notifications, setNotifications]);
- 
-     useEffect(() => {
--        if (!roomId) return undefined;
-+        const normalizedRoomId = String(roomId || '').trim();
-+        if (!normalizedRoomId) return undefined;
-+        if (activeMessagesSubscriptionRef.current.roomId === normalizedRoomId && activeMessagesSubscriptionRef.current.unsubscribe) return undefined;
-         
--        const collectionPath = `chatRooms/${roomId}/messages`;
-+        const collectionPath = `chatRooms/${normalizedRoomId}/messages`;
-         let fallbackUnsub = null;
-+        let primaryUnsub = null;
-+        let cleanedUp = false;
-+        const cleanupOnce = () => {
-+            if (cleanedUp) return;
-+            cleanedUp = true;
-+            const unsubscribers = [primaryUnsub, fallbackUnsub].filter((fn) => typeof fn === 'function');
-+            primaryUnsub = null;
-+            fallbackUnsub = null;
-+            if (activeMessagesSubscriptionRef.current.roomId === normalizedRoomId) {
-+                activeMessagesSubscriptionRef.current = { roomId: '', unsubscribe: null };
-+            }
-+            unsubscribers.forEach((unsubscribe) => unsubscribe());
-+        };
- 
-         const applySnapshot = (snap) => {
--            const myIds = new Set(uniqueStrings([auth.currentUser?.uid, myProfileDocId, mySenderIds]));
--            const fallbackSenderName = teacherName || '메시지';
-+            const myIds = new Set(uniqueStrings([auth.currentUser?.uid, myProfileDocIdRef.current, mySenderIdsRef.current]));
-+            const fallbackSenderName = teacherNameRef.current || '메시지';
-             setError('');
-             const snapshotItems = snap.docs.map((item) => ({
-                 id: item.id,
-                 raw: {
-                     ...item.data(),
-                     pending: item.metadata?.hasPendingWrites || Boolean(item.data()?.pending),
-                 },
-             }));
-             const unresolvedOptimisticItems = optimisticMessagesRef.current
--                .filter((item) => String(item.roomId || '') === String(roomId))
-+                .filter((item) => String(item.roomId || '') === normalizedRoomId)
-                 .filter((optimistic) => !snapshotItems.some((serverItem) => isSameLogicalMessage(serverItem.raw, optimistic)))
-                 .map((item) => ({ id: item.id, raw: item }));
-             const mergedItems = sortMessageItems(dedupeMessages([...snapshotItems, ...unresolvedOptimisticItems]));
- 
-             setOptimisticMessages((prev) => {
-                 const next = prev.filter((optimistic) => (
--                    String(optimistic.roomId || '') !== String(roomId)
-+                    String(optimistic.roomId || '') !== normalizedRoomId
-                     || !snapshotItems.some((serverItem) => isSameLogicalMessage(serverItem.raw, optimistic))
-                 ));
-                 if (next.length === prev.length) return prev;
-                 optimisticMessagesRef.current = next;
-                 return next;
-             });
-+            const snapshotKey = [
-+                normalizedRoomId,
-+                snapshotItems.map((item) => `${item.id}:${JSON.stringify(item.raw)}`).join('|'),
-+                unresolvedOptimisticItems.map((item) => item.id).join('|'),
-+            ].join('::');
-+            if (lastAppliedSnapshotRef.current.roomId === normalizedRoomId && lastAppliedSnapshotRef.current.key === snapshotKey) return;
-+            lastAppliedSnapshotRef.current = { roomId: normalizedRoomId, key: snapshotKey };
++        console.log('[viewer] announcements load end', {
++            elapsedMs: Date.now() - startedAt,
++            loadedCount: loadedAnnouncements.length,
++            readCount: loadedDocCount,
++        });
++        return loadedAnnouncements;
++    } catch (announcementError) {
++        console.warn('[viewer] announcements load failed', announcementError);
++        if (!isCancelled()) setAnnouncements([]);
++        return [];
++    }
++};
 +
-             setMessages(mergedItems
-                 .map((item) => normalizeMessage(item.id, item.raw, myIds, fallbackSenderName))
-                 .filter((item) => item.text || item.attachments.length));
-         };
+ const isDevelopment = () => process.env.NODE_ENV !== 'production';
+ const viewerDebug = (...args) => {
+     if (isDevelopment()) console.log(...args);
+ };
  
-         const subscribe = (withOrderBy) => {
-             const queryShape = withOrderBy
-                 ? { collection: collectionPath, orderBy: ['createdAt', 'desc'], limit: 30, clientSort: ['createdAt', 'asc'] }
-                 : { collection: collectionPath, orderBy: null, limit: 30, clientSort: ['createdAt', 'asc'] };
-             if (process.env.NODE_ENV === 'development') {
--                console.log('[StudentMessenger] subscribe messages', { roomId, path: collectionPath, selectedRoomId: String(selectedRoomId || ''), expectedRoomType, subscribeStarted: true });
--                console.log('[student messenger][messages path]', { authUid: auth.currentUser?.uid || '', studentId: String(studentId || ''), studentAuthUid: String(studentAuthUid || ''), selectedRoomId: String(selectedRoomId || roomId || ''), expectedRoomType, roomType: expectedRoomType, channel: expectedRoomType, slot: normalizedChatSlot, participantIds: roomStudentParticipantKeys, lastMessageText: '', messagesPath: collectionPath, subscribeStarted: true, queryShape });
-+                console.log('[StudentMessenger] subscribe messages', { roomId: normalizedRoomId, path: collectionPath, selectedRoomId: String(normalizedSelectedRoomId || ''), expectedRoomType, subscribeStarted: true });
-+                console.log('[student messenger][messages path]', { authUid: auth.currentUser?.uid || '', studentId: String(studentId || ''), studentAuthUid: String(studentAuthUid || ''), selectedRoomId: String(normalizedSelectedRoomId || normalizedRoomId || ''), expectedRoomType, roomType: expectedRoomType, channel: expectedRoomType, slot: normalizedChatSlot, participantIds: roomStudentParticipantKeys, lastMessageText: '', messagesPath: collectionPath, subscribeStarted: true, queryShape });
-             }
--            return subscribeRoomMessages({ roomId, withOrderBy, onNext: applySnapshot, onError: (snapshotError) => {
-+            return subscribeRoomMessages({ roomId: normalizedRoomId, withOrderBy, onNext: applySnapshot, onError: (snapshotError) => {
-                 if (process.env.NODE_ENV === 'development') logFirestoreQueryFailure('subscribe messages', snapshotError, queryShape);
-                 if (withOrderBy) {
--                    fallbackUnsub = subscribe(false);
-+                    if (!cleanedUp && !fallbackUnsub) fallbackUnsub = subscribe(false);
-                     return;
+ const getItemClassId = (item) => String(
+     item?.classId
+     || item?.classDocId
+     || item?.classID
+     || item?.class?.id
+     || item?.class?.classId
+     || item?.class?.classDocId
+     || '',
+ ).trim();
+ 
+ const filterItemsByVisibleClassIds = (items = [], visibleClassIds = [], collectionName = '') => {
+     const visibleSet = new Set(safeNonEmptyArray(visibleClassIds));
+     if (visibleSet.size === 0) return [];
+     let warnedMissingClassId = false;
+     return (Array.isArray(items) ? items : []).filter((item) => {
+         const classId = getItemClassId(item);
+         if (!classId) {
+             if (!warnedMissingClassId && isDevelopment()) {
+                 warnedMissingClassId = true;
+                 console.warn('[viewer] missing class id while filtering collection', {
+@@ -1297,50 +1431,62 @@ export const loadViewerDataOnce = async ({
+             .map((cls) => String(cls?.id || cls?.classId || ''))
+             .filter((classId) => classId && !visibleClassIdSet.has(classId));
+ 
+         if (isDevelopment()) {
+             const hiddenReasons = {};
+             allMyClasses.forEach((cls) => {
+                 const classId = String(cls?.id || cls?.classId || '');
+                 const reason = getViewerClassVisibilityReason(cls, activeStudentForVisibility);
+                 if (classId && reason !== 'visible') hiddenReasons[classId] = reason;
+             });
+             console.log('[viewer][visibility] myClasses count =', allMyClasses.length);
+             console.log('[viewer][visibility] visibleClassIds =', visibleClassIds);
+             console.log('[viewer][visibility] hiddenClassIds =', hiddenClassIds);
+             console.log('[viewer][visibility] hiddenReasons =', hiddenReasons);
+         }
+ 
+         if (!isCancelled()) {
+             setClasses?.(myClasses);
+         }
+ 
+         console.log('[viewer] myClasses ids =', myClasses.map((c) => c.id));
+ 
+         const viewerClassIds = visibleClassIds;
+         console.log('[viewer] viewerClassIds =', viewerClassIds);
+ 
++        void loadViewerAnnouncementsFast({
++            db,
++            userId,
++            activeViewerAuthUid,
++            scopedStudentUids,
++            scopedStudentAuthUids,
++            myStudents,
++            viewerClassIds,
++            setAnnouncements,
++            isCancelled,
++        });
++
+         const lessonClassIds = visibleClassIds;
+         const detailCacheKey = viewerDetailCacheKey(lessonClassIds, activeOnly[0] || scopedStudentUids[0] || '');
+         const hasDetailCache = viewerDetailCache.lessonLogs.has(detailCacheKey)
+             && viewerDetailCache.attendance.has(detailCacheKey)
+             && viewerDetailCache.homeworkResults.has(detailCacheKey)
+             && viewerDetailCache.grades.has(detailCacheKey);
+ 
+         if (hasDetailCache && !isCancelled()) {
+             setLessonLogs?.(viewerDetailCache.lessonLogs.get(detailCacheKey) || []);
+             setAttendanceLogs?.(viewerDetailCache.attendance.get(detailCacheKey) || []);
+             setHomeworkResults?.(viewerDetailCache.homeworkResults.get(detailCacheKey) || {});
+             setGrades?.(viewerDetailCache.grades.get(detailCacheKey) || {});
+             console.log('[viewer] detail cache hit', detailCacheKey);
+         }
+ 
+         /* =========================
+            attendanceLogs (fetchList)
+         ========================= */
+         if (!hasDetailCache && nonEmpty(lessonClassIds) && (nonEmpty(scopedStudentUids) || nonEmpty(scopedStudentAuthUids))) {
+             try {
+                 const studentKeySet = new Set([...scopedStudentUids, ...scopedStudentAuthUids].map(String));
+                 const attendanceDocs = await fetchClassScopedDocs({
+                     db,
+                     collectionName: 'attendanceLogs',
+                     classIds: lessonClassIds,
+@@ -1719,121 +1865,58 @@ export const loadViewerDataOnce = async ({
+ 
+                 if (Array.isArray(scopedStudentAuthUids) && scopedStudentAuthUids.length > 0) {
+                     await loadHomeworkResultsForField('authUid', scopedStudentAuthUids);
                  }
-                 setError('메시지를 불러올 권한이 없습니다. 관리자에게 문의해주세요.');
-             } });
-         };
  
--        const unsub = subscribe(true);
--        return () => {
--            unsub && unsub();
--            fallbackUnsub && fallbackUnsub();
--        };
--    }, [roomId, selectedRoomId, canCreateChatRoom, expectedRoomType, normalizedChatSlot, myProfileDocId, mySenderIds, teacherName, userRole, studentId, studentAuthUid, roomStudentParticipantKeys]);
-+        primaryUnsub = subscribe(true);
-+        activeMessagesSubscriptionRef.current = { roomId: normalizedRoomId, unsubscribe: cleanupOnce };
-+        return cleanupOnce;
-+    }, [roomId]);
+                 if (Array.isArray(scopedStudentUids) && scopedStudentUids.length > 0) {
+                     await loadHomeworkResultsForField('studentId', scopedStudentUids);
+                 }
  
-     useEffect(() => {
-         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-     }, [messages]);
- 
-     const placeholder = useMemo(() => (userRole === 'parent' ? '메시지 보내기...' : '메시지 입력'), [userRole]);
- 
-     useEffect(() => () => {
-         if (attachmentPreviewUrl) URL.revokeObjectURL(attachmentPreviewUrl);
-     }, [attachmentPreviewUrl]);
- 
-     const clearAttachment = () => {
-         if (attachmentPreviewUrl) URL.revokeObjectURL(attachmentPreviewUrl);
-         setAttachmentPreviewUrl('');
-         setAttachmentFile(null);
-     };
- 
-     const handleAttachmentChange = (event) => {
-         const file = event.target.files?.[0] || null;
-         event.target.value = '';
-         if (!file) return;
-         const validation = validateChatAttachment(file);
-         if (!validation.ok) {
-             setError(validation.message);
-             clearAttachment();
-diff --git a/src/pages/parent/ParentMessengerPage.jsx b/src/pages/parent/ParentMessengerPage.jsx
-index 9af0177d07da66831de4a5203bb2f2eaad3b74a9..31900e75a823e13e2efc007a698ad0acc186c291 100644
---- a/src/pages/parent/ParentMessengerPage.jsx
-+++ b/src/pages/parent/ParentMessengerPage.jsx
-@@ -276,51 +276,55 @@ export default function ParentMessengerPage({ studentId, student, onBack, notifi
-                 selectedRoomId,
-                 roomIdFromIndex: String(slot.room?.roomId || ''),
-                 roomDocId: String(slot.room?.id || ''),
-                 slot: slot.slot,
-                 expectedRoomType: slot.roomType,
-                 actual: getRoomDebugInfo(slot.room),
-             });
-             if (slot.slot === SLOTS.TEACHER) {
-                 const allowLegacyResolve = !selectedRoomId;
-                 console.log('[parent messenger] teacher room click', {
-                     slot: slot.slot,
-                     currentRoomId: selectedRoomId,
-                     selectedRoomId,
-                     'room.id': String(slot.room?.id || ''),
-                     'room.roomId': String(slot.room?.roomId || ''),
-                     'room.channel': String(slot.room?.channel || ''),
-                     'room.roomType': String(slot.room?.roomType || ''),
-                     'room.slot': String(slot.room?.slot || ''),
-                     parentId: String(slot.room?.parentId || ''),
-                     parentUid: String(slot.room?.parentUid || ''),
-                     participantIds: getParticipantIds(slot.room),
-                     allowLegacyResolve,
-                 });
+             if (!isCancelled()) {
+                 console.log('[viewer][homeworkResults] keys=', Object.keys(mapped));
+                 setHomeworkResults?.(mapped);
+                 viewerDetailCache.homeworkResults.set(detailCacheKey, mapped);
              }
+             } else if (!isCancelled() && !hasDetailCache) {
+                 setHomeworkResults?.({});
+                 viewerDetailCache.homeworkResults.set(detailCacheKey, {});
+             }
+         } catch (e) {
+             console.warn('[viewer] homeworkResults load failed', e);
+             if (!isCancelled()) setHomeworkResults?.({});
+                 viewerDetailCache.homeworkResults.set(detailCacheKey, {});
          }
--        setSelectedSlot(slot);
-+        setSelectedSlot((prev) => {
-+            const previousRoomId = String(prev?.room?.roomId || prev?.room?.id || '').trim();
-+            if (selectedRoomId && previousRoomId === selectedRoomId) return prev;
-+            return slot;
-+        });
-         if (selectedRoomId && notificationViewerUid) {
-             markChatRoomNotificationsRead({ viewerUid: notificationViewerUid, roomId: selectedRoomId, notifications, setNotifications })
-                 .catch((error) => console.warn('[parent][notifications] mark chat room read failed', error));
-         }
-     };
  
-     const currentSlot = selectedSlot
-         ? messengerSlots.find((slot) => getRoomId(slot.room) && getRoomId(slot.room) === getRoomId(selectedSlot.room))
-             || (getRoomId(selectedSlot.room) ? selectedSlot : messengerSlots.find((slot) => slot.slot === selectedSlot.slot) || selectedSlot)
-         : null;
+         /* =========================
+-        viewer 식별자 (공지 조회용)
++        viewer 식별자 (나머지 authUid 기반 조회용)
+         ========================= */
+         const activeStudentDocId = scopedStudentUids[0] || null;
  
-     if (currentSlot && parentNotificationOpenTimingRef.current.started && !parentNotificationOpenTimingRef.current.ended) {
-         console.timeEnd('parent notification open');
-         parentNotificationOpenTimingRef.current.ended = true;
-     }
+         // ✅ 실제 데이터 키로 쓸 authUid(7MR...) (videoProgress/externalSchedules 조회용)
+         console.log('[viewer] activeStudentDocId =', activeStudentDocId);
+         console.log('[viewer] current auth.uid =', activeViewerAuthUid);
  
-     if (currentSlot) {
-         const targetAuthUid = currentSlot.slot === SLOTS.TEACHER ? TEACHER_AUTH_UID : INSTITUTE_AUTH_UID;
-         const currentRoomId = String(currentSlot.room?.roomId || currentSlot.room?.id || '').trim();
-         return (
-             <div className="mobile-screen h-screen min-h-screen bg-gray-50 flex flex-col overflow-hidden">
-                 <header className="mobile-header bg-white border-b border-gray-100 px-4 flex items-center gap-3">
-                     <button type="button" onClick={() => { hasConsumedInitialRoomRef.current = true; setSelectedSlot(null); }} className="mobile-back-button text-gray-700"><ArrowBackIosNewIcon style={{ fontSize: 18 }} /></button>
-                     <h1 className="text-base font-semibold text-gray-900 truncate">{currentSlot.title}</h1>
-                 </header>
-diff --git a/src/pages/student/StudentMessengerPage.jsx b/src/pages/student/StudentMessengerPage.jsx
-index 33efe7abb345a0ebbf9dd5fce6bdd0a6fd72c074..e4c398dab2b93a20b11da9304ec3e362a96173bb 100644
---- a/src/pages/student/StudentMessengerPage.jsx
-+++ b/src/pages/student/StudentMessengerPage.jsx
-@@ -68,51 +68,55 @@ export default function StudentMessengerPage({ studentId, student, onBack, notif
-         });
-     // eslint-disable-next-line react-hooks/exhaustive-deps
-     }, [initialRoomId, messengerSlots, selectedSlot]);
+-        /* =========================
+-           announcements (rules-aligned)
+-        ========================= */
+-        try {
+-            const uniq = (values = []) => Array.from(new Set((Array.isArray(values) ? values : []).map((v) => String(v || '').trim()).filter(Boolean)));
+-            const announcementAudienceUids = uniq([
+-                userId,
+-                activeViewerAuthUid,
+-                activeStudentDocId,
+-                ...scopedStudentUids,
+-                ...scopedStudentAuthUids,
+-                ...myStudents.map((s) => s?.id),
+-                ...myStudents.map((s) => s?.uid),
+-                ...myStudents.map((s) => s?.authUid),
+-            ]).filter(Boolean);
+-            console.log('[viewer] announcements audience uid candidates', announcementAudienceUids);
+-
+-            const mergedAnnouncements = new Map();
+-            let targetedCount = 0;
+-
+-            try {
+-                const publicSnap = await getDocs(
+-                    query(collection(db, 'announcements'), where('isPublic', '==', true), limit(150)),
+-                );
+-                publicSnap.docs.forEach((d) => mergedAnnouncements.set(d.id, ({ id: d.id, ...d.data() })));
+-            } catch (publicAnnouncementError) {
+-                console.warn('[viewer] announcements public query failed', publicAnnouncementError);
+-            }
+-
+-            for (const uid of announcementAudienceUids) {
+-                try {
+-                    const targetedSnap = await getDocs(
+-                        query(
+-                            collection(db, 'announcements'),
+-                            where('audienceAuthUids', 'array-contains', uid),
+-                            limit(150),
+-                        ),
+-                    );
+-                    targetedCount += targetedSnap.size;
+-                    targetedSnap.docs.forEach((d) => mergedAnnouncements.set(d.id, ({ id: d.id, ...d.data() })));
+-                } catch (targetedAnnouncementError) {
+-                    console.warn('[viewer] announcements targeted query failed', { uid, error: targetedAnnouncementError });
+-                }
+-            }
+-
+-            const loadedAnnouncements = Array.from(mergedAnnouncements.values());
+-            if (!isCancelled()) setAnnouncements?.(loadedAnnouncements);
+-            console.log('[viewer] announcements loaded', {
+-                candidates: announcementAudienceUids,
+-                targetedCount,
+-                totalCount: loadedAnnouncements.length,
+-                sample: loadedAnnouncements.slice(0, 5).map((a) => ({
+-                    id: a?.id,
+-                    title: a?.title,
+-                    isPublic: a?.isPublic === true,
+-                    audienceAuthUidsCount: Array.isArray(a?.audienceAuthUids) ? a.audienceAuthUids.length : 0,
+-                })),
+-            });
+-        } catch (announcementError) {
+-            console.warn('[viewer] announcements load failed', announcementError);
+-            if (!isCancelled()) setAnnouncements?.([]);
+-        }
+-
+         /* =========================
+            homeworkAssignments: 병렬 로딩 결과 사용
+         ========================= */
+         
+         /* =========================
+         videoProgress / externalSchedules  (✅ authUid 기준으로 조회)
+         ========================= */
  
-     const handleOpenRoom = (slot) => {
-         const selectedRoomId = String(slot.room?.roomId || slot.room?.id || '').trim();
-         if (process.env.NODE_ENV === 'development') {
-             console.log('[MessengerPage] room preview candidates', {
-                 role: 'student',
-                 roomId: selectedRoomId,
-                 title: slot.title,
-                 userChatRoomsIndexPath: authUid && selectedRoomId ? `userChatRooms/${authUid}/rooms/${selectedRoomId}` : '',
-                 candidates: getLastMessagePreviewCandidates(slot.room),
-                 selectedPreview: getLastMessagePreview(slot.room),
-                 room: slot.room,
-             });
-             console.log('[MessengerPage] open room', {
-                 role: 'student',
-                 selectedRoomId,
-                 roomIdFromIndex: String(slot.room?.roomId || ''),
-                 roomDocId: String(slot.room?.id || ''),
-                 slot: slot.slot,
-                 roomType: slot.room?.roomType || slot.roomType || '',
-             });
-         }
--        setSelectedSlot(slot);
-+        setSelectedSlot((prev) => {
-+            const previousRoomId = String(prev?.room?.roomId || prev?.room?.id || '').trim();
-+            if (selectedRoomId && previousRoomId === selectedRoomId) return prev;
-+            return slot;
-+        });
-         if (selectedRoomId && notificationViewerUid) {
-             markChatRoomNotificationsRead({ viewerUid: notificationViewerUid, roomId: selectedRoomId, notifications, setNotifications })
-                 .catch((error) => console.warn('[student][notifications] mark chat room read failed', error));
-         }
-     };
- 
-     const currentSlot = selectedSlot
-         ? messengerSlots.find((slot) => getRoomId(slot.room) && getRoomId(slot.room) === getRoomId(selectedSlot.room))
-             || (getRoomId(selectedSlot.room) ? selectedSlot : messengerSlots.find((slot) => slot.slot === selectedSlot.slot) || selectedSlot)
-         : null;
-     if (currentSlot) {
-         const targetAuthUid = currentSlot.slot === SLOTS.TEACHER ? TEACHER_AUTH_UID : INSTITUTE_AUTH_UID;
-         const currentRoomId = String(currentSlot.room?.roomId || currentSlot.room?.id || '').trim();
-         const canCreateCurrentRoom = Boolean(targetAuthUid && getExpectedRoomType(currentSlot.slot));
-         if (!currentRoomId && !canCreateCurrentRoom) {
-             return (
-                 <div className="mobile-screen h-screen min-h-screen bg-gray-50 flex flex-col overflow-hidden">
-                     <header className="mobile-header bg-white border-b border-gray-100 px-4 flex items-center gap-3">
-                         <button type="button" onClick={() => { hasConsumedInitialRoomRef.current = true; setSelectedSlot(null); }} className="mobile-back-button text-gray-700"><ArrowBackIosNewIcon style={{ fontSize: 18 }} /></button>
-                         <h1 className="text-base font-semibold text-gray-900 truncate">{currentSlot.title}</h1>
-                     </header>
-                     <div className="flex-1 flex items-center justify-center text-sm text-gray-500">대화방을 준비 중입니다.</div>
-                 </div>
-             );
-         }
+         // ✅ 여기부터는 authUid가 있어야 조회 가능
+         if (activeViewerAuthUid) {
+             try {
+                 const progressDocs = await fetchClassScopedDocs({
+                     db,
+                     collectionName: 'videoProgress',
+                     classIds: lessonClassIds,
+                     run,
+                     isCancelled,
+                     buildQuery: (classChunk) => query(
+                         collection(db, 'videoProgress'),
+                         where('studentId', '==', activeViewerAuthUid),
+                         where('classId', 'in', classChunk),
+                         limit(100),
+                     ),
+                 });
+                 if (!isCancelled()) setVideoProgress?.(progressDocs);

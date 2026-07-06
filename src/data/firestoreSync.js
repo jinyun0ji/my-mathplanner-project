@@ -51,6 +51,140 @@ const uniqById = (arr) => {
 };
 
 
+
+const VIEWER_ANNOUNCEMENTS_LIMIT = 100;
+
+const getAnnouncementSortTime = (announcement = {}) => {
+    const value = announcement?.date || announcement?.createdAt || announcement?.updatedAt;
+    if (!value) return 0;
+    if (typeof value?.toMillis === 'function') return value.toMillis();
+    if (typeof value?.toDate === 'function') return value.toDate().getTime();
+    const parsed = new Date(value).getTime();
+    return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const sortViewerAnnouncements = (items = []) => [...items].sort((a, b) => {
+    const pinGap = Number(Boolean(b?.isPinned)) - Number(Boolean(a?.isPinned));
+    if (pinGap !== 0) return pinGap;
+    return getAnnouncementSortTime(b) - getAnnouncementSortTime(a);
+});
+
+const fetchAnnouncementQueryWithDateFallback = async ({ db, label, constraints }) => {
+    try {
+        return await getDocs(
+            query(
+                collection(db, 'announcements'),
+                ...constraints,
+                orderBy('date', 'desc'),
+                limit(VIEWER_ANNOUNCEMENTS_LIMIT),
+            ),
+        );
+    } catch (error) {
+        console.warn(`[viewer] announcements ${label} ordered query failed; retrying limited query`, error);
+        return getDocs(
+            query(
+                collection(db, 'announcements'),
+                ...constraints,
+                limit(VIEWER_ANNOUNCEMENTS_LIMIT),
+            ),
+        );
+    }
+};
+
+const loadViewerAnnouncementsFast = async ({
+    db,
+    userId,
+    activeViewerAuthUid,
+    scopedStudentUids = [],
+    scopedStudentAuthUids = [],
+    myStudents = [],
+    viewerClassIds = [],
+    setAnnouncements,
+    isCancelled = () => false,
+}) => {
+    if (!setAnnouncements) return [];
+
+    const startedAt = Date.now();
+    const announcementAudienceUids = uniq([
+        userId,
+        activeViewerAuthUid,
+        ...scopedStudentUids,
+        ...scopedStudentAuthUids,
+        ...myStudents.map((s) => s?.id),
+        ...myStudents.map((s) => s?.uid),
+        ...myStudents.map((s) => s?.authUid),
+    ]).slice(0, 20);
+    const visibleAnnouncementClassIds = uniq(viewerClassIds).slice(0, 20);
+
+    console.log('[viewer] announcements load start', {
+        audienceCount: announcementAudienceUids.length,
+        classCount: visibleAnnouncementClassIds.length,
+    });
+
+    try {
+        const queryTasks = [
+            fetchAnnouncementQueryWithDateFallback({
+                db,
+                label: 'public',
+                constraints: [where('isPublic', '==', true)],
+            }),
+            ...announcementAudienceUids.map((uid) => fetchAnnouncementQueryWithDateFallback({
+                db,
+                label: `audienceAuthUids:${uid}`,
+                constraints: [where('audienceAuthUids', 'array-contains', uid)],
+            })),
+            ...visibleAnnouncementClassIds.map((classId) => fetchAnnouncementQueryWithDateFallback({
+                db,
+                label: `targetClasses:${classId}`,
+                constraints: [where('targetClasses', 'array-contains', classId)],
+            })),
+            ...visibleAnnouncementClassIds.map((classId) => fetchAnnouncementQueryWithDateFallback({
+                db,
+                label: `targetClassIds:${classId}`,
+                constraints: [where('targetClassIds', 'array-contains', classId)],
+            })),
+        ];
+
+        const settled = await Promise.allSettled(queryTasks);
+        const mergedAnnouncements = new Map();
+        let loadedDocCount = 0;
+
+        settled.forEach((result) => {
+            if (result.status !== 'fulfilled') {
+                console.warn('[viewer] announcements scoped query failed', result.reason);
+                return;
+            }
+            loadedDocCount += result.value?.size || 0;
+            result.value?.docs?.forEach((d) => {
+                mergedAnnouncements.set(d.id, { id: d.id, ...d.data() });
+            });
+        });
+
+        const loadedAnnouncements = sortViewerAnnouncements(Array.from(mergedAnnouncements.values()))
+            .slice(0, VIEWER_ANNOUNCEMENTS_LIMIT);
+
+        if (!isCancelled()) {
+            console.log('[viewer] announcements setAnnouncements', {
+                elapsedMs: Date.now() - startedAt,
+                loadedCount: loadedAnnouncements.length,
+                readCount: loadedDocCount,
+            });
+            setAnnouncements(loadedAnnouncements);
+        }
+
+        console.log('[viewer] announcements load end', {
+            elapsedMs: Date.now() - startedAt,
+            loadedCount: loadedAnnouncements.length,
+            readCount: loadedDocCount,
+        });
+        return loadedAnnouncements;
+    } catch (announcementError) {
+        console.warn('[viewer] announcements load failed', announcementError);
+        if (!isCancelled()) setAnnouncements([]);
+        return [];
+    }
+};
+
 const isDevelopment = () => process.env.NODE_ENV !== 'production';
 const viewerDebug = (...args) => {
     if (isDevelopment()) console.log(...args);
@@ -1319,6 +1453,18 @@ export const loadViewerDataOnce = async ({
         const viewerClassIds = visibleClassIds;
         console.log('[viewer] viewerClassIds =', viewerClassIds);
 
+        void loadViewerAnnouncementsFast({
+            db,
+            userId,
+            activeViewerAuthUid,
+            scopedStudentUids,
+            scopedStudentAuthUids,
+            myStudents,
+            viewerClassIds,
+            setAnnouncements,
+            isCancelled,
+        });
+
         const lessonClassIds = visibleClassIds;
         const detailCacheKey = viewerDetailCacheKey(lessonClassIds, activeOnly[0] || scopedStudentUids[0] || '');
         const hasDetailCache = viewerDetailCache.lessonLogs.has(detailCacheKey)
@@ -1741,76 +1887,13 @@ export const loadViewerDataOnce = async ({
         }
 
         /* =========================
-        viewer 식별자 (공지 조회용)
+        viewer 식별자 (나머지 authUid 기반 조회용)
         ========================= */
         const activeStudentDocId = scopedStudentUids[0] || null;
 
         // ✅ 실제 데이터 키로 쓸 authUid(7MR...) (videoProgress/externalSchedules 조회용)
         console.log('[viewer] activeStudentDocId =', activeStudentDocId);
         console.log('[viewer] current auth.uid =', activeViewerAuthUid);
-
-        /* =========================
-           announcements (rules-aligned)
-        ========================= */
-        try {
-            const uniq = (values = []) => Array.from(new Set((Array.isArray(values) ? values : []).map((v) => String(v || '').trim()).filter(Boolean)));
-            const announcementAudienceUids = uniq([
-                userId,
-                activeViewerAuthUid,
-                activeStudentDocId,
-                ...scopedStudentUids,
-                ...scopedStudentAuthUids,
-                ...myStudents.map((s) => s?.id),
-                ...myStudents.map((s) => s?.uid),
-                ...myStudents.map((s) => s?.authUid),
-            ]).filter(Boolean);
-            console.log('[viewer] announcements audience uid candidates', announcementAudienceUids);
-
-            const mergedAnnouncements = new Map();
-            let targetedCount = 0;
-
-            try {
-                const publicSnap = await getDocs(
-                    query(collection(db, 'announcements'), where('isPublic', '==', true), limit(150)),
-                );
-                publicSnap.docs.forEach((d) => mergedAnnouncements.set(d.id, ({ id: d.id, ...d.data() })));
-            } catch (publicAnnouncementError) {
-                console.warn('[viewer] announcements public query failed', publicAnnouncementError);
-            }
-
-            for (const uid of announcementAudienceUids) {
-                try {
-                    const targetedSnap = await getDocs(
-                        query(
-                            collection(db, 'announcements'),
-                            where('audienceAuthUids', 'array-contains', uid),
-                            limit(150),
-                        ),
-                    );
-                    targetedCount += targetedSnap.size;
-                    targetedSnap.docs.forEach((d) => mergedAnnouncements.set(d.id, ({ id: d.id, ...d.data() })));
-                } catch (targetedAnnouncementError) {
-                    console.warn('[viewer] announcements targeted query failed', { uid, error: targetedAnnouncementError });
-                }
-            }
-
-            const loadedAnnouncements = Array.from(mergedAnnouncements.values());
-            if (!isCancelled()) setAnnouncements?.(loadedAnnouncements);
-            console.log('[viewer] announcements loaded', {
-                candidates: announcementAudienceUids,
-                targetedCount,
-                totalCount: loadedAnnouncements.length,
-                sample: loadedAnnouncements.slice(0, 5).map((a) => ({
-                    id: a?.id,
-                    title: a?.title,
-                    isPublic: a?.isPublic === true,
-                    audienceAuthUidsCount: Array.isArray(a?.audienceAuthUids) ? a.audienceAuthUids.length : 0,
-                })),
-            });
-        } catch (announcementError) {
-            console.warn('[viewer] announcements load failed', announcementError);
-            if (!isCancelled()) setAnnouncements?.([]);
-        }
 
         /* =========================
            homeworkAssignments: 병렬 로딩 결과 사용
