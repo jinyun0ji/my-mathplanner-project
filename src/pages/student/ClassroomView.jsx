@@ -84,7 +84,9 @@ export default function ClassroomView({
                 setCurrentLesson(target);
                 setSelectedVideo(targetVideo);
 
-                if (isCapacitorNativeEnvironment() && targetVideoId) {
+                const canAccessTargetLesson = canAccessLessonContent(attendanceMap[target.id]);
+
+                if (isCapacitorNativeEnvironment() && targetVideoId && canAccessTargetLesson) {
                     setPendingNativeVideo({
                         lessonId: target.id,
                         videoId: targetVideoId,
@@ -94,10 +96,11 @@ export default function ClassroomView({
                     return;
                 }
 
+                setPendingNativeVideo(null);
                 setViewMode('player');
             }
         }
-    }, [targetMemo, sortedLogs]);
+    }, [targetMemo, sortedLogs, attendanceMap]);
 
     useEffect(() => {
         if (onVideoModalChange) {
@@ -270,6 +273,13 @@ export default function ClassroomView({
         window.open(`https://www.youtube.com/watch?v=${currentVideoId}`, '_blank');
     };
 
+    const renderAccessRestrictedNotice = () => (
+        <div className="flex flex-col items-center justify-center text-gray-300 text-center px-6">
+            <Icon name="lock" className="w-10 h-10 mb-3 opacity-70" />
+            <p className="text-sm leading-relaxed">출결 확인 후 시청 가능합니다</p>
+        </div>
+    );
+
     const renderCurrentVideoPlayer = () => {
         const initialSeconds = targetMemo?.time || progressData.seconds;
 
@@ -357,7 +367,9 @@ export default function ClassroomView({
         setCurrentLesson(log);
         setSelectedVideo(firstVideo);
 
-        if (isNativeApp && videoId) {
+        const canAccess = canAccessLessonContent(attendanceMap[log.id]);
+
+        if (isNativeApp && videoId && canAccess) {
             const logProgress = getProgress(log.id);
             setPendingNativeVideo({
                 lessonId: log.id,
@@ -368,6 +380,7 @@ export default function ClassroomView({
             return;
         }
 
+        setPendingNativeVideo(null);
         if (viewMode === 'list') setViewMode('player');
     };
 
@@ -553,14 +566,7 @@ export default function ClassroomView({
                         <div className="flex-none lg:flex-1 lg:min-h-0 bg-black flex flex-col overflow-visible lg:overflow-hidden">
                             <div className="flex-none aspect-video lg:aspect-auto lg:flex-1 flex items-center justify-center w-full">
                                 {!canAccessCurrentLesson ? (
-                                    <div className="flex flex-col items-center justify-center text-gray-300 text-center px-6">
-                                        <Icon name="lock" className="w-10 h-10 mb-3 opacity-70" />
-                                        <p className="text-sm leading-relaxed">
-                                            해당 수업은 출결이 확인되지 않아
-                                            <br />
-                                            영상 시청이 제한되어 있습니다.
-                                        </p>
-                                    </div>
+                                    renderAccessRestrictedNotice()
                                 ) : (
                                     <div className="w-full h-full max-w-full max-h-full aspect-video flex items-center justify-center">{renderCurrentVideoPlayer()}</div>
                                 )}
