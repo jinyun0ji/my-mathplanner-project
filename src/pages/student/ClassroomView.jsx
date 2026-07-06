@@ -162,6 +162,31 @@ export default function ClassroomView({
         }
     };
 
+    const handleUpdateNativeMemo = async ({ id, videoId, note, time }) => {
+        if (!id || !memoOwnerUid || !note?.trim()) return;
+        if (videoId && currentVideoId && String(videoId) !== String(currentVideoId)) return;
+
+        try {
+            await onUpdateMemo?.(memoOwnerUid, id, {
+                note: note.trim(),
+                ...(time !== undefined ? { time: Number(time) || 0 } : {}),
+            });
+        } catch (error) {
+            console.error('[ClassroomView] update native memo failed', error);
+        }
+    };
+
+    const handleDeleteNativeMemo = async ({ id, videoId }) => {
+        if (!id || !memoOwnerUid) return;
+        if (videoId && currentVideoId && String(videoId) !== String(currentVideoId)) return;
+
+        try {
+            await onDeleteMemo?.(memoOwnerUid, id);
+        } catch (error) {
+            console.error('[ClassroomView] delete native memo failed', error);
+        }
+    };
+
     const handleSeekToMemo = (time) => {
         if (playerRef.current) playerRef.current.seekTo(time);
     };
@@ -279,6 +304,8 @@ export default function ClassroomView({
                     initialSeconds={initialSeconds}
                     memos={myMemos}
                     onAddNativeMemo={handleAddNativeMemo}
+                    onUpdateNativeMemo={handleUpdateNativeMemo}
+                    onDeleteNativeMemo={handleDeleteNativeMemo}
                 />
             );
         }
@@ -461,6 +488,8 @@ export default function ClassroomView({
                         initialSeconds={pendingNativeVideo.initialSeconds}
                         memos={myMemos}
                         onAddNativeMemo={handleAddNativeMemo}
+                        onUpdateNativeMemo={handleUpdateNativeMemo}
+                        onDeleteNativeMemo={handleDeleteNativeMemo}
                         autoOpen
                         renderControls={false}
                     />

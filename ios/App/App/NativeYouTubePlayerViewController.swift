@@ -9,14 +9,18 @@ final class NativeYouTubePlayerViewController: UIViewController, YTPlayerViewDel
     private var latestPlayTime: Double
     private var memos: [NativeMemo]
     private let onMemoAdded: (([String: Any]) -> Void)?
+    private let onMemoUpdated: (([String: Any]) -> Void)?
+    private let onMemoDeleted: (([String: Any]) -> Void)?
 
-    init(videoId: String, startSeconds: Double = 0, autoPlay: Bool = false, memos: [NativeMemo] = [], onMemoAdded: (([String: Any]) -> Void)? = nil) {
+    init(videoId: String, startSeconds: Double = 0, autoPlay: Bool = false, memos: [NativeMemo] = [], onMemoAdded: (([String: Any]) -> Void)? = nil, onMemoUpdated: (([String: Any]) -> Void)? = nil, onMemoDeleted: (([String: Any]) -> Void)? = nil) {
         self.videoId = videoId
         self.startSeconds = max(0, startSeconds)
         self.autoPlay = autoPlay
         self.latestPlayTime = max(0, startSeconds)
         self.memos = memos.sorted { $0.time < $1.time }
         self.onMemoAdded = onMemoAdded
+        self.onMemoUpdated = onMemoUpdated
+        self.onMemoDeleted = onMemoDeleted
         super.init(nibName: nil, bundle: nil)
         modalPresentationStyle = .fullScreen
     }
@@ -129,7 +133,7 @@ final class NativeYouTubePlayerViewController: UIViewController, YTPlayerViewDel
         for memo in memos.sorted(by: { $0.time < $1.time }) {
             let title = "\(formatTime(memo.time))   \(memo.note)"
             alert.addAction(UIAlertAction(title: title, style: .default) { [weak self] _ in
-                self?.seekToMemo(memo)
+                self?.showMemoActions(for: memo)
             })
         }
 
@@ -139,6 +143,67 @@ final class NativeYouTubePlayerViewController: UIViewController, YTPlayerViewDel
             popover.sourceRect = CGRect(x: view.bounds.midX, y: view.bounds.maxY, width: 0, height: 0)
             popover.permittedArrowDirections = []
         }
+        present(alert, animated: true)
+    }
+
+    private func showMemoActions(for memo: NativeMemo) {
+        let alert = UIAlertController(title: formatTime(memo.time), message: memo.note, preferredStyle: .actionSheet)
+        alert.addAction(UIAlertAction(title: "해당 시간으로 이동", style: .default) { [weak self] _ in
+            self?.seekToMemo(memo)
+        })
+        alert.addAction(UIAlertAction(title: "수정", style: .default) { [weak self] _ in
+            self?.showEditMemoAlert(for: memo)
+        })
+        alert.addAction(UIAlertAction(title: "삭제", style: .destructive) { [weak self] _ in
+            self?.showDeleteMemoConfirmation(for: memo)
+        })
+        alert.addAction(UIAlertAction(title: "취소", style: .cancel))
+        if let popover = alert.popoverPresentationController {
+            popover.sourceView = view
+            popover.sourceRect = CGRect(x: view.bounds.midX, y: view.bounds.maxY, width: 0, height: 0)
+            popover.permittedArrowDirections = []
+        }
+        present(alert, animated: true)
+    }
+
+    private func showEditMemoAlert(for memo: NativeMemo) {
+        let alert = UIAlertController(title: "메모 수정", message: "재생시간: \(formatTime(memo.time))", preferredStyle: .alert)
+        alert.addTextField { textField in
+            textField.text = memo.note
+            textField.placeholder = "메모를 입력하세요"
+            textField.clearButtonMode = .whileEditing
+        }
+        alert.addAction(UIAlertAction(title: "취소", style: .cancel))
+        alert.addAction(UIAlertAction(title: "저장", style: .default) { [weak self, weak alert] _ in
+            guard let self = self else { return }
+            let note = alert?.textFields?.first?.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            guard !note.isEmpty else { return }
+            guard let index = self.memos.firstIndex(where: { $0.id == memo.id }) else { return }
+            self.memos[index].note = note
+            self.memos.sort { $0.time < $1.time }
+            self.onMemoUpdated?([
+                "id": memo.id,
+                "videoId": self.videoId,
+                "time": memo.time,
+                "note": note
+            ])
+        })
+        present(alert, animated: true)
+    }
+
+    private func showDeleteMemoConfirmation(for memo: NativeMemo) {
+        let alert = UIAlertController(title: "메모 삭제", message: "이 메모를 삭제하시겠어요?", preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "취소", style: .cancel))
+        alert.addAction(UIAlertAction(title: "삭제", style: .destructive) { [weak self] _ in
+            guard let self = self else { return }
+            self.memos.removeAll { $0.id == memo.id }
+            self.onMemoDeleted?([
+                "id": memo.id,
+                "videoId": self.videoId,
+                "time": memo.time,
+                "note": memo.note
+            ])
+        })
         present(alert, animated: true)
     }
 

@@ -1,541 +1,593 @@
-diff --git a/src/components/tabs/menu/MenuTab.jsx b/src/components/tabs/menu/MenuTab.jsx
-index 8a15c60983e085830634f463beb0805dc8d72cab..4e6bd7242becbe059a816bfee20f0dda9cb94bb9 100644
---- a/src/components/tabs/menu/MenuTab.jsx
-+++ b/src/components/tabs/menu/MenuTab.jsx
-@@ -1,34 +1,35 @@
--import React, { useState } from 'react';
-+import React, { useMemo, useState } from 'react';
- import { useNavigate } from 'react-router-dom';
- import { Icon, formatTime, formatClassScheduleKo } from '../../../utils/helpers';
- import ModalPortal from '../../common/ModalPortal';
- import AccountDeletionRequestButton from '../../common/AccountDeletionRequestButton';
- import ParentLegalPage from '../../../pages/parent/ParentLegalPage';
- import ParentBoardPage from '../../../pages/parent/ParentBoardPage';
- import { termsContent } from '../../../content/legal/terms';
- import { privacyContent } from '../../../content/legal/privacy';
-+import { buildMemoListForMenu } from '../../../domain/memo/videoMemo.service';
+diff --git a/ios/App/App/NativeYouTubePlayerViewController.swift b/ios/App/App/NativeYouTubePlayerViewController.swift
+index 9895ebe28a0105b7dc6d3c6fe520a765e9f4e3ee..b66afa8c6ef89c97a6bdb08aa09b9b1058eff412 100644
+--- a/ios/App/App/NativeYouTubePlayerViewController.swift
++++ b/ios/App/App/NativeYouTubePlayerViewController.swift
+@@ -1,44 +1,48 @@
+ import UIKit
+ import YouTubeiOSPlayerHelper
  
+ final class NativeYouTubePlayerViewController: UIViewController, YTPlayerViewDelegate {
+     private let videoId: String
+     private let startSeconds: Double
+     private let autoPlay: Bool
+     private let playerView = YTPlayerView()
+     private var latestPlayTime: Double
+     private var memos: [NativeMemo]
+     private let onMemoAdded: (([String: Any]) -> Void)?
++    private let onMemoUpdated: (([String: Any]) -> Void)?
++    private let onMemoDeleted: (([String: Any]) -> Void)?
  
- const ShortcutCard = ({ icon, title, description, onClick }) => (
-     <button
-         type="button"
-         onClick={onClick}
-         className="flex flex-col items-start rounded-2xl border border-gray-200 bg-white p-4 text-left shadow-sm active:scale-[0.98]"
-     >
-         <span className="mb-3 flex h-9 w-9 items-center justify-center rounded-xl border border-gray-100 bg-gray-50 text-gray-700">
-             <Icon name={icon} className="h-4 w-4" />
-         </span>
-         <span className="text-sm font-bold text-gray-900">{title}</span>
-         <span className="mt-1 text-xs leading-5 text-gray-500">{description}</span>
-     </button>
- );
+-    init(videoId: String, startSeconds: Double = 0, autoPlay: Bool = false, memos: [NativeMemo] = [], onMemoAdded: (([String: Any]) -> Void)? = nil) {
++    init(videoId: String, startSeconds: Double = 0, autoPlay: Bool = false, memos: [NativeMemo] = [], onMemoAdded: (([String: Any]) -> Void)? = nil, onMemoUpdated: (([String: Any]) -> Void)? = nil, onMemoDeleted: (([String: Any]) -> Void)? = nil) {
+         self.videoId = videoId
+         self.startSeconds = max(0, startSeconds)
+         self.autoPlay = autoPlay
+         self.latestPlayTime = max(0, startSeconds)
+         self.memos = memos.sorted { $0.time < $1.time }
+         self.onMemoAdded = onMemoAdded
++        self.onMemoUpdated = onMemoUpdated
++        self.onMemoDeleted = onMemoDeleted
+         super.init(nibName: nil, bundle: nil)
+         modalPresentationStyle = .fullScreen
+     }
  
- const MenuRow = ({ icon, title, description, onClick }) => (
-     <button
-         type="button"
-         onClick={onClick}
-         className="flex w-full items-center gap-3 border-b border-gray-100 px-4 py-4 text-left last:border-b-0 active:bg-gray-50"
-     >
-         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gray-50 text-gray-700">
-             <Icon name={icon} className="h-4 w-4" />
-         </span>
-@@ -110,88 +111,54 @@ const getViewTitle = (view) => {
-     if (view === 'privacy') return '개인정보처리방침';
-     if (view === 'board') return '게시판';
-     return '전체';
- };
+     required init?(coder: NSCoder) {
+         fatalError("init(coder:) has not been implemented")
+     }
  
- export default function MenuTab({ student, onUpdateStudent, onLogout, videoMemos, lessonLogs, onLinkToMemo, onOpenFormulaBook, notices, onOpenNotifications, onOpenMessages, isParent = false, studentAuthUid = '', myClasses = [] }) {
-     const [moreView, setMoreView] = useState('menu');
-     const [isProfileOpen, setIsProfileOpen] = useState(false);
-     const [isMemosOpen, setIsMemosOpen] = useState(false);
-     const [editData, setEditData] = useState({ school: '', grade: '', phone: '' });
-     const navigate = useNavigate();
+     override func viewDidLoad() {
+         super.viewDidLoad()
+         view.backgroundColor = .black
+         configureCloseButton()
+         configureMemoListButton()
+         configureMemoButton()
+         configurePlayerView()
+         loadVideo()
+     }
  
-     const handleSaveProfile = () => {
-         if (!editData.school || !editData.grade || !editData.phone) { alert('모든 정보를 입력해주세요.'); return; }
-         let normalizedSchool = editData.school.trim();
-         if (normalizedSchool.endsWith('고등학교')) normalizedSchool = normalizedSchool.replace('고등학교', '고');
-         onUpdateStudent({ ...student, ...editData, school: normalizedSchool }, true);
-         setIsProfileOpen(false);
-         alert('정보가 수정되었습니다.');
-     };
-     const handleAfterDeletionRequested = async () => {
-         await onLogout?.();
-         navigate('/login', { replace: true });
-     };
+     private func configureCloseButton() {
+         let closeButton = UIButton(type: .system)
+         closeButton.translatesAutoresizingMaskIntoConstraints = false
+         closeButton.setTitle("닫기", for: .normal)
+         closeButton.setTitleColor(.white, for: .normal)
+         closeButton.titleLabel?.font = .boldSystemFont(ofSize: 17)
+         closeButton.backgroundColor = UIColor.black.withAlphaComponent(0.55)
+@@ -107,63 +111,124 @@ final class NativeYouTubePlayerViewController: UIViewController, YTPlayerViewDel
+             "playsinline": 1,
+             "controls": 1,
+             "rel": 0,
+             "modestbranding": 1
+         ]
  
--    const toMillis = (value) => {
--        if (!value) return 0;
--        if (typeof value === 'number') return value;
--        if (value instanceof Date) return value.getTime();
--        if (typeof value?.toDate === 'function') return value.toDate().getTime();
--        return 0;
--    };
--
--    const getMyMemos = () => {
--        const memoKeys = [studentAuthUid, student?.authUid, student?.uid, student?.studentUid, student?.id]
--            .filter(Boolean)
--            .map(String);
--        if (!memoKeys.length || !videoMemos) return [];
--
--        const seen = new Set();
--        const memos = memoKeys.flatMap((memoKey) => (Array.isArray(videoMemos[memoKey]) ? videoMemos[memoKey] : []))
--            .filter((memo) => {
--                const key = memo?.id || `${memo?.lessonId || ''}-${memo?.time || ''}-${memo?.note || ''}`;
--                if (seen.has(key)) return false;
--                seen.add(key);
--                return true;
--            });
--        return memos
--            .map((memo) => {
--                const lesson = lessonLogs?.find((l) => String(l.id) === String(memo.lessonId));
--                return {
--                    ...memo,
--                    lessonTitle: lesson?.progress || lesson?.title || memo?.lessonTitle || '강의 메모',
--                    lessonDate: lesson?.date || lesson?.lessonDate || memo?.lessonDate || '',
--                    classId: lesson?.classId || memo?.classId || memo?.classDocId,
--                    lessonId: lesson?.id || memo.lessonId,
--                    updatedAtMs: toMillis(memo.updatedAt) || 0,
--                };
--            })
--            .filter((memo) => memo.classId && memo.lessonId)
--            .sort((a, b) => (b.updatedAtMs - a.updatedAtMs) || ((Number(b.time) || 0) - (Number(a.time) || 0)));
--    };
--    const myMemos = getMyMemos();
-+    const myMemos = useMemo(
-+        () => buildMemoListForMenu(videoMemos, studentAuthUid, lessonLogs),
-+        [videoMemos, studentAuthUid, lessonLogs],
-+    );
-     const isMenu = moreView === 'menu';
- 
-     return (
-         <div className="space-y-4 bg-gray-50 pb-24 animate-fade-in-up">
-             {!isMenu && moreView !== 'board' && (
-                 <header className="flex items-center gap-3 px-1">
-                     <button
-                         type="button"
-                         onClick={() => setMoreView('menu')}
-                         className="flex h-9 w-9 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-700 shadow-sm active:scale-95"
-                         aria-label="전체 메뉴로 돌아가기"
-                     >
-                         <Icon name="chevronLeft" className="h-5 w-5" />
-                     </button>
-                     <h1 className="text-lg font-bold text-gray-900">{getViewTitle(moreView)}</h1>
-                 </header>
-             )}
- 
-             {moreView === 'menu' && (
-                 <section className="space-y-6">
-                     <section className="grid grid-cols-3 gap-3">
-                         <ShortcutCard icon="fileText" title="게시판" description="학원에서 전달한 게시글" onClick={() => setMoreView('board')} />
-                         <ShortcutCard icon="bell" title="알림센터" description="읽지 않은 알림 확인" onClick={onOpenNotifications} />
-                         <ShortcutCard icon="messageSquare" title="메시지" description="연구소/강사와 대화" onClick={onOpenMessages} />
-                     </section>
-diff --git a/src/data/firestoreSync.js b/src/data/firestoreSync.js
-index 224e7aefbe5d4f914a3c9498f6e13872c7ef7a4f..e7f66a0438467a8e5f976ef742d40e49e862343d 100644
---- a/src/data/firestoreSync.js
-+++ b/src/data/firestoreSync.js
-@@ -1170,50 +1170,77 @@ export const loadViewerDataOnce = async ({
-         const myStudents = studentSnaps
-             .filter((s) => s.exists())
-             .map((s) => ({ id: s.id, ...s.data() }))
-             .map(normalizeStudentUser);
- 
-         if (!isCancelled()) {
-             setStudents?.(myStudents);
+         if startSeconds > 0 {
+             playerVars["start"] = Int(startSeconds)
          }
  
-         console.log('[viewer] myStudents ids =', myStudents.map((s) => s.id));
+         print("[NativeYouTubePlayerViewController] loading videoId=\(videoId), startSeconds=\(startSeconds)")
+         playerView.load(withVideoId: videoId, playerVars: playerVars)
+     }
  
-         const scopedStudentUids = safeNonEmptyArray(Array.from(new Set([
-             ...viewerStudentDocIds,
-             ...myStudents.map((s) => s.id).filter(Boolean),
-         ])).slice(0, 10));
+     @objc private func closeTapped() {
+         print("[NativeYouTubePlayerViewController] close tapped")
+         dismiss(animated: true)
+     }
  
-         console.log('[viewer] scopedStudentUids =', scopedStudentUids);
+     @objc private func memoListTapped() {
+         let alert = UIAlertController(title: "메모 목록", message: memos.isEmpty ? "저장된 메모가 없습니다." : nil, preferredStyle: .actionSheet)
  
-         const scopedStudentAuthUids = safeNonEmptyArray(Array.from(new Set([
-             ...(userRole === 'student' ? [userId] : []),
-             ...myStudents.map((s) => s.authUid).filter(Boolean),
-         ].filter(Boolean))).slice(0, 10));
+         for memo in memos.sorted(by: { $0.time < $1.time }) {
+             let title = "\(formatTime(memo.time))   \(memo.note)"
+             alert.addAction(UIAlertAction(title: title, style: .default) { [weak self] _ in
+-                self?.seekToMemo(memo)
++                self?.showMemoActions(for: memo)
+             })
+         }
  
-         console.log('[viewer] scopedStudentAuthUids =', scopedStudentAuthUids);
+         alert.addAction(UIAlertAction(title: "닫기", style: .cancel))
+         if let popover = alert.popoverPresentationController {
+             popover.sourceView = view
+             popover.sourceRect = CGRect(x: view.bounds.midX, y: view.bounds.maxY, width: 0, height: 0)
+             popover.permittedArrowDirections = []
+         }
+         present(alert, animated: true)
+     }
  
-+        const activeViewerAuthUid = userId ? String(userId) : null;
-+
-+        if (setVideoMemos) {
-+            try {
-+                if (!activeViewerAuthUid) {
-+                    if (!isCancelled()) setVideoMemos({});
-+                } else {
-+                    const snap = await run(`videoMemos ${activeViewerAuthUid}`, () =>
-+                        getDocs(
-+                            query(
-+                                collection(db, 'videoMemos', activeViewerAuthUid, 'items'),
-+                                orderBy('updatedAt', 'desc'),
-+                            ),
-+                        ),
-+                    );
-+                    if (!isCancelled()) {
-+                        setVideoMemos({
-+                            [activeViewerAuthUid]: snap.docs.map((d) => ({ id: d.id, ...d.data() })),
-+                        });
-+                    }
-+                }
-+            } catch (e) {
-+                console.warn('[viewer] videoMemos load failed (continue)', e);
-+                if (!isCancelled()) setVideoMemos({});
-+            }
++    private func showMemoActions(for memo: NativeMemo) {
++        let alert = UIAlertController(title: formatTime(memo.time), message: memo.note, preferredStyle: .actionSheet)
++        alert.addAction(UIAlertAction(title: "해당 시간으로 이동", style: .default) { [weak self] _ in
++            self?.seekToMemo(memo)
++        })
++        alert.addAction(UIAlertAction(title: "수정", style: .default) { [weak self] _ in
++            self?.showEditMemoAlert(for: memo)
++        })
++        alert.addAction(UIAlertAction(title: "삭제", style: .destructive) { [weak self] _ in
++            self?.showDeleteMemoConfirmation(for: memo)
++        })
++        alert.addAction(UIAlertAction(title: "취소", style: .cancel))
++        if let popover = alert.popoverPresentationController {
++            popover.sourceView = view
++            popover.sourceRect = CGRect(x: view.bounds.midX, y: view.bounds.maxY, width: 0, height: 0)
++            popover.permittedArrowDirections = []
 +        }
++        present(alert, animated: true)
++    }
 +
-         /* =========================
-            classes (student.classIds 우선, classes.students는 fallback)
-         ========================= */
-         const myClassesMap = new Map();
++    private func showEditMemoAlert(for memo: NativeMemo) {
++        let alert = UIAlertController(title: "메모 수정", message: "재생시간: \(formatTime(memo.time))", preferredStyle: .alert)
++        alert.addTextField { textField in
++            textField.text = memo.note
++            textField.placeholder = "메모를 입력하세요"
++            textField.clearButtonMode = .whileEditing
++        }
++        alert.addAction(UIAlertAction(title: "취소", style: .cancel))
++        alert.addAction(UIAlertAction(title: "저장", style: .default) { [weak self, weak alert] _ in
++            guard let self = self else { return }
++            let note = alert?.textFields?.first?.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
++            guard !note.isEmpty else { return }
++            guard let index = self.memos.firstIndex(where: { $0.id == memo.id }) else { return }
++            self.memos[index].note = note
++            self.memos.sort { $0.time < $1.time }
++            self.onMemoUpdated?([
++                "id": memo.id,
++                "videoId": self.videoId,
++                "time": memo.time,
++                "note": note
++            ])
++        })
++        present(alert, animated: true)
++    }
++
++    private func showDeleteMemoConfirmation(for memo: NativeMemo) {
++        let alert = UIAlertController(title: "메모 삭제", message: "이 메모를 삭제하시겠어요?", preferredStyle: .alert)
++        alert.addAction(UIAlertAction(title: "취소", style: .cancel))
++        alert.addAction(UIAlertAction(title: "삭제", style: .destructive) { [weak self] _ in
++            guard let self = self else { return }
++            self.memos.removeAll { $0.id == memo.id }
++            self.onMemoDeleted?([
++                "id": memo.id,
++                "videoId": self.videoId,
++                "time": memo.time,
++                "note": memo.note
++            ])
++        })
++        present(alert, animated: true)
++    }
++
+     private func seekToMemo(_ memo: NativeMemo) {
+         latestPlayTime = max(0, memo.time)
+         playerView.seek(toSeconds: Float(memo.time), allowSeekAhead: true)
+     }
  
-         // 1) student 문서의 classIds / classes를 최우선으로 사용
-         const classIdsFromStudents = Array.from(new Set(
-             myStudents
-                 .flatMap((s) => Array.isArray(s?.classIds)
-                     ? s.classIds
-                     : (Array.isArray(s?.classes) ? s.classes : []))
-                 .filter(Boolean)
-                 .map(String),
-         ));
+     @objc private func memoTapped() {
+         let currentTime = max(0, latestPlayTime)
+         let alert = UIAlertController(title: "학습 메모", message: "현재 재생시간: \(formatTime(currentTime))", preferredStyle: .alert)
+         alert.addTextField { textField in
+             textField.placeholder = "메모를 입력하세요"
+             textField.clearButtonMode = .whileEditing
+         }
+         alert.addAction(UIAlertAction(title: "취소", style: .cancel))
+         alert.addAction(UIAlertAction(title: "저장", style: .default) { [weak self, weak alert] _ in
+             guard let self = self else { return }
+             let note = alert?.textFields?.first?.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+             guard !note.isEmpty else { return }
+             let newMemo = NativeMemo(id: UUID().uuidString, time: currentTime, note: note)
+             self.memos.append(newMemo)
+             self.memos.sort { $0.time < $1.time }
+             self.onMemoAdded?([
+                 "videoId": self.videoId,
+                 "currentTime": currentTime,
+                 "note": note
+             ])
+diff --git a/ios/App/App/NativeYouTubePlugin.swift b/ios/App/App/NativeYouTubePlugin.swift
+index e8e597b47955ec717b6d32a0e405d38e464c2c5d..b07fe0a5f69f3f4988b601c9a15e138283f38be0 100644
+--- a/ios/App/App/NativeYouTubePlugin.swift
++++ b/ios/App/App/NativeYouTubePlugin.swift
+@@ -1,32 +1,32 @@
+ import Capacitor
+ import UIKit
  
-         console.log('[viewer] classIdsFromStudents =', classIdsFromStudents);
+ struct NativeMemo {
+     let id: String
+     let time: Double
+-    let note: String
++    var note: String
+ }
  
-         // 2) classIds로 직접 classes 문서를 읽는다 (이 경로가 메인)
-         if (classIdsFromStudents.length > 0) {
-             const chunks = chunkArray(classIdsFromStudents, 10);
+ @objc(NativeYouTubePlugin)
+ public class NativeYouTubePlugin: CAPPlugin, CAPBridgedPlugin {
+     public let identifier = "NativeYouTubePlugin"
+     public let jsName = "NativeYouTube"
+     public let pluginMethods: [CAPPluginMethod] = [
+         CAPPluginMethod(name: "open", returnType: CAPPluginReturnPromise)
+     ]
  
-             for (const ch of chunks) {
-                 try {
-                     const snap = await run(`classes by classIds chunk(${ch.length})`, () =>
-                         getDocs(
-@@ -1697,52 +1724,50 @@ export const loadViewerDataOnce = async ({
-                 if (Array.isArray(scopedStudentUids) && scopedStudentUids.length > 0) {
-                     await loadHomeworkResultsForField('studentId', scopedStudentUids);
+     @objc func open(_ call: CAPPluginCall) {
+         print("[NativeYouTubePlugin] open requested")
+ 
+         guard let videoId = call.getString("videoId"), !videoId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+             let message = "videoId is required"
+             print("[NativeYouTubePlugin] failed: \(message)")
+             call.reject(message)
+             return
+         }
+ 
+         let startSeconds = call.getDouble("startSeconds") ?? 0
+         let autoPlay = call.getBool("autoPlay") ?? false
+         let memos = (call.getArray("memos", JSObject.self) ?? []).compactMap { item -> NativeMemo? in
+             guard let note = item["note"] as? String else { return nil }
+             let trimmedNote = note.trimmingCharacters(in: .whitespacesAndNewlines)
+@@ -48,35 +48,43 @@ public class NativeYouTubePlugin: CAPPlugin, CAPBridgedPlugin {
+         }
+ 
+         DispatchQueue.main.async { [weak self] in
+             guard let self = self else {
+                 let message = "Plugin instance was released"
+                 print("[NativeYouTubePlugin] failed: \(message)")
+                 call.reject(message)
+                 return
+             }
+ 
+             guard let presenter = self.bridge?.viewController else {
+                 let message = "Root view controller is unavailable"
+                 print("[NativeYouTubePlugin] failed: \(message)")
+                 call.reject(message)
+                 return
+             }
+ 
+             let playerViewController = NativeYouTubePlayerViewController(
+                 videoId: videoId,
+                 startSeconds: startSeconds,
+                 autoPlay: autoPlay,
+                 memos: memos,
+                 onMemoAdded: { [weak self] memo in
+                     print("[NativeYouTubePlugin] memo added: \(memo)")
+                     self?.notifyListeners("youtubeMemoAdded", data: memo)
++                },
++                onMemoUpdated: { [weak self] memo in
++                    print("[NativeYouTubePlugin] memo updated: \(memo)")
++                    self?.notifyListeners("youtubeMemoUpdated", data: memo)
++                },
++                onMemoDeleted: { [weak self] memo in
++                    print("[NativeYouTubePlugin] memo deleted: \(memo)")
++                    self?.notifyListeners("youtubeMemoDeleted", data: memo)
                  }
+             )
  
-             if (!isCancelled()) {
-                 console.log('[viewer][homeworkResults] keys=', Object.keys(mapped));
-                 setHomeworkResults?.(mapped);
-                 viewerDetailCache.homeworkResults.set(detailCacheKey, mapped);
+             presenter.present(playerViewController, animated: true) {
+                 print("[NativeYouTubePlugin] presented")
+                 call.resolve()
              }
-             } else if (!isCancelled() && !hasDetailCache) {
-                 setHomeworkResults?.({});
-                 viewerDetailCache.homeworkResults.set(detailCacheKey, {});
-             }
-         } catch (e) {
-             console.warn('[viewer] homeworkResults load failed', e);
-             if (!isCancelled()) setHomeworkResults?.({});
-                 viewerDetailCache.homeworkResults.set(detailCacheKey, {});
          }
+     }
+ }
+diff --git a/src/components/NativeYouTubeLauncher.jsx b/src/components/NativeYouTubeLauncher.jsx
+index 479644afd15af47c0dc8e3e512f09f942d4c7cd8..52dd467681bc365ea6a1d7788d65d8382875da88 100644
+--- a/src/components/NativeYouTubeLauncher.jsx
++++ b/src/components/NativeYouTubeLauncher.jsx
+@@ -1,77 +1,82 @@
+ import React, { useCallback, useEffect, useRef, useState } from 'react';
+ import { registerPlugin } from '@capacitor/core';
  
-         /* =========================
-         viewer 식별자 (공지 조회용)
-         ========================= */
-         const activeStudentDocId = scopedStudentUids[0] || null;
+ const NativeYouTube = registerPlugin('NativeYouTube');
+ console.log("NativeYouTube =", NativeYouTube);
  
-         // ✅ 실제 데이터 키로 쓸 authUid(7MR...) (videoProgress/externalSchedules 조회용)
--        const activeViewerAuthUid = userId ? String(userId) : null;
--
-         console.log('[viewer] activeStudentDocId =', activeStudentDocId);
-         console.log('[viewer] current auth.uid =', activeViewerAuthUid);
+-export default function NativeYouTubeLauncher({ videoId, initialSeconds = 0, memos = [], onAddNativeMemo, autoOpen = false, renderControls = true }) {
++export default function NativeYouTubeLauncher({ videoId, initialSeconds = 0, memos = [], onAddNativeMemo, onUpdateNativeMemo, onDeleteNativeMemo, autoOpen = false, renderControls = true }) {
+     const [failed, setFailed] = useState(false);
+     const [isOpening, setIsOpening] = useState(false);
+     const isOpeningRef = useRef(false);
+     const autoOpenedRef = useRef(false);
+     const [debugLines, setDebugLines] = useState([]);
  
-         /* =========================
-            announcements (rules-aligned)
-         ========================= */
+     const addDebug = useCallback((message, data) => {
+         const formattedData = data === undefined
+             ? ''
+             : ` ${typeof data === 'string' ? data : JSON.stringify(data)}`;
+         const line = `${new Date().toLocaleTimeString()} ${message}${formattedData}`;
+         setDebugLines((lines) => [...lines, line]);
+         console.log(`[NativeYouTubeLauncher] ${message}`, data ?? '');
+     }, []);
+ 
+     useEffect(() => {
+         addDebug('videoId', videoId || '(empty)');
+         addDebug('initialSeconds', initialSeconds || 0);
+         addDebug('memo count', Array.isArray(memos) ? memos.length : 0);
+         addDebug('typeof NativeYouTube.open', typeof NativeYouTube.open);
+         addDebug('window.location.href', window.location.href);
+         addDebug('window.Capacitor exists', Boolean(window.Capacitor));
+     }, [addDebug, initialSeconds, memos, videoId]);
+ 
+     useEffect(() => {
+         if (typeof NativeYouTube.addListener !== 'function') return undefined;
+ 
+         let isMounted = true;
+-        let listenerHandle;
++        const listenerHandles = [];
++        const attachListener = (eventName, handler) => {
++            NativeYouTube.addListener(eventName, (memo) => {
++                if (!isMounted) return;
++                addDebug(`${eventName} received`, memo);
++                handler?.(memo);
++            }).then((handle) => {
++                listenerHandles.push(handle);
++            }).catch((error) => {
++                addDebug(`${eventName} listener failed: ${error?.message || String(error)}`);
++            });
++        };
+ 
+-        NativeYouTube.addListener('youtubeMemoAdded', (memo) => {
+-            if (!isMounted) return;
+-            addDebug('memo event received', memo);
+-            onAddNativeMemo?.(memo);
+-        }).then((handle) => {
+-            listenerHandle = handle;
+-        }).catch((error) => {
+-            addDebug(`memo listener failed: ${error?.message || String(error)}`);
+-        });
++        attachListener('youtubeMemoAdded', onAddNativeMemo);
++        attachListener('youtubeMemoUpdated', onUpdateNativeMemo);
++        attachListener('youtubeMemoDeleted', onDeleteNativeMemo);
+ 
+         return () => {
+             isMounted = false;
+-            listenerHandle?.remove?.();
++            listenerHandles.forEach((handle) => handle?.remove?.());
+         };
+-    }, [addDebug, onAddNativeMemo]);
++    }, [addDebug, onAddNativeMemo, onUpdateNativeMemo, onDeleteNativeMemo]);
+ 
+     const openNativePlayer = useCallback(async () => {
+         console.log("button clicked");
+         addDebug('button clicked');
+ 
+         if (!videoId || isOpeningRef.current) return;
+         isOpeningRef.current = true;
+         setIsOpening(true);
+         setFailed(false);
+ 
          try {
-             const uniq = (values = []) => Array.from(new Set((Array.isArray(values) ? values : []).map((v) => String(v || '').trim()).filter(Boolean)));
-             const announcementAudienceUids = uniq([
-                 userId,
-                 activeViewerAuthUid,
-                 activeStudentDocId,
-                 ...scopedStudentUids,
-                 ...scopedStudentAuthUids,
-                 ...myStudents.map((s) => s?.id),
-                 ...myStudents.map((s) => s?.uid),
-                 ...myStudents.map((s) => s?.authUid),
-             ]).filter(Boolean);
-             console.log('[viewer] announcements audience uid candidates', announcementAudienceUids);
- 
-             const mergedAnnouncements = new Map();
-             let targetedCount = 0;
- 
-             try {
-                 const publicSnap = await getDocs(
-@@ -1773,88 +1798,50 @@ export const loadViewerDataOnce = async ({
-             if (!isCancelled()) setAnnouncements?.(loadedAnnouncements);
-             console.log('[viewer] announcements loaded', {
-                 candidates: announcementAudienceUids,
-                 targetedCount,
-                 totalCount: loadedAnnouncements.length,
-                 sample: loadedAnnouncements.slice(0, 5).map((a) => ({
-                     id: a?.id,
-                     title: a?.title,
-                     isPublic: a?.isPublic === true,
-                     audienceAuthUidsCount: Array.isArray(a?.audienceAuthUids) ? a.audienceAuthUids.length : 0,
-                 })),
+             console.log("calling plugin");
+             const nativeMemos = Array.isArray(memos)
+                 ? memos.map((memo) => ({
+                     id: String(memo.id ?? ''),
+                     time: Number(memo.time) || 0,
+                     note: String(memo.note ?? ''),
+                 })).filter((memo) => memo.note.trim())
+                 : [];
+             addDebug('calling NativeYouTube.open', {
+                 videoId,
+                 startSeconds: initialSeconds || 0,
+                 memoCount: nativeMemos.length,
+                 autoPlay: true,
              });
-         } catch (announcementError) {
-             console.warn('[viewer] announcements load failed', announcementError);
-             if (!isCancelled()) setAnnouncements?.([]);
-         }
- 
-         /* =========================
-            homeworkAssignments: 병렬 로딩 결과 사용
-         ========================= */
-         
-         /* =========================
-         videoProgress / externalSchedules  (✅ authUid 기준으로 조회)
-         ========================= */
- 
--        const viewerAuthUids = Array.from(new Set([
--            userId,
--            activeViewerAuthUid,
--            ...myStudents.map((s) => s?.authUid).filter(Boolean),
--        ]
--            .filter(Boolean)
--            .map(String)
--            .filter((uid) => uid === activeViewerAuthUid))).slice(0, 10);
--
--        if (setVideoMemos) {
--            try {
--                if (viewerAuthUids.length > 0) {
--                    const memoMap = {};
--                    await Promise.all(
--                        viewerAuthUids.map(async (uid) => {
--                            const snap = await run(`videoMemos ${uid}`, () =>
--                                getDocs(
--                                    query(
--                                        collection(db, 'videoMemos', uid, 'items'),
--                                        orderBy('updatedAt', 'desc'),
--                                    ),
--                                ),
--                            );
--                            memoMap[uid] = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
--                        }),
--                    );
--
--                    if (!isCancelled()) {
--                        setVideoMemos(memoMap);
--                    }
--                } else if (!isCancelled()) {
--                    setVideoMemos({});
--                }
--            } catch (e) {
--                console.error('[viewer] FAIL videoMemos', e);
--            }
--        }
--
-         // ✅ 여기부터는 authUid가 있어야 조회 가능
-         if (activeViewerAuthUid) {
-             try {
-                 const progressDocs = await fetchClassScopedDocs({
-                     db,
-                     collectionName: 'videoProgress',
-                     classIds: lessonClassIds,
-                     run,
-                     isCancelled,
-                     buildQuery: (classChunk) => query(
-                         collection(db, 'videoProgress'),
-                         where('studentId', '==', activeViewerAuthUid),
-                         where('classId', 'in', classChunk),
-                         limit(100),
-                     ),
-                 });
-                 if (!isCancelled()) setVideoProgress?.(progressDocs);
-             } catch (e) {
-                 console.warn('[viewer] videoProgress visible class scoped load skipped', e);
-                 if (!isCancelled()) setVideoProgress?.([]);
-             }
- 
-             console.log('[viewer] fetch externalSchedules start', { activeViewerAuthUid });
- 
-             try {
 diff --git a/src/domain/memo/videoMemo.service.js b/src/domain/memo/videoMemo.service.js
-index a1e0efa890601bfaaa27f8a6647548e3383cb399..fef1c6294bacbd279dbb4ded40c64492bf4112f1 100644
+index fef1c6294bacbd279dbb4ded40c64492bf4112f1..d0cdf1b02be981a5356b50c4df572d0e9872f088 100644
 --- a/src/domain/memo/videoMemo.service.js
 +++ b/src/domain/memo/videoMemo.service.js
-@@ -36,26 +36,70 @@ export async function updateVideoMemo(db, authUid, memoId, patch) {
-   await updateDoc(ref, payload);
+@@ -67,39 +67,40 @@ export function flattenVideoMemos(videoMemos = {}, ownerUid = '') {
+   return Object.values(videoMemos).filter(Array.isArray).flat();
  }
  
- export async function deleteVideoMemo(db, authUid, memoId) {
-   const ref = doc(db, 'videoMemos', authUid, 'items', memoId);
-   await deleteDoc(ref);
+ export function getLessonVideoMemosFromState(videoMemos = {}, ownerUid = '', lessonId = '') {
+   if (!lessonId) return [];
+   return flattenVideoMemos(videoMemos, ownerUid)
+     .filter((memo) => String(memo?.lessonId || '') === String(lessonId));
  }
  
- export async function fetchMyVideoMemos(db, authUid) {
-   const q = query(
-     collection(db, 'videoMemos', authUid, 'items'),
-     orderBy('updatedAt', 'desc')
-   );
-   const snap = await getDocs(q);
-   return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
- }
- 
- export async function fetchLessonVideoMemos(db, authUid, lessonId) {
-   const q = query(
-     collection(db, 'videoMemos', authUid, 'items'),
-     where('lessonId', '==', String(lessonId)),
-     orderBy('updatedAt', 'desc')
-   );
-   const snap = await getDocs(q);
-   return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
--}
-\ No newline at end of file
-+}
-+
-+export function flattenVideoMemos(videoMemos = {}, ownerUid = '') {
-+  if (!videoMemos || typeof videoMemos !== 'object') return [];
-+  const key = ownerUid ? String(ownerUid) : '';
-+  if (key) return Array.isArray(videoMemos[key]) ? videoMemos[key] : [];
-+  return Object.values(videoMemos).filter(Array.isArray).flat();
-+}
-+
-+export function getLessonVideoMemosFromState(videoMemos = {}, ownerUid = '', lessonId = '') {
-+  if (!lessonId) return [];
-+  return flattenVideoMemos(videoMemos, ownerUid)
-+    .filter((memo) => String(memo?.lessonId || '') === String(lessonId));
-+}
-+
-+const toMillis = (value) => {
-+  if (!value) return 0;
-+  if (typeof value === 'number') return value;
-+  if (value instanceof Date) return value.getTime();
-+  if (typeof value?.toDate === 'function') return value.toDate().getTime();
-+  return 0;
-+};
-+
-+export function buildMemoListForMenu(videoMemos = {}, ownerUid = '', lessonLogs = []) {
-+  const lessonById = new Map(
-+    (Array.isArray(lessonLogs) ? lessonLogs : [])
-+      .filter((lesson) => lesson?.id)
-+      .map((lesson) => [String(lesson.id), lesson]),
-+  );
-+
-+  return flattenVideoMemos(videoMemos, ownerUid)
-+    .map((memo) => {
-+      const lesson = lessonById.get(String(memo?.lessonId || ''));
-+      return {
-+        ...memo,
-+        lessonTitle: lesson?.progress || lesson?.title || memo?.lessonTitle || '강의 메모',
-+        lessonDate: lesson?.date || lesson?.lessonDate || memo?.lessonDate || '',
-+        classId: lesson?.classId || memo?.classId || memo?.classDocId || '',
-+        lessonId: lesson?.id || memo?.lessonId,
-+        updatedAtMs: toMillis(memo?.updatedAt),
-+      };
-+    })
-+    .filter((memo) => memo?.lessonId)
-+    .sort((a, b) => (b.updatedAtMs - a.updatedAtMs) || ((Number(b.time) || 0) - (Number(a.time) || 0)));
-+}
-diff --git a/src/pages/student/ClassroomView.jsx b/src/pages/student/ClassroomView.jsx
-index 8eac3f089e51ca61df1f2fc93f399994e97d8072..db9fea37b5f31e26c189186f1f51f2eb6c32a5bd 100644
---- a/src/pages/student/ClassroomView.jsx
-+++ b/src/pages/student/ClassroomView.jsx
-@@ -1,33 +1,34 @@
- // src/pages/student/ClassroomView.jsx
- import React, { useState, useMemo, useEffect, useRef } from 'react';
- import { Icon, formatTime, formatClassScheduleKo } from '../../utils/helpers';
- import YouTubePlayer from '../../components/YouTubePlayer';
- import NativeYouTubeLauncher from '../../components/NativeYouTubeLauncher';
- import VideoFilePlayer from '../../components/VideoFilePlayer';
- import PlayCircleFilledWhiteIcon from '@mui/icons-material/PlayCircleFilledWhite';
- import { calculateVideoProgress, getCurrentLessonByDate, getSortedLessonLogs, normalizeLessonVideos } from '../../domain/lesson/lesson.service';
-+import { getLessonVideoMemosFromState } from '../../domain/memo/videoMemo.service';
- import { buildClassroomStats } from '../../domain/classroom/classroom.service';
- import { canAccessLessonContent } from '../../utils/attendanceAccess';
- import { Capacitor } from '@capacitor/core';
- import { isCapacitorNativeEnvironment, isIosCapacitorNativeEnvironment } from '../../utils/capacitorEnvironment';
- 
- const normalizeAttendanceStatus = (status) => {
-     if (!status) return null;
-     if (status === 'present' || status === 'absent' || status === 'video_makeup' || status === 'late') return status;
- 
-     if (status === '출석') return 'present';
-     if (status === '결석') return 'absent';
-     if (status === '동영상보강') return 'video_makeup';
-     if (status === '지각') return 'late';
- 
-     return null;
+ const toMillis = (value) => {
+   if (!value) return 0;
+   if (typeof value === 'number') return value;
+   if (value instanceof Date) return value.getTime();
+   if (typeof value?.toDate === 'function') return value.toDate().getTime();
+   return 0;
  };
  
+ export function buildMemoListForMenu(videoMemos = {}, ownerUid = '', lessonLogs = []) {
+   const lessonById = new Map(
+     (Array.isArray(lessonLogs) ? lessonLogs : [])
+       .filter((lesson) => lesson?.id)
+       .map((lesson) => [String(lesson.id), lesson]),
+   );
  
- export default function ClassroomView({
-     classes, lessonLogs, attendanceLogs, studentDocId, studentAuthUid, currentAuthUid,
-     selectedClassId, setSelectedClassId,
-     videoProgress, onSaveVideoProgress,
-     videoMemos, onAddMemo, onUpdateMemo, onDeleteMemo,
-     onVideoModalChange,
-     targetMemo, onClearTargetMemo,
-@@ -185,64 +186,52 @@ export default function ClassroomView({
+   return flattenVideoMemos(videoMemos, ownerUid)
++    .filter((memo) => lessonById.has(String(memo?.lessonId || '')))
+     .map((memo) => {
+       const lesson = lessonById.get(String(memo?.lessonId || ''));
+       return {
+         ...memo,
+         lessonTitle: lesson?.progress || lesson?.title || memo?.lessonTitle || '강의 메모',
+         lessonDate: lesson?.date || lesson?.lessonDate || memo?.lessonDate || '',
+         classId: lesson?.classId || memo?.classId || memo?.classDocId || '',
+         lessonId: lesson?.id || memo?.lessonId,
+         updatedAtMs: toMillis(memo?.updatedAt),
+       };
+     })
+     .filter((memo) => memo?.lessonId)
+     .sort((a, b) => (b.updatedAtMs - a.updatedAtMs) || ((Number(b.time) || 0) - (Number(a.time) || 0)));
+ }
+diff --git a/src/pages/student/ClassroomView.jsx b/src/pages/student/ClassroomView.jsx
+index db9fea37b5f31e26c189186f1f51f2eb6c32a5bd..5274dc68855bf49a9d77190e4978e5186728cd57 100644
+--- a/src/pages/student/ClassroomView.jsx
++++ b/src/pages/student/ClassroomView.jsx
+@@ -140,50 +140,75 @@ export default function ClassroomView({
+         if (!playerRef.current || !bookmarkNote.trim() || !currentLesson || !memoOwnerUid) return;
+         const currentTime = playerRef.current.getCurrentTime();
+         try {
+             await onAddMemo?.(memoOwnerUid, { lessonId: currentLesson.id, time: currentTime, note: bookmarkNote });
+             setBookmarkNote('');
+         } catch (error) {
+             console.error('[ClassroomView] add memo failed', error);
+         }
+     };
+ 
+     const handleAddNativeMemo = async ({ videoId, currentTime, note }) => {
+         if (!currentLesson || !memoOwnerUid || !note?.trim()) return;
+         if (videoId && currentVideoId && String(videoId) !== String(currentVideoId)) return;
+ 
+         try {
+             await onAddMemo?.(memoOwnerUid, {
+                 lessonId: currentLesson.id,
+                 time: Number(currentTime) || 0,
+                 note: note.trim(),
+             });
+         } catch (error) {
+             console.error('[ClassroomView] add native memo failed', error);
+         }
+     };
+ 
++    const handleUpdateNativeMemo = async ({ id, videoId, note, time }) => {
++        if (!id || !memoOwnerUid || !note?.trim()) return;
++        if (videoId && currentVideoId && String(videoId) !== String(currentVideoId)) return;
++
++        try {
++            await onUpdateMemo?.(memoOwnerUid, id, {
++                note: note.trim(),
++                ...(time !== undefined ? { time: Number(time) || 0 } : {}),
++            });
++        } catch (error) {
++            console.error('[ClassroomView] update native memo failed', error);
++        }
++    };
++
++    const handleDeleteNativeMemo = async ({ id, videoId }) => {
++        if (!id || !memoOwnerUid) return;
++        if (videoId && currentVideoId && String(videoId) !== String(currentVideoId)) return;
++
++        try {
++            await onDeleteMemo?.(memoOwnerUid, id);
++        } catch (error) {
++            console.error('[ClassroomView] delete native memo failed', error);
++        }
++    };
++
+     const handleSeekToMemo = (time) => {
+         if (playerRef.current) playerRef.current.seekTo(time);
+     };
+ 
+     const handleWatchedTick = (addedSeconds, currentTime, duration) => {
+         if (!currentLesson || duration <= 0) return;
+         const prevData = getProgress(currentLesson.id);
+         const newAccumulated = (prevData.accumulated || 0) + addedSeconds;
+         const newPercent = Math.min(100, Math.floor((newAccumulated / duration) * 100));
+         onSaveVideoProgress(studentAuthUid, currentLesson.id, {
+             percent: newPercent, seconds: currentTime, accumulated: newAccumulated
+         });
+     };
+ 
+     const startEditingMemo = (memo) => {
+         setEditingMemoId(memo.id);
+         setEditFields({ note: memo.note || '', time: memo.time ?? 0 });
+     };
+ 
+     const handleSaveEditedMemo = async () => {
+         if (!editingMemoId || !memoOwnerUid) return;
          try {
              await onUpdateMemo?.(memoOwnerUid, editingMemoId, editFields);
              setEditingMemoId(null);
              setEditFields({ note: '', time: '' });
-         } catch (error) {
-             console.error('[ClassroomView] update memo failed', error);
+@@ -257,50 +282,52 @@ export default function ClassroomView({
+             protocol: window.location.protocol,
+             hostname: window.location.hostname,
+             capacitorPlatform: Capacitor?.getPlatform?.(),
+             windowCapacitorPlatform: window.Capacitor?.getPlatform?.(),
+         });
+ 
+         if (currentDirectVideoUrl) {
+             return (
+                 <VideoFilePlayer
+                     ref={playerRef}
+                     src={currentDirectVideoUrl}
+                     initialSeconds={initialSeconds}
+                     onWatchedTick={handleWatchedTick}
+                     onEnded={handleVideoEnded}
+                 />
+             );
          }
+ 
+         if (currentVideoId && isIosNativeApp) {
+             return (
+                 <NativeYouTubeLauncher
+                     videoId={currentVideoId}
+                     initialSeconds={initialSeconds}
+                     memos={myMemos}
+                     onAddNativeMemo={handleAddNativeMemo}
++                    onUpdateNativeMemo={handleUpdateNativeMemo}
++                    onDeleteNativeMemo={handleDeleteNativeMemo}
+                 />
+             );
+         }
+ 
+         if (currentVideoId && !isNativeApp) {
+             return (
+                 <YouTubePlayer
+                     ref={playerRef}
+                     videoId={currentVideoId}
+                     initialSeconds={initialSeconds}
+                     onWatchedTick={handleWatchedTick}
+                     onEnded={handleVideoEnded}
+                 />
+             );
+         }
+ 
+         if (currentVideoId && isNativeApp) {
+             return (
+                 <div className="w-full h-full min-h-[220px] flex flex-col items-center justify-center bg-gray-950 text-white text-center px-6 py-8">
+                     <div className="max-w-sm space-y-4">
+                         <p className="text-sm sm:text-base font-semibold leading-relaxed">
+                             앱 내 재생이 제한된 영상입니다. 관리자에게 문의해주세요.
+                         </p>
+                         <button
+                             type="button"
+@@ -439,50 +466,52 @@ export default function ClassroomView({
+                                             <Icon name="download" className="w-4 h-4" />
+                                         </div>
+                                         <span className="text-sm font-medium truncate flex-1">
+                                             {mat.name} (출결 확인 후 다운로드 가능)
+                                         </span>
+                                     </span>
+                                 )
+                             ))}
+                         </div>
+                     </div>
+                 )}
+             </div>
+         );
      };
  
-     const handleDeleteMemo = async (memoId) => {
-         if (!memoId || !memoOwnerUid) return;
-         if (!window.confirm('이 메모를 삭제하시겠어요?')) return;
-         try {
-             await onDeleteMemo?.(memoOwnerUid, memoId);
-             if (editingMemoId === memoId) {
-                 setEditingMemoId(null);
-                 setEditFields({ note: '', time: '' });
-             }
-         } catch (error) {
-             console.error('[ClassroomView] delete memo failed', error);
-         }
-     };
- 
-     const myMemos = useMemo(() => {
-         const lessonId = currentLesson?.id;
--        if (!lessonId || !videoMemos) return [];
--
--        const primaryKeys = [studentAuthUid, currentAuthUid].filter(Boolean).map(String);
--        for (const key of primaryKeys) {
--            const ownedMemos = Array.isArray(videoMemos?.[key]) ? videoMemos[key] : [];
--            const lessonMemos = ownedMemos.filter((memo) => String(memo.lessonId) === String(lessonId));
--            if (lessonMemos.length > 0) return lessonMemos;
--        }
--
--        return Object.values(videoMemos)
--            .filter(Array.isArray)
--            .flat()
--            .filter((memo) => String(memo.lessonId) === String(lessonId));
--    }, [videoMemos, studentAuthUid, currentAuthUid, currentLesson?.id]);
-+        return getLessonVideoMemosFromState(videoMemos, memoOwnerUid, lessonId);
-+    }, [videoMemos, memoOwnerUid, currentLesson?.id]);
- 
-     const progressData = getProgress(currentLesson?.id);
- 
-     const lessonVideos = useMemo(() => normalizeLessonVideos(currentLesson), [currentLesson]);
-     const hasLessonVideos = lessonVideos.length > 0;
-     const hasMultipleLessonVideos = lessonVideos.length > 1;
-     const canAccessCurrentLesson = canAccessLessonContent(
-         currentLesson ? attendanceMap[currentLesson.id] : null
-     );
- 
-     useEffect(() => {
-         setSelectedVideo(lessonVideos[0] || null);
-         setIsVideoListOpen(false);
-     }, [lessonVideos]);
- 
-     const currentVideoId = selectedVideo?.youtubeVideoId || selectedVideo?.videoId;
-     const currentDirectVideoUrl = selectedVideo?.videoUrl || selectedVideo?.fileUrl || selectedVideo?.hlsUrl || selectedVideo?.directUrl || '';
-     const isNativeApp = isCapacitorNativeEnvironment();
-     const isIosNativeApp = isIosCapacitorNativeEnvironment();
+     if (viewMode === 'list') {
+         return (
+             <div className="animate-fade-in-up pb-20 space-y-6 relative">
+                 {pendingNativeVideo && (
+                     <NativeYouTubeLauncher
+                         key={`${pendingNativeVideo.lessonId}-${pendingNativeVideo.videoId}-${pendingNativeVideo.initialSeconds}-${pendingNativeVideo.requestId}`}
+                         videoId={pendingNativeVideo.videoId}
+                         initialSeconds={pendingNativeVideo.initialSeconds}
+                         memos={myMemos}
+                         onAddNativeMemo={handleAddNativeMemo}
++                        onUpdateNativeMemo={handleUpdateNativeMemo}
++                        onDeleteNativeMemo={handleDeleteNativeMemo}
+                         autoOpen
+                         renderControls={false}
+                     />
+                 )}
+                 <div className="flex items-center gap-3">
+                     <button onClick={() => setSelectedClassId(null)} className="mobile-back-button p-2 bg-white rounded-xl text-gray-600 hover:bg-gray-100 transition-colors shadow-sm active:scale-95">
+                         <Icon name="chevronLeft" className="w-6 h-6" />
+                     </button>
+                     <div>
+                         <h2 className="text-xl font-bold text-gray-900">{selectedClass?.name}</h2>
+                         <p className="text-xs text-gray-500">{formatClassScheduleKo(selectedClass) || '시간 미정'}</p>
+                     </div>
+                 </div>
  
  
-     const handleVideoEnded = (currentTime, duration) => {
-         if (!currentLesson || duration <= 0) return;
-         onSaveVideoProgress(studentAuthUid, currentLesson.id, {
-             percent: 100,
+                 <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                     <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+                         {/* ✅ [수정] 복습 영상 아이콘: list -> video */}
+                         <h3 className="font-bold text-gray-800 flex items-center gap-2"><Icon name="video" className="w-5 h-5 text-[#455fab]" />복습 영상 ({sortedLogs.length})</h3>
+                     </div>
+                     <div className="divide-y divide-gray-100">
+                         {sortedLogs.length > 0 ? sortedLogs.map(log => renderLogItem(log)) : (<div className="p-10 text-center text-gray-400 text-sm">등록된 강의가 없습니다.</div>)}
+                     </div>
+                 </div>
+ 

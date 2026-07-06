@@ -4,7 +4,7 @@ import UIKit
 struct NativeMemo {
     let id: String
     let time: Double
-    let note: String
+    var note: String
 }
 
 @objc(NativeYouTubePlugin)
@@ -70,6 +70,14 @@ public class NativeYouTubePlugin: CAPPlugin, CAPBridgedPlugin {
                 onMemoAdded: { [weak self] memo in
                     print("[NativeYouTubePlugin] memo added: \(memo)")
                     self?.notifyListeners("youtubeMemoAdded", data: memo)
+                },
+                onMemoUpdated: { [weak self] memo in
+                    print("[NativeYouTubePlugin] memo updated: \(memo)")
+                    self?.notifyListeners("youtubeMemoUpdated", data: memo)
+                },
+                onMemoDeleted: { [weak self] memo in
+                    print("[NativeYouTubePlugin] memo deleted: \(memo)")
+                    self?.notifyListeners("youtubeMemoDeleted", data: memo)
                 }
             )
 

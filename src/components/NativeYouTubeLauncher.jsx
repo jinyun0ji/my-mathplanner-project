@@ -4,7 +4,7 @@ import { registerPlugin } from '@capacitor/core';
 const NativeYouTube = registerPlugin('NativeYouTube');
 console.log("NativeYouTube =", NativeYouTube);
 
-export default function NativeYouTubeLauncher({ videoId, initialSeconds = 0, memos = [], onAddNativeMemo, autoOpen = false, renderControls = true }) {
+export default function NativeYouTubeLauncher({ videoId, initialSeconds = 0, memos = [], onAddNativeMemo, onUpdateNativeMemo, onDeleteNativeMemo, autoOpen = false, renderControls = true }) {
     const [failed, setFailed] = useState(false);
     const [isOpening, setIsOpening] = useState(false);
     const isOpeningRef = useRef(false);
@@ -33,23 +33,28 @@ export default function NativeYouTubeLauncher({ videoId, initialSeconds = 0, mem
         if (typeof NativeYouTube.addListener !== 'function') return undefined;
 
         let isMounted = true;
-        let listenerHandle;
+        const listenerHandles = [];
+        const attachListener = (eventName, handler) => {
+            NativeYouTube.addListener(eventName, (memo) => {
+                if (!isMounted) return;
+                addDebug(`${eventName} received`, memo);
+                handler?.(memo);
+            }).then((handle) => {
+                listenerHandles.push(handle);
+            }).catch((error) => {
+                addDebug(`${eventName} listener failed: ${error?.message || String(error)}`);
+            });
+        };
 
-        NativeYouTube.addListener('youtubeMemoAdded', (memo) => {
-            if (!isMounted) return;
-            addDebug('memo event received', memo);
-            onAddNativeMemo?.(memo);
-        }).then((handle) => {
-            listenerHandle = handle;
-        }).catch((error) => {
-            addDebug(`memo listener failed: ${error?.message || String(error)}`);
-        });
+        attachListener('youtubeMemoAdded', onAddNativeMemo);
+        attachListener('youtubeMemoUpdated', onUpdateNativeMemo);
+        attachListener('youtubeMemoDeleted', onDeleteNativeMemo);
 
         return () => {
             isMounted = false;
-            listenerHandle?.remove?.();
+            listenerHandles.forEach((handle) => handle?.remove?.());
         };
-    }, [addDebug, onAddNativeMemo]);
+    }, [addDebug, onAddNativeMemo, onUpdateNativeMemo, onDeleteNativeMemo]);
 
     const openNativePlayer = useCallback(async () => {
         console.log("button clicked");

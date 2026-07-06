@@ -89,6 +89,7 @@ export function buildMemoListForMenu(videoMemos = {}, ownerUid = '', lessonLogs 
   );
 
   return flattenVideoMemos(videoMemos, ownerUid)
+    .filter((memo) => lessonById.has(String(memo?.lessonId || '')))
     .map((memo) => {
       const lesson = lessonById.get(String(memo?.lessonId || ''));
       return {
