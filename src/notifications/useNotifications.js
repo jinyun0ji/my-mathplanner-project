@@ -127,10 +127,15 @@ export default function useNotifications(uid, maxItems = DEFAULT_LIMIT, options 
     }, [notificationsQuery, normalizedUid, viewerRole, unreadOnly]);
 
     const visibleNotifications = useMemo(() => {
-        if (!isParentViewer) {
-            return notifications;
+        const roleFilteredNotifications = isParentViewer
+            ? filterParentNotifications(notifications, lastReadAt, { unreadOnly: false })
+            : notifications;
+
+        if (!unreadOnly) {
+            return roleFilteredNotifications;
         }
-        return filterParentNotifications(notifications, lastReadAt, { unreadOnly });
+
+        return roleFilteredNotifications.filter((notification) => isNotificationUnread(notification, lastReadAt));
     }, [notifications, isParentViewer, lastReadAt, unreadOnly]);
 
     const hasUnread = useMemo(

@@ -27,12 +27,13 @@ export const markAllNotificationsRead = async ({ viewerUid, functions = firebase
     const normalizedViewerUid = normalizeId(viewerUid);
     if (!normalizedViewerUid) return null;
 
-    const callable = httpsCallable(functions, 'markAllNotificationsRead');
-    const result = await callable({ viewerUid: normalizedViewerUid });
     const now = new Date();
     if (setNotifications) {
         setNotifications((prev) => prev.map((item) => ({ ...item, isRead: true, readAt: item.readAt || now })));
     }
+
+    const callable = httpsCallable(functions, 'markAllNotificationsRead');
+    const result = await callable({ viewerUid: normalizedViewerUid });
     return result;
 };
 

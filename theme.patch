@@ -1,258 +1,225 @@
-diff --git a/src/pages/student/ClassroomView.jsx b/src/pages/student/ClassroomView.jsx
-index 5274dc68855bf49a9d77190e4978e5186728cd57..253513ac72a4beadd9acd855174dc807cec90065 100644
---- a/src/pages/student/ClassroomView.jsx
-+++ b/src/pages/student/ClassroomView.jsx
-@@ -62,64 +62,67 @@ export default function ClassroomView({
-                     (attendanceLog.studentId || attendanceLog.studentUid) === studentDocId &&
-                     (attendanceLog.lessonLogId === log.id ||
-                         (!attendanceLog.lessonLogId &&
-                             attendanceLog.classId === log.classId &&
-                             attendanceLog.date === log.date))
-             );
-             const normalizedStatus = normalizeAttendanceStatus(attendance?.status);
-             if (normalizedStatus) {
-                 map[log.id] = { status: normalizedStatus };
-             }
-         });
-         return map;
-     }, [attendanceLogs, sortedLogs, studentDocId]);
+diff --git a/src/notifications/notificationReadActions.js b/src/notifications/notificationReadActions.js
+index 39164eb4477a73bd11f79f82547bcbb9a6ade7ba..0f2102cd8f7927766b7441162283c6eab786b673 100644
+--- a/src/notifications/notificationReadActions.js
++++ b/src/notifications/notificationReadActions.js
+@@ -5,56 +5,57 @@ const normalizeId = (value) => String(value || '').trim();
  
-     useEffect(() => {
-         if (targetMemo && targetMemo.lessonId) {
-             const target = getCurrentLessonByDate(sortedLogs, null, targetMemo.lessonId);
-             if (target) {
-                 const targetVideos = normalizeLessonVideos(target);
-                 const targetVideo = targetVideos[0] || null;
-                 const targetVideoId = targetVideo?.youtubeVideoId || targetVideo?.videoId;
+ export const markNotificationRead = async ({ viewerUid, notificationId, functions = firebaseFunctions, setNotifications = null }) => {
+     const normalizedViewerUid = normalizeId(viewerUid);
+     const normalizedNotificationId = normalizeId(notificationId);
+     if (!normalizedViewerUid || !normalizedNotificationId) return false;
  
-                 setCurrentLesson(target);
-                 setSelectedVideo(targetVideo);
- 
--                if (isCapacitorNativeEnvironment() && targetVideoId) {
-+                const canAccessTargetLesson = canAccessLessonContent(attendanceMap[target.id]);
-+
-+                if (isCapacitorNativeEnvironment() && targetVideoId && canAccessTargetLesson) {
-                     setPendingNativeVideo({
-                         lessonId: target.id,
-                         videoId: targetVideoId,
-                         initialSeconds: targetMemo.time || 0,
-                         requestId: Date.now(),
-                     });
-                     return;
-                 }
- 
-+                setPendingNativeVideo(null);
-                 setViewMode('player');
-             }
-         }
--    }, [targetMemo, sortedLogs]);
-+    }, [targetMemo, sortedLogs, attendanceMap]);
- 
-     useEffect(() => {
-         if (onVideoModalChange) {
-             onVideoModalChange(viewMode === 'player');
-         }
-     }, [viewMode, onVideoModalChange]);
- 
-     const [bookmarkNote, setBookmarkNote] = useState('');
-     const [isListOpen, setIsListOpen] = useState(false);
-     const [editingMemoId, setEditingMemoId] = useState(null);
-     const [editFields, setEditFields] = useState({ note: '', time: '' });
- 
-     useEffect(() => {
-         setEditingMemoId(null);
-         setEditFields({ note: '', time: '' });
-     }, [currentLesson?.id]);
- 
-     const getProgress = (lessonId) => {
-         const primary = calculateVideoProgress(videoProgress, studentAuthUid, lessonId);
-         if ((primary.percent || primary.seconds || primary.accumulated) && studentAuthUid) return primary;
-         return calculateVideoProgress(videoProgress, studentDocId, lessonId);
-     };
- 
-     // --- 통계 및 상태 계산 ---
-     const stats = useMemo(
-@@ -248,50 +251,57 @@ export default function ClassroomView({
-     useEffect(() => {
-         setSelectedVideo(lessonVideos[0] || null);
-         setIsVideoListOpen(false);
-     }, [lessonVideos]);
- 
-     const currentVideoId = selectedVideo?.youtubeVideoId || selectedVideo?.videoId;
-     const currentDirectVideoUrl = selectedVideo?.videoUrl || selectedVideo?.fileUrl || selectedVideo?.hlsUrl || selectedVideo?.directUrl || '';
-     const isNativeApp = isCapacitorNativeEnvironment();
-     const isIosNativeApp = isIosCapacitorNativeEnvironment();
- 
- 
-     const handleVideoEnded = (currentTime, duration) => {
-         if (!currentLesson || duration <= 0) return;
-         onSaveVideoProgress(studentAuthUid, currentLesson.id, {
-             percent: 100,
-             seconds: currentTime || duration,
-             accumulated: duration,
-         });
-     };
- 
-     const openSelectedVideoInYouTube = () => {
-         if (!currentVideoId) return;
-         window.open(`https://www.youtube.com/watch?v=${currentVideoId}`, '_blank');
-     };
- 
-+    const renderAccessRestrictedNotice = () => (
-+        <div className="flex flex-col items-center justify-center text-gray-300 text-center px-6">
-+            <Icon name="lock" className="w-10 h-10 mb-3 opacity-70" />
-+            <p className="text-sm leading-relaxed">출결 확인 후 시청 가능합니다</p>
-+        </div>
-+    );
-+
-     const renderCurrentVideoPlayer = () => {
-         const initialSeconds = targetMemo?.time || progressData.seconds;
- 
-         console.log('[video branch]', {
-             currentVideoId,
-             isNativeApp,
-             isIosNativeApp,
-             href: window.location.href,
-             origin: window.location.origin,
-             protocol: window.location.protocol,
-             hostname: window.location.hostname,
-             capacitorPlatform: Capacitor?.getPlatform?.(),
-             windowCapacitorPlatform: window.Capacitor?.getPlatform?.(),
-         });
- 
-         if (currentDirectVideoUrl) {
-             return (
-                 <VideoFilePlayer
-                     ref={playerRef}
-                     src={currentDirectVideoUrl}
-                     initialSeconds={initialSeconds}
-                     onWatchedTick={handleWatchedTick}
-                     onEnded={handleVideoEnded}
-                 />
-             );
-@@ -335,61 +345,64 @@ export default function ClassroomView({
-                             className="inline-flex items-center justify-center rounded-full bg-red-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-red-700 active:scale-95"
-                         >
-                             YouTube에서 보기
-                         </button>
-                     </div>
-                 </div>
-             );
-         }
- 
-         return (<div className="flex flex-col items-center justify-center text-gray-500"><Icon name="monitor" className="w-12 h-12 mb-2 opacity-50" /><p>재생할 영상이 없습니다.</p></div>);
-     };
- 
-     const toggleMaterials = (e, logId) => {
-         e.stopPropagation();
-         setExpandedMaterialLogId(prev => prev === logId ? null : logId);
-     };
- 
-     const playVideo = (log) => {
-         const videos = normalizeLessonVideos(log);
-         const firstVideo = videos[0] || null;
-         const videoId = firstVideo?.youtubeVideoId || firstVideo?.videoId;
- 
-         setCurrentLesson(log);
-         setSelectedVideo(firstVideo);
- 
--        if (isNativeApp && videoId) {
-+        const canAccess = canAccessLessonContent(attendanceMap[log.id]);
-+
-+        if (isNativeApp && videoId && canAccess) {
-             const logProgress = getProgress(log.id);
-             setPendingNativeVideo({
-                 lessonId: log.id,
-                 videoId,
-                 initialSeconds: targetMemo?.lessonId === log.id ? (targetMemo.time || 0) : (logProgress.seconds || 0),
-                 requestId: Date.now(),
-             });
-             return;
-         }
- 
-+        setPendingNativeVideo(null);
-         if (viewMode === 'list') setViewMode('player');
-     };
- 
-     const handleCardBodyClick = (log) => {
-         if (isNativeApp) return;
-         playVideo(log);
-     };
- 
-     const renderLogItem = (log) => {
-         const { percent: prog } = getProgress(log.id);
-         const isSelected = currentLesson?.id === log.id;
-         const attachments = Array.isArray(log.attachments)
-             ? log.attachments
-             : (Array.isArray(log.materials) ? log.materials : []);
-         const hasMaterials = attachments.length > 0;
-         const isMaterialsExpanded = expandedMaterialLogId === log.id;
-         const canAccess = canAccessLessonContent(attendanceMap[log.id]);
- 
-         return (
-             <div
-                 key={log.id}
-                 className={`p-4 rounded-xl transition-all border ${
-                     isSelected
-                         ? 'bg-[#f1f4ff] border-[#cfd8ff] shadow-sm'
-                         : 'bg-white border-gray-100 hover:bg-gray-50'
-@@ -531,58 +544,51 @@ export default function ClassroomView({
-                                         </div>
-                                     ))
-                                 ) : (<div className="text-center py-10 text-gray-400 text-sm">기록된 출결이 없습니다.</div>)}
-                             </div>
-                         </div>
-                     </div>
-                 )}
-             </div>
-         );
+     const now = new Date();
+     if (setNotifications) {
+         setNotifications((prev) => prev.map((item) => (
+             String(item.id || '') === normalizedNotificationId
+                 ? { ...item, isRead: true, readAt: item.readAt || now }
+                 : item
+         )));
      }
  
-     // 2. 플레이어 뷰
-     return (
-         <div className="mobile-screen fixed inset-0 z-50 bg-white flex flex-col animate-fade-in-up">
-             <div className="mobile-header flex-none flex items-center gap-3 px-4 border-b border-gray-200 bg-white shadow-sm z-20">
-                 <button onClick={() => { setViewMode('list'); onClearTargetMemo(); }} className="mobile-back-button p-2 bg-gray-100 rounded-lg text-gray-600 hover:bg-gray-200 transition-colors active:scale-95"><Icon name="chevronLeft" className="w-5 h-5" /></button>
-                 <div className="flex-1 min-w-0"><h2 className="text-base font-bold text-gray-900 truncate"><span className="text-[#455fab] mr-2">[{currentLesson?.date}]</span>{currentLesson?.progress}</h2></div>
-             </div>
+     const callable = httpsCallable(functions, 'markNotificationRead');
+     console.log('[notification read]', { viewerUid: normalizedViewerUid, notificationId: normalizedNotificationId });
+     await callable({ viewerUid: normalizedViewerUid, notificationId: normalizedNotificationId });
+     return true;
+ };
  
-             <div className={`flex-1 flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden ${hasLessonVideos ? 'bg-black' : 'bg-white'}`}>
-                 {hasLessonVideos && (
-                     <div className="flex-none lg:flex-1 flex flex-col overflow-visible lg:overflow-hidden bg-gray-50 lg:border-r lg:border-gray-200 relative pb-2 lg:pb-0">
-                         <div className="flex-none lg:flex-1 lg:min-h-0 bg-black flex flex-col overflow-visible lg:overflow-hidden">
-                             <div className="flex-none aspect-video lg:aspect-auto lg:flex-1 flex items-center justify-center w-full">
-                                 {!canAccessCurrentLesson ? (
--                                    <div className="flex flex-col items-center justify-center text-gray-300 text-center px-6">
--                                        <Icon name="lock" className="w-10 h-10 mb-3 opacity-70" />
--                                        <p className="text-sm leading-relaxed">
--                                            해당 수업은 출결이 확인되지 않아
--                                            <br />
--                                            영상 시청이 제한되어 있습니다.
--                                        </p>
--                                    </div>
-+                                    renderAccessRestrictedNotice()
-                                 ) : (
-                                     <div className="w-full h-full max-w-full max-h-full aspect-video flex items-center justify-center">{renderCurrentVideoPlayer()}</div>
-                                 )}
-                             </div>
+ export const markAllNotificationsRead = async ({ viewerUid, functions = firebaseFunctions, setNotifications = null }) => {
+     const normalizedViewerUid = normalizeId(viewerUid);
+     if (!normalizedViewerUid) return null;
  
-                         {hasMultipleLessonVideos && (
-                                 <div className="bg-gray-900 border-t border-gray-800 shrink-0">
-                                     <div className="px-4 py-3 flex items-center justify-between text-gray-100">
-                                         <div>
-                                             <p className="text-[11px] uppercase tracking-wide text-gray-400">영상 선택</p>
-                                             <p className="text-sm font-bold">{selectedVideo?.title || '영상 선택'}</p>
-                                         </div>
-                                         <button
-                                             onClick={() => setIsVideoListOpen(!isVideoListOpen)}
-                                             className="flex items-center gap-2 text-xs font-bold px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 active:bg-gray-600 transition-colors"
-                                         >
-                                             {isVideoListOpen ? '목록 닫기' : `영상 ${lessonVideos.length}개`}
-                                             <Icon name={isVideoListOpen ? 'chevronDown' : 'chevronUp'} className="w-4 h-4" />
-                                         </button>
-                                     </div>
-                                     {isVideoListOpen && (
-                                         <div className="max-h-48 lg:max-h-64 overflow-y-auto custom-scrollbar bg-black/70 divide-y divide-gray-800">
-                                             {lessonVideos.map(video => (
-                                                 <button
-                                                     key={video.id}
+-    const callable = httpsCallable(functions, 'markAllNotificationsRead');
+-    const result = await callable({ viewerUid: normalizedViewerUid });
+     const now = new Date();
+     if (setNotifications) {
+         setNotifications((prev) => prev.map((item) => ({ ...item, isRead: true, readAt: item.readAt || now })));
+     }
++
++    const callable = httpsCallable(functions, 'markAllNotificationsRead');
++    const result = await callable({ viewerUid: normalizedViewerUid });
+     return result;
+ };
+ 
+ export const getChatNotificationRoomId = (notification) => {
+     const ref = normalizeId(notification?.ref);
+     if (ref.startsWith('chatRooms/') || ref.startsWith('chats/')) {
+         return normalizeId(ref.split('/')[1]);
+     }
+     const collection = normalizeId(notification?.refCollection);
+     if (collection === 'chatRooms' || collection === 'chats') {
+         return normalizeId(notification?.refId);
+     }
+     return normalizeId(notification?.roomId || notification?.chatRoomId || notification?.payload?.roomId || notification?.payload?.chatRoomId);
+ };
+ 
+ export const markChatRoomNotificationsRead = async ({ viewerUid, roomId, notifications = [], functions = firebaseFunctions, setNotifications = null }) => {
+     const normalizedViewerUid = normalizeId(viewerUid);
+     const normalizedRoomId = normalizeId(roomId);
+     if (!normalizedViewerUid || !normalizedRoomId) return 0;
+ 
+     console.log('[chat notification read]', { viewerUid: normalizedViewerUid, roomId: normalizedRoomId });
+ 
+     const targets = (Array.isArray(notifications) ? notifications : [])
+         .filter((item) => item?.isRead !== true && !item?.readAt)
+         .filter((item) => getChatNotificationRoomId(item) === normalizedRoomId);
+diff --git a/src/notifications/useNotifications.js b/src/notifications/useNotifications.js
+index 2e83ad50049c0824fd6c31349f982aae6bc8cd93..362aa572c89a285f1c7451af3147edbea2f1d1f8 100644
+--- a/src/notifications/useNotifications.js
++++ b/src/notifications/useNotifications.js
+@@ -105,54 +105,59 @@ export default function useNotifications(uid, maxItems = DEFAULT_LIMIT, options
+             path: uid ? `notifications/${uid}/items` : '(empty)',
+         });
+ 
+         setIsLoading(true);
+         const unsubscribe = onSnapshot(
+             notificationsQuery,
+             (snapshot) => {
+                 setNotifications(snapshot.docs.map(mapNotification));
+                 setIsLoading(false);
+             },
+             (error) => {
+                 console.error('[notifications subscribe FAILED]', {
+                     uid,
+                     path: uid ? `notifications/${uid}/items` : '(empty)',
+                     code: error.code,
+                     message: error.message,
+                 });
+                 setIsLoading(false);
+             }
+         );
+ 
+         return unsubscribe;
+     }, [notificationsQuery, normalizedUid, viewerRole, unreadOnly]);
+ 
+     const visibleNotifications = useMemo(() => {
+-        if (!isParentViewer) {
+-            return notifications;
++        const roleFilteredNotifications = isParentViewer
++            ? filterParentNotifications(notifications, lastReadAt, { unreadOnly: false })
++            : notifications;
++
++        if (!unreadOnly) {
++            return roleFilteredNotifications;
+         }
+-        return filterParentNotifications(notifications, lastReadAt, { unreadOnly });
++
++        return roleFilteredNotifications.filter((notification) => isNotificationUnread(notification, lastReadAt));
+     }, [notifications, isParentViewer, lastReadAt, unreadOnly]);
+ 
+     const hasUnread = useMemo(
+         () => visibleNotifications.some((notification) => isNotificationUnread(notification, lastReadAt)),
+         [visibleNotifications, lastReadAt]
+     );
+ 
+     const unreadCount = useMemo(() => (
+         visibleNotifications.reduce((count, notification) => (
+             isNotificationUnread(notification, lastReadAt) ? count + 1 : count
+         ), 0)
+     ), [visibleNotifications, lastReadAt]);
+ 
+     const markAllRead = async () => {
+         if (!metaRef) {
+             return;
+         }
+         await setDoc(metaRef, { lastReadAt: serverTimestamp() }, { merge: true });
+         setLastReadAt(Timestamp.now());
+     };
+ 
+     return {
+         notifications: visibleNotifications,
+         rawNotifications: notifications,
+         hasUnread,
+diff --git a/src/pages/StudentHome.jsx b/src/pages/StudentHome.jsx
+index 7a848f3c7b1d32196d22c552c4df11857d30ab72..f34101576ea830cad2763d70d90fb46eeb531758 100644
+--- a/src/pages/StudentHome.jsx
++++ b/src/pages/StudentHome.jsx
+@@ -475,51 +475,54 @@ export default function StudentHome({
+ 
+         const merged = [
+             ...todaysClasses,
+             ...todayClinics,
+             ...todayExternal,
+         ].sort((a, b) => String(a.time || '').localeCompare(String(b.time || '')));
+         console.log('[student][today] home count', { count: merged.length, classCount: todaysClasses.length, todayStr, visibleClassIds });
+         return merged;
+     }, [clinicLogs, externalSchedules, myClasses, studentId, today, todayDayName, todayStr, closures, visibleClassIds, studentClassExitMap]);
+     const filteredTodayItems = useMemo(() => {
+         const list = Array.isArray(todayItems) ? todayItems : [];
+         return list.filter((item) => !shouldHideTodayItemByExit(item, studentClassExitMap));
+     }, [todayItems, studentClassExitMap]);
+ 
+     useEffect(() => {
+         console.log('[notifications uid]', {
+             role: 'student',
+             authUid,
+             linkedUserDocId: linkedStudentDocId,
+             studentId: student?.id || studentId || '',
+             studentAuthUid: student?.authUid || '',
+             notificationViewerUid,
+         });
+     }, [authUid, linkedStudentDocId, student?.id, student?.authUid, studentId, notificationViewerUid]);
+ 
+-    const { notifications, hasUnread, unreadCount, lastReadAt, isLoading, isMetaLoading, setNotifications } = useNotifications(notificationViewerUid);
++    const { notifications, hasUnread, unreadCount, lastReadAt, isLoading, isMetaLoading, setNotifications } = useNotifications(notificationViewerUid, 20, {
++        viewerRole: 'student',
++        unreadOnly: true,
++    });
+ 
+     const { ongoing: ongoingClasses } = useMemo(() => {
+         const sorted = sortClassesByStatus(myClasses);
+         return { ongoing: sorted?.ongoing || [] };
+     }, [myClasses]);
+ 
+     const myHomeworkStats = useMemo(() => {
+         if (!studentId) return [];
+         return calculateHomeworkStats(
+             studentId,
+             filteredHomeworkAssignments || [],
+             homeworkResults || [],
+             { activeViewerAuthUid: userId, studentAuthUid: student?.authUid, userId, students },
+         );
+     }, [studentId, filteredHomeworkAssignments, homeworkResults, student?.authUid, students, userId]);
+ 
+     const myGradeComparison = useMemo(() => {
+         if (!studentId) return [];
+         return calculateGradeComparison(studentId, classes || [], filteredTests || [], grades || {}, classTestStats || {});
+     }, [studentId, classes, filteredTests, grades, classTestStats]);
+ 
+     const pendingHomeworkCount = useMemo(
+         () => myHomeworkStats.filter(h => !h.isComplete).length,
+         [myHomeworkStats]
+     );
+@@ -792,32 +795,33 @@ export default function StudentHome({
+             )}
+             
+             {/* ✅ [수정] 플로팅 버튼 통합 컨테이너 */}
+             {FEATURES.ENABLE_FLOATING_NOTIFICATIONS_FOR_VIEWERS && (
+                 <div className={`${embedded ? 'absolute bottom-24 right-5' : 'fixed bottom-24 right-5'} z-[60] flex flex-col gap-3 items-center transition-all duration-300 ${isVideoModalOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
+                     {/* 1. 알림 버튼 */}
+                     <button
+                         onClick={handleOpenNotification}
+                         className="bg-white text-brand-main border border-brand-main/20 p-3 rounded-full shadow-lg hover:bg-gray-50 active:scale-90 flex items-center justify-center relative w-12 h-12"
+                     >
+                         <NotificationsIcon style={{ fontSize: 24 }} />
+                         {hasUnread && <span className="absolute top-2 right-2.5 w-2 h-2 bg-brand-red rounded-full ring-1 ring-white"></span>}
+                     </button>
+                 </div>
+             )}
+             {student && (
+                 <NotificationList
+                     isOpen={isNotificationOpen}
+                     onClose={() => setIsNotificationOpen(false)}
+                     notifications={notifications}
+                     onNotificationClick={handleNotificationClick}
+                     onMarkAllRead={handleMarkAllRead}
+                     unreadCount={unreadCount}
+                     lastReadAt={lastReadAt}
+                     isLoading={isLoading || isMetaLoading}
++                    unreadOnly
+                 />
+             )}
+         </div>
+     );
+ }
+ 
+ // changed: hide ended classes in today’s lessons

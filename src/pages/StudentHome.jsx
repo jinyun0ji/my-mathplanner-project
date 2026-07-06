@@ -497,7 +497,10 @@ export default function StudentHome({
         });
     }, [authUid, linkedStudentDocId, student?.id, student?.authUid, studentId, notificationViewerUid]);
 
-    const { notifications, hasUnread, unreadCount, lastReadAt, isLoading, isMetaLoading, setNotifications } = useNotifications(notificationViewerUid);
+    const { notifications, hasUnread, unreadCount, lastReadAt, isLoading, isMetaLoading, setNotifications } = useNotifications(notificationViewerUid, 20, {
+        viewerRole: 'student',
+        unreadOnly: true,
+    });
 
     const { ongoing: ongoingClasses } = useMemo(() => {
         const sorted = sortClassesByStatus(myClasses);
@@ -814,6 +817,7 @@ export default function StudentHome({
                     unreadCount={unreadCount}
                     lastReadAt={lastReadAt}
                     isLoading={isLoading || isMetaLoading}
+                    unreadOnly
                 />
             )}
         </div>
