@@ -12,7 +12,7 @@ import { markChatRoomNotificationsRead } from '../../notifications/notificationR
 
 const getExpectedRoomType = (slot) => (slot === SLOTS.INSTITUTE ? ROOM_TYPES.STUDENT_INSTITUTE : ROOM_TYPES.STUDENT_TEACHER);
 
-export default function StudentMessengerPage({ studentId, student, onBack, notificationViewerUid = '', initialRoomId = '', notifications = [], setNotifications = null }) {
+export default function StudentMessengerPage({ studentId, student, onBack, notificationViewerUid = '', initialRoomId = '', onInitialRoomConsumed = null, notifications = [], setNotifications = null }) {
     const [selectedSlot, setSelectedSlot] = useState(null);
     const hasConsumedInitialRoomRef = useRef(false);
     const authUid = String(auth.currentUser?.uid || '');
@@ -59,6 +59,7 @@ export default function StudentMessengerPage({ studentId, student, onBack, notif
         if (!normalizedInitialRoomId || selectedSlot || hasConsumedInitialRoomRef.current) return;
         const targetSlot = messengerSlots.find((slot) => String(slot.room?.roomId || slot.room?.id || '').trim() === normalizedInitialRoomId);
         hasConsumedInitialRoomRef.current = true;
+        if (typeof onInitialRoomConsumed === 'function') onInitialRoomConsumed();
         handleOpenRoom(targetSlot || {
             slot: SLOTS.TEACHER,
             id: normalizedInitialRoomId,
@@ -67,7 +68,7 @@ export default function StudentMessengerPage({ studentId, student, onBack, notif
             room: { id: normalizedInitialRoomId, roomId: normalizedInitialRoomId },
         });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [initialRoomId, messengerSlots, selectedSlot]);
+    }, [initialRoomId, messengerSlots, selectedSlot, onInitialRoomConsumed]);
 
     const handleOpenRoom = (slot) => {
         const selectedRoomId = String(slot.room?.roomId || slot.room?.id || '').trim();

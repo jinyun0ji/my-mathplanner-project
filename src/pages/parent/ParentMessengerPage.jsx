@@ -115,7 +115,7 @@ const buildInitialRoomSlot = (initialRoomId) => {
     };
 };
 
-export default function ParentMessengerPage({ studentId, student, onBack, notificationViewerUid = '', initialRoomId = '', notifications = [], setNotifications = null }) {
+export default function ParentMessengerPage({ studentId, student, onBack, notificationViewerUid = '', initialRoomId = '', onInitialRoomConsumed = null, notifications = [], setNotifications = null }) {
     const normalizedInitialRoomId = String(initialRoomId || '').trim();
     const parentNotificationOpenTimingRef = useRef({ started: false, ended: false });
     if (normalizedInitialRoomId && !parentNotificationOpenTimingRef.current.started) {
@@ -124,6 +124,10 @@ export default function ParentMessengerPage({ studentId, student, onBack, notifi
     }
     const [selectedSlot, setSelectedSlot] = useState(() => buildInitialRoomSlot(normalizedInitialRoomId));
     const hasConsumedInitialRoomRef = useRef(Boolean(normalizedInitialRoomId));
+
+    useEffect(() => {
+        if (normalizedInitialRoomId && typeof onInitialRoomConsumed === 'function') onInitialRoomConsumed();
+    }, [normalizedInitialRoomId, onInitialRoomConsumed]);
     const [rooms, setRooms] = useState([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
@@ -255,9 +259,10 @@ export default function ParentMessengerPage({ studentId, student, onBack, notifi
         if (!normalizedInitialRoomId || selectedSlot || hasConsumedInitialRoomRef.current) return;
         const targetSlot = messengerSlots.find((slot) => String(slot.room?.roomId || slot.room?.id || '').trim() === normalizedInitialRoomId);
         hasConsumedInitialRoomRef.current = true;
+        if (typeof onInitialRoomConsumed === 'function') onInitialRoomConsumed();
         handleOpenRoom(targetSlot || buildInitialRoomSlot(normalizedInitialRoomId));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [normalizedInitialRoomId, messengerSlots, selectedSlot]);
+    }, [normalizedInitialRoomId, messengerSlots, selectedSlot, onInitialRoomConsumed]);
 
     const handleOpenRoom = (slot) => {
         const selectedRoomId = String(slot.room?.roomId || slot.room?.id || '').trim();

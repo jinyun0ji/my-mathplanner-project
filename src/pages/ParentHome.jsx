@@ -747,6 +747,14 @@ export default function ParentHome({
     const [isNotificationOpen, setIsNotificationOpen] = useState(false);
     const [isMessengerPage, setIsMessengerPage] = useState(false);
     const [initialMessengerRoomId, setInitialMessengerRoomId] = useState('');
+    const handleOpenMessages = () => {
+        if (isMasterPreview || readOnly) {
+            showMasterViewUnavailable('메신저');
+            return;
+        }
+        setInitialMessengerRoomId('');
+        setIsMessengerPage(true);
+    };
     const currentAuthUid = auth.currentUser?.uid || '';
 
     useEffect(() => {
@@ -1301,7 +1309,11 @@ export default function ParentHome({
                 initialRoomId={initialMessengerRoomId}
                 notifications={notifications}
                 setNotifications={setNotifications}
-                onBack={() => setIsMessengerPage(false)}
+                onInitialRoomConsumed={() => setInitialMessengerRoomId('')}
+                onBack={() => {
+                    setInitialMessengerRoomId('');
+                    setIsMessengerPage(false);
+                }}
             />
         );
     }
@@ -1327,7 +1339,7 @@ export default function ParentHome({
                             <NotificationsIcon style={{ fontSize: 20 }} />
                             {hasUnread && <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />}
                         </button>
-                        <button type="button" onClick={() => (isMasterPreview || readOnly ? showMasterViewUnavailable('메신저') : setIsMessengerPage(true))} className="relative min-w-11 min-h-11 p-2 rounded-lg border border-gray-200 text-gray-600">
+                        <button type="button" onClick={handleOpenMessages} className="relative min-w-11 min-h-11 p-2 rounded-lg border border-gray-200 text-gray-600">
                             <ChatBubbleOutlineIcon style={{ fontSize: 20 }} />
                         </button>
                     </div>
@@ -1772,7 +1784,7 @@ export default function ParentHome({
                                 myClasses={myClasses}
                                 ongoingClasses={ongoingClasses}
                                 onOpenNotifications={() => (isMasterPreview || readOnly ? showMasterViewUnavailable('알림') : setIsNotificationOpen(true))}
-                                onOpenMessages={() => (isMasterPreview || readOnly ? showMasterViewUnavailable('메신저') : setIsMessengerPage(true))}
+                                onOpenMessages={handleOpenMessages}
                                 onLogout={onLogout}
                             />
                         )}

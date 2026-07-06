@@ -547,6 +547,7 @@ export default function StudentHome({
             showMasterViewUnavailable('메신저');
             return;
         }
+        setInitialMessengerRoomId('');
         setIsMessengerPage(true);
     };
 
@@ -651,7 +652,11 @@ export default function StudentHome({
                 initialRoomId={initialMessengerRoomId}
                 notifications={notifications}
                 setNotifications={setNotifications}
-                onBack={() => setIsMessengerPage(false)}
+                onInitialRoomConsumed={() => setInitialMessengerRoomId('')}
+                onBack={() => {
+                    setInitialMessengerRoomId('');
+                    setIsMessengerPage(false);
+                }}
             />
         );
     }
