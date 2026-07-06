@@ -34,49 +34,45 @@ final class NativeYouTubePlayerViewController: UIViewController, YTPlayerViewDel
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .black
-        configureCloseButton()
-        configureMemoListButton()
-        configureMemoButton()
+        configureTopControlsStack()
         configurePlayerView()
+        configureMemoButton()
         loadVideo()
     }
 
-    private func configureCloseButton() {
-        let closeButton = UIButton(type: .system)
-        closeButton.translatesAutoresizingMaskIntoConstraints = false
-        closeButton.setTitle("닫기", for: .normal)
-        closeButton.setTitleColor(.white, for: .normal)
-        closeButton.titleLabel?.font = .boldSystemFont(ofSize: 17)
-        closeButton.backgroundColor = UIColor.black.withAlphaComponent(0.55)
-        closeButton.layer.cornerRadius = 18
-        closeButton.contentEdgeInsets = UIEdgeInsets(top: 8, left: 14, bottom: 8, right: 14)
+    private func configureTopControlsStack() {
+        let closeButton = makeOverlayPillButton(title: "닫기")
         closeButton.addTarget(self, action: #selector(closeTapped), for: .touchUpInside)
-        view.addSubview(closeButton)
+
+        let memoListButton = makeOverlayPillButton(title: "메모 목록")
+        memoListButton.addTarget(self, action: #selector(memoListTapped), for: .touchUpInside)
+
+        let topControlsStack = UIStackView(arrangedSubviews: [closeButton, memoListButton])
+        topControlsStack.translatesAutoresizingMaskIntoConstraints = false
+        topControlsStack.axis = .horizontal
+        topControlsStack.alignment = .center
+        topControlsStack.distribution = .equalSpacing
+        view.addSubview(topControlsStack)
 
         NSLayoutConstraint.activate([
-            closeButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 10),
-            closeButton.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 16),
-            closeButton.heightAnchor.constraint(greaterThanOrEqualToConstant: 40)
+            topControlsStack.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 18),
+            topControlsStack.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 24),
+            topControlsStack.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -24),
+            closeButton.heightAnchor.constraint(equalToConstant: 40),
+            memoListButton.heightAnchor.constraint(equalTo: closeButton.heightAnchor)
         ])
     }
 
-    private func configureMemoListButton() {
-        let memoListButton = UIButton(type: .system)
-        memoListButton.translatesAutoresizingMaskIntoConstraints = false
-        memoListButton.setTitle("메모 목록", for: .normal)
-        memoListButton.setTitleColor(.white, for: .normal)
-        memoListButton.titleLabel?.font = .boldSystemFont(ofSize: 17)
-        memoListButton.backgroundColor = UIColor.black.withAlphaComponent(0.55)
-        memoListButton.layer.cornerRadius = 18
-        memoListButton.contentEdgeInsets = UIEdgeInsets(top: 8, left: 14, bottom: 8, right: 14)
-        memoListButton.addTarget(self, action: #selector(memoListTapped), for: .touchUpInside)
-        view.addSubview(memoListButton)
-
-        NSLayoutConstraint.activate([
-            memoListButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 10),
-            memoListButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -16),
-            memoListButton.heightAnchor.constraint(greaterThanOrEqualToConstant: 40)
-        ])
+    private func makeOverlayPillButton(title: String, backgroundColor: UIColor = UIColor.black.withAlphaComponent(0.55)) -> UIButton {
+        let button = UIButton(type: .system)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.setTitle(title, for: .normal)
+        button.setTitleColor(.white, for: .normal)
+        button.titleLabel?.font = .boldSystemFont(ofSize: 17)
+        button.backgroundColor = backgroundColor
+        button.layer.cornerRadius = 20
+        button.contentEdgeInsets = UIEdgeInsets(top: 8, left: 14, bottom: 8, right: 14)
+        return button
     }
 
     private func configureMemoButton() {
@@ -92,8 +88,9 @@ final class NativeYouTubePlayerViewController: UIViewController, YTPlayerViewDel
         view.addSubview(memoButton)
 
         NSLayoutConstraint.activate([
+            memoButton.topAnchor.constraint(equalTo: playerView.bottomAnchor, constant: 24),
             memoButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -24),
-            memoButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -20),
+            memoButton.bottomAnchor.constraint(lessThanOrEqualTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -20),
             memoButton.heightAnchor.constraint(equalToConstant: 44)
         ])
     }
