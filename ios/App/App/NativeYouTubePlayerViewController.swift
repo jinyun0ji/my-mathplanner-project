@@ -1,7 +1,7 @@
 import UIKit
 import YouTubeiOSPlayerHelper
 
-final class NativeYouTubePlayerViewController: UIViewController, YTPlayerViewDelegate {
+final class NativeYouTubePlayerViewController: UIViewController, YTPlayerViewDelegate, UIGestureRecognizerDelegate {
     private let videoId: String
     private let startSeconds: Double
     private let autoPlay: Bool
@@ -11,6 +11,8 @@ final class NativeYouTubePlayerViewController: UIViewController, YTPlayerViewDel
     private let onMemoAdded: (([String: Any]) -> Void)?
     private let onMemoUpdated: (([String: Any]) -> Void)?
     private let onMemoDeleted: (([String: Any]) -> Void)?
+    private weak var activeOverlayView: UIView?
+    private weak var activeEditPanelBottomConstraint: NSLayoutConstraint?
 
     init(videoId: String, startSeconds: Double = 0, autoPlay: Bool = false, memos: [NativeMemo] = [], onMemoAdded: (([String: Any]) -> Void)? = nil, onMemoUpdated: (([String: Any]) -> Void)? = nil, onMemoDeleted: (([String: Any]) -> Void)? = nil) {
         self.videoId = videoId
@@ -128,31 +130,149 @@ final class NativeYouTubePlayerViewController: UIViewController, YTPlayerViewDel
     }
 
     @objc private func memoListTapped() {
-        let alert = UIAlertController(title: "메모 목록", message: memos.isEmpty ? "저장된 메모가 없습니다." : nil, preferredStyle: .actionSheet)
+        showMemoListOverlay()
+    }
 
-        for memo in memos.sorted(by: { $0.time < $1.time }) {
-            let title = "\(formatTime(memo.time))   \(memo.note)"
-            alert.addAction(UIAlertAction(title: title, style: .default) { [weak self] _ in
-                self?.showMemoActions(for: memo)
-            })
+    private func showMemoListOverlay() {
+        dismissActiveOverlay(animated: false)
+
+        let overlay = makeDimmingOverlay()
+        let panel = makeRoundedPanel()
+        let titleLabel = makePanelTitle("메모 목록")
+        let closeButton = makeTextButton(title: "닫기", titleColor: .secondaryLabel)
+        closeButton.addTarget(self, action: #selector(dismissOverlayTapped), for: .touchUpInside)
+
+        let headerStack = UIStackView(arrangedSubviews: [titleLabel, closeButton])
+        headerStack.translatesAutoresizingMaskIntoConstraints = false
+        headerStack.axis = .horizontal
+        headerStack.alignment = .center
+        headerStack.distribution = .equalSpacing
+
+        let scrollView = UIScrollView()
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        scrollView.alwaysBounceVertical = true
+        scrollView.showsVerticalScrollIndicator = true
+
+        let contentStack = UIStackView()
+        contentStack.translatesAutoresizingMaskIntoConstraints = false
+        contentStack.axis = .vertical
+        contentStack.spacing = 8
+        scrollView.addSubview(contentStack)
+
+        let sortedMemos = memos.sorted(by: { $0.time < $1.time })
+        if sortedMemos.isEmpty {
+            let emptyLabel = UILabel()
+            emptyLabel.text = "저장된 메모가 없습니다."
+            emptyLabel.textColor = .secondaryLabel
+            emptyLabel.font = .systemFont(ofSize: 15, weight: .medium)
+            emptyLabel.textAlignment = .center
+            contentStack.addArrangedSubview(emptyLabel)
+        } else {
+            sortedMemos.forEach { memo in
+                contentStack.addArrangedSubview(makeMemoRow(for: memo))
+            }
         }
 
-        alert.addAction(UIAlertAction(title: "닫기", style: .cancel))
-        if let popover = alert.popoverPresentationController {
-            popover.sourceView = view
-            popover.sourceRect = CGRect(x: view.bounds.midX, y: view.bounds.maxY, width: 0, height: 0)
-            popover.permittedArrowDirections = []
+        view.addSubview(overlay)
+        overlay.addSubview(panel)
+        panel.addSubview(headerStack)
+        panel.addSubview(scrollView)
+        activeOverlayView = overlay
+
+        let scrollHeightConstraint: NSLayoutConstraint
+        if sortedMemos.isEmpty {
+            scrollHeightConstraint = scrollView.heightAnchor.constraint(greaterThanOrEqualToConstant: 72)
+        } else {
+            scrollHeightConstraint = scrollView.heightAnchor.constraint(equalTo: view.heightAnchor, multiplier: 0.38)
         }
-        present(alert, animated: true)
+
+        NSLayoutConstraint.activate([
+            overlay.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            overlay.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            overlay.topAnchor.constraint(equalTo: view.topAnchor),
+            overlay.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+
+            panel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 14),
+            panel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -14),
+            panel.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -10),
+            panel.heightAnchor.constraint(lessThanOrEqualTo: view.heightAnchor, multiplier: 0.52),
+
+            headerStack.topAnchor.constraint(equalTo: panel.topAnchor, constant: 18),
+            headerStack.leadingAnchor.constraint(equalTo: panel.leadingAnchor, constant: 18),
+            headerStack.trailingAnchor.constraint(equalTo: panel.trailingAnchor, constant: -18),
+
+            scrollView.topAnchor.constraint(equalTo: headerStack.bottomAnchor, constant: 14),
+            scrollView.leadingAnchor.constraint(equalTo: panel.leadingAnchor, constant: 14),
+            scrollView.trailingAnchor.constraint(equalTo: panel.trailingAnchor, constant: -14),
+            scrollView.bottomAnchor.constraint(equalTo: panel.bottomAnchor, constant: -16),
+            scrollHeightConstraint,
+
+            contentStack.leadingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.leadingAnchor),
+            contentStack.trailingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.trailingAnchor),
+            contentStack.topAnchor.constraint(equalTo: scrollView.contentLayoutGuide.topAnchor),
+            contentStack.bottomAnchor.constraint(equalTo: scrollView.contentLayoutGuide.bottomAnchor),
+            contentStack.widthAnchor.constraint(equalTo: scrollView.frameLayoutGuide.widthAnchor)
+        ])
+
+        animateOverlayIn(overlay: overlay, panel: panel)
+    }
+
+    private func makeMemoRow(for memo: NativeMemo) -> UIControl {
+        let row = UIControl()
+        row.translatesAutoresizingMaskIntoConstraints = false
+        row.backgroundColor = UIColor.secondarySystemBackground.withAlphaComponent(0.95)
+        row.layer.cornerRadius = 14
+        row.clipsToBounds = true
+        row.accessibilityLabel = "\(formatTime(memo.time)) 메모 \(memo.note)"
+
+        let badgeLabel = UILabel()
+        badgeLabel.translatesAutoresizingMaskIntoConstraints = false
+        badgeLabel.text = formatTime(memo.time)
+        badgeLabel.textColor = .white
+        badgeLabel.font = .monospacedDigitSystemFont(ofSize: 12, weight: .bold)
+        badgeLabel.textAlignment = .center
+        badgeLabel.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.9)
+        badgeLabel.layer.cornerRadius = 10
+        badgeLabel.clipsToBounds = true
+
+        let noteLabel = UILabel()
+        noteLabel.translatesAutoresizingMaskIntoConstraints = false
+        noteLabel.text = memo.note
+        noteLabel.textColor = .label
+        noteLabel.font = .systemFont(ofSize: 14, weight: .medium)
+        noteLabel.numberOfLines = 2
+        noteLabel.lineBreakMode = .byTruncatingTail
+
+        row.addSubview(badgeLabel)
+        row.addSubview(noteLabel)
+        row.addAction(UIAction { [weak self] _ in
+            self?.showMemoActions(for: memo)
+        }, for: .touchUpInside)
+
+        NSLayoutConstraint.activate([
+            row.heightAnchor.constraint(greaterThanOrEqualToConstant: 54),
+            badgeLabel.leadingAnchor.constraint(equalTo: row.leadingAnchor, constant: 12),
+            badgeLabel.centerYAnchor.constraint(equalTo: row.centerYAnchor),
+            badgeLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 56),
+            badgeLabel.heightAnchor.constraint(equalToConstant: 24),
+
+            noteLabel.leadingAnchor.constraint(equalTo: badgeLabel.trailingAnchor, constant: 12),
+            noteLabel.trailingAnchor.constraint(equalTo: row.trailingAnchor, constant: -12),
+            noteLabel.topAnchor.constraint(equalTo: row.topAnchor, constant: 8),
+            noteLabel.bottomAnchor.constraint(equalTo: row.bottomAnchor, constant: -8)
+        ])
+
+        return row
     }
 
     private func showMemoActions(for memo: NativeMemo) {
         let alert = UIAlertController(title: formatTime(memo.time), message: memo.note, preferredStyle: .actionSheet)
         alert.addAction(UIAlertAction(title: "해당 시간으로 이동", style: .default) { [weak self] _ in
+            self?.dismissActiveOverlay(animated: true)
             self?.seekToMemo(memo)
         })
         alert.addAction(UIAlertAction(title: "수정", style: .default) { [weak self] _ in
-            self?.showEditMemoAlert(for: memo)
+            self?.showEditMemoOverlay(for: memo)
         })
         alert.addAction(UIAlertAction(title: "삭제", style: .destructive) { [weak self] _ in
             self?.showDeleteMemoConfirmation(for: memo)
@@ -166,17 +286,34 @@ final class NativeYouTubePlayerViewController: UIViewController, YTPlayerViewDel
         present(alert, animated: true)
     }
 
-    private func showEditMemoAlert(for memo: NativeMemo) {
-        let alert = UIAlertController(title: "메모 수정", message: "재생시간: \(formatTime(memo.time))", preferredStyle: .alert)
-        alert.addTextField { textField in
-            textField.text = memo.note
-            textField.placeholder = "메모를 입력하세요"
-            textField.clearButtonMode = .whileEditing
-        }
-        alert.addAction(UIAlertAction(title: "취소", style: .cancel))
-        alert.addAction(UIAlertAction(title: "저장", style: .default) { [weak self, weak alert] _ in
+    private func showEditMemoOverlay(for memo: NativeMemo) {
+        dismissActiveOverlay(animated: false)
+
+        let overlay = makeDimmingOverlay()
+        let panel = makeRoundedPanel()
+        let titleLabel = makePanelTitle("메모 수정")
+        let timeLabel = UILabel()
+        timeLabel.translatesAutoresizingMaskIntoConstraints = false
+        timeLabel.text = "재생시간: \(formatTime(memo.time))"
+        timeLabel.textColor = .secondaryLabel
+        timeLabel.font = .systemFont(ofSize: 14, weight: .medium)
+
+        let textView = UITextView()
+        textView.translatesAutoresizingMaskIntoConstraints = false
+        textView.text = memo.note
+        textView.font = .systemFont(ofSize: 16)
+        textView.textColor = .label
+        textView.backgroundColor = .secondarySystemBackground
+        textView.layer.cornerRadius = 14
+        textView.textContainerInset = UIEdgeInsets(top: 12, left: 10, bottom: 12, right: 10)
+
+        let cancelButton = makeTextButton(title: "취소", titleColor: .secondaryLabel)
+        cancelButton.addTarget(self, action: #selector(dismissOverlayTapped), for: .touchUpInside)
+
+        let saveButton = makeTextButton(title: "저장", titleColor: .systemBlue)
+        saveButton.addAction(UIAction { [weak self, weak textView] _ in
             guard let self = self else { return }
-            let note = alert?.textFields?.first?.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let note = textView?.text.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             guard !note.isEmpty else { return }
             guard let index = self.memos.firstIndex(where: { $0.id == memo.id }) else { return }
             self.memos[index].note = note
@@ -187,8 +324,50 @@ final class NativeYouTubePlayerViewController: UIViewController, YTPlayerViewDel
                 "time": memo.time,
                 "note": note
             ])
-        })
-        present(alert, animated: true)
+            self.dismissActiveOverlay(animated: true)
+        }, for: .touchUpInside)
+
+        let buttonStack = UIStackView(arrangedSubviews: [cancelButton, saveButton])
+        buttonStack.translatesAutoresizingMaskIntoConstraints = false
+        buttonStack.axis = .horizontal
+        buttonStack.alignment = .center
+        buttonStack.distribution = .equalSpacing
+
+        view.addSubview(overlay)
+        overlay.addSubview(panel)
+        [titleLabel, timeLabel, textView, buttonStack].forEach(panel.addSubview)
+        activeOverlayView = overlay
+
+        let bottomConstraint = panel.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -10)
+        activeEditPanelBottomConstraint = bottomConstraint
+        NSLayoutConstraint.activate([
+            overlay.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            overlay.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            overlay.topAnchor.constraint(equalTo: view.topAnchor),
+            overlay.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            panel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 18),
+            panel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -18),
+            bottomConstraint,
+            titleLabel.topAnchor.constraint(equalTo: panel.topAnchor, constant: 20),
+            titleLabel.leadingAnchor.constraint(equalTo: panel.leadingAnchor, constant: 20),
+            titleLabel.trailingAnchor.constraint(equalTo: panel.trailingAnchor, constant: -20),
+            timeLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 8),
+            timeLabel.leadingAnchor.constraint(equalTo: titleLabel.leadingAnchor),
+            timeLabel.trailingAnchor.constraint(equalTo: titleLabel.trailingAnchor),
+            textView.topAnchor.constraint(equalTo: timeLabel.bottomAnchor, constant: 16),
+            textView.leadingAnchor.constraint(equalTo: titleLabel.leadingAnchor),
+            textView.trailingAnchor.constraint(equalTo: titleLabel.trailingAnchor),
+            textView.heightAnchor.constraint(equalToConstant: 112),
+            buttonStack.topAnchor.constraint(equalTo: textView.bottomAnchor, constant: 16),
+            buttonStack.leadingAnchor.constraint(equalTo: titleLabel.leadingAnchor),
+            buttonStack.trailingAnchor.constraint(equalTo: titleLabel.trailingAnchor),
+            buttonStack.bottomAnchor.constraint(equalTo: panel.bottomAnchor, constant: -18)
+        ])
+
+        NotificationCenter.default.addObserver(self, selector: #selector(keyboardWillChangeFrame(_:)), name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(keyboardWillHide(_:)), name: UIResponder.keyboardWillHideNotification, object: nil)
+        animateOverlayIn(overlay: overlay, panel: panel)
+        textView.becomeFirstResponder()
     }
 
     private func showDeleteMemoConfirmation(for memo: NativeMemo) {
@@ -197,6 +376,7 @@ final class NativeYouTubePlayerViewController: UIViewController, YTPlayerViewDel
         alert.addAction(UIAlertAction(title: "삭제", style: .destructive) { [weak self] _ in
             guard let self = self else { return }
             self.memos.removeAll { $0.id == memo.id }
+            self.dismissActiveOverlay(animated: true)
             self.onMemoDeleted?([
                 "id": memo.id,
                 "videoId": self.videoId,
@@ -236,6 +416,107 @@ final class NativeYouTubePlayerViewController: UIViewController, YTPlayerViewDel
         present(alert, animated: true)
     }
 
+    private func makeDimmingOverlay() -> UIView {
+        let overlay = UIView()
+        overlay.translatesAutoresizingMaskIntoConstraints = false
+        overlay.backgroundColor = UIColor.black.withAlphaComponent(0.58)
+        overlay.alpha = 0
+        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(dismissOverlayTapped))
+        tapGesture.delegate = self
+        overlay.addGestureRecognizer(tapGesture)
+        return overlay
+    }
+
+    private func makeRoundedPanel() -> UIView {
+        let panel = UIView()
+        panel.translatesAutoresizingMaskIntoConstraints = false
+        panel.backgroundColor = .systemBackground
+        panel.layer.cornerRadius = 24
+        panel.layer.cornerCurve = .continuous
+        panel.layer.shadowColor = UIColor.black.cgColor
+        panel.layer.shadowOpacity = 0.22
+        panel.layer.shadowRadius = 18
+        panel.layer.shadowOffset = CGSize(width: 0, height: -4)
+        return panel
+    }
+
+    private func makePanelTitle(_ title: String) -> UILabel {
+        let label = UILabel()
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.text = title
+        label.textColor = .label
+        label.font = .boldSystemFont(ofSize: 18)
+        return label
+    }
+
+    private func makeTextButton(title: String, titleColor: UIColor) -> UIButton {
+        let button = UIButton(type: .system)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.setTitle(title, for: .normal)
+        button.setTitleColor(titleColor, for: .normal)
+        button.titleLabel?.font = .boldSystemFont(ofSize: 16)
+        button.contentEdgeInsets = UIEdgeInsets(top: 8, left: 10, bottom: 8, right: 10)
+        return button
+    }
+
+    private func animateOverlayIn(overlay: UIView, panel: UIView) {
+        panel.transform = CGAffineTransform(translationX: 0, y: 32)
+        UIView.animate(withDuration: 0.22, delay: 0, options: [.curveEaseOut]) {
+            overlay.alpha = 1
+            panel.transform = .identity
+        }
+    }
+
+    @objc private func dismissOverlayTapped() {
+        dismissActiveOverlay(animated: true)
+    }
+
+    private func dismissActiveOverlay(animated: Bool) {
+        NotificationCenter.default.removeObserver(self, name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
+        NotificationCenter.default.removeObserver(self, name: UIResponder.keyboardWillHideNotification, object: nil)
+        activeEditPanelBottomConstraint = nil
+        guard let overlay = activeOverlayView else { return }
+        activeOverlayView = nil
+        view.endEditing(true)
+
+        let animations = {
+            overlay.alpha = 0
+            overlay.subviews.first?.transform = CGAffineTransform(translationX: 0, y: 24)
+        }
+
+        let completion: (Bool) -> Void = { _ in
+            overlay.removeFromSuperview()
+        }
+
+        if animated {
+            UIView.animate(withDuration: 0.18, delay: 0, options: [.curveEaseIn], animations: animations, completion: completion)
+        } else {
+            animations()
+            completion(true)
+        }
+    }
+
+    @objc private func keyboardWillChangeFrame(_ notification: Notification) {
+        guard let keyboardFrame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
+        let convertedFrame = view.convert(keyboardFrame, from: nil)
+        let overlap = max(0, view.bounds.maxY - convertedFrame.minY - view.safeAreaInsets.bottom)
+        activeEditPanelBottomConstraint?.constant = -(overlap + 10)
+        animateKeyboardChange(notification)
+    }
+
+    @objc private func keyboardWillHide(_ notification: Notification) {
+        activeEditPanelBottomConstraint?.constant = -10
+        animateKeyboardChange(notification)
+    }
+
+    private func animateKeyboardChange(_ notification: Notification) {
+        let duration = notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? TimeInterval ?? 0.25
+        let curveRaw = notification.userInfo?[UIResponder.keyboardAnimationCurveUserInfoKey] as? UInt ?? UIView.AnimationOptions.curveEaseInOut.rawValue
+        UIView.animate(withDuration: duration, delay: 0, options: UIView.AnimationOptions(rawValue: curveRaw << 16)) {
+            self.view.layoutIfNeeded()
+        }
+    }
+
     private func formatTime(_ seconds: Double) -> String {
         let totalSeconds = Int(seconds.rounded(.down))
         let hours = totalSeconds / 3600
@@ -247,6 +528,14 @@ final class NativeYouTubePlayerViewController: UIViewController, YTPlayerViewDel
         }
 
         return String(format: "%d:%02d", minutes, secs)
+    }
+
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+        guard let overlay = activeOverlayView else { return true }
+        let location = touch.location(in: overlay)
+        return !overlay.subviews.contains { subview in
+            subview.frame.contains(location)
+        }
     }
 
     func playerViewDidBecomeReady(_ playerView: YTPlayerView) {

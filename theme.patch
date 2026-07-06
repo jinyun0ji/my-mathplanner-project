@@ -1,12 +1,13 @@
 diff --git a/ios/App/App/NativeYouTubePlayerViewController.swift b/ios/App/App/NativeYouTubePlayerViewController.swift
-index 9895ebe28a0105b7dc6d3c6fe520a765e9f4e3ee..b66afa8c6ef89c97a6bdb08aa09b9b1058eff412 100644
+index b66afa8c6ef89c97a6bdb08aa09b9b1058eff412..48ab91e09403ef584d1f3c7a5dd6c8b5a2b0c6be 100644
 --- a/ios/App/App/NativeYouTubePlayerViewController.swift
 +++ b/ios/App/App/NativeYouTubePlayerViewController.swift
-@@ -1,44 +1,48 @@
+@@ -1,38 +1,40 @@
  import UIKit
  import YouTubeiOSPlayerHelper
  
- final class NativeYouTubePlayerViewController: UIViewController, YTPlayerViewDelegate {
+-final class NativeYouTubePlayerViewController: UIViewController, YTPlayerViewDelegate {
++final class NativeYouTubePlayerViewController: UIViewController, YTPlayerViewDelegate, UIGestureRecognizerDelegate {
      private let videoId: String
      private let startSeconds: Double
      private let autoPlay: Bool
@@ -14,19 +15,20 @@ index 9895ebe28a0105b7dc6d3c6fe520a765e9f4e3ee..b66afa8c6ef89c97a6bdb08aa09b9b10
      private var latestPlayTime: Double
      private var memos: [NativeMemo]
      private let onMemoAdded: (([String: Any]) -> Void)?
-+    private let onMemoUpdated: (([String: Any]) -> Void)?
-+    private let onMemoDeleted: (([String: Any]) -> Void)?
+     private let onMemoUpdated: (([String: Any]) -> Void)?
+     private let onMemoDeleted: (([String: Any]) -> Void)?
++    private weak var activeOverlayView: UIView?
++    private weak var activeEditPanelBottomConstraint: NSLayoutConstraint?
  
--    init(videoId: String, startSeconds: Double = 0, autoPlay: Bool = false, memos: [NativeMemo] = [], onMemoAdded: (([String: Any]) -> Void)? = nil) {
-+    init(videoId: String, startSeconds: Double = 0, autoPlay: Bool = false, memos: [NativeMemo] = [], onMemoAdded: (([String: Any]) -> Void)? = nil, onMemoUpdated: (([String: Any]) -> Void)? = nil, onMemoDeleted: (([String: Any]) -> Void)? = nil) {
+     init(videoId: String, startSeconds: Double = 0, autoPlay: Bool = false, memos: [NativeMemo] = [], onMemoAdded: (([String: Any]) -> Void)? = nil, onMemoUpdated: (([String: Any]) -> Void)? = nil, onMemoDeleted: (([String: Any]) -> Void)? = nil) {
          self.videoId = videoId
          self.startSeconds = max(0, startSeconds)
          self.autoPlay = autoPlay
          self.latestPlayTime = max(0, startSeconds)
          self.memos = memos.sorted { $0.time < $1.time }
          self.onMemoAdded = onMemoAdded
-+        self.onMemoUpdated = onMemoUpdated
-+        self.onMemoDeleted = onMemoDeleted
+         self.onMemoUpdated = onMemoUpdated
+         self.onMemoDeleted = onMemoDeleted
          super.init(nibName: nil, bundle: nil)
          modalPresentationStyle = .fullScreen
      }
@@ -42,17 +44,12 @@ index 9895ebe28a0105b7dc6d3c6fe520a765e9f4e3ee..b66afa8c6ef89c97a6bdb08aa09b9b10
          configureMemoListButton()
          configureMemoButton()
          configurePlayerView()
-         loadVideo()
+@@ -106,169 +108,456 @@ final class NativeYouTubePlayerViewController: UIViewController, YTPlayerViewDel
+         ])
      }
  
-     private func configureCloseButton() {
-         let closeButton = UIButton(type: .system)
-         closeButton.translatesAutoresizingMaskIntoConstraints = false
-         closeButton.setTitle("닫기", for: .normal)
-         closeButton.setTitleColor(.white, for: .normal)
-         closeButton.titleLabel?.font = .boldSystemFont(ofSize: 17)
-         closeButton.backgroundColor = UIColor.black.withAlphaComponent(0.55)
-@@ -107,63 +111,124 @@ final class NativeYouTubePlayerViewController: UIViewController, YTPlayerViewDel
+     private func loadVideo() {
+         var playerVars: [String: Any] = [
              "playsinline": 1,
              "controls": 1,
              "rel": 0,
@@ -73,17 +70,167 @@ index 9895ebe28a0105b7dc6d3c6fe520a765e9f4e3ee..b66afa8c6ef89c97a6bdb08aa09b9b10
      }
  
      @objc private func memoListTapped() {
-         let alert = UIAlertController(title: "메모 목록", message: memos.isEmpty ? "저장된 메모가 없습니다." : nil, preferredStyle: .actionSheet)
+-        let alert = UIAlertController(title: "메모 목록", message: memos.isEmpty ? "저장된 메모가 없습니다." : nil, preferredStyle: .actionSheet)
++        showMemoListOverlay()
++    }
++
++    private func showMemoListOverlay() {
++        dismissActiveOverlay(animated: false)
++
++        let overlay = makeDimmingOverlay()
++        let panel = makeRoundedPanel()
++        let titleLabel = makePanelTitle("메모 목록")
++        let closeButton = makeTextButton(title: "닫기", titleColor: .secondaryLabel)
++        closeButton.addTarget(self, action: #selector(dismissOverlayTapped), for: .touchUpInside)
++
++        let headerStack = UIStackView(arrangedSubviews: [titleLabel, closeButton])
++        headerStack.translatesAutoresizingMaskIntoConstraints = false
++        headerStack.axis = .horizontal
++        headerStack.alignment = .center
++        headerStack.distribution = .equalSpacing
++
++        let scrollView = UIScrollView()
++        scrollView.translatesAutoresizingMaskIntoConstraints = false
++        scrollView.alwaysBounceVertical = true
++        scrollView.showsVerticalScrollIndicator = true
  
-         for memo in memos.sorted(by: { $0.time < $1.time }) {
-             let title = "\(formatTime(memo.time))   \(memo.note)"
-             alert.addAction(UIAlertAction(title: title, style: .default) { [weak self] _ in
--                self?.seekToMemo(memo)
-+                self?.showMemoActions(for: memo)
-             })
+-        for memo in memos.sorted(by: { $0.time < $1.time }) {
+-            let title = "\(formatTime(memo.time))   \(memo.note)"
+-            alert.addAction(UIAlertAction(title: title, style: .default) { [weak self] _ in
+-                self?.showMemoActions(for: memo)
+-            })
++        let contentStack = UIStackView()
++        contentStack.translatesAutoresizingMaskIntoConstraints = false
++        contentStack.axis = .vertical
++        contentStack.spacing = 8
++        scrollView.addSubview(contentStack)
++
++        let sortedMemos = memos.sorted(by: { $0.time < $1.time })
++        if sortedMemos.isEmpty {
++            let emptyLabel = UILabel()
++            emptyLabel.text = "저장된 메모가 없습니다."
++            emptyLabel.textColor = .secondaryLabel
++            emptyLabel.font = .systemFont(ofSize: 15, weight: .medium)
++            emptyLabel.textAlignment = .center
++            contentStack.addArrangedSubview(emptyLabel)
++        } else {
++            sortedMemos.forEach { memo in
++                contentStack.addArrangedSubview(makeMemoRow(for: memo))
++            }
          }
  
-         alert.addAction(UIAlertAction(title: "닫기", style: .cancel))
+-        alert.addAction(UIAlertAction(title: "닫기", style: .cancel))
+-        if let popover = alert.popoverPresentationController {
+-            popover.sourceView = view
+-            popover.sourceRect = CGRect(x: view.bounds.midX, y: view.bounds.maxY, width: 0, height: 0)
+-            popover.permittedArrowDirections = []
++        view.addSubview(overlay)
++        overlay.addSubview(panel)
++        panel.addSubview(headerStack)
++        panel.addSubview(scrollView)
++        activeOverlayView = overlay
++
++        let scrollHeightConstraint: NSLayoutConstraint
++        if sortedMemos.isEmpty {
++            scrollHeightConstraint = scrollView.heightAnchor.constraint(greaterThanOrEqualToConstant: 72)
++        } else {
++            scrollHeightConstraint = scrollView.heightAnchor.constraint(equalTo: view.heightAnchor, multiplier: 0.38)
+         }
+-        present(alert, animated: true)
++
++        NSLayoutConstraint.activate([
++            overlay.leadingAnchor.constraint(equalTo: view.leadingAnchor),
++            overlay.trailingAnchor.constraint(equalTo: view.trailingAnchor),
++            overlay.topAnchor.constraint(equalTo: view.topAnchor),
++            overlay.bottomAnchor.constraint(equalTo: view.bottomAnchor),
++
++            panel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 14),
++            panel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -14),
++            panel.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -10),
++            panel.heightAnchor.constraint(lessThanOrEqualTo: view.heightAnchor, multiplier: 0.52),
++
++            headerStack.topAnchor.constraint(equalTo: panel.topAnchor, constant: 18),
++            headerStack.leadingAnchor.constraint(equalTo: panel.leadingAnchor, constant: 18),
++            headerStack.trailingAnchor.constraint(equalTo: panel.trailingAnchor, constant: -18),
++
++            scrollView.topAnchor.constraint(equalTo: headerStack.bottomAnchor, constant: 14),
++            scrollView.leadingAnchor.constraint(equalTo: panel.leadingAnchor, constant: 14),
++            scrollView.trailingAnchor.constraint(equalTo: panel.trailingAnchor, constant: -14),
++            scrollView.bottomAnchor.constraint(equalTo: panel.bottomAnchor, constant: -16),
++            scrollHeightConstraint,
++
++            contentStack.leadingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.leadingAnchor),
++            contentStack.trailingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.trailingAnchor),
++            contentStack.topAnchor.constraint(equalTo: scrollView.contentLayoutGuide.topAnchor),
++            contentStack.bottomAnchor.constraint(equalTo: scrollView.contentLayoutGuide.bottomAnchor),
++            contentStack.widthAnchor.constraint(equalTo: scrollView.frameLayoutGuide.widthAnchor)
++        ])
++
++        animateOverlayIn(overlay: overlay, panel: panel)
++    }
++
++    private func makeMemoRow(for memo: NativeMemo) -> UIControl {
++        let row = UIControl()
++        row.translatesAutoresizingMaskIntoConstraints = false
++        row.backgroundColor = UIColor.secondarySystemBackground.withAlphaComponent(0.95)
++        row.layer.cornerRadius = 14
++        row.clipsToBounds = true
++        row.accessibilityLabel = "\(formatTime(memo.time)) 메모 \(memo.note)"
++
++        let badgeLabel = UILabel()
++        badgeLabel.translatesAutoresizingMaskIntoConstraints = false
++        badgeLabel.text = formatTime(memo.time)
++        badgeLabel.textColor = .white
++        badgeLabel.font = .monospacedDigitSystemFont(ofSize: 12, weight: .bold)
++        badgeLabel.textAlignment = .center
++        badgeLabel.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.9)
++        badgeLabel.layer.cornerRadius = 10
++        badgeLabel.clipsToBounds = true
++
++        let noteLabel = UILabel()
++        noteLabel.translatesAutoresizingMaskIntoConstraints = false
++        noteLabel.text = memo.note
++        noteLabel.textColor = .label
++        noteLabel.font = .systemFont(ofSize: 14, weight: .medium)
++        noteLabel.numberOfLines = 2
++        noteLabel.lineBreakMode = .byTruncatingTail
++
++        row.addSubview(badgeLabel)
++        row.addSubview(noteLabel)
++        row.addAction(UIAction { [weak self] _ in
++            self?.showMemoActions(for: memo)
++        }, for: .touchUpInside)
++
++        NSLayoutConstraint.activate([
++            row.heightAnchor.constraint(greaterThanOrEqualToConstant: 54),
++            badgeLabel.leadingAnchor.constraint(equalTo: row.leadingAnchor, constant: 12),
++            badgeLabel.centerYAnchor.constraint(equalTo: row.centerYAnchor),
++            badgeLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 56),
++            badgeLabel.heightAnchor.constraint(equalToConstant: 24),
++
++            noteLabel.leadingAnchor.constraint(equalTo: badgeLabel.trailingAnchor, constant: 12),
++            noteLabel.trailingAnchor.constraint(equalTo: row.trailingAnchor, constant: -12),
++            noteLabel.topAnchor.constraint(equalTo: row.topAnchor, constant: 8),
++            noteLabel.bottomAnchor.constraint(equalTo: row.bottomAnchor, constant: -8)
++        ])
++
++        return row
+     }
+ 
+     private func showMemoActions(for memo: NativeMemo) {
+         let alert = UIAlertController(title: formatTime(memo.time), message: memo.note, preferredStyle: .actionSheet)
+         alert.addAction(UIAlertAction(title: "해당 시간으로 이동", style: .default) { [weak self] _ in
++            self?.dismissActiveOverlay(animated: true)
+             self?.seekToMemo(memo)
+         })
+         alert.addAction(UIAlertAction(title: "수정", style: .default) { [weak self] _ in
+-            self?.showEditMemoAlert(for: memo)
++            self?.showEditMemoOverlay(for: memo)
+         })
+         alert.addAction(UIAlertAction(title: "삭제", style: .destructive) { [weak self] _ in
+             self?.showDeleteMemoConfirmation(for: memo)
+         })
+         alert.addAction(UIAlertAction(title: "취소", style: .cancel))
          if let popover = alert.popoverPresentationController {
              popover.sourceView = view
              popover.sourceRect = CGRect(x: view.bounds.midX, y: view.bounds.maxY, width: 0, height: 0)
@@ -92,67 +239,119 @@ index 9895ebe28a0105b7dc6d3c6fe520a765e9f4e3ee..b66afa8c6ef89c97a6bdb08aa09b9b10
          present(alert, animated: true)
      }
  
-+    private func showMemoActions(for memo: NativeMemo) {
-+        let alert = UIAlertController(title: formatTime(memo.time), message: memo.note, preferredStyle: .actionSheet)
-+        alert.addAction(UIAlertAction(title: "해당 시간으로 이동", style: .default) { [weak self] _ in
-+            self?.seekToMemo(memo)
-+        })
-+        alert.addAction(UIAlertAction(title: "수정", style: .default) { [weak self] _ in
-+            self?.showEditMemoAlert(for: memo)
-+        })
-+        alert.addAction(UIAlertAction(title: "삭제", style: .destructive) { [weak self] _ in
-+            self?.showDeleteMemoConfirmation(for: memo)
-+        })
-+        alert.addAction(UIAlertAction(title: "취소", style: .cancel))
-+        if let popover = alert.popoverPresentationController {
-+            popover.sourceView = view
-+            popover.sourceRect = CGRect(x: view.bounds.midX, y: view.bounds.maxY, width: 0, height: 0)
-+            popover.permittedArrowDirections = []
-+        }
-+        present(alert, animated: true)
-+    }
+-    private func showEditMemoAlert(for memo: NativeMemo) {
+-        let alert = UIAlertController(title: "메모 수정", message: "재생시간: \(formatTime(memo.time))", preferredStyle: .alert)
+-        alert.addTextField { textField in
+-            textField.text = memo.note
+-            textField.placeholder = "메모를 입력하세요"
+-            textField.clearButtonMode = .whileEditing
+-        }
+-        alert.addAction(UIAlertAction(title: "취소", style: .cancel))
+-        alert.addAction(UIAlertAction(title: "저장", style: .default) { [weak self, weak alert] _ in
++    private func showEditMemoOverlay(for memo: NativeMemo) {
++        dismissActiveOverlay(animated: false)
 +
-+    private func showEditMemoAlert(for memo: NativeMemo) {
-+        let alert = UIAlertController(title: "메모 수정", message: "재생시간: \(formatTime(memo.time))", preferredStyle: .alert)
-+        alert.addTextField { textField in
-+            textField.text = memo.note
-+            textField.placeholder = "메모를 입력하세요"
-+            textField.clearButtonMode = .whileEditing
-+        }
-+        alert.addAction(UIAlertAction(title: "취소", style: .cancel))
-+        alert.addAction(UIAlertAction(title: "저장", style: .default) { [weak self, weak alert] _ in
-+            guard let self = self else { return }
-+            let note = alert?.textFields?.first?.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-+            guard !note.isEmpty else { return }
-+            guard let index = self.memos.firstIndex(where: { $0.id == memo.id }) else { return }
-+            self.memos[index].note = note
-+            self.memos.sort { $0.time < $1.time }
-+            self.onMemoUpdated?([
-+                "id": memo.id,
-+                "videoId": self.videoId,
-+                "time": memo.time,
-+                "note": note
-+            ])
-+        })
-+        present(alert, animated: true)
-+    }
++        let overlay = makeDimmingOverlay()
++        let panel = makeRoundedPanel()
++        let titleLabel = makePanelTitle("메모 수정")
++        let timeLabel = UILabel()
++        timeLabel.translatesAutoresizingMaskIntoConstraints = false
++        timeLabel.text = "재생시간: \(formatTime(memo.time))"
++        timeLabel.textColor = .secondaryLabel
++        timeLabel.font = .systemFont(ofSize: 14, weight: .medium)
 +
-+    private func showDeleteMemoConfirmation(for memo: NativeMemo) {
-+        let alert = UIAlertController(title: "메모 삭제", message: "이 메모를 삭제하시겠어요?", preferredStyle: .alert)
-+        alert.addAction(UIAlertAction(title: "취소", style: .cancel))
-+        alert.addAction(UIAlertAction(title: "삭제", style: .destructive) { [weak self] _ in
-+            guard let self = self else { return }
-+            self.memos.removeAll { $0.id == memo.id }
-+            self.onMemoDeleted?([
-+                "id": memo.id,
-+                "videoId": self.videoId,
-+                "time": memo.time,
-+                "note": memo.note
-+            ])
-+        })
-+        present(alert, animated: true)
-+    }
++        let textView = UITextView()
++        textView.translatesAutoresizingMaskIntoConstraints = false
++        textView.text = memo.note
++        textView.font = .systemFont(ofSize: 16)
++        textView.textColor = .label
++        textView.backgroundColor = .secondarySystemBackground
++        textView.layer.cornerRadius = 14
++        textView.textContainerInset = UIEdgeInsets(top: 12, left: 10, bottom: 12, right: 10)
 +
++        let cancelButton = makeTextButton(title: "취소", titleColor: .secondaryLabel)
++        cancelButton.addTarget(self, action: #selector(dismissOverlayTapped), for: .touchUpInside)
++
++        let saveButton = makeTextButton(title: "저장", titleColor: .systemBlue)
++        saveButton.addAction(UIAction { [weak self, weak textView] _ in
+             guard let self = self else { return }
+-            let note = alert?.textFields?.first?.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
++            let note = textView?.text.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+             guard !note.isEmpty else { return }
+             guard let index = self.memos.firstIndex(where: { $0.id == memo.id }) else { return }
+             self.memos[index].note = note
+             self.memos.sort { $0.time < $1.time }
+             self.onMemoUpdated?([
+                 "id": memo.id,
+                 "videoId": self.videoId,
+                 "time": memo.time,
+                 "note": note
+             ])
+-        })
+-        present(alert, animated: true)
++            self.dismissActiveOverlay(animated: true)
++        }, for: .touchUpInside)
++
++        let buttonStack = UIStackView(arrangedSubviews: [cancelButton, saveButton])
++        buttonStack.translatesAutoresizingMaskIntoConstraints = false
++        buttonStack.axis = .horizontal
++        buttonStack.alignment = .center
++        buttonStack.distribution = .equalSpacing
++
++        view.addSubview(overlay)
++        overlay.addSubview(panel)
++        [titleLabel, timeLabel, textView, buttonStack].forEach(panel.addSubview)
++        activeOverlayView = overlay
++
++        let bottomConstraint = panel.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -10)
++        activeEditPanelBottomConstraint = bottomConstraint
++        NSLayoutConstraint.activate([
++            overlay.leadingAnchor.constraint(equalTo: view.leadingAnchor),
++            overlay.trailingAnchor.constraint(equalTo: view.trailingAnchor),
++            overlay.topAnchor.constraint(equalTo: view.topAnchor),
++            overlay.bottomAnchor.constraint(equalTo: view.bottomAnchor),
++            panel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 18),
++            panel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -18),
++            bottomConstraint,
++            titleLabel.topAnchor.constraint(equalTo: panel.topAnchor, constant: 20),
++            titleLabel.leadingAnchor.constraint(equalTo: panel.leadingAnchor, constant: 20),
++            titleLabel.trailingAnchor.constraint(equalTo: panel.trailingAnchor, constant: -20),
++            timeLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 8),
++            timeLabel.leadingAnchor.constraint(equalTo: titleLabel.leadingAnchor),
++            timeLabel.trailingAnchor.constraint(equalTo: titleLabel.trailingAnchor),
++            textView.topAnchor.constraint(equalTo: timeLabel.bottomAnchor, constant: 16),
++            textView.leadingAnchor.constraint(equalTo: titleLabel.leadingAnchor),
++            textView.trailingAnchor.constraint(equalTo: titleLabel.trailingAnchor),
++            textView.heightAnchor.constraint(equalToConstant: 112),
++            buttonStack.topAnchor.constraint(equalTo: textView.bottomAnchor, constant: 16),
++            buttonStack.leadingAnchor.constraint(equalTo: titleLabel.leadingAnchor),
++            buttonStack.trailingAnchor.constraint(equalTo: titleLabel.trailingAnchor),
++            buttonStack.bottomAnchor.constraint(equalTo: panel.bottomAnchor, constant: -18)
++        ])
++
++        NotificationCenter.default.addObserver(self, selector: #selector(keyboardWillChangeFrame(_:)), name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
++        NotificationCenter.default.addObserver(self, selector: #selector(keyboardWillHide(_:)), name: UIResponder.keyboardWillHideNotification, object: nil)
++        animateOverlayIn(overlay: overlay, panel: panel)
++        textView.becomeFirstResponder()
+     }
+ 
+     private func showDeleteMemoConfirmation(for memo: NativeMemo) {
+         let alert = UIAlertController(title: "메모 삭제", message: "이 메모를 삭제하시겠어요?", preferredStyle: .alert)
+         alert.addAction(UIAlertAction(title: "취소", style: .cancel))
+         alert.addAction(UIAlertAction(title: "삭제", style: .destructive) { [weak self] _ in
+             guard let self = self else { return }
+             self.memos.removeAll { $0.id == memo.id }
++            self.dismissActiveOverlay(animated: true)
+             self.onMemoDeleted?([
+                 "id": memo.id,
+                 "videoId": self.videoId,
+                 "time": memo.time,
+                 "note": memo.note
+             ])
+         })
+         present(alert, animated: true)
+     }
+ 
      private func seekToMemo(_ memo: NativeMemo) {
          latestPlayTime = max(0, memo.time)
          playerView.seek(toSeconds: Float(memo.time), allowSeekAhead: true)
@@ -178,416 +377,152 @@ index 9895ebe28a0105b7dc6d3c6fe520a765e9f4e3ee..b66afa8c6ef89c97a6bdb08aa09b9b10
                  "currentTime": currentTime,
                  "note": note
              ])
-diff --git a/ios/App/App/NativeYouTubePlugin.swift b/ios/App/App/NativeYouTubePlugin.swift
-index e8e597b47955ec717b6d32a0e405d38e464c2c5d..b07fe0a5f69f3f4988b601c9a15e138283f38be0 100644
---- a/ios/App/App/NativeYouTubePlugin.swift
-+++ b/ios/App/App/NativeYouTubePlugin.swift
-@@ -1,32 +1,32 @@
- import Capacitor
- import UIKit
+         })
+         present(alert, animated: true)
+     }
  
- struct NativeMemo {
-     let id: String
-     let time: Double
--    let note: String
-+    var note: String
- }
++    private func makeDimmingOverlay() -> UIView {
++        let overlay = UIView()
++        overlay.translatesAutoresizingMaskIntoConstraints = false
++        overlay.backgroundColor = UIColor.black.withAlphaComponent(0.58)
++        overlay.alpha = 0
++        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(dismissOverlayTapped))
++        tapGesture.delegate = self
++        overlay.addGestureRecognizer(tapGesture)
++        return overlay
++    }
++
++    private func makeRoundedPanel() -> UIView {
++        let panel = UIView()
++        panel.translatesAutoresizingMaskIntoConstraints = false
++        panel.backgroundColor = .systemBackground
++        panel.layer.cornerRadius = 24
++        panel.layer.cornerCurve = .continuous
++        panel.layer.shadowColor = UIColor.black.cgColor
++        panel.layer.shadowOpacity = 0.22
++        panel.layer.shadowRadius = 18
++        panel.layer.shadowOffset = CGSize(width: 0, height: -4)
++        return panel
++    }
++
++    private func makePanelTitle(_ title: String) -> UILabel {
++        let label = UILabel()
++        label.translatesAutoresizingMaskIntoConstraints = false
++        label.text = title
++        label.textColor = .label
++        label.font = .boldSystemFont(ofSize: 18)
++        return label
++    }
++
++    private func makeTextButton(title: String, titleColor: UIColor) -> UIButton {
++        let button = UIButton(type: .system)
++        button.translatesAutoresizingMaskIntoConstraints = false
++        button.setTitle(title, for: .normal)
++        button.setTitleColor(titleColor, for: .normal)
++        button.titleLabel?.font = .boldSystemFont(ofSize: 16)
++        button.contentEdgeInsets = UIEdgeInsets(top: 8, left: 10, bottom: 8, right: 10)
++        return button
++    }
++
++    private func animateOverlayIn(overlay: UIView, panel: UIView) {
++        panel.transform = CGAffineTransform(translationX: 0, y: 32)
++        UIView.animate(withDuration: 0.22, delay: 0, options: [.curveEaseOut]) {
++            overlay.alpha = 1
++            panel.transform = .identity
++        }
++    }
++
++    @objc private func dismissOverlayTapped() {
++        dismissActiveOverlay(animated: true)
++    }
++
++    private func dismissActiveOverlay(animated: Bool) {
++        NotificationCenter.default.removeObserver(self, name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
++        NotificationCenter.default.removeObserver(self, name: UIResponder.keyboardWillHideNotification, object: nil)
++        activeEditPanelBottomConstraint = nil
++        guard let overlay = activeOverlayView else { return }
++        activeOverlayView = nil
++        view.endEditing(true)
++
++        let animations = {
++            overlay.alpha = 0
++            overlay.subviews.first?.transform = CGAffineTransform(translationX: 0, y: 24)
++        }
++
++        let completion: (Bool) -> Void = { _ in
++            overlay.removeFromSuperview()
++        }
++
++        if animated {
++            UIView.animate(withDuration: 0.18, delay: 0, options: [.curveEaseIn], animations: animations, completion: completion)
++        } else {
++            animations()
++            completion(true)
++        }
++    }
++
++    @objc private func keyboardWillChangeFrame(_ notification: Notification) {
++        guard let keyboardFrame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
++        let convertedFrame = view.convert(keyboardFrame, from: nil)
++        let overlap = max(0, view.bounds.maxY - convertedFrame.minY - view.safeAreaInsets.bottom)
++        activeEditPanelBottomConstraint?.constant = -(overlap + 10)
++        animateKeyboardChange(notification)
++    }
++
++    @objc private func keyboardWillHide(_ notification: Notification) {
++        activeEditPanelBottomConstraint?.constant = -10
++        animateKeyboardChange(notification)
++    }
++
++    private func animateKeyboardChange(_ notification: Notification) {
++        let duration = notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? TimeInterval ?? 0.25
++        let curveRaw = notification.userInfo?[UIResponder.keyboardAnimationCurveUserInfoKey] as? UInt ?? UIView.AnimationOptions.curveEaseInOut.rawValue
++        UIView.animate(withDuration: duration, delay: 0, options: UIView.AnimationOptions(rawValue: curveRaw << 16)) {
++            self.view.layoutIfNeeded()
++        }
++    }
++
+     private func formatTime(_ seconds: Double) -> String {
+         let totalSeconds = Int(seconds.rounded(.down))
+         let hours = totalSeconds / 3600
+         let minutes = (totalSeconds % 3600) / 60
+         let secs = totalSeconds % 60
  
- @objc(NativeYouTubePlugin)
- public class NativeYouTubePlugin: CAPPlugin, CAPBridgedPlugin {
-     public let identifier = "NativeYouTubePlugin"
-     public let jsName = "NativeYouTube"
-     public let pluginMethods: [CAPPluginMethod] = [
-         CAPPluginMethod(name: "open", returnType: CAPPluginReturnPromise)
-     ]
- 
-     @objc func open(_ call: CAPPluginCall) {
-         print("[NativeYouTubePlugin] open requested")
- 
-         guard let videoId = call.getString("videoId"), !videoId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-             let message = "videoId is required"
-             print("[NativeYouTubePlugin] failed: \(message)")
-             call.reject(message)
-             return
+         if hours > 0 {
+             return String(format: "%d:%02d:%02d", hours, minutes, secs)
          }
  
-         let startSeconds = call.getDouble("startSeconds") ?? 0
-         let autoPlay = call.getBool("autoPlay") ?? false
-         let memos = (call.getArray("memos", JSObject.self) ?? []).compactMap { item -> NativeMemo? in
-             guard let note = item["note"] as? String else { return nil }
-             let trimmedNote = note.trimmingCharacters(in: .whitespacesAndNewlines)
-@@ -48,35 +48,43 @@ public class NativeYouTubePlugin: CAPPlugin, CAPBridgedPlugin {
+         return String(format: "%d:%02d", minutes, secs)
+     }
+ 
++    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
++        guard let overlay = activeOverlayView else { return true }
++        let location = touch.location(in: overlay)
++        return !overlay.subviews.contains { subview in
++            subview.frame.contains(location)
++        }
++    }
++
+     func playerViewDidBecomeReady(_ playerView: YTPlayerView) {
+         print("[NativeYouTubePlayerViewController] ready")
+         if startSeconds > 0 {
+             playerView.seek(toSeconds: Float(startSeconds), allowSeekAhead: true)
          }
- 
-         DispatchQueue.main.async { [weak self] in
-             guard let self = self else {
-                 let message = "Plugin instance was released"
-                 print("[NativeYouTubePlugin] failed: \(message)")
-                 call.reject(message)
-                 return
-             }
- 
-             guard let presenter = self.bridge?.viewController else {
-                 let message = "Root view controller is unavailable"
-                 print("[NativeYouTubePlugin] failed: \(message)")
-                 call.reject(message)
-                 return
-             }
- 
-             let playerViewController = NativeYouTubePlayerViewController(
-                 videoId: videoId,
-                 startSeconds: startSeconds,
-                 autoPlay: autoPlay,
-                 memos: memos,
-                 onMemoAdded: { [weak self] memo in
-                     print("[NativeYouTubePlugin] memo added: \(memo)")
-                     self?.notifyListeners("youtubeMemoAdded", data: memo)
-+                },
-+                onMemoUpdated: { [weak self] memo in
-+                    print("[NativeYouTubePlugin] memo updated: \(memo)")
-+                    self?.notifyListeners("youtubeMemoUpdated", data: memo)
-+                },
-+                onMemoDeleted: { [weak self] memo in
-+                    print("[NativeYouTubePlugin] memo deleted: \(memo)")
-+                    self?.notifyListeners("youtubeMemoDeleted", data: memo)
-                 }
-             )
- 
-             presenter.present(playerViewController, animated: true) {
-                 print("[NativeYouTubePlugin] presented")
-                 call.resolve()
-             }
+         if autoPlay {
+             playerView.playVideo()
          }
      }
+ 
+     func playerView(_ playerView: YTPlayerView, didChangeTo state: YTPlayerState) {
+         print("[NativeYouTubePlayerViewController] state changed: \(state.rawValue)")
+     }
+ 
+     func playerView(_ playerView: YTPlayerView, receivedError error: YTPlayerError) {
+         print("[NativeYouTubePlayerViewController] error: \(error.rawValue)")
+     }
+ 
+     func playerView(_ playerView: YTPlayerView, didPlayTime playTime: Float) {
+         latestPlayTime = Double(playTime)
+         print("[NativeYouTubePlayerViewController] play time: \(playTime)")
+     }
  }
-diff --git a/src/components/NativeYouTubeLauncher.jsx b/src/components/NativeYouTubeLauncher.jsx
-index 479644afd15af47c0dc8e3e512f09f942d4c7cd8..52dd467681bc365ea6a1d7788d65d8382875da88 100644
---- a/src/components/NativeYouTubeLauncher.jsx
-+++ b/src/components/NativeYouTubeLauncher.jsx
-@@ -1,77 +1,82 @@
- import React, { useCallback, useEffect, useRef, useState } from 'react';
- import { registerPlugin } from '@capacitor/core';
- 
- const NativeYouTube = registerPlugin('NativeYouTube');
- console.log("NativeYouTube =", NativeYouTube);
- 
--export default function NativeYouTubeLauncher({ videoId, initialSeconds = 0, memos = [], onAddNativeMemo, autoOpen = false, renderControls = true }) {
-+export default function NativeYouTubeLauncher({ videoId, initialSeconds = 0, memos = [], onAddNativeMemo, onUpdateNativeMemo, onDeleteNativeMemo, autoOpen = false, renderControls = true }) {
-     const [failed, setFailed] = useState(false);
-     const [isOpening, setIsOpening] = useState(false);
-     const isOpeningRef = useRef(false);
-     const autoOpenedRef = useRef(false);
-     const [debugLines, setDebugLines] = useState([]);
- 
-     const addDebug = useCallback((message, data) => {
-         const formattedData = data === undefined
-             ? ''
-             : ` ${typeof data === 'string' ? data : JSON.stringify(data)}`;
-         const line = `${new Date().toLocaleTimeString()} ${message}${formattedData}`;
-         setDebugLines((lines) => [...lines, line]);
-         console.log(`[NativeYouTubeLauncher] ${message}`, data ?? '');
-     }, []);
- 
-     useEffect(() => {
-         addDebug('videoId', videoId || '(empty)');
-         addDebug('initialSeconds', initialSeconds || 0);
-         addDebug('memo count', Array.isArray(memos) ? memos.length : 0);
-         addDebug('typeof NativeYouTube.open', typeof NativeYouTube.open);
-         addDebug('window.location.href', window.location.href);
-         addDebug('window.Capacitor exists', Boolean(window.Capacitor));
-     }, [addDebug, initialSeconds, memos, videoId]);
- 
-     useEffect(() => {
-         if (typeof NativeYouTube.addListener !== 'function') return undefined;
- 
-         let isMounted = true;
--        let listenerHandle;
-+        const listenerHandles = [];
-+        const attachListener = (eventName, handler) => {
-+            NativeYouTube.addListener(eventName, (memo) => {
-+                if (!isMounted) return;
-+                addDebug(`${eventName} received`, memo);
-+                handler?.(memo);
-+            }).then((handle) => {
-+                listenerHandles.push(handle);
-+            }).catch((error) => {
-+                addDebug(`${eventName} listener failed: ${error?.message || String(error)}`);
-+            });
-+        };
- 
--        NativeYouTube.addListener('youtubeMemoAdded', (memo) => {
--            if (!isMounted) return;
--            addDebug('memo event received', memo);
--            onAddNativeMemo?.(memo);
--        }).then((handle) => {
--            listenerHandle = handle;
--        }).catch((error) => {
--            addDebug(`memo listener failed: ${error?.message || String(error)}`);
--        });
-+        attachListener('youtubeMemoAdded', onAddNativeMemo);
-+        attachListener('youtubeMemoUpdated', onUpdateNativeMemo);
-+        attachListener('youtubeMemoDeleted', onDeleteNativeMemo);
- 
-         return () => {
-             isMounted = false;
--            listenerHandle?.remove?.();
-+            listenerHandles.forEach((handle) => handle?.remove?.());
-         };
--    }, [addDebug, onAddNativeMemo]);
-+    }, [addDebug, onAddNativeMemo, onUpdateNativeMemo, onDeleteNativeMemo]);
- 
-     const openNativePlayer = useCallback(async () => {
-         console.log("button clicked");
-         addDebug('button clicked');
- 
-         if (!videoId || isOpeningRef.current) return;
-         isOpeningRef.current = true;
-         setIsOpening(true);
-         setFailed(false);
- 
-         try {
-             console.log("calling plugin");
-             const nativeMemos = Array.isArray(memos)
-                 ? memos.map((memo) => ({
-                     id: String(memo.id ?? ''),
-                     time: Number(memo.time) || 0,
-                     note: String(memo.note ?? ''),
-                 })).filter((memo) => memo.note.trim())
-                 : [];
-             addDebug('calling NativeYouTube.open', {
-                 videoId,
-                 startSeconds: initialSeconds || 0,
-                 memoCount: nativeMemos.length,
-                 autoPlay: true,
-             });
-diff --git a/src/domain/memo/videoMemo.service.js b/src/domain/memo/videoMemo.service.js
-index fef1c6294bacbd279dbb4ded40c64492bf4112f1..d0cdf1b02be981a5356b50c4df572d0e9872f088 100644
---- a/src/domain/memo/videoMemo.service.js
-+++ b/src/domain/memo/videoMemo.service.js
-@@ -67,39 +67,40 @@ export function flattenVideoMemos(videoMemos = {}, ownerUid = '') {
-   return Object.values(videoMemos).filter(Array.isArray).flat();
- }
- 
- export function getLessonVideoMemosFromState(videoMemos = {}, ownerUid = '', lessonId = '') {
-   if (!lessonId) return [];
-   return flattenVideoMemos(videoMemos, ownerUid)
-     .filter((memo) => String(memo?.lessonId || '') === String(lessonId));
- }
- 
- const toMillis = (value) => {
-   if (!value) return 0;
-   if (typeof value === 'number') return value;
-   if (value instanceof Date) return value.getTime();
-   if (typeof value?.toDate === 'function') return value.toDate().getTime();
-   return 0;
- };
- 
- export function buildMemoListForMenu(videoMemos = {}, ownerUid = '', lessonLogs = []) {
-   const lessonById = new Map(
-     (Array.isArray(lessonLogs) ? lessonLogs : [])
-       .filter((lesson) => lesson?.id)
-       .map((lesson) => [String(lesson.id), lesson]),
-   );
- 
-   return flattenVideoMemos(videoMemos, ownerUid)
-+    .filter((memo) => lessonById.has(String(memo?.lessonId || '')))
-     .map((memo) => {
-       const lesson = lessonById.get(String(memo?.lessonId || ''));
-       return {
-         ...memo,
-         lessonTitle: lesson?.progress || lesson?.title || memo?.lessonTitle || '강의 메모',
-         lessonDate: lesson?.date || lesson?.lessonDate || memo?.lessonDate || '',
-         classId: lesson?.classId || memo?.classId || memo?.classDocId || '',
-         lessonId: lesson?.id || memo?.lessonId,
-         updatedAtMs: toMillis(memo?.updatedAt),
-       };
-     })
-     .filter((memo) => memo?.lessonId)
-     .sort((a, b) => (b.updatedAtMs - a.updatedAtMs) || ((Number(b.time) || 0) - (Number(a.time) || 0)));
- }
-diff --git a/src/pages/student/ClassroomView.jsx b/src/pages/student/ClassroomView.jsx
-index db9fea37b5f31e26c189186f1f51f2eb6c32a5bd..5274dc68855bf49a9d77190e4978e5186728cd57 100644
---- a/src/pages/student/ClassroomView.jsx
-+++ b/src/pages/student/ClassroomView.jsx
-@@ -140,50 +140,75 @@ export default function ClassroomView({
-         if (!playerRef.current || !bookmarkNote.trim() || !currentLesson || !memoOwnerUid) return;
-         const currentTime = playerRef.current.getCurrentTime();
-         try {
-             await onAddMemo?.(memoOwnerUid, { lessonId: currentLesson.id, time: currentTime, note: bookmarkNote });
-             setBookmarkNote('');
-         } catch (error) {
-             console.error('[ClassroomView] add memo failed', error);
-         }
-     };
- 
-     const handleAddNativeMemo = async ({ videoId, currentTime, note }) => {
-         if (!currentLesson || !memoOwnerUid || !note?.trim()) return;
-         if (videoId && currentVideoId && String(videoId) !== String(currentVideoId)) return;
- 
-         try {
-             await onAddMemo?.(memoOwnerUid, {
-                 lessonId: currentLesson.id,
-                 time: Number(currentTime) || 0,
-                 note: note.trim(),
-             });
-         } catch (error) {
-             console.error('[ClassroomView] add native memo failed', error);
-         }
-     };
- 
-+    const handleUpdateNativeMemo = async ({ id, videoId, note, time }) => {
-+        if (!id || !memoOwnerUid || !note?.trim()) return;
-+        if (videoId && currentVideoId && String(videoId) !== String(currentVideoId)) return;
-+
-+        try {
-+            await onUpdateMemo?.(memoOwnerUid, id, {
-+                note: note.trim(),
-+                ...(time !== undefined ? { time: Number(time) || 0 } : {}),
-+            });
-+        } catch (error) {
-+            console.error('[ClassroomView] update native memo failed', error);
-+        }
-+    };
-+
-+    const handleDeleteNativeMemo = async ({ id, videoId }) => {
-+        if (!id || !memoOwnerUid) return;
-+        if (videoId && currentVideoId && String(videoId) !== String(currentVideoId)) return;
-+
-+        try {
-+            await onDeleteMemo?.(memoOwnerUid, id);
-+        } catch (error) {
-+            console.error('[ClassroomView] delete native memo failed', error);
-+        }
-+    };
-+
-     const handleSeekToMemo = (time) => {
-         if (playerRef.current) playerRef.current.seekTo(time);
-     };
- 
-     const handleWatchedTick = (addedSeconds, currentTime, duration) => {
-         if (!currentLesson || duration <= 0) return;
-         const prevData = getProgress(currentLesson.id);
-         const newAccumulated = (prevData.accumulated || 0) + addedSeconds;
-         const newPercent = Math.min(100, Math.floor((newAccumulated / duration) * 100));
-         onSaveVideoProgress(studentAuthUid, currentLesson.id, {
-             percent: newPercent, seconds: currentTime, accumulated: newAccumulated
-         });
-     };
- 
-     const startEditingMemo = (memo) => {
-         setEditingMemoId(memo.id);
-         setEditFields({ note: memo.note || '', time: memo.time ?? 0 });
-     };
- 
-     const handleSaveEditedMemo = async () => {
-         if (!editingMemoId || !memoOwnerUid) return;
-         try {
-             await onUpdateMemo?.(memoOwnerUid, editingMemoId, editFields);
-             setEditingMemoId(null);
-             setEditFields({ note: '', time: '' });
-@@ -257,50 +282,52 @@ export default function ClassroomView({
-             protocol: window.location.protocol,
-             hostname: window.location.hostname,
-             capacitorPlatform: Capacitor?.getPlatform?.(),
-             windowCapacitorPlatform: window.Capacitor?.getPlatform?.(),
-         });
- 
-         if (currentDirectVideoUrl) {
-             return (
-                 <VideoFilePlayer
-                     ref={playerRef}
-                     src={currentDirectVideoUrl}
-                     initialSeconds={initialSeconds}
-                     onWatchedTick={handleWatchedTick}
-                     onEnded={handleVideoEnded}
-                 />
-             );
-         }
- 
-         if (currentVideoId && isIosNativeApp) {
-             return (
-                 <NativeYouTubeLauncher
-                     videoId={currentVideoId}
-                     initialSeconds={initialSeconds}
-                     memos={myMemos}
-                     onAddNativeMemo={handleAddNativeMemo}
-+                    onUpdateNativeMemo={handleUpdateNativeMemo}
-+                    onDeleteNativeMemo={handleDeleteNativeMemo}
-                 />
-             );
-         }
- 
-         if (currentVideoId && !isNativeApp) {
-             return (
-                 <YouTubePlayer
-                     ref={playerRef}
-                     videoId={currentVideoId}
-                     initialSeconds={initialSeconds}
-                     onWatchedTick={handleWatchedTick}
-                     onEnded={handleVideoEnded}
-                 />
-             );
-         }
- 
-         if (currentVideoId && isNativeApp) {
-             return (
-                 <div className="w-full h-full min-h-[220px] flex flex-col items-center justify-center bg-gray-950 text-white text-center px-6 py-8">
-                     <div className="max-w-sm space-y-4">
-                         <p className="text-sm sm:text-base font-semibold leading-relaxed">
-                             앱 내 재생이 제한된 영상입니다. 관리자에게 문의해주세요.
-                         </p>
-                         <button
-                             type="button"
-@@ -439,50 +466,52 @@ export default function ClassroomView({
-                                             <Icon name="download" className="w-4 h-4" />
-                                         </div>
-                                         <span className="text-sm font-medium truncate flex-1">
-                                             {mat.name} (출결 확인 후 다운로드 가능)
-                                         </span>
-                                     </span>
-                                 )
-                             ))}
-                         </div>
-                     </div>
-                 )}
-             </div>
-         );
-     };
- 
-     if (viewMode === 'list') {
-         return (
-             <div className="animate-fade-in-up pb-20 space-y-6 relative">
-                 {pendingNativeVideo && (
-                     <NativeYouTubeLauncher
-                         key={`${pendingNativeVideo.lessonId}-${pendingNativeVideo.videoId}-${pendingNativeVideo.initialSeconds}-${pendingNativeVideo.requestId}`}
-                         videoId={pendingNativeVideo.videoId}
-                         initialSeconds={pendingNativeVideo.initialSeconds}
-                         memos={myMemos}
-                         onAddNativeMemo={handleAddNativeMemo}
-+                        onUpdateNativeMemo={handleUpdateNativeMemo}
-+                        onDeleteNativeMemo={handleDeleteNativeMemo}
-                         autoOpen
-                         renderControls={false}
-                     />
-                 )}
-                 <div className="flex items-center gap-3">
-                     <button onClick={() => setSelectedClassId(null)} className="mobile-back-button p-2 bg-white rounded-xl text-gray-600 hover:bg-gray-100 transition-colors shadow-sm active:scale-95">
-                         <Icon name="chevronLeft" className="w-6 h-6" />
-                     </button>
-                     <div>
-                         <h2 className="text-xl font-bold text-gray-900">{selectedClass?.name}</h2>
-                         <p className="text-xs text-gray-500">{formatClassScheduleKo(selectedClass) || '시간 미정'}</p>
-                     </div>
-                 </div>
- 
- 
-                 <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                     <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-                         {/* ✅ [수정] 복습 영상 아이콘: list -> video */}
-                         <h3 className="font-bold text-gray-800 flex items-center gap-2"><Icon name="video" className="w-5 h-5 text-[#455fab]" />복습 영상 ({sortedLogs.length})</h3>
-                     </div>
-                     <div className="divide-y divide-gray-100">
-                         {sortedLogs.length > 0 ? sortedLogs.map(log => renderLogItem(log)) : (<div className="p-10 text-center text-gray-400 text-sm">등록된 강의가 없습니다.</div>)}
-                     </div>
-                 </div>
- 
