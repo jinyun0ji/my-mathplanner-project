@@ -54,8 +54,9 @@ final class NativeYouTubePlayerViewController: UIViewController, YTPlayerViewDel
         view.addSubview(closeButton)
 
         NSLayoutConstraint.activate([
-            closeButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 12),
-            closeButton.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 16)
+            closeButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 10),
+            closeButton.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 16),
+            closeButton.heightAnchor.constraint(greaterThanOrEqualToConstant: 40)
         ])
     }
 
@@ -72,8 +73,9 @@ final class NativeYouTubePlayerViewController: UIViewController, YTPlayerViewDel
         view.addSubview(memoListButton)
 
         NSLayoutConstraint.activate([
-            memoListButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 12),
-            memoListButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -16)
+            memoListButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 10),
+            memoListButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -16),
+            memoListButton.heightAnchor.constraint(greaterThanOrEqualToConstant: 40)
         ])
     }
 
@@ -82,16 +84,17 @@ final class NativeYouTubePlayerViewController: UIViewController, YTPlayerViewDel
         memoButton.translatesAutoresizingMaskIntoConstraints = false
         memoButton.setTitle("메모", for: .normal)
         memoButton.setTitleColor(.white, for: .normal)
-        memoButton.titleLabel?.font = .boldSystemFont(ofSize: 17)
-        memoButton.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.85)
-        memoButton.layer.cornerRadius = 18
-        memoButton.contentEdgeInsets = UIEdgeInsets(top: 8, left: 14, bottom: 8, right: 14)
+        memoButton.titleLabel?.font = .boldSystemFont(ofSize: 16)
+        memoButton.backgroundColor = UIColor.systemBlue
+        memoButton.layer.cornerRadius = 22
+        memoButton.contentEdgeInsets = UIEdgeInsets(top: 10, left: 18, bottom: 10, right: 18)
         memoButton.addTarget(self, action: #selector(memoTapped), for: .touchUpInside)
         view.addSubview(memoButton)
 
         NSLayoutConstraint.activate([
-            memoButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -16),
-            memoButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -16)
+            memoButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -24),
+            memoButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -20),
+            memoButton.heightAnchor.constraint(equalToConstant: 44)
         ])
     }
 
@@ -287,20 +290,35 @@ final class NativeYouTubePlayerViewController: UIViewController, YTPlayerViewDel
     }
 
     private func showEditMemoOverlay(for memo: NativeMemo) {
+        showMemoInputOverlay(title: "메모 수정", time: memo.time, initialNote: memo.note) { [weak self] note in
+            guard let self = self else { return }
+            guard let index = self.memos.firstIndex(where: { $0.id == memo.id }) else { return }
+            self.memos[index].note = note
+            self.memos.sort { $0.time < $1.time }
+            self.onMemoUpdated?([
+                "id": memo.id,
+                "videoId": self.videoId,
+                "time": memo.time,
+                "note": note
+            ])
+        }
+    }
+
+    private func showMemoInputOverlay(title: String, time: Double, initialNote: String = "", onSave: @escaping (String) -> Void) {
         dismissActiveOverlay(animated: false)
 
         let overlay = makeDimmingOverlay()
         let panel = makeRoundedPanel()
-        let titleLabel = makePanelTitle("메모 수정")
+        let titleLabel = makePanelTitle(title)
         let timeLabel = UILabel()
         timeLabel.translatesAutoresizingMaskIntoConstraints = false
-        timeLabel.text = "재생시간: \(formatTime(memo.time))"
+        timeLabel.text = "재생시간: \(formatTime(time))"
         timeLabel.textColor = .secondaryLabel
         timeLabel.font = .systemFont(ofSize: 14, weight: .medium)
 
         let textView = UITextView()
         textView.translatesAutoresizingMaskIntoConstraints = false
-        textView.text = memo.note
+        textView.text = initialNote
         textView.font = .systemFont(ofSize: 16)
         textView.textColor = .label
         textView.backgroundColor = .secondarySystemBackground
@@ -315,15 +333,7 @@ final class NativeYouTubePlayerViewController: UIViewController, YTPlayerViewDel
             guard let self = self else { return }
             let note = textView?.text.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             guard !note.isEmpty else { return }
-            guard let index = self.memos.firstIndex(where: { $0.id == memo.id }) else { return }
-            self.memos[index].note = note
-            self.memos.sort { $0.time < $1.time }
-            self.onMemoUpdated?([
-                "id": memo.id,
-                "videoId": self.videoId,
-                "time": memo.time,
-                "note": note
-            ])
+            onSave(note)
             self.dismissActiveOverlay(animated: true)
         }, for: .touchUpInside)
 
@@ -394,16 +404,8 @@ final class NativeYouTubePlayerViewController: UIViewController, YTPlayerViewDel
 
     @objc private func memoTapped() {
         let currentTime = max(0, latestPlayTime)
-        let alert = UIAlertController(title: "학습 메모", message: "현재 재생시간: \(formatTime(currentTime))", preferredStyle: .alert)
-        alert.addTextField { textField in
-            textField.placeholder = "메모를 입력하세요"
-            textField.clearButtonMode = .whileEditing
-        }
-        alert.addAction(UIAlertAction(title: "취소", style: .cancel))
-        alert.addAction(UIAlertAction(title: "저장", style: .default) { [weak self, weak alert] _ in
+        showMemoInputOverlay(title: "학습 메모", time: currentTime) { [weak self] note in
             guard let self = self else { return }
-            let note = alert?.textFields?.first?.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            guard !note.isEmpty else { return }
             let newMemo = NativeMemo(id: UUID().uuidString, time: currentTime, note: note)
             self.memos.append(newMemo)
             self.memos.sort { $0.time < $1.time }
@@ -412,14 +414,13 @@ final class NativeYouTubePlayerViewController: UIViewController, YTPlayerViewDel
                 "currentTime": currentTime,
                 "note": note
             ])
-        })
-        present(alert, animated: true)
+        }
     }
 
     private func makeDimmingOverlay() -> UIView {
         let overlay = UIView()
         overlay.translatesAutoresizingMaskIntoConstraints = false
-        overlay.backgroundColor = UIColor.black.withAlphaComponent(0.58)
+        overlay.backgroundColor = UIColor.black.withAlphaComponent(0.42)
         overlay.alpha = 0
         let tapGesture = UITapGestureRecognizer(target: self, action: #selector(dismissOverlayTapped))
         tapGesture.delegate = self
