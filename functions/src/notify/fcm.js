@@ -75,9 +75,18 @@ const sendFcmToUsers = async (userIds, dataPayload, { notificationIds = {}, logR
 
         await Promise.all(tokenChunks.map(async (entryBatch) => {
             const tokens = entryBatch.map((entry) => entry.token);
+            const isMessage = payload.category === 'message' || payload.type === 'CHAT_MESSAGE';
+            const isLessonReport = payload.category === 'lessonReport' || payload.type === 'lesson_report';
+            const notificationBody = isMessage
+                ? '새 메시지가 있습니다.'
+                : (isLessonReport ? '학습리포트가 도착했습니다.' : '새 알림이 있습니다.');
             const response = await messaging.sendEachForMulticast({
                 tokens,
                 data: payload,
+                notification: {
+                    title: notificationBody,
+                    body: notificationBody,
+                },
             });
 
             if (response.failureCount > 0) {

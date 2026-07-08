@@ -136,11 +136,20 @@ export const formatTestStatsInline = (stats = {}, options = {}) => (
   buildTestStatParts(stats, options).join(' · ')
 );
 
-export const buildTestDisplayLines = ({ title, gradeRecord, stats = {} }) => ([
-  title,
-  `학생: ${formatStudentScore(gradeRecord, { includeUnit: true })}`,
-  ...buildTestStatParts(stats, { includeUnit: true }).map((part) => part.replace(' ', ': ')),
-]);
+export const buildTestDisplayLines = ({ title, gradeRecord, stats = {} }) => {
+  const averageLine = `평균: ${formatScoreStat(stats.average, { fallback: '통계 준비 중', includeUnit: true })}`;
+  const otherStatLines = buildTestStatParts(
+    { ...stats, average: null },
+    { includeUnit: true },
+  ).map((part) => part.replace(' ', ': '));
+
+  return [
+    title,
+    `학생: ${formatStudentScore(gradeRecord, { includeUnit: true })}`,
+    averageLine,
+    ...otherStatLines,
+  ];
+};
 
 export const formatSessionTestScore = (gradeRecord, test = {}, classTestStats = {}) => {
   const stats = getTestStatsForDisplay(test, classTestStats);

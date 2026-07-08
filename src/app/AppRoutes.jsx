@@ -74,6 +74,7 @@ import {
     writeBatch,
 } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
+import { registerDevicePushToken, unregisterDevicePushToken } from '../notifications/pushNotifications';
 
 const PAGE_ROUTES = {
     home: '/home',
@@ -188,6 +189,27 @@ export default function AppRoutes({ user, role, studentIds }) {
       studentIds: parentStudentIds,
       loading: parentLoading,
   } = useParentContext();
+
+  useEffect(() => {
+      if (!userId) return undefined;
+      let active = true;
+      let registeredToken = null;
+      registerDevicePushToken(userId)
+          .then((token) => {
+              if (!active) return;
+              registeredToken = token;
+          })
+          .catch((error) => console.warn('[push] token registration skipped', error));
+
+      return () => {
+          active = false;
+          if (registeredToken) {
+              unregisterDevicePushToken(userId, registeredToken)
+                  .catch((error) => console.warn('[push] token cleanup failed', error));
+          }
+      };
+  }, [userId]);
+
   const parentStudentId = isParentRole(role) ? parentActiveStudentId : null;
 
   const [students, setStudents] = useState([]);

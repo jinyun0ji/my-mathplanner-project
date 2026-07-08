@@ -1,6 +1,7 @@
 const functions = require('firebase-functions');
 const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 const { notifyUsers } = require('../notify/notifications');
+const { sendFcmToUsers } = require('../notify/fcm');
 
 const TYPE = 'CHAT_MESSAGE';
 const db = getFirestore();
@@ -21,8 +22,8 @@ const resolveParticipantAuthUid = async (participantId) => {
 const buildChatRoomNotification = ({ roomId, messageId, messageData }) => ({
     type: TYPE,
     category: 'message',
-    title: '새 메시지',
-    body: messageData.text || '첨부파일이 도착했습니다.',
+    title: '새 메시지가 있습니다.',
+    body: '새 메시지가 있습니다.',
     ref: `chatRooms/${roomId}`,
     refCollection: 'chatRooms',
     refId: roomId,
@@ -117,6 +118,14 @@ const onChatRoomMessageCreated = functions.firestore
         });
 
         await batch.commit();
+
+        const notificationIds = Object.fromEntries(recipientOwnerUids.map((uid) => [uid, `${roomId}_${messageId}`]));
+        await sendFcmToUsers(recipientOwnerUids, {
+            type: TYPE,
+            refCollection: 'notifications',
+            refId: 'center',
+            category: 'message',
+        }, { notificationIds });
         return null;
     });
 
@@ -142,8 +151,8 @@ const onChatMessageCreated = functions.firestore
                 userIds: [],
                 payload: {
                     type: TYPE,
-                    title: '새 메시지',
-                    body: '새 메시지가 도착했습니다.',
+                    title: '새 메시지가 있습니다.',
+                    body: '새 메시지가 있습니다.',
                     ref: `chats/${refId}`,
                 },
                 fcmData: {
@@ -170,8 +179,8 @@ const onChatMessageCreated = functions.firestore
             userIds: recipients,
             payload: {
                 type: TYPE,
-                title: '새 메시지',
-                body: '새 메시지가 도착했습니다.',
+                title: '새 메시지가 있습니다.',
+                body: '새 메시지가 있습니다.',
                 ref: `chats/${refId}`,
             },
             fcmData: {

@@ -61,7 +61,9 @@
     "backfill:chat-room-last-messages:dry": "node functions/scripts/backfillChatRoomLastMessages.js",
     "backfill:chat-room-last-messages:write": "node functions/scripts/backfillChatRoomLastMessages.js --write",
     "repair:hong-user-chat-rooms:dry": "node functions/scripts/repairHongUserChatRooms.js",
-    "repair:hong-user-chat-rooms:write": "node functions/scripts/repairHongUserChatRooms.js --write"
+    "repair:hong-user-chat-rooms:write": "node functions/scripts/repairHongUserChatRooms.js --write",
+    "backfill:test-stats:dry": "node functions/scripts/backfillTestStats.js",
+    "backfill:test-stats:write": "node functions/scripts/backfillTestStats.js --write"
   },
   "eslintConfig": {
     "extends": [

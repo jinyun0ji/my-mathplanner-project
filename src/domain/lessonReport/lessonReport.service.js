@@ -9,6 +9,7 @@ import { formatRoundedPercent } from '../../utils/numberFormat';
 import {
     buildTestDisplayLines,
     buildTestStatParts,
+    formatScoreStat,
     getTestStatsForDisplay,
     isAbsentGradeRecord,
     pickScoreValue,
@@ -254,7 +255,12 @@ export const summarizeTests = ({ selectedTestIds = [], tests = [], grades = {}, 
             const correctCount = toFiniteNumber(grade?.correctCount);
             const displayLines = grade
                 ? buildTestDisplayLines({ title, gradeRecord: grade, stats })
-                : [title, '학생: 점수 미입력', ...buildTestStatParts(stats, { includeUnit: true }).map((part) => part.replace(' ', ': '))];
+                : [
+                    title,
+                    '학생: 점수 미입력',
+                    `평균: ${formatScoreStat(stats.average, { fallback: '통계 준비 중', includeUnit: true })}`,
+                    ...buildTestStatParts({ ...stats, average: null }, { includeUnit: true }).map((part) => part.replace(' ', ': ')),
+                ];
 
             const summary = displayLines.join('\n');
 

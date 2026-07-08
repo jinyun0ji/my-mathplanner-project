@@ -1021,6 +1021,19 @@ export default function LessonReportManagement({
     }
   };
 
+  const findParentAuthUidsByStudent = async (studentId) => {
+    if (!studentId) return [];
+    const parentSnaps = await Promise.all([
+      getDocs(query(collection(db, 'users'), where('studentIds', 'array-contains', studentId))),
+      getDocs(query(collection(db, 'users'), where('childrenIds', 'array-contains', studentId))).catch(() => ({ docs: [] })),
+      getDocs(query(collection(db, 'users'), where('linkedStudentIds', 'array-contains', studentId))).catch(() => ({ docs: [] })),
+    ]);
+    return Array.from(new Set(parentSnaps.flatMap((snap) => snap.docs.map((parentDoc) => {
+      const data = parentDoc.data() || {};
+      return data.authUid || data.userUid || data.uid || parentDoc.id;
+    }).filter(Boolean).map(String))));
+  };
+
   const notifyForFirstSend = async ({ reportDraft, student }) => {
     console.debug('[notifications] notifyForFirstSend called', {
       reportId: reportDraft?.id,
@@ -1047,7 +1060,8 @@ export default function LessonReportManagement({
       student?.parentIds,
     ].flat().filter(Boolean).map(String);
     const linkedParentCandidates = getLinkedParentAuthUids(student, []);
-    const parentAuthCandidates = Array.from(new Set([...directParentCandidates, ...linkedParentCandidates]));
+    const indexedParentCandidates = await findParentAuthUidsByStudent(reportDraft.studentId);
+    const parentAuthCandidates = Array.from(new Set([...directParentCandidates, ...linkedParentCandidates, ...indexedParentCandidates]));
     const resolvedParentAuthUids = (await Promise.all(parentAuthCandidates.map(resolveUserAuthUidById))).filter(Boolean);
 
     const targetAuthUids = Array.from(new Set([
@@ -1056,7 +1070,7 @@ export default function LessonReportManagement({
     ].map((value) => String(value || '').trim()).filter(Boolean)));
 
     console.debug('[notifications] student auth candidates', studentAuthCandidates);
-    console.debug('[notifications] parent auth candidates', { directParentCandidates, linkedParentCandidates, resolvedParentAuthUids });
+    console.debug('[notifications] parent auth candidates', { directParentCandidates, linkedParentCandidates, indexedParentCandidates, resolvedParentAuthUids });
     console.debug('[notifications] final targetAuthUids', targetAuthUids);
 
     await Promise.all(targetAuthUids.map(async (uid) => {
@@ -1067,8 +1081,8 @@ export default function LessonReportManagement({
           refCollection: 'lessonReports',
           refId: reportDraft.id,
           ref: `lessonReports/${reportDraft.id}`,
-          title: '새 수업 리포트가 도착했습니다.',
-          body: `${student?.name || '학생'} 학생의 수업 리포트가 도착했습니다.`,
+          title: '학습리포트가 도착했습니다.',
+          body: '학습리포트가 도착했습니다.',
           isRead: false,
           createdAt: serverTimestamp(),
           payload: {

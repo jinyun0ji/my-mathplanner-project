@@ -1,78 +1,743 @@
-diff --git a/ios/App/App/Info.plist b/ios/App/App/Info.plist
-index 7857f3ac3e0e897d769891e90fc453a468521ef8..3d3c13fc1cfa47b91a691c14c1fcbbfcc61b016c 100644
---- a/ios/App/App/Info.plist
-+++ b/ios/App/App/Info.plist
-@@ -14,50 +14,56 @@
- 	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
- 	<key>CFBundleInfoDictionaryVersion</key>
- 	<string>6.0</string>
- 	<key>CFBundleName</key>
- 	<string>$(PRODUCT_NAME)</string>
- 	<key>CFBundlePackageType</key>
- 	<string>APPL</string>
- 	<key>CFBundleShortVersionString</key>
- 	<string>$(MARKETING_VERSION)</string>
- 	<key>CFBundleURLTypes</key>
- 	<array>
- 		<dict>
- 			<key>CFBundleTypeRole</key>
- 			<string>Editor</string>
- 			<key>CFBundleURLName</key>
- 			<string>Google Sign-In</string>
- 			<key>CFBundleURLSchemes</key>
- 			<array>
- 				<string>com.googleusercontent.apps.197602408828-ioltf61rci7tmctb733gsse6gddsilcu</string>
- 			</array>
- 		</dict>
- 		<dict/>
- 	</array>
- 	<key>CFBundleVersion</key>
- 	<string>$(CURRENT_PROJECT_VERSION)</string>
-+	<key>NSCameraUsageDescription</key>
-+	<string>채팅 첨부 사진 촬영을 위해 카메라 접근 권한이 필요합니다.</string>
-+	<key>NSPhotoLibraryUsageDescription</key>
-+	<string>채팅 첨부 사진 선택을 위해 사진 보관함 접근 권한이 필요합니다.</string>
-+	<key>NSPhotoLibraryAddUsageDescription</key>
-+	<string>첨부 이미지 저장 및 선택을 위해 사진 보관함 접근 권한이 필요합니다.</string>
- 	<key>LSRequiresIPhoneOS</key>
- 	<true/>
- 	<key>UILaunchStoryboardName</key>
- 	<string>LaunchScreen</string>
- 	<key>UIMainStoryboardFile</key>
- 	<string>Main</string>
- 	<key>UIRequiredDeviceCapabilities</key>
- 	<array>
- 		<string>armv7</string>
- 	</array>
- 	<key>UISupportedInterfaceOrientations</key>
- 	<array>
- 		<string>UIInterfaceOrientationPortrait</string>
- 		<string>UIInterfaceOrientationLandscapeLeft</string>
- 		<string>UIInterfaceOrientationLandscapeRight</string>
- 	</array>
- 	<key>UISupportedInterfaceOrientations~ipad</key>
- 	<array>
- 		<string>UIInterfaceOrientationPortrait</string>
- 		<string>UIInterfaceOrientationPortraitUpsideDown</string>
- 		<string>UIInterfaceOrientationLandscapeLeft</string>
- 		<string>UIInterfaceOrientationLandscapeRight</string>
- 	</array>
- 	<key>UIViewControllerBasedStatusBarAppearance</key>
- 	<true/>
-diff --git a/src/domain/lessonReport/lessonReport.service.js b/src/domain/lessonReport/lessonReport.service.js
-index c4ffd83da2e69bf0441f452d302624bb3f6b3d54..e3d7a289254c66b94be50169aa3537ec228ec061 100644
---- a/src/domain/lessonReport/lessonReport.service.js
-+++ b/src/domain/lessonReport/lessonReport.service.js
-@@ -223,51 +223,51 @@ export const summarizeHomework = ({
+diff --git a/functions/scripts/backfillTestStats.js b/functions/scripts/backfillTestStats.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..a491bd4f54609f6edd21bdc3bda05b81c32e9e0a
+--- /dev/null
++++ b/functions/scripts/backfillTestStats.js
+@@ -0,0 +1,108 @@
++const admin = require('firebase-admin');
++
++if (!admin.apps.length) admin.initializeApp();
++
++const db = admin.firestore();
++const args = process.argv.slice(2);
++const dryRun = !args.includes('--write');
++const getArg = (name) => {
++  const hit = args.find((arg) => arg.startsWith(`${name}=`));
++  return hit ? hit.slice(name.length + 1) : '';
++};
++const onlyClassId = getArg('--classId');
++const onlyTestId = getArg('--testId');
++
++const toFiniteScore = (value) => {
++  if (value === null || value === undefined || value === '' || value === '미응시' || value === '미입력') return null;
++  const n = Number(value);
++  return Number.isFinite(n) ? n : null;
++};
++const isCorrect = (value) => [true, 1, '1', 'O', 'o', '맞음', '고침', '정답', 'correct'].includes(value);
++const isAbsentGrade = (grade = {}) => (
++  grade.attempted === false
++  || grade.isAbsent === true
++  || grade.absent === true
++  || ['미응시', '미입력'].includes(String(grade.result || '').trim())
++  || ['미응시', '미입력'].includes(String(grade.status || '').trim())
++);
++const getQuestionScores = (test = {}) => {
++  const totalQuestions = Number.parseInt(test.totalQuestions, 10) || 0;
++  const maxScore = toFiniteScore(test.maxScore) ?? 100;
++  if (Array.isArray(test.questionScores) && test.questionScores.length >= totalQuestions) {
++    return test.questionScores.map((score) => toFiniteScore(score) ?? 0);
++  }
++  return totalQuestions > 0 ? Array.from({ length: totalQuestions }, () => maxScore / totalQuestions) : [];
++};
++const getGradeScore = (grade = {}, test = {}, questionScores = []) => {
++  const saved = toFiniteScore(grade.totalScore) ?? toFiniteScore(grade.score) ?? toFiniteScore(grade.result);
++  if (saved !== null) return saved;
++  const correctCount = grade.correctCount;
++  const totalQuestions = Number.parseInt(test.totalQuestions, 10) || questionScores.length;
++  if (!correctCount || typeof correctCount !== 'object' || totalQuestions <= 0) return null;
++  let total = 0;
++  for (let i = 1; i <= totalQuestions; i += 1) {
++    if (isCorrect(correctCount[String(i)])) total += questionScores[i - 1] || 0;
++  }
++  return Number.isFinite(total) ? total : null;
++};
++const round1 = (value) => (value === null ? null : Math.round(value * 10) / 10);
++
++async function loadTests() {
++  if (onlyTestId) {
++    const snap = await db.collection('tests').doc(onlyTestId).get();
++    return snap.exists ? [snap] : [];
++  }
++  const query = onlyClassId ? db.collection('tests').where('classId', '==', onlyClassId) : db.collection('tests');
++  const snap = await query.get();
++  return snap.docs;
++}
++
++async function main() {
++  const tests = await loadTests();
++  console.log(`[testStats] ${dryRun ? 'dry-run' : 'write'} tests=${tests.length} classId=${onlyClassId || '*'} testId=${onlyTestId || '*'}`);
++  for (const testDoc of tests) {
++    const testId = testDoc.id;
++    const test = testDoc.data() || {};
++    const gradesSnap = await db.collection('grades').where('testId', '==', testId).get();
++    const questionScores = getQuestionScores(test);
++    const scores = gradesSnap.docs
++      .map((doc) => doc.data() || {})
++      .filter((grade) => !isAbsentGrade(grade))
++      .map((grade) => getGradeScore(grade, test, questionScores))
++      .filter((score) => score !== null);
++    const submittedCount = scores.length;
++    const classAverage = submittedCount ? round1(scores.reduce((sum, score) => sum + score, 0) / submittedCount) : null;
++    const highestScore = submittedCount ? round1(Math.max(...scores)) : null;
++    const payload = {
++      classAverage,
++      average: classAverage,
++      highestScore,
++      maxScore: highestScore,
++      submittedCount,
++      statsUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
++    };
++    console.log('[testStats]', { testId, classId: test.classId || '', classAverage, highestScore, submittedCount, sourceGrades: gradesSnap.size });
++    if (!dryRun) {
++      await testDoc.ref.set(payload, { merge: true });
++      if (test.classId) {
++        await db.collection('classTestStats').doc(`${test.classId}_${testId}`).set({
++          classId: test.classId,
++          testId,
++          average: classAverage,
++          maxScore: highestScore,
++          highestScore,
++          submittedCount,
++          attemptedCount: submittedCount,
++          count: submittedCount,
++          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
++        }, { merge: true });
++      }
++    }
++  }
++  console.log(`[testStats] ${dryRun ? 'dry-run completed' : 'write completed'}`);
++}
++
++main().catch((error) => {
++  console.error('[testStats] failed', error);
++  process.exit(1);
++});
+diff --git a/functions/src/notify/fcm.js b/functions/src/notify/fcm.js
+index d595538e5ba0c82272d4fc367d295fdd748c9301..88a48746838a956ce287a61a185092b639a30671 100644
+--- a/functions/src/notify/fcm.js
++++ b/functions/src/notify/fcm.js
+@@ -53,53 +53,62 @@ const sendFcmToUsers = async (userIds, dataPayload, { notificationIds = {}, logR
+         const tokenSnapshot = await db.collection('users').doc(uid).collection('fcmTokens').get();
+         const tokenEntries = resolveTokenEntries(tokenSnapshot);
+ 
+         if (tokenEntries.length === 0) {
+             return {
+                 uid,
+                 success: false,
+                 failedTokenCount: 0,
+                 errorCode: 'no-token',
+             };
+         }
+ 
+         const payload = {
+             ...dataPayload,
+             notificationId: notificationIds[uid],
+         };
+ 
+         const tokenChunks = chunk(tokenEntries, 500);
+ 
+         let uidFailed = false;
+         let uidErrorCode = '';
+         let failedTokenCount = 0;
+ 
+         await Promise.all(tokenChunks.map(async (entryBatch) => {
+             const tokens = entryBatch.map((entry) => entry.token);
++            const isMessage = payload.category === 'message' || payload.type === 'CHAT_MESSAGE';
++            const isLessonReport = payload.category === 'lessonReport' || payload.type === 'lesson_report';
++            const notificationBody = isMessage
++                ? '새 메시지가 있습니다.'
++                : (isLessonReport ? '학습리포트가 도착했습니다.' : '새 알림이 있습니다.');
+             const response = await messaging.sendEachForMulticast({
+                 tokens,
+                 data: payload,
++                notification: {
++                    title: notificationBody,
++                    body: notificationBody,
++                },
+             });
+ 
+             if (response.failureCount > 0) {
+                 uidFailed = true;
+             }
+ 
+             const failedResponses = response.responses
+                 .map((result, index) => (result.success ? null : { error: result.error, ref: entryBatch[index].ref }))
+                 .filter(Boolean);
+ 
+             if (!uidErrorCode) {
+                 const firstError = failedResponses.find((entry) => entry.error);
+                 uidErrorCode = firstError?.error?.code || '';
+             }
+ 
+             const invalidRefs = failedResponses.filter((entry) => isInvalidTokenError(entry.error));
+ 
+             if (invalidRefs.length > 0) {
+                 failedTokenCount += invalidRefs.length;
+                 await Promise.all(invalidRefs.map((entry) => entry.ref.delete()));
+             }
+         }));
+ 
+         return {
+             uid,
+diff --git a/functions/src/triggers/chatMessages.js b/functions/src/triggers/chatMessages.js
+index 5a9ec5228ef4effcc963f54082f5a9da208c2136..14ae325845decef1e2bf17c8a6f9950b107a4bd8 100644
+--- a/functions/src/triggers/chatMessages.js
++++ b/functions/src/triggers/chatMessages.js
+@@ -1,50 +1,51 @@
+ const functions = require('firebase-functions');
+ const { getFirestore, FieldValue } = require('firebase-admin/firestore');
+ const { notifyUsers } = require('../notify/notifications');
++const { sendFcmToUsers } = require('../notify/fcm');
+ 
+ const TYPE = 'CHAT_MESSAGE';
+ const db = getFirestore();
+ 
+ const uniqueStrings = (values = []) => Array.from(new Set(
+     values.map((value) => String(value || '').trim()).filter(Boolean)
+ ));
+ 
+ const resolveParticipantAuthUid = async (participantId) => {
+     const normalizedId = String(participantId || '').trim();
+     if (!normalizedId) return '';
+ 
+     const userSnapshot = await db.collection('users').doc(normalizedId).get();
+     const authUid = userSnapshot.exists ? String(userSnapshot.data()?.authUid || '').trim() : '';
+     return authUid || normalizedId;
  };
  
- export const summarizeAssignedHomework = ({
-     selectedAssignedHomeworkIds = [],
-     selectedHomeworkIds = [],
-     homeworkAssignments = [],
- }) => ({
-     items: (selectedAssignedHomeworkIds.length > 0 ? selectedAssignedHomeworkIds : selectedHomeworkIds)
-         .map((id) => homeworkAssignments.find((hw) => String(hw.id) === String(id)))
+ const buildChatRoomNotification = ({ roomId, messageId, messageData }) => ({
+     type: TYPE,
+     category: 'message',
+-    title: '새 메시지',
+-    body: messageData.text || '첨부파일이 도착했습니다.',
++    title: '새 메시지가 있습니다.',
++    body: '새 메시지가 있습니다.',
+     ref: `chatRooms/${roomId}`,
+     refCollection: 'chatRooms',
+     refId: roomId,
+     roomId,
+     senderId: messageData.senderId || '',
+     senderName: messageData.senderName || '',
+     createdAt: FieldValue.serverTimestamp(),
+     isRead: false,
+     payload: {
+         type: TYPE,
+         category: 'message',
+         roomId,
+         messageId,
+         refCollection: 'chatRooms',
+     },
+ });
+ 
+ const onChatRoomMessageCreated = functions.firestore
+     .document('chatRooms/{roomId}/messages/{messageId}')
+     .onCreate(async (snapshot, context) => {
+         const messageData = snapshot.data() || {};
+         if (messageData.internalOnly !== true) {
+             return null;
+         }
+ 
+@@ -95,95 +96,103 @@ const onChatRoomMessageCreated = functions.firestore
+ 
+         console.log('[notifications] chat room message recipients resolved', {
+             roomId,
+             messageId,
+             senderId,
+             participantIds,
+             senderOwnerUids,
+             recipientOwnerUids,
+         });
+ 
+         if (!recipientOwnerUids.length) {
+             return null;
+         }
+ 
+         const batch = db.batch();
+         recipientOwnerUids.forEach((recipientOwnerUid) => {
+             const notificationRef = db
+                 .collection('notifications')
+                 .doc(recipientOwnerUid)
+                 .collection('items')
+                 .doc(`${roomId}_${messageId}`);
+             batch.set(notificationRef, buildChatRoomNotification({ roomId, messageId, messageData }), { merge: true });
+         });
+ 
+         await batch.commit();
++
++        const notificationIds = Object.fromEntries(recipientOwnerUids.map((uid) => [uid, `${roomId}_${messageId}`]));
++        await sendFcmToUsers(recipientOwnerUids, {
++            type: TYPE,
++            refCollection: 'notifications',
++            refId: 'center',
++            category: 'message',
++        }, { notificationIds });
+         return null;
+     });
+ 
+ 
+ const onChatMessageCreated = functions.firestore
+     .document('chats/{chatId}/messages/{messageId}')
+     .onCreate(async (snapshot, context) => {
+         const messageData = snapshot.data() || {};
+         const chatSnapshot = await db.collection('chats').doc(context.params.chatId).get();
+         const chatData = chatSnapshot.data() || {};
+         const participantIds = Array.isArray(chatData.participantIds) ? chatData.participantIds : [];
+         const senderId = messageData.senderId;
+ 
+         const recipients = participantIds.filter((uid) => uid && uid !== senderId);
+ 
+         const refId = context.params.chatId;
+         const lastMessageText = messageData.text || messageData.body || '';
+         const lastMessageAt = messageData.createdAt || FieldValue.serverTimestamp();
+         const batch = db.batch();
+ 
+         if (recipients.length === 0) {
+             await notifyUsers({
+                 userIds: [],
+                 payload: {
+                     type: TYPE,
+-                    title: '새 메시지',
+-                    body: '새 메시지가 도착했습니다.',
++                    title: '새 메시지가 있습니다.',
++                    body: '새 메시지가 있습니다.',
+                     ref: `chats/${refId}`,
+                 },
+                 fcmData: {
+                     type: TYPE,
+                     refCollection: 'chats',
+                     refId,
+                 },
+             });
+             return null;
+         }
+ 
+         recipients.forEach((uid) => {
+             const chatIndexRef = db.collection('users').doc(uid).collection('chatIndex').doc(refId);
+             batch.set(chatIndexRef, {
+                 unreadCount: FieldValue.increment(1),
+                 lastMessageAt,
+                 lastMessageText,
+             }, { merge: true });
+         });
+ 
+         await batch.commit();
+ 
+         await notifyUsers({
+             userIds: recipients,
+             payload: {
+                 type: TYPE,
+-                title: '새 메시지',
+-                body: '새 메시지가 도착했습니다.',
++                title: '새 메시지가 있습니다.',
++                body: '새 메시지가 있습니다.',
+                 ref: `chats/${refId}`,
+             },
+             fcmData: {
+                 type: TYPE,
+                 refCollection: 'chats',
+                 refId,
+             },
+         });
+         return null;
+     });
+ 
+ module.exports = {
+     onChatMessageCreated,
+     onChatRoomMessageCreated,
+ };
+\ No newline at end of file
+diff --git a/functions/src/triggers/grades.js b/functions/src/triggers/grades.js
+index 57fc7a4d3bafb2195ee712e5d9d81041880b8cd1..1396ccad2a5e9d966c606834a4df69053505ab07 100644
+--- a/functions/src/triggers/grades.js
++++ b/functions/src/triggers/grades.js
+@@ -1,37 +1,123 @@
+ const functions = require('firebase-functions');
+ const { getRecipientsForStudent } = require('../notify/recipients');
+ const { notifyUsers } = require('../notify/notifications');
+ const { isNotificationSendingEnabled, notificationDisabledResult } = require('../notify/settings');
++const { getFirestore, FieldValue } = require('firebase-admin/firestore');
++
++const db = getFirestore();
+ 
+ const TYPE = 'GRADE_PUBLISHED';
+ 
+ const isUnchanged = (before, after) => JSON.stringify(before) === JSON.stringify(after);
+ 
++const toFiniteScore = (value) => {
++    if (value === null || value === undefined || value === '' || value === '미응시' || value === '미입력') return null;
++    const number = Number(value);
++    return Number.isFinite(number) ? number : null;
++};
++
++const isCorrect = (value) => [true, 1, '1', 'O', 'o', '맞음', '고침', '정답', 'correct'].includes(value);
++
++const getQuestionScores = (test = {}) => {
++    const totalQuestions = Number.parseInt(test.totalQuestions, 10) || 0;
++    const maxScore = toFiniteScore(test.maxScore) ?? 100;
++    if (Array.isArray(test.questionScores) && test.questionScores.length >= totalQuestions) {
++        return test.questionScores.map((score) => toFiniteScore(score) ?? 0);
++    }
++    return totalQuestions > 0 ? Array.from({ length: totalQuestions }, () => maxScore / totalQuestions) : [];
++};
++
++const isAbsentGrade = (grade = {}) => (
++    grade.attempted === false
++    || grade.isAbsent === true
++    || grade.absent === true
++    || ['미응시', '미입력'].includes(String(grade.result || '').trim())
++    || ['미응시', '미입력'].includes(String(grade.status || '').trim())
++);
++
++const getGradeScore = (grade = {}, test = {}, questionScores = []) => {
++    const savedScore = toFiniteScore(grade.totalScore) ?? toFiniteScore(grade.score) ?? toFiniteScore(grade.result);
++    if (savedScore !== null) return savedScore;
++    const correctCount = grade.correctCount;
++    const totalQuestions = Number.parseInt(test.totalQuestions, 10) || questionScores.length;
++    if (!correctCount || typeof correctCount !== 'object' || totalQuestions <= 0) return null;
++    let total = 0;
++    for (let i = 1; i <= totalQuestions; i += 1) {
++        if (isCorrect(correctCount[String(i)])) total += questionScores[i - 1] || 0;
++    }
++    return Number.isFinite(total) ? total : null;
++};
++
++const recomputeTestStats = async (testId) => {
++    if (!testId) return null;
++    const testSnap = await db.collection('tests').doc(testId).get();
++    if (!testSnap.exists) return null;
++    const test = testSnap.data() || {};
++    const gradesSnap = await db.collection('grades').where('testId', '==', testId).get();
++    const questionScores = getQuestionScores(test);
++    const scores = gradesSnap.docs
++        .map((doc) => doc.data() || {})
++        .filter((grade) => !isAbsentGrade(grade))
++        .map((grade) => getGradeScore(grade, test, questionScores))
++        .filter((score) => score !== null);
++    const submittedCount = scores.length;
++    const classAverage = submittedCount ? Math.round((scores.reduce((sum, score) => sum + score, 0) / submittedCount) * 10) / 10 : null;
++    const highestScore = submittedCount ? Math.round(Math.max(...scores) * 10) / 10 : null;
++    const payload = {
++        classAverage,
++        average: classAverage,
++        highestScore,
++        maxScore: highestScore,
++        submittedCount,
++        statsUpdatedAt: FieldValue.serverTimestamp(),
++    };
++    await testSnap.ref.set(payload, { merge: true });
++    if (test.classId) {
++        await db.collection('classTestStats').doc(`${test.classId}_${testId}`).set({
++            classId: test.classId,
++            testId,
++            average: classAverage,
++            maxScore: highestScore,
++            highestScore,
++            submittedCount,
++            attemptedCount: submittedCount,
++            count: submittedCount,
++            updatedAt: FieldValue.serverTimestamp(),
++        }, { merge: true });
++    }
++    return payload;
++};
++
+ const onGradeWritten = functions.firestore
+     .document('grades/{id}')
+     .onWrite(async (change, context) => {
++        const changedData = change.after.exists ? change.after.data() : change.before.data();
++        if (changedData?.testId) {
++            await recomputeTestStats(changedData.testId);
++        }
++
+         if (!change.after.exists) {
+             return null;
+         }
+ 
+         const afterData = change.after.data() || {};
+         const beforeData = change.before.exists ? change.before.data() : null;
+ 
+         if (afterData.notifyMode === 'staff') {
+             return null;
+         }
+ 
+         if (beforeData && isUnchanged(beforeData, afterData)) {
+             return null;
+         }
+ 
+         if (!isNotificationSendingEnabled()) {
+             console.debug('[notifications] trigger skipped: notification_disabled');
+             return notificationDisabledResult();
+         }
+ 
+         const authUid = afterData.authUid || afterData.studentUid || afterData.studentId;
+         const recipients = await getRecipientsForStudent(authUid);
+ 
+         if (!recipients) {
+             await notifyUsers({
+diff --git a/package.json b/package.json
+index 531ba4ec7a3c96466a656ef15e295506104b9e4a..af5eedf9748b925b1ca48edf25d3cf1718304997 100644
+--- a/package.json
++++ b/package.json
+@@ -39,50 +39,52 @@
+     "start": "react-scripts start",
+     "build": "react-scripts build",
+     "cap:init": "cap init \"채수용 수학\" com.chaesooyong.management --web-dir build",
+     "cap:sync": "cap sync",
+     "cap:android": "cap open android",
+     "cap:ios": "cap open ios",
+     "build:cap": "npm run build && cap sync",
+     "test": "react-scripts test",
+     "eject": "react-scripts eject",
+     "migrate:memos": "node functions/scripts/migrateStudentMemosToStaffMemos.js",
+     "migrate:homework-question-keys:dry": "node functions/scripts/migrateHomeworkResultQuestionNumbers.js",
+     "migrate:homework-question-keys:write": "node functions/scripts/migrateHomeworkResultQuestionNumbers.js --write",
+     "backfill:chat-parent-participants:dry": "node functions/scripts/backfillChatParticipantIdsForParents.js",
+     "backfill:chat-parent-participants:write": "node functions/scripts/backfillChatParticipantIdsForParents.js --write",
+     "backfill:chat-room-types:dry": "node functions/scripts/backfillChatRoomTypes.js",
+     "backfill:chat-room-types:write": "node functions/scripts/backfillChatRoomTypes.js --write",
+     "backfill:student-birth-year:dry": "node functions/scripts/backfillStudentBirthYearFromGrade.js",
+     "backfill:student-birth-year:write": "node functions/scripts/backfillStudentBirthYearFromGrade.js --write",
+     "backfill:class-test-stats:dry": "node functions/scripts/backfillClassTestStats.js",
+     "backfill:class-test-stats:write": "node functions/scripts/backfillClassTestStats.js --write",
+     "backfill:user-chat-rooms:dry": "node functions/scripts/backfillUserChatRooms.js",
+     "backfill:user-chat-rooms:write": "node functions/scripts/backfillUserChatRooms.js --write",
+     "backfill:chat-room-last-messages:dry": "node functions/scripts/backfillChatRoomLastMessages.js",
+     "backfill:chat-room-last-messages:write": "node functions/scripts/backfillChatRoomLastMessages.js --write",
+     "repair:hong-user-chat-rooms:dry": "node functions/scripts/repairHongUserChatRooms.js",
+-    "repair:hong-user-chat-rooms:write": "node functions/scripts/repairHongUserChatRooms.js --write"
++    "repair:hong-user-chat-rooms:write": "node functions/scripts/repairHongUserChatRooms.js --write",
++    "backfill:test-stats:dry": "node functions/scripts/backfillTestStats.js",
++    "backfill:test-stats:write": "node functions/scripts/backfillTestStats.js --write"
+   },
+   "eslintConfig": {
+     "extends": [
+       "react-app",
+       "react-app/jest"
+     ]
+   },
+   "browserslist": {
+     "production": [
+       ">0.2%",
+       "not dead",
+       "not op_mini all"
+     ],
+     "development": [
+       "last 1 chrome version",
+       "last 1 firefox version",
+       "last 1 safari version"
+     ]
+   },
+   "devDependencies": {
+     "@capacitor/cli": "^6.2.0",
+     "typescript": "^6.0.3"
+   }
+ }
+diff --git a/public/firebase-messaging-sw.js b/public/firebase-messaging-sw.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..df97ab356a81f6a873b3ac59964848a3bf661acb
+--- /dev/null
++++ b/public/firebase-messaging-sw.js
+@@ -0,0 +1,29 @@
++/* global firebase */
++// Web FCM service worker. Native Capacitor push uses APNs/FCM via @capacitor/push-notifications instead.
++// TODO(push): keep this Firebase config in sync with src/firebase/client.js when Firebase apps change.
++importScripts('https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js');
++importScripts('https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js');
++
++firebase.initializeApp({
++  apiKey: 'AIzaSyAjjR2yJwmwGeOMjxr_jGumpkchXpFzmcQ',
++  authDomain: 'my-mathplanner-project.firebaseapp.com',
++  projectId: 'my-mathplanner-project',
++  storageBucket: 'my-mathplanner-project.firebasestorage.app',
++  messagingSenderId: '197602408828',
++  appId: '1:197602408828:web:c0eae7df35a06fbe070cf9',
++  measurementId: 'G-ZH2BMBYE86',
++});
++
++const messaging = firebase.messaging();
++
++messaging.onBackgroundMessage(() => {
++  self.registration.showNotification('채수용 수학', {
++    body: '새 알림이 있습니다.',
++    data: { url: '/home?tab=notifications' },
++  });
++});
++
++self.addEventListener('notificationclick', (event) => {
++  event.notification.close();
++  event.waitUntil(clients.openWindow('/home?tab=notifications'));
++});
+diff --git a/src/app/AppRoutes.jsx b/src/app/AppRoutes.jsx
+index b83c2606019de331d65a313b965dd84039a51ea9..2a917450613e3e4788a31846688c91be56e2dac1 100644
+--- a/src/app/AppRoutes.jsx
++++ b/src/app/AppRoutes.jsx
+@@ -52,50 +52,51 @@ import { useParentContext } from '../parent';
+ import { logClientError } from '../utils/errorLogger';
+ import { isCapacitorNativeEnvironment, STAFF_MOBILE_MESSENGER_ROUTE } from '../utils/capacitorEnvironment';
+ import { addVideoMemo, deleteVideoMemo, updateVideoMemo } from '../domain/memo/videoMemo.service';
+ import { getAssignmentQuestionNumbers, normalizeHomeworkResultMapForDisplay } from '../domain/homework/homework.service';
+ import { recomputeClassTestStats } from '../domain/grade/classTestStats.service';
+ import {
+     addDoc,
+     arrayRemove,
+     arrayUnion,
+     collection,
+     deleteDoc,
+     doc,
+     getDoc,
+     getDocs,
+     limit,
+     orderBy,
+     query,
+     setDoc,
+     serverTimestamp,
+     Timestamp,
+     where,
+     updateDoc,
+     writeBatch,
+ } from 'firebase/firestore';
+ import { httpsCallable } from 'firebase/functions';
++import { registerDevicePushToken, unregisterDevicePushToken } from '../notifications/pushNotifications';
+ 
+ const PAGE_ROUTES = {
+     home: '/home',
+     lessons: '/lessons',
+     lessonReports: '/lesson-reports',
+     students: '/students',
+     attendance: '/attendance',
+     grades: '/grades',
+     homework: '/homework',
+     clinic: '/clinic',
+     payment: '/payment',
+     communication: '/communication',
+     closures: '/closures',
+ };
+ 
+ const ADMIN_ROUTES = new Set([
+     '/admin/staff',
+     '/admin/invites',
+     '/admin/notifications',
+     '/admin/payments',
+     '/admin/settings',
+     '/admin/logs',
+     '/admin/account-deletion-requests',
+     '/master-view',
+     '/staff/invites',
+@@ -166,50 +167,71 @@ const AppShellLayout = ({
+ 
+ const NativeStaffRouteGuard = ({ role, children }) => {
+     if (isCapacitorNativeEnvironment() && isStaffOrTeachingRole(role)) {
+         return <Navigate to={STAFF_MOBILE_MESSENGER_ROUTE} replace />;
+     }
+ 
+     return children;
+ };
+ 
+ export default function AppRoutes({ user, role, studentIds }) {
+   const navigate = useNavigate();
+   const location = useLocation();
+   const routePath = location?.pathname || '';
+   const page = useMemo(() => getPageKeyFromPath(location.pathname), [location.pathname]);
+   const [notifications, setNotifications] = useState([]);
+   const [isGlobalDirty, setIsGlobalDirty] = useState(false);
+   const [studentSearchTerm, setStudentSearchTerm] = useState('');
+   const userId = user?.uid || null;
+   const isAuthenticated = Boolean(user);
+   const { logout, profileDocId } = useAuth();
+   const {
+       activeStudentId: parentActiveStudentId,
+       studentIds: parentStudentIds,
+       loading: parentLoading,
+   } = useParentContext();
++
++  useEffect(() => {
++      if (!userId) return undefined;
++      let active = true;
++      let registeredToken = null;
++      registerDevicePushToken(userId)
++          .then((token) => {
++              if (!active) return;
++              registeredToken = token;
++          })
++          .catch((error) => console.warn('[push] token registration skipped', error));
++
++      return () => {
++          active = false;
++          if (registeredToken) {
++              unregisterDevicePushToken(userId, registeredToken)
++                  .catch((error) => console.warn('[push] token cleanup failed', error));
++          }
++      };
++  }, [userId]);
++
+   const parentStudentId = isParentRole(role) ? parentActiveStudentId : null;
+ 
+   const [students, setStudents] = useState([]);
+   const [parents, setParents] = useState([]);
+   const [classes, setClasses] = useState([]);
+ 
+   const [lessonLogs, setLessonLogs] = useState([]);
+   const [attendanceLogs, setAttendanceLogs] = useState([]);
+   const [clinicLogs, setClinicLogs] = useState([]);
+   const [workLogs, setWorkLogs] = useState([]);
+   const [announcements, setAnnouncements] = useState([]);
+   const [tests, setTests] = useState([]);
+   const [homeworkAssignments, setHomeworkAssignments] = useState([]);
+   const [paymentLogs, setPaymentLogs] = useState([]);
+   const [isPaymentLogsLoading, setIsPaymentLogsLoading] = useState(false);
+   const [externalSchedules, setExternalSchedules] = useState([]);
+   const [closures, setClosures] = useState([]);
+   const [lessonReports, setLessonReports] = useState([]);
+ 
+   const [grades, setGrades] = useState({});
+   const [classTestStats, setClassTestStats] = useState({});
+   const [homeworkResults, setHomeworkResults] = useState({});
+   const [studentMemos, setStudentMemos] = useState({});
+   const [videoProgress, setVideoProgress] = useState({});
+   const [videoMemos, setVideoMemos] = useState({});
+diff --git a/src/domain/lessonReport/lessonReport.service.js b/src/domain/lessonReport/lessonReport.service.js
+index e3d7a289254c66b94be50169aa3537ec228ec061..cc473e65c60e17d05f74943b3215e3213de568b6 100644
+--- a/src/domain/lessonReport/lessonReport.service.js
++++ b/src/domain/lessonReport/lessonReport.service.js
+@@ -1,36 +1,37 @@
+ import { getTotalScore } from '../grade/grade.service';
+ import {
+     computeHomeworkProgress,
+     getAssignmentQuestionNumbers,
+     normalizeHomeworkResultMapForDisplay,
+     resolveHomeworkAssignmentTitle,
+ } from '../homework/homework.service';
+ import { formatRoundedPercent } from '../../utils/numberFormat';
+ import {
+     buildTestDisplayLines,
+     buildTestStatParts,
++    formatScoreStat,
+     getTestStatsForDisplay,
+     isAbsentGradeRecord,
+     pickScoreValue,
+     toFiniteScoreNumber,
+ } from '../../utils/scoreDisplay';
+ 
+ export const LESSON_REPORT_STATUS = {
+     DRAFT: 'draft',
+     SENT: 'sent',
+ };
+ 
+ export const LESSON_REPORT_SEND_STATUS = {
+     DRAFT: 'draft',
+     SCHEDULED: 'scheduled',
+     SENT: 'sent',
+ };
+ 
+ export const buildLessonReportId = ({ studentId, classId, lessonDate }) => {
+     const s = String(studentId || '').trim();
+     const c = String(classId || '').trim();
+     const d = String(lessonDate || '').trim();
+     if (!s || !c || !d) return '';
+     return `${s}_${c}_${d}`;
+ };
+ 
+@@ -232,48 +233,53 @@ export const summarizeAssignedHomework = ({
          .filter(Boolean)
          .map((assignment) => ({
          homeworkId: assignment.id,
@@ -89,8 +754,7 @@ index c4ffd83da2e69bf0441f452d302624bb3f6b3d54..e3d7a289254c66b94be50169aa3537ec
          .map((test) => {
              const grade = getGradeForLessonReportStudent({ student, studentId, grades, testId: test.id });
              const title = buildTestTitle(test);
--            const stats = getTestStatsForDisplay(test, classTestStats);
-+            const stats = getTestStatsForDisplay(test, classTestStats, grade);
+             const stats = getTestStatsForDisplay(test, classTestStats, grade);
              const absent = isAbsentGradeRecord(grade);
              const directScore = absent ? null : toFiniteScoreNumber(pickScoreValue(grade));
              const computedScore = directScore ?? (absent ? null : getTotalScore(grade, test));
@@ -99,7 +763,13 @@ index c4ffd83da2e69bf0441f452d302624bb3f6b3d54..e3d7a289254c66b94be50169aa3537ec
              const correctCount = toFiniteNumber(grade?.correctCount);
              const displayLines = grade
                  ? buildTestDisplayLines({ title, gradeRecord: grade, stats })
-                 : [title, '학생: 점수 미입력', ...buildTestStatParts(stats, { includeUnit: true }).map((part) => part.replace(' ', ': '))];
+-                : [title, '학생: 점수 미입력', ...buildTestStatParts(stats, { includeUnit: true }).map((part) => part.replace(' ', ': '))];
++                : [
++                    title,
++                    '학생: 점수 미입력',
++                    `평균: ${formatScoreStat(stats.average, { fallback: '통계 준비 중', includeUnit: true })}`,
++                    ...buildTestStatParts({ ...stats, average: null }, { includeUnit: true }).map((part) => part.replace(' ', ': ')),
++                ];
  
              const summary = displayLines.join('\n');
  
@@ -116,59 +786,221 @@ index c4ffd83da2e69bf0441f452d302624bb3f6b3d54..e3d7a289254c66b94be50169aa3537ec
                  totalQuestions: Number.isFinite(questionCount) ? questionCount : null,
                  correctCount: Number.isFinite(correctCount) ? correctCount : null,
                  displayLines,
+                 summary,
+             };
+         });
+ 
+     return { items, text: items.map((item) => item.summary) };
+ };
+\ No newline at end of file
+diff --git a/src/notifications/pushNotifications.js b/src/notifications/pushNotifications.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..d95997d475e401655288f13242ebc9b8c378ff81
+--- /dev/null
++++ b/src/notifications/pushNotifications.js
+@@ -0,0 +1,76 @@
++import { deleteDoc, doc, serverTimestamp, setDoc } from 'firebase/firestore';
++import { getMessaging, getToken, isSupported } from 'firebase/messaging';
++import { db, firebaseApp } from '../firebase/client';
++import { isCapacitorNativeEnvironment } from '../utils/capacitorEnvironment';
++
++const WEB_VAPID_KEY = process.env.REACT_APP_FIREBASE_VAPID_KEY || '';
++
++const getBrowserPushToken = async () => {
++  if (!firebaseApp || !(await isSupported())) return null;
++  if (typeof Notification === 'undefined') return null;
++  const permission = Notification.permission === 'granted'
++    ? 'granted'
++    : await Notification.requestPermission();
++  if (permission !== 'granted') return null;
++  if (!WEB_VAPID_KEY) {
++    console.info('[push] REACT_APP_FIREBASE_VAPID_KEY is required for web FCM token registration.');
++    return null;
++  }
++  return getToken(getMessaging(firebaseApp), { vapidKey: WEB_VAPID_KEY });
++};
++
++const getNativePushToken = async () => {
++  if (!isCapacitorNativeEnvironment()) return null;
++  try {
++    const importNativePlugin = new Function('specifier', 'return import(specifier)');
++    const mod = await importNativePlugin('@capacitor/push-notifications');
++    const PushNotifications = mod.PushNotifications;
++    const permission = await PushNotifications.requestPermissions();
++    if (permission.receive !== 'granted') return null;
++
++    return await new Promise((resolve) => {
++      let settled = false;
++      const finish = async (value) => {
++        if (settled) return;
++        settled = true;
++        resolve(value || null);
++      };
++      PushNotifications.addListener('registration', (token) => finish(token?.value));
++      PushNotifications.addListener('registrationError', (error) => {
++        console.warn('[push] native registration failed', error);
++        finish(null);
++      });
++      PushNotifications.register();
++      setTimeout(() => finish(null), 10000);
++    });
++  } catch (error) {
++    console.info('[push] native push plugin not ready. Install @capacitor/push-notifications and configure APNs/FCM.', error?.message || error);
++    return null;
++  }
++};
++
++export const registerDevicePushToken = async (authUid) => {
++  const uid = String(authUid || '').trim();
++  if (!uid) return null;
++  const token = isCapacitorNativeEnvironment() ? await getNativePushToken() : await getBrowserPushToken();
++  if (!token) return null;
++  await setDoc(doc(db, 'users', uid, 'fcmTokens', token), {
++    token,
++    platform: isCapacitorNativeEnvironment() ? 'capacitor' : 'web',
++    updatedAt: serverTimestamp(),
++  }, { merge: true });
++  return token;
++};
++
++export const unregisterDevicePushToken = async (authUid, token) => {
++  const uid = String(authUid || '').trim();
++  if (!uid || !token) return;
++  await deleteDoc(doc(db, 'users', uid, 'fcmTokens', token));
++};
++
++export const PUSH_SETUP_TODOS = [
++  'Firebase Console: iOS 앱에 APNs Authentication Key 등록',
++  'Xcode: Signing & Capabilities에서 Push Notifications 및 Background Modes(Remote notifications) 활성화',
++  '앱 패키지: @capacitor/push-notifications 설치 후 npx cap sync 실행',
++  '웹 푸시: REACT_APP_FIREBASE_VAPID_KEY 환경변수 설정 및 firebase-messaging-sw.js 배포 확인',
++];
+diff --git a/src/pages/LessonReportManagement.jsx b/src/pages/LessonReportManagement.jsx
+index 4a70ce990de633562adab67405bfda97d5a2e3c5..fb17235230901108592ed6a680064113adeb5ca0 100644
+--- a/src/pages/LessonReportManagement.jsx
++++ b/src/pages/LessonReportManagement.jsx
+@@ -999,98 +999,112 @@ export default function LessonReportManagement({
+       sentAt: previous?.sentAt || (isFirstSend ? now : null),
+       sentBy: previous?.sentBy || (isFirstSend ? (profileDocId || 'staff') : null),
+       lastEditedAfterSentAt: previous?.status === LESSON_REPORT_STATUS.SENT ? now : null,
+     };
+ 
+     delete payload.autoFilledLearnedTopics;
+     delete payload.isLearnedTopicsManuallyEdited;
+     return { payload, student, isFirstSend };
+   };
+ 
+   const resolveUserAuthUidById = async (userId) => {
+     const normalizedUserId = String(userId || '').trim();
+     if (!normalizedUserId) return '';
+ 
+     try {
+       const userSnap = await getDoc(doc(db, 'users', normalizedUserId));
+       if (!userSnap.exists()) return normalizedUserId;
+       const userData = userSnap.data() || {};
+       return String(userData.authUid || userData.userUid || userData.uid || normalizedUserId).trim();
+     } catch (error) {
+       console.debug('[notifications] lesson report user auth lookup failed', { userId: normalizedUserId, error });
+       return normalizedUserId;
+     }
+   };
+ 
++  const findParentAuthUidsByStudent = async (studentId) => {
++    if (!studentId) return [];
++    const parentSnaps = await Promise.all([
++      getDocs(query(collection(db, 'users'), where('studentIds', 'array-contains', studentId))),
++      getDocs(query(collection(db, 'users'), where('childrenIds', 'array-contains', studentId))).catch(() => ({ docs: [] })),
++      getDocs(query(collection(db, 'users'), where('linkedStudentIds', 'array-contains', studentId))).catch(() => ({ docs: [] })),
++    ]);
++    return Array.from(new Set(parentSnaps.flatMap((snap) => snap.docs.map((parentDoc) => {
++      const data = parentDoc.data() || {};
++      return data.authUid || data.userUid || data.uid || parentDoc.id;
++    }).filter(Boolean).map(String))));
++  };
++
+   const notifyForFirstSend = async ({ reportDraft, student }) => {
+     console.debug('[notifications] notifyForFirstSend called', {
+       reportId: reportDraft?.id,
+       studentId: reportDraft?.studentId,
+       notificationSendingEnabled: FEATURES.ENABLE_NOTIFICATION_SENDING,
+     });
+ 
+     if (!FEATURES.ENABLE_NOTIFICATION_SENDING) {
+       console.debug('[notifications] lesson report skipped: notification_disabled');
+       return { success: true, sent: false, skipped: true, reason: 'notification_disabled' };
+     }
+ 
+     const studentAuthCandidates = [
+       student?.authUid,
+       student?.userUid,
+       student?.uid,
+     ].filter(Boolean).map(String);
+ 
+     const directParentCandidates = [
+       student?.parentAuthUid,
+       student?.parentAuthUids,
+       student?.parentUid,
+       student?.parentUids,
+       student?.parentIds,
+     ].flat().filter(Boolean).map(String);
+     const linkedParentCandidates = getLinkedParentAuthUids(student, []);
+-    const parentAuthCandidates = Array.from(new Set([...directParentCandidates, ...linkedParentCandidates]));
++    const indexedParentCandidates = await findParentAuthUidsByStudent(reportDraft.studentId);
++    const parentAuthCandidates = Array.from(new Set([...directParentCandidates, ...linkedParentCandidates, ...indexedParentCandidates]));
+     const resolvedParentAuthUids = (await Promise.all(parentAuthCandidates.map(resolveUserAuthUidById))).filter(Boolean);
+ 
+     const targetAuthUids = Array.from(new Set([
+       ...studentAuthCandidates,
+       ...resolvedParentAuthUids,
+     ].map((value) => String(value || '').trim()).filter(Boolean)));
+ 
+     console.debug('[notifications] student auth candidates', studentAuthCandidates);
+-    console.debug('[notifications] parent auth candidates', { directParentCandidates, linkedParentCandidates, resolvedParentAuthUids });
++    console.debug('[notifications] parent auth candidates', { directParentCandidates, linkedParentCandidates, indexedParentCandidates, resolvedParentAuthUids });
+     console.debug('[notifications] final targetAuthUids', targetAuthUids);
+ 
+     await Promise.all(targetAuthUids.map(async (uid) => {
+       try {
+         await addDoc(collection(db, 'notifications', uid, 'items'), {
+           type: 'lesson_report',
+           category: 'lessonReport',
+           refCollection: 'lessonReports',
+           refId: reportDraft.id,
+           ref: `lessonReports/${reportDraft.id}`,
+-          title: '새 수업 리포트가 도착했습니다.',
+-          body: `${student?.name || '학생'} 학생의 수업 리포트가 도착했습니다.`,
++          title: '학습리포트가 도착했습니다.',
++          body: '학습리포트가 도착했습니다.',
+           isRead: false,
+           createdAt: serverTimestamp(),
+           payload: {
+             reportId: reportDraft.id,
+             studentId: reportDraft.studentId,
+             classId: reportDraft.classId,
+             lessonDate: reportDraft.lessonDate,
+             type: 'lesson_report',
+             refCollection: 'lessonReports',
+           },
+         });
+         console.debug('[notifications] add notification success', { uid, reportId: reportDraft.id });
+       } catch (error) {
+         console.error('[notifications] add notification failure', { uid, reportId: reportDraft.id, error });
+         throw error;
+       }
+     }));
+ 
+     await setDoc(
+       doc(db, 'lessonReports', reportDraft.id),
+       {
+         studentNotificationSent: studentAuthCandidates.length > 0,
+         parentNotificationSent: resolvedParentAuthUids.length > 0,
+       },
+       { merge: true },
 diff --git a/src/utils/scoreDisplay.js b/src/utils/scoreDisplay.js
-index 89631e4199c5725845e5aeed9bb3bdd464d79b63..87da7fcfe16bcd2c521a3b5f4bf8d634cc640c1d 100644
+index 87da7fcfe16bcd2c521a3b5f4bf8d634cc640c1d..ff858a2fb10e629eafbdba04c8208bb65744482e 100644
 --- a/src/utils/scoreDisplay.js
 +++ b/src/utils/scoreDisplay.js
-@@ -67,55 +67,57 @@ export const formatStudentScore = (recordOrValue, options = {}) => {
-   const { absentLabel = '미응시', includeUnit = true } = options;
-   if (isAbsentGradeRecord(recordOrValue)) return absentLabel;
- 
-   const score = toFiniteScoreNumber(pickScoreValue(recordOrValue));
-   if (score === null) return absentLabel;
- 
-   const label = score.toFixed(1);
-   return includeUnit ? `${label}점` : label;
- };
- 
- export const formatScoreStat = (value, options = {}) => {
-   const { fallback = '통계 준비 중', includeUnit = false } = options;
-   const label = formatNumberOneDecimal(value, fallback);
-   if (label === fallback) return label;
-   return includeUnit ? `${label}점` : label;
- };
- 
- const firstFiniteScore = (...values) => {
-   for (const value of values) {
-     const score = toFiniteScoreNumber(value);
-     if (score !== null) return score;
-   }
-   return null;
- };
- 
--export const getTestStatsForDisplay = (test = {}, classTestStats = {}) => {
-+export const getTestStatsForDisplay = (test = {}, classTestStats = {}, gradeRecord = {}) => {
-   const stats = classTestStats?.[`${test?.classId}_${test?.id}`] || classTestStats?.[test?.id] || null;
- 
-   return {
-     average: firstFiniteScore(
-+      gradeRecord?.average,
-+      gradeRecord?.classAverage,
-       stats?.average,
-       test?.average,
-       test?.classAverage,
-     ),
-     highest: firstFiniteScore(
-       stats?.maxScore,
-       stats?.highestScore,
-       stats?.classMax,
-       test?.classMax,
-       test?.highestScore,
-       test?.highScore,
-     ),
-     submittedCount: firstFiniteScore(stats?.submittedCount, stats?.attemptedCount, stats?.count),
-     perfect: firstFiniteScore(
-       test?.maxScore,
+@@ -114,37 +114,46 @@ export const getTestStatsForDisplay = (test = {}, classTestStats = {}, gradeReco
        test?.totalScore,
        test?.perfectScore,
      ),
@@ -179,3 +1011,44 @@ index 89631e4199c5725845e5aeed9bb3bdd464d79b63..87da7fcfe16bcd2c521a3b5f4bf8d634
    const { includeUnit = true } = options;
    return [
      ['평균', stats.average, includeUnit],
+     ['최고', stats.highest, includeUnit],
+     ['응시자', stats.submittedCount, false],
+     ['만점', stats.perfect, includeUnit],
+   ]
+     .map(([label, value, partIncludesUnit]) => {
+       const formatted = formatScoreStat(value, { fallback: '', includeUnit: partIncludesUnit });
+       return formatted ? `${label} ${formatted}` : '';
+     })
+     .filter(Boolean);
+ };
+ 
+ export const formatTestStatsInline = (stats = {}, options = {}) => (
+   buildTestStatParts(stats, options).join(' · ')
+ );
+ 
+-export const buildTestDisplayLines = ({ title, gradeRecord, stats = {} }) => ([
+-  title,
+-  `학생: ${formatStudentScore(gradeRecord, { includeUnit: true })}`,
+-  ...buildTestStatParts(stats, { includeUnit: true }).map((part) => part.replace(' ', ': ')),
+-]);
++export const buildTestDisplayLines = ({ title, gradeRecord, stats = {} }) => {
++  const averageLine = `평균: ${formatScoreStat(stats.average, { fallback: '통계 준비 중', includeUnit: true })}`;
++  const otherStatLines = buildTestStatParts(
++    { ...stats, average: null },
++    { includeUnit: true },
++  ).map((part) => part.replace(' ', ': '));
++
++  return [
++    title,
++    `학생: ${formatStudentScore(gradeRecord, { includeUnit: true })}`,
++    averageLine,
++    ...otherStatLines,
++  ];
++};
+ 
+ export const formatSessionTestScore = (gradeRecord, test = {}, classTestStats = {}) => {
+   const stats = getTestStatsForDisplay(test, classTestStats);
+   const scoreLabel = formatStudentScore(gradeRecord, { includeUnit: true });
+   const statParts = buildTestStatParts(stats, { includeUnit: true });
+   return [scoreLabel, ...statParts].join(' · ');
+ };
