@@ -31,6 +31,8 @@ const createGoogleLoginCancelledError = () => (
 );
 
 const resolveNativeGoogleAuthPlugin = async () => {
+    console.info('[google-login] GoogleAuth plugin exists before resolve', Boolean(window.Capacitor?.Plugins?.GoogleAuth ?? Capacitor?.Plugins?.GoogleAuth));
+
     if (Capacitor?.Plugins?.GoogleAuth) {
         return Capacitor.Plugins.GoogleAuth;
     }
@@ -62,14 +64,25 @@ export const signInWithGoogle = async () => {
 
     if (isNativePlatform()) {
         const GoogleAuth = await resolveNativeGoogleAuthPlugin();
+        console.info('[google-login] GoogleAuth plugin resolved', {
+            exists: Boolean(GoogleAuth),
+            hasSignIn: typeof GoogleAuth?.signIn === 'function',
+            bridgePluginExists: Boolean(window.Capacitor?.Plugins?.GoogleAuth ?? Capacitor?.Plugins?.GoogleAuth),
+        });
 
         if (!GoogleAuth?.signIn) {
             throw createNativeGoogleLoginUnavailableError();
         }
 
         try {
+            console.info('[google-login] GoogleAuth.signIn start');
             const googleUser = await GoogleAuth.signIn();
             const idToken = extractGoogleIdToken(googleUser);
+
+            console.info('[google-login] GoogleAuth.signIn result', {
+                keys: googleUser && typeof googleUser === 'object' ? Object.keys(googleUser) : [],
+                hasIdToken: Boolean(idToken),
+            });
 
             if (!idToken) {
                 throw createNativeGoogleLoginUnavailableError();
@@ -81,6 +94,11 @@ export const signInWithGoogle = async () => {
             if (!user?.uid) return null;
             return user;
         } catch (error) {
+            console.warn('[google-login] native signIn failed', {
+                code: error?.code ?? null,
+                message: error?.message ?? String(error),
+            });
+
             if (error?.code === 'google-login/native-unavailable') {
                 throw error;
             }

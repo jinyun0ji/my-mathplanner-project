@@ -1,171 +1,70 @@
-diff --git a/package-lock.json b/package-lock.json
-index 472e8a7ee20d989d65a2b2c9d9a66cc526481307..00ac709de25788b76890fe5630b16254b26640bd 100644
---- a/package-lock.json
-+++ b/package-lock.json
-@@ -16,51 +16,52 @@
-         "@capacitor/keyboard": "^6.0.3",
-         "@capacitor/splash-screen": "^6.0.2",
-         "@capacitor/status-bar": "^6.0.2",
-         "@dnd-kit/core": "^6.3.1",
-         "@dnd-kit/sortable": "^10.0.0",
-         "@dnd-kit/utilities": "^3.2.2",
-         "@emotion/react": "^11.14.0",
-         "@emotion/styled": "^11.14.1",
-         "@mui/icons-material": "^7.3.6",
-         "@mui/material": "^7.3.6",
-         "@testing-library/dom": "^10.4.0",
-         "@testing-library/jest-dom": "^6.6.3",
-         "@testing-library/react": "^16.3.0",
-         "@testing-library/user-event": "^13.5.0",
-         "firebase": "^10.12.2",
-         "katex": "^0.16.28",
-         "lucide-react": "^0.561.0",
-         "react": "^19.1.0",
-         "react-dom": "^19.1.0",
-         "react-katex": "^3.1.0",
-         "react-router-dom": "^6.23.1",
-         "react-scripts": "5.0.1",
-         "react-to-print": "^3.3.0",
-         "react-youtube": "^10.1.0",
-         "tailwind-scrollbar-hide": "^4.0.0",
--        "web-vitals": "^2.1.4"
-+        "web-vitals": "^2.1.4",
-+        "@codetrix-studio/capacitor-google-auth": "3.4.0-rc.4"
-       },
-       "devDependencies": {
-         "@capacitor/cli": "^6.2.0",
-         "typescript": "^6.0.3"
-       }
-     },
-     "node_modules/@adobe/css-tools": {
-       "version": "4.4.3",
-       "resolved": "https://registry.npmjs.org/@adobe/css-tools/-/css-tools-4.4.3.tgz",
-       "integrity": "sha512-VQKMkwriZbaOgVCby1UDY/LDk5fIjhQicCvVPFqfe+69fWaPWydbWJ3wRt59/YzIwda1I81loas3oCoHxnqvdA=="
-     },
-     "node_modules/@alloc/quick-lru": {
-       "version": "5.2.0",
-       "resolved": "https://registry.npmjs.org/@alloc/quick-lru/-/quick-lru-5.2.0.tgz",
-       "integrity": "sha512-UrcABB+4bUrFABwbluTIBErXwvbsU/V7TZWfmbgJfbkwiBuziS9gxdODUyuiecfdGQ85jglMW6juS3+z5TsKLw==",
-       "engines": {
-         "node": ">=10"
-       },
-       "funding": {
-         "url": "https://github.com/sponsors/sindresorhus"
-       }
-     },
-     "node_modules/@ampproject/remapping": {
-       "version": "2.3.0",
-       "resolved": "https://registry.npmjs.org/@ampproject/remapping/-/remapping-2.3.0.tgz",
-@@ -18424,28 +18425,35 @@
-         "url": "https://github.com/sponsors/sindresorhus"
-       }
-     },
-     "node_modules/youtube-player": {
-       "version": "5.5.2",
-       "resolved": "https://registry.npmjs.org/youtube-player/-/youtube-player-5.5.2.tgz",
-       "integrity": "sha512-ZGtsemSpXnDky2AUYWgxjaopgB+shFHgXVpiJFeNB5nWEugpW1KWYDaHKuLqh2b67r24GtP6HoSW5swvf0fFIQ==",
-       "dependencies": {
-         "debug": "^2.6.6",
-         "load-script": "^1.0.0",
-         "sister": "^3.0.0"
-       }
-     },
-     "node_modules/youtube-player/node_modules/debug": {
-       "version": "2.6.9",
-       "resolved": "https://registry.npmjs.org/debug/-/debug-2.6.9.tgz",
-       "integrity": "sha512-bC7ElrdJaJnPbAP+1EotYvqZsb3ecl5wi6Bfi6BJTUcNowp6cvspg0jXznRTKDjm/E7AdgFBVeAPVMNcKGsHMA==",
-       "dependencies": {
-         "ms": "2.0.0"
-       }
-     },
-     "node_modules/youtube-player/node_modules/ms": {
-       "version": "2.0.0",
-       "resolved": "https://registry.npmjs.org/ms/-/ms-2.0.0.tgz",
-       "integrity": "sha512-Tpp60P6IUJDTuOq/5Z8cdskzJujfwqfOTkrwIwj7IRISpnkJnT6SyJ4PCPnGMoFjC9ddhal5KVIYtAt97ix05A=="
-+    },
-+    "node_modules/@codetrix-studio/capacitor-google-auth": {
-+      "version": "3.4.0-rc.4",
-+      "resolved": "https://registry.npmjs.org/@codetrix-studio/capacitor-google-auth/-/capacitor-google-auth-3.4.0-rc.4.tgz",
-+      "peerDependencies": {
-+        "@capacitor/core": "^6.0.0"
-+      }
+diff --git a/ios/App/App/AppDelegate.swift b/ios/App/App/AppDelegate.swift
+index c3cd83b5c0a62be3fc56a7909aedc70ccf6a92c0..b8b14cdf8b05ab20d7807da51c565f1232472185 100644
+--- a/ios/App/App/AppDelegate.swift
++++ b/ios/App/App/AppDelegate.swift
+@@ -1,35 +1,36 @@
+ import UIKit
+ import Capacitor
+ 
+ @UIApplicationMain
+ class AppDelegate: UIResponder, UIApplicationDelegate {
+ 
+     var window: UIWindow?
+ 
+     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
+-        // Override point for customization after application launch.
++        // Native Capacitor plugins that require explicit registration are registered in
++        // NativeYouTubeViewController.capacitorDidLoad(), where the CAPBridge is available.
+         return true
      }
-   }
+ 
+     func applicationWillResignActive(_ application: UIApplication) {
+         // Sent when the application is about to move from active to inactive state. This can occur for certain types of temporary interruptions (such as an incoming phone call or SMS message) or when the user quits the application and it begins the transition to the background state.
+         // Use this method to pause ongoing tasks, disable timers, and invalidate graphics rendering callbacks. Games should use this method to pause the game.
+     }
+ 
+     func applicationDidEnterBackground(_ application: UIApplication) {
+         // Use this method to release shared resources, save user data, invalidate timers, and store enough application state information to restore your application to its current state in case it is terminated later.
+         // If your application supports background execution, this method is called instead of applicationWillTerminate: when the user quits.
+     }
+ 
+     func applicationWillEnterForeground(_ application: UIApplication) {
+         // Called as part of the transition from the background to the active state; here you can undo many of the changes made on entering the background.
+     }
+ 
+     func applicationDidBecomeActive(_ application: UIApplication) {
+         // Restart any tasks that were paused (or not yet started) while the application was inactive. If the application was previously in the background, optionally refresh the user interface.
+     }
+ 
+     func applicationWillTerminate(_ application: UIApplication) {
+         // Called when the application is about to terminate. Save data if appropriate. See also applicationDidEnterBackground:.
+     }
+ 
+diff --git a/ios/App/App/NativeYouTubeViewController.swift b/ios/App/App/NativeYouTubeViewController.swift
+index ff47e4d0f16132475846fd6a738581c006ea1616..1bfdde6c58b783f8e70b74d9181e5c7b545d36f1 100644
+--- a/ios/App/App/NativeYouTubeViewController.swift
++++ b/ios/App/App/NativeYouTubeViewController.swift
+@@ -1,10 +1,13 @@
+ import Capacitor
++import CodetrixStudioCapacitorGoogleAuth
+ import UIKit
+ 
+ class NativeYouTubeViewController: CAPBridgeViewController {
+     override func capacitorDidLoad() {
+         super.capacitorDidLoad()
+         bridge?.registerPluginInstance(NativeYouTubePlugin())
++        bridge?.registerPluginInstance(GoogleAuth())
+         print("[NativeYouTubePlugin] registered")
++        print("[GoogleAuth] registered")
+     }
  }
-diff --git a/package.json b/package.json
-index 531ba4ec7a3c96466a656ef15e295506104b9e4a..62af127834b7995f9f188093cbb0ec61c516f523 100644
---- a/package.json
-+++ b/package.json
-@@ -11,51 +11,52 @@
-     "@capacitor/keyboard": "^6.0.3",
-     "@capacitor/splash-screen": "^6.0.2",
-     "@capacitor/status-bar": "^6.0.2",
-     "@dnd-kit/core": "^6.3.1",
-     "@dnd-kit/sortable": "^10.0.0",
-     "@dnd-kit/utilities": "^3.2.2",
-     "@emotion/react": "^11.14.0",
-     "@emotion/styled": "^11.14.1",
-     "@mui/icons-material": "^7.3.6",
-     "@mui/material": "^7.3.6",
-     "@testing-library/dom": "^10.4.0",
-     "@testing-library/jest-dom": "^6.6.3",
-     "@testing-library/react": "^16.3.0",
-     "@testing-library/user-event": "^13.5.0",
-     "firebase": "^10.12.2",
-     "katex": "^0.16.28",
-     "lucide-react": "^0.561.0",
-     "react": "^19.1.0",
-     "react-dom": "^19.1.0",
-     "react-katex": "^3.1.0",
-     "react-router-dom": "^6.23.1",
-     "react-scripts": "5.0.1",
-     "react-to-print": "^3.3.0",
-     "react-youtube": "^10.1.0",
-     "tailwind-scrollbar-hide": "^4.0.0",
--    "web-vitals": "^2.1.4"
-+    "web-vitals": "^2.1.4",
-+    "@codetrix-studio/capacitor-google-auth": "3.4.0-rc.4"
-   },
-   "scripts": {
-     "start": "react-scripts start",
-     "build": "react-scripts build",
-     "cap:init": "cap init \"채수용 수학\" com.chaesooyong.management --web-dir build",
-     "cap:sync": "cap sync",
-     "cap:android": "cap open android",
-     "cap:ios": "cap open ios",
-     "build:cap": "npm run build && cap sync",
-     "test": "react-scripts test",
-     "eject": "react-scripts eject",
-     "migrate:memos": "node functions/scripts/migrateStudentMemosToStaffMemos.js",
-     "migrate:homework-question-keys:dry": "node functions/scripts/migrateHomeworkResultQuestionNumbers.js",
-     "migrate:homework-question-keys:write": "node functions/scripts/migrateHomeworkResultQuestionNumbers.js --write",
-     "backfill:chat-parent-participants:dry": "node functions/scripts/backfillChatParticipantIdsForParents.js",
-     "backfill:chat-parent-participants:write": "node functions/scripts/backfillChatParticipantIdsForParents.js --write",
-     "backfill:chat-room-types:dry": "node functions/scripts/backfillChatRoomTypes.js",
-     "backfill:chat-room-types:write": "node functions/scripts/backfillChatRoomTypes.js --write",
-     "backfill:student-birth-year:dry": "node functions/scripts/backfillStudentBirthYearFromGrade.js",
-     "backfill:student-birth-year:write": "node functions/scripts/backfillStudentBirthYearFromGrade.js --write",
-     "backfill:class-test-stats:dry": "node functions/scripts/backfillClassTestStats.js",
-     "backfill:class-test-stats:write": "node functions/scripts/backfillClassTestStats.js --write",
-     "backfill:user-chat-rooms:dry": "node functions/scripts/backfillUserChatRooms.js",
-     "backfill:user-chat-rooms:write": "node functions/scripts/backfillUserChatRooms.js --write",
-     "backfill:chat-room-last-messages:dry": "node functions/scripts/backfillChatRoomLastMessages.js",
 diff --git a/src/auth/authService.js b/src/auth/authService.js
-index 1e5528d190e917a055779f9f0f7943390ec9029a..69e8e7b2871f661537d664736fac5123bd8bba97 100644
+index 69e8e7b2871f661537d664736fac5123bd8bba97..9e383c762ab9f1e7d53ae5f00670506dedab858a 100644
 --- a/src/auth/authService.js
 +++ b/src/auth/authService.js
-@@ -1,62 +1,118 @@
- // src/auth/authService.js
--import { Capacitor } from '@capacitor/core';
-+import { Capacitor, registerPlugin } from '@capacitor/core';
- import { signInWithEmailAndPassword, signOut } from 'firebase/auth';
- import { doc, getDoc } from 'firebase/firestore';
- import { auth, db } from '../firebase/client';
- 
- export const REVIEW_LOGIN_AUTH_INDEX_MISSING_MESSAGE = '심사용 계정 연결 정보가 없습니다. 관리자에게 문의해주세요.';
- export const REVIEW_LOGIN_PROFILE_MISSING_MESSAGE = '사용자 정보를 찾을 수 없습니다. 관리자에게 문의해주세요.';
+@@ -9,100 +9,118 @@ export const REVIEW_LOGIN_PROFILE_MISSING_MESSAGE = '사용자 정보를 찾을
  export const NATIVE_GOOGLE_LOGIN_UNAVAILABLE_MESSAGE = 'Google 로그인 연결에 실패했습니다. 다시 시도해주세요.';
-+export const GOOGLE_LOGIN_CANCELLED_MESSAGE = 'Google 로그인이 취소되었습니다.';
+ export const GOOGLE_LOGIN_CANCELLED_MESSAGE = 'Google 로그인이 취소되었습니다.';
  
  export const isNativePlatform = () => Capacitor.isNativePlatform();
  export const isGoogleLoginAvailable = () => true;
@@ -184,77 +83,89 @@ index 1e5528d190e917a055779f9f0f7943390ec9029a..69e8e7b2871f661537d664736fac5123
      createReviewLoginError(NATIVE_GOOGLE_LOGIN_UNAVAILABLE_MESSAGE, 'google-login/native-unavailable')
  );
  
-+const createGoogleLoginCancelledError = () => (
-+    createReviewLoginError(GOOGLE_LOGIN_CANCELLED_MESSAGE, 'google-login/cancelled')
-+);
+ const createGoogleLoginCancelledError = () => (
+     createReviewLoginError(GOOGLE_LOGIN_CANCELLED_MESSAGE, 'google-login/cancelled')
+ );
+ 
+ const resolveNativeGoogleAuthPlugin = async () => {
++    console.info('[google-login] GoogleAuth plugin exists before resolve', Boolean(window.Capacitor?.Plugins?.GoogleAuth ?? Capacitor?.Plugins?.GoogleAuth));
 +
-+const resolveNativeGoogleAuthPlugin = async () => {
-+    if (Capacitor?.Plugins?.GoogleAuth) {
-+        return Capacitor.Plugins.GoogleAuth;
-+    }
-+
-+    return registerPlugin('GoogleAuth');
-+};
-+
-+const extractGoogleIdToken = (googleUser) => (
-+    googleUser?.authentication?.idToken
-+    ?? googleUser?.idToken
-+    ?? googleUser?.serverAuthCode?.idToken
-+    ?? null
-+);
-+
-+const isGoogleLoginCancelError = (error) => {
-+    const code = String(error?.code ?? error?.error ?? '').toLowerCase();
-+    const message = String(error?.message ?? '').toLowerCase();
-+
-+    return code.includes('cancel')
-+        || code.includes('canceled')
-+        || message.includes('cancel')
-+        || message.includes('canceled')
-+        || message.includes('dismiss');
-+};
-+
+     if (Capacitor?.Plugins?.GoogleAuth) {
+         return Capacitor.Plugins.GoogleAuth;
+     }
+ 
+     return registerPlugin('GoogleAuth');
+ };
+ 
+ const extractGoogleIdToken = (googleUser) => (
+     googleUser?.authentication?.idToken
+     ?? googleUser?.idToken
+     ?? googleUser?.serverAuthCode?.idToken
+     ?? null
+ );
+ 
+ const isGoogleLoginCancelError = (error) => {
+     const code = String(error?.code ?? error?.error ?? '').toLowerCase();
+     const message = String(error?.message ?? '').toLowerCase();
+ 
+     return code.includes('cancel')
+         || code.includes('canceled')
+         || message.includes('cancel')
+         || message.includes('canceled')
+         || message.includes('dismiss');
+ };
+ 
  export const signInWithGoogle = async () => {
--    const { GoogleAuthProvider, signInWithPopup } = await import('firebase/auth');
-+    const { GoogleAuthProvider, signInWithCredential, signInWithPopup } = await import('firebase/auth');
+     const { GoogleAuthProvider, signInWithCredential, signInWithPopup } = await import('firebase/auth');
      const provider = new GoogleAuthProvider();
  
      if (isNativePlatform()) {
--        // TODO: Capacitor iOS WebView에서 Firebase Web signInWithRedirect는
--        // 연결이 끊기거나 앱이 멈출 수 있다. @capacitor/browser + App URL
--        // listener 기반 OAuth 콜백 또는 Firebase native auth 플러그인을 설치한
--        // 뒤 native/browser flow에서 Firebase credential로 로그인하도록 연결한다.
--        throw createNativeGoogleLoginUnavailableError();
-+        const GoogleAuth = await resolveNativeGoogleAuthPlugin();
+         const GoogleAuth = await resolveNativeGoogleAuthPlugin();
++        console.info('[google-login] GoogleAuth plugin resolved', {
++            exists: Boolean(GoogleAuth),
++            hasSignIn: typeof GoogleAuth?.signIn === 'function',
++            bridgePluginExists: Boolean(window.Capacitor?.Plugins?.GoogleAuth ?? Capacitor?.Plugins?.GoogleAuth),
++        });
+ 
+         if (!GoogleAuth?.signIn) {
+             throw createNativeGoogleLoginUnavailableError();
+         }
+ 
+         try {
++            console.info('[google-login] GoogleAuth.signIn start');
+             const googleUser = await GoogleAuth.signIn();
+             const idToken = extractGoogleIdToken(googleUser);
+ 
++            console.info('[google-login] GoogleAuth.signIn result', {
++                keys: googleUser && typeof googleUser === 'object' ? Object.keys(googleUser) : [],
++                hasIdToken: Boolean(idToken),
++            });
 +
-+        if (!GoogleAuth?.signIn) {
-+            throw createNativeGoogleLoginUnavailableError();
-+        }
+             if (!idToken) {
+                 throw createNativeGoogleLoginUnavailableError();
+             }
+ 
+             const credential = GoogleAuthProvider.credential(idToken);
+             const { user } = await signInWithCredential(auth, credential);
+ 
+             if (!user?.uid) return null;
+             return user;
+         } catch (error) {
++            console.warn('[google-login] native signIn failed', {
++                code: error?.code ?? null,
++                message: error?.message ?? String(error),
++            });
 +
-+        try {
-+            const googleUser = await GoogleAuth.signIn();
-+            const idToken = extractGoogleIdToken(googleUser);
-+
-+            if (!idToken) {
-+                throw createNativeGoogleLoginUnavailableError();
-+            }
-+
-+            const credential = GoogleAuthProvider.credential(idToken);
-+            const { user } = await signInWithCredential(auth, credential);
-+
-+            if (!user?.uid) return null;
-+            return user;
-+        } catch (error) {
-+            if (error?.code === 'google-login/native-unavailable') {
-+                throw error;
-+            }
-+
-+            if (isGoogleLoginCancelError(error)) {
-+                throw createGoogleLoginCancelledError();
-+            }
-+
-+            throw createNativeGoogleLoginUnavailableError();
-+        }
+             if (error?.code === 'google-login/native-unavailable') {
+                 throw error;
+             }
+ 
+             if (isGoogleLoginCancelError(error)) {
+                 throw createGoogleLoginCancelledError();
+             }
+ 
+             throw createNativeGoogleLoginUnavailableError();
+         }
      }
  
      const { user } = await signInWithPopup(auth, provider);
@@ -270,28 +181,12 @@ index 1e5528d190e917a055779f9f0f7943390ec9029a..69e8e7b2871f661537d664736fac5123
      logEmailLoginDebug('[email-login] start', { email: normalizedEmail });
  
      try {
-         const { user } = await signInWithEmailAndPassword(auth, normalizedEmail, password);
-         signedInUser = user;
- 
-         logEmailLoginDebug('[email-login] auth success', {
-             uid: user?.uid ?? null,
-             email: user?.email ?? normalizedEmail,
-         });
- 
-         if (!user?.uid) return null;
- 
 diff --git a/src/capacitorApp.js b/src/capacitorApp.js
-index fbbbf7521b5eb5e4dee9ac94c8acfc99122e7aa0..6ee8a2052b80fc54a99aef84f0583dbf4598ab35 100644
+index 6ee8a2052b80fc54a99aef84f0583dbf4598ab35..02f22b38ab20eaa4d53c7f6681eea54607d22195 100644
 --- a/src/capacitorApp.js
 +++ b/src/capacitorApp.js
-@@ -1,74 +1,110 @@
-+import { registerPlugin } from '@capacitor/core';
-+
- const getCapacitorBridge = () => window.Capacitor;
- 
- const isDevelopment = process.env.NODE_ENV === 'development';
-+const googleClientId = '197602408828-ioltf61rci7tmctb733gsse6gddsilcu.apps.googleusercontent.com';
-+let googleAuthInitializePromise = null;
+@@ -7,69 +7,84 @@ const googleClientId = '197602408828-ioltf61rci7tmctb733gsse6gddsilcu.apps.googl
+ let googleAuthInitializePromise = null;
  
  const setKeyboardHeight = (height = 0) => {
    document.documentElement.style.setProperty('--app-keyboard-height', `${Math.max(0, Number(height) || 0)}px`);
@@ -315,37 +210,58 @@ index fbbbf7521b5eb5e4dee9ac94c8acfc99122e7aa0..6ee8a2052b80fc54a99aef84f0583dbf
    }
  };
  
-+const resolveGoogleAuthPlugin = async (capacitor) => {
-+  if (capacitor?.Plugins?.GoogleAuth) {
-+    return capacitor.Plugins.GoogleAuth;
-+  }
+ const resolveGoogleAuthPlugin = async (capacitor) => {
++  console.info('[capacitor] window.Capacitor.Plugins.GoogleAuth exists before resolve', Boolean(window.Capacitor?.Plugins?.GoogleAuth));
 +
-+  return registerPlugin('GoogleAuth');
-+};
-+
-+const initializeGoogleAuth = (capacitor) => {
-+  if (!googleAuthInitializePromise) {
-+    googleAuthInitializePromise = resolveGoogleAuthPlugin(capacitor).then((GoogleAuth) => {
-+      if (!GoogleAuth?.initialize) {
-+        return;
-+      }
-+
-+      return GoogleAuth.initialize({
-+        clientId: googleClientId,
-+        scopes: ['profile', 'email'],
-+        grantOfflineAccess: false,
+   if (capacitor?.Plugins?.GoogleAuth) {
+     return capacitor.Plugins.GoogleAuth;
+   }
+ 
+   return registerPlugin('GoogleAuth');
+ };
+ 
+ const initializeGoogleAuth = (capacitor) => {
+   if (!googleAuthInitializePromise) {
+-    googleAuthInitializePromise = resolveGoogleAuthPlugin(capacitor).then((GoogleAuth) => {
++    googleAuthInitializePromise = resolveGoogleAuthPlugin(capacitor).then(async (GoogleAuth) => {
++      console.info('[capacitor] GoogleAuth plugin resolved', {
++        exists: Boolean(GoogleAuth),
++        hasInitialize: typeof GoogleAuth?.initialize === 'function',
++        bridgePluginExists: Boolean(window.Capacitor?.Plugins?.GoogleAuth),
 +      });
-+    }).catch((error) => {
-+      googleAuthInitializePromise = null;
-+      if (isDevelopment) {
-+        console.warn('[capacitor] GoogleAuth initialize failed', error);
++
+       if (!GoogleAuth?.initialize) {
++        console.warn('[capacitor] GoogleAuth initialize skipped: initialize method is unavailable');
+         return;
+       }
+ 
+-      return GoogleAuth.initialize({
+-        clientId: googleClientId,
+-        scopes: ['profile', 'email'],
+-        grantOfflineAccess: false,
+-      });
++      try {
++        await GoogleAuth.initialize({
++          clientId: googleClientId,
++          scopes: ['profile', 'email'],
++          grantOfflineAccess: false,
++        });
++        console.info('[capacitor] GoogleAuth initialize succeeded');
++      } catch (error) {
++        console.warn('[capacitor] GoogleAuth initialize call failed', error);
++        throw error;
 +      }
-+    });
-+  }
-+
-+  return googleAuthInitializePromise;
-+};
-+
+     }).catch((error) => {
+       googleAuthInitializePromise = null;
+       if (isDevelopment) {
+         console.warn('[capacitor] GoogleAuth initialize failed', error);
+       }
+     });
+   }
+ 
+   return googleAuthInitializePromise;
+ };
+ 
  export function setupCapacitorApp() {
    const capacitor = getCapacitorBridge();
  
@@ -360,40 +276,3 @@ index fbbbf7521b5eb5e4dee9ac94c8acfc99122e7aa0..6ee8a2052b80fc54a99aef84f0583dbf
    window.visualViewport?.addEventListener?.('resize', syncVisualViewportHeight);
    window.visualViewport?.addEventListener?.('scroll', syncVisualViewportHeight);
    window.addEventListener('resize', syncVisualViewportHeight);
- 
-   if (isDevelopment) {
-     console.log('[capacitor] native class applied');
-     requestAnimationFrame(() => {
-       const safeTopValue = getComputedStyle(document.documentElement).getPropertyValue('--app-safe-top').trim();
-       console.log('[capacitor] safeTop value', safeTopValue || '0px');
-     });
-   }
- 
-   const { App, Keyboard, SplashScreen, StatusBar } = capacitor.Plugins ?? {};
- 
-   if (capacitor.getPlatform?.() === 'ios') {
-     callPluginMethod(StatusBar, 'setOverlaysWebView', { overlay: false });
-     callPluginMethod(StatusBar, 'setStyle', { style: 'DEFAULT' });
-+    initializeGoogleAuth(capacitor);
-   }
-   callPluginMethod(SplashScreen, 'hide');
-   callPluginMethod(Keyboard, 'setResizeMode', { mode: 'body' });
-   const handleKeyboardShow = (event) => {
-     setKeyboardHeight(event?.keyboardHeight || 0);
-     syncVisualViewportHeight();
-   };
-   const handleKeyboardHide = () => {
-     setKeyboardHeight(0);
-     syncVisualViewportHeight();
-   };
-   Keyboard?.addListener?.('keyboardWillShow', handleKeyboardShow);
-   Keyboard?.addListener?.('keyboardDidShow', handleKeyboardShow);
-   Keyboard?.addListener?.('keyboardWillHide', handleKeyboardHide);
-   Keyboard?.addListener?.('keyboardDidHide', handleKeyboardHide);
- 
-   App?.addListener?.('resume', () => {
-     window.dispatchEvent(new Event('capacitor:resume'));
-   });
--}
-\ No newline at end of file
-+}

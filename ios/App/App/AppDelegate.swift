@@ -7,7 +7,8 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     var window: UIWindow?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        // Override point for customization after application launch.
+        // Native Capacitor plugins that require explicit registration are registered in
+        // NativeYouTubeViewController.capacitorDidLoad(), where the CAPBridge is available.
         return true
     }
 

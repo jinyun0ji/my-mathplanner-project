@@ -29,6 +29,8 @@ const callPluginMethod = async (plugin, method, options) => {
 };
 
 const resolveGoogleAuthPlugin = async (capacitor) => {
+  console.info('[capacitor] window.Capacitor.Plugins.GoogleAuth exists before resolve', Boolean(window.Capacitor?.Plugins?.GoogleAuth));
+
   if (capacitor?.Plugins?.GoogleAuth) {
     return capacitor.Plugins.GoogleAuth;
   }
@@ -38,16 +40,29 @@ const resolveGoogleAuthPlugin = async (capacitor) => {
 
 const initializeGoogleAuth = (capacitor) => {
   if (!googleAuthInitializePromise) {
-    googleAuthInitializePromise = resolveGoogleAuthPlugin(capacitor).then((GoogleAuth) => {
+    googleAuthInitializePromise = resolveGoogleAuthPlugin(capacitor).then(async (GoogleAuth) => {
+      console.info('[capacitor] GoogleAuth plugin resolved', {
+        exists: Boolean(GoogleAuth),
+        hasInitialize: typeof GoogleAuth?.initialize === 'function',
+        bridgePluginExists: Boolean(window.Capacitor?.Plugins?.GoogleAuth),
+      });
+
       if (!GoogleAuth?.initialize) {
+        console.warn('[capacitor] GoogleAuth initialize skipped: initialize method is unavailable');
         return;
       }
 
-      return GoogleAuth.initialize({
-        clientId: googleClientId,
-        scopes: ['profile', 'email'],
-        grantOfflineAccess: false,
-      });
+      try {
+        await GoogleAuth.initialize({
+          clientId: googleClientId,
+          scopes: ['profile', 'email'],
+          grantOfflineAccess: false,
+        });
+        console.info('[capacitor] GoogleAuth initialize succeeded');
+      } catch (error) {
+        console.warn('[capacitor] GoogleAuth initialize call failed', error);
+        throw error;
+      }
     }).catch((error) => {
       googleAuthInitializePromise = null;
       if (isDevelopment) {
