@@ -1,10 +1,6 @@
-import { registerPlugin } from '@capacitor/core';
-
 const getCapacitorBridge = () => window.Capacitor;
 
 const isDevelopment = process.env.NODE_ENV === 'development';
-const googleClientId = '197602408828-ioltf61rci7tmctb733gsse6gddsilcu.apps.googleusercontent.com';
-let googleAuthInitializePromise = null;
 
 const setKeyboardHeight = (height = 0) => {
   document.documentElement.style.setProperty('--app-keyboard-height', `${Math.max(0, Number(height) || 0)}px`);
@@ -28,51 +24,6 @@ const callPluginMethod = async (plugin, method, options) => {
   }
 };
 
-const resolveGoogleAuthPlugin = async (capacitor) => {
-  console.info('[capacitor] window.Capacitor.Plugins.GoogleAuth exists before resolve', Boolean(window.Capacitor?.Plugins?.GoogleAuth));
-
-  if (capacitor?.Plugins?.GoogleAuth) {
-    return capacitor.Plugins.GoogleAuth;
-  }
-
-  return registerPlugin('GoogleAuth');
-};
-
-const initializeGoogleAuth = (capacitor) => {
-  if (!googleAuthInitializePromise) {
-    googleAuthInitializePromise = resolveGoogleAuthPlugin(capacitor).then(async (GoogleAuth) => {
-      console.info('[capacitor] GoogleAuth plugin resolved', {
-        exists: Boolean(GoogleAuth),
-        hasInitialize: typeof GoogleAuth?.initialize === 'function',
-        bridgePluginExists: Boolean(window.Capacitor?.Plugins?.GoogleAuth),
-      });
-
-      if (!GoogleAuth?.initialize) {
-        console.warn('[capacitor] GoogleAuth initialize skipped: initialize method is unavailable');
-        return;
-      }
-
-      try {
-        await GoogleAuth.initialize({
-          clientId: googleClientId,
-          scopes: ['profile', 'email'],
-          grantOfflineAccess: false,
-        });
-        console.info('[capacitor] GoogleAuth initialize succeeded');
-      } catch (error) {
-        console.warn('[capacitor] GoogleAuth initialize call failed', error);
-        throw error;
-      }
-    }).catch((error) => {
-      googleAuthInitializePromise = null;
-      if (isDevelopment) {
-        console.warn('[capacitor] GoogleAuth initialize failed', error);
-      }
-    });
-  }
-
-  return googleAuthInitializePromise;
-};
 
 export function setupCapacitorApp() {
   const capacitor = getCapacitorBridge();
@@ -102,7 +53,6 @@ export function setupCapacitorApp() {
   if (capacitor.getPlatform?.() === 'ios') {
     callPluginMethod(StatusBar, 'setOverlaysWebView', { overlay: false });
     callPluginMethod(StatusBar, 'setStyle', { style: 'DEFAULT' });
-    initializeGoogleAuth(capacitor);
   }
   callPluginMethod(SplashScreen, 'hide');
   callPluginMethod(Keyboard, 'setResizeMode', { mode: 'body' });

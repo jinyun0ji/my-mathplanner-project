@@ -2,6 +2,13 @@ import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { storage } from '../firebase/client';
 
 export const CHAT_ATTACHMENT_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+const ATTACHMENT_TYPES_BY_EXTENSION = {
+    jpg: { mime: 'image/jpeg', type: 'image' },
+    jpeg: { mime: 'image/jpeg', type: 'image' },
+    png: { mime: 'image/png', type: 'image' },
+    webp: { mime: 'image/webp', type: 'image' },
+    pdf: { mime: 'application/pdf', type: 'pdf' },
+};
 const IMAGE_MAX_BYTES = 5 * 1024 * 1024;
 const PDF_MAX_BYTES = 10 * 1024 * 1024;
 
@@ -11,17 +18,22 @@ export const formatAttachmentSize = (size = 0) => {
     return `${size}B`;
 };
 
-export const getAttachmentType = (file) => {
-    if (['image/jpeg', 'image/png', 'image/webp'].includes(file?.type)) return 'image';
-    if (file?.type === 'application/pdf') return 'pdf';
-    return '';
+const getAttachmentInfo = (file) => {
+    const mimeType = String(file?.type || '').toLowerCase();
+    if (['image/jpeg', 'image/png', 'image/webp'].includes(mimeType)) return { type: 'image', mime: mimeType };
+    if (mimeType === 'application/pdf') return { type: 'pdf', mime: mimeType };
+
+    const extension = String(file?.name || '').split('.').pop()?.toLowerCase() || '';
+    return ATTACHMENT_TYPES_BY_EXTENSION[extension] || { type: '', mime: '' };
 };
+
+export const getAttachmentType = (file) => getAttachmentInfo(file).type;
 
 export const validateChatAttachment = (file) => {
     if (!file) return { ok: false, message: '파일을 선택해주세요.' };
     if (String(file.type || '').startsWith('video/')) return { ok: false, message: '동영상은 첨부할 수 없습니다.' };
-    const type = getAttachmentType(file);
-    if (!type || !CHAT_ATTACHMENT_TYPES.includes(file.type)) return { ok: false, message: '이미지(JPG/PNG/WebP) 또는 PDF만 첨부할 수 있습니다.' };
+    const { type } = getAttachmentInfo(file);
+    if (!type) return { ok: false, message: '이미지(JPG/PNG/WebP) 또는 PDF만 첨부할 수 있습니다.' };
     if (type === 'image' && file.size > IMAGE_MAX_BYTES) return { ok: false, message: '이미지 용량은 5MB 이하만 가능합니다.' };
     if (type === 'pdf' && file.size > PDF_MAX_BYTES) return { ok: false, message: 'PDF 용량은 10MB 이하만 가능합니다.' };
     return { ok: true, type };
@@ -37,14 +49,16 @@ export const uploadChatAttachment = async ({ roomId, messageId, file, uploaderUi
     const validation = validateChatAttachment(file);
     if (!validation.ok) throw new Error(validation.message);
     const safeName = safeAttachmentFileName(file.name);
+    const attachmentInfo = getAttachmentInfo(file);
+    const contentType = file.type || attachmentInfo.mime || 'application/octet-stream';
     const path = `chat-attachments/${roomId}/${messageId}-${safeName}`;
     const fileRef = ref(storage, path);
     await uploadBytes(fileRef, file, {
-        contentType: file.type,
+        contentType,
         customMetadata: {
             roomId: String(roomId || ''),
             uploaderUid: String(uploaderUid || ''),
-            contentType: String(file.type || ''),
+            contentType: String(contentType || ''),
             originalName: String(file.name || ''),
         },
     });
@@ -55,6 +69,6 @@ export const uploadChatAttachment = async ({ roomId, messageId, file, uploaderUi
         url,
         path,
         size: file.size,
-        contentType: file.type,
+        contentType,
     };
 };

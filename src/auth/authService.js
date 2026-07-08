@@ -31,21 +31,16 @@ const createGoogleLoginCancelledError = () => (
 );
 
 const resolveNativeGoogleAuthPlugin = async () => {
-    console.info('[google-login] GoogleAuth plugin exists before resolve', Boolean(window.Capacitor?.Plugins?.GoogleAuth ?? Capacitor?.Plugins?.GoogleAuth));
-
-    if (Capacitor?.Plugins?.GoogleAuth) {
-        return Capacitor.Plugins.GoogleAuth;
+    if (Capacitor?.Plugins?.NativeGoogleAuth) {
+        return Capacitor.Plugins.NativeGoogleAuth;
     }
 
-    return registerPlugin('GoogleAuth');
+    return registerPlugin('NativeGoogleAuth');
 };
 
-const extractGoogleIdToken = (googleUser) => (
-    googleUser?.authentication?.idToken
-    ?? googleUser?.idToken
-    ?? googleUser?.serverAuthCode?.idToken
-    ?? null
-);
+const extractGoogleIdToken = (googleUser) => googleUser?.idToken ?? null;
+
+const extractGoogleAccessToken = (googleUser) => googleUser?.accessToken ?? null;
 
 const isGoogleLoginCancelError = (error) => {
     const code = String(error?.code ?? error?.error ?? '').toLowerCase();
@@ -63,24 +58,19 @@ export const signInWithGoogle = async () => {
     const provider = new GoogleAuthProvider();
 
     if (isNativePlatform()) {
-        const GoogleAuth = await resolveNativeGoogleAuthPlugin();
-        console.info('[google-login] GoogleAuth plugin resolved', {
-            exists: Boolean(GoogleAuth),
-            hasSignIn: typeof GoogleAuth?.signIn === 'function',
-            bridgePluginExists: Boolean(window.Capacitor?.Plugins?.GoogleAuth ?? Capacitor?.Plugins?.GoogleAuth),
-        });
+        const NativeGoogleAuth = await resolveNativeGoogleAuthPlugin();
 
-        if (!GoogleAuth?.signIn) {
+        if (!NativeGoogleAuth?.signIn) {
             throw createNativeGoogleLoginUnavailableError();
         }
 
         try {
-            console.info('[google-login] GoogleAuth.signIn start');
-            const googleUser = await GoogleAuth.signIn();
+            console.info('[google-login] native signIn start');
+            const googleUser = await NativeGoogleAuth.signIn();
             const idToken = extractGoogleIdToken(googleUser);
+            const accessToken = extractGoogleAccessToken(googleUser);
 
-            console.info('[google-login] GoogleAuth.signIn result', {
-                keys: googleUser && typeof googleUser === 'object' ? Object.keys(googleUser) : [],
+            console.info('[google-login] native signIn success', {
                 hasIdToken: Boolean(idToken),
             });
 
@@ -88,7 +78,7 @@ export const signInWithGoogle = async () => {
                 throw createNativeGoogleLoginUnavailableError();
             }
 
-            const credential = GoogleAuthProvider.credential(idToken);
+            const credential = GoogleAuthProvider.credential(idToken, accessToken || undefined);
             const { user } = await signInWithCredential(auth, credential);
 
             if (!user?.uid) return null;

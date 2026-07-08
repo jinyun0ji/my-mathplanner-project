@@ -22,14 +22,8 @@ import { markChatRoomNotificationsRead } from '../notifications/notificationRead
 // render video cards in-room, and play them in an internal iframe modal.
 const CANDIDATE_ROOM_IDS = (studentId) => [String(studentId || '')].filter(Boolean);
 
-const isNativeIosApp = () => {
-    const capacitor = window.Capacitor;
-    return Boolean(capacitor?.isNativePlatform?.() && capacitor?.getPlatform?.() === 'ios');
-};
 
 const CHAT_ATTACHMENT_ACCEPT = '.jpg,.jpeg,.png,.webp,.pdf';
-const NATIVE_IOS_CHAT_ATTACHMENT_ACCEPT = 'application/pdf,.pdf';
-const NATIVE_IOS_ATTACHMENT_NOTICE = '앱에서는 현재 안전한 파일(PDF) 선택만 지원합니다. 사진 촬영은 임시로 제한됩니다.';
 
 const uniqueStrings = (values) => Array.from(new Set(
     values.flat(Infinity).filter((value) => typeof value === 'string' && value.trim()).map((value) => value.trim())
@@ -570,21 +564,10 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
         setAttachmentFile(null);
     };
 
-    const handleAttachmentButtonClick = () => {
-        if (isNativeIosApp()) {
-            setError(NATIVE_IOS_ATTACHMENT_NOTICE);
-        }
-    };
-
     const handleAttachmentChange = (event) => {
         const file = event.target.files?.[0] || null;
         event.target.value = '';
         if (!file) return;
-        if (isNativeIosApp() && file.type !== 'application/pdf') {
-            setError(NATIVE_IOS_ATTACHMENT_NOTICE);
-            clearAttachment();
-            return;
-        }
         const validation = validateChatAttachment(file);
         if (!validation.ok) {
             setError(validation.message);
@@ -602,12 +585,10 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
         const text = inputText.trim();
         const fileToUpload = attachmentFile;
         if (!text && !fileToUpload) return;
-        if (fileToUpload) {
-            const validation = validateChatAttachment(fileToUpload);
-            if (!validation.ok) {
-                setError(validation.message);
-                return;
-            }
+        const fileValidation = fileToUpload ? validateChatAttachment(fileToUpload) : null;
+        if (fileValidation && !fileValidation.ok) {
+            setError(fileValidation.message);
+            return;
         }
         setIsSending(true);
 
@@ -640,9 +621,9 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
             id: clientTempId,
             roomId: resolvedRoomId,
             text,
-            messageType: fileToUpload ? (fileToUpload.type === 'application/pdf' ? 'file' : 'image') : 'text',
+            messageType: fileToUpload ? (fileValidation.type === 'pdf' ? 'file' : 'image') : 'text',
             attachments: fileToUpload ? [{
-                type: fileToUpload.type === 'application/pdf' ? 'pdf' : 'image',
+                type: fileValidation.type === 'pdf' ? 'pdf' : 'image',
                 name: fileToUpload.name,
                 url: attachmentPreviewUrl,
                 path: '',
@@ -866,9 +847,9 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
                 </div>
             )}
             <form onSubmit={handleSend} className="shrink-0 p-3 mobile-keyboard-input-bar bg-white border-t border-gray-100 flex gap-2">
-                <label onClick={handleAttachmentButtonClick} className="px-3 py-2 rounded-full border border-gray-200 bg-white text-sm cursor-pointer">
+                <label className="px-3 py-2 rounded-full border border-gray-200 bg-white text-sm cursor-pointer">
                     첨부
-                    <input type="file" accept={isNativeIosApp() ? NATIVE_IOS_CHAT_ATTACHMENT_ACCEPT : CHAT_ATTACHMENT_ACCEPT} data-camera-disabled="true" onChange={handleAttachmentChange} className="hidden" />
+                    <input type="file" accept={CHAT_ATTACHMENT_ACCEPT} onChange={handleAttachmentChange} className="hidden" />
                 </label>
                 <input
                     type="text"
