@@ -1,5 +1,5 @@
 // src/auth/authService.js
-import { Capacitor } from '@capacitor/core';
+import { Capacitor, registerPlugin } from '@capacitor/core';
 import { signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../firebase/client';
@@ -7,6 +7,7 @@ import { auth, db } from '../firebase/client';
 export const REVIEW_LOGIN_AUTH_INDEX_MISSING_MESSAGE = '심사용 계정 연결 정보가 없습니다. 관리자에게 문의해주세요.';
 export const REVIEW_LOGIN_PROFILE_MISSING_MESSAGE = '사용자 정보를 찾을 수 없습니다. 관리자에게 문의해주세요.';
 export const NATIVE_GOOGLE_LOGIN_UNAVAILABLE_MESSAGE = 'Google 로그인 연결에 실패했습니다. 다시 시도해주세요.';
+export const GOOGLE_LOGIN_CANCELLED_MESSAGE = 'Google 로그인이 취소되었습니다.';
 
 export const isNativePlatform = () => Capacitor.isNativePlatform();
 export const isGoogleLoginAvailable = () => true;
@@ -25,16 +26,71 @@ export const createNativeGoogleLoginUnavailableError = () => (
     createReviewLoginError(NATIVE_GOOGLE_LOGIN_UNAVAILABLE_MESSAGE, 'google-login/native-unavailable')
 );
 
+const createGoogleLoginCancelledError = () => (
+    createReviewLoginError(GOOGLE_LOGIN_CANCELLED_MESSAGE, 'google-login/cancelled')
+);
+
+const resolveNativeGoogleAuthPlugin = async () => {
+    if (Capacitor?.Plugins?.GoogleAuth) {
+        return Capacitor.Plugins.GoogleAuth;
+    }
+
+    return registerPlugin('GoogleAuth');
+};
+
+const extractGoogleIdToken = (googleUser) => (
+    googleUser?.authentication?.idToken
+    ?? googleUser?.idToken
+    ?? googleUser?.serverAuthCode?.idToken
+    ?? null
+);
+
+const isGoogleLoginCancelError = (error) => {
+    const code = String(error?.code ?? error?.error ?? '').toLowerCase();
+    const message = String(error?.message ?? '').toLowerCase();
+
+    return code.includes('cancel')
+        || code.includes('canceled')
+        || message.includes('cancel')
+        || message.includes('canceled')
+        || message.includes('dismiss');
+};
+
 export const signInWithGoogle = async () => {
-    const { GoogleAuthProvider, signInWithPopup } = await import('firebase/auth');
+    const { GoogleAuthProvider, signInWithCredential, signInWithPopup } = await import('firebase/auth');
     const provider = new GoogleAuthProvider();
 
     if (isNativePlatform()) {
-        // TODO: Capacitor iOS WebView에서 Firebase Web signInWithRedirect는
-        // 연결이 끊기거나 앱이 멈출 수 있다. @capacitor/browser + App URL
-        // listener 기반 OAuth 콜백 또는 Firebase native auth 플러그인을 설치한
-        // 뒤 native/browser flow에서 Firebase credential로 로그인하도록 연결한다.
-        throw createNativeGoogleLoginUnavailableError();
+        const GoogleAuth = await resolveNativeGoogleAuthPlugin();
+
+        if (!GoogleAuth?.signIn) {
+            throw createNativeGoogleLoginUnavailableError();
+        }
+
+        try {
+            const googleUser = await GoogleAuth.signIn();
+            const idToken = extractGoogleIdToken(googleUser);
+
+            if (!idToken) {
+                throw createNativeGoogleLoginUnavailableError();
+            }
+
+            const credential = GoogleAuthProvider.credential(idToken);
+            const { user } = await signInWithCredential(auth, credential);
+
+            if (!user?.uid) return null;
+            return user;
+        } catch (error) {
+            if (error?.code === 'google-login/native-unavailable') {
+                throw error;
+            }
+
+            if (isGoogleLoginCancelError(error)) {
+                throw createGoogleLoginCancelledError();
+            }
+
+            throw createNativeGoogleLoginUnavailableError();
+        }
     }
 
     const { user } = await signInWithPopup(auth, provider);

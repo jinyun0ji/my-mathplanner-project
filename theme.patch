@@ -1,564 +1,399 @@
-diff --git a/src/components/StudentMessenger.jsx b/src/components/StudentMessenger.jsx
-index 84ea596a549e718fac8fa27fb2aef7b0a9db9430..376598a5c4f9c7710c02cef5392c1bdb8fefc7d2 100644
---- a/src/components/StudentMessenger.jsx
-+++ b/src/components/StudentMessenger.jsx
-@@ -1,49 +1,58 @@
- import React, { useState, useEffect, useMemo, useRef } from 'react';
- import {
-     collection,
-     doc,
-     getDoc,
-     getDocs,
-     query,
-     serverTimestamp,
-     where,
- } from 'firebase/firestore';
+diff --git a/package-lock.json b/package-lock.json
+index 472e8a7ee20d989d65a2b2c9d9a66cc526481307..00ac709de25788b76890fe5630b16254b26640bd 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -16,51 +16,52 @@
+         "@capacitor/keyboard": "^6.0.3",
+         "@capacitor/splash-screen": "^6.0.2",
+         "@capacitor/status-bar": "^6.0.2",
+         "@dnd-kit/core": "^6.3.1",
+         "@dnd-kit/sortable": "^10.0.0",
+         "@dnd-kit/utilities": "^3.2.2",
+         "@emotion/react": "^11.14.0",
+         "@emotion/styled": "^11.14.1",
+         "@mui/icons-material": "^7.3.6",
+         "@mui/material": "^7.3.6",
+         "@testing-library/dom": "^10.4.0",
+         "@testing-library/jest-dom": "^6.6.3",
+         "@testing-library/react": "^16.3.0",
+         "@testing-library/user-event": "^13.5.0",
+         "firebase": "^10.12.2",
+         "katex": "^0.16.28",
+         "lucide-react": "^0.561.0",
+         "react": "^19.1.0",
+         "react-dom": "^19.1.0",
+         "react-katex": "^3.1.0",
+         "react-router-dom": "^6.23.1",
+         "react-scripts": "5.0.1",
+         "react-to-print": "^3.3.0",
+         "react-youtube": "^10.1.0",
+         "tailwind-scrollbar-hide": "^4.0.0",
+-        "web-vitals": "^2.1.4"
++        "web-vitals": "^2.1.4",
++        "@codetrix-studio/capacitor-google-auth": "3.4.0-rc.4"
+       },
+       "devDependencies": {
+         "@capacitor/cli": "^6.2.0",
+         "typescript": "^6.0.3"
+       }
+     },
+     "node_modules/@adobe/css-tools": {
+       "version": "4.4.3",
+       "resolved": "https://registry.npmjs.org/@adobe/css-tools/-/css-tools-4.4.3.tgz",
+       "integrity": "sha512-VQKMkwriZbaOgVCby1UDY/LDk5fIjhQicCvVPFqfe+69fWaPWydbWJ3wRt59/YzIwda1I81loas3oCoHxnqvdA=="
+     },
+     "node_modules/@alloc/quick-lru": {
+       "version": "5.2.0",
+       "resolved": "https://registry.npmjs.org/@alloc/quick-lru/-/quick-lru-5.2.0.tgz",
+       "integrity": "sha512-UrcABB+4bUrFABwbluTIBErXwvbsU/V7TZWfmbgJfbkwiBuziS9gxdODUyuiecfdGQ85jglMW6juS3+z5TsKLw==",
+       "engines": {
+         "node": ">=10"
+       },
+       "funding": {
+         "url": "https://github.com/sponsors/sindresorhus"
+       }
+     },
+     "node_modules/@ampproject/remapping": {
+       "version": "2.3.0",
+       "resolved": "https://registry.npmjs.org/@ampproject/remapping/-/remapping-2.3.0.tgz",
+@@ -18424,28 +18425,35 @@
+         "url": "https://github.com/sponsors/sindresorhus"
+       }
+     },
+     "node_modules/youtube-player": {
+       "version": "5.5.2",
+       "resolved": "https://registry.npmjs.org/youtube-player/-/youtube-player-5.5.2.tgz",
+       "integrity": "sha512-ZGtsemSpXnDky2AUYWgxjaopgB+shFHgXVpiJFeNB5nWEugpW1KWYDaHKuLqh2b67r24GtP6HoSW5swvf0fFIQ==",
+       "dependencies": {
+         "debug": "^2.6.6",
+         "load-script": "^1.0.0",
+         "sister": "^3.0.0"
+       }
+     },
+     "node_modules/youtube-player/node_modules/debug": {
+       "version": "2.6.9",
+       "resolved": "https://registry.npmjs.org/debug/-/debug-2.6.9.tgz",
+       "integrity": "sha512-bC7ElrdJaJnPbAP+1EotYvqZsb3ecl5wi6Bfi6BJTUcNowp6cvspg0jXznRTKDjm/E7AdgFBVeAPVMNcKGsHMA==",
+       "dependencies": {
+         "ms": "2.0.0"
+       }
+     },
+     "node_modules/youtube-player/node_modules/ms": {
+       "version": "2.0.0",
+       "resolved": "https://registry.npmjs.org/ms/-/ms-2.0.0.tgz",
+       "integrity": "sha512-Tpp60P6IUJDTuOq/5Z8cdskzJujfwqfOTkrwIwj7IRISpnkJnT6SyJ4PCPnGMoFjC9ddhal5KVIYtAt97ix05A=="
++    },
++    "node_modules/@codetrix-studio/capacitor-google-auth": {
++      "version": "3.4.0-rc.4",
++      "resolved": "https://registry.npmjs.org/@codetrix-studio/capacitor-google-auth/-/capacitor-google-auth-3.4.0-rc.4.tgz",
++      "peerDependencies": {
++        "@capacitor/core": "^6.0.0"
++      }
+     }
+   }
+ }
+diff --git a/package.json b/package.json
+index 531ba4ec7a3c96466a656ef15e295506104b9e4a..62af127834b7995f9f188093cbb0ec61c516f523 100644
+--- a/package.json
++++ b/package.json
+@@ -11,51 +11,52 @@
+     "@capacitor/keyboard": "^6.0.3",
+     "@capacitor/splash-screen": "^6.0.2",
+     "@capacitor/status-bar": "^6.0.2",
+     "@dnd-kit/core": "^6.3.1",
+     "@dnd-kit/sortable": "^10.0.0",
+     "@dnd-kit/utilities": "^3.2.2",
+     "@emotion/react": "^11.14.0",
+     "@emotion/styled": "^11.14.1",
+     "@mui/icons-material": "^7.3.6",
+     "@mui/material": "^7.3.6",
+     "@testing-library/dom": "^10.4.0",
+     "@testing-library/jest-dom": "^6.6.3",
+     "@testing-library/react": "^16.3.0",
+     "@testing-library/user-event": "^13.5.0",
+     "firebase": "^10.12.2",
+     "katex": "^0.16.28",
+     "lucide-react": "^0.561.0",
+     "react": "^19.1.0",
+     "react-dom": "^19.1.0",
+     "react-katex": "^3.1.0",
+     "react-router-dom": "^6.23.1",
+     "react-scripts": "5.0.1",
+     "react-to-print": "^3.3.0",
+     "react-youtube": "^10.1.0",
+     "tailwind-scrollbar-hide": "^4.0.0",
+-    "web-vitals": "^2.1.4"
++    "web-vitals": "^2.1.4",
++    "@codetrix-studio/capacitor-google-auth": "3.4.0-rc.4"
+   },
+   "scripts": {
+     "start": "react-scripts start",
+     "build": "react-scripts build",
+     "cap:init": "cap init \"채수용 수학\" com.chaesooyong.management --web-dir build",
+     "cap:sync": "cap sync",
+     "cap:android": "cap open android",
+     "cap:ios": "cap open ios",
+     "build:cap": "npm run build && cap sync",
+     "test": "react-scripts test",
+     "eject": "react-scripts eject",
+     "migrate:memos": "node functions/scripts/migrateStudentMemosToStaffMemos.js",
+     "migrate:homework-question-keys:dry": "node functions/scripts/migrateHomeworkResultQuestionNumbers.js",
+     "migrate:homework-question-keys:write": "node functions/scripts/migrateHomeworkResultQuestionNumbers.js --write",
+     "backfill:chat-parent-participants:dry": "node functions/scripts/backfillChatParticipantIdsForParents.js",
+     "backfill:chat-parent-participants:write": "node functions/scripts/backfillChatParticipantIdsForParents.js --write",
+     "backfill:chat-room-types:dry": "node functions/scripts/backfillChatRoomTypes.js",
+     "backfill:chat-room-types:write": "node functions/scripts/backfillChatRoomTypes.js --write",
+     "backfill:student-birth-year:dry": "node functions/scripts/backfillStudentBirthYearFromGrade.js",
+     "backfill:student-birth-year:write": "node functions/scripts/backfillStudentBirthYearFromGrade.js --write",
+     "backfill:class-test-stats:dry": "node functions/scripts/backfillClassTestStats.js",
+     "backfill:class-test-stats:write": "node functions/scripts/backfillClassTestStats.js --write",
+     "backfill:user-chat-rooms:dry": "node functions/scripts/backfillUserChatRooms.js",
+     "backfill:user-chat-rooms:write": "node functions/scripts/backfillUserChatRooms.js --write",
+     "backfill:chat-room-last-messages:dry": "node functions/scripts/backfillChatRoomLastMessages.js",
+diff --git a/src/auth/authService.js b/src/auth/authService.js
+index 1e5528d190e917a055779f9f0f7943390ec9029a..69e8e7b2871f661537d664736fac5123bd8bba97 100644
+--- a/src/auth/authService.js
++++ b/src/auth/authService.js
+@@ -1,62 +1,118 @@
+ // src/auth/authService.js
+-import { Capacitor } from '@capacitor/core';
++import { Capacitor, registerPlugin } from '@capacitor/core';
+ import { signInWithEmailAndPassword, signOut } from 'firebase/auth';
+ import { doc, getDoc } from 'firebase/firestore';
  import { auth, db } from '../firebase/client';
- import { formatAttachmentSize, uploadChatAttachment, validateChatAttachment } from '../messenger/services/attachmentService';
- import { buildDeterministicRoomId, createRoomIfMissing } from '../messenger/services/roomFactory';
- import { sendRoomMessage, subscribeRoomMessages } from '../messenger/services/messageService';
- import { fetchParentFallbackRooms, fetchRoomsForIndexes, fetchStudentFallbackRooms } from '../messenger/services/userChatRoomsService';
- import { INSTITUTE_AUTH_UID, ROOM_TYPES } from '../messenger/constants/messengerConstants';
- import { getExpectedRoomType, getRoomDebugInfo, isStrictRoomTypeMatch } from '../messenger/utils/roomMatcher';
- import { markChatRoomNotificationsRead } from '../notifications/notificationReadActions';
  
- // TODO(video_embed): allow only admin/staff/teacher to send YouTube watch/youtu.be/embed links,
- // normalize them to youtube-nocookie URLs, store messageType: 'video_embed',
- // render video cards in-room, and play them in an internal iframe modal.
- const CANDIDATE_ROOM_IDS = (studentId) => [String(studentId || '')].filter(Boolean);
+ export const REVIEW_LOGIN_AUTH_INDEX_MISSING_MESSAGE = '심사용 계정 연결 정보가 없습니다. 관리자에게 문의해주세요.';
+ export const REVIEW_LOGIN_PROFILE_MISSING_MESSAGE = '사용자 정보를 찾을 수 없습니다. 관리자에게 문의해주세요.';
+ export const NATIVE_GOOGLE_LOGIN_UNAVAILABLE_MESSAGE = 'Google 로그인 연결에 실패했습니다. 다시 시도해주세요.';
++export const GOOGLE_LOGIN_CANCELLED_MESSAGE = 'Google 로그인이 취소되었습니다.';
  
-+const isNativeIosApp = () => {
-+    const capacitor = window.Capacitor;
-+    return Boolean(capacitor?.isNativePlatform?.() && capacitor?.getPlatform?.() === 'ios');
+ export const isNativePlatform = () => Capacitor.isNativePlatform();
+ export const isGoogleLoginAvailable = () => true;
+ 
+ const logEmailLoginDebug = (label, payload) => {
+     console.info(label, payload);
+ };
+ 
+ const createReviewLoginError = (message, code) => {
+     const error = new Error(message);
+     error.code = code;
+     return error;
+ };
+ 
+ export const createNativeGoogleLoginUnavailableError = () => (
+     createReviewLoginError(NATIVE_GOOGLE_LOGIN_UNAVAILABLE_MESSAGE, 'google-login/native-unavailable')
+ );
+ 
++const createGoogleLoginCancelledError = () => (
++    createReviewLoginError(GOOGLE_LOGIN_CANCELLED_MESSAGE, 'google-login/cancelled')
++);
++
++const resolveNativeGoogleAuthPlugin = async () => {
++    if (Capacitor?.Plugins?.GoogleAuth) {
++        return Capacitor.Plugins.GoogleAuth;
++    }
++
++    return registerPlugin('GoogleAuth');
 +};
 +
-+const CHAT_ATTACHMENT_ACCEPT = '.jpg,.jpeg,.png,.webp,.pdf';
-+const NATIVE_IOS_CHAT_ATTACHMENT_ACCEPT = 'application/pdf,.pdf';
-+const NATIVE_IOS_ATTACHMENT_NOTICE = '앱에서는 현재 안전한 파일(PDF) 선택만 지원합니다. 사진 촬영은 임시로 제한됩니다.';
++const extractGoogleIdToken = (googleUser) => (
++    googleUser?.authentication?.idToken
++    ?? googleUser?.idToken
++    ?? googleUser?.serverAuthCode?.idToken
++    ?? null
++);
 +
- const uniqueStrings = (values) => Array.from(new Set(
-     values.flat(Infinity).filter((value) => typeof value === 'string' && value.trim()).map((value) => value.trim())
- ));
++const isGoogleLoginCancelError = (error) => {
++    const code = String(error?.code ?? error?.error ?? '').toLowerCase();
++    const message = String(error?.message ?? '').toLowerCase();
++
++    return code.includes('cancel')
++        || code.includes('canceled')
++        || message.includes('cancel')
++        || message.includes('canceled')
++        || message.includes('dismiss');
++};
++
+ export const signInWithGoogle = async () => {
+-    const { GoogleAuthProvider, signInWithPopup } = await import('firebase/auth');
++    const { GoogleAuthProvider, signInWithCredential, signInWithPopup } = await import('firebase/auth');
+     const provider = new GoogleAuthProvider();
  
- const buildStandardRoomId = (roomType, ownerUid, counterpartUid, studentId = '') => buildDeterministicRoomId(roomType, ownerUid, counterpartUid, studentId);
+     if (isNativePlatform()) {
+-        // TODO: Capacitor iOS WebView에서 Firebase Web signInWithRedirect는
+-        // 연결이 끊기거나 앱이 멈출 수 있다. @capacitor/browser + App URL
+-        // listener 기반 OAuth 콜백 또는 Firebase native auth 플러그인을 설치한
+-        // 뒤 native/browser flow에서 Firebase credential로 로그인하도록 연결한다.
+-        throw createNativeGoogleLoginUnavailableError();
++        const GoogleAuth = await resolveNativeGoogleAuthPlugin();
++
++        if (!GoogleAuth?.signIn) {
++            throw createNativeGoogleLoginUnavailableError();
++        }
++
++        try {
++            const googleUser = await GoogleAuth.signIn();
++            const idToken = extractGoogleIdToken(googleUser);
++
++            if (!idToken) {
++                throw createNativeGoogleLoginUnavailableError();
++            }
++
++            const credential = GoogleAuthProvider.credential(idToken);
++            const { user } = await signInWithCredential(auth, credential);
++
++            if (!user?.uid) return null;
++            return user;
++        } catch (error) {
++            if (error?.code === 'google-login/native-unavailable') {
++                throw error;
++            }
++
++            if (isGoogleLoginCancelError(error)) {
++                throw createGoogleLoginCancelledError();
++            }
++
++            throw createNativeGoogleLoginUnavailableError();
++        }
+     }
  
- const getParticipantIds = (room) => (Array.isArray(room?.participantIds) ? room.participantIds.map(String) : []);
+     const { user } = await signInWithPopup(auth, provider);
  
+     if (!user?.uid) return null;
+     return user;
+ };
  
- const getRoomIdentityValues = (room) => uniqueStrings([
-     getParticipantIds(room),
-     room?.studentAuthUid,
-     room?.studentUid,
-     room?.parentUid,
-     room?.parentId,
-     room?.studentId,
-     room?.participantUserDocIds ? Object.values(room.participantUserDocIds) : [],
- ]);
+ export const signInWithReviewEmail = async (email, password) => {
+     const normalizedEmail = email.trim();
+     let signedInUser = null;
  
- const getUserDocLinkedKeys = async (authUid) => {
-     const currentAuthUid = String(authUid || '').trim();
-     if (!currentAuthUid) return [];
-     const keys = [currentAuthUid];
+     logEmailLoginDebug('[email-login] start', { email: normalizedEmail });
+ 
      try {
-         const indexSnap = await getDoc(doc(db, 'userAuthIndex', currentAuthUid));
-@@ -539,54 +548,65 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
-                 setError('메시지를 불러올 권한이 없습니다. 관리자에게 문의해주세요.');
-             } });
-         };
+         const { user } = await signInWithEmailAndPassword(auth, normalizedEmail, password);
+         signedInUser = user;
  
-         primaryUnsub = subscribe(true);
-         activeMessagesSubscriptionRef.current = { roomId: normalizedRoomId, unsubscribe: cleanupOnce };
-         return cleanupOnce;
-     }, [roomId]);
+         logEmailLoginDebug('[email-login] auth success', {
+             uid: user?.uid ?? null,
+             email: user?.email ?? normalizedEmail,
+         });
  
-     useEffect(() => {
-         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-     }, [messages]);
+         if (!user?.uid) return null;
  
-     const placeholder = useMemo(() => (userRole === 'parent' ? '메시지 보내기...' : '메시지 입력'), [userRole]);
- 
-     useEffect(() => () => {
-         if (attachmentPreviewUrl) URL.revokeObjectURL(attachmentPreviewUrl);
-     }, [attachmentPreviewUrl]);
- 
-     const clearAttachment = () => {
-         if (attachmentPreviewUrl) URL.revokeObjectURL(attachmentPreviewUrl);
-         setAttachmentPreviewUrl('');
-         setAttachmentFile(null);
-     };
- 
-+    const handleAttachmentButtonClick = () => {
-+        if (isNativeIosApp()) {
-+            setError(NATIVE_IOS_ATTACHMENT_NOTICE);
-+        }
-+    };
+diff --git a/src/capacitorApp.js b/src/capacitorApp.js
+index fbbbf7521b5eb5e4dee9ac94c8acfc99122e7aa0..6ee8a2052b80fc54a99aef84f0583dbf4598ab35 100644
+--- a/src/capacitorApp.js
++++ b/src/capacitorApp.js
+@@ -1,74 +1,110 @@
++import { registerPlugin } from '@capacitor/core';
 +
-     const handleAttachmentChange = (event) => {
-         const file = event.target.files?.[0] || null;
-         event.target.value = '';
-         if (!file) return;
-+        if (isNativeIosApp() && file.type !== 'application/pdf') {
-+            setError(NATIVE_IOS_ATTACHMENT_NOTICE);
-+            clearAttachment();
-+            return;
-+        }
-         const validation = validateChatAttachment(file);
-         if (!validation.ok) {
-             setError(validation.message);
-             clearAttachment();
-             return;
-         }
-         if (attachmentPreviewUrl) URL.revokeObjectURL(attachmentPreviewUrl);
-         setAttachmentFile(file);
-         setAttachmentPreviewUrl(validation.type === 'image' ? URL.createObjectURL(file) : '');
-         setError('');
-     };
+ const getCapacitorBridge = () => window.Capacitor;
  
-     const handleSend = async (e) => {
-         e.preventDefault();
-         const text = inputText.trim();
-         const fileToUpload = attachmentFile;
-         if (!text && !fileToUpload) return;
-         if (fileToUpload) {
-             const validation = validateChatAttachment(fileToUpload);
-             if (!validation.ok) {
-                 setError(validation.message);
-                 return;
-             }
-         }
-         setIsSending(true);
-@@ -761,51 +781,51 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
-                 });
-             }
-             if (process.env.NODE_ENV === 'development') console.log('[student messenger] message sent', { roomId: resolvedRoomId, senderId: viewerUid });
-             setError('');
-             setRoomId(resolvedRoomId);
-         } catch (sendError) {
-             setOptimisticMessages((prev) => {
-                 const next = prev.filter((item) => item.clientTempId !== clientTempId);
-                 optimisticMessagesRef.current = next;
-                 return next;
-             });
-             setMessages((prev) => prev.filter((item) => item.clientTempId !== clientTempId));
-             setInputText(text);
-             if (fileToUpload) setAttachmentFile(fileToUpload);
-             logFirestoreQueryFailure('send message', sendError, isChatRoomMode ? {
-                 addDoc: { collection: `chatRooms/${resolvedRoomId}/messages`, fields: ['roomId', 'senderId', 'senderRole', 'senderName', 'messageType', 'text', 'attachments', 'createdAt', 'localCreatedAtMs', 'clientTempId', 'internalOnly', 'readBy'] },
-                 updateDoc: { doc: ['chatRooms', resolvedRoomId], fields: ['lastMessageText', 'lastMessageAt', 'lastMessageSenderId', 'updatedAt', 'updatedBy'] },
-             } : {});
-             setError(sendError?.message || '메시지를 보낼 권한이 없습니다. 관리자에게 문의해주세요.');
-         } finally {
-             setIsSending(false);
-         }
-     };
+ const isDevelopment = process.env.NODE_ENV === 'development';
++const googleClientId = '197602408828-ioltf61rci7tmctb733gsse6gddsilcu.apps.googleusercontent.com';
++let googleAuthInitializePromise = null;
  
-     return (
--        <div className={`${isFloating ? 'fixed bottom-24 right-5' : ''} bg-white h-full flex flex-col`}>
-+        <div className={`${isFloating ? 'fixed bottom-24 right-5' : ''} bg-white h-full min-h-0 flex flex-col overflow-hidden`}>
-             <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3 bg-gray-50 custom-scrollbar mobile-keyboard-messages">
-                 {error && <div className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{error}</div>}
-                 {messages.length > 0 ? messages.map((msg, index) => {
-                     const previous = messages[index - 1];
-                     const showDateDivider = !previous || previous.date !== msg.date;
-                     return (
-                         <React.Fragment key={msg.id}>
-                             {showDateDivider && (
-                                 <div className="flex items-center gap-3 py-1">
-                                     <div className="flex-1 h-px bg-gray-200" />
-                                     <p className="text-xs text-gray-400 whitespace-nowrap">{msg.dateLabel}</p>
-                                     <div className="flex-1 h-px bg-gray-200" />
-                                 </div>
-                             )}
-                             <div className={`flex items-end gap-1.5 ${msg.isMe ? 'justify-end' : 'justify-start'}`}>
-                                 {msg.isMe && <span className="text-[11px] text-gray-400 whitespace-nowrap self-end mb-1">{msg.time}</span>}
-                                 <div className={`max-w-[72%] px-3 py-2 rounded-2xl text-sm ${msg.isMe ? 'bg-[#455fab] text-white' : 'bg-white text-gray-900 border border-gray-100'}`}>
-                                     {msg.text && <p className="whitespace-pre-wrap break-words">{msg.text}</p>}
-                                     {msg.attachments.map((attachment) => (
-                                         attachment.type === 'image' ? (
-                                             <button key={attachment.url || attachment.name} type="button" onClick={() => setImageModal(attachment)} className={`${msg.text ? 'mt-2 ' : ''}block text-left`}>
-                                                 <img src={attachment.url} alt={attachment.name} className="max-h-48 rounded-lg object-cover" onError={(event) => { event.currentTarget.style.display = 'none'; }} />
-                                                 <span className="mt-1 block text-xs underline break-all">{attachment.name}</span>
-                                             </button>
-                                         ) : (
-@@ -824,45 +844,45 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
-                 )}
-                 <div ref={messagesEndRef} />
-             </div>
+ const setKeyboardHeight = (height = 0) => {
+   document.documentElement.style.setProperty('--app-keyboard-height', `${Math.max(0, Number(height) || 0)}px`);
+ };
  
-             {imageModal && (
-                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => setImageModal(null)}>
-                     <div className="max-w-[96vw] max-h-[96vh] rounded-xl bg-white p-3 shadow-xl" onClick={(event) => event.stopPropagation()}>
-                         <div className="mb-2 flex items-center justify-between gap-3">
-                             <p className="truncate text-sm font-semibold text-gray-700">{imageModal.name || '이미지'}</p>
-                             <button type="button" onClick={() => setImageModal(null)} className="rounded border px-2 py-1 text-xs">닫기</button>
-                         </div>
-                         <img src={imageModal.url} alt={imageModal.name || '첨부 이미지'} className="max-h-[78vh] max-w-[90vw] rounded-lg object-contain" />
-                         {imageModal.url && <a href={imageModal.url} target="_blank" rel="noreferrer" className="mt-2 inline-block text-xs underline">원본 열기</a>}
-                     </div>
-                 </div>
-             )}
+ const syncVisualViewportHeight = () => {
+   const height = window.visualViewport?.height || window.innerHeight;
+   if (height) {
+     document.documentElement.style.setProperty('--app-viewport-height', `${height}px`);
+   }
+ };
  
-             {attachmentFile && (
-                 <div className="px-3 py-2 border-t bg-white flex items-center gap-3 text-xs">
-                     {attachmentPreviewUrl && <img src={attachmentPreviewUrl} alt="첨부 미리보기" className="h-12 w-12 rounded object-cover" />}
-                     <span className="flex-1 truncate">{attachmentFile.name} · {formatAttachmentSize(attachmentFile.size)}</span>
-                     <button type="button" onClick={clearAttachment} className="text-red-500">취소</button>
-                 </div>
-             )}
-             <form onSubmit={handleSend} className="shrink-0 p-3 mobile-keyboard-input-bar bg-white border-t border-gray-100 flex gap-2">
--                <label className="px-3 py-2 rounded-full border border-gray-200 bg-white text-sm cursor-pointer">
-+                <label onClick={handleAttachmentButtonClick} className="px-3 py-2 rounded-full border border-gray-200 bg-white text-sm cursor-pointer">
-                     첨부
--                    <input type="file" accept=".jpg,.jpeg,.png,.webp,.pdf" data-camera-disabled="true" onChange={handleAttachmentChange} className="hidden" />
-+                    <input type="file" accept={isNativeIosApp() ? NATIVE_IOS_CHAT_ATTACHMENT_ACCEPT : CHAT_ATTACHMENT_ACCEPT} data-camera-disabled="true" onChange={handleAttachmentChange} className="hidden" />
-                 </label>
-                 <input
-                     type="text"
-                     value={inputText}
-                     onChange={(e) => setInputText(e.target.value)}
-                     placeholder={placeholder}
-                     className="flex-1 min-w-0 bg-gray-50 border border-gray-200 rounded-full px-4 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-gray-300"
-                 />
-                 <button type="submit" disabled={isSending || (!inputText.trim() && !attachmentFile)} className="px-4 py-2 rounded-full text-sm font-semibold bg-gray-900 text-white disabled:bg-gray-300">
-                     전송
-                 </button>
-             </form>
-         </div>
-     );
- }
+ const callPluginMethod = async (plugin, method, options) => {
+   try {
+     if (plugin?.[method]) {
+       await plugin[method](options);
+     }
+   } catch (error) {
+     // Native plugin calls are best-effort during bootstrap and should not
+     // affect the existing web application flow.
+   }
+ };
  
- export { CANDIDATE_ROOM_IDS };
-\ No newline at end of file
-diff --git a/src/components/messenger/ChatMessagePane.jsx b/src/components/messenger/ChatMessagePane.jsx
-index 7f260f5f52fb712c285b9ca9c7e5c936814b001b..ec7e8fa2a5b6971b53a0f7ab8cf9f1283153a3a0 100644
---- a/src/components/messenger/ChatMessagePane.jsx
-+++ b/src/components/messenger/ChatMessagePane.jsx
-@@ -1,29 +1,39 @@
- import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
- import { getChatRoomDisplayTitle } from './messengerTargets';
- import { formatAttachmentSize, validateChatAttachment } from '../chatAttachments';
- 
++const resolveGoogleAuthPlugin = async (capacitor) => {
++  if (capacitor?.Plugins?.GoogleAuth) {
++    return capacitor.Plugins.GoogleAuth;
++  }
 +
-+const isNativeIosApp = () => {
-+    const capacitor = window.Capacitor;
-+    return Boolean(capacitor?.isNativePlatform?.() && capacitor?.getPlatform?.() === 'ios');
++  return registerPlugin('GoogleAuth');
 +};
 +
-+const CHAT_ATTACHMENT_ACCEPT = '.jpg,.jpeg,.png,.webp,.pdf';
-+const NATIVE_IOS_CHAT_ATTACHMENT_ACCEPT = 'application/pdf,.pdf';
-+const NATIVE_IOS_ATTACHMENT_NOTICE = '앱에서는 현재 안전한 파일(PDF) 선택만 지원합니다. 사진 촬영은 임시로 제한됩니다.';
++const initializeGoogleAuth = (capacitor) => {
++  if (!googleAuthInitializePromise) {
++    googleAuthInitializePromise = resolveGoogleAuthPlugin(capacitor).then((GoogleAuth) => {
++      if (!GoogleAuth?.initialize) {
++        return;
++      }
 +
- const normalizeMessageDate = (value) => {
-     if (!value) return null;
-     if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
-     if (typeof value?.toDate === 'function') {
-         const converted = value.toDate();
-         return Number.isNaN(converted?.getTime?.()) ? null : converted;
-     }
-     if (typeof value?.seconds === 'number') {
-         const ms = (value.seconds * 1000) + Math.floor((Number(value.nanoseconds || 0)) / 1_000_000);
-         const date = new Date(ms);
-         return Number.isNaN(date.getTime()) ? null : date;
-     }
-     const date = new Date(value);
-     return Number.isNaN(date.getTime()) ? null : date;
- };
- 
- const getMessageDateKey = (message) => {
-     const date = normalizeMessageDate(message?.createdAt);
-     if (!date) return 'unknown-date';
-     const year = date.getFullYear();
-     const month = String(date.getMonth() + 1).padStart(2, '0');
-     const day = String(date.getDate()).padStart(2, '0');
-     return `${year}-${month}-${day}`;
- };
- 
-@@ -67,54 +77,65 @@ export default function ChatMessagePane({
-     const [previewUrl, setPreviewUrl] = useState('');
-     const [error, setError] = useState('');
-     const [imageModal, setImageModal] = useState(null);
-     const messagesContainerRef = useRef(null);
- 
-     const scrollMessagesToBottom = useCallback(() => {
-         const container = messagesContainerRef.current;
-         if (!container) return;
-         container.scrollTop = container.scrollHeight;
-     }, []);
- 
-     const scheduleScrollToBottom = useCallback(() => {
-         scrollMessagesToBottom();
-         requestAnimationFrame(() => {
-             scrollMessagesToBottom();
-             setTimeout(scrollMessagesToBottom, 120);
-         });
-     }, [scrollMessagesToBottom]);
- 
-     const clearAttachment = () => {
-         if (previewUrl) URL.revokeObjectURL(previewUrl);
-         setPreviewUrl('');
-         setAttachmentFile(null);
-     };
- 
-+    const handleAttachmentButtonClick = () => {
-+        if (isNativeIosApp()) {
-+            setError(NATIVE_IOS_ATTACHMENT_NOTICE);
-+        }
-+    };
++      return GoogleAuth.initialize({
++        clientId: googleClientId,
++        scopes: ['profile', 'email'],
++        grantOfflineAccess: false,
++      });
++    }).catch((error) => {
++      googleAuthInitializePromise = null;
++      if (isDevelopment) {
++        console.warn('[capacitor] GoogleAuth initialize failed', error);
++      }
++    });
++  }
 +
-     const handleAttachmentChange = (event) => {
-         const file = event.target.files?.[0] || null;
-         event.target.value = '';
-         if (!file) return;
-+        if (isNativeIosApp() && file.type !== 'application/pdf') {
-+            setError(NATIVE_IOS_ATTACHMENT_NOTICE);
-+            clearAttachment();
-+            return;
-+        }
-         const validation = validateChatAttachment(file);
-         if (!validation.ok) {
-             setError(validation.message);
-             clearAttachment();
-             return;
-         }
-         if (previewUrl) URL.revokeObjectURL(previewUrl);
-         setAttachmentFile(file);
-         setPreviewUrl(validation.type === 'image' ? URL.createObjectURL(file) : '');
-         setError('');
-     };
- 
-     const sortedMessages = useMemo(() => {
-         return [...messages].sort((a, b) => {
-             const av = normalizeMessageDate(a?.createdAt)?.getTime() || 0;
-             const bv = normalizeMessageDate(b?.createdAt)?.getTime() || 0;
-             return av - bv;
-         });
-     }, [messages]);
- 
-     useEffect(() => {
-         if (!room?.id) return;
-         scheduleScrollToBottom();
-     }, [room?.id, sortedMessages.length, scheduleScrollToBottom]);
- 
-@@ -232,39 +253,39 @@ export default function ChatMessagePane({
-                         </div>
-                     );
-                 })}
-             </div>
-             {error && <p className="border-t px-3 py-2 text-xs text-red-600">{error}</p>}
-             {attachmentFile && (
-                 <div className="border-t bg-white px-3 py-2 flex items-center gap-3 text-xs">
-                     {previewUrl && <img src={previewUrl} alt="첨부 미리보기" className="h-12 w-12 rounded object-cover" />}
-                     <span className="flex-1 truncate">{attachmentFile.name} · {formatAttachmentSize(attachmentFile.size)}</span>
-                     <button type="button" onClick={clearAttachment} className="text-red-500">취소</button>
-                 </div>
-             )}
-             {imageModal && (
-                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => setImageModal(null)}>
-                     <div className="max-w-[96vw] max-h-[96vh] rounded-xl bg-white p-3 shadow-xl" onClick={(event) => event.stopPropagation()}>
-                         <div className="mb-2 flex items-center justify-between gap-3">
-                             <p className="truncate text-sm font-semibold text-gray-700">{imageModal.name || '이미지'}</p>
-                             <button type="button" onClick={() => setImageModal(null)} className="rounded border px-2 py-1 text-xs">닫기</button>
-                         </div>
-                         <img src={imageModal.url} alt={imageModal.name || '첨부 이미지'} className="max-h-[78vh] max-w-[90vw] rounded-lg object-contain" />
-                         {imageModal.url && <a href={imageModal.url} target="_blank" rel="noreferrer" className="mt-2 inline-block text-xs underline">원본 열기</a>}
-                     </div>
-                 </div>
-             )}
-             <form onSubmit={submit} className={`${mobileCompact ? 'p-2 mobile-keyboard-input-bar gap-1.5 shrink-0' : 'p-2 gap-2 items-end'} border-t bg-white flex`}>
--                <label className={`${mobileCompact ? 'px-2.5 py-2 rounded-full text-xs' : 'px-3 py-2 rounded text-sm'} border border-gray-200 bg-white cursor-pointer shrink-0`}>첨부<input type="file" accept=".jpg,.jpeg,.png,.webp,.pdf" data-camera-disabled="true" onChange={handleAttachmentChange} className="hidden" /></label>
-+                <label onClick={handleAttachmentButtonClick} className={`${mobileCompact ? 'px-2.5 py-2 rounded-full text-xs' : 'px-3 py-2 rounded text-sm'} border border-gray-200 bg-white cursor-pointer shrink-0`}>첨부<input type="file" accept={isNativeIosApp() ? NATIVE_IOS_CHAT_ATTACHMENT_ACCEPT : CHAT_ATTACHMENT_ACCEPT} data-camera-disabled="true" onChange={handleAttachmentChange} className="hidden" /></label>
-                 <textarea
-                     value={draft}
-                     onChange={(event) => setDraft(event.target.value)}
-                     onKeyDown={handleKeyDown}
-                     placeholder="메시지 입력"
-                     rows={mobileCompact ? 1 : 2}
-                     className={`${mobileCompact ? 'min-h-10 max-h-24 rounded-full bg-gray-50 px-4 py-2 resize-none' : 'rounded px-3 py-2 resize-y'} flex-1 border border-gray-200 text-base focus:outline-none focus:ring-2 focus:ring-gray-300`}
-                 />
-                 <button type="submit" disabled={!draft.trim() && !attachmentFile} className={`${mobileCompact ? 'px-3 py-2 rounded-full text-xs' : 'px-3 py-2 rounded text-sm'} bg-gray-900 text-white font-semibold disabled:bg-gray-300 shrink-0`}>전송</button>
-             </form>
-         </div>
-     );
- }
-\ No newline at end of file
-diff --git a/src/index.css b/src/index.css
-index 7bb258d222b729fd1571a24c81c4837bee22c0d3..765d6909d04f528b015357ff9e5b6925fb43737e 100644
---- a/src/index.css
-+++ b/src/index.css
-@@ -107,45 +107,44 @@ html.capacitor-native {
-   flex-shrink: 0;
- }
- 
- .capacitor-native .mobile-bottom-safe {
-   padding-bottom: var(--app-safe-bottom);
- }
- 
- /* iOS Safari/WebView prevents focus auto-zoom when form controls are at least 16px. */
- input,
- textarea,
- select {
-   font-size: 16px;
- }
- 
- /* Keep full-screen mobile app pages aligned with the visual viewport and safe area. */
- .mobile-keyboard-screen {
-   height: var(--app-viewport-height);
-   min-height: var(--app-viewport-height);
- }
- 
- .capacitor-native .mobile-keyboard-screen {
-   height: var(--app-viewport-height);
-   min-height: var(--app-viewport-height);
- }
- 
-+.capacitor-native .mobile-chat-screen {
-+  height: calc(var(--app-viewport-height) - var(--app-keyboard-height));
-+  min-height: calc(var(--app-viewport-height) - var(--app-keyboard-height));
-+  overflow: hidden;
-+}
++  return googleAuthInitializePromise;
++};
 +
- .mobile-keyboard-input-bar {
-   padding-bottom: max(0.5rem, env(safe-area-inset-bottom, 0px));
- }
+ export function setupCapacitorApp() {
+   const capacitor = getCapacitorBridge();
  
- .capacitor-native .mobile-keyboard-input-bar {
-   padding-bottom: max(0.75rem, var(--app-safe-bottom));
--  transform: translateY(calc(-1 * var(--app-keyboard-height)));
--  margin-bottom: calc(-1 * var(--app-keyboard-height));
--  will-change: transform;
+   if (!capacitor?.isNativePlatform?.()) {
+     return;
+   }
+ 
+   document.documentElement.classList.add('capacitor-native');
+   document.body?.classList.add('capacitor-native');
+   setKeyboardHeight(0);
+   syncVisualViewportHeight();
+   window.visualViewport?.addEventListener?.('resize', syncVisualViewportHeight);
+   window.visualViewport?.addEventListener?.('scroll', syncVisualViewportHeight);
+   window.addEventListener('resize', syncVisualViewportHeight);
+ 
+   if (isDevelopment) {
+     console.log('[capacitor] native class applied');
+     requestAnimationFrame(() => {
+       const safeTopValue = getComputedStyle(document.documentElement).getPropertyValue('--app-safe-top').trim();
+       console.log('[capacitor] safeTop value', safeTopValue || '0px');
+     });
+   }
+ 
+   const { App, Keyboard, SplashScreen, StatusBar } = capacitor.Plugins ?? {};
+ 
+   if (capacitor.getPlatform?.() === 'ios') {
+     callPluginMethod(StatusBar, 'setOverlaysWebView', { overlay: false });
+     callPluginMethod(StatusBar, 'setStyle', { style: 'DEFAULT' });
++    initializeGoogleAuth(capacitor);
+   }
+   callPluginMethod(SplashScreen, 'hide');
+   callPluginMethod(Keyboard, 'setResizeMode', { mode: 'body' });
+   const handleKeyboardShow = (event) => {
+     setKeyboardHeight(event?.keyboardHeight || 0);
+     syncVisualViewportHeight();
+   };
+   const handleKeyboardHide = () => {
+     setKeyboardHeight(0);
+     syncVisualViewportHeight();
+   };
+   Keyboard?.addListener?.('keyboardWillShow', handleKeyboardShow);
+   Keyboard?.addListener?.('keyboardDidShow', handleKeyboardShow);
+   Keyboard?.addListener?.('keyboardWillHide', handleKeyboardHide);
+   Keyboard?.addListener?.('keyboardDidHide', handleKeyboardHide);
+ 
+   App?.addListener?.('resume', () => {
+     window.dispatchEvent(new Event('capacitor:resume'));
+   });
 -}
--
--.capacitor-native .mobile-keyboard-messages {
--  padding-bottom: calc(var(--app-keyboard-height) + 1rem);
- }
- 
- .capacitor-native .login-page-shell {
-   min-height: var(--app-viewport-height);
-   justify-content: center;
-   padding-bottom: max(14rem, calc(var(--app-safe-bottom) + var(--app-keyboard-height) + 10rem));
- }
-diff --git a/src/pages/parent/ParentMessengerPage.jsx b/src/pages/parent/ParentMessengerPage.jsx
-index bc371c15796cc262d0adeee8e530a1a4c78563bf..63200540af6505d41c90be5866bd0babf6961b9c 100644
---- a/src/pages/parent/ParentMessengerPage.jsx
-+++ b/src/pages/parent/ParentMessengerPage.jsx
-@@ -306,51 +306,51 @@ export default function ParentMessengerPage({ studentId, student, onBack, notifi
-         setSelectedSlot((prev) => {
-             const previousRoomId = String(prev?.room?.roomId || prev?.room?.id || '').trim();
-             if (selectedRoomId && previousRoomId === selectedRoomId) return prev;
-             return slot;
-         });
-         if (selectedRoomId && notificationViewerUid) {
-             markChatRoomNotificationsRead({ viewerUid: notificationViewerUid, roomId: selectedRoomId, notifications, setNotifications })
-                 .catch((error) => console.warn('[parent][notifications] mark chat room read failed', error));
-         }
-     };
- 
-     const currentSlot = selectedSlot
-         ? messengerSlots.find((slot) => getRoomId(slot.room) && getRoomId(slot.room) === getRoomId(selectedSlot.room))
-             || (getRoomId(selectedSlot.room) ? selectedSlot : messengerSlots.find((slot) => slot.slot === selectedSlot.slot) || selectedSlot)
-         : null;
- 
-     if (currentSlot && parentNotificationOpenTimingRef.current.started && !parentNotificationOpenTimingRef.current.ended) {
-         console.timeEnd('parent notification open');
-         parentNotificationOpenTimingRef.current.ended = true;
-     }
- 
-     if (currentSlot) {
-         const targetAuthUid = currentSlot.slot === SLOTS.TEACHER ? TEACHER_AUTH_UID : INSTITUTE_AUTH_UID;
-         const currentRoomId = String(currentSlot.room?.roomId || currentSlot.room?.id || '').trim();
-         return (
--            <div className="mobile-screen mobile-keyboard-screen bg-gray-50 flex flex-col overflow-hidden">
-+            <div className="mobile-screen mobile-keyboard-screen mobile-chat-screen bg-gray-50 flex flex-col overflow-hidden">
-                 <header className="mobile-header bg-white border-b border-gray-100 px-4 flex items-center gap-3">
-                     <button type="button" onClick={() => { hasConsumedInitialRoomRef.current = true; setSelectedSlot(null); }} className="mobile-back-button text-gray-700"><ArrowBackIosNewIcon style={{ fontSize: 18 }} /></button>
-                     <h1 className="text-base font-semibold text-gray-900 truncate">{currentSlot.title}</h1>
-                 </header>
-                 <div className="flex-1 min-h-0">
-                     <StudentMessenger
-                         studentId={activeStudentId}
-                         studentAuthUid={student?.authUid || student?.studentUid || student?.uid || ''}
-                         selectedRoomId={currentRoomId}
-                         teacherName={currentSlot.title}
-                         userRole="parent"
-                         allowLegacyResolve={!currentRoomId}
-                         emptyMessage="아직 대화 내역이 없습니다."
-                         chatSlot={currentSlot.slot}
-                         notificationViewerUid={notificationViewerUid}
-                         notifications={notifications}
-                         setNotifications={setNotifications}
-                         roomCreationContext={{
-                             slot: currentSlot.slot,
-                             studentParticipantKeys: participantKeys,
-                             targetAuthUid,
-                             targetName: currentSlot.title,
-                             roomType: currentSlot.roomType,
-                         }}
-                     />
-diff --git a/src/pages/student/StudentMessengerPage.jsx b/src/pages/student/StudentMessengerPage.jsx
-index 6fca57967806aa299e003b04248824b36a1ad57b..f8f4e9f920cbcb84fdb474cf0dd38d5d455d95a4 100644
---- a/src/pages/student/StudentMessengerPage.jsx
-+++ b/src/pages/student/StudentMessengerPage.jsx
-@@ -90,61 +90,61 @@ export default function StudentMessengerPage({ studentId, student, onBack, notif
-                 slot: slot.slot,
-                 roomType: slot.room?.roomType || slot.roomType || '',
-             });
-         }
-         setSelectedSlot((prev) => {
-             const previousRoomId = String(prev?.room?.roomId || prev?.room?.id || '').trim();
-             if (selectedRoomId && previousRoomId === selectedRoomId) return prev;
-             return slot;
-         });
-         if (selectedRoomId && notificationViewerUid) {
-             markChatRoomNotificationsRead({ viewerUid: notificationViewerUid, roomId: selectedRoomId, notifications, setNotifications })
-                 .catch((error) => console.warn('[student][notifications] mark chat room read failed', error));
-         }
-     };
- 
-     const currentSlot = selectedSlot
-         ? messengerSlots.find((slot) => getRoomId(slot.room) && getRoomId(slot.room) === getRoomId(selectedSlot.room))
-             || (getRoomId(selectedSlot.room) ? selectedSlot : messengerSlots.find((slot) => slot.slot === selectedSlot.slot) || selectedSlot)
-         : null;
-     if (currentSlot) {
-         const targetAuthUid = currentSlot.slot === SLOTS.TEACHER ? TEACHER_AUTH_UID : INSTITUTE_AUTH_UID;
-         const currentRoomId = String(currentSlot.room?.roomId || currentSlot.room?.id || '').trim();
-         const canCreateCurrentRoom = Boolean(targetAuthUid && getExpectedRoomType(currentSlot.slot));
-         if (!currentRoomId && !canCreateCurrentRoom) {
-             return (
--                <div className="mobile-screen mobile-keyboard-screen bg-gray-50 flex flex-col overflow-hidden">
-+                <div className="mobile-screen mobile-keyboard-screen mobile-chat-screen bg-gray-50 flex flex-col overflow-hidden">
-                     <header className="mobile-header bg-white border-b border-gray-100 px-4 flex items-center gap-3">
-                         <button type="button" onClick={() => { hasConsumedInitialRoomRef.current = true; setSelectedSlot(null); }} className="mobile-back-button text-gray-700"><ArrowBackIosNewIcon style={{ fontSize: 18 }} /></button>
-                         <h1 className="text-base font-semibold text-gray-900 truncate">{currentSlot.title}</h1>
-                     </header>
-                     <div className="flex-1 flex items-center justify-center text-sm text-gray-500">대화방을 준비 중입니다.</div>
-                 </div>
-             );
-         }
-         return (
--            <div className="mobile-screen mobile-keyboard-screen bg-gray-50 flex flex-col overflow-hidden">
-+            <div className="mobile-screen mobile-keyboard-screen mobile-chat-screen bg-gray-50 flex flex-col overflow-hidden">
-                 <header className="mobile-header bg-white border-b border-gray-100 px-4 flex items-center gap-3">
-                     <button type="button" onClick={() => { hasConsumedInitialRoomRef.current = true; setSelectedSlot(null); }} className="mobile-back-button text-gray-700"><ArrowBackIosNewIcon style={{ fontSize: 18 }} /></button>
-                     <h1 className="text-base font-semibold text-gray-900 truncate">{currentSlot.title}</h1>
-                 </header>
-                 <div className="flex-1 min-h-0">
-                     <StudentMessenger
-                         studentId={activeStudentId}
-                         studentAuthUid={student?.authUid || student?.studentUid || student?.uid || ''}
-                         selectedRoomId={currentRoomId}
-                         teacherName={currentSlot.title}
-                         userRole="student"
-                         allowLegacyResolve={!currentRoomId}
-                         emptyMessage="아직 대화 내역이 없습니다."
-                         chatSlot={currentSlot.slot}
-                         notificationViewerUid={notificationViewerUid}
-                         notifications={notifications}
-                         setNotifications={setNotifications}
-                         roomCreationContext={{
-                             slot: currentSlot.slot,
-                             studentParticipantKeys: participantKeyCandidates,
-                             targetAuthUid,
-                             targetName: currentSlot.title,
-                             roomType: getExpectedRoomType(currentSlot.slot),
-                         }}
-                     />
+\ No newline at end of file
++}
