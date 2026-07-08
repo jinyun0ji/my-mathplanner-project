@@ -50,10 +50,6 @@ export default function LoginPage({ onSocialLogin, onEmailLogin }) {
 
 
     const handleGoogleLogin = async () => {
-        if (!canUseGoogleLogin) {
-            setErrorMessage(NATIVE_GOOGLE_LOGIN_UNAVAILABLE_MESSAGE);
-            return;
-        }
         if (!onSocialLogin || isSocialSubmitting) return;
 
         setErrorMessage('');
@@ -69,7 +65,7 @@ export default function LoginPage({ onSocialLogin, onEmailLogin }) {
     };
 
     return (
-        <div className="min-h-[100dvh] overflow-y-auto flex flex-col items-center justify-start bg-gray-50 px-4 py-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:px-6 sm:py-10 lg:px-8 font-sans">
+        <div className="min-h-[100dvh] overflow-y-auto flex flex-col items-center justify-start bg-gray-50 px-4 pt-[max(2rem,calc(env(safe-area-inset-top)+1.25rem))] pb-[max(8rem,calc(env(safe-area-inset-bottom)+8rem))] sm:px-6 sm:pt-10 lg:px-8 font-sans">
             <div className="max-w-md w-full space-y-8 bg-white p-6 sm:p-10 rounded-2xl shadow-xl border border-gray-100">
                 <div className="text-center">
                     <img
@@ -195,7 +191,7 @@ export default function LoginPage({ onSocialLogin, onEmailLogin }) {
                     <p className="text-xs text-gray-400">학생/학부모는 초대 코드로 최초 1회 가입 후 이용합니다.</p>
                 </div>
             </div>
-            <p className="mt-6 text-center text-xs text-gray-400">© 2025 Chaesooyong Math Academy. All rights reserved.</p>
+            <p className="mt-6 shrink-0 text-center text-xs text-gray-400">© 2025 Chaesooyong Math Academy. All rights reserved.</p>
         </div>
     );
 }

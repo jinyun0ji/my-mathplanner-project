@@ -54,6 +54,7 @@ body {
 :root {
   --app-safe-top: env(safe-area-inset-top, 0px);
   --app-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --app-viewport-height: 100dvh;
 }
 
 body.capacitor-native,
@@ -62,7 +63,7 @@ html.capacitor-native {
 }
 
 .capacitor-native .mobile-screen {
-  min-height: 100dvh;
+  min-height: var(--app-viewport-height);
 }
 
 .capacitor-native .student-mobile-header,
@@ -81,6 +82,13 @@ html.capacitor-native {
 .capacitor-native .notification-mobile-header {
   padding-top: max(var(--app-safe-top), 44px);
   min-height: calc(64px + max(var(--app-safe-top), 44px));
+  box-sizing: border-box;
+}
+
+.capacitor-native .grade-detail-header {
+  padding-top: max(var(--app-safe-top), 44px);
+  min-height: calc(56px + max(var(--app-safe-top), 44px));
+  height: auto;
   box-sizing: border-box;
 }
 
@@ -110,11 +118,10 @@ select {
 
 /* Keep full-screen mobile app pages aligned with the visual viewport and safe area. */
 .mobile-keyboard-screen {
-  height: 100dvh;
-  min-height: 100dvh;
-  padding-bottom: env(safe-area-inset-bottom, 0px);
+  height: var(--app-viewport-height);
+  min-height: var(--app-viewport-height);
 }
 
 .mobile-keyboard-input-bar {
-  padding-bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
+  padding-bottom: max(0.5rem, env(safe-area-inset-bottom, 0px));
 }

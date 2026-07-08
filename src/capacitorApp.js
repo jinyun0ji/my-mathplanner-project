@@ -2,6 +2,13 @@ const getCapacitorBridge = () => window.Capacitor;
 
 const isDevelopment = process.env.NODE_ENV === 'development';
 
+const syncVisualViewportHeight = () => {
+  const height = window.visualViewport?.height || window.innerHeight;
+  if (height) {
+    document.documentElement.style.setProperty('--app-viewport-height', `${height}px`);
+  }
+};
+
 const callPluginMethod = async (plugin, method, options) => {
   try {
     if (plugin?.[method]) {
@@ -22,6 +29,10 @@ export function setupCapacitorApp() {
 
   document.documentElement.classList.add('capacitor-native');
   document.body?.classList.add('capacitor-native');
+  syncVisualViewportHeight();
+  window.visualViewport?.addEventListener?.('resize', syncVisualViewportHeight);
+  window.visualViewport?.addEventListener?.('scroll', syncVisualViewportHeight);
+  window.addEventListener('resize', syncVisualViewportHeight);
 
   if (isDevelopment) {
     console.log('[capacitor] native class applied');
@@ -39,6 +50,10 @@ export function setupCapacitorApp() {
   }
   callPluginMethod(SplashScreen, 'hide');
   callPluginMethod(Keyboard, 'setResizeMode', { mode: 'body' });
+  Keyboard?.addListener?.('keyboardWillShow', syncVisualViewportHeight);
+  Keyboard?.addListener?.('keyboardDidShow', syncVisualViewportHeight);
+  Keyboard?.addListener?.('keyboardWillHide', syncVisualViewportHeight);
+  Keyboard?.addListener?.('keyboardDidHide', syncVisualViewportHeight);
 
   App?.addListener?.('resume', () => {
     window.dispatchEvent(new Event('capacitor:resume'));

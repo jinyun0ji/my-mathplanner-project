@@ -6,10 +6,10 @@ import { auth, db } from '../firebase/client';
 
 export const REVIEW_LOGIN_AUTH_INDEX_MISSING_MESSAGE = '심사용 계정 연결 정보가 없습니다. 관리자에게 문의해주세요.';
 export const REVIEW_LOGIN_PROFILE_MISSING_MESSAGE = '사용자 정보를 찾을 수 없습니다. 관리자에게 문의해주세요.';
-export const NATIVE_GOOGLE_LOGIN_UNAVAILABLE_MESSAGE = '앱에서는 심사용 이메일 로그인을 사용해 주세요. Google 로그인은 웹에서 이용할 수 있습니다.';
+export const NATIVE_GOOGLE_LOGIN_UNAVAILABLE_MESSAGE = 'Google 로그인 준비 중입니다. 잠시 후 다시 시도해 주세요.';
 
 export const isNativePlatform = () => Capacitor.isNativePlatform();
-export const isGoogleLoginAvailable = () => !isNativePlatform();
+export const isGoogleLoginAvailable = () => true;
 
 const logEmailLoginDebug = (label, payload) => {
     console.info(label, payload);
@@ -26,12 +26,13 @@ export const createNativeGoogleLoginUnavailableError = () => (
 );
 
 export const signInWithGoogle = async () => {
-    if (!isGoogleLoginAvailable()) {
-        throw createNativeGoogleLoginUnavailableError();
-    }
-
-    const { GoogleAuthProvider, signInWithPopup } = await import('firebase/auth');
+    const { GoogleAuthProvider, signInWithPopup, signInWithRedirect } = await import('firebase/auth');
     const provider = new GoogleAuthProvider();
+
+    if (isNativePlatform()) {
+        await signInWithRedirect(auth, provider);
+        return auth.currentUser || null;
+    }
 
     const { user } = await signInWithPopup(auth, provider);
 

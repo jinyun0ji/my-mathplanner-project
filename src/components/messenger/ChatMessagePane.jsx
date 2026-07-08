@@ -253,7 +253,7 @@ export default function ChatMessagePane({
                     </div>
                 </div>
             )}
-            <form onSubmit={submit} className={`${mobileCompact ? 'sticky bottom-0 p-2 mobile-keyboard-input-bar gap-1.5' : 'p-2 gap-2 items-end'} border-t bg-white flex`}>
+            <form onSubmit={submit} className={`${mobileCompact ? 'p-2 mobile-keyboard-input-bar gap-1.5 shrink-0' : 'p-2 gap-2 items-end'} border-t bg-white flex`}>
                 <label className={`${mobileCompact ? 'px-2.5 py-2 rounded-full text-xs' : 'px-3 py-2 rounded text-sm'} border border-gray-200 bg-white cursor-pointer shrink-0`}>첨부<input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" onChange={handleAttachmentChange} className="hidden" /></label>
                 <textarea
                     value={draft}

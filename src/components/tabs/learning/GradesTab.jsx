@@ -128,8 +128,8 @@ export default function GradesTab({ myGradeComparison }) {
         return (
             <ModalPortal>
                 <div className="fixed inset-0 z-[100] bg-gray-50 flex flex-col animate-fade-in-up w-full h-full">
-                    <div className="flex-none h-14 flex items-center gap-3 px-4 border-b border-gray-200 bg-white shadow-sm">
-                        <button onClick={() => setSelectedTestId(null)} className="p-2 bg-gray-100 rounded-lg text-gray-600 hover:bg-gray-200 active:bg-gray-300 transition-colors">
+                    <div className="grade-detail-header flex-none h-14 flex items-center gap-3 px-4 border-b border-gray-200 bg-white shadow-sm">
+                        <button onClick={() => setSelectedTestId(null)} className="mobile-back-button p-2 bg-gray-100 rounded-lg text-gray-600 hover:bg-gray-200 active:bg-gray-300 transition-colors">
                             <Icon name="chevronLeft" className="w-5 h-5" />
                         </button>
                         <h2 className="text-base font-bold text-gray-900 truncate">성적 상세 분석</h2>
