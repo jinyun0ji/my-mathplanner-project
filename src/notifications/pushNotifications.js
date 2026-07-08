@@ -49,6 +49,33 @@ const getNativePushToken = async () => {
   }
 };
 
+export const initializePushNotificationInteractions = async (onOpenNotificationCenter) => {
+  const openCenter = () => {
+    if (typeof onOpenNotificationCenter === 'function') onOpenNotificationCenter();
+    if (window.location.pathname !== '/home' || window.location.search !== '?tab=notifications') {
+      window.history.pushState({}, '', '/home?tab=notifications');
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    }
+  };
+
+  if (isCapacitorNativeEnvironment()) {
+    try {
+      const importNativePlugin = new Function('specifier', 'return import(specifier)');
+      const mod = await importNativePlugin('@capacitor/push-notifications');
+      const PushNotifications = mod.PushNotifications;
+      await PushNotifications.addListener('pushNotificationReceived', (notification) => {
+        console.info('[push] foreground notification received', notification);
+      });
+      await PushNotifications.addListener('pushNotificationActionPerformed', () => openCenter());
+    } catch (error) {
+      console.info('[push] native push listeners unavailable', error?.message || error);
+    }
+    return;
+  }
+
+  window.addEventListener('appNotificationClick', openCenter);
+};
+
 export const registerDevicePushToken = async (authUid) => {
   const uid = String(authUid || '').trim();
   if (!uid) return null;

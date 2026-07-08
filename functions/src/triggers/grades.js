@@ -67,7 +67,7 @@ const recomputeTestStats = async (testId) => {
         classAverage,
         average: classAverage,
         highestScore,
-        maxScore: highestScore,
+        classHighestScore: highestScore,
         submittedCount,
         statsUpdatedAt: FieldValue.serverTimestamp(),
     };

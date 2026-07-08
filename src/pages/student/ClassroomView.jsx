@@ -253,6 +253,43 @@ export default function ClassroomView({
         setIsVideoListOpen(false);
     }, [lessonVideos]);
 
+
+    const nativeLessonVideos = useMemo(() => lessonVideos.map((video, index) => ({
+        id: String(video.id ?? `video-${index}`),
+        title: String(video.title || `${index + 1}번 영상`),
+        videoId: String(video.videoId || video.youtubeVideoId || ''),
+        youtubeVideoId: String(video.youtubeVideoId || video.videoId || ''),
+    })).filter((video) => video.videoId || video.youtubeVideoId), [lessonVideos]);
+
+    const nativeLessonList = useMemo(() => sortedLogs.map((log) => {
+        const videos = normalizeLessonVideos(log);
+        const firstVideo = videos[0] || {};
+        const canAccess = canAccessLessonContent(attendanceMap[log.id]);
+        return {
+            id: String(log.id),
+            date: String(log.date || ''),
+            title: String(log.title || log.progress || log.date || '강의'),
+            progress: String(log.progress || log.title || ''),
+            videosCount: videos.length,
+            firstVideoId: String(firstVideo.youtubeVideoId || firstVideo.videoId || ''),
+            canAccess,
+            locked: !canAccess,
+        };
+    }), [sortedLogs, attendanceMap]);
+
+    const handleNativeVideoSelected = (payload = {}) => {
+        const next = lessonVideos.find((video) => String(video.id) === String(payload.id) || String(video.youtubeVideoId || video.videoId) === String(payload.videoId || payload.youtubeVideoId));
+        if (next) setSelectedVideo(next);
+    };
+
+    const handleNativeLessonSelected = (payload = {}) => {
+        const nextLesson = sortedLogs.find((log) => String(log.id) === String(payload.lessonId || payload.id));
+        if (!nextLesson || !canAccessLessonContent(attendanceMap[nextLesson.id])) return;
+        const videos = normalizeLessonVideos(nextLesson);
+        setCurrentLesson(nextLesson);
+        setSelectedVideo(videos[0] || null);
+    };
+
     const currentVideoId = selectedVideo?.youtubeVideoId || selectedVideo?.videoId;
     const currentDirectVideoUrl = selectedVideo?.videoUrl || selectedVideo?.fileUrl || selectedVideo?.hlsUrl || selectedVideo?.directUrl || '';
     const isNativeApp = isCapacitorNativeEnvironment();
@@ -313,6 +350,11 @@ export default function ClassroomView({
                     videoId={currentVideoId}
                     initialSeconds={initialSeconds}
                     memos={myMemos}
+                    currentLessonId={currentLesson?.id || ''}
+                    lessonVideos={nativeLessonVideos}
+                    lessonList={nativeLessonList}
+                    onNativeVideoSelected={handleNativeVideoSelected}
+                    onNativeLessonSelected={handleNativeLessonSelected}
                     onAddNativeMemo={handleAddNativeMemo}
                     onUpdateNativeMemo={handleUpdateNativeMemo}
                     onDeleteNativeMemo={handleDeleteNativeMemo}
@@ -374,6 +416,13 @@ export default function ClassroomView({
             setPendingNativeVideo({
                 lessonId: log.id,
                 videoId,
+                lessonVideos: videos.map((video, index) => ({
+                    id: String(video.id ?? `video-${index}`),
+                    title: String(video.title || `${index + 1}번 영상`),
+                    videoId: String(video.videoId || video.youtubeVideoId || ''),
+                    youtubeVideoId: String(video.youtubeVideoId || video.videoId || ''),
+                })).filter((video) => video.videoId || video.youtubeVideoId),
+                lessonList: nativeLessonList,
                 initialSeconds: targetMemo?.lessonId === log.id ? (targetMemo.time || 0) : (logProgress.seconds || 0),
                 requestId: Date.now(),
             });
@@ -500,6 +549,11 @@ export default function ClassroomView({
                         videoId={pendingNativeVideo.videoId}
                         initialSeconds={pendingNativeVideo.initialSeconds}
                         memos={myMemos}
+                        currentLessonId={currentLesson?.id || ''}
+                        lessonVideos={pendingNativeVideo.lessonVideos || nativeLessonVideos}
+                        lessonList={pendingNativeVideo.lessonList || nativeLessonList}
+                        onNativeVideoSelected={handleNativeVideoSelected}
+                        onNativeLessonSelected={handleNativeLessonSelected}
                         onAddNativeMemo={handleAddNativeMemo}
                         onUpdateNativeMemo={handleUpdateNativeMemo}
                         onDeleteNativeMemo={handleDeleteNativeMemo}

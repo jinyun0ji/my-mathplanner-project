@@ -4,7 +4,7 @@ import { registerPlugin } from '@capacitor/core';
 const NativeYouTube = registerPlugin('NativeYouTube');
 console.log("NativeYouTube =", NativeYouTube);
 
-export default function NativeYouTubeLauncher({ videoId, initialSeconds = 0, memos = [], onAddNativeMemo, onUpdateNativeMemo, onDeleteNativeMemo, autoOpen = false, renderControls = true }) {
+export default function NativeYouTubeLauncher({ videoId, initialSeconds = 0, memos = [], currentLessonId = '', lessonVideos = [], lessonList = [], onAddNativeMemo, onUpdateNativeMemo, onDeleteNativeMemo, onNativeVideoSelected, onNativeLessonSelected, autoOpen = false, renderControls = true }) {
     const [failed, setFailed] = useState(false);
     const [isOpening, setIsOpening] = useState(false);
     const isOpeningRef = useRef(false);
@@ -27,7 +27,7 @@ export default function NativeYouTubeLauncher({ videoId, initialSeconds = 0, mem
         addDebug('typeof NativeYouTube.open', typeof NativeYouTube.open);
         addDebug('window.location.href', window.location.href);
         addDebug('window.Capacitor exists', Boolean(window.Capacitor));
-    }, [addDebug, initialSeconds, memos, videoId]);
+    }, [addDebug, initialSeconds, memos, videoId, currentLessonId, lessonVideos, lessonList]);
 
     useEffect(() => {
         if (typeof NativeYouTube.addListener !== 'function') return undefined;
@@ -49,12 +49,14 @@ export default function NativeYouTubeLauncher({ videoId, initialSeconds = 0, mem
         attachListener('youtubeMemoAdded', onAddNativeMemo);
         attachListener('youtubeMemoUpdated', onUpdateNativeMemo);
         attachListener('youtubeMemoDeleted', onDeleteNativeMemo);
+        attachListener('youtubeVideoSelected', onNativeVideoSelected);
+        attachListener('youtubeLessonSelected', onNativeLessonSelected);
 
         return () => {
             isMounted = false;
             listenerHandles.forEach((handle) => handle?.remove?.());
         };
-    }, [addDebug, onAddNativeMemo, onUpdateNativeMemo, onDeleteNativeMemo]);
+    }, [addDebug, onAddNativeMemo, onUpdateNativeMemo, onDeleteNativeMemo, onNativeVideoSelected, onNativeLessonSelected]);
 
     const openNativePlayer = useCallback(async () => {
         console.log("button clicked");
@@ -79,12 +81,18 @@ export default function NativeYouTubeLauncher({ videoId, initialSeconds = 0, mem
                 startSeconds: initialSeconds || 0,
                 memoCount: nativeMemos.length,
                 autoPlay: true,
+                currentLessonId,
+                lessonVideos,
+                lessonList,
             });
             await NativeYouTube.open({
                 videoId,
                 startSeconds: initialSeconds || 0,
                 autoPlay: true,
                 memos: nativeMemos,
+                currentLessonId,
+                lessonVideos,
+                lessonList,
             });
             addDebug('open resolved');
             console.info('[NativeYouTubeLauncher] native player opened', { videoId });
@@ -97,7 +105,7 @@ export default function NativeYouTubeLauncher({ videoId, initialSeconds = 0, mem
             isOpeningRef.current = false;
             setIsOpening(false);
         }
-    }, [addDebug, initialSeconds, memos, videoId]);
+    }, [addDebug, initialSeconds, memos, videoId, currentLessonId, lessonVideos, lessonList]);
 
     useEffect(() => {
         if (!autoOpen || autoOpenedRef.current) return;

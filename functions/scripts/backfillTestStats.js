@@ -77,7 +77,7 @@ async function main() {
       classAverage,
       average: classAverage,
       highestScore,
-      maxScore: highestScore,
+      classHighestScore: highestScore,
       submittedCount,
       statsUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
     };

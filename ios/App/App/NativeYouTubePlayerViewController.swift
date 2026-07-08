@@ -2,24 +2,34 @@ import UIKit
 import YouTubeiOSPlayerHelper
 
 final class NativeYouTubePlayerViewController: UIViewController, YTPlayerViewDelegate, UIGestureRecognizerDelegate {
-    private let videoId: String
-    private let startSeconds: Double
+    private var videoId: String
+    private var startSeconds: Double
     private let autoPlay: Bool
     private let playerView = YTPlayerView()
     private var latestPlayTime: Double
     private var memos: [NativeMemo]
+    private var currentLessonId: String
+    private let lessonVideos: [NativeLessonVideo]
+    private let lessonList: [NativeLessonItem]
+    private let onVideoSelected: (([String: Any]) -> Void)?
+    private let onLessonSelected: (([String: Any]) -> Void)?
     private let onMemoAdded: (([String: Any]) -> Void)?
     private let onMemoUpdated: (([String: Any]) -> Void)?
     private let onMemoDeleted: (([String: Any]) -> Void)?
     private weak var activeOverlayView: UIView?
     private weak var activeEditPanelBottomConstraint: NSLayoutConstraint?
 
-    init(videoId: String, startSeconds: Double = 0, autoPlay: Bool = false, memos: [NativeMemo] = [], onMemoAdded: (([String: Any]) -> Void)? = nil, onMemoUpdated: (([String: Any]) -> Void)? = nil, onMemoDeleted: (([String: Any]) -> Void)? = nil) {
+    init(videoId: String, startSeconds: Double = 0, autoPlay: Bool = false, memos: [NativeMemo] = [], currentLessonId: String = "", lessonVideos: [NativeLessonVideo] = [], lessonList: [NativeLessonItem] = [], onMemoAdded: (([String: Any]) -> Void)? = nil, onMemoUpdated: (([String: Any]) -> Void)? = nil, onMemoDeleted: (([String: Any]) -> Void)? = nil, onVideoSelected: (([String: Any]) -> Void)? = nil, onLessonSelected: (([String: Any]) -> Void)? = nil) {
         self.videoId = videoId
         self.startSeconds = max(0, startSeconds)
         self.autoPlay = autoPlay
         self.latestPlayTime = max(0, startSeconds)
         self.memos = memos.sorted { $0.time < $1.time }
+        self.currentLessonId = currentLessonId
+        self.lessonVideos = lessonVideos
+        self.lessonList = lessonList
+        self.onVideoSelected = onVideoSelected
+        self.onLessonSelected = onLessonSelected
         self.onMemoAdded = onMemoAdded
         self.onMemoUpdated = onMemoUpdated
         self.onMemoDeleted = onMemoDeleted
@@ -47,7 +57,13 @@ final class NativeYouTubePlayerViewController: UIViewController, YTPlayerViewDel
         let memoListButton = makeOverlayPillButton(title: "메모 목록")
         memoListButton.addTarget(self, action: #selector(memoListTapped), for: .touchUpInside)
 
-        let topControlsStack = UIStackView(arrangedSubviews: [closeButton, memoListButton])
+        let videoListButton = makeOverlayPillButton(title: "영상 목록")
+        videoListButton.addTarget(self, action: #selector(videoListTapped), for: .touchUpInside)
+
+        let lessonListButton = makeOverlayPillButton(title: "강의 목록")
+        lessonListButton.addTarget(self, action: #selector(lessonListTapped), for: .touchUpInside)
+
+        let topControlsStack = UIStackView(arrangedSubviews: [closeButton, videoListButton, lessonListButton, memoListButton])
         topControlsStack.translatesAutoresizingMaskIntoConstraints = false
         topControlsStack.axis = .horizontal
         topControlsStack.alignment = .center
@@ -68,7 +84,7 @@ final class NativeYouTubePlayerViewController: UIViewController, YTPlayerViewDel
         button.translatesAutoresizingMaskIntoConstraints = false
         button.setTitle(title, for: .normal)
         button.setTitleColor(.white, for: .normal)
-        button.titleLabel?.font = .boldSystemFont(ofSize: 17)
+        button.titleLabel?.font = .boldSystemFont(ofSize: 13)
         button.backgroundColor = backgroundColor
         button.layer.cornerRadius = 20
         button.contentEdgeInsets = UIEdgeInsets(top: 8, left: 14, bottom: 8, right: 14)
@@ -132,6 +148,107 @@ final class NativeYouTubePlayerViewController: UIViewController, YTPlayerViewDel
     @objc private func memoListTapped() {
         showMemoListOverlay()
     }
+
+    @objc private func videoListTapped() {
+        dismissActiveOverlay(animated: false)
+        let overlay = makeDimmingOverlay()
+        let panel = makeRoundedPanel()
+        let stack = makeSimpleSheet(title: "영상 목록", in: panel)
+        if lessonVideos.isEmpty { stack.addArrangedSubview(makeInfoLabel("영상 목록이 없습니다.")) }
+        lessonVideos.forEach { item in
+            let button = makeTextButton(title: item.title, titleColor: item.videoId == videoId ? .systemBlue : .label)
+            button.contentHorizontalAlignment = .left
+            button.addAction(UIAction { [weak self] _ in
+                self?.selectVideo(item)
+            }, for: .touchUpInside)
+            stack.addArrangedSubview(button)
+        }
+        presentSheet(overlay: overlay, panel: panel)
+    }
+
+    @objc private func lessonListTapped() {
+        dismissActiveOverlay(animated: false)
+        let overlay = makeDimmingOverlay()
+        let panel = makeRoundedPanel()
+        let stack = makeSimpleSheet(title: "강의 목록", in: panel)
+        if lessonList.isEmpty { stack.addArrangedSubview(makeInfoLabel("강의 목록이 없습니다.")) }
+        lessonList.forEach { item in
+            let title = item.canAccess ? "\(item.date) \(item.title) · 영상 \(item.videosCount)개" : "\(item.date) \(item.title) · 출결 확인 후 시청 가능"
+            let button = makeTextButton(title: title, titleColor: item.canAccess ? .label : .secondaryLabel)
+            button.contentHorizontalAlignment = .left
+            button.isEnabled = item.canAccess && !item.firstVideoId.isEmpty
+            button.addAction(UIAction { [weak self] _ in
+                self?.selectLesson(item)
+            }, for: .touchUpInside)
+            stack.addArrangedSubview(button)
+        }
+        presentSheet(overlay: overlay, panel: panel)
+    }
+
+    private func selectVideo(_ item: NativeLessonVideo) {
+        videoId = item.videoId
+        startSeconds = 0
+        latestPlayTime = 0
+        memos = []
+        onVideoSelected?(["id": item.id, "videoId": item.videoId, "youtubeVideoId": item.videoId])
+        dismissActiveOverlay()
+        loadVideo()
+    }
+
+    private func selectLesson(_ item: NativeLessonItem) {
+        guard item.canAccess, !item.firstVideoId.isEmpty else { return }
+        currentLessonId = item.id
+        videoId = item.firstVideoId
+        startSeconds = 0
+        latestPlayTime = 0
+        memos = []
+        onLessonSelected?(["lessonId": item.id, "videoId": item.firstVideoId])
+        dismissActiveOverlay()
+        loadVideo()
+    }
+
+    private func makeSimpleSheet(title: String, in panel: UIView) -> UIStackView {
+        let stack = UIStackView()
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        stack.axis = .vertical
+        stack.spacing = 10
+        panel.addSubview(stack)
+        let header = makePanelTitle(title)
+        stack.addArrangedSubview(header)
+        NSLayoutConstraint.activate([
+            stack.topAnchor.constraint(equalTo: panel.topAnchor, constant: 20),
+            stack.leadingAnchor.constraint(equalTo: panel.leadingAnchor, constant: 20),
+            stack.trailingAnchor.constraint(equalTo: panel.trailingAnchor, constant: -20),
+            stack.bottomAnchor.constraint(lessThanOrEqualTo: panel.bottomAnchor, constant: -24)
+        ])
+        return stack
+    }
+
+    private func makeInfoLabel(_ text: String) -> UILabel {
+        let label = UILabel()
+        label.text = text
+        label.font = .systemFont(ofSize: 14, weight: .medium)
+        label.textColor = .secondaryLabel
+        return label
+    }
+
+    private func presentSheet(overlay: UIView, panel: UIView) {
+        view.addSubview(overlay)
+        overlay.addSubview(panel)
+        activeOverlayView = overlay
+        NSLayoutConstraint.activate([
+            overlay.topAnchor.constraint(equalTo: view.topAnchor),
+            overlay.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            overlay.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            overlay.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            panel.leadingAnchor.constraint(equalTo: overlay.leadingAnchor),
+            panel.trailingAnchor.constraint(equalTo: overlay.trailingAnchor),
+            panel.bottomAnchor.constraint(equalTo: overlay.bottomAnchor),
+            panel.heightAnchor.constraint(lessThanOrEqualTo: overlay.heightAnchor, multiplier: 0.55)
+        ])
+        animateOverlayIn(overlay: overlay, panel: panel)
+    }
+
 
     private func showMemoListOverlay() {
         dismissActiveOverlay(animated: false)

@@ -308,6 +308,12 @@ export default function StudentHome({
     }, [setSearchParams, embedded]);
     const [isVideoModalOpen, setIsVideoModalOpen] = useState(false);
     const [isNotificationOpen, setIsNotificationOpen] = useState(false);
+
+    useEffect(() => {
+        if (searchParams.get('tab') === 'notifications') {
+            setIsNotificationOpen(true);
+        }
+    }, [searchParams]);
     const [visibleNotices, setVisibleNotices] = useState([]);
     const [targetMemo, setTargetMemo] = useState(null);
     const [isMessengerPage, setIsMessengerPage] = useState(false);

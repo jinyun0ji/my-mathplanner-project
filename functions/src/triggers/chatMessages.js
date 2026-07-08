@@ -1,7 +1,6 @@
 const functions = require('firebase-functions');
 const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 const { notifyUsers } = require('../notify/notifications');
-const { sendFcmToUsers } = require('../notify/fcm');
 
 const TYPE = 'CHAT_MESSAGE';
 const db = getFirestore();
@@ -119,13 +118,6 @@ const onChatRoomMessageCreated = functions.firestore
 
         await batch.commit();
 
-        const notificationIds = Object.fromEntries(recipientOwnerUids.map((uid) => [uid, `${roomId}_${messageId}`]));
-        await sendFcmToUsers(recipientOwnerUids, {
-            type: TYPE,
-            refCollection: 'notifications',
-            refId: 'center',
-            category: 'message',
-        }, { notificationIds });
         return null;
     });
 

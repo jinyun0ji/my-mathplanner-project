@@ -745,6 +745,12 @@ export default function ParentHome({
 
     // 알림 관련
     const [isNotificationOpen, setIsNotificationOpen] = useState(false);
+
+    useEffect(() => {
+        if (searchParams.get('tab') === 'notifications') {
+            setIsNotificationOpen(true);
+        }
+    }, [searchParams]);
     const [isMessengerPage, setIsMessengerPage] = useState(false);
     const [initialMessengerRoomId, setInitialMessengerRoomId] = useState('');
     const handleOpenMessages = () => {

@@ -74,7 +74,7 @@ import {
     writeBatch,
 } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
-import { registerDevicePushToken, unregisterDevicePushToken } from '../notifications/pushNotifications';
+import { initializePushNotificationInteractions, registerDevicePushToken, unregisterDevicePushToken } from '../notifications/pushNotifications';
 
 const PAGE_ROUTES = {
     home: '/home',
@@ -209,6 +209,13 @@ export default function AppRoutes({ user, role, studentIds }) {
           }
       };
   }, [userId]);
+
+
+  useEffect(() => {
+      initializePushNotificationInteractions(() => {
+          navigate('/home?tab=notifications');
+      }).catch((error) => console.warn('[push] notification interaction setup failed', error));
+  }, [navigate]);
 
   const parentStudentId = isParentRole(role) ? parentActiveStudentId : null;
 
