@@ -89,11 +89,13 @@ const firstFiniteScore = (...values) => {
   return null;
 };
 
-export const getTestStatsForDisplay = (test = {}, classTestStats = {}) => {
+export const getTestStatsForDisplay = (test = {}, classTestStats = {}, gradeRecord = {}) => {
   const stats = classTestStats?.[`${test?.classId}_${test?.id}`] || classTestStats?.[test?.id] || null;
 
   return {
     average: firstFiniteScore(
+      gradeRecord?.average,
+      gradeRecord?.classAverage,
       stats?.average,
       test?.average,
       test?.classAverage,

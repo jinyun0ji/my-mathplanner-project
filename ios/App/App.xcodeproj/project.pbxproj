@@ -10,6 +10,9 @@
 		2FAD9763203C412B000D30F8 /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
 		40E8BF1C2FFAA1190052F7E1 /* YouTubeiOSPlayerHelper in Frameworks */ = {isa = PBXBuildFile; productRef = 40E8BF1B2FFAA1190052F7E1 /* YouTubeiOSPlayerHelper */; };
 		40FC37BA2FFEAEA10056B4EE /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 40FC37B92FFEAEA10056B4EE /* GoogleService-Info.plist */; };
+		40FC37BE2FFED46E0056B4EE /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = 40FC37BD2FFED46E0056B4EE /* GoogleSignIn */; };
+		40FC37C02FFED46E0056B4EE /* GoogleSignInSwift in Frameworks */ = {isa = PBXBuildFile; productRef = 40FC37BF2FFED46E0056B4EE /* GoogleSignInSwift */; };
+		40FC37C22FFED6530056B4EE /* NativeGoogleAuthPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40FC37C12FFED6530056B4EE /* NativeGoogleAuthPlugin.swift */; };
 		4D22ABE92AF431CB00220026 /* CapApp-SPM in Frameworks */ = {isa = PBXBuildFile; productRef = 4D22ABE82AF431CB00220026 /* CapApp-SPM */; };
 		50379B232058CBB4000EE86E /* capacitor.config.json in Resources */ = {isa = PBXBuildFile; fileRef = 50379B222058CBB4000EE86E /* capacitor.config.json */; };
 		504EC3081FED79650016851F /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 504EC3071FED79650016851F /* AppDelegate.swift */; };
@@ -26,6 +29,7 @@
 		2C3CDE8C358E0238F4ACBC20 /* Pods_App.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_App.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		2FAD9762203C412B000D30F8 /* config.xml */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = config.xml; sourceTree = "<group>"; };
 		40FC37B92FFEAEA10056B4EE /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
+		40FC37C12FFED6530056B4EE /* NativeGoogleAuthPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeGoogleAuthPlugin.swift; sourceTree = "<group>"; };
 		50379B222058CBB4000EE86E /* capacitor.config.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = capacitor.config.json; sourceTree = "<group>"; };
 		504EC3041FED79650016851F /* App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = App.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		504EC3071FED79650016851F /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
@@ -47,6 +51,8 @@
 			files = (
 				4D22ABE92AF431CB00220026 /* CapApp-SPM in Frameworks */,
 				40E8BF1C2FFAA1190052F7E1 /* YouTubeiOSPlayerHelper in Frameworks */,
+				40FC37BE2FFED46E0056B4EE /* GoogleSignIn in Frameworks */,
+				40FC37C02FFED46E0056B4EE /* GoogleSignInSwift in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -74,6 +80,7 @@
 		504EC3061FED79650016851F /* App */ = {
 			isa = PBXGroup;
 			children = (
+				40FC37C12FFED6530056B4EE /* NativeGoogleAuthPlugin.swift */,
 				50379B222058CBB4000EE86E /* capacitor.config.json */,
 				504EC3071FED79650016851F /* AppDelegate.swift */,
 				A10000000000000000000001 /* NativeYouTubePlayerViewController.swift */,
@@ -117,6 +124,8 @@
 			packageProductDependencies = (
 				4D22ABE82AF431CB00220026 /* CapApp-SPM */,
 				40E8BF1B2FFAA1190052F7E1 /* YouTubeiOSPlayerHelper */,
+				40FC37BD2FFED46E0056B4EE /* GoogleSignIn */,
+				40FC37BF2FFED46E0056B4EE /* GoogleSignInSwift */,
 			);
 			productName = App;
 			productReference = 504EC3041FED79650016851F /* App.app */;
@@ -151,6 +160,7 @@
 				D4C12C0A2AAA248700AAC8A2 /* XCLocalSwiftPackageReference "CapApp-SPM" */,
 				40E8BF1A2FFAA1190052F7E1 /* XCRemoteSwiftPackageReference "youtube-ios-player-helper" */,
 				40FC37BB2FFEAF030056B4EE /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
+				40FC37BC2FFED46E0056B4EE /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */,
 			);
 			productRefGroup = 504EC3051FED79650016851F /* Products */;
 			projectDirPath = "";
@@ -183,6 +193,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				40FC37C22FFED6530056B4EE /* NativeGoogleAuthPlugin.swift in Sources */,
 				504EC3081FED79650016851F /* AppDelegate.swift in Sources */,
 				A10000000000000000000002 /* NativeYouTubePlayerViewController.swift in Sources */,
 				A10000000000000000000004 /* NativeYouTubePlugin.swift in Sources */,
@@ -414,6 +425,14 @@
 				minimumVersion = 12.16.0;
 			};
 		};
+		40FC37BC2FFED46E0056B4EE /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/google/GoogleSignIn-iOS.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 9.2.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -421,6 +440,16 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 40E8BF1A2FFAA1190052F7E1 /* XCRemoteSwiftPackageReference "youtube-ios-player-helper" */;
 			productName = YouTubeiOSPlayerHelper;
+		};
+		40FC37BD2FFED46E0056B4EE /* GoogleSignIn */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 40FC37BC2FFED46E0056B4EE /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
+			productName = GoogleSignIn;
+		};
+		40FC37BF2FFED46E0056B4EE /* GoogleSignInSwift */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 40FC37BC2FFED46E0056B4EE /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
+			productName = GoogleSignInSwift;
 		};
 		4D22ABE82AF431CB00220026 /* CapApp-SPM */ = {
 			isa = XCSwiftPackageProductDependency;

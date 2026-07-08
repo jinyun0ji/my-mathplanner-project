@@ -1,969 +1,181 @@
-diff --git a/ios/App/App/AppDelegate.swift b/ios/App/App/AppDelegate.swift
-index b8b14cdf8b05ab20d7807da51c565f1232472185..0671c8fbd1f130f92694825c9e94fb32061301b2 100644
---- a/ios/App/App/AppDelegate.swift
-+++ b/ios/App/App/AppDelegate.swift
-@@ -1,50 +1,55 @@
- import UIKit
- import Capacitor
-+import GoogleSignIn
- 
- @UIApplicationMain
- class AppDelegate: UIResponder, UIApplicationDelegate {
- 
-     var window: UIWindow?
- 
-     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-         // Native Capacitor plugins that require explicit registration are registered in
-         // NativeYouTubeViewController.capacitorDidLoad(), where the CAPBridge is available.
-         return true
-     }
- 
-     func applicationWillResignActive(_ application: UIApplication) {
-         // Sent when the application is about to move from active to inactive state. This can occur for certain types of temporary interruptions (such as an incoming phone call or SMS message) or when the user quits the application and it begins the transition to the background state.
-         // Use this method to pause ongoing tasks, disable timers, and invalidate graphics rendering callbacks. Games should use this method to pause the game.
-     }
- 
-     func applicationDidEnterBackground(_ application: UIApplication) {
-         // Use this method to release shared resources, save user data, invalidate timers, and store enough application state information to restore your application to its current state in case it is terminated later.
-         // If your application supports background execution, this method is called instead of applicationWillTerminate: when the user quits.
-     }
- 
-     func applicationWillEnterForeground(_ application: UIApplication) {
-         // Called as part of the transition from the background to the active state; here you can undo many of the changes made on entering the background.
-     }
- 
-     func applicationDidBecomeActive(_ application: UIApplication) {
-         // Restart any tasks that were paused (or not yet started) while the application was inactive. If the application was previously in the background, optionally refresh the user interface.
-     }
- 
-     func applicationWillTerminate(_ application: UIApplication) {
-         // Called when the application is about to terminate. Save data if appropriate. See also applicationDidEnterBackground:.
-     }
- 
-     func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
-+        if GIDSignIn.sharedInstance.handle(url) {
-+            return true
-+        }
-+
-         // Called when the app was launched with a url. Feel free to add additional processing here,
-         // but if you want the App API to support tracking app url opens, make sure to keep this call
-         return ApplicationDelegateProxy.shared.application(app, open: url, options: options)
-     }
- 
-     func application(_ application: UIApplication, continue userActivity: NSUserActivity, restorationHandler: @escaping ([UIUserActivityRestoring]?) -> Void) -> Bool {
-         // Called when the app was launched with an activity, including Universal Links.
-         // Feel free to add additional processing here, but if you want the App API to support
-         // tracking app url opens, make sure to keep this call
-         return ApplicationDelegateProxy.shared.application(application, continue: userActivity, restorationHandler: restorationHandler)
-     }
- 
- }
-diff --git a/ios/App/App/NativeGoogleAuthPlugin.swift b/ios/App/App/NativeGoogleAuthPlugin.swift
-new file mode 100644
-index 0000000000000000000000000000000000000000..24bd3a19d07f11d1123e2d61f529e27526c773f3
---- /dev/null
-+++ b/ios/App/App/NativeGoogleAuthPlugin.swift
-@@ -0,0 +1,105 @@
-+import Capacitor
-+import Foundation
-+import GoogleSignIn
-+import UIKit
-+
-+@objc(NativeGoogleAuthPlugin)
-+public class NativeGoogleAuthPlugin: CAPPlugin, CAPBridgedPlugin {
-+    public let identifier = "NativeGoogleAuthPlugin"
-+    public let jsName = "NativeGoogleAuth"
-+    public let pluginMethods: [CAPPluginMethod] = [
-+        CAPPluginMethod(name: "signIn", returnType: CAPPluginReturnPromise)
-+    ]
-+
-+    @objc func signIn(_ call: CAPPluginCall) {
-+        DispatchQueue.main.async { [weak self] in
-+            guard let self = self else {
-+                call.reject("Plugin instance was released", "google-login/native-failed")
-+                return
-+            }
-+
-+            guard let clientID = self.googleClientID() else {
-+                call.reject("Google client ID is unavailable", "google-login/native-failed")
-+                return
-+            }
-+
-+            guard let presenter = self.presenterViewController() else {
-+                call.reject("Root view controller is unavailable", "google-login/native-failed")
-+                return
-+            }
-+
-+            GIDSignIn.sharedInstance.configuration = GIDConfiguration(clientID: clientID)
-+            GIDSignIn.sharedInstance.signIn(withPresenting: presenter) { result, error in
-+                if let error = error {
-+                    let nsError = error as NSError
-+                    if nsError.domain == kGIDSignInErrorDomain && nsError.code == -5 {
-+                        call.reject("Google sign in was cancelled", "google-login/cancelled", error)
-+                        return
-+                    }
-+                    call.reject(error.localizedDescription, "google-login/native-failed", error)
-+                    return
-+                }
-+
-+                guard let user = result?.user,
-+                      let idToken = user.idToken?.tokenString else {
-+                    call.reject("Google id token is unavailable", "google-login/native-failed")
-+                    return
-+                }
-+
-+                var response: JSObject = [
-+                    "idToken": idToken,
-+                    "accessToken": user.accessToken.tokenString
-+                ]
-+
-+                if let email = user.profile?.email {
-+                    response["email"] = email
-+                }
-+                if let name = user.profile?.name {
-+                    response["name"] = name
-+                }
-+
-+                call.resolve(response)
-+            }
-+        }
-+    }
-+
-+    private func googleClientID() -> String? {
-+        guard let path = Bundle.main.path(forResource: "GoogleService-Info", ofType: "plist"),
-+              let plist = NSDictionary(contentsOfFile: path),
-+              let clientID = plist["CLIENT_ID"] as? String,
-+              !clientID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-+            return nil
-+        }
-+        return clientID
-+    }
-+
-+    private func presenterViewController() -> UIViewController? {
-+        if let bridgeViewController = bridge?.viewController {
-+            return topViewController(from: bridgeViewController)
-+        }
-+
-+        let rootViewController = UIApplication.shared.connectedScenes
-+            .compactMap { $0 as? UIWindowScene }
-+            .flatMap { $0.windows }
-+            .first { $0.isKeyWindow }?
-+            .rootViewController
-+
-+        return topViewController(from: rootViewController)
-+    }
-+
-+    private func topViewController(from viewController: UIViewController?) -> UIViewController? {
-+        if let navigationController = viewController as? UINavigationController {
-+            return topViewController(from: navigationController.visibleViewController)
-+        }
-+
-+        if let tabBarController = viewController as? UITabBarController {
-+            return topViewController(from: tabBarController.selectedViewController)
-+        }
-+
-+        if let presentedViewController = viewController?.presentedViewController {
-+            return topViewController(from: presentedViewController)
-+        }
-+
-+        return viewController
-+    }
-+}
-diff --git a/ios/App/App/NativeYouTubeViewController.swift b/ios/App/App/NativeYouTubeViewController.swift
-index 4c028d1d6458f4aabee955ba48d64ae22b97ea9e..54accbcad3ca6952aca1c624a285ae2fe588f827 100644
---- a/ios/App/App/NativeYouTubeViewController.swift
-+++ b/ios/App/App/NativeYouTubeViewController.swift
-@@ -1,13 +1,12 @@
- import Capacitor
--// import CodetrixStudioCapacitorGoogleAuth
- import UIKit
- 
- class NativeYouTubeViewController: CAPBridgeViewController {
-     override func capacitorDidLoad() {
-         super.capacitorDidLoad()
-         bridge?.registerPluginInstance(NativeYouTubePlugin())
--        // bridge?.registerPluginInstance(GoogleAuth())
-+        bridge?.registerPluginInstance(NativeGoogleAuthPlugin())
-         print("[NativeYouTubePlugin] registered")
--        print("[GoogleAuth] registered")
-+        print("[NativeGoogleAuthPlugin] registered")
-     }
- }
-diff --git a/ios/App/CapApp-SPM/Package.swift b/ios/App/CapApp-SPM/Package.swift
-index 49e33c32bc40e1d494ddb03b2eba4a0164878bf8..2b96828e171e647142ed18018a6f65d7e7de6549 100644
---- a/ios/App/CapApp-SPM/Package.swift
-+++ b/ios/App/CapApp-SPM/Package.swift
-@@ -1,33 +1,35 @@
- // swift-tools-version: 5.9
- import PackageDescription
- 
- // DO NOT MODIFY THIS FILE - managed by Capacitor CLI commands
- let package = Package(
-     name: "CapApp-SPM",
-     platforms: [.iOS(.v15)],
-     products: [
-         .library(
-             name: "CapApp-SPM",
-             targets: ["CapApp-SPM"])
-     ],
-     dependencies: [
-         .package(url: "https://github.com/ionic-team/capacitor-swift-pm.git", exact: "6.2.1"),
-         .package(name: "CapacitorApp", path: "../../../node_modules/@capacitor/app"),
-         .package(name: "CapacitorKeyboard", path: "../../../node_modules/@capacitor/keyboard"),
-         .package(name: "CapacitorSplashScreen", path: "../../../node_modules/@capacitor/splash-screen"),
--        .package(name: "CapacitorStatusBar", path: "../../../node_modules/@capacitor/status-bar")
-+        .package(name: "CapacitorStatusBar", path: "../../../node_modules/@capacitor/status-bar"),
-+        .package(url: "https://github.com/google/GoogleSignIn-iOS.git", from: "7.0.0")
-     ],
-     targets: [
-         .target(
-             name: "CapApp-SPM",
-             dependencies: [
-                 .product(name: "Capacitor", package: "capacitor-swift-pm"),
-                 .product(name: "Cordova", package: "capacitor-swift-pm"),
-                 .product(name: "CapacitorApp", package: "CapacitorApp"),
-                 .product(name: "CapacitorKeyboard", package: "CapacitorKeyboard"),
-                 .product(name: "CapacitorSplashScreen", package: "CapacitorSplashScreen"),
--                .product(name: "CapacitorStatusBar", package: "CapacitorStatusBar")
-+                .product(name: "CapacitorStatusBar", package: "CapacitorStatusBar"),
-+                .product(name: "GoogleSignIn", package: "GoogleSignIn-iOS")
-             ]
-         )
-     ]
- )
-diff --git a/src/auth/authService.js b/src/auth/authService.js
-index 9e383c762ab9f1e7d53ae5f00670506dedab858a..1eb4a303756867c3ce489262d8c2266acac932f3 100644
---- a/src/auth/authService.js
-+++ b/src/auth/authService.js
-@@ -9,108 +9,98 @@ export const REVIEW_LOGIN_PROFILE_MISSING_MESSAGE = '사용자 정보를 찾을
- export const NATIVE_GOOGLE_LOGIN_UNAVAILABLE_MESSAGE = 'Google 로그인 연결에 실패했습니다. 다시 시도해주세요.';
- export const GOOGLE_LOGIN_CANCELLED_MESSAGE = 'Google 로그인이 취소되었습니다.';
- 
- export const isNativePlatform = () => Capacitor.isNativePlatform();
- export const isGoogleLoginAvailable = () => true;
- 
- const logEmailLoginDebug = (label, payload) => {
-     console.info(label, payload);
+diff --git a/ios/App/App/Info.plist b/ios/App/App/Info.plist
+index 7857f3ac3e0e897d769891e90fc453a468521ef8..3d3c13fc1cfa47b91a691c14c1fcbbfcc61b016c 100644
+--- a/ios/App/App/Info.plist
++++ b/ios/App/App/Info.plist
+@@ -14,50 +14,56 @@
+ 	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+ 	<key>CFBundleInfoDictionaryVersion</key>
+ 	<string>6.0</string>
+ 	<key>CFBundleName</key>
+ 	<string>$(PRODUCT_NAME)</string>
+ 	<key>CFBundlePackageType</key>
+ 	<string>APPL</string>
+ 	<key>CFBundleShortVersionString</key>
+ 	<string>$(MARKETING_VERSION)</string>
+ 	<key>CFBundleURLTypes</key>
+ 	<array>
+ 		<dict>
+ 			<key>CFBundleTypeRole</key>
+ 			<string>Editor</string>
+ 			<key>CFBundleURLName</key>
+ 			<string>Google Sign-In</string>
+ 			<key>CFBundleURLSchemes</key>
+ 			<array>
+ 				<string>com.googleusercontent.apps.197602408828-ioltf61rci7tmctb733gsse6gddsilcu</string>
+ 			</array>
+ 		</dict>
+ 		<dict/>
+ 	</array>
+ 	<key>CFBundleVersion</key>
+ 	<string>$(CURRENT_PROJECT_VERSION)</string>
++	<key>NSCameraUsageDescription</key>
++	<string>채팅 첨부 사진 촬영을 위해 카메라 접근 권한이 필요합니다.</string>
++	<key>NSPhotoLibraryUsageDescription</key>
++	<string>채팅 첨부 사진 선택을 위해 사진 보관함 접근 권한이 필요합니다.</string>
++	<key>NSPhotoLibraryAddUsageDescription</key>
++	<string>첨부 이미지 저장 및 선택을 위해 사진 보관함 접근 권한이 필요합니다.</string>
+ 	<key>LSRequiresIPhoneOS</key>
+ 	<true/>
+ 	<key>UILaunchStoryboardName</key>
+ 	<string>LaunchScreen</string>
+ 	<key>UIMainStoryboardFile</key>
+ 	<string>Main</string>
+ 	<key>UIRequiredDeviceCapabilities</key>
+ 	<array>
+ 		<string>armv7</string>
+ 	</array>
+ 	<key>UISupportedInterfaceOrientations</key>
+ 	<array>
+ 		<string>UIInterfaceOrientationPortrait</string>
+ 		<string>UIInterfaceOrientationLandscapeLeft</string>
+ 		<string>UIInterfaceOrientationLandscapeRight</string>
+ 	</array>
+ 	<key>UISupportedInterfaceOrientations~ipad</key>
+ 	<array>
+ 		<string>UIInterfaceOrientationPortrait</string>
+ 		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+ 		<string>UIInterfaceOrientationLandscapeLeft</string>
+ 		<string>UIInterfaceOrientationLandscapeRight</string>
+ 	</array>
+ 	<key>UIViewControllerBasedStatusBarAppearance</key>
+ 	<true/>
+diff --git a/src/domain/lessonReport/lessonReport.service.js b/src/domain/lessonReport/lessonReport.service.js
+index c4ffd83da2e69bf0441f452d302624bb3f6b3d54..e3d7a289254c66b94be50169aa3537ec228ec061 100644
+--- a/src/domain/lessonReport/lessonReport.service.js
++++ b/src/domain/lessonReport/lessonReport.service.js
+@@ -223,51 +223,51 @@ export const summarizeHomework = ({
  };
  
- const createReviewLoginError = (message, code) => {
-     const error = new Error(message);
-     error.code = code;
-     return error;
+ export const summarizeAssignedHomework = ({
+     selectedAssignedHomeworkIds = [],
+     selectedHomeworkIds = [],
+     homeworkAssignments = [],
+ }) => ({
+     items: (selectedAssignedHomeworkIds.length > 0 ? selectedAssignedHomeworkIds : selectedHomeworkIds)
+         .map((id) => homeworkAssignments.find((hw) => String(hw.id) === String(id)))
+         .filter(Boolean)
+         .map((assignment) => ({
+         homeworkId: assignment.id,
+         title: resolveHomeworkAssignmentTitle(assignment),
+         assignedDate: toYmd(assignment.assignedDate || assignment.date || assignment.createdAt),
+         dueDate: toYmd(assignment.dueDate || assignment.deadline),
+     })),
+ });
+ 
+ export const summarizeTests = ({ selectedTestIds = [], tests = [], grades = {}, studentId, student = null, classTestStats = {} }) => {
+     const items = selectedTestIds
+         .map((id) => tests.find((test) => String(test.id) === String(id)))
+         .filter(Boolean)
+         .map((test) => {
+             const grade = getGradeForLessonReportStudent({ student, studentId, grades, testId: test.id });
+             const title = buildTestTitle(test);
+-            const stats = getTestStatsForDisplay(test, classTestStats);
++            const stats = getTestStatsForDisplay(test, classTestStats, grade);
+             const absent = isAbsentGradeRecord(grade);
+             const directScore = absent ? null : toFiniteScoreNumber(pickScoreValue(grade));
+             const computedScore = directScore ?? (absent ? null : getTotalScore(grade, test));
+ 
+             const questionCount = toFiniteNumber(grade?.questionCount) ?? toFiniteNumber(test?.totalQuestions);
+             const correctCount = toFiniteNumber(grade?.correctCount);
+             const displayLines = grade
+                 ? buildTestDisplayLines({ title, gradeRecord: grade, stats })
+                 : [title, '학생: 점수 미입력', ...buildTestStatParts(stats, { includeUnit: true }).map((part) => part.replace(' ', ': '))];
+ 
+             const summary = displayLines.join('\n');
+ 
+             return {
+                 testId: test.id,
+                 name: test.name || '시험',
+                 title,
+                 grade,
+                 attempted: grade?.attempted === true && !absent,
+                 score: Number.isFinite(computedScore) ? computedScore : null,
+                 average: stats.average,
+                 highestScore: stats.highest,
+                 maxScore: stats.perfect,
+                 totalQuestions: Number.isFinite(questionCount) ? questionCount : null,
+                 correctCount: Number.isFinite(correctCount) ? correctCount : null,
+                 displayLines,
+diff --git a/src/utils/scoreDisplay.js b/src/utils/scoreDisplay.js
+index 89631e4199c5725845e5aeed9bb3bdd464d79b63..87da7fcfe16bcd2c521a3b5f4bf8d634cc640c1d 100644
+--- a/src/utils/scoreDisplay.js
++++ b/src/utils/scoreDisplay.js
+@@ -67,55 +67,57 @@ export const formatStudentScore = (recordOrValue, options = {}) => {
+   const { absentLabel = '미응시', includeUnit = true } = options;
+   if (isAbsentGradeRecord(recordOrValue)) return absentLabel;
+ 
+   const score = toFiniteScoreNumber(pickScoreValue(recordOrValue));
+   if (score === null) return absentLabel;
+ 
+   const label = score.toFixed(1);
+   return includeUnit ? `${label}점` : label;
  };
  
- export const createNativeGoogleLoginUnavailableError = () => (
-     createReviewLoginError(NATIVE_GOOGLE_LOGIN_UNAVAILABLE_MESSAGE, 'google-login/native-unavailable')
- );
- 
- const createGoogleLoginCancelledError = () => (
-     createReviewLoginError(GOOGLE_LOGIN_CANCELLED_MESSAGE, 'google-login/cancelled')
- );
- 
- const resolveNativeGoogleAuthPlugin = async () => {
--    console.info('[google-login] GoogleAuth plugin exists before resolve', Boolean(window.Capacitor?.Plugins?.GoogleAuth ?? Capacitor?.Plugins?.GoogleAuth));
--
--    if (Capacitor?.Plugins?.GoogleAuth) {
--        return Capacitor.Plugins.GoogleAuth;
-+    if (Capacitor?.Plugins?.NativeGoogleAuth) {
-+        return Capacitor.Plugins.NativeGoogleAuth;
-     }
- 
--    return registerPlugin('GoogleAuth');
-+    return registerPlugin('NativeGoogleAuth');
+ export const formatScoreStat = (value, options = {}) => {
+   const { fallback = '통계 준비 중', includeUnit = false } = options;
+   const label = formatNumberOneDecimal(value, fallback);
+   if (label === fallback) return label;
+   return includeUnit ? `${label}점` : label;
  };
  
--const extractGoogleIdToken = (googleUser) => (
--    googleUser?.authentication?.idToken
--    ?? googleUser?.idToken
--    ?? googleUser?.serverAuthCode?.idToken
--    ?? null
--);
-+const extractGoogleIdToken = (googleUser) => googleUser?.idToken ?? null;
-+
-+const extractGoogleAccessToken = (googleUser) => googleUser?.accessToken ?? null;
- 
- const isGoogleLoginCancelError = (error) => {
-     const code = String(error?.code ?? error?.error ?? '').toLowerCase();
-     const message = String(error?.message ?? '').toLowerCase();
- 
-     return code.includes('cancel')
-         || code.includes('canceled')
-         || message.includes('cancel')
-         || message.includes('canceled')
-         || message.includes('dismiss');
- };
- 
- export const signInWithGoogle = async () => {
-     const { GoogleAuthProvider, signInWithCredential, signInWithPopup } = await import('firebase/auth');
-     const provider = new GoogleAuthProvider();
- 
-     if (isNativePlatform()) {
--        const GoogleAuth = await resolveNativeGoogleAuthPlugin();
--        console.info('[google-login] GoogleAuth plugin resolved', {
--            exists: Boolean(GoogleAuth),
--            hasSignIn: typeof GoogleAuth?.signIn === 'function',
--            bridgePluginExists: Boolean(window.Capacitor?.Plugins?.GoogleAuth ?? Capacitor?.Plugins?.GoogleAuth),
--        });
-+        const NativeGoogleAuth = await resolveNativeGoogleAuthPlugin();
- 
--        if (!GoogleAuth?.signIn) {
-+        if (!NativeGoogleAuth?.signIn) {
-             throw createNativeGoogleLoginUnavailableError();
-         }
- 
-         try {
--            console.info('[google-login] GoogleAuth.signIn start');
--            const googleUser = await GoogleAuth.signIn();
-+            console.info('[google-login] native signIn start');
-+            const googleUser = await NativeGoogleAuth.signIn();
-             const idToken = extractGoogleIdToken(googleUser);
-+            const accessToken = extractGoogleAccessToken(googleUser);
- 
--            console.info('[google-login] GoogleAuth.signIn result', {
--                keys: googleUser && typeof googleUser === 'object' ? Object.keys(googleUser) : [],
-+            console.info('[google-login] native signIn success', {
-                 hasIdToken: Boolean(idToken),
-             });
- 
-             if (!idToken) {
-                 throw createNativeGoogleLoginUnavailableError();
-             }
- 
--            const credential = GoogleAuthProvider.credential(idToken);
-+            const credential = GoogleAuthProvider.credential(idToken, accessToken || undefined);
-             const { user } = await signInWithCredential(auth, credential);
- 
-             if (!user?.uid) return null;
-             return user;
-         } catch (error) {
-             console.warn('[google-login] native signIn failed', {
-                 code: error?.code ?? null,
-                 message: error?.message ?? String(error),
-             });
- 
-             if (error?.code === 'google-login/native-unavailable') {
-                 throw error;
-             }
- 
-             if (isGoogleLoginCancelError(error)) {
-                 throw createGoogleLoginCancelledError();
-             }
- 
-             throw createNativeGoogleLoginUnavailableError();
-         }
-     }
- 
-     const { user } = await signInWithPopup(auth, provider);
- 
-     if (!user?.uid) return null;
-diff --git a/src/capacitorApp.js b/src/capacitorApp.js
-index 02f22b38ab20eaa4d53c7f6681eea54607d22195..d6a113bee03207b5fad1dca325b877f85ed0afd4 100644
---- a/src/capacitorApp.js
-+++ b/src/capacitorApp.js
-@@ -1,125 +1,75 @@
--import { registerPlugin } from '@capacitor/core';
--
- const getCapacitorBridge = () => window.Capacitor;
- 
- const isDevelopment = process.env.NODE_ENV === 'development';
--const googleClientId = '197602408828-ioltf61rci7tmctb733gsse6gddsilcu.apps.googleusercontent.com';
--let googleAuthInitializePromise = null;
- 
- const setKeyboardHeight = (height = 0) => {
-   document.documentElement.style.setProperty('--app-keyboard-height', `${Math.max(0, Number(height) || 0)}px`);
- };
- 
- const syncVisualViewportHeight = () => {
-   const height = window.visualViewport?.height || window.innerHeight;
-   if (height) {
-     document.documentElement.style.setProperty('--app-viewport-height', `${height}px`);
+ const firstFiniteScore = (...values) => {
+   for (const value of values) {
+     const score = toFiniteScoreNumber(value);
+     if (score !== null) return score;
    }
+   return null;
  };
  
- const callPluginMethod = async (plugin, method, options) => {
-   try {
-     if (plugin?.[method]) {
-       await plugin[method](options);
-     }
-   } catch (error) {
-     // Native plugin calls are best-effort during bootstrap and should not
-     // affect the existing web application flow.
-   }
- };
+-export const getTestStatsForDisplay = (test = {}, classTestStats = {}) => {
++export const getTestStatsForDisplay = (test = {}, classTestStats = {}, gradeRecord = {}) => {
+   const stats = classTestStats?.[`${test?.classId}_${test?.id}`] || classTestStats?.[test?.id] || null;
  
--const resolveGoogleAuthPlugin = async (capacitor) => {
--  console.info('[capacitor] window.Capacitor.Plugins.GoogleAuth exists before resolve', Boolean(window.Capacitor?.Plugins?.GoogleAuth));
--
--  if (capacitor?.Plugins?.GoogleAuth) {
--    return capacitor.Plugins.GoogleAuth;
--  }
--
--  return registerPlugin('GoogleAuth');
--};
--
--const initializeGoogleAuth = (capacitor) => {
--  if (!googleAuthInitializePromise) {
--    googleAuthInitializePromise = resolveGoogleAuthPlugin(capacitor).then(async (GoogleAuth) => {
--      console.info('[capacitor] GoogleAuth plugin resolved', {
--        exists: Boolean(GoogleAuth),
--        hasInitialize: typeof GoogleAuth?.initialize === 'function',
--        bridgePluginExists: Boolean(window.Capacitor?.Plugins?.GoogleAuth),
--      });
--
--      if (!GoogleAuth?.initialize) {
--        console.warn('[capacitor] GoogleAuth initialize skipped: initialize method is unavailable');
--        return;
--      }
--
--      try {
--        await GoogleAuth.initialize({
--          clientId: googleClientId,
--          scopes: ['profile', 'email'],
--          grantOfflineAccess: false,
--        });
--        console.info('[capacitor] GoogleAuth initialize succeeded');
--      } catch (error) {
--        console.warn('[capacitor] GoogleAuth initialize call failed', error);
--        throw error;
--      }
--    }).catch((error) => {
--      googleAuthInitializePromise = null;
--      if (isDevelopment) {
--        console.warn('[capacitor] GoogleAuth initialize failed', error);
--      }
--    });
--  }
--
--  return googleAuthInitializePromise;
--};
- 
- export function setupCapacitorApp() {
-   const capacitor = getCapacitorBridge();
- 
-   if (!capacitor?.isNativePlatform?.()) {
-     return;
-   }
- 
-   document.documentElement.classList.add('capacitor-native');
-   document.body?.classList.add('capacitor-native');
-   setKeyboardHeight(0);
-   syncVisualViewportHeight();
-   window.visualViewport?.addEventListener?.('resize', syncVisualViewportHeight);
-   window.visualViewport?.addEventListener?.('scroll', syncVisualViewportHeight);
-   window.addEventListener('resize', syncVisualViewportHeight);
- 
-   if (isDevelopment) {
-     console.log('[capacitor] native class applied');
-     requestAnimationFrame(() => {
-       const safeTopValue = getComputedStyle(document.documentElement).getPropertyValue('--app-safe-top').trim();
-       console.log('[capacitor] safeTop value', safeTopValue || '0px');
-     });
-   }
- 
-   const { App, Keyboard, SplashScreen, StatusBar } = capacitor.Plugins ?? {};
- 
-   if (capacitor.getPlatform?.() === 'ios') {
-     callPluginMethod(StatusBar, 'setOverlaysWebView', { overlay: false });
-     callPluginMethod(StatusBar, 'setStyle', { style: 'DEFAULT' });
--    initializeGoogleAuth(capacitor);
-   }
-   callPluginMethod(SplashScreen, 'hide');
-   callPluginMethod(Keyboard, 'setResizeMode', { mode: 'body' });
-   const handleKeyboardShow = (event) => {
-     setKeyboardHeight(event?.keyboardHeight || 0);
-     syncVisualViewportHeight();
+   return {
+     average: firstFiniteScore(
++      gradeRecord?.average,
++      gradeRecord?.classAverage,
+       stats?.average,
+       test?.average,
+       test?.classAverage,
+     ),
+     highest: firstFiniteScore(
+       stats?.maxScore,
+       stats?.highestScore,
+       stats?.classMax,
+       test?.classMax,
+       test?.highestScore,
+       test?.highScore,
+     ),
+     submittedCount: firstFiniteScore(stats?.submittedCount, stats?.attemptedCount, stats?.count),
+     perfect: firstFiniteScore(
+       test?.maxScore,
+       test?.totalScore,
+       test?.perfectScore,
+     ),
    };
-   const handleKeyboardHide = () => {
-     setKeyboardHeight(0);
-     syncVisualViewportHeight();
-   };
-   Keyboard?.addListener?.('keyboardWillShow', handleKeyboardShow);
-   Keyboard?.addListener?.('keyboardDidShow', handleKeyboardShow);
-   Keyboard?.addListener?.('keyboardWillHide', handleKeyboardHide);
-   Keyboard?.addListener?.('keyboardDidHide', handleKeyboardHide);
- 
-   App?.addListener?.('resume', () => {
-     window.dispatchEvent(new Event('capacitor:resume'));
-   });
- }
-diff --git a/src/components/StudentMessenger.jsx b/src/components/StudentMessenger.jsx
-index 376598a5c4f9c7710c02cef5392c1bdb8fefc7d2..57809a640da7be218fe9c4d9aaecf9a2f2288bc4 100644
---- a/src/components/StudentMessenger.jsx
-+++ b/src/components/StudentMessenger.jsx
-@@ -1,57 +1,51 @@
- import React, { useState, useEffect, useMemo, useRef } from 'react';
- import {
-     collection,
-     doc,
-     getDoc,
-     getDocs,
-     query,
-     serverTimestamp,
-     where,
- } from 'firebase/firestore';
- import { auth, db } from '../firebase/client';
- import { formatAttachmentSize, uploadChatAttachment, validateChatAttachment } from '../messenger/services/attachmentService';
- import { buildDeterministicRoomId, createRoomIfMissing } from '../messenger/services/roomFactory';
- import { sendRoomMessage, subscribeRoomMessages } from '../messenger/services/messageService';
- import { fetchParentFallbackRooms, fetchRoomsForIndexes, fetchStudentFallbackRooms } from '../messenger/services/userChatRoomsService';
- import { INSTITUTE_AUTH_UID, ROOM_TYPES } from '../messenger/constants/messengerConstants';
- import { getExpectedRoomType, getRoomDebugInfo, isStrictRoomTypeMatch } from '../messenger/utils/roomMatcher';
- import { markChatRoomNotificationsRead } from '../notifications/notificationReadActions';
- 
- // TODO(video_embed): allow only admin/staff/teacher to send YouTube watch/youtu.be/embed links,
- // normalize them to youtube-nocookie URLs, store messageType: 'video_embed',
- // render video cards in-room, and play them in an internal iframe modal.
- const CANDIDATE_ROOM_IDS = (studentId) => [String(studentId || '')].filter(Boolean);
- 
--const isNativeIosApp = () => {
--    const capacitor = window.Capacitor;
--    return Boolean(capacitor?.isNativePlatform?.() && capacitor?.getPlatform?.() === 'ios');
--};
- 
- const CHAT_ATTACHMENT_ACCEPT = '.jpg,.jpeg,.png,.webp,.pdf';
--const NATIVE_IOS_CHAT_ATTACHMENT_ACCEPT = 'application/pdf,.pdf';
--const NATIVE_IOS_ATTACHMENT_NOTICE = '앱에서는 현재 안전한 파일(PDF) 선택만 지원합니다. 사진 촬영은 임시로 제한됩니다.';
- 
- const uniqueStrings = (values) => Array.from(new Set(
-     values.flat(Infinity).filter((value) => typeof value === 'string' && value.trim()).map((value) => value.trim())
- ));
- 
- const buildStandardRoomId = (roomType, ownerUid, counterpartUid, studentId = '') => buildDeterministicRoomId(roomType, ownerUid, counterpartUid, studentId);
- 
- const getParticipantIds = (room) => (Array.isArray(room?.participantIds) ? room.participantIds.map(String) : []);
- 
- 
- const getRoomIdentityValues = (room) => uniqueStrings([
-     getParticipantIds(room),
-     room?.studentAuthUid,
-     room?.studentUid,
-     room?.parentUid,
-     room?.parentId,
-     room?.studentId,
-     room?.participantUserDocIds ? Object.values(room.participantUserDocIds) : [],
- ]);
- 
- const getUserDocLinkedKeys = async (authUid) => {
-     const currentAuthUid = String(authUid || '').trim();
-     if (!currentAuthUid) return [];
-     const keys = [currentAuthUid];
-     try {
-@@ -548,123 +542,110 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
-                 setError('메시지를 불러올 권한이 없습니다. 관리자에게 문의해주세요.');
-             } });
-         };
- 
-         primaryUnsub = subscribe(true);
-         activeMessagesSubscriptionRef.current = { roomId: normalizedRoomId, unsubscribe: cleanupOnce };
-         return cleanupOnce;
-     }, [roomId]);
- 
-     useEffect(() => {
-         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-     }, [messages]);
- 
-     const placeholder = useMemo(() => (userRole === 'parent' ? '메시지 보내기...' : '메시지 입력'), [userRole]);
- 
-     useEffect(() => () => {
-         if (attachmentPreviewUrl) URL.revokeObjectURL(attachmentPreviewUrl);
-     }, [attachmentPreviewUrl]);
- 
-     const clearAttachment = () => {
-         if (attachmentPreviewUrl) URL.revokeObjectURL(attachmentPreviewUrl);
-         setAttachmentPreviewUrl('');
-         setAttachmentFile(null);
-     };
- 
--    const handleAttachmentButtonClick = () => {
--        if (isNativeIosApp()) {
--            setError(NATIVE_IOS_ATTACHMENT_NOTICE);
--        }
--    };
--
-     const handleAttachmentChange = (event) => {
-         const file = event.target.files?.[0] || null;
-         event.target.value = '';
-         if (!file) return;
--        if (isNativeIosApp() && file.type !== 'application/pdf') {
--            setError(NATIVE_IOS_ATTACHMENT_NOTICE);
--            clearAttachment();
--            return;
--        }
-         const validation = validateChatAttachment(file);
-         if (!validation.ok) {
-             setError(validation.message);
-             clearAttachment();
-             return;
-         }
-         if (attachmentPreviewUrl) URL.revokeObjectURL(attachmentPreviewUrl);
-         setAttachmentFile(file);
-         setAttachmentPreviewUrl(validation.type === 'image' ? URL.createObjectURL(file) : '');
-         setError('');
-     };
- 
-     const handleSend = async (e) => {
-         e.preventDefault();
-         const text = inputText.trim();
-         const fileToUpload = attachmentFile;
-         if (!text && !fileToUpload) return;
--        if (fileToUpload) {
--            const validation = validateChatAttachment(fileToUpload);
--            if (!validation.ok) {
--                setError(validation.message);
--                return;
--            }
-+        const fileValidation = fileToUpload ? validateChatAttachment(fileToUpload) : null;
-+        if (fileValidation && !fileValidation.ok) {
-+            setError(fileValidation.message);
-+            return;
-         }
-         setIsSending(true);
- 
-         const viewerUid = auth.currentUser?.uid || 'parent-anonymous';
-         const targetAuthUidForRoom = String(roomCreationContext?.targetAuthUid || '');
-         const isChatRoomMode = userRole === 'student' || Boolean(roomId || canCreateChatRoom || String(expectedRoomType || '').includes('institute'));
-         let resolvedRoomId = roomId || null;
-         let shouldCreateStandardRoom = false;
-         if (!resolvedRoomId && selectedRoomId) {
-             logRoomResolutionDebug('selected room unavailable at send time', { role: userRole, expectedRoomType, selectedRoomId: String(selectedRoomId), reason: 'validated roomId is empty' });
-         }
-         if (!resolvedRoomId && canCreateChatRoom && !selectedRoomId) {
-             const existingRoom = await resolveChatRoom({
-                 viewerUid,
-                 targetAuthUid: targetAuthUidForRoom,
-                 roomType: expectedRoomType,
-                 studentId,
-                 participantKeys: roomStudentParticipantKeys,
-             });
-             if (existingRoom?.id) resolvedRoomId = String(existingRoom.id);
-         }
-         if (!resolvedRoomId && canCreateChatRoom) {
-             resolvedRoomId = buildStandardRoomId(expectedRoomType, viewerUid, targetAuthUidForRoom, studentId);
-             shouldCreateStandardRoom = Boolean(resolvedRoomId);
-         }
-         if (!resolvedRoomId && !canCreateChatRoom) return;
-         const localCreatedAtMs = Date.now();
-         const clientTempId = `client-${localCreatedAtMs}-${Math.random().toString(36).slice(2, 10)}`;
-         const optimisticMessage = {
-             id: clientTempId,
-             roomId: resolvedRoomId,
-             text,
--            messageType: fileToUpload ? (fileToUpload.type === 'application/pdf' ? 'file' : 'image') : 'text',
-+            messageType: fileToUpload ? (fileValidation.type === 'pdf' ? 'file' : 'image') : 'text',
-             attachments: fileToUpload ? [{
--                type: fileToUpload.type === 'application/pdf' ? 'pdf' : 'image',
-+                type: fileValidation.type === 'pdf' ? 'pdf' : 'image',
-                 name: fileToUpload.name,
-                 url: attachmentPreviewUrl,
-                 path: '',
-                 size: fileToUpload.size,
-                 contentType: fileToUpload.type,
-             }] : [],
-             senderId: viewerUid,
-             senderRole: isChatRoomMode ? userRole : userRole,
-             senderName: buildSenderName(),
-             createdAt: new Date(localCreatedAtMs),
-             localCreatedAtMs,
-             pending: true,
-             clientTempId,
-         };
-         const myIds = new Set(uniqueStrings([auth.currentUser?.uid, myProfileDocId, mySenderIds]));
-         setOptimisticMessages((prev) => {
-             const next = sortMessageItems(dedupeMessages([
-                 ...prev.map((item) => ({ id: item.id, raw: item })),
-                 { id: optimisticMessage.id, raw: optimisticMessage },
-             ])).map((item) => item.raw);
-             optimisticMessagesRef.current = next;
-             return next;
-         });
-         setMessages((prev) => sortMessageItems(dedupeMessages([
-             ...prev.map((item) => ({ id: item.id, raw: item })),
-@@ -844,45 +825,45 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
-                 )}
-                 <div ref={messagesEndRef} />
-             </div>
- 
-             {imageModal && (
-                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => setImageModal(null)}>
-                     <div className="max-w-[96vw] max-h-[96vh] rounded-xl bg-white p-3 shadow-xl" onClick={(event) => event.stopPropagation()}>
-                         <div className="mb-2 flex items-center justify-between gap-3">
-                             <p className="truncate text-sm font-semibold text-gray-700">{imageModal.name || '이미지'}</p>
-                             <button type="button" onClick={() => setImageModal(null)} className="rounded border px-2 py-1 text-xs">닫기</button>
-                         </div>
-                         <img src={imageModal.url} alt={imageModal.name || '첨부 이미지'} className="max-h-[78vh] max-w-[90vw] rounded-lg object-contain" />
-                         {imageModal.url && <a href={imageModal.url} target="_blank" rel="noreferrer" className="mt-2 inline-block text-xs underline">원본 열기</a>}
-                     </div>
-                 </div>
-             )}
- 
-             {attachmentFile && (
-                 <div className="px-3 py-2 border-t bg-white flex items-center gap-3 text-xs">
-                     {attachmentPreviewUrl && <img src={attachmentPreviewUrl} alt="첨부 미리보기" className="h-12 w-12 rounded object-cover" />}
-                     <span className="flex-1 truncate">{attachmentFile.name} · {formatAttachmentSize(attachmentFile.size)}</span>
-                     <button type="button" onClick={clearAttachment} className="text-red-500">취소</button>
-                 </div>
-             )}
-             <form onSubmit={handleSend} className="shrink-0 p-3 mobile-keyboard-input-bar bg-white border-t border-gray-100 flex gap-2">
--                <label onClick={handleAttachmentButtonClick} className="px-3 py-2 rounded-full border border-gray-200 bg-white text-sm cursor-pointer">
-+                <label className="px-3 py-2 rounded-full border border-gray-200 bg-white text-sm cursor-pointer">
-                     첨부
--                    <input type="file" accept={isNativeIosApp() ? NATIVE_IOS_CHAT_ATTACHMENT_ACCEPT : CHAT_ATTACHMENT_ACCEPT} data-camera-disabled="true" onChange={handleAttachmentChange} className="hidden" />
-+                    <input type="file" accept={CHAT_ATTACHMENT_ACCEPT} onChange={handleAttachmentChange} className="hidden" />
-                 </label>
-                 <input
-                     type="text"
-                     value={inputText}
-                     onChange={(e) => setInputText(e.target.value)}
-                     placeholder={placeholder}
-                     className="flex-1 min-w-0 bg-gray-50 border border-gray-200 rounded-full px-4 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-gray-300"
-                 />
-                 <button type="submit" disabled={isSending || (!inputText.trim() && !attachmentFile)} className="px-4 py-2 rounded-full text-sm font-semibold bg-gray-900 text-white disabled:bg-gray-300">
-                     전송
-                 </button>
-             </form>
-         </div>
-     );
- }
- 
- export { CANDIDATE_ROOM_IDS };
-\ No newline at end of file
-diff --git a/src/components/chatAttachments.js b/src/components/chatAttachments.js
-index 60b0a3bbf268dd2f4fd110f87f6642d0c24e0e10..11eacf432f91aa7d668f0e00e293f9042299fa98 100644
---- a/src/components/chatAttachments.js
-+++ b/src/components/chatAttachments.js
-@@ -1,60 +1,74 @@
- import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
- import { storage } from '../firebase/client';
- 
- export const CHAT_ATTACHMENT_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
-+const ATTACHMENT_TYPES_BY_EXTENSION = {
-+    jpg: { mime: 'image/jpeg', type: 'image' },
-+    jpeg: { mime: 'image/jpeg', type: 'image' },
-+    png: { mime: 'image/png', type: 'image' },
-+    webp: { mime: 'image/webp', type: 'image' },
-+    pdf: { mime: 'application/pdf', type: 'pdf' },
-+};
- const IMAGE_MAX_BYTES = 5 * 1024 * 1024;
- const PDF_MAX_BYTES = 10 * 1024 * 1024;
- 
- export const formatAttachmentSize = (size = 0) => {
-     if (size >= 1024 * 1024) return `${(size / (1024 * 1024)).toFixed(1)}MB`;
-     if (size >= 1024) return `${Math.ceil(size / 1024)}KB`;
-     return `${size}B`;
  };
  
--export const getAttachmentType = (file) => {
--    if (['image/jpeg', 'image/png', 'image/webp'].includes(file?.type)) return 'image';
--    if (file?.type === 'application/pdf') return 'pdf';
--    return '';
-+const getAttachmentInfo = (file) => {
-+    const mimeType = String(file?.type || '').toLowerCase();
-+    if (['image/jpeg', 'image/png', 'image/webp'].includes(mimeType)) return { type: 'image', mime: mimeType };
-+    if (mimeType === 'application/pdf') return { type: 'pdf', mime: mimeType };
-+
-+    const extension = String(file?.name || '').split('.').pop()?.toLowerCase() || '';
-+    return ATTACHMENT_TYPES_BY_EXTENSION[extension] || { type: '', mime: '' };
- };
- 
-+export const getAttachmentType = (file) => getAttachmentInfo(file).type;
-+
- export const validateChatAttachment = (file) => {
-     if (!file) return { ok: false, message: '파일을 선택해주세요.' };
-     if (String(file.type || '').startsWith('video/')) return { ok: false, message: '동영상은 첨부할 수 없습니다.' };
--    const type = getAttachmentType(file);
--    if (!type || !CHAT_ATTACHMENT_TYPES.includes(file.type)) return { ok: false, message: '이미지(JPG/PNG/WebP) 또는 PDF만 첨부할 수 있습니다.' };
-+    const { type } = getAttachmentInfo(file);
-+    if (!type) return { ok: false, message: '이미지(JPG/PNG/WebP) 또는 PDF만 첨부할 수 있습니다.' };
-     if (type === 'image' && file.size > IMAGE_MAX_BYTES) return { ok: false, message: '이미지 용량은 5MB 이하만 가능합니다.' };
-     if (type === 'pdf' && file.size > PDF_MAX_BYTES) return { ok: false, message: 'PDF 용량은 10MB 이하만 가능합니다.' };
-     return { ok: true, type };
- };
- 
- export const safeAttachmentFileName = (name = 'attachment') => String(name)
-     .normalize('NFKC')
-     .replace(/[\\/#?%*:|"<>]/g, '-')
-     .replace(/\s+/g, '_')
-     .slice(0, 120) || 'attachment';
- 
- export const uploadChatAttachment = async ({ roomId, messageId, file, uploaderUid }) => {
-     const validation = validateChatAttachment(file);
-     if (!validation.ok) throw new Error(validation.message);
-     const safeName = safeAttachmentFileName(file.name);
-+    const attachmentInfo = getAttachmentInfo(file);
-+    const contentType = file.type || attachmentInfo.mime || 'application/octet-stream';
-     const path = `chat-attachments/${roomId}/${messageId}-${safeName}`;
-     const fileRef = ref(storage, path);
-     await uploadBytes(fileRef, file, {
--        contentType: file.type,
-+        contentType,
-         customMetadata: {
-             roomId: String(roomId || ''),
-             uploaderUid: String(uploaderUid || ''),
--            contentType: String(file.type || ''),
-+            contentType: String(contentType || ''),
-             originalName: String(file.name || ''),
-         },
-     });
-     const url = await getDownloadURL(fileRef);
-     return {
-         type: validation.type,
-         name: file.name,
-         url,
-         path,
-         size: file.size,
--        contentType: file.type,
-+        contentType,
-     };
- };
-diff --git a/src/components/messenger/ChatMessagePane.jsx b/src/components/messenger/ChatMessagePane.jsx
-index ec7e8fa2a5b6971b53a0f7ab8cf9f1283153a3a0..c98f1b85174c05bc1e2c9273ca80a47c01d522fc 100644
---- a/src/components/messenger/ChatMessagePane.jsx
-+++ b/src/components/messenger/ChatMessagePane.jsx
-@@ -1,38 +1,32 @@
- import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
- import { getChatRoomDisplayTitle } from './messengerTargets';
- import { formatAttachmentSize, validateChatAttachment } from '../chatAttachments';
- 
- 
--const isNativeIosApp = () => {
--    const capacitor = window.Capacitor;
--    return Boolean(capacitor?.isNativePlatform?.() && capacitor?.getPlatform?.() === 'ios');
--};
- 
- const CHAT_ATTACHMENT_ACCEPT = '.jpg,.jpeg,.png,.webp,.pdf';
--const NATIVE_IOS_CHAT_ATTACHMENT_ACCEPT = 'application/pdf,.pdf';
--const NATIVE_IOS_ATTACHMENT_NOTICE = '앱에서는 현재 안전한 파일(PDF) 선택만 지원합니다. 사진 촬영은 임시로 제한됩니다.';
- 
- const normalizeMessageDate = (value) => {
-     if (!value) return null;
-     if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
-     if (typeof value?.toDate === 'function') {
-         const converted = value.toDate();
-         return Number.isNaN(converted?.getTime?.()) ? null : converted;
-     }
-     if (typeof value?.seconds === 'number') {
-         const ms = (value.seconds * 1000) + Math.floor((Number(value.nanoseconds || 0)) / 1_000_000);
-         const date = new Date(ms);
-         return Number.isNaN(date.getTime()) ? null : date;
-     }
-     const date = new Date(value);
-     return Number.isNaN(date.getTime()) ? null : date;
- };
- 
- const getMessageDateKey = (message) => {
-     const date = normalizeMessageDate(message?.createdAt);
-     if (!date) return 'unknown-date';
-     const year = date.getFullYear();
-     const month = String(date.getMonth() + 1).padStart(2, '0');
-     const day = String(date.getDate()).padStart(2, '0');
-     return `${year}-${month}-${day}`;
- };
-@@ -77,65 +71,54 @@ export default function ChatMessagePane({
-     const [previewUrl, setPreviewUrl] = useState('');
-     const [error, setError] = useState('');
-     const [imageModal, setImageModal] = useState(null);
-     const messagesContainerRef = useRef(null);
- 
-     const scrollMessagesToBottom = useCallback(() => {
-         const container = messagesContainerRef.current;
-         if (!container) return;
-         container.scrollTop = container.scrollHeight;
-     }, []);
- 
-     const scheduleScrollToBottom = useCallback(() => {
-         scrollMessagesToBottom();
-         requestAnimationFrame(() => {
-             scrollMessagesToBottom();
-             setTimeout(scrollMessagesToBottom, 120);
-         });
-     }, [scrollMessagesToBottom]);
- 
-     const clearAttachment = () => {
-         if (previewUrl) URL.revokeObjectURL(previewUrl);
-         setPreviewUrl('');
-         setAttachmentFile(null);
-     };
- 
--    const handleAttachmentButtonClick = () => {
--        if (isNativeIosApp()) {
--            setError(NATIVE_IOS_ATTACHMENT_NOTICE);
--        }
--    };
--
-     const handleAttachmentChange = (event) => {
-         const file = event.target.files?.[0] || null;
-         event.target.value = '';
-         if (!file) return;
--        if (isNativeIosApp() && file.type !== 'application/pdf') {
--            setError(NATIVE_IOS_ATTACHMENT_NOTICE);
--            clearAttachment();
--            return;
--        }
-         const validation = validateChatAttachment(file);
-         if (!validation.ok) {
-             setError(validation.message);
-             clearAttachment();
-             return;
-         }
-         if (previewUrl) URL.revokeObjectURL(previewUrl);
-         setAttachmentFile(file);
-         setPreviewUrl(validation.type === 'image' ? URL.createObjectURL(file) : '');
-         setError('');
-     };
- 
-     const sortedMessages = useMemo(() => {
-         return [...messages].sort((a, b) => {
-             const av = normalizeMessageDate(a?.createdAt)?.getTime() || 0;
-             const bv = normalizeMessageDate(b?.createdAt)?.getTime() || 0;
-             return av - bv;
-         });
-     }, [messages]);
- 
-     useEffect(() => {
-         if (!room?.id) return;
-         scheduleScrollToBottom();
-     }, [room?.id, sortedMessages.length, scheduleScrollToBottom]);
- 
-@@ -253,39 +236,39 @@ export default function ChatMessagePane({
-                         </div>
-                     );
-                 })}
-             </div>
-             {error && <p className="border-t px-3 py-2 text-xs text-red-600">{error}</p>}
-             {attachmentFile && (
-                 <div className="border-t bg-white px-3 py-2 flex items-center gap-3 text-xs">
-                     {previewUrl && <img src={previewUrl} alt="첨부 미리보기" className="h-12 w-12 rounded object-cover" />}
-                     <span className="flex-1 truncate">{attachmentFile.name} · {formatAttachmentSize(attachmentFile.size)}</span>
-                     <button type="button" onClick={clearAttachment} className="text-red-500">취소</button>
-                 </div>
-             )}
-             {imageModal && (
-                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => setImageModal(null)}>
-                     <div className="max-w-[96vw] max-h-[96vh] rounded-xl bg-white p-3 shadow-xl" onClick={(event) => event.stopPropagation()}>
-                         <div className="mb-2 flex items-center justify-between gap-3">
-                             <p className="truncate text-sm font-semibold text-gray-700">{imageModal.name || '이미지'}</p>
-                             <button type="button" onClick={() => setImageModal(null)} className="rounded border px-2 py-1 text-xs">닫기</button>
-                         </div>
-                         <img src={imageModal.url} alt={imageModal.name || '첨부 이미지'} className="max-h-[78vh] max-w-[90vw] rounded-lg object-contain" />
-                         {imageModal.url && <a href={imageModal.url} target="_blank" rel="noreferrer" className="mt-2 inline-block text-xs underline">원본 열기</a>}
-                     </div>
-                 </div>
-             )}
-             <form onSubmit={submit} className={`${mobileCompact ? 'p-2 mobile-keyboard-input-bar gap-1.5 shrink-0' : 'p-2 gap-2 items-end'} border-t bg-white flex`}>
--                <label onClick={handleAttachmentButtonClick} className={`${mobileCompact ? 'px-2.5 py-2 rounded-full text-xs' : 'px-3 py-2 rounded text-sm'} border border-gray-200 bg-white cursor-pointer shrink-0`}>첨부<input type="file" accept={isNativeIosApp() ? NATIVE_IOS_CHAT_ATTACHMENT_ACCEPT : CHAT_ATTACHMENT_ACCEPT} data-camera-disabled="true" onChange={handleAttachmentChange} className="hidden" /></label>
-+                <label className={`${mobileCompact ? 'px-2.5 py-2 rounded-full text-xs' : 'px-3 py-2 rounded text-sm'} border border-gray-200 bg-white cursor-pointer shrink-0`}>첨부<input type="file" accept={CHAT_ATTACHMENT_ACCEPT} onChange={handleAttachmentChange} className="hidden" /></label>
-                 <textarea
-                     value={draft}
-                     onChange={(event) => setDraft(event.target.value)}
-                     onKeyDown={handleKeyDown}
-                     placeholder="메시지 입력"
-                     rows={mobileCompact ? 1 : 2}
-                     className={`${mobileCompact ? 'min-h-10 max-h-24 rounded-full bg-gray-50 px-4 py-2 resize-none' : 'rounded px-3 py-2 resize-y'} flex-1 border border-gray-200 text-base focus:outline-none focus:ring-2 focus:ring-gray-300`}
-                 />
-                 <button type="submit" disabled={!draft.trim() && !attachmentFile} className={`${mobileCompact ? 'px-3 py-2 rounded-full text-xs' : 'px-3 py-2 rounded text-sm'} bg-gray-900 text-white font-semibold disabled:bg-gray-300 shrink-0`}>전송</button>
-             </form>
-         </div>
-     );
- }
-\ No newline at end of file
+ export const buildTestStatParts = (stats = {}, options = {}) => {
+   const { includeUnit = true } = options;
+   return [
+     ['평균', stats.average, includeUnit],

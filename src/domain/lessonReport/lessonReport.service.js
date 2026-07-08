@@ -245,7 +245,7 @@ export const summarizeTests = ({ selectedTestIds = [], tests = [], grades = {}, 
         .map((test) => {
             const grade = getGradeForLessonReportStudent({ student, studentId, grades, testId: test.id });
             const title = buildTestTitle(test);
-            const stats = getTestStatsForDisplay(test, classTestStats);
+            const stats = getTestStatsForDisplay(test, classTestStats, grade);
             const absent = isAbsentGradeRecord(grade);
             const directScore = absent ? null : toFiniteScoreNumber(pickScoreValue(grade));
             const computedScore = directScore ?? (absent ? null : getTotalScore(grade, test));
