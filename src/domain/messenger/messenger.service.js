@@ -373,8 +373,8 @@ export const subscribeInternalChatRooms = (currentAuthUid, onChange, onError = n
             }
 
             if (process.env.NODE_ENV === 'development') {
-                console.log('[staff messenger] room list count', { ...debug, count: finalRooms.length });
-                console.log('[staff messenger] rooms missing lastMessageText count', { ...debug, count: finalRooms.filter((room) => !room?.lastMessageText).length });
+                console.log('[staff messenger] room list count', { count: finalRooms.length });
+                console.log('[staff messenger] rooms missing lastMessageText count', { count: finalRooms.filter((room) => !room?.lastMessageText).length });
             }
 
             if (!cancelled) onChange(finalRooms);
