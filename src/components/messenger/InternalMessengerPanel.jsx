@@ -39,6 +39,8 @@ export default function InternalMessengerPanel({
     const [studentSearchQuery, setStudentSearchQuery] = useState('');
     const [fallbackStudents, setFallbackStudents] = useState([]);
     const [fallbackParents, setFallbackParents] = useState([]);
+    const [roomsLoading, setRoomsLoading] = useState(false);
+    const [roomsError, setRoomsError] = useState(false);
 
     useEffect(() => {
         if (Array.isArray(students) && students.length > 0 && Array.isArray(parents) && parents.length > 0) {
@@ -123,8 +125,16 @@ export default function InternalMessengerPanel({
 
     useEffect(() => {
         if (!isStaffOrTeachingRole(userRole) || !userId) return () => {};
-        return subscribeInternalChatRooms(userId, setRooms, (error) => {
+        setRoomsLoading(true);
+        setRoomsError(false);
+        return subscribeInternalChatRooms(userId, (nextRooms) => {
+            setRooms(nextRooms);
+            setRoomsLoading(false);
+            setRoomsError(false);
+        }, (error) => {
             console.error('[internal-messenger] room subscribe failed', error);
+            setRoomsLoading(false);
+            setRoomsError(true);
         }, { profileDocId });
     }, [profileDocId, userId, userRole]);
 
@@ -478,6 +488,8 @@ export default function InternalMessengerPanel({
                     contextData={roomDisplayContext}
                     mobile
                     title=""
+                    loading={roomsLoading}
+                    error={roomsError}
                 />
             </div>
         );
@@ -652,6 +664,8 @@ export default function InternalMessengerPanel({
                         onSelectRoom={setSelectedRoom}
                         myUid={userId}
                         contextData={roomDisplayContext}
+                        loading={roomsLoading}
+                        error={roomsError}
                     />
                 </div>
                 

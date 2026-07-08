@@ -153,36 +153,169 @@ final class NativeYouTubePlayerViewController: UIViewController, YTPlayerViewDel
         dismissActiveOverlay(animated: false)
         let overlay = makeDimmingOverlay()
         let panel = makeRoundedPanel()
-        let stack = makeSimpleSheet(title: "영상 목록", in: panel)
-        if lessonVideos.isEmpty { stack.addArrangedSubview(makeInfoLabel("영상 목록이 없습니다.")) }
-        lessonVideos.forEach { item in
-            let button = makeTextButton(title: item.title, titleColor: item.videoId == videoId ? .systemBlue : .label)
-            button.contentHorizontalAlignment = .left
-            button.addAction(UIAction { [weak self] _ in
-                self?.selectVideo(item)
-            }, for: .touchUpInside)
-            stack.addArrangedSubview(button)
+        let contentStack = makeScrollableListSheet(title: "영상 목록", in: panel)
+        if lessonVideos.isEmpty {
+            contentStack.addArrangedSubview(makeInfoLabel("영상 목록이 없습니다."))
+        } else {
+            lessonVideos.forEach { item in
+                let isCurrent = item.videoId == videoId
+                let subtitle = isCurrent ? "현재 재생 중" : "탭하여 영상 재생"
+                let row = makeListCard(title: item.title, subtitle: subtitle, isCurrent: isCurrent, isEnabled: true)
+                row.addAction(UIAction { [weak self] _ in
+                    self?.selectVideo(item)
+                }, for: .touchUpInside)
+                contentStack.addArrangedSubview(row)
+            }
         }
-        presentSheet(overlay: overlay, panel: panel)
+        presentListSheet(overlay: overlay, panel: panel)
     }
 
     @objc private func lessonListTapped() {
         dismissActiveOverlay(animated: false)
         let overlay = makeDimmingOverlay()
         let panel = makeRoundedPanel()
-        let stack = makeSimpleSheet(title: "강의 목록", in: panel)
-        if lessonList.isEmpty { stack.addArrangedSubview(makeInfoLabel("강의 목록이 없습니다.")) }
-        lessonList.forEach { item in
-            let title = item.canAccess ? "\(item.date) \(item.title) · 영상 \(item.videosCount)개" : "\(item.date) \(item.title) · 출결 확인 후 시청 가능"
-            let button = makeTextButton(title: title, titleColor: item.canAccess ? .label : .secondaryLabel)
-            button.contentHorizontalAlignment = .left
-            button.isEnabled = item.canAccess && !item.firstVideoId.isEmpty
-            button.addAction(UIAction { [weak self] _ in
-                self?.selectLesson(item)
-            }, for: .touchUpInside)
-            stack.addArrangedSubview(button)
+        let contentStack = makeScrollableListSheet(title: "강의 목록", in: panel)
+        if lessonList.isEmpty {
+            contentStack.addArrangedSubview(makeInfoLabel("강의 목록이 없습니다."))
+        } else {
+            lessonList.forEach { item in
+                let isCurrent = item.id == currentLessonId
+                let subtitle = item.canAccess
+                    ? "\(item.date) · 영상 \(item.videosCount)개"
+                    : "\(item.date) · 출결 확인 후 시청 가능"
+                let row = makeListCard(title: item.title, subtitle: subtitle, isCurrent: isCurrent, isEnabled: item.canAccess && !item.firstVideoId.isEmpty)
+                row.addAction(UIAction { [weak self] _ in
+                    self?.selectLesson(item)
+                }, for: .touchUpInside)
+                contentStack.addArrangedSubview(row)
+            }
         }
-        presentSheet(overlay: overlay, panel: panel)
+        presentListSheet(overlay: overlay, panel: panel)
+    }
+
+    private func makeScrollableListSheet(title: String, in panel: UIView) -> UIStackView {
+        let titleLabel = makePanelTitle(title)
+        let closeButton = makeTextButton(title: "닫기", titleColor: .secondaryLabel)
+        closeButton.addTarget(self, action: #selector(dismissOverlayTapped), for: .touchUpInside)
+
+        let headerStack = UIStackView(arrangedSubviews: [titleLabel, closeButton])
+        headerStack.translatesAutoresizingMaskIntoConstraints = false
+        headerStack.axis = .horizontal
+        headerStack.alignment = .center
+        headerStack.distribution = .equalSpacing
+
+        let scrollView = UIScrollView()
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        scrollView.alwaysBounceVertical = true
+        scrollView.showsVerticalScrollIndicator = true
+        scrollView.contentInset = UIEdgeInsets(top: 0, left: 0, bottom: 8, right: 0)
+
+        let contentStack = UIStackView()
+        contentStack.translatesAutoresizingMaskIntoConstraints = false
+        contentStack.axis = .vertical
+        contentStack.spacing = 10
+        scrollView.addSubview(contentStack)
+
+        panel.addSubview(headerStack)
+        panel.addSubview(scrollView)
+
+        NSLayoutConstraint.activate([
+            headerStack.topAnchor.constraint(equalTo: panel.topAnchor, constant: 18),
+            headerStack.leadingAnchor.constraint(equalTo: panel.leadingAnchor, constant: 20),
+            headerStack.trailingAnchor.constraint(equalTo: panel.trailingAnchor, constant: -20),
+
+            scrollView.topAnchor.constraint(equalTo: headerStack.bottomAnchor, constant: 14),
+            scrollView.leadingAnchor.constraint(equalTo: panel.leadingAnchor, constant: 14),
+            scrollView.trailingAnchor.constraint(equalTo: panel.trailingAnchor, constant: -14),
+            scrollView.bottomAnchor.constraint(equalTo: panel.bottomAnchor, constant: -16),
+
+            contentStack.leadingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.leadingAnchor),
+            contentStack.trailingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.trailingAnchor),
+            contentStack.topAnchor.constraint(equalTo: scrollView.contentLayoutGuide.topAnchor),
+            contentStack.bottomAnchor.constraint(equalTo: scrollView.contentLayoutGuide.bottomAnchor),
+            contentStack.widthAnchor.constraint(equalTo: scrollView.frameLayoutGuide.widthAnchor)
+        ])
+
+        return contentStack
+    }
+
+    private func makeListCard(title: String, subtitle: String, isCurrent: Bool, isEnabled: Bool) -> UIControl {
+        let row = UIControl()
+        row.translatesAutoresizingMaskIntoConstraints = false
+        row.backgroundColor = isCurrent ? UIColor.systemBlue.withAlphaComponent(0.10) : UIColor.systemBackground
+        row.layer.cornerRadius = 16
+        row.layer.cornerCurve = .continuous
+        row.layer.borderWidth = isCurrent ? 1.5 : 1
+        row.layer.borderColor = (isCurrent ? UIColor.systemBlue : UIColor.separator).cgColor
+        row.clipsToBounds = true
+        row.isEnabled = isEnabled
+        row.alpha = isEnabled ? 1 : 0.45
+        row.accessibilityTraits = isEnabled ? [.button] : [.button, .notEnabled]
+        row.accessibilityLabel = "\(title), \(subtitle)\(isCurrent ? ", 현재 재생 중" : "")"
+
+        let titleLabel = UILabel()
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        titleLabel.text = title
+        titleLabel.textColor = isCurrent ? .systemBlue : .label
+        titleLabel.font = .systemFont(ofSize: 16, weight: .semibold)
+        titleLabel.numberOfLines = 2
+        titleLabel.lineBreakMode = .byTruncatingTail
+
+        let subtitleLabel = UILabel()
+        subtitleLabel.translatesAutoresizingMaskIntoConstraints = false
+        subtitleLabel.text = subtitle
+        subtitleLabel.textColor = .secondaryLabel
+        subtitleLabel.font = .systemFont(ofSize: 13, weight: .medium)
+        subtitleLabel.numberOfLines = 1
+
+        let checkLabel = UILabel()
+        checkLabel.translatesAutoresizingMaskIntoConstraints = false
+        checkLabel.text = isCurrent ? "✓" : ""
+        checkLabel.textColor = .white
+        checkLabel.font = .boldSystemFont(ofSize: 14)
+        checkLabel.textAlignment = .center
+        checkLabel.backgroundColor = isCurrent ? .systemBlue : .clear
+        checkLabel.layer.cornerRadius = 11
+        checkLabel.clipsToBounds = true
+
+        row.addSubview(titleLabel)
+        row.addSubview(subtitleLabel)
+        row.addSubview(checkLabel)
+
+        NSLayoutConstraint.activate([
+            row.heightAnchor.constraint(greaterThanOrEqualToConstant: 74),
+            titleLabel.topAnchor.constraint(equalTo: row.topAnchor, constant: 14),
+            titleLabel.leadingAnchor.constraint(equalTo: row.leadingAnchor, constant: 16),
+            titleLabel.trailingAnchor.constraint(equalTo: checkLabel.leadingAnchor, constant: -12),
+            subtitleLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 5),
+            subtitleLabel.leadingAnchor.constraint(equalTo: titleLabel.leadingAnchor),
+            subtitleLabel.trailingAnchor.constraint(equalTo: titleLabel.trailingAnchor),
+            subtitleLabel.bottomAnchor.constraint(lessThanOrEqualTo: row.bottomAnchor, constant: -14),
+            checkLabel.trailingAnchor.constraint(equalTo: row.trailingAnchor, constant: -16),
+            checkLabel.centerYAnchor.constraint(equalTo: row.centerYAnchor),
+            checkLabel.widthAnchor.constraint(equalToConstant: 22),
+            checkLabel.heightAnchor.constraint(equalToConstant: 22)
+        ])
+
+        return row
+    }
+
+    private func presentListSheet(overlay: UIView, panel: UIView) {
+        view.addSubview(overlay)
+        overlay.addSubview(panel)
+        activeOverlayView = overlay
+        NSLayoutConstraint.activate([
+            overlay.topAnchor.constraint(equalTo: view.topAnchor),
+            overlay.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            overlay.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            overlay.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            panel.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 12),
+            panel.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -12),
+            panel.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -10),
+            panel.heightAnchor.constraint(lessThanOrEqualTo: view.safeAreaLayoutGuide.heightAnchor, multiplier: 0.78),
+            panel.heightAnchor.constraint(greaterThanOrEqualToConstant: 180)
+        ])
+        animateOverlayIn(overlay: overlay, panel: panel)
     }
 
     private func selectVideo(_ item: NativeLessonVideo) {

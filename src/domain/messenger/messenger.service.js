@@ -256,12 +256,13 @@ export const broadcastChatMessage = async ({
 const getTime = (value) => (typeof value?.toDate === 'function' ? value.toDate() : new Date(value || 0)).getTime() || 0;
 
 const sortInternalRooms = (rooms = []) => [...rooms]
-    .filter((room) => room?.internalOnly === true)
+    .filter((room) => room?.internalOnly === true || room?.fromUserChatRoomIndex === true)
     .sort((a, b) => getTime(b?.lastMessageAt || b?.updatedAt || b?.createdAt) - getTime(a?.lastMessageAt || a?.updatedAt || a?.createdAt))
     .slice(0, 100);
 
 const mergeRoomWithIndex = (room, index = {}) => ({
     ...(room || {}),
+    fromUserChatRoomIndex: Boolean(index?.id || index?.roomId),
     id: room?.id || index?.roomId || index?.id || '',
     roomId: room?.roomId || index?.roomId || index?.id || '',
     lastMessageText: room?.lastMessageText || index?.lastMessageText || index?.lastMessage || '',
@@ -269,6 +270,10 @@ const mergeRoomWithIndex = (room, index = {}) => ({
     lastMessageAt: room?.lastMessageAt || index?.lastMessageAt || null,
     lastSenderId: room?.lastSenderId || index?.lastSenderId || room?.lastMessageSenderId || '',
     updatedAt: room?.updatedAt || index?.updatedAt || null,
+    participantIds: Array.isArray(room?.participantIds) && room.participantIds.length > 0
+        ? room.participantIds
+        : uniqueStrings([index?.participantIds || [], index?.counterpartUid, index?.staffAuthUid, index?.teacherAuthUid]),
+    internalOnly: room?.internalOnly === true || Boolean(index?.id || index?.roomId),
 });
 
 const fetchUserAuthIndexProfile = async (authUid) => {
@@ -281,15 +286,15 @@ const fetchUserAuthIndexProfile = async (authUid) => {
     return { userDocId, profile: userSnap.exists() ? userSnap.data() || {} : {} };
 };
 
-const fetchRoomsForInternalIndexes = async (indexes = []) => {
-    const rooms = await Promise.all(indexes.map(async (index) => {
-        const roomId = normalizeString(index?.roomId || index?.id);
-        if (!roomId) return null;
-        const roomSnap = await getDoc(doc(db, 'chatRooms', roomId));
-        return mergeRoomWithIndex(roomSnap.exists() ? { id: roomSnap.id, ...roomSnap.data() } : { id: roomId }, index);
-    }));
-    return rooms.filter(Boolean);
-};
+const fetchRoomsForInternalIndexes = async (indexes = []) => (
+    indexes
+        .map((index) => {
+            const roomId = normalizeString(index?.roomId || index?.id);
+            if (!roomId) return null;
+            return mergeRoomWithIndex({ id: roomId }, index);
+        })
+        .filter(Boolean)
+);
 
 const fetchInternalUserChatRoomIndexes = async (keys = [], debug = {}) => {
     const indexesById = new Map();
@@ -337,32 +342,35 @@ export const subscribeInternalChatRooms = (currentAuthUid, onChange, onError = n
 
     const loadRooms = async () => {
         try {
-            const { userDocId: indexedUserDocId, profile } = await fetchUserAuthIndexProfile(authUid);
-            const profileDocId = normalizeString(options.profileDocId || indexedUserDocId);
-            const userAuthIndexUserDocId = indexedUserDocId;
-            const participantKeyCandidates = uniqueStrings([
-                authUid,
-                profileDocId,
-                userAuthIndexUserDocId,
-                profile?.uid,
-                profile?.authUid,
-                profile?.userUid,
-                profile?.id,
-            ]).slice(0, 10);
-            const debug = { authUid, profileDocId, userAuthIndexUserDocId, participantKeyCandidates };
+            const initialProfileDocId = normalizeString(options.profileDocId);
+            const initialUserChatRoomKeys = uniqueStrings([authUid, initialProfileDocId]);
+            const initialDebug = { authUid, profileDocId: initialProfileDocId, userAuthIndexUserDocId: '', participantKeyCandidates: initialUserChatRoomKeys };
 
             if (process.env.NODE_ENV === 'development') {
-                console.log('[staff messenger] resolver identity', debug);
+                console.log('[staff messenger] resolver identity', initialDebug);
             }
 
-            const userChatRoomKeys = uniqueStrings([authUid, profileDocId, userAuthIndexUserDocId]);
-            const { indexes } = await fetchInternalUserChatRoomIndexes(userChatRoomKeys, debug);
+            const { indexes } = await fetchInternalUserChatRoomIndexes(initialUserChatRoomKeys, initialDebug);
             const indexedRooms = await fetchRoomsForInternalIndexes(indexes);
-            const fallbackRooms = await fetchInternalFallbackRooms(participantKeyCandidates, debug);
-            const roomsById = new Map();
-            indexedRooms.forEach((room) => roomsById.set(room.id, room));
-            fallbackRooms.forEach((room) => roomsById.set(room.id, mergeRoomWithIndex(room, roomsById.get(room.id))));
-            const finalRooms = sortInternalRooms(Array.from(roomsById.values()));
+            let finalRooms = sortInternalRooms(indexedRooms);
+
+            if (finalRooms.length === 0) {
+                const { userDocId: indexedUserDocId, profile } = await fetchUserAuthIndexProfile(authUid);
+                const profileDocId = normalizeString(options.profileDocId || indexedUserDocId);
+                const userAuthIndexUserDocId = indexedUserDocId;
+                const participantKeyCandidates = uniqueStrings([
+                    authUid,
+                    profileDocId,
+                    userAuthIndexUserDocId,
+                    profile?.uid,
+                    profile?.authUid,
+                    profile?.userUid,
+                    profile?.id,
+                ]).slice(0, 10);
+                const fallbackDebug = { authUid, profileDocId, userAuthIndexUserDocId, participantKeyCandidates };
+                const fallbackRooms = await fetchInternalFallbackRooms(participantKeyCandidates, fallbackDebug);
+                finalRooms = sortInternalRooms(fallbackRooms);
+            }
 
             if (process.env.NODE_ENV === 'development') {
                 console.log('[staff messenger] room list count', { ...debug, count: finalRooms.length });
