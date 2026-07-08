@@ -1,8 +1,71 @@
-diff --git a/functions/scripts/backfillTestStats.js b/functions/scripts/backfillTestStats.js
-index a491bd4f54609f6edd21bdc3bda05b81c32e9e0a..04ed3fa95df09c7e9c389caf336d9b0598867ac1 100644
---- a/functions/scripts/backfillTestStats.js
-+++ b/functions/scripts/backfillTestStats.js
-@@ -55,51 +55,51 @@ async function loadTests() {
+diff --git a/functions/scripts/repairTestMaxScore.js b/functions/scripts/repairTestMaxScore.js
+index e2c6d5f1572a07dce8d46cf5a7dc3f529afa7673..dace103a75357a7e25c0979edc19fa109d80eb9e 100644
+--- a/functions/scripts/repairTestMaxScore.js
++++ b/functions/scripts/repairTestMaxScore.js
+@@ -5,99 +5,116 @@ if (!admin.apps.length) admin.initializeApp();
+ const db = admin.firestore();
+ const args = process.argv.slice(2);
+ const dryRun = !args.includes('--write');
+ const getArg = (name) => {
+   const hit = args.find((arg) => arg.startsWith(`${name}=`));
+   return hit ? hit.slice(name.length + 1) : '';
+ };
+ const onlyTestId = getArg('--testId');
+ const onlyClassId = getArg('--classId');
+ 
+ const toFiniteScore = (value) => {
+   if (value === null || value === undefined || value === '') return null;
+   const number = Number(value);
+   return Number.isFinite(number) ? number : null;
+ };
+ 
+ const getQuestionScoresTotal = (test = {}) => {
+   if (!Array.isArray(test.questionScores) || test.questionScores.length === 0) return null;
+   const scores = test.questionScores.map(toFiniteScore);
+   if (scores.some((score) => score === null)) return null;
+   return scores.reduce((sum, score) => sum + score, 0);
+ };
+ 
+ const resolveRepairMaxScore = (test = {}) => {
+   const totalScore = toFiniteScore(test.totalScore);
+-  if (totalScore !== null) return { value: totalScore, source: 'totalScore' };
++  if (totalScore !== null) return { value: totalScore, source: 'totalScore', needsManualReview: false };
+ 
+   const perfectScore = toFiniteScore(test.perfectScore);
+-  if (perfectScore !== null) return { value: perfectScore, source: 'perfectScore' };
++  if (perfectScore !== null) return { value: perfectScore, source: 'perfectScore', needsManualReview: false };
+ 
+   const questionScoresTotal = getQuestionScoresTotal(test);
+-  if (questionScoresTotal !== null) return { value: questionScoresTotal, source: 'questionScores' };
++  if (questionScoresTotal !== null) return { value: questionScoresTotal, source: 'questionScores', needsManualReview: false };
+ 
+-  return { value: null, source: '' };
++  const currentMaxScore = toFiniteScore(test.maxScore);
++  const highestScore = toFiniteScore(test.highestScore ?? test.classHighestScore);
++  if (currentMaxScore !== null && highestScore !== null && currentMaxScore > highestScore) {
++    return { value: currentMaxScore, source: 'existingMaxScoreGreaterThanHighestScore', needsManualReview: false };
++  }
++
++  return { value: null, source: '', needsManualReview: true };
++};
++
++const logManualReview = (testDoc, test = {}) => {
++  console.log('[repairTestMaxScore] needs manual review', {
++    testId: testDoc.id,
++    classId: test.classId || '',
++    name: test.name || '',
++    currentMaxScore: toFiniteScore(test.maxScore),
++    highestScore: toFiniteScore(test.highestScore ?? test.classHighestScore),
++    totalQuestions: test.totalQuestions ?? null,
++    hasQuestionScores: Array.isArray(test.questionScores) && test.questionScores.length > 0,
++  });
+ };
+ 
+ async function loadTests() {
+   if (onlyTestId) {
+     const snap = await db.collection('tests').doc(onlyTestId).get();
+     return snap.exists ? [snap] : [];
+   }
    const query = onlyClassId ? db.collection('tests').where('classId', '==', onlyClassId) : db.collection('tests');
    const snap = await query.get();
    return snap.docs;
@@ -10,1691 +73,190 @@ index a491bd4f54609f6edd21bdc3bda05b81c32e9e0a..04ed3fa95df09c7e9c389caf336d9b05
  
  async function main() {
    const tests = await loadTests();
-   console.log(`[testStats] ${dryRun ? 'dry-run' : 'write'} tests=${tests.length} classId=${onlyClassId || '*'} testId=${onlyTestId || '*'}`);
+   let repaired = 0;
+   let skipped = 0;
++  let manualReview = 0;
+   console.log(`[repairTestMaxScore] ${dryRun ? 'dry-run' : 'write'} tests=${tests.length} classId=${onlyClassId || '*'} testId=${onlyTestId || '*'}`);
+ 
    for (const testDoc of tests) {
-     const testId = testDoc.id;
      const test = testDoc.data() || {};
-     const gradesSnap = await db.collection('grades').where('testId', '==', testId).get();
-     const questionScores = getQuestionScores(test);
-     const scores = gradesSnap.docs
-       .map((doc) => doc.data() || {})
-       .filter((grade) => !isAbsentGrade(grade))
-       .map((grade) => getGradeScore(grade, test, questionScores))
-       .filter((score) => score !== null);
-     const submittedCount = scores.length;
-     const classAverage = submittedCount ? round1(scores.reduce((sum, score) => sum + score, 0) / submittedCount) : null;
-     const highestScore = submittedCount ? round1(Math.max(...scores)) : null;
-     const payload = {
-       classAverage,
-       average: classAverage,
-       highestScore,
--      maxScore: highestScore,
-+      classHighestScore: highestScore,
-       submittedCount,
-       statsUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
-     };
-     console.log('[testStats]', { testId, classId: test.classId || '', classAverage, highestScore, submittedCount, sourceGrades: gradesSnap.size });
+     const currentMaxScore = toFiniteScore(test.maxScore);
+-    const { value, source } = resolveRepairMaxScore(test);
++    const { value, source, needsManualReview } = resolveRepairMaxScore(test);
+ 
+-    if (value === null) {
++    if (needsManualReview || value === null) {
+       skipped += 1;
+-      console.log('[repairTestMaxScore] needs manual review', {
+-        testId: testDoc.id,
+-        classId: test.classId || '',
+-        currentMaxScore,
+-        totalQuestions: test.totalQuestions ?? null,
+-        reason: 'No totalScore/perfectScore/questionScores. If totalQuestions exists, maxScore may already be a highest-score value and is not auto-repaired.',
+-      });
++      manualReview += 1;
++      logManualReview(testDoc, test);
+       continue;
+     }
+ 
+     if (currentMaxScore === value) {
+       skipped += 1;
+       continue;
+     }
+ 
+     repaired += 1;
+     console.log('[repairTestMaxScore] repair candidate', {
+       testId: testDoc.id,
+       classId: test.classId || '',
++      name: test.name || '',
+       from: currentMaxScore,
+       to: value,
+       source,
+     });
+ 
      if (!dryRun) {
-       await testDoc.ref.set(payload, { merge: true });
-       if (test.classId) {
-         await db.collection('classTestStats').doc(`${test.classId}_${testId}`).set({
-           classId: test.classId,
-           testId,
-           average: classAverage,
-           maxScore: highestScore,
-           highestScore,
-           submittedCount,
-           attemptedCount: submittedCount,
-           count: submittedCount,
-           updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-         }, { merge: true });
-       }
+       await testDoc.ref.set({
+         maxScore: value,
++        totalScore: value,
++        perfectScore: value,
+         maxScoreRepairedAt: admin.firestore.FieldValue.serverTimestamp(),
+         maxScoreRepairSource: source,
+       }, { merge: true });
      }
    }
-   console.log(`[testStats] ${dryRun ? 'dry-run completed' : 'write completed'}`);
+ 
+-  console.log(`[repairTestMaxScore] complete repaired=${repaired} skipped=${skipped}`);
++  console.log(`[repairTestMaxScore] complete repaired=${repaired} skipped=${skipped} manualReview=${manualReview}`);
  }
  
  main().catch((error) => {
-diff --git a/functions/scripts/repairTestMaxScore.js b/functions/scripts/repairTestMaxScore.js
-new file mode 100644
-index 0000000000000000000000000000000000000000..e2c6d5f1572a07dce8d46cf5a7dc3f529afa7673
---- /dev/null
-+++ b/functions/scripts/repairTestMaxScore.js
-@@ -0,0 +1,103 @@
-+const admin = require('firebase-admin');
-+
-+if (!admin.apps.length) admin.initializeApp();
-+
-+const db = admin.firestore();
-+const args = process.argv.slice(2);
-+const dryRun = !args.includes('--write');
-+const getArg = (name) => {
-+  const hit = args.find((arg) => arg.startsWith(`${name}=`));
-+  return hit ? hit.slice(name.length + 1) : '';
-+};
-+const onlyTestId = getArg('--testId');
-+const onlyClassId = getArg('--classId');
-+
-+const toFiniteScore = (value) => {
-+  if (value === null || value === undefined || value === '') return null;
-+  const number = Number(value);
-+  return Number.isFinite(number) ? number : null;
-+};
-+
-+const getQuestionScoresTotal = (test = {}) => {
-+  if (!Array.isArray(test.questionScores) || test.questionScores.length === 0) return null;
-+  const scores = test.questionScores.map(toFiniteScore);
-+  if (scores.some((score) => score === null)) return null;
-+  return scores.reduce((sum, score) => sum + score, 0);
-+};
-+
-+const resolveRepairMaxScore = (test = {}) => {
-+  const totalScore = toFiniteScore(test.totalScore);
-+  if (totalScore !== null) return { value: totalScore, source: 'totalScore' };
-+
-+  const perfectScore = toFiniteScore(test.perfectScore);
-+  if (perfectScore !== null) return { value: perfectScore, source: 'perfectScore' };
-+
-+  const questionScoresTotal = getQuestionScoresTotal(test);
-+  if (questionScoresTotal !== null) return { value: questionScoresTotal, source: 'questionScores' };
-+
-+  return { value: null, source: '' };
-+};
-+
-+async function loadTests() {
-+  if (onlyTestId) {
-+    const snap = await db.collection('tests').doc(onlyTestId).get();
-+    return snap.exists ? [snap] : [];
-+  }
-+  const query = onlyClassId ? db.collection('tests').where('classId', '==', onlyClassId) : db.collection('tests');
-+  const snap = await query.get();
-+  return snap.docs;
-+}
-+
-+async function main() {
-+  const tests = await loadTests();
-+  let repaired = 0;
-+  let skipped = 0;
-+  console.log(`[repairTestMaxScore] ${dryRun ? 'dry-run' : 'write'} tests=${tests.length} classId=${onlyClassId || '*'} testId=${onlyTestId || '*'}`);
-+
-+  for (const testDoc of tests) {
-+    const test = testDoc.data() || {};
-+    const currentMaxScore = toFiniteScore(test.maxScore);
-+    const { value, source } = resolveRepairMaxScore(test);
-+
-+    if (value === null) {
-+      skipped += 1;
-+      console.log('[repairTestMaxScore] needs manual review', {
-+        testId: testDoc.id,
-+        classId: test.classId || '',
-+        currentMaxScore,
-+        totalQuestions: test.totalQuestions ?? null,
-+        reason: 'No totalScore/perfectScore/questionScores. If totalQuestions exists, maxScore may already be a highest-score value and is not auto-repaired.',
-+      });
-+      continue;
-+    }
-+
-+    if (currentMaxScore === value) {
-+      skipped += 1;
-+      continue;
-+    }
-+
-+    repaired += 1;
-+    console.log('[repairTestMaxScore] repair candidate', {
-+      testId: testDoc.id,
-+      classId: test.classId || '',
-+      from: currentMaxScore,
-+      to: value,
-+      source,
-+    });
-+
-+    if (!dryRun) {
-+      await testDoc.ref.set({
-+        maxScore: value,
-+        maxScoreRepairedAt: admin.firestore.FieldValue.serverTimestamp(),
-+        maxScoreRepairSource: source,
-+      }, { merge: true });
-+    }
-+  }
-+
-+  console.log(`[repairTestMaxScore] complete repaired=${repaired} skipped=${skipped}`);
-+}
-+
-+main().catch((error) => {
-+  console.error('[repairTestMaxScore] failed', error);
-+  process.exit(1);
-+});
-diff --git a/functions/src/index.js b/functions/src/index.js
-index 5ae466a4a8b01c052cad97df6466d3ea2d637963..e441fe0aa11553493f9e4169649e902c5dbd49c1 100644
---- a/functions/src/index.js
-+++ b/functions/src/index.js
-@@ -1,66 +1,68 @@
- const { api } = require('./api');
- const { createStaffUser } = require('./admin/createStaffUser');
- const { adminCreateLinkCode } = require('./admin/createLinkCode');
- const { deactivateStaff } = require('./admin/deactivateStaff');
- const { getStaffList } = require('./admin/getStaffList');
- const { updateStaffRole } = require('./admin/updateStaffRole');
- const { retryNotification } = require('./admin/retryNotification');
- const { ensureUserProfileDoc } = require('./auth/ensureUserProfileDoc');
- // const { kakaoLogin } = require('./auth/kakaoLogin');
- // const { naverLogin } = require('./auth/naverLogin');
- const { claimStudentLinkCode } = require('./link/claimStudentLinkCode');
- const { onLessonLogWritten } = require('./triggers/lessonLogs');
- const { onAttendanceLogWritten } = require('./triggers/attendanceLogs');
- const { onHomeworkResultWritten } = require('./triggers/homeworkResults');
- const { onGradeWritten } = require('./triggers/grades');
- const { onChatMessageCreated, onChatRoomMessageCreated } = require('./triggers/chatMessages');
- const { onChatRoomWritten } = require('./triggers/chatRoomIndexes');
- const { createOrGetChatRoom } = require('./chat/createOrGetChatRoom');
- const { sendChatMessage } = require('./chat/sendChatMessage');
- const { broadcastChatMessage } = require('./chat/broadcastChatMessage');
- const { onAnnouncementCreated } = require('./triggers/announcements');
-+const { onNotificationItemCreated } = require('./triggers/notificationItems');
- const { resolveInviteCode } = require('./resolveInviteCode');
- const { acceptInviteAndCreateProfile } = require('./acceptInviteAndCreateProfile');
- const { createClinicReservation } = require('./clinic/createClinicReservation');
- const { markAllNotificationsRead } = require('./notify/markAllNotificationsRead');
- const { markNotificationRead } = require('./notify/markNotificationRead');
- const { markChatRoomNotificationsRead } = require('./notify/markChatRoomNotificationsRead');
- const { getViewerAnnouncements } = require('./viewer/getViewerAnnouncements');
- const { requestAccountDeletion } = require('./requestAccountDeletion');
- const auditLogs = require('./auditLogs');
- 
- exports.api = api;
- exports.createStaffUser = createStaffUser;
- exports.deactivateStaff = deactivateStaff;
- exports.adminCreateLinkCode = adminCreateLinkCode;
- exports.getStaffList = getStaffList;
- exports.updateStaffRole = updateStaffRole;
- exports.retryNotification = retryNotification;
- exports.ensureUserProfileDoc = ensureUserProfileDoc;
- // exports.kakaoLogin = kakaoLogin;
- // exports.naverLogin = naverLogin;
- exports.claimStudentLinkCode = claimStudentLinkCode;
- exports.onLessonLogWritten = onLessonLogWritten;
- exports.onAttendanceLogWritten = onAttendanceLogWritten;
- exports.onChatMessageCreated = onChatMessageCreated;
- exports.onChatRoomMessageCreated = onChatRoomMessageCreated;
- exports.onChatRoomWritten = onChatRoomWritten;
- exports.createOrGetChatRoom = createOrGetChatRoom;
- exports.sendChatMessage = sendChatMessage;
- exports.broadcastChatMessage = broadcastChatMessage;
- exports.onHomeworkResultWritten = onHomeworkResultWritten;
- exports.onGradeWritten = onGradeWritten;
- exports.onAnnouncementCreated = onAnnouncementCreated;
-+exports.onNotificationItemCreated = onNotificationItemCreated;
- exports.resolveInviteCode = resolveInviteCode;
- exports.acceptInviteAndCreateProfile = acceptInviteAndCreateProfile;
- exports.createClinicReservation = createClinicReservation;
- exports.auditClinicLogs = auditLogs.auditClinicLogs;
- exports.auditAttendanceLogs = auditLogs.auditAttendanceLogs;
- exports.auditHomeworkResults = auditLogs.auditHomeworkResults;
- exports.auditGrades = auditLogs.auditGrades;
- exports.auditPayments = auditLogs.auditPayments;
- exports.markAllNotificationsRead = markAllNotificationsRead;
- exports.markNotificationRead = markNotificationRead;
- exports.markChatRoomNotificationsRead = markChatRoomNotificationsRead;
- exports.getViewerAnnouncements = getViewerAnnouncements;
- exports.requestAccountDeletion = requestAccountDeletion;
-\ No newline at end of file
-diff --git a/functions/src/triggers/chatMessages.js b/functions/src/triggers/chatMessages.js
-index 14ae325845decef1e2bf17c8a6f9950b107a4bd8..54f0aa01480ca6a754e79c4d110ab176ccc8e9ac 100644
---- a/functions/src/triggers/chatMessages.js
-+++ b/functions/src/triggers/chatMessages.js
-@@ -1,29 +1,28 @@
- const functions = require('firebase-functions');
- const { getFirestore, FieldValue } = require('firebase-admin/firestore');
- const { notifyUsers } = require('../notify/notifications');
--const { sendFcmToUsers } = require('../notify/fcm');
- 
- const TYPE = 'CHAT_MESSAGE';
- const db = getFirestore();
- 
- const uniqueStrings = (values = []) => Array.from(new Set(
-     values.map((value) => String(value || '').trim()).filter(Boolean)
- ));
- 
- const resolveParticipantAuthUid = async (participantId) => {
-     const normalizedId = String(participantId || '').trim();
-     if (!normalizedId) return '';
- 
-     const userSnapshot = await db.collection('users').doc(normalizedId).get();
-     const authUid = userSnapshot.exists ? String(userSnapshot.data()?.authUid || '').trim() : '';
-     return authUid || normalizedId;
- };
- 
- const buildChatRoomNotification = ({ roomId, messageId, messageData }) => ({
-     type: TYPE,
-     category: 'message',
-     title: '새 메시지가 있습니다.',
-     body: '새 메시지가 있습니다.',
-     ref: `chatRooms/${roomId}`,
-     refCollection: 'chatRooms',
-     refId: roomId,
-@@ -97,57 +96,50 @@ const onChatRoomMessageCreated = functions.firestore
-         console.log('[notifications] chat room message recipients resolved', {
-             roomId,
-             messageId,
-             senderId,
-             participantIds,
-             senderOwnerUids,
-             recipientOwnerUids,
-         });
- 
-         if (!recipientOwnerUids.length) {
-             return null;
-         }
- 
-         const batch = db.batch();
-         recipientOwnerUids.forEach((recipientOwnerUid) => {
-             const notificationRef = db
-                 .collection('notifications')
-                 .doc(recipientOwnerUid)
-                 .collection('items')
-                 .doc(`${roomId}_${messageId}`);
-             batch.set(notificationRef, buildChatRoomNotification({ roomId, messageId, messageData }), { merge: true });
-         });
- 
-         await batch.commit();
- 
--        const notificationIds = Object.fromEntries(recipientOwnerUids.map((uid) => [uid, `${roomId}_${messageId}`]));
--        await sendFcmToUsers(recipientOwnerUids, {
--            type: TYPE,
--            refCollection: 'notifications',
--            refId: 'center',
--            category: 'message',
--        }, { notificationIds });
-         return null;
-     });
- 
- 
- const onChatMessageCreated = functions.firestore
-     .document('chats/{chatId}/messages/{messageId}')
-     .onCreate(async (snapshot, context) => {
-         const messageData = snapshot.data() || {};
-         const chatSnapshot = await db.collection('chats').doc(context.params.chatId).get();
-         const chatData = chatSnapshot.data() || {};
-         const participantIds = Array.isArray(chatData.participantIds) ? chatData.participantIds : [];
-         const senderId = messageData.senderId;
- 
-         const recipients = participantIds.filter((uid) => uid && uid !== senderId);
- 
-         const refId = context.params.chatId;
-         const lastMessageText = messageData.text || messageData.body || '';
-         const lastMessageAt = messageData.createdAt || FieldValue.serverTimestamp();
-         const batch = db.batch();
- 
-         if (recipients.length === 0) {
-             await notifyUsers({
-                 userIds: [],
-                 payload: {
-                     type: TYPE,
-diff --git a/functions/src/triggers/grades.js b/functions/src/triggers/grades.js
-index 1396ccad2a5e9d966c606834a4df69053505ab07..0f1329f468d16da61c635d684c244d7c095bcf3d 100644
---- a/functions/src/triggers/grades.js
-+++ b/functions/src/triggers/grades.js
-@@ -45,51 +45,51 @@ const getGradeScore = (grade = {}, test = {}, questionScores = []) => {
-     for (let i = 1; i <= totalQuestions; i += 1) {
-         if (isCorrect(correctCount[String(i)])) total += questionScores[i - 1] || 0;
-     }
-     return Number.isFinite(total) ? total : null;
- };
- 
- const recomputeTestStats = async (testId) => {
-     if (!testId) return null;
-     const testSnap = await db.collection('tests').doc(testId).get();
-     if (!testSnap.exists) return null;
-     const test = testSnap.data() || {};
-     const gradesSnap = await db.collection('grades').where('testId', '==', testId).get();
-     const questionScores = getQuestionScores(test);
-     const scores = gradesSnap.docs
-         .map((doc) => doc.data() || {})
-         .filter((grade) => !isAbsentGrade(grade))
-         .map((grade) => getGradeScore(grade, test, questionScores))
-         .filter((score) => score !== null);
-     const submittedCount = scores.length;
-     const classAverage = submittedCount ? Math.round((scores.reduce((sum, score) => sum + score, 0) / submittedCount) * 10) / 10 : null;
-     const highestScore = submittedCount ? Math.round(Math.max(...scores) * 10) / 10 : null;
-     const payload = {
-         classAverage,
-         average: classAverage,
-         highestScore,
--        maxScore: highestScore,
-+        classHighestScore: highestScore,
-         submittedCount,
-         statsUpdatedAt: FieldValue.serverTimestamp(),
-     };
-     await testSnap.ref.set(payload, { merge: true });
-     if (test.classId) {
-         await db.collection('classTestStats').doc(`${test.classId}_${testId}`).set({
-             classId: test.classId,
-             testId,
-             average: classAverage,
-             maxScore: highestScore,
-             highestScore,
-             submittedCount,
-             attemptedCount: submittedCount,
-             count: submittedCount,
-             updatedAt: FieldValue.serverTimestamp(),
-         }, { merge: true });
-     }
-     return payload;
- };
- 
- const onGradeWritten = functions.firestore
-     .document('grades/{id}')
-     .onWrite(async (change, context) => {
-         const changedData = change.after.exists ? change.after.data() : change.before.data();
-         if (changedData?.testId) {
-diff --git a/functions/src/triggers/notificationItems.js b/functions/src/triggers/notificationItems.js
-new file mode 100644
-index 0000000000000000000000000000000000000000..22f8e334d545a20bd23428f314c5470e21e74a4f
---- /dev/null
-+++ b/functions/src/triggers/notificationItems.js
-@@ -0,0 +1,22 @@
-+const functions = require('firebase-functions');
-+const { sendFcmToUsers } = require('../notify/fcm');
-+
-+const onNotificationItemCreated = functions.firestore
-+    .document('notifications/{uid}/items/{notificationId}')
-+    .onCreate(async (snapshot, context) => {
-+        const data = snapshot.data() || {};
-+        const { uid, notificationId } = context.params;
-+        if (data.fcmSent === true || data.skipFcm === true) return null;
-+
-+        const category = data.category || data.payload?.category || data.type || '';
-+        await sendFcmToUsers([uid], {
-+            type: data.type || 'NOTIFICATION',
-+            category,
-+            refCollection: 'notifications',
-+            refId: 'center',
-+            url: '/home?tab=notifications',
-+        }, { notificationIds: { [uid]: notificationId } });
-+        return null;
-+    });
-+
-+module.exports = { onNotificationItemCreated };
+   console.error('[repairTestMaxScore] failed', error);
+   process.exit(1);
+ });
 diff --git a/ios/App/App/NativeYouTubePlayerViewController.swift b/ios/App/App/NativeYouTubePlayerViewController.swift
-index 382da698a2d05d1f03a5491075c9d36ee56e517d..b590a6c5f3e7c50b91989ded64347e7ecea23c9f 100644
+index b590a6c5f3e7c50b91989ded64347e7ecea23c9f..89e9ae34ab4ef0ae8e4f1cc84b8dc841df0c18ba 100644
 --- a/ios/App/App/NativeYouTubePlayerViewController.swift
 +++ b/ios/App/App/NativeYouTubePlayerViewController.swift
-@@ -1,96 +1,112 @@
- import UIKit
- import YouTubeiOSPlayerHelper
- 
- final class NativeYouTubePlayerViewController: UIViewController, YTPlayerViewDelegate, UIGestureRecognizerDelegate {
--    private let videoId: String
--    private let startSeconds: Double
-+    private var videoId: String
-+    private var startSeconds: Double
-     private let autoPlay: Bool
-     private let playerView = YTPlayerView()
-     private var latestPlayTime: Double
-     private var memos: [NativeMemo]
-+    private var currentLessonId: String
-+    private let lessonVideos: [NativeLessonVideo]
-+    private let lessonList: [NativeLessonItem]
-+    private let onVideoSelected: (([String: Any]) -> Void)?
-+    private let onLessonSelected: (([String: Any]) -> Void)?
-     private let onMemoAdded: (([String: Any]) -> Void)?
-     private let onMemoUpdated: (([String: Any]) -> Void)?
-     private let onMemoDeleted: (([String: Any]) -> Void)?
-     private weak var activeOverlayView: UIView?
-     private weak var activeEditPanelBottomConstraint: NSLayoutConstraint?
- 
--    init(videoId: String, startSeconds: Double = 0, autoPlay: Bool = false, memos: [NativeMemo] = [], onMemoAdded: (([String: Any]) -> Void)? = nil, onMemoUpdated: (([String: Any]) -> Void)? = nil, onMemoDeleted: (([String: Any]) -> Void)? = nil) {
-+    init(videoId: String, startSeconds: Double = 0, autoPlay: Bool = false, memos: [NativeMemo] = [], currentLessonId: String = "", lessonVideos: [NativeLessonVideo] = [], lessonList: [NativeLessonItem] = [], onMemoAdded: (([String: Any]) -> Void)? = nil, onMemoUpdated: (([String: Any]) -> Void)? = nil, onMemoDeleted: (([String: Any]) -> Void)? = nil, onVideoSelected: (([String: Any]) -> Void)? = nil, onLessonSelected: (([String: Any]) -> Void)? = nil) {
-         self.videoId = videoId
-         self.startSeconds = max(0, startSeconds)
-         self.autoPlay = autoPlay
-         self.latestPlayTime = max(0, startSeconds)
-         self.memos = memos.sorted { $0.time < $1.time }
-+        self.currentLessonId = currentLessonId
-+        self.lessonVideos = lessonVideos
-+        self.lessonList = lessonList
-+        self.onVideoSelected = onVideoSelected
-+        self.onLessonSelected = onLessonSelected
-         self.onMemoAdded = onMemoAdded
-         self.onMemoUpdated = onMemoUpdated
-         self.onMemoDeleted = onMemoDeleted
-         super.init(nibName: nil, bundle: nil)
-         modalPresentationStyle = .fullScreen
+@@ -169,63 +169,63 @@ final class NativeYouTubePlayerViewController: UIViewController, YTPlayerViewDel
+     @objc private func lessonListTapped() {
+         dismissActiveOverlay(animated: false)
+         let overlay = makeDimmingOverlay()
+         let panel = makeRoundedPanel()
+         let stack = makeSimpleSheet(title: "강의 목록", in: panel)
+         if lessonList.isEmpty { stack.addArrangedSubview(makeInfoLabel("강의 목록이 없습니다.")) }
+         lessonList.forEach { item in
+             let title = item.canAccess ? "\(item.date) \(item.title) · 영상 \(item.videosCount)개" : "\(item.date) \(item.title) · 출결 확인 후 시청 가능"
+             let button = makeTextButton(title: title, titleColor: item.canAccess ? .label : .secondaryLabel)
+             button.contentHorizontalAlignment = .left
+             button.isEnabled = item.canAccess && !item.firstVideoId.isEmpty
+             button.addAction(UIAction { [weak self] _ in
+                 self?.selectLesson(item)
+             }, for: .touchUpInside)
+             stack.addArrangedSubview(button)
+         }
+         presentSheet(overlay: overlay, panel: panel)
      }
  
-     required init?(coder: NSCoder) {
-         fatalError("init(coder:) has not been implemented")
-     }
- 
-     override func viewDidLoad() {
-         super.viewDidLoad()
-         view.backgroundColor = .black
-         configureTopControlsStack()
-         configurePlayerView()
-         configureMemoButton()
+     private func selectVideo(_ item: NativeLessonVideo) {
+         videoId = item.videoId
+         startSeconds = 0
+         latestPlayTime = 0
+         memos = []
+         onVideoSelected?(["id": item.id, "videoId": item.videoId, "youtubeVideoId": item.videoId])
+-        dismissActiveOverlay()
++        dismissActiveOverlay(animated: true)
          loadVideo()
      }
  
-     private func configureTopControlsStack() {
-         let closeButton = makeOverlayPillButton(title: "닫기")
-         closeButton.addTarget(self, action: #selector(closeTapped), for: .touchUpInside)
+     private func selectLesson(_ item: NativeLessonItem) {
+         guard item.canAccess, !item.firstVideoId.isEmpty else { return }
+         currentLessonId = item.id
+         videoId = item.firstVideoId
+         startSeconds = 0
+         latestPlayTime = 0
+         memos = []
+         onLessonSelected?(["lessonId": item.id, "videoId": item.firstVideoId])
+-        dismissActiveOverlay()
++        dismissActiveOverlay(animated: true)
+         loadVideo()
+     }
  
-         let memoListButton = makeOverlayPillButton(title: "메모 목록")
-         memoListButton.addTarget(self, action: #selector(memoListTapped), for: .touchUpInside)
- 
--        let topControlsStack = UIStackView(arrangedSubviews: [closeButton, memoListButton])
-+        let videoListButton = makeOverlayPillButton(title: "영상 목록")
-+        videoListButton.addTarget(self, action: #selector(videoListTapped), for: .touchUpInside)
-+
-+        let lessonListButton = makeOverlayPillButton(title: "강의 목록")
-+        lessonListButton.addTarget(self, action: #selector(lessonListTapped), for: .touchUpInside)
-+
-+        let topControlsStack = UIStackView(arrangedSubviews: [closeButton, videoListButton, lessonListButton, memoListButton])
-         topControlsStack.translatesAutoresizingMaskIntoConstraints = false
-         topControlsStack.axis = .horizontal
-         topControlsStack.alignment = .center
-         topControlsStack.distribution = .equalSpacing
-         view.addSubview(topControlsStack)
- 
+     private func makeSimpleSheet(title: String, in panel: UIView) -> UIStackView {
+         let stack = UIStackView()
+         stack.translatesAutoresizingMaskIntoConstraints = false
+         stack.axis = .vertical
+         stack.spacing = 10
+         panel.addSubview(stack)
+         let header = makePanelTitle(title)
+         stack.addArrangedSubview(header)
          NSLayoutConstraint.activate([
-             topControlsStack.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 18),
-             topControlsStack.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 24),
-             topControlsStack.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -24),
-             closeButton.heightAnchor.constraint(equalToConstant: 40),
-             memoListButton.heightAnchor.constraint(equalTo: closeButton.heightAnchor)
+             stack.topAnchor.constraint(equalTo: panel.topAnchor, constant: 20),
+             stack.leadingAnchor.constraint(equalTo: panel.leadingAnchor, constant: 20),
+             stack.trailingAnchor.constraint(equalTo: panel.trailingAnchor, constant: -20),
+             stack.bottomAnchor.constraint(lessThanOrEqualTo: panel.bottomAnchor, constant: -24)
          ])
+         return stack
      }
  
-     private func makeOverlayPillButton(title: String, backgroundColor: UIColor = UIColor.black.withAlphaComponent(0.55)) -> UIButton {
-         let button = UIButton(type: .system)
-         button.translatesAutoresizingMaskIntoConstraints = false
-         button.setTitle(title, for: .normal)
-         button.setTitleColor(.white, for: .normal)
--        button.titleLabel?.font = .boldSystemFont(ofSize: 17)
-+        button.titleLabel?.font = .boldSystemFont(ofSize: 13)
-         button.backgroundColor = backgroundColor
-         button.layer.cornerRadius = 20
-         button.contentEdgeInsets = UIEdgeInsets(top: 8, left: 14, bottom: 8, right: 14)
-         return button
-     }
- 
-     private func configureMemoButton() {
-         let memoButton = UIButton(type: .system)
-         memoButton.translatesAutoresizingMaskIntoConstraints = false
-         memoButton.setTitle("메모", for: .normal)
-         memoButton.setTitleColor(.white, for: .normal)
-         memoButton.titleLabel?.font = .boldSystemFont(ofSize: 16)
-         memoButton.backgroundColor = UIColor.systemBlue
-         memoButton.layer.cornerRadius = 22
-         memoButton.contentEdgeInsets = UIEdgeInsets(top: 10, left: 18, bottom: 10, right: 18)
-         memoButton.addTarget(self, action: #selector(memoTapped), for: .touchUpInside)
-         view.addSubview(memoButton)
- 
-         NSLayoutConstraint.activate([
-             memoButton.topAnchor.constraint(equalTo: playerView.bottomAnchor, constant: 24),
-             memoButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -24),
-             memoButton.bottomAnchor.constraint(lessThanOrEqualTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -20),
-             memoButton.heightAnchor.constraint(equalToConstant: 44)
-         ])
-     }
-@@ -111,50 +127,151 @@ final class NativeYouTubePlayerViewController: UIViewController, YTPlayerViewDel
-     private func loadVideo() {
-         var playerVars: [String: Any] = [
-             "playsinline": 1,
-             "controls": 1,
-             "rel": 0,
-             "modestbranding": 1
-         ]
- 
-         if startSeconds > 0 {
-             playerVars["start"] = Int(startSeconds)
-         }
- 
-         print("[NativeYouTubePlayerViewController] loading videoId=\(videoId), startSeconds=\(startSeconds)")
-         playerView.load(withVideoId: videoId, playerVars: playerVars)
-     }
- 
-     @objc private func closeTapped() {
-         print("[NativeYouTubePlayerViewController] close tapped")
-         dismiss(animated: true)
-     }
- 
-     @objc private func memoListTapped() {
-         showMemoListOverlay()
-     }
- 
-+    @objc private func videoListTapped() {
-+        dismissActiveOverlay(animated: false)
-+        let overlay = makeDimmingOverlay()
-+        let panel = makeRoundedPanel()
-+        let stack = makeSimpleSheet(title: "영상 목록", in: panel)
-+        if lessonVideos.isEmpty { stack.addArrangedSubview(makeInfoLabel("영상 목록이 없습니다.")) }
-+        lessonVideos.forEach { item in
-+            let button = makeTextButton(title: item.title, titleColor: item.videoId == videoId ? .systemBlue : .label)
-+            button.contentHorizontalAlignment = .left
-+            button.addAction(UIAction { [weak self] _ in
-+                self?.selectVideo(item)
-+            }, for: .touchUpInside)
-+            stack.addArrangedSubview(button)
-+        }
-+        presentSheet(overlay: overlay, panel: panel)
-+    }
-+
-+    @objc private func lessonListTapped() {
-+        dismissActiveOverlay(animated: false)
-+        let overlay = makeDimmingOverlay()
-+        let panel = makeRoundedPanel()
-+        let stack = makeSimpleSheet(title: "강의 목록", in: panel)
-+        if lessonList.isEmpty { stack.addArrangedSubview(makeInfoLabel("강의 목록이 없습니다.")) }
-+        lessonList.forEach { item in
-+            let title = item.canAccess ? "\(item.date) \(item.title) · 영상 \(item.videosCount)개" : "\(item.date) \(item.title) · 출결 확인 후 시청 가능"
-+            let button = makeTextButton(title: title, titleColor: item.canAccess ? .label : .secondaryLabel)
-+            button.contentHorizontalAlignment = .left
-+            button.isEnabled = item.canAccess && !item.firstVideoId.isEmpty
-+            button.addAction(UIAction { [weak self] _ in
-+                self?.selectLesson(item)
-+            }, for: .touchUpInside)
-+            stack.addArrangedSubview(button)
-+        }
-+        presentSheet(overlay: overlay, panel: panel)
-+    }
-+
-+    private func selectVideo(_ item: NativeLessonVideo) {
-+        videoId = item.videoId
-+        startSeconds = 0
-+        latestPlayTime = 0
-+        memos = []
-+        onVideoSelected?(["id": item.id, "videoId": item.videoId, "youtubeVideoId": item.videoId])
-+        dismissActiveOverlay()
-+        loadVideo()
-+    }
-+
-+    private func selectLesson(_ item: NativeLessonItem) {
-+        guard item.canAccess, !item.firstVideoId.isEmpty else { return }
-+        currentLessonId = item.id
-+        videoId = item.firstVideoId
-+        startSeconds = 0
-+        latestPlayTime = 0
-+        memos = []
-+        onLessonSelected?(["lessonId": item.id, "videoId": item.firstVideoId])
-+        dismissActiveOverlay()
-+        loadVideo()
-+    }
-+
-+    private func makeSimpleSheet(title: String, in panel: UIView) -> UIStackView {
-+        let stack = UIStackView()
-+        stack.translatesAutoresizingMaskIntoConstraints = false
-+        stack.axis = .vertical
-+        stack.spacing = 10
-+        panel.addSubview(stack)
-+        let header = makePanelTitle(title)
-+        stack.addArrangedSubview(header)
-+        NSLayoutConstraint.activate([
-+            stack.topAnchor.constraint(equalTo: panel.topAnchor, constant: 20),
-+            stack.leadingAnchor.constraint(equalTo: panel.leadingAnchor, constant: 20),
-+            stack.trailingAnchor.constraint(equalTo: panel.trailingAnchor, constant: -20),
-+            stack.bottomAnchor.constraint(lessThanOrEqualTo: panel.bottomAnchor, constant: -24)
-+        ])
-+        return stack
-+    }
-+
-+    private func makeInfoLabel(_ text: String) -> UILabel {
-+        let label = UILabel()
-+        label.text = text
-+        label.font = .systemFont(ofSize: 14, weight: .medium)
-+        label.textColor = .secondaryLabel
-+        return label
-+    }
-+
-+    private func presentSheet(overlay: UIView, panel: UIView) {
-+        view.addSubview(overlay)
-+        overlay.addSubview(panel)
-+        activeOverlayView = overlay
-+        NSLayoutConstraint.activate([
-+            overlay.topAnchor.constraint(equalTo: view.topAnchor),
-+            overlay.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-+            overlay.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-+            overlay.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-+            panel.leadingAnchor.constraint(equalTo: overlay.leadingAnchor),
-+            panel.trailingAnchor.constraint(equalTo: overlay.trailingAnchor),
-+            panel.bottomAnchor.constraint(equalTo: overlay.bottomAnchor),
-+            panel.heightAnchor.constraint(lessThanOrEqualTo: overlay.heightAnchor, multiplier: 0.55)
-+        ])
-+        animateOverlayIn(overlay: overlay, panel: panel)
-+    }
-+
-+
-     private func showMemoListOverlay() {
-         dismissActiveOverlay(animated: false)
- 
-         let overlay = makeDimmingOverlay()
-         let panel = makeRoundedPanel()
-         let titleLabel = makePanelTitle("메모 목록")
-         let closeButton = makeTextButton(title: "닫기", titleColor: .secondaryLabel)
-         closeButton.addTarget(self, action: #selector(dismissOverlayTapped), for: .touchUpInside)
- 
-         let headerStack = UIStackView(arrangedSubviews: [titleLabel, closeButton])
-         headerStack.translatesAutoresizingMaskIntoConstraints = false
-         headerStack.axis = .horizontal
-         headerStack.alignment = .center
-         headerStack.distribution = .equalSpacing
- 
-         let scrollView = UIScrollView()
-         scrollView.translatesAutoresizingMaskIntoConstraints = false
-         scrollView.alwaysBounceVertical = true
-         scrollView.showsVerticalScrollIndicator = true
- 
-         let contentStack = UIStackView()
-         contentStack.translatesAutoresizingMaskIntoConstraints = false
-         contentStack.axis = .vertical
-         contentStack.spacing = 8
-         scrollView.addSubview(contentStack)
-diff --git a/ios/App/App/NativeYouTubePlugin.swift b/ios/App/App/NativeYouTubePlugin.swift
-index b07fe0a5f69f3f4988b601c9a15e138283f38be0..1c334375c755b8ac29b1dc6fcb26a1ef8ed23acc 100644
---- a/ios/App/App/NativeYouTubePlugin.swift
-+++ b/ios/App/App/NativeYouTubePlugin.swift
-@@ -1,90 +1,133 @@
- import Capacitor
- import UIKit
- 
- struct NativeMemo {
-     let id: String
-     let time: Double
-     var note: String
- }
- 
-+struct NativeLessonVideo {
-+    let id: String
-+    let title: String
-+    let videoId: String
-+}
-+
-+struct NativeLessonItem {
-+    let id: String
-+    let date: String
-+    let title: String
-+    let videosCount: Int
-+    let firstVideoId: String
-+    let canAccess: Bool
-+}
-+
- @objc(NativeYouTubePlugin)
- public class NativeYouTubePlugin: CAPPlugin, CAPBridgedPlugin {
-     public let identifier = "NativeYouTubePlugin"
-     public let jsName = "NativeYouTube"
-     public let pluginMethods: [CAPPluginMethod] = [
-         CAPPluginMethod(name: "open", returnType: CAPPluginReturnPromise)
-     ]
- 
-     @objc func open(_ call: CAPPluginCall) {
-         print("[NativeYouTubePlugin] open requested")
- 
-         guard let videoId = call.getString("videoId"), !videoId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-             let message = "videoId is required"
-             print("[NativeYouTubePlugin] failed: \(message)")
-             call.reject(message)
-             return
-         }
- 
-         let startSeconds = call.getDouble("startSeconds") ?? 0
-         let autoPlay = call.getBool("autoPlay") ?? false
-         let memos = (call.getArray("memos", JSObject.self) ?? []).compactMap { item -> NativeMemo? in
-             guard let note = item["note"] as? String else { return nil }
-             let trimmedNote = note.trimmingCharacters(in: .whitespacesAndNewlines)
-             guard !trimmedNote.isEmpty else { return nil }
- 
-             let id = (item["id"] as? String) ?? UUID().uuidString
-             let time: Double
-             if let numberTime = item["time"] as? NSNumber {
-                 time = numberTime.doubleValue
-             } else if let doubleTime = item["time"] as? Double {
-                 time = doubleTime
-             } else if let stringTime = item["time"] as? String, let parsedTime = Double(stringTime) {
-                 time = parsedTime
-             } else {
-                 time = 0
-             }
- 
-             return NativeMemo(id: id, time: max(0, time), note: trimmedNote)
-         }
- 
-+        let lessonVideos = (call.getArray("lessonVideos", JSObject.self) ?? []).compactMap { item -> NativeLessonVideo? in
-+            let id = (item["id"] as? String) ?? UUID().uuidString
-+            let title = (item["title"] as? String) ?? "영상"
-+            let rawVideoId = ((item["youtubeVideoId"] as? String) ?? (item["videoId"] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-+            guard !rawVideoId.isEmpty else { return nil }
-+            return NativeLessonVideo(id: id, title: title, videoId: rawVideoId)
-+        }
-+        let lessonList = (call.getArray("lessonList", JSObject.self) ?? []).compactMap { item -> NativeLessonItem? in
-+            guard let id = item["id"] as? String else { return nil }
-+            let title = (item["title"] as? String) ?? (item["progress"] as? String) ?? "강의"
-+            let date = (item["date"] as? String) ?? ""
-+            let count = (item["videosCount"] as? NSNumber)?.intValue ?? (item["videosCount"] as? Int) ?? 0
-+            let firstVideoId = ((item["firstVideoId"] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-+            let locked = (item["locked"] as? Bool) ?? false
-+            let canAccess = (item["canAccess"] as? Bool) ?? !locked
-+            return NativeLessonItem(id: id, date: date, title: title, videosCount: count, firstVideoId: firstVideoId, canAccess: canAccess)
-+        }
-+        let currentLessonId = call.getString("currentLessonId") ?? ""
-+
-         DispatchQueue.main.async { [weak self] in
-             guard let self = self else {
-                 let message = "Plugin instance was released"
-                 print("[NativeYouTubePlugin] failed: \(message)")
-                 call.reject(message)
-                 return
-             }
- 
-             guard let presenter = self.bridge?.viewController else {
-                 let message = "Root view controller is unavailable"
-                 print("[NativeYouTubePlugin] failed: \(message)")
-                 call.reject(message)
-                 return
-             }
- 
-             let playerViewController = NativeYouTubePlayerViewController(
-                 videoId: videoId,
-                 startSeconds: startSeconds,
-                 autoPlay: autoPlay,
-                 memos: memos,
-+                currentLessonId: currentLessonId,
-+                lessonVideos: lessonVideos,
-+                lessonList: lessonList,
-                 onMemoAdded: { [weak self] memo in
-                     print("[NativeYouTubePlugin] memo added: \(memo)")
-                     self?.notifyListeners("youtubeMemoAdded", data: memo)
-                 },
-                 onMemoUpdated: { [weak self] memo in
-                     print("[NativeYouTubePlugin] memo updated: \(memo)")
-                     self?.notifyListeners("youtubeMemoUpdated", data: memo)
-                 },
-                 onMemoDeleted: { [weak self] memo in
-                     print("[NativeYouTubePlugin] memo deleted: \(memo)")
-                     self?.notifyListeners("youtubeMemoDeleted", data: memo)
-+                },
-+                onVideoSelected: { [weak self] payload in
-+                    self?.notifyListeners("youtubeVideoSelected", data: payload)
-+                },
-+                onLessonSelected: { [weak self] payload in
-+                    self?.notifyListeners("youtubeLessonSelected", data: payload)
-                 }
-             )
- 
-             presenter.present(playerViewController, animated: true) {
-                 print("[NativeYouTubePlugin] presented")
-                 call.resolve()
-             }
-         }
-     }
- }
-diff --git a/package-lock.json b/package-lock.json
-index 472e8a7ee20d989d65a2b2c9d9a66cc526481307..8d4d2aa1cb0b9e1de2ef16e55b10c131c74b1770 100644
---- a/package-lock.json
-+++ b/package-lock.json
-@@ -16,51 +16,52 @@
-         "@capacitor/keyboard": "^6.0.3",
-         "@capacitor/splash-screen": "^6.0.2",
-         "@capacitor/status-bar": "^6.0.2",
-         "@dnd-kit/core": "^6.3.1",
-         "@dnd-kit/sortable": "^10.0.0",
-         "@dnd-kit/utilities": "^3.2.2",
-         "@emotion/react": "^11.14.0",
-         "@emotion/styled": "^11.14.1",
-         "@mui/icons-material": "^7.3.6",
-         "@mui/material": "^7.3.6",
-         "@testing-library/dom": "^10.4.0",
-         "@testing-library/jest-dom": "^6.6.3",
-         "@testing-library/react": "^16.3.0",
-         "@testing-library/user-event": "^13.5.0",
-         "firebase": "^10.12.2",
-         "katex": "^0.16.28",
-         "lucide-react": "^0.561.0",
-         "react": "^19.1.0",
-         "react-dom": "^19.1.0",
-         "react-katex": "^3.1.0",
-         "react-router-dom": "^6.23.1",
-         "react-scripts": "5.0.1",
-         "react-to-print": "^3.3.0",
-         "react-youtube": "^10.1.0",
-         "tailwind-scrollbar-hide": "^4.0.0",
--        "web-vitals": "^2.1.4"
-+        "web-vitals": "^2.1.4",
-+        "@capacitor/push-notifications": "^6.0.3"
-       },
-       "devDependencies": {
-         "@capacitor/cli": "^6.2.0",
-         "typescript": "^6.0.3"
+     private func makeInfoLabel(_ text: String) -> UILabel {
+         let label = UILabel()
+         label.text = text
+         label.font = .systemFont(ofSize: 14, weight: .medium)
+         label.textColor = .secondaryLabel
+diff --git a/src/utils/modals/TestFormModal.jsx b/src/utils/modals/TestFormModal.jsx
+index b26e1d76da252244be1cde5a1982678260ad75a5..6b1c6bfa2f6a45ca0885b172f20b2744a5d346aa 100644
+--- a/src/utils/modals/TestFormModal.jsx
++++ b/src/utils/modals/TestFormModal.jsx
+@@ -261,50 +261,52 @@ export const TestFormModal = ({
        }
-     },
-     "node_modules/@adobe/css-tools": {
-       "version": "4.4.3",
-       "resolved": "https://registry.npmjs.org/@adobe/css-tools/-/css-tools-4.4.3.tgz",
-       "integrity": "sha512-VQKMkwriZbaOgVCby1UDY/LDk5fIjhQicCvVPFqfe+69fWaPWydbWJ3wRt59/YzIwda1I81loas3oCoHxnqvdA=="
-     },
-     "node_modules/@alloc/quick-lru": {
-       "version": "5.2.0",
-       "resolved": "https://registry.npmjs.org/@alloc/quick-lru/-/quick-lru-5.2.0.tgz",
-       "integrity": "sha512-UrcABB+4bUrFABwbluTIBErXwvbsU/V7TZWfmbgJfbkwiBuziS9gxdODUyuiecfdGQ85jglMW6juS3+z5TsKLw==",
-       "engines": {
-         "node": ">=10"
-       },
-       "funding": {
-         "url": "https://github.com/sponsors/sindresorhus"
+       if (staffNotifyMode === 'scheduled' && !staffNotifyScheduledAt) {
+         alert('직원 알림 예약 시간을 선택해주세요.');
+         return;
        }
-     },
-     "node_modules/@ampproject/remapping": {
-       "version": "2.3.0",
-       "resolved": "https://registry.npmjs.org/@ampproject/remapping/-/remapping-2.3.0.tgz",
-diff --git a/package.json b/package.json
-index af5eedf9748b925b1ca48edf25d3cf1718304997..c2d33bafaa9659a20393db42ea3124038f766943 100644
---- a/package.json
-+++ b/package.json
-@@ -11,80 +11,83 @@
-     "@capacitor/keyboard": "^6.0.3",
-     "@capacitor/splash-screen": "^6.0.2",
-     "@capacitor/status-bar": "^6.0.2",
-     "@dnd-kit/core": "^6.3.1",
-     "@dnd-kit/sortable": "^10.0.0",
-     "@dnd-kit/utilities": "^3.2.2",
-     "@emotion/react": "^11.14.0",
-     "@emotion/styled": "^11.14.1",
-     "@mui/icons-material": "^7.3.6",
-     "@mui/material": "^7.3.6",
-     "@testing-library/dom": "^10.4.0",
-     "@testing-library/jest-dom": "^6.6.3",
-     "@testing-library/react": "^16.3.0",
-     "@testing-library/user-event": "^13.5.0",
-     "firebase": "^10.12.2",
-     "katex": "^0.16.28",
-     "lucide-react": "^0.561.0",
-     "react": "^19.1.0",
-     "react-dom": "^19.1.0",
-     "react-katex": "^3.1.0",
-     "react-router-dom": "^6.23.1",
-     "react-scripts": "5.0.1",
-     "react-to-print": "^3.3.0",
-     "react-youtube": "^10.1.0",
-     "tailwind-scrollbar-hide": "^4.0.0",
--    "web-vitals": "^2.1.4"
-+    "web-vitals": "^2.1.4",
-+    "@capacitor/push-notifications": "^6.0.3"
-   },
-   "scripts": {
-     "start": "react-scripts start",
-     "build": "react-scripts build",
-     "cap:init": "cap init \"채수용 수학\" com.chaesooyong.management --web-dir build",
-     "cap:sync": "cap sync",
-     "cap:android": "cap open android",
-     "cap:ios": "cap open ios",
-     "build:cap": "npm run build && cap sync",
-     "test": "react-scripts test",
-     "eject": "react-scripts eject",
-     "migrate:memos": "node functions/scripts/migrateStudentMemosToStaffMemos.js",
-     "migrate:homework-question-keys:dry": "node functions/scripts/migrateHomeworkResultQuestionNumbers.js",
-     "migrate:homework-question-keys:write": "node functions/scripts/migrateHomeworkResultQuestionNumbers.js --write",
-     "backfill:chat-parent-participants:dry": "node functions/scripts/backfillChatParticipantIdsForParents.js",
-     "backfill:chat-parent-participants:write": "node functions/scripts/backfillChatParticipantIdsForParents.js --write",
-     "backfill:chat-room-types:dry": "node functions/scripts/backfillChatRoomTypes.js",
-     "backfill:chat-room-types:write": "node functions/scripts/backfillChatRoomTypes.js --write",
-     "backfill:student-birth-year:dry": "node functions/scripts/backfillStudentBirthYearFromGrade.js",
-     "backfill:student-birth-year:write": "node functions/scripts/backfillStudentBirthYearFromGrade.js --write",
-     "backfill:class-test-stats:dry": "node functions/scripts/backfillClassTestStats.js",
-     "backfill:class-test-stats:write": "node functions/scripts/backfillClassTestStats.js --write",
-     "backfill:user-chat-rooms:dry": "node functions/scripts/backfillUserChatRooms.js",
-     "backfill:user-chat-rooms:write": "node functions/scripts/backfillUserChatRooms.js --write",
-     "backfill:chat-room-last-messages:dry": "node functions/scripts/backfillChatRoomLastMessages.js",
-     "backfill:chat-room-last-messages:write": "node functions/scripts/backfillChatRoomLastMessages.js --write",
-     "repair:hong-user-chat-rooms:dry": "node functions/scripts/repairHongUserChatRooms.js",
-     "repair:hong-user-chat-rooms:write": "node functions/scripts/repairHongUserChatRooms.js --write",
-     "backfill:test-stats:dry": "node functions/scripts/backfillTestStats.js",
--    "backfill:test-stats:write": "node functions/scripts/backfillTestStats.js --write"
-+    "backfill:test-stats:write": "node functions/scripts/backfillTestStats.js --write",
-+    "repair:test-max-score:dry": "node functions/scripts/repairTestMaxScore.js",
-+    "repair:test-max-score:write": "node functions/scripts/repairTestMaxScore.js --write"
-   },
-   "eslintConfig": {
-     "extends": [
-       "react-app",
-       "react-app/jest"
-     ]
-   },
-   "browserslist": {
-     "production": [
-       ">0.2%",
-       "not dead",
-       "not op_mini all"
-     ],
-     "development": [
-       "last 1 chrome version",
-       "last 1 firefox version",
-       "last 1 safari version"
-     ]
-   },
-   "devDependencies": {
-     "@capacitor/cli": "^6.2.0",
-     "typescript": "^6.0.3"
-   }
- }
-diff --git a/src/app/AppRoutes.jsx b/src/app/AppRoutes.jsx
-index 2a917450613e3e4788a31846688c91be56e2dac1..0c1ff3f4baeababfafe1f4f3ff733b05a787820c 100644
---- a/src/app/AppRoutes.jsx
-+++ b/src/app/AppRoutes.jsx
-@@ -52,51 +52,51 @@ import { useParentContext } from '../parent';
- import { logClientError } from '../utils/errorLogger';
- import { isCapacitorNativeEnvironment, STAFF_MOBILE_MESSENGER_ROUTE } from '../utils/capacitorEnvironment';
- import { addVideoMemo, deleteVideoMemo, updateVideoMemo } from '../domain/memo/videoMemo.service';
- import { getAssignmentQuestionNumbers, normalizeHomeworkResultMapForDisplay } from '../domain/homework/homework.service';
- import { recomputeClassTestStats } from '../domain/grade/classTestStats.service';
- import {
-     addDoc,
-     arrayRemove,
-     arrayUnion,
-     collection,
-     deleteDoc,
-     doc,
-     getDoc,
-     getDocs,
-     limit,
-     orderBy,
-     query,
-     setDoc,
-     serverTimestamp,
-     Timestamp,
-     where,
-     updateDoc,
-     writeBatch,
- } from 'firebase/firestore';
- import { httpsCallable } from 'firebase/functions';
--import { registerDevicePushToken, unregisterDevicePushToken } from '../notifications/pushNotifications';
-+import { initializePushNotificationInteractions, registerDevicePushToken, unregisterDevicePushToken } from '../notifications/pushNotifications';
+     }
  
- const PAGE_ROUTES = {
-     home: '/home',
-     lessons: '/lessons',
-     lessonReports: '/lesson-reports',
-     students: '/students',
-     attendance: '/attendance',
-     grades: '/grades',
-     homework: '/homework',
-     clinic: '/clinic',
-     payment: '/payment',
-     communication: '/communication',
-     closures: '/closures',
- };
+     const staffNotification =
+       staffNotifyMode === 'none'
+         ? null
+         : {
+             mode: staffNotifyMode,
+             title: staffNotifyTitle.trim(),
+             body: staffNotifyBody.trim(),
+             ...(staffNotifyMode === 'scheduled'
+               ? { scheduledAt: new Date(staffNotifyScheduledAt) }
+               : {}),
+           };
  
- const ADMIN_ROUTES = new Set([
-     '/admin/staff',
-     '/admin/invites',
-     '/admin/notifications',
-     '/admin/payments',
-     '/admin/settings',
-     '/admin/logs',
-     '/admin/account-deletion-requests',
-     '/master-view',
-     '/staff/invites',
-@@ -188,50 +188,57 @@ export default function AppRoutes({ user, role, studentIds }) {
-       activeStudentId: parentActiveStudentId,
-       studentIds: parentStudentIds,
-       loading: parentLoading,
-   } = useParentContext();
- 
-   useEffect(() => {
-       if (!userId) return undefined;
-       let active = true;
-       let registeredToken = null;
-       registerDevicePushToken(userId)
-           .then((token) => {
-               if (!active) return;
-               registeredToken = token;
-           })
-           .catch((error) => console.warn('[push] token registration skipped', error));
- 
-       return () => {
-           active = false;
-           if (registeredToken) {
-               unregisterDevicePushToken(userId, registeredToken)
-                   .catch((error) => console.warn('[push] token cleanup failed', error));
-           }
-       };
-   }, [userId]);
- 
-+
-+  useEffect(() => {
-+      initializePushNotificationInteractions(() => {
-+          navigate('/home?tab=notifications');
-+      }).catch((error) => console.warn('[push] notification interaction setup failed', error));
-+  }, [navigate]);
-+
-   const parentStudentId = isParentRole(role) ? parentActiveStudentId : null;
- 
-   const [students, setStudents] = useState([]);
-   const [parents, setParents] = useState([]);
-   const [classes, setClasses] = useState([]);
- 
-   const [lessonLogs, setLessonLogs] = useState([]);
-   const [attendanceLogs, setAttendanceLogs] = useState([]);
-   const [clinicLogs, setClinicLogs] = useState([]);
-   const [workLogs, setWorkLogs] = useState([]);
-   const [announcements, setAnnouncements] = useState([]);
-   const [tests, setTests] = useState([]);
-   const [homeworkAssignments, setHomeworkAssignments] = useState([]);
-   const [paymentLogs, setPaymentLogs] = useState([]);
-   const [isPaymentLogsLoading, setIsPaymentLogsLoading] = useState(false);
-   const [externalSchedules, setExternalSchedules] = useState([]);
-   const [closures, setClosures] = useState([]);
-   const [lessonReports, setLessonReports] = useState([]);
- 
-   const [grades, setGrades] = useState({});
-   const [classTestStats, setClassTestStats] = useState({});
-   const [homeworkResults, setHomeworkResults] = useState({});
-   const [studentMemos, setStudentMemos] = useState({});
-   const [videoProgress, setVideoProgress] = useState({});
-   const [videoMemos, setVideoMemos] = useState({});
-diff --git a/src/components/NativeYouTubeLauncher.jsx b/src/components/NativeYouTubeLauncher.jsx
-index 52dd467681bc365ea6a1d7788d65d8382875da88..a1579ca1edd7587d0dd8c6761c3a24b6fec9094f 100644
---- a/src/components/NativeYouTubeLauncher.jsx
-+++ b/src/components/NativeYouTubeLauncher.jsx
-@@ -1,125 +1,133 @@
- import React, { useCallback, useEffect, useRef, useState } from 'react';
- import { registerPlugin } from '@capacitor/core';
- 
- const NativeYouTube = registerPlugin('NativeYouTube');
- console.log("NativeYouTube =", NativeYouTube);
- 
--export default function NativeYouTubeLauncher({ videoId, initialSeconds = 0, memos = [], onAddNativeMemo, onUpdateNativeMemo, onDeleteNativeMemo, autoOpen = false, renderControls = true }) {
-+export default function NativeYouTubeLauncher({ videoId, initialSeconds = 0, memos = [], currentLessonId = '', lessonVideos = [], lessonList = [], onAddNativeMemo, onUpdateNativeMemo, onDeleteNativeMemo, onNativeVideoSelected, onNativeLessonSelected, autoOpen = false, renderControls = true }) {
-     const [failed, setFailed] = useState(false);
-     const [isOpening, setIsOpening] = useState(false);
-     const isOpeningRef = useRef(false);
-     const autoOpenedRef = useRef(false);
-     const [debugLines, setDebugLines] = useState([]);
- 
-     const addDebug = useCallback((message, data) => {
-         const formattedData = data === undefined
-             ? ''
-             : ` ${typeof data === 'string' ? data : JSON.stringify(data)}`;
-         const line = `${new Date().toLocaleTimeString()} ${message}${formattedData}`;
-         setDebugLines((lines) => [...lines, line]);
-         console.log(`[NativeYouTubeLauncher] ${message}`, data ?? '');
-     }, []);
- 
-     useEffect(() => {
-         addDebug('videoId', videoId || '(empty)');
-         addDebug('initialSeconds', initialSeconds || 0);
-         addDebug('memo count', Array.isArray(memos) ? memos.length : 0);
-         addDebug('typeof NativeYouTube.open', typeof NativeYouTube.open);
-         addDebug('window.location.href', window.location.href);
-         addDebug('window.Capacitor exists', Boolean(window.Capacitor));
--    }, [addDebug, initialSeconds, memos, videoId]);
-+    }, [addDebug, initialSeconds, memos, videoId, currentLessonId, lessonVideos, lessonList]);
- 
-     useEffect(() => {
-         if (typeof NativeYouTube.addListener !== 'function') return undefined;
- 
-         let isMounted = true;
-         const listenerHandles = [];
-         const attachListener = (eventName, handler) => {
-             NativeYouTube.addListener(eventName, (memo) => {
-                 if (!isMounted) return;
-                 addDebug(`${eventName} received`, memo);
-                 handler?.(memo);
-             }).then((handle) => {
-                 listenerHandles.push(handle);
-             }).catch((error) => {
-                 addDebug(`${eventName} listener failed: ${error?.message || String(error)}`);
-             });
-         };
- 
-         attachListener('youtubeMemoAdded', onAddNativeMemo);
-         attachListener('youtubeMemoUpdated', onUpdateNativeMemo);
-         attachListener('youtubeMemoDeleted', onDeleteNativeMemo);
-+        attachListener('youtubeVideoSelected', onNativeVideoSelected);
-+        attachListener('youtubeLessonSelected', onNativeLessonSelected);
- 
-         return () => {
-             isMounted = false;
-             listenerHandles.forEach((handle) => handle?.remove?.());
-         };
--    }, [addDebug, onAddNativeMemo, onUpdateNativeMemo, onDeleteNativeMemo]);
-+    }, [addDebug, onAddNativeMemo, onUpdateNativeMemo, onDeleteNativeMemo, onNativeVideoSelected, onNativeLessonSelected]);
- 
-     const openNativePlayer = useCallback(async () => {
-         console.log("button clicked");
-         addDebug('button clicked');
- 
-         if (!videoId || isOpeningRef.current) return;
-         isOpeningRef.current = true;
-         setIsOpening(true);
-         setFailed(false);
- 
-         try {
-             console.log("calling plugin");
-             const nativeMemos = Array.isArray(memos)
-                 ? memos.map((memo) => ({
-                     id: String(memo.id ?? ''),
-                     time: Number(memo.time) || 0,
-                     note: String(memo.note ?? ''),
-                 })).filter((memo) => memo.note.trim())
-                 : [];
-             addDebug('calling NativeYouTube.open', {
-                 videoId,
-                 startSeconds: initialSeconds || 0,
-                 memoCount: nativeMemos.length,
-                 autoPlay: true,
-+                currentLessonId,
-+                lessonVideos,
-+                lessonList,
-             });
-             await NativeYouTube.open({
-                 videoId,
-                 startSeconds: initialSeconds || 0,
-                 autoPlay: true,
-                 memos: nativeMemos,
-+                currentLessonId,
-+                lessonVideos,
-+                lessonList,
-             });
-             addDebug('open resolved');
-             console.info('[NativeYouTubeLauncher] native player opened', { videoId });
-         } catch (error) {
-             const errorMessage = error?.message || String(error);
-             addDebug(`open failed: ${errorMessage}`);
-             console.error('[NativeYouTubeLauncher] native player failed', error);
-             setFailed(true);
-         } finally {
-             isOpeningRef.current = false;
-             setIsOpening(false);
-         }
--    }, [addDebug, initialSeconds, memos, videoId]);
-+    }, [addDebug, initialSeconds, memos, videoId, currentLessonId, lessonVideos, lessonList]);
- 
-     useEffect(() => {
-         if (!autoOpen || autoOpenedRef.current) return;
-         autoOpenedRef.current = true;
-         openNativePlayer();
-     }, [autoOpen, openNativePlayer]);
- 
-     const openInYouTube = () => {
-         if (!videoId) return;
-         window.open(`https://www.youtube.com/watch?v=${videoId}`, '_blank');
+     const testData = {
+       id: editingTestId, // ✅ 있으면 update 대상
+       classId,
+       name,
+       date,
+       maxScore: Number(maxScore),
++      totalScore: Number(maxScore),
++      perfectScore: Number(maxScore),
+       totalQuestions: Number(totalQuestions),
+       questionScores: (questionScores || []).map((s) => Number(s) || 0),
+       questionAnalysis: questionAnalysis || [],
+       notifyMode: staffNotifyMode === 'none' ? 'system' : 'staff',
+       staffNotification,
      };
  
-     if (!renderControls) return null;
+     try {
+       await onSave(testData, !!editingTestId);
+       resetForm();
+       onClose();
+     } catch (error) {
+       console.error('[TestFormModal] save failed', error);
+       alert('시험 저장에 실패했습니다. 권한 또는 네트워크를 확인하세요.');
+     }
+   };
  
-     return (
-         <div className="w-full h-full min-h-[220px] flex flex-col items-center justify-center bg-black text-white text-center px-6 py-8">
-             <div className="max-w-sm space-y-4">
-                 <p className="text-sm sm:text-base font-semibold leading-relaxed">
-                     iOS 앱 내 YouTube 플레이어 실험을 실행합니다.
-                 </p>
-                 <button
-                     type="button"
-                     onClick={openNativePlayer}
-                     disabled={isOpening || !videoId}
-                     className="inline-flex items-center justify-center rounded-full bg-red-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-red-700 active:scale-95 disabled:cursor-not-allowed disabled:bg-gray-600"
-diff --git a/src/notifications/pushNotifications.js b/src/notifications/pushNotifications.js
-index d95997d475e401655288f13242ebc9b8c378ff81..aa52f5cbbba51b7c4a8d7c0217818a77dd9f5c61 100644
---- a/src/notifications/pushNotifications.js
-+++ b/src/notifications/pushNotifications.js
-@@ -27,50 +27,77 @@ const getNativePushToken = async () => {
-     const PushNotifications = mod.PushNotifications;
-     const permission = await PushNotifications.requestPermissions();
-     if (permission.receive !== 'granted') return null;
+   if (!selectedClass) return null;
  
-     return await new Promise((resolve) => {
-       let settled = false;
-       const finish = async (value) => {
-         if (settled) return;
-         settled = true;
-         resolve(value || null);
-       };
-       PushNotifications.addListener('registration', (token) => finish(token?.value));
-       PushNotifications.addListener('registrationError', (error) => {
-         console.warn('[push] native registration failed', error);
-         finish(null);
-       });
-       PushNotifications.register();
-       setTimeout(() => finish(null), 10000);
-     });
-   } catch (error) {
-     console.info('[push] native push plugin not ready. Install @capacitor/push-notifications and configure APNs/FCM.', error?.message || error);
-     return null;
-   }
- };
- 
-+export const initializePushNotificationInteractions = async (onOpenNotificationCenter) => {
-+  const openCenter = () => {
-+    if (typeof onOpenNotificationCenter === 'function') onOpenNotificationCenter();
-+    if (window.location.pathname !== '/home' || window.location.search !== '?tab=notifications') {
-+      window.history.pushState({}, '', '/home?tab=notifications');
-+      window.dispatchEvent(new PopStateEvent('popstate'));
-+    }
-+  };
-+
-+  if (isCapacitorNativeEnvironment()) {
-+    try {
-+      const importNativePlugin = new Function('specifier', 'return import(specifier)');
-+      const mod = await importNativePlugin('@capacitor/push-notifications');
-+      const PushNotifications = mod.PushNotifications;
-+      await PushNotifications.addListener('pushNotificationReceived', (notification) => {
-+        console.info('[push] foreground notification received', notification);
-+      });
-+      await PushNotifications.addListener('pushNotificationActionPerformed', () => openCenter());
-+    } catch (error) {
-+      console.info('[push] native push listeners unavailable', error?.message || error);
-+    }
-+    return;
-+  }
-+
-+  window.addEventListener('appNotificationClick', openCenter);
-+};
-+
- export const registerDevicePushToken = async (authUid) => {
-   const uid = String(authUid || '').trim();
-   if (!uid) return null;
-   const token = isCapacitorNativeEnvironment() ? await getNativePushToken() : await getBrowserPushToken();
-   if (!token) return null;
-   await setDoc(doc(db, 'users', uid, 'fcmTokens', token), {
-     token,
-     platform: isCapacitorNativeEnvironment() ? 'capacitor' : 'web',
-     updatedAt: serverTimestamp(),
-   }, { merge: true });
-   return token;
- };
- 
- export const unregisterDevicePushToken = async (authUid, token) => {
-   const uid = String(authUid || '').trim();
-   if (!uid || !token) return;
-   await deleteDoc(doc(db, 'users', uid, 'fcmTokens', token));
- };
- 
- export const PUSH_SETUP_TODOS = [
-   'Firebase Console: iOS 앱에 APNs Authentication Key 등록',
-   'Xcode: Signing & Capabilities에서 Push Notifications 및 Background Modes(Remote notifications) 활성화',
-   '앱 패키지: @capacitor/push-notifications 설치 후 npx cap sync 실행',
-   '웹 푸시: REACT_APP_FIREBASE_VAPID_KEY 환경변수 설정 및 firebase-messaging-sw.js 배포 확인',
- ];
-diff --git a/src/pages/ParentHome.jsx b/src/pages/ParentHome.jsx
-index a333cbb0724addf1d706eb9ed4db071e0d89c0d3..63d4618e3cba188719cb98e6ab9665d482c658f7 100644
---- a/src/pages/ParentHome.jsx
-+++ b/src/pages/ParentHome.jsx
-@@ -723,50 +723,56 @@ export default function ParentHome({
-     useEffect(() => {
-         if (previousActiveStudentIdRef.current === activeStudentId) {
-             setActiveChildId(activeStudentId);
-             return;
-         }
- 
-         previousActiveStudentIdRef.current = activeStudentId;
-         setActiveChildId(activeStudentId);
-         _setSelectedClassroomId(null);
-         _setSelectedReportId(null);
-         setClassFilter('ongoing');
-         _setActiveTab('home');
-         setClinicPageSize(3);
-         if (embedded) return;
-         setSearchParams((prev) => {
-             const next = new URLSearchParams(prev);
-             next.set('tab', 'home');
-             next.delete('classroomId');
-             next.delete('reportId');
-             return next;
-         }, { replace: true });
-     }, [activeStudentId, setSearchParams, embedded]);
- 
-     // 알림 관련
-     const [isNotificationOpen, setIsNotificationOpen] = useState(false);
-+
-+    useEffect(() => {
-+        if (searchParams.get('tab') === 'notifications') {
-+            setIsNotificationOpen(true);
-+        }
-+    }, [searchParams]);
-     const [isMessengerPage, setIsMessengerPage] = useState(false);
-     const [initialMessengerRoomId, setInitialMessengerRoomId] = useState('');
-     const handleOpenMessages = () => {
-         if (isMasterPreview || readOnly) {
-             showMasterViewUnavailable('메신저');
-             return;
-         }
-         setInitialMessengerRoomId('');
-         setIsMessengerPage(true);
-     };
-     const currentAuthUid = auth.currentUser?.uid || '';
- 
-     useEffect(() => {
-         if (!currentAuthUid || !db) {
-             setLinkedParentDocId('');
-             return undefined;
-         }
- 
-         let isMounted = true;
- 
-         getDoc(doc(db, 'userAuthIndex', currentAuthUid))
-             .then((snapshot) => {
-                 if (!isMounted) return;
-                 const userDocId = snapshot.exists() ? snapshot.data()?.userDocId : '';
-                 setLinkedParentDocId(userDocId ? String(userDocId).trim() : '');
-diff --git a/src/pages/StudentHome.jsx b/src/pages/StudentHome.jsx
-index 1abac0243a813defb4f77c7bb069e7ed7b01bcd7..0682dfee821dded7dd1294bfab29ea4b4e1e704d 100644
---- a/src/pages/StudentHome.jsx
-+++ b/src/pages/StudentHome.jsx
-@@ -286,50 +286,56 @@ export default function StudentHome({
-         }, { replace });
-     }, [setSearchParams, embedded]);
- 
-     const setSelectedClassId = useCallback((classId, { replace = false } = {}) => {
-         const value = classId === null || classId === undefined || classId === '' ? null : String(classId);
-         _setSelectedClassId(value);
-         if (value) _setActiveTab('class');
-         if (value) _setClassroomMode('class');
-         if (embedded) return;
- 
-         setSearchParams(prev => {
-             const next = new URLSearchParams(prev);
-             if (value) {
-                 next.set('tab', 'class');
-                 next.set('classId', value);
-                 next.delete('subTab');
-             } else {
-                 next.delete('classId');
-             }
-             return next;
-         }, { replace });
- 
-     }, [setSearchParams, embedded]);
-     const [isVideoModalOpen, setIsVideoModalOpen] = useState(false);
-     const [isNotificationOpen, setIsNotificationOpen] = useState(false);
-+
-+    useEffect(() => {
-+        if (searchParams.get('tab') === 'notifications') {
-+            setIsNotificationOpen(true);
-+        }
-+    }, [searchParams]);
-     const [visibleNotices, setVisibleNotices] = useState([]);
-     const [targetMemo, setTargetMemo] = useState(null);
-     const [isMessengerPage, setIsMessengerPage] = useState(false);
-     const [linkedUserDocId, setLinkedUserDocId] = useState('');
-     const [initialMessengerRoomId, setInitialMessengerRoomId] = useState('');
-     const isMasterPreview = Boolean(masterView);
-     const authUid = auth.currentUser?.uid || '';
-     useEffect(() => {
-         if (!authUid || !db) {
-             setLinkedUserDocId('');
-             return undefined;
-         }
-         let isMounted = true;
-         getDoc(doc(db, 'userAuthIndex', authUid))
-             .then((snapshot) => {
-                 if (!isMounted) return;
-                 const userDocId = snapshot.exists() ? snapshot.data()?.userDocId : '';
-                 setLinkedUserDocId(userDocId ? String(userDocId).trim() : '');
-             })
-             .catch((error) => {
-                 if (!isMounted) return;
-                 console.warn('[student auth index] failed to load linked student doc id', error);
-                 setLinkedUserDocId('');
-             });
-         return () => { isMounted = false; };
-diff --git a/src/pages/student/ClassroomView.jsx b/src/pages/student/ClassroomView.jsx
-index 253513ac72a4beadd9acd855174dc807cec90065..f54a11eea63141cce0c6a69d512aa2f336c64ec8 100644
---- a/src/pages/student/ClassroomView.jsx
-+++ b/src/pages/student/ClassroomView.jsx
-@@ -231,50 +231,87 @@ export default function ClassroomView({
-             }
-         } catch (error) {
-             console.error('[ClassroomView] delete memo failed', error);
-         }
-     };
- 
-     const myMemos = useMemo(() => {
-         const lessonId = currentLesson?.id;
-         return getLessonVideoMemosFromState(videoMemos, memoOwnerUid, lessonId);
-     }, [videoMemos, memoOwnerUid, currentLesson?.id]);
- 
-     const progressData = getProgress(currentLesson?.id);
- 
-     const lessonVideos = useMemo(() => normalizeLessonVideos(currentLesson), [currentLesson]);
-     const hasLessonVideos = lessonVideos.length > 0;
-     const hasMultipleLessonVideos = lessonVideos.length > 1;
-     const canAccessCurrentLesson = canAccessLessonContent(
-         currentLesson ? attendanceMap[currentLesson.id] : null
-     );
- 
-     useEffect(() => {
-         setSelectedVideo(lessonVideos[0] || null);
-         setIsVideoListOpen(false);
-     }, [lessonVideos]);
- 
-+
-+    const nativeLessonVideos = useMemo(() => lessonVideos.map((video, index) => ({
-+        id: String(video.id ?? `video-${index}`),
-+        title: String(video.title || `${index + 1}번 영상`),
-+        videoId: String(video.videoId || video.youtubeVideoId || ''),
-+        youtubeVideoId: String(video.youtubeVideoId || video.videoId || ''),
-+    })).filter((video) => video.videoId || video.youtubeVideoId), [lessonVideos]);
-+
-+    const nativeLessonList = useMemo(() => sortedLogs.map((log) => {
-+        const videos = normalizeLessonVideos(log);
-+        const firstVideo = videos[0] || {};
-+        const canAccess = canAccessLessonContent(attendanceMap[log.id]);
-+        return {
-+            id: String(log.id),
-+            date: String(log.date || ''),
-+            title: String(log.title || log.progress || log.date || '강의'),
-+            progress: String(log.progress || log.title || ''),
-+            videosCount: videos.length,
-+            firstVideoId: String(firstVideo.youtubeVideoId || firstVideo.videoId || ''),
-+            canAccess,
-+            locked: !canAccess,
-+        };
-+    }), [sortedLogs, attendanceMap]);
-+
-+    const handleNativeVideoSelected = (payload = {}) => {
-+        const next = lessonVideos.find((video) => String(video.id) === String(payload.id) || String(video.youtubeVideoId || video.videoId) === String(payload.videoId || payload.youtubeVideoId));
-+        if (next) setSelectedVideo(next);
-+    };
-+
-+    const handleNativeLessonSelected = (payload = {}) => {
-+        const nextLesson = sortedLogs.find((log) => String(log.id) === String(payload.lessonId || payload.id));
-+        if (!nextLesson || !canAccessLessonContent(attendanceMap[nextLesson.id])) return;
-+        const videos = normalizeLessonVideos(nextLesson);
-+        setCurrentLesson(nextLesson);
-+        setSelectedVideo(videos[0] || null);
-+    };
-+
-     const currentVideoId = selectedVideo?.youtubeVideoId || selectedVideo?.videoId;
-     const currentDirectVideoUrl = selectedVideo?.videoUrl || selectedVideo?.fileUrl || selectedVideo?.hlsUrl || selectedVideo?.directUrl || '';
-     const isNativeApp = isCapacitorNativeEnvironment();
-     const isIosNativeApp = isIosCapacitorNativeEnvironment();
- 
- 
-     const handleVideoEnded = (currentTime, duration) => {
-         if (!currentLesson || duration <= 0) return;
-         onSaveVideoProgress(studentAuthUid, currentLesson.id, {
-             percent: 100,
-             seconds: currentTime || duration,
-             accumulated: duration,
-         });
-     };
- 
-     const openSelectedVideoInYouTube = () => {
-         if (!currentVideoId) return;
-         window.open(`https://www.youtube.com/watch?v=${currentVideoId}`, '_blank');
-     };
- 
-     const renderAccessRestrictedNotice = () => (
-         <div className="flex flex-col items-center justify-center text-gray-300 text-center px-6">
-             <Icon name="lock" className="w-10 h-10 mb-3 opacity-70" />
-             <p className="text-sm leading-relaxed">출결 확인 후 시청 가능합니다</p>
-         </div>
-@@ -291,50 +328,55 @@ export default function ClassroomView({
-             origin: window.location.origin,
-             protocol: window.location.protocol,
-             hostname: window.location.hostname,
-             capacitorPlatform: Capacitor?.getPlatform?.(),
-             windowCapacitorPlatform: window.Capacitor?.getPlatform?.(),
-         });
- 
-         if (currentDirectVideoUrl) {
-             return (
-                 <VideoFilePlayer
-                     ref={playerRef}
-                     src={currentDirectVideoUrl}
-                     initialSeconds={initialSeconds}
-                     onWatchedTick={handleWatchedTick}
-                     onEnded={handleVideoEnded}
-                 />
-             );
-         }
- 
-         if (currentVideoId && isIosNativeApp) {
-             return (
-                 <NativeYouTubeLauncher
-                     videoId={currentVideoId}
-                     initialSeconds={initialSeconds}
-                     memos={myMemos}
-+                    currentLessonId={currentLesson?.id || ''}
-+                    lessonVideos={nativeLessonVideos}
-+                    lessonList={nativeLessonList}
-+                    onNativeVideoSelected={handleNativeVideoSelected}
-+                    onNativeLessonSelected={handleNativeLessonSelected}
-                     onAddNativeMemo={handleAddNativeMemo}
-                     onUpdateNativeMemo={handleUpdateNativeMemo}
-                     onDeleteNativeMemo={handleDeleteNativeMemo}
-                 />
-             );
-         }
- 
-         if (currentVideoId && !isNativeApp) {
-             return (
-                 <YouTubePlayer
-                     ref={playerRef}
-                     videoId={currentVideoId}
-                     initialSeconds={initialSeconds}
-                     onWatchedTick={handleWatchedTick}
-                     onEnded={handleVideoEnded}
-                 />
-             );
-         }
- 
-         if (currentVideoId && isNativeApp) {
-             return (
-                 <div className="w-full h-full min-h-[220px] flex flex-col items-center justify-center bg-gray-950 text-white text-center px-6 py-8">
-                     <div className="max-w-sm space-y-4">
-                         <p className="text-sm sm:text-base font-semibold leading-relaxed">
-                             앱 내 재생이 제한된 영상입니다. 관리자에게 문의해주세요.
-@@ -352,50 +394,57 @@ export default function ClassroomView({
-         }
- 
-         return (<div className="flex flex-col items-center justify-center text-gray-500"><Icon name="monitor" className="w-12 h-12 mb-2 opacity-50" /><p>재생할 영상이 없습니다.</p></div>);
-     };
- 
-     const toggleMaterials = (e, logId) => {
-         e.stopPropagation();
-         setExpandedMaterialLogId(prev => prev === logId ? null : logId);
-     };
- 
-     const playVideo = (log) => {
-         const videos = normalizeLessonVideos(log);
-         const firstVideo = videos[0] || null;
-         const videoId = firstVideo?.youtubeVideoId || firstVideo?.videoId;
- 
-         setCurrentLesson(log);
-         setSelectedVideo(firstVideo);
- 
-         const canAccess = canAccessLessonContent(attendanceMap[log.id]);
- 
-         if (isNativeApp && videoId && canAccess) {
-             const logProgress = getProgress(log.id);
-             setPendingNativeVideo({
-                 lessonId: log.id,
-                 videoId,
-+                lessonVideos: videos.map((video, index) => ({
-+                    id: String(video.id ?? `video-${index}`),
-+                    title: String(video.title || `${index + 1}번 영상`),
-+                    videoId: String(video.videoId || video.youtubeVideoId || ''),
-+                    youtubeVideoId: String(video.youtubeVideoId || video.videoId || ''),
-+                })).filter((video) => video.videoId || video.youtubeVideoId),
-+                lessonList: nativeLessonList,
-                 initialSeconds: targetMemo?.lessonId === log.id ? (targetMemo.time || 0) : (logProgress.seconds || 0),
-                 requestId: Date.now(),
-             });
-             return;
-         }
- 
-         setPendingNativeVideo(null);
-         if (viewMode === 'list') setViewMode('player');
-     };
- 
-     const handleCardBodyClick = (log) => {
-         if (isNativeApp) return;
-         playVideo(log);
-     };
- 
-     const renderLogItem = (log) => {
-         const { percent: prog } = getProgress(log.id);
-         const isSelected = currentLesson?.id === log.id;
-         const attachments = Array.isArray(log.attachments)
-             ? log.attachments
-             : (Array.isArray(log.materials) ? log.materials : []);
-         const hasMaterials = attachments.length > 0;
-         const isMaterialsExpanded = expandedMaterialLogId === log.id;
-         const canAccess = canAccessLessonContent(attendanceMap[log.id]);
- 
-@@ -478,50 +527,55 @@ export default function ClassroomView({
-                                         <div className="w-8 h-8 rounded-lg bg-gray-200 flex items-center justify-center flex-shrink-0 text-gray-400">
-                                             <Icon name="download" className="w-4 h-4" />
-                                         </div>
-                                         <span className="text-sm font-medium truncate flex-1">
-                                             {mat.name} (출결 확인 후 다운로드 가능)
-                                         </span>
-                                     </span>
-                                 )
-                             ))}
-                         </div>
-                     </div>
-                 )}
-             </div>
-         );
-     };
- 
-     if (viewMode === 'list') {
-         return (
-             <div className="animate-fade-in-up pb-20 space-y-6 relative">
-                 {pendingNativeVideo && (
-                     <NativeYouTubeLauncher
-                         key={`${pendingNativeVideo.lessonId}-${pendingNativeVideo.videoId}-${pendingNativeVideo.initialSeconds}-${pendingNativeVideo.requestId}`}
-                         videoId={pendingNativeVideo.videoId}
-                         initialSeconds={pendingNativeVideo.initialSeconds}
-                         memos={myMemos}
-+                        currentLessonId={currentLesson?.id || ''}
-+                        lessonVideos={pendingNativeVideo.lessonVideos || nativeLessonVideos}
-+                        lessonList={pendingNativeVideo.lessonList || nativeLessonList}
-+                        onNativeVideoSelected={handleNativeVideoSelected}
-+                        onNativeLessonSelected={handleNativeLessonSelected}
-                         onAddNativeMemo={handleAddNativeMemo}
-                         onUpdateNativeMemo={handleUpdateNativeMemo}
-                         onDeleteNativeMemo={handleDeleteNativeMemo}
-                         autoOpen
-                         renderControls={false}
-                     />
-                 )}
-                 <div className="flex items-center gap-3">
-                     <button onClick={() => setSelectedClassId(null)} className="mobile-back-button p-2 bg-white rounded-xl text-gray-600 hover:bg-gray-100 transition-colors shadow-sm active:scale-95">
-                         <Icon name="chevronLeft" className="w-6 h-6" />
-                     </button>
-                     <div>
-                         <h2 className="text-xl font-bold text-gray-900">{selectedClass?.name}</h2>
-                         <p className="text-xs text-gray-500">{formatClassScheduleKo(selectedClass) || '시간 미정'}</p>
-                     </div>
-                 </div>
- 
- 
-                 <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                     <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-                         {/* ✅ [수정] 복습 영상 아이콘: list -> video */}
-                         <h3 className="font-bold text-gray-800 flex items-center gap-2"><Icon name="video" className="w-5 h-5 text-[#455fab]" />복습 영상 ({sortedLogs.length})</h3>
-                     </div>
-                     <div className="divide-y divide-gray-100">
-                         {sortedLogs.length > 0 ? sortedLogs.map(log => renderLogItem(log)) : (<div className="p-10 text-center text-gray-400 text-sm">등록된 강의가 없습니다.</div>)}
+   return (
+     <Modal
+       isOpen={isOpen}
+       onClose={onClose}
+       title={editingTestId ? '시험 정보 수정' : `${selectedClass.name} 새 시험 등록`}
+       maxWidth="max-w-5xl"

@@ -39,6 +39,7 @@ export function safeNonEmptyArray(arr) {
 const nonEmpty = (arr) => Array.isArray(arr) && arr.filter(Boolean).length > 0;
 const uniq = (arr) => Array.from(new Set((arr || []).filter(Boolean).map(String)));
 const safeArray = (v) => (Array.isArray(v) ? v.filter(Boolean) : []);
+const toStringSet = (items = []) => new Set(safeArray(items).map(String));
 const uniqById = (arr) => {
     const m = new Map();
     (arr || []).forEach((x) => {
@@ -1577,6 +1578,12 @@ export const loadViewerDataOnce = async ({
             console.warn('[viewer] clinicReservations fetch failed (continue)', e);
         }
 
+        const visibleHomeworkAssignments = filterItemsByVisibleClassIds(hwAssignList, lessonClassIds, 'homeworkAssignments').sort((a, b) => {
+            const da = a.date || a.assignedDate || a.createdAt?.toDate?.() || a.createdAt;
+            const dbb = b.date || b.assignedDate || b.createdAt?.toDate?.() || b.createdAt;
+            return new Date(dbb || 0) - new Date(da || 0);
+        });
+
         if (!isCancelled()) {
             const mergedClinic = uniqById([
                 ...safeArray(clinicList).map((log) => normalizeClinicLog(log)),
@@ -1590,12 +1597,7 @@ export const loadViewerDataOnce = async ({
             const mappedGrades = buildGradesMap(gradeList);
             setGrades?.(mappedGrades);
             viewerDetailCache.grades.set(detailCacheKey, mappedGrades);
-            const sortedHomework = filterItemsByVisibleClassIds(hwAssignList, lessonClassIds, 'homeworkAssignments').sort((a, b) => {
-                const da = a.date || a.assignedDate || a.createdAt?.toDate?.() || a.createdAt;
-                const dbb = b.date || b.assignedDate || b.createdAt?.toDate?.() || b.createdAt;
-                return new Date(dbb || 0) - new Date(da || 0);
-            });
-            setHomeworkAssignments?.(sortedHomework);
+            setHomeworkAssignments?.(visibleHomeworkAssignments);
         }
 
         try {
@@ -1820,70 +1822,127 @@ export const loadViewerDataOnce = async ({
         ========================= */
         
         /* =========================
-           homeworkResults (직접 getDocs)
+           homeworkResults (viewer scoped direct getDocs)
+           - 결과 문서에는 classId가 없을 수 있으므로 classId 조건에 의존하지 않는다.
+           - 대신 현재 viewer 학생 식별자 + 화면에 노출된 과제 id로 다시 필터링한다.
         ========================= */
         try {
             if (!hasDetailCache && scopedStudentUids.length > 0) {
                 const mapped = {};
+                const visibleAssignmentIds = toStringSet(
+                    visibleHomeworkAssignments.flatMap((assignment) => [
+                        assignment?.id,
+                        assignment?.assignmentId,
+                        assignment?.homeworkAssignmentId,
+                        assignment?.homeworkId,
+                    ]),
+                );
+                const studentIdentifierValues = uniq([
+                    ...scopedStudentUids,
+                    ...scopedStudentAuthUids,
+                    ...myStudents.flatMap((student) => [
+                        student?.id,
+                        student?.studentId,
+                        student?.studentDocId,
+                        student?.studentUid,
+                        student?.authUid,
+                        student?.uid,
+                    ]),
+                ]);
+                const viewerStudentKeySet = new Set(studentIdentifierValues.map(String));
                 const authUidToStudentDocId = new Map(
                     myStudents
                         .filter((student) => student?.authUid && student?.id)
                         .map((student) => [String(student.authUid), String(student.id)]),
                 );
+                const studentDocIdToAuthUid = new Map(
+                    myStudents
+                        .filter((student) => student?.authUid && student?.id)
+                        .map((student) => [String(student.id), String(student.authUid)]),
+                );
 
-            const upsert = (data) => {
-                    const assignmentId = data.assignmentId || data.homeworkAssignmentId || null;
-                    const rawKey = data.studentId || data.studentDocId || data.authUid || data.studentUid || null;
-                    const sKey = rawKey && authUidToStudentDocId.get(String(rawKey))
+                const resultMatchesViewer = (data) => [
+                    data?.studentId,
+                    data?.studentDocId,
+                    data?.studentUid,
+                    data?.authUid,
+                    data?.userUid,
+                    data?.uid,
+                ].filter(Boolean).map(String).some((key) => viewerStudentKeySet.has(key));
+
+                const upsert = (data) => {
+                    const assignmentId = data.assignmentId || data.homeworkAssignmentId || data.homeworkId || null;
+                    if (!assignmentId || !visibleAssignmentIds.has(String(assignmentId))) return;
+                    if (!resultMatchesViewer(data)) return;
+
+                    const rawKey = data.studentId || data.studentDocId || data.authUid || data.studentUid || data.userUid || data.uid || null;
+                    const canonicalKey = rawKey && authUidToStudentDocId.get(String(rawKey))
                         ? authUidToStudentDocId.get(String(rawKey))
                         : rawKey;
-                    if (!sKey || !assignmentId) return;
-                    if (!mapped[sKey]) mapped[sKey] = {};
-                    mapped[sKey][assignmentId] = data.results || data;
+                    if (!canonicalKey) return;
+
+                    const normalizedResult = { ...data, assignmentId, results: data.results || {} };
+                    const keys = uniq([
+                        canonicalKey,
+                        rawKey,
+                        data.studentId,
+                        data.studentDocId,
+                        data.studentUid,
+                        data.authUid,
+                        data.userUid,
+                        data.uid,
+                        studentDocIdToAuthUid.get(String(canonicalKey)),
+                    ]);
+
+                    keys.forEach((key) => {
+                        if (!key || !viewerStudentKeySet.has(String(key))) return;
+                        if (!mapped[key]) mapped[key] = {};
+                        mapped[key][assignmentId] = normalizedResult;
+                    });
                 };
 
                 const loadHomeworkResultsForField = async (field, values) => {
-                    for (const value of safeNonEmptyArray(values)) {
-                        const docs = await fetchClassScopedDocs({
-                            db,
-                            collectionName: 'homeworkResults',
-                            classIds: lessonClassIds,
-                            run,
-                            isCancelled,
-                            runLabel: `homeworkResults ${field}=${value}`,
-                            buildQuery: (classChunk) => query(
-                                collection(db, 'homeworkResults'),
-                                where(field, '==', value),
-                                where('classId', 'in', classChunk),
-                                limit(200),
-                            ),
-                            mapDoc: (d) => ({ id: d.id, ...d.data() }),
-                        });
-                        docs.forEach((docData) => upsert(docData || {}));
-                    }
+                    const chunks = chunkArray(uniq(values), 10).filter((chunk) => chunk.length > 0);
+                    const settled = await Promise.allSettled(chunks.map((valuesChunk) => getDocs(
+                        query(
+                            collection(db, 'homeworkResults'),
+                            where(field, 'in', valuesChunk),
+                            limit(500),
+                        ),
+                    )));
+                    settled.forEach((result, index) => {
+                        if (result.status === 'rejected') {
+                            console.warn(`[viewer] homeworkResults ${field} chunk(${chunks[index].length}) skipped`, result.reason);
+                            return;
+                        }
+                        result.value.docs.forEach((docSnap) => upsert({ id: docSnap.id, ...docSnap.data() }));
+                    });
                 };
 
-                if (Array.isArray(scopedStudentAuthUids) && scopedStudentAuthUids.length > 0) {
-                    await loadHomeworkResultsForField('authUid', scopedStudentAuthUids);
+                if (visibleAssignmentIds.size > 0 && studentIdentifierValues.length > 0) {
+                    await Promise.allSettled([
+                        loadHomeworkResultsForField('studentId', studentIdentifierValues),
+                        loadHomeworkResultsForField('studentDocId', studentIdentifierValues),
+                        loadHomeworkResultsForField('studentUid', studentIdentifierValues),
+                        loadHomeworkResultsForField('authUid', studentIdentifierValues),
+                    ]);
                 }
 
-                if (Array.isArray(scopedStudentUids) && scopedStudentUids.length > 0) {
-                    await loadHomeworkResultsForField('studentId', scopedStudentUids);
+                if (!isCancelled()) {
+                    console.log('[viewer][homeworkResults] keys=', Object.keys(mapped));
+                    setHomeworkResults?.(mapped);
+                    viewerDetailCache.homeworkResults.set(detailCacheKey, mapped);
                 }
-
-            if (!isCancelled()) {
-                console.log('[viewer][homeworkResults] keys=', Object.keys(mapped));
-                setHomeworkResults?.(mapped);
-                viewerDetailCache.homeworkResults.set(detailCacheKey, mapped);
-            }
             } else if (!isCancelled() && !hasDetailCache) {
                 setHomeworkResults?.({});
                 viewerDetailCache.homeworkResults.set(detailCacheKey, {});
             }
         } catch (e) {
             console.warn('[viewer] homeworkResults load failed', e);
-            if (!isCancelled()) setHomeworkResults?.({});
+            if (!isCancelled()) {
+                setHomeworkResults?.({});
                 viewerDetailCache.homeworkResults.set(detailCacheKey, {});
+            }
         }
 
         /* =========================

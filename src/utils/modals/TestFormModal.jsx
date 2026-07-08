@@ -283,6 +283,8 @@ export const TestFormModal = ({
       name,
       date,
       maxScore: Number(maxScore),
+      totalScore: Number(maxScore),
+      perfectScore: Number(maxScore),
       totalQuestions: Number(totalQuestions),
       questionScores: (questionScores || []).map((s) => Number(s) || 0),
       questionAnalysis: questionAnalysis || [],

@@ -191,7 +191,7 @@ final class NativeYouTubePlayerViewController: UIViewController, YTPlayerViewDel
         latestPlayTime = 0
         memos = []
         onVideoSelected?(["id": item.id, "videoId": item.videoId, "youtubeVideoId": item.videoId])
-        dismissActiveOverlay()
+        dismissActiveOverlay(animated: true)
         loadVideo()
     }
 
@@ -203,7 +203,7 @@ final class NativeYouTubePlayerViewController: UIViewController, YTPlayerViewDel
         latestPlayTime = 0
         memos = []
         onLessonSelected?(["lessonId": item.id, "videoId": item.firstVideoId])
-        dismissActiveOverlay()
+        dismissActiveOverlay(animated: true)
         loadVideo()
     }
 

@@ -27,15 +27,33 @@ const getQuestionScoresTotal = (test = {}) => {
 
 const resolveRepairMaxScore = (test = {}) => {
   const totalScore = toFiniteScore(test.totalScore);
-  if (totalScore !== null) return { value: totalScore, source: 'totalScore' };
+  if (totalScore !== null) return { value: totalScore, source: 'totalScore', needsManualReview: false };
 
   const perfectScore = toFiniteScore(test.perfectScore);
-  if (perfectScore !== null) return { value: perfectScore, source: 'perfectScore' };
+  if (perfectScore !== null) return { value: perfectScore, source: 'perfectScore', needsManualReview: false };
 
   const questionScoresTotal = getQuestionScoresTotal(test);
-  if (questionScoresTotal !== null) return { value: questionScoresTotal, source: 'questionScores' };
+  if (questionScoresTotal !== null) return { value: questionScoresTotal, source: 'questionScores', needsManualReview: false };
 
-  return { value: null, source: '' };
+  const currentMaxScore = toFiniteScore(test.maxScore);
+  const highestScore = toFiniteScore(test.highestScore ?? test.classHighestScore);
+  if (currentMaxScore !== null && highestScore !== null && currentMaxScore > highestScore) {
+    return { value: currentMaxScore, source: 'existingMaxScoreGreaterThanHighestScore', needsManualReview: false };
+  }
+
+  return { value: null, source: '', needsManualReview: true };
+};
+
+const logManualReview = (testDoc, test = {}) => {
+  console.log('[repairTestMaxScore] needs manual review', {
+    testId: testDoc.id,
+    classId: test.classId || '',
+    name: test.name || '',
+    currentMaxScore: toFiniteScore(test.maxScore),
+    highestScore: toFiniteScore(test.highestScore ?? test.classHighestScore),
+    totalQuestions: test.totalQuestions ?? null,
+    hasQuestionScores: Array.isArray(test.questionScores) && test.questionScores.length > 0,
+  });
 };
 
 async function loadTests() {
@@ -52,22 +70,18 @@ async function main() {
   const tests = await loadTests();
   let repaired = 0;
   let skipped = 0;
+  let manualReview = 0;
   console.log(`[repairTestMaxScore] ${dryRun ? 'dry-run' : 'write'} tests=${tests.length} classId=${onlyClassId || '*'} testId=${onlyTestId || '*'}`);
 
   for (const testDoc of tests) {
     const test = testDoc.data() || {};
     const currentMaxScore = toFiniteScore(test.maxScore);
-    const { value, source } = resolveRepairMaxScore(test);
+    const { value, source, needsManualReview } = resolveRepairMaxScore(test);
 
-    if (value === null) {
+    if (needsManualReview || value === null) {
       skipped += 1;
-      console.log('[repairTestMaxScore] needs manual review', {
-        testId: testDoc.id,
-        classId: test.classId || '',
-        currentMaxScore,
-        totalQuestions: test.totalQuestions ?? null,
-        reason: 'No totalScore/perfectScore/questionScores. If totalQuestions exists, maxScore may already be a highest-score value and is not auto-repaired.',
-      });
+      manualReview += 1;
+      logManualReview(testDoc, test);
       continue;
     }
 
@@ -80,6 +94,7 @@ async function main() {
     console.log('[repairTestMaxScore] repair candidate', {
       testId: testDoc.id,
       classId: test.classId || '',
+      name: test.name || '',
       from: currentMaxScore,
       to: value,
       source,
@@ -88,13 +103,15 @@ async function main() {
     if (!dryRun) {
       await testDoc.ref.set({
         maxScore: value,
+        totalScore: value,
+        perfectScore: value,
         maxScoreRepairedAt: admin.firestore.FieldValue.serverTimestamp(),
         maxScoreRepairSource: source,
       }, { merge: true });
     }
   }
 
-  console.log(`[repairTestMaxScore] complete repaired=${repaired} skipped=${skipped}`);
+  console.log(`[repairTestMaxScore] complete repaired=${repaired} skipped=${skipped} manualReview=${manualReview}`);
 }
 
 main().catch((error) => {
