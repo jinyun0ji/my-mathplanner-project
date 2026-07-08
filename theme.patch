@@ -1,8 +1,8 @@
 diff --git a/src/auth/authService.js b/src/auth/authService.js
-index 1d5cd789571b85e6058aea5faae28620002def4c..fdd049a324e445938c957c527edaf09e40580843 100644
+index fdd049a324e445938c957c527edaf09e40580843..1e5528d190e917a055779f9f0f7943390ec9029a 100644
 --- a/src/auth/authService.js
 +++ b/src/auth/authService.js
-@@ -1,60 +1,61 @@
+@@ -1,59 +1,62 @@
  // src/auth/authService.js
  import { Capacitor } from '@capacitor/core';
  import { signInWithEmailAndPassword, signOut } from 'firebase/auth';
@@ -11,12 +11,11 @@ index 1d5cd789571b85e6058aea5faae28620002def4c..fdd049a324e445938c957c527edaf09e
  
  export const REVIEW_LOGIN_AUTH_INDEX_MISSING_MESSAGE = '심사용 계정 연결 정보가 없습니다. 관리자에게 문의해주세요.';
  export const REVIEW_LOGIN_PROFILE_MISSING_MESSAGE = '사용자 정보를 찾을 수 없습니다. 관리자에게 문의해주세요.';
--export const NATIVE_GOOGLE_LOGIN_UNAVAILABLE_MESSAGE = '앱에서는 심사용 이메일 로그인을 사용해 주세요. Google 로그인은 웹에서 이용할 수 있습니다.';
-+export const NATIVE_GOOGLE_LOGIN_UNAVAILABLE_MESSAGE = 'Google 로그인 준비 중입니다. 잠시 후 다시 시도해 주세요.';
+-export const NATIVE_GOOGLE_LOGIN_UNAVAILABLE_MESSAGE = 'Google 로그인 준비 중입니다. 잠시 후 다시 시도해 주세요.';
++export const NATIVE_GOOGLE_LOGIN_UNAVAILABLE_MESSAGE = 'Google 로그인 연결에 실패했습니다. 다시 시도해주세요.';
  
  export const isNativePlatform = () => Capacitor.isNativePlatform();
--export const isGoogleLoginAvailable = () => !isNativePlatform();
-+export const isGoogleLoginAvailable = () => true;
+ export const isGoogleLoginAvailable = () => true;
  
  const logEmailLoginDebug = (label, payload) => {
      console.info(label, payload);
@@ -33,19 +32,20 @@ index 1d5cd789571b85e6058aea5faae28620002def4c..fdd049a324e445938c957c527edaf09e
  );
  
  export const signInWithGoogle = async () => {
--    if (!isGoogleLoginAvailable()) {
--        throw createNativeGoogleLoginUnavailableError();
--    }
--
--    const { GoogleAuthProvider, signInWithPopup } = await import('firebase/auth');
-+    const { GoogleAuthProvider, signInWithPopup, signInWithRedirect } = await import('firebase/auth');
+-    const { GoogleAuthProvider, signInWithPopup, signInWithRedirect } = await import('firebase/auth');
++    const { GoogleAuthProvider, signInWithPopup } = await import('firebase/auth');
      const provider = new GoogleAuthProvider();
  
-+    if (isNativePlatform()) {
-+        await signInWithRedirect(auth, provider);
-+        return auth.currentUser || null;
-+    }
-+
+     if (isNativePlatform()) {
+-        await signInWithRedirect(auth, provider);
+-        return auth.currentUser || null;
++        // TODO: Capacitor iOS WebView에서 Firebase Web signInWithRedirect는
++        // 연결이 끊기거나 앱이 멈출 수 있다. @capacitor/browser + App URL
++        // listener 기반 OAuth 콜백 또는 Firebase native auth 플러그인을 설치한
++        // 뒤 native/browser flow에서 Firebase credential로 로그인하도록 연결한다.
++        throw createNativeGoogleLoginUnavailableError();
+     }
+ 
      const { user } = await signInWithPopup(auth, provider);
  
      if (!user?.uid) return null;
@@ -69,24 +69,26 @@ index 1d5cd789571b85e6058aea5faae28620002def4c..fdd049a324e445938c957c527edaf09e
  
          if (!user?.uid) return null;
  
-         logEmailLoginDebug('[email-login] userAuthIndex start', { uid: user.uid });
-         const indexSnap = await getDoc(doc(db, 'userAuthIndex', user.uid));
 diff --git a/src/capacitorApp.js b/src/capacitorApp.js
-index 9330bc1d40c4cce379a3811bdeb8930829a00ac4..cc248c7deb080f9da73eeaa5b63ccb921fa7fe61 100644
+index cc248c7deb080f9da73eeaa5b63ccb921fa7fe61..fbbbf7521b5eb5e4dee9ac94c8acfc99122e7aa0 100644
 --- a/src/capacitorApp.js
 +++ b/src/capacitorApp.js
-@@ -1,46 +1,61 @@
+@@ -1,61 +1,74 @@
  const getCapacitorBridge = () => window.Capacitor;
  
  const isDevelopment = process.env.NODE_ENV === 'development';
  
-+const syncVisualViewportHeight = () => {
-+  const height = window.visualViewport?.height || window.innerHeight;
-+  if (height) {
-+    document.documentElement.style.setProperty('--app-viewport-height', `${height}px`);
-+  }
++const setKeyboardHeight = (height = 0) => {
++  document.documentElement.style.setProperty('--app-keyboard-height', `${Math.max(0, Number(height) || 0)}px`);
 +};
 +
+ const syncVisualViewportHeight = () => {
+   const height = window.visualViewport?.height || window.innerHeight;
+   if (height) {
+     document.documentElement.style.setProperty('--app-viewport-height', `${height}px`);
+   }
+ };
+ 
  const callPluginMethod = async (plugin, method, options) => {
    try {
      if (plugin?.[method]) {
@@ -107,10 +109,11 @@ index 9330bc1d40c4cce379a3811bdeb8930829a00ac4..cc248c7deb080f9da73eeaa5b63ccb92
  
    document.documentElement.classList.add('capacitor-native');
    document.body?.classList.add('capacitor-native');
-+  syncVisualViewportHeight();
-+  window.visualViewport?.addEventListener?.('resize', syncVisualViewportHeight);
-+  window.visualViewport?.addEventListener?.('scroll', syncVisualViewportHeight);
-+  window.addEventListener('resize', syncVisualViewportHeight);
++  setKeyboardHeight(0);
+   syncVisualViewportHeight();
+   window.visualViewport?.addEventListener?.('resize', syncVisualViewportHeight);
+   window.visualViewport?.addEventListener?.('scroll', syncVisualViewportHeight);
+   window.addEventListener('resize', syncVisualViewportHeight);
  
    if (isDevelopment) {
      console.log('[capacitor] native class applied');
@@ -128,10 +131,22 @@ index 9330bc1d40c4cce379a3811bdeb8930829a00ac4..cc248c7deb080f9da73eeaa5b63ccb92
    }
    callPluginMethod(SplashScreen, 'hide');
    callPluginMethod(Keyboard, 'setResizeMode', { mode: 'body' });
-+  Keyboard?.addListener?.('keyboardWillShow', syncVisualViewportHeight);
-+  Keyboard?.addListener?.('keyboardDidShow', syncVisualViewportHeight);
-+  Keyboard?.addListener?.('keyboardWillHide', syncVisualViewportHeight);
-+  Keyboard?.addListener?.('keyboardDidHide', syncVisualViewportHeight);
+-  Keyboard?.addListener?.('keyboardWillShow', syncVisualViewportHeight);
+-  Keyboard?.addListener?.('keyboardDidShow', syncVisualViewportHeight);
+-  Keyboard?.addListener?.('keyboardWillHide', syncVisualViewportHeight);
+-  Keyboard?.addListener?.('keyboardDidHide', syncVisualViewportHeight);
++  const handleKeyboardShow = (event) => {
++    setKeyboardHeight(event?.keyboardHeight || 0);
++    syncVisualViewportHeight();
++  };
++  const handleKeyboardHide = () => {
++    setKeyboardHeight(0);
++    syncVisualViewportHeight();
++  };
++  Keyboard?.addListener?.('keyboardWillShow', handleKeyboardShow);
++  Keyboard?.addListener?.('keyboardDidShow', handleKeyboardShow);
++  Keyboard?.addListener?.('keyboardWillHide', handleKeyboardHide);
++  Keyboard?.addListener?.('keyboardDidHide', handleKeyboardHide);
  
    App?.addListener?.('resume', () => {
      window.dispatchEvent(new Event('capacitor:resume'));
@@ -139,13 +154,63 @@ index 9330bc1d40c4cce379a3811bdeb8930829a00ac4..cc248c7deb080f9da73eeaa5b63ccb92
  }
 \ No newline at end of file
 diff --git a/src/components/StudentMessenger.jsx b/src/components/StudentMessenger.jsx
-index 03f3b287cdff31db58b119fc492a431e03e2daa2..e3bd235fec78b3e250bfed6af2feb16a6a1744ca 100644
+index e3bd235fec78b3e250bfed6af2feb16a6a1744ca..84ea596a549e718fac8fa27fb2aef7b0a9db9430 100644
 --- a/src/components/StudentMessenger.jsx
 +++ b/src/components/StudentMessenger.jsx
-@@ -823,46 +823,46 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
-                     <div className="text-center py-10 text-xs text-gray-500">{emptyMessage}</div>
-                 )}
-                 <div ref={messagesEndRef} />
+@@ -762,51 +762,51 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
+             }
+             if (process.env.NODE_ENV === 'development') console.log('[student messenger] message sent', { roomId: resolvedRoomId, senderId: viewerUid });
+             setError('');
+             setRoomId(resolvedRoomId);
+         } catch (sendError) {
+             setOptimisticMessages((prev) => {
+                 const next = prev.filter((item) => item.clientTempId !== clientTempId);
+                 optimisticMessagesRef.current = next;
+                 return next;
+             });
+             setMessages((prev) => prev.filter((item) => item.clientTempId !== clientTempId));
+             setInputText(text);
+             if (fileToUpload) setAttachmentFile(fileToUpload);
+             logFirestoreQueryFailure('send message', sendError, isChatRoomMode ? {
+                 addDoc: { collection: `chatRooms/${resolvedRoomId}/messages`, fields: ['roomId', 'senderId', 'senderRole', 'senderName', 'messageType', 'text', 'attachments', 'createdAt', 'localCreatedAtMs', 'clientTempId', 'internalOnly', 'readBy'] },
+                 updateDoc: { doc: ['chatRooms', resolvedRoomId], fields: ['lastMessageText', 'lastMessageAt', 'lastMessageSenderId', 'updatedAt', 'updatedBy'] },
+             } : {});
+             setError(sendError?.message || '메시지를 보낼 권한이 없습니다. 관리자에게 문의해주세요.');
+         } finally {
+             setIsSending(false);
+         }
+     };
+ 
+     return (
+         <div className={`${isFloating ? 'fixed bottom-24 right-5' : ''} bg-white h-full flex flex-col`}>
+-            <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3 bg-gray-50 custom-scrollbar">
++            <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3 bg-gray-50 custom-scrollbar mobile-keyboard-messages">
+                 {error && <div className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{error}</div>}
+                 {messages.length > 0 ? messages.map((msg, index) => {
+                     const previous = messages[index - 1];
+                     const showDateDivider = !previous || previous.date !== msg.date;
+                     return (
+                         <React.Fragment key={msg.id}>
+                             {showDateDivider && (
+                                 <div className="flex items-center gap-3 py-1">
+                                     <div className="flex-1 h-px bg-gray-200" />
+                                     <p className="text-xs text-gray-400 whitespace-nowrap">{msg.dateLabel}</p>
+                                     <div className="flex-1 h-px bg-gray-200" />
+                                 </div>
+                             )}
+                             <div className={`flex items-end gap-1.5 ${msg.isMe ? 'justify-end' : 'justify-start'}`}>
+                                 {msg.isMe && <span className="text-[11px] text-gray-400 whitespace-nowrap self-end mb-1">{msg.time}</span>}
+                                 <div className={`max-w-[72%] px-3 py-2 rounded-2xl text-sm ${msg.isMe ? 'bg-[#455fab] text-white' : 'bg-white text-gray-900 border border-gray-100'}`}>
+                                     {msg.text && <p className="whitespace-pre-wrap break-words">{msg.text}</p>}
+                                     {msg.attachments.map((attachment) => (
+                                         attachment.type === 'image' ? (
+                                             <button key={attachment.url || attachment.name} type="button" onClick={() => setImageModal(attachment)} className={`${msg.text ? 'mt-2 ' : ''}block text-left`}>
+                                                 <img src={attachment.url} alt={attachment.name} className="max-h-48 rounded-lg object-cover" onError={(event) => { event.currentTarget.style.display = 'none'; }} />
+                                                 <span className="mt-1 block text-xs underline break-all">{attachment.name}</span>
+                                             </button>
+                                         ) : (
+                                             <a key={attachment.url || attachment.name} href={attachment.url} target="_blank" rel="noreferrer" className={`${msg.text ? 'mt-2 ' : ''}flex items-center gap-2 rounded-lg border border-current/20 px-2 py-1.5 text-xs`}>
+@@ -826,43 +826,43 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
              </div>
  
              {imageModal && (
@@ -168,11 +233,11 @@ index 03f3b287cdff31db58b119fc492a431e03e2daa2..e3bd235fec78b3e250bfed6af2feb16a
                      <button type="button" onClick={clearAttachment} className="text-red-500">취소</button>
                  </div>
              )}
--            <form onSubmit={handleSend} className="sticky bottom-0 p-3 mobile-keyboard-input-bar bg-white border-t border-gray-100 flex gap-2">
-+            <form onSubmit={handleSend} className="shrink-0 p-3 mobile-keyboard-input-bar bg-white border-t border-gray-100 flex gap-2">
+             <form onSubmit={handleSend} className="shrink-0 p-3 mobile-keyboard-input-bar bg-white border-t border-gray-100 flex gap-2">
                  <label className="px-3 py-2 rounded-full border border-gray-200 bg-white text-sm cursor-pointer">
                      첨부
-                     <input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" onChange={handleAttachmentChange} className="hidden" />
+-                    <input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" onChange={handleAttachmentChange} className="hidden" />
++                    <input type="file" accept=".jpg,.jpeg,.png,.webp,.pdf" data-camera-disabled="true" onChange={handleAttachmentChange} className="hidden" />
                  </label>
                  <input
                      type="text"
@@ -192,11 +257,63 @@ index 03f3b287cdff31db58b119fc492a431e03e2daa2..e3bd235fec78b3e250bfed6af2feb16a
  export { CANDIDATE_ROOM_IDS };
 \ No newline at end of file
 diff --git a/src/components/messenger/ChatMessagePane.jsx b/src/components/messenger/ChatMessagePane.jsx
-index 5ec0ccdb8a27bc37aa9a9fdc491cb1060224149c..01409d67c52a76a0d94036adc64ec7d67dc9144d 100644
+index 01409d67c52a76a0d94036adc64ec7d67dc9144d..7f260f5f52fb712c285b9ca9c7e5c936814b001b 100644
 --- a/src/components/messenger/ChatMessagePane.jsx
 +++ b/src/components/messenger/ChatMessagePane.jsx
-@@ -231,40 +231,40 @@ export default function ChatMessagePane({
+@@ -151,51 +151,51 @@ export default function ChatMessagePane({
+     };
+ 
+     const submit = async (event) => {
+         event.preventDefault();
+         await submitText();
+     };
+ 
+     const handleKeyDown = async (event) => {
+         if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+             event.preventDefault();
+             await submitText();
+         }
+     };
+ 
+     if (!room) {
+         return <div className={`${mobileCompact ? 'h-full border-0 rounded-none' : 'h-[420px] border rounded-lg'} bg-white flex items-center justify-center text-sm text-gray-400`}>오른쪽에서 채팅방을 선택하세요.</div>;
+     }
+ 
+     return (
+         <div className={`${mobileCompact ? 'h-full border-0 rounded-none' : 'h-[420px] border rounded-lg'} bg-white flex flex-col`}>
+             {!mobileCompact && (
+                 <div className="px-3 py-2 border-b text-sm font-semibold text-gray-700">
+                     {getChatRoomDisplayTitle(room, myUid, contextData)}
+                 </div>
+             )}
+-            <div ref={messagesContainerRef} className={`flex-1 min-h-0 overflow-y-auto bg-gray-50 custom-scrollbar ${mobileCompact ? 'px-3 py-2 space-y-1.5' : 'p-3 space-y-2'}`}>
++            <div ref={messagesContainerRef} className={`flex-1 min-h-0 overflow-y-auto bg-gray-50 custom-scrollbar mobile-keyboard-messages ${mobileCompact ? 'px-3 py-2 space-y-1.5' : 'p-3 space-y-2'}`}>
+                 {sortedMessages.length === 0 && <p className="text-xs text-gray-400 whitespace-nowrap">아직 메시지가 없습니다.</p>}
+                 {renderItems.map((item) => {
+                     if (item.type === 'divider') {
+                         return (
+                             <div key={item.key} className={`flex items-center gap-3 ${mobileCompact ? 'py-0.5' : 'py-1'}`}>
+                                 <div className="flex-1 h-px bg-gray-200" />
+                                 <p className="text-xs text-gray-400">{item.label}</p>
+                                 <div className="flex-1 h-px bg-gray-200" />
                              </div>
+                         );
+                     }
+ 
+                     const message = item.message;
+                     const mine = String(message.senderId || message.createdBy || '') === String(myUid || '');
+                     const isSending = Boolean(message?.sending);
+                     const isFailed = Boolean(message?.failed);
+                     const senderName = message?.senderName && message.senderName !== '나' ? message.senderName : '메시지';
+                     const timeLabel = formatTime(message.createdAt);
+                     return (
+                         <div key={item.key}>
+                             {shouldShowSenderName(room) && !mine && senderName && (
+                                 <p className="mb-1 text-xs font-semibold text-gray-500">{senderName}</p>
+                             )}
+                             <div className={`flex items-end gap-1.5 ${mine ? 'justify-end' : 'justify-start'}`}>
+                                 {mine && <span className="text-[11px] text-gray-400 whitespace-nowrap self-end mb-1">{timeLabel}</span>}
+@@ -232,39 +232,39 @@ export default function ChatMessagePane({
                          </div>
                      );
                  })}
@@ -221,9 +338,9 @@ index 5ec0ccdb8a27bc37aa9a9fdc491cb1060224149c..01409d67c52a76a0d94036adc64ec7d6
                      </div>
                  </div>
              )}
--            <form onSubmit={submit} className={`${mobileCompact ? 'sticky bottom-0 p-2 mobile-keyboard-input-bar gap-1.5' : 'p-2 gap-2 items-end'} border-t bg-white flex`}>
-+            <form onSubmit={submit} className={`${mobileCompact ? 'p-2 mobile-keyboard-input-bar gap-1.5 shrink-0' : 'p-2 gap-2 items-end'} border-t bg-white flex`}>
-                 <label className={`${mobileCompact ? 'px-2.5 py-2 rounded-full text-xs' : 'px-3 py-2 rounded text-sm'} border border-gray-200 bg-white cursor-pointer shrink-0`}>첨부<input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" onChange={handleAttachmentChange} className="hidden" /></label>
+             <form onSubmit={submit} className={`${mobileCompact ? 'p-2 mobile-keyboard-input-bar gap-1.5 shrink-0' : 'p-2 gap-2 items-end'} border-t bg-white flex`}>
+-                <label className={`${mobileCompact ? 'px-2.5 py-2 rounded-full text-xs' : 'px-3 py-2 rounded text-sm'} border border-gray-200 bg-white cursor-pointer shrink-0`}>첨부<input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" onChange={handleAttachmentChange} className="hidden" /></label>
++                <label className={`${mobileCompact ? 'px-2.5 py-2 rounded-full text-xs' : 'px-3 py-2 rounded text-sm'} border border-gray-200 bg-white cursor-pointer shrink-0`}>첨부<input type="file" accept=".jpg,.jpeg,.png,.webp,.pdf" data-camera-disabled="true" onChange={handleAttachmentChange} className="hidden" /></label>
                  <textarea
                      value={draft}
                      onChange={(event) => setDraft(event.target.value)}
@@ -238,71 +355,11 @@ index 5ec0ccdb8a27bc37aa9a9fdc491cb1060224149c..01409d67c52a76a0d94036adc64ec7d6
      );
  }
 \ No newline at end of file
-diff --git a/src/components/tabs/learning/GradesTab.jsx b/src/components/tabs/learning/GradesTab.jsx
-index b03779372e7d92337f638e8c5b30b832835db8b8..7874c8b240794f2083d6aab407940b090feb30e3 100644
---- a/src/components/tabs/learning/GradesTab.jsx
-+++ b/src/components/tabs/learning/GradesTab.jsx
-@@ -106,52 +106,52 @@ export default function GradesTab({ myGradeComparison }) {
-     const [selectedTestId, setSelectedTestId] = useState(null);
- 
-     const trendAnalysis = useMemo(() => {
-         if (!myGradeComparison) return { trend: 'initial', description: '' };
-         
-         const sortedForTrend = [...myGradeComparison].sort((a, b) => new Date(a.testDate) - new Date(b.testDate));
-         
-         const trendResult = calculateTrendZScore(sortedForTrend);
-         let description = "";
- 
-         if (trendResult === 'up') description = "최근 시험에서 상대적 위치가 개선되고 있어요.";
-         else if (trendResult === 'down') description = "최근 시험에서 상대적 위치가 낮아졌어요. 주의가 필요합니다.";
-         else if (trendResult === 'same') description = "최근 시험 성과가 비슷한 수준을 유지하고 있어요.";
-         else description = "성적 추이 분석을 위해서는 최소 3회 이상의 시험 기록이 필요합니다.";
- 
-         return { trend: trendResult, description: description };
-     }, [myGradeComparison]);
- 
-     const selectedTestAnalysis = myGradeComparison?.find(g => g.testId === selectedTestId);
-     const selectedScore = selectedTestAnalysis ? resolveScoreText(selectedTestAnalysis) : { scoreText: '-' };
- 
-     if (selectedTestId && selectedTestAnalysis) {
-         return (
-             <ModalPortal>
-                 <div className="fixed inset-0 z-[100] bg-gray-50 flex flex-col animate-fade-in-up w-full h-full">
--                    <div className="flex-none h-14 flex items-center gap-3 px-4 border-b border-gray-200 bg-white shadow-sm">
--                        <button onClick={() => setSelectedTestId(null)} className="p-2 bg-gray-100 rounded-lg text-gray-600 hover:bg-gray-200 active:bg-gray-300 transition-colors">
-+                    <div className="grade-detail-header flex-none h-14 flex items-center gap-3 px-4 border-b border-gray-200 bg-white shadow-sm">
-+                        <button onClick={() => setSelectedTestId(null)} className="mobile-back-button p-2 bg-gray-100 rounded-lg text-gray-600 hover:bg-gray-200 active:bg-gray-300 transition-colors">
-                             <Icon name="chevronLeft" className="w-5 h-5" />
-                         </button>
-                         <h2 className="text-base font-bold text-gray-900 truncate">성적 상세 분석</h2>
-                     </div>
-                     <div className="flex-1 overflow-y-auto custom-scrollbar p-4">
-                         <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 mb-6 text-center">
-                             <span className="text-sm text-gray-500 font-bold bg-gray-100 px-2 py-1 rounded mb-2 inline-block">{selectedTestAnalysis.testDate} 시행</span>
-                             <h3 className="text-base font-bold text-gray-900 mb-1">{selectedTestAnalysis.testName}</h3>
-                             <div className="py-4">
-                                 <span className="text-3xl font-extrabold text-[#455fab]">{selectedScore.scoreText}</span>
-                                 {selectedScore.scoreText !== '-' && selectedScore.scoreText !== '미응시' && (
-                                     <span className="text-gray-400 text-xl font-medium">점 / {selectedTestAnalysis.maxScore}</span>
-                                 )}
-                             </div>
-                             {!selectedTestAnalysis.statsReady && (
-                                 <p className="text-xs text-gray-500">통계 준비 중입니다. 전체 반 통계를 곧 불러올게요.</p>
-                             )}
-                         </div>
-                         <QuestionAnalysisList
-                             questions={selectedTestAnalysis.questions}
-                             classAverage={selectedTestAnalysis.classAverage}
-                             highestScore={selectedTestAnalysis.highestScore}
-                             trend={trendAnalysis.trend}
-                             statsReady={selectedTestAnalysis.statsReady}
-                         />
 diff --git a/src/index.css b/src/index.css
-index e5fdc63a6cedbc6e79a2b6c35cab8462eec032a2..f31215931f04d899f4dddca55e4a40ac497f39d8 100644
+index f31215931f04d899f4dddca55e4a40ac497f39d8..7bb258d222b729fd1571a24c81c4837bee22c0d3 100644
 --- a/src/index.css
 +++ b/src/index.css
-@@ -32,89 +32,96 @@ body {
-   @apply bg-brand-gray/50 rounded-full;
+@@ -33,52 +33,54 @@ body {
  }
  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
    @apply bg-brand-gray;
@@ -327,17 +384,18 @@ index e5fdc63a6cedbc6e79a2b6c35cab8462eec032a2..f31215931f04d899f4dddca55e4a40ac
  :root {
    --app-safe-top: env(safe-area-inset-top, 0px);
    --app-safe-bottom: env(safe-area-inset-bottom, 0px);
-+  --app-viewport-height: 100dvh;
+   --app-viewport-height: 100dvh;
++  --app-keyboard-height: 0px;
  }
  
++
  body.capacitor-native,
  html.capacitor-native {
    background: #f8fafc;
  }
  
  .capacitor-native .mobile-screen {
--  min-height: 100dvh;
-+  min-height: var(--app-viewport-height);
+   min-height: var(--app-viewport-height);
  }
  
  .capacitor-native .student-mobile-header,
@@ -356,21 +414,7 @@ index e5fdc63a6cedbc6e79a2b6c35cab8462eec032a2..f31215931f04d899f4dddca55e4a40ac
  .capacitor-native .notification-mobile-header {
    padding-top: max(var(--app-safe-top), 44px);
    min-height: calc(64px + max(var(--app-safe-top), 44px));
-   box-sizing: border-box;
- }
- 
-+.capacitor-native .grade-detail-header {
-+  padding-top: max(var(--app-safe-top), 44px);
-+  min-height: calc(56px + max(var(--app-safe-top), 44px));
-+  height: auto;
-+  box-sizing: border-box;
-+}
-+
- .back-button,
- .mobile-back-button {
-   min-width: 44px;
-   min-height: 44px;
-   display: flex;
+@@ -100,28 +102,50 @@ html.capacitor-native {
    align-items: center;
    justify-content: center;
    position: relative;
@@ -392,29 +436,85 @@ index e5fdc63a6cedbc6e79a2b6c35cab8462eec032a2..f31215931f04d899f4dddca55e4a40ac
  
  /* Keep full-screen mobile app pages aligned with the visual viewport and safe area. */
  .mobile-keyboard-screen {
--  height: 100dvh;
--  min-height: 100dvh;
--  padding-bottom: env(safe-area-inset-bottom, 0px);
-+  height: var(--app-viewport-height);
-+  min-height: var(--app-viewport-height);
+   height: var(--app-viewport-height);
+   min-height: var(--app-viewport-height);
  }
  
++.capacitor-native .mobile-keyboard-screen {
++  height: var(--app-viewport-height);
++  min-height: var(--app-viewport-height);
++}
++
  .mobile-keyboard-input-bar {
--  padding-bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
-+  padding-bottom: max(0.5rem, env(safe-area-inset-bottom, 0px));
+   padding-bottom: max(0.5rem, env(safe-area-inset-bottom, 0px));
  }
++
++.capacitor-native .mobile-keyboard-input-bar {
++  padding-bottom: max(0.75rem, var(--app-safe-bottom));
++  transform: translateY(calc(-1 * var(--app-keyboard-height)));
++  margin-bottom: calc(-1 * var(--app-keyboard-height));
++  will-change: transform;
++}
++
++.capacitor-native .mobile-keyboard-messages {
++  padding-bottom: calc(var(--app-keyboard-height) + 1rem);
++}
++
++.capacitor-native .login-page-shell {
++  min-height: var(--app-viewport-height);
++  justify-content: center;
++  padding-bottom: max(14rem, calc(var(--app-safe-bottom) + var(--app-keyboard-height) + 10rem));
++}
 diff --git a/src/pages/LoginPage.jsx b/src/pages/LoginPage.jsx
-index 880e8d760bb6cb25b618cf87b94389b8d08e37f7..c45e3c571195091df633a38d858085af9b5eb211 100644
+index c45e3c571195091df633a38d858085af9b5eb211..ac1f2738fd2f44c8a7835969ebab71289904f952 100644
 --- a/src/pages/LoginPage.jsx
 +++ b/src/pages/LoginPage.jsx
-@@ -28,70 +28,66 @@ export default function LoginPage({ onSocialLogin, onEmailLogin }) {
+@@ -1,93 +1,103 @@
+ // src/pages/LoginPage.jsx
+-import React, { useState } from 'react';
++import React, { useCallback, useRef, useState } from 'react';
+ import logoHorizontal from '../assets/logo/logo-horizontal.png';
+ import { Link } from 'react-router-dom';
+ import { isGoogleLoginAvailable, NATIVE_GOOGLE_LOGIN_UNAVAILABLE_MESSAGE } from '../auth/authService';
+ 
+ const getLoginMessage = (error) => {
+     if (error?.code === 'google-login/native-unavailable') {
+         return error.message;
+     }
+ 
+     return getReviewLoginMessage(error);
+ };
+ 
+ const getReviewLoginMessage = (error) => {
+     const code = error?.code || '';
+     if (code.startsWith('review-login/')) {
+         return error?.message || '심사용 계정 정보를 확인할 수 없습니다. 관리자에게 문의해주세요.';
+     }
+     if (code === 'auth/user-disabled') {
+         return '심사용 계정이 아직 활성화되지 않았습니다. 관리자에게 문의해주세요.';
+     }
+     return '이메일 또는 비밀번호를 확인해주세요.';
+ };
+ 
+ export default function LoginPage({ onSocialLogin, onEmailLogin }) {
+     const [isReviewLoginOpen, setIsReviewLoginOpen] = useState(false);
      const [email, setEmail] = useState('');
      const [password, setPassword] = useState('');
      const [errorMessage, setErrorMessage] = useState('');
      const [isSubmitting, setIsSubmitting] = useState(false);
      const [isSocialSubmitting, setIsSocialSubmitting] = useState(false);
++    const loginButtonRef = useRef(null);
      const canUseGoogleLogin = isGoogleLoginAvailable();
  
++    const keepLoginControlsVisible = useCallback((target) => {
++        const scrollTarget = target || loginButtonRef.current;
++        const scrollOptions = { block: 'center', inline: 'nearest', behavior: 'smooth' };
++        requestAnimationFrame(() => {
++            scrollTarget?.scrollIntoView?.(scrollOptions);
++            setTimeout(() => loginButtonRef.current?.scrollIntoView?.({ ...scrollOptions, block: 'nearest' }), 260);
++        });
++    }, []);
++
      const handleReviewLogin = async (event) => {
          event.preventDefault();
          if (!onEmailLogin || isSubmitting) return;
@@ -433,10 +533,6 @@ index 880e8d760bb6cb25b618cf87b94389b8d08e37f7..c45e3c571195091df633a38d858085af
  
  
      const handleGoogleLogin = async () => {
--        if (!canUseGoogleLogin) {
--            setErrorMessage(NATIVE_GOOGLE_LOGIN_UNAVAILABLE_MESSAGE);
--            return;
--        }
          if (!onSocialLogin || isSocialSubmitting) return;
  
          setErrorMessage('');
@@ -452,8 +548,8 @@ index 880e8d760bb6cb25b618cf87b94389b8d08e37f7..c45e3c571195091df633a38d858085af
      };
  
      return (
--        <div className="min-h-[100dvh] overflow-y-auto flex flex-col items-center justify-start bg-gray-50 px-4 py-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:px-6 sm:py-10 lg:px-8 font-sans">
-+        <div className="min-h-[100dvh] overflow-y-auto flex flex-col items-center justify-start bg-gray-50 px-4 pt-[max(2rem,calc(env(safe-area-inset-top)+1.25rem))] pb-[max(8rem,calc(env(safe-area-inset-bottom)+8rem))] sm:px-6 sm:pt-10 lg:px-8 font-sans">
+-        <div className="min-h-[100dvh] overflow-y-auto flex flex-col items-center justify-start bg-gray-50 px-4 pt-[max(2rem,calc(env(safe-area-inset-top)+1.25rem))] pb-[max(8rem,calc(env(safe-area-inset-bottom)+8rem))] sm:px-6 sm:pt-10 lg:px-8 font-sans">
++        <div className="min-h-[100dvh] overflow-y-auto flex flex-col items-center justify-center bg-gray-50 px-4 py-[max(2rem,calc(env(safe-area-inset-top)+1.25rem))] pb-[max(8rem,calc(env(safe-area-inset-bottom)+8rem))] sm:px-6 sm:py-10 lg:px-8 font-sans login-page-shell">
              <div className="max-w-md w-full space-y-8 bg-white p-6 sm:p-10 rounded-2xl shadow-xl border border-gray-100">
                  <div className="text-center">
                      <img
@@ -479,12 +575,59 @@ index 880e8d760bb6cb25b618cf87b94389b8d08e37f7..c45e3c571195091df633a38d858085af
                          >
                              <span className="sr-only">Sign in with Google</span>
                              <svg
-@@ -173,29 +169,29 @@ export default function LoginPage({ onSocialLogin, onEmailLogin }) {
+@@ -125,73 +135,76 @@ export default function LoginPage({ onSocialLogin, onEmailLogin }) {
+                 <div className="mt-4 border-t border-gray-100 pt-4">
+                     <button
+                         type="button"
+                         onClick={() => {
+                             setIsReviewLoginOpen((current) => !current);
+                             setErrorMessage('');
+                         }}
+                         className="mx-auto flex items-center justify-center text-xs font-semibold text-gray-500 underline-offset-4 hover:text-[#455fab] hover:underline"
+                         aria-expanded={isReviewLoginOpen}
+                     >
+                         심사용 이메일 로그인
+                     </button>
+ 
+                     {isReviewLoginOpen && (
+                         <form onSubmit={handleReviewLogin} className="mt-4 space-y-3 rounded-xl bg-gray-50 p-4 text-left">
+                             <div>
+                                 <label htmlFor="review-email" className="block text-xs font-semibold text-gray-600">
+                                     이메일
+                                 </label>
+                                 <input
+                                     id="review-email"
+                                     type="email"
+                                     autoComplete="email"
+                                     value={email}
+                                     onChange={(event) => setEmail(event.target.value)}
++                                    onFocus={(event) => keepLoginControlsVisible(event.currentTarget)}
+                                     className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-base focus:border-[#455fab] focus:outline-none focus:ring-2 focus:ring-[#455fab]/20"
+                                     required
+                                 />
+                             </div>
+                             <div>
+                                 <label htmlFor="review-password" className="block text-xs font-semibold text-gray-600">
+                                     비밀번호
+                                 </label>
+                                 <input
+                                     id="review-password"
+                                     type="password"
+                                     autoComplete="current-password"
+                                     value={password}
+                                     onChange={(event) => setPassword(event.target.value)}
++                                    onFocus={(event) => keepLoginControlsVisible(event.currentTarget)}
+                                     className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-base focus:border-[#455fab] focus:outline-none focus:ring-2 focus:ring-[#455fab]/20"
+                                     required
+                                 />
+                             </div>
+                             {errorMessage && (
                                  <p className="text-xs font-semibold text-rose-600" role="alert">
                                      {errorMessage}
                                  </p>
                              )}
                              <button
++                                ref={loginButtonRef}
                                  type="submit"
                                  disabled={isSubmitting}
                                  className="w-full rounded-lg bg-gray-700 px-4 py-2 text-base font-bold text-white transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:bg-gray-400"
@@ -505,8 +648,7 @@ index 880e8d760bb6cb25b618cf87b94389b8d08e37f7..c45e3c571195091df633a38d858085af
                      <p className="text-xs text-gray-400">학생/학부모는 초대 코드로 최초 1회 가입 후 이용합니다.</p>
                  </div>
              </div>
--            <p className="mt-6 text-center text-xs text-gray-400">© 2025 Chaesooyong Math Academy. All rights reserved.</p>
-+            <p className="mt-6 shrink-0 text-center text-xs text-gray-400">© 2025 Chaesooyong Math Academy. All rights reserved.</p>
+             <p className="mt-6 shrink-0 text-center text-xs text-gray-400">© 2025 Chaesooyong Math Academy. All rights reserved.</p>
          </div>
      );
  }

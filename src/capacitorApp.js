@@ -2,6 +2,10 @@ const getCapacitorBridge = () => window.Capacitor;
 
 const isDevelopment = process.env.NODE_ENV === 'development';
 
+const setKeyboardHeight = (height = 0) => {
+  document.documentElement.style.setProperty('--app-keyboard-height', `${Math.max(0, Number(height) || 0)}px`);
+};
+
 const syncVisualViewportHeight = () => {
   const height = window.visualViewport?.height || window.innerHeight;
   if (height) {
@@ -29,6 +33,7 @@ export function setupCapacitorApp() {
 
   document.documentElement.classList.add('capacitor-native');
   document.body?.classList.add('capacitor-native');
+  setKeyboardHeight(0);
   syncVisualViewportHeight();
   window.visualViewport?.addEventListener?.('resize', syncVisualViewportHeight);
   window.visualViewport?.addEventListener?.('scroll', syncVisualViewportHeight);
@@ -50,10 +55,18 @@ export function setupCapacitorApp() {
   }
   callPluginMethod(SplashScreen, 'hide');
   callPluginMethod(Keyboard, 'setResizeMode', { mode: 'body' });
-  Keyboard?.addListener?.('keyboardWillShow', syncVisualViewportHeight);
-  Keyboard?.addListener?.('keyboardDidShow', syncVisualViewportHeight);
-  Keyboard?.addListener?.('keyboardWillHide', syncVisualViewportHeight);
-  Keyboard?.addListener?.('keyboardDidHide', syncVisualViewportHeight);
+  const handleKeyboardShow = (event) => {
+    setKeyboardHeight(event?.keyboardHeight || 0);
+    syncVisualViewportHeight();
+  };
+  const handleKeyboardHide = () => {
+    setKeyboardHeight(0);
+    syncVisualViewportHeight();
+  };
+  Keyboard?.addListener?.('keyboardWillShow', handleKeyboardShow);
+  Keyboard?.addListener?.('keyboardDidShow', handleKeyboardShow);
+  Keyboard?.addListener?.('keyboardWillHide', handleKeyboardHide);
+  Keyboard?.addListener?.('keyboardDidHide', handleKeyboardHide);
 
   App?.addListener?.('resume', () => {
     window.dispatchEvent(new Event('capacitor:resume'));

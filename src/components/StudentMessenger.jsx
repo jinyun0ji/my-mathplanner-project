@@ -784,7 +784,7 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
 
     return (
         <div className={`${isFloating ? 'fixed bottom-24 right-5' : ''} bg-white h-full flex flex-col`}>
-            <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3 bg-gray-50 custom-scrollbar">
+            <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3 bg-gray-50 custom-scrollbar mobile-keyboard-messages">
                 {error && <div className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{error}</div>}
                 {messages.length > 0 ? messages.map((msg, index) => {
                     const previous = messages[index - 1];
@@ -848,7 +848,7 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
             <form onSubmit={handleSend} className="shrink-0 p-3 mobile-keyboard-input-bar bg-white border-t border-gray-100 flex gap-2">
                 <label className="px-3 py-2 rounded-full border border-gray-200 bg-white text-sm cursor-pointer">
                     첨부
-                    <input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" onChange={handleAttachmentChange} className="hidden" />
+                    <input type="file" accept=".jpg,.jpeg,.png,.webp,.pdf" data-camera-disabled="true" onChange={handleAttachmentChange} className="hidden" />
                 </label>
                 <input
                     type="text"

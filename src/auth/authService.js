@@ -6,7 +6,7 @@ import { auth, db } from '../firebase/client';
 
 export const REVIEW_LOGIN_AUTH_INDEX_MISSING_MESSAGE = '심사용 계정 연결 정보가 없습니다. 관리자에게 문의해주세요.';
 export const REVIEW_LOGIN_PROFILE_MISSING_MESSAGE = '사용자 정보를 찾을 수 없습니다. 관리자에게 문의해주세요.';
-export const NATIVE_GOOGLE_LOGIN_UNAVAILABLE_MESSAGE = 'Google 로그인 준비 중입니다. 잠시 후 다시 시도해 주세요.';
+export const NATIVE_GOOGLE_LOGIN_UNAVAILABLE_MESSAGE = 'Google 로그인 연결에 실패했습니다. 다시 시도해주세요.';
 
 export const isNativePlatform = () => Capacitor.isNativePlatform();
 export const isGoogleLoginAvailable = () => true;
@@ -26,12 +26,15 @@ export const createNativeGoogleLoginUnavailableError = () => (
 );
 
 export const signInWithGoogle = async () => {
-    const { GoogleAuthProvider, signInWithPopup, signInWithRedirect } = await import('firebase/auth');
+    const { GoogleAuthProvider, signInWithPopup } = await import('firebase/auth');
     const provider = new GoogleAuthProvider();
 
     if (isNativePlatform()) {
-        await signInWithRedirect(auth, provider);
-        return auth.currentUser || null;
+        // TODO: Capacitor iOS WebView에서 Firebase Web signInWithRedirect는
+        // 연결이 끊기거나 앱이 멈출 수 있다. @capacitor/browser + App URL
+        // listener 기반 OAuth 콜백 또는 Firebase native auth 플러그인을 설치한
+        // 뒤 native/browser flow에서 Firebase credential로 로그인하도록 연결한다.
+        throw createNativeGoogleLoginUnavailableError();
     }
 
     const { user } = await signInWithPopup(auth, provider);

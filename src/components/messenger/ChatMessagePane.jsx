@@ -173,7 +173,7 @@ export default function ChatMessagePane({
                     {getChatRoomDisplayTitle(room, myUid, contextData)}
                 </div>
             )}
-            <div ref={messagesContainerRef} className={`flex-1 min-h-0 overflow-y-auto bg-gray-50 custom-scrollbar ${mobileCompact ? 'px-3 py-2 space-y-1.5' : 'p-3 space-y-2'}`}>
+            <div ref={messagesContainerRef} className={`flex-1 min-h-0 overflow-y-auto bg-gray-50 custom-scrollbar mobile-keyboard-messages ${mobileCompact ? 'px-3 py-2 space-y-1.5' : 'p-3 space-y-2'}`}>
                 {sortedMessages.length === 0 && <p className="text-xs text-gray-400 whitespace-nowrap">아직 메시지가 없습니다.</p>}
                 {renderItems.map((item) => {
                     if (item.type === 'divider') {
@@ -254,7 +254,7 @@ export default function ChatMessagePane({
                 </div>
             )}
             <form onSubmit={submit} className={`${mobileCompact ? 'p-2 mobile-keyboard-input-bar gap-1.5 shrink-0' : 'p-2 gap-2 items-end'} border-t bg-white flex`}>
-                <label className={`${mobileCompact ? 'px-2.5 py-2 rounded-full text-xs' : 'px-3 py-2 rounded text-sm'} border border-gray-200 bg-white cursor-pointer shrink-0`}>첨부<input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" onChange={handleAttachmentChange} className="hidden" /></label>
+                <label className={`${mobileCompact ? 'px-2.5 py-2 rounded-full text-xs' : 'px-3 py-2 rounded text-sm'} border border-gray-200 bg-white cursor-pointer shrink-0`}>첨부<input type="file" accept=".jpg,.jpeg,.png,.webp,.pdf" data-camera-disabled="true" onChange={handleAttachmentChange} className="hidden" /></label>
                 <textarea
                     value={draft}
                     onChange={(event) => setDraft(event.target.value)}

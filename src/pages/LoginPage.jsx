@@ -1,5 +1,5 @@
 // src/pages/LoginPage.jsx
-import React, { useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import logoHorizontal from '../assets/logo/logo-horizontal.png';
 import { Link } from 'react-router-dom';
 import { isGoogleLoginAvailable, NATIVE_GOOGLE_LOGIN_UNAVAILABLE_MESSAGE } from '../auth/authService';
@@ -30,7 +30,17 @@ export default function LoginPage({ onSocialLogin, onEmailLogin }) {
     const [errorMessage, setErrorMessage] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isSocialSubmitting, setIsSocialSubmitting] = useState(false);
+    const loginButtonRef = useRef(null);
     const canUseGoogleLogin = isGoogleLoginAvailable();
+
+    const keepLoginControlsVisible = useCallback((target) => {
+        const scrollTarget = target || loginButtonRef.current;
+        const scrollOptions = { block: 'center', inline: 'nearest', behavior: 'smooth' };
+        requestAnimationFrame(() => {
+            scrollTarget?.scrollIntoView?.(scrollOptions);
+            setTimeout(() => loginButtonRef.current?.scrollIntoView?.({ ...scrollOptions, block: 'nearest' }), 260);
+        });
+    }, []);
 
     const handleReviewLogin = async (event) => {
         event.preventDefault();
@@ -65,7 +75,7 @@ export default function LoginPage({ onSocialLogin, onEmailLogin }) {
     };
 
     return (
-        <div className="min-h-[100dvh] overflow-y-auto flex flex-col items-center justify-start bg-gray-50 px-4 pt-[max(2rem,calc(env(safe-area-inset-top)+1.25rem))] pb-[max(8rem,calc(env(safe-area-inset-bottom)+8rem))] sm:px-6 sm:pt-10 lg:px-8 font-sans">
+        <div className="min-h-[100dvh] overflow-y-auto flex flex-col items-center justify-center bg-gray-50 px-4 py-[max(2rem,calc(env(safe-area-inset-top)+1.25rem))] pb-[max(8rem,calc(env(safe-area-inset-bottom)+8rem))] sm:px-6 sm:py-10 lg:px-8 font-sans login-page-shell">
             <div className="max-w-md w-full space-y-8 bg-white p-6 sm:p-10 rounded-2xl shadow-xl border border-gray-100">
                 <div className="text-center">
                     <img
@@ -147,6 +157,7 @@ export default function LoginPage({ onSocialLogin, onEmailLogin }) {
                                     autoComplete="email"
                                     value={email}
                                     onChange={(event) => setEmail(event.target.value)}
+                                    onFocus={(event) => keepLoginControlsVisible(event.currentTarget)}
                                     className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-base focus:border-[#455fab] focus:outline-none focus:ring-2 focus:ring-[#455fab]/20"
                                     required
                                 />
@@ -161,6 +172,7 @@ export default function LoginPage({ onSocialLogin, onEmailLogin }) {
                                     autoComplete="current-password"
                                     value={password}
                                     onChange={(event) => setPassword(event.target.value)}
+                                    onFocus={(event) => keepLoginControlsVisible(event.currentTarget)}
                                     className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-base focus:border-[#455fab] focus:outline-none focus:ring-2 focus:ring-[#455fab]/20"
                                     required
                                 />
@@ -171,6 +183,7 @@ export default function LoginPage({ onSocialLogin, onEmailLogin }) {
                                 </p>
                             )}
                             <button
+                                ref={loginButtonRef}
                                 type="submit"
                                 disabled={isSubmitting}
                                 className="w-full rounded-lg bg-gray-700 px-4 py-2 text-base font-bold text-white transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:bg-gray-400"

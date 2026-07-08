@@ -2996,6 +2996,11 @@ video {
   padding-bottom: 2rem;
 }
 
+.py-\[max\(2rem\2c calc\(env\(safe-area-inset-top\)\+1\.25rem\)\)\]{
+  padding-top: max(2rem,calc(env(safe-area-inset-top) + 1.25rem));
+  padding-bottom: max(2rem,calc(env(safe-area-inset-top) + 1.25rem));
+}
+
 .pb-1{
   padding-bottom: 0.25rem;
 }
@@ -3098,10 +3103,6 @@ video {
 
 .pt-\[env\(safe-area-inset-top\)\]{
   padding-top: env(safe-area-inset-top);
-}
-
-.pt-\[max\(2rem\2c calc\(env\(safe-area-inset-top\)\+1\.25rem\)\)\]{
-  padding-top: max(2rem,calc(env(safe-area-inset-top) + 1.25rem));
 }
 
 .text-left{
@@ -3884,6 +3885,7 @@ body{
   --app-safe-top: env(safe-area-inset-top, 0px);
   --app-safe-bottom: env(safe-area-inset-bottom, 0px);
   --app-viewport-height: 100dvh;
+  --app-keyboard-height: 0px;
 }
 
 body.capacitor-native,
@@ -3953,8 +3955,30 @@ select {
   min-height: var(--app-viewport-height);
 }
 
+.capacitor-native .mobile-keyboard-screen {
+  height: var(--app-viewport-height);
+  min-height: var(--app-viewport-height);
+}
+
 .mobile-keyboard-input-bar {
   padding-bottom: max(0.5rem, env(safe-area-inset-bottom, 0px));
+}
+
+.capacitor-native .mobile-keyboard-input-bar {
+  padding-bottom: max(0.75rem, var(--app-safe-bottom));
+  transform: translateY(calc(-1 * var(--app-keyboard-height)));
+  margin-bottom: calc(-1 * var(--app-keyboard-height));
+  will-change: transform;
+}
+
+.capacitor-native .mobile-keyboard-messages {
+  padding-bottom: calc(var(--app-keyboard-height) + 1rem);
+}
+
+.capacitor-native .login-page-shell {
+  min-height: var(--app-viewport-height);
+  justify-content: center;
+  padding-bottom: max(14rem, calc(var(--app-safe-bottom) + var(--app-keyboard-height) + 10rem));
 }
 
 .first\:border-t-0:first-child{
@@ -4673,8 +4697,9 @@ select {
     padding-right: 2rem;
   }
 
-  .sm\:pt-10{
+  .sm\:py-10{
     padding-top: 2.5rem;
+    padding-bottom: 2.5rem;
   }
 
   .sm\:text-base{
