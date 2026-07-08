@@ -253,7 +253,7 @@ export default function ChatMessagePane({
                     </div>
                 </div>
             )}
-            <form onSubmit={submit} className={`${mobileCompact ? 'sticky bottom-0 p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] gap-1.5' : 'p-2 gap-2 items-end'} border-t bg-white flex`}>
+            <form onSubmit={submit} className={`${mobileCompact ? 'sticky bottom-0 p-2 mobile-keyboard-input-bar gap-1.5' : 'p-2 gap-2 items-end'} border-t bg-white flex`}>
                 <label className={`${mobileCompact ? 'px-2.5 py-2 rounded-full text-xs' : 'px-3 py-2 rounded text-sm'} border border-gray-200 bg-white cursor-pointer shrink-0`}>첨부<input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" onChange={handleAttachmentChange} className="hidden" /></label>
                 <textarea
                     value={draft}
@@ -261,7 +261,7 @@ export default function ChatMessagePane({
                     onKeyDown={handleKeyDown}
                     placeholder="메시지 입력"
                     rows={mobileCompact ? 1 : 2}
-                    className={`${mobileCompact ? 'min-h-10 max-h-24 rounded-full bg-gray-50 px-4 py-2 resize-none' : 'rounded px-3 py-2 resize-y'} flex-1 border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-gray-300`}
+                    className={`${mobileCompact ? 'min-h-10 max-h-24 rounded-full bg-gray-50 px-4 py-2 resize-none' : 'rounded px-3 py-2 resize-y'} flex-1 border border-gray-200 text-base focus:outline-none focus:ring-2 focus:ring-gray-300`}
                 />
                 <button type="submit" disabled={!draft.trim() && !attachmentFile} className={`${mobileCompact ? 'px-3 py-2 rounded-full text-xs' : 'px-3 py-2 rounded text-sm'} bg-gray-900 text-white font-semibold disabled:bg-gray-300 shrink-0`}>전송</button>
             </form>

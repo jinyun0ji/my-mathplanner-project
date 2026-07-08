@@ -845,7 +845,7 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
                     <button type="button" onClick={clearAttachment} className="text-red-500">취소</button>
                 </div>
             )}
-            <form onSubmit={handleSend} className="sticky bottom-0 p-3 bg-white border-t border-gray-100 flex gap-2">
+            <form onSubmit={handleSend} className="sticky bottom-0 p-3 mobile-keyboard-input-bar bg-white border-t border-gray-100 flex gap-2">
                 <label className="px-3 py-2 rounded-full border border-gray-200 bg-white text-sm cursor-pointer">
                     첨부
                     <input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" onChange={handleAttachmentChange} className="hidden" />
@@ -855,7 +855,7 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
                     value={inputText}
                     onChange={(e) => setInputText(e.target.value)}
                     placeholder={placeholder}
-                    className="flex-1 bg-gray-50 border border-gray-200 rounded-full px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-300"
+                    className="flex-1 min-w-0 bg-gray-50 border border-gray-200 rounded-full px-4 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-gray-300"
                 />
                 <button type="submit" disabled={isSending || (!inputText.trim() && !attachmentFile)} className="px-4 py-2 rounded-full text-sm font-semibold bg-gray-900 text-white disabled:bg-gray-300">
                     전송

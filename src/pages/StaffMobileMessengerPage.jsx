@@ -20,7 +20,7 @@ export default function StaffMobileMessengerPage({
   };
 
   return (
-    <main className="flex h-[100dvh] min-h-0 flex-col bg-gray-50 text-gray-900 pt-[env(safe-area-inset-top)]">
+    <main className="flex mobile-keyboard-screen min-h-0 flex-col bg-gray-50 text-gray-900 pt-[env(safe-area-inset-top)]">
       <header className="sticky top-0 z-20 border-b border-gray-200 bg-white/95 px-3 py-2 backdrop-blur">
         <div className="flex items-center justify-between gap-3">
           <h1 className="text-base font-bold text-gray-900">메신저</h1>

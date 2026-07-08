@@ -112,7 +112,7 @@ export default function StudentMessengerPage({ studentId, student, onBack, notif
         const canCreateCurrentRoom = Boolean(targetAuthUid && getExpectedRoomType(currentSlot.slot));
         if (!currentRoomId && !canCreateCurrentRoom) {
             return (
-                <div className="mobile-screen h-screen min-h-screen bg-gray-50 flex flex-col overflow-hidden">
+                <div className="mobile-screen mobile-keyboard-screen bg-gray-50 flex flex-col overflow-hidden">
                     <header className="mobile-header bg-white border-b border-gray-100 px-4 flex items-center gap-3">
                         <button type="button" onClick={() => { hasConsumedInitialRoomRef.current = true; setSelectedSlot(null); }} className="mobile-back-button text-gray-700"><ArrowBackIosNewIcon style={{ fontSize: 18 }} /></button>
                         <h1 className="text-base font-semibold text-gray-900 truncate">{currentSlot.title}</h1>
@@ -122,7 +122,7 @@ export default function StudentMessengerPage({ studentId, student, onBack, notif
             );
         }
         return (
-            <div className="mobile-screen h-screen min-h-screen bg-gray-50 flex flex-col overflow-hidden">
+            <div className="mobile-screen mobile-keyboard-screen bg-gray-50 flex flex-col overflow-hidden">
                 <header className="mobile-header bg-white border-b border-gray-100 px-4 flex items-center gap-3">
                     <button type="button" onClick={() => { hasConsumedInitialRoomRef.current = true; setSelectedSlot(null); }} className="mobile-back-button text-gray-700"><ArrowBackIosNewIcon style={{ fontSize: 18 }} /></button>
                     <h1 className="text-base font-semibold text-gray-900 truncate">{currentSlot.title}</h1>
@@ -154,7 +154,7 @@ export default function StudentMessengerPage({ studentId, student, onBack, notif
     }
 
     return (
-        <div className="mobile-screen h-screen min-h-screen bg-gray-50 overflow-y-auto">
+        <div className="mobile-screen min-h-[100dvh] bg-gray-50 overflow-y-auto">
             <header className="mobile-header bg-white border-b border-gray-100 px-4 flex items-center gap-3 sticky top-0 z-30">
                 <button type="button" onClick={onBack} className="mobile-back-button text-gray-700"><ArrowBackIosNewIcon style={{ fontSize: 18 }} /></button>
                 <h1 className="text-base font-semibold text-gray-900">메신저</h1>

@@ -100,3 +100,21 @@ html.capacitor-native {
 .capacitor-native .mobile-bottom-safe {
   padding-bottom: var(--app-safe-bottom);
 }
+
+/* iOS Safari/WebView prevents focus auto-zoom when form controls are at least 16px. */
+input,
+textarea,
+select {
+  font-size: 16px;
+}
+
+/* Keep full-screen mobile app pages aligned with the visual viewport and safe area. */
+.mobile-keyboard-screen {
+  height: 100dvh;
+  min-height: 100dvh;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.mobile-keyboard-input-bar {
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
+}

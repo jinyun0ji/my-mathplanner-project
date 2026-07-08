@@ -1069,10 +1069,6 @@ video {
   height: 2.25rem;
 }
 
-.h-\[100dvh\]{
-  height: 100dvh;
-}
-
 .h-\[420px\]{
   height: 420px;
 }
@@ -1240,6 +1236,10 @@ video {
 
 .min-h-12{
   min-height: 3rem;
+}
+
+.min-h-\[100dvh\]{
+  min-height: 100dvh;
 }
 
 .min-h-\[108px\]{
@@ -2769,6 +2769,10 @@ video {
   background-color: rgb(255 255 255 / var(--tw-bg-opacity, 1));
 }
 
+.bg-white\/10{
+  background-color: rgb(255 255 255 / 0.1);
+}
+
 .bg-white\/60{
   background-color: rgb(255 255 255 / 0.6);
 }
@@ -2798,10 +2802,6 @@ video {
 .bg-yellow-50{
   --tw-bg-opacity: 1;
   background-color: rgb(254 252 232 / var(--tw-bg-opacity, 1));
-}
-
-.bg-white\/10{
-  background-color: rgb(255 255 255 / 0.1);
 }
 
 .bg-opacity-50{
@@ -3032,8 +3032,8 @@ video {
   padding-bottom: 2rem;
 }
 
-.pb-\[max\(0\.5rem\2c env\(safe-area-inset-bottom\)\)\]{
-  padding-bottom: max(0.5rem,env(safe-area-inset-bottom));
+.pb-\[max\(1\.5rem\2c env\(safe-area-inset-bottom\)\)\]{
+  padding-bottom: max(1.5rem,env(safe-area-inset-bottom));
 }
 
 .pl-1{
@@ -3502,6 +3502,10 @@ video {
   color: rgb(255 255 255 / 0.7);
 }
 
+.text-white\/80{
+  color: rgb(255 255 255 / 0.8);
+}
+
 .text-yellow-500{
   --tw-text-opacity: 1;
   color: rgb(234 179 8 / var(--tw-text-opacity, 1));
@@ -3520,10 +3524,6 @@ video {
 .text-yellow-800{
   --tw-text-opacity: 1;
   color: rgb(133 77 14 / var(--tw-text-opacity, 1));
-}
-
-.text-white\/80{
-  color: rgb(255 255 255 / 0.8);
 }
 
 .underline{
@@ -3920,6 +3920,26 @@ html.capacitor-native {
 
 .capacitor-native .mobile-bottom-safe {
   padding-bottom: var(--app-safe-bottom);
+}
+
+/* iOS Safari/WebView prevents focus auto-zoom when form controls are at least 16px. */
+
+input,
+textarea,
+select {
+  font-size: 16px;
+}
+
+/* Keep full-screen mobile app pages aligned with the visual viewport and safe area. */
+
+.mobile-keyboard-screen {
+  height: 100dvh;
+  min-height: 100dvh;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.mobile-keyboard-input-bar {
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
 }
 
 .first\:border-t-0:first-child{
@@ -4619,6 +4639,10 @@ html.capacitor-native {
     align-self: auto;
   }
 
+  .sm\:p-10{
+    padding: 2.5rem;
+  }
+
   .sm\:px-5{
     padding-left: 1.25rem;
     padding-right: 1.25rem;
@@ -4632,6 +4656,11 @@ html.capacitor-native {
   .sm\:px-8{
     padding-left: 2rem;
     padding-right: 2rem;
+  }
+
+  .sm\:py-10{
+    padding-top: 2.5rem;
+    padding-bottom: 2.5rem;
   }
 
   .sm\:text-base{
