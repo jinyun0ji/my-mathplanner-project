@@ -22,6 +22,15 @@ import { markChatRoomNotificationsRead } from '../notifications/notificationRead
 // render video cards in-room, and play them in an internal iframe modal.
 const CANDIDATE_ROOM_IDS = (studentId) => [String(studentId || '')].filter(Boolean);
 
+const isNativeIosApp = () => {
+    const capacitor = window.Capacitor;
+    return Boolean(capacitor?.isNativePlatform?.() && capacitor?.getPlatform?.() === 'ios');
+};
+
+const CHAT_ATTACHMENT_ACCEPT = '.jpg,.jpeg,.png,.webp,.pdf';
+const NATIVE_IOS_CHAT_ATTACHMENT_ACCEPT = 'application/pdf,.pdf';
+const NATIVE_IOS_ATTACHMENT_NOTICE = '앱에서는 현재 안전한 파일(PDF) 선택만 지원합니다. 사진 촬영은 임시로 제한됩니다.';
+
 const uniqueStrings = (values) => Array.from(new Set(
     values.flat(Infinity).filter((value) => typeof value === 'string' && value.trim()).map((value) => value.trim())
 ));
@@ -561,10 +570,21 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
         setAttachmentFile(null);
     };
 
+    const handleAttachmentButtonClick = () => {
+        if (isNativeIosApp()) {
+            setError(NATIVE_IOS_ATTACHMENT_NOTICE);
+        }
+    };
+
     const handleAttachmentChange = (event) => {
         const file = event.target.files?.[0] || null;
         event.target.value = '';
         if (!file) return;
+        if (isNativeIosApp() && file.type !== 'application/pdf') {
+            setError(NATIVE_IOS_ATTACHMENT_NOTICE);
+            clearAttachment();
+            return;
+        }
         const validation = validateChatAttachment(file);
         if (!validation.ok) {
             setError(validation.message);
@@ -783,7 +803,7 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
     };
 
     return (
-        <div className={`${isFloating ? 'fixed bottom-24 right-5' : ''} bg-white h-full flex flex-col`}>
+        <div className={`${isFloating ? 'fixed bottom-24 right-5' : ''} bg-white h-full min-h-0 flex flex-col overflow-hidden`}>
             <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3 bg-gray-50 custom-scrollbar mobile-keyboard-messages">
                 {error && <div className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{error}</div>}
                 {messages.length > 0 ? messages.map((msg, index) => {
@@ -846,9 +866,9 @@ export default function StudentMessenger({ studentId, studentAuthUid = '', selec
                 </div>
             )}
             <form onSubmit={handleSend} className="shrink-0 p-3 mobile-keyboard-input-bar bg-white border-t border-gray-100 flex gap-2">
-                <label className="px-3 py-2 rounded-full border border-gray-200 bg-white text-sm cursor-pointer">
+                <label onClick={handleAttachmentButtonClick} className="px-3 py-2 rounded-full border border-gray-200 bg-white text-sm cursor-pointer">
                     첨부
-                    <input type="file" accept=".jpg,.jpeg,.png,.webp,.pdf" data-camera-disabled="true" onChange={handleAttachmentChange} className="hidden" />
+                    <input type="file" accept={isNativeIosApp() ? NATIVE_IOS_CHAT_ATTACHMENT_ACCEPT : CHAT_ATTACHMENT_ACCEPT} data-camera-disabled="true" onChange={handleAttachmentChange} className="hidden" />
                 </label>
                 <input
                     type="text"

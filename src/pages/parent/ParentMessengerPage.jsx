@@ -328,7 +328,7 @@ export default function ParentMessengerPage({ studentId, student, onBack, notifi
         const targetAuthUid = currentSlot.slot === SLOTS.TEACHER ? TEACHER_AUTH_UID : INSTITUTE_AUTH_UID;
         const currentRoomId = String(currentSlot.room?.roomId || currentSlot.room?.id || '').trim();
         return (
-            <div className="mobile-screen mobile-keyboard-screen bg-gray-50 flex flex-col overflow-hidden">
+            <div className="mobile-screen mobile-keyboard-screen mobile-chat-screen bg-gray-50 flex flex-col overflow-hidden">
                 <header className="mobile-header bg-white border-b border-gray-100 px-4 flex items-center gap-3">
                     <button type="button" onClick={() => { hasConsumedInitialRoomRef.current = true; setSelectedSlot(null); }} className="mobile-back-button text-gray-700"><ArrowBackIosNewIcon style={{ fontSize: 18 }} /></button>
                     <h1 className="text-base font-semibold text-gray-900 truncate">{currentSlot.title}</h1>

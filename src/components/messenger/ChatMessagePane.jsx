@@ -2,6 +2,16 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { getChatRoomDisplayTitle } from './messengerTargets';
 import { formatAttachmentSize, validateChatAttachment } from '../chatAttachments';
 
+
+const isNativeIosApp = () => {
+    const capacitor = window.Capacitor;
+    return Boolean(capacitor?.isNativePlatform?.() && capacitor?.getPlatform?.() === 'ios');
+};
+
+const CHAT_ATTACHMENT_ACCEPT = '.jpg,.jpeg,.png,.webp,.pdf';
+const NATIVE_IOS_CHAT_ATTACHMENT_ACCEPT = 'application/pdf,.pdf';
+const NATIVE_IOS_ATTACHMENT_NOTICE = '앱에서는 현재 안전한 파일(PDF) 선택만 지원합니다. 사진 촬영은 임시로 제한됩니다.';
+
 const normalizeMessageDate = (value) => {
     if (!value) return null;
     if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
@@ -89,10 +99,21 @@ export default function ChatMessagePane({
         setAttachmentFile(null);
     };
 
+    const handleAttachmentButtonClick = () => {
+        if (isNativeIosApp()) {
+            setError(NATIVE_IOS_ATTACHMENT_NOTICE);
+        }
+    };
+
     const handleAttachmentChange = (event) => {
         const file = event.target.files?.[0] || null;
         event.target.value = '';
         if (!file) return;
+        if (isNativeIosApp() && file.type !== 'application/pdf') {
+            setError(NATIVE_IOS_ATTACHMENT_NOTICE);
+            clearAttachment();
+            return;
+        }
         const validation = validateChatAttachment(file);
         if (!validation.ok) {
             setError(validation.message);
@@ -254,7 +275,7 @@ export default function ChatMessagePane({
                 </div>
             )}
             <form onSubmit={submit} className={`${mobileCompact ? 'p-2 mobile-keyboard-input-bar gap-1.5 shrink-0' : 'p-2 gap-2 items-end'} border-t bg-white flex`}>
-                <label className={`${mobileCompact ? 'px-2.5 py-2 rounded-full text-xs' : 'px-3 py-2 rounded text-sm'} border border-gray-200 bg-white cursor-pointer shrink-0`}>첨부<input type="file" accept=".jpg,.jpeg,.png,.webp,.pdf" data-camera-disabled="true" onChange={handleAttachmentChange} className="hidden" /></label>
+                <label onClick={handleAttachmentButtonClick} className={`${mobileCompact ? 'px-2.5 py-2 rounded-full text-xs' : 'px-3 py-2 rounded text-sm'} border border-gray-200 bg-white cursor-pointer shrink-0`}>첨부<input type="file" accept={isNativeIosApp() ? NATIVE_IOS_CHAT_ATTACHMENT_ACCEPT : CHAT_ATTACHMENT_ACCEPT} data-camera-disabled="true" onChange={handleAttachmentChange} className="hidden" /></label>
                 <textarea
                     value={draft}
                     onChange={(event) => setDraft(event.target.value)}

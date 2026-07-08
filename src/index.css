@@ -129,19 +129,18 @@ select {
   min-height: var(--app-viewport-height);
 }
 
+.capacitor-native .mobile-chat-screen {
+  height: calc(var(--app-viewport-height) - var(--app-keyboard-height));
+  min-height: calc(var(--app-viewport-height) - var(--app-keyboard-height));
+  overflow: hidden;
+}
+
 .mobile-keyboard-input-bar {
   padding-bottom: max(0.5rem, env(safe-area-inset-bottom, 0px));
 }
 
 .capacitor-native .mobile-keyboard-input-bar {
   padding-bottom: max(0.75rem, var(--app-safe-bottom));
-  transform: translateY(calc(-1 * var(--app-keyboard-height)));
-  margin-bottom: calc(-1 * var(--app-keyboard-height));
-  will-change: transform;
-}
-
-.capacitor-native .mobile-keyboard-messages {
-  padding-bottom: calc(var(--app-keyboard-height) + 1rem);
 }
 
 .capacitor-native .login-page-shell {
