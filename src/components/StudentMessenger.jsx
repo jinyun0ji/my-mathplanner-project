@@ -14,7 +14,7 @@ import { buildDeterministicRoomId, createRoomIfMissing } from '../messenger/serv
 import { sendRoomMessage, subscribeRoomMessages } from '../messenger/services/messageService';
 import { fetchParentFallbackRooms, fetchRoomsForIndexes, fetchStudentFallbackRooms } from '../messenger/services/userChatRoomsService';
 import { INSTITUTE_AUTH_UID, ROOM_TYPES } from '../messenger/constants/messengerConstants';
-import { getExpectedRoomType, getRoomDebugInfo, isStrictRoomTypeMatch } from '../messenger/utils/roomMatcher';
+import { getExpectedRoomType, getRoomDebugInfo, getStrictTeacherRoomMatch, isStrictRoomTypeMatch } from '../messenger/utils/roomMatcher';
 import { markChatRoomNotificationsRead } from '../notifications/notificationReadActions';
 
 // TODO(video_embed): allow only admin/staff/teacher to send YouTube watch/youtu.be/embed links,
@@ -145,6 +145,19 @@ const isResolvedRoomCandidate = (room, { viewerUid, targetAuthUid, roomType, stu
         if (String(room?.staffAuthUid || '') !== INSTITUTE_AUTH_UID && String(room?.counterpartUid || '') !== INSTITUTE_AUTH_UID && !participantIds.includes(INSTITUTE_AUTH_UID)) return rejectResolvedRoomCandidate(room, roomType, 'institute counterpart mismatch');
     }
     if (!participantIds.includes(String(targetAuthUid)) && String(room?.counterpartUid || '') !== String(targetAuthUid) && String(room?.teacherAuthUid || '') !== String(targetAuthUid) && String(room?.staffAuthUid || '') !== String(targetAuthUid)) return rejectResolvedRoomCandidate(room, roomType, 'target mismatch');
+
+    if (expectedSlot === 'teacher') {
+        const strictMatch = getStrictTeacherRoomMatch(room, {
+            role: normalizedRoleFromRoomType(roomType),
+            expectedRoomType: roomType,
+            viewerKeys,
+            studentKeys: roomType === ROOM_TYPES.STUDENT_TEACHER ? [viewerKeys, studentId, participantKeys] : [studentId, participantKeys],
+            parentKeys: roomType === ROOM_TYPES.PARENT_TEACHER ? [viewerKeys, participantKeys] : [],
+            studentId,
+            teacherAuthUid: targetAuthUid,
+        });
+        if (!strictMatch.ok) return rejectResolvedRoomCandidate(room, roomType, strictMatch.reason);
+    }
     if (roomSlot && roomSlot !== expectedSlot) return rejectResolvedRoomCandidate(room, roomType, 'slot mismatch');
     if (!hasRoomTypeOrChannel(room, roomType)) return rejectResolvedRoomCandidate(room, roomType, 'roomType/channel mismatch');
     if (roomType.startsWith('parent_') && (hasRoomTypeOrChannel(room, ROOM_TYPES.STUDENT_TEACHER) || hasRoomTypeOrChannel(room, ROOM_TYPES.STUDENT_INSTITUTE))) return rejectResolvedRoomCandidate(room, roomType, 'student room excluded');

@@ -7,7 +7,7 @@ import { useMessengerRooms } from '../../messenger/hooks/useMessengerRooms';
 import { getInstituteDisplayName, getTeacherDisplayName } from '../../messenger/services/displayNameService';
 import { getLastMessagePreview, getLastMessagePreviewCandidates } from '../../messenger/services/roomPreviewService';
 import { buildStudentParticipantKeys } from '../../messenger/utils/participantKeys';
-import { getRoomDebugInfo, getRoomId, toDate } from '../../messenger/utils/roomMatcher';
+import { getRoomDebugInfo, getRoomId, getStrictTeacherRoomMatch, toDate } from '../../messenger/utils/roomMatcher';
 import { markChatRoomNotificationsRead } from '../../notifications/notificationReadActions';
 
 const getExpectedRoomType = (slot) => (slot === SLOTS.INSTITUTE ? ROOM_TYPES.STUDENT_INSTITUTE : ROOM_TYPES.STUDENT_TEACHER);
@@ -41,12 +41,18 @@ export default function StudentMessengerPage({ studentId, student, onBack, notif
                 expectedRoomType: slot.roomType,
                 activeStudentId,
                 participantKeys: participantKeyCandidates,
-                finalRoomId: getRoomId(slot.room),
+                selectedRoomId: getRoomId(slot.room),
                 finalPreviewRoomId: getRoomId(slot.room),
                 finalPreviewText: slot.room ? getLastMessagePreview(slot.room) : '대화 내역이 없습니다.',
-                rejected: rooms
+                rejectedRooms: rooms
                     .filter((room) => getRoomId(room) !== getRoomId(slot.room))
-                    .map((room) => ({ roomId: getRoomId(room), reason: 'not selected for this slot', actual: getRoomDebugInfo(room) })),
+                    .map((room) => {
+                        const match = slot.slot === SLOTS.TEACHER
+                            ? getStrictTeacherRoomMatch(room, { role: 'student', expectedRoomType: slot.roomType, viewerKeys: [authUid, participantKeyCandidates], studentKeys: [authUid, activeStudentId, participantKeyCandidates], studentId: activeStudentId, teacherAuthUid: TEACHER_AUTH_UID })
+                            : { reason: 'not selected for this slot' };
+                        return { roomId: getRoomId(room), reason: match.reason || 'not selected for this slot', actual: getRoomDebugInfo(room) };
+                    }),
+                acceptedRoom: slot.room ? getRoomDebugInfo(slot.room) : null,
                 roomType: slot.room?.roomType || '',
                 channel: slot.room?.channel || '',
                 roomSlot: slot.room?.slot || '',

@@ -36,9 +36,13 @@ const createUserChatRoomIndexes = async ({ roomId, room, timestamp }) => {
 };
 
 export const buildDeterministicRoomId = (roomType, ownerUid, counterpartUid, studentId = '') => {
-    if (!roomType || !ownerUid || !counterpartUid) return '';
-    if (roomType === 'parent_institute') return `direct_parent_institute_${ownerUid}_${counterpartUid}_${String(studentId || '').trim()}`;
-    return `direct_${roomType}_${ownerUid}_${counterpartUid}`;
+    const normalizedRoomType = String(roomType || '').trim();
+    const normalizedOwnerUid = String(ownerUid || '').trim();
+    const normalizedCounterpartUid = String(counterpartUid || '').trim();
+    const normalizedStudentId = String(studentId || '').trim();
+    if (!normalizedRoomType || !normalizedOwnerUid || !normalizedCounterpartUid) return '';
+    const studentSuffix = normalizedStudentId ? `_${normalizedStudentId}` : '';
+    return `direct_${normalizedRoomType}_${normalizedOwnerUid}_${normalizedCounterpartUid}${studentSuffix}`;
 };
 
 export const createRoomIfMissing = async ({ roomId, payload }) => {

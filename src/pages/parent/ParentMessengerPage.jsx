@@ -7,7 +7,7 @@ import { INSTITUTE_AUTH_UID, ROOM_TYPES, SLOTS, TEACHER_AUTH_UID } from '../../m
 import { getInstituteDisplayName, getTeacherDisplayName } from '../../messenger/services/displayNameService';
 import { getLastMessagePreview, getLastMessagePreviewCandidates } from '../../messenger/services/roomPreviewService';
 import { buildParentParticipantKeys } from '../../messenger/utils/participantKeys';
-import { getRoomDebugInfo, getRoomId, isLegacySlotRoomTypeMatch, sortRooms, toDate } from '../../messenger/utils/roomMatcher';
+import { getRoomDebugInfo, getRoomId, getStrictTeacherRoomMatch, isLegacySlotRoomTypeMatch, sortRooms, toDate } from '../../messenger/utils/roomMatcher';
 import { getUserChatRoomsQueryShape, subscribeUserChatRooms } from '../../messenger/services/userChatRoomsService';
 import { markChatRoomNotificationsRead } from '../../notifications/notificationReadActions';
 
@@ -24,21 +24,6 @@ const hasViewerParticipant = (room, participantKeys = [], linkedUserDocId = '', 
 
 
 const sameStudent = (room, studentId) => !room?.studentId || !studentId || String(room.studentId) === String(studentId);
-const hasExactStudent = (room, studentId) => Boolean(studentId) && String(room?.studentId || '') === String(studentId);
-const hasLinkedParent = (room, linkedUserDocId) => {
-    const parentDocId = String(linkedUserDocId || '').trim();
-    if (!parentDocId) return false;
-    return String(room?.parentId || '') === parentDocId
-        || String(room?.parentUid || '') === parentDocId
-        || getParticipantIds(room).includes(parentDocId);
-};
-const isTeacherRoomShape = (room) => (
-    String(room?.slot || '') === 'teacher'
-    || String(room?.channel || '') === 'teacher'
-    || String(room?.roomType || '') === 'teacher'
-    || String(room?.roomType || '') === ROOM_TYPES.PARENT_TEACHER
-);
-
 const logParentRoomRejection = (room, expectedRoomType, reason, selectedRoomId = '') => {
     if (process.env.NODE_ENV !== 'development') return;
     console.log('[parent messenger] rejected room candidate', {
@@ -79,26 +64,19 @@ const isParentRoomOfType = (room, expectedRoomType, targetUid, targetFields, par
     return true;
 };
 
-const isParentTeacherRoom = (room, participantKeys, studentId, linkedUserDocId) => {
+const isParentTeacherRoom = (room, participantKeys, studentId, linkedUserDocId, authUid = '') => {
     const selectedRoomId = getRoomId(room);
     if (room?.__unreadableRoom && selectedRoomId) return true;
-    if (!isTeacherRoomShape(room)) {
-        logParentRoomRejection(room, ROOM_TYPES.PARENT_TEACHER, 'teacher room shape mismatch', selectedRoomId);
-        return false;
-    }
-    if (!hasTarget(room, TEACHER_AUTH_UID, ['teacherAuthUid', 'counterpartUid'])) {
-        logParentRoomRejection(room, ROOM_TYPES.PARENT_TEACHER, 'teacher target participant mismatch', selectedRoomId);
-        return false;
-    }
-    if (!hasLinkedParent(room, linkedUserDocId)) {
-        logParentRoomRejection(room, ROOM_TYPES.PARENT_TEACHER, 'linked parent not found', selectedRoomId);
-        return false;
-    }
-    if (!hasExactStudent(room, studentId)) {
-        logParentRoomRejection(room, ROOM_TYPES.PARENT_TEACHER, 'studentId mismatch', selectedRoomId);
-        return false;
-    }
-    return true;
+    const match = getStrictTeacherRoomMatch(room, {
+        role: 'parent',
+        expectedRoomType: ROOM_TYPES.PARENT_TEACHER,
+        viewerKeys: [authUid, participantKeys],
+        parentKeys: [authUid, linkedUserDocId, participantKeys],
+        studentId,
+        teacherAuthUid: TEACHER_AUTH_UID,
+    });
+    if (!match.ok) logParentRoomRejection(room, ROOM_TYPES.PARENT_TEACHER, match.reason, selectedRoomId);
+    return match.ok;
 };
 
 const isParentInstituteRoom = (room, participantKeys, studentId, linkedUserDocId) => isParentRoomOfType(room, ROOM_TYPES.PARENT_INSTITUTE, INSTITUTE_AUTH_UID, ['staffAuthUid', 'counterpartUid'], participantKeys, studentId, linkedUserDocId);
@@ -214,8 +192,8 @@ export default function ParentMessengerPage({ studentId, student, onBack, notifi
         return unsubscribe;
     }, [authUid, normalizedInitialRoomId]);
 
-    const teacherRoom = useMemo(() => rooms.find((room) => isParentTeacherRoom(room, participantKeys, activeStudentId, linkedParent.userDocId)) || null, [rooms, participantKeys, activeStudentId, linkedParent.userDocId]);
-    const instituteRoom = useMemo(() => rooms.find((room) => isParentInstituteRoom(room, participantKeys, activeStudentId, linkedParent.userDocId)) || null, [rooms, participantKeys, activeStudentId, linkedParent.userDocId]);
+    const teacherRoom = useMemo(() => rooms.find((room) => isParentTeacherRoom(room, participantKeys, activeStudentId, linkedParent.userDocId, authUid)) || null, [rooms, participantKeys, activeStudentId, linkedParent.userDocId, authUid]);
+    const instituteRoom = useMemo(() => rooms.find((room) => isParentInstituteRoom(room, participantKeys, activeStudentId, linkedParent.userDocId)) || null, [rooms, participantKeys, activeStudentId, linkedParent.userDocId, authUid]);
 
     const messengerSlots = useMemo(() => [
         { slot: SLOTS.INSTITUTE, room: instituteRoom, id: instituteRoom?.roomId || instituteRoom?.id || 'parent-institute-placeholder', title: getInstituteDisplayName(), roomType: ROOM_TYPES.PARENT_INSTITUTE },
@@ -229,9 +207,15 @@ export default function ParentMessengerPage({ studentId, student, onBack, notifi
             expectedRoomType: slot.roomType,
             finalPreviewRoomId: getRoomId(slot.room),
             finalPreviewText: slot.room ? getLastMessagePreview(slot.room) : '대화 내역이 없습니다.',
-            rejected: rooms
+            rejectedRooms: rooms
                 .filter((room) => getRoomId(room) !== getRoomId(slot.room))
-                .map((room) => ({ roomId: getRoomId(room), actual: getRoomDebugInfo(room) })),
+                .map((room) => {
+                    const match = slot.slot === SLOTS.TEACHER
+                        ? getStrictTeacherRoomMatch(room, { role: 'parent', expectedRoomType: slot.roomType, viewerKeys: [authUid, participantKeys], parentKeys: [authUid, linkedParent.userDocId, participantKeys], studentId: activeStudentId, teacherAuthUid: TEACHER_AUTH_UID })
+                        : { reason: 'not selected for this slot' };
+                    return { roomId: getRoomId(room), reason: match.reason || 'not selected for this slot', actual: getRoomDebugInfo(room) };
+                }),
+            acceptedRoom: slot.room ? getRoomDebugInfo(slot.room) : null,
         }));
         console.log('[parent messenger] match debug', {
             authUid,
