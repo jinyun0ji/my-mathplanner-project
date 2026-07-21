@@ -174,29 +174,109 @@ const buildUserLookups = ({ students = [], parents = [] }) => {
 
 
 const getRoomType = (room) => normalizeText(room?.roomType || room?.channel);
+const isStudentChatRoomType = (roomType) => ['student_teacher', 'student_institute'].includes(roomType);
 
-const getStudentDisplayNameForRoom = (room, { studentById, studentByAuthUid, parentLast4Map }) => {
-    const directStudent = getRoomStudentIds(room).map((studentId) => studentById.get(String(studentId)) || studentByAuthUid.get(String(studentId))).find(Boolean)
-        || (room?.studentDocId ? studentById.get(String(room.studentDocId)) : null);
-    const directName = getUserName(directStudent) || normalizeText(room?.studentName);
-    if (directName) return appendStudentSuffix(directName);
+const getStudentByAnyId = (studentId, { studentById, studentByAuthUid }) => {
+    const normalizedId = normalizeText(studentId);
+    if (!normalizedId) return null;
+    return studentById.get(normalizedId) || studentByAuthUid.get(normalizedId) || null;
+};
 
+const buildStudentRoomDebugPayload = ({ room, studentId, displayName, source }) => ({
+    roomId: room?.id || null,
+    roomType: getRoomType(room),
+    'room.studentId': normalizeText(room?.studentId) || null,
+    'room.studentDocId': normalizeText(room?.studentDocId) || null,
+    participantIds: Array.isArray(room?.participantIds) ? room.participantIds.map(String) : [],
+    participantRoles: room?.participantRoles && typeof room.participantRoles === 'object' ? room.participantRoles : {},
+    participantUserDocIds: room?.participantUserDocIds && typeof room.participantUserDocIds === 'object' ? room.participantUserDocIds : {},
+    selectedStudentId: studentId || null,
+    finalDisplayName: displayName || null,
+    source: source || null,
+});
+
+const logStudentRoomResolution = (payload) => {
+    if (process.env.NODE_ENV === 'development') {
+        console.log('[internal-messenger] student room counterparty resolved', payload);
+    }
+};
+
+const findStudentForStudentRoom = (room, { studentById, studentByAuthUid }) => {
     const roles = room?.participantRoles && typeof room.participantRoles === 'object' ? room.participantRoles : {};
     const userDocIds = room?.participantUserDocIds && typeof room.participantUserDocIds === 'object' ? room.participantUserDocIds : {};
     const participantIds = Array.isArray(room?.participantIds) ? room.participantIds.map(String) : [];
-    const roleStudentId = Object.keys(roles).find((uid) => lower(roles[uid]) === 'student');
-    const roleStudent = roleStudentId ? (studentByAuthUid.get(roleStudentId) || studentById.get(String(userDocIds[roleStudentId] || ''))) : null;
-    const participantStudent = roleStudent || participantIds.map((participantId) => studentByAuthUid.get(participantId) || studentById.get(String(userDocIds[participantId] || ''))).find(Boolean);
-    const participantName = roleStudentId ? normalizeText(room?.participantNames?.[roleStudentId]) : '';
-    if (!participantStudent && participantName) return participantName;
-    if (!participantStudent) return '';
 
-    return getMessengerTargetDisplayName({
-        user: participantStudent,
-        role: 'student',
-        studentById,
-        parentLast4Map,
-    });
+    const studentId = normalizeText(room?.studentId);
+    const studentFromId = getStudentByAnyId(studentId, { studentById, studentByAuthUid });
+    if (studentFromId) return { student: studentFromId, studentId, uid: getAuthUid(studentFromId) || studentId, source: 'room.studentId' };
+
+    const studentDocId = normalizeText(room?.studentDocId);
+    const studentFromDocId = getStudentByAnyId(studentDocId, { studentById, studentByAuthUid });
+    if (studentFromDocId) return { student: studentFromDocId, studentId: studentDocId, uid: getAuthUid(studentFromDocId) || studentDocId, source: 'room.studentDocId' };
+
+    const studentIds = getArrayField(room?.studentIds);
+    for (const id of studentIds) {
+        const student = getStudentByAnyId(id, { studentById, studentByAuthUid });
+        if (student) return { student, studentId: id, uid: getAuthUid(student) || id, source: 'room.studentIds' };
+    }
+
+    const roleStudentUid = Object.keys(roles).find((uid) => lower(roles[uid]) === 'student');
+    if (roleStudentUid) {
+        const docId = normalizeText(userDocIds[roleStudentUid]);
+        const student = studentByAuthUid.get(roleStudentUid) || getStudentByAnyId(docId, { studentById, studentByAuthUid });
+        if (student) return { student, studentId: docId || normalizeText(student?.id) || roleStudentUid, uid: roleStudentUid, source: 'participantRoles.student' };
+        const participantName = normalizeText(room?.participantNames?.[roleStudentUid]);
+        if (participantName) return { student: null, studentId: docId || roleStudentUid, uid: roleStudentUid, participantName, source: 'participantRoles.studentName' };
+    }
+
+    for (const [uid, docIdValue] of Object.entries(userDocIds)) {
+        const docId = normalizeText(docIdValue);
+        const student = studentById.get(docId);
+        if (student) return { student, studentId: docId, uid, source: 'participantUserDocIds' };
+    }
+
+    for (const uid of participantIds) {
+        const student = studentByAuthUid.get(uid);
+        if (student) return { student, studentId: normalizeText(student?.id) || uid, uid, source: 'studentByAuthUid' };
+    }
+
+    for (const uid of participantIds) {
+        const student = studentById.get(uid);
+        if (student) return { student, studentId: uid, uid: getAuthUid(student) || uid, source: 'studentById' };
+    }
+
+    for (const uid of participantIds) {
+        const docId = normalizeText(userDocIds[uid]);
+        const student = studentByAuthUid.get(uid) || studentById.get(uid) || studentById.get(docId) || studentByAuthUid.get(docId);
+        if (student) return { student, studentId: docId || uid, uid, source: 'participantIdsFallback' };
+    }
+
+    return { student: null, studentId: '', uid: null, source: 'unresolved' };
+};
+
+const getStudentDisplayNameFromResolution = (resolution, { studentById, parentLast4Map }) => {
+    if (resolution?.student) {
+        return getMessengerTargetDisplayName({
+            user: resolution.student,
+            role: 'student',
+            studentById,
+            parentLast4Map,
+        });
+    }
+    return normalizeText(resolution?.participantName) || '';
+};
+
+const getStudentDisplayNameForRoom = (room, { studentById, studentByAuthUid, parentLast4Map }) => {
+    const resolution = findStudentForStudentRoom(room, { studentById, studentByAuthUid });
+    const displayName = getStudentDisplayNameFromResolution(resolution, { studentById, parentLast4Map })
+        || (normalizeText(room?.studentName) ? appendStudentSuffix(room.studentName) : '');
+    logStudentRoomResolution(buildStudentRoomDebugPayload({
+        room,
+        studentId: resolution.studentId,
+        displayName,
+        source: resolution.source,
+    }));
+    return displayName;
 };
 
 const getStandardRoomDisplayTitle = (room, contextData = {}) => {
@@ -287,9 +367,6 @@ export const getChatRoomCounterparty = (
     students = [],
     parents = [],
 ) => {
-    const counterpartyUid = resolveCounterpartyUid(room, currentUserId);
-    if (!counterpartyUid) return null;
-
     const {
         studentById,
         studentByAuthUid,
@@ -297,6 +374,28 @@ export const getChatRoomCounterparty = (
         parentByAuthUid,
         parentLast4Map,
     } = buildUserLookups({ students, parents });
+
+    const roomType = getRoomType(room);
+    if (isStudentChatRoomType(roomType)) {
+        const resolution = findStudentForStudentRoom(room, { studentById, studentByAuthUid });
+        const displayName = getStudentDisplayNameFromResolution(resolution, { studentById, parentLast4Map })
+            || (normalizeText(room?.studentName) ? appendStudentSuffix(room.studentName) : '이름 미등록 학생');
+        logStudentRoomResolution(buildStudentRoomDebugPayload({
+            room,
+            studentId: resolution.studentId,
+            displayName,
+            source: resolution.source,
+        }));
+        return {
+            uid: resolution.uid || resolution.studentId || null,
+            role: 'student',
+            user: resolution.student || null,
+            displayName,
+        };
+    }
+
+    const counterpartyUid = resolveCounterpartyUid(room, currentUserId);
+    if (!counterpartyUid) return null;
 
     const participantRoles = room?.participantRoles || {};
     const participantUserDocIds = room?.participantUserDocIds || {};
